@@ -9,6 +9,7 @@ from langchain.prompts import PromptTemplate
 
 from app.config import settings
 from app.services.milvus_store import milvus_store
+from app.services.hybrid_retriever import hybrid_retriever
 
 
 class RAGEngine:
@@ -26,22 +27,26 @@ class RAGEngine:
             max_retries=settings.LLM_MAX_RETRIES
         )
 
-        # Prompt 模板
+        # Prompt 模板（支持对话历史）
         self.prompt_template = PromptTemplate(
-            input_variables=["context", "question"],
-            template="""你是一个专业的知识库助手。请基于以下参考资料回答用户问题。
+            input_variables=["context", "history", "question"],
+            template="""你是一个专业的知识库助手。请基于以下参考资料和对话历史回答用户问题。
 
 【参考资料】
 {context}
 
-【用户问题】
+【对话历史】
+{history}
+
+【当前问题】
 {question}
 
 【回答要求】
 1. 仅基于参考资料回答，不要编造信息
 2. 如果参考资料中没有相关信息，请明确告知用户"根据现有资料无法回答该问题"
-3. 回答要准确、简洁、专业
-4. 引用资料时可以提及来源文件名
+3. 结合对话历史理解上下文，处理代词（如"它"、"这个"）和追问
+4. 回答要准确、简洁、专业
+5. 引用资料时可以提及来源文件名
 
 【回答】"""
         )
@@ -49,6 +54,7 @@ class RAGEngine:
     async def stream_chat(
         self,
         question: str,
+        history: Optional[List[Dict[str, str]]] = None,
         conversation_id: Optional[UUID] = None,
         document_ids: Optional[List[UUID]] = None,
         top_k: int = 5,
@@ -68,12 +74,13 @@ class RAGEngine:
             流式事件: {"type": "citations|token|done|error", "data": ...}
         """
         try:
-            # Step 1: 在 Milvus 中检索相关文档片段
-            search_results = milvus_store.search(
+            # Step 1: 混合检索（向量 + BM25）
+            search_results = hybrid_retriever.hybrid_search(
                 query=question,
                 top_k=top_k,
                 score_threshold=score_threshold,
-                document_ids=document_ids
+                document_ids=document_ids,
+                alpha=0.6  # 60% 向量检索，40% BM25
             )
 
             # 构建引用信息
@@ -106,9 +113,19 @@ class RAGEngine:
                     )
                 context = "\n\n".join(context_parts)
 
+            # 构建对话历史
+            if history and len(history) > 0:
+                history_text = ""
+                for msg in history[-5:]:  # 只保留最近5轮对话
+                    role = "用户" if msg.get('role') == 'user' else "助手"
+                    history_text += f"{role}: {msg.get('content')}\n\n"
+            else:
+                history_text = "（无历史对话）"
+
             # 构建 Prompt
             prompt = self.prompt_template.format(
                 context=context,
+                history=history_text,
                 question=question
             )
 

@@ -10,10 +10,16 @@ alembic==1.13.1
 psycopg2-binary==2.9.9
 
 # LangChain Ecosystem
-langchain==0.1.10
-langchain-community==0.0.20
-langchain-openai==0.0.5
-langchain-anthropic==0.1.1
+langchain==0.3.13
+langchain-community==0.3.13
+langchain-openai==0.2.14
+langchain-anthropic==0.3.5
+langchain-core==0.3.28
+
+# LangGraph for Agent & Memory
+langgraph==0.2.62
+langgraph-checkpoint==2.0.14
+langgraph-checkpoint-postgres==2.0.14
 
 # Vector Database
 pymilvus==2.3.5
@@ -28,6 +34,10 @@ PyMuPDF==1.23.8
 unstructured==0.12.0
 python-magic==0.4.27
 markdown==3.5.2
+
+# BM25 and Text Processing
+rank-bm25==0.2.2
+jieba==0.42.1
 
 # Authentication
 python-jose[cryptography]==3.3.0

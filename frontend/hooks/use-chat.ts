@@ -46,6 +46,12 @@ export function useChat(options: UseChatOptions = {}) {
       abortControllerRef.current = new AbortController()
 
       try {
+        // 构建历史对话（只发送最近5轮）
+        const history = messages.slice(-10).map(msg => ({
+          role: msg.role,
+          content: msg.content
+        }))
+
         const response = await fetch(`${API_BASE_URL}/api/v1/chat/stream`, {
           method: 'POST',
           headers: {
@@ -54,6 +60,7 @@ export function useChat(options: UseChatOptions = {}) {
           body: JSON.stringify({
             conversation_id: options.conversationId,
             message,
+            history,  // 传递历史对话
             document_ids: options.documentIds,
             stream: true,
             rag_config: {

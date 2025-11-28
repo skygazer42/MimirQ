@@ -13,6 +13,7 @@ from app.config import settings
 from app.models.document import Document as DBDocument, DocumentChunk
 from app.services.parsers import parser_factory
 from app.services.milvus_store import milvus_store
+from app.services.hybrid_retriever import hybrid_retriever
 
 
 class DocumentProcessorService:
@@ -113,6 +114,9 @@ class DocumentProcessorService:
 
             print(f"✅ Document processed successfully: {len(chunks)} chunks")
 
+            # Step 7: 重新构建 BM25 索引（包含所有文档）
+            await self._rebuild_bm25_index(db)
+
             return {
                 "status": "success",
                 "chunk_count": len(chunks),
@@ -177,6 +181,24 @@ class DocumentProcessorService:
             db.add(db_chunk)
 
         db.commit()
+
+    async def _rebuild_bm25_index(self, db: Session):
+        """重新构建 BM25 索引（包含所有已完成的文档片段）"""
+        try:
+            # 查询所有已完成文档的片段
+            all_chunks = db.query(DocumentChunk).join(DBDocument).filter(
+                DBDocument.status == 'completed'
+            ).all()
+
+            if all_chunks:
+                print(f"🔄 Rebuilding BM25 index with {len(all_chunks)} chunks...")
+                hybrid_retriever.build_bm25_index(all_chunks)
+            else:
+                print("⚠️  No chunks found for BM25 index")
+
+        except Exception as e:
+            print(f"⚠️  Failed to rebuild BM25 index: {str(e)}")
+            # 不抛出异常，避免影响文档处理流程
 
 
 # 全局实例
