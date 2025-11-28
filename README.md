@@ -43,10 +43,15 @@ cd MimirQ
 cp backend/.env.example backend/.env
 ```
 
-编辑 `backend/.env`，填入你的 OpenAI API Key:
+编辑 `backend/.env`，配置 OpenAI 兼容接口:
 
 ```env
-OPENAI_API_KEY=sk-your-openai-api-key
+LLM_API_KEY=sk-your-api-key
+LLM_API_BASE=https://api.openai.com/v1  # 可替换为自建/其他 OpenAI 兼容地址
+LLM_MODEL=gpt-4-turbo-preview
+EMBEDDING_PROVIDER=local  # local 或 openai_compatible
+EMBEDDING_API_BASE=       # 与上面的 base_url 相同时可留空
+EMBEDDING_API_KEY=        # 不填写则复用 LLM_API_KEY
 DATABASE_URL=postgresql://postgres:postgres@localhost:5432/mimirq
 ```
 

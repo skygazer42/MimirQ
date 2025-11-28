@@ -17,10 +17,13 @@ class RAGEngine:
     def __init__(self):
         # LLM 配置
         self.llm = ChatOpenAI(
-            model=settings.OPENAI_MODEL,
-            api_key=settings.OPENAI_API_KEY,
-            temperature=0.7,
-            streaming=True
+            model=settings.LLM_MODEL,
+            api_key=settings.LLM_API_KEY,
+            base_url=settings.LLM_API_BASE,
+            temperature=settings.LLM_TEMPERATURE,
+            streaming=True,
+            timeout=settings.LLM_TIMEOUT,
+            max_retries=settings.LLM_MAX_RETRIES
         )
 
         # Prompt 模板
