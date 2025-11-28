@@ -2,6 +2,7 @@
 Milvus 向量数据库服务
 """
 from typing import List, Dict, Any, Optional
+from langchain_openai import OpenAIEmbeddings
 from pymilvus import (
     connections,
     Collection,
@@ -22,6 +23,7 @@ class MilvusVectorStore:
 
     _instance = None
     _embedding_model = None
+    _embedding_provider = None
     _collection = None
     _embedding_dim = 1024  # BGE-large 的维度
 
@@ -34,19 +36,39 @@ class MilvusVectorStore:
     def __init__(self):
         """初始化 Milvus 连接和 Collection"""
         if self._embedding_model is None:
-            print(f"🔧 Loading embedding model: {settings.EMBEDDING_MODEL}")
-            self._embedding_model = SentenceTransformer(
-                settings.EMBEDDING_MODEL,
-                device=settings.EMBEDDING_DEVICE
-            )
-            # 获取实际的 embedding 维度
-            test_embedding = self._embedding_model.encode(["test"])
-            self._embedding_dim = len(test_embedding[0])
+            self._embedding_provider = (settings.EMBEDDING_PROVIDER or "local").lower()
+            self._embedding_model = self._init_embedding_model()
+            self._embedding_dim = self._get_embedding_dimension()
             print(f"✅ Embedding dimension: {self._embedding_dim}")
 
         if self._collection is None:
             self._connect_milvus()
             self._init_collection()
+
+    def _init_embedding_model(self):
+        """初始化 Embedding 客户端"""
+        provider = self._embedding_provider
+        print(f"🔧 Loading embedding provider: {provider}")
+
+        if provider == "local":
+            return SentenceTransformer(
+                settings.EMBEDDING_MODEL,
+                device=settings.EMBEDDING_DEVICE
+            )
+
+        if provider in {"openai_compatible", "openai"}:
+            return OpenAIEmbeddings(
+                model=settings.EMBEDDING_MODEL,
+                api_key=settings.EMBEDDING_API_KEY or settings.LLM_API_KEY,
+                base_url=settings.EMBEDDING_API_BASE or settings.LLM_API_BASE
+            )
+
+        raise ValueError(f"Unsupported EMBEDDING_PROVIDER: {provider}")
+
+    def _get_embedding_dimension(self) -> int:
+        """探测 embedding 维度"""
+        test_vector = self._embed_query("ping")
+        return len(test_vector)
 
     def _connect_milvus(self):
         """连接到 Milvus 服务器"""
@@ -114,6 +136,41 @@ class MilvusVectorStore:
 
             print(f"✅ Collection created and indexed")
 
+    def _embed_documents(self, texts: List[str]) -> List[List[float]]:
+        """根据配置生成文档向量"""
+        if not texts:
+            return []
+
+        if self._embedding_provider == "local":
+            return self._embedding_model.encode(
+                texts,
+                normalize_embeddings=True,
+                show_progress_bar=True
+            ).tolist()
+
+        embeddings = self._embedding_model.embed_documents(texts)
+        return self._normalize_embeddings(embeddings)
+
+    def _embed_query(self, query: str) -> List[float]:
+        """生成查询向量"""
+        if self._embedding_provider == "local":
+            return self._embedding_model.encode(
+                [query],
+                normalize_embeddings=True
+            )[0].tolist()
+
+        embedding = self._embedding_model.embed_query(query)
+        return self._normalize_embeddings([embedding])[0]
+
+    @staticmethod
+    def _normalize_embeddings(vectors: List[List[float]]) -> List[List[float]]:
+        """对嵌入结果进行归一化以匹配 COSINE 相似度检索"""
+        array = np.array(vectors, dtype=float)
+        norms = np.linalg.norm(array, axis=1, keepdims=True)
+        norms[norms == 0] = 1.0
+        normalized = array / norms
+        return normalized.tolist()
+
     @property
     def embedding_model(self):
         """获取 Embedding 模型"""
@@ -169,11 +226,7 @@ class MilvusVectorStore:
 
         # 批量生成 Embeddings
         print(f"🔢 Generating embeddings for {len(contents)} chunks...")
-        embeddings = self._embedding_model.encode(
-            contents,
-            normalize_embeddings=True,
-            show_progress_bar=True
-        ).tolist()
+        embeddings = self._embed_documents(contents)
 
         # 插入数据
         data = [
@@ -214,10 +267,7 @@ class MilvusVectorStore:
             检索结果列表
         """
         # 生成查询向量
-        query_embedding = self._embedding_model.encode(
-            [query],
-            normalize_embeddings=True
-        )[0].tolist()
+        query_embedding = self._embed_query(query)
 
         # 构建搜索参数
         search_params = {
