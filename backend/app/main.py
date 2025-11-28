@@ -20,6 +20,25 @@ async def lifespan(app: FastAPI):
     Base.metadata.create_all(bind=engine)
     print("✅ Database initialized")
 
+    # 初始化 BM25 索引
+    print("🔍 Initializing BM25 index...")
+    try:
+        from app.services.hybrid_retriever import hybrid_retriever
+        from app.models.document import DocumentChunk, Document as DBDocument
+
+        db = next(get_db())
+        all_chunks = db.query(DocumentChunk).join(DBDocument).filter(
+            DBDocument.status == 'completed'
+        ).all()
+
+        if all_chunks:
+            hybrid_retriever.build_bm25_index(all_chunks)
+            print(f"✅ BM25 index loaded with {len(all_chunks)} chunks")
+        else:
+            print("⚠️  No documents found, BM25 index will be built on first upload")
+    except Exception as e:
+        print(f"⚠️  Failed to load BM25 index: {str(e)}")
+
     yield
 
     # 关闭时的清理操作

@@ -19,7 +19,7 @@ from app.schemas.chat import (
     ConversationList,
     MessageSchema
 )
-from app.services.rag_engine import rag_engine
+from app.services.rag_agent import rag_agent
 from app.config import settings
 
 router = APIRouter()
@@ -80,12 +80,12 @@ async def stream_chat(
         nonlocal citations_data, full_response
 
         try:
-            async for event in rag_engine.stream_chat(
+            # 使用 LangChain Agent (自动管理对话历史)
+            async for event in rag_agent.stream_chat(
                 question=request.message,
                 conversation_id=conversation_id,
                 document_ids=request.document_ids,
-                top_k=request.rag_config.get('top_k', settings.RETRIEVAL_TOP_K),
-                score_threshold=request.rag_config.get('score_threshold', settings.SIMILARITY_THRESHOLD)
+                top_k=request.rag_config.get('top_k', settings.RETRIEVAL_TOP_K)
             ):
                 # 记录引用信息
                 if event['type'] == 'citations':

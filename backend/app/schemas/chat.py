@@ -60,10 +60,17 @@ class ConversationList(BaseModel):
     items: List[ConversationSchema]
 
 
+class HistoryMessage(BaseModel):
+    """历史消息"""
+    role: str  # user | assistant
+    content: str
+
+
 class ChatRequest(BaseModel):
     """聊天请求"""
     conversation_id: Optional[UUID] = None
     message: str
+    history: Optional[List[HistoryMessage]] = []  # 对话历史
     document_ids: Optional[List[UUID]] = []
     stream: bool = True
     rag_config: Optional[Dict[str, Any]] = {
