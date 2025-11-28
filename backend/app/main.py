@@ -60,14 +60,14 @@ async def root():
 @app.get("/health")
 async def health_check():
     """健康检查"""
-    from app.services.vectorstore import vector_store_service
+    from app.services.milvus_store import milvus_store
 
     return {
         "status": "healthy",
         "database": "connected",
-        "vectorstore": {
+        "milvus": {
             "status": "connected",
-            "count": vector_store_service.get_collection_count()
+            "count": milvus_store.get_collection_count()
         }
     }
 

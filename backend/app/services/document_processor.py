@@ -12,7 +12,7 @@ import asyncio
 from app.config import settings
 from app.models.document import Document as DBDocument, DocumentChunk
 from app.services.parsers import parser_factory
-from app.services.vectorstore import vector_store_service
+from app.services.milvus_store import milvus_store
 
 
 class DocumentProcessorService:
@@ -78,10 +78,19 @@ class DocumentProcessorService:
                 db, document_id, "processing", 66, "embedding"
             )
 
-            # Step 4: 生成 Embeddings 并存入向量库
-            print(f"Generating embeddings and storing in ChromaDB...")
-            vector_ids = await vector_store_service.add_documents(
-                chunks, document_id
+            # Step 4: 生成 Embeddings 并存入 Milvus
+            print(f"Generating embeddings and storing in Milvus...")
+
+            # 转换为 Milvus 需要的格式
+            milvus_docs = []
+            for chunk in chunks:
+                milvus_docs.append({
+                    'content': chunk.page_content,
+                    'metadata': chunk.metadata
+                })
+
+            vector_ids = milvus_store.add_documents(
+                milvus_docs, document_id
             )
 
             # Step 5: 保存切片到数据库

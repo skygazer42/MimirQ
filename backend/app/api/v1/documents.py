@@ -18,7 +18,7 @@ from app.schemas.document import (
     DocumentStatus
 )
 from app.services.document_processor import document_processor
-from app.services.vectorstore import vector_store_service
+from app.services.milvus_store import milvus_store
 from app.config import settings
 
 router = APIRouter()
@@ -185,8 +185,8 @@ async def delete_document(
     if not document:
         raise HTTPException(status_code=404, detail="Document not found")
 
-    # 1. 删除向量库中的向量
-    await vector_store_service.delete_by_document_id(document_id)
+    # 1. 删除 Milvus 中的向量
+    milvus_store.delete_by_document_id(document_id)
 
     # 2. 删除本地文件
     try:

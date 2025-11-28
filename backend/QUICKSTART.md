@@ -125,11 +125,14 @@ self.llm = ChatAnthropic(
 
 ### Q1: 文档上传后一直显示 "处理中"？
 
-**原因**: Embedding 模型首次加载较慢（需下载 1.5GB）
+**原因**:
+1. Embedding 模型首次加载较慢（需下载 1.5GB）
+2. Milvus 初次启动需要创建 Collection
 
 **解决**:
 - 等待 2-5 分钟
 - 查看后端日志: `docker-compose logs -f backend`
+- 查看 Milvus 状态: `curl http://localhost:9091/healthz`
 
 ### Q2: AI 回答"没有找到相关资料"？
 
@@ -183,17 +186,21 @@ npm run build
 npm start
 ```
 
-### 2. 向量数据库升级
+### 2. Milvus 性能优化
 
-替换 ChromaDB 为 Qdrant:
+**使用 HNSW 索引（更高精度）**:
 
-```yaml
-# docker-compose.yml
-qdrant:
-  image: qdrant/qdrant:latest
-  ports:
-    - "6333:6333"
+编辑 `backend/app/services/milvus_store.py`:
+
+```python
+index_params = {
+    "metric_type": "COSINE",
+    "index_type": "HNSW",
+    "params": {"M": 16, "efConstruction": 200}
+}
 ```
+
+**详细指南**: [MILVUS_GUIDE.md](./MILVUS_GUIDE.md)
 
 ### 3. 文档解析升级
 
