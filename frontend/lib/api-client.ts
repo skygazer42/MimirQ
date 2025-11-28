@@ -2,7 +2,14 @@
  * API 客户端
  */
 import axios from 'axios'
-import type { Document, Conversation, Message, ChatRequest } from '@/types'
+import type {
+  Document,
+  Conversation,
+  Message,
+  ChatRequest,
+  DocumentPreview,
+  ManualChunk,
+} from '@/types'
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
 
@@ -46,9 +53,20 @@ export const documentApi = {
 
   /**
    * 获取文档详情
+   *
+   * 默认不包含 chunks，如需包含传入 options.includeChunks = true
    */
-  async get(documentId: string): Promise<Document> {
-    const { data } = await apiClient.get(`/documents/${documentId}`)
+  async get(
+    documentId: string,
+    options?: { includeChunks?: boolean }
+  ): Promise<Document> {
+    const params = options?.includeChunks
+      ? { include_chunks: true }
+      : undefined
+
+    const { data } = await apiClient.get(`/documents/${documentId}`, {
+      params,
+    })
     return data
   },
 
@@ -65,6 +83,36 @@ export const documentApi = {
    */
   async delete(documentId: string): Promise<void> {
     await apiClient.delete(`/documents/${documentId}`)
+  },
+
+  /**
+   * 文档解析预览（仅解析，不入库）
+   */
+  async preview(file: File): Promise<DocumentPreview> {
+    const formData = new FormData()
+    formData.append('file', file)
+
+    const { data } = await apiClient.post('/documents/preview', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    })
+
+    return data
+  },
+
+  /**
+   * 基于手动切片创建文档
+   */
+  async createFromChunks(params: {
+    filename: string
+    file_type: string
+    file_size: number
+    chunks: ManualChunk[]
+    metadata?: Record<string, any>
+  }): Promise<Document> {
+    const { data } = await apiClient.post('/documents/manual', params)
+    return data
   },
 }
 

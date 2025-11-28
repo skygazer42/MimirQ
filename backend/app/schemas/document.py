@@ -26,6 +26,8 @@ class DocumentChunkSchema(BaseModel):
     id: UUID
     content: str
     page_number: Optional[int] = None
+    start_char: Optional[int] = None
+    end_char: Optional[int] = None
     chunk_index: int
     metadata: Dict[str, Any] = {}
 
@@ -52,6 +54,40 @@ class DocumentDetail(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+class ParsedSegment(BaseModel):
+    """文档解析预览片段"""
+    index: int
+    content: str
+    page_number: Optional[int] = None
+    metadata: Dict[str, Any] = {}
+
+
+class DocumentParsePreview(BaseModel):
+    """文档解析预览结果"""
+    filename: str
+    file_type: str
+    file_size: int
+    segments: List[ParsedSegment]
+
+
+class ManualChunkCreate(BaseModel):
+    """手动切片创建请求中的单个片段"""
+    content: str
+    page_number: Optional[int] = None
+    start_char: Optional[int] = None
+    end_char: Optional[int] = None
+    metadata: Dict[str, Any] = {}
+
+
+class ManualDocumentCreate(BaseModel):
+    """基于手动切片创建文档的请求"""
+    filename: str
+    file_type: str
+    file_size: int
+    chunks: List[ManualChunkCreate]
+    metadata: Dict[str, Any] = {}
 
 
 class DocumentList(BaseModel):

@@ -18,9 +18,11 @@ import { formatFileSize, formatDate, getFileIcon } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import type { Document } from '@/types'
+import { ManualUploadDialog } from '@/components/manual-upload-dialog'
+import { DocumentDetailDialog } from '@/components/document-detail-dialog'
 
 export function Sidebar() {
-  const { documents, isLoading, uploadDocument, deleteDocument } = useDocuments()
+  const { documents, isLoading, uploadDocument, deleteDocument, loadDocuments } = useDocuments()
   const [selectedDocIds, setSelectedDocIds] = useState<string[]>([])
 
   // 处理文件上传
@@ -85,6 +87,9 @@ export function Sidebar() {
             onChange={handleFileUpload}
           />
         </label>
+
+        {/* 高级手动切片上传 */}
+        <ManualUploadDialog onUploaded={loadDocuments} />
 
         {selectedDocIds.length > 0 && (
           <p className="mt-3 text-xs text-gray-500 text-center">
@@ -209,6 +214,9 @@ function DocumentCard({
         {/* 状态和操作 */}
         <div className="flex flex-col items-end gap-2">
           {getStatusIcon(document.status)}
+
+          {/* 查看详情（切片） */}
+          <DocumentDetailDialog document={document} />
 
           {showDelete && document.status !== 'processing' && (
             <button
