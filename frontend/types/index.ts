@@ -16,6 +16,7 @@ export interface Document {
   current_stage?: string
   error_message?: string
   metadata?: Record<string, any>
+  chunks?: DocumentChunk[]
 }
 
 export interface DocumentStatus {
@@ -24,6 +25,16 @@ export interface DocumentStatus {
   processing_progress: number
   current_stage?: string
   error_message?: string
+}
+
+export interface DocumentChunk {
+  id: string
+  content: string
+  page_number?: number
+  start_char?: number
+  end_char?: number
+  chunk_index: number
+  metadata?: Record<string, any>
 }
 
 export interface Citation {
@@ -66,4 +77,26 @@ export interface ChatRequest {
     score_threshold?: number
     max_tokens?: number
   }
+}
+
+export interface ParsedSegment {
+  index: number
+  content: string
+  page_number?: number
+  metadata?: Record<string, any>
+}
+
+export interface DocumentPreview {
+  filename: string
+  file_type: string
+  file_size: number
+  segments: ParsedSegment[]
+}
+
+export interface ManualChunk {
+  content: string
+  page_number?: number
+  start_char?: number
+  end_char?: number
+  metadata?: Record<string, any>
 }
