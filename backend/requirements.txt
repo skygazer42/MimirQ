@@ -1,0 +1,44 @@
+# FastAPI Core
+fastapi==0.109.0
+uvicorn[standard]==0.27.0
+python-multipart==0.0.6
+
+# Database
+sqlalchemy==2.0.25
+asyncpg==0.29.0
+alembic==1.13.1
+psycopg2-binary==2.9.9
+
+# LangChain Ecosystem
+langchain==0.1.10
+langchain-community==0.0.20
+langchain-openai==0.0.5
+langchain-anthropic==0.1.1
+
+# Vector Database
+chromadb==0.4.22
+
+# Embeddings
+sentence-transformers==2.3.1
+torch==2.1.0
+
+# Document Parsing
+PyMuPDF==1.23.8
+unstructured==0.12.0
+python-magic==0.4.27
+markdown==3.5.2
+
+# Authentication
+python-jose[cryptography]==3.3.0
+passlib[bcrypt]==1.7.4
+
+# Utilities
+pydantic==2.5.3
+pydantic-settings==2.1.0
+python-dotenv==1.0.0
+requests==2.31.0
+aiofiles==23.2.1
+
+# Development
+pytest==7.4.4
+httpx==0.26.0
