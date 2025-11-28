@@ -16,7 +16,8 @@ langchain-openai==0.0.5
 langchain-anthropic==0.1.1
 
 # Vector Database
-chromadb==0.4.22
+pymilvus==2.3.5
+milvus==2.3.5
 
 # Embeddings
 sentence-transformers==2.3.1

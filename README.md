@@ -15,8 +15,9 @@
 🎨 **技术亮点**
 
 - **前端**: Next.js 14 (App Router) + TypeScript + Tailwind CSS + Shadcn/ui
-- **后端**: FastAPI + LangChain + ChromaDB + PostgreSQL
+- **后端**: FastAPI + LangChain + Milvus + PostgreSQL
 - **AI**: OpenAI GPT-4 + BGE 中文 Embedding 模型
+- **向量库**: Milvus 2.3 (支持十亿级向量检索)
 - **架构**: 前后端分离 + Docker 容器化部署
 
 ## 快速开始
@@ -69,7 +70,9 @@ docker-compose logs -f
 - 🌐 前端: http://localhost:3000
 - 🔌 后端 API: http://localhost:8000
 - 📖 API 文档: http://localhost:8000/docs
-- 💾 ChromaDB: http://localhost:8001
+- 💾 Milvus: http://localhost:19530
+- 📊 Milvus UI: http://localhost:9091
+- 🗄️ MinIO: http://localhost:9001
 
 ### 5. 本地开发
 
@@ -192,8 +195,8 @@ Content-Type: application/json
 graph LR
     A[上传文档] --> B[解析 PDF/MD/TXT]
     B --> C[文本切片 LangChain]
-    C --> D[生成 Embedding]
-    D --> E[存入 ChromaDB]
+    C --> D[生成 Embedding BGE]
+    D --> E[存入 Milvus]
     E --> F[保存到 PostgreSQL]
 ```
 
@@ -248,9 +251,10 @@ while (true) {
    - 集成 **MinerU 2.5** 处理复杂 PDF（表格、公式、双栏）
    - 使用 **Unstructured** 库处理更多文档格式
 
-2. **向量数据库升级**:
-   - ChromaDB (开发) → **Qdrant** / **Pinecone** (生产)
-   - 支持更大规模数据和分布式部署
+2. **向量数据库扩展**:
+   - ✅ **Milvus** 已集成（支持十亿级向量）
+   - 分布式部署: Milvus Cluster 模式
+   - GPU 加速: 使用 GPU_IVF_FLAT 索引
 
 3. **认证系统**:
    - 集成 **NextAuth.js** 或 **Clerk**
@@ -267,7 +271,10 @@ while (true) {
 A: 检查文档是否为扫描件或包含复杂表格，建议升级到 MinerU 解析器。
 
 **Q: 向量库占用空间太大？**
-A: 可以调整 `CHUNK_SIZE` 减少切片数量，或定期清理无用文档。
+A: 可以调整 `CHUNK_SIZE` 减少切片数量，或使用 Milvus 的 `IVF_SQ8` 压缩索引（节省 75% 内存）。
+
+**Q: Milvus 相关问题？**
+A: 查看详细文档: [MILVUS_GUIDE.md](backend/MILVUS_GUIDE.md)
 
 **Q: 如何支持更多语言模型？**
 A: 修改 `backend/app/services/rag_engine.py`，替换为 Anthropic Claude 或本地 Ollama 模型。

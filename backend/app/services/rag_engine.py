@@ -8,7 +8,7 @@ from langchain_openai import ChatOpenAI
 from langchain.prompts import PromptTemplate
 
 from app.config import settings
-from app.services.vectorstore import vector_store_service
+from app.services.milvus_store import milvus_store
 
 
 class RAGEngine:
@@ -65,8 +65,8 @@ class RAGEngine:
             流式事件: {"type": "citations|token|done|error", "data": ...}
         """
         try:
-            # Step 1: 检索相关文档片段
-            search_results = await vector_store_service.search(
+            # Step 1: 在 Milvus 中检索相关文档片段
+            search_results = milvus_store.search(
                 query=question,
                 top_k=top_k,
                 score_threshold=score_threshold,
