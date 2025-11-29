@@ -3,31 +3,26 @@
 """
 from pathlib import Path
 from typing import List
-from langchain.docstore.document import Document
+
+from langchain_core.documents import Document
 
 from app.services.parsers.pdf_parser import PDFParser
 from app.services.parsers.text_parser import TextParser, MarkdownParser
 
 
 class ParserFactory:
-    """解析器工厂"""
+    """根据文件类型选择合适的解析器"""
 
     def __init__(self):
         self.parsers = {
-            '.pdf': PDFParser(),
-            '.txt': TextParser(),
-            '.md': MarkdownParser()
+            ".pdf": PDFParser(),
+            ".txt": TextParser(),
+            ".md": MarkdownParser(),
         }
 
     def parse(self, file_path: Path) -> List[Document]:
         """
-        根据文件类型自动选择解析器
-
-        Args:
-            file_path: 文件路径
-
-        Returns:
-            LangChain Document 列表
+        根据文件类型自动选择解析器并返回 Document 列表
         """
         file_ext = file_path.suffix.lower()
 

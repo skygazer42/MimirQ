@@ -1,10 +1,11 @@
 """
-PDF 解析器 (使用 PyMuPDF)
+PDF 解析器（基于 PyMuPDF）
 """
 from pathlib import Path
 from typing import List
-from langchain.docstore.document import Document
+
 import fitz  # PyMuPDF
+from langchain_core.documents import Document
 
 
 class PDFParser:
@@ -12,15 +13,9 @@ class PDFParser:
 
     def parse(self, file_path: Path) -> List[Document]:
         """
-        解析 PDF 文档
-
-        Args:
-            file_path: PDF 文件路径
-
-        Returns:
-            LangChain Document 列表
+        解析 PDF 文档为 LangChain Document 列表。
         """
-        documents = []
+        documents: List[Document] = []
 
         # 打开 PDF 文件
         pdf_document = fitz.open(str(file_path))
@@ -38,17 +33,19 @@ class PDFParser:
 
                 # 构建元数据
                 metadata = {
-                    'source': str(file_path.name),
-                    'page': page_num + 1,
-                    'total_pages': len(pdf_document),
-                    'file_type': 'pdf'
+                    "source": str(file_path.name),
+                    "page": page_num + 1,
+                    "total_pages": len(pdf_document),
+                    "file_type": "pdf",
                 }
 
                 # 创建 Document 对象
-                documents.append(Document(
-                    page_content=text,
-                    metadata=metadata
-                ))
+                documents.append(
+                    Document(
+                        page_content=text,
+                        metadata=metadata,
+                    )
+                )
 
         finally:
             pdf_document.close()

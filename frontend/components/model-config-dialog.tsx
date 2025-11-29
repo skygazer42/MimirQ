@@ -69,6 +69,12 @@ export function ModelConfigDialog({
       qwen: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
       moonshot: 'https://api.moonshot.cn/v1',
       ollama: 'http://localhost:11434/v1',
+      ark: 'https://ark.cn-beijing.volces.com/api/v3',
+      lingyiwanwu: 'https://api.lingyiwanwu.com/v1',
+      qianfan: 'https://aip.baidubce.com/rpc/2.0/ai_custom/v1/wenxinworkshop',
+      siliconflow: 'https://api.siliconflow.cn/v1',
+      openrouter: 'https://openrouter.ai/api/v1',
+      together: 'https://api.together.xyz/v1',
     }
     return defaults[providerId] || ''
   }
@@ -103,8 +109,8 @@ export function ModelConfigDialog({
       <DialogContent className="sm:max-w-[600px]">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-3">
-            <div className="w-12 h-12 rounded-lg bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white shadow-lg">
-              <ProviderIcon providerId={provider.id} className="w-7 h-7" />
+            <div className="w-12 h-12 rounded-lg bg-gray-50 border border-gray-100 flex items-center justify-center overflow-hidden">
+              <ProviderIcon providerId={provider.id} className="w-9 h-9 object-contain" />
             </div>
             <div>
               <div className="text-xl">{provider.name}</div>
@@ -293,6 +299,12 @@ function getProviderDocsUrl(providerId: string): string {
     qwen: 'https://dashscope.console.aliyun.com/',
     moonshot: 'https://platform.moonshot.cn/',
     ollama: 'https://ollama.ai/',
+    ark: 'https://console.volcengine.com/ark',
+    lingyiwanwu: 'https://platform.lingyiwanwu.com/',
+    qianfan: 'https://console.bce.baidu.com/qianfan/',
+    siliconflow: 'https://cloud.siliconflow.cn/',
+    openrouter: 'https://openrouter.ai/keys',
+    together: 'https://api.together.xyz/',
   }
   return urls[providerId] || '#'
 }

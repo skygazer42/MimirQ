@@ -11,6 +11,12 @@ const providers = [
   { id: 'qwen', name: '通义千问', color: '#0EA5E9' },
   { id: 'moonshot', name: 'Moonshot AI', color: '#4F46E5' },
   { id: 'ollama', name: 'Ollama', color: '#000000' },
+  { id: 'ark', name: '火山引擎', color: '#FF6A00' },
+  { id: 'lingyiwanwu', name: '零一万物', color: '#3B82F6' },
+  { id: 'qianfan', name: '百度千帆', color: '#2563EB' },
+  { id: 'siliconflow', name: 'SiliconFlow', color: '#7C3AED' },
+  { id: 'openrouter', name: 'OpenRouter', color: '#6366F1' },
+  { id: 'together', name: 'Together AI', color: '#0EA5E9' },
   { id: 'local', name: '本地 Embedding', color: '#10B981' },
 ]
 
