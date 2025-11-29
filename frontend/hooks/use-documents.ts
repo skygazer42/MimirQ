@@ -127,6 +127,7 @@ export function useDocuments() {
     isLoading,
     error,
     loadDocuments,
+    refreshDocuments: loadDocuments,
     uploadDocument,
     deleteDocument,
   }
