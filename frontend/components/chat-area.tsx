@@ -4,16 +4,19 @@
 'use client'
 
 import { useState, useRef, useEffect } from 'react'
-import { Send, Loader2, StopCircle, Sparkles } from 'lucide-react'
+import { Send, Loader2, StopCircle, Sparkles, Upload, Wand2 } from 'lucide-react'
 import { useChat } from '@/hooks/use-chat'
+import { useDocuments } from '@/hooks/use-documents'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import type { Message, Citation } from '@/types'
+import { ManualUploadDialog } from '@/components/manual-upload-dialog'
 
 export function ChatArea() {
   const [inputValue, setInputValue] = useState('')
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const fileInputRef = useRef<HTMLInputElement | null>(null)
 
   const {
     messages,
@@ -28,6 +31,23 @@ export function ChatArea() {
       alert(error)
     },
   })
+
+  const { uploadDocument, loadDocuments } = useDocuments()
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files
+    if (!files || files.length === 0) return
+
+    for (const file of Array.from(files)) {
+      try {
+        await uploadDocument(file)
+      } catch (error) {
+        console.error('Upload failed:', error)
+      }
+    }
+
+    e.target.value = ''
+  }
 
   // 自动滚动到底部
   useEffect(() => {
@@ -144,6 +164,20 @@ export function ChatArea() {
           </p>
         </div>
       </div>
+      {/* 浮动上传入口 */}
+      <FloatingUpload
+        onClickUpload={() => fileInputRef.current?.click()}
+        onManualUploaded={loadDocuments}
+      />
+
+      <input
+        ref={fileInputRef}
+        type="file"
+        multiple
+        accept=".pdf,.txt,.md"
+        className="hidden"
+        onChange={handleFileUpload}
+      />
     </div>
   )
 }
@@ -251,6 +285,48 @@ function CitationCard({
           </p>
         </div>
       </div>
+    </div>
+  )
+}
+
+function FloatingUpload({
+  onClickUpload,
+  onManualUploaded,
+}: {
+  onClickUpload: () => void
+  onManualUploaded: () => void
+}) {
+  const [openManual, setOpenManual] = useState(false)
+
+  return (
+    <div className="fixed bottom-6 right-6 flex flex-col gap-3 z-40">
+      <Button
+        size="lg"
+        className="shadow-lg bg-blue-600 hover:bg-blue-700 text-white gap-2"
+        onClick={onClickUpload}
+      >
+        <Upload className="h-4 w-4" />
+        上传文档
+      </Button>
+
+      <Button
+        size="lg"
+        variant="outline"
+        className="shadow-lg gap-2"
+        onClick={() => setOpenManual(true)}
+      >
+        <Wand2 className="h-4 w-4" />
+        高级切片
+      </Button>
+
+      {openManual && (
+        <ManualUploadDialog
+          onUploaded={() => {
+            onManualUploaded()
+            setOpenManual(false)
+          }}
+        />
+      )}
     </div>
   )
 }
