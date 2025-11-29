@@ -2,12 +2,15 @@
  * 模型提供商类型定义
  */
 
+export type ProviderCategory = 'model' | 'embedding' | 'reranker'
+
 export interface ModelProvider {
   id: string
   name: string
   description: string
   icon: string // emoji or icon component name
   color: string // Tailwind color class
+  category: ProviderCategory // 分类：模型/向量/重排序
   isConfigured: boolean
   models: ModelConfig[]
   config?: ProviderConfig
@@ -17,7 +20,7 @@ export interface ModelConfig {
   id: string
   name: string
   displayName: string
-  type: 'chat' | 'embedding' | 'image' | 'audio'
+  type: 'chat' | 'embedding' | 'reranker' | 'image' | 'audio'
   contextWindow?: number
   maxTokens?: number
   pricing?: {
@@ -37,12 +40,14 @@ export interface ProviderConfig {
 }
 
 export const MODEL_PROVIDERS: ModelProvider[] = [
+  // ==================== 语言模型 ====================
   {
     id: 'openai',
     name: 'OpenAI',
     description: 'GPT-4, GPT-3.5 系列模型',
-    icon: 'openai', // 使用特殊标识,后续用SVG渲染
+    icon: 'openai',
     color: 'emerald',
+    category: 'model',
     isConfigured: false,
     models: [
       {
@@ -69,13 +74,6 @@ export const MODEL_PROVIDERS: ModelProvider[] = [
         type: 'chat',
         contextWindow: 16385,
         pricing: { input: 0.5, output: 1.5 }
-      },
-      {
-        id: 'text-embedding-3-large',
-        name: 'text-embedding-3-large',
-        displayName: 'Embedding 3 Large',
-        type: 'embedding',
-        pricing: { input: 0.13, output: 0 }
       }
     ]
   },
@@ -85,6 +83,7 @@ export const MODEL_PROVIDERS: ModelProvider[] = [
     description: 'Claude 3 系列模型',
     icon: 'anthropic',
     color: 'orange',
+    category: 'model',
     isConfigured: false,
     models: [
       {
@@ -119,6 +118,7 @@ export const MODEL_PROVIDERS: ModelProvider[] = [
     description: '高性价比的中文大模型',
     icon: 'deepseek',
     color: 'blue',
+    category: 'model',
     isConfigured: false,
     models: [
       {
@@ -145,6 +145,7 @@ export const MODEL_PROVIDERS: ModelProvider[] = [
     description: 'GLM-4 系列模型',
     icon: 'zhipu',
     color: 'purple',
+    category: 'model',
     isConfigured: false,
     models: [
       {
@@ -171,6 +172,7 @@ export const MODEL_PROVIDERS: ModelProvider[] = [
     description: '阿里云大模型服务',
     icon: 'qwen',
     color: 'sky',
+    category: 'model',
     isConfigured: false,
     models: [
       {
@@ -205,6 +207,7 @@ export const MODEL_PROVIDERS: ModelProvider[] = [
     description: 'Kimi 长文本大模型',
     icon: 'moonshot',
     color: 'indigo',
+    category: 'model',
     isConfigured: false,
     models: [
       {
@@ -239,6 +242,7 @@ export const MODEL_PROVIDERS: ModelProvider[] = [
     description: '本地部署的开源模型',
     icon: 'ollama',
     color: 'gray',
+    category: 'model',
     isConfigured: false,
     models: [
       {
@@ -270,6 +274,7 @@ export const MODEL_PROVIDERS: ModelProvider[] = [
     description: '字节跳动云端大模型服务',
     icon: 'ark',
     color: 'orange',
+    category: 'model',
     isConfigured: false,
     models: [
       {
@@ -296,6 +301,7 @@ export const MODEL_PROVIDERS: ModelProvider[] = [
     description: 'Yi 系列大模型',
     icon: 'lingyiwanwu',
     color: 'blue',
+    category: 'model',
     isConfigured: false,
     models: [
       {
@@ -322,6 +328,7 @@ export const MODEL_PROVIDERS: ModelProvider[] = [
     description: '文心一言系列模型',
     icon: 'qianfan',
     color: 'blue',
+    category: 'model',
     isConfigured: false,
     models: [
       {
@@ -348,6 +355,7 @@ export const MODEL_PROVIDERS: ModelProvider[] = [
     description: '高性价比模型聚合平台',
     icon: 'siliconflow',
     color: 'purple',
+    category: 'model',
     isConfigured: false,
     models: [
       {
@@ -374,6 +382,7 @@ export const MODEL_PROVIDERS: ModelProvider[] = [
     description: '多模型统一接入网关',
     icon: 'openrouter',
     color: 'indigo',
+    category: 'model',
     isConfigured: false,
     models: [
       {
@@ -398,6 +407,7 @@ export const MODEL_PROVIDERS: ModelProvider[] = [
     description: '开源模型云端推理',
     icon: 'together',
     color: 'sky',
+    category: 'model',
     isConfigured: false,
     models: [
       {
@@ -418,12 +428,42 @@ export const MODEL_PROVIDERS: ModelProvider[] = [
       }
     ]
   },
+
+  // ==================== Embedding 向量模型 ====================
   {
-    id: 'local',
+    id: 'openai-embedding',
+    name: 'OpenAI Embedding',
+    description: 'OpenAI 文本向量模型',
+    icon: 'openai',
+    color: 'emerald',
+    category: 'embedding',
+    isConfigured: false,
+    models: [
+      {
+        id: 'text-embedding-3-large',
+        name: 'text-embedding-3-large',
+        displayName: 'Embedding 3 Large',
+        type: 'embedding',
+        contextWindow: 8191,
+        pricing: { input: 0.13, output: 0 }
+      },
+      {
+        id: 'text-embedding-3-small',
+        name: 'text-embedding-3-small',
+        displayName: 'Embedding 3 Small',
+        type: 'embedding',
+        contextWindow: 8191,
+        pricing: { input: 0.02, output: 0 }
+      }
+    ]
+  },
+  {
+    id: 'local-embedding',
     name: '本地 Embedding',
     description: 'BGE 中文向量模型',
-    icon: 'local',
+    icon: 'local-embedding',
     color: 'green',
+    category: 'embedding',
     isConfigured: true,
     models: [
       {
@@ -439,6 +479,87 @@ export const MODEL_PROVIDERS: ModelProvider[] = [
         displayName: 'BGE Base ZH v1.5',
         type: 'embedding',
         contextWindow: 512
+      },
+      {
+        id: 'bge-m3',
+        name: 'BAAI/bge-m3',
+        displayName: 'BGE M3 (多语言)',
+        type: 'embedding',
+        contextWindow: 8192
+      }
+    ]
+  },
+
+  // ==================== Reranker 重排序模型 ====================
+  {
+    id: 'local-reranker',
+    name: '本地 Reranker',
+    description: 'BGE 重排序模型',
+    icon: 'reranker',
+    color: 'amber',
+    category: 'reranker',
+    isConfigured: true,
+    models: [
+      {
+        id: 'bge-reranker-v2-m3',
+        name: 'BAAI/bge-reranker-v2-m3',
+        displayName: 'BGE Reranker v2 M3',
+        type: 'reranker',
+        contextWindow: 8192
+      },
+      {
+        id: 'bge-reranker-large',
+        name: 'BAAI/bge-reranker-large',
+        displayName: 'BGE Reranker Large',
+        type: 'reranker',
+        contextWindow: 512
+      },
+      {
+        id: 'bge-reranker-base',
+        name: 'BAAI/bge-reranker-base',
+        displayName: 'BGE Reranker Base',
+        type: 'reranker',
+        contextWindow: 512
+      }
+    ]
+  },
+  {
+    id: 'cohere-reranker',
+    name: 'Cohere Reranker',
+    description: 'Cohere 云端重排序服务',
+    icon: 'reranker',
+    color: 'rose',
+    category: 'reranker',
+    isConfigured: false,
+    models: [
+      {
+        id: 'rerank-english-v3.0',
+        name: 'rerank-english-v3.0',
+        displayName: 'Rerank English v3',
+        type: 'reranker'
+      },
+      {
+        id: 'rerank-multilingual-v3.0',
+        name: 'rerank-multilingual-v3.0',
+        displayName: 'Rerank Multilingual v3',
+        type: 'reranker'
+      }
+    ]
+  },
+  {
+    id: 'jina-reranker',
+    name: 'Jina Reranker',
+    description: 'Jina AI 重排序模型',
+    icon: 'reranker',
+    color: 'orange',
+    category: 'reranker',
+    isConfigured: false,
+    models: [
+      {
+        id: 'jina-reranker-v2-base-multilingual',
+        name: 'jina-reranker-v2-base-multilingual',
+        displayName: 'Jina Reranker v2 多语言',
+        type: 'reranker'
       }
     ]
   }

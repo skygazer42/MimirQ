@@ -3,12 +3,30 @@
  */
 'use client'
 
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { Navbar } from '@/components/navbar'
 import { ModelProviderCard } from '@/components/model-provider-card'
 import { ModelConfigDialog } from '@/components/model-config-dialog'
 import { MODEL_PROVIDERS } from '@/types/models'
-import type { ModelProvider, ProviderConfig } from '@/types/models'
+import type { ModelProvider, ProviderConfig, ProviderCategory } from '@/types/models'
+
+const CATEGORY_INFO: Record<ProviderCategory, { title: string; description: string; icon: string }> = {
+  model: {
+    title: '语言模型',
+    description: '用于对话和文本生成的大语言模型',
+    icon: '💬',
+  },
+  embedding: {
+    title: 'Embedding 向量模型',
+    description: '将文本转换为向量表示，用于语义搜索',
+    icon: '🔢',
+  },
+  reranker: {
+    title: 'Reranker 重排序模型',
+    description: '对检索结果进行重新排序，提升相关性',
+    icon: '📊',
+  },
+}
 
 export default function SettingsPage() {
   const [providers, setProviders] = useState<ModelProvider[]>(MODEL_PROVIDERS)
@@ -30,7 +48,24 @@ export default function SettingsPage() {
     )
   }
 
-  const configuredCount = providers.filter((p) => p.isConfigured).length
+  // 按分类分组
+  const groupedProviders = useMemo(() => {
+    const groups: Record<ProviderCategory, ModelProvider[]> = {
+      model: [],
+      embedding: [],
+      reranker: [],
+    }
+    providers.forEach((p) => {
+      groups[p.category].push(p)
+    })
+    return groups
+  }, [providers])
+
+  const getConfiguredCount = (category: ProviderCategory) => {
+    return groupedProviders[category].filter((p) => p.isConfigured).length
+  }
+
+  const totalConfigured = providers.filter((p) => p.isConfigured).length
 
   return (
     <div className="flex h-screen overflow-hidden bg-white">
@@ -47,39 +82,65 @@ export default function SettingsPage() {
               <div className="flex items-center gap-2">
                 <div className="w-3 h-3 bg-green-500 rounded-full"></div>
                 <span className="text-gray-600">
-                  已配置 {configuredCount} 个
+                  已配置 {totalConfigured} 个
                 </span>
               </div>
               <div className="flex items-center gap-2">
                 <div className="w-3 h-3 bg-gray-300 rounded-full"></div>
                 <span className="text-gray-600">
-                  未配置 {providers.length - configuredCount} 个
+                  未配置 {providers.length - totalConfigured} 个
                 </span>
               </div>
             </div>
           </div>
 
-          {/* 模型提供商网格 */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {providers.map((provider) => (
-              <ModelProviderCard
-                key={provider.id}
-                provider={provider}
-                onConfigure={handleConfigure}
-              />
-            ))}
-          </div>
+          {/* 按分类展示 */}
+          {(['model', 'embedding', 'reranker'] as ProviderCategory[]).map((category) => (
+            <div key={category} className="mb-12">
+              {/* 分类标题 */}
+              <div className="flex items-center gap-3 mb-6">
+                <span className="text-2xl">{CATEGORY_INFO[category].icon}</span>
+                <div>
+                  <h2 className="text-xl font-bold text-gray-900">
+                    {CATEGORY_INFO[category].title}
+                  </h2>
+                  <p className="text-sm text-gray-500">
+                    {CATEGORY_INFO[category].description}
+                    <span className="ml-2 text-gray-400">
+                      ({getConfiguredCount(category)}/{groupedProviders[category].length} 已配置)
+                    </span>
+                  </p>
+                </div>
+              </div>
+
+              {/* 提供商网格 */}
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {groupedProviders[category].map((provider) => (
+                  <ModelProviderCard
+                    key={provider.id}
+                    provider={provider}
+                    onConfigure={handleConfigure}
+                  />
+                ))}
+              </div>
+
+              {/* 分割线 */}
+              {category !== 'reranker' && (
+                <div className="mt-10 border-b border-gray-200"></div>
+              )}
+            </div>
+          ))}
 
           {/* 帮助提示 */}
           <div className="mt-8 bg-blue-50 border border-blue-200 rounded-lg p-6">
             <h3 className="text-lg font-semibold text-blue-900 mb-2">
-              💡 配置提示
+              配置提示
             </h3>
             <ul className="space-y-2 text-sm text-blue-800">
               <li>• 点击任意卡片进行配置,输入对应的 API Key</li>
               <li>• 支持使用自定义 API Base URL (如代理服务)</li>
               <li>• 配置完成后可以测试连接确保可用性</li>
-              <li>• 本地 Embedding 模型无需 API Key,开箱即用</li>
+              <li>• 本地模型无需 API Key,开箱即用</li>
             </ul>
           </div>
 
@@ -90,7 +151,7 @@ export default function SettingsPage() {
               {/* 数据库设置 */}
               <div className="bg-white border border-gray-200 rounded-lg p-6">
                 <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
-                  🗄️ 数据库连接
+                  数据库连接
                 </h3>
                 <div className="space-y-4">
                   <div>
@@ -124,7 +185,7 @@ export default function SettingsPage() {
               {/* RAG 参数设置 */}
               <div className="bg-white border border-gray-200 rounded-lg p-6">
                 <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
-                  🔍 检索参数
+                  检索参数
                 </h3>
                 <div className="space-y-4">
                   <div>
