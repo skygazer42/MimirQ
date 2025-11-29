@@ -78,20 +78,6 @@ export default function SettingsPage() {
             <p className="text-gray-600">
               配置 AI 模型提供商以启用智能对话功能
             </p>
-            <div className="mt-4 flex items-center gap-6 text-sm">
-              <div className="flex items-center gap-2">
-                <div className="w-3 h-3 bg-green-500 rounded-full"></div>
-                <span className="text-gray-600">
-                  已配置 {totalConfigured} 个
-                </span>
-              </div>
-              <div className="flex items-center gap-2">
-                <div className="w-3 h-3 bg-gray-300 rounded-full"></div>
-                <span className="text-gray-600">
-                  未配置 {providers.length - totalConfigured} 个
-                </span>
-              </div>
-            </div>
           </div>
 
           {/* 按分类展示 */}
@@ -106,9 +92,6 @@ export default function SettingsPage() {
                   </h2>
                   <p className="text-sm text-gray-500">
                     {CATEGORY_INFO[category].description}
-                    <span className="ml-2 text-gray-400">
-                      ({getConfiguredCount(category)}/{groupedProviders[category].length} 已配置)
-                    </span>
                   </p>
                 </div>
               </div>
