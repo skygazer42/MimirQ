@@ -33,6 +33,9 @@ const PROVIDER_ICONS: Record<string, { file: string; format: 'svg' | 'png' }> = 
   moonshot: { file: 'moonshot', format: 'svg' },
   ollama: { file: 'ollama', format: 'svg' },
   local: { file: 'local', format: 'svg' },
+  'local-embedding': { file: 'local', format: 'svg' },
+  reranker: { file: 'reranker', format: 'svg' },
+  'local-reranker': { file: 'reranker', format: 'svg' },
 }
 
 // 默认图标
