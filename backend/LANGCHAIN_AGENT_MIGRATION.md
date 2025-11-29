@@ -53,16 +53,17 @@
 
 ```txt
 # LangChain Ecosystem
-langchain==0.3.13
-langchain-community==0.3.13
-langchain-openai==0.2.14
-langchain-anthropic==0.3.5
-langchain-core==0.3.28
+langchain==1.1.0
+langchain-core==1.1.0
+langchain-community==0.4.1
+langchain-openai==1.1.0
+langchain-anthropic==1.1.0
+langchain-text-splitters==0.3.0
 
 # LangGraph for Agent & Memory
-langgraph==0.2.62
-langgraph-checkpoint==2.0.14
-langgraph-checkpoint-postgres==2.0.14
+langgraph==1.1.0
+langgraph-checkpoint==1.0.0
+langgraph-checkpoint-postgres==1.0.0
 ```
 
 ### 2. 工具定义 (`app/services/rag_tools.py`) - NEW

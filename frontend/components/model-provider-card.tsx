@@ -17,17 +17,6 @@ interface ModelProviderCardProps {
 export function ModelProviderCard({ provider, onConfigure }: ModelProviderCardProps) {
   const [isHovered, setIsHovered] = useState(false)
 
-  const colorClasses = {
-    emerald: 'from-emerald-400 to-emerald-600',
-    orange: 'from-orange-400 to-orange-600',
-    blue: 'from-blue-400 to-blue-600',
-    purple: 'from-purple-400 to-purple-600',
-    sky: 'from-sky-400 to-sky-600',
-    indigo: 'from-indigo-400 to-indigo-600',
-    gray: 'from-gray-400 to-gray-600',
-    green: 'from-green-400 to-green-600',
-  }
-
   const borderColorClasses = {
     emerald: 'border-emerald-200 bg-emerald-50',
     orange: 'border-orange-200 bg-orange-50',
@@ -60,13 +49,8 @@ export function ModelProviderCard({ provider, onConfigure }: ModelProviderCardPr
 
       {/* 图标和名称 */}
       <div className="flex items-start gap-4 mb-4">
-        <div
-          className={cn(
-            'w-14 h-14 rounded-xl flex items-center justify-center shadow-md text-white',
-            `bg-gradient-to-br ${colorClasses[provider.color as keyof typeof colorClasses]}`
-          )}
-        >
-          <ProviderIcon providerId={provider.id} className="w-8 h-8" />
+        <div className="w-14 h-14 rounded-xl flex items-center justify-center bg-gray-50 border border-gray-100 overflow-hidden">
+          <ProviderIcon providerId={provider.id} className="w-10 h-10 object-contain" />
         </div>
         <div className="flex-1 min-w-0">
           <h3 className="text-lg font-semibold text-gray-900 mb-1">

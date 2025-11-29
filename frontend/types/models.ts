@@ -265,6 +265,160 @@ export const MODEL_PROVIDERS: ModelProvider[] = [
     ]
   },
   {
+    id: 'ark',
+    name: '火山引擎',
+    description: '字节跳动云端大模型服务',
+    icon: 'ark',
+    color: 'orange',
+    isConfigured: false,
+    models: [
+      {
+        id: 'doubao-pro',
+        name: 'doubao-pro-32k',
+        displayName: 'Doubao Pro 32K',
+        type: 'chat',
+        contextWindow: 32768,
+        pricing: { input: 0.8, output: 2 }
+      },
+      {
+        id: 'doubao-lite',
+        name: 'doubao-lite-32k',
+        displayName: 'Doubao Lite 32K',
+        type: 'chat',
+        contextWindow: 32768,
+        pricing: { input: 0.3, output: 0.6 }
+      }
+    ]
+  },
+  {
+    id: 'lingyiwanwu',
+    name: '零一万物',
+    description: 'Yi 系列大模型',
+    icon: 'lingyiwanwu',
+    color: 'blue',
+    isConfigured: false,
+    models: [
+      {
+        id: 'yi-large',
+        name: 'yi-large',
+        displayName: 'Yi Large',
+        type: 'chat',
+        contextWindow: 32768,
+        pricing: { input: 20, output: 20 }
+      },
+      {
+        id: 'yi-medium',
+        name: 'yi-medium',
+        displayName: 'Yi Medium',
+        type: 'chat',
+        contextWindow: 16384,
+        pricing: { input: 2.5, output: 2.5 }
+      }
+    ]
+  },
+  {
+    id: 'qianfan',
+    name: '百度千帆',
+    description: '文心一言系列模型',
+    icon: 'qianfan',
+    color: 'blue',
+    isConfigured: false,
+    models: [
+      {
+        id: 'ernie-4.0',
+        name: 'ernie-4.0-8k',
+        displayName: 'ERNIE 4.0',
+        type: 'chat',
+        contextWindow: 8192,
+        pricing: { input: 30, output: 60 }
+      },
+      {
+        id: 'ernie-3.5',
+        name: 'ernie-3.5-8k',
+        displayName: 'ERNIE 3.5',
+        type: 'chat',
+        contextWindow: 8192,
+        pricing: { input: 4, output: 8 }
+      }
+    ]
+  },
+  {
+    id: 'siliconflow',
+    name: 'SiliconFlow',
+    description: '高性价比模型聚合平台',
+    icon: 'siliconflow',
+    color: 'purple',
+    isConfigured: false,
+    models: [
+      {
+        id: 'qwen2.5-72b',
+        name: 'Qwen/Qwen2.5-72B-Instruct',
+        displayName: 'Qwen2.5 72B',
+        type: 'chat',
+        contextWindow: 32768,
+        pricing: { input: 4, output: 4 }
+      },
+      {
+        id: 'deepseek-v2.5',
+        name: 'deepseek-ai/DeepSeek-V2.5',
+        displayName: 'DeepSeek V2.5',
+        type: 'chat',
+        contextWindow: 32768,
+        pricing: { input: 1.33, output: 1.33 }
+      }
+    ]
+  },
+  {
+    id: 'openrouter',
+    name: 'OpenRouter',
+    description: '多模型统一接入网关',
+    icon: 'openrouter',
+    color: 'indigo',
+    isConfigured: false,
+    models: [
+      {
+        id: 'auto',
+        name: 'openrouter/auto',
+        displayName: 'Auto (智能选择)',
+        type: 'chat',
+        contextWindow: 128000
+      },
+      {
+        id: 'claude-3.5-sonnet',
+        name: 'anthropic/claude-3.5-sonnet',
+        displayName: 'Claude 3.5 Sonnet',
+        type: 'chat',
+        contextWindow: 200000
+      }
+    ]
+  },
+  {
+    id: 'together',
+    name: 'Together AI',
+    description: '开源模型云端推理',
+    icon: 'together',
+    color: 'sky',
+    isConfigured: false,
+    models: [
+      {
+        id: 'llama-3.1-70b',
+        name: 'meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo',
+        displayName: 'Llama 3.1 70B',
+        type: 'chat',
+        contextWindow: 131072,
+        pricing: { input: 0.88, output: 0.88 }
+      },
+      {
+        id: 'mixtral-8x7b',
+        name: 'mistralai/Mixtral-8x7B-Instruct-v0.1',
+        displayName: 'Mixtral 8x7B',
+        type: 'chat',
+        contextWindow: 32768,
+        pricing: { input: 0.6, output: 0.6 }
+      }
+    ]
+  },
+  {
     id: 'local',
     name: '本地 Embedding',
     description: 'BGE 中文向量模型',
