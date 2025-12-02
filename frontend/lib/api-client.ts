@@ -9,6 +9,7 @@ import type {
   ChatRequest,
   DocumentPreview,
   ManualChunk,
+  ChunkPreviewResponse,
 } from '@/types'
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
@@ -112,6 +113,29 @@ export const documentApi = {
     metadata?: Record<string, any>
   }): Promise<Document> {
     const { data } = await apiClient.post('/documents/manual', params)
+    return data
+  },
+
+  /**
+   * 切块预览（预览切块效果，不入库）
+   */
+  async chunkPreview(
+    file: File,
+    params: { chunk_size?: number; chunk_overlap?: number } = {}
+  ): Promise<ChunkPreviewResponse> {
+    const formData = new FormData()
+    formData.append('file', file)
+
+    const { data } = await apiClient.post('/documents/chunk-preview', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+      params: {
+        chunk_size: params.chunk_size ?? 1000,
+        chunk_overlap: params.chunk_overlap ?? 200,
+      },
+    })
+
     return data
   },
 }
