@@ -1,152 +1,139 @@
 'use client'
 
 /**
- * RAG 数据加工台 - 终极版
- * 专业级的文档解析与切块可视化界面
+ * 切块预览工作台
+ * 从已解析的文件中选择，调试切块参数，实时高亮预览
  */
-
-import { useState, useMemo, useCallback } from 'react'
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
+import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
 import {
-  Upload,
   FileText,
-  Settings2,
-  Sparkles,
-  Database,
-  Search,
-  Code,
-  Cpu,
-  Layers,
-  Trash2,
-  CheckCircle2,
   Loader2,
-  AlertCircle,
-  X,
+  CheckCircle,
+  Layers,
+  Settings2,
+  Eye,
+  Code,
+  Save,
+  Trash2,
+  ChevronLeft,
+  Sliders,
+  Database,
+  Sparkles,
+  Clock,
+  ArrowRight,
 } from 'lucide-react'
+import { Navbar } from '@/components/navbar'
+import { Button } from '@/components/ui/button'
 import { documentApi } from '@/lib/api-client'
-import { cn } from '@/lib/utils'
-import type { ChunkPreviewResponse, ChunkPreviewItem } from '@/types'
+import { formatFileSize, formatDate, cn } from '@/lib/utils'
+import { useParsedFiles, type ParsedFileData } from '@/hooks/use-parsed-files'
+import type { ChunkPreviewItem } from '@/types'
 
 export default function ChunkPreviewPage() {
-  // 文件状态
-  const [file, setFile] = useState<File | null>(null)
-  const [isDragging, setIsDragging] = useState(false)
+  // 共享存储
+  const { files: parsedFiles, isLoaded, removeFile } = useParsedFiles()
 
-  // 参数状态
-  const [chunkSize, setChunkSize] = useState(1000)
-  const [chunkOverlap, setChunkOverlap] = useState(200)
+  // 当前选中的文件
+  const [selectedFileId, setSelectedFileId] = useState<string | null>(null)
+  const selectedFile = parsedFiles.find((f) => f.id === selectedFileId) || null
 
-  // 清洗规则
-  const [cleaningRules, setCleaningRules] = useState({
-    removeExtraSpaces: true,
-    removeUrls: false,
-    fixEncoding: false,
-  })
+  // 切块参数
+  const [chunkSize, setChunkSize] = useState(500)
+  const [chunkOverlap, setChunkOverlap] = useState(100)
 
-  // 处理状态
-  const [previewData, setPreviewData] = useState<ChunkPreviewResponse | null>(null)
-  const [isProcessing, setIsProcessing] = useState(false)
+  // 切块结果
+  const [chunks, setChunks] = useState<ChunkPreviewItem[]>([])
+  const [isChunking, setIsChunking] = useState(false)
+
+  // 高亮状态
+  const [activeChunkIndex, setActiveChunkIndex] = useState<number | null>(null)
+
+  // 预览模式
+  const [previewMode, setPreviewMode] = useState<'rendered' | 'source'>('source')
+
+  // 入库状态
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [submitSuccess, setSubmitSuccess] = useState(false)
-  const [error, setError] = useState<string | null>(null)
 
-  // 视图状态
-  const [searchQuery, setSearchQuery] = useState('')
-  const [viewMode, setViewMode] = useState<'card' | 'json'>('card')
-  const [hoveredChunkIndex, setHoveredChunkIndex] = useState<number | null>(null)
+  // 原文容器引用（用于滚动定位）
+  const sourceContainerRef = useRef<HTMLDivElement>(null)
 
-  // 过滤后的切块
-  const filteredChunks = useMemo(() => {
-    if (!previewData?.chunks) return []
-    if (!searchQuery.trim()) return previewData.chunks
-    return previewData.chunks.filter((chunk) =>
-      chunk.content.toLowerCase().includes(searchQuery.toLowerCase())
-    )
-  }, [previewData, searchQuery])
-
-  // 预估 Token 数
-  const totalTokens = useMemo(() => {
-    if (!previewData) return 0
-    return Math.round(previewData.total_characters * 0.4)
-  }, [previewData])
-
-  // 文件拖放处理
-  const handleDragOver = useCallback((e: React.DragEvent) => {
-    e.preventDefault()
-    setIsDragging(true)
-  }, [])
-
-  const handleDragLeave = useCallback((e: React.DragEvent) => {
-    e.preventDefault()
-    setIsDragging(false)
-  }, [])
-
-  const handleDrop = useCallback((e: React.DragEvent) => {
-    e.preventDefault()
-    setIsDragging(false)
-    const droppedFile = e.dataTransfer.files[0]
-    if (droppedFile) {
-      handleFileUpload(droppedFile)
+  // 自动选中第一个文件
+  useEffect(() => {
+    if (isLoaded && parsedFiles.length > 0 && !selectedFileId) {
+      setSelectedFileId(parsedFiles[0].id)
     }
-  }, [])
+  }, [isLoaded, parsedFiles, selectedFileId])
 
-  const handleFileSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    const selectedFile = e.target.files?.[0]
+  // 前端模拟切块（实际项目中应调用后端 API）
+  const computeChunks = useCallback(() => {
+    if (!selectedFile) return
+
+    setIsChunking(true)
+
+    // 模拟异步处理
+    setTimeout(() => {
+      const text = selectedFile.markdownContent
+      const computedChunks: ChunkPreviewItem[] = []
+      const step = Math.max(chunkSize - chunkOverlap, 1)
+
+      let index = 0
+      for (let i = 0; i < text.length; i += step) {
+        const end = Math.min(i + chunkSize, text.length)
+        const content = text.slice(i, end)
+
+        computedChunks.push({
+          index,
+          content,
+          length: content.length,
+          start_index: i,
+          end_index: end,
+          metadata: {},
+        })
+
+        index++
+        if (end >= text.length) break
+      }
+
+      setChunks(computedChunks)
+      setIsChunking(false)
+      setActiveChunkIndex(null)
+    }, 300)
+  }, [selectedFile, chunkSize, chunkOverlap])
+
+  // 参数变化时重新计算
+  useEffect(() => {
     if (selectedFile) {
-      handleFileUpload(selectedFile)
+      computeChunks()
     }
-    e.target.value = ''
-  }, [])
+  }, [selectedFile, chunkSize, chunkOverlap, computeChunks])
 
-  // 上传并解析文件
-  const handleFileUpload = async (uploadedFile: File) => {
-    setFile(uploadedFile)
-    setPreviewData(null)
-    setError(null)
-    setSubmitSuccess(false)
-    setIsProcessing(true)
-
-    try {
-      const data = await documentApi.chunkPreview(uploadedFile, {
-        chunk_size: chunkSize,
-        chunk_overlap: chunkOverlap,
-      })
-      setPreviewData(data)
-    } catch (err: any) {
-      setError(err.response?.data?.detail || err.message || '解析失败')
-    } finally {
-      setIsProcessing(false)
+  // 高亮渲染
+  const highlightedContent = useMemo(() => {
+    if (!selectedFile || activeChunkIndex === null || !chunks[activeChunkIndex]) {
+      return null
     }
-  }
 
-  // 重新生成预览
-  const handleRegenerate = async () => {
-    if (!file) return
+    const chunk = chunks[activeChunkIndex]
+    const text = selectedFile.markdownContent
 
-    setIsProcessing(true)
-    setError(null)
-
-    try {
-      const data = await documentApi.chunkPreview(file, {
-        chunk_size: chunkSize,
-        chunk_overlap: chunkOverlap,
-      })
-      setPreviewData(data)
-    } catch (err: any) {
-      setError(err.response?.data?.detail || err.message || '生成失败')
-    } finally {
-      setIsProcessing(false)
+    return {
+      before: text.slice(0, chunk.start_index),
+      highlighted: text.slice(chunk.start_index, chunk.end_index),
+      after: text.slice(chunk.end_index),
     }
-  }
+  }, [selectedFile, activeChunkIndex, chunks])
 
   // 确认入库
   const handleSubmit = async () => {
-    if (!previewData || !file) return
+    if (!selectedFile || chunks.length === 0) return
 
     setIsSubmitting(true)
-    setError(null)
 
     try {
-      const chunks = previewData.chunks.map((chunk) => ({
+      const chunkData = chunks.map((chunk) => ({
         content: chunk.content,
         page_number: chunk.page_number,
         start_char: chunk.start_index,
@@ -155,598 +142,388 @@ export default function ChunkPreviewPage() {
       }))
 
       await documentApi.createFromChunks({
-        filename: previewData.filename,
-        file_type: previewData.file_type,
-        file_size: previewData.file_size,
-        chunks,
+        filename: selectedFile.filename,
+        file_type: selectedFile.fileType,
+        file_size: selectedFile.fileSize,
+        chunks: chunkData,
         metadata: {
           chunk_size: chunkSize,
           chunk_overlap: chunkOverlap,
-          cleaning_rules: cleaningRules,
-          strategy: 'RecursiveCharacterTextSplitter',
+          parser: selectedFile.parser,
         },
       })
 
       setSubmitSuccess(true)
-    } catch (err: any) {
-      setError(err.response?.data?.detail || err.message || '入库失败')
+      setTimeout(() => setSubmitSuccess(false), 3000)
+    } catch (err) {
+      console.error('Submit failed:', err)
     } finally {
       setIsSubmitting(false)
     }
   }
 
-  // 删除文件
-  const handleRemoveFile = () => {
-    setFile(null)
-    setPreviewData(null)
-    setError(null)
-    setSubmitSuccess(false)
-  }
-
-  // 格式化文件大小
-  const formatFileSize = (bytes: number) => {
-    if (bytes < 1024) return `${bytes} B`
-    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
-    return `${(bytes / 1024 / 1024).toFixed(1)} MB`
-  }
-
-  // 高亮文本计算
-  const getHighlightedText = useMemo(() => {
-    if (!previewData?.original_text || hoveredChunkIndex === null) return null
-
-    const chunk = previewData.chunks[hoveredChunkIndex]
-    if (!chunk) return null
-
-    const text = previewData.original_text
-    return {
-      before: text.slice(0, chunk.start_index),
-      highlighted: text.slice(chunk.start_index, chunk.end_index),
-      after: text.slice(chunk.end_index),
+  // 滚动到高亮位置
+  useEffect(() => {
+    if (activeChunkIndex !== null && sourceContainerRef.current) {
+      const container = sourceContainerRef.current
+      const highlightEl = container.querySelector('.chunk-highlight')
+      if (highlightEl) {
+        highlightEl.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      }
     }
-  }, [previewData, hoveredChunkIndex])
+  }, [activeChunkIndex])
 
   return (
-    <div className="flex h-screen bg-[#F3F4F6] font-sans text-slate-800 overflow-hidden selection:bg-indigo-100 selection:text-indigo-700">
-      {/* ================= 左侧导航栏 ================= */}
-      <aside className="w-[72px] bg-[#0F172A] flex flex-col items-center py-6 z-50 shadow-2xl">
-        <div className="w-10 h-10 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-xl flex items-center justify-center shadow-lg shadow-indigo-500/30 mb-8 cursor-pointer hover:scale-105 transition-transform">
-          <Sparkles className="text-white w-5 h-5" />
-        </div>
+    <div className="flex h-screen overflow-hidden bg-gray-50">
+      <Navbar />
 
-        <div className="flex flex-col gap-6 w-full items-center">
-          <NavIcon icon={<Layers className="w-5 h-5" />} active tooltip="工作台" />
-          <NavIcon icon={<Database className="w-5 h-5" />} tooltip="知识库管理" />
-          <NavIcon icon={<Cpu className="w-5 h-5" />} tooltip="模型设置" />
-        </div>
-
-        <div className="mt-auto flex flex-col gap-6 w-full items-center mb-4">
-          <div className="w-8 h-8 rounded-full bg-gradient-to-br from-emerald-400 to-cyan-500" />
-        </div>
-      </aside>
-
-      {/* ================= 主体区域 ================= */}
-      <div className="flex-1 flex flex-col min-w-0 bg-white/50 backdrop-blur-3xl">
-        {/* 顶部 Header */}
-        <header className="h-16 px-8 flex justify-between items-center bg-white/80 backdrop-blur-md border-b border-slate-200/60 sticky top-0 z-40">
-          <div className="flex items-center gap-4">
-            <h1 className="text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-slate-800 to-slate-600">
-              数据清洗与切分
-            </h1>
-            {file && (
-              <span className="px-2 py-0.5 rounded-md bg-indigo-50 text-indigo-600 text-xs font-semibold border border-indigo-100">
-                {submitSuccess ? 'Saved' : 'Draft'}
-              </span>
-            )}
-          </div>
-
-          <div className="flex items-center gap-4">
-            {previewData && (
-              <div className="text-xs text-slate-500 font-mono">
-                Est. Cost:{' '}
-                <span className="text-emerald-600 font-bold">
-                  ${(totalTokens * 0.0000001).toFixed(6)}
-                </span>
+      <main className="flex-1 flex flex-col overflow-hidden">
+        {/* 顶部标题栏 */}
+        <header className="bg-white border-b px-6 py-4 flex-shrink-0">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-4">
+              <div className="w-10 h-10 bg-gradient-to-br from-purple-500 to-indigo-600 rounded-xl flex items-center justify-center shadow-lg shadow-purple-200">
+                <Layers className="w-5 h-5 text-white" />
               </div>
-            )}
-
-            {error && (
-              <div className="flex items-center gap-2 text-red-600 text-xs bg-red-50 px-3 py-1.5 rounded-lg">
-                <AlertCircle className="w-3 h-3" />
-                {error}
+              <div>
+                <h1 className="text-xl font-bold text-gray-900">切块预览</h1>
+                <p className="text-sm text-gray-500">
+                  {selectedFile
+                    ? `${selectedFile.filename} · ${chunks.length} 个切块`
+                    : '选择已解析的文件进行切块调试'}
+                </p>
               </div>
-            )}
+            </div>
 
-            {submitSuccess && (
-              <div className="flex items-center gap-2 text-emerald-600 text-xs bg-emerald-50 px-3 py-1.5 rounded-lg">
-                <CheckCircle2 className="w-3 h-3" />
-                入库成功
-              </div>
-            )}
-
-            <button
-              onClick={handleSubmit}
-              disabled={!previewData || isSubmitting || submitSuccess}
-              className={cn(
-                'px-4 py-2 text-sm font-medium rounded-lg flex items-center gap-2 transition-all',
-                previewData && !isSubmitting && !submitSuccess
-                  ? 'bg-slate-900 text-white hover:bg-slate-800 shadow-lg shadow-slate-900/20'
-                  : 'bg-slate-200 text-slate-400 cursor-not-allowed'
+            <div className="flex items-center gap-3">
+              {submitSuccess && (
+                <div className="flex items-center gap-2 text-green-600 text-sm bg-green-50 px-3 py-1.5 rounded-lg">
+                  <CheckCircle className="w-4 h-4" />
+                  入库成功
+                </div>
               )}
-            >
-              {isSubmitting ? (
-                <Loader2 className="w-4 h-4 animate-spin" />
-              ) : (
-                <Database className="w-4 h-4" />
-              )}
-              确认入库
-            </button>
+
+              <Button
+                onClick={handleSubmit}
+                disabled={!selectedFile || chunks.length === 0 || isSubmitting}
+                className="gap-2 bg-indigo-600 hover:bg-indigo-700"
+              >
+                {isSubmitting ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <Database className="w-4 h-4" />
+                )}
+                确认入库
+              </Button>
+            </div>
           </div>
         </header>
 
-        {/* 核心三栏布局 */}
-        <div className="flex-1 flex overflow-hidden relative">
-          {/* --- 第一栏: 智能配置 --- */}
-          <div className="w-[340px] bg-white border-r border-slate-200 flex flex-col z-20 shadow-[4px_0_24px_rgba(0,0,0,0.02)]">
-            <div className="p-6 overflow-y-auto space-y-8 flex-1">
-              {/* 切分策略 */}
-              <Section title="切分策略 (Splitting)">
-                <div className="space-y-6">
-                  <RangeControl
-                    label="Chunk Size"
-                    value={chunkSize}
-                    unit="chars"
-                    min={100}
-                    max={4000}
-                    step={100}
-                    onChange={setChunkSize}
-                    desc="模型单次能处理的最大上下文片段"
-                  />
-                  <RangeControl
-                    label="Overlap Window"
-                    value={chunkOverlap}
-                    unit="chars"
-                    min={0}
-                    max={Math.min(1000, chunkSize - 100)}
-                    step={50}
-                    onChange={setChunkOverlap}
-                    desc="重叠区域，防止上下文在切分处丢失"
-                  />
-
-                  {file && (
-                    <button
-                      onClick={handleRegenerate}
-                      disabled={isProcessing}
-                      className="w-full py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium rounded-xl transition flex items-center justify-center gap-2 text-sm"
-                    >
-                      {isProcessing ? (
-                        <Loader2 className="w-4 h-4 animate-spin" />
-                      ) : (
-                        <Sparkles className="w-4 h-4" />
-                      )}
-                      {isProcessing ? '生成中...' : '重新生成预览'}
-                    </button>
-                  )}
-                </div>
-              </Section>
-
-              {/* 数据清洗 */}
-              <Section title="数据清洗 (Cleaning)">
-                <div className="space-y-2 bg-slate-50 p-4 rounded-xl border border-slate-100">
-                  <ToggleItem
-                    label="合并多余空格/换行"
-                    active={cleaningRules.removeExtraSpaces}
-                    onClick={() =>
-                      setCleaningRules((p) => ({ ...p, removeExtraSpaces: !p.removeExtraSpaces }))
-                    }
-                  />
-                  <ToggleItem
-                    label="移除所有 URL 链接"
-                    active={cleaningRules.removeUrls}
-                    onClick={() =>
-                      setCleaningRules((p) => ({ ...p, removeUrls: !p.removeUrls }))
-                    }
-                  />
-                  <ToggleItem
-                    label="强制修复 UTF-8 乱码"
-                    active={cleaningRules.fixEncoding}
-                    onClick={() =>
-                      setCleaningRules((p) => ({ ...p, fixEncoding: !p.fixEncoding }))
-                    }
-                  />
-                </div>
-              </Section>
-
-              {/* 统计仪表盘 */}
-              <div className="bg-gradient-to-br from-indigo-500 to-violet-600 rounded-xl p-5 text-white shadow-lg shadow-indigo-500/20">
-                <div className="text-xs font-medium text-indigo-100 mb-4 uppercase tracking-wider">
-                  Estimated Stats
-                </div>
-                {previewData ? (
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <div className="text-2xl font-bold">{previewData.total_chunks}</div>
-                      <div className="text-[10px] text-indigo-200">Total Chunks</div>
-                    </div>
-                    <div>
-                      <div className="text-2xl font-bold">{Math.round(totalTokens / 1000)}k</div>
-                      <div className="text-[10px] text-indigo-200">Total Tokens</div>
-                    </div>
-                    <div>
-                      <div className="text-2xl font-bold">
-                        {Math.round(previewData.total_characters / previewData.total_chunks)}
-                      </div>
-                      <div className="text-[10px] text-indigo-200">Avg Chars/Chunk</div>
-                    </div>
-                    <div>
-                      <div className="text-2xl font-bold">
-                        {Math.round((chunkOverlap / chunkSize) * 100)}%
-                      </div>
-                      <div className="text-[10px] text-indigo-200">Overlap Rate</div>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="text-center py-4 text-indigo-200 text-sm">
-                    {isProcessing ? '正在分析...' : '上传文件查看统计'}
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
-
-          {/* --- 第二栏: 文件交互区 --- */}
-          <div className="flex-1 flex flex-col bg-[#FAFAFA] relative min-w-0">
-            {!file ? (
-              <div className="absolute inset-0 flex items-center justify-center p-8">
-                <div
-                  className={cn(
-                    'w-full max-w-lg aspect-[4/3] rounded-3xl border-2 border-dashed transition-all cursor-pointer flex flex-col items-center justify-center group bg-white',
-                    isDragging
-                      ? 'border-indigo-500 bg-indigo-50/50 scale-[1.02]'
-                      : 'border-slate-300 hover:border-indigo-500 hover:bg-indigo-50/30'
-                  )}
-                  onDragOver={handleDragOver}
-                  onDragLeave={handleDragLeave}
-                  onDrop={handleDrop}
-                  onClick={() => document.getElementById('file-input')?.click()}
-                >
-                  <input
-                    id="file-input"
-                    type="file"
-                    accept=".pdf,.txt,.md"
-                    className="hidden"
-                    onChange={handleFileSelect}
-                  />
-                  <div className="w-20 h-20 bg-indigo-50 rounded-full flex items-center justify-center mb-6 group-hover:scale-110 transition-transform shadow-inner">
-                    <Upload className="w-8 h-8 text-indigo-600" />
-                  </div>
-                  <h3 className="text-lg font-bold text-slate-700">点击上传知识文档</h3>
-                  <p className="text-sm text-slate-400 mt-2">PDF, Markdown, TXT (Max 50MB)</p>
-                </div>
-              </div>
-            ) : (
-              <div className="flex flex-col h-full">
-                {/* 文件信息栏 */}
-                <div className="px-6 py-4 border-b border-slate-200 flex justify-between items-center bg-white">
-                  <div className="flex items-center gap-3">
-                    <div
-                      className={cn(
-                        'p-2 rounded-lg',
-                        file.name.endsWith('.pdf')
-                          ? 'bg-red-50'
-                          : file.name.endsWith('.md')
-                          ? 'bg-purple-50'
-                          : 'bg-blue-50'
-                      )}
-                    >
-                      <FileText
-                        className={cn(
-                          'w-5 h-5',
-                          file.name.endsWith('.pdf')
-                            ? 'text-red-500'
-                            : file.name.endsWith('.md')
-                            ? 'text-purple-500'
-                            : 'text-blue-500'
-                        )}
-                      />
-                    </div>
-                    <div>
-                      <div className="font-bold text-sm text-slate-800">{file.name}</div>
-                      <div className="text-[10px] text-slate-400">
-                        {formatFileSize(file.size)}
-                        {previewData && ' · Parsed successfully'}
-                        {isProcessing && ' · Processing...'}
-                      </div>
-                    </div>
-                  </div>
-                  <button
-                    onClick={handleRemoveFile}
-                    className="p-2 hover:bg-slate-100 rounded-full text-slate-400 hover:text-red-500 transition-colors"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
-                </div>
-
-                {/* 原文预览 */}
-                <div className="flex-1 p-6 overflow-y-auto">
-                  {previewData?.original_text ? (
-                    <div className="font-mono text-sm leading-7 text-slate-600 whitespace-pre-wrap">
-                      {hoveredChunkIndex !== null && getHighlightedText ? (
-                        <>
-                          <span className="text-slate-300">{getHighlightedText.before}</span>
-                          <mark className="bg-yellow-100 text-slate-800 px-0.5 rounded">
-                            {getHighlightedText.highlighted}
-                          </mark>
-                          <span className="text-slate-300">{getHighlightedText.after}</span>
-                        </>
-                      ) : (
-                        previewData.original_text
-                      )}
-                    </div>
-                  ) : isProcessing ? (
-                    <div className="flex items-center justify-center h-full">
-                      <div className="text-center">
-                        <Loader2 className="w-8 h-8 animate-spin text-indigo-500 mx-auto mb-3" />
-                        <p className="text-slate-500">正在解析文档...</p>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="flex items-center justify-center h-full text-slate-400">
-                      等待解析完成
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* --- 第三栏: 结果预览 --- */}
-          <div className="w-[420px] bg-white border-l border-slate-200 flex flex-col z-20">
-            {/* 顶部工具栏 */}
-            <div className="p-4 border-b border-slate-100 space-y-3 bg-white/50 backdrop-blur">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-bold text-slate-500 flex items-center gap-2">
-                  {previewData && <CheckCircle2 className="w-3 h-3 text-green-500" />}
-                  PREVIEW {previewData && `(${filteredChunks.length})`}
-                </span>
-                <div className="flex bg-slate-100 rounded-lg p-0.5">
-                  <button
-                    onClick={() => setViewMode('card')}
-                    className={cn(
-                      'p-1.5 rounded-md transition-all',
-                      viewMode === 'card' ? 'bg-white shadow text-slate-800' : 'text-slate-400'
-                    )}
-                  >
-                    <Layers className="w-3 h-3" />
-                  </button>
-                  <button
-                    onClick={() => setViewMode('json')}
-                    className={cn(
-                      'p-1.5 rounded-md transition-all',
-                      viewMode === 'json' ? 'bg-white shadow text-slate-800' : 'text-slate-400'
-                    )}
-                  >
-                    <Code className="w-3 h-3" />
-                  </button>
-                </div>
-              </div>
-
-              <div className="relative">
-                <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
-                <input
-                  type="text"
-                  placeholder="搜索切块内容..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-lg pl-9 pr-3 py-2 text-xs focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none transition-all"
-                />
-              </div>
+        <div className="flex-1 flex overflow-hidden">
+          {/* 左侧：已解析文件列表 */}
+          <aside className="w-72 bg-white border-r flex flex-col flex-shrink-0">
+            <div className="p-4 border-b">
+              <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider flex items-center gap-2">
+                <FileText className="w-3.5 h-3.5" />
+                已解析文件 ({parsedFiles.length})
+              </h3>
             </div>
 
-            {/* 切块列表 */}
-            <div className="flex-1 overflow-y-auto bg-slate-50/50 p-4">
-              {viewMode === 'card' ? (
-                filteredChunks.length > 0 ? (
-                  <div className="space-y-3">
-                    {filteredChunks.map((chunk, idx) => (
-                      <div
-                        key={chunk.index}
-                        className={cn(
-                          'group bg-white rounded-xl border p-4 transition-all cursor-default relative overflow-hidden',
-                          hoveredChunkIndex === chunk.index
-                            ? 'border-indigo-400 shadow-md shadow-indigo-500/10'
-                            : 'border-slate-200 hover:shadow-md hover:border-indigo-300'
-                        )}
-                        onMouseEnter={() => setHoveredChunkIndex(chunk.index)}
-                        onMouseLeave={() => setHoveredChunkIndex(null)}
-                      >
-                        {/* 左侧装饰条 */}
-                        <div
-                          className={cn(
-                            'absolute left-0 top-0 bottom-0 w-1 transition-colors',
-                            hoveredChunkIndex === chunk.index ? 'bg-indigo-500' : 'bg-slate-200'
-                          )}
-                        />
-
-                        <div className="flex justify-between items-start mb-3 pl-2">
-                          <span
-                            className={cn(
-                              'inline-flex items-center px-2 py-1 rounded text-[10px] font-medium transition-colors',
-                              hoveredChunkIndex === chunk.index
-                                ? 'bg-indigo-100 text-indigo-700'
-                                : 'bg-slate-100 text-slate-600'
-                            )}
-                          >
-                            CHUNK #{chunk.index + 1}
-                          </span>
-                          <span className="text-[10px] text-slate-400 font-mono flex items-center gap-1">
-                            {chunk.page_number && (
-                              <span className="bg-slate-100 px-1.5 py-0.5 rounded mr-1">
-                                P{chunk.page_number}
-                              </span>
-                            )}
-                            <Cpu className="w-3 h-3" />
-                            {Math.round(chunk.length * 0.4)} tokens
-                          </span>
-                        </div>
-
-                        <p className="text-xs text-slate-600 leading-relaxed pl-2 line-clamp-4">
-                          {chunk.content}
-                        </p>
-                      </div>
-                    ))}
-                  </div>
-                ) : previewData ? (
-                  <div className="text-center text-slate-400 mt-20 text-xs">
-                    {searchQuery ? '没有匹配的切块' : '暂无切块数据'}
-                  </div>
-                ) : isProcessing ? (
-                  <div className="flex items-center justify-center h-full">
-                    <div className="text-center">
-                      <Loader2 className="w-8 h-8 animate-spin text-indigo-500 mx-auto mb-3" />
-                      <p className="text-slate-500 text-sm">正在生成切块...</p>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="flex items-center justify-center h-full text-slate-400">
-                    <div className="text-center">
-                      <Layers className="w-10 h-10 mx-auto mb-3 opacity-50" />
-                      <p className="text-sm">上传文件查看切块预览</p>
-                    </div>
-                  </div>
-                )
+            <div className="flex-1 overflow-y-auto p-3">
+              {!isLoaded ? (
+                <div className="flex items-center justify-center py-8">
+                  <Loader2 className="w-5 h-5 animate-spin text-gray-400" />
+                </div>
+              ) : parsedFiles.length === 0 ? (
+                <div className="text-center py-8 text-gray-400">
+                  <FileText className="w-10 h-10 mx-auto mb-2 opacity-50" />
+                  <p className="text-sm">暂无已解析文件</p>
+                  <p className="text-xs mt-1">请先在「文档解析」页面解析文件</p>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="mt-4 gap-2"
+                    onClick={() => (window.location.href = '/parsing')}
+                  >
+                    <ArrowRight className="w-4 h-4" />
+                    去解析文档
+                  </Button>
+                </div>
               ) : (
-                <pre className="text-[10px] font-mono bg-slate-900 text-slate-300 p-4 rounded-xl overflow-x-auto">
-                  {JSON.stringify(filteredChunks, null, 2)}
+                <div className="space-y-2">
+                  {parsedFiles.map((file) => (
+                    <div
+                      key={file.id}
+                      className={cn(
+                        'group p-3 rounded-lg border cursor-pointer transition-all',
+                        selectedFileId === file.id
+                          ? 'bg-indigo-50 border-indigo-200'
+                          : 'bg-white border-gray-200 hover:border-indigo-200 hover:bg-gray-50'
+                      )}
+                      onClick={() => setSelectedFileId(file.id)}
+                    >
+                      <div className="flex items-start gap-3">
+                        <div className="p-2 bg-purple-50 rounded-lg">
+                          <FileText className="w-4 h-4 text-purple-500" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium text-gray-900 truncate">
+                            {file.filename}
+                          </p>
+                          <div className="flex items-center gap-2 mt-1 text-xs text-gray-400">
+                            <span>{formatFileSize(file.fileSize)}</span>
+                            <span>·</span>
+                            <span>{file.parser}</span>
+                          </div>
+                          <div className="flex items-center gap-1 mt-1 text-xs text-gray-400">
+                            <Clock className="w-3 h-3" />
+                            {formatDate(file.parsedAt)}
+                          </div>
+                        </div>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            removeFile(file.id)
+                            if (selectedFileId === file.id) {
+                              setSelectedFileId(null)
+                              setChunks([])
+                            }
+                          }}
+                          className="opacity-0 group-hover:opacity-100 p-1 hover:bg-red-50 rounded transition-all"
+                        >
+                          <Trash2 className="w-4 h-4 text-gray-400 hover:text-red-500" />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </aside>
+
+          {/* 中间：原文预览 */}
+          <div className="flex-1 flex flex-col bg-white border-r overflow-hidden">
+            {/* 工具栏 */}
+            <div className="h-10 border-b bg-gray-50 flex items-center justify-between px-4 flex-shrink-0">
+              <span className="text-xs font-semibold text-gray-500 flex items-center gap-2">
+                <Eye className="w-3.5 h-3.5" />
+                {activeChunkIndex !== null ? '原文定位 (高亮模式)' : '文档预览'}
+              </span>
+              <div className="flex items-center bg-gray-200 rounded-lg p-0.5">
+                <button
+                  onClick={() => setPreviewMode('source')}
+                  className={cn(
+                    'px-2 py-1 text-xs rounded transition-all',
+                    previewMode === 'source'
+                      ? 'bg-white text-gray-900 shadow-sm'
+                      : 'text-gray-500 hover:text-gray-700'
+                  )}
+                >
+                  <Code className="w-3 h-3 inline mr-1" />
+                  源码
+                </button>
+                <button
+                  onClick={() => setPreviewMode('rendered')}
+                  className={cn(
+                    'px-2 py-1 text-xs rounded transition-all',
+                    previewMode === 'rendered'
+                      ? 'bg-white text-gray-900 shadow-sm'
+                      : 'text-gray-500 hover:text-gray-700'
+                  )}
+                >
+                  <Eye className="w-3 h-3 inline mr-1" />
+                  渲染
+                </button>
+              </div>
+            </div>
+
+            {/* 内容区 */}
+            <div ref={sourceContainerRef} className="flex-1 overflow-y-auto p-6">
+              {!selectedFile ? (
+                <div className="flex items-center justify-center h-full text-gray-400">
+                  <div className="text-center">
+                    <FileText className="w-12 h-12 mx-auto mb-3 opacity-50" />
+                    <p>从左侧选择已解析的文件</p>
+                  </div>
+                </div>
+              ) : previewMode === 'rendered' && activeChunkIndex === null ? (
+                <div className="prose prose-slate max-w-none">
+                  <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                    {selectedFile.markdownContent}
+                  </ReactMarkdown>
+                </div>
+              ) : (
+                <pre className="font-mono text-sm leading-relaxed whitespace-pre-wrap">
+                  {activeChunkIndex !== null && highlightedContent ? (
+                    <>
+                      <span className="text-gray-400">{highlightedContent.before}</span>
+                      <mark className="chunk-highlight bg-yellow-200 text-gray-900 px-0.5 rounded border-b-2 border-yellow-500 relative">
+                        {highlightedContent.highlighted}
+                        <span className="absolute -top-5 left-0 bg-yellow-500 text-white text-[10px] px-2 py-0.5 rounded whitespace-nowrap">
+                          Chunk #{activeChunkIndex + 1} · {chunks[activeChunkIndex]?.length} chars
+                        </span>
+                      </mark>
+                      <span className="text-gray-400">{highlightedContent.after}</span>
+                    </>
+                  ) : (
+                    <span className="text-gray-700">{selectedFile.markdownContent}</span>
+                  )}
                 </pre>
               )}
             </div>
           </div>
+
+          {/* 右侧：切块配置和预览 */}
+          <aside className="w-96 bg-gray-50 flex flex-col flex-shrink-0">
+            {/* 参数配置 */}
+            <div className="p-5 bg-white border-b">
+              <h3 className="text-xs font-bold text-gray-700 mb-4 flex items-center gap-2">
+                <Sliders className="w-3.5 h-3.5" />
+                切分参数
+              </h3>
+
+              <div className="space-y-5">
+                {/* Chunk Size */}
+                <div>
+                  <div className="flex justify-between mb-2">
+                    <span className="text-xs text-gray-500">Chunk Size</span>
+                    <span className="text-xs font-mono bg-indigo-50 text-indigo-600 px-2 py-0.5 rounded">
+                      {chunkSize}
+                    </span>
+                  </div>
+                  <input
+                    type="range"
+                    min="100"
+                    max="2000"
+                    step="50"
+                    value={chunkSize}
+                    onChange={(e) => setChunkSize(Number(e.target.value))}
+                    className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-indigo-600"
+                  />
+                  <div className="flex justify-between text-[10px] text-gray-400 mt-1">
+                    <span>100</span>
+                    <span>2000</span>
+                  </div>
+                </div>
+
+                {/* Overlap */}
+                <div>
+                  <div className="flex justify-between mb-2">
+                    <span className="text-xs text-gray-500">Overlap</span>
+                    <span className="text-xs font-mono bg-indigo-50 text-indigo-600 px-2 py-0.5 rounded">
+                      {chunkOverlap}
+                    </span>
+                  </div>
+                  <input
+                    type="range"
+                    min="0"
+                    max={Math.min(500, chunkSize - 50)}
+                    step="25"
+                    value={chunkOverlap}
+                    onChange={(e) => setChunkOverlap(Number(e.target.value))}
+                    className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-indigo-600"
+                  />
+                  <div className="flex justify-between text-[10px] text-gray-400 mt-1">
+                    <span>0</span>
+                    <span>{Math.min(500, chunkSize - 50)}</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* 统计信息 */}
+              {selectedFile && chunks.length > 0 && (
+                <div className="mt-5 pt-5 border-t grid grid-cols-3 gap-3 text-center">
+                  <div className="bg-indigo-50 p-3 rounded-lg">
+                    <div className="text-xl font-bold text-indigo-600">{chunks.length}</div>
+                    <div className="text-[10px] text-gray-500">切块数</div>
+                  </div>
+                  <div className="bg-green-50 p-3 rounded-lg">
+                    <div className="text-xl font-bold text-green-600">
+                      {Math.round(selectedFile.markdownContent.length / chunks.length)}
+                    </div>
+                    <div className="text-[10px] text-gray-500">平均长度</div>
+                  </div>
+                  <div className="bg-purple-50 p-3 rounded-lg">
+                    <div className="text-xl font-bold text-purple-600">
+                      {Math.round((chunkOverlap / chunkSize) * 100)}%
+                    </div>
+                    <div className="text-[10px] text-gray-500">重叠率</div>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* 切块列表 */}
+            <div className="flex-1 flex flex-col overflow-hidden">
+              <div className="px-4 py-2 border-b bg-white flex items-center justify-between">
+                <span className="text-xs font-semibold text-gray-500 flex items-center gap-2">
+                  <Layers className="w-3.5 h-3.5" />
+                  切块列表
+                </span>
+                {isChunking && (
+                  <Loader2 className="w-4 h-4 animate-spin text-indigo-500" />
+                )}
+              </div>
+
+              <div className="flex-1 overflow-y-auto p-3 space-y-2">
+                {!selectedFile ? (
+                  <div className="flex items-center justify-center h-full text-gray-400 text-sm">
+                    <div className="text-center">
+                      <Layers className="w-8 h-8 mx-auto mb-2 opacity-50" />
+                      <p>选择文件后显示切块</p>
+                    </div>
+                  </div>
+                ) : chunks.length === 0 ? (
+                  <div className="flex items-center justify-center h-full">
+                    <Loader2 className="w-6 h-6 animate-spin text-indigo-500" />
+                  </div>
+                ) : (
+                  chunks.map((chunk, idx) => (
+                    <div
+                      key={idx}
+                      onMouseEnter={() => setActiveChunkIndex(idx)}
+                      onMouseLeave={() => setActiveChunkIndex(null)}
+                      className={cn(
+                        'group p-3 rounded-lg border cursor-default transition-all',
+                        activeChunkIndex === idx
+                          ? 'bg-yellow-50 border-yellow-400 shadow-md scale-[1.02] z-10'
+                          : 'bg-white border-gray-200 hover:border-indigo-300 hover:shadow-sm'
+                      )}
+                    >
+                      <div className="flex items-center justify-between mb-2">
+                        <span
+                          className={cn(
+                            'text-[10px] font-bold px-2 py-0.5 rounded',
+                            activeChunkIndex === idx
+                              ? 'bg-yellow-500 text-white'
+                              : 'bg-gray-100 text-gray-500'
+                          )}
+                        >
+                          #{idx + 1}
+                        </span>
+                        <div className="flex items-center gap-2 text-[10px] text-gray-400">
+                          <span className="font-mono">{chunk.length} chars</span>
+                          {idx > 0 && chunkOverlap > 0 && (
+                            <span className="bg-blue-100 text-blue-600 px-1.5 py-0.5 rounded">
+                              +{chunkOverlap} overlap
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                      <p className="text-xs text-gray-600 line-clamp-3 leading-relaxed">
+                        {chunk.content}
+                      </p>
+                      <div className="mt-2 pt-2 border-t border-gray-100 text-[10px] text-gray-300 font-mono">
+                        [{chunk.start_index} - {chunk.end_index}]
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          </aside>
         </div>
-      </div>
-    </div>
-  )
-}
-
-// ================== 子组件 ==================
-
-function NavIcon({
-  icon,
-  active,
-  tooltip,
-}: {
-  icon: React.ReactNode
-  active?: boolean
-  tooltip: string
-}) {
-  return (
-    <div className="group relative flex justify-center">
-      <button
-        className={cn(
-          'p-3 rounded-xl transition-all duration-300',
-          active
-            ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-500/40'
-            : 'text-slate-400 hover:bg-slate-800 hover:text-white'
-        )}
-      >
-        {icon}
-      </button>
-      <span className="absolute left-14 top-1/2 -translate-y-1/2 bg-slate-800 text-white text-[10px] px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-50">
-        {tooltip}
-      </span>
-    </div>
-  )
-}
-
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
-  return (
-    <div>
-      <h3 className="text-xs font-bold text-slate-900 mb-4 flex items-center gap-2 uppercase tracking-wider">
-        <Settings2 className="w-3 h-3 text-slate-400" />
-        {title}
-      </h3>
-      {children}
-    </div>
-  )
-}
-
-function RangeControl({
-  label,
-  value,
-  min,
-  max,
-  step,
-  onChange,
-  unit,
-  desc,
-}: {
-  label: string
-  value: number
-  min: number
-  max: number
-  step: number
-  onChange: (v: number) => void
-  unit: string
-  desc: string
-}) {
-  return (
-    <div className="group">
-      <div className="flex justify-between mb-2">
-        <label className="text-xs font-medium text-slate-600 group-hover:text-indigo-600 transition-colors">
-          {label}
-        </label>
-        <span className="text-xs font-mono bg-slate-100 px-1.5 rounded text-slate-600">
-          {value} {unit}
-        </span>
-      </div>
-      <input
-        type="range"
-        min={min}
-        max={max}
-        step={step}
-        value={value}
-        onChange={(e) => onChange(Number(e.target.value))}
-        className="w-full h-1.5 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-indigo-600 hover:accent-indigo-500 transition-all"
-      />
-      <p className="text-[10px] text-slate-400 mt-1.5">{desc}</p>
-    </div>
-  )
-}
-
-function ToggleItem({
-  label,
-  active,
-  onClick,
-}: {
-  label: string
-  active: boolean
-  onClick: () => void
-}) {
-  return (
-    <div
-      onClick={onClick}
-      className={cn(
-        'flex items-center justify-between p-2.5 rounded-lg cursor-pointer transition-all',
-        active
-          ? 'bg-indigo-50 border border-indigo-100'
-          : 'hover:bg-slate-100 border border-transparent'
-      )}
-    >
-      <span className={cn('text-xs', active ? 'text-indigo-700 font-medium' : 'text-slate-600')}>
-        {label}
-      </span>
-      <div
-        className={cn(
-          'w-8 h-4 rounded-full relative transition-colors',
-          active ? 'bg-indigo-500' : 'bg-slate-300'
-        )}
-      >
-        <div
-          className={cn(
-            'absolute top-0.5 w-3 h-3 bg-white rounded-full shadow transition-all',
-            active ? 'left-[18px]' : 'left-0.5'
-          )}
-        />
-      </div>
+      </main>
     </div>
   )
 }
