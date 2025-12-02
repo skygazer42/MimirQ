@@ -1,120 +1,98 @@
 'use client'
 
 /**
- * 文档解析页面 - 增强版
- * 支持上传解析、交互式切块参数调整、实时预览
+ * 知识加工工作台
+ * 现代化的文档解析与切块预览界面
  */
-import { useState, useMemo, useRef, useCallback } from 'react'
+import { useState, useMemo, useCallback } from 'react'
 import {
   Upload,
   Loader2,
   CheckCircle,
   XCircle,
-  Clock,
-  Scissors,
-  Settings2,
+  Layers,
+  Settings,
   Eye,
-  BarChart3,
   FileText,
-  ChevronRight,
-  Info,
   AlertCircle,
-  CheckCircle2,
-  X,
+  ArrowRight,
+  Save,
+  RotateCcw,
+  Sparkles,
+  Clock,
+  Trash2,
+  FolderOpen,
 } from 'lucide-react'
 
 import { Navbar } from '@/components/navbar'
-import { ManualUploadDialog } from '@/components/manual-upload-dialog'
 import { DocumentDetailDialog } from '@/components/document-detail-dialog'
 import { Button } from '@/components/ui/button'
 import { useDocuments } from '@/hooks/use-documents'
 import { documentApi } from '@/lib/api-client'
 import { formatFileSize, formatDate, getFileIcon, cn } from '@/lib/utils'
-import type { Document, DocumentPreview, ManualChunk } from '@/types'
+import type { Document, ChunkPreviewResponse, ChunkPreviewItem } from '@/types'
 
-// ===================== 切块相关类型和函数 =====================
-
-type ChunkStrategy = 'fixed' | 'semantic' | 'delimiter'
-
-// 固定长度切块
-const chunkByFixedLength = (text: string, size: number, overlap: number): string[] => {
-  const chunks: string[] = []
-  if (!text || size <= 0) return chunks
-
-  let startIndex = 0
-  while (startIndex < text.length) {
-    const endIndex = Math.min(startIndex + size, text.length)
-    chunks.push(text.slice(startIndex, endIndex))
-    if (endIndex === text.length) break
-    startIndex += size - overlap
-    if (startIndex >= text.length) break
-  }
-  return chunks
-}
-
-// 分隔符切块
-const chunkByDelimiter = (text: string, delimiter: string): string[] => {
-  if (!text || !delimiter) return [text].filter(Boolean)
-  const parts = text.split(delimiter)
-  return parts
-    .map((part, index) => {
-      const trimmed = part.trim()
-      if (!trimmed) return ''
-      return index === 0 && !text.startsWith(delimiter) ? trimmed : `${delimiter}${trimmed}`
-    })
-    .filter(Boolean)
-}
-
-// 统计信息接口
-interface ChunkStats {
-  totalChunks: number
-  totalChars: number
-  avgLength: number
-  minLength: number
-  maxLength: number
-}
-
-const calculateStats = (chunks: string[]): ChunkStats => {
-  if (chunks.length === 0) {
-    return { totalChunks: 0, totalChars: 0, avgLength: 0, minLength: 0, maxLength: 0 }
-  }
-  const lengths = chunks.map((c) => c.length)
-  const totalChars = lengths.reduce((a, b) => a + b, 0)
-  return {
-    totalChunks: chunks.length,
-    totalChars,
-    avgLength: Math.round(totalChars / chunks.length),
-    minLength: Math.min(...lengths),
-    maxLength: Math.max(...lengths),
-  }
-}
-
-// ===================== 主页面组件 =====================
+// 分隔符配置
+const SEPARATORS = ['\\n\\n', '\\n', '。', '！', '？', '.', '!', '?']
 
 export default function ParsingPage() {
   const { documents, isLoading, uploadDocument, deleteDocument, refreshDocuments } = useDocuments()
-  const fileInputRef = useRef<HTMLInputElement | null>(null)
 
-  // 切块预览模式状态
-  const [previewMode, setPreviewMode] = useState(false)
-  const [previewFile, setPreviewFile] = useState<File | null>(null)
-  const [preview, setPreview] = useState<DocumentPreview | null>(null)
-  const [isParsing, setIsParsing] = useState(false)
+  // 工作台模式: 'list' | 'workbench'
+  const [mode, setMode] = useState<'list' | 'workbench'>('list')
+
+  // 工作台状态
+  const [file, setFile] = useState<File | null>(null)
+  const [isDragging, setIsDragging] = useState(false)
+  const [chunkSize, setChunkSize] = useState(1000)
+  const [chunkOverlap, setChunkOverlap] = useState(200)
+  const [previewData, setPreviewData] = useState<ChunkPreviewResponse | null>(null)
+  const [isProcessing, setIsProcessing] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [submitSuccess, setSubmitSuccess] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [success, setSuccess] = useState(false)
+  const [hoveredChunkIndex, setHoveredChunkIndex] = useState<number | null>(null)
 
-  // 切块参数
-  const [strategy, setStrategy] = useState<ChunkStrategy>('fixed')
-  const [chunkSize, setChunkSize] = useState(500)
-  const [chunkOverlap, setChunkOverlap] = useState(50)
-  const [delimiter, setDelimiter] = useState('## ')
+  // 处理文件拖放
+  const handleDragOver = useCallback((e: React.DragEvent) => {
+    e.preventDefault()
+    setIsDragging(true)
+  }, [])
 
-  // 预览选中状态
-  const [selectedChunkIndex, setSelectedChunkIndex] = useState<number | null>(null)
+  const handleDragLeave = useCallback((e: React.DragEvent) => {
+    e.preventDefault()
+    setIsDragging(false)
+  }, [])
 
-  // 自动上传处理
-  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault()
+    setIsDragging(false)
+    const droppedFile = e.dataTransfer.files[0]
+    if (droppedFile) {
+      setFile(droppedFile)
+      setPreviewData(null)
+      setError(null)
+      setSubmitSuccess(false)
+      // 如果在列表模式下拖放，进入工作台
+      if (mode === 'list') {
+        setMode('workbench')
+      }
+    }
+  }, [mode])
+
+  const handleFileSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const selectedFile = e.target.files?.[0]
+    if (selectedFile) {
+      setFile(selectedFile)
+      setPreviewData(null)
+      setError(null)
+      setSubmitSuccess(false)
+    }
+    e.target.value = ''
+  }, [])
+
+  // 快速上传（自动处理）
+  const handleQuickUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files
     if (!files || files.length === 0) return
 
@@ -128,107 +106,94 @@ export default function ParsingPage() {
     e.target.value = ''
   }
 
-  // 手动切块预览 - 文件选择
-  const handlePreviewFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files
-    if (!files || files.length === 0) return
+  // 生成预览
+  const handlePreview = useCallback(async () => {
+    if (!file) return
 
-    const file = files[0]
-    setPreviewFile(file)
-    setPreview(null)
+    setIsProcessing(true)
     setError(null)
-    setSuccess(false)
-    setIsParsing(true)
-    setSelectedChunkIndex(null)
-    setPreviewMode(true)
 
     try {
-      const result = await documentApi.preview(file)
-      setPreview(result)
+      const data = await documentApi.chunkPreview(file, {
+        chunk_size: chunkSize,
+        chunk_overlap: chunkOverlap,
+      })
+      setPreviewData(data)
     } catch (err: any) {
-      console.error('Preview parse failed:', err)
-      setError(err.message || '文档解析失败')
+      setError(err.response?.data?.detail || err.message || '预览失败')
     } finally {
-      setIsParsing(false)
-      e.target.value = ''
+      setIsProcessing(false)
     }
-  }
+  }, [file, chunkSize, chunkOverlap])
 
-  // 获取完整文本
-  const fullText = useMemo(() => {
-    if (!preview?.segments) return ''
-    return preview.segments.map((s) => s.content).join('\n')
-  }, [preview])
-
-  // 计算切块结果
-  const chunks = useMemo(() => {
-    if (!fullText) return []
-    switch (strategy) {
-      case 'fixed':
-        return chunkByFixedLength(fullText, chunkSize, chunkOverlap)
-      case 'delimiter':
-        return chunkByDelimiter(fullText, delimiter)
-      case 'semantic':
-        return fullText.split(/\n\n+/).filter(Boolean)
-      default:
-        return []
-    }
-  }, [fullText, strategy, chunkSize, chunkOverlap, delimiter])
-
-  // 统计信息
-  const stats = useMemo(() => calculateStats(chunks), [chunks])
-
-  // 构建提交的切块数据
-  const buildChunks = useCallback((): ManualChunk[] => {
-    return chunks.map((content, index) => ({
-      content,
-      page_number: preview?.segments?.[0]?.page_number,
-      start_char: 0,
-      end_char: content.length,
-      metadata: { chunk_index: index },
-    }))
-  }, [chunks, preview])
-
-  // 提交切块
-  const handleSubmitChunks = async () => {
-    if (!preview) return
-
-    const chunkData = buildChunks()
-    if (!chunkData.length) {
-      setError('没有可用的切片')
-      return
-    }
+  // 确认入库
+  const handleSubmit = useCallback(async () => {
+    if (!previewData || !file) return
 
     setIsSubmitting(true)
     setError(null)
 
     try {
+      const chunks = previewData.chunks.map((chunk) => ({
+        content: chunk.content,
+        page_number: chunk.page_number,
+        start_char: chunk.start_index,
+        end_char: chunk.end_index,
+        metadata: chunk.metadata,
+      }))
+
       await documentApi.createFromChunks({
-        filename: preview.filename,
-        file_type: preview.file_type,
-        file_size: preview.file_size,
-        chunks: chunkData,
-        metadata: { strategy, chunkSize, chunkOverlap, delimiter },
+        filename: previewData.filename,
+        file_type: previewData.file_type,
+        file_size: previewData.file_size,
+        chunks,
+        metadata: {
+          chunk_size: chunkSize,
+          chunk_overlap: chunkOverlap,
+          strategy: 'RecursiveCharacterTextSplitter',
+        },
       })
-      setSuccess(true)
+
+      setSubmitSuccess(true)
       refreshDocuments()
     } catch (err: any) {
-      console.error('Upload failed:', err)
-      setError(err.message || '上传失败')
+      setError(err.response?.data?.detail || err.message || '入库失败')
     } finally {
       setIsSubmitting(false)
     }
-  }
+  }, [previewData, file, chunkSize, chunkOverlap, refreshDocuments])
 
-  // 退出预览模式
-  const exitPreviewMode = () => {
-    setPreviewMode(false)
-    setPreviewFile(null)
-    setPreview(null)
+  // 重置工作台
+  const handleReset = useCallback(() => {
+    setFile(null)
+    setPreviewData(null)
     setError(null)
-    setSuccess(false)
-    setSelectedChunkIndex(null)
-  }
+    setSubmitSuccess(false)
+    setChunkSize(1000)
+    setChunkOverlap(200)
+    setHoveredChunkIndex(null)
+  }, [])
+
+  // 返回列表
+  const handleBackToList = useCallback(() => {
+    handleReset()
+    setMode('list')
+  }, [handleReset])
+
+  // 计算高亮文本
+  const getHighlightedText = useMemo(() => {
+    if (!previewData?.original_text || hoveredChunkIndex === null) return null
+
+    const chunk = previewData.chunks[hoveredChunkIndex]
+    if (!chunk) return null
+
+    const text = previewData.original_text
+    return {
+      before: text.slice(0, chunk.start_index),
+      highlighted: text.slice(chunk.start_index, chunk.end_index),
+      after: text.slice(chunk.end_index),
+    }
+  }, [previewData, hoveredChunkIndex])
 
   const getStatusIcon = (status: string) => {
     switch (status) {
@@ -238,76 +203,93 @@ export default function ParsingPage() {
         return <XCircle className="h-4 w-4 text-red-500" />
       case 'processing':
       case 'pending':
-        return <Loader2 className="h-4 w-4 text-blue-500 animate-spin" />
+        return <Loader2 className="h-4 w-4 text-indigo-500 animate-spin" />
       default:
         return <Clock className="h-4 w-4 text-gray-400" />
     }
   }
 
   return (
-    <div className="flex h-screen overflow-hidden bg-gray-50">
+    <div className="flex h-screen overflow-hidden bg-gray-100">
       <Navbar />
-      <main className="flex-1 overflow-hidden flex flex-col">
-        {/* 头部 */}
-        <div className="bg-white border-b px-8 py-6 flex-shrink-0">
-          <div className="max-w-7xl mx-auto">
-            <div className="flex items-center justify-between flex-wrap gap-4">
-              <div>
-                <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-3">
-                  <Scissors className="h-7 w-7 text-blue-600" />
-                  文档解析
-                </h1>
-                <p className="text-gray-600 mt-1">
-                  上传文档自动解析，或使用高级模式自定义切块
-                </p>
+
+      {/* 列表模式 */}
+      {mode === 'list' && (
+        <main className="flex-1 overflow-hidden flex flex-col">
+          {/* 头部 */}
+          <header className="flex-shrink-0 bg-white border-b px-8 py-6 shadow-sm">
+            <div className="max-w-6xl mx-auto flex items-center justify-between">
+              <div className="flex items-center gap-4">
+                <div className="bg-indigo-100 p-3 rounded-xl">
+                  <Layers className="text-indigo-600 w-6 h-6" />
+                </div>
+                <div>
+                  <h1 className="text-2xl font-bold text-gray-900">知识加工工作台</h1>
+                  <p className="text-gray-500 text-sm">上传文档、自定义切块策略、精准入库</p>
+                </div>
               </div>
-              {!previewMode && (
-                <div className="flex flex-wrap gap-3">
-                  <button
-                    onClick={() => fileInputRef.current?.click()}
-                    className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition"
-                  >
-                    <Upload className="h-4 w-4" />
-                    快速上传
-                  </button>
+
+              <div className="flex items-center gap-3">
+                {/* 快速上传 */}
+                <label className="inline-flex items-center gap-2 px-4 py-2.5 bg-white border border-gray-200 text-gray-700 rounded-lg hover:bg-gray-50 cursor-pointer transition shadow-sm">
+                  <Upload className="h-4 w-4" />
+                  <span className="text-sm font-medium">快速上传</span>
                   <input
-                    ref={fileInputRef}
                     type="file"
                     multiple
-                    accept=".pdf,.txt,.md,.docx"
+                    accept=".pdf,.txt,.md"
                     className="hidden"
-                    onChange={handleFileUpload}
+                    onChange={handleQuickUpload}
                   />
-                  <label className="inline-flex items-center gap-2 px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 cursor-pointer transition">
-                    <Settings2 className="h-4 w-4" />
-                    高级切块
-                    <input
-                      type="file"
-                      accept=".pdf,.txt,.md,.docx"
-                      className="hidden"
-                      onChange={handlePreviewFileSelect}
-                    />
-                  </label>
-                </div>
-              )}
-              {previewMode && (
-                <Button variant="outline" onClick={exitPreviewMode} className="gap-2">
-                  <X className="h-4 w-4" />
-                  返回列表
-                </Button>
-              )}
-            </div>
-          </div>
-        </div>
+                </label>
 
-        {/* 主内容区 */}
-        <div className="flex-1 overflow-y-auto p-8">
-          <div className="max-w-7xl mx-auto">
-            {/* 普通模式：文档列表 */}
-            {!previewMode && (
-              <div className="bg-white rounded-xl border p-6">
-                <div className="flex items-center justify-between mb-6">
-                  <h2 className="text-lg font-semibold text-gray-900">文档列表</h2>
+                {/* 高级切块 - 点击进入工作台 */}
+                <button
+                  onClick={() => setMode('workbench')}
+                  className="inline-flex items-center gap-2 px-4 py-2.5 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition shadow-sm"
+                >
+                  <Settings className="h-4 w-4" />
+                  <span className="text-sm font-medium">高级切块</span>
+                </button>
+              </div>
+            </div>
+          </header>
+
+          {/* 文档列表 */}
+          <div className="flex-1 overflow-y-auto p-8">
+            <div className="max-w-6xl mx-auto">
+              {/* 拖放上传区 */}
+              <div
+                className={cn(
+                  'mb-8 p-8 border-2 border-dashed rounded-2xl text-center transition-all cursor-pointer',
+                  isDragging
+                    ? 'border-indigo-500 bg-indigo-50'
+                    : 'border-gray-300 bg-white hover:border-indigo-400 hover:bg-indigo-50/30'
+                )}
+                onDragOver={handleDragOver}
+                onDragLeave={handleDragLeave}
+                onDrop={handleDrop}
+                onClick={() => document.getElementById('workbench-file-input')?.click()}
+              >
+                <input
+                  id="workbench-file-input"
+                  type="file"
+                  accept=".pdf,.txt,.md"
+                  className="hidden"
+                  onChange={handleFileSelect}
+                />
+                <Upload className="w-10 h-10 mx-auto mb-3 text-gray-400" />
+                <p className="text-gray-600 font-medium">拖放文件到此处，进入高级切块模式</p>
+                <p className="text-gray-400 text-sm mt-1">支持 PDF、TXT、Markdown</p>
+              </div>
+
+              {/* 文档网格 */}
+              <div className="bg-white rounded-2xl border shadow-sm">
+                <div className="px-6 py-4 border-b flex items-center justify-between">
+                  <h2 className="font-semibold text-gray-900 flex items-center gap-2">
+                    <FolderOpen className="w-5 h-5 text-gray-500" />
+                    已处理文档
+                  </h2>
                   {isLoading && (
                     <div className="flex items-center gap-2 text-sm text-gray-500">
                       <Loader2 className="h-4 w-4 animate-spin" />
@@ -317,12 +299,13 @@ export default function ParsingPage() {
                 </div>
 
                 {documents.length === 0 ? (
-                  <div className="text-center py-12 text-gray-500">
-                    <FileText className="h-12 w-12 mx-auto mb-4 opacity-50" />
-                    <p>暂无文档，点击上方按钮开始上传</p>
+                  <div className="text-center py-16 text-gray-400">
+                    <FileText className="w-12 h-12 mx-auto mb-4 opacity-50" />
+                    <p>暂无文档</p>
+                    <p className="text-sm mt-1">上传文件开始知识加工</p>
                   </div>
                 ) : (
-                  <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                  <div className="grid gap-4 p-6 md:grid-cols-2 lg:grid-cols-3">
                     {documents.map((doc) => (
                       <DocCard
                         key={doc.id}
@@ -334,312 +317,408 @@ export default function ParsingPage() {
                   </div>
                 )}
               </div>
-            )}
+            </div>
+          </div>
+        </main>
+      )}
 
-            {/* 高级模式：切块预览 */}
-            {previewMode && (
-              <div className="space-y-6">
-                {/* 解析中 */}
-                {isParsing && (
-                  <div className="bg-white rounded-xl border p-12 text-center">
-                    <Loader2 className="h-12 w-12 animate-spin text-blue-600 mx-auto mb-4" />
-                    <p className="text-gray-600">正在解析文档...</p>
-                  </div>
+      {/* 工作台模式 */}
+      {mode === 'workbench' && (
+        <main className="flex-1 overflow-hidden flex flex-col bg-gray-50">
+          {/* 顶部栏 */}
+          <header className="flex-shrink-0 bg-white border-b px-6 py-4 flex justify-between items-center shadow-sm">
+            <div className="flex items-center gap-3">
+              <div className="bg-indigo-100 p-2.5 rounded-xl">
+                <Layers className="text-indigo-600 w-5 h-5" />
+              </div>
+              <div>
+                <h1 className="text-lg font-bold text-gray-900">知识加工工作台</h1>
+                <p className="text-xs text-gray-500">
+                  {file ? (
+                    <>
+                      {file.name} · {formatFileSize(file.size)}
+                      {previewData && (
+                        <span className="ml-2 text-indigo-600">
+                          · 已生成 {previewData.total_chunks} 个切块
+                        </span>
+                      )}
+                    </>
+                  ) : (
+                    '上传文档开始自定义切块'
+                  )}
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-3">
+              {submitSuccess && (
+                <div className="flex items-center gap-2 text-green-600 text-sm bg-green-50 px-3 py-1.5 rounded-lg">
+                  <CheckCircle className="w-4 h-4" />
+                  入库成功
+                </div>
+              )}
+
+              <Button variant="ghost" size="sm" onClick={handleBackToList} className="gap-2">
+                <ArrowRight className="w-4 h-4 rotate-180" />
+                返回列表
+              </Button>
+
+              {file && (
+                <Button variant="ghost" size="sm" onClick={handleReset} className="gap-2">
+                  <RotateCcw className="w-4 h-4" />
+                  重置
+                </Button>
+              )}
+
+              <Button
+                onClick={handleSubmit}
+                disabled={!previewData || isSubmitting || submitSuccess}
+                className="gap-2 bg-indigo-600 hover:bg-indigo-700"
+              >
+                {isSubmitting ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <Save className="w-4 h-4" />
                 )}
+                {submitSuccess ? '已入库' : '确认并入库'}
+              </Button>
+            </div>
+          </header>
 
-                {/* 解析失败 */}
-                {!isParsing && error && !preview && (
-                  <div className="bg-white rounded-xl border p-12 text-center">
-                    <AlertCircle className="h-12 w-12 text-red-500 mx-auto mb-4" />
-                    <p className="text-red-600">{error}</p>
-                    <Button variant="outline" onClick={exitPreviewMode} className="mt-4">
-                      返回
-                    </Button>
+          {/* 错误提示 */}
+          {error && (
+            <div className="mx-6 mt-4 p-3 bg-red-50 border border-red-200 rounded-lg flex items-center gap-2 text-sm text-red-600">
+              <AlertCircle className="w-4 h-4 flex-shrink-0" />
+              {error}
+            </div>
+          )}
+
+          <div className="flex flex-1 overflow-hidden">
+            {/* 未上传文件时显示上传界面 */}
+            {!file ? (
+              <div className="flex-1 flex items-center justify-center p-8">
+                <div
+                  className={cn(
+                    'max-w-xl w-full p-12 border-2 border-dashed rounded-2xl text-center transition-all cursor-pointer',
+                    isDragging
+                      ? 'border-indigo-500 bg-indigo-50 scale-[1.02]'
+                      : 'border-gray-300 bg-white hover:border-indigo-400 hover:bg-indigo-50/50'
+                  )}
+                  onDragOver={handleDragOver}
+                  onDragLeave={handleDragLeave}
+                  onDrop={handleDrop}
+                  onClick={() => document.getElementById('workbench-upload-input')?.click()}
+                >
+                  <input
+                    id="workbench-upload-input"
+                    type="file"
+                    accept=".pdf,.txt,.md"
+                    className="hidden"
+                    onChange={handleFileSelect}
+                  />
+                  <div className="w-20 h-20 mx-auto mb-6 bg-indigo-100 rounded-2xl flex items-center justify-center">
+                    <Upload className="w-10 h-10 text-indigo-600" />
                   </div>
-                )}
+                  <h3 className="text-xl font-semibold text-gray-900 mb-2">上传文档</h3>
+                  <p className="text-gray-500 mb-6">拖放文件到此处，或点击选择文件</p>
+                  <div className="flex items-center justify-center gap-3">
+                    <span className="px-3 py-1.5 bg-gray-100 text-gray-600 text-sm rounded-lg">PDF</span>
+                    <span className="px-3 py-1.5 bg-gray-100 text-gray-600 text-sm rounded-lg">TXT</span>
+                    <span className="px-3 py-1.5 bg-gray-100 text-gray-600 text-sm rounded-lg">Markdown</span>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <>
+                {/* 左侧边栏: 参数配置 */}
+            <aside className="w-80 bg-white border-r flex flex-col flex-shrink-0">
+              <div className="p-5 border-b">
+                <h2 className="text-sm font-bold text-gray-700 flex items-center gap-2 mb-5">
+                  <Settings className="w-4 h-4" />
+                  切块策略配置
+                </h2>
 
-                {/* 解析成功 - 切块预览界面 */}
-                {preview && !isParsing && (
-                  <>
-                    {/* 文件信息卡片 */}
-                    <div className="bg-white rounded-xl border p-6">
-                      <div className="flex items-center gap-4">
-                        <div className="w-12 h-12 bg-blue-50 rounded-lg flex items-center justify-center">
-                          <FileText className="h-6 w-6 text-blue-600" />
-                        </div>
-                        <div className="flex-1">
-                          <h3 className="font-semibold text-gray-900">{preview.filename}</h3>
-                          <p className="text-sm text-gray-500">
-                            {formatFileSize(preview.file_size)} · {preview.segments?.length || 0} 个原始片段 · {fullText.length.toLocaleString()} 字符
-                          </p>
-                        </div>
-                      </div>
+                <div className="space-y-6">
+                  {/* Chunk Size */}
+                  <div>
+                    <div className="flex justify-between mb-2">
+                      <label className="text-xs font-medium text-gray-600">Chunk Size (块大小)</label>
+                      <span className="text-xs bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded font-mono">
+                        {chunkSize}
+                      </span>
                     </div>
-
-                    {/* 三栏布局 */}
-                    <div className="grid grid-cols-12 gap-6">
-                      {/* 左侧：切块参数 */}
-                      <div className="col-span-12 lg:col-span-3">
-                        <div className="bg-white rounded-xl border p-6 sticky top-0">
-                          <h3 className="font-semibold text-gray-900 flex items-center gap-2 mb-6">
-                            <Settings2 className="h-5 w-5 text-gray-600" />
-                            切块参数
-                          </h3>
-
-                          {/* 策略选择 */}
-                          <div className="space-y-3 mb-6">
-                            <label className="text-sm font-medium text-gray-700">切块策略</label>
-                            <div className="space-y-2">
-                              {[
-                                { value: 'fixed', label: '固定长度', desc: '按字符数切分' },
-                                { value: 'semantic', label: '语义分段', desc: '按段落切分' },
-                                { value: 'delimiter', label: '自定义分隔符', desc: '按指定符号' },
-                              ].map((item) => (
-                                <button
-                                  key={item.value}
-                                  onClick={() => setStrategy(item.value as ChunkStrategy)}
-                                  className={cn(
-                                    'w-full text-left px-4 py-3 rounded-lg border transition-colors',
-                                    strategy === item.value
-                                      ? 'border-blue-500 bg-blue-50 text-blue-700'
-                                      : 'border-gray-200 hover:border-gray-300'
-                                  )}
-                                >
-                                  <div className="font-medium text-sm">{item.label}</div>
-                                  <div className="text-xs text-gray-500">{item.desc}</div>
-                                </button>
-                              ))}
-                            </div>
-                          </div>
-
-                          {/* 固定长度参数 */}
-                          {strategy === 'fixed' && (
-                            <div className="space-y-5">
-                              {/* Chunk Size 滑块 */}
-                              <div className="space-y-3">
-                                <div className="flex items-center justify-between">
-                                  <label className="text-sm font-medium text-gray-700">切块大小</label>
-                                  <span className="text-sm font-semibold text-blue-600">
-                                    {chunkSize} 字符
-                                  </span>
-                                </div>
-                                <input
-                                  type="range"
-                                  min={100}
-                                  max={2000}
-                                  step={50}
-                                  value={chunkSize}
-                                  onChange={(e) => setChunkSize(parseInt(e.target.value))}
-                                  className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
-                                />
-                                <div className="flex justify-between text-xs text-gray-400">
-                                  <span>100</span>
-                                  <span>2000</span>
-                                </div>
-                              </div>
-
-                              {/* Overlap 滑块 */}
-                              <div className="space-y-3">
-                                <div className="flex items-center justify-between">
-                                  <label className="text-sm font-medium text-gray-700">重叠大小</label>
-                                  <span className="text-sm font-semibold text-blue-600">
-                                    {chunkOverlap} 字符
-                                  </span>
-                                </div>
-                                <input
-                                  type="range"
-                                  min={0}
-                                  max={Math.min(500, chunkSize - 50)}
-                                  step={10}
-                                  value={chunkOverlap}
-                                  onChange={(e) => setChunkOverlap(parseInt(e.target.value))}
-                                  className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
-                                />
-                                <div className="flex justify-between text-xs text-gray-400">
-                                  <span>0</span>
-                                  <span>{Math.min(500, chunkSize - 50)}</span>
-                                </div>
-                              </div>
-
-                              {/* 提示 */}
-                              <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-xs text-amber-800">
-                                <div className="flex items-start gap-2">
-                                  <Info className="h-4 w-4 flex-shrink-0 mt-0.5" />
-                                  <div>
-                                    <p className="font-medium mb-1">参数建议</p>
-                                    <ul className="space-y-0.5 text-amber-700">
-                                      <li>• 切块过小：上下文不足</li>
-                                      <li>• 切块过大：噪音较多</li>
-                                      <li>• 建议重叠：10-20%</li>
-                                    </ul>
-                                  </div>
-                                </div>
-                              </div>
-                            </div>
-                          )}
-
-                          {/* 分隔符参数 */}
-                          {strategy === 'delimiter' && (
-                            <div className="space-y-3">
-                              <label className="text-sm font-medium text-gray-700">分隔符</label>
-                              <input
-                                type="text"
-                                value={delimiter}
-                                onChange={(e) => setDelimiter(e.target.value)}
-                                placeholder="如：## 或 ---"
-                                className="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                              />
-                              <p className="text-xs text-gray-500">
-                                常用：Markdown 标题 "## "、分割线 "---"
-                              </p>
-                            </div>
-                          )}
-                        </div>
-                      </div>
-
-                      {/* 中间：切块列表 */}
-                      <div className="col-span-12 lg:col-span-5">
-                        <div className="bg-white rounded-xl border h-[600px] flex flex-col">
-                          <div className="px-6 py-4 border-b flex items-center justify-between flex-shrink-0">
-                            <h3 className="font-semibold text-gray-900 flex items-center gap-2">
-                              <Eye className="h-5 w-5 text-gray-600" />
-                              切块预览
-                            </h3>
-                            <span className="text-sm text-gray-500">
-                              共 {stats.totalChunks} 个切块
-                            </span>
-                          </div>
-                          <div className="flex-1 overflow-y-auto p-4 space-y-3">
-                            {chunks.map((chunk, index) => (
-                              <button
-                                key={index}
-                                onClick={() => setSelectedChunkIndex(index)}
-                                className={cn(
-                                  'w-full text-left p-4 rounded-lg border transition-all',
-                                  selectedChunkIndex === index
-                                    ? 'border-blue-500 bg-blue-50 ring-2 ring-blue-200'
-                                    : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
-                                )}
-                              >
-                                <div className="flex items-center justify-between mb-2">
-                                  <span className="text-xs font-medium text-blue-600 bg-blue-100 px-2 py-0.5 rounded">
-                                    #{index + 1}
-                                  </span>
-                                  <span className="text-xs text-gray-500">
-                                    {chunk.length} 字符
-                                  </span>
-                                </div>
-                                <p className="text-sm text-gray-700 line-clamp-3">{chunk}</p>
-                              </button>
-                            ))}
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* 右侧：统计和详情 */}
-                      <div className="col-span-12 lg:col-span-4 space-y-6">
-                        {/* 统计卡片 */}
-                        <div className="bg-white rounded-xl border p-6">
-                          <h3 className="font-semibold text-gray-900 flex items-center gap-2 mb-4">
-                            <BarChart3 className="h-5 w-5 text-gray-600" />
-                            切块统计
-                          </h3>
-                          <div className="grid grid-cols-2 gap-4">
-                            <div className="bg-gray-50 rounded-lg p-4">
-                              <p className="text-2xl font-bold text-blue-600">{stats.totalChunks}</p>
-                              <p className="text-xs text-gray-500">切块总数</p>
-                            </div>
-                            <div className="bg-gray-50 rounded-lg p-4">
-                              <p className="text-2xl font-bold text-green-600">{stats.avgLength}</p>
-                              <p className="text-xs text-gray-500">平均长度</p>
-                            </div>
-                            <div className="bg-gray-50 rounded-lg p-4">
-                              <p className="text-2xl font-bold text-amber-600">{stats.minLength}</p>
-                              <p className="text-xs text-gray-500">最小长度</p>
-                            </div>
-                            <div className="bg-gray-50 rounded-lg p-4">
-                              <p className="text-2xl font-bold text-purple-600">{stats.maxLength}</p>
-                              <p className="text-xs text-gray-500">最大长度</p>
-                            </div>
-                          </div>
-                        </div>
-
-                        {/* 选中切块详情 */}
-                        <div className="bg-white rounded-xl border p-6 h-[320px] flex flex-col">
-                          <h3 className="font-semibold text-gray-900 mb-4 flex-shrink-0">切块详情</h3>
-                          {selectedChunkIndex !== null ? (
-                            <div className="flex-1 overflow-y-auto">
-                              <div className="flex items-center gap-2 mb-3">
-                                <span className="text-sm font-medium text-blue-600 bg-blue-100 px-2 py-1 rounded">
-                                  切块 #{selectedChunkIndex + 1}
-                                </span>
-                                <span className="text-sm text-gray-500">
-                                  {chunks[selectedChunkIndex]?.length} 字符
-                                </span>
-                              </div>
-                              <div className="bg-gray-50 rounded-lg p-4">
-                                <p className="text-sm text-gray-700 whitespace-pre-wrap leading-relaxed">
-                                  {chunks[selectedChunkIndex]}
-                                </p>
-                              </div>
-                            </div>
-                          ) : (
-                            <div className="flex-1 flex items-center justify-center text-gray-400 text-sm">
-                              <div className="text-center">
-                                <ChevronRight className="h-8 w-8 mx-auto mb-2 opacity-50" />
-                                点击左侧切块查看详情
-                              </div>
-                            </div>
-                          )}
-                        </div>
-                      </div>
+                    <input
+                      type="range"
+                      min="100"
+                      max="4000"
+                      step="100"
+                      value={chunkSize}
+                      onChange={(e) => setChunkSize(Number(e.target.value))}
+                      className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-indigo-600"
+                    />
+                    <div className="flex justify-between text-[10px] text-gray-400 mt-1">
+                      <span>100</span>
+                      <span>4000</span>
                     </div>
+                    <p className="text-[10px] text-gray-400 mt-1">每个切片的最大字符数</p>
+                  </div>
 
-                    {/* 底部操作栏 */}
-                    <div className="bg-white rounded-xl border p-6">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-4">
-                          {error && (
-                            <div className="flex items-center gap-2 text-red-600 text-sm">
-                              <AlertCircle className="h-4 w-4" />
-                              {error}
-                            </div>
-                          )}
-                          {success && (
-                            <div className="flex items-center gap-2 text-green-600 text-sm">
-                              <CheckCircle2 className="h-4 w-4" />
-                              文档已成功入库！
-                            </div>
-                          )}
-                        </div>
-                        <div className="flex items-center gap-3">
-                          <Button variant="outline" onClick={exitPreviewMode}>
-                            取消
-                          </Button>
-                          <Button
-                            onClick={handleSubmitChunks}
-                            disabled={isSubmitting || success || chunks.length === 0}
-                            className="gap-2"
-                          >
-                            {isSubmitting && <Loader2 className="h-4 w-4 animate-spin" />}
-                            {success ? '已完成' : '确认切块并入库'}
-                          </Button>
-                        </div>
-                      </div>
+                  {/* Overlap */}
+                  <div>
+                    <div className="flex justify-between mb-2">
+                      <label className="text-xs font-medium text-gray-600">Overlap (重叠)</label>
+                      <span className="text-xs bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded font-mono">
+                        {chunkOverlap}
+                      </span>
                     </div>
-                  </>
+                    <input
+                      type="range"
+                      min="0"
+                      max={Math.min(1000, chunkSize - 100)}
+                      step="50"
+                      value={chunkOverlap}
+                      onChange={(e) => setChunkOverlap(Number(e.target.value))}
+                      className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-indigo-600"
+                    />
+                    <div className="flex justify-between text-[10px] text-gray-400 mt-1">
+                      <span>0</span>
+                      <span>{Math.min(1000, chunkSize - 100)}</span>
+                    </div>
+                    <p className="text-[10px] text-gray-400 mt-1">相邻切片间的重叠字符</p>
+                  </div>
+
+                  {/* 分隔符 */}
+                  <div>
+                    <label className="text-xs font-medium text-gray-600 mb-2 block">分隔符优先级</label>
+                    <div className="flex flex-wrap gap-1.5">
+                      {SEPARATORS.map((sep) => (
+                        <span
+                          key={sep}
+                          className="px-2 py-1 bg-gray-100 text-gray-600 text-xs rounded border border-gray-200 font-mono"
+                        >
+                          {sep}
+                        </span>
+                      ))}
+                    </div>
+                    <p className="text-[10px] text-gray-400 mt-2">
+                      RecursiveCharacterTextSplitter 按优先级递归切分
+                    </p>
+                  </div>
+
+                  {/* 预览按钮 */}
+                  <Button
+                    onClick={handlePreview}
+                    disabled={isProcessing}
+                    className="w-full gap-2"
+                    variant="outline"
+                  >
+                    {isProcessing ? (
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                    ) : (
+                      <Eye className="w-4 h-4" />
+                    )}
+                    {isProcessing ? '正在切块...' : '生成预览'}
+                  </Button>
+                </div>
+              </div>
+
+              {/* 统计信息 */}
+              <div className="p-5 bg-gray-50 flex-1">
+                <h3 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-3 flex items-center gap-2">
+                  <Sparkles className="w-3 h-3" />
+                  预览统计
+                </h3>
+
+                {previewData ? (
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="bg-white p-3 rounded-lg border shadow-sm">
+                      <div className="text-2xl font-bold text-indigo-600">{previewData.total_chunks}</div>
+                      <div className="text-[10px] text-gray-400">生成切片数</div>
+                    </div>
+                    <div className="bg-white p-3 rounded-lg border shadow-sm">
+                      <div className="text-2xl font-bold text-green-600">
+                        {Math.round(previewData.total_characters / previewData.total_chunks)}
+                      </div>
+                      <div className="text-[10px] text-gray-400">平均字符/块</div>
+                    </div>
+                    <div className="bg-white p-3 rounded-lg border shadow-sm">
+                      <div className="text-2xl font-bold text-amber-600">
+                        {previewData.total_characters.toLocaleString()}
+                      </div>
+                      <div className="text-[10px] text-gray-400">总字符数</div>
+                    </div>
+                    <div className="bg-white p-3 rounded-lg border shadow-sm">
+                      <div className="text-2xl font-bold text-purple-600">
+                        {Math.round((chunkOverlap / chunkSize) * 100)}%
+                      </div>
+                      <div className="text-[10px] text-gray-400">重叠率</div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="text-center py-8 text-gray-400 text-sm">
+                    <Eye className="w-8 h-8 mx-auto mb-2 opacity-50" />
+                    点击"生成预览"查看统计
+                  </div>
                 )}
               </div>
+            </aside>
+
+            {/* 主区域: 对比视图 */}
+            <div className="flex-1 flex p-4 gap-4 overflow-hidden">
+              {/* 左屏: 原文 */}
+              <div className="flex-1 bg-white rounded-xl shadow-sm border flex flex-col overflow-hidden">
+                <div className="px-4 py-3 border-b bg-gray-50 flex justify-between items-center flex-shrink-0">
+                  <span className="text-xs font-bold text-gray-600 flex items-center gap-2">
+                    <FileText className="w-3.5 h-3.5" />
+                    解析后文本
+                  </span>
+                  {previewData && (
+                    <span className="text-[10px] text-gray-400">
+                      {previewData.total_characters.toLocaleString()} 字符
+                    </span>
+                  )}
+                </div>
+
+                <div className="flex-1 overflow-y-auto p-5">
+                  {previewData?.original_text ? (
+                    <div className="font-mono text-sm leading-relaxed text-gray-700 whitespace-pre-wrap">
+                      {hoveredChunkIndex !== null && getHighlightedText ? (
+                        <>
+                          <span className="text-gray-400">{getHighlightedText.before}</span>
+                          <mark className="bg-indigo-100 text-indigo-900 px-0.5 rounded">
+                            {getHighlightedText.highlighted}
+                          </mark>
+                          <span className="text-gray-400">{getHighlightedText.after}</span>
+                        </>
+                      ) : (
+                        previewData.original_text
+                      )}
+                    </div>
+                  ) : isProcessing ? (
+                    <div className="flex items-center justify-center h-full text-gray-400">
+                      <Loader2 className="w-6 h-6 animate-spin" />
+                    </div>
+                  ) : (
+                    <div className="flex items-center justify-center h-full text-gray-400 text-sm">
+                      点击"生成预览"查看解析结果
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* 中间箭头 */}
+              <div className="flex flex-col justify-center items-center text-gray-300 flex-shrink-0">
+                <ArrowRight className="w-6 h-6" />
+              </div>
+
+              {/* 右屏: 切块预览 */}
+              <div className="flex-1 bg-white rounded-xl shadow-sm border flex flex-col overflow-hidden">
+                <div className="px-4 py-3 border-b bg-gray-50 flex justify-between items-center flex-shrink-0">
+                  <span className="text-xs font-bold text-indigo-600 flex items-center gap-2">
+                    <Layers className="w-3.5 h-3.5" />
+                    切块预览
+                  </span>
+                  {previewData && (
+                    <span className="text-[10px] text-indigo-500 bg-indigo-50 px-2 py-0.5 rounded">
+                      共 {previewData.total_chunks} 块
+                    </span>
+                  )}
+                </div>
+
+                <div className="flex-1 overflow-y-auto p-4 bg-slate-50">
+                  {previewData?.chunks ? (
+                    <div className="space-y-3">
+                      {previewData.chunks.map((chunk, idx) => (
+                        <ChunkCard
+                          key={idx}
+                          chunk={chunk}
+                          index={idx}
+                          isHovered={hoveredChunkIndex === idx}
+                          onMouseEnter={() => setHoveredChunkIndex(idx)}
+                          onMouseLeave={() => setHoveredChunkIndex(null)}
+                        />
+                      ))}
+                    </div>
+                  ) : isProcessing ? (
+                    <div className="flex items-center justify-center h-full text-gray-400">
+                      <div className="text-center">
+                        <Loader2 className="w-8 h-8 animate-spin mx-auto mb-3" />
+                        <p className="text-sm">正在切块...</p>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="flex items-center justify-center h-full text-gray-400 text-sm">
+                      <div className="text-center">
+                        <Layers className="w-10 h-10 mx-auto mb-3 opacity-50" />
+                        <p>调整参数后点击"生成预览"</p>
+                        <p className="text-xs mt-1 text-gray-300">鼠标悬停卡片可高亮原文位置</p>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+              </>
             )}
           </div>
-        </div>
-      </main>
+        </main>
+      )}
     </div>
   )
 }
 
-// ===================== 文档卡片组件 =====================
+// 切块卡片组件
+function ChunkCard({
+  chunk,
+  index,
+  isHovered,
+  onMouseEnter,
+  onMouseLeave,
+}: {
+  chunk: ChunkPreviewItem
+  index: number
+  isHovered: boolean
+  onMouseEnter: () => void
+  onMouseLeave: () => void
+}) {
+  return (
+    <div
+      className={cn(
+        'group relative bg-white border p-4 rounded-lg shadow-sm transition-all duration-200 cursor-default',
+        isHovered
+          ? 'border-indigo-400 shadow-md ring-2 ring-indigo-100 scale-[1.01]'
+          : 'border-gray-200 hover:border-indigo-300 hover:shadow-md'
+      )}
+      onMouseEnter={onMouseEnter}
+      onMouseLeave={onMouseLeave}
+    >
+      <div className="flex items-center justify-between mb-2">
+        <span
+          className={cn(
+            'text-[10px] font-bold px-2 py-0.5 rounded',
+            isHovered ? 'bg-indigo-100 text-indigo-700' : 'bg-gray-100 text-gray-500'
+          )}
+        >
+          #{index + 1}
+        </span>
+        <div className="flex items-center gap-2 text-[10px] text-gray-400">
+          {chunk.page_number && (
+            <span className="bg-gray-100 px-1.5 py-0.5 rounded">P{chunk.page_number}</span>
+          )}
+          <span className="font-mono">{chunk.length} chars</span>
+        </div>
+      </div>
 
+      <p className="text-sm text-gray-700 leading-relaxed line-clamp-4">{chunk.content}</p>
+
+      <div className="mt-2 pt-2 border-t border-gray-100 text-[10px] text-gray-300 font-mono">
+        [{chunk.start_index} - {chunk.end_index}]
+      </div>
+    </div>
+  )
+}
+
+// 文档卡片组件
 function DocCard({
   document,
   onDelete,
@@ -650,7 +729,7 @@ function DocCard({
   getStatusIcon: (s: string) => React.ReactNode
 }) {
   return (
-    <div className="border rounded-xl p-4 bg-gray-50 hover:bg-gray-100 transition">
+    <div className="group border rounded-xl p-4 bg-gray-50 hover:bg-white hover:shadow-md transition-all">
       <div className="flex items-start gap-3">
         <div className="text-2xl mt-0.5">{getFileIcon(document.file_type)}</div>
         <div className="flex-1 min-w-0">
@@ -666,7 +745,7 @@ function DocCard({
             <div className="mt-2">
               <div className="w-full bg-gray-200 rounded-full h-1.5">
                 <div
-                  className="bg-blue-500 h-1.5 rounded-full transition-all"
+                  className="bg-indigo-500 h-1.5 rounded-full transition-all"
                   style={{ width: `${document.processing_progress}%` }}
                 />
               </div>
@@ -678,20 +757,23 @@ function DocCard({
 
           {document.status === 'completed' && (
             <p className="text-xs text-gray-600 mt-1">
-              {document.chunk_count} 个块 · {document.total_characters} 字
+              {document.chunk_count} 个块 · {document.total_characters?.toLocaleString()} 字
             </p>
           )}
 
           {document.status === 'failed' && (
-            <p className="text-xs text-red-500 mt-1">处理失败：{document.error_message}</p>
+            <p className="text-xs text-red-500 mt-1 truncate">失败：{document.error_message}</p>
           )}
         </div>
 
-        <div className="flex flex-col items-end gap-2">
+        <div className="flex flex-col items-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
           <DocumentDetailDialog document={document} />
           {document.status !== 'processing' && (
-            <button onClick={onDelete} className="text-xs text-red-500 hover:text-red-600">
-              删除
+            <button
+              onClick={onDelete}
+              className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded transition"
+            >
+              <Trash2 className="w-4 h-4" />
             </button>
           )}
         </div>
