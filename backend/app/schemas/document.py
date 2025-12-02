@@ -106,3 +106,35 @@ class DocumentStatus(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+# ============ 切块预览相关 Schema ============
+
+class ChunkPreviewParams(BaseModel):
+    """切块预览参数"""
+    chunk_size: int = Field(default=1000, ge=100, le=4000, description="切块大小")
+    chunk_overlap: int = Field(default=200, ge=0, le=1000, description="重叠大小")
+
+
+class ChunkPreviewItem(BaseModel):
+    """切块预览单项"""
+    index: int
+    content: str
+    length: int
+    start_index: int  # 在原文中的起始位置
+    end_index: int    # 在原文中的结束位置
+    page_number: Optional[int] = None
+    metadata: Dict[str, Any] = {}
+
+
+class ChunkPreviewResponse(BaseModel):
+    """切块预览响应"""
+    filename: str
+    file_type: str
+    file_size: int
+    total_chunks: int
+    total_characters: int
+    params: ChunkPreviewParams
+    chunks: List[ChunkPreviewItem]
+    # 原文内容，用于前端高亮显示
+    original_text: Optional[str] = None

@@ -13,6 +13,7 @@ import {
   Settings,
   FileText,
   Plus,
+  Scissors,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
@@ -38,6 +39,11 @@ const menuItems = [
     icon: FileText,
     label: '文档解析',
     href: '/parsing',
+  },
+  {
+    icon: Scissors,
+    label: '切块预览',
+    href: '/chunk-preview',
   },
   {
     icon: Settings,

@@ -100,3 +100,31 @@ export interface ManualChunk {
   end_char?: number
   metadata?: Record<string, any>
 }
+
+// ==================== 切块预览相关类型 ====================
+
+export interface ChunkPreviewParams {
+  chunk_size: number
+  chunk_overlap: number
+}
+
+export interface ChunkPreviewItem {
+  index: number
+  content: string
+  length: number
+  start_index: number
+  end_index: number
+  page_number?: number
+  metadata?: Record<string, any>
+}
+
+export interface ChunkPreviewResponse {
+  filename: string
+  file_type: string
+  file_size: number
+  total_chunks: number
+  total_characters: number
+  params: ChunkPreviewParams
+  chunks: ChunkPreviewItem[]
+  original_text?: string
+}

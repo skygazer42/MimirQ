@@ -18,7 +18,10 @@ from app.schemas.document import (
     DocumentStatus,
     DocumentParsePreview,
     ParsedSegment,
-    ManualDocumentCreate
+    ManualDocumentCreate,
+    ChunkPreviewParams,
+    ChunkPreviewItem,
+    ChunkPreviewResponse
 )
 from app.services.document_processor import document_processor
 from app.services.milvus_store import milvus_store
@@ -388,3 +391,140 @@ async def create_document_with_manual_chunks(
         db.commit()
         db.refresh(db_document)
         raise HTTPException(status_code=500, detail=f"Failed to create document with manual chunks: {str(e)}")
+
+
+@router.post("/chunk-preview", response_model=ChunkPreviewResponse)
+async def preview_chunking(
+    file: UploadFile = File(...),
+    chunk_size: int = 1000,
+    chunk_overlap: int = 200,
+):
+    """
+    切块预览接口
+
+    上传文件并使用指定参数进行切块预览，不存入数据库。
+    返回切块结果及每个块在原文中的位置，用于前端高亮展示。
+
+    Args:
+        file: 上传的文件
+        chunk_size: 切块大小 (100-4000)
+        chunk_overlap: 重叠大小 (0-1000)
+
+    Returns:
+        切块预览结果，包含每个块的内容和位置信息
+    """
+    from langchain_text_splitters import RecursiveCharacterTextSplitter
+
+    # 参数校验
+    if chunk_size < 100 or chunk_size > 4000:
+        raise HTTPException(status_code=400, detail="chunk_size must be between 100 and 4000")
+    if chunk_overlap < 0 or chunk_overlap > 1000:
+        raise HTTPException(status_code=400, detail="chunk_overlap must be between 0 and 1000")
+    if chunk_overlap >= chunk_size:
+        raise HTTPException(status_code=400, detail="chunk_overlap must be less than chunk_size")
+
+    # 验证文件类型
+    file_ext = Path(file.filename).suffix.lower()
+    if file_ext not in settings.ALLOWED_EXTENSIONS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsupported file type. Allowed: {settings.ALLOWED_EXTENSIONS}"
+        )
+
+    # 验证文件大小
+    file.file.seek(0, 2)
+    file_size = file.file.tell()
+    file.file.seek(0)
+
+    if file_size > settings.MAX_FILE_SIZE:
+        raise HTTPException(
+            status_code=413,
+            detail=f"File too large. Max size: {settings.MAX_FILE_SIZE / 1024 / 1024}MB"
+        )
+
+    # 保存到临时路径
+    upload_dir = Path(settings.UPLOAD_DIR) / "preview"
+    upload_dir.mkdir(parents=True, exist_ok=True)
+    temp_path = upload_dir / f"{uuid.uuid4()}{file_ext}"
+
+    try:
+        with temp_path.open("wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
+
+        # 解析文档
+        from app.services.parsers import parser_factory
+        documents = parser_factory.parse(temp_path)
+
+        # 合并所有页面的文本（保留页码信息）
+        page_texts = []
+        page_boundaries = []  # 记录每页在合并文本中的边界
+        current_pos = 0
+
+        for doc in documents:
+            text = doc.page_content
+            page_num = doc.metadata.get('page')
+            page_texts.append({
+                'text': text,
+                'page': page_num,
+                'start': current_pos,
+                'end': current_pos + len(text)
+            })
+            current_pos += len(text) + 1  # +1 for separator
+
+        # 合并全文
+        full_text = "\n".join([p['text'] for p in page_texts])
+
+        # 创建带位置追踪的文本切分器
+        text_splitter = RecursiveCharacterTextSplitter(
+            chunk_size=chunk_size,
+            chunk_overlap=chunk_overlap,
+            separators=["\n\n", "\n", "。", "！", "？", ".", "!", "?", " ", ""],
+            length_function=len,
+            add_start_index=True,  # 关键：启用起始位置追踪
+        )
+
+        # 执行切分
+        chunks = text_splitter.create_documents([full_text])
+
+        # 构建响应
+        chunk_items: List[ChunkPreviewItem] = []
+        for idx, chunk in enumerate(chunks):
+            start_idx = chunk.metadata.get('start_index', 0)
+            end_idx = start_idx + len(chunk.page_content)
+
+            # 确定该 chunk 属于哪一页
+            page_num = None
+            for page_info in page_texts:
+                if start_idx >= page_info['start'] and start_idx < page_info['end']:
+                    page_num = page_info['page']
+                    break
+
+            chunk_items.append(ChunkPreviewItem(
+                index=idx,
+                content=chunk.page_content,
+                length=len(chunk.page_content),
+                start_index=start_idx,
+                end_index=end_idx,
+                page_number=page_num,
+                metadata=chunk.metadata
+            ))
+
+        return ChunkPreviewResponse(
+            filename=file.filename,
+            file_type=file_ext.lstrip('.'),
+            file_size=file_size,
+            total_chunks=len(chunks),
+            total_characters=len(full_text),
+            params=ChunkPreviewParams(chunk_size=chunk_size, chunk_overlap=chunk_overlap),
+            chunks=chunk_items,
+            original_text=full_text if len(full_text) <= 100000 else None  # 超过 100KB 不返回原文
+        )
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to preview chunking: {str(e)}")
+    finally:
+        try:
+            if temp_path.exists():
+                temp_path.unlink()
+        except Exception:
+            pass
