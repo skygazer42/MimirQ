@@ -11,11 +11,17 @@ from pymilvus import (
     DataType,
     utility
 )
-from sentence_transformers import SentenceTransformer
 from uuid import UUID
 import numpy as np
 
 from app.config import settings
+
+# 延迟导入 sentence_transformers（仅在需要时导入）
+try:
+    from sentence_transformers import SentenceTransformer
+    SENTENCE_TRANSFORMERS_AVAILABLE = True
+except ImportError:
+    SENTENCE_TRANSFORMERS_AVAILABLE = False
 
 
 class MilvusVectorStore:
@@ -51,9 +57,21 @@ class MilvusVectorStore:
         print(f"🔧 Loading embedding provider: {provider}")
 
         if provider == "local":
+            if not SENTENCE_TRANSFORMERS_AVAILABLE:
+                raise ImportError(
+                    "本地 Embedding 模型需要安装额外依赖。\n"
+                    "请运行: pip install -r requirements-local.txt\n"
+                    "或者改用 API 方式: EMBEDDING_PROVIDER=openai_compatible"
+                )
+
+            # 自动检测设备：优先使用 GPU，如果没有则使用 CPU
+            import torch
+            device = "cuda" if torch.cuda.is_available() else "cpu"
+            print(f"📱 Using device: {device}")
+
             return SentenceTransformer(
                 settings.EMBEDDING_MODEL,
-                device=settings.EMBEDDING_DEVICE
+                device=device
             )
 
         if provider in {"openai_compatible", "openai"}:

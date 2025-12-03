@@ -138,3 +138,36 @@ class ChunkPreviewResponse(BaseModel):
     chunks: List[ChunkPreviewItem]
     # 原文内容，用于前端高亮显示
     original_text: Optional[str] = None
+
+
+# ============ 批量上传相关 Schema ============
+
+class BatchFileInfo(BaseModel):
+    """批量上传文件信息"""
+    name: str = Field(..., description="文件名")
+    data_id: str = Field(..., description="自定义数据 ID，用于标识文件")
+
+
+class BatchUploadRequest(BaseModel):
+    """批量申请上传 URL 请求"""
+    files: List[BatchFileInfo] = Field(..., max_length=200, description="文件列表，最多 200 个")
+
+
+class BatchUploadResponse(BaseModel):
+    """批量申请上传 URL 响应"""
+    batch_id: str = Field(..., description="批次 ID")
+    file_urls: List[str] = Field(..., description="上传 URL 列表")
+    files: List[BatchFileInfo] = Field(..., description="文件信息列表")
+    message: str = Field(default="Upload URLs generated. Please upload files within 24 hours.")
+
+
+class BatchTaskStatus(BaseModel):
+    """批量任务状态"""
+    batch_id: str
+    status: str = Field(..., description="任务状态: pending, processing, completed, failed")
+    total_files: int
+    completed_files: int
+    failed_files: int
+    progress: int = Field(..., ge=0, le=100, description="进度百分比")
+    result_url: Optional[str] = None
+    error: Optional[str] = None

@@ -8,14 +8,24 @@ from langchain_core.documents import Document
 
 from app.services.parsers.pdf_parser import PDFParser
 from app.services.parsers.text_parser import TextParser, MarkdownParser
+from app.services.parsers.mineru_parser import MinerUParser
+from app.config import settings
 
 
 class ParserFactory:
     """根据文件类型选择合适的解析器"""
 
     def __init__(self):
+        # 根据配置选择 PDF 解析器
+        if settings.MINERU_ENABLED and settings.MINERU_API_TOKEN:
+            print("🚀 Using MinerU parser for PDF (advanced parsing)")
+            pdf_parser = MinerUParser()
+        else:
+            print("📄 Using PyMuPDF parser for PDF (basic parsing)")
+            pdf_parser = PDFParser()
+
         self.parsers = {
-            ".pdf": PDFParser(),
+            ".pdf": pdf_parser,
             ".txt": TextParser(),
             ".md": MarkdownParser(),
         }
