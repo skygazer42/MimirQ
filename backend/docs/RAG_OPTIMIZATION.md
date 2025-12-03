@@ -417,7 +417,7 @@ for result in search_results:
 
 ## 🔗 相关文档
 
-- [Milvus 向量检索](./MILVUS_GUIDE.md)
+- [Milvus 向量检索](MILVUS_GUIDE.md)
 - [BM25 算法详解](https://en.wikipedia.org/wiki/Okapi_BM25)
 - [RAG 最佳实践](https://www.anthropic.com/research/retrieval-augmented-generation)
 

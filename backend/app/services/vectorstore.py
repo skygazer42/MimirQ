@@ -5,10 +5,16 @@ from typing import List, Dict, Any, Optional
 from uuid import UUID
 
 from langchain_community.vectorstores import Chroma
-from langchain_community.embeddings import HuggingFaceEmbeddings
 from langchain_core.documents import Document
 
 from app.config import settings
+
+# 延迟导入 HuggingFaceEmbeddings（仅在需要时导入）
+try:
+    from langchain_community.embeddings import HuggingFaceEmbeddings
+    HUGGINGFACE_AVAILABLE = True
+except ImportError:
+    HUGGINGFACE_AVAILABLE = False
 
 
 class VectorStoreService:
@@ -27,10 +33,21 @@ class VectorStoreService:
     def __init__(self):
         """初始化 Embedding 模型和向量数据库"""
         if self._embedding_model is None:
-            print(f"Loading embedding model: {settings.EMBEDDING_MODEL}")
+            if not HUGGINGFACE_AVAILABLE:
+                raise ImportError(
+                    "本地 Embedding 模型需要安装额外依赖。\n"
+                    "请运行: pip install -r requirements-local.txt\n"
+                    "或者改用 API 方式: EMBEDDING_PROVIDER=openai_compatible"
+                )
+
+            # 自动检测设备：优先使用 GPU，如果没有则使用 CPU
+            import torch
+            device = "cuda" if torch.cuda.is_available() else "cpu"
+            print(f"Loading embedding model: {settings.EMBEDDING_MODEL} on {device}")
+
             self._embedding_model = HuggingFaceEmbeddings(
                 model_name=settings.EMBEDDING_MODEL,
-                model_kwargs={"device": settings.EMBEDDING_DEVICE},
+                model_kwargs={"device": device},
                 encode_kwargs={"normalize_embeddings": True},
             )
 

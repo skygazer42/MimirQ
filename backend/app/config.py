@@ -37,19 +37,21 @@ class Settings(BaseSettings):
     LLM_MAX_RETRIES: int = 3
 
     # Embedding
-    EMBEDDING_PROVIDER: str = "local"  # local | openai_compatible
-    EMBEDDING_MODEL: str = "BAAI/bge-large-zh-v1.5"
-    EMBEDDING_DEVICE: str = "cpu"
-    EMBEDDING_API_KEY: str = ""
-    EMBEDDING_API_BASE: str = ""
+    EMBEDDING_PROVIDER: str = "openai_compatible"  # local | openai_compatible
+    EMBEDDING_MODEL: str = "text-embedding-3-small"
+    EMBEDDING_API_KEY: str = ""  # 留空则使用 LLM_API_KEY
+    EMBEDDING_API_BASE: str = ""  # 留空则使用 LLM_API_BASE
 
     # File Upload
     UPLOAD_DIR: str = "./uploads"
     MAX_FILE_SIZE: int = 50_000_000  # 50MB
     ALLOWED_EXTENSIONS: List[str] = [".pdf", ".txt", ".md"]
 
-    # MinerU
-    MINERU_ENDPOINT: str = "http://localhost:8080"
+    # MinerU Online API
+    MINERU_API_TOKEN: str = ""
+    MINERU_API_BASE: str = "https://mineru.net/api/v4"
+    MINERU_MODEL_VERSION: str = "vlm"  # vlm | txt
+    MINERU_ENABLED: bool = False  # 是否启用 MinerU 解析（需要配置 API Token）
 
     # Security
     SECRET_KEY: str = "your-secret-key-change-in-production"

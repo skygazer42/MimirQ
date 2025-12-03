@@ -26,9 +26,8 @@ langgraph-checkpoint-postgres==1.0.0
 pymilvus==2.3.5
 milvus==2.3.5
 
-# Embeddings
-sentence-transformers==2.3.1
-torch==2.1.0
+# Embeddings (API mode - no heavy dependencies)
+# 如需使用本地 Embedding 模型，请安装：pip install -r requirements-local.txt
 
 # Document Parsing
 PyMuPDF==1.23.8

@@ -21,10 +21,14 @@ from app.schemas.document import (
     ManualDocumentCreate,
     ChunkPreviewParams,
     ChunkPreviewItem,
-    ChunkPreviewResponse
+    ChunkPreviewResponse,
+    BatchUploadRequest,
+    BatchUploadResponse,
+    BatchTaskStatus
 )
 from app.services.document_processor import document_processor
 from app.services.milvus_store import milvus_store
+from app.services.mineru_service import mineru_service
 from app.config import settings
 
 router = APIRouter()
@@ -528,3 +532,90 @@ async def preview_chunking(
                 temp_path.unlink()
         except Exception:
             pass
+
+
+# ==================== MinerU 批量上传 API ====================
+
+@router.post("/batch-upload/apply-urls", response_model=BatchUploadResponse)
+async def apply_batch_upload_urls(request: BatchUploadRequest):
+    """
+    批量申请文件上传 URL（MinerU 在线解析）
+
+    适用于本地文件批量上传解析的场景。
+
+    使用流程：
+    1. 调用此接口申请上传 URL（最多 200 个文件）
+    2. 使用返回的 URL 上传文件（PUT 请求，无需设置 Content-Type）
+    3. 上传完成后，系统自动提交解析任务
+    4. 使用 batch_id 查询解析状态
+
+    注意事项：
+    - 上传链接有效期为 24 小时
+    - 上传文件时无需设置 Content-Type 请求头
+    - 文件上传完成后无需手动提交任务，系统会自动扫描并处理
+
+    Example:
+        # Step 1: 申请上传 URL
+        response = requests.post("/api/v1/documents/batch-upload/apply-urls", json={
+            "files": [
+                {"name": "file1.pdf", "data_id": "doc1"},
+                {"name": "file2.pdf", "data_id": "doc2"}
+            ]
+        })
+
+        # Step 2: 上传文件
+        batch_id = response.json()["batch_id"]
+        urls = response.json()["file_urls"]
+
+        for i, url in enumerate(urls):
+            with open(f"file{i+1}.pdf", "rb") as f:
+                requests.put(url, data=f)
+
+        # Step 3: 查询状态
+        requests.get(f"/api/v1/documents/batch-upload/status/{batch_id}")
+    """
+    try:
+        result = mineru_service.apply_batch_upload_urls(
+            files=[f.model_dump() for f in request.files]
+        )
+
+        return BatchUploadResponse(
+            batch_id=result["batch_id"],
+            file_urls=result["file_urls"],
+            files=request.files
+        )
+
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to apply upload URLs: {str(e)}")
+
+
+@router.get("/batch-upload/status/{batch_id}", response_model=BatchTaskStatus)
+async def get_batch_task_status(batch_id: str):
+    """
+    查询批量解析任务状态
+
+    Args:
+        batch_id: 批次 ID（从申请上传 URL 接口获得）
+
+    Returns:
+        任务状态信息，包括进度、完成数量等
+    """
+    try:
+        status = mineru_service.get_task_status(batch_id)
+
+        # 转换为标准化格式
+        return BatchTaskStatus(
+            batch_id=batch_id,
+            status=status.get("status", "pending"),
+            total_files=status.get("total_files", 0),
+            completed_files=status.get("completed_files", 0),
+            failed_files=status.get("failed_files", 0),
+            progress=status.get("progress", 0),
+            result_url=status.get("result_url"),
+            error=status.get("error")
+        )
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to get task status: {str(e)}")
