@@ -1,7 +1,7 @@
 """
 文档管理 API
 """
-from fastapi import APIRouter, Depends, UploadFile, File, HTTPException, BackgroundTasks
+from fastapi import APIRouter, Depends, UploadFile, File, HTTPException, BackgroundTasks, Form
 from sqlalchemy.orm import Session
 from typing import List, Optional
 from pathlib import Path
@@ -27,6 +27,7 @@ from app.schemas.document import (
     BatchTaskStatus
 )
 from app.services.document_processor import document_processor
+from app.services.parsers import parser_factory
 from app.services.milvus_store import milvus_store
 from app.services.mineru_service import mineru_service
 from app.config import settings
@@ -38,6 +39,7 @@ router = APIRouter()
 async def upload_document(
     background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
+    parser_backend: str = Form(default=settings.DEFAULT_PARSER_BACKEND),
     db: Session = Depends(get_db)
 ):
     """
@@ -69,6 +71,11 @@ async def upload_document(
             detail=f"File too large. Max size: {settings.MAX_FILE_SIZE / 1024 / 1024}MB"
         )
 
+    try:
+        resolved_parser_backend = parser_factory.resolve_backend(file_ext, parser_backend)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
     # 3. 保存文件
     upload_dir = Path(settings.UPLOAD_DIR)
     upload_dir.mkdir(parents=True, exist_ok=True)
@@ -92,7 +99,10 @@ async def upload_document(
         file_path=str(file_path),
         status='pending',
         processing_progress=0,
-        metadata={}
+        metadata={
+            "parser_backend": resolved_parser_backend,
+            "parser_backend_requested": (parser_backend or "").lower()
+        }
     )
 
     db.add(db_document)
@@ -104,7 +114,8 @@ async def upload_document(
         document_processor.process_document,
         file_path,
         file_id,
-        db
+        db,
+        resolved_parser_backend
     )
 
     return db_document
@@ -215,6 +226,7 @@ async def delete_document(
 @router.post("/preview", response_model=DocumentParsePreview)
 async def preview_document(
     file: UploadFile = File(...),
+    parser_backend: str = Form(default=settings.DEFAULT_PARSER_BACKEND),
 ):
     """
     文档解析预览接口
@@ -251,9 +263,7 @@ async def preview_document(
         with temp_path.open("wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
 
-        from app.services.parsers import parser_factory
-
-        documents = parser_factory.parse(temp_path)
+        documents, resolved_backend = parser_factory.parse(temp_path, parser_backend=parser_backend)
 
         segments: List[ParsedSegment] = []
         for idx, doc in enumerate(documents):
@@ -268,8 +278,11 @@ async def preview_document(
             filename=file.filename,
             file_type=file_ext.lstrip('.'),
             file_size=file_size,
-            segments=segments
+            segments=segments,
+            parser_backend=resolved_backend
         )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to parse document: {str(e)}")
     finally:
@@ -402,6 +415,7 @@ async def preview_chunking(
     file: UploadFile = File(...),
     chunk_size: int = 1000,
     chunk_overlap: int = 200,
+    parser_backend: str = Form(default=settings.DEFAULT_PARSER_BACKEND),
 ):
     """
     切块预览接口
@@ -456,8 +470,7 @@ async def preview_chunking(
             shutil.copyfileobj(file.file, buffer)
 
         # 解析文档
-        from app.services.parsers import parser_factory
-        documents = parser_factory.parse(temp_path)
+        documents, resolved_backend = parser_factory.parse(temp_path, parser_backend=parser_backend)
 
         # 合并所有页面的文本（保留页码信息）
         page_texts = []
@@ -521,9 +534,12 @@ async def preview_chunking(
             total_characters=len(full_text),
             params=ChunkPreviewParams(chunk_size=chunk_size, chunk_overlap=chunk_overlap),
             chunks=chunk_items,
-            original_text=full_text if len(full_text) <= 100000 else None  # 超过 100KB 不返回原文
+            original_text=full_text if len(full_text) <= 100000 else None,  # 超过 100KB 不返回原文
+            parser_backend=resolved_backend
         )
 
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to preview chunking: {str(e)}")
     finally:

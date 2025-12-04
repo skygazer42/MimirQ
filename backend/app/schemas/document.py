@@ -70,6 +70,7 @@ class DocumentParsePreview(BaseModel):
     file_type: str
     file_size: int
     segments: List[ParsedSegment]
+    parser_backend: str
 
 
 class ManualChunkCreate(BaseModel):
@@ -138,6 +139,7 @@ class ChunkPreviewResponse(BaseModel):
     chunks: List[ChunkPreviewItem]
     # 原文内容，用于前端高亮显示
     original_text: Optional[str] = None
+    parser_backend: str
 
 
 # ============ 批量上传相关 Schema ============
