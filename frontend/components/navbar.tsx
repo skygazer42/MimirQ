@@ -17,6 +17,7 @@ import {
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
+import { ParserBackendSelect } from '@/components/parser-backend-select'
 
 // 导航菜单配置
 const menuItems = [
@@ -79,6 +80,10 @@ export function Navbar() {
           <Plus className="h-5 w-5 mr-2" />
           新对话
         </Button>
+      </div>
+
+      <div className="px-4">
+        <ParserBackendSelect compact />
       </div>
 
       {/* 导航菜单 */}

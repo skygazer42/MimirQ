@@ -6,6 +6,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { documentApi } from '@/lib/api-client'
 import type { Document } from '@/types'
+import { useParserBackendPreference } from '@/contexts/parser-backend-context'
 
 export function useDocuments() {
   const [documents, setDocuments] = useState<Document[]>([])
@@ -39,7 +40,7 @@ export function useDocuments() {
       setError(null)
 
       try {
-        const newDoc = await documentApi.upload(file)
+        const newDoc = await documentApi.upload(file, parserBackend)
         setDocuments((prev) => [newDoc, ...prev])
 
         // 轮询检查处理状态
@@ -55,7 +56,7 @@ export function useDocuments() {
       }
     },
     []
-  )
+  , [parserBackend, pollDocumentStatus])
 
   /**
    * 删除文档
@@ -132,3 +133,4 @@ export function useDocuments() {
     deleteDocument,
   }
 }
+  const { parserBackend } = useParserBackendPreference()

@@ -221,6 +221,7 @@ class DocumentProcessorService:
 
         metadata = dict(db_doc.metadata or {})
         metadata["parser_backend"] = parser_backend
+        metadata.setdefault("parser_backend_requested", parser_backend)
 
         db_doc.metadata = metadata
         db.commit()

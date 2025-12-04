@@ -19,6 +19,9 @@ import { Button } from '@/components/ui/button'
 import { documentApi } from '@/lib/api-client'
 import { formatFileSize } from '@/lib/utils'
 import type { DocumentPreview, ManualChunk } from '@/types'
+import { ParserBackendSelect } from '@/components/parser-backend-select'
+import { useParserBackendPreference } from '@/contexts/parser-backend-context'
+import { getParserLabel } from '@/lib/parser-options'
 
 interface ManualUploadDialogProps {
   onUploaded?: () => void
@@ -38,6 +41,7 @@ export function ManualUploadDialog({ onUploaded }: ManualUploadDialogProps) {
   const [chunkSize, setChunkSize] = useState(1000)
   const [chunkOverlap, setChunkOverlap] = useState(200)
   const [delimiter, setDelimiter] = useState('## ')
+  const { parserBackend } = useParserBackendPreference()
 
   const handleFileChange = async (e: ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files
@@ -50,7 +54,7 @@ export function ManualUploadDialog({ onUploaded }: ManualUploadDialogProps) {
     setIsParsing(true)
 
     try {
-      const result = await documentApi.preview(selected)
+      const result = await documentApi.preview(selected, parserBackend)
       setPreview(result)
     } catch (err: any) {
       console.error('Preview parse failed:', err)
@@ -170,7 +174,9 @@ export function ManualUploadDialog({ onUploaded }: ManualUploadDialogProps) {
         file_type: preview.file_type,
         file_size: preview.file_size,
         chunks,
-        metadata: {},
+        metadata: {
+          parser_backend: preview.parser_backend,
+        },
       })
 
       setOpen(false)
@@ -219,15 +225,26 @@ export function ManualUploadDialog({ onUploaded }: ManualUploadDialogProps) {
           </DialogDescription>
         </DialogHeader>
 
+        <div className="mb-4">
+          <ParserBackendSelect />
+        </div>
+
         <div className="space-y-4">
           {/* 文件选择 */}
           <div className="space-y-2">
             <p className="text-sm font-medium text-gray-700">选择文件</p>
             <input type="file" accept=".pdf,.txt,.md" onChange={handleFileChange} />
             {file && (
-              <p className="text-xs text-gray-500">
-                已选择：{file.name}（{formatFileSize(file.size)}）
-              </p>
+              <div className="text-xs text-gray-500 space-y-0.5">
+                <p>
+                  已选择：{file.name}（{formatFileSize(file.size)}）
+                </p>
+                {preview && (
+                  <p className="text-gray-500">
+                    本次解析：{getParserLabel(preview.parser_backend)}
+                  </p>
+                )}
+              </div>
             )}
           </div>
 

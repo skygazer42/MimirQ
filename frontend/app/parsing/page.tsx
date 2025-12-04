@@ -31,6 +31,9 @@ import { Button } from '@/components/ui/button'
 import { documentApi } from '@/lib/api-client'
 import { formatFileSize, cn } from '@/lib/utils'
 import { useParsedFiles } from '@/hooks/use-parsed-files'
+import { ParserBackendSelect } from '@/components/parser-backend-select'
+import { useParserBackendPreference } from '@/contexts/parser-backend-context'
+import { getParserLabel } from '@/lib/parser-options'
 
 // 文件状态类型
 type FileStatus = 'pending' | 'parsing' | 'parsed' | 'error'
@@ -42,6 +45,8 @@ interface ParsedFile {
   status: FileStatus
   markdownContent: string | null
   error: string | null
+  parserBackend: string
+  parserLabel: string
 }
 
 // 支持的文件类型配置
@@ -68,6 +73,7 @@ export default function ParsingPage() {
 
   // 共享存储
   const { addParsedFile } = useParsedFiles()
+  const { parserBackend } = useParserBackendPreference()
 
   // 获取当前选中的文件
   const activeFile = files.find((f) => f.id === activeFileId) || null
@@ -114,12 +120,15 @@ export default function ParsingPage() {
 
   // 添加文件
   const addFiles = (newFiles: File[]) => {
+    const defaultLabel = getParserLabel(parserBackend)
     const parsedFiles: ParsedFile[] = newFiles.map((file) => ({
       id: generateId(),
       file,
       status: 'pending',
       markdownContent: null,
       error: null,
+      parserBackend,
+      parserLabel: defaultLabel,
     }))
 
     setFiles((prev) => [...prev, ...parsedFiles])
@@ -155,9 +164,12 @@ export default function ParsingPage() {
       const data = await documentApi.chunkPreview(file.file, {
         chunk_size: 10000, // 大一点，只是为了获取解析后的文本
         chunk_overlap: 0,
+        parser_backend: parserBackend,
       })
 
       const markdownContent = data.original_text || ''
+      const resolvedBackend = data.parser_backend || parserBackend
+      const resolvedLabel = getParserLabel(resolvedBackend)
 
       setFiles((prev) =>
         prev.map((f) =>
@@ -166,6 +178,8 @@ export default function ParsingPage() {
                 ...f,
                 status: 'parsed',
                 markdownContent,
+                parserBackend: resolvedBackend,
+                parserLabel: resolvedLabel,
               }
             : f
         )
@@ -177,7 +191,7 @@ export default function ParsingPage() {
         fileType: getFileExt(file.file.name),
         fileSize: file.file.size,
         markdownContent,
-        parser: getFileConfig(file.file.name).parser,
+        parser: resolvedLabel,
       })
     } catch (err: any) {
       setFiles((prev) =>
@@ -266,7 +280,7 @@ export default function ParsingPage() {
                 </p>
               </div>
             </div>
-
+            <ParserBackendSelect compact />
           </div>
         </header>
 
@@ -343,7 +357,7 @@ export default function ParsingPage() {
                                 {formatFileSize(file.file.size)}
                               </span>
                               <span className="text-xs text-gray-300">·</span>
-                              <span className="text-xs text-gray-400">{config.parser}</span>
+                              <span className="text-xs text-gray-400">{file.parserLabel}</span>
                             </div>
                             <div className="mt-2">
                               {getStatusBadge(file.status)}
@@ -395,7 +409,7 @@ export default function ParsingPage() {
                           </div>
                           <span className="font-medium text-gray-900">{activeFile.file.name}</span>
                           <span className="text-xs text-gray-400 bg-gray-200 px-2 py-0.5 rounded">
-                            {config.parser}
+                            {activeFile.parserLabel}
                           </span>
                         </>
                       )
@@ -492,7 +506,7 @@ export default function ParsingPage() {
                         </div>
                         <p className="text-gray-600 mb-2">点击上方按钮开始解析</p>
                         <p className="text-gray-400 text-sm">
-                          将使用 {getFileConfig(activeFile.file.name).parser} 解析器
+                          将使用 {activeFile.parserLabel} 解析器
                         </p>
                       </div>
                     </div>
@@ -503,7 +517,7 @@ export default function ParsingPage() {
                       <div className="text-center">
                         <Loader2 className="w-12 h-12 animate-spin text-indigo-500 mx-auto mb-4" />
                         <p className="text-gray-600">
-                          正在使用 {getFileConfig(activeFile.file.name).parser} 解析...
+                          正在使用 {activeFile.parserLabel} 解析...
                         </p>
                         <p className="text-gray-400 text-sm mt-2">
                           Converting to Markdown...

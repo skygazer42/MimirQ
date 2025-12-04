@@ -91,6 +91,7 @@ export interface DocumentPreview {
   file_type: string
   file_size: number
   segments: ParsedSegment[]
+  parser_backend: string
 }
 
 export interface ManualChunk {
@@ -127,4 +128,5 @@ export interface ChunkPreviewResponse {
   params: ChunkPreviewParams
   chunks: ChunkPreviewItem[]
   original_text?: string
+  parser_backend: string
 }

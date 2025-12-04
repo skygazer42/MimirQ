@@ -1211,7 +1211,8 @@ class RAGFlowPdfParser:
         except Exception as e:
             logging.warning(f"Outlines exception: {e}")
         finally:
-            self.pdf.close()
+            if hasattr(self.pdf, 'close'):
+                self.pdf.close()
         if not self.outlines:
             logging.warning("Miss outlines")
 
