@@ -23,9 +23,10 @@ import {
 import { Button } from '@/components/ui/button'
 import { documentApi } from '@/lib/api-client'
 import type { ChunkPreviewResponse, ChunkPreviewItem } from '@/types'
-import { ParserBackendSelect } from '@/components/parser-backend-select'
 import { useParserBackendPreference } from '@/contexts/parser-backend-context'
+import { useChunkStrategyPreference } from '@/contexts/chunk-strategy-context'
 import { getParserLabel } from '@/lib/parser-options'
+import { getChunkStrategyLabel, getChunkStrategyOption } from '@/lib/chunk-strategies'
 
 // 分隔符配置
 const SEPARATORS = ['\\n\\n', '\\n', '。', '！', '？', '.', '!', '?']
@@ -54,6 +55,12 @@ export function ChunkPreview({ onConfirm, onClose }: ChunkPreviewProps) {
   // 选中的块索引（用于高亮联动）
   const [hoveredChunkIndex, setHoveredChunkIndex] = useState<number | null>(null)
   const { parserBackend } = useParserBackendPreference()
+  const { chunkStrategy } = useChunkStrategyPreference()
+  const chunkStrategyOption = getChunkStrategyOption(chunkStrategy)
+  const resolvedChunkStrategy = previewData?.chunk_strategy || chunkStrategy
+  const resolvedChunkLabel = getChunkStrategyLabel(resolvedChunkStrategy)
+  const resolvedChunkOption = getChunkStrategyOption(resolvedChunkStrategy)
+  const isLangChainStrategy = resolvedChunkStrategy === 'langchain_recursive'
 
   // 处理文件拖放
   const handleDragOver = useCallback((e: React.DragEvent) => {
@@ -100,6 +107,7 @@ export function ChunkPreview({ onConfirm, onClose }: ChunkPreviewProps) {
         chunk_size: chunkSize,
         chunk_overlap: chunkOverlap,
         parser_backend: parserBackend,
+        chunk_strategy: chunkStrategy,
       })
       setPreviewData(data)
     } catch (err: any) {
@@ -107,7 +115,7 @@ export function ChunkPreview({ onConfirm, onClose }: ChunkPreviewProps) {
     } finally {
       setIsLoading(false)
     }
-  }, [file, chunkSize, chunkOverlap, parserBackend])
+  }, [file, chunkSize, chunkOverlap, parserBackend, chunkStrategy])
 
   // 确认入库
   const handleSubmit = useCallback(async () => {
@@ -134,7 +142,8 @@ export function ChunkPreview({ onConfirm, onClose }: ChunkPreviewProps) {
         metadata: {
           chunk_size: chunkSize,
           chunk_overlap: chunkOverlap,
-          strategy: 'RecursiveCharacterTextSplitter',
+          chunk_strategy: previewData.chunk_strategy,
+          chunk_strategy_label: getChunkStrategyLabel(previewData.chunk_strategy),
           parser_backend: previewData.parser_backend,
         },
       })
@@ -240,13 +249,13 @@ export function ChunkPreview({ onConfirm, onClose }: ChunkPreviewProps) {
                   <span className="ml-2 text-gray-500">
                     · 使用 {getParserLabel(previewData.parser_backend)}
                   </span>
+                  <span className="ml-2 text-purple-600">
+                    · 切块 {getChunkStrategyLabel(previewData.chunk_strategy)}
+                  </span>
                 </>
               )}
             </p>
           </div>
-        </div>
-        <div className="w-64">
-          <ParserBackendSelect compact />
         </div>
         <div className="flex items-center gap-3">
           {submitSuccess && (
@@ -300,6 +309,23 @@ export function ChunkPreview({ onConfirm, onClose }: ChunkPreviewProps) {
             </h2>
 
             <div className="space-y-6">
+              <div className="rounded-lg border border-indigo-100 bg-indigo-50/60 p-3">
+                <div className="text-[11px] font-semibold text-indigo-700 uppercase tracking-wide">
+                  当前切块策略
+                </div>
+                <div className="text-sm font-bold text-gray-900 mt-1">
+                  {chunkStrategyOption.label}
+                </div>
+                <p className="text-xs text-gray-600 mt-1 leading-relaxed">
+                  {chunkStrategyOption.description}
+                </p>
+                {previewData && (
+                  <p className="text-[11px] text-indigo-500 mt-2">
+                    本次预览使用：{getChunkStrategyLabel(previewData.chunk_strategy)}
+                  </p>
+                )}
+              </div>
+
               {/* Chunk Size */}
               <div>
                 <div className="flex justify-between mb-2">
@@ -348,21 +374,34 @@ export function ChunkPreview({ onConfirm, onClose }: ChunkPreviewProps) {
                 <p className="text-[10px] text-gray-400 mt-1">相邻切片间的重叠字符</p>
               </div>
 
-              {/* 分隔符 */}
-              <div>
-                <label className="text-xs font-medium text-gray-600 mb-2 block">分隔符优先级</label>
-                <div className="flex flex-wrap gap-1.5">
-                  {SEPARATORS.map((sep) => (
-                    <span
-                      key={sep}
-                      className="px-2 py-1 bg-gray-100 text-gray-600 text-xs rounded border border-gray-200 font-mono"
-                    >
-                      {sep}
-                    </span>
-                  ))}
+              {/* 分隔符 / 句子提示 */}
+              {isLangChainStrategy ? (
+                <div>
+                  <label className="text-xs font-medium text-gray-600 mb-2 block">分隔符优先级</label>
+                  <div className="flex flex-wrap gap-1.5">
+                    {SEPARATORS.map((sep) => (
+                      <span
+                        key={sep}
+                        className="px-2 py-1 bg-gray-100 text-gray-600 text-xs rounded border border-gray-200 font-mono"
+                      >
+                        {sep}
+                      </span>
+                    ))}
+                  </div>
+                  <p className="text-[10px] text-gray-400 mt-2">
+                    RecursiveCharacterTextSplitter 按上述顺序递归查找分隔符
+                  </p>
                 </div>
-                <p className="text-[10px] text-gray-400 mt-2">RecursiveCharacterTextSplitter 按优先级递归切分</p>
-              </div>
+              ) : (
+                <div className="text-xs text-gray-600">
+                  <label className="font-medium block mb-2">句子粒度切分提示</label>
+                  <p className="text-gray-500 leading-relaxed">
+                    LlamaIndex SentenceSplitter 会根据语义断句（支持多语言），并自动携带
+                    <span className="font-semibold text-gray-700"> 起止字符位置 </span>
+                    与页码。可继续调整块大小与重叠，获得更平滑的检索体验。
+                  </p>
+                </div>
+              )}
 
               {/* 预览按钮 */}
               <Button
@@ -411,6 +450,17 @@ export function ChunkPreview({ onConfirm, onClose }: ChunkPreviewProps) {
                     {Math.round((chunkOverlap / chunkSize) * 100)}%
                   </div>
                   <div className="text-[10px] text-gray-400">重叠率</div>
+                </div>
+                <div className="bg-white p-3 rounded-lg border shadow-sm col-span-2">
+                  <div className="text-[10px] text-gray-400 uppercase tracking-wider">
+                    切块策略
+                  </div>
+                  <div className="text-sm font-semibold text-gray-800 mt-1">
+                    {resolvedChunkLabel}
+                  </div>
+                  <p className="text-[11px] text-gray-500 mt-1">
+                    {resolvedChunkOption.description}
+                  </p>
                 </div>
               </div>
             ) : (

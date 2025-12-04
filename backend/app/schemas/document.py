@@ -140,6 +140,7 @@ class ChunkPreviewResponse(BaseModel):
     # 原文内容，用于前端高亮显示
     original_text: Optional[str] = None
     parser_backend: str
+    chunk_strategy: str
 
 
 # ============ 批量上传相关 Schema ============

@@ -1,66 +1,76 @@
 'use client'
 
 /**
- * 文档解析页面
- * 上传文件 → 后端解析 → 预览 Markdown 结果
- * 知识库流程第一步：解析
+ * 文档解析工作台
+ * 优化版本 - 参考 RAGFlow / Dify 设计风格
+ * 功能：上传 → 解析 → 预览 → 切块/入库
  */
 import { useState, useCallback, useRef } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
+import { useRouter } from 'next/navigation'
 import {
   Upload,
   FileText,
-  File,
-  FileSpreadsheet,
-  FileType,
   Loader2,
-  CheckCircle,
-  XCircle,
   Eye,
   Code,
-  Trash2,
   Download,
   Copy,
   Check,
   RotateCcw,
   Sparkles,
+  FileStack,
+  Clock,
+  Table2,
+  Image,
+  Scissors,
+  Database,
+  ChevronRight,
+  Zap,
 } from 'lucide-react'
 import { Navbar } from '@/components/navbar'
 import { Button } from '@/components/ui/button'
 import { documentApi } from '@/lib/api-client'
 import { formatFileSize, cn } from '@/lib/utils'
 import { useParsedFiles } from '@/hooks/use-parsed-files'
-import { ParserBackendSelect } from '@/components/parser-backend-select'
 import { useParserBackendPreference } from '@/contexts/parser-backend-context'
+import { useChunkStrategyPreference } from '@/contexts/chunk-strategy-context'
 import { getParserLabel } from '@/lib/parser-options'
+import { getChunkStrategyLabel } from '@/lib/chunk-strategies'
+import { StepIndicator } from '@/components/ui/step-indicator'
+import { StatCard, StatsGrid } from '@/components/ui/stats-card'
+import { FileQueueItem, FileQueueItemData, FileStatus } from '@/components/ui/file-queue-item'
+import { ParserDropdown } from '@/components/ui/parser-dropdown'
 
-// 文件状态类型
-type FileStatus = 'pending' | 'parsing' | 'parsed' | 'error'
-
-// 解析后的文件
-interface ParsedFile {
-  id: string
+// 解析后的文件（扩展版）
+interface ParsedFile extends FileQueueItemData {
   file: File
-  status: FileStatus
   markdownContent: string | null
-  error: string | null
   parserBackend: string
   parserLabel: string
+  chunkStrategyLabel?: string
+  parseStartTime?: number
+  stats?: {
+    charCount: number
+    lineCount: number
+    pageCount?: number
+    tableCount?: number
+    imageCount?: number
+  }
 }
 
-// 支持的文件类型配置
-const FILE_TYPES = {
-  pdf: { icon: FileText, color: 'text-red-500', bg: 'bg-red-50', label: 'PDF', parser: 'MinerU' },
-  xlsx: { icon: FileSpreadsheet, color: 'text-green-600', bg: 'bg-green-50', label: 'Excel', parser: 'MarkItDown' },
-  xls: { icon: FileSpreadsheet, color: 'text-green-600', bg: 'bg-green-50', label: 'Excel', parser: 'MarkItDown' },
-  docx: { icon: FileType, color: 'text-blue-600', bg: 'bg-blue-50', label: 'Word', parser: 'MarkItDown' },
-  doc: { icon: FileType, color: 'text-blue-600', bg: 'bg-blue-50', label: 'Word', parser: 'MarkItDown' },
-  txt: { icon: File, color: 'text-gray-600', bg: 'bg-gray-50', label: 'Text', parser: 'Native' },
-  md: { icon: FileText, color: 'text-purple-600', bg: 'bg-purple-50', label: 'Markdown', parser: 'Native' },
-}
+// 工作流步骤
+const WORKFLOW_STEPS = [
+  { label: '上传文件' },
+  { label: '解析文档' },
+  { label: '预览结果' },
+  { label: '切块入库' },
+]
 
 export default function ParsingPage() {
+  const router = useRouter()
+
   // 文件状态
   const [files, setFiles] = useState<ParsedFile[]>([])
   const [activeFileId, setActiveFileId] = useState<string | null>(null)
@@ -71,26 +81,52 @@ export default function ParsingPage() {
   // 预览模式
   const [previewMode, setPreviewMode] = useState<'raw' | 'rendered'>('rendered')
 
+  // 解析器设置
+  const { parserBackend, setParserBackend } = useParserBackendPreference()
+  const { chunkStrategy } = useChunkStrategyPreference()
+
   // 共享存储
   const { addParsedFile } = useParsedFiles()
-  const { parserBackend } = useParserBackendPreference()
 
   // 获取当前选中的文件
   const activeFile = files.find((f) => f.id === activeFileId) || null
 
-  // 获取文件扩展名
-  const getFileExt = (filename: string): string => {
-    return filename.split('.').pop()?.toLowerCase() || ''
-  }
-
-  // 获取文件类型配置
-  const getFileConfig = (filename: string) => {
-    const ext = getFileExt(filename)
-    return FILE_TYPES[ext as keyof typeof FILE_TYPES] || FILE_TYPES.txt
+  // 计算当前步骤
+  const getCurrentStep = () => {
+    if (files.length === 0) return 0
+    if (!activeFile) return 0
+    if (activeFile.status === 'pending') return 1
+    if (activeFile.status === 'parsing') return 1
+    if (activeFile.status === 'parsed') return 2
+    return 1
   }
 
   // 生成唯一 ID
   const generateId = () => Math.random().toString(36).substring(2, 15)
+
+  // 添加文件
+  const addFiles = useCallback((newFiles: File[]) => {
+    const defaultLabel = getParserLabel(parserBackend)
+    const strategyLabel = getChunkStrategyLabel(chunkStrategy)
+    const parsedFiles: ParsedFile[] = newFiles.map((file) => ({
+      id: generateId(),
+      file,
+      name: file.name,
+      size: file.size,
+      status: 'pending' as FileStatus,
+      markdownContent: null,
+      error: undefined,
+      parserBackend,
+      parserLabel: defaultLabel,
+      chunkStrategyLabel: strategyLabel,
+    }))
+
+    setFiles((prev) => [...prev, ...parsedFiles])
+
+    if (parsedFiles.length > 0) {
+      setActiveFileId(parsedFiles[0].id)
+    }
+  }, [parserBackend, chunkStrategy])
 
   // 拖放处理
   const handleDragOver = useCallback((e: React.DragEvent) => {
@@ -108,7 +144,7 @@ export default function ParsingPage() {
     setIsDragging(false)
     const droppedFiles = Array.from(e.dataTransfer.files)
     addFiles(droppedFiles)
-  }, [])
+  }, [addFiles])
 
   const handleFileSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFiles = e.target.files ? Array.from(e.target.files) : []
@@ -116,28 +152,7 @@ export default function ParsingPage() {
       addFiles(selectedFiles)
     }
     e.target.value = ''
-  }, [])
-
-  // 添加文件
-  const addFiles = (newFiles: File[]) => {
-    const defaultLabel = getParserLabel(parserBackend)
-    const parsedFiles: ParsedFile[] = newFiles.map((file) => ({
-      id: generateId(),
-      file,
-      status: 'pending',
-      markdownContent: null,
-      error: null,
-      parserBackend,
-      parserLabel: defaultLabel,
-    }))
-
-    setFiles((prev) => [...prev, ...parsedFiles])
-
-    // 自动选中第一个新文件
-    if (parsedFiles.length > 0) {
-      setActiveFileId(parsedFiles[0].id)
-    }
-  }
+  }, [addFiles])
 
   // 移除文件
   const removeFile = (fileId: string) => {
@@ -153,54 +168,90 @@ export default function ParsingPage() {
     const file = files.find((f) => f.id === fileId)
     if (!file) return
 
+    const startTime = Date.now()
+
     setFiles((prev) =>
       prev.map((f) =>
-        f.id === fileId ? { ...f, status: 'parsing', error: null } : f
+        f.id === fileId
+          ? { ...f, status: 'parsing' as FileStatus, error: undefined, progress: 0, parseStartTime: startTime }
+          : f
       )
     )
 
+    // 模拟进度更新
+    const progressInterval = setInterval(() => {
+      setFiles((prev) =>
+        prev.map((f) =>
+          f.id === fileId && f.status === 'parsing'
+            ? { ...f, progress: Math.min((f.progress || 0) + Math.random() * 15, 90) }
+            : f
+        )
+      )
+    }, 300)
+
     try {
-      // 调用后端解析 API（复用 chunkPreview，只取 original_text）
       const data = await documentApi.chunkPreview(file.file, {
-        chunk_size: 10000, // 大一点，只是为了获取解析后的文本
+        chunk_size: 10000,
         chunk_overlap: 0,
         parser_backend: parserBackend,
+        chunk_strategy: chunkStrategy,
       })
+
+      clearInterval(progressInterval)
 
       const markdownContent = data.original_text || ''
       const resolvedBackend = data.parser_backend || parserBackend
       const resolvedLabel = getParserLabel(resolvedBackend)
+      const resolvedChunkLabel = getChunkStrategyLabel(data.chunk_strategy)
+      const duration = ((Date.now() - startTime) / 1000).toFixed(1)
+
+      // 计算统计信息
+      const stats = {
+        charCount: markdownContent.length,
+        lineCount: markdownContent.split('\n').length,
+        tableCount: (markdownContent.match(/\|.*\|/g) || []).length > 0
+          ? (markdownContent.match(/^\|/gm) || []).length / 2
+          : 0,
+        imageCount: (markdownContent.match(/!\[.*?\]\(.*?\)/g) || []).length,
+      }
 
       setFiles((prev) =>
         prev.map((f) =>
           f.id === fileId
             ? {
                 ...f,
-                status: 'parsed',
+                status: 'parsed' as FileStatus,
                 markdownContent,
                 parserBackend: resolvedBackend,
                 parserLabel: resolvedLabel,
+                chunkStrategyLabel: resolvedChunkLabel,
+                parser: resolvedLabel,
+                progress: 100,
+                duration: parseFloat(duration),
+                stats,
               }
             : f
         )
       )
 
-      // 保存到共享存储，供 chunk-preview 使用
+      // 保存到共享存储
       addParsedFile({
         filename: file.file.name,
-        fileType: getFileExt(file.file.name),
+        fileType: file.file.name.split('.').pop()?.toLowerCase() || '',
         fileSize: file.file.size,
         markdownContent,
         parser: resolvedLabel,
       })
     } catch (err: any) {
+      clearInterval(progressInterval)
       setFiles((prev) =>
         prev.map((f) =>
           f.id === fileId
             ? {
                 ...f,
-                status: 'error',
+                status: 'error' as FileStatus,
                 error: err.response?.data?.detail || err.message || '解析失败',
+                progress: 0,
               }
             : f
         )
@@ -208,7 +259,15 @@ export default function ParsingPage() {
     }
   }
 
-  // 复制 Markdown 内容
+  // 批量解析
+  const parseAllPending = async () => {
+    const pendingFiles = files.filter((f) => f.status === 'pending')
+    for (const file of pendingFiles) {
+      await parseFile(file.id)
+    }
+  }
+
+  // 复制 Markdown
   const copyMarkdown = async () => {
     if (!activeFile?.markdownContent) return
     await navigator.clipboard.writeText(activeFile.markdownContent)
@@ -216,7 +275,7 @@ export default function ParsingPage() {
     setTimeout(() => setCopied(false), 2000)
   }
 
-  // 下载 Markdown 文件
+  // 下载 Markdown
   const downloadMarkdown = () => {
     if (!activeFile?.markdownContent) return
     const blob = new Blob([activeFile.markdownContent], { type: 'text/markdown' })
@@ -228,38 +287,15 @@ export default function ParsingPage() {
     URL.revokeObjectURL(url)
   }
 
-  // 获取状态图标
-  const getStatusBadge = (status: FileStatus) => {
-    switch (status) {
-      case 'parsing':
-        return (
-          <span className="flex items-center gap-1 text-xs text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full">
-            <Loader2 className="w-3 h-3 animate-spin" />
-            解析中
-          </span>
-        )
-      case 'parsed':
-        return (
-          <span className="flex items-center gap-1 text-xs text-green-600 bg-green-50 px-2 py-0.5 rounded-full">
-            <CheckCircle className="w-3 h-3" />
-            已解析
-          </span>
-        )
-      case 'error':
-        return (
-          <span className="flex items-center gap-1 text-xs text-red-600 bg-red-50 px-2 py-0.5 rounded-full">
-            <XCircle className="w-3 h-3" />
-            失败
-          </span>
-        )
-      default:
-        return (
-          <span className="text-xs text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full">
-            待解析
-          </span>
-        )
-    }
+  // 进入切块页面
+  const goToChunkPreview = () => {
+    router.push('/chunk-preview')
   }
+
+  // 计算统计数据
+  const pendingCount = files.filter((f) => f.status === 'pending').length
+  const parsingCount = files.filter((f) => f.status === 'parsing').length
+  const parsedCount = files.filter((f) => f.status === 'parsed').length
 
   return (
     <div className="flex h-screen overflow-hidden bg-gray-50">
@@ -267,31 +303,46 @@ export default function ParsingPage() {
 
       <main className="flex-1 flex flex-col overflow-hidden">
         {/* 顶部标题栏 */}
-        <header className="bg-white border-b px-8 py-5 flex-shrink-0">
+        <header className="bg-white border-b px-6 py-4 flex-shrink-0">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
-              <div className="w-12 h-12 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-xl flex items-center justify-center shadow-lg shadow-indigo-200">
-                <Sparkles className="w-6 h-6 text-white" />
+              <div className="w-11 h-11 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-xl flex items-center justify-center shadow-lg shadow-indigo-200">
+                <Sparkles className="w-5 h-5 text-white" />
               </div>
               <div>
-                <h1 className="text-2xl font-bold text-gray-900">文档解析</h1>
-                <p className="text-sm text-gray-500 mt-0.5">
-                  上传文档，解析为 Markdown 格式 · 支持 PDF、Excel、Word、TXT
+                <h1 className="text-xl font-bold text-gray-900">文档解析工作台</h1>
+                <p className="text-sm text-gray-500">
+                  上传文档 → 智能解析 → Markdown 预览 → 切块入库
                 </p>
               </div>
             </div>
-            <ParserBackendSelect compact />
+
+            {/* 步骤指示器 */}
+            <div className="hidden lg:block w-80">
+              <StepIndicator steps={WORKFLOW_STEPS} currentStep={getCurrentStep()} />
+            </div>
           </div>
         </header>
 
         <div className="flex-1 flex overflow-hidden">
-          {/* 左侧：文件列表 */}
+          {/* 左侧：文件列表面板 */}
           <aside className="w-80 bg-white border-r flex flex-col flex-shrink-0">
+            {/* 解析器选择 - RAGFlow 风格 */}
+            <div className="p-4 border-b">
+              <div className="flex items-center justify-between mb-3">
+                <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider">解析方式</span>
+              </div>
+              <ParserDropdown
+                value={parserBackend}
+                onChange={setParserBackend}
+              />
+            </div>
+
             {/* 上传区域 */}
             <div className="p-4 border-b">
               <div
                 className={cn(
-                  'p-6 border-2 border-dashed rounded-xl text-center transition-all cursor-pointer',
+                  'p-5 border-2 border-dashed rounded-xl text-center transition-all cursor-pointer',
                   isDragging
                     ? 'border-indigo-500 bg-indigo-50'
                     : 'border-gray-200 hover:border-indigo-400 hover:bg-indigo-50/30'
@@ -309,76 +360,72 @@ export default function ParsingPage() {
                   className="hidden"
                   onChange={handleFileSelect}
                 />
-                <Upload className="w-8 h-8 mx-auto mb-2 text-gray-400" />
-                <p className="text-sm font-medium text-gray-700">点击或拖放上传</p>
-                <p className="text-xs text-gray-400 mt-1">PDF, Excel, Word, TXT, MD</p>
+                <Upload className="w-7 h-7 mx-auto mb-2 text-gray-400" />
+                <p className="text-sm font-medium text-gray-700">拖放或点击上传</p>
+                <p className="text-xs text-gray-400 mt-1">PDF, Word, Excel, TXT, MD</p>
               </div>
             </div>
 
             {/* 文件列表 */}
             <div className="flex-1 overflow-y-auto p-4">
-              <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">
-                文件列表 ({files.length})
-              </h3>
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                  文件队列 ({files.length})
+                </h3>
+                {pendingCount > 1 && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={parseAllPending}
+                    className="h-7 text-xs gap-1"
+                  >
+                    <Zap className="w-3 h-3" />
+                    全部解析
+                  </Button>
+                )}
+              </div>
 
               {files.length === 0 ? (
                 <div className="text-center py-8 text-gray-400">
-                  <FileText className="w-10 h-10 mx-auto mb-2 opacity-50" />
+                  <FileStack className="w-10 h-10 mx-auto mb-2 opacity-50" />
                   <p className="text-sm">暂无文件</p>
+                  <p className="text-xs mt-1">上传文件开始解析</p>
                 </div>
               ) : (
                 <div className="space-y-2">
-                  {files.map((file) => {
-                    const config = getFileConfig(file.file.name)
-                    const Icon = config.icon
-                    const isActive = activeFileId === file.id
-
-                    return (
-                      <div
-                        key={file.id}
-                        className={cn(
-                          'group p-3 rounded-lg border transition-all cursor-pointer',
-                          isActive
-                            ? 'bg-indigo-50 border-indigo-200'
-                            : 'bg-white border-gray-200 hover:border-indigo-200 hover:bg-gray-50'
-                        )}
-                        onClick={() => setActiveFileId(file.id)}
-                      >
-                        <div className="flex items-start gap-3">
-                          <div className={cn('p-2 rounded-lg', config.bg)}>
-                            <Icon className={cn('w-5 h-5', config.color)} />
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <p className="text-sm font-medium text-gray-900 truncate">
-                              {file.file.name}
-                            </p>
-                            <div className="flex items-center gap-2 mt-1">
-                              <span className="text-xs text-gray-400">
-                                {formatFileSize(file.file.size)}
-                              </span>
-                              <span className="text-xs text-gray-300">·</span>
-                              <span className="text-xs text-gray-400">{file.parserLabel}</span>
-                            </div>
-                            <div className="mt-2">
-                              {getStatusBadge(file.status)}
-                            </div>
-                          </div>
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              removeFile(file.id)
-                            }}
-                            className="opacity-0 group-hover:opacity-100 p-1 hover:bg-red-50 rounded transition-all"
-                          >
-                            <Trash2 className="w-4 h-4 text-gray-400 hover:text-red-500" />
-                          </button>
-                        </div>
-                      </div>
-                    )
-                  })}
+                  {files.map((file) => (
+                    <FileQueueItem
+                      key={file.id}
+                      file={file}
+                      isActive={activeFileId === file.id}
+                      onClick={() => setActiveFileId(file.id)}
+                      onRemove={() => removeFile(file.id)}
+                      onRetry={() => parseFile(file.id)}
+                    />
+                  ))}
                 </div>
               )}
             </div>
+
+            {/* 底部统计 */}
+            {files.length > 0 && (
+              <div className="p-4 border-t bg-gray-50">
+                <div className="flex items-center justify-around text-xs text-gray-500">
+                  <span className="flex items-center gap-1">
+                    <Clock className="w-3 h-3" />
+                    {pendingCount} 等待
+                  </span>
+                  <span className="flex items-center gap-1">
+                    <Loader2 className="w-3 h-3" />
+                    {parsingCount} 处理
+                  </span>
+                  <span className="flex items-center gap-1 text-green-600">
+                    <Check className="w-3 h-3" />
+                    {parsedCount} 完成
+                  </span>
+                </div>
+              </div>
+            )}
           </aside>
 
           {/* 右侧：预览区域 */}
@@ -386,34 +433,71 @@ export default function ParsingPage() {
             {!activeFile ? (
               // 空状态
               <div className="flex-1 flex items-center justify-center">
-                <div className="text-center">
-                  <div className="w-20 h-20 mx-auto mb-4 bg-gray-100 rounded-2xl flex items-center justify-center">
-                    <FileText className="w-10 h-10 text-gray-400" />
+                <div className="text-center max-w-md">
+                  <div className="w-20 h-20 mx-auto mb-4 bg-gradient-to-br from-gray-100 to-gray-50 rounded-2xl flex items-center justify-center">
+                    <FileText className="w-10 h-10 text-gray-300" />
                   </div>
-                  <p className="text-gray-500 mb-2">从左侧选择或上传文件</p>
-                  <p className="text-gray-400 text-sm">支持 PDF, Excel, Word, TXT, Markdown</p>
+                  <h3 className="text-lg font-medium text-gray-700 mb-2">选择文件开始</h3>
+                  <p className="text-gray-400 text-sm">
+                    从左侧上传或选择文件，系统将使用 AI 智能解析文档结构
+                  </p>
                 </div>
               </div>
             ) : (
               <>
+                {/* 统计卡片区 - 解析完成后显示 */}
+                {activeFile.status === 'parsed' && activeFile.stats && (
+                  <div className="px-6 py-4 border-b bg-gradient-to-r from-gray-50 to-white">
+                    <StatsGrid>
+                      <StatCard
+                        icon={FileText}
+                        label="字符数"
+                        value={activeFile.stats.charCount.toLocaleString()}
+                        color="blue"
+                      />
+                      <StatCard
+                        icon={FileStack}
+                        label="行数"
+                        value={activeFile.stats.lineCount.toLocaleString()}
+                        color="purple"
+                      />
+                      <StatCard
+                        icon={Table2}
+                        label="表格"
+                        value={Math.floor(activeFile.stats.tableCount || 0)}
+                        color="green"
+                      />
+                      <StatCard
+                        icon={Image}
+                        label="图片"
+                        value={activeFile.stats.imageCount || 0}
+                        color="orange"
+                      />
+                      <StatCard
+                        icon={Clock}
+                        label="耗时"
+                        value={`${activeFile.duration}s`}
+                        subValue={activeFile.parserLabel}
+                        color="gray"
+                      />
+                    </StatsGrid>
+                  </div>
+                )}
+
                 {/* 工具栏 */}
                 <div className="flex items-center justify-between px-6 py-3 border-b bg-gray-50">
                   <div className="flex items-center gap-3">
-                    {(() => {
-                      const config = getFileConfig(activeFile.file.name)
-                      const Icon = config.icon
-                      return (
-                        <>
-                          <div className={cn('p-1.5 rounded-lg', config.bg)}>
-                            <Icon className={cn('w-4 h-4', config.color)} />
-                          </div>
-                          <span className="font-medium text-gray-900">{activeFile.file.name}</span>
-                          <span className="text-xs text-gray-400 bg-gray-200 px-2 py-0.5 rounded">
-                            {activeFile.parserLabel}
-                          </span>
-                        </>
-                      )
-                    })()}
+                    <span className="font-medium text-gray-900 truncate max-w-[200px]">
+                      {activeFile.file.name}
+                    </span>
+                    <span className="text-xs text-gray-400 bg-gray-200 px-2 py-0.5 rounded">
+                      {activeFile.parserLabel}
+                    </span>
+                    {activeFile.chunkStrategyLabel && (
+                      <span className="text-xs text-purple-600 bg-purple-100 px-2 py-0.5 rounded">
+                        {activeFile.chunkStrategyLabel}
+                      </span>
+                    )}
                   </div>
 
                   <div className="flex items-center gap-2">
@@ -424,71 +508,50 @@ export default function ParsingPage() {
                           <button
                             onClick={() => setPreviewMode('rendered')}
                             className={cn(
-                              'px-3 py-1.5 text-xs rounded-md transition-all',
+                              'px-3 py-1.5 text-xs rounded-md transition-all flex items-center gap-1',
                               previewMode === 'rendered'
                                 ? 'bg-white text-gray-900 shadow-sm'
                                 : 'text-gray-500 hover:text-gray-700'
                             )}
                           >
-                            <Eye className="w-3.5 h-3.5 inline mr-1" />
+                            <Eye className="w-3.5 h-3.5" />
                             预览
                           </button>
                           <button
                             onClick={() => setPreviewMode('raw')}
                             className={cn(
-                              'px-3 py-1.5 text-xs rounded-md transition-all',
+                              'px-3 py-1.5 text-xs rounded-md transition-all flex items-center gap-1',
                               previewMode === 'raw'
                                 ? 'bg-white text-gray-900 shadow-sm'
                                 : 'text-gray-500 hover:text-gray-700'
                             )}
                           >
-                            <Code className="w-3.5 h-3.5 inline mr-1" />
+                            <Code className="w-3.5 h-3.5" />
                             源码
                           </button>
                         </div>
 
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={copyMarkdown}
-                          className="gap-1.5"
-                        >
-                          {copied ? (
-                            <Check className="w-4 h-4 text-green-500" />
-                          ) : (
-                            <Copy className="w-4 h-4" />
-                          )}
+                        <Button variant="outline" size="sm" onClick={copyMarkdown} className="gap-1.5">
+                          {copied ? <Check className="w-4 h-4 text-green-500" /> : <Copy className="w-4 h-4" />}
                           {copied ? '已复制' : '复制'}
                         </Button>
 
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={downloadMarkdown}
-                          className="gap-1.5"
-                        >
+                        <Button variant="outline" size="sm" onClick={downloadMarkdown} className="gap-1.5">
                           <Download className="w-4 h-4" />
-                          下载 .md
+                          下载
                         </Button>
                       </>
                     )}
 
                     {activeFile.status === 'pending' && (
-                      <Button
-                        onClick={() => parseFile(activeFile.id)}
-                        className="gap-2 bg-indigo-600 hover:bg-indigo-700"
-                      >
+                      <Button onClick={() => parseFile(activeFile.id)} className="gap-2 bg-indigo-600 hover:bg-indigo-700">
                         <Sparkles className="w-4 h-4" />
                         开始解析
                       </Button>
                     )}
 
                     {activeFile.status === 'error' && (
-                      <Button
-                        onClick={() => parseFile(activeFile.id)}
-                        variant="outline"
-                        className="gap-2"
-                      >
+                      <Button onClick={() => parseFile(activeFile.id)} variant="outline" className="gap-2">
                         <RotateCcw className="w-4 h-4" />
                         重试
                       </Button>
@@ -504,9 +567,9 @@ export default function ParsingPage() {
                         <div className="w-16 h-16 mx-auto mb-4 bg-indigo-100 rounded-xl flex items-center justify-center">
                           <Sparkles className="w-8 h-8 text-indigo-500" />
                         </div>
-                        <p className="text-gray-600 mb-2">点击上方按钮开始解析</p>
+                        <p className="text-gray-600 mb-2">准备就绪</p>
                         <p className="text-gray-400 text-sm">
-                          将使用 {activeFile.parserLabel} 解析器
+                          点击上方按钮，使用 {activeFile.parserLabel} 解析
                         </p>
                       </div>
                     </div>
@@ -515,31 +578,34 @@ export default function ParsingPage() {
                   {activeFile.status === 'parsing' && (
                     <div className="flex items-center justify-center h-full">
                       <div className="text-center">
-                        <Loader2 className="w-12 h-12 animate-spin text-indigo-500 mx-auto mb-4" />
-                        <p className="text-gray-600">
-                          正在使用 {activeFile.parserLabel} 解析...
-                        </p>
-                        <p className="text-gray-400 text-sm mt-2">
-                          Converting to Markdown...
-                        </p>
+                        <div className="relative">
+                          <Loader2 className="w-12 h-12 animate-spin text-indigo-500 mx-auto" />
+                          <div className="absolute inset-0 flex items-center justify-center">
+                            <span className="text-xs font-medium text-indigo-600">
+                              {Math.round(activeFile.progress || 0)}%
+                            </span>
+                          </div>
+                        </div>
+                        <p className="text-gray-600 mt-4">正在解析...</p>
+                        <p className="text-gray-400 text-sm mt-1">{activeFile.parserLabel}</p>
                       </div>
                     </div>
                   )}
 
                   {activeFile.status === 'error' && (
                     <div className="flex items-center justify-center h-full">
-                      <div className="text-center">
+                      <div className="text-center max-w-md">
                         <div className="w-16 h-16 mx-auto mb-4 bg-red-100 rounded-xl flex items-center justify-center">
-                          <XCircle className="w-8 h-8 text-red-500" />
+                          <FileText className="w-8 h-8 text-red-500" />
                         </div>
-                        <p className="text-red-600 mb-2">解析失败</p>
+                        <p className="text-red-600 font-medium mb-2">解析失败</p>
                         <p className="text-gray-500 text-sm">{activeFile.error}</p>
                       </div>
                     </div>
                   )}
 
                   {activeFile.status === 'parsed' && activeFile.markdownContent && (
-                    <div className="p-8">
+                    <div className="p-6">
                       {previewMode === 'rendered' ? (
                         <div className="prose prose-slate max-w-none prose-headings:text-gray-900 prose-p:text-gray-700 prose-a:text-indigo-600 prose-code:text-pink-600 prose-code:bg-pink-50 prose-code:px-1 prose-code:py-0.5 prose-code:rounded prose-pre:bg-gray-900 prose-table:border-collapse prose-th:bg-gray-100 prose-th:border prose-th:border-gray-300 prose-th:p-2 prose-td:border prose-td:border-gray-300 prose-td:p-2">
                           <ReactMarkdown remarkPlugins={[remarkGfm]}>
@@ -555,12 +621,34 @@ export default function ParsingPage() {
                   )}
                 </div>
 
-                {/* 底部信息栏 */}
+                {/* 底部操作栏 */}
                 {activeFile.status === 'parsed' && activeFile.markdownContent && (
-                  <div className="px-6 py-3 border-t bg-gray-50 flex items-center justify-between text-sm text-gray-500">
-                    <div className="flex items-center gap-4">
-                      <span>{activeFile.markdownContent.length.toLocaleString()} 字符</span>
-                      <span>{activeFile.markdownContent.split('\n').length} 行</span>
+                  <div className="px-6 py-4 border-t bg-gradient-to-r from-gray-50 to-white">
+                    <div className="flex items-center justify-between">
+                      <div className="text-sm text-gray-500">
+                        解析完成，可以进入下一步
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <Button
+                          variant="outline"
+                          onClick={goToChunkPreview}
+                          className="gap-2"
+                        >
+                          <Scissors className="w-4 h-4" />
+                          进入切块
+                          <ChevronRight className="w-4 h-4" />
+                        </Button>
+                        <Button
+                          onClick={() => {
+                            // TODO: 直接入库功能
+                            alert('直接入库功能开发中')
+                          }}
+                          className="gap-2 bg-indigo-600 hover:bg-indigo-700"
+                        >
+                          <Database className="w-4 h-4" />
+                          直接入库
+                        </Button>
+                      </div>
                     </div>
                   </div>
                 )}

@@ -18,6 +18,8 @@ import {
 import { Button } from '@/components/ui/button'
 import { documentApi } from '@/lib/api-client'
 import { formatFileSize, formatDate } from '@/lib/utils'
+import { getParserLabel } from '@/lib/parser-options'
+import { getChunkStrategyLabel } from '@/lib/chunk-strategies'
 import type { Document, DocumentChunk } from '@/types'
 
 interface DocumentDetailDialogProps {
@@ -62,6 +64,10 @@ export function DocumentDetailDialog({ document }: DocumentDetailDialogProps) {
   }, [open, document.id])
 
   const chunks: DocumentChunk[] = detail?.chunks || []
+  const parserBackend = (detail?.metadata?.parser_backend as string) || (document.metadata?.parser_backend as string) || ''
+  const chunkStrategy = (detail?.metadata?.chunk_strategy as string) || (document.metadata?.chunk_strategy as string) || ''
+  const parserLabel = parserBackend ? getParserLabel(parserBackend) : null
+  const chunkStrategyLabel = chunkStrategy ? getChunkStrategyLabel(chunkStrategy) : null
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -104,6 +110,12 @@ export function DocumentDetailDialog({ document }: DocumentDetailDialogProps) {
                   创建时间：
                   {formatDate(detail?.created_at || document.created_at)}
                 </p>
+                {(parserLabel || chunkStrategyLabel) && (
+                  <p className="text-xs text-gray-500 mt-1 space-x-2">
+                    {parserLabel && <span>解析：{parserLabel}</span>}
+                    {chunkStrategyLabel && <span>切块：{chunkStrategyLabel}</span>}
+                  </p>
+                )}
               </div>
               <div className="text-right text-xs text-gray-500">
                 <p>
@@ -189,4 +201,3 @@ export function DocumentDetailDialog({ document }: DocumentDetailDialogProps) {
     </Dialog>
   )
 }
-

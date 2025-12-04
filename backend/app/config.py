@@ -71,11 +71,13 @@ class Settings(BaseSettings):
     RETRIEVAL_TOP_K: int = 5
     SIMILARITY_THRESHOLD: float = 0.7
     DEFAULT_PARSER_BACKEND: str = "auto"  # auto | basic | mineru | deepdoc | markitdown
+    DEFAULT_CHUNK_STRATEGY: str = "langchain_recursive"  # langchain_recursive | llama_index
     DEEPDOC_ENABLED: bool = False
     MARKITDOWN_ENABLED: bool = False
     MARKITDOWN_USE_PLUGINS: bool = False
     MARKITDOWN_DOCINTEL_ENDPOINT: str = ""
     MARKITDOWN_DOCINTEL_KEY: str = ""
+    LLAMA_INDEX_ENABLED: bool = False
 
     class Config:
         env_file = ".env"

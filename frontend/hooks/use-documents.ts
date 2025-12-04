@@ -7,11 +7,14 @@ import { useState, useEffect, useCallback } from 'react'
 import { documentApi } from '@/lib/api-client'
 import type { Document } from '@/types'
 import { useParserBackendPreference } from '@/contexts/parser-backend-context'
+import { useChunkStrategyPreference } from '@/contexts/chunk-strategy-context'
 
 export function useDocuments() {
   const [documents, setDocuments] = useState<Document[]>([])
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const { parserBackend } = useParserBackendPreference()
+  const { chunkStrategy } = useChunkStrategyPreference()
 
   /**
    * 加载文档列表
@@ -28,47 +31,6 @@ export function useDocuments() {
       console.error('Load documents error:', err)
     } finally {
       setIsLoading(false)
-    }
-  }, [])
-
-  /**
-   * 上传文档
-   */
-  const uploadDocument = useCallback(
-    async (file: File) => {
-      setIsLoading(true)
-      setError(null)
-
-      try {
-        const newDoc = await documentApi.upload(file, parserBackend)
-        setDocuments((prev) => [newDoc, ...prev])
-
-        // 轮询检查处理状态
-        pollDocumentStatus(newDoc.id)
-
-        return newDoc
-      } catch (err: any) {
-        setError(err.message || 'Failed to upload document')
-        console.error('Upload error:', err)
-        throw err
-      } finally {
-        setIsLoading(false)
-      }
-    },
-    []
-  , [parserBackend, pollDocumentStatus])
-
-  /**
-   * 删除文档
-   */
-  const deleteDocument = useCallback(async (documentId: string) => {
-    try {
-      await documentApi.delete(documentId)
-      setDocuments((prev) => prev.filter((doc) => doc.id !== documentId))
-    } catch (err: any) {
-      setError(err.message || 'Failed to delete document')
-      console.error('Delete error:', err)
-      throw err
     }
   }, [])
 
@@ -118,6 +80,50 @@ export function useDocuments() {
     []
   )
 
+  /**
+   * 上传文档
+   */
+  const uploadDocument = useCallback(
+    async (file: File) => {
+      setIsLoading(true)
+      setError(null)
+
+      try {
+        const newDoc = await documentApi.upload(file, {
+          parser_backend: parserBackend,
+          chunk_strategy: chunkStrategy,
+        })
+        setDocuments((prev) => [newDoc, ...prev])
+
+        // 轮询检查处理状态
+        pollDocumentStatus(newDoc.id)
+
+        return newDoc
+      } catch (err: any) {
+        setError(err.message || 'Failed to upload document')
+        console.error('Upload error:', err)
+        throw err
+      } finally {
+        setIsLoading(false)
+      }
+    },
+    [parserBackend, chunkStrategy, pollDocumentStatus]
+  )
+
+  /**
+   * 删除文档
+   */
+  const deleteDocument = useCallback(async (documentId: string) => {
+    try {
+      await documentApi.delete(documentId)
+      setDocuments((prev) => prev.filter((doc) => doc.id !== documentId))
+    } catch (err: any) {
+      setError(err.message || 'Failed to delete document')
+      console.error('Delete error:', err)
+      throw err
+    }
+  }, [])
+
   // 初始加载
   useEffect(() => {
     loadDocuments()
@@ -133,4 +139,3 @@ export function useDocuments() {
     deleteDocument,
   }
 }
-  const { parserBackend } = useParserBackendPreference()

@@ -2,6 +2,7 @@ import type { Metadata } from "next"
 import { Inter } from "next/font/google"
 import "./globals.css"
 import { ParserBackendProvider } from "@/contexts/parser-backend-context"
+import { ChunkStrategyProvider } from "@/contexts/chunk-strategy-context"
 
 const inter = Inter({ subsets: ["latin"] })
 
@@ -21,7 +22,9 @@ export default function RootLayout({
   return (
     <html lang="zh-CN">
       <body className={inter.className}>
-        <ParserBackendProvider>{children}</ParserBackendProvider>
+        <ParserBackendProvider>
+          <ChunkStrategyProvider>{children}</ChunkStrategyProvider>
+        </ParserBackendProvider>
       </body>
     </html>
   )

@@ -28,6 +28,7 @@ from app.schemas.document import (
 )
 from app.services.document_processor import document_processor
 from app.services.parsers import parser_factory
+from app.services.chunkers import chunker_factory
 from app.services.milvus_store import milvus_store
 from app.services.mineru_service import mineru_service
 from app.config import settings
@@ -40,6 +41,7 @@ async def upload_document(
     background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
     parser_backend: str = Form(default=settings.DEFAULT_PARSER_BACKEND),
+    chunk_strategy: str = Form(default=settings.DEFAULT_CHUNK_STRATEGY),
     db: Session = Depends(get_db)
 ):
     """
@@ -73,6 +75,7 @@ async def upload_document(
 
     try:
         resolved_parser_backend = parser_factory.resolve_backend(file_ext, parser_backend)
+        resolved_chunk_strategy = chunker_factory.resolve_strategy(chunk_strategy)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
 
@@ -101,7 +104,9 @@ async def upload_document(
         processing_progress=0,
         metadata={
             "parser_backend": resolved_parser_backend,
-            "parser_backend_requested": (parser_backend or "").lower()
+            "parser_backend_requested": (parser_backend or "").lower(),
+            "chunk_strategy": resolved_chunk_strategy,
+            "chunk_strategy_requested": (chunk_strategy or "").lower(),
         }
     )
 
@@ -115,7 +120,8 @@ async def upload_document(
         file_path,
         file_id,
         db,
-        resolved_parser_backend
+        resolved_parser_backend,
+        resolved_chunk_strategy
     )
 
     return db_document
@@ -227,6 +233,7 @@ async def delete_document(
 async def preview_document(
     file: UploadFile = File(...),
     parser_backend: str = Form(default=settings.DEFAULT_PARSER_BACKEND),
+    chunk_strategy: str = Form(default=settings.DEFAULT_CHUNK_STRATEGY),
 ):
     """
     文档解析预览接口
@@ -416,6 +423,7 @@ async def preview_chunking(
     chunk_size: int = 1000,
     chunk_overlap: int = 200,
     parser_backend: str = Form(default=settings.DEFAULT_PARSER_BACKEND),
+    chunk_strategy: str = Form(default=settings.DEFAULT_CHUNK_STRATEGY),
 ):
     """
     切块预览接口
@@ -431,8 +439,6 @@ async def preview_chunking(
     Returns:
         切块预览结果，包含每个块的内容和位置信息
     """
-    from langchain_text_splitters import RecursiveCharacterTextSplitter
-
     # 参数校验
     if chunk_size < 100 or chunk_size > 4000:
         raise HTTPException(status_code=400, detail="chunk_size must be between 100 and 4000")
@@ -472,9 +478,16 @@ async def preview_chunking(
         # 解析文档
         documents, resolved_backend = parser_factory.parse(temp_path, parser_backend=parser_backend)
 
+        resolved_chunk_strategy = chunker_factory.resolve_strategy(chunk_strategy)
+        chunker = chunker_factory.get_chunker(
+            resolved_chunk_strategy,
+            chunk_size=chunk_size,
+            chunk_overlap=chunk_overlap
+        )
+        chunks = chunker.split_documents(documents)
+
         # 合并所有页面的文本（保留页码信息）
         page_texts = []
-        page_boundaries = []  # 记录每页在合并文本中的边界
         current_pos = 0
 
         for doc in documents:
@@ -488,33 +501,25 @@ async def preview_chunking(
             })
             current_pos += len(text) + 1  # +1 for separator
 
-        # 合并全文
         full_text = "\n".join([p['text'] for p in page_texts])
-
-        # 创建带位置追踪的文本切分器
-        text_splitter = RecursiveCharacterTextSplitter(
-            chunk_size=chunk_size,
-            chunk_overlap=chunk_overlap,
-            separators=["\n\n", "\n", "。", "！", "？", ".", "!", "?", " ", ""],
-            length_function=len,
-            add_start_index=True,  # 关键：启用起始位置追踪
-        )
-
-        # 执行切分
-        chunks = text_splitter.create_documents([full_text])
+        page_start_map = {item['page']: item['start'] for item in page_texts}
 
         # 构建响应
         chunk_items: List[ChunkPreviewItem] = []
         for idx, chunk in enumerate(chunks):
-            start_idx = chunk.metadata.get('start_index', 0)
-            end_idx = start_idx + len(chunk.page_content)
+            page_num = chunk.metadata.get('page') or chunk.metadata.get('page_number')
+            local_start = chunk.metadata.get('start_char')
+            start_idx = None
 
-            # 确定该 chunk 属于哪一页
-            page_num = None
-            for page_info in page_texts:
-                if start_idx >= page_info['start'] and start_idx < page_info['end']:
-                    page_num = page_info['page']
-                    break
+            if local_start is not None and page_num in page_start_map:
+                start_idx = page_start_map[page_num] + int(local_start)
+            elif page_num in page_start_map:
+                start_idx = page_start_map[page_num]
+            else:
+                # Fallback：无法定位页码时使用前一段末尾
+                start_idx = 0
+
+            end_idx = start_idx + len(chunk.page_content)
 
             chunk_items.append(ChunkPreviewItem(
                 index=idx,
@@ -535,7 +540,8 @@ async def preview_chunking(
             params=ChunkPreviewParams(chunk_size=chunk_size, chunk_overlap=chunk_overlap),
             chunks=chunk_items,
             original_text=full_text if len(full_text) <= 100000 else None,  # 超过 100KB 不返回原文
-            parser_backend=resolved_backend
+            parser_backend=resolved_backend,
+            chunk_strategy=resolved_chunk_strategy
         )
 
     except ValueError as e:
