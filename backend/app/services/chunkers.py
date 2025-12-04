@@ -6,7 +6,7 @@ from __future__ import annotations
 from typing import List, Optional
 
 from langchain_core.documents import Document
-from langchain_text_splitters import RecursiveCharacterTextSplitter
+from langchain_text_splitters import RecursiveCharacterTextSplitter, TokenTextSplitter
 
 from app.config import settings
 
@@ -50,6 +50,56 @@ class LangChainRecursiveChunker(BaseChunker):
         return chunks
 
 
+class LangChainTokenChunker(BaseChunker):
+    """基于 LangChain TokenTextSplitter 的切片器，按 token 数量切分。"""
+
+    def __init__(self, chunk_size: int, chunk_overlap: int, encoding_name: str = "cl100k_base"):
+        """
+        初始化 Token 切片器。
+
+        Args:
+            chunk_size: 每个块的最大 token 数量
+            chunk_overlap: 块之间重叠的 token 数量
+            encoding_name: tiktoken 编码名称，默认 cl100k_base (GPT-4/ChatGPT)
+        """
+        self.chunk_size = chunk_size
+        self.chunk_overlap = chunk_overlap
+        self.encoding_name = encoding_name
+        self.splitter = TokenTextSplitter(
+            chunk_size=chunk_size,
+            chunk_overlap=chunk_overlap,
+            encoding_name=encoding_name,
+        )
+
+    def split_documents(self, documents: List[Document]) -> List[Document]:
+        chunks: List[Document] = []
+        for doc in documents:
+            text = doc.page_content
+            split_texts = self.splitter.split_text(text)
+
+            # 计算每个块的起止位置
+            current_pos = 0
+            for split_text in split_texts:
+                # 查找文本在原文中的位置
+                start_idx = text.find(split_text, current_pos)
+                if start_idx == -1:
+                    start_idx = current_pos
+                end_idx = start_idx + len(split_text)
+
+                metadata = dict(doc.metadata or {})
+                metadata["start_char"] = start_idx
+                metadata["end_char"] = end_idx
+                metadata["chunk_strategy"] = "langchain_token"
+                metadata["encoding_name"] = self.encoding_name
+
+                chunks.append(Document(page_content=split_text, metadata=metadata))
+
+                # 更新搜索位置，考虑重叠
+                current_pos = max(start_idx + 1, end_idx - len(split_text) // 2)
+
+        return chunks
+
+
 class LlamaIndexChunker(BaseChunker):
     """基于 LlamaIndex SentenceSplitter 的切片器。"""
 
@@ -87,6 +137,7 @@ class ChunkerFactory:
 
     SUPPORTED_STRATEGIES = {
         "langchain_recursive": LangChainRecursiveChunker,
+        "langchain_token": LangChainTokenChunker,
         "llama_index": LlamaIndexChunker,
     }
 
