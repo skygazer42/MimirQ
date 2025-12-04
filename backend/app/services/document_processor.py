@@ -2,7 +2,7 @@
 文档处理服务 - 核心处理流程
 """
 from pathlib import Path
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 from sqlalchemy.orm import Session
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_core.documents import Document
@@ -32,7 +32,8 @@ class DocumentProcessorService:
         self,
         file_path: Path,
         document_id: UUID,
-        db: Session
+        db: Session,
+        parser_backend: Optional[str] = None
     ) -> Dict[str, Any]:
         """
         完整的文档处理流程
@@ -60,7 +61,10 @@ class DocumentProcessorService:
 
             # Step 2: 解析文档
             print(f"Parsing document: {file_path}")
-            documents = parser_factory.parse(file_path)
+            documents, resolved_backend = parser_factory.parse(
+                file_path, parser_backend=parser_backend
+            )
+            self._ensure_parser_metadata(db, document_id, resolved_backend)
 
             await self._update_status(
                 db, document_id, "processing", 33, "chunking"
@@ -74,6 +78,7 @@ class DocumentProcessorService:
             for idx, chunk in enumerate(chunks):
                 chunk.metadata['document_id'] = str(document_id)
                 chunk.metadata['chunk_index'] = idx
+                chunk.metadata['parser_backend'] = resolved_backend
 
             await self._update_status(
                 db, document_id, "processing", 66, "embedding"
@@ -112,7 +117,7 @@ class DocumentProcessorService:
                 total_characters=total_chars
             )
 
-            print(f"✅ Document processed successfully: {len(chunks)} chunks")
+            print(f"✅ Document processed successfully: {len(chunks)} chunks via {resolved_backend}")
 
             # Step 7: 重新构建 BM25 索引（包含所有文档）
             await self._rebuild_bm25_index(db)
@@ -120,7 +125,8 @@ class DocumentProcessorService:
             return {
                 "status": "success",
                 "chunk_count": len(chunks),
-                "total_characters": total_chars
+                "total_characters": total_chars,
+                "parser_backend": resolved_backend
             }
 
         except Exception as e:
@@ -198,6 +204,27 @@ class DocumentProcessorService:
 
         except Exception as e:
             print(f"⚠️  Failed to rebuild BM25 index: {str(e)}")
+
+    def _ensure_parser_metadata(
+        self,
+        db: Session,
+        document_id: UUID,
+        parser_backend: str
+    ):
+        """确保文档元数据里记录了最终选用的解析器。"""
+        db_doc = db.query(DBDocument).filter(
+            DBDocument.id == document_id
+        ).first()
+
+        if not db_doc:
+            return
+
+        metadata = dict(db_doc.metadata or {})
+        metadata["parser_backend"] = parser_backend
+
+        db_doc.metadata = metadata
+        db.commit()
+        db.refresh(db_doc)
             # 不抛出异常，避免影响文档处理流程
 
 
