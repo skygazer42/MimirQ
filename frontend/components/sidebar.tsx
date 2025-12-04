@@ -20,8 +20,8 @@ import { cn } from '@/lib/utils'
 import type { Document } from '@/types'
 import { ManualUploadDialog } from '@/components/manual-upload-dialog'
 import { DocumentDetailDialog } from '@/components/document-detail-dialog'
-import { ParserBackendSelect } from '@/components/parser-backend-select'
 import { getParserLabel } from '@/lib/parser-options'
+import { getChunkStrategyLabel } from '@/lib/chunk-strategies'
 
 export function Sidebar() {
   const { documents, isLoading, uploadDocument, deleteDocument, loadDocuments } = useDocuments()
@@ -93,10 +93,6 @@ export function Sidebar() {
         {/* 高级手动切片上传 */}
         <ManualUploadDialog onUploaded={loadDocuments} />
 
-        <div className="mt-3">
-          <ParserBackendSelect compact />
-        </div>
-
         {selectedDocIds.length > 0 && (
           <p className="mt-3 text-xs text-gray-500 text-center">
             已选择 {selectedDocIds.length} 个文档
@@ -156,6 +152,8 @@ function DocumentCard({
   const [showDelete, setShowDelete] = useState(false)
   const parserBackend = (document.metadata?.parser_backend as string) || ''
   const parserLabel = parserBackend ? getParserLabel(parserBackend) : null
+  const chunkStrategyValue = (document.metadata?.chunk_strategy as string) || ''
+  const chunkStrategyLabel = chunkStrategyValue ? getChunkStrategyLabel(chunkStrategyValue) : null
 
   return (
     <div
@@ -211,6 +209,7 @@ function DocumentCard({
             <div className="text-xs text-gray-500 mt-1 flex flex-col gap-0.5">
               <span>{document.chunk_count} 个片段</span>
               {parserLabel && <span>解析器：{parserLabel}</span>}
+              {chunkStrategyLabel && <span>切块：{chunkStrategyLabel}</span>}
             </div>
           )}
 

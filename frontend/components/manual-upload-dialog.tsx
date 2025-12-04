@@ -19,7 +19,6 @@ import { Button } from '@/components/ui/button'
 import { documentApi } from '@/lib/api-client'
 import { formatFileSize } from '@/lib/utils'
 import type { DocumentPreview, ManualChunk } from '@/types'
-import { ParserBackendSelect } from '@/components/parser-backend-select'
 import { useParserBackendPreference } from '@/contexts/parser-backend-context'
 import { getParserLabel } from '@/lib/parser-options'
 
@@ -224,10 +223,6 @@ export function ManualUploadDialog({ onUploaded }: ManualUploadDialogProps) {
             “## ”）。
           </DialogDescription>
         </DialogHeader>
-
-        <div className="mb-4">
-          <ParserBackendSelect />
-        </div>
 
         <div className="space-y-4">
           {/* 文件选择 */}

@@ -460,6 +460,18 @@ CHUNK_OVERLAP=200
 RETRIEVAL_TOP_K=5
 SIMILARITY_THRESHOLD=0.7
 
+### 解析 / 切块能力开关
+
+| 变量 | 说明 | 默认 |
+|------|------|------|
+| `DEFAULT_PARSER_BACKEND` | `auto/basic/mineru/deepdoc/markitdown`，控制未指定时使用的解析器 | `auto` |
+| `DEEPDOC_ENABLED` | 启用 DeepDoc 解析。需要将 DeepDoc 包放在 `backend/deepdoc` 或通过 `pip install deepdoc` 安装 | `false` |
+| `MARKITDOWN_ENABLED` | 开启微软 MarkItDown 解析，配合 `MARKITDOWN_USE_PLUGINS` 等配置 | `false` |
+| `MINERU_ENABLED` | 开启 MinerU 在线解析（需 `MINERU_API_TOKEN`） | `false` |
+| `DEFAULT_CHUNK_STRATEGY` | 默认切块策略：`langchain_recursive` 或 `llama_index` | `langchain_recursive` |
+| `LLAMA_INDEX_ENABLED` | 允许调用 LlamaIndex SentenceSplitter；为 `true` 前端才可选择该切块方式 | `false` |
+
+
 # === 应用配置 ===
 UPLOAD_DIR=/app/uploads
 MAX_UPLOAD_SIZE=10485760  # 10MB

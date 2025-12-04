@@ -129,4 +129,5 @@ export interface ChunkPreviewResponse {
   chunks: ChunkPreviewItem[]
   original_text?: string
   parser_backend: string
+  chunk_strategy: string
 }

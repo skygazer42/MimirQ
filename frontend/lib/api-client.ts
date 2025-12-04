@@ -27,10 +27,14 @@ export const documentApi = {
   /**
    * 上传文档
    */
-  async upload(file: File, parserBackend = 'auto'): Promise<Document> {
+  async upload(
+    file: File,
+    options: { parser_backend?: string; chunk_strategy?: string } = {}
+  ): Promise<Document> {
     const formData = new FormData()
     formData.append('file', file)
-    formData.append('parser_backend', parserBackend)
+    formData.append('parser_backend', options.parser_backend || 'auto')
+    formData.append('chunk_strategy', options.chunk_strategy || 'langchain_recursive')
 
     const { data } = await apiClient.post('/documents/upload', formData, {
       headers: {
@@ -123,11 +127,17 @@ export const documentApi = {
    */
   async chunkPreview(
     file: File,
-    params: { chunk_size?: number; chunk_overlap?: number; parser_backend?: string } = {}
+    params: {
+      chunk_size?: number
+      chunk_overlap?: number
+      parser_backend?: string
+      chunk_strategy?: string
+    } = {}
   ): Promise<ChunkPreviewResponse> {
     const formData = new FormData()
     formData.append('file', file)
     formData.append('parser_backend', params.parser_backend || 'auto')
+    formData.append('chunk_strategy', params.chunk_strategy || 'langchain_recursive')
 
     const { data } = await apiClient.post('/documents/chunk-preview', formData, {
       headers: {

@@ -33,7 +33,14 @@
       "Bash(netstat:*)",
       "Bash(curl:*)",
       "Bash(python3:*)",
-      "Bash(tail:*)"
+      "Bash(tail:*)",
+      "WebSearch",
+      "WebFetch(domain:ragflow.io)",
+      "WebFetch(domain:blog.csdn.net)",
+      "WebFetch(domain:www.cnblogs.com)",
+      "WebFetch(domain:docs.dify.ai)",
+      "Bash(npm run build:*)",
+      "Bash(xargs:*)"
     ],
     "deny": [],
     "ask": []

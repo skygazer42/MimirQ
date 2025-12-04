@@ -4,7 +4,6 @@
 from pathlib import Path
 from typing import Dict, Any, List, Optional
 from sqlalchemy.orm import Session
-from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_core.documents import Document
 from uuid import UUID
 import asyncio
@@ -12,6 +11,7 @@ import asyncio
 from app.config import settings
 from app.models.document import Document as DBDocument, DocumentChunk
 from app.services.parsers import parser_factory
+from app.services.chunkers import chunker_factory
 from app.services.milvus_store import milvus_store
 from app.services.hybrid_retriever import hybrid_retriever
 
@@ -20,20 +20,15 @@ class DocumentProcessorService:
     """文档处理服务"""
 
     def __init__(self):
-        # LangChain 文本切片器
-        self.text_splitter = RecursiveCharacterTextSplitter(
-            chunk_size=settings.CHUNK_SIZE,
-            chunk_overlap=settings.CHUNK_OVERLAP,
-            separators=["\n\n", "\n", "。", "！", "？", ".", "!", "?", " ", ""],
-            length_function=len,
-        )
+        pass
 
     async def process_document(
         self,
         file_path: Path,
         document_id: UUID,
         db: Session,
-        parser_backend: Optional[str] = None
+        parser_backend: Optional[str] = None,
+        chunk_strategy: Optional[str] = None
     ) -> Dict[str, Any]:
         """
         完整的文档处理流程
@@ -64,7 +59,13 @@ class DocumentProcessorService:
             documents, resolved_backend = parser_factory.parse(
                 file_path, parser_backend=parser_backend
             )
-            self._ensure_parser_metadata(db, document_id, resolved_backend)
+            resolved_chunk_strategy = chunker_factory.resolve_strategy(chunk_strategy)
+            self._record_processing_metadata(
+                db,
+                document_id,
+                parser_backend=resolved_backend,
+                chunk_strategy=resolved_chunk_strategy
+            )
 
             await self._update_status(
                 db, document_id, "processing", 33, "chunking"
@@ -72,13 +73,19 @@ class DocumentProcessorService:
 
             # Step 3: 文本切片
             print(f"Chunking document into smaller pieces...")
-            chunks = self.text_splitter.split_documents(documents)
+            chunker = chunker_factory.get_chunker(
+                resolved_chunk_strategy,
+                chunk_size=settings.CHUNK_SIZE,
+                chunk_overlap=settings.CHUNK_OVERLAP
+            )
+            chunks = chunker.split_documents(documents)
 
             # 为每个 chunk 添加元数据
             for idx, chunk in enumerate(chunks):
                 chunk.metadata['document_id'] = str(document_id)
                 chunk.metadata['chunk_index'] = idx
                 chunk.metadata['parser_backend'] = resolved_backend
+                chunk.metadata['chunk_strategy'] = resolved_chunk_strategy
 
             await self._update_status(
                 db, document_id, "processing", 66, "embedding"
@@ -117,7 +124,10 @@ class DocumentProcessorService:
                 total_characters=total_chars
             )
 
-            print(f"✅ Document processed successfully: {len(chunks)} chunks via {resolved_backend}")
+            print(
+                f"✅ Document processed successfully: {len(chunks)} chunks "
+                f"(parser={resolved_backend}, chunker={resolved_chunk_strategy})"
+            )
 
             # Step 7: 重新构建 BM25 索引（包含所有文档）
             await self._rebuild_bm25_index(db)
@@ -126,7 +136,8 @@ class DocumentProcessorService:
                 "status": "success",
                 "chunk_count": len(chunks),
                 "total_characters": total_chars,
-                "parser_backend": resolved_backend
+                "parser_backend": resolved_backend,
+                "chunk_strategy": resolved_chunk_strategy
             }
 
         except Exception as e:
@@ -181,6 +192,8 @@ class DocumentProcessorService:
                 chunk_index=idx,
                 content=chunk.page_content,
                 page_number=chunk.metadata.get('page'),
+                start_char=chunk.metadata.get('start_char'),
+                end_char=chunk.metadata.get('end_char'),
                 metadata=chunk.metadata,
                 vector_id=vector_id
             )
@@ -205,11 +218,12 @@ class DocumentProcessorService:
         except Exception as e:
             print(f"⚠️  Failed to rebuild BM25 index: {str(e)}")
 
-    def _ensure_parser_metadata(
+    def _record_processing_metadata(
         self,
         db: Session,
         document_id: UUID,
-        parser_backend: str
+        parser_backend: str,
+        chunk_strategy: str
     ):
         """确保文档元数据里记录了最终选用的解析器。"""
         db_doc = db.query(DBDocument).filter(
@@ -221,7 +235,9 @@ class DocumentProcessorService:
 
         metadata = dict(db_doc.metadata or {})
         metadata["parser_backend"] = parser_backend
+        metadata["chunk_strategy"] = chunk_strategy
         metadata.setdefault("parser_backend_requested", parser_backend)
+        metadata.setdefault("chunk_strategy_requested", chunk_strategy)
 
         db_doc.metadata = metadata
         db.commit()
