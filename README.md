@@ -320,9 +320,13 @@ npm run build
 
 ### 核心文档
 
-- [Milvus 向量数据库指南](./MILVUS_GUIDE.md) - 索引类型、性能调优、GPU 加速
-- [RAG 优化指南](./RAG_OPTIMIZATION.md) - 对话历史、混合检索、Rerank
-- [LangChain Agent 迁移文档](./LANGCHAIN_AGENT_MIGRATION.md) - Agent 架构、Checkpoint 管理
+- [快速入门](./docs/quickstart.md) - 本地开发、Docker Compose、环境检查
+- [Milvus 向量数据库指南](./docs/guides/milvus_guide.md) - 索引类型、性能调优、GPU 加速
+- [RAG 优化指南](./docs/guides/rag_optimization.md) - 对话历史、混合检索、Rerank
+- [LangChain Agent 迁移文档](./docs/guides/langchain_agent_migration.md) - Agent 架构、Checkpoint 管理
+- [依赖说明](./docs/guides/dependencies.md) - 不同解析及 Embedding 模式的依赖组合
+- [MinerU 集成](./docs/integrations/mineru_integration.md) - 高级 PDF 解析配置
+- [ChromaDB → Milvus 迁移](./docs/integrations/migration_chromadb_to_milvus.md) - 架构选择、数据迁移脚本
 
 ### API 文档
 
