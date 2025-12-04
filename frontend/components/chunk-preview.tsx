@@ -27,6 +27,7 @@ import { useParserBackendPreference } from '@/contexts/parser-backend-context'
 import { useChunkStrategyPreference } from '@/contexts/chunk-strategy-context'
 import { getParserLabel } from '@/lib/parser-options'
 import { getChunkStrategyLabel, getChunkStrategyOption } from '@/lib/chunk-strategies'
+import { ChunkStrategyDropdown } from '@/components/ui/chunk-strategy-dropdown'
 
 // 分隔符配置
 const SEPARATORS = ['\\n\\n', '\\n', '。', '！', '？', '.', '!', '?']
@@ -55,12 +56,15 @@ export function ChunkPreview({ onConfirm, onClose }: ChunkPreviewProps) {
   // 选中的块索引（用于高亮联动）
   const [hoveredChunkIndex, setHoveredChunkIndex] = useState<number | null>(null)
   const { parserBackend } = useParserBackendPreference()
-  const { chunkStrategy } = useChunkStrategyPreference()
+  const { chunkStrategy, setChunkStrategy } = useChunkStrategyPreference()
   const chunkStrategyOption = getChunkStrategyOption(chunkStrategy)
   const resolvedChunkStrategy = previewData?.chunk_strategy || chunkStrategy
   const resolvedChunkLabel = getChunkStrategyLabel(resolvedChunkStrategy)
   const resolvedChunkOption = getChunkStrategyOption(resolvedChunkStrategy)
-  const isLangChainStrategy = resolvedChunkStrategy === 'langchain_recursive'
+  // 判断当前策略类型
+  const isRecursiveStrategy = chunkStrategy === 'langchain_recursive'
+  const isTokenStrategy = chunkStrategy === 'langchain_token'
+  const isSentenceStrategy = chunkStrategy === 'llama_index'
 
   // 处理文件拖放
   const handleDragOver = useCallback((e: React.DragEvent) => {
@@ -309,51 +313,51 @@ export function ChunkPreview({ onConfirm, onClose }: ChunkPreviewProps) {
             </h2>
 
             <div className="space-y-6">
-              <div className="rounded-lg border border-indigo-100 bg-indigo-50/60 p-3">
-                <div className="text-[11px] font-semibold text-indigo-700 uppercase tracking-wide">
-                  当前切块策略
-                </div>
-                <div className="text-sm font-bold text-gray-900 mt-1">
-                  {chunkStrategyOption.label}
-                </div>
-                <p className="text-xs text-gray-600 mt-1 leading-relaxed">
-                  {chunkStrategyOption.description}
-                </p>
-                {previewData && (
-                  <p className="text-[11px] text-indigo-500 mt-2">
-                    本次预览使用：{getChunkStrategyLabel(previewData.chunk_strategy)}
-                  </p>
-                )}
+              {/* 切块策略选择 */}
+              <div>
+                <label className="text-xs font-medium text-gray-600 mb-2 block">切块策略</label>
+                <ChunkStrategyDropdown
+                  value={chunkStrategy}
+                  onChange={setChunkStrategy}
+                />
               </div>
 
               {/* Chunk Size */}
               <div>
                 <div className="flex justify-between mb-2">
-                  <label className="text-xs font-medium text-gray-600">Chunk Size (块大小)</label>
+                  <label className="text-xs font-medium text-gray-600">
+                    {isTokenStrategy ? 'Token 数量' : 'Chunk Size (块大小)'}
+                  </label>
                   <span className="text-xs bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded font-mono">
                     {chunkSize}
                   </span>
                 </div>
                 <input
                   type="range"
-                  min="100"
-                  max="4000"
-                  step="100"
+                  min={isTokenStrategy ? 50 : 100}
+                  max={isTokenStrategy ? 2000 : 4000}
+                  step={isTokenStrategy ? 50 : 100}
                   value={chunkSize}
                   onChange={(e) => setChunkSize(Number(e.target.value))}
                   className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-indigo-600"
                 />
                 <div className="flex justify-between text-[10px] text-gray-400 mt-1">
-                  <span>100</span>
-                  <span>4000</span>
+                  <span>{isTokenStrategy ? 50 : 100}</span>
+                  <span>{isTokenStrategy ? 2000 : 4000}</span>
                 </div>
-                <p className="text-[10px] text-gray-400 mt-1">每个切片的最大字符数</p>
+                <p className="text-[10px] text-gray-400 mt-1">
+                  {isTokenStrategy
+                    ? '每个切片的最大 Token 数量（GPT-4 编码）'
+                    : '每个切片的最大字符数'}
+                </p>
               </div>
 
               {/* Overlap */}
               <div>
                 <div className="flex justify-between mb-2">
-                  <label className="text-xs font-medium text-gray-600">Overlap (重叠)</label>
+                  <label className="text-xs font-medium text-gray-600">
+                    {isTokenStrategy ? 'Token 重叠' : 'Overlap (重叠)'}
+                  </label>
                   <span className="text-xs bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded font-mono">
                     {chunkOverlap}
                   </span>
@@ -361,21 +365,25 @@ export function ChunkPreview({ onConfirm, onClose }: ChunkPreviewProps) {
                 <input
                   type="range"
                   min="0"
-                  max={Math.min(1000, chunkSize - 100)}
-                  step="50"
+                  max={Math.min(isTokenStrategy ? 500 : 1000, chunkSize - (isTokenStrategy ? 50 : 100))}
+                  step={isTokenStrategy ? 25 : 50}
                   value={chunkOverlap}
                   onChange={(e) => setChunkOverlap(Number(e.target.value))}
                   className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-indigo-600"
                 />
                 <div className="flex justify-between text-[10px] text-gray-400 mt-1">
                   <span>0</span>
-                  <span>{Math.min(1000, chunkSize - 100)}</span>
+                  <span>{Math.min(isTokenStrategy ? 500 : 1000, chunkSize - (isTokenStrategy ? 50 : 100))}</span>
                 </div>
-                <p className="text-[10px] text-gray-400 mt-1">相邻切片间的重叠字符</p>
+                <p className="text-[10px] text-gray-400 mt-1">
+                  {isTokenStrategy
+                    ? '相邻切片间的重叠 Token 数'
+                    : '相邻切片间的重叠字符'}
+                </p>
               </div>
 
-              {/* 分隔符 / 句子提示 */}
-              {isLangChainStrategy ? (
+              {/* 策略说明 */}
+              {isRecursiveStrategy && (
                 <div>
                   <label className="text-xs font-medium text-gray-600 mb-2 block">分隔符优先级</label>
                   <div className="flex flex-wrap gap-1.5">
@@ -392,13 +400,28 @@ export function ChunkPreview({ onConfirm, onClose }: ChunkPreviewProps) {
                     RecursiveCharacterTextSplitter 按上述顺序递归查找分隔符
                   </p>
                 </div>
-              ) : (
-                <div className="text-xs text-gray-600">
-                  <label className="font-medium block mb-2">句子粒度切分提示</label>
-                  <p className="text-gray-500 leading-relaxed">
-                    LlamaIndex SentenceSplitter 会根据语义断句（支持多语言），并自动携带
-                    <span className="font-semibold text-gray-700"> 起止字符位置 </span>
-                    与页码。可继续调整块大小与重叠，获得更平滑的检索体验。
+              )}
+
+              {isTokenStrategy && (
+                <div className="rounded-lg border border-amber-200 bg-amber-50 p-3">
+                  <div className="text-[11px] font-semibold text-amber-700 uppercase tracking-wide mb-1">
+                    Token 切分说明
+                  </div>
+                  <p className="text-xs text-amber-800 leading-relaxed">
+                    使用 <span className="font-mono bg-amber-100 px-1 rounded">cl100k_base</span> 编码（GPT-4/ChatGPT），
+                    按 Token 数量精确切分，适合需要控制 LLM 输入长度的场景。
+                  </p>
+                </div>
+              )}
+
+              {isSentenceStrategy && (
+                <div className="rounded-lg border border-green-200 bg-green-50 p-3">
+                  <div className="text-[11px] font-semibold text-green-700 uppercase tracking-wide mb-1">
+                    句子切分说明
+                  </div>
+                  <p className="text-xs text-green-800 leading-relaxed">
+                    LlamaIndex SentenceSplitter 会根据语义断句（支持多语言），
+                    自动保留句子边界和起止位置信息，获得更平滑的检索体验。
                   </p>
                 </div>
               )}
