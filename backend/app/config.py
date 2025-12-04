@@ -70,8 +70,12 @@ class Settings(BaseSettings):
     CHUNK_OVERLAP: int = 200
     RETRIEVAL_TOP_K: int = 5
     SIMILARITY_THRESHOLD: float = 0.7
-    DEFAULT_PARSER_BACKEND: str = "auto"  # auto | basic | mineru | deepdoc
+    DEFAULT_PARSER_BACKEND: str = "auto"  # auto | basic | mineru | deepdoc | markitdown
     DEEPDOC_ENABLED: bool = False
+    MARKITDOWN_ENABLED: bool = False
+    MARKITDOWN_USE_PLUGINS: bool = False
+    MARKITDOWN_DOCINTEL_ENDPOINT: str = ""
+    MARKITDOWN_DOCINTEL_KEY: str = ""
 
     class Config:
         env_file = ".env"

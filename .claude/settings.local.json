@@ -28,7 +28,12 @@
       "Bash(shapely==2.0.3 )",
       "Bash(tqdm==4.66.4 )",
       "Bash(xgboost==2.0.3 )",
-      "Bash(ls:*)"
+      "Bash(ls:*)",
+      "Bash(lsof:*)",
+      "Bash(netstat:*)",
+      "Bash(curl:*)",
+      "Bash(python3:*)",
+      "Bash(tail:*)"
     ],
     "deny": [],
     "ask": []

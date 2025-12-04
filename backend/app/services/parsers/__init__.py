@@ -11,24 +11,28 @@ from langchain_core.documents import Document
 from app.services.parsers.pdf_parser import PDFParser
 from app.services.parsers.text_parser import TextParser, MarkdownParser
 from app.services.parsers.mineru_parser import MinerUParser
+from app.services.parsers.markitdown_parser import MarkItDownParser
 from app.config import settings
 
 
 class ParserFactory:
     """根据文件类型选择合适的解析器"""
 
-    SUPPORTED_PDF_BACKENDS = {"auto", "basic", "mineru", "deepdoc"}
+    SUPPORTED_PDF_BACKENDS = {"auto", "basic", "mineru", "deepdoc", "markitdown"}
 
     def __init__(self):
         self._basic_pdf_parser = PDFParser()
         self._mineru_parser: Optional[MinerUParser] = None
         self._deepdoc_parser: Optional["DeepDocParser"] = None
+        self._markitdown_parser: Optional[MarkItDownParser] = None
 
         print("📄 PyMuPDF parser ready for basic PDF parsing")
         if settings.MINERU_ENABLED and settings.MINERU_API_TOKEN:
             print("🚀 MinerU parser available for PDF parsing (requires selection)")
         if settings.DEEPDOC_ENABLED:
             print("🧠 DeepDoc parser available for PDF parsing (requires selection)")
+        if settings.MARKITDOWN_ENABLED:
+            print("📝 MarkItDown parser available for PDF parsing (requires selection)")
 
         self.parsers = {
             ".txt": TextParser(),
@@ -56,6 +60,10 @@ class ParserFactory:
             )
 
         if normalized == "auto":
+            if settings.DEEPDOC_ENABLED:
+                return "deepdoc"
+            if settings.MARKITDOWN_ENABLED:
+                return "markitdown"
             if settings.MINERU_ENABLED and settings.MINERU_API_TOKEN:
                 return "mineru"
             return "basic"
@@ -72,6 +80,11 @@ class ParserFactory:
             if not settings.DEEPDOC_ENABLED:
                 raise ValueError("DeepDoc parser is not enabled. Set DEEPDOC_ENABLED=True to use it.")
             return "deepdoc"
+
+        if normalized == "markitdown":
+            if not settings.MARKITDOWN_ENABLED:
+                raise ValueError("MarkItDown parser is not enabled. Set MARKITDOWN_ENABLED=True to use it.")
+            return "markitdown"
 
         raise ValueError(f"Unsupported parser backend '{normalized}'")
 
@@ -111,6 +124,12 @@ class ParserFactory:
                 print("🧠 Initializing DeepDoc parser for PDF (structure-aware parsing)")
                 self._deepdoc_parser = DeepDocParser()
             return self._deepdoc_parser
+
+        if backend == "markitdown":
+            if self._markitdown_parser is None:
+                print("📝 Initializing MarkItDown parser for PDF (markdown-focused parsing)")
+                self._markitdown_parser = MarkItDownParser()
+            return self._markitdown_parser
 
         raise ValueError(f"Unsupported PDF parser backend '{backend}'")
 

@@ -23,6 +23,9 @@ import {
 import { Button } from '@/components/ui/button'
 import { documentApi } from '@/lib/api-client'
 import type { ChunkPreviewResponse, ChunkPreviewItem } from '@/types'
+import { ParserBackendSelect } from '@/components/parser-backend-select'
+import { useParserBackendPreference } from '@/contexts/parser-backend-context'
+import { getParserLabel } from '@/lib/parser-options'
 
 // 分隔符配置
 const SEPARATORS = ['\\n\\n', '\\n', '。', '！', '？', '.', '!', '?']
@@ -50,6 +53,7 @@ export function ChunkPreview({ onConfirm, onClose }: ChunkPreviewProps) {
 
   // 选中的块索引（用于高亮联动）
   const [hoveredChunkIndex, setHoveredChunkIndex] = useState<number | null>(null)
+  const { parserBackend } = useParserBackendPreference()
 
   // 处理文件拖放
   const handleDragOver = useCallback((e: React.DragEvent) => {
@@ -95,6 +99,7 @@ export function ChunkPreview({ onConfirm, onClose }: ChunkPreviewProps) {
       const data = await documentApi.chunkPreview(file, {
         chunk_size: chunkSize,
         chunk_overlap: chunkOverlap,
+        parser_backend: parserBackend,
       })
       setPreviewData(data)
     } catch (err: any) {
@@ -102,7 +107,7 @@ export function ChunkPreview({ onConfirm, onClose }: ChunkPreviewProps) {
     } finally {
       setIsLoading(false)
     }
-  }, [file, chunkSize, chunkOverlap])
+  }, [file, chunkSize, chunkOverlap, parserBackend])
 
   // 确认入库
   const handleSubmit = useCallback(async () => {
@@ -130,6 +135,7 @@ export function ChunkPreview({ onConfirm, onClose }: ChunkPreviewProps) {
           chunk_size: chunkSize,
           chunk_overlap: chunkOverlap,
           strategy: 'RecursiveCharacterTextSplitter',
+          parser_backend: previewData.parser_backend,
         },
       })
 
@@ -227,14 +233,21 @@ export function ChunkPreview({ onConfirm, onClose }: ChunkPreviewProps) {
             <p className="text-xs text-gray-500">
               {file.name} · {formatFileSize(file.size)}
               {previewData && (
-                <span className="ml-2 text-indigo-600">
-                  · 已生成 {previewData.total_chunks} 个切块
-                </span>
+                <>
+                  <span className="ml-2 text-indigo-600">
+                    · 已生成 {previewData.total_chunks} 个切块
+                  </span>
+                  <span className="ml-2 text-gray-500">
+                    · 使用 {getParserLabel(previewData.parser_backend)}
+                  </span>
+                </>
               )}
             </p>
           </div>
         </div>
-
+        <div className="w-64">
+          <ParserBackendSelect compact />
+        </div>
         <div className="flex items-center gap-3">
           {submitSuccess && (
             <div className="flex items-center gap-2 text-green-600 text-sm bg-green-50 px-3 py-1.5 rounded-lg">

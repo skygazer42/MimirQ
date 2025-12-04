@@ -27,9 +27,10 @@ export const documentApi = {
   /**
    * 上传文档
    */
-  async upload(file: File): Promise<Document> {
+  async upload(file: File, parserBackend = 'auto'): Promise<Document> {
     const formData = new FormData()
     formData.append('file', file)
+    formData.append('parser_backend', parserBackend)
 
     const { data } = await apiClient.post('/documents/upload', formData, {
       headers: {
@@ -89,9 +90,10 @@ export const documentApi = {
   /**
    * 文档解析预览（仅解析，不入库）
    */
-  async preview(file: File): Promise<DocumentPreview> {
+  async preview(file: File, parserBackend = 'auto'): Promise<DocumentPreview> {
     const formData = new FormData()
     formData.append('file', file)
+    formData.append('parser_backend', parserBackend)
 
     const { data } = await apiClient.post('/documents/preview', formData, {
       headers: {
@@ -121,10 +123,11 @@ export const documentApi = {
    */
   async chunkPreview(
     file: File,
-    params: { chunk_size?: number; chunk_overlap?: number } = {}
+    params: { chunk_size?: number; chunk_overlap?: number; parser_backend?: string } = {}
   ): Promise<ChunkPreviewResponse> {
     const formData = new FormData()
     formData.append('file', file)
+    formData.append('parser_backend', params.parser_backend || 'auto')
 
     const { data } = await apiClient.post('/documents/chunk-preview', formData, {
       headers: {
