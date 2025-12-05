@@ -2,7 +2,7 @@
 应用配置管理
 """
 from pydantic_settings import BaseSettings
-from pydantic import AliasChoices, Field
+from pydantic import AliasChoices, Field, field_validator
 from typing import List
 
 
@@ -46,6 +46,13 @@ class Settings(BaseSettings):
     UPLOAD_DIR: str = "./uploads"
     MAX_FILE_SIZE: int = 50_000_000  # 50MB
     ALLOWED_EXTENSIONS: List[str] = [".pdf", ".txt", ".md"]
+
+    @field_validator("ALLOWED_EXTENSIONS", mode="before")
+    @classmethod
+    def parse_allowed_extensions(cls, v):
+        if isinstance(v, str):
+            return [ext.strip() for ext in v.split(",") if ext.strip()]
+        return v
 
     # MinerU Online API
     MINERU_API_TOKEN: str = ""
