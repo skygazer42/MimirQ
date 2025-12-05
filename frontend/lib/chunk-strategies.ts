@@ -2,7 +2,7 @@ export interface ChunkStrategyOption {
   value: string
   label: string
   description: string
-  icon: 'recursive' | 'token' | 'sentence'
+  icon: 'recursive' | 'token' | 'sentence' | 'hierarchical'
   badge?: string
 }
 
@@ -26,6 +26,13 @@ export const CHUNK_STRATEGY_OPTIONS: ChunkStrategyOption[] = [
     label: 'LlamaIndex 句子切分',
     description: '按句子语义切片，支持多语言，保留句子边界',
     icon: 'sentence',
+  },
+  {
+    value: 'llama_index_hierarchical',
+    label: 'LlamaIndex 分层切分',
+    description: '父子块多级切分，保留 parent 关系，适合 AutoMerging 检索',
+    icon: 'hierarchical',
+    badge: '父子块',
   },
 ]
 

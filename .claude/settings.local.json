@@ -40,7 +40,9 @@
       "WebFetch(domain:www.cnblogs.com)",
       "WebFetch(domain:docs.dify.ai)",
       "Bash(npm run build:*)",
-      "Bash(xargs:*)"
+      "Bash(xargs:*)",
+      "Bash(cp:*)",
+      "Bash(python -m uvicorn:*)"
     ],
     "deny": [],
     "ask": []

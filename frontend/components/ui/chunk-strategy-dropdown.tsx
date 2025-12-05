@@ -9,6 +9,7 @@ import {
   Layers,
   Hash,
   AlignLeft,
+  GitBranch,
   ChevronDown,
   Check,
 } from 'lucide-react'
@@ -20,6 +21,7 @@ const ICON_MAP = {
   recursive: Layers,
   token: Hash,
   sentence: AlignLeft,
+  hierarchical: GitBranch,
 }
 
 // 颜色映射
@@ -27,6 +29,7 @@ const COLOR_MAP = {
   recursive: { bg: 'bg-indigo-100', text: 'text-indigo-600' },
   token: { bg: 'bg-amber-100', text: 'text-amber-600' },
   sentence: { bg: 'bg-green-100', text: 'text-green-600' },
+  hierarchical: { bg: 'bg-purple-100', text: 'text-purple-600' },
 }
 
 interface ChunkStrategyDropdownProps {

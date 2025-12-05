@@ -7,6 +7,8 @@ from typing import List, Optional
 
 from langchain_core.documents import Document
 from langchain_text_splitters import RecursiveCharacterTextSplitter, TokenTextSplitter
+from llama_index.core.node_parser import HierarchicalNodeParser
+from llama_index.core.schema import NodeRelationship
 
 from app.config import settings
 
@@ -132,6 +134,66 @@ class LlamaIndexChunker(BaseChunker):
         return chunks
 
 
+class LlamaIndexHierarchicalChunker(BaseChunker):
+    """LlamaIndex HierarchicalNodeParser，生成父子块并保留层级信息。"""
+
+    def __init__(self, chunk_size: int, chunk_overlap: int):
+        # 构造多级 chunk_sizes：顶层使用传入值，向下按 1/2、1/4 递减
+        base = max(chunk_size, 1)
+        self.chunk_sizes = [
+            base,
+            max(base // 2, 1),
+            max(base // 4, 1),
+        ]
+        self.chunk_overlap = max(chunk_overlap, 0)
+        try:
+            self.parser = HierarchicalNodeParser.from_defaults(
+                chunk_sizes=self.chunk_sizes,
+                chunk_overlap=self.chunk_overlap,
+            )
+        except TypeError:
+            # 旧版本 HierarchicalNodeParser 不支持 chunk_overlap 参数
+            self.parser = HierarchicalNodeParser.from_defaults(
+                chunk_sizes=self.chunk_sizes,
+            )
+
+    def split_documents(self, documents: List[Document]) -> List[Document]:
+        from llama_index.core import Document as LlamaDocument
+
+        chunks: List[Document] = []
+        for doc in documents:
+            li_doc = LlamaDocument(text=doc.page_content, metadata=dict(doc.metadata or {}))
+            nodes = self.parser.get_nodes_from_documents([li_doc])
+            for node in nodes:
+                metadata = dict(doc.metadata or {})
+                metadata.update(getattr(node, "metadata", {}) or {})
+
+                start_idx = getattr(node, "start_char_idx", None)
+                end_idx = getattr(node, "end_char_idx", None)
+                if start_idx is not None:
+                    metadata["start_char"] = int(start_idx)
+                if end_idx is not None:
+                    metadata["end_char"] = int(end_idx)
+
+                metadata["chunk_strategy"] = "llama_index_hierarchical"
+                # 保留层级与父节点信息，便于前端标注/后端检索调试
+                level = metadata.get("level")
+                if level is not None:
+                    metadata["chunk_level"] = level
+
+                try:
+                    parent_rel = getattr(node, "relationships", {}).get(NodeRelationship.PARENT)
+                    if parent_rel and getattr(parent_rel, "node_id", None):
+                        metadata["parent_node_id"] = parent_rel.node_id
+                except Exception:
+                    # relationships 结构变化时忽略，不阻断流程
+                    pass
+
+                chunks.append(Document(page_content=node.get_content(), metadata=metadata))
+
+        return chunks
+
+
 class ChunkerFactory:
     """负责解析策略并返回对应 chunker。"""
 
@@ -139,6 +201,7 @@ class ChunkerFactory:
         "langchain_recursive": LangChainRecursiveChunker,
         "langchain_token": LangChainTokenChunker,
         "llama_index": LlamaIndexChunker,
+        "llama_index_hierarchical": LlamaIndexHierarchicalChunker,
     }
 
     def resolve_strategy(self, strategy: Optional[str]) -> str:
@@ -152,7 +215,7 @@ class ChunkerFactory:
                 f"Supported strategies: {sorted(self.SUPPORTED_STRATEGIES)}"
             )
 
-        if normalized == "llama_index" and not settings.LLAMA_INDEX_ENABLED:
+        if normalized.startswith("llama_index") and not settings.LLAMA_INDEX_ENABLED:
             raise ValueError("LlamaIndex chunker is disabled. Set LLAMA_INDEX_ENABLED=True to use it.")
 
         return normalized

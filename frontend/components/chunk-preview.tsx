@@ -61,10 +61,12 @@ export function ChunkPreview({ onConfirm, onClose }: ChunkPreviewProps) {
   const resolvedChunkStrategy = previewData?.chunk_strategy || chunkStrategy
   const resolvedChunkLabel = getChunkStrategyLabel(resolvedChunkStrategy)
   const resolvedChunkOption = getChunkStrategyOption(resolvedChunkStrategy)
-  // 判断当前策略类型
-  const isRecursiveStrategy = chunkStrategy === 'langchain_recursive'
-  const isTokenStrategy = chunkStrategy === 'langchain_token'
-  const isSentenceStrategy = chunkStrategy === 'llama_index'
+  const strategyForUi = resolvedChunkStrategy
+  // 判断当前策略类型（以预览结果为准）
+  const isRecursiveStrategy = strategyForUi === 'langchain_recursive'
+  const isTokenStrategy = strategyForUi === 'langchain_token'
+  const isSentenceStrategy = strategyForUi === 'llama_index'
+  const isHierarchicalStrategy = strategyForUi === 'llama_index_hierarchical'
 
   // 处理文件拖放
   const handleDragOver = useCallback((e: React.DragEvent) => {
@@ -414,14 +416,15 @@ export function ChunkPreview({ onConfirm, onClose }: ChunkPreviewProps) {
                 </div>
               )}
 
-              {isSentenceStrategy && (
+              {(isSentenceStrategy || isHierarchicalStrategy) && (
                 <div className="rounded-lg border border-green-200 bg-green-50 p-3">
                   <div className="text-[11px] font-semibold text-green-700 uppercase tracking-wide mb-1">
-                    句子切分说明
+                    {isHierarchicalStrategy ? '分层切分说明' : '句子切分说明'}
                   </div>
                   <p className="text-xs text-green-800 leading-relaxed">
-                    LlamaIndex SentenceSplitter 会根据语义断句（支持多语言），
-                    自动保留句子边界和起止位置信息，获得更平滑的检索体验。
+                    {isHierarchicalStrategy
+                      ? 'LlamaIndex HierarchicalNodeParser 生成父子块（多级 chunk_sizes），保留 parent 关系与层级，适合 AutoMerging 检索/长文本压缩。'
+                      : 'LlamaIndex SentenceSplitter 会根据语义断句（支持多语言），自动保留句子边界和起止位置信息，获得更平滑的检索体验。'}
                   </p>
                 </div>
               )}
