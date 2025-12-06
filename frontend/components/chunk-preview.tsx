@@ -355,35 +355,37 @@ export function ChunkPreview({ onConfirm, onClose }: ChunkPreviewProps) {
                 </p>
               </div>
 
-              {/* Overlap */}
-              <div>
-                <div className="flex justify-between mb-2">
-                  <label className="text-xs font-medium text-gray-600">
-                    {isTokenStrategy ? 'Token 重叠' : 'Overlap (重叠)'}
-                  </label>
-                  <span className="text-xs bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded font-mono">
-                    {chunkOverlap}
-                  </span>
+              {/* Overlap - 仅对需要重叠参数的策略显示 */}
+              {!isHierarchicalStrategy && !isRagflowStrategy && (
+                <div>
+                  <div className="flex justify-between mb-2">
+                    <label className="text-xs font-medium text-gray-600">
+                      {isTokenStrategy ? 'Token 重叠' : 'Overlap (重叠)'}
+                    </label>
+                    <span className="text-xs bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded font-mono">
+                      {chunkOverlap}
+                    </span>
+                  </div>
+                  <input
+                    type="range"
+                    min="0"
+                    max={Math.min(isTokenStrategy ? 500 : 1000, chunkSize - (isTokenStrategy ? 50 : 100))}
+                    step={isTokenStrategy ? 25 : 50}
+                    value={chunkOverlap}
+                    onChange={(e) => setChunkOverlap(Number(e.target.value))}
+                    className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-indigo-600"
+                  />
+                  <div className="flex justify-between text-[10px] text-gray-400 mt-1">
+                    <span>0</span>
+                    <span>{Math.min(isTokenStrategy ? 500 : 1000, chunkSize - (isTokenStrategy ? 50 : 100))}</span>
+                  </div>
+                  <p className="text-[10px] text-gray-400 mt-1">
+                    {isTokenStrategy
+                      ? '相邻切片间的重叠 Token 数'
+                      : '相邻切片间的重叠字符'}
+                  </p>
                 </div>
-                <input
-                  type="range"
-                  min="0"
-                  max={Math.min(isTokenStrategy ? 500 : 1000, chunkSize - (isTokenStrategy ? 50 : 100))}
-                  step={isTokenStrategy ? 25 : 50}
-                  value={chunkOverlap}
-                  onChange={(e) => setChunkOverlap(Number(e.target.value))}
-                  className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-indigo-600"
-                />
-                <div className="flex justify-between text-[10px] text-gray-400 mt-1">
-                  <span>0</span>
-                  <span>{Math.min(isTokenStrategy ? 500 : 1000, chunkSize - (isTokenStrategy ? 50 : 100))}</span>
-                </div>
-                <p className="text-[10px] text-gray-400 mt-1">
-                  {isTokenStrategy
-                    ? '相邻切片间的重叠 Token 数'
-                    : '相邻切片间的重叠字符'}
-                </p>
-              </div>
+              )}
 
               {/* 策略说明 */}
               {isRecursiveStrategy && (

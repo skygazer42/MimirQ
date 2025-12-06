@@ -24,6 +24,47 @@ except ImportError:
     SENTENCE_TRANSFORMERS_AVAILABLE = False
 
 
+class DashScopeEmbeddings:
+    """阿里云 DashScope Embedding 封装"""
+
+    def __init__(self, model: str, api_key: str):
+        self.model = model
+        self.api_key = api_key
+        try:
+            import dashscope
+            dashscope.api_key = api_key
+            self._dashscope = dashscope
+        except ImportError:
+            raise ImportError(
+                "DashScope SDK not found. Please install: pip install dashscope"
+            )
+
+    def embed_documents(self, texts: List[str]) -> List[List[float]]:
+        """批量生成文档向量"""
+        from dashscope import TextEmbedding
+
+        embeddings = []
+        # DashScope 批量限制为 25 条
+        batch_size = 25
+        for i in range(0, len(texts), batch_size):
+            batch = texts[i:i + batch_size]
+            response = TextEmbedding.call(
+                model=self.model,
+                input=batch
+            )
+            if response.status_code == 200:
+                for item in response.output['embeddings']:
+                    embeddings.append(item['embedding'])
+            else:
+                raise Exception(f"DashScope API error: {response.code} - {response.message}")
+        return embeddings
+
+    def embed_query(self, text: str) -> List[float]:
+        """生成查询向量"""
+        result = self.embed_documents([text])
+        return result[0] if result else []
+
+
 class MilvusVectorStore:
     """Milvus 向量存储服务"""
 
@@ -67,11 +108,18 @@ class MilvusVectorStore:
             # 自动检测设备：优先使用 GPU，如果没有则使用 CPU
             import torch
             device = "cuda" if torch.cuda.is_available() else "cpu"
-            print(f"📱 Using device: {device}")
+            print(f"[Device] Using: {device}")
 
             return SentenceTransformer(
                 settings.EMBEDDING_MODEL,
                 device=device
+            )
+
+        if provider == "dashscope":
+            # 阿里云 DashScope 专用
+            return DashScopeEmbeddings(
+                model=settings.EMBEDDING_MODEL,
+                api_key=settings.EMBEDDING_API_KEY or settings.LLM_API_KEY
             )
 
         if provider in {"openai_compatible", "openai"}:
@@ -90,7 +138,7 @@ class MilvusVectorStore:
 
     def _connect_milvus(self):
         """连接到 Milvus 服务器"""
-        print(f"🔌 Connecting to Milvus at {settings.MILVUS_HOST}:{settings.MILVUS_PORT}")
+        print(f"[Milvus] Connecting to {settings.MILVUS_HOST}:{settings.MILVUS_PORT}")
 
         connections.connect(
             alias="default",
@@ -108,11 +156,11 @@ class MilvusVectorStore:
 
         # 检查 Collection 是否存在
         if utility.has_collection(collection_name):
-            print(f"📂 Loading existing collection: {collection_name}")
+            print(f"[Milvus] Loading existing collection: {collection_name}")
             self._collection = Collection(collection_name)
             self._collection.load()
         else:
-            print(f"📦 Creating new collection: {collection_name}")
+            print(f"[Milvus] Creating new collection: {collection_name}")
 
             # 定义 Schema
             fields = [
@@ -243,7 +291,7 @@ class MilvusVectorStore:
             file_types.append(metadata.get('file_type', 'unknown')[:20])
 
         # 批量生成 Embeddings
-        print(f"🔢 Generating embeddings for {len(contents)} chunks...")
+        print(f"[Embedding] Generating embeddings for {len(contents)} chunks...")
         embeddings = self._embed_documents(contents)
 
         # 插入数据
@@ -351,7 +399,7 @@ class MilvusVectorStore:
         expr = f'document_id == "{str(document_id)}"'
         self._collection.delete(expr)
         self._collection.flush()
-        print(f"🗑️  Deleted vectors for document: {document_id}")
+        print(f"[Milvus] Deleted vectors for document: {document_id}")
 
     def get_collection_count(self) -> int:
         """获取向量库中的文档数量"""

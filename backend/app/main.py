@@ -16,7 +16,7 @@ async def lifespan(app: FastAPI):
     """应用启动和关闭时的操作"""
     # 启动时：创建数据库表
     print("[*] Starting MimirQ backend...")
-    print("📦 Creating database tables...")
+    print("[*] Creating database tables...")
     Base.metadata.create_all(bind=engine)
     print("[OK] Database initialized")
 
@@ -42,7 +42,7 @@ async def lifespan(app: FastAPI):
     yield
 
     # 关闭时的清理操作
-    print("👋 Shutting down MimirQ backend...")
+    print("[*] Shutting down MimirQ backend...")
 
 
 # 创建 FastAPI 应用
