@@ -32,6 +32,7 @@ from app.services.chunkers import chunker_factory
 from app.services.milvus_store import milvus_store
 from app.services.mineru_service import mineru_service
 from app.config import settings
+from fastapi.responses import FileResponse
 
 router = APIRouter()
 
@@ -227,6 +228,19 @@ async def delete_document(
     db.commit()
 
     return None
+
+
+@router.get("/image/{image_id}")
+async def get_image(image_id: str):
+    """
+    æ ¹æ“š image_id è¿”å›žä¿å­˜çš„å›¾ç‰‡ã€‚
+    æ ‡å‡†ä½ç½®ï¼š{UPLOAD_DIR}/images/{image_id}.png
+    """
+    images_dir = Path(settings.UPLOAD_DIR) / "images"
+    file_path = images_dir / f"{image_id}.png"
+    if not file_path.exists():
+        raise HTTPException(status_code=404, detail="Image not found")
+    return FileResponse(file_path, media_type="image/png")
 
 
 @router.post("/preview", response_model=DocumentParsePreview)

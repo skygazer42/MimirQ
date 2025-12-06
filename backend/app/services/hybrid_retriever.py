@@ -71,6 +71,8 @@ class HybridRetriever:
                     "source": meta.get('source', 'unknown'),
                     "page": chunk.page_number or meta.get('page'),
                     "chunk_index": chunk.chunk_index,
+                    "image_id": meta.get('image_id'),
+                    "image_url": meta.get('image_url'),
                     "bm25_score": float(score)
                 },
                 "score": float(score)
