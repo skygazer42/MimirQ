@@ -22,6 +22,9 @@ class DocumentProcessorService:
     def __init__(self):
         pass
 
+    # ragflow 预设策略（直接解析+切块）
+    RAGFLOW_STRATEGIES = {"ragflow_naive", "ragflow_book", "ragflow_laws", "ragflow_email"}
+
     async def process_document(
         self,
         file_path: Path,
@@ -54,31 +57,45 @@ class DocumentProcessorService:
                 db, document_id, "processing", 0, "parsing"
             )
 
-            # Step 2: 解析文档
-            print(f"Parsing document: {file_path}")
-            documents, resolved_backend = parser_factory.parse(
-                file_path, parser_backend=parser_backend
-            )
-            resolved_chunk_strategy = chunker_factory.resolve_strategy(chunk_strategy)
-            self._record_processing_metadata(
-                db,
-                document_id,
-                parser_backend=resolved_backend,
-                chunk_strategy=resolved_chunk_strategy
-            )
+            use_ragflow = (chunk_strategy or "").lower() in {"ragflow_naive", "ragflow_book", "ragflow_laws", "ragflow_email"}
 
-            await self._update_status(
-                db, document_id, "processing", 33, "chunking"
-            )
+            if use_ragflow:
+                resolved_backend = (parser_backend or "ragflow").lower()
+                resolved_chunk_strategy = (chunk_strategy or "ragflow_naive").lower()
 
-            # Step 3: 文本切片
-            print(f"Chunking document into smaller pieces...")
-            chunker = chunker_factory.get_chunker(
-                resolved_chunk_strategy,
-                chunk_size=settings.CHUNK_SIZE,
-                chunk_overlap=settings.CHUNK_OVERLAP
-            )
-            chunks = chunker.split_documents(documents)
+                # ragflow 直接解析+切块（同步），放到线程池避免阻塞事件循环
+                chunks = await asyncio.to_thread(
+                    self._ragflow_chunk_file,
+                    file_path,
+                    resolved_chunk_strategy
+                )
+
+            else:
+                # Step 2: 解析文档
+                print(f"Parsing document: {file_path}")
+                documents, resolved_backend = parser_factory.parse(
+                    file_path, parser_backend=parser_backend
+                )
+                resolved_chunk_strategy = chunker_factory.resolve_strategy(chunk_strategy)
+                self._record_processing_metadata(
+                    db,
+                    document_id,
+                    parser_backend=resolved_backend,
+                    chunk_strategy=resolved_chunk_strategy
+                )
+
+                await self._update_status(
+                    db, document_id, "processing", 33, "chunking"
+                )
+
+                # Step 3: 文本切片
+                print(f"Chunking document into smaller pieces...")
+                chunker = chunker_factory.get_chunker(
+                    resolved_chunk_strategy,
+                    chunk_size=settings.CHUNK_SIZE,
+                    chunk_overlap=settings.CHUNK_OVERLAP
+                )
+                chunks = chunker.split_documents(documents)
 
             # 为每个 chunk 添加元数据
             for idx, chunk in enumerate(chunks):
@@ -186,19 +203,26 @@ class DocumentProcessorService:
         vector_ids: List[str]
     ):
         """保存切片到数据库"""
-        for idx, (chunk, vector_id) in enumerate(zip(chunks, vector_ids)):
-            db_chunk = DocumentChunk(
+        if len(vector_ids) != len(chunks):
+            raise ValueError(
+                f"Vector ID count ({len(vector_ids)}) does not match chunk count ({len(chunks)})"
+            )
+        db_chunks = [
+            DocumentChunk(
                 document_id=document_id,
                 chunk_index=idx,
                 content=chunk.page_content,
                 page_number=chunk.metadata.get('page'),
                 start_char=chunk.metadata.get('start_char'),
                 end_char=chunk.metadata.get('end_char'),
-                metadata=chunk.metadata,
+                doc_metadata=chunk.metadata,
                 vector_id=vector_id
             )
-            db.add(db_chunk)
+            for idx, (chunk, vector_id) in enumerate(zip(chunks, vector_ids))
+        ]
 
+        # 批量插入减少 commit 次数和 ORM 开销
+        db.bulk_save_objects(db_chunks)
         db.commit()
 
     async def _rebuild_bm25_index(self, db: Session):
@@ -233,16 +257,63 @@ class DocumentProcessorService:
         if not db_doc:
             return
 
-        metadata = dict(db_doc.metadata or {})
+        metadata = dict(db_doc.doc_metadata or {})
         metadata["parser_backend"] = parser_backend
         metadata["chunk_strategy"] = chunk_strategy
         metadata.setdefault("parser_backend_requested", parser_backend)
         metadata.setdefault("chunk_strategy_requested", chunk_strategy)
 
-        db_doc.metadata = metadata
+        db_doc.doc_metadata = metadata
         db.commit()
         db.refresh(db_doc)
             # 不抛出异常，避免影响文档处理流程
+
+    def _ragflow_chunk_file(self, file_path: Path, strategy: str):
+        """
+        调用 ragflow 预设（naive/book/laws/email）直接完成解析+切块，
+        返回 LangChain Document 列表。
+        """
+        import sys
+        from langchain_core.documents import Document
+
+        # 确保 third_party 在路径中（start 脚本已加，这里再兜底）
+        tp = str(Path(__file__).resolve().parents[2] / "third_party")
+        if tp not in sys.path:
+            sys.path.insert(0, tp)
+
+        # 选择 ragflow chunk 函数
+        strat = strategy.lower()
+        if strat == "ragflow_naive":
+            from ragflow.app.naive import chunk as rf_chunk
+        elif strat == "ragflow_book":
+            from ragflow.app.book import chunk as rf_chunk
+        elif strat == "ragflow_laws":
+            from ragflow.app.laws import chunk as rf_chunk
+        elif strat == "ragflow_email":
+            from ragflow.app.email import chunk as rf_chunk
+        else:
+            raise ValueError(f"Unsupported ragflow strategy: {strategy}")
+
+        def callback(prog=None, msg=""):
+            # 简单日志回调
+            if msg:
+                print(f"[ragflow] {msg} ({prog})")
+
+        # ragflow chunk 返回 list[dict]（tokenize_chunks 输出格式）
+        chunks_dict = rf_chunk(
+            str(file_path),
+            callback=callback
+        )
+
+        documents = []
+        for item in chunks_dict:
+            text = item.get("content_with_weight") or item.get("text") or ""
+            if not text:
+                continue
+            meta = {k: v for k, v in item.items() if k not in {"content_with_weight", "text", "content_ltks", "content_sm_ltks"}}
+            documents.append(Document(page_content=text, metadata=meta))
+
+        return documents
 
 
 # 全局实例

@@ -34,6 +34,9 @@ if not exist "frontend\.env.local" (
 echo 📦 正在启动服务...
 echo.
 
+REM 启用本地第三方模块（包含 ragflow 预设）
+set PYTHONPATH=%cd%\backend\third_party;%PYTHONPATH%
+
 REM 启动 Docker Compose
 docker-compose up -d
 

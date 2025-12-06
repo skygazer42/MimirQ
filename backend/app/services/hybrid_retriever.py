@@ -63,6 +63,7 @@ class HybridRetriever:
             检索结果列表
         """
         if not self.bm25_index or not self.corpus_chunks:
+            print("⚠️  BM25 index not initialized, skipping keyword search")
             return []
 
         # 分词查询
@@ -71,22 +72,27 @@ class HybridRetriever:
         # BM25 打分
         scores = self.bm25_index.get_scores(tokenized_query)
 
+        # 预先构建允许的文档集合，避免循环内重复转换
+        allowed_ids = {str(doc_id) for doc_id in document_ids} if document_ids else None
+
         # 排序并过滤
         results = []
         for idx, score in enumerate(scores):
             chunk = self.corpus_chunks[idx]
 
             # 过滤文档范围
-            if document_ids and chunk.document_id not in [str(doc_id) for doc_id in document_ids]:
+            if allowed_ids and str(chunk.document_id) not in allowed_ids:
                 continue
+
+            meta = chunk.doc_metadata or {}
 
             results.append({
                 "chunk_id": str(chunk.id),
                 "content": chunk.content,
                 "metadata": {
                     "document_id": str(chunk.document_id),
-                    "source": chunk.metadata.get('source', 'unknown'),
-                    "page": chunk.page_number,
+                    "source": meta.get('source', 'unknown'),
+                    "page": chunk.page_number or meta.get('page'),
                     "chunk_index": chunk.chunk_index,
                     "bm25_score": float(score)
                 },

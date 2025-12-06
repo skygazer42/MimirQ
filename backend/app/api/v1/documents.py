@@ -56,10 +56,10 @@ async def upload_document(
 
     # 1. 验证文件类型
     file_ext = Path(file.filename).suffix.lower()
-    if file_ext not in settings.ALLOWED_EXTENSIONS:
+    if file_ext not in settings.allowed_extensions_list:
         raise HTTPException(
             status_code=400,
-            detail=f"Unsupported file type. Allowed: {settings.ALLOWED_EXTENSIONS}"
+            detail=f"Unsupported file type. Allowed: {settings.allowed_extensions_list}"
         )
 
     # 2. 验证文件大小
@@ -243,10 +243,10 @@ async def preview_document(
     """
     # 验证文件类型
     file_ext = Path(file.filename).suffix.lower()
-    if file_ext not in settings.ALLOWED_EXTENSIONS:
+    if file_ext not in settings.allowed_extensions_list:
         raise HTTPException(
             status_code=400,
-            detail=f"Unsupported file type. Allowed: {settings.ALLOWED_EXTENSIONS}"
+            detail=f"Unsupported file type. Allowed: {settings.allowed_extensions_list}"
         )
 
     # 验证文件大小
@@ -322,7 +322,7 @@ async def create_document_with_manual_chunks(
 
     # 校验文件类型
     file_type_with_dot = f".{request.file_type.lower()}"
-    if file_type_with_dot not in settings.ALLOWED_EXTENSIONS:
+    if file_type_with_dot not in settings.allowed_extensions_list:
         raise HTTPException(
             status_code=400,
             detail=f"Unsupported file type: {request.file_type}"
@@ -449,10 +449,10 @@ async def preview_chunking(
 
     # 验证文件类型
     file_ext = Path(file.filename).suffix.lower()
-    if file_ext not in settings.ALLOWED_EXTENSIONS:
+    if file_ext not in settings.allowed_extensions_list:
         raise HTTPException(
             status_code=400,
-            detail=f"Unsupported file type. Allowed: {settings.ALLOWED_EXTENSIONS}"
+            detail=f"Unsupported file type. Allowed: {settings.allowed_extensions_list}"
         )
 
     # 验证文件大小

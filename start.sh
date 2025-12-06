@@ -37,6 +37,9 @@ fi
 echo "📦 正在启动服务..."
 echo ""
 
+# 启用本地第三方模块（包含 ragflow 预设）
+export PYTHONPATH="$(pwd)/backend/third_party:${PYTHONPATH}"
+
 # 启动 Docker Compose
 docker-compose up -d
 
