@@ -4,6 +4,7 @@ Chunker factory supporting multiple text splitting strategies.
 from __future__ import annotations
 
 from typing import List, Optional
+import re
 
 from langchain_core.documents import Document
 from langchain_text_splitters import RecursiveCharacterTextSplitter, TokenTextSplitter
@@ -134,6 +135,63 @@ class LlamaIndexChunker(BaseChunker):
         return chunks
 
 
+class SemanticSentenceChunker(BaseChunker):
+    """
+    轻量“语义”切块：先按句子边界切，再按长度聚合，尽量不打断句子。
+    不依赖额外模型，适合无法安装 SemanticChunker 依赖的环境。
+    """
+
+    def __init__(self, chunk_size: int, chunk_overlap: int):
+        self.chunk_size = max(chunk_size, 1)
+        self.chunk_overlap = max(chunk_overlap, 0)
+
+    def split_documents(self, documents: List[Document]) -> List[Document]:
+        chunks: List[Document] = []
+        for doc in documents:
+            text = doc.page_content
+            # 句子粗分，兼容中英文标点与换行
+            sentence_matches = list(re.finditer(r"[^。！？.!?\n]+[。！？.!?\n]?", text, flags=re.S))
+            buffer_text = ""
+            buffer_start = 0
+            last_end = 0
+
+            def flush_chunk(end_idx: int):
+                nonlocal buffer_text, buffer_start, last_end
+                if not buffer_text:
+                    return
+                metadata = dict(doc.metadata or {})
+                metadata["start_char"] = buffer_start
+                metadata["end_char"] = end_idx
+                metadata["chunk_strategy"] = "semantic_sentence"
+                chunks.append(Document(page_content=buffer_text, metadata=metadata))
+                # 重叠：保留尾部 overlap 作为下个块的起点
+                if self.chunk_overlap > 0 and len(buffer_text) > self.chunk_overlap:
+                    overlap_text = buffer_text[-self.chunk_overlap :]
+                    buffer_text = overlap_text
+                    buffer_start = end_idx - len(overlap_text)
+                else:
+                    buffer_text = ""
+                    buffer_start = end_idx
+                last_end = end_idx
+
+            for m in sentence_matches:
+                sentence = m.group()
+                start_idx, end_idx = m.start(), m.end()
+                if not buffer_text:
+                    buffer_start = start_idx
+                # 如果加上当前句子超长，先输出现有块
+                if len(buffer_text) + len(sentence) > self.chunk_size and buffer_text:
+                    flush_chunk(last_end)
+                buffer_text += sentence
+                last_end = end_idx
+
+            # 收尾
+            if buffer_text:
+                flush_chunk(last_end)
+
+        return chunks
+
+
 class LlamaIndexHierarchicalChunker(BaseChunker):
     """LlamaIndex HierarchicalNodeParser，生成父子块并保留层级信息。"""
 
@@ -200,19 +258,26 @@ class ChunkerFactory:
     SUPPORTED_STRATEGIES = {
         "langchain_recursive": LangChainRecursiveChunker,
         "langchain_token": LangChainTokenChunker,
+        "semantic_sentence": SemanticSentenceChunker,
         "llama_index": LlamaIndexChunker,
         "llama_index_hierarchical": LlamaIndexHierarchicalChunker,
     }
+
+    # ragflow 预设（在 document_processor 中直连，不在此处真正分片）
+    RAGFLOW_STRATEGIES = {"ragflow_naive", "ragflow_book", "ragflow_laws", "ragflow_email"}
 
     def resolve_strategy(self, strategy: Optional[str]) -> str:
         normalized = (strategy or settings.DEFAULT_CHUNK_STRATEGY).lower()
         if normalized == "auto":
             normalized = settings.DEFAULT_CHUNK_STRATEGY
 
+        if normalized in self.RAGFLOW_STRATEGIES:
+            return normalized  # 让上层识别后走 ragflow 分支
+
         if normalized not in self.SUPPORTED_STRATEGIES:
             raise ValueError(
                 f"Unsupported chunk strategy '{strategy}'. "
-                f"Supported strategies: {sorted(self.SUPPORTED_STRATEGIES)}"
+                f"Supported strategies: {sorted(self.SUPPORTED_STRATEGIES)} + {sorted(self.RAGFLOW_STRATEGIES)}"
             )
 
         if normalized.startswith("llama_index") and not settings.LLAMA_INDEX_ENABLED:
@@ -222,6 +287,9 @@ class ChunkerFactory:
 
     def get_chunker(self, strategy: Optional[str], chunk_size: int, chunk_overlap: int) -> BaseChunker:
         resolved = self.resolve_strategy(strategy)
+        if resolved in self.RAGFLOW_STRATEGIES:
+            # ragflow 分支在 document_processor 里直接处理，不应走到这里
+            raise ValueError(f"Chunk strategy '{resolved}' is handled by ragflow pipeline and has no chunker.")
         chunker_cls = self.SUPPORTED_STRATEGIES[resolved]
         return chunker_cls(chunk_size=chunk_size, chunk_overlap=chunk_overlap)
 

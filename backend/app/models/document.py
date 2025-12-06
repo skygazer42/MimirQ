@@ -34,7 +34,7 @@ class Document(Base):
     total_characters = Column(Integer, default=0)
 
     # 元数据
-    metadata = Column(JSONB, default={})
+    doc_metadata = Column("metadata", JSONB, default=dict)
 
     # 时间戳
     created_at = Column(DateTime(timezone=True), server_default=func.now())
@@ -61,7 +61,7 @@ class DocumentChunk(Base):
     end_char = Column(Integer, nullable=True)
 
     # 元数据
-    metadata = Column(JSONB, default={})
+    doc_metadata = Column("metadata", JSONB, default=dict)
 
     # ChromaDB 向量 ID
     vector_id = Column(String(255), nullable=True)

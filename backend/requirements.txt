@@ -59,6 +59,9 @@ llama-index-core==0.14.9
 # BM25 and Text Processing
 rank-bm25==0.2.2
 jieba==0.42.1
+word2number==1.1
+cn2an==0.5.22
+roman-numbers==0.3.4
 
 # Authentication
 python-jose[cryptography]==3.3.0
