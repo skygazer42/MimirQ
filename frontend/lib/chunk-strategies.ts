@@ -2,7 +2,7 @@ export interface ChunkStrategyOption {
   value: string
   label: string
   description: string
-  icon: 'recursive' | 'token' | 'sentence' | 'hierarchical' | 'ragflow'
+  icon: 'recursive' | 'token' | 'sentence' | 'hierarchical' | 'ragflow' | 'separator'
   badge?: string
   group?: 'langchain' | 'llama_index' | 'ragflow'
 }
@@ -18,11 +18,27 @@ export const CHUNK_STRATEGY_OPTIONS: ChunkStrategyOption[] = [
     group: 'langchain',
   },
   {
+    value: 'parent_child',
+    label: 'Parent-Child 分层切分',
+    description: '先父块再子块，保留 parent_id 方便层级展示与重排',
+    icon: 'hierarchical',
+    badge: '父子',
+    group: 'langchain',
+  },
+  {
     value: 'langchain_token',
     label: 'LangChain Token 切分',
     description: '按 Token 数量切分，适合控制 LLM 输入长度（GPT-4 编码）',
     icon: 'token',
     badge: 'Token',
+    group: 'langchain',
+  },
+  {
+    value: 'separator',
+    label: '自定义分隔符切分',
+    description: '按指定分隔符直接切分，适合结构化文档（类似 Dify）',
+    icon: 'separator',
+    badge: '自定义',
     group: 'langchain',
   },
   // LlamaIndex 系列

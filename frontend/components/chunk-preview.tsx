@@ -68,6 +68,12 @@ export function ChunkPreview({ onConfirm, onClose }: ChunkPreviewProps) {
   const isSentenceStrategy = strategyForUi === 'llama_index'
   const isHierarchicalStrategy = strategyForUi === 'llama_index_hierarchical'
   const isRagflowStrategy = strategyForUi.startsWith('ragflow_')
+  const isSeparatorStrategy = strategyForUi === 'separator'
+
+  // UI å‚æ•°æ˜¾ç¤ºæŽ§åˆ¶
+  const hideChunkSizeControl = isSentenceStrategy || isRagflowStrategy
+  const showOverlapControl =
+    !isSentenceStrategy && !isHierarchicalStrategy && !isRagflowStrategy && !isSeparatorStrategy
 
   // 处理文件拖放
   const handleDragOver = useCallback((e: React.DragEvent) => {
@@ -326,6 +332,7 @@ export function ChunkPreview({ onConfirm, onClose }: ChunkPreviewProps) {
               </div>
 
               {/* Chunk Size */}
+              {!hideChunkSizeControl && (
               <div>
                 <div className="flex justify-between mb-2">
                   <label className="text-xs font-medium text-gray-600">
@@ -354,9 +361,10 @@ export function ChunkPreview({ onConfirm, onClose }: ChunkPreviewProps) {
                     : '每个切片的最大字符数'}
                 </p>
               </div>
+              )}
 
               {/* Overlap - 仅对需要重叠参数的策略显示 */}
-              {!isSentenceStrategy && !isHierarchicalStrategy && !isRagflowStrategy && (
+              {showOverlapControl && (
                 <div>
                   <div className="flex justify-between mb-2">
                     <label className="text-xs font-medium text-gray-600">
@@ -491,12 +499,14 @@ export function ChunkPreview({ onConfirm, onClose }: ChunkPreviewProps) {
                   </div>
                   <div className="text-[10px] text-gray-400">总字符数</div>
                 </div>
-                <div className="bg-white p-3 rounded-lg border shadow-sm">
-                  <div className="text-2xl font-bold text-purple-600">
-                    {Math.round((chunkOverlap / chunkSize) * 100)}%
+                {showOverlapControl && (
+                  <div className="bg-white p-3 rounded-lg border shadow-sm">
+                    <div className="text-2xl font-bold text-purple-600">
+                      {Math.round((chunkOverlap / chunkSize) * 100)}%
+                    </div>
+                    <div className="text-[10px] text-gray-400">重叠率</div>
                   </div>
-                  <div className="text-[10px] text-gray-400">重叠率</div>
-                </div>
+                )}
                 <div className="bg-white p-3 rounded-lg border shadow-sm col-span-2">
                   <div className="text-[10px] text-gray-400 uppercase tracking-wider">
                     切块策略
