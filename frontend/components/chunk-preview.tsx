@@ -356,7 +356,7 @@ export function ChunkPreview({ onConfirm, onClose }: ChunkPreviewProps) {
               </div>
 
               {/* Overlap - 仅对需要重叠参数的策略显示 */}
-              {!isHierarchicalStrategy && !isRagflowStrategy && (
+              {!isSentenceStrategy && !isHierarchicalStrategy && !isRagflowStrategy && (
                 <div>
                   <div className="flex justify-between mb-2">
                     <label className="text-xs font-medium text-gray-600">
