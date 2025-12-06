@@ -15,13 +15,13 @@ from app.api.v1 import router as api_v1_router
 async def lifespan(app: FastAPI):
     """应用启动和关闭时的操作"""
     # 启动时：创建数据库表
-    print("🚀 Starting MimirQ backend...")
+    print("[*] Starting MimirQ backend...")
     print("📦 Creating database tables...")
     Base.metadata.create_all(bind=engine)
-    print("✅ Database initialized")
+    print("[OK] Database initialized")
 
     # 初始化 BM25 索引
-    print("🔍 Initializing BM25 index...")
+    print("[*] Initializing BM25 index...")
     try:
         from app.services.hybrid_retriever import hybrid_retriever
         from app.models.document import DocumentChunk, Document as DBDocument
@@ -33,11 +33,11 @@ async def lifespan(app: FastAPI):
 
         if all_chunks:
             hybrid_retriever.build_bm25_index(all_chunks)
-            print(f"✅ BM25 index loaded with {len(all_chunks)} chunks")
+            print(f"[OK] BM25 index loaded with {len(all_chunks)} chunks")
         else:
-            print("⚠️  No documents found, BM25 index will be built on first upload")
+            print("[WARN]  No documents found, BM25 index will be built on first upload")
     except Exception as e:
-        print(f"⚠️  Failed to load BM25 index: {str(e)}")
+        print(f"[WARN]  Failed to load BM25 index: {str(e)}")
 
     yield
 

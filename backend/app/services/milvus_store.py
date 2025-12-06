@@ -45,7 +45,7 @@ class MilvusVectorStore:
             self._embedding_provider = (settings.EMBEDDING_PROVIDER or "local").lower()
             self._embedding_model = self._init_embedding_model()
             self._embedding_dim = self._get_embedding_dimension()
-            print(f"✅ Embedding dimension: {self._embedding_dim}")
+            print(f"[OK] Embedding dimension: {self._embedding_dim}")
 
         if self._collection is None:
             self._connect_milvus()
@@ -54,7 +54,7 @@ class MilvusVectorStore:
     def _init_embedding_model(self):
         """初始化 Embedding 客户端"""
         provider = self._embedding_provider
-        print(f"🔧 Loading embedding provider: {provider}")
+        print(f"[*] Loading embedding provider: {provider}")
 
         if provider == "local":
             if not SENTENCE_TRANSFORMERS_AVAILABLE:
@@ -100,7 +100,7 @@ class MilvusVectorStore:
             password=settings.MILVUS_PASSWORD
         )
 
-        print("✅ Connected to Milvus")
+        print("[OK] Connected to Milvus")
 
     def _init_collection(self):
         """初始化或加载 Collection"""
@@ -152,7 +152,7 @@ class MilvusVectorStore:
             # 加载 Collection 到内存
             self._collection.load()
 
-            print(f"✅ Collection created and indexed")
+            print(f"[OK] Collection created and indexed")
 
     def _embed_documents(self, texts: List[str]) -> List[List[float]]:
         """根据配置生成文档向量"""
@@ -258,11 +258,11 @@ class MilvusVectorStore:
             embeddings
         ]
 
-        print(f"💾 Inserting {len(ids)} vectors into Milvus...")
+        print(f"[*] Inserting {len(ids)} vectors into Milvus...")
         self._collection.insert(data)
         self._collection.flush()
 
-        print(f"✅ Inserted {len(ids)} vectors")
+        print(f"[OK] Inserted {len(ids)} vectors")
         return ids
 
     def search(

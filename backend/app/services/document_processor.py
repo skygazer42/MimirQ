@@ -142,7 +142,7 @@ class DocumentProcessorService:
             )
 
             print(
-                f"✅ Document processed successfully: {len(chunks)} chunks "
+                f"[OK] Document processed successfully: {len(chunks)} chunks "
                 f"(parser={resolved_backend}, chunker={resolved_chunk_strategy})"
             )
 
@@ -159,7 +159,7 @@ class DocumentProcessorService:
 
         except Exception as e:
             # 错误处理
-            print(f"❌ Error processing document: {str(e)}")
+            print(f"[ERR] Error processing document: {str(e)}")
             await self._update_status(
                 db,
                 document_id,
@@ -237,10 +237,10 @@ class DocumentProcessorService:
                 print(f"🔄 Rebuilding BM25 index with {len(all_chunks)} chunks...")
                 hybrid_retriever.build_bm25_index(all_chunks)
             else:
-                print("⚠️  No chunks found for BM25 index")
+                print("[WARN]  No chunks found for BM25 index")
 
         except Exception as e:
-            print(f"⚠️  Failed to rebuild BM25 index: {str(e)}")
+            print(f"[WARN]  Failed to rebuild BM25 index: {str(e)}")
 
     def _record_processing_metadata(
         self,
