@@ -26,13 +26,13 @@ class ParserFactory:
         self._deepdoc_parser: Optional["DeepDocParser"] = None
         self._markitdown_parser: Optional[MarkItDownParser] = None
 
-        print("📄 PyMuPDF parser ready for basic PDF parsing")
+        print("[PDF] PyMuPDF parser ready for basic PDF parsing")
         if settings.MINERU_ENABLED and settings.MINERU_API_TOKEN:
-            print("🚀 MinerU parser available for PDF parsing (requires selection)")
+            print("[MinerU] MinerU parser available for PDF parsing (requires selection)")
         if settings.DEEPDOC_ENABLED:
-            print("🧠 DeepDoc parser available for PDF parsing (requires selection)")
+            print("[DeepDoc] DeepDoc parser available for PDF parsing (requires selection)")
         if settings.MARKITDOWN_ENABLED:
-            print("📝 MarkItDown parser available for PDF parsing (requires selection)")
+            print("[MarkItDown] MarkItDown parser available for PDF parsing (requires selection)")
 
         self.parsers = {
             ".txt": TextParser(),
@@ -113,7 +113,7 @@ class ParserFactory:
 
         if backend == "mineru":
             if self._mineru_parser is None:
-                print("🚀 Initializing MinerU parser for PDF (advanced parsing)")
+                print("[MinerU] Initializing MinerU parser for PDF (advanced parsing)")
                 self._mineru_parser = MinerUParser()
             return self._mineru_parser
 
@@ -121,13 +121,13 @@ class ParserFactory:
             if self._deepdoc_parser is None:
                 from app.services.parsers.deepdoc_parser import DeepDocParser
 
-                print("🧠 Initializing DeepDoc parser for PDF (structure-aware parsing)")
+                print("[DeepDoc] Initializing DeepDoc parser for PDF (structure-aware parsing)")
                 self._deepdoc_parser = DeepDocParser()
             return self._deepdoc_parser
 
         if backend == "markitdown":
             if self._markitdown_parser is None:
-                print("📝 Initializing MarkItDown parser for PDF (markdown-focused parsing)")
+                print("[MarkItDown] Initializing MarkItDown parser for PDF (markdown-focused parsing)")
                 self._markitdown_parser = MarkItDownParser()
             return self._markitdown_parser
 

@@ -475,48 +475,62 @@ async def preview_chunking(
         with temp_path.open("wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
 
-        # 解析文档
-        documents, resolved_backend = parser_factory.parse(temp_path, parser_backend=parser_backend)
-
         resolved_chunk_strategy = chunker_factory.resolve_strategy(chunk_strategy)
-        chunker = chunker_factory.get_chunker(
-            resolved_chunk_strategy,
-            chunk_size=chunk_size,
-            chunk_overlap=chunk_overlap
-        )
-        chunks = chunker.split_documents(documents)
+
+        # ragflow 预设走独立分支（自解析 + 切块）
+        if resolved_chunk_strategy in chunker_factory.RAGFLOW_STRATEGIES:
+            from app.services.document_processor import document_processor
+            chunks = await asyncio.to_thread(
+                document_processor._ragflow_chunk_file,
+                temp_path,
+                resolved_chunk_strategy
+            )
+            resolved_backend = "ragflow"
+            documents = []  # ragflow 已自处理
+        else:
+            # 解析文档
+            documents, resolved_backend = parser_factory.parse(temp_path, parser_backend=parser_backend)
+
+            chunker = chunker_factory.get_chunker(
+                resolved_chunk_strategy,
+                chunk_size=chunk_size,
+                chunk_overlap=chunk_overlap
+            )
+            chunks = chunker.split_documents(documents)
 
         # 合并所有页面的文本（保留页码信息）
         page_texts = []
         current_pos = 0
 
-        for doc in documents:
-            text = doc.page_content
-            page_num = doc.metadata.get('page')
-            page_texts.append({
-                'text': text,
-                'page': page_num,
-                'start': current_pos,
-                'end': current_pos + len(text)
-            })
-            current_pos += len(text) + 1  # +1 for separator
+        if documents:
+            for doc in documents:
+                text = doc.page_content
+                page_num = doc.metadata.get('page')
+                page_texts.append({
+                    'text': text,
+                    'page': page_num,
+                    'start': current_pos,
+                    'end': current_pos + len(text)
+                })
+                current_pos += len(text) + 1  # +1 for separator
 
-        full_text = "\n".join([p['text'] for p in page_texts])
-        page_start_map = {item['page']: item['start'] for item in page_texts}
+        full_text = "\n".join([p['text'] for p in page_texts]) if page_texts else ""
+        page_start_map = {item['page']: item['start'] for item in page_texts} if page_texts else {}
 
         # 构建响应
         chunk_items: List[ChunkPreviewItem] = []
         for idx, chunk in enumerate(chunks):
-            page_num = chunk.metadata.get('page') or chunk.metadata.get('page_number')
-            local_start = chunk.metadata.get('start_char')
-            start_idx = None
+            meta = chunk.metadata or {}
+            page_num = meta.get('page') or meta.get('page_number')
+            local_start = meta.get('start_char')
 
             if local_start is not None and page_num in page_start_map:
                 start_idx = page_start_map[page_num] + int(local_start)
             elif page_num in page_start_map:
                 start_idx = page_start_map[page_num]
+            elif meta.get("start_char") is not None:
+                start_idx = int(meta.get("start_char"))
             else:
-                # Fallback：无法定位页码时使用前一段末尾
                 start_idx = 0
 
             end_idx = start_idx + len(chunk.page_content)

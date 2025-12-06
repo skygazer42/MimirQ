@@ -43,7 +43,7 @@ class HybridRetriever:
 
         # 构建 BM25 索引
         self.bm25_index = BM25Okapi(tokenized_corpus)
-        print(f"✅ BM25 index built with {len(chunks)} chunks")
+        print(f"[OK] BM25 index built with {len(chunks)} chunks")
 
     def search_bm25(
         self,
@@ -63,7 +63,7 @@ class HybridRetriever:
             检索结果列表
         """
         if not self.bm25_index or not self.corpus_chunks:
-            print("⚠️  BM25 index not initialized, skipping keyword search")
+            print("[WARN]  BM25 index not initialized, skipping keyword search")
             return []
 
         # 分词查询

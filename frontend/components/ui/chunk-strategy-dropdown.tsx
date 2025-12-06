@@ -14,22 +14,31 @@ import {
   Check,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { CHUNK_STRATEGY_OPTIONS, getChunkStrategyOption } from '@/lib/chunk-strategies'
+import {
+  CHUNK_STRATEGY_OPTIONS,
+  getChunkStrategyOption,
+  ChunkStrategyOption,
+} from '@/lib/chunk-strategies'
 
 // 图标映射
-const ICON_MAP = {
+const ICON_MAP: Record<ChunkStrategyOption['icon'], any> = {
   recursive: Layers,
   token: Hash,
   sentence: AlignLeft,
   hierarchical: GitBranch,
+  ragflow: Layers,
 }
 
 // 颜色映射
-const COLOR_MAP = {
+const COLOR_MAP: Record<
+  ChunkStrategyOption['icon'],
+  { bg: string; text: string }
+> = {
   recursive: { bg: 'bg-indigo-100', text: 'text-indigo-600' },
   token: { bg: 'bg-amber-100', text: 'text-amber-600' },
   sentence: { bg: 'bg-green-100', text: 'text-green-600' },
   hierarchical: { bg: 'bg-purple-100', text: 'text-purple-600' },
+  ragflow: { bg: 'bg-sky-100', text: 'text-sky-600' },
 }
 
 interface ChunkStrategyDropdownProps {

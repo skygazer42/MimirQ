@@ -95,13 +95,13 @@ class RAGAgent:
                 settings.DATABASE_URL
             )
             checkpointer.setup()  # 自动创建表
-            print("✅ Using PostgreSQL checkpoint for conversation memory")
+            print("[OK] Using PostgreSQL checkpoint for conversation memory")
             return checkpointer
 
         except Exception as e:
             # 降级到内存 Checkpoint
-            print(f"⚠️  Failed to init PostgreSQL checkpoint: {str(e)}")
-            print("⚠️  Falling back to InMemorySaver (conversations won't persist)")
+            print(f"[WARN]  Failed to init PostgreSQL checkpoint: {str(e)}")
+            print("[WARN]  Falling back to InMemorySaver (conversations won't persist)")
             return InMemorySaver()
 
     async def stream_chat(

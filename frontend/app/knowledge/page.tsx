@@ -26,6 +26,7 @@ import {
   AlertCircle,
   Sparkles,
   Send,
+  Eye,
 } from 'lucide-react'
 import { Navbar } from '@/components/navbar'
 import { Button } from '@/components/ui/button'
@@ -34,6 +35,8 @@ import { formatFileSize, formatDate, cn } from '@/lib/utils'
 import { StatCard, StatsGrid } from '@/components/ui/stats-card'
 import { getParserLabel } from '@/lib/parser-options'
 import { getChunkStrategyLabel } from '@/lib/chunk-strategies'
+import { ChunkStrategyDropdown } from '@/components/ui/chunk-strategy-dropdown'
+import { useChunkStrategyPreference } from '@/contexts/chunk-strategy-context'
 import type { Document } from '@/types'
 
 // Tab 类型
@@ -43,6 +46,7 @@ export default function KnowledgePage() {
   const { documents, isLoading, uploadDocument, deleteDocument, loadDocuments } = useDocuments()
   const [activeTab, setActiveTab] = useState<TabType>('documents')
   const [selectedDocId, setSelectedDocId] = useState<string | null>(null)
+  const { chunkStrategy, setChunkStrategy } = useChunkStrategyPreference()
 
   // 检索测试状态
   const [searchQuery, setSearchQuery] = useState('')
@@ -131,7 +135,10 @@ export default function KnowledgePage() {
               </div>
             </div>
 
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-3 flex-wrap">
+              <div className="w-full sm:w-72">
+                <ChunkStrategyDropdown value={chunkStrategy} onChange={setChunkStrategy} />
+              </div>
               <Button
                 variant="outline"
                 size="sm"
@@ -140,6 +147,15 @@ export default function KnowledgePage() {
               >
                 <RefreshCw className="w-4 h-4" />
                 刷新
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                className="gap-2"
+                onClick={() => window.open('/chunk-preview', '_blank')}
+              >
+                <Eye className="w-4 h-4" />
+                切块预览
               </Button>
               <label>
                 <Button className="gap-2 bg-blue-600 hover:bg-blue-700" asChild>

@@ -67,6 +67,7 @@ export function ChunkPreview({ onConfirm, onClose }: ChunkPreviewProps) {
   const isTokenStrategy = strategyForUi === 'langchain_token'
   const isSentenceStrategy = strategyForUi === 'llama_index'
   const isHierarchicalStrategy = strategyForUi === 'llama_index_hierarchical'
+  const isRagflowStrategy = strategyForUi.startsWith('ragflow_')
 
   // 处理文件拖放
   const handleDragOver = useCallback((e: React.DragEvent) => {
@@ -425,6 +426,23 @@ export function ChunkPreview({ onConfirm, onClose }: ChunkPreviewProps) {
                     {isHierarchicalStrategy
                       ? 'LlamaIndex HierarchicalNodeParser 生成父子块（多级 chunk_sizes），保留 parent 关系与层级，适合 AutoMerging 检索/长文本压缩。'
                       : 'LlamaIndex SentenceSplitter 会根据语义断句（支持多语言），自动保留句子边界和起止位置信息，获得更平滑的检索体验。'}
+                  </p>
+                </div>
+              )}
+
+              {isRagflowStrategy && (
+                <div className="rounded-lg border border-blue-200 bg-blue-50 p-3">
+                  <div className="text-[11px] font-semibold text-blue-700 uppercase tracking-wide mb-1">
+                    RAGFlow 切分说明
+                  </div>
+                  <p className="text-xs text-blue-800 leading-relaxed">
+                    {strategyForUi === 'ragflow_naive' && 'RAGFlow 通用切分器，适合大多数文档类型，自动识别段落和语义边界。'}
+                    {strategyForUi === 'ragflow_book' && 'RAGFlow 书籍切分器，针对长文档优化，保留章节、标题等结构信息。'}
+                    {strategyForUi === 'ragflow_laws' && 'RAGFlow 法律切分器，专门针对法律文档优化，保留条款、款项结构。'}
+                    {strategyForUi === 'ragflow_email' && 'RAGFlow 邮件切分器，针对邮件/通信优化，保留引用、回复结构。'}
+                  </p>
+                  <p className="text-[10px] text-blue-600 mt-2">
+                    RAGFlow 策略使用内置解析+切块，chunk_size/overlap 参数可能会被忽略。
                   </p>
                 </div>
               )}

@@ -3,7 +3,7 @@
  */
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import {
   MessageSquare,
@@ -24,6 +24,25 @@ import { cn } from '@/lib/utils'
 import type { Conversation, Message, Citation } from '@/types'
 
 export default function HistoryPage() {
+  return (
+    <Suspense fallback={<HistoryPageLoading />}>
+      <HistoryPageContent />
+    </Suspense>
+  )
+}
+
+function HistoryPageLoading() {
+  return (
+    <div className="flex h-screen overflow-hidden bg-white">
+      <Navbar />
+      <div className="flex-1 flex items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-gray-400" />
+      </div>
+    </div>
+  )
+}
+
+function HistoryPageContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const conversationId = searchParams.get('id')

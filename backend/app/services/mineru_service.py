@@ -23,7 +23,7 @@ class MinerUService:
         self.enabled = settings.MINERU_ENABLED and bool(self.api_token)
 
         if not self.enabled:
-            print("⚠️  MinerU is disabled. Set MINERU_ENABLED=True and configure MINERU_API_TOKEN to enable.")
+            print("[WARN]  MinerU is disabled. Set MINERU_ENABLED=True and configure MINERU_API_TOKEN to enable.")
 
     def _get_headers(self) -> Dict[str, str]:
         """获取请求头"""
@@ -142,7 +142,7 @@ class MinerUService:
                 return response.status_code == 200
 
         except Exception as e:
-            print(f"❌ Upload file failed: {str(e)}")
+            print(f"[ERR] Upload file failed: {str(e)}")
             return False
 
     def get_task_status(self, batch_id: str) -> Dict[str, Any]:
@@ -199,7 +199,7 @@ class MinerUService:
             status = self.get_task_status(batch_id)
             task_status = status.get("status")
 
-            print(f"📊 Task {batch_id} status: {task_status}")
+            print(f"[*] Task {batch_id} status: {task_status}")
 
             if task_status == "completed":
                 return status
@@ -258,7 +258,7 @@ class MinerUService:
         if not success:
             raise Exception(f"Failed to upload {file_path.name}")
 
-        print(f"✅ Upload complete. Batch ID: {batch_id}")
+        print(f"[OK] Upload complete. Batch ID: {batch_id}")
 
         # 3. 等待解析完成
         print(f"⏳ Waiting for parsing completion...")
@@ -282,7 +282,7 @@ class MinerUService:
             "model_version": self.model_version
         }
 
-        print(f"✅ Parse complete. Content length: {len(markdown_content)} chars")
+        print(f"[OK] Parse complete. Content length: {len(markdown_content)} chars")
 
         return [Document(page_content=markdown_content, metadata=metadata)]
 
