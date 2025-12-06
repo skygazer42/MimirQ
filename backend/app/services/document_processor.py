@@ -7,6 +7,8 @@ from sqlalchemy.orm import Session
 from langchain_core.documents import Document
 from uuid import UUID
 import asyncio
+import base64
+import hashlib
 
 from app.config import settings
 from app.models.document import Document as DBDocument, DocumentChunk
@@ -103,6 +105,11 @@ class DocumentProcessorService:
                 chunk.metadata['chunk_index'] = idx
                 chunk.metadata['parser_backend'] = resolved_backend
                 chunk.metadata['chunk_strategy'] = resolved_chunk_strategy
+                # try to persist inline image and return an image_id for recall
+                image_id = self._extract_and_save_image(chunk.metadata)
+                if image_id:
+                    chunk.metadata['image_id'] = image_id
+                    chunk.metadata['image_url'] = f"/api/v1/documents/image/{image_id}"
 
             await self._update_status(
                 db, document_id, "processing", 66, "embedding"
@@ -314,6 +321,45 @@ class DocumentProcessorService:
             documents.append(Document(page_content=text, metadata=meta))
 
         return documents
+
+    def _extract_and_save_image(self, metadata: Dict[str, Any]) -> Optional[str]:
+        """
+        Detect base64 image payloads in chunk metadata and save to disk, returning image_id.
+        Recognized keys: image_base64 / image / img_base64 / img. Supports data URI.
+        """
+        # æ—¢æœ‰ img_id åˆ©ç”¨åŽŸæ · ID
+        if isinstance(metadata.get("img_id"), str) and metadata.get("img_id").strip():
+            return metadata.get("img_id")
+
+        possible_keys = ["image_base64", "image", "img_base64", "img"]
+        b64_data = None
+        for key in possible_keys:
+            val = metadata.get(key)
+            if isinstance(val, str) and val.strip():
+                b64_data = val
+                break
+        if not b64_data:
+            return None
+
+        if b64_data.startswith("data:"):
+            parts = b64_data.split(",", 1)
+            if len(parts) == 2:
+                b64_data = parts[1]
+
+        try:
+            binary = base64.b64decode(b64_data)
+        except Exception:
+            return None
+
+        image_id = hashlib.sha256(binary).hexdigest()[:32]
+        images_dir = Path(settings.UPLOAD_DIR) / "images"
+        images_dir.mkdir(parents=True, exist_ok=True)
+        file_path = images_dir / f"{image_id}.png"
+        if not file_path.exists():
+            with file_path.open("wb") as f:
+                f.write(binary)
+
+        return image_id
 
 
 # 全局实例
