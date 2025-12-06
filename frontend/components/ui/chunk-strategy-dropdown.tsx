@@ -25,6 +25,7 @@ const ICON_MAP: Record<ChunkStrategyOption['icon'], any> = {
   recursive: Layers,
   token: Hash,
   sentence: AlignLeft,
+  separator: AlignLeft,
   hierarchical: GitBranch,
   ragflow: Layers,
 }
@@ -37,6 +38,7 @@ const COLOR_MAP: Record<
   recursive: { bg: 'bg-indigo-100', text: 'text-indigo-600' },
   token: { bg: 'bg-amber-100', text: 'text-amber-600' },
   sentence: { bg: 'bg-green-100', text: 'text-green-600' },
+  separator: { bg: 'bg-gray-100', text: 'text-gray-600' },
   hierarchical: { bg: 'bg-purple-100', text: 'text-purple-600' },
   ragflow: { bg: 'bg-sky-100', text: 'text-sky-600' },
 }
