@@ -10,6 +10,7 @@ from uuid import UUID
 class DocumentUploadResponse(BaseModel):
     """文档上传响应"""
     id: UUID
+    dataset_id: Optional[UUID] = None
     filename: str
     file_type: str
     file_size: int
@@ -49,6 +50,7 @@ class DocumentDetail(BaseModel):
     updated_at: datetime
     processed_at: Optional[datetime] = None
     error_message: Optional[str] = None
+    dataset_id: Optional[UUID] = None
     metadata: Dict[str, Any] = {}
     chunks: Optional[List[DocumentChunkSchema]] = None
 
