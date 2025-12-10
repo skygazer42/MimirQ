@@ -1,7 +1,7 @@
 """
 文档管理 API
 """
-from fastapi import APIRouter, Depends, UploadFile, File, HTTPException, BackgroundTasks, Form
+from fastapi import APIRouter, Depends, UploadFile, File, HTTPException, BackgroundTasks, Form, Body
 from sqlalchemy.orm import Session
 from typing import List, Optional
 from uuid import UUID
@@ -32,9 +32,12 @@ from app.services.parsers import parser_factory
 from app.services.chunkers import chunker_factory
 from app.services.milvus_store import milvus_store
 from app.services.mineru_service import mineru_service
+from app.services.dataset_service import DatasetService
+from app.models.dataset import Dataset
 from app.core.config import settings
 from fastapi.responses import FileResponse
 from app.dependencies.tenant import get_tenant_id
+from app.dependencies.auth import get_current_account_id
 
 router = APIRouter()
 
@@ -45,7 +48,9 @@ async def upload_document(
     file: UploadFile = File(...),
     parser_backend: str = Form(default=settings.DEFAULT_PARSER_BACKEND),
     chunk_strategy: str = Form(default=settings.DEFAULT_CHUNK_STRATEGY),
+    dataset_id: UUID = Form(...),
     tenant_id: UUID = Depends(get_tenant_id),
+    account_id: str = Depends(get_current_account_id),
     db: Session = Depends(get_db)
 ):
     """
@@ -83,6 +88,10 @@ async def upload_document(
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
 
+    # 权限检查
+    dataset = DatasetService.get_dataset(db, tenant_id, dataset_id)
+    DatasetService.assert_dataset_writable(db, dataset, account_id)
+
     # 3. 保存文件
     upload_dir = Path(settings.UPLOAD_DIR) / str(tenant_id)
     upload_dir.mkdir(parents=True, exist_ok=True)
@@ -101,6 +110,7 @@ async def upload_document(
     db_document = DBDocument(
         id=file_id,
         tenant_id=tenant_id,
+        dataset_id=dataset_id,
         filename=file.filename,
         file_type=file_ext.lstrip('.'),
         file_size=file_size,
@@ -138,13 +148,24 @@ async def list_documents(
     skip: int = 0,
     limit: int = 20,
     status: Optional[str] = None,
+    dataset_id: Optional[UUID] = None,
     tenant_id: UUID = Depends(get_tenant_id),
+    account_id: str = Depends(get_current_account_id),
     db: Session = Depends(get_db)
 ):
     """
     获取文档列表
     """
-    query = db.query(DBDocument).filter(DBDocument.tenant_id == tenant_id)
+    if not dataset_id:
+        raise HTTPException(status_code=400, detail="dataset_id is required to list documents")
+
+    dataset = DatasetService.get_dataset(db, tenant_id, dataset_id)
+    DatasetService.assert_dataset_readable(db, dataset, account_id)
+
+    query = db.query(DBDocument).filter(
+        DBDocument.tenant_id == tenant_id,
+        DBDocument.dataset_id == dataset_id
+    )
 
     # 状态过滤
     if status and status != 'all':
@@ -167,6 +188,7 @@ async def get_document(
     document_id: uuid.UUID,
     include_chunks: bool = False,
     tenant_id: UUID = Depends(get_tenant_id),
+    account_id: str = Depends(get_current_account_id),
     db: Session = Depends(get_db)
 ):
     """
@@ -180,6 +202,11 @@ async def get_document(
     if not document:
         raise HTTPException(status_code=404, detail="Document not found")
 
+    # 权限检查
+    if document.dataset_id:
+        ds = DatasetService.get_dataset(db, tenant_id, document.dataset_id)
+        DatasetService.assert_dataset_readable(db, ds, account_id)
+
     # 如果需要包含切片，访问一次关系以确保加载
     if include_chunks:
         _ = document.chunks
@@ -191,6 +218,7 @@ async def get_document(
 async def get_document_status(
     document_id: uuid.UUID,
     tenant_id: UUID = Depends(get_tenant_id),
+    account_id: str = Depends(get_current_account_id),
     db: Session = Depends(get_db)
 ):
     """
@@ -203,6 +231,10 @@ async def get_document_status(
 
     if not document:
         raise HTTPException(status_code=404, detail="Document not found")
+
+    if document.dataset_id:
+        ds = DatasetService.get_dataset(db, tenant_id, document.dataset_id)
+        DatasetService.assert_dataset_readable(db, ds, account_id)
 
     return {
         "id": document.id,
@@ -217,6 +249,7 @@ async def get_document_status(
 async def delete_document(
     document_id: uuid.UUID,
     tenant_id: UUID = Depends(get_tenant_id),
+    account_id: str = Depends(get_current_account_id),
     db: Session = Depends(get_db)
 ):
     """
@@ -229,6 +262,10 @@ async def delete_document(
 
     if not document:
         raise HTTPException(status_code=404, detail="Document not found")
+
+    if document.dataset_id:
+        ds = DatasetService.get_dataset(db, tenant_id, document.dataset_id)
+        DatasetService.assert_dataset_writable(db, ds, account_id)
 
     # 1. 删除 Milvus 中的向量
     milvus_store.delete_by_document_id(document_id, tenant_id=tenant_id)
@@ -337,7 +374,9 @@ async def preview_document(
 @router.post("/manual", response_model=DocumentUploadResponse, status_code=201)
 async def create_document_with_manual_chunks(
     request: ManualDocumentCreate,
+    dataset_id: UUID = Body(...),
     tenant_id: UUID = Depends(get_tenant_id),
+    account_id: str = Depends(get_current_account_id),
     db: Session = Depends(get_db)
 ):
     """
@@ -350,6 +389,10 @@ async def create_document_with_manual_chunks(
     4. 重建 BM25 索引
     5. 更新文档状态为 completed
     """
+    # 权限检查
+    dataset = DatasetService.get_dataset(db, tenant_id, dataset_id)
+    DatasetService.assert_dataset_writable(db, dataset, account_id)
+
     # 基本校验
     if not request.chunks:
         raise HTTPException(status_code=400, detail="Chunks cannot be empty")
@@ -367,6 +410,7 @@ async def create_document_with_manual_chunks(
     db_document = DBDocument(
         id=document_id,
         tenant_id=tenant_id,
+        dataset_id=dataset_id,
         filename=request.filename,
         file_type=request.file_type.lower(),
         file_size=request.file_size,
