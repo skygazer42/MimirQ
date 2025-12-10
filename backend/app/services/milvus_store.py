@@ -165,6 +165,7 @@ class MilvusVectorStore:
             # 定义 Schema
             fields = [
                 FieldSchema(name="id", dtype=DataType.VARCHAR, is_primary=True, max_length=100),
+                FieldSchema(name="tenant_id", dtype=DataType.VARCHAR, max_length=100),
                 FieldSchema(name="document_id", dtype=DataType.VARCHAR, max_length=100),
                 FieldSchema(name="chunk_index", dtype=DataType.INT64),
                 FieldSchema(name="content", dtype=DataType.VARCHAR, max_length=65535),
@@ -250,7 +251,8 @@ class MilvusVectorStore:
     def add_documents(
         self,
         documents: List[Dict[str, Any]],
-        document_id: UUID
+        document_id: UUID,
+        tenant_id: UUID
     ) -> List[str]:
         """
         添加文档到 Milvus
@@ -267,6 +269,7 @@ class MilvusVectorStore:
 
         # 准备数据
         ids = []
+        tenant_ids = []
         doc_ids = []
         chunk_indices = []
         contents = []
@@ -283,6 +286,7 @@ class MilvusVectorStore:
             vector_id = f"{document_id}_{idx}"
 
             ids.append(vector_id)
+            tenant_ids.append(str(tenant_id))
             doc_ids.append(str(document_id))
             chunk_indices.append(metadata.get('chunk_index', idx))
             contents.append(content[:65535])  # Milvus VARCHAR 限制
@@ -297,6 +301,7 @@ class MilvusVectorStore:
         # 插入数据
         data = [
             ids,
+            tenant_ids,
             doc_ids,
             chunk_indices,
             contents,
@@ -318,7 +323,8 @@ class MilvusVectorStore:
         query: str,
         top_k: int = 5,
         score_threshold: float = 0.7,
-        document_ids: Optional[List[UUID]] = None
+        document_ids: Optional[List[UUID]] = None,
+        tenant_id: Optional[UUID] = None
     ) -> List[Dict[str, Any]]:
         """
         检索相似文档
@@ -346,6 +352,9 @@ class MilvusVectorStore:
         if document_ids:
             doc_id_strs = [f'"{str(doc_id)}"' for doc_id in document_ids]
             expr = f"document_id in [{', '.join(doc_id_strs)}]"
+        if tenant_id:
+            tenant_expr = f'tenant_id == "{str(tenant_id)}"'
+            expr = f"{tenant_expr}" if not expr else f"{tenant_expr} and {expr}"
 
         # 执行搜索
         results = self._collection.search(
@@ -354,7 +363,7 @@ class MilvusVectorStore:
             param=search_params,
             limit=top_k * 2,  # 多检索一些，然后过滤
             expr=expr,
-            output_fields=["document_id", "content", "page_number", "source", "chunk_index"]
+            output_fields=["tenant_id", "document_id", "content", "page_number", "source", "chunk_index"]
         )
 
         # 格式化结果

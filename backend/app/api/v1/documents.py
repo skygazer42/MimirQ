@@ -4,6 +4,7 @@
 from fastapi import APIRouter, Depends, UploadFile, File, HTTPException, BackgroundTasks, Form
 from sqlalchemy.orm import Session
 from typing import List, Optional
+from uuid import UUID
 from pathlib import Path
 import shutil
 import uuid
@@ -33,6 +34,7 @@ from app.services.milvus_store import milvus_store
 from app.services.mineru_service import mineru_service
 from app.config import settings
 from fastapi.responses import FileResponse
+from app.dependencies.tenant import get_tenant_id
 
 router = APIRouter()
 
@@ -43,6 +45,7 @@ async def upload_document(
     file: UploadFile = File(...),
     parser_backend: str = Form(default=settings.DEFAULT_PARSER_BACKEND),
     chunk_strategy: str = Form(default=settings.DEFAULT_CHUNK_STRATEGY),
+    tenant_id: UUID = Depends(get_tenant_id),
     db: Session = Depends(get_db)
 ):
     """
@@ -97,6 +100,7 @@ async def upload_document(
     # 4. 创建数据库记录
     db_document = DBDocument(
         id=file_id,
+        tenant_id=tenant_id,
         filename=file.filename,
         file_type=file_ext.lstrip('.'),
         file_size=file_size,
@@ -120,6 +124,7 @@ async def upload_document(
         document_processor.process_document,
         file_path,
         file_id,
+        tenant_id,
         db,
         resolved_parser_backend,
         resolved_chunk_strategy
@@ -133,12 +138,13 @@ async def list_documents(
     skip: int = 0,
     limit: int = 20,
     status: Optional[str] = None,
+    tenant_id: UUID = Depends(get_tenant_id),
     db: Session = Depends(get_db)
 ):
     """
     获取文档列表
     """
-    query = db.query(DBDocument)
+    query = db.query(DBDocument).filter(DBDocument.tenant_id == tenant_id)
 
     # 状态过滤
     if status and status != 'all':
@@ -160,12 +166,16 @@ async def list_documents(
 async def get_document(
     document_id: uuid.UUID,
     include_chunks: bool = False,
+    tenant_id: UUID = Depends(get_tenant_id),
     db: Session = Depends(get_db)
 ):
     """
     获取文档详情
     """
-    document = db.query(DBDocument).filter(DBDocument.id == document_id).first()
+    document = db.query(DBDocument).filter(
+        DBDocument.id == document_id,
+        DBDocument.tenant_id == tenant_id
+    ).first()
 
     if not document:
         raise HTTPException(status_code=404, detail="Document not found")
@@ -180,12 +190,16 @@ async def get_document(
 @router.get("/{document_id}/status", response_model=DocumentStatus)
 async def get_document_status(
     document_id: uuid.UUID,
+    tenant_id: UUID = Depends(get_tenant_id),
     db: Session = Depends(get_db)
 ):
     """
     获取文档处理状态（用于轮询）
     """
-    document = db.query(DBDocument).filter(DBDocument.id == document_id).first()
+    document = db.query(DBDocument).filter(
+        DBDocument.id == document_id,
+        DBDocument.tenant_id == tenant_id
+    ).first()
 
     if not document:
         raise HTTPException(status_code=404, detail="Document not found")
@@ -202,12 +216,16 @@ async def get_document_status(
 @router.delete("/{document_id}", status_code=204)
 async def delete_document(
     document_id: uuid.UUID,
+    tenant_id: UUID = Depends(get_tenant_id),
     db: Session = Depends(get_db)
 ):
     """
     删除文档
     """
-    document = db.query(DBDocument).filter(DBDocument.id == document_id).first()
+    document = db.query(DBDocument).filter(
+        DBDocument.id == document_id,
+        DBDocument.tenant_id == tenant_id
+    ).first()
 
     if not document:
         raise HTTPException(status_code=404, detail="Document not found")
@@ -318,6 +336,7 @@ async def preview_document(
 @router.post("/manual", response_model=DocumentUploadResponse, status_code=201)
 async def create_document_with_manual_chunks(
     request: ManualDocumentCreate,
+    tenant_id: UUID = Depends(get_tenant_id),
     db: Session = Depends(get_db)
 ):
     """
@@ -346,6 +365,7 @@ async def create_document_with_manual_chunks(
     document_id = uuid.uuid4()
     db_document = DBDocument(
         id=document_id,
+        tenant_id=tenant_id,
         filename=request.filename,
         file_type=request.file_type.lower(),
         file_size=request.file_size,

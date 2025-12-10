@@ -61,6 +61,10 @@ class Settings(BaseSettings):
     MARKITDOWN_DOCINTEL_KEY: str = ""
     LLAMA_INDEX_ENABLED: bool = False
 
+    # Multi-tenant defaults
+    DEFAULT_TENANT_ID: str = "00000000-0000-0000-0000-000000000000"
+    TENANT_HEADER: str = "X-Tenant-ID"
+
     class Config:
         env_file = ".env"
         case_sensitive = True

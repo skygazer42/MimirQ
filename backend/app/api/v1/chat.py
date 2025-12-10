@@ -1,13 +1,15 @@
 """
-对话 API
+对话 API（含租户隔离）
 """
+from uuid import UUID
+import uuid
+from datetime import datetime
+import json
+from typing import Optional
+
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
-from typing import Optional
-import json
-import uuid
-from datetime import datetime
 
 from app.database import get_db
 from app.models.chat import Conversation, Message
@@ -17,10 +19,10 @@ from app.schemas.chat import (
     ConversationSchema,
     ConversationDetail,
     ConversationList,
-    MessageSchema
 )
 from app.services.rag_agent import rag_agent
 from app.config import settings
+from app.dependencies.tenant import get_tenant_id
 
 router = APIRouter()
 
@@ -28,16 +30,11 @@ router = APIRouter()
 @router.post("/stream")
 async def stream_chat(
     request: ChatRequest,
+    tenant_id: UUID = Depends(get_tenant_id),
     db: Session = Depends(get_db)
 ):
     """
     流式对话接口 - 核心功能
-
-    流程：
-    1. 创建或获取对话会话
-    2. 保存用户消息
-    3. RAG 检索 + LLM 流式生成
-    4. 保存助手回复
     """
 
     conversation_id = request.conversation_id
@@ -47,13 +44,16 @@ async def stream_chat(
     # 1. 获取或创建对话
     if conversation_id:
         conversation = db.query(Conversation).filter(
-            Conversation.id == conversation_id
+            Conversation.id == conversation_id,
+            Conversation.tenant_id == tenant_id
         ).first()
         if not conversation:
             raise HTTPException(status_code=404, detail="Conversation not found")
     else:
         # 创建新对话
         conversation = Conversation(
+            id=uuid.uuid4(),
+            tenant_id=tenant_id,
             title=request.message[:50] + "..." if len(request.message) > 50 else request.message,
             document_ids=request.document_ids or []
         )
@@ -64,6 +64,7 @@ async def stream_chat(
 
     # 2. 保存用户消息
     user_message = Message(
+        tenant_id=tenant_id,
         conversation_id=conversation_id,
         role='user',
         content=request.message
@@ -80,12 +81,13 @@ async def stream_chat(
         nonlocal citations_data, full_response
 
         try:
-            # 使用 LangChain Agent (自动管理对话历史)
+            # 使用 LangChain Agent
             async for event in rag_agent.stream_chat(
                 question=request.message,
                 conversation_id=conversation_id,
                 document_ids=request.document_ids,
-                top_k=request.rag_config.get('top_k', settings.RETRIEVAL_TOP_K)
+                top_k=request.rag_config.get('top_k', settings.RETRIEVAL_TOP_K),
+                tenant_id=tenant_id
             ):
                 # 记录引用信息
                 if event['type'] == 'citations':
@@ -95,11 +97,12 @@ async def stream_chat(
                 if event['type'] == 'token':
                     full_response += event['data']['content']
 
-                # SSE 格式输出
+                # SSE 输出
                 yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
 
             # 4. 保存助手回复到数据库
             assistant_message = Message(
+                tenant_id=tenant_id,
                 conversation_id=conversation_id,
                 role='assistant',
                 content=full_response,
@@ -114,7 +117,6 @@ async def stream_chat(
             db.commit()
 
         except Exception as e:
-            # 错误事件
             error_event = {
                 "type": "error",
                 "data": {"message": str(e)}
@@ -135,12 +137,12 @@ async def stream_chat(
 @router.post("/conversations", response_model=ConversationSchema, status_code=201)
 async def create_conversation(
     request: ConversationCreate,
+    tenant_id: UUID = Depends(get_tenant_id),
     db: Session = Depends(get_db)
 ):
-    """
-    创建新对话
-    """
+    """创建新对话"""
     conversation = Conversation(
+        tenant_id=tenant_id,
         title=request.title,
         document_ids=request.document_ids or []
     )
@@ -156,19 +158,17 @@ async def create_conversation(
 async def list_conversations(
     skip: int = 0,
     limit: int = 20,
+    tenant_id: UUID = Depends(get_tenant_id),
     db: Session = Depends(get_db)
 ):
-    """
-    获取对话列表
-    """
-    query = db.query(Conversation)
+    """获取对话列表"""
+    query = db.query(Conversation).filter(Conversation.tenant_id == tenant_id)
     total = query.count()
 
     conversations = query.order_by(
         Conversation.updated_at.desc()
     ).offset(skip).limit(limit).all()
 
-    # 添加最后一条消息预览
     result_items = []
     for conv in conversations:
         conv_dict = {
@@ -180,9 +180,9 @@ async def list_conversations(
             "last_message": None
         }
 
-        # 获取最后一条消息
         last_msg = db.query(Message).filter(
-            Message.conversation_id == conv.id
+            Message.conversation_id == conv.id,
+            Message.tenant_id == tenant_id
         ).order_by(Message.created_at.desc()).first()
 
         if last_msg:
@@ -198,21 +198,22 @@ async def list_conversations(
 
 @router.get("/conversations/{conversation_id}/messages", response_model=ConversationDetail)
 async def get_conversation_messages(
-    conversation_id: uuid.UUID,
+    conversation_id: UUID,
+    tenant_id: UUID = Depends(get_tenant_id),
     db: Session = Depends(get_db)
 ):
-    """
-    获取对话历史
-    """
+    """获取对话历史"""
     conversation = db.query(Conversation).filter(
-        Conversation.id == conversation_id
+        Conversation.id == conversation_id,
+        Conversation.tenant_id == tenant_id
     ).first()
 
     if not conversation:
         raise HTTPException(status_code=404, detail="Conversation not found")
 
     messages = db.query(Message).filter(
-        Message.conversation_id == conversation_id
+        Message.conversation_id == conversation_id,
+        Message.tenant_id == tenant_id
     ).order_by(Message.created_at.asc()).all()
 
     return {
@@ -223,14 +224,14 @@ async def get_conversation_messages(
 
 @router.delete("/conversations/{conversation_id}", status_code=204)
 async def delete_conversation(
-    conversation_id: uuid.UUID,
+    conversation_id: UUID,
+    tenant_id: UUID = Depends(get_tenant_id),
     db: Session = Depends(get_db)
 ):
-    """
-    删除对话
-    """
+    """删除对话"""
     conversation = db.query(Conversation).filter(
-        Conversation.id == conversation_id
+        Conversation.id == conversation_id,
+        Conversation.tenant_id == tenant_id
     ).first()
 
     if not conversation:
