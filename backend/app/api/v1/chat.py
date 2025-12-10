@@ -11,7 +11,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
-from app.database import get_db
+from app.core.database import get_db
 from app.models.chat import Conversation, Message
 from app.schemas.chat import (
     ChatRequest,
@@ -21,7 +21,7 @@ from app.schemas.chat import (
     ConversationList,
 )
 from app.services.rag_agent import rag_agent
-from app.config import settings
+from app.core.config import settings
 from app.dependencies.tenant import get_tenant_id
 
 router = APIRouter()

@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import List, Dict, Any, Optional
 from langchain_core.documents import Document
 
-from app.config import settings
+from app.core.config import settings
 
 
 class MinerUService:

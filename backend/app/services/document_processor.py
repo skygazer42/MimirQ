@@ -10,7 +10,7 @@ import asyncio
 import base64
 import hashlib
 
-from app.config import settings
+from app.core.config import settings
 from app.models.document import Document as DBDocument, DocumentChunk
 from app.services.parsers import parser_factory
 from app.services.chunkers import chunker_factory

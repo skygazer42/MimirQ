@@ -11,7 +11,7 @@ from collections import Counter
 
 from app.services.milvus_store import milvus_store
 from app.models.document import DocumentChunk
-from app.config import settings
+from app.core.config import settings
 
 
 class HybridRetriever:

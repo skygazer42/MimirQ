@@ -8,7 +8,7 @@ from typing import List, Optional
 
 from langchain_core.documents import Document
 
-from app.config import settings
+from app.core.config import settings
 
 
 class MarkItDownParser:

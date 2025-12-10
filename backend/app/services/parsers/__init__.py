@@ -12,7 +12,7 @@ from app.services.parsers.pdf_parser import PDFParser
 from app.services.parsers.text_parser import TextParser, MarkdownParser
 from app.services.parsers.mineru_parser import MinerUParser
 from app.services.parsers.markitdown_parser import MarkItDownParser
-from app.config import settings
+from app.core.config import settings
 
 
 class ParserFactory:
