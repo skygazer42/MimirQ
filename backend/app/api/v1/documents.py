@@ -84,7 +84,7 @@ async def upload_document(
         raise HTTPException(status_code=400, detail=str(exc))
 
     # 3. 保存文件
-    upload_dir = Path(settings.UPLOAD_DIR)
+    upload_dir = Path(settings.UPLOAD_DIR) / str(tenant_id)
     upload_dir.mkdir(parents=True, exist_ok=True)
 
     # 生成唯一文件名
@@ -107,7 +107,7 @@ async def upload_document(
         file_path=str(file_path),
         status='pending',
         processing_progress=0,
-        metadata={
+        doc_metadata={
             "parser_backend": resolved_parser_backend,
             "parser_backend_requested": (parser_backend or "").lower(),
             "chunk_strategy": resolved_chunk_strategy,
@@ -231,7 +231,7 @@ async def delete_document(
         raise HTTPException(status_code=404, detail="Document not found")
 
     # 1. 删除 Milvus 中的向量
-    milvus_store.delete_by_document_id(document_id)
+    milvus_store.delete_by_document_id(document_id, tenant_id=tenant_id)
 
     # 2. 删除本地文件
     try:
@@ -249,12 +249,12 @@ async def delete_document(
 
 
 @router.get("/image/{image_id}")
-async def get_image(image_id: str):
+async def get_image(image_id: str, tenant_id: UUID = Depends(get_tenant_id)):
     """
     æ ¹æ“š image_id è¿”å›žä¿å­˜çš„å›¾ç‰‡ã€‚
     æ ‡å‡†ä½ç½®ï¼š{UPLOAD_DIR}/images/{image_id}.png
     """
-    images_dir = Path(settings.UPLOAD_DIR) / "images"
+    images_dir = Path(settings.UPLOAD_DIR) / str(tenant_id) / "images"
     file_path = images_dir / f"{image_id}.png"
     if not file_path.exists():
         raise HTTPException(status_code=404, detail="Image not found")
@@ -266,6 +266,7 @@ async def preview_document(
     file: UploadFile = File(...),
     parser_backend: str = Form(default=settings.DEFAULT_PARSER_BACKEND),
     chunk_strategy: str = Form(default=settings.DEFAULT_CHUNK_STRATEGY),
+    tenant_id: UUID = Depends(get_tenant_id),
 ):
     """
     文档解析预览接口
@@ -293,7 +294,7 @@ async def preview_document(
         )
 
     # 将文件保存到临时路径进行解析
-    upload_dir = Path(settings.UPLOAD_DIR) / "preview"
+    upload_dir = Path(settings.UPLOAD_DIR) / str(tenant_id) / "preview"
     upload_dir.mkdir(parents=True, exist_ok=True)
 
     temp_path = upload_dir / f"{uuid.uuid4()}{file_ext}"
@@ -374,7 +375,7 @@ async def create_document_with_manual_chunks(
         status='processing',
         processing_progress=0,
         current_stage='embedding',
-        metadata=request.metadata or {}
+        doc_metadata=request.metadata or {}
     )
 
     db.add(db_document)
@@ -407,13 +408,14 @@ async def create_document_with_manual_chunks(
         # 生成 Embeddings 并写入 Milvus
         from app.services.milvus_store import milvus_store as _milvus_store
 
-        vector_ids = _milvus_store.add_documents(milvus_docs, document_id)
+        vector_ids = _milvus_store.add_documents(milvus_docs, document_id, tenant_id)
 
         # 写入 PostgreSQL 的 DocumentChunk
         from app.models.document import DocumentChunk as DBDocumentChunk
 
         for idx, (chunk, vector_id) in enumerate(zip(request.chunks, vector_ids)):
             db_chunk = DBDocumentChunk(
+                tenant_id=tenant_id,
                 document_id=document_id,
                 chunk_index=idx,
                 content=chunk.content,
@@ -437,7 +439,7 @@ async def create_document_with_manual_chunks(
         db.refresh(db_document)
 
         # 重建 BM25 索引
-        await document_processor._rebuild_bm25_index(db)
+        await document_processor._rebuild_bm25_index_for_tenant(db, tenant_id)
 
         return db_document
 
@@ -458,6 +460,7 @@ async def preview_chunking(
     chunk_overlap: int = 200,
     parser_backend: str = Form(default=settings.DEFAULT_PARSER_BACKEND),
     chunk_strategy: str = Form(default=settings.DEFAULT_CHUNK_STRATEGY),
+    tenant_id: UUID = Depends(get_tenant_id),
 ):
     """
     切块预览接口
@@ -501,7 +504,7 @@ async def preview_chunking(
         )
 
     # 保存到临时路径
-    upload_dir = Path(settings.UPLOAD_DIR) / "preview"
+    upload_dir = Path(settings.UPLOAD_DIR) / str(tenant_id) / "preview"
     upload_dir.mkdir(parents=True, exist_ok=True)
     temp_path = upload_dir / f"{uuid.uuid4()}{file_ext}"
 

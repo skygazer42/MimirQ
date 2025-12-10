@@ -107,7 +107,7 @@ class DocumentProcessorService:
                 chunk.metadata['parser_backend'] = resolved_backend
                 chunk.metadata['chunk_strategy'] = resolved_chunk_strategy
                 # try to persist inline image and return an image_id for recall
-                image_id = self._extract_and_save_image(chunk.metadata)
+                image_id = self._extract_and_save_image(chunk.metadata, tenant_id)
                 if image_id:
                     chunk.metadata['image_id'] = image_id
                     chunk.metadata['image_url'] = f"/api/v1/documents/image/{image_id}"
@@ -343,7 +343,7 @@ class DocumentProcessorService:
 
         return documents
 
-    def _extract_and_save_image(self, metadata: Dict[str, Any]) -> Optional[str]:
+    def _extract_and_save_image(self, metadata: Dict[str, Any], tenant_id: UUID) -> Optional[str]:
         """
         Detect base64 image payloads in chunk metadata and save to disk, returning image_id.
         Recognized keys: image_base64 / image / img_base64 / img. Supports data URI.
@@ -373,7 +373,7 @@ class DocumentProcessorService:
             return None
 
         image_id = hashlib.sha256(binary).hexdigest()[:32]
-        images_dir = Path(settings.UPLOAD_DIR) / "images"
+        images_dir = Path(settings.UPLOAD_DIR) / str(tenant_id) / "images"
         images_dir.mkdir(parents=True, exist_ok=True)
         file_path = images_dir / f"{image_id}.png"
         if not file_path.exists():

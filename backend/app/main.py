@@ -27,13 +27,24 @@ async def lifespan(app: FastAPI):
         from app.models.document import DocumentChunk, Document as DBDocument
 
         db = next(get_db())
-        all_chunks = db.query(DocumentChunk).join(DBDocument).filter(
+        tenant_ids = db.query(DocumentChunk.tenant_id).join(DBDocument).filter(
             DBDocument.status == 'completed'
-        ).all()
+        ).distinct().all()
 
-        if all_chunks:
-            hybrid_retriever.build_bm25_index(all_chunks)
-            print(f"[OK] BM25 index loaded with {len(all_chunks)} chunks")
+        if tenant_ids:
+            total = 0
+            for (tid,) in tenant_ids:
+                chunks = db.query(DocumentChunk).join(DBDocument).filter(
+                    DBDocument.status == 'completed',
+                    DocumentChunk.tenant_id == tid
+                ).all()
+                if chunks:
+                    hybrid_retriever.build_bm25_index(chunks, tenant_id=tid)
+                    total += len(chunks)
+            if total:
+                print(f"[OK] BM25 index loaded with {total} chunks across {len(tenant_ids)} tenants")
+            else:
+                print("[WARN]  No documents found, BM25 index will be built on first upload")
         else:
             print("[WARN]  No documents found, BM25 index will be built on first upload")
     except Exception as e:
