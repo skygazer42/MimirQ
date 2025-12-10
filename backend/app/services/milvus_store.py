@@ -398,14 +398,17 @@ class MilvusVectorStore:
 
         return formatted_results
 
-    def delete_by_document_id(self, document_id: UUID) -> None:
+    def delete_by_document_id(self, document_id: UUID, tenant_id: Optional[UUID] = None) -> None:
         """
         删除指定文档的所有向量
 
         Args:
             document_id: 文档 ID
         """
-        expr = f'document_id == "{str(document_id)}"'
+        expr_parts = [f'document_id == "{str(document_id)}"']
+        if tenant_id:
+            expr_parts.append(f'tenant_id == "{str(tenant_id)}"')
+        expr = " and ".join(expr_parts)
         self._collection.delete(expr)
         self._collection.flush()
         print(f"[Milvus] Deleted vectors for document: {document_id}")

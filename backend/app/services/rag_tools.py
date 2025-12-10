@@ -1,13 +1,17 @@
 """
-RAG tools definition (LangChain tools) with tenant awareness.
+RAG tools definition (LangChain Tools) - tenant aware.
 """
 from typing import List, Optional
 from uuid import UUID
+from contextvars import ContextVar
 from pydantic import BaseModel, Field
 from langchain.tools import tool
 
 from app.services.hybrid_retriever import hybrid_retriever
 from app.config import settings
+
+# Current tenant context, set by rag_agent before tool execution
+current_tenant_id: ContextVar[Optional[UUID]] = ContextVar("tenant_id", default=None)
 
 
 class RetrievalInput(BaseModel):
@@ -44,7 +48,7 @@ def search_knowledge_base(
         if document_ids:
             doc_uuids = [UUID(doc_id) for doc_id in document_ids]
 
-        tenant_uuid = UUID(tenant_id) if tenant_id else None
+        tenant_uuid = UUID(tenant_id) if tenant_id else current_tenant_id.get()
 
         results = hybrid_retriever.hybrid_search(
             query=query,
