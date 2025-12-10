@@ -31,6 +31,7 @@ class DocumentProcessorService:
         self,
         file_path: Path,
         document_id: UUID,
+        tenant_id: UUID,
         db: Session,
         parser_backend: Optional[str] = None,
         chunk_strategy: Optional[str] = None
@@ -127,13 +128,13 @@ class DocumentProcessorService:
                 })
 
             vector_ids = milvus_store.add_documents(
-                milvus_docs, document_id
+                milvus_docs, document_id, tenant_id
             )
 
             # Step 5: 保存切片到数据库
             print(f"Saving chunks to PostgreSQL...")
             await self._save_chunks_to_db(
-                db, document_id, chunks, vector_ids
+                db, document_id, chunks, vector_ids, tenant_id
             )
 
             # Step 6: 更新文档状态为完成
@@ -153,8 +154,8 @@ class DocumentProcessorService:
                 f"(parser={resolved_backend}, chunker={resolved_chunk_strategy})"
             )
 
-            # Step 7: 重新构建 BM25 索引（包含所有文档）
-            await self._rebuild_bm25_index(db)
+            # Step 7: 重新构建 BM25 索引（按租户）
+            await self._rebuild_bm25_index_for_tenant(db, tenant_id)
 
             return {
                 "status": "success",
@@ -207,30 +208,50 @@ class DocumentProcessorService:
         db: Session,
         document_id: UUID,
         chunks: List[Document],
-        vector_ids: List[str]
+        vector_ids: List[str],
+        tenant_id: UUID
     ):
         """保存切片到数据库"""
         if len(vector_ids) != len(chunks):
             raise ValueError(
                 f"Vector ID count ({len(vector_ids)}) does not match chunk count ({len(chunks)})"
             )
-        db_chunks = [
-            DocumentChunk(
-                document_id=document_id,
-                chunk_index=idx,
-                content=chunk.page_content,
-                page_number=chunk.metadata.get('page'),
-                start_char=chunk.metadata.get('start_char'),
-                end_char=chunk.metadata.get('end_char'),
-                doc_metadata=chunk.metadata,
-                vector_id=vector_id
+        db_chunks = []
+        for idx, (chunk, vector_id) in enumerate(zip(chunks, vector_ids)):
+            db_chunks.append(
+                DocumentChunk(
+                    tenant_id=tenant_id,
+                    document_id=document_id,
+                    chunk_index=idx,
+                    content=chunk.page_content,
+                    page_number=chunk.metadata.get('page'),
+                    start_char=chunk.metadata.get('start_char'),
+                    end_char=chunk.metadata.get('end_char'),
+                    doc_metadata=chunk.metadata,
+                    vector_id=vector_id
+                )
             )
-            for idx, (chunk, vector_id) in enumerate(zip(chunks, vector_ids))
-        ]
 
         # 批量插入减少 commit 次数和 ORM 开销
         db.bulk_save_objects(db_chunks)
         db.commit()
+
+    async def _rebuild_bm25_index_for_tenant(self, db: Session, tenant_id: UUID):
+        """重建指定租户的 BM25 索引"""
+        try:
+            all_chunks = db.query(DocumentChunk).join(DBDocument).filter(
+                DBDocument.status == 'completed',
+                DocumentChunk.tenant_id == tenant_id
+            ).all()
+
+            if all_chunks:
+                print(f"🔎 Rebuilding BM25 index with {len(all_chunks)} chunks for tenant {tenant_id}...")
+                hybrid_retriever.build_bm25_index(all_chunks, tenant_id=tenant_id)
+            else:
+                print("[WARN]  No chunks found for BM25 index")
+
+        except Exception as e:
+            print(f"[WARN]  Failed to rebuild BM25 index: {str(e)}")
 
     async def _rebuild_bm25_index(self, db: Session):
         """重新构建 BM25 索引（包含所有已完成的文档片段）"""

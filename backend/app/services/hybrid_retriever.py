@@ -1,6 +1,5 @@
 """
-混合检索器 (Hybrid Search)
-结合向量检索和 BM25 关键词检索，并提供可选的向量+关键词加权重排。
+Hybrid retriever combining vector search (Milvus) and BM25 with tenant isolation.
 """
 from typing import List, Dict, Any, Optional
 from uuid import UUID
@@ -12,52 +11,59 @@ from collections import Counter
 
 from app.services.milvus_store import milvus_store
 from app.models.document import DocumentChunk
-from sqlalchemy.orm import Session
+from app.config import settings
 
 
 class HybridRetriever:
     """混合检索器：向量检索 + BM25"""
 
     def __init__(self):
-        self.bm25_index = None
-        self.corpus_chunks: List[DocumentChunk] = []
-        self.corpus_ids: List[str] = []
+        self.bm25_index: Dict[str, BM25Okapi] = {}
+        self.corpus_chunks: Dict[str, List[DocumentChunk]] = {}
+        self.corpus_ids: Dict[str, List[str]] = {}
 
-    def build_bm25_index(self, chunks: List[DocumentChunk]):
+    def _tenant_key(self, tenant_id: Optional[UUID]) -> str:
+        return str(tenant_id or settings.DEFAULT_TENANT_ID)
+
+    def build_bm25_index(self, chunks: List[DocumentChunk], tenant_id: Optional[UUID] = None):
         """构建 BM25 索引"""
         if not chunks:
             return
 
-        self.corpus_chunks = chunks
-        self.corpus_ids = [str(chunk.id) for chunk in chunks]
+        tenant_key = self._tenant_key(tenant_id)
+        self.corpus_chunks[tenant_key] = chunks
+        self.corpus_ids[tenant_key] = [str(chunk.id) for chunk in chunks]
 
         tokenized_corpus = []
         for chunk in chunks:
             tokens = list(jieba.cut_for_search(chunk.content))
             tokenized_corpus.append(tokens)
 
-        self.bm25_index = BM25Okapi(tokenized_corpus)
-        print(f"[OK] BM25 index built with {len(chunks)} chunks")
+        self.bm25_index[tenant_key] = BM25Okapi(tokenized_corpus)
+        print(f"[OK] BM25 index built with {len(chunks)} chunks for tenant {tenant_key}")
 
     def search_bm25(
         self,
         query: str,
         top_k: int = 10,
-        document_ids: Optional[List[UUID]] = None
+        document_ids: Optional[List[UUID]] = None,
+        tenant_id: Optional[UUID] = None
     ) -> List[Dict[str, Any]]:
         """BM25 关键词检索"""
-        if not self.bm25_index or not self.corpus_chunks:
+        tenant_key = self._tenant_key(tenant_id)
+
+        if tenant_key not in self.bm25_index or tenant_key not in self.corpus_chunks:
             print("[WARN]  BM25 index not initialized, skipping keyword search")
             return []
 
         tokenized_query = list(jieba.cut_for_search(query))
-        scores = self.bm25_index.get_scores(tokenized_query)
+        scores = self.bm25_index[tenant_key].get_scores(tokenized_query)
 
         allowed_ids = {str(doc_id) for doc_id in document_ids} if document_ids else None
 
         results = []
         for idx, score in enumerate(scores):
-            chunk = self.corpus_chunks[idx]
+            chunk = self.corpus_chunks[tenant_key][idx]
             if allowed_ids and str(chunk.document_id) not in allowed_ids:
                 continue
 
@@ -67,6 +73,7 @@ class HybridRetriever:
                 "chunk_id": str(chunk.id),
                 "content": chunk.content,
                 "metadata": {
+                    "tenant_id": str(chunk.tenant_id),
                     "document_id": str(chunk.document_id),
                     "source": meta.get('source', 'unknown'),
                     "page": chunk.page_number or meta.get('page'),
@@ -87,6 +94,7 @@ class HybridRetriever:
         top_k: int = 5,
         score_threshold: float = 0.7,
         document_ids: Optional[List[UUID]] = None,
+        tenant_id: Optional[UUID] = None,
         alpha: float = 0.5,
         enable_weight_rerank: bool = True,
         vector_weight: float = 0.6,
@@ -94,30 +102,22 @@ class HybridRetriever:
     ) -> List[Dict[str, Any]]:
         """
         混合检索：向量检索 + BM25
-
-        Args:
-            query: 查询文本
-            top_k: 返回 Top-K
-            score_threshold: 向量相似度阈值
-            document_ids: 限定文档范围
-            alpha: 向量检索权重(0-1)，BM25 权重为 1-alpha
-            enable_weight_rerank: 是否在合并后结合关键词 TF-IDF 再排
-            vector_weight: 重排中向量权重
-            keyword_weight: 重排中关键词权重
         """
         # 1. 向量检索
         vector_results = milvus_store.search(
             query=query,
             top_k=top_k * 2,
             score_threshold=score_threshold,
-            document_ids=document_ids
+            document_ids=document_ids,
+            tenant_id=tenant_id
         )
 
         # 2. BM25 关键词检索
         bm25_results = self.search_bm25(
             query=query,
             top_k=top_k * 2,
-            document_ids=document_ids
+            document_ids=document_ids,
+            tenant_id=tenant_id
         )
 
         # 3. 合并（RRF）

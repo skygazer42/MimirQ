@@ -1,72 +1,74 @@
 """
-文档相关数据库模型
+Document related database models with multi-tenant support.
 """
-from sqlalchemy import Column, String, Integer, BigInteger, DateTime, Text, ARRAY, ForeignKey
+import uuid
+from sqlalchemy import Column, String, Integer, BigInteger, DateTime, Text, ForeignKey
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
-import uuid
 
 from app.database import Base
 
 
 class Document(Base):
-    """文档表"""
+    """Document table"""
     __tablename__ = "documents"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    user_id = Column(UUID(as_uuid=True), nullable=True)  # 暂时可为空，后续添加用户系统
+    tenant_id = Column(UUID(as_uuid=True), nullable=False, index=True)
+    user_id = Column(UUID(as_uuid=True), nullable=True)  # Reserved for future user system
 
-    # 文件基本信息
+    # Basic file info
     filename = Column(String(500), nullable=False)
     file_type = Column(String(10), nullable=False)  # pdf, md, txt
     file_size = Column(BigInteger, nullable=False)
     file_path = Column(String(1000), nullable=False)
 
-    # 处理状态
+    # Processing status
     status = Column(String(20), nullable=False, default='pending')  # pending | processing | completed | failed
     processing_progress = Column(Integer, default=0)  # 0-100
     current_stage = Column(String(50), nullable=True)  # parsing | chunking | embedding | completed
     error_message = Column(Text, nullable=True)
 
-    # 统计信息
+    # Stats
     chunk_count = Column(Integer, default=0)
     total_characters = Column(Integer, default=0)
 
-    # 元数据
+    # Metadata
     doc_metadata = Column("metadata", JSONB, default=dict)
 
-    # 时间戳
+    # Timestamps
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
     processed_at = Column(DateTime(timezone=True), nullable=True)
 
-    # 关系
+    # Relations
     chunks = relationship("DocumentChunk", back_populates="document", cascade="all, delete-orphan")
 
 
 class DocumentChunk(Base):
-    """文档块表"""
+    """Document chunk table"""
     __tablename__ = "document_chunks"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id = Column(UUID(as_uuid=True), nullable=False, index=True)
     document_id = Column(UUID(as_uuid=True), ForeignKey('documents.id', ondelete='CASCADE'), nullable=False)
 
     chunk_index = Column(Integer, nullable=False)
     content = Column(Text, nullable=False)
 
-    # 位置信息
+    # Position info
     page_number = Column(Integer, nullable=True)
     start_char = Column(Integer, nullable=True)
     end_char = Column(Integer, nullable=True)
 
-    # 元数据
+    # Metadata
     doc_metadata = Column("metadata", JSONB, default=dict)
 
-    # ChromaDB 向量 ID
+    # Vector ID
     vector_id = Column(String(255), nullable=True)
 
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
-    # 关系
+    # Relations
     document = relationship("Document", back_populates="chunks")
