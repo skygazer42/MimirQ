@@ -14,7 +14,7 @@ from pymilvus import (
 from uuid import UUID
 import numpy as np
 
-from app.config import settings
+from app.core.config import settings
 
 # 延迟导入 sentence_transformers（仅在需要时导入）
 try:

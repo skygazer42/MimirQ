@@ -7,7 +7,7 @@ import json
 from langchain_openai import ChatOpenAI
 from langchain.prompts import PromptTemplate
 
-from app.config import settings
+from app.core.config import settings
 from app.services.milvus_store import milvus_store
 from app.services.hybrid_retriever import hybrid_retriever
 

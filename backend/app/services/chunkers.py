@@ -12,7 +12,7 @@ from langchain_text_splitters import RecursiveCharacterTextSplitter, TokenTextSp
 from llama_index.core.node_parser import HierarchicalNodeParser
 from llama_index.core.schema import NodeRelationship
 
-from app.config import settings
+from app.core.config import settings
 
 
 class BaseChunker:

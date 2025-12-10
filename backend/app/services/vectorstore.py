@@ -7,7 +7,7 @@ from uuid import UUID
 from langchain_community.vectorstores import Chroma
 from langchain_core.documents import Document
 
-from app.config import settings
+from app.core.config import settings
 
 # 延迟导入 HuggingFaceEmbeddings（仅在需要时导入）
 try:

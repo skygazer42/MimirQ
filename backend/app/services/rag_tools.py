@@ -8,7 +8,7 @@ from pydantic import BaseModel, Field
 from langchain.tools import tool
 
 from app.services.hybrid_retriever import hybrid_retriever
-from app.config import settings
+from app.core.config import settings
 
 # Current tenant context, set by rag_agent before tool execution
 current_tenant_id: ContextVar[Optional[UUID]] = ContextVar("tenant_id", default=None)

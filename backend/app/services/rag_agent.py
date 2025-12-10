@@ -14,7 +14,7 @@ from langgraph.graph.message import REMOVE_ALL_MESSAGES
 from langgraph.runtime import Runtime
 from langchain_core.runnables import RunnableConfig
 
-from app.config import settings
+from app.core.config import settings
 from app.services.rag_tools import search_knowledge_base, current_tenant_id
 
 

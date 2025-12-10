@@ -10,7 +10,7 @@ import shutil
 import uuid
 from datetime import datetime
 
-from app.database import get_db
+from app.core.database import get_db
 from app.models.document import Document as DBDocument
 from app.schemas.document import (
     DocumentUploadResponse,
@@ -32,7 +32,7 @@ from app.services.parsers import parser_factory
 from app.services.chunkers import chunker_factory
 from app.services.milvus_store import milvus_store
 from app.services.mineru_service import mineru_service
-from app.config import settings
+from app.core.config import settings
 from fastapi.responses import FileResponse
 from app.dependencies.tenant import get_tenant_id
 
@@ -422,7 +422,7 @@ async def create_document_with_manual_chunks(
                 page_number=chunk.page_number,
                 start_char=chunk.start_char,
                 end_char=chunk.end_char,
-                metadata=milvus_docs[idx]["metadata"],
+                doc_metadata=milvus_docs[idx]["metadata"],
                 vector_id=vector_id
             )
             db.add(db_chunk)
