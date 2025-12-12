@@ -4,11 +4,10 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { X, Eye, EyeOff, AlertCircle, CheckCircle2 } from 'lucide-react'
+import { Eye, EyeOff, AlertCircle, CheckCircle2, FlaskConical, Save, ChevronRight } from 'lucide-react'
 import {
   Dialog,
   DialogContent,
-  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
@@ -44,12 +43,12 @@ export function ModelConfigDialog({
     success: boolean
     message: string
   } | null>(null)
+  const [showAdvanced, setShowAdvanced] = useState(false)
 
   useEffect(() => {
     if (provider?.config) {
       setConfig(provider.config)
     } else if (provider) {
-      // 设置默认值
       setConfig({
         apiKey: '',
         apiBase: getDefaultApiBase(provider.id),
@@ -58,7 +57,9 @@ export function ModelConfigDialog({
         timeout: 60,
       })
     }
-  }, [provider])
+    setTestResult(null)
+    setShowAdvanced(false)
+  }, [provider, open])
 
   const getDefaultApiBase = (providerId: string): string => {
     const defaults: Record<string, string> = {
@@ -95,52 +96,61 @@ export function ModelConfigDialog({
       setTestResult({
         success,
         message: success
-          ? '连接成功！API 配置正确'
-          : 'API Key 无效或网络连接失败',
+          ? '连接成功！配置有效'
+          : '连接失败，请检查 API Key',
       })
       setIsTesting(false)
-    }, 2000)
+    }, 1500)
   }
 
   if (!provider) return null
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="sm:max-w-[600px]">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-3">
-            <div className="w-12 h-12 rounded-lg bg-gray-50 border border-gray-100 flex items-center justify-center overflow-hidden">
-              <ProviderIcon providerId={provider.id} className="w-9 h-9 object-contain" />
-            </div>
-            <div>
-              <div className="text-xl">{provider.name}</div>
-              <div className="text-sm font-normal text-gray-500">
-                {provider.description}
-              </div>
-            </div>
-          </DialogTitle>
-        </DialogHeader>
-
-        <div className="space-y-6 py-4">
-          {/* API Key */}
+      <DialogContent className="sm:max-w-[550px] p-0 overflow-hidden gap-0 rounded-2xl border-0 shadow-2xl">
+        {/* 头部 */}
+        <div className="bg-gray-50/50 border-b border-gray-100 p-6 flex items-start gap-4">
+          <div className="w-14 h-14 rounded-xl bg-white border border-gray-100 flex items-center justify-center shadow-sm flex-shrink-0">
+            <ProviderIcon providerId={provider.id} className="w-9 h-9 object-contain" />
+          </div>
           <div>
-            <label className="block text-sm font-medium text-gray-900 mb-2">
-              API Key <span className="text-red-500">*</span>
+            <DialogTitle className="text-xl font-bold text-gray-900 mb-1">
+              配置 {provider.name}
+            </DialogTitle>
+            <p className="text-sm text-gray-500 leading-tight">
+              {provider.description}
+            </p>
+          </div>
+        </div>
+
+        <div className="p-6 space-y-6">
+          {/* API Key */}
+          <div className="space-y-2">
+            <label className="text-sm font-semibold text-gray-700 flex justify-between">
+              API Key <span className="text-red-500 ml-1">*</span>
+              <a
+                href={getProviderDocsUrl(provider.id)}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-xs font-normal text-blue-600 hover:text-blue-700 hover:underline"
+              >
+                获取 Key →
+              </a>
             </label>
-            <div className="relative">
+            <div className="relative group">
               <input
                 type={showApiKey ? 'text' : 'password'}
                 value={config.apiKey}
                 onChange={(e) =>
                   setConfig({ ...config, apiKey: e.target.value })
                 }
-                placeholder="sk-..."
-                className="w-full px-3 py-2 pr-10 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                placeholder={`输入 ${provider.name} API Key`}
+                className="w-full pl-4 pr-10 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-blue-100 focus:border-blue-400 outline-none transition-all text-sm font-mono"
               />
               <button
                 type="button"
                 onClick={() => setShowApiKey(!showApiKey)}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 p-1 rounded-md hover:bg-gray-100 transition-colors"
               >
                 {showApiKey ? (
                   <EyeOff className="h-4 w-4" />
@@ -149,23 +159,11 @@ export function ModelConfigDialog({
                 )}
               </button>
             </div>
-            <p className="text-xs text-gray-500 mt-1">
-              从{' '}
-              <a
-                href={getProviderDocsUrl(provider.id)}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-blue-600 hover:underline"
-              >
-                官方控制台
-              </a>{' '}
-              获取 API Key
-            </p>
           </div>
 
           {/* API Base URL */}
-          <div>
-            <label className="block text-sm font-medium text-gray-900 mb-2">
+          <div className="space-y-2">
+            <label className="text-sm font-semibold text-gray-700">
               API Base URL
             </label>
             <input
@@ -175,115 +173,93 @@ export function ModelConfigDialog({
                 setConfig({ ...config, apiBase: e.target.value })
               }
               placeholder="https://api.example.com/v1"
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-blue-100 focus:border-blue-400 outline-none transition-all text-sm font-mono text-gray-600"
             />
-            <p className="text-xs text-gray-500 mt-1">
-              使用自定义端点或代理服务
-            </p>
           </div>
 
-          {/* 高级设置 */}
-          <details className="group">
-            <summary className="cursor-pointer text-sm font-medium text-gray-700 hover:text-gray-900">
-              高级设置 (可选)
-            </summary>
-            <div className="mt-4 space-y-4 pl-4 border-l-2 border-gray-200">
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Temperature
-                  </label>
+          {/* 高级设置开关 */}
+          <div>
+            <button
+              onClick={() => setShowAdvanced(!showAdvanced)}
+              className="flex items-center gap-2 text-sm font-medium text-gray-500 hover:text-gray-900 transition-colors group"
+            >
+              <ChevronRight className={cn("h-4 w-4 transition-transform", showAdvanced && "rotate-90")} />
+              高级设置
+            </button>
+            
+            {showAdvanced && (
+              <div className="mt-4 grid grid-cols-2 gap-4 animate-in slide-in-from-top-2 duration-200">
+                <div className="space-y-1.5">
+                  <label className="text-xs font-medium text-gray-500">Temperature</label>
                   <input
                     type="number"
                     step="0.1"
                     min="0"
                     max="2"
                     value={config.temperature}
-                    onChange={(e) =>
-                      setConfig({
-                        ...config,
-                        temperature: parseFloat(e.target.value),
-                      })
-                    }
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    onChange={(e) => setConfig({ ...config, temperature: parseFloat(e.target.value) })}
+                    className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:bg-white focus:border-blue-400 outline-none"
                   />
                 </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Max Tokens
-                  </label>
+                <div className="space-y-1.5">
+                  <label className="text-xs font-medium text-gray-500">Max Tokens</label>
                   <input
                     type="number"
                     value={config.maxTokens}
-                    onChange={(e) =>
-                      setConfig({
-                        ...config,
-                        maxTokens: parseInt(e.target.value),
-                      })
-                    }
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    onChange={(e) => setConfig({ ...config, maxTokens: parseInt(e.target.value) })}
+                    className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:bg-white focus:border-blue-400 outline-none"
                   />
                 </div>
               </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Timeout (秒)
-                </label>
-                <input
-                  type="number"
-                  value={config.timeout}
-                  onChange={(e) =>
-                    setConfig({
-                      ...config,
-                      timeout: parseInt(e.target.value),
-                    })
-                  }
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                />
-              </div>
-            </div>
-          </details>
+            )}
+          </div>
 
           {/* 测试结果 */}
           {testResult && (
             <div
               className={cn(
-                'flex items-start gap-3 p-4 rounded-lg border-2',
+                'flex items-center gap-3 p-3 rounded-xl border animate-in fade-in zoom-in-95 duration-200',
                 testResult.success
-                  ? 'bg-green-50 border-green-200'
-                  : 'bg-red-50 border-red-200'
+                  ? 'bg-green-50/50 border-green-100 text-green-700'
+                  : 'bg-red-50/50 border-red-100 text-red-700'
               )}
             >
               {testResult.success ? (
-                <CheckCircle2 className="h-5 w-5 text-green-600 flex-shrink-0 mt-0.5" />
+                <CheckCircle2 className="h-5 w-5 flex-shrink-0" />
               ) : (
-                <AlertCircle className="h-5 w-5 text-red-600 flex-shrink-0 mt-0.5" />
+                <AlertCircle className="h-5 w-5 flex-shrink-0" />
               )}
-              <div className="flex-1">
-                <p
-                  className={cn(
-                    'text-sm font-medium',
-                    testResult.success ? 'text-green-900' : 'text-red-900'
-                  )}
-                >
-                  {testResult.message}
-                </p>
-              </div>
+              <span className="text-sm font-medium">{testResult.message}</span>
             </div>
           )}
         </div>
 
-        <DialogFooter>
-          <Button
-            variant="outline"
-            onClick={handleTest}
-            disabled={!config.apiKey || isTesting}
-          >
-            {isTesting ? '测试中...' : '测试连接'}
-          </Button>
-          <Button onClick={handleSave} disabled={!config.apiKey}>
-            保存配置
-          </Button>
+        <DialogFooter className="p-6 pt-2 bg-white">
+          <div className="flex gap-3 w-full">
+            <Button
+              variant="outline"
+              onClick={handleTest}
+              disabled={!config.apiKey || isTesting}
+              className="flex-1 rounded-xl h-11 border-gray-200 hover:bg-gray-50 hover:text-gray-900"
+            >
+              {isTesting ? (
+                <span className="animate-pulse">测试中...</span>
+              ) : (
+                <>
+                  <FlaskConical className="h-4 w-4 mr-2" />
+                  测试连接
+                </>
+              )}
+            </Button>
+            <Button 
+              onClick={handleSave} 
+              disabled={!config.apiKey}
+              className="flex-1 rounded-xl h-11 bg-blue-600 hover:bg-blue-700 shadow-lg shadow-blue-100"
+            >
+              <Save className="h-4 w-4 mr-2" />
+              保存配置
+            </Button>
+          </div>
         </DialogFooter>
       </DialogContent>
     </Dialog>

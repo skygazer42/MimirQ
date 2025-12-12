@@ -3,8 +3,7 @@
  */
 'use client'
 
-import { useState } from 'react'
-import { Check, Settings, ExternalLink } from 'lucide-react'
+import { Settings, ExternalLink, CheckCircle2, CircleDashed } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { ProviderIcon } from '@/components/provider-icon'
 import type { ModelProvider } from '@/types/models'
@@ -15,105 +14,83 @@ interface ModelProviderCardProps {
 }
 
 export function ModelProviderCard({ provider, onConfigure }: ModelProviderCardProps) {
-  const [isHovered, setIsHovered] = useState(false)
-
-  const borderColorClasses = {
-    emerald: 'border-emerald-200 bg-emerald-50',
-    orange: 'border-orange-200 bg-orange-50',
-    blue: 'border-blue-200 bg-blue-50',
-    purple: 'border-purple-200 bg-purple-50',
-    sky: 'border-sky-200 bg-sky-50',
-    indigo: 'border-indigo-200 bg-indigo-50',
-    gray: 'border-gray-200 bg-gray-50',
-    green: 'border-green-200 bg-green-50',
-  }
-
   return (
     <div
       className={cn(
-        'relative group bg-white border-2 rounded-xl p-6 transition-all cursor-pointer',
+        'group relative bg-white border rounded-xl p-5 transition-all duration-300 cursor-pointer flex flex-col h-full',
         provider.isConfigured
-          ? `${borderColorClasses[provider.color as keyof typeof borderColorClasses]} border-2`
-          : 'border-gray-200 hover:border-gray-300 hover:shadow-md'
+          ? 'border-blue-200/60 shadow-sm ring-1 ring-blue-50'
+          : 'border-gray-200 hover:border-blue-300 hover:shadow-md hover:-translate-y-0.5'
       )}
-      onMouseEnter={() => setIsHovered(true)}
-      onMouseLeave={() => setIsHovered(false)}
       onClick={() => onConfigure(provider)}
     >
-      {/* 已配置标记 */}
-      {provider.isConfigured && (
-        <div className="absolute -top-2 -right-2 bg-green-500 text-white rounded-full p-1.5 shadow-lg">
-          <Check className="h-4 w-4" />
+      {/* 头部：Logo 和状态 */}
+      <div className="flex justify-between items-start mb-4">
+        <div className="w-12 h-12 rounded-xl flex items-center justify-center bg-gray-50 border border-gray-100 group-hover:scale-105 transition-transform duration-300">
+          <ProviderIcon providerId={provider.id} className="w-8 h-8 object-contain" />
         </div>
-      )}
-
-      {/* 图标和名称 */}
-      <div className="flex items-start gap-4 mb-4">
-        <div className="w-14 h-14 rounded-xl flex items-center justify-center bg-gray-50 border border-gray-100 overflow-hidden">
-          <ProviderIcon providerId={provider.id} className="w-10 h-10 object-contain" />
-        </div>
-        <div className="flex-1 min-w-0">
-          <h3 className="text-lg font-semibold text-gray-900 mb-1">
-            {provider.name}
-          </h3>
-          <p className="text-sm text-gray-600 line-clamp-2">
-            {provider.description}
-          </p>
-        </div>
-      </div>
-
-      {/* 模型列表 */}
-      <div className="space-y-2 mb-4">
-        <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">
-          可用模型
-        </p>
-        <div className="flex flex-wrap gap-2">
-          {provider.models.slice(0, 3).map((model) => (
-            <span
-              key={model.id}
-              className="inline-flex items-center px-2.5 py-1 bg-gray-100 text-gray-700 text-xs rounded-md"
-            >
-              {model.displayName}
-            </span>
-          ))}
-          {provider.models.length > 3 && (
-            <span className="inline-flex items-center px-2.5 py-1 bg-gray-100 text-gray-500 text-xs rounded-md">
-              +{provider.models.length - 3} 更多
-            </span>
+        
+        <div className={cn(
+          "px-2.5 py-1 rounded-full text-[11px] font-medium flex items-center gap-1.5 transition-colors",
+          provider.isConfigured 
+            ? "bg-green-50 text-green-700 border border-green-100"
+            : "bg-gray-50 text-gray-500 border border-gray-100 group-hover:bg-blue-50 group-hover:text-blue-600 group-hover:border-blue-100"
+        )}>
+          {provider.isConfigured ? (
+            <>
+              <CheckCircle2 className="h-3 w-3" />
+              <span>已连接</span>
+            </>
+          ) : (
+            <>
+              <CircleDashed className="h-3 w-3" />
+              <span>未配置</span>
+            </>
           )}
         </div>
       </div>
 
-      {/* 操作按钮 */}
-      <div
-        className={cn(
-          'flex items-center justify-between pt-4 border-t border-gray-200 transition-opacity',
-          isHovered ? 'opacity-100' : 'opacity-60'
-        )}
-      >
-        <button
-          className="flex items-center gap-2 text-sm font-medium text-blue-600 hover:text-blue-700"
-          onClick={(e) => {
-            e.stopPropagation()
-            onConfigure(provider)
-          }}
-        >
-          <Settings className="h-4 w-4" />
-          {provider.isConfigured ? '编辑配置' : '立即配置'}
-        </button>
+      {/* 名称和描述 */}
+      <div className="mb-4 flex-1">
+        <h3 className="text-base font-bold text-gray-900 mb-1.5 group-hover:text-blue-700 transition-colors">
+          {provider.name}
+        </h3>
+        <p className="text-xs text-gray-500 leading-relaxed line-clamp-2">
+          {provider.description}
+        </p>
+      </div>
 
-        {provider.isConfigured && provider.config?.apiBase && (
-          <a
-            href={provider.config.apiBase}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex items-center gap-1 text-xs text-gray-500 hover:text-gray-700"
-            onClick={(e) => e.stopPropagation()}
+      {/* 模型标签 */}
+      <div className="flex flex-wrap gap-1.5 mb-5">
+        {provider.models.slice(0, 3).map((model) => (
+          <span
+            key={model.id}
+            className="inline-flex items-center px-2 py-0.5 bg-gray-50 text-gray-600 border border-gray-100 text-[10px] font-medium rounded-md"
           >
-            <ExternalLink className="h-3 w-3" />
-            <span>API 文档</span>
-          </a>
+            {model.displayName}
+          </span>
+        ))}
+        {provider.models.length > 3 && (
+          <span className="inline-flex items-center px-2 py-0.5 bg-gray-50 text-gray-400 border border-gray-100 text-[10px] rounded-md">
+            +{provider.models.length - 3}
+          </span>
         )}
+      </div>
+
+      {/* 底部操作 */}
+      <div className="pt-3 border-t border-gray-50 flex items-center justify-between text-xs mt-auto">
+        <span className={cn(
+          "font-medium flex items-center gap-1.5 transition-colors",
+          provider.isConfigured ? "text-blue-600" : "text-gray-400 group-hover:text-blue-600"
+        )}>
+          <Settings className="h-3.5 w-3.5" />
+          {provider.isConfigured ? '管理配置' : '去配置'}
+        </span>
+        
+        {/* 仅在 Hover 时显示的箭头或图标 */}
+        <div className="opacity-0 group-hover:opacity-100 transition-opacity transform translate-x-[-5px] group-hover:translate-x-0 duration-300 text-blue-400">
+           →
+        </div>
       </div>
     </div>
   )
