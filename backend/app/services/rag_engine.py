@@ -1,11 +1,14 @@
 """
 RAG 对话引擎
 """
+from __future__ import annotations
+
+import os
 from typing import AsyncGenerator, Dict, Any, List, Optional
 from uuid import UUID
 import json
-from langchain_openai import ChatOpenAI
 from langchain.prompts import PromptTemplate
+import httpx
 
 from app.core.config import settings
 from app.services.milvus_store import milvus_store
@@ -17,6 +20,28 @@ class RAGEngine:
 
     def __init__(self):
         # LLM 配置
+        proxy_candidates = [
+            os.getenv("HTTPS_PROXY"),
+            os.getenv("HTTP_PROXY"),
+            os.getenv("ALL_PROXY"),
+        ]
+        proxy = next((p for p in proxy_candidates if p), None)
+        trust_env = True
+        if proxy and proxy.lower().startswith("socks"):
+            print(f"[WARN] Unsupported SOCKS proxy for LLM detected: {proxy}. Ignoring env proxies.")
+            trust_env = False
+
+        http_client = httpx.Client(trust_env=trust_env)
+        http_async_client = httpx.AsyncClient(trust_env=trust_env)
+
+        try:
+            from langchain_openai import ChatOpenAI
+        except Exception as exc:
+            raise RuntimeError(
+                "langchain_openai ChatOpenAI is unavailable or incompatible. "
+                "Please reinstall backend requirements in a clean venv."
+            ) from exc
+
         self.llm = ChatOpenAI(
             model=settings.LLM_MODEL,
             api_key=settings.LLM_API_KEY,
@@ -24,7 +49,9 @@ class RAGEngine:
             temperature=settings.LLM_TEMPERATURE,
             streaming=True,
             timeout=settings.LLM_TIMEOUT,
-            max_retries=settings.LLM_MAX_RETRIES
+            max_retries=settings.LLM_MAX_RETRIES,
+            http_client=http_client,
+            http_async_client=http_async_client,
         )
 
         # Prompt 模板（支持对话历史）
@@ -160,5 +187,12 @@ class RAGEngine:
             }
 
 
-# 全局实例
-rag_engine = RAGEngine()
+_rag_engine_instance: Optional[RAGEngine] = None
+
+
+def get_rag_engine() -> RAGEngine:
+    """Lazily initialize the simple RAG engine."""
+    global _rag_engine_instance
+    if _rag_engine_instance is None:
+        _rag_engine_instance = RAGEngine()
+    return _rag_engine_instance

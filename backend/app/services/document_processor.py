@@ -127,9 +127,14 @@ class DocumentProcessorService:
                     'metadata': chunk.metadata
                 })
 
-            vector_ids = milvus_store.add_documents(
-                milvus_docs, document_id, tenant_id
-            )
+            try:
+                vector_ids = milvus_store.add_documents(
+                    milvus_docs, document_id, tenant_id
+                )
+            except Exception as exc:
+                print(f"[WARN]  Failed to store vectors in Milvus: {exc}")
+                print("[WARN]  Proceeding without vector ids; BM25-only retrieval will still work.")
+                vector_ids = [None] * len(milvus_docs)
 
             # Step 5: 保存切片到数据库
             print(f"Saving chunks to PostgreSQL...")
@@ -208,10 +213,12 @@ class DocumentProcessorService:
         db: Session,
         document_id: UUID,
         chunks: List[Document],
-        vector_ids: List[str],
+        vector_ids: List[Optional[str]],
         tenant_id: UUID
     ):
         """保存切片到数据库"""
+        if not vector_ids:
+            vector_ids = [None] * len(chunks)
         if len(vector_ids) != len(chunks):
             raise ValueError(
                 f"Vector ID count ({len(vector_ids)}) does not match chunk count ({len(chunks)})"
