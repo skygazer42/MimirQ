@@ -1,35 +1,64 @@
 """
 RAG Agent (LangChain + LangGraph) with tenant-aware retrieval.
 """
+from __future__ import annotations
+
+import os
 from typing import AsyncGenerator, Dict, Any, List, Optional
 from uuid import UUID
 
-from langchain.chat_models import init_chat_model
-from langchain_core.messages import HumanMessage, AIMessage, SystemMessage, RemoveMessage
-from langchain.agents import create_agent, AgentState
-from langchain.agents.middleware import before_model
-from langgraph.checkpoint.postgres import PostgresSaver
-from langgraph.checkpoint.memory import InMemorySaver
-from langgraph.graph.message import REMOVE_ALL_MESSAGES
-from langgraph.runtime import Runtime
-from langchain_core.runnables import RunnableConfig
+import httpx
 
 from app.core.config import settings
-from app.services.rag_tools import search_knowledge_base, current_tenant_id
 
 
 class RAGAgent:
     """基于 LangChain Agent 的 RAG 对话引擎"""
 
     def __init__(self):
-        self.llm = init_chat_model(
+        # Import heavy/langgraph-dependent modules lazily so the FastAPI app
+        # can start even if optional RAG deps are not installed yet.
+        from langchain_core.messages import SystemMessage, RemoveMessage
+        from langchain.agents import create_agent, AgentState
+        from langchain.agents.middleware import before_model
+        from langgraph.graph.message import REMOVE_ALL_MESSAGES
+        from langgraph.runtime import Runtime
+        from app.services.rag_tools import search_knowledge_base
+
+        # Some environments set SOCKS proxies via HTTP(S)_PROXY/ALL_PROXY,
+        # which LangChain/OpenAI clients don't support. Disable env proxies
+        # in that case so the backend can start.
+        proxy_candidates = [
+            os.getenv("HTTPS_PROXY"),
+            os.getenv("HTTP_PROXY"),
+            os.getenv("ALL_PROXY"),
+        ]
+        proxy = next((p for p in proxy_candidates if p), None)
+        trust_env = True
+        if proxy and proxy.lower().startswith("socks"):
+            print(f"[WARN] Unsupported SOCKS proxy for LLM detected: {proxy}. Ignoring env proxies.")
+            trust_env = False
+
+        http_client = httpx.Client(trust_env=trust_env)
+        http_async_client = httpx.AsyncClient(trust_env=trust_env)
+
+        try:
+            from langchain_openai import ChatOpenAI
+        except Exception as exc:
+            raise RuntimeError(
+                "langchain_openai ChatOpenAI is unavailable or incompatible. "
+                "Please reinstall backend requirements in a clean venv."
+            ) from exc
+
+        self.llm = ChatOpenAI(
             model=settings.LLM_MODEL,
-            model_provider="openai",
             api_key=settings.LLM_API_KEY,
             base_url=settings.LLM_API_BASE,
             temperature=settings.LLM_TEMPERATURE,
             timeout=settings.LLM_TIMEOUT,
-            max_retries=settings.LLM_MAX_RETRIES
+            max_retries=settings.LLM_MAX_RETRIES,
+            http_client=http_client,
+            http_async_client=http_async_client,
         )
 
         self.checkpointer = self._init_checkpointer()
@@ -74,6 +103,14 @@ class RAGAgent:
 
     def _init_checkpointer(self):
         """初始化 Checkpoint（对话记忆持久化）"""
+        from langgraph.checkpoint.memory import InMemorySaver
+        try:
+            from langgraph.checkpoint.postgres import PostgresSaver
+        except Exception as exc:
+            print(f"[WARN]  Postgres checkpoint module unavailable: {exc}")
+            print("[WARN]  Falling back to InMemorySaver (conversations won't persist)")
+            return InMemorySaver()
+
         try:
             checkpointer = PostgresSaver.from_conn_string(
                 settings.DATABASE_URL
@@ -96,6 +133,9 @@ class RAGAgent:
     ) -> AsyncGenerator[Dict[str, Any], None]:
         """流式对话接口"""
         try:
+            from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
+            from langchain_core.runnables import RunnableConfig
+
             config: RunnableConfig = {
                 "configurable": {
                     "thread_id": str(conversation_id) if conversation_id else "default",
@@ -114,6 +154,7 @@ class RAGAgent:
             citations: List[Dict[str, Any]] = []
             full_response = ""
 
+            from app.services.rag_tools import current_tenant_id
             token_ctx = current_tenant_id.set(tenant_id)
             try:
                 async for event in self.agent.astream(
@@ -167,6 +208,12 @@ class RAGAgent:
                 "data": {"message": str(e)}
             }
 
+_rag_agent_instance: Optional[RAGAgent] = None
 
-# 全局实例
-rag_agent = RAGAgent()
+
+def get_rag_agent() -> RAGAgent:
+    """Lazily initialize the RAG agent to avoid import-time crashes."""
+    global _rag_agent_instance
+    if _rag_agent_instance is None:
+        _rag_agent_instance = RAGAgent()
+    return _rag_agent_instance

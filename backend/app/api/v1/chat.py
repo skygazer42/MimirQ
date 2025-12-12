@@ -22,7 +22,7 @@ from app.schemas.chat import (
     ConversationDetail,
     ConversationList,
 )
-from app.services.rag_agent import rag_agent
+from app.services.rag_agent import get_rag_agent
 from app.core.config import settings
 from app.dependencies.tenant import get_tenant_id
 from app.dependencies.auth import get_current_account_id
@@ -157,7 +157,8 @@ async def stream_chat(
 
         try:
             # 使用 LangChain Agent
-            async for event in rag_agent.stream_chat(
+            agent = get_rag_agent()
+            async for event in agent.stream_chat(
                 question=request.message,
                 conversation_id=conversation_id,
                 document_ids=doc_ids_to_use,

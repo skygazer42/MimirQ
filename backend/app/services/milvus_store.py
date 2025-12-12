@@ -1,8 +1,17 @@
 """
 Milvus 向量数据库服务
+
+Notes:
+- Avoid heavy initialization at import time. The vector store now lazily
+  initializes embeddings and Milvus connections on first use so the FastAPI
+  app can start even when external services are not ready.
 """
+from __future__ import annotations
+
 from typing import List, Dict, Any, Optional
-from langchain_openai import OpenAIEmbeddings
+
+import os
+import httpx
 from pymilvus import (
     connections,
     Collection,
@@ -65,6 +74,31 @@ class DashScopeEmbeddings:
         return result[0] if result else []
 
 
+class OpenAICompatEmbeddings:
+    """Minimal embeddings client using the official OpenAI SDK.
+
+    This is a fallback when `langchain_openai` is unavailable or incompatible.
+    It exposes the same `embed_documents`/`embed_query` surface we rely on.
+    """
+
+    def __init__(self, model: str, api_key: str, base_url: str, timeout: int = 60, trust_env: bool = True):
+        self.model = model
+        from openai import OpenAI
+
+        http_client = httpx.Client(trust_env=trust_env, timeout=timeout)
+        self._client = OpenAI(api_key=api_key, base_url=base_url, http_client=http_client)
+
+    def embed_documents(self, texts: List[str]) -> List[List[float]]:
+        if not texts:
+            return []
+        resp = self._client.embeddings.create(model=self.model, input=texts)
+        return [item.embedding for item in resp.data]
+
+    def embed_query(self, text: str) -> List[float]:
+        vectors = self.embed_documents([text])
+        return vectors[0] if vectors else []
+
+
 class MilvusVectorStore:
     """Milvus 向量存储服务"""
 
@@ -72,7 +106,7 @@ class MilvusVectorStore:
     _embedding_model = None
     _embedding_provider = None
     _collection = None
-    _embedding_dim = 1024  # BGE-large 的维度
+    _embedding_dim: Optional[int] = None  # lazily detected
 
     def __new__(cls):
         """单例模式"""
@@ -81,16 +115,50 @@ class MilvusVectorStore:
         return cls._instance
 
     def __init__(self):
-        """初始化 Milvus 连接和 Collection"""
+        """Lightweight init. Real setup happens on first use."""
+        if self._embedding_provider is None:
+            self._embedding_provider = (settings.EMBEDDING_PROVIDER or "local").lower()
+
+    def _ensure_embedding_model(self):
+        """Make sure embedding client and dimension are ready."""
         if self._embedding_model is None:
             self._embedding_provider = (settings.EMBEDDING_PROVIDER or "local").lower()
             self._embedding_model = self._init_embedding_model()
-            self._embedding_dim = self._get_embedding_dimension()
-            print(f"[OK] Embedding dimension: {self._embedding_dim}")
 
-        if self._collection is None:
-            self._connect_milvus()
-            self._init_collection()
+        # Dimension is only needed when creating a new collection.
+        if self._embedding_dim is None and self._collection is None:
+            try:
+                self._embedding_dim = self._get_embedding_dimension()
+                print(f"[OK] Embedding dimension: {self._embedding_dim}")
+            except Exception as exc:
+                raise RuntimeError(f"Failed to detect embedding dimension: {exc}") from exc
+
+    def _ensure_collection(self):
+        """Ensure Milvus connection + collection are initialized."""
+        if self._collection is not None:
+            return
+
+        # Try to load existing collection without forcing a remote embedding call.
+        self._connect_milvus()
+        collection_name = settings.MILVUS_COLLECTION_NAME
+        if utility.has_collection(collection_name):
+            print(f"[Milvus] Loading existing collection: {collection_name}")
+            self._collection = Collection(collection_name)
+            try:
+                embedding_field = next(
+                    f for f in self._collection.schema.fields if f.name == "embedding"
+                )
+                dim = getattr(embedding_field, "dim", None) or embedding_field.params.get("dim")
+                if dim:
+                    self._embedding_dim = int(dim)
+            except Exception:
+                pass
+            self._collection.load()
+            return
+
+        # Collection doesn't exist, need embedding dimension to create it.
+        self._ensure_embedding_model()
+        self._init_collection()
 
     def _init_embedding_model(self):
         """初始化 Embedding 客户端"""
@@ -123,10 +191,47 @@ class MilvusVectorStore:
             )
 
         if provider in {"openai_compatible", "openai"}:
-            return OpenAIEmbeddings(
+            # LangChain's OpenAI clients read proxy env vars by default.
+            # SOCKS proxies are not supported and would crash validation, so
+            # we disable env proxies in that case.
+            proxy_candidates = [
+                os.getenv("OPENAI_PROXY"),
+                os.getenv("HTTPS_PROXY"),
+                os.getenv("HTTP_PROXY"),
+                os.getenv("ALL_PROXY"),
+            ]
+            proxy = next((p for p in proxy_candidates if p), None)
+            trust_env = True
+            if proxy and proxy.lower().startswith("socks"):
+                print(f"[WARN] Unsupported SOCKS proxy for embeddings detected: {proxy}. Ignoring env proxies.")
+                trust_env = False
+                proxy = None
+
+            http_client = httpx.Client(trust_env=trust_env)
+            http_async_client = httpx.AsyncClient(trust_env=trust_env)
+
+            api_key = settings.EMBEDDING_API_KEY or settings.LLM_API_KEY
+            base_url = settings.EMBEDDING_API_BASE or settings.LLM_API_BASE
+
+            try:
+                from langchain_openai import OpenAIEmbeddings as LCOpenAIEmbeddings
+            except Exception as exc:
+                print(f"[WARN] langchain_openai embeddings unavailable: {exc}. Falling back to OpenAI SDK.")
+                return OpenAICompatEmbeddings(
+                    model=settings.EMBEDDING_MODEL,
+                    api_key=api_key,
+                    base_url=base_url,
+                    timeout=settings.LLM_TIMEOUT,
+                    trust_env=trust_env,
+                )
+
+            return LCOpenAIEmbeddings(
                 model=settings.EMBEDDING_MODEL,
-                api_key=settings.EMBEDDING_API_KEY or settings.LLM_API_KEY,
-                base_url=settings.EMBEDDING_API_BASE or settings.LLM_API_BASE
+                api_key=api_key,
+                base_url=base_url,
+                openai_proxy=proxy,
+                http_client=http_client,
+                http_async_client=http_async_client,
             )
 
         raise ValueError(f"Unsupported EMBEDDING_PROVIDER: {provider}")
@@ -241,11 +346,13 @@ class MilvusVectorStore:
     @property
     def embedding_model(self):
         """获取 Embedding 模型"""
+        self._ensure_embedding_model()
         return self._embedding_model
 
     @property
     def collection(self):
         """获取 Milvus Collection"""
+        self._ensure_collection()
         return self._collection
 
     def add_documents(
@@ -264,6 +371,7 @@ class MilvusVectorStore:
         Returns:
             插入的向量 ID 列表
         """
+        self._ensure_collection()
         if not documents:
             return []
 
@@ -296,6 +404,7 @@ class MilvusVectorStore:
 
         # 批量生成 Embeddings
         print(f"[Embedding] Generating embeddings for {len(contents)} chunks...")
+        self._ensure_embedding_model()
         embeddings = self._embed_documents(contents)
 
         # 插入数据
@@ -338,6 +447,8 @@ class MilvusVectorStore:
         Returns:
             检索结果列表
         """
+        self._ensure_collection()
+        self._ensure_embedding_model()
         # 生成查询向量
         query_embedding = self._embed_query(query)
 
@@ -405,6 +516,7 @@ class MilvusVectorStore:
         Args:
             document_id: 文档 ID
         """
+        self._ensure_collection()
         expr_parts = [f'document_id == "{str(document_id)}"']
         if tenant_id:
             expr_parts.append(f'tenant_id == "{str(tenant_id)}"')
@@ -415,6 +527,7 @@ class MilvusVectorStore:
 
     def get_collection_count(self) -> int:
         """获取向量库中的文档数量"""
+        self._ensure_collection()
         self._collection.flush()
         return self._collection.num_entities
 

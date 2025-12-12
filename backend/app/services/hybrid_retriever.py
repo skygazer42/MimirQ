@@ -103,14 +103,18 @@ class HybridRetriever:
         """
         混合检索：向量检索 + BM25
         """
-        # 1. 向量检索
-        vector_results = milvus_store.search(
-            query=query,
-            top_k=top_k * 2,
-            score_threshold=score_threshold,
-            document_ids=document_ids,
-            tenant_id=tenant_id
-        )
+        # 1. 向量检索（可能因 Milvus/Embedding 不可用而失败）
+        try:
+            vector_results = milvus_store.search(
+                query=query,
+                top_k=top_k * 2,
+                score_threshold=score_threshold,
+                document_ids=document_ids,
+                tenant_id=tenant_id
+            )
+        except Exception as exc:
+            print(f"[WARN]  Vector search failed: {exc}")
+            vector_results = []
 
         # 2. BM25 关键词检索
         bm25_results = self.search_bm25(

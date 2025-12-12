@@ -11,7 +11,7 @@ from sqlalchemy.orm import relationship
 from app.core.database import Base
 
 
-class DatasetPermissionEnum(enum.StrEnum):
+class DatasetPermissionEnum(str, enum.Enum):
     ONLY_ME = "only_me"
     ALL_TEAM_MEMBERS = "all_team_members"
     PARTIAL_MEMBERS = "partial_members"

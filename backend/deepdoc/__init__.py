@@ -14,6 +14,9 @@
 #  limitations under the License.
 #
 
-from beartype.claw import beartype_this_package
-
-beartype_this_package()
+try:
+    from beartype.claw import beartype_this_package
+except Exception:  # pragma: no cover
+    beartype_this_package = None
+else:
+    beartype_this_package()
