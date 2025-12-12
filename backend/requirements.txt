@@ -17,11 +17,6 @@ langchain-openai==1.1.0
 langchain-anthropic==1.1.0
 langchain-text-splitters==0.3.0
 
-# LangGraph for Agent & Memory (compatible with LangChain 1.x)
-langgraph==1.1.0
-langgraph-checkpoint==1.0.0
-langgraph-checkpoint-postgres==1.0.0
-
 # Vector Database
 pymilvus==2.3.5
 milvus==2.3.5

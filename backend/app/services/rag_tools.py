@@ -1,11 +1,10 @@
 """
-RAG tools definition (LangChain Tools) - tenant aware.
+RAG retrieval helpers (tenant aware).
 """
 from typing import List, Optional
 from uuid import UUID
 from contextvars import ContextVar
 from pydantic import BaseModel, Field
-from langchain.tools import tool
 
 from app.services.hybrid_retriever import hybrid_retriever
 from app.core.config import settings
@@ -33,7 +32,6 @@ class RetrievalInput(BaseModel):
     )
 
 
-@tool(args_schema=RetrievalInput)
 def search_knowledge_base(
     query: str,
     top_k: int = 5,

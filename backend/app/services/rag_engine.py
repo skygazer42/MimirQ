@@ -7,7 +7,7 @@ import os
 from typing import AsyncGenerator, Dict, Any, List, Optional
 from uuid import UUID
 import json
-from langchain.prompts import PromptTemplate
+from langchain_core.prompts import PromptTemplate
 import httpx
 
 from app.core.config import settings
@@ -85,7 +85,8 @@ class RAGEngine:
         conversation_id: Optional[UUID] = None,
         document_ids: Optional[List[UUID]] = None,
         top_k: int = 5,
-        score_threshold: float = 0.7
+        score_threshold: float = 0.7,
+        tenant_id: Optional[UUID] = None,
     ) -> AsyncGenerator[Dict[str, Any], None]:
         """
         流式对话接口
@@ -107,6 +108,7 @@ class RAGEngine:
                 top_k=top_k,
                 score_threshold=score_threshold,
                 document_ids=document_ids,
+                tenant_id=tenant_id,
                 alpha=0.6  # 60% 向量检索，40% BM25
             )
 
@@ -144,8 +146,15 @@ class RAGEngine:
             if history and len(history) > 0:
                 history_text = ""
                 for msg in history[-5:]:  # 只保留最近5轮对话
-                    role = "用户" if msg.get('role') == 'user' else "助手"
-                    history_text += f"{role}: {msg.get('content')}\n\n"
+                    if isinstance(msg, dict):
+                        role_value = msg.get("role")
+                        content_value = msg.get("content", "")
+                    else:
+                        role_value = getattr(msg, "role", None)
+                        content_value = getattr(msg, "content", "")
+
+                    role = "用户" if role_value == "user" else "助手"
+                    history_text += f"{role}: {content_value}\n\n"
             else:
                 history_text = "（无历史对话）"
 
