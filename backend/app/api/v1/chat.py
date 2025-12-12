@@ -22,7 +22,7 @@ from app.schemas.chat import (
     ConversationDetail,
     ConversationList,
 )
-from app.services.rag_agent import get_rag_agent
+from app.services.rag_engine import get_rag_engine
 from app.core.config import settings
 from app.dependencies.tenant import get_tenant_id
 from app.dependencies.auth import get_current_account_id
@@ -157,13 +157,15 @@ async def stream_chat(
 
         try:
             # 使用 LangChain Agent
-            agent = get_rag_agent()
-            async for event in agent.stream_chat(
+            engine = get_rag_engine()
+            async for event in engine.stream_chat(
                 question=request.message,
+                history=[m.model_dump() for m in (request.history or [])],
                 conversation_id=conversation_id,
                 document_ids=doc_ids_to_use,
                 top_k=request.rag_config.get('top_k', settings.RETRIEVAL_TOP_K),
-                tenant_id=tenant_id
+                score_threshold=request.rag_config.get('score_threshold', settings.SIMILARITY_THRESHOLD),
+                tenant_id=tenant_id,
             ):
                 # 记录引用信息
                 if event['type'] == 'citations':
