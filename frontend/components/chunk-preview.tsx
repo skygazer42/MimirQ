@@ -1,6 +1,6 @@
 /**
  * 知识加工工作台 - 切块预览组件
- * 现代化的可视化切块预览界面
+ * 大厂风格设计：沉浸式、可视化、编辑器级体验
  */
 'use client'
 
@@ -19,6 +19,9 @@ import {
   Check,
   AlertCircle,
   Sparkles,
+  Zap,
+  BarChart3,
+  MousePointer2
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { documentApi } from '@/lib/api-client'
@@ -28,6 +31,7 @@ import { useChunkStrategyPreference } from '@/contexts/chunk-strategy-context'
 import { getParserLabel } from '@/lib/parser-options'
 import { getChunkStrategyLabel, getChunkStrategyOption } from '@/lib/chunk-strategies'
 import { ChunkStrategyDropdown } from '@/components/ui/chunk-strategy-dropdown'
+import { cn } from '@/lib/utils'
 
 // 分隔符配置
 const SEPARATORS = ['\\n\\n', '\\n', '。', '！', '？', '.', '!', '?']
@@ -60,20 +64,17 @@ export function ChunkPreview({ onConfirm, onClose }: ChunkPreviewProps) {
   const chunkStrategyOption = getChunkStrategyOption(chunkStrategy)
   const resolvedChunkStrategy = previewData?.chunk_strategy || chunkStrategy
   const resolvedChunkLabel = getChunkStrategyLabel(resolvedChunkStrategy)
-  const resolvedChunkOption = getChunkStrategyOption(resolvedChunkStrategy)
+  
   const strategyForUi = resolvedChunkStrategy
-  // 判断当前策略类型（以预览结果为准）
-  const isRecursiveStrategy = strategyForUi === 'langchain_recursive'
   const isTokenStrategy = strategyForUi === 'langchain_token'
   const isSentenceStrategy = strategyForUi === 'llama_index'
   const isHierarchicalStrategy = strategyForUi === 'llama_index_hierarchical'
   const isRagflowStrategy = strategyForUi.startsWith('ragflow_')
-  const isSeparatorStrategy = strategyForUi === 'separator'
 
-  // UI å‚æ•°æ˜¾ç¤ºæŽ§åˆ¶
+  // UI 参数显示控制
   const hideChunkSizeControl = isSentenceStrategy || isRagflowStrategy
-  const showOverlapControl =
-    !isSentenceStrategy && !isHierarchicalStrategy && !isRagflowStrategy && !isSeparatorStrategy
+  // 分层切块也不显示普通的 overlap，因为它依赖层级定义
+  const showOverlapControl = !isSentenceStrategy && !isRagflowStrategy && !isHierarchicalStrategy && strategyForUi !== 'separator'
 
   // 处理文件拖放
   const handleDragOver = useCallback((e: React.DragEvent) => {
@@ -138,7 +139,6 @@ export function ChunkPreview({ onConfirm, onClose }: ChunkPreviewProps) {
     setError(null)
 
     try {
-      // 将预览的切块转换为手动切块格式
       const chunks = previewData.chunks.map((chunk) => ({
         content: chunk.content,
         page_number: chunk.page_number,
@@ -180,14 +180,12 @@ export function ChunkPreview({ onConfirm, onClose }: ChunkPreviewProps) {
     setChunkOverlap(200)
   }, [])
 
-  // 格式化文件大小
   const formatFileSize = (bytes: number) => {
     if (bytes < 1024) return `${bytes} B`
     if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
     return `${(bytes / 1024 / 1024).toFixed(1)} MB`
   }
 
-  // 计算高亮文本
   const getHighlightedText = useMemo(() => {
     if (!previewData?.original_text || hoveredChunkIndex === null) return null
 
@@ -202,19 +200,17 @@ export function ChunkPreview({ onConfirm, onClose }: ChunkPreviewProps) {
     }
   }, [previewData, hoveredChunkIndex])
 
-  // 未上传文件的空状态
+  // 空状态：文件上传
   if (!file) {
     return (
-      <div className="flex items-center justify-center h-full bg-gray-50 p-8">
+      <div className="flex items-center justify-center h-full bg-gray-50/50 p-8 animate-in fade-in duration-500">
         <div
-          className={`
-            max-w-lg w-full p-12 border-2 border-dashed rounded-2xl text-center
-            transition-all duration-200 cursor-pointer
-            ${isDragging
-              ? 'border-indigo-500 bg-indigo-50 scale-[1.02]'
-              : 'border-gray-300 bg-white hover:border-indigo-400 hover:bg-indigo-50/50'
-            }
-          `}
+          className={cn(
+            "max-w-xl w-full p-16 border border-dashed rounded-3xl text-center transition-all duration-300 cursor-pointer group",
+            isDragging 
+              ? "border-blue-500 bg-blue-50/50 scale-[1.02] shadow-xl" 
+              : "border-gray-200 bg-white hover:border-blue-400 hover:shadow-lg hover:-translate-y-1"
+          )}
           onDragOver={handleDragOver}
           onDragLeave={handleDragLeave}
           onDrop={handleDrop}
@@ -227,15 +223,15 @@ export function ChunkPreview({ onConfirm, onClose }: ChunkPreviewProps) {
             className="hidden"
             onChange={handleFileSelect}
           />
-          <div className="w-16 h-16 mx-auto mb-6 bg-indigo-100 rounded-2xl flex items-center justify-center">
-            <Upload className="w-8 h-8 text-indigo-600" />
+          <div className="w-20 h-20 mx-auto mb-8 bg-blue-50 rounded-2xl flex items-center justify-center group-hover:scale-110 transition-transform duration-300">
+            <Upload className="w-10 h-10 text-blue-600" />
           </div>
-          <h3 className="text-xl font-semibold text-gray-900 mb-2">上传文档开始加工</h3>
-          <p className="text-gray-500 mb-4">拖放文件到此处，或点击选择</p>
-          <div className="flex items-center justify-center gap-2 text-sm text-gray-400">
-            <span className="px-2 py-1 bg-gray-100 rounded">PDF</span>
-            <span className="px-2 py-1 bg-gray-100 rounded">TXT</span>
-            <span className="px-2 py-1 bg-gray-100 rounded">Markdown</span>
+          <h3 className="text-2xl font-bold text-gray-900 mb-3 tracking-tight">上传文档开始加工</h3>
+          <p className="text-gray-500 mb-8 text-lg font-light">拖放文件到此处，或点击选择</p>
+          <div className="flex items-center justify-center gap-3 text-xs font-medium text-gray-400 uppercase tracking-wider">
+            <span className="px-3 py-1 bg-gray-100 rounded-full">PDF</span>
+            <span className="px-3 py-1 bg-gray-100 rounded-full">TXT</span>
+            <span className="px-3 py-1 bg-gray-100 rounded-full">Markdown</span>
           </div>
         </div>
       </div>
@@ -243,48 +239,53 @@ export function ChunkPreview({ onConfirm, onClose }: ChunkPreviewProps) {
   }
 
   return (
-    <div className="flex flex-col h-full bg-gray-50">
+    <div className="flex flex-col h-full bg-white text-gray-900 font-sans">
       {/* 顶部栏 */}
-      <header className="flex-shrink-0 bg-white border-b px-6 py-4 flex justify-between items-center shadow-sm">
-        <div className="flex items-center gap-3">
-          <div className="bg-indigo-100 p-2.5 rounded-xl">
-            <Layers className="text-indigo-600 w-5 h-5" />
+      <header className="flex-shrink-0 h-16 border-b border-gray-100 flex justify-between items-center px-6 bg-white z-20 shadow-sm relative">
+        <div className="flex items-center gap-4">
+          <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center shadow-blue-200 shadow-md">
+            <Layers className="text-white w-5 h-5" />
           </div>
           <div>
-            <h1 className="text-lg font-bold text-gray-900">知识加工工作台</h1>
-            <p className="text-xs text-gray-500">
-              {file.name} · {formatFileSize(file.size)}
+            <h1 className="text-sm font-bold text-gray-900 tracking-tight">切片预览工作台</h1>
+            <p className="text-[10px] text-gray-400 font-mono mt-0.5 flex items-center gap-2">
+              <span>{file.name}</span>
+              <span className="w-1 h-1 rounded-full bg-gray-300"/>
+              <span>{formatFileSize(file.size)}</span>
               {previewData && (
                 <>
-                  <span className="ml-2 text-indigo-600">
-                    · 已生成 {previewData.total_chunks} 个切块
-                  </span>
-                  <span className="ml-2 text-gray-500">
-                    · 使用 {getParserLabel(previewData.parser_backend)}
-                  </span>
-                  <span className="ml-2 text-purple-600">
-                    · 切块 {getChunkStrategyLabel(previewData.chunk_strategy)}
-                  </span>
+                   <span className="w-1 h-1 rounded-full bg-gray-300"/>
+                   <span className="text-blue-600 font-semibold">{previewData.total_chunks} Chunks</span>
                 </>
               )}
             </p>
           </div>
         </div>
+        
         <div className="flex items-center gap-3">
           {submitSuccess && (
-            <div className="flex items-center gap-2 text-green-600 text-sm bg-green-50 px-3 py-1.5 rounded-lg">
-              <Check className="w-4 h-4" />
-              入库成功
+            <div className="flex items-center gap-1.5 text-green-600 text-xs font-medium bg-green-50 px-3 py-1.5 rounded-full border border-green-100 animate-in fade-in slide-in-from-right-4">
+              <Check className="w-3.5 h-3.5" />
+              已成功入库
             </div>
           )}
 
-          <Button variant="ghost" size="sm" onClick={handleReset} className="gap-2">
-            <RotateCcw className="w-4 h-4" />
+          {error && (
+            <div className="flex items-center gap-1.5 text-red-600 text-xs bg-red-50 px-3 py-1.5 rounded-full border border-red-100 max-w-[300px] truncate">
+              <AlertCircle className="w-3.5 h-3.5" />
+              {error}
+            </div>
+          )}
+
+          <div className="h-6 w-px bg-gray-200 mx-2" />
+
+          <Button variant="ghost" size="sm" onClick={handleReset} className="text-gray-500 hover:text-gray-900 h-8 text-xs font-medium">
+            <RotateCcw className="w-3.5 h-3.5 mr-1.5" />
             重置
           </Button>
 
           {onClose && (
-            <Button variant="ghost" size="sm" onClick={onClose}>
+            <Button variant="ghost" size="sm" onClick={onClose} className="text-gray-500 hover:text-gray-900 h-8 w-8 p-0 rounded-full">
               <X className="w-4 h-4" />
             </Button>
           )}
@@ -292,332 +293,212 @@ export function ChunkPreview({ onConfirm, onClose }: ChunkPreviewProps) {
           <Button
             onClick={handleSubmit}
             disabled={!previewData || isSubmitting || submitSuccess}
-            className="gap-2 bg-indigo-600 hover:bg-indigo-700"
+            className={cn(
+              "h-9 px-5 text-xs font-semibold rounded-lg shadow-lg transition-all",
+              submitSuccess ? "bg-green-600 hover:bg-green-700 shadow-green-200" : "bg-blue-600 hover:bg-blue-700 shadow-blue-200"
+            )}
           >
             {isSubmitting ? (
-              <Loader2 className="w-4 h-4 animate-spin" />
+              <Loader2 className="w-3.5 h-3.5 animate-spin mr-2" />
+            ) : submitSuccess ? (
+              <Check className="w-3.5 h-3.5 mr-2" />
             ) : (
-              <Save className="w-4 h-4" />
+              <Save className="w-3.5 h-3.5 mr-2" />
             )}
-            {submitSuccess ? '已入库' : '确认并入库'}
+            {submitSuccess ? '已完成' : '确认入库'}
           </Button>
         </div>
       </header>
 
-      {/* 错误提示 */}
-      {error && (
-        <div className="mx-6 mt-4 p-3 bg-red-50 border border-red-200 rounded-lg flex items-center gap-2 text-sm text-red-600">
-          <AlertCircle className="w-4 h-4 flex-shrink-0" />
-          {error}
-        </div>
-      )}
-
       <div className="flex flex-1 overflow-hidden">
-        {/* 左侧边栏: 参数配置 */}
-        <aside className="w-80 bg-white border-r flex flex-col flex-shrink-0">
-          <div className="p-5 border-b">
-            <h2 className="text-sm font-bold text-gray-700 flex items-center gap-2 mb-5">
-              <Settings className="w-4 h-4" />
-              切块策略配置
-            </h2>
+        {/* 左侧配置栏 */}
+        <aside className="w-80 bg-gray-50/50 border-r border-gray-200 flex flex-col flex-shrink-0 z-10">
+          <div className="p-6 flex-1 overflow-y-auto">
+            <div className="flex items-center gap-2 mb-6">
+               <Settings className="w-4 h-4 text-gray-500" />
+               <h2 className="text-xs font-bold text-gray-900 uppercase tracking-wider">配置参数</h2>
+            </div>
 
-            <div className="space-y-6">
-              {/* 切块策略选择 */}
-              <div>
-                <label className="text-xs font-medium text-gray-600 mb-2 block">切块策略</label>
+            <div className="space-y-8">
+              {/* 策略选择 */}
+              <div className="space-y-2">
+                <label className="text-xs font-medium text-gray-500">切块策略</label>
                 <ChunkStrategyDropdown
                   value={chunkStrategy}
                   onChange={setChunkStrategy}
                 />
-              </div>
-
-              {/* Chunk Size */}
-              {!hideChunkSizeControl && (
-              <div>
-                <div className="flex justify-between mb-2">
-                  <label className="text-xs font-medium text-gray-600">
-                    {isTokenStrategy ? 'Token 数量' : 'Chunk Size (块大小)'}
-                  </label>
-                  <span className="text-xs bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded font-mono">
-                    {chunkSize}
-                  </span>
-                </div>
-                <input
-                  type="range"
-                  min={isTokenStrategy ? 50 : 100}
-                  max={isTokenStrategy ? 2000 : 4000}
-                  step={isTokenStrategy ? 50 : 100}
-                  value={chunkSize}
-                  onChange={(e) => setChunkSize(Number(e.target.value))}
-                  className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-indigo-600"
-                />
-                <div className="flex justify-between text-[10px] text-gray-400 mt-1">
-                  <span>{isTokenStrategy ? 50 : 100}</span>
-                  <span>{isTokenStrategy ? 2000 : 4000}</span>
-                </div>
-                <p className="text-[10px] text-gray-400 mt-1">
-                  {isTokenStrategy
-                    ? '每个切片的最大 Token 数量（GPT-4 编码）'
-                    : '每个切片的最大字符数'}
+                <p className="text-[10px] text-gray-400 leading-relaxed mt-1.5">
+                  {chunkStrategyOption.description}
                 </p>
               </div>
+
+              {/* Slider Controls */}
+              {!hideChunkSizeControl && (
+                <div className="space-y-4">
+                  <div className="flex justify-between items-center">
+                    <label className="text-xs font-medium text-gray-600">
+                      {isTokenStrategy ? 'Token 上限' : '块大小 (Chars)'}
+                    </label>
+                    <span className="text-xs font-mono font-medium text-blue-600 bg-blue-50 px-2 py-0.5 rounded">
+                      {chunkSize}
+                    </span>
+                  </div>
+                  <input
+                    type="range"
+                    min={isTokenStrategy ? 50 : 100}
+                    max={isTokenStrategy ? 2000 : 4000}
+                    step={isTokenStrategy ? 50 : 100}
+                    value={chunkSize}
+                    onChange={(e) => setChunkSize(Number(e.target.value))}
+                    className="w-full h-1.5 bg-gray-200 rounded-full appearance-none cursor-pointer accent-blue-600 hover:accent-blue-700 transition-colors"
+                  />
+                  <div className="flex justify-between text-[10px] text-gray-400 font-mono">
+                    <span>{isTokenStrategy ? 50 : 100}</span>
+                    <span>{isTokenStrategy ? 2000 : 4000}</span>
+                  </div>
+                </div>
               )}
 
-              {/* Overlap - 仅对需要重叠参数的策略显示 */}
               {showOverlapControl && (
-                <div>
-                  <div className="flex justify-between mb-2">
+                <div className="space-y-4">
+                   <div className="flex justify-between items-center">
                     <label className="text-xs font-medium text-gray-600">
-                      {isTokenStrategy ? 'Token 重叠' : 'Overlap (重叠)'}
+                      {isTokenStrategy ? 'Token 重叠' : '重叠 (Chars)'}
                     </label>
-                    <span className="text-xs bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded font-mono">
+                    <span className="text-xs font-mono font-medium text-blue-600 bg-blue-50 px-2 py-0.5 rounded">
                       {chunkOverlap}
                     </span>
                   </div>
                   <input
                     type="range"
-                    min="0"
+                    min={0}
                     max={Math.min(isTokenStrategy ? 500 : 1000, chunkSize - (isTokenStrategy ? 50 : 100))}
                     step={isTokenStrategy ? 25 : 50}
                     value={chunkOverlap}
                     onChange={(e) => setChunkOverlap(Number(e.target.value))}
-                    className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-indigo-600"
+                    className="w-full h-1.5 bg-gray-200 rounded-full appearance-none cursor-pointer accent-blue-600 hover:accent-blue-700 transition-colors"
                   />
-                  <div className="flex justify-between text-[10px] text-gray-400 mt-1">
-                    <span>0</span>
-                    <span>{Math.min(isTokenStrategy ? 500 : 1000, chunkSize - (isTokenStrategy ? 50 : 100))}</span>
-                  </div>
-                  <p className="text-[10px] text-gray-400 mt-1">
-                    {isTokenStrategy
-                      ? '相邻切片间的重叠 Token 数'
-                      : '相邻切片间的重叠字符'}
-                  </p>
                 </div>
               )}
 
-              {/* 策略说明 */}
-              {isRecursiveStrategy && (
-                <div>
-                  <label className="text-xs font-medium text-gray-600 mb-2 block">分隔符优先级</label>
-                  <div className="flex flex-wrap gap-1.5">
-                    {SEPARATORS.map((sep) => (
-                      <span
-                        key={sep}
-                        className="px-2 py-1 bg-gray-100 text-gray-600 text-xs rounded border border-gray-200 font-mono"
-                      >
-                        {sep}
-                      </span>
-                    ))}
-                  </div>
-                  <p className="text-[10px] text-gray-400 mt-2">
-                    RecursiveCharacterTextSplitter 按上述顺序递归查找分隔符
-                  </p>
-                </div>
-              )}
-
-              {isTokenStrategy && (
-                <div className="rounded-lg border border-amber-200 bg-amber-50 p-3">
-                  <div className="text-[11px] font-semibold text-amber-700 uppercase tracking-wide mb-1">
-                    Token 切分说明
-                  </div>
-                  <p className="text-xs text-amber-800 leading-relaxed">
-                    使用 <span className="font-mono bg-amber-100 px-1 rounded">cl100k_base</span> 编码（GPT-4/ChatGPT），
-                    按 Token 数量精确切分，适合需要控制 LLM 输入长度的场景。
-                  </p>
-                </div>
-              )}
-
-              {(isSentenceStrategy || isHierarchicalStrategy) && (
-                <div className="rounded-lg border border-green-200 bg-green-50 p-3">
-                  <div className="text-[11px] font-semibold text-green-700 uppercase tracking-wide mb-1">
-                    {isHierarchicalStrategy ? '分层切分说明' : '句子切分说明'}
-                  </div>
-                  <p className="text-xs text-green-800 leading-relaxed">
-                    {isHierarchicalStrategy
-                      ? 'LlamaIndex HierarchicalNodeParser 生成父子块（多级 chunk_sizes），保留 parent 关系与层级，适合 AutoMerging 检索/长文本压缩。'
-                      : 'LlamaIndex SentenceSplitter 会根据语义断句（支持多语言），自动保留句子边界和起止位置信息，获得更平滑的检索体验。'}
-                  </p>
-                </div>
-              )}
-
-              {isRagflowStrategy && (
-                <div className="rounded-lg border border-blue-200 bg-blue-50 p-3">
-                  <div className="text-[11px] font-semibold text-blue-700 uppercase tracking-wide mb-1">
-                    RAGFlow 切分说明
-                  </div>
-                  <p className="text-xs text-blue-800 leading-relaxed">
-                    {strategyForUi === 'ragflow_naive' && 'RAGFlow 通用切分器，适合大多数文档类型，自动识别段落和语义边界。'}
-                    {strategyForUi === 'ragflow_book' && 'RAGFlow 书籍切分器，针对长文档优化，保留章节、标题等结构信息。'}
-                    {strategyForUi === 'ragflow_laws' && 'RAGFlow 法律切分器，专门针对法律文档优化，保留条款、款项结构。'}
-                    {strategyForUi === 'ragflow_email' && 'RAGFlow 邮件切分器，针对邮件/通信优化，保留引用、回复结构。'}
-                  </p>
-                  <p className="text-[10px] text-blue-600 mt-2">
-                    RAGFlow 策略使用内置解析+切块，chunk_size/overlap 参数可能会被忽略。
-                  </p>
-                </div>
-              )}
-
-              {/* 预览按钮 */}
               <Button
                 onClick={handlePreview}
                 disabled={isLoading}
-                className="w-full gap-2"
-                variant="outline"
+                className="w-full bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-700 hover:to-blue-700 text-white h-11 rounded-xl shadow-md shadow-blue-200/50 transition-all hover:scale-[1.02] active:scale-[0.98] border border-transparent"
               >
                 {isLoading ? (
-                  <Loader2 className="w-4 h-4 animate-spin" />
+                  <Loader2 className="w-4 h-4 animate-spin mr-2" />
                 ) : (
-                  <Eye className="w-4 h-4" />
+                  <Sparkles className="w-4 h-4 mr-2" />
                 )}
-                {isLoading ? '正在切块...' : '生成预览'}
+                {isLoading ? '正在智能切分...' : '生成切片预览'}
               </Button>
             </div>
-          </div>
-
-          {/* 统计信息 */}
-          <div className="p-5 bg-gray-50 flex-1">
-            <h3 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-3 flex items-center gap-2">
-              <Sparkles className="w-3 h-3" />
-              预览统计
-            </h3>
-
-            {previewData ? (
-              <div className="grid grid-cols-2 gap-3">
-                <div className="bg-white p-3 rounded-lg border shadow-sm">
-                  <div className="text-2xl font-bold text-indigo-600">{previewData.total_chunks}</div>
-                  <div className="text-[10px] text-gray-400">生成切片数</div>
+            
+            {/* 统计指标 */}
+            {previewData && (
+              <div className="mt-8 pt-8 border-t border-gray-200">
+                <div className="flex items-center gap-2 mb-4">
+                  <BarChart3 className="w-4 h-4 text-gray-500" />
+                  <h2 className="text-xs font-bold text-gray-900 uppercase tracking-wider">分析结果</h2>
                 </div>
-                <div className="bg-white p-3 rounded-lg border shadow-sm">
-                  <div className="text-2xl font-bold text-green-600">
-                    {Math.round(previewData.total_characters / previewData.total_chunks)}
+                
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="bg-white p-3 rounded-xl border border-gray-100 shadow-sm">
+                    <div className="text-[10px] text-gray-400 uppercase tracking-wider font-medium">切片数量</div>
+                    <div className="text-xl font-bold text-gray-900 mt-1">{previewData.total_chunks}</div>
                   </div>
-                  <div className="text-[10px] text-gray-400">平均字符/块</div>
+                  <div className="bg-white p-3 rounded-xl border border-gray-100 shadow-sm">
+                     <div className="text-[10px] text-gray-400 uppercase tracking-wider font-medium">平均长度</div>
+                     <div className="text-xl font-bold text-gray-900 mt-1">
+                       {Math.round(previewData.total_characters / previewData.total_chunks)}
+                     </div>
+                  </div>
                 </div>
-                <div className="bg-white p-3 rounded-lg border shadow-sm">
-                  <div className="text-2xl font-bold text-amber-600">
-                    {previewData.total_characters.toLocaleString()}
-                  </div>
-                  <div className="text-[10px] text-gray-400">总字符数</div>
-                </div>
-                {showOverlapControl && (
-                  <div className="bg-white p-3 rounded-lg border shadow-sm">
-                    <div className="text-2xl font-bold text-purple-600">
-                      {Math.round((chunkOverlap / chunkSize) * 100)}%
-                    </div>
-                    <div className="text-[10px] text-gray-400">重叠率</div>
-                  </div>
-                )}
-                <div className="bg-white p-3 rounded-lg border shadow-sm col-span-2">
-                  <div className="text-[10px] text-gray-400 uppercase tracking-wider">
-                    切块策略
-                  </div>
-                  <div className="text-sm font-semibold text-gray-800 mt-1">
-                    {resolvedChunkLabel}
-                  </div>
-                  <p className="text-[11px] text-gray-500 mt-1">
-                    {resolvedChunkOption.description}
-                  </p>
-                </div>
-              </div>
-            ) : (
-              <div className="text-center py-8 text-gray-400 text-sm">
-                <Eye className="w-8 h-8 mx-auto mb-2 opacity-50" />
-                点击"生成预览"查看统计
               </div>
             )}
           </div>
         </aside>
 
-        {/* 主区域: 对比视图 */}
-        <main className="flex-1 flex p-4 gap-4 overflow-hidden">
-          {/* 左屏: 原文 */}
-          <div className="flex-1 bg-white rounded-xl shadow-sm border flex flex-col overflow-hidden">
-            <div className="px-4 py-3 border-b bg-gray-50 flex justify-between items-center flex-shrink-0">
-              <span className="text-xs font-bold text-gray-600 flex items-center gap-2">
-                <FileText className="w-3.5 h-3.5" />
-                解析后文本
-              </span>
-              {previewData && (
-                <span className="text-[10px] text-gray-400">
-                  {previewData.total_characters.toLocaleString()} 字符
-                </span>
-              )}
+        {/* 主区域：原文 vs 预览 */}
+        <main className="flex-1 flex overflow-hidden bg-gray-100">
+          {/* 左侧原文 */}
+          <div className="flex-1 flex flex-col min-w-0 border-r border-gray-200 bg-white">
+            <div className="h-10 border-b border-gray-100 bg-gray-50/50 flex items-center justify-between px-4 shrink-0">
+               <span className="text-xs font-semibold text-gray-600 flex items-center gap-2">
+                 <FileText className="w-3.5 h-3.5" />
+                 解析原文
+               </span>
+               {previewData && (
+                 <span className="text-[10px] font-mono text-gray-400">
+                    {previewData.total_characters.toLocaleString()} chars
+                 </span>
+               )}
             </div>
-
-            <div className="flex-1 overflow-y-auto p-5">
+            
+            <div className="flex-1 overflow-y-auto p-6 scroll-smooth">
               {previewData?.original_text ? (
-                <div className="font-mono text-sm leading-relaxed text-gray-700 whitespace-pre-wrap">
+                <div className="font-mono text-sm leading-relaxed text-gray-600 whitespace-pre-wrap max-w-3xl mx-auto">
                   {hoveredChunkIndex !== null && getHighlightedText ? (
                     <>
-                      <span className="text-gray-400">{getHighlightedText.before}</span>
-                      <mark className="bg-indigo-100 text-indigo-900 px-0.5 rounded">
+                      <span className="opacity-40">{getHighlightedText.before}</span>
+                      <mark className="bg-yellow-200 text-gray-900 rounded px-0.5 py-0.5 mx-0.5 shadow-sm font-medium">
                         {getHighlightedText.highlighted}
                       </mark>
-                      <span className="text-gray-400">{getHighlightedText.after}</span>
+                      <span className="opacity-40">{getHighlightedText.after}</span>
                     </>
                   ) : (
                     previewData.original_text
                   )}
                 </div>
               ) : isLoading ? (
-                <div className="flex items-center justify-center h-full text-gray-400">
-                  <Loader2 className="w-6 h-6 animate-spin" />
-                </div>
+                 <div className="h-full flex flex-col items-center justify-center text-gray-400 gap-2">
+                   <Loader2 className="w-8 h-8 animate-spin opacity-20" />
+                   <p className="text-xs">解析中...</p>
+                 </div>
               ) : (
-                <div className="flex items-center justify-center h-full text-gray-400 text-sm">
-                  点击"生成预览"查看解析结果
+                <div className="h-full flex flex-col items-center justify-center text-gray-300 gap-2">
+                   <FileText className="w-12 h-12 opacity-10" />
+                   <p className="text-xs">等待生成预览</p>
                 </div>
               )}
             </div>
           </div>
 
-          {/* 中间箭头 */}
-          <div className="flex flex-col justify-center items-center text-gray-300 flex-shrink-0">
-            <ArrowRight className="w-6 h-6" />
-          </div>
-
-          {/* 右屏: 切块预览 */}
-          <div className="flex-1 bg-white rounded-xl shadow-sm border flex flex-col overflow-hidden">
-            <div className="px-4 py-3 border-b bg-gray-50 flex justify-between items-center flex-shrink-0">
-              <span className="text-xs font-bold text-indigo-600 flex items-center gap-2">
-                <Layers className="w-3.5 h-3.5" />
-                切块预览
-              </span>
-              {previewData && (
-                <span className="text-[10px] text-indigo-500 bg-indigo-50 px-2 py-0.5 rounded">
-                  共 {previewData.total_chunks} 块
-                </span>
-              )}
+          {/* 右侧切片 */}
+          <div className="flex-1 flex flex-col min-w-0 bg-gray-50/30">
+            <div className="h-10 border-b border-gray-200 bg-white flex items-center justify-between px-4 shrink-0">
+               <span className="text-xs font-semibold text-blue-600 flex items-center gap-2">
+                 <Layers className="w-3.5 h-3.5" />
+                 切片结果
+               </span>
+               <div className="flex items-center gap-2 text-[10px] text-gray-400">
+                  <MousePointer2 className="w-3 h-3" />
+                  悬停卡片高亮原文
+               </div>
             </div>
 
-            <div className="flex-1 overflow-y-auto p-4 bg-slate-50">
+            <div className="flex-1 overflow-y-auto p-4 space-y-3 custom-scrollbar">
               {previewData?.chunks ? (
-                <div className="space-y-3">
-                  {previewData.chunks.map((chunk, idx) => (
-                    <ChunkCard
-                      key={idx}
-                      chunk={chunk}
-                      index={idx}
-                      isHovered={hoveredChunkIndex === idx}
-                      onMouseEnter={() => setHoveredChunkIndex(idx)}
-                      onMouseLeave={() => setHoveredChunkIndex(null)}
-                    />
-                  ))}
-                </div>
+                previewData.chunks.map((chunk, idx) => (
+                  <ChunkCard
+                    key={idx}
+                    chunk={chunk}
+                    index={idx}
+                    isHovered={hoveredChunkIndex === idx}
+                    onMouseEnter={() => setHoveredChunkIndex(idx)}
+                    onMouseLeave={() => setHoveredChunkIndex(null)}
+                  />
+                ))
               ) : isLoading ? (
-                <div className="flex items-center justify-center h-full text-gray-400">
-                  <div className="text-center">
-                    <Loader2 className="w-8 h-8 animate-spin mx-auto mb-3" />
-                    <p className="text-sm">正在切块...</p>
-                  </div>
-                </div>
+                <div className="h-full flex flex-col items-center justify-center text-gray-400 gap-2">
+                   <Loader2 className="w-8 h-8 animate-spin opacity-20" />
+                   <p className="text-xs">切片中...</p>
+                 </div>
               ) : (
-                <div className="flex items-center justify-center h-full text-gray-400 text-sm">
-                  <div className="text-center">
-                    <Layers className="w-10 h-10 mx-auto mb-3 opacity-50" />
-                    <p>调整参数后点击"生成预览"</p>
-                    <p className="text-xs mt-1 text-gray-300">鼠标悬停卡片可高亮原文位置</p>
-                  </div>
+                <div className="h-full flex flex-col items-center justify-center text-gray-300 gap-2">
+                   <Layers className="w-12 h-12 opacity-10" />
+                   <p className="text-xs">等待生成预览</p>
                 </div>
               )}
             </div>
@@ -644,43 +525,39 @@ function ChunkCard({
 }) {
   return (
     <div
-      className={`
-        group relative bg-white border p-4 rounded-lg shadow-sm
-        transition-all duration-200 cursor-default
-        ${isHovered
-          ? 'border-indigo-400 shadow-md ring-2 ring-indigo-100 scale-[1.01]'
-          : 'border-gray-200 hover:border-indigo-300 hover:shadow-md'
-        }
-      `}
+      className={cn(
+        "group relative bg-white p-4 rounded-xl border transition-all duration-200 cursor-default",
+        isHovered
+          ? "border-blue-400 shadow-md ring-1 ring-blue-100 -translate-y-0.5 z-10"
+          : "border-gray-200 hover:border-blue-300 hover:shadow-sm"
+      )}
       onMouseEnter={onMouseEnter}
       onMouseLeave={onMouseLeave}
     >
-      {/* 头部标签 */}
       <div className="flex items-center justify-between mb-2">
-        <span
-          className={`
-            text-[10px] font-bold px-2 py-0.5 rounded
-            ${isHovered ? 'bg-indigo-100 text-indigo-700' : 'bg-gray-100 text-gray-500'}
-          `}
-        >
-          #{index + 1}
-        </span>
-        <div className="flex items-center gap-2 text-[10px] text-gray-400">
-          {chunk.page_number && (
-            <span className="bg-gray-100 px-1.5 py-0.5 rounded">P{chunk.page_number}</span>
-          )}
-          <span className="font-mono">{chunk.length} chars</span>
+        <div className="flex items-center gap-2">
+           <span className={cn(
+             "text-[10px] font-mono font-bold px-1.5 py-0.5 rounded",
+             isHovered ? "bg-blue-100 text-blue-700" : "bg-gray-100 text-gray-500"
+           )}>
+             #{index + 1}
+           </span>
+           <span className="text-[10px] text-gray-400 font-mono">
+             {chunk.length} chars
+           </span>
         </div>
+        {chunk.page_number && (
+          <span className="text-[10px] text-gray-400 bg-gray-50 px-1.5 py-0.5 rounded">
+            P.{chunk.page_number}
+          </span>
+        )}
       </div>
 
-      {/* 内容 */}
-      <p className="text-sm text-gray-700 leading-relaxed line-clamp-4">
+      <div className={cn(
+        "text-sm font-mono leading-relaxed whitespace-pre-wrap break-all transition-colors",
+        isHovered ? "text-gray-900" : "text-gray-600"
+      )}>
         {chunk.content}
-      </p>
-
-      {/* 位置信息 */}
-      <div className="mt-2 pt-2 border-t border-gray-100 text-[10px] text-gray-300 font-mono">
-        [{chunk.start_index} - {chunk.end_index}]
       </div>
     </div>
   )
