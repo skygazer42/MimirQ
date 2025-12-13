@@ -1,0 +1,36 @@
+<svg width="800" height="600" xmlns="http://www.w3.org/2000/svg">
+  <rect x="0" y="0" width="800" height="600" fill="#F8FAFC" />
+  
+  <!-- Search Header -->
+  <rect x="0" y="0" width="800" height="180" fill="white" stroke="#E2E8F0" />
+  <text x="400" y="60" font-family="Arial" font-size="28" font-weight="bold" fill="#1E293B" text-anchor="middle">Knowledge Retrieval Debugger</text>
+  
+  <rect x="200" y="90" width="400" height="50" rx="25" fill="#F1F5F9" stroke="#CBD5E1" />
+  <text x="230" y="120" font-family="Arial" font-size="16" fill="#334155">How does RAG process user queries?</text>
+  <circle cx="570" cy="115" r="18" fill="#3B82F6" />
+  
+  <!-- Stats Row -->
+  <text x="100" y="220" font-family="Arial" font-size="14" fill="#64748B">Retrieval Mode: <tspan fill="#3B82F6" font-weight="bold">Hybrid (Vector + BM25)</tspan></text>
+  <text x="400" y="220" font-family="Arial" font-size="14" fill="#64748B" text-anchor="middle">Top K: <tspan fill="#1E293B" font-weight="bold">5</tspan></text>
+  <text x="700" y="220" font-family="Arial" font-size="14" fill="#64748B" text-anchor="end">Latency: <tspan fill="#16A34A" font-weight="bold">45ms</tspan></text>
+
+  <!-- Result Card 1 -->
+  <rect x="100" y="250" width="600" height="140" rx="8" fill="white" stroke="#E2E8F0" />
+  <rect x="100" y="250" width="6" height="140" rx="0" fill="#3B82F6" /> <!-- Score Bar -->
+  <text x="120" y="280" font-family="Arial" font-size="16" font-weight="bold" fill="#334155">Score: 0.92</text>
+  <text x="680" y="280" font-family="Arial" font-size="12" fill="#64748B" text-anchor="end">Source: Handbook.pdf (P.12)</text>
+  <text x="120" y="310" font-family="Arial" font-size="14" fill="#475569">Retrieval Augmented Generation (RAG) combines the powers of...</text>
+  <text x="120" y="330" font-family="Arial" font-size="14" fill="#475569">...pre-trained parametric memory (LLM) with non-parametric memory...</text>
+  <rect x="120" y="350" width="80" height="20" rx="4" fill="#EFF6FF" />
+  <text x="160" y="364" font-family="Arial" font-size="10" fill="#3B82F6" text-anchor="middle">Vector Match</text>
+
+  <!-- Result Card 2 -->
+  <rect x="100" y="410" width="600" height="140" rx="8" fill="white" stroke="#E2E8F0" />
+  <rect x="100" y="410" width="6" height="140" rx="0" fill="#10B981" /> <!-- Score Bar -->
+  <text x="120" y="440" font-family="Arial" font-size="16" font-weight="bold" fill="#334155">Score: 0.85</text>
+  <text x="680" y="440" font-family="Arial" font-size="12" fill="#64748B" text-anchor="end">Source: Intro.md (Section 3)</text>
+  <text x="120" y="470" font-family="Arial" font-size="14" fill="#475569">RAG systems address the hallucination issues common in LLMs by...</text>
+  <text x="120" y="490" font-family="Arial" font-size="14" fill="#475569">...grounding responses in retrieved external evidence.</text>
+  <rect x="120" y="510" width="80" height="20" rx="4" fill="#ECFDF5" />
+  <text x="160" y="524" font-family="Arial" font-size="10" fill="#059669" text-anchor="middle">Keyword Match</text>
+</svg>

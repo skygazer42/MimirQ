@@ -36,21 +36,21 @@
 <table>
   <tr>
     <td width="50%">
-      <img src="./docs/images/chat-interface.png" alt="对话界面" />
+      <img src="./docs/images/chat-interface.svg" alt="对话界面" width="100%" />
       <p align="center"><em>💬 智能对话界面 - 流式响应 + 引用展示</em></p>
     </td>
     <td width="50%">
-      <img src="./docs/images/document-management.png" alt="文档管理" />
+      <img src="./docs/images/document-management.svg" alt="文档管理" width="100%" />
       <p align="center"><em>📚 文档管理中心 - 实时处理状态</em></p>
     </td>
   </tr>
   <tr>
     <td width="50%">
-      <img src="./docs/images/knowledge-retrieval.png" alt="知识检索" />
+      <img src="./docs/images/knowledge-retrieval.svg" alt="知识检索" width="100%" />
       <p align="center"><em>🔍 混合检索 - 向量 + BM25 双引擎</em></p>
     </td>
     <td width="50%">
-      <img src="./docs/images/citations-view.png" alt="引用溯源" />
+      <img src="./docs/images/citations-view.svg" alt="引用溯源" width="100%" />
       <p align="center"><em>📖 答案溯源 - 文档片段 + 页码标注</em></p>
     </td>
   </tr>

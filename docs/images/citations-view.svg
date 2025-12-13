@@ -1,0 +1,44 @@
+<svg width="800" height="600" xmlns="http://www.w3.org/2000/svg">
+  <rect x="0" y="0" width="800" height="600" fill="#F8FAFC" />
+
+  <!-- Chat Bubble Background -->
+  <rect x="100" y="50" width="600" height="500" rx="12" fill="white" stroke="#E2E8F0" />
+  
+  <!-- AI Response Text -->
+  <text x="140" y="100" font-family="Arial" font-size="16" fill="#334155">
+    Based on the documents, the company's remote work policy allows
+  </text>
+  <text x="140" y="125" font-family="Arial" font-size="16" fill="#334155">
+    employees to work from home up to 2 days per week
+    <tspan fill="#3B82F6" font-weight="bold">[1]</tspan>
+    .
+  </text>
+  <text x="140" y="150" font-family="Arial" font-size="16" fill="#334155">
+    Exceptions can be made for medical reasons with manager approval
+    <tspan fill="#3B82F6" font-weight="bold">[2]</tspan>
+    .
+  </text>
+  
+  <!-- Popover / Tooltip for Citation [1] -->
+  <rect x="180" y="140" width="400" height="150" rx="8" fill="#FFFFFF" stroke="#3B82F6" stroke-width="2" filter="drop-shadow(0 10px 15px rgb(0 0 0 / 0.1))" />
+  
+  <!-- Tooltip Header -->
+  <rect x="181" y="141" width="398" height="30" rx="7" fill="#EFF6FF" />
+  <text x="200" y="160" font-family="Arial" font-size="12" font-weight="bold" fill="#1E40AF">HR_Policy_2024.pdf</text>
+  <rect x="520" y="146" width="50" height="20" rx="4" fill="#DBEAFE" />
+  <text x="545" y="160" font-family="Arial" font-size="10" fill="#1E40AF" text-anchor="middle">Page 4</text>
+
+  <!-- Tooltip Content -->
+  <text x="200" y="190" font-family="Arial" font-size="13" fill="#475569" font-style="italic">"...Standard hybrid work arrangement permits eligible"</text>
+  <text x="200" y="210" font-family="Arial" font-size="13" fill="#475569" font-style="italic">"employees to telecommute for a maximum of two (2) days"</text>
+  <text x="200" y="230" font-family="Arial" font-size="13" fill="#475569" font-style="italic">"per calendar week, typically Tuesdays and Thursdays..."</text>
+
+  <!-- Relevance Score -->
+  <rect x="200" y="250" width="360" height="4" rx="2" fill="#E2E8F0" />
+  <rect x="200" y="250" width="320" height="4" rx="2" fill="#3B82F6" />
+  <text x="560" y="256" font-family="Arial" font-size="10" fill="#64748B">88% Match</text>
+  
+  <!-- Cursor -->
+  <path d="M420 135 L430 160 L420 155 Z" fill="#1E293B" transform="translate(140, -10) rotate(-15)" />
+
+</svg>
