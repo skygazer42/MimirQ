@@ -2,20 +2,24 @@
 
 # 🔮 MimirQ
 
-### 智能知识库问答系统 | AI-Powered Knowledge Base
+### 🚀 新一代智能知识库问答系统 | Next-Gen AI Knowledge Base
 
 *基于 RAG (Retrieval-Augmented Generation) 的企业级知识管理平台*
+<br/>
+*可视化切片 • 混合检索 • 多模态解析*
 
 [English](./README_EN.md) | [简体中文](./README.md)
 
 <p align="center">
-  <a href="#核心功能">核心功能</a> •
-  <a href="#快速开始">快速开始</a> •
-  <a href="#技术架构">技术架构</a> •
-  <a href="#部署指南">部署指南</a> •
-  <a href="#文档">文档</a>
+  <a href="#-核心亮点">亮点</a> •
+  <a href="#-功能清单">功能</a> •
+  <a href="#-快速开始">开始</a> •
+  <a href="#-技术架构">架构</a> •
+  <a href="#-部署指南">部署</a> •
+  <a href="#-文档">文档</a>
 </p>
 
+<!-- Tech Stack Badges -->
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
 [![Next.js 14](https://img.shields.io/badge/Next.js-14-black)](https://nextjs.org/)
@@ -23,44 +27,53 @@
 [![LangChain](https://img.shields.io/badge/🦜_LangChain-0.3-green)](https://langchain.com/)
 [![Milvus](https://img.shields.io/badge/Milvus-2.3-00a1e0)](https://milvus.io/)
 
-[![Docker Pulls](https://img.shields.io/docker/pulls/yourusername/mimirq?style=flat-square)](https://hub.docker.com/r/yourusername/mimirq)
-[![GitHub stars](https://img.shields.io/github/stars/yourusername/mimirq?style=social)](https://github.com/yourusername/mimirq)
-[![Discord](https://img.shields.io/discord/1234567890?logo=discord&label=Discord)](https://discord.gg/yourinvite)
+<!-- Social/Stats Badges -->
+[![Docker Pulls](https://img.shields.io/docker/pulls/yourusername/mimirq?style=flat-square&color=blue)](https://hub.docker.com/r/yourusername/mimirq)
+[![GitHub stars](https://img.shields.io/github/stars/yourusername/mimirq?style=flat-square&color=yellow)](https://github.com/yourusername/mimirq)
+[![Discord](https://img.shields.io/discord/1234567890?logo=discord&label=Discord&color=5865F2)](https://discord.gg/yourinvite)
 
 </div>
 
 ---
 
-## 📸 产品预览
+## 🌟 核心亮点
 
 <table>
   <tr>
-    <td width="50%">
-      <img src="./docs/images/chat-interface.svg" alt="对话界面" width="100%" />
-      <p align="center"><em>💬 智能对话界面 - 流式响应 + 引用展示</em></p>
+    <td width="25%" align="center">
+      <img src="./docs/images/icon-chat.svg" alt="对话界面" width="64" />
+      <br/><br/>
+      <strong>智能对话</strong>
+      <br/>
+      <span style="font-size: 12px; color: grey">流式响应 + 引用展示</span>
     </td>
-    <td width="50%">
-      <img src="./docs/images/document-management.svg" alt="文档管理" width="100%" />
-      <p align="center"><em>📚 文档管理中心 - 实时处理状态</em></p>
+    <td width="25%" align="center">
+      <img src="./docs/images/icon-document.svg" alt="文档管理" width="64" />
+      <br/><br/>
+      <strong>文档管理</strong>
+      <br/>
+      <span style="font-size: 12px; color: grey">实时处理状态监控</span>
     </td>
-  </tr>
-  <tr>
-    <td width="50%">
-      <img src="./docs/images/knowledge-retrieval.svg" alt="知识检索" width="100%" />
-      <p align="center"><em>🔍 混合检索 - 向量 + BM25 双引擎</em></p>
+    <td width="25%" align="center">
+      <img src="./docs/images/icon-search.svg" alt="知识检索" width="64" />
+      <br/><br/>
+      <strong>混合检索</strong>
+      <br/>
+      <span style="font-size: 12px; color: grey">向量 + BM25 双引擎</span>
     </td>
-    <td width="50%">
-      <img src="./docs/images/citations-view.svg" alt="引用溯源" width="100%" />
-      <p align="center"><em>📖 答案溯源 - 文档片段 + 页码标注</em></p>
+    <td width="25%" align="center">
+      <img src="./docs/images/icon-citation.svg" alt="引用溯源" width="64" />
+      <br/><br/>
+      <strong>答案溯源</strong>
+      <br/>
+      <span style="font-size: 12px; color: grey">文档片段 + 页码标注</span>
     </td>
   </tr>
 </table>
 
-> **截图说明**: 上方为界面预览占位，实际截图请放置在 `docs/images/` 目录
-
 ---
 
-## ✨ 核心功能
+## 🛠️ 功能清单
 
 <table>
 <tr>
@@ -156,6 +169,30 @@
 
 ---
 
+## 📂 项目结构
+
+```bash
+MimirQ/
+├── backend/             # FastAPI 后端服务
+│   ├── app/             # 应用核心代码
+│   │   ├── api/         # API 路由
+│   │   ├── core/        # 核心配置与数据库
+│   │   ├── models/      # 数据模型 (Pydantic/SQLModel)
+│   │   ├── services/    # 业务逻辑 (RAG/Milvus/LangChain)
+│   │   └── deepdoc/     # 深度文档解析模块
+│   └── Dockerfile       # 后端构建文件
+├── frontend/            # Next.js 前端界面
+│   ├── app/             # 页面路由
+│   ├── components/      # UI 组件
+│   ├── lib/             # 工具函数与 API 客户端
+│   └── public/          # 静态资源
+├── docs/                # 项目文档
+├── docker-compose.yml   # 容器编排配置
+└── README.md            # 项目说明
+```
+
+---
+
 ## 🚀 快速开始
 
 ### 前置要求
@@ -169,55 +206,46 @@
 
 ### 一键部署 (Docker Compose)
 
+只需三步，即可快速启动：
+
+**1. 初始化环境**
+
 ```bash
-# 1. 克隆项目
+# 克隆项目
 git clone https://github.com/yourusername/MimirQ.git
 cd MimirQ
 
-# 2. 配置环境变量
+# 配置环境变量 (使用默认模板)
 cp backend/.env.example backend/.env
 cp frontend/.env.local.example frontend/.env.local
+```
 
-# 3. 编辑 backend/.env 配置 LLM API
+**2. 配置模型密钥 (可选)**
+
+编辑 `backend/.env` 文件，填入您的 API Key：
+
+```bash
+# 推荐使用 vim 或 nano 编辑
 vim backend/.env
+
+# 关键配置项:
+# LLM_API_KEY=sk-xxxx
+# LLM_API_BASE=https://api.openai.com/v1
 ```
 
-**关键配置** (`backend/.env`):
+**3. 启动服务**
 
 ```bash
-# LLM 配置 (支持 OpenAI / DeepSeek / 自部署)
-LLM_API_KEY=sk-your-api-key
-LLM_API_BASE=https://api.openai.com/v1
-LLM_MODEL=gpt-4-turbo-preview
-
-# Embedding 配置 (local 或 openai_compatible)
-EMBEDDING_PROVIDER=local  # 推荐使用本地 BGE 模型
-EMBEDDING_MODEL=BAAI/bge-large-zh-v1.5
-
-# 数据库配置
-DATABASE_URL=postgresql://postgres:postgres@postgres:5432/mimirq
-```
-
-```bash
-# 4. 启动所有服务
+# 拉取并启动所有服务 (首次运行可能需要几分钟下载镜像)
 docker-compose up -d
 
-# 5. 查看日志
-docker-compose logs -f backend
-
-# 6. 等待服务就绪 (约 1-2 分钟)
+# 检查服务状态
+docker-compose ps
 ```
 
 ### 访问服务
 
-| 服务 | 地址 | 说明 |
-|------|------|------|
-| 🌐 前端界面 | http://localhost:3000 | Next.js Web UI |
-| 🔌 后端 API | http://localhost:8000 | FastAPI 服务 |
-| 📖 API 文档 | http://localhost:8000/docs | Swagger UI |
-| 💾 Milvus | http://localhost:19530 | 向量数据库 |
-| 📊 Milvus UI | http://localhost:9091 | Attu 管理界面 |
-| 🗄️ MinIO | http://localhost:9001 | 对象存储 (minioadmin/minioadmin) |
+等待约 1 分钟服务完全启动后，访问：
 
 ---
 
