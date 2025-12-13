@@ -36,4 +36,4 @@ class DatasetOut(BaseModel):
     partial_member_list: Optional[List[str]] = None
 
     class Config:
-        orm_mode = True
+        from_attributes = True

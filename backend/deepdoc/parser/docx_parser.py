@@ -20,7 +20,7 @@ from io import BytesIO
 
 import pandas as pd
 from docx import Document
-from src.models import rag_tokenizer
+from deepdoc.src.model import rag_tokenizer
 
 
 class RAGFlowDocxParser:

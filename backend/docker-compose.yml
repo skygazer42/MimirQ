@@ -84,7 +84,7 @@ services:
   # FastAPI 后端
   backend:
     build:
-      context: ./backend
+      context: .
       dockerfile: Dockerfile
     container_name: mimirq-backend
     ports:
@@ -103,24 +103,6 @@ services:
       - ./backend:/app
       - upload_data:/app/uploads
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
-
-  # Next.js 前端
-  frontend:
-    build:
-      context: ./frontend
-      dockerfile: Dockerfile
-    container_name: mimirq-frontend
-    ports:
-      - "3000:3000"
-    depends_on:
-      - backend
-    environment:
-      - NEXT_PUBLIC_API_URL=http://localhost:8000
-    volumes:
-      - ./frontend:/app
-      - /app/node_modules
-      - /app/.next
-    command: npm run dev
 
 volumes:
   postgres_data:

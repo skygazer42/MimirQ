@@ -129,13 +129,13 @@ POST /api/v1/chat/stream
 ### 内部变化
 
 ```python
-# 之前 (ChromaDB)
-from app.services.vectorstore import vector_store_service
-vector_store_service.add_documents(chunks, doc_id)
+# 之前 (ChromaDB，已移除)
+# from app.services.vectorstore import vector_store_service
+# vector_store_service.add_documents(chunks, doc_id)
 
-# 现在 (Milvus)
+# 现在 (Milvus，LangChain 管理)
 from app.services.milvus_store import milvus_store
-milvus_store.add_documents(milvus_docs, doc_id)
+milvus_store.add_documents(milvus_docs, doc_id, tenant_id)
 ```
 
 ---

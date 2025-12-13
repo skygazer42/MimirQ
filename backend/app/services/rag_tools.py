@@ -48,24 +48,27 @@ def search_knowledge_base(
 
         tenant_uuid = UUID(tenant_id) if tenant_id else current_tenant_id.get()
 
-        results = hybrid_retriever.hybrid_search(
-            query=query,
-            top_k=top_k,
-            score_threshold=settings.SIMILARITY_THRESHOLD,
-            document_ids=doc_uuids,
-            tenant_id=tenant_uuid,
-            alpha=0.6
+        retriever = hybrid_retriever.model_copy(
+            update={
+                "k": top_k,
+                "score_threshold": settings.SIMILARITY_THRESHOLD,
+                "alpha": 0.6,
+                "tenant_id": tenant_uuid,
+                "document_ids": doc_uuids,
+            }
         )
+        docs = retriever.invoke(query)
 
-        if not results:
+        if not docs:
             return "未找到相关文档。知识库中可能没有与此查询相关的内容。"
 
         formatted_results = []
-        for idx, result in enumerate(results, 1):
-            source = result['metadata'].get('source', 'Unknown')
-            page = result['metadata'].get('page', 'N/A')
-            content = result['content']
-            score = result.get('score', 0.0)
+        for idx, doc in enumerate(docs, 1):
+            meta = doc.metadata or {}
+            source = meta.get("source", "Unknown")
+            page = meta.get("page", "N/A")
+            content = doc.page_content
+            score = meta.get("score", 0.0)
 
             formatted_results.append(
                 f"[文档 {idx}] {source} - 第{page}页(相关度 {score:.2f})\n{content}"

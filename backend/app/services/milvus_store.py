@@ -163,11 +163,18 @@ class MilvusVectorStore:
                 os.getenv("HTTPS_PROXY"),
                 os.getenv("HTTP_PROXY"),
                 os.getenv("ALL_PROXY"),
+                os.getenv("https_proxy"),
+                os.getenv("http_proxy"),
+                os.getenv("all_proxy"),
             ]
-            proxy = next((p for p in proxy_candidates if p), None)
+            proxies = [p for p in proxy_candidates if p]
             trust_env = True
-            if proxy and proxy.lower().startswith("socks"):
-                logger.warning("Unsupported SOCKS proxy for embeddings: %s. Ignoring env proxies.", proxy)
+            socks_proxy = next((p for p in proxies if p.lower().startswith("socks")), None)
+            if socks_proxy:
+                logger.warning(
+                    "Unsupported SOCKS proxy for embeddings: %s. Ignoring env proxies.",
+                    socks_proxy,
+                )
                 trust_env = False
 
             api_key = settings.EMBEDDING_API_KEY or settings.LLM_API_KEY
@@ -333,4 +340,3 @@ class MilvusVectorStore:
 
 # 全局实例（懒初始化）
 milvus_store = MilvusVectorStore()
-

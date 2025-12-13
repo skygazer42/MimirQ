@@ -90,15 +90,19 @@ async def root():
 @app.get("/health")
 async def health_check():
     """健康检查"""
-    from app.services.milvus_store import milvus_store
+    milvus_status = {"status": "disconnected", "count": None}
+    try:
+        from app.services.milvus_store import milvus_store
+
+        milvus_status["count"] = milvus_store.get_collection_count()
+        milvus_status["status"] = "connected"
+    except Exception as exc:
+        milvus_status["error"] = str(exc)
 
     return {
         "status": "healthy",
         "database": "connected",
-        "milvus": {
-            "status": "connected",
-            "count": milvus_store.get_collection_count()
-        }
+        "milvus": milvus_status,
     }
 
 
