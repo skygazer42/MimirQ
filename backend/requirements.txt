@@ -19,7 +19,6 @@ langchain-text-splitters==0.3.0
 
 # Vector Database
 pymilvus==2.3.5
-milvus==2.3.5
 
 # Embeddings (API mode - no heavy dependencies)
 # 如需使用本地 Embedding 模型，请安装：pip install -r requirements-local.txt
@@ -50,6 +49,9 @@ shapely==2.0.3
 tqdm==4.66.4
 beartype==0.18.5
 llama-index-core==0.14.9
+datrie==0.8.2
+hanziconv==0.3.2
+nltk==3.8.1
 
 # BM25 and Text Processing
 rank-bm25==0.2.2
@@ -63,10 +65,11 @@ python-jose[cryptography]==3.3.0
 passlib[bcrypt]==1.7.4
 
 # Utilities
-pydantic==2.5.3
+# LangChain 1.x 依赖 Pydantic v2.7+ 与较新的 requests。
+pydantic>=2.7.4,<3.0.0
 pydantic-settings==2.1.0
 python-dotenv==1.0.0
-requests==2.31.0
+requests>=2.32.5,<3.0.0
 aiofiles==23.2.1
 
 # Development

@@ -301,7 +301,7 @@ class DocumentProcessorService:
         db_doc.doc_metadata = metadata
         db.commit()
         db.refresh(db_doc)
-            # 不抛出异常，避免影响文档处理流程
+        # 不抛出异常，避免影响文档处理流程
 
     def _ragflow_chunk_file(self, file_path: Path, strategy: str):
         """

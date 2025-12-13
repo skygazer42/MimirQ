@@ -35,7 +35,7 @@ from PIL import Image
 from huggingface_hub import snapshot_download
 from pypdf import PdfReader as pdf2_read
 
-from src.models import rag_tokenizer
+from deepdoc.src.model import rag_tokenizer
 from deepdoc.vision import OCR, LayoutRecognizer, TableStructureRecognizer
 from deepdoc.vision.recognizer import Recognizer
 

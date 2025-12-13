@@ -7,11 +7,11 @@ import os
 from typing import AsyncGenerator, Dict, Any, List, Optional
 from uuid import UUID
 import json
-from langchain_core.prompts import PromptTemplate
+from langchain_core.prompts import ChatPromptTemplate
+from langchain_core.output_parsers import StrOutputParser
 import httpx
 
 from app.core.config import settings
-from app.services.milvus_store import milvus_store
 from app.services.hybrid_retriever import hybrid_retriever
 
 
@@ -24,11 +24,18 @@ class RAGEngine:
             os.getenv("HTTPS_PROXY"),
             os.getenv("HTTP_PROXY"),
             os.getenv("ALL_PROXY"),
+            os.getenv("https_proxy"),
+            os.getenv("http_proxy"),
+            os.getenv("all_proxy"),
         ]
-        proxy = next((p for p in proxy_candidates if p), None)
+        proxies = [p for p in proxy_candidates if p]
         trust_env = True
-        if proxy and proxy.lower().startswith("socks"):
-            print(f"[WARN] Unsupported SOCKS proxy for LLM detected: {proxy}. Ignoring env proxies.")
+        socks_proxy = next((p for p in proxies if p.lower().startswith("socks")), None)
+        if socks_proxy:
+            print(
+                f"[WARN] Unsupported SOCKS proxy for LLM detected: {socks_proxy}. "
+                "Ignoring env proxies."
+            )
             trust_env = False
 
         http_client = httpx.Client(trust_env=trust_env)
@@ -55,9 +62,8 @@ class RAGEngine:
         )
 
         # Prompt 模板（支持对话历史）
-        self.prompt_template = PromptTemplate(
-            input_variables=["context", "history", "question"],
-            template="""你是一个专业的知识库助手。请基于以下参考资料和对话历史回答用户问题。
+        self.prompt_template = ChatPromptTemplate.from_template(
+            """你是一个专业的知识库助手。请基于以下参考资料和对话历史回答用户问题。
 
 【参考资料】
 {context}
@@ -77,6 +83,9 @@ class RAGEngine:
 
 【回答】"""
         )
+
+        # LangChain Runnable chain: prompt -> llm -> string output
+        self.chain = self.prompt_template | self.llm | StrOutputParser()
 
     async def stream_chat(
         self,
@@ -102,26 +111,31 @@ class RAGEngine:
             流式事件: {"type": "citations|token|done|error", "data": ...}
         """
         try:
-            # Step 1: 混合检索（向量 + BM25）
-            search_results = hybrid_retriever.hybrid_search(
-                query=question,
-                top_k=top_k,
-                score_threshold=score_threshold,
-                document_ids=document_ids,
-                tenant_id=tenant_id,
-                alpha=0.6  # 60% 向量检索，40% BM25
+            # Step 1: 混合检索（LangChain Retriever）
+            retriever = hybrid_retriever.model_copy(
+                update={
+                    "k": top_k,
+                    "score_threshold": score_threshold,
+                    "alpha": 0.6,
+                    "tenant_id": tenant_id,
+                    "document_ids": document_ids,
+                }
             )
+            docs = retriever.invoke(question)
 
             # 构建引用信息
-            citations = []
-            for result in search_results:
-                citations.append({
-                    "document_id": result['metadata'].get('document_id'),
-                    "document_name": result['metadata'].get('source', 'Unknown'),
-                    "chunk_content": result['content'][:200] + "...",
-                    "page_number": result['metadata'].get('page'),
-                    "relevance_score": round(result['score'], 2)
-                })
+            citations: List[Dict[str, Any]] = []
+            for doc in docs:
+                meta = doc.metadata or {}
+                citations.append(
+                    {
+                        "document_id": meta.get("document_id"),
+                        "document_name": meta.get("source", "Unknown"),
+                        "chunk_content": doc.page_content[:200] + "...",
+                        "page_number": meta.get("page"),
+                        "relevance_score": round(float(meta.get("score", 0.0)), 2),
+                    }
+                )
 
             # 发送引用信息
             yield {
@@ -130,15 +144,16 @@ class RAGEngine:
             }
 
             # Step 2: 构建上下文
-            if not search_results:
+            if not docs:
                 context = "没有找到相关的参考资料。"
             else:
                 context_parts = []
-                for idx, result in enumerate(search_results, 1):
-                    source = result['metadata'].get('source', 'Unknown')
-                    page = result['metadata'].get('page', 'N/A')
+                for idx, doc in enumerate(docs, 1):
+                    meta = doc.metadata or {}
+                    source = meta.get("source", "Unknown")
+                    page = meta.get("page", "N/A")
                     context_parts.append(
-                        f"[来源 {idx}: {source} - 第 {page} 页]\n{result['content']}"
+                        f"[来源 {idx}: {source} - 第 {page} 页]\n{doc.page_content}"
                     )
                 context = "\n\n".join(context_parts)
 
@@ -158,25 +173,18 @@ class RAGEngine:
             else:
                 history_text = "（无历史对话）"
 
-            # 构建 Prompt
-            prompt = self.prompt_template.format(
-                context=context,
-                history=history_text,
-                question=question
-            )
-
             # Step 3: 流式生成回答
             full_response = ""
-            async for chunk in self.llm.astream(prompt):
-                token = chunk.content
-
-                if token:
-                    full_response += token
-
-                    yield {
-                        "type": "token",
-                        "data": {"content": token}
-                    }
+            async for token in self.chain.astream(
+                {"context": context, "history": history_text, "question": question}
+            ):
+                if not token:
+                    continue
+                full_response += token
+                yield {
+                    "type": "token",
+                    "data": {"content": token}
+                }
 
             # Step 4: 发送完成信号
             yield {

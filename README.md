@@ -79,7 +79,7 @@
 ### 🤖 RAG 智能问答
 - ✅ 混合检索 (向量 + BM25)
 - ✅ 流式响应 (打字机效果)
-- ✅ 对话记忆 (PostgreSQL Checkpoint)
+- ✅ 对话记忆 (PostgreSQL 持久化)
 - ✅ 多轮对话上下文理解
 - ✅ 引用溯源 (文档 + 页码)
 
@@ -87,7 +87,7 @@
 <td width="33%" valign="top">
 
 ### 🚀 企业级架构
-- ✅ LangChain Agent 自动编排
+- ✅ LangChain Runnable/Retriever 编排
 - ✅ Milvus 十亿级向量检索
 - ✅ OpenAI 兼容接口 (支持自部署)
 - ✅ Docker Compose 一键部署
@@ -112,10 +112,10 @@
 ┌──────────────────────────▼──────────────────────────────────────┐
 │                   FastAPI 后端服务                                │
 │  ┌────────────────────────────────────────────────────────┐     │
-│  │           LangChain Agent 编排引擎                      │     │
+│  │           LangChain RAG 编排引擎                       │     │
 │  │  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐ │     │
-│  │  │ Chat Model   │  │ Tool Calling │  │ Middleware   │ │     │
-│  │  │ (OpenAI/...)  │  │ (Knowledge)  │  │ (Trimming)   │ │     │
+│  │  │ Chat Model   │  │ Hybrid       │  │ Runnable     │ │     │
+│  │  │ (OpenAI/...) │  │ Retriever    │  │ (Prompt)     │ │     │
 │  │  └──────────────┘  └──────────────┘  └──────────────┘ │     │
 │  └────────────────────────────────────────────────────────┘     │
 │  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐           │
@@ -146,7 +146,7 @@
 | **前端** | Next.js 14 (App Router) + TypeScript | 现代化 React 框架 |
 | **UI 组件** | Tailwind CSS + Shadcn/ui | 极简设计系统 |
 | **后端** | FastAPI 0.109 + Python 3.11 | 高性能异步框架 |
-| **AI 编排** | LangChain 0.3 + LangGraph | Agent 自动编排 |
+| **AI 编排** | LangChain 1.x (Runnable + Retriever) | 纯 LangChain RAG 链路 |
 | **向量数据库** | Milvus 2.3 + Etcd + MinIO | 十亿级向量检索 |
 | **关系数据库** | PostgreSQL 15 | 文档/对话持久化 |
 | **Embedding** | BGE-large-zh-v1.5 (本地) | 中文向量模型 |
@@ -270,9 +270,9 @@ docker-compose logs -f backend
 - **对话记忆**: 系统自动记住最近 5 轮对话 (10 条消息)
 
 **技术实现**:
-- LangGraph PostgreSQL Checkpoint 自动持久化
-- 消息裁剪中间件防止上下文溢出
-- 跨会话恢复 (服务重启后可恢复对话)
+- PostgreSQL 持久化对话与消息
+- 仅保留最近 5 轮历史供 LLM 使用
+- LangChain Runnable 链路（Retriever → Prompt → LLM）
 
 </details>
 
@@ -323,7 +323,7 @@ npm run build
 - [快速入门](./docs/quickstart.md) - 本地开发、Docker Compose、环境检查
 - [Milvus 向量数据库指南](./docs/guides/milvus_guide.md) - 索引类型、性能调优、GPU 加速
 - [RAG 优化指南](./docs/guides/rag_optimization.md) - 对话历史、混合检索、Rerank
-- [LangChain Agent 迁移文档](./docs/guides/langchain_agent_migration.md) - Agent 架构、Checkpoint 管理
+- [LangChain RAG 架构文档](./docs/guides/langchain_agent_migration.md) - Retriever/Runnable 链路
 - [依赖说明](./docs/guides/dependencies.md) - 不同解析及 Embedding 模式的依赖组合
 - [MinerU 集成](./docs/integrations/mineru_integration.md) - 高级 PDF 解析配置
 - [ChromaDB → Milvus 迁移](./docs/integrations/migration_chromadb_to_milvus.md) - 架构选择、数据迁移脚本
@@ -361,14 +361,11 @@ curl -X POST "http://localhost:8000/api/v1/chat/stream" \
 结合向量检索和关键词检索，提升准确率:
 
 ```python
-# 向量检索 (语义相似度)
-vector_results = milvus_store.search(query, top_k=10)
+from app.services.hybrid_retriever import hybrid_retriever
 
-# BM25 检索 (关键词匹配)
-bm25_results = hybrid_retriever.search_bm25(query, top_k=10)
-
-# RRF 算法融合
-final_results = rrf_merge(vector_results, bm25_results, alpha=0.6)
+# LangChain 1.x Retriever 混合检索
+retriever = hybrid_retriever.model_copy(update={"k": 10, "alpha": 0.6})
+docs = retriever.invoke(query)
 ```
 
 **适用场景**:
@@ -376,23 +373,9 @@ final_results = rrf_merge(vector_results, bm25_results, alpha=0.6)
 - ✅ 代码片段搜索
 - ✅ 数字、日期等精确匹配
 
-### 2. 对话记忆 (LangGraph Checkpoint)
+### 2. 对话记忆
 
-自动管理对话历史，支持上下文理解:
-
-```python
-# 自动加载对话历史
-config = {"configurable": {"thread_id": conversation_id}}
-state = agent.get_state(config)
-
-# 自动保存对话状态
-agent.astream({"messages": [user_message]}, config=config)
-```
-
-**功能**:
-- ✅ 理解代词引用 (如 "它"、"这个")
-- ✅ 多轮对话上下文
-- ✅ 跨会话恢复 (服务重启后可恢复)
+对话与消息由 PostgreSQL 持久化，前端请求携带最近历史；后端保留最近 5 轮作为 prompt 的 history 输入。
 
 ### 3. OpenAI 兼容接口
 
@@ -506,8 +489,8 @@ ALLOWED_EXTENSIONS=pdf,md,txt
 - [x] ✅ 基础 RAG 对话功能
 - [x] ✅ Milvus 向量数据库集成
 - [x] ✅ 混合检索 (Vector + BM25)
-- [x] ✅ LangChain Agent 架构
-- [x] ✅ PostgreSQL Checkpoint 对话记忆
+- [x] ✅ LangChain Runnable/Retriever 架构
+- [x] ✅ PostgreSQL 对话记忆
 - [ ] 🚧 MinerU 2.5 高级 PDF 解析 (进行中)
 - [ ] 📅 多模态支持 (图片、表格理解)
 - [ ] 📅 知识图谱可视化
@@ -543,7 +526,6 @@ ALLOWED_EXTENSIONS=pdf,md,txt
 MimirQ 基于以下优秀开源项目构建:
 
 - [LangChain](https://github.com/langchain-ai/langchain) - LLM 应用框架
-- [LangGraph](https://github.com/langchain-ai/langgraph) - Agent 编排引擎
 - [Milvus](https://github.com/milvus-io/milvus) - 向量数据库
 - [FastAPI](https://github.com/tiangolo/fastapi) - 现代化 Python 框架
 - [Next.js](https://github.com/vercel/next.js) - React 全栈框架

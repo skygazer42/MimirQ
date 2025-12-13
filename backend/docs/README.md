@@ -6,7 +6,7 @@
 - [quickstart.md](./quickstart.md)：5 分钟完成环境准备、服务启动与基础校验。
 
 ## 使用指南
-- [guides/langchain_agent_migration.md](./guides/langchain_agent_migration.md)：记录从手写 RAG 到 LangChain/LangGraph 的迁移步骤与踩坑。
+- [guides/langchain_agent_migration.md](./guides/langchain_agent_migration.md)：当前纯 LangChain RAG 架构说明与迁移记录。
 - [guides/rag_optimization.md](./guides/rag_optimization.md)：检索效果与回答质量优化方案。
 - [guides/milvus_guide.md](./guides/milvus_guide.md)：Milvus 的部署、调优与常见问题。
 - [guides/dependencies.md](./guides/dependencies.md)：不同解析/Embedding 模式的依赖清单。

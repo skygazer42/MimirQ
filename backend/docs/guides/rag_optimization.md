@@ -119,33 +119,36 @@ BM25 检索: 精确匹配 "A123" 的文档  ✅
 
 ```python
 # backend/app/services/hybrid_retriever.py
-from rank_bm25 import BM25Okapi
+from langchain_community.retrievers.bm25 import BM25Retriever
+from langchain_core.documents import Document
 import jieba
 
-# 分词构建语料库
-tokenized_corpus = []
-for chunk in chunks:
-    tokens = list(jieba.cut_for_search(chunk.content))
-    tokenized_corpus.append(tokens)
+# 将 DocumentChunk 转为 LangChain Document
+docs = [
+    Document(page_content=c.content, metadata=c.doc_metadata or {}, id=str(c.id))
+    for c in chunks
+]
 
-# 构建 BM25 索引
-self.bm25_index = BM25Okapi(tokenized_corpus)
+# 使用 LangChain BM25Retriever 构建索引
+bm25_retriever = BM25Retriever.from_documents(
+    docs,
+    preprocess_func=lambda t: list(jieba.cut_for_search(t)),
+    k=10,
+)
 ```
 
 #### 2. 混合检索策略
 
 ```python
 def hybrid_search(query, top_k=5, alpha=0.6):
-    # 1. 向量检索（语义相似）
-    vector_results = milvus_store.search(query, top_k=10)
+    from app.services.hybrid_retriever import hybrid_retriever
 
-    # 2. BM25 检索（关键词匹配）
-    bm25_results = bm25_index.search(query, top_k=10)
-
-    # 3. 融合结果（Reciprocal Rank Fusion）
-    final_score = alpha * vector_score + (1 - alpha) * bm25_score
-
-    return sorted_results[:top_k]
+    retriever = hybrid_retriever.model_copy(update={
+        "k": top_k,
+        "alpha": alpha,
+    })
+    docs = retriever.invoke(query)
+    return docs
 ```
 
 #### 3. 权重配置
@@ -302,11 +305,11 @@ curl -X POST http://localhost:8000/api/v1/chat/stream \
 编辑 `backend/app/services/rag_engine.py:83`:
 
 ```python
-search_results = hybrid_retriever.hybrid_search(
-    query=question,
-    top_k=top_k,
-    alpha=0.6  # 调整此值：0.4-0.8
-)
+retriever = hybrid_retriever.model_copy(update={
+    "k": top_k,
+    "alpha": 0.6,  # 调整此值：0.4-0.8
+})
+docs = retriever.invoke(question)
 ```
 
 | 场景 | 推荐 alpha 值 |
@@ -369,12 +372,14 @@ const history = messages.slice(-6)  # 改为 -6（只发 3 轮）
 
 ```python
 # 启用调试模式查看混合检索分数
-search_results = hybrid_retriever.hybrid_search(...)
+retriever = hybrid_retriever.model_copy(update={"k": 5})
+docs = retriever.invoke(question)
 
-for result in search_results:
-    print(f"Total: {result['score']:.2f}")
-    print(f"  Vector: {result['vector_score']:.2f}")
-    print(f"  BM25: {result['bm25_score']:.2f}")
+for doc in docs:
+    meta = doc.metadata or {}
+    print(f"Total: {meta.get('score', 0.0):.2f}")
+    print(f"  Vector: {meta.get('vector_score', 0.0):.2f}")
+    print(f"  BM25: {meta.get('bm25_score', 0.0):.2f}")
 ```
 
 ---
