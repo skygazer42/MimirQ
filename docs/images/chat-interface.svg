@@ -1,0 +1,44 @@
+<svg width="800" height="600" xmlns="http://www.w3.org/2000/svg">
+  <!-- Background -->
+  <rect x="0" y="0" width="800" height="600" fill="#F8FAFC" />
+  
+  <!-- Sidebar -->
+  <rect x="0" y="0" width="200" height="600" fill="#FFFFFF" stroke="#E2E8F0" />
+  <rect x="20" y="20" width="160" height="40" rx="8" fill="#3B82F6" />
+  <text x="100" y="45" font-family="Arial" font-size="14" fill="white" text-anchor="middle">+ New Chat</text>
+  
+  <rect x="20" y="80" width="160" height="30" rx="4" fill="#F1F5F9" />
+  <rect x="30" y="90" width="100" height="10" rx="2" fill="#CBD5E1" />
+  <rect x="20" y="120" width="160" height="30" rx="4" fill="white" />
+  <rect x="30" y="130" width="120" height="10" rx="2" fill="#E2E8F0" />
+  <rect x="20" y="160" width="160" height="30" rx="4" fill="white" />
+  <rect x="30" y="170" width="80" height="10" rx="2" fill="#E2E8F0" />
+
+  <!-- Main Chat Area -->
+  <!-- User Message -->
+  <rect x="240" y="40" width="520" height="80" rx="8" fill="#FFFFFF" stroke="#E2E8F0" />
+  <circle cx="270" cy="70" r="16" fill="#64748B" />
+  <rect x="300" y="55" width="200" height="12" rx="2" fill="#334155" />
+  <rect x="300" y="75" width="380" height="12" rx="2" fill="#94A3B8" />
+
+  <!-- AI Message -->
+  <rect x="240" y="140" width="520" height="280" rx="8" fill="#F8FAFC" stroke="#E2E8F0" />
+  <circle cx="270" cy="170" r="16" fill="#3B82F6" />
+  <rect x="300" y="160" width="420" height="12" rx="2" fill="#334155" />
+  <rect x="300" y="190" width="440" height="10" rx="2" fill="#64748B" />
+  <rect x="300" y="210" width="400" height="10" rx="2" fill="#64748B" />
+  <rect x="300" y="230" width="420" height="10" rx="2" fill="#64748B" />
+  <rect x="300" y="250" width="180" height="10" rx="2" fill="#64748B" />
+  
+  <!-- Citation Card -->
+  <rect x="300" y="280" width="440" height="100" rx="6" fill="#EFF6FF" stroke="#BFDBFE" />
+  <rect x="320" y="300" width="120" height="12" rx="2" fill="#3B82F6" opacity="0.5" />
+  <rect x="320" y="325" width="380" height="8" rx="2" fill="#64748B" opacity="0.5" />
+  <rect x="320" y="345" width="300" height="8" rx="2" fill="#64748B" opacity="0.5" />
+
+  <!-- Input Area -->
+  <rect x="240" y="520" width="520" height="60" rx="8" fill="#FFFFFF" stroke="#CBD5E1" />
+  <rect x="260" y="545" width="300" height="10" rx="2" fill="#E2E8F0" />
+  <circle cx="730" cy="550" r="18" fill="#3B82F6" />
+  <path d="M725 550 L730 545 L735 550" stroke="white" stroke-width="2" fill="none" />
+</svg>
