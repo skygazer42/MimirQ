@@ -1,15 +1,22 @@
 /**
- * 设置页面 - 模型提供商配置
+ * 设置页面 - 系统配置管理
  */
 'use client'
 
-import { useState, useMemo } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { Navbar } from '@/components/navbar'
 import { ModelProviderCard } from '@/components/model-provider-card'
 import { ModelConfigDialog } from '@/components/model-config-dialog'
 import { MODEL_PROVIDERS } from '@/types/models'
 import type { ModelProvider, ProviderConfig, ProviderCategory } from '@/types/models'
-import { Settings2, Database, Sliders, Lightbulb, Server, Cpu, Layers } from 'lucide-react'
+import {
+  Settings2, Database, Sliders, Lightbulb, Server, Cpu, Layers,
+  ToggleLeft, ToggleRight, Save, RefreshCw, CheckCircle2, XCircle,
+  Zap, FileSearch, Sparkles, Network, CloudCog, AlertCircle, Eye, EyeOff
+} from 'lucide-react'
+import { Button } from '@/components/ui/button'
+import { settingsApi, type SystemSettings, type SystemStatus, type FeatureFlags } from '@/lib/api-client'
+import { cn } from '@/lib/utils'
 
 const CATEGORY_INFO: Record<ProviderCategory, { title: string; description: string; icon: any }> = {
   model: {
@@ -29,10 +36,123 @@ const CATEGORY_INFO: Record<ProviderCategory, { title: string; description: stri
   },
 }
 
+// 功能开关配置
+const FEATURE_FLAGS_CONFIG = [
+  {
+    key: 'sag_enabled' as keyof FeatureFlags,
+    name: 'SAG 知识抽取',
+    description: '启用 Structured Analytical Generation，自动抽取文档中的实体和事件',
+    icon: Sparkles,
+    color: 'purple',
+    dependencies: ['Milvus', 'LLM'],
+  },
+  {
+    key: 'deepdoc_enabled' as keyof FeatureFlags,
+    name: 'DeepDoc 解析',
+    description: '使用 DeepDoc 进行高级文档解析，支持复杂布局',
+    icon: FileSearch,
+    color: 'blue',
+    dependencies: [],
+  },
+  {
+    key: 'markitdown_enabled' as keyof FeatureFlags,
+    name: 'MarkItDown 解析',
+    description: '使用 Microsoft MarkItDown 转换各种格式为 Markdown',
+    icon: FileSearch,
+    color: 'green',
+    dependencies: [],
+  },
+  {
+    key: 'llama_index_enabled' as keyof FeatureFlags,
+    name: 'LlamaIndex 分块',
+    description: '启用 LlamaIndex 高级分块策略',
+    icon: Network,
+    color: 'orange',
+    dependencies: [],
+  },
+  {
+    key: 'mineru_enabled' as keyof FeatureFlags,
+    name: 'MinerU API',
+    description: '使用 MinerU 在线 API 进行文档解析',
+    icon: CloudCog,
+    color: 'cyan',
+    dependencies: ['MinerU API Token'],
+  },
+]
+
 export default function SettingsPage() {
   const [providers, setProviders] = useState<ModelProvider[]>(MODEL_PROVIDERS)
   const [selectedProvider, setSelectedProvider] = useState<ModelProvider | null>(null)
   const [dialogOpen, setDialogOpen] = useState(false)
+
+  // 系统配置状态
+  const [settings, setSettings] = useState<SystemSettings | null>(null)
+  const [status, setStatus] = useState<SystemStatus | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
+  const [saveMessage, setSaveMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
+
+  // 编辑状态
+  const [editedSettings, setEditedSettings] = useState<Partial<SystemSettings>>({})
+  const [showSecrets, setShowSecrets] = useState<Record<string, boolean>>({})
+
+  // 加载配置
+  useEffect(() => {
+    loadSettings()
+  }, [])
+
+  const loadSettings = async () => {
+    setLoading(true)
+    try {
+      const [settingsData, statusData] = await Promise.all([
+        settingsApi.get(),
+        settingsApi.getStatus().catch(() => null),
+      ])
+      setSettings(settingsData)
+      setStatus(statusData)
+      setEditedSettings({})
+    } catch (error) {
+      console.error('Failed to load settings:', error)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  // 保存配置
+  const saveSettings = async () => {
+    if (Object.keys(editedSettings).length === 0) return
+
+    setSaving(true)
+    setSaveMessage(null)
+    try {
+      const result = await settingsApi.update(editedSettings)
+      setSaveMessage({ type: 'success', text: result.message })
+      await loadSettings()
+    } catch (error: any) {
+      setSaveMessage({ type: 'error', text: error.response?.data?.detail || '保存失败' })
+    } finally {
+      setSaving(false)
+      setTimeout(() => setSaveMessage(null), 5000)
+    }
+  }
+
+  // 更新功能开关
+  const toggleFeature = (key: keyof FeatureFlags) => {
+    const currentFlags = editedSettings.feature_flags || settings?.feature_flags || {} as FeatureFlags
+    const newFlags = { ...currentFlags, [key]: !currentFlags[key] }
+    setEditedSettings(prev => ({ ...prev, feature_flags: newFlags as FeatureFlags }))
+  }
+
+  // 获取当前功能开关状态
+  const getFeatureValue = (key: keyof FeatureFlags): boolean => {
+    if (editedSettings.feature_flags && key in editedSettings.feature_flags) {
+      return editedSettings.feature_flags[key]
+    }
+    return settings?.feature_flags?.[key] ?? false
+  }
+
+  // 检查是否有未保存的更改
+  const hasChanges = Object.keys(editedSettings).length > 0
 
   const handleConfigure = (provider: ModelProvider) => {
     setSelectedProvider(provider)
@@ -62,152 +182,254 @@ export default function SettingsPage() {
     return groups
   }, [providers])
 
+  const getColorClasses = (color: string) => {
+    const colors: Record<string, { bg: string; border: string; text: string; iconBg: string }> = {
+      purple: { bg: 'bg-purple-50', border: 'border-purple-200', text: 'text-purple-600', iconBg: 'bg-purple-100' },
+      blue: { bg: 'bg-blue-50', border: 'border-blue-200', text: 'text-blue-600', iconBg: 'bg-blue-100' },
+      green: { bg: 'bg-green-50', border: 'border-green-200', text: 'text-green-600', iconBg: 'bg-green-100' },
+      orange: { bg: 'bg-orange-50', border: 'border-orange-200', text: 'text-orange-600', iconBg: 'bg-orange-100' },
+      cyan: { bg: 'bg-cyan-50', border: 'border-cyan-200', text: 'text-cyan-600', iconBg: 'bg-cyan-100' },
+    }
+    return colors[color] || colors.blue
+  }
+
   return (
     <div className="flex h-screen overflow-hidden bg-gray-50/50">
       <Navbar />
       <main className="flex-1 overflow-y-auto">
         <div className="max-w-6xl mx-auto px-8 py-10">
           {/* 页面头部 */}
-          <div className="flex items-center gap-4 mb-10">
-            <div className="p-3 bg-white border border-gray-100 rounded-xl shadow-sm">
-              <Settings2 className="h-6 w-6 text-gray-700" />
+          <div className="flex items-center justify-between mb-10">
+            <div className="flex items-center gap-4">
+              <div className="p-3 bg-white border border-gray-100 rounded-xl shadow-sm">
+                <Settings2 className="h-6 w-6 text-gray-700" />
+              </div>
+              <div>
+                <h1 className="text-2xl font-bold text-gray-900 tracking-tight">设置与配置</h1>
+                <p className="text-sm text-gray-500 mt-1">
+                  管理功能开关、模型接入及系统参数
+                </p>
+              </div>
             </div>
-            <div>
-              <h1 className="text-2xl font-bold text-gray-900 tracking-tight">设置与配置</h1>
-              <p className="text-sm text-gray-500 mt-1">
-                管理模型接入、系统参数及数据库连接
-              </p>
+
+            {/* 保存按钮 */}
+            <div className="flex items-center gap-3">
+              {saveMessage && (
+                <div className={cn(
+                  "flex items-center gap-2 px-3 py-1.5 rounded-full text-sm",
+                  saveMessage.type === 'success' ? 'bg-green-50 text-green-600' : 'bg-red-50 text-red-600'
+                )}>
+                  {saveMessage.type === 'success' ? <CheckCircle2 className="w-4 h-4" /> : <XCircle className="w-4 h-4" />}
+                  {saveMessage.text}
+                </div>
+              )}
+              <Button
+                variant="outline"
+                onClick={loadSettings}
+                disabled={loading}
+                className="gap-2"
+              >
+                <RefreshCw className={cn("w-4 h-4", loading && "animate-spin")} />
+                刷新
+              </Button>
+              <Button
+                onClick={saveSettings}
+                disabled={!hasChanges || saving}
+                className={cn(
+                  "gap-2",
+                  hasChanges ? "bg-blue-600 hover:bg-blue-700" : "bg-gray-300"
+                )}
+              >
+                <Save className={cn("w-4 h-4", saving && "animate-pulse")} />
+                {saving ? '保存中...' : '保存配置'}
+              </Button>
             </div>
           </div>
 
-          <div className="space-y-12">
-            {/* 模型配置区域 */}
-            <section>
-              <div className="flex items-center justify-between mb-6">
-                <h2 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
-                  <Server className="h-5 w-5 text-blue-600" />
-                  模型服务商
+          {loading ? (
+            <div className="flex items-center justify-center h-64">
+              <RefreshCw className="w-8 h-8 animate-spin text-gray-400" />
+            </div>
+          ) : (
+            <div className="space-y-12">
+              {/* 功能开关区域 */}
+              <section>
+                <div className="flex items-center justify-between mb-6">
+                  <h2 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+                    <Zap className="h-5 w-5 text-amber-500" />
+                    功能开关
+                  </h2>
+                  <div className="flex items-center gap-2 px-3 py-1 bg-amber-50 text-amber-700 rounded-full text-xs font-medium border border-amber-100">
+                    <AlertCircle className="h-3 w-3" />
+                    <span>更改后需重启后端生效</span>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {FEATURE_FLAGS_CONFIG.map((feature) => {
+                    const Icon = feature.icon
+                    const colors = getColorClasses(feature.color)
+                    const isEnabled = getFeatureValue(feature.key)
+                    const isEdited = editedSettings.feature_flags && feature.key in editedSettings.feature_flags
+
+                    return (
+                      <div
+                        key={feature.key}
+                        className={cn(
+                          "relative bg-white rounded-xl p-5 border-2 transition-all duration-200 cursor-pointer group",
+                          isEnabled ? `${colors.border} ${colors.bg}` : "border-gray-100 hover:border-gray-200",
+                          isEdited && "ring-2 ring-blue-400 ring-offset-2"
+                        )}
+                        onClick={() => toggleFeature(feature.key)}
+                      >
+                        <div className="flex items-start justify-between">
+                          <div className="flex items-start gap-3">
+                            <div className={cn(
+                              "p-2 rounded-lg transition-colors",
+                              isEnabled ? colors.iconBg : "bg-gray-100"
+                            )}>
+                              <Icon className={cn("h-5 w-5", isEnabled ? colors.text : "text-gray-400")} />
+                            </div>
+                            <div>
+                              <h3 className={cn(
+                                "font-medium transition-colors",
+                                isEnabled ? "text-gray-900" : "text-gray-600"
+                              )}>
+                                {feature.name}
+                              </h3>
+                              <p className="text-xs text-gray-500 mt-1 leading-relaxed">
+                                {feature.description}
+                              </p>
+                              {feature.dependencies.length > 0 && (
+                                <div className="flex flex-wrap gap-1 mt-2">
+                                  {feature.dependencies.map((dep) => (
+                                    <span key={dep} className="text-[10px] px-1.5 py-0.5 bg-gray-100 text-gray-500 rounded">
+                                      需要: {dep}
+                                    </span>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                          <div className="flex-shrink-0">
+                            {isEnabled ? (
+                              <ToggleRight className={cn("w-8 h-8", colors.text)} />
+                            ) : (
+                              <ToggleLeft className="w-8 h-8 text-gray-300 group-hover:text-gray-400" />
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              </section>
+
+              {/* 系统状态 */}
+              {status && (
+                <section>
+                  <h2 className="text-lg font-semibold text-gray-900 mb-6 flex items-center gap-2">
+                    <Database className="h-5 w-5 text-blue-600" />
+                    系统状态
+                  </h2>
+
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    <StatusCard
+                      label="PostgreSQL"
+                      connected={status.database.connected}
+                      message={status.database.message}
+                    />
+                    <StatusCard
+                      label="Milvus"
+                      connected={status.milvus.connected}
+                      message={status.milvus.message}
+                    />
+                    <StatusCard
+                      label="LLM"
+                      connected={status.llm.configured}
+                      message={status.llm.model}
+                    />
+                    <StatusCard
+                      label="Embedding"
+                      connected={status.embedding.configured}
+                      message={status.embedding.model}
+                    />
+                  </div>
+                </section>
+              )}
+
+              {/* 模型配置区域 */}
+              <section>
+                <div className="flex items-center justify-between mb-6">
+                  <h2 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+                    <Server className="h-5 w-5 text-blue-600" />
+                    模型服务商
+                  </h2>
+                  <div className="flex items-center gap-2 px-3 py-1 bg-blue-50 text-blue-700 rounded-full text-xs font-medium border border-blue-100">
+                    <Lightbulb className="h-3 w-3" />
+                    <span>点击卡片配置 API Key</span>
+                  </div>
+                </div>
+
+                <div className="space-y-8">
+                  {(['model', 'embedding', 'reranker'] as ProviderCategory[]).map((category) => {
+                    const InfoIcon = CATEGORY_INFO[category].icon
+                    return (
+                      <div key={category} className="bg-white rounded-2xl p-6 border border-gray-100 shadow-sm hover:shadow-md transition-shadow duration-300">
+                        <div className="flex items-start gap-4 mb-6">
+                          <div className="p-2 bg-gray-50 rounded-lg">
+                            <InfoIcon className="h-5 w-5 text-gray-600" />
+                          </div>
+                          <div>
+                            <h3 className="text-base font-medium text-gray-900">
+                              {CATEGORY_INFO[category].title}
+                            </h3>
+                            <p className="text-sm text-gray-500 mt-0.5">
+                              {CATEGORY_INFO[category].description}
+                            </p>
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                          {groupedProviders[category].map((provider) => (
+                            <ModelProviderCard
+                              key={provider.id}
+                              provider={provider}
+                              onConfigure={handleConfigure}
+                            />
+                          ))}
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              </section>
+
+              {/* RAG 参数设置 */}
+              <section>
+                <h2 className="text-lg font-semibold text-gray-900 mb-6 flex items-center gap-2">
+                  <Sliders className="h-5 w-5 text-blue-600" />
+                  RAG 参数
                 </h2>
-                <div className="flex items-center gap-2 px-3 py-1 bg-blue-50 text-blue-700 rounded-full text-xs font-medium border border-blue-100">
-                  <Lightbulb className="h-3 w-3" />
-                  <span>点击卡片配置 API Key</span>
-                </div>
-              </div>
 
-              <div className="space-y-8">
-                {(['model', 'embedding', 'reranker'] as ProviderCategory[]).map((category) => {
-                  const InfoIcon = CATEGORY_INFO[category].icon
-                  return (
-                    <div key={category} className="bg-white rounded-2xl p-6 border border-gray-100 shadow-sm hover:shadow-md transition-shadow duration-300">
-                      <div className="flex items-start gap-4 mb-6">
-                        <div className="p-2 bg-gray-50 rounded-lg">
-                          <InfoIcon className="h-5 w-5 text-gray-600" />
-                        </div>
-                        <div>
-                          <h3 className="text-base font-medium text-gray-900">
-                            {CATEGORY_INFO[category].title}
-                          </h3>
-                          <p className="text-sm text-gray-500 mt-0.5">
-                            {CATEGORY_INFO[category].description}
-                          </p>
-                        </div>
-                      </div>
-
-                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                        {groupedProviders[category].map((provider) => (
-                          <ModelProviderCard
-                            key={provider.id}
-                            provider={provider}
-                            onConfigure={handleConfigure}
-                          />
-                        ))}
-                      </div>
-                    </div>
-                  )
-                })}
-              </div>
-            </section>
-
-            {/* 系统设置区域 */}
-            <section>
-              <h2 className="text-lg font-semibold text-gray-900 mb-6 flex items-center gap-2">
-                <Sliders className="h-5 w-5 text-blue-600" />
-                系统参数
-              </h2>
-              
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                {/* 数据库设置 */}
-                <div className="bg-white border border-gray-100 rounded-2xl p-6 shadow-sm hover:shadow-md transition-all duration-300 group">
-                  <div className="flex items-center gap-3 mb-6">
-                    <div className="p-2 bg-purple-50 text-purple-600 rounded-lg group-hover:bg-purple-100 transition-colors">
-                      <Database className="h-5 w-5" />
-                    </div>
-                    <div>
-                      <h3 className="font-medium text-gray-900">数据存储</h3>
-                      <p className="text-xs text-gray-500 mt-0.5">数据库连接配置 (只读)</p>
-                    </div>
-                  </div>
-                  
-                  <div className="space-y-5">
-                    <div>
-                      <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
-                        PostgreSQL 连接
-                      </label>
-                      <div className="relative">
-                        <input
-                          type="text"
-                          defaultValue="postgresql://postgres:***@localhost:5432/mimirq"
-                          className="w-full pl-3 pr-10 py-2.5 bg-gray-50 border border-gray-200 rounded-lg text-sm text-gray-600 font-mono focus:outline-none cursor-not-allowed"
-                          readOnly
-                        />
-                        <div className="absolute right-3 top-2.5">
-                          <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" title="已连接"></div>
-                        </div>
-                      </div>
-                    </div>
-                    
-                    <div>
-                      <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
-                        Milvus 向量库
-                      </label>
-                      <div className="relative">
-                        <input
-                          type="text"
-                          defaultValue="localhost:19530"
-                          className="w-full pl-3 pr-10 py-2.5 bg-gray-50 border border-gray-200 rounded-lg text-sm text-gray-600 font-mono focus:outline-none cursor-not-allowed"
-                          readOnly
-                        />
-                         <div className="absolute right-3 top-2.5">
-                          <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" title="已连接"></div>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                {/* RAG 参数设置 */}
-                <div className="bg-white border border-gray-100 rounded-2xl p-6 shadow-sm hover:shadow-md transition-all duration-300 group">
-                  <div className="flex items-center gap-3 mb-6">
-                    <div className="p-2 bg-orange-50 text-orange-600 rounded-lg group-hover:bg-orange-100 transition-colors">
-                      <Sliders className="h-5 w-5" />
-                    </div>
-                    <div>
-                      <h3 className="font-medium text-gray-900">检索策略</h3>
-                      <p className="text-xs text-gray-500 mt-0.5">RAG 流程默认参数</p>
-                    </div>
-                  </div>
-
-                  <div className="space-y-5">
+                <div className="bg-white border border-gray-100 rounded-2xl p-6 shadow-sm">
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                     <div>
                       <div className="flex justify-between items-center mb-2">
                         <label className="text-sm font-medium text-gray-700">Top K</label>
-                        <span className="text-xs bg-gray-100 px-2 py-0.5 rounded text-gray-600">默认: 5</span>
+                        <span className="text-xs bg-gray-100 px-2 py-0.5 rounded text-gray-600">
+                          {settings?.rag.retrieval_top_k ?? 5}
+                        </span>
                       </div>
                       <input
                         type="range"
                         min="1"
                         max="20"
-                        defaultValue={5}
+                        value={editedSettings.rag?.retrieval_top_k ?? settings?.rag.retrieval_top_k ?? 5}
+                        onChange={(e) => {
+                          const rag = { ...(settings?.rag ?? {}), ...(editedSettings.rag ?? {}), retrieval_top_k: parseInt(e.target.value) }
+                          setEditedSettings(prev => ({ ...prev, rag: rag as any }))
+                        }}
                         className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
                       />
                       <p className="text-xs text-gray-400 mt-2">
@@ -217,26 +439,56 @@ export default function SettingsPage() {
 
                     <div>
                       <div className="flex justify-between items-center mb-2">
-                         <label className="text-sm font-medium text-gray-700">相似度阈值</label>
-                         <span className="text-xs bg-gray-100 px-2 py-0.5 rounded text-gray-600">默认: 0.7</span>
+                        <label className="text-sm font-medium text-gray-700">相似度阈值</label>
+                        <span className="text-xs bg-gray-100 px-2 py-0.5 rounded text-gray-600">
+                          {(editedSettings.rag?.similarity_threshold ?? settings?.rag.similarity_threshold ?? 0.7).toFixed(1)}
+                        </span>
                       </div>
                       <input
                         type="range"
                         min="0"
                         max="1"
                         step="0.1"
-                        defaultValue={0.7}
+                        value={editedSettings.rag?.similarity_threshold ?? settings?.rag.similarity_threshold ?? 0.7}
+                        onChange={(e) => {
+                          const rag = { ...(settings?.rag ?? {}), ...(editedSettings.rag ?? {}), similarity_threshold: parseFloat(e.target.value) }
+                          setEditedSettings(prev => ({ ...prev, rag: rag as any }))
+                        }}
                         className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
                       />
                       <p className="text-xs text-gray-400 mt-2">
                         过滤掉相关性得分低于此值的片段
                       </p>
                     </div>
+
+                    <div>
+                      <div className="flex justify-between items-center mb-2">
+                        <label className="text-sm font-medium text-gray-700">分块大小</label>
+                        <span className="text-xs bg-gray-100 px-2 py-0.5 rounded text-gray-600">
+                          {editedSettings.rag?.chunk_size ?? settings?.rag.chunk_size ?? 1000}
+                        </span>
+                      </div>
+                      <input
+                        type="range"
+                        min="200"
+                        max="4000"
+                        step="100"
+                        value={editedSettings.rag?.chunk_size ?? settings?.rag.chunk_size ?? 1000}
+                        onChange={(e) => {
+                          const rag = { ...(settings?.rag ?? {}), ...(editedSettings.rag ?? {}), chunk_size: parseInt(e.target.value) }
+                          setEditedSettings(prev => ({ ...prev, rag: rag as any }))
+                        }}
+                        className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
+                      />
+                      <p className="text-xs text-gray-400 mt-2">
+                        文档分块的目标字符数
+                      </p>
+                    </div>
                   </div>
                 </div>
-              </div>
-            </section>
-          </div>
+              </section>
+            </div>
+          )}
         </div>
       </main>
 
@@ -247,6 +499,31 @@ export default function SettingsPage() {
         onClose={() => setDialogOpen(false)}
         onSave={handleSaveConfig}
       />
+    </div>
+  )
+}
+
+// 状态卡片组件
+function StatusCard({ label, connected, message }: { label: string; connected: boolean; message: string }) {
+  return (
+    <div className={cn(
+      "bg-white rounded-xl p-4 border transition-colors",
+      connected ? "border-green-200" : "border-red-200"
+    )}>
+      <div className="flex items-center justify-between mb-2">
+        <span className="text-sm font-medium text-gray-700">{label}</span>
+        {connected ? (
+          <CheckCircle2 className="w-5 h-5 text-green-500" />
+        ) : (
+          <XCircle className="w-5 h-5 text-red-500" />
+        )}
+      </div>
+      <p className={cn(
+        "text-xs truncate",
+        connected ? "text-green-600" : "text-red-600"
+      )}>
+        {message || (connected ? '已连接' : '未连接')}
+      </p>
     </div>
   )
 }

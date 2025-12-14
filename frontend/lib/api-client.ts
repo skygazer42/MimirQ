@@ -153,6 +153,97 @@ export const documentApi = {
   },
 }
 
+// ==================== 设置 API ====================
+
+export interface FeatureFlags {
+  sag_enabled: boolean
+  deepdoc_enabled: boolean
+  markitdown_enabled: boolean
+  llama_index_enabled: boolean
+  mineru_enabled: boolean
+}
+
+export interface LLMConfig {
+  api_key: string
+  api_base: string
+  model: string
+  temperature: number
+  timeout: number
+  max_retries: number
+}
+
+export interface EmbeddingConfig {
+  provider: string
+  model: string
+  api_key: string
+  api_base: string
+}
+
+export interface MilvusConfig {
+  host: string
+  port: number
+  user: string
+  password: string
+  collection_name: string
+}
+
+export interface RAGConfig {
+  chunk_size: number
+  chunk_overlap: number
+  retrieval_top_k: number
+  similarity_threshold: number
+  default_parser_backend: string
+  default_chunk_strategy: string
+}
+
+export interface MinerUConfig {
+  api_token: string
+  api_base: string
+  model_version: string
+}
+
+export interface SystemSettings {
+  feature_flags: FeatureFlags
+  llm: LLMConfig
+  embedding: EmbeddingConfig
+  milvus: MilvusConfig
+  rag: RAGConfig
+  mineru: MinerUConfig
+}
+
+export interface SystemStatus {
+  database: { connected: boolean; message: string }
+  milvus: { connected: boolean; message: string }
+  llm: { configured: boolean; model: string }
+  embedding: { configured: boolean; model: string }
+}
+
+export const settingsApi = {
+  /**
+   * 获取系统配置
+   */
+  async get(): Promise<SystemSettings> {
+    const { data } = await apiClient.get('/settings')
+    return data
+  },
+
+  /**
+   * 更新系统配置
+   */
+  async update(settings: Partial<SystemSettings>): Promise<{ success: boolean; message: string; updated_keys: string[] }> {
+    const { data } = await apiClient.put('/settings', settings)
+    return data
+  },
+
+  /**
+   * 获取系统状态
+   */
+  async getStatus(): Promise<SystemStatus> {
+    const { data } = await apiClient.get('/settings/status')
+    return data
+  },
+}
+
 // ==================== 对话 API ====================
 
 export const chatApi = {
