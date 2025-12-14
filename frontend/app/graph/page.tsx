@@ -3,7 +3,7 @@
 /**
  * 知识图谱可视化页面
  * 功能：上传 .graphml 文件并进行可视化展示
- * 优化：主流视觉设计、交互侧边栏、玻璃拟态控件、搜索与高级筛选、后端集成、路径分析、布局切换、图编辑、RAG可解释性
+ * 优化：主流视觉设计、交互侧边栏、玻璃拟态控件、搜索与高级筛选、后端集成、路径分析、布局切换、图编辑、RAG可解释性、3D可视化
  */
 import { useState, useRef, useEffect } from 'react'
 import { Navbar } from '@/components/navbar'
@@ -34,9 +34,12 @@ import {
   Layout,
   Link as LinkIcon,
   PlusCircle,
-  Lightbulb
+  Lightbulb,
+  Box,
+  BoxSelect
 } from 'lucide-react'
 import { GraphViewer, GraphViewerRef, LayoutMode } from '@/components/graph/graph-viewer'
+import { GraphViewer3D, GraphViewer3DRef } from '@/components/graph/graph-viewer-3d'
 import { parseGraphML, GraphData } from '@/lib/graph-parser'
 import { GraphService } from '@/services/graph-service'
 import { findShortestPath } from '@/lib/graph-algorithms'
@@ -61,8 +64,9 @@ export default function GraphPage() {
   const [pathStartNode, setPathStartNode] = useState<any | null>(null)
   const [pathEndNode, setPathEndNode] = useState<any | null>(null)
 
-  // Layout State
+  // Layout & View Mode
   const [layoutMode, setLayoutMode] = useState<LayoutMode>('force')
+  const [is3DMode, setIs3DMode] = useState(false)
 
   // Editing State
   const [isConnectMode, setIsConnectMode] = useState(false)
@@ -73,7 +77,7 @@ export default function GraphPage() {
   const [explainSteps, setExplainSteps] = useState<{node: string, reason: string}[]>([])
   const [currentStepIndex, setCurrentStepIndex] = useState(-1)
 
-  const graphRef = useRef<GraphViewerRef>(null)
+  const graphRef = useRef<GraphViewerRef | GraphViewer3DRef>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const searchInputRef = useRef<HTMLInputElement>(null)
 
@@ -81,7 +85,9 @@ export default function GraphPage() {
   const loadInitialData = async () => {
     setIsLoading(true)
     try {
+      console.log('Loading initial data...')
       const data = await GraphService.fetchInitialGraph()
+      console.log('Data fetched:', data)
       setGraphData(data)
       setFileName('Knowledge Base (Live)')
       setIsDetailOpen(false)
@@ -157,7 +163,7 @@ export default function GraphPage() {
       }
     }
     reader.readAsText(file)
-    e.target.value = '' // Reset input value to allow re-uploading same file
+    e.target.value = '' 
   }
 
   const triggerFileUpload = () => {
@@ -567,20 +573,32 @@ export default function GraphPage() {
           <div className="absolute inset-0 z-0 opacity-[0.4]" style={{
              backgroundImage: 'radial-gradient(#cbd5e1 1px, transparent 1px)', 
              backgroundSize: '24px 24px'
-          }}>
-          </div>
+          }}></div>
 
           {graphData.nodes.length > 0 ? (
-            <GraphViewer 
-              ref={graphRef}
-              data={graphData} 
-              onNodeClick={handleNodeClick}
-              onBackgroundClick={() => setIsDetailOpen(false)}
-              highlightedNodeIds={highlightedNodeIds}
-              highlightedLinkIds={highlightedLinkIds}
-              showEdgeLabels={showEdgeLabels}
-              layoutMode={layoutMode}
-            />
+            is3DMode ? (
+              <GraphViewer3D 
+                ref={graphRef as React.RefObject<GraphViewer3DRef>}
+                data={graphData} 
+                onNodeClick={handleNodeClick}
+                onBackgroundClick={() => setIsDetailOpen(false)}
+                highlightedNodeIds={highlightedNodeIds}
+                highlightedLinkIds={highlightedLinkIds}
+                showEdgeLabels={showEdgeLabels}
+                layoutMode={layoutMode}
+              />
+            ) : (
+              <GraphViewer 
+                ref={graphRef as React.RefObject<GraphViewerRef>}
+                data={graphData} 
+                onNodeClick={handleNodeClick}
+                onBackgroundClick={() => setIsDetailOpen(false)}
+                highlightedNodeIds={highlightedNodeIds}
+                highlightedLinkIds={highlightedLinkIds}
+                showEdgeLabels={showEdgeLabels}
+                layoutMode={layoutMode}
+              />
+            )
           ) : (
             <div className="absolute inset-0 flex flex-col items-center justify-center z-10">
               <div className="w-32 h-32 bg-white rounded-full shadow-xl shadow-indigo-100 flex items-center justify-center mb-8 animate-in zoom-in-50 duration-500">
@@ -663,6 +681,18 @@ export default function GraphPage() {
                 <Button 
                    variant="ghost" 
                    size="icon" 
+                   onClick={() => setIs3DMode(!is3DMode)}
+                   className={cn(
+                     "rounded-xl hover:bg-blue-50 hover:text-blue-600 transition-colors", 
+                     is3DMode && "bg-blue-100 text-blue-600 ring-2 ring-blue-500/20"
+                   )}
+                   title={is3DMode ? "切换回 2D" : "切换到 3D"}
+                >
+                  <Box className="w-5 h-5" />
+                </Button>
+                <Button 
+                   variant="ghost" 
+                   size="icon" 
                    onClick={startExplainMode}
                    className={cn(
                      "rounded-xl hover:bg-purple-50 hover:text-purple-600 transition-colors", 
@@ -694,15 +724,17 @@ export default function GraphPage() {
                 >
                   <Route className="w-5 h-5" />
                 </Button>
-                <Button 
-                  variant="ghost" 
-                  size="icon" 
-                  onClick={() => setShowEdgeLabels(!showEdgeLabels)} 
-                  className={cn("rounded-xl hover:bg-indigo-50 hover:text-indigo-600", showEdgeLabels && "bg-indigo-50 text-indigo-600")} 
-                  title="显示/隐藏连线标签"
-                >
-                  <Type className="w-5 h-5" />
-                </Button>
+                {!is3DMode && (
+                  <Button 
+                    variant="ghost" 
+                    size="icon" 
+                    onClick={() => setShowEdgeLabels(!showEdgeLabels)} 
+                    className={cn("rounded-xl hover:bg-indigo-50 hover:text-indigo-600", showEdgeLabels && "bg-indigo-50 text-indigo-600")} 
+                    title="显示/隐藏连线标签"
+                  >
+                    <Type className="w-5 h-5" />
+                  </Button>
+                )}
              </div>
           </div>
 
@@ -757,7 +789,7 @@ export default function GraphPage() {
                     </h3>
                     <div className="space-y-3">
                       {Object.entries(selectedNode)
-                        .filter(([key]) => !['id', 'label', 'x', 'y', 'vx', 'vy', 'fx', 'fy', 'index', 'color', '__bckgDimensions', 'source'].includes(key))
+                        .filter(([key]) => !['id', 'label', 'x', 'y', 'z', 'vx', 'vy', 'vz', 'fx', 'fy', 'fz', 'index', 'color', '__bckgDimensions', 'source'].includes(key))
                         .map(([key, value]) => (
                           <div key={key} className="bg-gray-50 rounded-xl p-3 border border-gray-100">
                             <span className="block text-xs font-medium text-gray-500 mb-1 capitalize">{key}</span>

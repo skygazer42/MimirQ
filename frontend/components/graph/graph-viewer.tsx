@@ -199,7 +199,7 @@ export const GraphViewer = forwardRef<GraphViewerRef, GraphViewerProps>(({
             const color = getNodeColor(node)
             ctx.beginPath();
             const radius = isHighlighted ? 7 : 5
-            ctx.arc(node.x, node.y, radius, 0, 2 * Math.PI, false);
+            ctx.arc(node.x || 0, node.y || 0, radius, 0, 2 * Math.PI, false);
             ctx.fillStyle = color;
             ctx.fill();
             
@@ -209,8 +209,9 @@ export const GraphViewer = forwardRef<GraphViewerRef, GraphViewerProps>(({
                ctx.lineWidth = 4 / globalScale;
                ctx.stroke();
                
+               // Double border for path nodes
                if (isPathNode) {
-                 ctx.strokeStyle = '#f59e0b';
+                 ctx.strokeStyle = '#f59e0b'; // Amber border for path
                } else {
                  ctx.strokeStyle = color;
                }
@@ -234,16 +235,22 @@ export const GraphViewer = forwardRef<GraphViewerRef, GraphViewerProps>(({
               // Text Shadow
               ctx.strokeStyle = 'rgba(255,255,255,0.9)';
               ctx.lineWidth = 3 / globalScale;
-              ctx.strokeText(label, node.x, node.y + radius + 4);
+              ctx.strokeText(label, node.x || 0, (node.y || 0) + radius + 4);
               
               ctx.fillStyle = isDimmed ? '#94a3b8' : '#1e293b'; 
-              ctx.fillText(label, node.x, node.y + radius + 4);
+              ctx.fillText(label, node.x || 0, (node.y || 0) + radius + 4);
             }
           }}
 
           // Custom Link Label Painting
           linkCanvasObjectMode={() => 'after'}
           linkCanvasObject={(link: any, ctx, globalScale) => {
+            const start = link.source
+            const end = link.target
+
+            // Check if source/target are objects (handled by d3) or raw strings
+            if (typeof start !== 'object' || typeof end !== 'object') return
+
             const linkId = link.id || (link.index !== undefined ? `link-${link.index}` : null)
             const isPathLink = highlightedLinkIds.size > 0 && linkId && highlightedLinkIds.has(linkId)
 
@@ -253,14 +260,16 @@ export const GraphViewer = forwardRef<GraphViewerRef, GraphViewerProps>(({
             const label = link.label
             if (!label) return
 
-            const start = link.source
-            const end = link.target
+            // Fallback to 0 if coords missing
+            const x1 = start.x || 0
+            const y1 = start.y || 0
+            const x2 = end.x || 0
+            const y2 = end.y || 0
 
-            if (typeof start !== 'object' || typeof end !== 'object') return
+            // Calculate middle point
+            const textPos = { x: x1 + (x2 - x1) / 2, y: y1 + (y2 - y1) / 2 }
 
-            const textPos = Object.assign({}, start, { x: start.x + (end.x - start.x) / 2, y: start.y + (end.y - start.y) / 2 })
-
-            const relLink = { x: end.x - start.x, y: end.y - start.y };
+            const relLink = { x: x2 - x1, y: y2 - y1 };
             const maxTextLength = Math.sqrt(Math.pow(relLink.x, 2) + Math.pow(relLink.y, 2)) - 8;
 
             let textAngle = Math.atan2(relLink.y, relLink.x);

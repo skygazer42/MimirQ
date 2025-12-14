@@ -28,7 +28,8 @@ export class GraphService {
       { source: '2', target: '6', label: 'includes' },
     ]
 
-    return { nodes, links }
+    // Return a deep copy to avoid mutation issues in React Strict Mode / ForceGraph
+    return JSON.parse(JSON.stringify({ nodes, links }))
   }
 
   /**
