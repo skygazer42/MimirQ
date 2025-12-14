@@ -82,19 +82,6 @@ export function ChatArea() {
 
   return (
     <div className="flex-1 flex flex-col bg-gray-50/30 h-screen relative">
-      {/* 头部 - 极简风格 */}
-      <div className="absolute top-0 left-0 right-0 z-10 px-8 py-4 bg-white/80 backdrop-blur-md border-b border-gray-100/50">
-        <div className="flex items-center gap-3">
-          <div className="p-2 bg-gradient-to-tr from-blue-600 to-indigo-600 rounded-xl shadow-blue-200 shadow-lg">
-            <Sparkles className="h-5 w-5 text-white" />
-          </div>
-          <div>
-            <h1 className="text-lg font-bold text-gray-900 tracking-tight">MimirQ</h1>
-            <p className="text-xs text-gray-500 font-medium">AI Knowledge Assistant</p>
-          </div>
-        </div>
-      </div>
-
       {/* 消息列表 */}
       <div className="flex-1 overflow-y-auto pt-24 px-4 pb-4 scroll-smooth">
         <div className="max-w-3xl mx-auto space-y-8">
@@ -195,36 +182,24 @@ export function ChatArea() {
 
 // 欢迎屏幕
 function WelcomeScreen() {
+  const hour = new Date().getHours()
+  const greeting = hour < 12 ? '上午好' : hour < 18 ? '下午好' : '晚上好'
+
   return (
-    <div className="flex flex-col items-center justify-center min-h-[60vh] text-center animate-in fade-in slide-in-from-bottom-4 duration-700">
-      <div className="relative group cursor-default">
+    <div className="flex flex-col items-center justify-center h-full min-h-[70vh] text-center animate-in fade-in slide-in-from-bottom-4 duration-700">
+      <div className="relative group cursor-default mb-6">
         <div className="absolute -inset-1 bg-gradient-to-r from-blue-600 to-violet-600 rounded-full blur opacity-25 group-hover:opacity-50 transition duration-1000 group-hover:duration-200"></div>
-        <div className="relative p-6 bg-white rounded-3xl shadow-xl ring-1 ring-gray-900/5 leading-none flex items-top justify-start space-x-6">
-          <Sparkles className="h-10 w-10 text-blue-600" />
+        <div className="relative p-6 bg-white rounded-3xl shadow-xl ring-1 ring-gray-900/5 leading-none flex items-center justify-center">
+          <Sparkles className="h-12 w-12 text-blue-600" />
         </div>
       </div>
       
-      <h2 className="text-3xl font-bold text-gray-900 mt-8 mb-3 tracking-tight">
-        下午好，有什么可以帮您？
+      <h2 className="text-3xl font-bold text-gray-900 mb-3 tracking-tight">
+        {greeting}，有什么可以帮您？
       </h2>
-      <p className="text-gray-500 max-w-md text-lg font-light leading-relaxed">
+      <p className="text-gray-500 max-w-xl text-lg font-light leading-relaxed">
         我是您的 AI 知识助手。上传文档，我会帮您分析、总结并回答相关问题。
       </p>
-      
-      <div className="grid grid-cols-2 gap-4 mt-12 w-full max-w-lg">
-        {[
-          { icon: <Upload className="h-5 w-5" />, title: "上传文档", desc: "PDF, TXT, MD" },
-          { icon: <Wand2 className="h-5 w-5" />, title: "智能分析", desc: "自动提取关键信息" },
-        ].map((item, idx) => (
-          <div key={idx} className="p-4 bg-white rounded-2xl border border-gray-100 shadow-sm hover:shadow-md hover:border-blue-100 transition-all cursor-default">
-            <div className="h-10 w-10 bg-blue-50 rounded-xl flex items-center justify-center text-blue-600 mb-3">
-              {item.icon}
-            </div>
-            <h3 className="font-semibold text-gray-900">{item.title}</h3>
-            <p className="text-sm text-gray-500 mt-1">{item.desc}</p>
-          </div>
-        ))}
-      </div>
     </div>
   )
 }
