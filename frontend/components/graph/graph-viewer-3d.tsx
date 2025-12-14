@@ -7,9 +7,9 @@ import { Loader2 } from 'lucide-react'
 import { LayoutMode } from './graph-viewer'
 import SpriteText from 'three-spritetext'
 
-// Dynamically import ForceGraph3D
+// Dynamically import ForceGraph3D via wrapper to handle Ref correctly
 const ForceGraph3DNoSSR = dynamic(
-  () => import('react-force-graph-3d'),
+  () => import('./force-graph-3d-wrapper'),
   { ssr: false }
 )
 
@@ -137,7 +137,7 @@ export const GraphViewer3D = forwardRef<GraphViewer3DRef, GraphViewer3DProps>(({
     <div ref={containerRef} className="w-full h-full relative bg-slate-50/50">
       {width > 0 && height > 0 && (
         <ForceGraph3DNoSSR
-          ref={fgRef}
+          graphRef={fgRef}
           width={width}
           height={height}
           graphData={data}

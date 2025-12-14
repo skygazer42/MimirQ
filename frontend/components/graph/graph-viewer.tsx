@@ -5,9 +5,9 @@ import { useRef, useEffect, useState, forwardRef, useImperativeHandle, useCallba
 import { useResizeObserver } from '@/hooks/use-resize-observer'
 import { Loader2 } from 'lucide-react'
 
-// Dynamically import ForceGraph2D
+// Dynamically import ForceGraph2D via wrapper to handle Ref correctly
 const ForceGraph2DNoSSR = dynamic(
-  () => import('react-force-graph-2d'),
+  () => import('./force-graph-2d-wrapper'),
   { ssr: false }
 )
 
@@ -62,9 +62,15 @@ export const GraphViewer = forwardRef<GraphViewerRef, GraphViewerProps>(({
   // Expose methods to parent
   useImperativeHandle(ref, () => ({
     zoomIn: () => {
+      console.log('[GraphViewer] zoomIn called. fgRef:', fgRef.current)
       if (fgRef.current) {
+        // Inspect available methods
+        console.log('[GraphViewer] fgRef methods:', Object.keys(fgRef.current))
         const currentZoom = fgRef.current.zoom()
+        console.log('[GraphViewer] currentZoom:', currentZoom)
         fgRef.current.zoom(currentZoom * 1.2, 400)
+      } else {
+        console.warn('[GraphViewer] fgRef.current is null/undefined')
       }
     },
     zoomOut: () => {
@@ -161,7 +167,7 @@ export const GraphViewer = forwardRef<GraphViewerRef, GraphViewerProps>(({
         </div>
       ) : (
         <ForceGraph2DNoSSR
-          ref={fgRef}
+          graphRef={fgRef}
           width={width}
           height={height}
           graphData={data}
