@@ -28,3 +28,6 @@ class LLMTimeoutError(LLMError):
 class LoadError(Exception):
     """Document load failure."""
 
+
+class PromptError(Exception):
+    """Prompt template error."""

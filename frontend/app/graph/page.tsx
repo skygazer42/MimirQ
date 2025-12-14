@@ -88,6 +88,7 @@ export default function GraphPage() {
       console.log('Loading initial data...')
       const data = await GraphService.fetchInitialGraph()
       console.log('Data fetched:', data)
+      console.log('Setting graph data...')
       setGraphData(data)
       setFileName('Knowledge Base (Live)')
       setIsDetailOpen(false)
@@ -462,10 +463,7 @@ export default function GraphPage() {
     <div className="flex h-screen overflow-hidden bg-slate-50">
       <Navbar isSidebarOpen={isSidebarOpen} setSidebarOpen={setSidebarOpen} />
       
-      <main className={cn(
-        "flex-1 flex flex-col transition-all duration-300 relative",
-        isSidebarOpen ? "ml-64" : "ml-0"
-      )}>
+      <main className="flex-1 flex flex-col transition-all duration-300 relative">
         {/* Header */}
         <header className="absolute top-0 left-0 right-0 z-20 h-16 px-6 flex items-center justify-between bg-white/80 backdrop-blur-md border-b border-gray-200/50 pointer-events-none">
           <div className="flex items-center gap-3 pointer-events-auto">
@@ -568,7 +566,7 @@ export default function GraphPage() {
         </header>
 
         {/* Graph Area */}
-        <div className="flex-1 relative bg-slate-50 overflow-hidden">
+        <div className="flex-1 w-full relative bg-slate-50 overflow-hidden min-h-[500px]">
           {/* Dot Pattern Background */}
           <div className="absolute inset-0 z-0 opacity-[0.4]" style={{
              backgroundImage: 'radial-gradient(#cbd5e1 1px, transparent 1px)', 
