@@ -188,7 +188,7 @@ export const GraphViewer3D = forwardRef<GraphViewer3DRef, GraphViewer3DProps>(({
                 return sprite;
              }
              // Default render (sphere) is handled if return null/undefined, but we want text sometimes
-             return false; // Use default sphere
+             return null; // Use default sphere
           }}
           
           nodeThreeObjectExtend={true} // Add text on top of sphere
