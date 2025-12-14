@@ -138,7 +138,7 @@ class DocumentProcessorService:
 
             # Step 5: 保存切片到数据库
             print(f"Saving chunks to PostgreSQL...")
-            await self._save_chunks_to_db(
+            chunk_ids = await self._save_chunks_to_db(
                 db, document_id, chunks, vector_ids, tenant_id
             )
 
@@ -159,7 +159,18 @@ class DocumentProcessorService:
                 f"(parser={resolved_backend}, chunker={resolved_chunk_strategy})"
             )
 
-            # Step 7: 重新构建 BM25 索引（按租户）
+            # Step 7: 如启用则运行 SAG 抽取（事件/实体）
+            if settings.SAG_ENABLED:
+                try:
+                    from app.services.sag_pipeline import extract_events
+
+                    print("[*] Running SAG extraction on document chunks...")
+                    events = await extract_events(chunk_ids, tenant_id=tenant_id)
+                    print(f"[OK] SAG extracted {len(events)} events for document {document_id}")
+                except Exception as exc:
+                    print(f"[WARN]  SAG extraction failed: {exc}")
+
+            # Step 8: 重新构建 BM25 索引（按租户）
             await self._rebuild_bm25_index_for_tenant(db, tenant_id)
 
             return {
@@ -215,8 +226,8 @@ class DocumentProcessorService:
         chunks: List[Document],
         vector_ids: List[Optional[str]],
         tenant_id: UUID
-    ):
-        """保存切片到数据库"""
+    ) -> List[UUID]:
+        """保存切片到数据库并返回所有切片ID（用于后续 SAG 提取）"""
         if not vector_ids:
             vector_ids = [None] * len(chunks)
         if len(vector_ids) != len(chunks):
@@ -242,6 +253,19 @@ class DocumentProcessorService:
         # 批量插入减少 commit 次数和 ORM 开销
         db.bulk_save_objects(db_chunks)
         db.commit()
+
+        # 返回刚写入的切片 ID（再次查询避免 bulk_save_objects 不回填主键）
+        ids = [
+            row[0]
+            for row in db.query(DocumentChunk.id)
+            .filter(
+                DocumentChunk.document_id == document_id,
+                DocumentChunk.tenant_id == tenant_id
+            )
+            .order_by(DocumentChunk.chunk_index)
+            .all()
+        ]
+        return ids
 
     async def _rebuild_bm25_index_for_tenant(self, db: Session, tenant_id: UUID):
         """重建指定租户的 BM25 索引"""

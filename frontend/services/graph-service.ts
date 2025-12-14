@@ -8,6 +8,7 @@ export class GraphService {
    * Fetch the initial graph data (e.g., top entities or root nodes)
    */
   static async fetchInitialGraph(): Promise<GraphData> {
+    console.log('[GraphService] Fetching initial graph...')
     await delay(800) // Simulate latency
     
     // Mock Data: Core Concepts

@@ -47,6 +47,14 @@ export const GraphViewer = forwardRef<GraphViewerRef, GraphViewerProps>(({
   const { width, height } = useResizeObserver(containerRef)
   const [mounted, setMounted] = useState(false)
 
+  // Debug: Log dimensions
+  useEffect(() => {
+    // Only log if dimensions change or on mount
+    if (mounted) {
+       console.log('[GraphViewer] Dimensions check:', { width, height })
+    }
+  }, [width, height, mounted])
+
   useEffect(() => {
     setMounted(true)
   }, [])
@@ -81,11 +89,21 @@ export const GraphViewer = forwardRef<GraphViewerRef, GraphViewerProps>(({
 
   // Auto zoom fit on data change
   useEffect(() => {
-    if (fgRef.current && data.nodes.length > 0) {
-      setTimeout(() => {
+    let attempts = 0
+    const maxAttempts = 10
+    
+    const tryZoom = () => {
+      if (fgRef.current && data.nodes.length > 0) {
+        console.log('[GraphViewer] Zooming to fit...')
         fgRef.current.zoomToFit(400, 20)
-      }, 500)
+      } else if (attempts < maxAttempts) {
+        attempts++
+        setTimeout(tryZoom, 200)
+      }
     }
+    
+    // Initial delay to allow render
+    setTimeout(tryZoom, 300)
   }, [data])
 
   const handleNodeClick = useCallback((node: any) => {
@@ -97,14 +115,6 @@ export const GraphViewer = forwardRef<GraphViewerRef, GraphViewerProps>(({
       onNodeClick(node)
     }
   }, [onNodeClick])
-
-  if (!mounted) {
-    return (
-      <div className="flex items-center justify-center h-full w-full bg-slate-50 text-slate-400">
-        <Loader2 className="w-8 h-8 animate-spin" />
-      </div>
-    )
-  }
 
   const getNodeColor = (node: any) => {
     // If specific nodes are highlighted (search or path), dim others
@@ -138,7 +148,18 @@ export const GraphViewer = forwardRef<GraphViewerRef, GraphViewerProps>(({
 
   return (
     <div ref={containerRef} className="w-full h-full relative bg-slate-50/50">
-      {width > 0 && height > 0 && (
+      {(!mounted || width === 0 || height === 0) ? (
+        <div className="absolute inset-0 flex items-center justify-center text-slate-400">
+           {mounted ? (
+              <div className="flex flex-col items-center gap-2">
+                 <Loader2 className="w-6 h-6 animate-spin text-indigo-500" />
+                 <span className="text-xs">Initializing Layout... ({Math.round(width)}x{Math.round(height)})</span>
+              </div>
+           ) : (
+              <Loader2 className="w-8 h-8 animate-spin" />
+           )}
+        </div>
+      ) : (
         <ForceGraph2DNoSSR
           ref={fgRef}
           width={width}
