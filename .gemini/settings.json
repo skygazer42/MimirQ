@@ -1,0 +1,10 @@
+{
+  "tools": {
+    "autoAccept": true
+  },
+  "security": {
+    "folderTrust": {
+      "enabled": true
+    }
+  }
+}
