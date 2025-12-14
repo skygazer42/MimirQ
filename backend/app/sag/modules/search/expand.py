@@ -35,8 +35,7 @@ class ExpandSearcher:
                 event_scores=recall_result.event_scores,
             )
 
-        tracker = Tracker()
-        # carry previous clues
+        tracker = Tracker(config)
         for clue in recall_result.clues:
             tracker.clues.append(clue)
 
@@ -49,7 +48,6 @@ class ExpandSearcher:
             known_entities: Set[str] = {e["entity_id"] for e in recall_result.key_final}
             entity_weights = dict(recall_result.key_weights)
             discovered_events: List[str] = list(recall_result.event_ids)
-
             current_entities = list(known_entities)
 
             for hop in range(config.expand.max_hops):
@@ -66,33 +64,49 @@ class ExpandSearcher:
                     break
                 discovered_events.extend(new_event_ids)
 
-                # collect new entities from these events
+                # score new events using existing entity weights
                 assoc_map = event_repo.get_entities_for_events(new_event_ids)
-                new_entities: List[str] = []
+                for ev in events:
+                    ev_id = str(ev.id)
+                    base = recall_result.event_scores.get(ev_id, 0.0)
+                    boost = sum(
+                        entity_weights.get(str(ent.id), 0.0) for ent in assoc_map.get(ev_id, [])
+                    )
+                    recall_result.event_scores[ev_id] = base * 0.5 + boost * 0.5
+
+                # collect new entities from these events
+                new_entities: Dict[str, float] = {}
                 for ev_id, ents in assoc_map.items():
                     for ent in ents:
                         ent_id = str(ent.id)
                         if ent_id in known_entities:
                             continue
-                        new_entities.append(ent_id)
+                        weight = recall_result.event_scores.get(ev_id, 0.0)
+                        new_entities[ent_id] = new_entities.get(ent_id, 0.0) + weight
                         tracker.add_clue(
                             stage=f"expand-hop-{hop+1}",
                             from_node={"type": "event", "id": ev_id, "label": "event"},
-                            to_node=tracker.build_entity_node(
-                                {"entity_id": ent_id, "name": ent.name, "type": ent.type}
+                            to_node=Tracker.build_entity_node(
+                                {"entity_id": ent_id, "name": ent.name, "type": ent.type, "hop": hop + 1}
                             ),
                             confidence=0.3,
+                            relation="event->entity",
+                            metadata={"step": f"hop-{hop+1}"},
                         )
-                        entity_weights[ent_id] = entity_weights.get(ent_id, 0.0) + 0.3
 
-                new_entities = new_entities[: config.expand.entities_per_hop]
-                if not new_entities:
+                sorted_new = sorted(new_entities.items(), key=lambda x: x[1], reverse=True)
+                sorted_new = sorted_new[: config.expand.entities_per_hop]
+                if not sorted_new:
                     break
-                known_entities.update(new_entities)
-                current_entities = new_entities
+
+                current_entities = []
+                for ent_id, w in sorted_new:
+                    known_entities.add(ent_id)
+                    entity_weights[ent_id] = entity_weights.get(ent_id, 0.0) * 0.5 + w * 0.5
+                    current_entities.append(ent_id)
 
             # build key_final list
-            key_final: List[Dict[str, Any]] = []
+            key_final: List[Dict[str, any]] = []
             ent_objects = entity_repo.get_entities_by_ids(list(known_entities))
             for ent in ent_objects:
                 key_final.append(
