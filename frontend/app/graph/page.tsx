@@ -3,7 +3,7 @@
 /**
  * 知识图谱可视化页面
  * 功能：上传 .graphml 文件并进行可视化展示
- * 优化：主流视觉设计、交互侧边栏、玻璃拟态控件、搜索与高级筛选、后端集成、路径分析、布局切换
+ * 优化：主流视觉设计、交互侧边栏、玻璃拟态控件、搜索与高级筛选、后端集成、路径分析、布局切换、图编辑
  */
 import { useState, useRef, useEffect } from 'react'
 import { Navbar } from '@/components/navbar'
@@ -31,7 +31,9 @@ import {
   Network,
   Route,
   PlayCircle,
-  Layout
+  Layout,
+  Link as LinkIcon,
+  PlusCircle
 } from 'lucide-react'
 import { GraphViewer, GraphViewerRef, LayoutMode } from '@/components/graph/graph-viewer'
 import { parseGraphML, GraphData } from '@/lib/graph-parser'
@@ -61,6 +63,10 @@ export default function GraphPage() {
   // Layout State
   const [layoutMode, setLayoutMode] = useState<LayoutMode>('force')
 
+  // Editing State
+  const [isConnectMode, setIsConnectMode] = useState(false)
+  const [connectSourceNode, setConnectSourceNode] = useState<any | null>(null)
+
   const graphRef = useRef<GraphViewerRef>(null)
 
   // Initialize with real (mock) data from service
@@ -73,6 +79,7 @@ export default function GraphPage() {
       setIsDetailOpen(false)
       setSelectedNode(null)
       resetPathMode()
+      resetConnectMode()
     } catch (error) {
       console.error('Failed to fetch graph data:', error)
     } finally {
@@ -94,6 +101,7 @@ export default function GraphPage() {
         setIsDetailOpen(false)
         setSelectedNode(null)
         resetPathMode()
+        resetConnectMode()
       } catch (error) {
         console.error('Failed to parse graph file:', error)
         alert('解析文件失败，请确保是有效的 GraphML 文件')
@@ -111,11 +119,9 @@ export default function GraphPage() {
       const newData = await GraphService.expandNode(selectedNode.id)
       
       setGraphData(prev => {
-        // Merge nodes avoiding duplicates
         const existingNodeIds = new Set(prev.nodes.map(n => n.id))
         const uniqueNewNodes = newData.nodes.filter(n => !existingNodeIds.has(n.id))
         
-        // Merge links avoiding duplicates
         const existingLinks = new Set(prev.links.map(l => `${(l.source as any).id || l.source}-${(l.target as any).id || l.target}`))
         const uniqueNewLinks = newData.links.filter(l => !existingLinks.has(`${l.source}-${l.target}`))
 
@@ -131,13 +137,72 @@ export default function GraphPage() {
     }
   }
 
+  const handleDeleteNode = () => {
+    if (!selectedNode) return
+    if (!confirm(`确定要删除节点 "${selectedNode.label}" 及其所有连线吗？`)) return
+
+    const nodeId = selectedNode.id
+    setGraphData(prev => ({
+      nodes: prev.nodes.filter(n => n.id !== nodeId),
+      links: prev.links.filter(l => {
+        const s = (l.source as any).id || l.source
+        const t = (l.target as any).id || l.target
+        return s !== nodeId && t !== nodeId
+      })
+    }))
+    
+    setSelectedNode(null)
+    setIsDetailOpen(false)
+  }
+
+  const startConnectMode = () => {
+    if (!selectedNode) return
+    setConnectSourceNode(selectedNode)
+    setIsConnectMode(true)
+    setIsDetailOpen(false)
+    alert(`已进入连线模式。\n当前起点: ${selectedNode.label}\n请点击图谱上的另一个节点作为终点。`)
+  }
+
+  const finishConnection = (targetNode: any) => {
+    if (!connectSourceNode) return
+    if (connectSourceNode.id === targetNode.id) {
+      alert("不能连接自己！")
+      return
+    }
+
+    const label = prompt("请输入关系名称 (例如: related_to):", "related_to")
+    if (label === null) { // User cancelled
+      resetConnectMode()
+      return 
+    }
+
+    // Add new link
+    setGraphData(prev => ({
+      ...prev,
+      links: [...prev.links, {
+        source: connectSourceNode.id,
+        target: targetNode.id,
+        label: label || 'related_to'
+      }]
+    }))
+
+    resetConnectMode()
+    
+    // Optionally focus the new connection?
+    // For now, just show confirmation
+  }
+
+  const resetConnectMode = () => {
+    setIsConnectMode(false)
+    setConnectSourceNode(null)
+  }
+
   const handleNodeClick = (node: any) => {
-    // If in Path Finding Mode
+    // 1. Path Finding Mode
     if (isPathMode) {
       if (!pathStartNode) {
         setPathStartNode(node)
       } else if (!pathEndNode) {
-        // Check if user clicked start node again (deselect)
         if (node.id === pathStartNode.id) {
           setPathStartNode(null)
           return
@@ -145,7 +210,6 @@ export default function GraphPage() {
         setPathEndNode(node)
         calculatePath(pathStartNode, node)
       } else {
-        // Reset and start new path from clicked node
         setPathStartNode(node)
         setPathEndNode(null)
         setHighlightedNodeIds(new Set())
@@ -154,7 +218,13 @@ export default function GraphPage() {
       return
     }
 
-    // Normal Mode
+    // 2. Connect Mode (Add Edge)
+    if (isConnectMode) {
+      finishConnection(node)
+      return
+    }
+
+    // 3. Normal Mode
     setSelectedNode(node)
     setIsDetailOpen(true)
   }
@@ -195,6 +265,7 @@ export default function GraphPage() {
       setIsDetailOpen(false)
       setSelectedNode(null)
       setHighlightedNodeIds(new Set())
+      resetConnectMode()
     }
   }
 
@@ -204,7 +275,6 @@ export default function GraphPage() {
       if (current === 'tree') return 'radial'
       return 'force'
     })
-    // Reset zoom to fit when changing layout
     setTimeout(() => {
        graphRef.current?.zoomToFit()
     }, 500)
@@ -223,7 +293,7 @@ export default function GraphPage() {
     const term = e.target.value
     setSearchTerm(term)
     
-    if (isPathMode) return 
+    if (isPathMode || isConnectMode) return 
 
     if (!term.trim()) {
       setHighlightedNodeIds(new Set())
@@ -272,7 +342,7 @@ export default function GraphPage() {
           </div>
           
           {/* Centered Search Bar */}
-          {graphData.nodes.length > 0 && !isPathMode && (
+          {graphData.nodes.length > 0 && !isPathMode && !isConnectMode && (
             <div className="pointer-events-auto absolute left-1/2 -translate-x-1/2 top-1/2 -translate-y-1/2 w-full max-w-md">
               <div className="relative group">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 group-focus-within:text-indigo-500 transition-colors" />
@@ -292,7 +362,7 @@ export default function GraphPage() {
             </div>
           )}
 
-          {/* Path Finding Status Banner */}
+          {/* Status Banners */}
           {isPathMode && (
              <div className="pointer-events-auto absolute left-1/2 -translate-x-1/2 top-1/2 -translate-y-1/2 flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-full shadow-lg animate-in fade-in slide-in-from-top-4">
                 <Route className="w-4 h-4" />
@@ -300,6 +370,17 @@ export default function GraphPage() {
                   {!pathStartNode ? "请点击选择【起点】" : !pathEndNode ? "请点击选择【终点】" : "路径分析完成"}
                 </span>
                 <button onClick={resetPathMode} className="ml-2 hover:bg-indigo-500 rounded-full p-0.5">
+                  <X className="w-4 h-4" />
+                </button>
+             </div>
+          )}
+           {isConnectMode && (
+             <div className="pointer-events-auto absolute left-1/2 -translate-x-1/2 top-1/2 -translate-y-1/2 flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-full shadow-lg animate-in fade-in slide-in-from-top-4">
+                <LinkIcon className="w-4 h-4" />
+                <span className="text-sm font-medium">
+                   正在连接: {connectSourceNode?.label} ... 请点击目标节点
+                </span>
+                <button onClick={resetConnectMode} className="ml-2 hover:bg-emerald-500 rounded-full p-0.5">
                   <X className="w-4 h-4" />
                 </button>
              </div>
@@ -341,7 +422,8 @@ export default function GraphPage() {
           <div className="absolute inset-0 z-0 opacity-[0.4]" style={{
              backgroundImage: 'radial-gradient(#cbd5e1 1px, transparent 1px)', 
              backgroundSize: '24px 24px'
-          }}></div>
+          }}>
+          </div>
 
           {graphData.nodes.length > 0 ? (
             <GraphViewer 
@@ -524,11 +606,19 @@ export default function GraphPage() {
                         {isLoading ? '展开中...' : '展开邻居节点'}
                       </Button>
                       <div className="grid grid-cols-2 gap-2">
-                        <Button variant="outline" className="w-full justify-start text-xs h-9 hover:bg-gray-50 text-gray-600">
-                          <Edit className="w-3 h-3 mr-2" />
-                          编辑
+                         <Button 
+                          variant="outline" 
+                          onClick={startConnectMode}
+                          className="w-full justify-start text-xs h-9 hover:bg-emerald-50 hover:text-emerald-600 hover:border-emerald-100 text-gray-600"
+                        >
+                          <LinkIcon className="w-3 h-3 mr-2" />
+                          连接
                         </Button>
-                        <Button variant="outline" className="w-full justify-start text-xs h-9 hover:bg-red-50 hover:text-red-600 hover:border-red-100 text-gray-600">
+                        <Button 
+                          variant="outline" 
+                          onClick={handleDeleteNode}
+                          className="w-full justify-start text-xs h-9 hover:bg-red-50 hover:text-red-600 hover:border-red-100 text-gray-600"
+                        >
                           <Trash2 className="w-3 h-3 mr-2" />
                           删除
                         </Button>

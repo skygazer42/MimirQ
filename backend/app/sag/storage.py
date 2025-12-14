@@ -47,6 +47,8 @@ class EntityRepository:
                         "id": str(ent.id),
                         "content": ent.name,
                         "metadata": {
+                            "id": str(ent.id),
+                            "name": ent.name,
                             "tenant_id": str(ent.tenant_id),
                             "type": ent.type,
                             "description": ent.description or "",
@@ -147,6 +149,7 @@ class EventRepository:
                         "id": str(ev.id),
                         "content": ev.content,
                         "metadata": {
+                            "id": str(ev.id),
                             "tenant_id": str(ev.tenant_id),
                             "document_id": str(ev.document_id) if ev.document_id else "",
                             "chunk_id": str(ev.chunk_id) if ev.chunk_id else "",

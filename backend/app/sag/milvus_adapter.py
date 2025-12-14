@@ -67,7 +67,10 @@ class MilvusAdapter:
         for item in items:
             ids.append(item["id"])
             texts.append(item.get("content", "")[:65_000])
-            metadatas.append(item.get("metadata") or {})
+            meta = item.get("metadata") or {}
+            meta.setdefault("id", item.get("id"))
+            meta.setdefault("content", item.get("content"))
+            metadatas.append(meta)
 
         pks = self._store.add_texts(texts=texts, metadatas=metadatas, ids=ids)
         return [str(pk) for pk in pks]
@@ -104,4 +107,3 @@ class MilvusAdapter:
                 }
             )
         return formatted
-
