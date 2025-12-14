@@ -5,11 +5,11 @@ from dataclasses import dataclass
 from typing import Any, Dict, List, Set
 
 from app.core.config import settings
-from app.sag.modules.search.config import SearchConfig
-from app.sag.modules.search.recall import RecallResult
-from app.sag.modules.search.tracker import Tracker
-from app.sag.storage import EntityRepository, EventRepository, get_session
-from app.sag.utils import get_logger
+from third_party.sag.modules.search.config import SearchConfig
+from third_party.sag.modules.search.recall import RecallResult
+from third_party.sag.modules.search.tracker import Tracker
+from third_party.sag.storage import EntityRepository, EventRepository, get_session
+from third_party.sag.utils import get_logger
 
 logger = get_logger("sag.search.expand")
 

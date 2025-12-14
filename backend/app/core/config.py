@@ -59,6 +59,7 @@ class Settings(BaseSettings):
     MARKITDOWN_DOCINTEL_ENDPOINT: str = ""
     MARKITDOWN_DOCINTEL_KEY: str = ""
     LLAMA_INDEX_ENABLED: bool = False
+    SAG_ENABLED: bool = False
 
     # Multi-tenant defaults
     DEFAULT_TENANT_ID: str = "00000000-0000-0000-0000-000000000000"

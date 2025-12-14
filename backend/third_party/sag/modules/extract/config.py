@@ -3,7 +3,7 @@ from uuid import UUID
 
 from pydantic import Field
 
-from app.sag.models.base import SAGBaseModel
+from third_party.sag.models.base import SAGBaseModel
 
 
 class ExtractConfig(SAGBaseModel):

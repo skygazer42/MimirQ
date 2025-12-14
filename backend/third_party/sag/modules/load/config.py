@@ -1,7 +1,7 @@
 from typing import List, Optional
 from uuid import UUID
 
-from app.sag.models.base import SAGBaseModel
+from third_party.sag.models.base import SAGBaseModel
 
 
 class LoadBaseConfig(SAGBaseModel):
