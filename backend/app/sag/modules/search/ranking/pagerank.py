@@ -21,6 +21,7 @@ class RerankPageRankSearcher:
         config: SearchConfig,
         event_ids: List[str],
         key_final: List[Dict[str, Any]],
+        event_scores: Dict[str, float],
     ) -> Dict[str, Any]:
         session = get_session()
         try:
@@ -47,12 +48,14 @@ class RerankPageRankSearcher:
                     return 0.0
                 return dot / (na * nb)
 
-            base_scores: Dict[str, float] = {}
+            base_scores: Dict[str, float] = {**event_scores}
             for ev in events:
                 sim = cosine(query_vec, ev.content_vector or [])
                 ents = assoc_map.get(str(ev.id), [])
                 boost = sum(key_weight_map.get(str(e.id), 0.0) for e in ents)
-                base_scores[str(ev.id)] = sim * 0.6 + boost * 0.4
+                # merge recall score if present
+                recall_score = event_scores.get(str(ev.id), 0.0)
+                base_scores[str(ev.id)] = 0.5 * recall_score + 0.3 * sim + 0.2 * boost
 
             graph: Dict[str, Dict[str, float]] = {str(ev.id): {} for ev in events}
             # build edges if share entities

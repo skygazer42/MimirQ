@@ -3,9 +3,9 @@
 /**
  * 知识图谱可视化页面
  * 功能：上传 .graphml 文件并进行可视化展示
- * 优化：主流视觉设计、交互侧边栏、玻璃拟态控件、搜索与高级筛选
+ * 优化：主流视觉设计、交互侧边栏、玻璃拟态控件、搜索与高级筛选、后端集成、路径分析、布局切换
  */
-import { useState, useRef, useMemo } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { Navbar } from '@/components/navbar'
 import { Button } from '@/components/ui/button'
 import { 
@@ -27,25 +27,58 @@ import {
   FileText,
   Type,
   Trash2,
-  Edit
+  Edit,
+  Network,
+  Route,
+  PlayCircle,
+  Layout
 } from 'lucide-react'
-import { GraphViewer, GraphViewerRef } from '@/components/graph/graph-viewer'
-import { parseGraphML } from '@/lib/graph-parser'
+import { GraphViewer, GraphViewerRef, LayoutMode } from '@/components/graph/graph-viewer'
+import { parseGraphML, GraphData } from '@/lib/graph-parser'
+import { GraphService } from '@/services/graph-service'
+import { findShortestPath } from '@/lib/graph-algorithms'
 import { cn } from '@/lib/utils'
 
 export default function GraphPage() {
   const [isSidebarOpen, setSidebarOpen] = useState(true)
-  const [graphData, setGraphData] = useState<{ nodes: any[], links: any[] }>({ nodes: [], links: [] })
+  const [graphData, setGraphData] = useState<GraphData>({ nodes: [], links: [] })
   const [fileName, setFileName] = useState<string | null>(null)
   const [selectedNode, setSelectedNode] = useState<any | null>(null)
   const [isDetailOpen, setIsDetailOpen] = useState(false)
+  const [isLoading, setIsLoading] = useState(false)
   
   // Search & Filter State
   const [searchTerm, setSearchTerm] = useState('')
   const [showEdgeLabels, setShowEdgeLabels] = useState(true)
   const [highlightedNodeIds, setHighlightedNodeIds] = useState<Set<string>>(new Set())
+  const [highlightedLinkIds, setHighlightedLinkIds] = useState<Set<string>>(new Set())
+
+  // Path Finding State
+  const [isPathMode, setIsPathMode] = useState(false)
+  const [pathStartNode, setPathStartNode] = useState<any | null>(null)
+  const [pathEndNode, setPathEndNode] = useState<any | null>(null)
+
+  // Layout State
+  const [layoutMode, setLayoutMode] = useState<LayoutMode>('force')
 
   const graphRef = useRef<GraphViewerRef>(null)
+
+  // Initialize with real (mock) data from service
+  const loadInitialData = async () => {
+    setIsLoading(true)
+    try {
+      const data = await GraphService.fetchInitialGraph()
+      setGraphData(data)
+      setFileName('Knowledge Base (Live)')
+      setIsDetailOpen(false)
+      setSelectedNode(null)
+      resetPathMode()
+    } catch (error) {
+      console.error('Failed to fetch graph data:', error)
+    } finally {
+      setIsLoading(false)
+    }
+  }
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
@@ -60,6 +93,7 @@ export default function GraphPage() {
         setGraphData(parsedData)
         setIsDetailOpen(false)
         setSelectedNode(null)
+        resetPathMode()
       } catch (error) {
         console.error('Failed to parse graph file:', error)
         alert('解析文件失败，请确保是有效的 GraphML 文件')
@@ -69,31 +103,119 @@ export default function GraphPage() {
     e.target.value = '' 
   }
 
-  const loadDemoData = () => {
-    const nodes = Array.from({ length: 35 }, (_, i) => ({ 
-      id: `n${i}`, 
-      label: `Entity ${i}`, 
-      group: Math.floor(Math.random() * 5),
-      description: `This is a description for Entity ${i}. It contains some random knowledge data related to AI and knowledge graphs.`,
-      source: `document_${Math.floor(i / 5)}.pdf`
-    }))
-    const links = []
-    for (let i = 0; i < 45; i++) {
-      links.push({
-        source: `n${Math.floor(Math.random() * 35)}`,
-        target: `n${Math.floor(Math.random() * 35)}`,
-        label: i % 3 === 0 ? '包含' : i % 3 === 1 ? '引用' : '相关'
+  const handleExpandNode = async () => {
+    if (!selectedNode) return
+    
+    setIsLoading(true)
+    try {
+      const newData = await GraphService.expandNode(selectedNode.id)
+      
+      setGraphData(prev => {
+        // Merge nodes avoiding duplicates
+        const existingNodeIds = new Set(prev.nodes.map(n => n.id))
+        const uniqueNewNodes = newData.nodes.filter(n => !existingNodeIds.has(n.id))
+        
+        // Merge links avoiding duplicates
+        const existingLinks = new Set(prev.links.map(l => `${(l.source as any).id || l.source}-${(l.target as any).id || l.target}`))
+        const uniqueNewLinks = newData.links.filter(l => !existingLinks.has(`${l.source}-${l.target}`))
+
+        return {
+          nodes: [...prev.nodes, ...uniqueNewNodes],
+          links: [...prev.links, ...uniqueNewLinks]
+        }
       })
+    } catch (error) {
+      console.error('Failed to expand node:', error)
+    } finally {
+      setIsLoading(false)
     }
-    setGraphData({ nodes, links })
-    setFileName('demo-knowledge-graph.graphml')
-    setIsDetailOpen(false)
-    setSelectedNode(null)
   }
 
   const handleNodeClick = (node: any) => {
+    // If in Path Finding Mode
+    if (isPathMode) {
+      if (!pathStartNode) {
+        setPathStartNode(node)
+      } else if (!pathEndNode) {
+        // Check if user clicked start node again (deselect)
+        if (node.id === pathStartNode.id) {
+          setPathStartNode(null)
+          return
+        }
+        setPathEndNode(node)
+        calculatePath(pathStartNode, node)
+      } else {
+        // Reset and start new path from clicked node
+        setPathStartNode(node)
+        setPathEndNode(null)
+        setHighlightedNodeIds(new Set())
+        setHighlightedLinkIds(new Set())
+      }
+      return
+    }
+
+    // Normal Mode
     setSelectedNode(node)
     setIsDetailOpen(true)
+  }
+
+  const calculatePath = (start: any, end: any) => {
+    const linksWithIds = graphData.links.map((link, index) => ({
+      ...link,
+      id: (link as any).id || `link-${index}`
+    }))
+    
+    const result = findShortestPath(graphData.nodes, linksWithIds, start.id, end.id)
+    
+    if (result) {
+      setHighlightedNodeIds(new Set(result.nodeIds))
+      setHighlightedLinkIds(new Set(result.linkIds))
+      if (graphRef.current) {
+         graphRef.current.zoomToFit() 
+      }
+    } else {
+      alert("未找到连接这两个节点的路径")
+      setPathEndNode(null)
+    }
+  }
+
+  const resetPathMode = () => {
+    setIsPathMode(false)
+    setPathStartNode(null)
+    setPathEndNode(null)
+    setHighlightedNodeIds(new Set())
+    setHighlightedLinkIds(new Set())
+  }
+
+  const togglePathMode = () => {
+    if (isPathMode) {
+      resetPathMode()
+    } else {
+      setIsPathMode(true)
+      setIsDetailOpen(false)
+      setSelectedNode(null)
+      setHighlightedNodeIds(new Set())
+    }
+  }
+
+  const cycleLayoutMode = () => {
+    setLayoutMode(current => {
+      if (current === 'force') return 'tree'
+      if (current === 'tree') return 'radial'
+      return 'force'
+    })
+    // Reset zoom to fit when changing layout
+    setTimeout(() => {
+       graphRef.current?.zoomToFit()
+    }, 500)
+  }
+
+  const getLayoutLabel = () => {
+    switch (layoutMode) {
+      case 'force': return '力导向'
+      case 'tree': return '树状'
+      case 'radial': return '辐射'
+    }
   }
 
   // Handle Search Input
@@ -101,6 +223,8 @@ export default function GraphPage() {
     const term = e.target.value
     setSearchTerm(term)
     
+    if (isPathMode) return 
+
     if (!term.trim()) {
       setHighlightedNodeIds(new Set())
       return
@@ -113,7 +237,6 @@ export default function GraphPage() {
 
     setHighlightedNodeIds(new Set(matches.map(n => n.id)))
     
-    // Optionally focus on first match
     if (matches.length > 0 && graphRef.current) {
       graphRef.current.focusNode(matches[0].id)
     }
@@ -149,7 +272,7 @@ export default function GraphPage() {
           </div>
           
           {/* Centered Search Bar */}
-          {graphData.nodes.length > 0 && (
+          {graphData.nodes.length > 0 && !isPathMode && (
             <div className="pointer-events-auto absolute left-1/2 -translate-x-1/2 top-1/2 -translate-y-1/2 w-full max-w-md">
               <div className="relative group">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 group-focus-within:text-indigo-500 transition-colors" />
@@ -169,6 +292,19 @@ export default function GraphPage() {
             </div>
           )}
 
+          {/* Path Finding Status Banner */}
+          {isPathMode && (
+             <div className="pointer-events-auto absolute left-1/2 -translate-x-1/2 top-1/2 -translate-y-1/2 flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-full shadow-lg animate-in fade-in slide-in-from-top-4">
+                <Route className="w-4 h-4" />
+                <span className="text-sm font-medium">
+                  {!pathStartNode ? "请点击选择【起点】" : !pathEndNode ? "请点击选择【终点】" : "路径分析完成"}
+                </span>
+                <button onClick={resetPathMode} className="ml-2 hover:bg-indigo-500 rounded-full p-0.5">
+                  <X className="w-4 h-4" />
+                </button>
+             </div>
+          )}
+
           <div className="flex items-center gap-3 pointer-events-auto">
              {fileName && (
               <div className="hidden md:flex items-center gap-2 px-3 py-1.5 bg-gray-100/50 border border-gray-200 rounded-full text-xs text-gray-600 font-medium">
@@ -179,9 +315,9 @@ export default function GraphPage() {
 
             <div className="h-6 w-px bg-gray-200 mx-1 hidden sm:block"></div>
 
-            <Button variant="ghost" size="sm" onClick={loadDemoData} className="text-gray-600 hover:text-indigo-600 hover:bg-indigo-50">
-              <RefreshCw className="w-4 h-4 mr-2" />
-              演示
+            <Button variant="ghost" size="sm" onClick={loadInitialData} disabled={isLoading} className="text-gray-600 hover:text-indigo-600 hover:bg-indigo-50">
+              <RefreshCw className={cn("w-4 h-4 mr-2", isLoading && "animate-spin")} />
+              {isLoading ? '加载中...' : '刷新'}
             </Button>
 
             <label>
@@ -214,7 +350,9 @@ export default function GraphPage() {
               onNodeClick={handleNodeClick}
               onBackgroundClick={() => setIsDetailOpen(false)}
               highlightedNodeIds={highlightedNodeIds}
+              highlightedLinkIds={highlightedLinkIds}
               showEdgeLabels={showEdgeLabels}
+              layoutMode={layoutMode}
             />
           ) : (
             <div className="absolute inset-0 flex flex-col items-center justify-center z-10">
@@ -225,12 +363,12 @@ export default function GraphPage() {
               </div>
               <h3 className="text-2xl font-bold text-gray-900 mb-3 tracking-tight">探索知识网络</h3>
               <p className="max-w-md text-center text-gray-500 mb-10 leading-relaxed">
-                上传 GraphML 文件，可视化展示实体间的复杂关联。
-                <br/>支持搜索、筛选与深度文档联动。
+                连接知识孤岛，发现潜在关联。
+                <br/>支持实时数据加载、搜索与深度分析。
               </p>
               <div className="flex gap-4">
-                 <Button size="lg" variant="outline" onClick={loadDemoData} className="border-gray-200 hover:bg-gray-50 hover:text-gray-900">
-                   查看演示数据
+                 <Button size="lg" variant="outline" onClick={loadInitialData} disabled={isLoading} className="border-gray-200 hover:bg-gray-50 hover:text-gray-900">
+                   {isLoading ? '加载中...' : '加载示例数据'}
                  </Button>
                  <label>
                   <Button size="lg" className="bg-indigo-600 hover:bg-indigo-700 shadow-xl shadow-indigo-200">
@@ -250,6 +388,7 @@ export default function GraphPage() {
 
           {/* Floating Controls */}
           <div className="absolute bottom-8 right-8 z-10 flex flex-col gap-3">
+             {/* Main Zoom Controls */}
              <div className="flex flex-col gap-1 bg-white/90 backdrop-blur-sm p-1.5 rounded-2xl shadow-xl shadow-gray-200 border border-gray-100/50">
                 <Button variant="ghost" size="icon" onClick={() => graphRef.current?.zoomIn()} className="rounded-xl hover:bg-indigo-50 hover:text-indigo-600" title="放大">
                   <ZoomIn className="w-5 h-5" />
@@ -263,7 +402,30 @@ export default function GraphPage() {
                 </Button>
              </div>
              
+             {/* View Options */}
              <div className="bg-white/90 backdrop-blur-sm p-1.5 rounded-2xl shadow-xl shadow-gray-200 border border-gray-100/50 flex flex-col gap-1">
+                <Button 
+                   variant="ghost" 
+                   size="icon" 
+                   onClick={cycleLayoutMode}
+                   className="rounded-xl hover:bg-indigo-50 hover:text-indigo-600" 
+                   title={`切换布局: ${getLayoutLabel()}`}
+                >
+                  <Layout className="w-5 h-5" />
+                  <span className="sr-only">{getLayoutLabel()}</span>
+                </Button>
+                <Button 
+                   variant="ghost" 
+                   size="icon" 
+                   onClick={togglePathMode}
+                   className={cn(
+                     "rounded-xl hover:bg-amber-50 hover:text-amber-600 transition-colors", 
+                     isPathMode && "bg-amber-100 text-amber-600 ring-2 ring-amber-500/20"
+                   )}
+                   title="路径发现 (Shortest Path)"
+                >
+                  <Route className="w-5 h-5" />
+                </Button>
                 <Button 
                   variant="ghost" 
                   size="icon" 
@@ -272,9 +434,6 @@ export default function GraphPage() {
                   title="显示/隐藏连线标签"
                 >
                   <Type className="w-5 h-5" />
-                </Button>
-                <Button variant="ghost" size="icon" className="rounded-xl hover:bg-indigo-50 hover:text-indigo-600" title="设置">
-                  <Settings className="w-5 h-5" />
                 </Button>
              </div>
           </div>
@@ -352,17 +511,28 @@ export default function GraphPage() {
                   <div>
                      <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3 flex items-center gap-2">
                       <Layers className="w-3 h-3" />
-                      管理
+                      操作
                     </h3>
-                    <div className="grid grid-cols-2 gap-3">
-                      <Button variant="outline" className="w-full justify-start text-xs h-9 hover:bg-gray-50 text-gray-600">
-                        <Edit className="w-3 h-3 mr-2" />
-                        编辑属性
+                    <div className="space-y-2">
+                       <Button 
+                        variant="outline" 
+                        onClick={handleExpandNode} 
+                        disabled={isLoading}
+                        className="w-full justify-start text-xs h-9 hover:bg-indigo-50 hover:text-indigo-600 text-gray-600"
+                      >
+                        <Network className="w-3 h-3 mr-2" />
+                        {isLoading ? '展开中...' : '展开邻居节点'}
                       </Button>
-                      <Button variant="outline" className="w-full justify-start text-xs h-9 hover:bg-red-50 hover:text-red-600 hover:border-red-100 text-gray-600">
-                        <Trash2 className="w-3 h-3 mr-2" />
-                        删除节点
-                      </Button>
+                      <div className="grid grid-cols-2 gap-2">
+                        <Button variant="outline" className="w-full justify-start text-xs h-9 hover:bg-gray-50 text-gray-600">
+                          <Edit className="w-3 h-3 mr-2" />
+                          编辑
+                        </Button>
+                        <Button variant="outline" className="w-full justify-start text-xs h-9 hover:bg-red-50 hover:text-red-600 hover:border-red-100 text-gray-600">
+                          <Trash2 className="w-3 h-3 mr-2" />
+                          删除
+                        </Button>
+                      </div>
                     </div>
                   </div>
                 </div>

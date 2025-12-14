@@ -18,6 +18,8 @@ export interface GraphViewerRef {
   focusNode: (nodeId: string) => void
 }
 
+export type LayoutMode = 'force' | 'tree' | 'radial'
+
 interface GraphViewerProps {
   data: {
     nodes: any[]
@@ -26,7 +28,9 @@ interface GraphViewerProps {
   onNodeClick?: (node: any) => void
   onBackgroundClick?: () => void
   highlightedNodeIds?: Set<string>
+  highlightedLinkIds?: Set<string>
   showEdgeLabels?: boolean
+  layoutMode?: LayoutMode
 }
 
 export const GraphViewer = forwardRef<GraphViewerRef, GraphViewerProps>(({ 
@@ -34,7 +38,9 @@ export const GraphViewer = forwardRef<GraphViewerRef, GraphViewerProps>(({
   onNodeClick,
   onBackgroundClick,
   highlightedNodeIds = new Set(),
-  showEdgeLabels = true
+  highlightedLinkIds = new Set(),
+  showEdgeLabels = true,
+  layoutMode = 'force'
 }, ref) => {
   const containerRef = useRef<HTMLDivElement>(null)
   const fgRef = useRef<any>()
@@ -101,8 +107,10 @@ export const GraphViewer = forwardRef<GraphViewerRef, GraphViewerProps>(({
   }
 
   const getNodeColor = (node: any) => {
-    // If specific nodes are highlighted, dim others
-    if (highlightedNodeIds.size > 0 && !highlightedNodeIds.has(node.id)) {
+    // If specific nodes are highlighted (search or path), dim others
+    const hasHighlights = highlightedNodeIds.size > 0
+    
+    if (hasHighlights && !highlightedNodeIds.has(node.id)) {
       return '#cbd5e1' // Dimmed color (slate-300)
     }
 
@@ -119,6 +127,15 @@ export const GraphViewer = forwardRef<GraphViewerRef, GraphViewerProps>(({
     return colors[index % colors.length]
   }
 
+  // Determine DAG mode based on layoutMode
+  const getDagMode = () => {
+    switch (layoutMode) {
+      case 'tree': return 'td' // Top-Down
+      case 'radial': return 'radialout'
+      default: return undefined // Force Directed
+    }
+  }
+
   return (
     <div ref={containerRef} className="w-full h-full relative bg-slate-50/50">
       {width > 0 && height > 0 && (
@@ -131,20 +148,34 @@ export const GraphViewer = forwardRef<GraphViewerRef, GraphViewerProps>(({
           nodeLabel="label"
           nodeColor={getNodeColor}
           nodeRelSize={6}
+          // Layout Config
+          dagMode={getDagMode()}
+          dagLevelDistance={50}
+          
           // Link styling
           linkColor={(link: any) => {
+             const linkId = link.id || (link.index !== undefined ? `link-${link.index}` : null)
+             if (highlightedLinkIds.size > 0 && linkId && highlightedLinkIds.has(linkId)) {
+                return '#f59e0b' // Amber 500 (Path Highlight)
+             }
              if (highlightedNodeIds.size > 0) {
-               // If both source/target are highlighted, keep link bright, else dim
                const sourceId = typeof link.source === 'object' ? link.source.id : link.source
                const targetId = typeof link.target === 'object' ? link.target.id : link.target
                if (highlightedNodeIds.has(sourceId) && highlightedNodeIds.has(targetId)) {
-                 return '#94a3b8'
+                 return '#94a3b8' 
                }
-               return '#e2e8f0' // Very light dim
+               return '#e2e8f0' 
              }
              return '#cbd5e1'
           }}
-          linkWidth={link => (highlightedNodeIds.size > 0 ? 1 : 1.5)}
+          linkWidth={(link: any) => {
+            const linkId = link.id || (link.index !== undefined ? `link-${link.index}` : null)
+            if (highlightedLinkIds.size > 0 && linkId && highlightedLinkIds.has(linkId)) {
+                return 4 
+             }
+             if (highlightedNodeIds.size > 0) return 1
+             return 1.5
+          }}
           linkDirectionalArrowLength={3.5}
           linkDirectionalArrowRelPos={1}
           cooldownTicks={100}
@@ -158,7 +189,8 @@ export const GraphViewer = forwardRef<GraphViewerRef, GraphViewerProps>(({
           // Custom Node Painting
           nodeCanvasObject={(node: any, ctx, globalScale) => {
             const isHighlighted = highlightedNodeIds.size > 0 && highlightedNodeIds.has(node.id)
-            const isDimmed = highlightedNodeIds.size > 0 && !isHighlighted
+            const isPathNode = highlightedLinkIds.size > 0 && highlightedNodeIds.has(node.id)
+            const isDimmed = (highlightedNodeIds.size > 0 || highlightedLinkIds.size > 0) && !isHighlighted
             
             const label = node.label || node.id;
             const fontSize = isHighlighted ? 14 / globalScale : 12 / globalScale;
@@ -176,8 +208,14 @@ export const GraphViewer = forwardRef<GraphViewerRef, GraphViewerProps>(({
                ctx.strokeStyle = '#fff';
                ctx.lineWidth = 4 / globalScale;
                ctx.stroke();
-               ctx.strokeStyle = color;
-               ctx.lineWidth = 1 / globalScale;
+               
+               if (isPathNode) {
+                 ctx.strokeStyle = '#f59e0b';
+               } else {
+                 ctx.strokeStyle = color;
+               }
+               
+               ctx.lineWidth = 2 / globalScale;
                ctx.stroke();
             } else {
                ctx.strokeStyle = '#fff';
@@ -186,8 +224,7 @@ export const GraphViewer = forwardRef<GraphViewerRef, GraphViewerProps>(({
             }
 
             // Draw Label
-            // Show label if: Highlighted OR Global Scale is large enough OR No highlight active (default view)
-            const shouldShowLabel = isHighlighted || globalScale > 1.5 || (highlightedNodeIds.size === 0 && globalScale > 1.2)
+            const shouldShowLabel = isHighlighted || globalScale > 1.5 || (!isDimmed && globalScale > 1.2)
             
             if (shouldShowLabel) {
               ctx.font = `${isHighlighted ? 'bold ' : ''}${fontSize}px Sans-Serif`;
@@ -207,9 +244,11 @@ export const GraphViewer = forwardRef<GraphViewerRef, GraphViewerProps>(({
           // Custom Link Label Painting
           linkCanvasObjectMode={() => 'after'}
           linkCanvasObject={(link: any, ctx, globalScale) => {
-            if (!showEdgeLabels) return
-            // Only show edge labels when zoomed in
-            if (globalScale < 2) return
+            const linkId = link.id || (link.index !== undefined ? `link-${link.index}` : null)
+            const isPathLink = highlightedLinkIds.size > 0 && linkId && highlightedLinkIds.has(linkId)
+
+            if (!showEdgeLabels && !isPathLink) return
+            if (globalScale < 2 && !isPathLink) return
 
             const label = link.label
             if (!label) return
@@ -217,40 +256,33 @@ export const GraphViewer = forwardRef<GraphViewerRef, GraphViewerProps>(({
             const start = link.source
             const end = link.target
 
-            // Ignore unbound links
             if (typeof start !== 'object' || typeof end !== 'object') return
 
-            // Calculate middle point
             const textPos = Object.assign({}, start, { x: start.x + (end.x - start.x) / 2, y: start.y + (end.y - start.y) / 2 })
 
             const relLink = { x: end.x - start.x, y: end.y - start.y };
-
             const maxTextLength = Math.sqrt(Math.pow(relLink.x, 2) + Math.pow(relLink.y, 2)) - 8;
 
             let textAngle = Math.atan2(relLink.y, relLink.x);
-            // Maintain label vertical orientation for readability
             if (textAngle > Math.PI / 2) textAngle = -(Math.PI - textAngle);
             if (textAngle < -Math.PI / 2) textAngle = -(-Math.PI - textAngle);
 
-            const fontSize = 10 / globalScale;
-            ctx.font = `${fontSize}px Sans-Serif`;
+            const fontSize = isPathLink ? 12/globalScale : 10 / globalScale;
+            ctx.font = `${isPathLink ? 'bold ':''}${fontSize}px Sans-Serif`;
             
-            // Measure text to potentially truncate or background
             const textWidth = ctx.measureText(label).width;
-            if (textWidth > maxTextLength) return; // Hide if link is too short
+            if (textWidth > maxTextLength) return;
 
             ctx.save();
             ctx.translate(textPos.x, textPos.y);
             ctx.rotate(textAngle);
 
-            // Label Background
-            ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
+            ctx.fillStyle = isPathLink ? '#f59e0b' : 'rgba(255, 255, 255, 0.8)';
             ctx.fillRect(-textWidth / 2 - 2, -fontSize / 2 - 1, textWidth + 4, fontSize + 2);
 
-            // Label Text
             ctx.textAlign = 'center';
             ctx.textBaseline = 'middle';
-            ctx.fillStyle = '#64748b'; // Slate 500
+            ctx.fillStyle = isPathLink ? '#ffffff' : '#64748b'; 
             ctx.fillText(label, 0, 0);
             
             ctx.restore();

@@ -2,13 +2,15 @@
 Lightweight repositories for SAG using PostgreSQL JSON vectors.
 """
 import math
-from typing import Iterable, List, Optional
+from typing import Iterable, List, Optional, Dict
 
 from sqlalchemy.orm import Session
 from sqlalchemy import select, func
 
 from app.core.database import SessionLocal
 from app.models.sag_entities import SagEntity, SagSourceEvent, SagEventEntity
+from app.core.config import settings
+from app.sag.milvus_adapter import MilvusAdapter
 
 
 def _cosine(a: List[float], b: List[float]) -> float:
@@ -29,11 +31,30 @@ class EntityRepository:
 
     def __init__(self, session: Session):
         self.session = session
+        self._milvus = MilvusAdapter(collection_name="sag_entities", vector_field="embedding")
 
     def upsert_entities(self, entities: List[SagEntity]) -> List[SagEntity]:
         for ent in entities:
             self.session.merge(ent)
         self.session.commit()
+
+        # push to Milvus if vectors exist
+        items = []
+        for ent in entities:
+            if ent.vector:
+                items.append(
+                    {
+                        "id": str(ent.id),
+                        "content": ent.name,
+                        "metadata": {
+                            "tenant_id": str(ent.tenant_id),
+                            "type": ent.type,
+                            "description": ent.description or "",
+                        },
+                    }
+                )
+        if items:
+            self._milvus.add_vectors(items)
         return entities
 
     def search_similar(
@@ -43,26 +64,25 @@ class EntityRepository:
         k: int = 10,
         entity_type: Optional[str] = None,
     ) -> List[dict]:
-        stmt = select(SagEntity).where(SagEntity.tenant_id == tenant_id)
+        expr_parts = [f'tenant_id == "{str(tenant_id)}"']
         if entity_type:
-            stmt = stmt.where(SagEntity.type == entity_type)
-        rows = self.session.execute(stmt).scalars().all()
-        results = []
-        for row in rows:
-            if not row.vector:
-                continue
-            sim = _cosine(query_vector, row.vector)
-            results.append(
+            expr_parts.append(f'type == "{entity_type}"')
+        expr = " and ".join(expr_parts)
+
+        results = self._milvus.search(query_vector=query_vector, top_k=k, expr=expr)
+        formatted = []
+        for r in results:
+            meta = r.get("metadata") or {}
+            formatted.append(
                 {
-                    "entity_id": str(row.id),
-                    "name": row.name,
-                    "type": row.type,
-                    "similarity": float(sim),
-                    "tenant_id": str(row.tenant_id),
+                    "entity_id": meta.get("id") or r.get("id"),
+                    "name": meta.get("name") or meta.get("content") or "",
+                    "type": meta.get("type") or "unknown",
+                    "similarity": r.get("score", 0.0),
+                    "tenant_id": meta.get("tenant_id"),
                 }
             )
-        results.sort(key=lambda x: x["similarity"], reverse=True)
-        return results[:k]
+        return formatted
 
     def get_entities_by_ids(self, ids: Iterable[str]) -> List[SagEntity]:
         id_list = list(ids)
@@ -112,11 +132,31 @@ class EventRepository:
 
     def __init__(self, session: Session):
         self.session = session
+        self._milvus = MilvusAdapter(collection_name="sag_events", vector_field="embedding")
 
     def upsert_events(self, events: List[SagSourceEvent]) -> List[SagSourceEvent]:
         for ev in events:
             self.session.merge(ev)
         self.session.commit()
+
+        items = []
+        for ev in events:
+            if ev.content_vector:
+                items.append(
+                    {
+                        "id": str(ev.id),
+                        "content": ev.content,
+                        "metadata": {
+                            "tenant_id": str(ev.tenant_id),
+                            "document_id": str(ev.document_id) if ev.document_id else "",
+                            "chunk_id": str(ev.chunk_id) if ev.chunk_id else "",
+                            "title": ev.title,
+                            "summary": ev.summary,
+                        },
+                    }
+                )
+        if items:
+            self._milvus.add_vectors(items)
         return events
 
     def link_event_entities(
@@ -155,26 +195,23 @@ class EventRepository:
         tenant_id,
         k: int = 20,
     ) -> List[dict]:
-        stmt = select(SagSourceEvent).where(SagSourceEvent.tenant_id == tenant_id)
-        rows = self.session.execute(stmt).scalars().all()
-        results = []
-        for row in rows:
-            if not row.content_vector:
-                continue
-            sim = _cosine(query_vector, row.content_vector)
-            results.append(
+        expr = f'tenant_id == "{str(tenant_id)}"'
+        results = self._milvus.search(query_vector=query_vector, top_k=k, expr=expr)
+        formatted = []
+        for r in results:
+            meta = r.get("metadata") or {}
+            formatted.append(
                 {
-                    "event_id": str(row.id),
-                    "title": row.title,
-                    "summary": row.summary,
-                    "similarity": float(sim),
-                    "tenant_id": str(row.tenant_id),
-                    "chunk_id": str(row.chunk_id) if row.chunk_id else None,
-                    "document_id": str(row.document_id) if row.document_id else None,
+                    "event_id": meta.get("id") or r.get("id"),
+                    "title": meta.get("title") or "",
+                    "summary": meta.get("summary") or "",
+                    "similarity": r.get("score", 0.0),
+                    "tenant_id": meta.get("tenant_id"),
+                    "chunk_id": meta.get("chunk_id"),
+                    "document_id": meta.get("document_id"),
                 }
             )
-        results.sort(key=lambda x: x["similarity"], reverse=True)
-        return results[:k]
+        return formatted
 
     def search_events_by_entities(
         self,
