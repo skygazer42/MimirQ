@@ -8,6 +8,8 @@ from contextlib import asynccontextmanager
 from app.core.config import settings
 from app.core.database import engine, Base, get_db
 from app.api.v1 import router as api_v1_router
+# Ensure SAG models are registered for metadata creation
+import app.models.sag_entities  # noqa: F401
 
 
 # 生命周期管理

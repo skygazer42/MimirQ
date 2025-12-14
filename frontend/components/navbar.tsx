@@ -12,6 +12,7 @@ import {
   History,
   Settings,
   FileText,
+  Share2,
   Plus,
   Scissors,
   ChevronLeft,
@@ -41,6 +42,11 @@ const menuItems = [
     icon: FileText,
     label: '文档解析',
     href: '/parsing',
+  },
+  {
+    icon: Share2,
+    label: '知识图谱',
+    href: '/graph',
   },
   {
     icon: Scissors,

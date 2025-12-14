@@ -4,6 +4,7 @@
 from app.models.document import Document, DocumentChunk
 from app.models.chat import Conversation, Message
 from app.models.tenant import Tenant, TenantMember
+from app.models.sag_entities import SagEntity, SagSourceEvent, SagEventEntity
 from app.models.dataset import Dataset, DatasetPermission, DatasetPermissionEnum
 
 __all__ = [
@@ -16,4 +17,7 @@ __all__ = [
     "Dataset",
     "DatasetPermission",
     "DatasetPermissionEnum",
+    "SagEntity",
+    "SagSourceEvent",
+    "SagEventEntity",
 ]
