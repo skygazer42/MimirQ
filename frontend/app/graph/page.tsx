@@ -3,7 +3,7 @@
 /**
  * 知识图谱可视化页面
  * 功能：上传 .graphml 文件并进行可视化展示
- * 优化：主流视觉设计、交互侧边栏、玻璃拟态控件、搜索与高级筛选、后端集成、路径分析、布局切换、图编辑
+ * 优化：主流视觉设计、交互侧边栏、玻璃拟态控件、搜索与高级筛选、后端集成、路径分析、布局切换、图编辑、RAG可解释性
  */
 import { useState, useRef, useEffect } from 'react'
 import { Navbar } from '@/components/navbar'
@@ -33,7 +33,8 @@ import {
   PlayCircle,
   Layout,
   Link as LinkIcon,
-  PlusCircle
+  PlusCircle,
+  Lightbulb
 } from 'lucide-react'
 import { GraphViewer, GraphViewerRef, LayoutMode } from '@/components/graph/graph-viewer'
 import { parseGraphML, GraphData } from '@/lib/graph-parser'
@@ -67,7 +68,14 @@ export default function GraphPage() {
   const [isConnectMode, setIsConnectMode] = useState(false)
   const [connectSourceNode, setConnectSourceNode] = useState<any | null>(null)
 
+  // Explainability State
+  const [isExplainMode, setIsExplainMode] = useState(false)
+  const [explainSteps, setExplainSteps] = useState<{node: string, reason: string}[]>([])
+  const [currentStepIndex, setCurrentStepIndex] = useState(-1)
+
   const graphRef = useRef<GraphViewerRef>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
+  const searchInputRef = useRef<HTMLInputElement>(null)
 
   // Initialize with real (mock) data from service
   const loadInitialData = async () => {
@@ -80,6 +88,7 @@ export default function GraphPage() {
       setSelectedNode(null)
       resetPathMode()
       resetConnectMode()
+      resetExplainMode()
     } catch (error) {
       console.error('Failed to fetch graph data:', error)
     } finally {
@@ -87,10 +96,47 @@ export default function GraphPage() {
     }
   }
 
+  // Keyboard Shortcuts
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Search (Ctrl/Cmd + F)
+      if ((e.ctrlKey || e.metaKey) && e.key === 'f') {
+        e.preventDefault()
+        searchInputRef.current?.focus()
+      }
+
+      // Escape (Close panels, reset modes)
+      if (e.key === 'Escape') {
+        if (isDetailOpen) setIsDetailOpen(false)
+        if (isPathMode) resetPathMode()
+        if (isConnectMode) resetConnectMode()
+        if (isExplainMode) resetExplainMode()
+        searchInputRef.current?.blur()
+      }
+
+      // Space (Expand Node if selected)
+      if (e.key === ' ' && selectedNode && isDetailOpen && !['INPUT', 'TEXTAREA'].includes((e.target as HTMLElement).tagName)) {
+        e.preventDefault()
+        handleExpandNode()
+      }
+
+      // Delete (Delete Node if selected)
+      if (e.key === 'Delete' || e.key === 'Backspace') {
+        if (selectedNode && isDetailOpen && !['INPUT', 'TEXTAREA'].includes((e.target as HTMLElement).tagName)) {
+           handleDeleteNode()
+        }
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [selectedNode, isDetailOpen, isPathMode, isConnectMode, isExplainMode])
+
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
 
+    setIsLoading(true)
     setFileName(file.name)
     const reader = new FileReader()
     reader.onload = (event) => {
@@ -102,13 +148,20 @@ export default function GraphPage() {
         setSelectedNode(null)
         resetPathMode()
         resetConnectMode()
+        resetExplainMode()
       } catch (error) {
         console.error('Failed to parse graph file:', error)
         alert('解析文件失败，请确保是有效的 GraphML 文件')
+      } finally {
+        setIsLoading(false)
       }
     }
     reader.readAsText(file)
-    e.target.value = '' 
+    e.target.value = '' // Reset input value to allow re-uploading same file
+  }
+
+  const triggerFileUpload = () => {
+    fileInputRef.current?.click()
   }
 
   const handleExpandNode = async () => {
@@ -171,12 +224,11 @@ export default function GraphPage() {
     }
 
     const label = prompt("请输入关系名称 (例如: related_to):", "related_to")
-    if (label === null) { // User cancelled
+    if (label === null) {
       resetConnectMode()
       return 
     }
 
-    // Add new link
     setGraphData(prev => ({
       ...prev,
       links: [...prev.links, {
@@ -187,9 +239,6 @@ export default function GraphPage() {
     }))
 
     resetConnectMode()
-    
-    // Optionally focus the new connection?
-    // For now, just show confirmation
   }
 
   const resetConnectMode = () => {
@@ -197,8 +246,91 @@ export default function GraphPage() {
     setConnectSourceNode(null)
   }
 
+  // --- Explainability Logic ---
+  const startExplainMode = () => {
+    if (graphData.nodes.length < 3) {
+      alert("图谱节点过少，无法演示推理路径")
+      return
+    }
+
+    const trace = []
+    const visited = new Set()
+    let current = graphData.nodes[0]
+    
+    for (let i = 0; i < 4; i++) {
+        trace.push(current)
+        visited.add(current.id)
+        
+        const link = graphData.links.find(l => {
+            const s = (l.source as any).id || l.source
+            const t = (l.target as any).id || l.target
+            return (s === current.id && !visited.has(t)) || (t === current.id && !visited.has(s))
+        })
+        
+        if (link) {
+            const s = (link.source as any).id || link.source
+            const t = (link.target as any).id || link.target
+            const nextId = s === current.id ? t : s
+            current = graphData.nodes.find(n => n.id === nextId) || graphData.nodes[i+1]
+        } else {
+            current = graphData.nodes[Math.min(i + 5, graphData.nodes.length - 1)]
+        }
+    }
+
+    const steps = trace.map((node, i) => ({
+        node: node.id,
+        reason: i === 0 ? "初始查询匹配到的实体" : i === trace.length - 1 ? "最终推理得出的答案" : "通过关系链召回的相关节点"
+    }))
+
+    setExplainSteps(steps)
+    setIsExplainMode(true)
+    setIsDetailOpen(false)
+    setSelectedNode(null)
+    
+    animateTrace(steps)
+  }
+
+  const animateTrace = async (steps: {node: string}[]) => {
+    for (let i = 0; i < steps.length; i++) {
+        setCurrentStepIndex(i)
+        const step = steps[i]
+        
+        setHighlightedNodeIds(prev => new Set([...Array.from(prev), step.node]))
+        
+        if (graphRef.current) {
+            graphRef.current.focusNode(step.node)
+        }
+
+        if (i > 0) {
+            const prevNode = steps[i-1].node
+            const currNode = step.node
+            const link = graphData.links.find(l => {
+                const s = (l.source as any).id || l.source
+                const t = (l.target as any).id || l.target
+                return (s === prevNode && t === currNode) || (s === currNode && t === prevNode)
+            })
+            if (link) {
+                // @ts-ignore
+                const linkId = link.id || (link.index !== undefined ? `link-${link.index}` : null)
+                if (linkId) {
+                    setHighlightedLinkIds(prev => new Set([...Array.from(prev), linkId]))
+                }
+            }
+        }
+
+        await new Promise(r => setTimeout(r, 1500))
+    }
+  }
+
+  const resetExplainMode = () => {
+    setIsExplainMode(false)
+    setExplainSteps([])
+    setCurrentStepIndex(-1)
+    setHighlightedNodeIds(new Set())
+    setHighlightedLinkIds(new Set())
+  }
+
   const handleNodeClick = (node: any) => {
-    // 1. Path Finding Mode
     if (isPathMode) {
       if (!pathStartNode) {
         setPathStartNode(node)
@@ -218,15 +350,15 @@ export default function GraphPage() {
       return
     }
 
-    // 2. Connect Mode (Add Edge)
     if (isConnectMode) {
       finishConnection(node)
       return
     }
 
-    // 3. Normal Mode
-    setSelectedNode(node)
-    setIsDetailOpen(true)
+    if (!isExplainMode) {
+        setSelectedNode(node)
+        setIsDetailOpen(true)
+    }
   }
 
   const calculatePath = (start: any, end: any) => {
@@ -266,6 +398,7 @@ export default function GraphPage() {
       setSelectedNode(null)
       setHighlightedNodeIds(new Set())
       resetConnectMode()
+      resetExplainMode()
     }
   }
 
@@ -288,12 +421,11 @@ export default function GraphPage() {
     }
   }
 
-  // Handle Search Input
   const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const term = e.target.value
     setSearchTerm(term)
     
-    if (isPathMode || isConnectMode) return 
+    if (isPathMode || isConnectMode || isExplainMode) return 
 
     if (!term.trim()) {
       setHighlightedNodeIds(new Set())
@@ -312,12 +444,10 @@ export default function GraphPage() {
     }
   }
 
-  // Handle "Chat with Node" (Mock)
   const handleChatWithNode = () => {
     alert(`跳转到对话页面，预填 Prompt: "请告诉我关于 ${selectedNode.label} 的信息"`)
   }
 
-  // Handle "View Source" (Mock)
   const handleViewSource = () => {
     alert(`打开源文档: ${selectedNode.source || 'Unknown Document'}`)
   }
@@ -330,7 +460,7 @@ export default function GraphPage() {
         "flex-1 flex flex-col transition-all duration-300 relative",
         isSidebarOpen ? "ml-64" : "ml-0"
       )}>
-        {/* Header - Transparent/Blurred */}
+        {/* Header */}
         <header className="absolute top-0 left-0 right-0 z-20 h-16 px-6 flex items-center justify-between bg-white/80 backdrop-blur-md border-b border-gray-200/50 pointer-events-none">
           <div className="flex items-center gap-3 pointer-events-auto">
             <div className="p-2 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-lg shadow-sm">
@@ -342,15 +472,16 @@ export default function GraphPage() {
           </div>
           
           {/* Centered Search Bar */}
-          {graphData.nodes.length > 0 && !isPathMode && !isConnectMode && (
+          {graphData.nodes.length > 0 && !isPathMode && !isConnectMode && !isExplainMode && (
             <div className="pointer-events-auto absolute left-1/2 -translate-x-1/2 top-1/2 -translate-y-1/2 w-full max-w-md">
               <div className="relative group">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 group-focus-within:text-indigo-500 transition-colors" />
                 <input 
+                  ref={searchInputRef}
                   type="text" 
                   value={searchTerm}
                   onChange={handleSearchChange}
-                  placeholder="搜索实体节点..."
+                  placeholder="搜索实体节点... (Ctrl+F)"
                   className="w-full h-10 pl-10 pr-4 bg-gray-100/50 border border-gray-200 rounded-full text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all backdrop-blur-sm shadow-sm"
                 />
                 {searchTerm && (
@@ -385,6 +516,17 @@ export default function GraphPage() {
                 </button>
              </div>
           )}
+          {isExplainMode && (
+             <div className="pointer-events-auto absolute left-1/2 -translate-x-1/2 top-1/2 -translate-y-1/2 flex items-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-full shadow-lg animate-in fade-in slide-in-from-top-4">
+                <Lightbulb className="w-4 h-4" />
+                <span className="text-sm font-medium">
+                   推理路径演示中... ({currentStepIndex + 1}/{explainSteps.length})
+                </span>
+                <button onClick={resetExplainMode} className="ml-2 hover:bg-purple-500 rounded-full p-0.5">
+                  <X className="w-4 h-4" />
+                </button>
+             </div>
+          )}
 
           <div className="flex items-center gap-3 pointer-events-auto">
              {fileName && (
@@ -401,18 +543,21 @@ export default function GraphPage() {
               {isLoading ? '加载中...' : '刷新'}
             </Button>
 
-            <label>
-              <Button size="sm" className="gap-2 bg-indigo-600 hover:bg-indigo-700 shadow-lg shadow-indigo-200 transition-all">
-                <Upload className="w-4 h-4" />
-                导入
-              </Button>
-              <input
-                type="file"
-                accept=".graphml,.xml"
-                className="hidden"
-                onChange={handleFileUpload}
-              />
-            </label>
+            <Button 
+              size="sm" 
+              className="gap-2 bg-indigo-600 hover:bg-indigo-700 shadow-lg shadow-indigo-200 transition-all"
+              onClick={triggerFileUpload}
+            >
+              <Upload className="w-4 h-4" />
+              导入
+            </Button>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".graphml,.xml"
+              className="hidden"
+              onChange={handleFileUpload}
+            />
           </div>
         </header>
 
@@ -452,19 +597,48 @@ export default function GraphPage() {
                  <Button size="lg" variant="outline" onClick={loadInitialData} disabled={isLoading} className="border-gray-200 hover:bg-gray-50 hover:text-gray-900">
                    {isLoading ? '加载中...' : '加载示例数据'}
                  </Button>
-                 <label>
-                  <Button size="lg" className="bg-indigo-600 hover:bg-indigo-700 shadow-xl shadow-indigo-200">
+                 <Button 
+                    size="lg" 
+                    className="bg-indigo-600 hover:bg-indigo-700 shadow-xl shadow-indigo-200"
+                    onClick={triggerFileUpload}
+                  >
                     <Upload className="w-5 h-5 mr-2" />
                     开始上传
                   </Button>
-                  <input
-                    type="file"
-                    accept=".graphml,.xml"
-                    className="hidden"
-                    onChange={handleFileUpload}
-                  />
-                </label>
               </div>
+            </div>
+          )}
+
+          {/* Explainability Panel (Bottom Left) */}
+          {isExplainMode && (
+            <div className="absolute bottom-8 left-8 z-20 w-80 bg-white/95 backdrop-blur-md rounded-2xl shadow-2xl border border-purple-100 animate-in slide-in-from-bottom-10 fade-in duration-500 overflow-hidden">
+               <div className="p-4 border-b border-purple-50 bg-purple-50/50 flex items-center gap-2">
+                 <Lightbulb className="w-4 h-4 text-purple-600" />
+                 <h3 className="font-bold text-gray-900 text-sm">RAG 推理过程</h3>
+               </div>
+               <div className="p-4 space-y-4 max-h-[300px] overflow-y-auto">
+                 {explainSteps.map((step, idx) => {
+                   const node = graphData.nodes.find(n => n.id === step.node)
+                   const isActive = idx === currentStepIndex
+                   const isDone = idx < currentStepIndex
+                   
+                   return (
+                     <div key={idx} className={cn("relative pl-4 border-l-2 transition-all duration-500", 
+                        isActive ? "border-purple-500" : isDone ? "border-purple-200" : "border-gray-100 opacity-50"
+                     )}>
+                        <div className={cn("absolute -left-[5px] top-0 w-2 h-2 rounded-full transition-colors", 
+                           isActive ? "bg-purple-500" : isDone ? "bg-purple-200" : "bg-gray-200"
+                        )}></div>
+                        <p className="text-xs font-semibold text-gray-900 mb-0.5">
+                          {node?.label || step.node}
+                        </p>
+                        <p className="text-[10px] text-gray-500 leading-snug">
+                          {step.reason}
+                        </p>
+                     </div>
+                   )
+                 })}
+               </div>
             </div>
           )}
 
@@ -486,6 +660,18 @@ export default function GraphPage() {
              
              {/* View Options */}
              <div className="bg-white/90 backdrop-blur-sm p-1.5 rounded-2xl shadow-xl shadow-gray-200 border border-gray-100/50 flex flex-col gap-1">
+                <Button 
+                   variant="ghost" 
+                   size="icon" 
+                   onClick={startExplainMode}
+                   className={cn(
+                     "rounded-xl hover:bg-purple-50 hover:text-purple-600 transition-colors", 
+                     isExplainMode && "bg-purple-100 text-purple-600 ring-2 ring-purple-500/20"
+                   )}
+                   title="推理演示 (Explain)"
+                >
+                  <PlayCircle className="w-5 h-5" />
+                </Button>
                 <Button 
                    variant="ghost" 
                    size="icon" 
