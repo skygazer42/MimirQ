@@ -23,6 +23,15 @@ class SAGEngine:
         config = ExtractConfig(chunk_ids=list(chunk_ids), tenant_id=tenant_id or settings.DEFAULT_TENANT_ID)
         return await self.extractor.extract(config)
 
-    async def search(self, query: str, tenant_id: Optional[UUID] = None) -> Dict:
-        config = SearchConfig(query=query, tenant_id=tenant_id or settings.DEFAULT_TENANT_ID)
+    async def search(
+        self,
+        query: str,
+        tenant_id: Optional[UUID] = None,
+        document_ids: Optional[list[UUID]] = None,
+    ) -> Dict:
+        config = SearchConfig(
+            query=query,
+            tenant_id=tenant_id or settings.DEFAULT_TENANT_ID,
+            document_ids=document_ids,
+        )
         return await self.searcher.search(config)

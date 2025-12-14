@@ -135,7 +135,6 @@ async def upload_document(
         file_path,
         file_id,
         tenant_id,
-        db,
         resolved_parser_backend,
         resolved_chunk_strategy
     )

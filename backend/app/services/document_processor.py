@@ -32,9 +32,9 @@ class DocumentProcessorService:
         file_path: Path,
         document_id: UUID,
         tenant_id: UUID,
-        db: Session,
         parser_backend: Optional[str] = None,
-        chunk_strategy: Optional[str] = None
+        chunk_strategy: Optional[str] = None,
+        db: Optional[Session] = None,
     ) -> Dict[str, Any]:
         """
         完整的文档处理流程
@@ -54,6 +54,13 @@ class DocumentProcessorService:
         Returns:
             处理结果
         """
+        owns_db = False
+        if db is None:
+            from app.core.database import SessionLocal
+
+            db = SessionLocal()
+            owns_db = True
+
         try:
             # Step 1: 更新状态为 processing
             await self._update_status(
@@ -193,6 +200,9 @@ class DocumentProcessorService:
                 error_message=str(e)
             )
             raise
+        finally:
+            if owns_db:
+                db.close()
 
     async def _update_status(
         self,

@@ -143,10 +143,33 @@ class RAGEngine:
                 "data": citations
             }
 
-            # Step 2: 构建上下文
-            if not docs:
-                context = "没有找到相关的参考资料。"
-            else:
+            # Step 2: 额外召回 SAG 事件（可选）
+            sag_context = ""
+            if settings.SAG_ENABLED and settings.SAG_CHAT_ENABLED and tenant_id and document_ids:
+                try:
+                    from app.services.sag_pipeline import sag_search
+
+                    sag_result = await sag_search(
+                        query=question,
+                        tenant_id=tenant_id,
+                        document_ids=document_ids,
+                    )
+                    events = (sag_result or {}).get("events") or []
+                    if events:
+                        parts = []
+                        for idx, ev in enumerate(events[:5], 1):
+                            title = (ev.get("title") or "").strip()
+                            summary = (ev.get("summary") or "").strip()
+                            if len(summary) > 600:
+                                summary = summary[:600] + "..."
+                            parts.append(f"[事件 {idx}] {title}\n{summary}")
+                        sag_context = "\n\n".join(parts)
+                except Exception:
+                    sag_context = ""
+
+            # Step 3: 构建上下文（文档切片 + 可选 SAG 事件）
+            chunk_context = ""
+            if docs:
                 context_parts = []
                 for idx, doc in enumerate(docs, 1):
                     meta = doc.metadata or {}
@@ -155,7 +178,14 @@ class RAGEngine:
                     context_parts.append(
                         f"[来源 {idx}: {source} - 第 {page} 页]\n{doc.page_content}"
                     )
-                context = "\n\n".join(context_parts)
+                chunk_context = "\n\n".join(context_parts)
+
+            context_sections = []
+            if sag_context:
+                context_sections.append(f"【SAG 事件检索】\n{sag_context}")
+            if chunk_context:
+                context_sections.append(f"【文档切片检索】\n{chunk_context}")
+            context = "\n\n".join(context_sections) if context_sections else "没有找到相关的参考资料。"
 
             # 构建对话历史
             if history and len(history) > 0:
@@ -173,7 +203,7 @@ class RAGEngine:
             else:
                 history_text = "（无历史对话）"
 
-            # Step 3: 流式生成回答
+            # Step 4: 流式生成回答
             full_response = ""
             async for token in self.chain.astream(
                 {"context": context, "history": history_text, "question": question}
@@ -186,7 +216,7 @@ class RAGEngine:
                     "data": {"content": token}
                 }
 
-            # Step 4: 发送完成信号
+            # Step 5: 发送完成信号
             yield {
                 "type": "done",
                 "data": {

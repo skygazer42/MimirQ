@@ -44,6 +44,7 @@ class ExpandSearcher:
             entity_repo = EntityRepository(session)
             event_repo = EventRepository(session)
             tenant_id = config.tenant_id or settings.DEFAULT_TENANT_ID
+            document_ids = config.document_ids
 
             known_entities: Set[str] = {e["entity_id"] for e in recall_result.key_final}
             entity_weights = dict(recall_result.key_weights)
@@ -57,6 +58,7 @@ class ExpandSearcher:
                 events = event_repo.find_events_by_entities(
                     current_entities,
                     tenant_id=tenant_id,
+                    document_ids=document_ids,
                     limit=config.expand.max_events_per_hop,
                 )
                 new_event_ids = [str(e.id) for e in events if str(e.id) not in discovered_events]

@@ -22,50 +22,13 @@ from app.schemas.chat import (
     ConversationDetail,
     ConversationList,
 )
+from app.services.document_access import filter_allowed_document_ids
 from app.services.rag_engine import get_rag_engine
 from app.core.config import settings
 from app.dependencies.tenant import get_tenant_id
 from app.dependencies.auth import get_current_account_id
 
 router = APIRouter()
-
-
-def _filter_allowed_document_ids(
-    db: Session,
-    tenant_id: UUID,
-    account_id: str,
-    doc_ids: Optional[List[UUID]]
-) -> List[UUID]:
-    if doc_ids is None:
-        doc_ids = []
-
-    if not doc_ids:
-        return []
-
-    documents = db.query(DBDocument).filter(
-        DBDocument.tenant_id == tenant_id,
-        DBDocument.id.in_(doc_ids)
-    ).all()
-
-    found_ids = {doc.id for doc in documents}
-    missing = set(doc_ids) - found_ids
-    if missing:
-        raise HTTPException(status_code=404, detail=f"Documents not found: {', '.join([str(m) for m in missing])}")
-
-    allowed: list[UUID] = []
-    for doc in documents:
-        if doc.dataset_id:
-            ds = DatasetService.get_dataset(db, tenant_id, doc.dataset_id)
-            if DatasetService.check_dataset_permission(db, ds, account_id):
-                allowed.append(doc.id)
-        else:
-            # legacy document without dataset binding: allow for now
-            allowed.append(doc.id)
-
-    if not allowed:
-        raise HTTPException(status_code=403, detail="No accessible documents for this request")
-
-    return allowed
 
 
 def _ensure_conversation_access(
@@ -80,7 +43,7 @@ def _ensure_conversation_access(
     """
     if not conv.document_ids:
         return []
-    allowed = _filter_allowed_document_ids(db, tenant_id, account_id, conv.document_ids)
+    allowed = filter_allowed_document_ids(db, tenant_id, account_id, conv.document_ids)
     return allowed
 
 
@@ -113,7 +76,7 @@ async def stream_chat(
             raise HTTPException(status_code=404, detail="Conversation not found")
         target_doc_ids = request.document_ids if request.document_ids else (conversation.document_ids or [])
         if target_doc_ids:
-            allowed_doc_ids = _filter_allowed_document_ids(db, tenant_id, account_id, target_doc_ids)
+            allowed_doc_ids = filter_allowed_document_ids(db, tenant_id, account_id, target_doc_ids)
         else:
             allowed_doc_ids = []
             raise HTTPException(status_code=400, detail="document_ids are required for chat retrieval")

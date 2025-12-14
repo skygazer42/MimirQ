@@ -3,6 +3,7 @@ Lightweight repositories for SAG using PostgreSQL JSON vectors.
 """
 import math
 from typing import Iterable, List, Optional, Dict
+from uuid import UUID
 
 from sqlalchemy.orm import Session
 from sqlalchemy import select, func
@@ -92,6 +93,38 @@ class EntityRepository:
             return []
         stmt = select(SagEntity).where(SagEntity.id.in_(id_list))
         return self.session.execute(stmt).scalars().all()
+
+    def filter_entity_ids_by_documents(
+        self,
+        entity_ids: Iterable[str],
+        tenant_id,
+        document_ids: Optional[Iterable[UUID]] = None,
+    ) -> set[str]:
+        """
+        Keep only entities that appear in at least one event within the given documents.
+        This prevents leaking entity hints across datasets when search is scoped.
+        """
+        if not document_ids:
+            return set(entity_ids)
+
+        ids = list(entity_ids)
+        if not ids:
+            return set()
+
+        doc_ids = list(document_ids)
+        if not doc_ids:
+            return set()
+
+        stmt = (
+            select(SagEventEntity.entity_id)
+            .join(SagSourceEvent, SagSourceEvent.id == SagEventEntity.event_id)
+            .where(SagSourceEvent.tenant_id == tenant_id)
+            .where(SagSourceEvent.document_id.in_(doc_ids))
+            .where(SagEventEntity.entity_id.in_(ids))
+            .distinct()
+        )
+        rows = self.session.execute(stmt).scalars().all()
+        return {str(r) for r in rows}
 
     def get_or_create(
         self,
@@ -197,8 +230,14 @@ class EventRepository:
         query_vector: List[float],
         tenant_id,
         k: int = 20,
+        document_ids: Optional[Iterable[UUID]] = None,
     ) -> List[dict]:
-        expr = f'tenant_id == "{str(tenant_id)}"'
+        expr_parts = [f'tenant_id == "{str(tenant_id)}"']
+        if document_ids:
+            docs = [str(did) for did in document_ids]
+            quoted = ", ".join([f'"{d}"' for d in docs])
+            expr_parts.append(f"document_id in [{quoted}]")
+        expr = " and ".join(expr_parts)
         results = self._milvus.search(query_vector=query_vector, top_k=k, expr=expr)
         formatted = []
         for r in results:
@@ -220,6 +259,7 @@ class EventRepository:
         self,
         entity_ids: Iterable[str],
         tenant_id,
+        document_ids: Optional[Iterable[UUID]] = None,
         limit: int = 50,
     ) -> List[str]:
         ids = list(entity_ids)
@@ -231,6 +271,8 @@ class EventRepository:
             .where(SagEventEntity.entity_id.in_(ids))
             .where(SagSourceEvent.tenant_id == tenant_id)
         )
+        if document_ids:
+            stmt = stmt.where(SagSourceEvent.document_id.in_(list(document_ids)))
         rows = self.session.execute(stmt).scalars().all()
         # simple frequency based ranking
         freq: dict[str, int] = {}
@@ -266,7 +308,11 @@ class EventRepository:
         return mapping
 
     def find_events_by_entities(
-        self, entity_ids: Iterable[str], tenant_id, limit: int = 50
+        self,
+        entity_ids: Iterable[str],
+        tenant_id,
+        document_ids: Optional[Iterable[UUID]] = None,
+        limit: int = 50,
     ) -> List[SagSourceEvent]:
         ids = list(entity_ids)
         if not ids:
@@ -276,8 +322,10 @@ class EventRepository:
             .join(SagEventEntity, SagEventEntity.event_id == SagSourceEvent.id)
             .where(SagEventEntity.entity_id.in_(ids))
             .where(SagSourceEvent.tenant_id == tenant_id)
-            .limit(limit)
         )
+        if document_ids:
+            stmt = stmt.where(SagSourceEvent.document_id.in_(list(document_ids)))
+        stmt = stmt.limit(limit)
         return self.session.execute(stmt).scalars().all()
 
 
