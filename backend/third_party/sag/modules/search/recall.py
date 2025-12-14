@@ -35,6 +35,7 @@ class RecallSearcher:
             entity_repo = EntityRepository(session)
             event_repo = EventRepository(session)
             tenant_id = config.tenant_id or settings.DEFAULT_TENANT_ID
+            document_ids = config.document_ids
 
             # === Step1: query -> keys (vector) ===
             query_vec = await self.processor.generate_embedding(config.query)
@@ -46,6 +47,14 @@ class RecallSearcher:
             key_query_related = [
                 e for e in raw_entities if e.get("similarity", 0.0) >= config.recall.entity_similarity_threshold
             ][: config.recall.max_entities]
+
+            if document_ids:
+                allowed_entity_ids = entity_repo.filter_entity_ids_by_documents(
+                    [e["entity_id"] for e in key_query_related],
+                    tenant_id=tenant_id,
+                    document_ids=document_ids,
+                )
+                key_query_related = [e for e in key_query_related if e.get("entity_id") in allowed_entity_ids]
 
             # clues
             for ent in key_query_related:
@@ -70,6 +79,7 @@ class RecallSearcher:
             event_ids_from_entities = event_repo.search_events_by_entities(
                 [e["entity_id"] for e in key_query_related],
                 tenant_id=tenant_id,
+                document_ids=document_ids,
                 limit=config.recall.vector_candidates * 2,
             )
 
@@ -78,6 +88,7 @@ class RecallSearcher:
                 query_vector=query_vec,
                 tenant_id=tenant_id,
                 k=config.recall.vector_candidates,
+                document_ids=document_ids,
             )
             event_query_related = [
                 item

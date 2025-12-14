@@ -6,7 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 
 from app.core.config import settings
-from app.core.database import engine, Base, get_db
+from app.core.database import Base, SessionLocal, engine
 from app.api.v1 import router as api_v1_router
 # Ensure SAG models are registered for metadata creation
 import app.models.sag_entities  # noqa: F401
@@ -28,27 +28,30 @@ async def lifespan(app: FastAPI):
         from app.services.hybrid_retriever import hybrid_retriever
         from app.models.document import DocumentChunk, Document as DBDocument
 
-        db = next(get_db())
-        tenant_ids = db.query(DocumentChunk.tenant_id).join(DBDocument).filter(
-            DBDocument.status == 'completed'
-        ).distinct().all()
+        db = SessionLocal()
+        try:
+            tenant_ids = db.query(DocumentChunk.tenant_id).join(DBDocument).filter(
+                DBDocument.status == 'completed'
+            ).distinct().all()
 
-        if tenant_ids:
-            total = 0
-            for (tid,) in tenant_ids:
-                chunks = db.query(DocumentChunk).join(DBDocument).filter(
-                    DBDocument.status == 'completed',
-                    DocumentChunk.tenant_id == tid
-                ).all()
-                if chunks:
-                    hybrid_retriever.build_bm25_index(chunks, tenant_id=tid)
-                    total += len(chunks)
-            if total:
-                print(f"[OK] BM25 index loaded with {total} chunks across {len(tenant_ids)} tenants")
+            if tenant_ids:
+                total = 0
+                for (tid,) in tenant_ids:
+                    chunks = db.query(DocumentChunk).join(DBDocument).filter(
+                        DBDocument.status == 'completed',
+                        DocumentChunk.tenant_id == tid
+                    ).all()
+                    if chunks:
+                        hybrid_retriever.build_bm25_index(chunks, tenant_id=tid)
+                        total += len(chunks)
+                if total:
+                    print(f"[OK] BM25 index loaded with {total} chunks across {len(tenant_ids)} tenants")
+                else:
+                    print("[WARN]  No documents found, BM25 index will be built on first upload")
             else:
                 print("[WARN]  No documents found, BM25 index will be built on first upload")
-        else:
-            print("[WARN]  No documents found, BM25 index will be built on first upload")
+        finally:
+            db.close()
     except Exception as e:
         print(f"[WARN]  Failed to load BM25 index: {str(e)}")
 

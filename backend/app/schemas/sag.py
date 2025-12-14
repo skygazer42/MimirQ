@@ -18,6 +18,7 @@ class SAGSearchRequest(BaseModel):
 
     query: str = Field(..., min_length=1, description="Natural language query")
     tenant_id: Optional[UUID] = None
+    document_ids: Optional[List[UUID]] = None
 
 
 class SAGSearchResponse(BaseModel):

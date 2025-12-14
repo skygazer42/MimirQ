@@ -57,6 +57,7 @@ class RerankConfig(SAGBaseModel):
 class SearchConfig(SAGBaseModel):
     query: str
     tenant_id: Optional[UUID] = None
+    document_ids: Optional[List[UUID]] = None
     return_type: ReturnType = ReturnType.EVENT
     recall: RecallConfig = RecallConfig()
     expand: ExpandConfig = ExpandConfig()
