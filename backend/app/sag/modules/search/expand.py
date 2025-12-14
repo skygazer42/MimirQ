@@ -19,6 +19,7 @@ class ExpandResult:
     key_final: List[Dict[str, Any]]
     event_ids: List[str]
     clues: List[Dict[str, Any]]
+    event_scores: Dict[str, float]
 
 
 class ExpandSearcher:
@@ -31,6 +32,7 @@ class ExpandSearcher:
                 key_final=recall_result.key_final,
                 event_ids=recall_result.event_ids,
                 clues=recall_result.clues,
+                event_scores=recall_result.event_scores,
             )
 
         tracker = Tracker()
@@ -108,6 +110,7 @@ class ExpandSearcher:
                 key_final=key_final,
                 event_ids=discovered_events,
                 clues=tracker.get_clues(),
+                event_scores=recall_result.event_scores,
             )
         finally:
             session.close()

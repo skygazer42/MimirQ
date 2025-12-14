@@ -70,27 +70,25 @@ class EventExtractor:
                     for ent in ev.get("entities") or []:
                         normalized = ent.get("normalized_name") or ent.get("name", "").lower()
                         ent_type = ent.get("type") or "unknown"
-                        existing = session.execute(
-                            select(SagEntity).where(
-                                SagEntity.tenant_id == event_obj.tenant_id,
-                                SagEntity.normalized_name == normalized,
-                                SagEntity.type == ent_type,
-                            )
-                        ).scalar_one_or_none()
-                        if existing:
-                            entity_obj = existing
-                        else:
-                            entity_obj = SagEntity(
-                                tenant_id=event_obj.tenant_id,
-                                name=ent.get("name") or normalized,
-                                normalized_name=normalized,
-                                type=ent_type,
-                                description=ent.get("description"),
-                                vector=None,
-                                extra_data=None,
-                            )
+                        # embed entity name/desc
+                        ent_vector = await embedder.generate_embedding(
+                            (ent.get("name") or "") + " " + (ent.get("description") or "")
+                        )
+                        entity_obj = entity_repo.get_or_create(
+                            tenant_id=event_obj.tenant_id,
+                            name=ent.get("name") or normalized,
+                            normalized_name=normalized,
+                            type_=ent_type,
+                            description=ent.get("description"),
+                        )
+                        if not entity_obj.vector:
+                            entity_obj.vector = ent_vector
                             session.add(entity_obj)
-                            session.flush()
+                            session.commit()
+                            session.refresh(entity_obj)
+                        else:
+                            # update vector if empty
+                            pass
 
                         links.append(
                             SagEventEntity(
@@ -107,6 +105,18 @@ class EventExtractor:
                             session.add(link)
 
             session.commit()
+
+            # Push vectors to Milvus
+            event_repo.upsert_events(extracted_events)
+            # collect entities that were linked
+            entity_ids = set()
+            for ev in extracted_events:
+                for assoc in ev.associations:
+                    entity_ids.add(assoc.entity_id)
+            if entity_ids:
+                entities_for_push = session.query(SagEntity).filter(SagEntity.id.in_(entity_ids)).all()
+                if entities_for_push:
+                    entity_repo.upsert_entities(entities_for_push)
             return extracted_events
         except Exception:
             session.rollback()

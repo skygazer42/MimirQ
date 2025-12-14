@@ -29,9 +29,18 @@ class SAGSearcher:
 
         # rerank
         if config.rerank.strategy == RerankStrategy.PAGERANK:
-            rerank_result = await self.rerank_pagerank.rerank(config, expand_result.event_ids, expand_result.key_final)
+            rerank_result = await self.rerank_pagerank.rerank(
+                config,
+                expand_result.event_ids,
+                expand_result.key_final,
+                expand_result.event_scores,
+            )
         else:
-            rerank_result = await self.rerank_rrf.rerank(config, expand_result.event_ids)
+            rerank_result = await self.rerank_rrf.rerank(
+                config,
+                expand_result.event_ids,
+                expand_result.event_scores,
+            )
 
         if config.return_type == ReturnType.EVENT:
             return {
