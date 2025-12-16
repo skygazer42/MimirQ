@@ -95,6 +95,7 @@
 - ✅ 对话记忆 (PostgreSQL 持久化)
 - ✅ 多轮对话上下文理解
 - ✅ 引用溯源 (文档 + 页码)
+- ✅ RAGAS 评测 (Faithfulness / Relevancy / Context Precision)
 
 </td>
 <td width="33%" valign="top">

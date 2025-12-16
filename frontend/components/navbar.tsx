@@ -52,8 +52,8 @@ const menuItems = [
   },
   {
     icon: BarChart3,
-    label: '评估对齐',
-    href: '/evaluation',
+    label: 'RAGAS 评测',
+    href: '/evaluations',
   },
   {
     icon: Scissors,
