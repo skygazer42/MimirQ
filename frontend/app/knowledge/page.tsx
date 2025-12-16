@@ -2,7 +2,7 @@
 
 /**
  * 知识库管理页面
- * 优化版：卡片视图、视觉增强、交互优化
+ * 优化版：卡片视图、视觉增强、交互优化、深色模式适配
  */
 import { useState } from 'react'
 import {
@@ -28,7 +28,8 @@ import {
   File as FileIcon,
   Sparkles,
   Send,
-  Zap
+  Zap,
+  Filter
 } from 'lucide-react'
 import { Navbar } from '@/components/navbar'
 import { Button } from '@/components/ui/button'
@@ -36,9 +37,6 @@ import { useDocuments } from '@/hooks/use-documents'
 import { formatFileSize, formatDate, cn } from '@/lib/utils'
 import { StatCard, StatsGrid } from '@/components/ui/stats-card'
 import { getParserLabel } from '@/lib/parser-options'
-import { getChunkStrategyLabel } from '@/lib/chunk-strategies'
-import { ChunkStrategyDropdown } from '@/components/ui/chunk-strategy-dropdown'
-import { useChunkStrategyPreference } from '@/contexts/chunk-strategy-context'
 import type { Document } from '@/types'
 
 // Tab 类型
@@ -50,7 +48,6 @@ export default function KnowledgePage() {
   const [activeTab, setActiveTab] = useState<TabType>('documents')
   const [viewMode, setViewMode] = useState<ViewMode>('grid')
   const [selectedDocId, setSelectedDocId] = useState<string | null>(null)
-  const { chunkStrategy, setChunkStrategy } = useChunkStrategyPreference()
 
   // 检索测试状态
   const [searchQuery, setSearchQuery] = useState('')
@@ -104,35 +101,35 @@ export default function KnowledgePage() {
   const getStatusConfig = (status: string) => {
     switch (status) {
       case 'completed':
-        return { icon: CheckCircle, color: 'text-emerald-500', bg: 'bg-emerald-50', border: 'border-emerald-100', label: '已就绪' }
+        return { icon: CheckCircle, color: 'text-emerald-500', bg: 'bg-emerald-50 dark:bg-emerald-500/10', border: 'border-emerald-100 dark:border-emerald-500/20', label: '已就绪' }
       case 'failed':
-        return { icon: XCircle, color: 'text-red-500', bg: 'bg-red-50', border: 'border-red-100', label: '失败' }
+        return { icon: XCircle, color: 'text-red-500', bg: 'bg-red-50 dark:bg-red-500/10', border: 'border-red-100 dark:border-red-500/20', label: '失败' }
       case 'processing':
       case 'pending':
-        return { icon: Loader2, color: 'text-blue-500', bg: 'bg-blue-50', border: 'border-blue-100', label: '处理中', spin: true }
+        return { icon: Loader2, color: 'text-indigo-500', bg: 'bg-indigo-50 dark:bg-indigo-500/10', border: 'border-indigo-100 dark:border-indigo-500/20', label: '处理中', spin: true }
       default:
-        return { icon: Clock, color: 'text-gray-400', bg: 'bg-gray-50', border: 'border-gray-100', label: '等待' }
+        return { icon: Clock, color: 'text-slate-400', bg: 'bg-slate-50 dark:bg-slate-800', border: 'border-slate-100 dark:border-slate-700', label: '等待' }
     }
   }
 
   return (
-    <div className="flex h-screen overflow-hidden bg-gray-50/50">
+    <div className="flex h-screen overflow-hidden bg-slate-50/50 dark:bg-slate-950 transition-colors duration-300">
       <Navbar />
 
       <main className="flex-1 flex flex-col overflow-hidden relative">
         {/* 背景装饰 */}
-        <div className="absolute top-0 left-0 right-0 h-64 bg-gradient-to-b from-blue-50/50 to-transparent pointer-events-none" />
+        <div className="absolute top-0 left-0 right-0 h-64 bg-gradient-to-b from-indigo-50/50 dark:from-indigo-900/10 to-transparent pointer-events-none" />
 
         {/* 顶部标题栏 */}
         <header className="px-8 py-6 flex-shrink-0 z-10">
           <div className="flex items-center justify-between mb-6">
             <div className="flex items-center gap-4">
-              <div className="w-12 h-12 bg-white rounded-2xl flex items-center justify-center shadow-sm border border-gray-100">
-                <Database className="w-6 h-6 text-blue-600" />
+              <div className="w-12 h-12 bg-white dark:bg-slate-900 rounded-2xl flex items-center justify-center shadow-sm border border-slate-100 dark:border-slate-800">
+                <Database className="w-6 h-6 text-indigo-600 dark:text-indigo-400" />
               </div>
               <div>
-                <h1 className="text-2xl font-bold text-gray-900 tracking-tight">知识库管理</h1>
-                <p className="text-sm text-gray-500 mt-1">
+                <h1 className="text-2xl font-bold text-slate-900 dark:text-white tracking-tight">知识库管理</h1>
+                <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
                   管理您的文档资产，构建专属知识大脑
                 </p>
               </div>
@@ -140,7 +137,7 @@ export default function KnowledgePage() {
 
             <div className="flex items-center gap-3">
                <label>
-                <Button className="gap-2 bg-blue-600 hover:bg-blue-700 shadow-lg shadow-blue-200 hover:shadow-blue-300 transition-all" size="lg" asChild>
+                <Button className="gap-2 bg-indigo-600 hover:bg-indigo-700 text-white shadow-lg shadow-indigo-200 dark:shadow-indigo-900/20 hover:shadow-indigo-300 transition-all rounded-xl" size="lg" asChild>
                   <span>
                     <Upload className="w-4 h-4" />
                     上传文档
@@ -164,43 +161,43 @@ export default function KnowledgePage() {
               label="文档总数"
               value={totalDocs}
               color="blue"
-              className="bg-white/80 backdrop-blur-sm border-gray-100 shadow-sm"
+              className="bg-white/80 dark:bg-slate-900/80 backdrop-blur-sm border-slate-200 dark:border-slate-800 shadow-sm"
             />
             <StatCard
               icon={CheckCircle}
               label="已就绪"
               value={completedDocs}
               color="green"
-              className="bg-white/80 backdrop-blur-sm border-gray-100 shadow-sm"
+              className="bg-white/80 dark:bg-slate-900/80 backdrop-blur-sm border-slate-200 dark:border-slate-800 shadow-sm"
             />
             <StatCard
               icon={Layers}
               label="知识分块"
               value={totalChunks.toLocaleString()}
               color="purple"
-              className="bg-white/80 backdrop-blur-sm border-gray-100 shadow-sm"
+              className="bg-white/80 dark:bg-slate-900/80 backdrop-blur-sm border-slate-200 dark:border-slate-800 shadow-sm"
             />
             <StatCard
               icon={HardDrive}
               label="存储占用"
               value={formatFileSize(totalSize)}
               color="orange"
-              className="bg-white/80 backdrop-blur-sm border-gray-100 shadow-sm"
+              className="bg-white/80 dark:bg-slate-900/80 backdrop-blur-sm border-slate-200 dark:border-slate-800 shadow-sm"
             />
             {(processingDocs > 0 || failedDocs > 0) && (
               <StatCard
                 icon={failedDocs > 0 ? XCircle : Loader2}
                 label={failedDocs > 0 ? '需关注' : '处理中'}
                 value={failedDocs > 0 ? failedDocs : processingDocs}
-                color={failedDocs > 0 ? 'red' : 'gray'}
-                className="bg-white/80 backdrop-blur-sm border-gray-100 shadow-sm"
+                color={failedDocs > 0 ? 'red' : 'indigo'}
+                className="bg-white/80 dark:bg-slate-900/80 backdrop-blur-sm border-slate-200 dark:border-slate-800 shadow-sm"
               />
             )}
           </div>
         </header>
 
         {/* 导航栏 & 工具栏 */}
-        <div className="px-8 flex items-center justify-between border-b border-gray-200/60 bg-white/50 backdrop-blur-sm sticky top-0 z-20">
+        <div className="px-8 flex items-center justify-between border-b border-slate-200/60 dark:border-slate-800 bg-white/50 dark:bg-slate-900/50 backdrop-blur-sm sticky top-0 z-20">
           <div className="flex gap-1 -mb-px">
             {[
               { key: 'documents' as TabType, label: '文档列表', icon: FileText },
@@ -213,11 +210,11 @@ export default function KnowledgePage() {
                 className={cn(
                   'flex items-center gap-2 px-5 py-4 text-sm font-medium border-b-2 transition-all',
                   activeTab === tab.key
-                    ? 'text-blue-600 border-blue-600 bg-blue-50/50'
-                    : 'text-gray-500 border-transparent hover:text-gray-700 hover:bg-gray-50'
+                    ? 'text-indigo-600 dark:text-indigo-400 border-indigo-600 dark:border-indigo-400 bg-indigo-50/50 dark:bg-indigo-500/10'
+                    : 'text-slate-500 dark:text-slate-400 border-transparent hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800'
                 )}
               >
-                <tab.icon className={cn("w-4 h-4", activeTab === tab.key ? "text-blue-500" : "text-gray-400")} />
+                <tab.icon className={cn("w-4 h-4", activeTab === tab.key ? "text-indigo-500 dark:text-indigo-400" : "text-slate-400 dark:text-slate-500")} />
                 {tab.label}
               </button>
             ))}
@@ -225,15 +222,11 @@ export default function KnowledgePage() {
 
           {activeTab === 'documents' && (
             <div className="flex items-center gap-2 py-2">
-              <div className="w-56 mr-2">
-                <ChunkStrategyDropdown value={chunkStrategy} onChange={setChunkStrategy} />
-              </div>
-              <div className="h-6 w-px bg-gray-200 mx-1" />
               <Button
                 variant="ghost"
                 size="sm"
                 onClick={() => loadDocuments()}
-                className="text-gray-500 hover:text-gray-700"
+                className="text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"
                 title="刷新列表"
               >
                 <RefreshCw className="w-4 h-4" />
@@ -242,17 +235,19 @@ export default function KnowledgePage() {
                 variant="ghost"
                 size="sm"
                 onClick={() => window.open('/chunk-preview', '_blank')}
-                className="text-gray-500 hover:text-gray-700"
+                className="text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"
                 title="预览分块"
               >
                 <Eye className="w-4 h-4" />
               </Button>
-              <div className="bg-gray-100 p-1 rounded-lg flex gap-1">
+              <div className="bg-slate-100 dark:bg-slate-800 p-1 rounded-lg flex gap-1">
                 <button
                   onClick={() => setViewMode('grid')}
                   className={cn(
                     "p-1.5 rounded-md transition-all",
-                    viewMode === 'grid' ? "bg-white shadow-sm text-blue-600" : "text-gray-400 hover:text-gray-600"
+                    viewMode === 'grid' 
+                      ? "bg-white dark:bg-slate-700 shadow-sm text-indigo-600 dark:text-indigo-400" 
+                      : "text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300"
                   )}
                 >
                   <LayoutGrid className="w-4 h-4" />
@@ -261,7 +256,9 @@ export default function KnowledgePage() {
                   onClick={() => setViewMode('list')}
                   className={cn(
                     "p-1.5 rounded-md transition-all",
-                    viewMode === 'list' ? "bg-white shadow-sm text-blue-600" : "text-gray-400 hover:text-gray-600"
+                    viewMode === 'list' 
+                      ? "bg-white dark:bg-slate-700 shadow-sm text-indigo-600 dark:text-indigo-400" 
+                      : "text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300"
                   )}
                 >
                   <ListIcon className="w-4 h-4" />
@@ -277,7 +274,7 @@ export default function KnowledgePage() {
           {activeTab === 'documents' && (
             <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
               {isLoading && documents.length === 0 ? (
-                <div className="flex flex-col items-center justify-center h-64 text-gray-400">
+                <div className="flex flex-col items-center justify-center h-64 text-slate-400 dark:text-slate-500">
                   <Loader2 className="w-8 h-8 animate-spin mb-3" />
                   <p className="text-sm">正在加载文档库...</p>
                 </div>
@@ -297,9 +294,9 @@ export default function KnowledgePage() {
                       ))}
                     </div>
                   ) : (
-                    <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+                    <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
                       <table className="w-full text-sm text-left">
-                        <thead className="text-xs text-gray-500 uppercase bg-gray-50/80 border-b border-gray-100">
+                        <thead className="text-xs text-slate-500 dark:text-slate-400 uppercase bg-slate-50/80 dark:bg-slate-800/50 border-b border-slate-100 dark:border-slate-800">
                           <tr>
                             <th className="px-6 py-4 font-medium">文档名称</th>
                             <th className="px-6 py-4 font-medium">状态</th>
@@ -309,14 +306,14 @@ export default function KnowledgePage() {
                             <th className="px-6 py-4 font-medium text-right">操作</th>
                           </tr>
                         </thead>
-                        <tbody className="divide-y divide-gray-100">
+                        <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                           {documents.map((doc) => {
                              const status = getStatusConfig(doc.status)
                              const StatusIcon = status.icon
                              return (
-                            <tr key={doc.id} className="hover:bg-blue-50/30 transition-colors group">
-                              <td className="px-6 py-4 font-medium text-gray-900 flex items-center gap-3">
-                                <div className="p-2 bg-blue-50 text-blue-600 rounded-lg">
+                            <tr key={doc.id} className="hover:bg-indigo-50/30 dark:hover:bg-indigo-900/10 transition-colors group">
+                              <td className="px-6 py-4 font-medium text-slate-900 dark:text-slate-100 flex items-center gap-3">
+                                <div className="p-2 bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-400 rounded-lg">
                                   <FileText className="w-4 h-4" />
                                 </div>
                                 <span className="truncate max-w-[200px]" title={doc.filename}>{doc.filename}</span>
@@ -327,13 +324,13 @@ export default function KnowledgePage() {
                                   {status.label}
                                 </div>
                               </td>
-                              <td className="px-6 py-4 text-gray-600">{doc.chunk_count || '-'}</td>
-                              <td className="px-6 py-4 text-gray-500 font-mono text-xs">{formatFileSize(doc.file_size)}</td>
-                              <td className="px-6 py-4 text-gray-500">{formatDate(doc.created_at)}</td>
+                              <td className="px-6 py-4 text-slate-600 dark:text-slate-400">{doc.chunk_count || '-'}</td>
+                              <td className="px-6 py-4 text-slate-500 dark:text-slate-500 font-mono text-xs">{formatFileSize(doc.file_size)}</td>
+                              <td className="px-6 py-4 text-slate-500 dark:text-slate-500">{formatDate(doc.created_at)}</td>
                               <td className="px-6 py-4 text-right">
                                 <button
                                   onClick={() => deleteDocument(doc.id)}
-                                  className="text-gray-400 hover:text-red-500 transition-colors p-2 hover:bg-red-50 rounded-lg opacity-0 group-hover:opacity-100"
+                                  className="text-slate-400 hover:text-red-500 transition-colors p-2 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg opacity-0 group-hover:opacity-100"
                                 >
                                   <Trash2 className="w-4 h-4" />
                                 </button>
@@ -352,37 +349,37 @@ export default function KnowledgePage() {
           {/* 检索测试 */}
           {activeTab === 'retrieval' && (
             <div className="max-w-4xl mx-auto animate-in fade-in slide-in-from-bottom-2 duration-500">
-              <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-8 text-center relative overflow-hidden">
-                <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-blue-500 via-purple-500 to-pink-500" />
+              <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm p-8 text-center relative overflow-hidden">
+                <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500" />
                 
                 <div className="mb-8">
-                  <div className="w-16 h-16 bg-blue-50 text-blue-600 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-sm">
+                  <div className="w-16 h-16 bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-400 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-sm">
                     <Sparkles className="w-8 h-8" />
                   </div>
-                  <h3 className="text-xl font-bold text-gray-900">语义检索测试</h3>
-                  <p className="text-gray-500 mt-2">
+                  <h3 className="text-xl font-bold text-slate-900 dark:text-white">语义检索测试</h3>
+                  <p className="text-slate-500 dark:text-slate-400 mt-2">
                     输入您的问题，模拟 RAG 系统的检索召回过程
                   </p>
                 </div>
 
                 <div className="max-w-2xl mx-auto relative mb-10">
                   <div className={cn(
-                    "flex items-center bg-white border-2 border-gray-100 rounded-2xl p-2 shadow-sm transition-all duration-300",
-                    "focus-within:border-blue-500 focus-within:ring-4 focus-within:ring-blue-50/50 focus-within:shadow-md"
+                    "flex items-center bg-white dark:bg-slate-800 border-2 border-slate-100 dark:border-slate-700 rounded-2xl p-2 shadow-sm transition-all duration-300",
+                    "focus-within:border-indigo-500 dark:focus-within:border-indigo-500 focus-within:ring-4 focus-within:ring-indigo-50/50 dark:focus-within:ring-indigo-900/20 focus-within:shadow-md"
                   )}>
-                    <Search className="w-5 h-5 text-gray-400 ml-3" />
+                    <Search className="w-5 h-5 text-slate-400 ml-3" />
                     <input
                       type="text"
                       value={searchQuery}
                       onChange={(e) => setSearchQuery(e.target.value)}
                       onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
                       placeholder="例如：MimirQ 支持哪些文档格式？"
-                      className="flex-1 px-4 py-3 bg-transparent outline-none text-gray-900 placeholder:text-gray-400 text-lg"
+                      className="flex-1 px-4 py-3 bg-transparent outline-none text-slate-900 dark:text-white placeholder:text-slate-400 text-lg"
                     />
                     <Button
                       onClick={handleSearch}
                       disabled={isSearching || !searchQuery.trim()}
-                      className="rounded-xl px-6 h-12 text-base font-medium bg-blue-600 hover:bg-blue-700 shadow-lg shadow-blue-200"
+                      className="rounded-xl px-6 h-12 text-base font-medium bg-indigo-600 hover:bg-indigo-700 shadow-lg shadow-indigo-200 dark:shadow-indigo-900/20"
                     >
                       {isSearching ? <Loader2 className="w-5 h-5 animate-spin" /> : "开始检索"}
                     </Button>
@@ -392,30 +389,30 @@ export default function KnowledgePage() {
                 {searchResults.length > 0 && (
                   <div className="text-left space-y-4 animate-in fade-in slide-in-from-bottom-4">
                     <div className="flex items-center justify-between px-2">
-                      <h4 className="text-sm font-semibold text-gray-900">召回结果</h4>
-                      <span className="text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded-full">Top 3</span>
+                      <h4 className="text-sm font-semibold text-slate-900 dark:text-white">召回结果</h4>
+                      <span className="text-xs text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-800 px-2 py-1 rounded-full">Top 3</span>
                     </div>
                     {searchResults.map((result, index) => (
                       <div
                         key={result.id}
-                        className="group p-5 bg-white border border-gray-200 rounded-xl hover:border-blue-300 hover:shadow-md hover:shadow-blue-50 transition-all duration-300 relative overflow-hidden"
+                        className="group p-5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl hover:border-indigo-300 dark:hover:border-indigo-600 hover:shadow-md hover:shadow-indigo-50 dark:hover:shadow-indigo-900/10 transition-all duration-300 relative overflow-hidden"
                       >
-                         <div className="absolute left-0 top-0 bottom-0 w-1 bg-blue-500 opacity-0 group-hover:opacity-100 transition-opacity" />
+                         <div className="absolute left-0 top-0 bottom-0 w-1 bg-indigo-500 opacity-0 group-hover:opacity-100 transition-opacity" />
                         <div className="flex items-start gap-4">
-                          <div className="flex-shrink-0 w-8 h-8 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center font-bold text-sm">
+                          <div className="flex-shrink-0 w-8 h-8 rounded-lg bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-400 flex items-center justify-center font-bold text-sm">
                             {index + 1}
                           </div>
                           <div className="flex-1">
-                            <p className="text-gray-800 leading-relaxed text-sm mb-3">
+                            <p className="text-slate-800 dark:text-slate-200 leading-relaxed text-sm mb-3">
                               {result.content}
                             </p>
                             <div className="flex items-center gap-3 text-xs">
-                              <span className="flex items-center gap-1 text-gray-500 bg-gray-100 px-2 py-1 rounded-md">
+                              <span className="flex items-center gap-1 text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-800 px-2 py-1 rounded-md">
                                 <FileIcon className="w-3 h-3" />
                                 {result.source}
                               </span>
-                              <span className="text-gray-400">|</span>
-                              <span className="font-medium text-blue-600">相似度 {(result.score * 100).toFixed(0)}%</span>
+                              <span className="text-slate-300 dark:text-slate-600">|</span>
+                              <span className="font-medium text-indigo-600 dark:text-indigo-400">相似度 {(result.score * 100).toFixed(0)}%</span>
                             </div>
                           </div>
                         </div>
@@ -430,10 +427,10 @@ export default function KnowledgePage() {
           {/* 设置 */}
           {activeTab === 'settings' && (
             <div className="max-w-3xl mx-auto animate-in fade-in slide-in-from-bottom-2 duration-500">
-              <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-                <div className="p-6 border-b border-gray-100 bg-gray-50/50">
-                  <h3 className="text-lg font-bold text-gray-900">知识库参数配置</h3>
-                  <p className="text-sm text-gray-500 mt-1">
+              <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
+                <div className="p-6 border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/50">
+                  <h3 className="text-lg font-bold text-slate-900 dark:text-white">知识库参数配置</h3>
+                  <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
                     调整 Embedding 模型、检索策略及相似度阈值
                   </p>
                 </div>
@@ -441,7 +438,7 @@ export default function KnowledgePage() {
                 <div className="p-8 space-y-8">
                   {/* Embedding 模型 */}
                   <div className="space-y-3">
-                    <label className="text-sm font-semibold text-gray-900">
+                    <label className="text-sm font-semibold text-slate-900 dark:text-slate-200">
                       Embedding 模型
                     </label>
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
@@ -450,21 +447,21 @@ export default function KnowledgePage() {
                           <input type="radio" name="model" id={model} className="peer sr-only" defaultChecked={model === 'text-embedding-v3'} />
                           <label
                             htmlFor={model}
-                            className="flex flex-col p-4 border-2 border-gray-100 rounded-xl cursor-pointer transition-all hover:border-gray-300 peer-checked:border-blue-500 peer-checked:bg-blue-50/30"
+                            className="flex flex-col p-4 border-2 border-slate-100 dark:border-slate-800 rounded-xl cursor-pointer transition-all hover:border-slate-300 dark:hover:border-slate-600 peer-checked:border-indigo-500 dark:peer-checked:border-indigo-500 peer-checked:bg-indigo-50/30 dark:peer-checked:bg-indigo-900/10"
                           >
-                            <span className="font-medium text-sm text-gray-900">{model}</span>
-                            <span className="text-xs text-gray-500 mt-1">768 维 / 中英支持</span>
+                            <span className="font-medium text-sm text-slate-900 dark:text-white">{model}</span>
+                            <span className="text-xs text-slate-500 dark:text-slate-400 mt-1">768 维 / 中英支持</span>
                           </label>
                         </div>
                       ))}
                     </div>
                   </div>
 
-                  <div className="h-px bg-gray-100" />
+                  <div className="h-px bg-slate-100 dark:bg-slate-800" />
 
                   {/* 检索模式 */}
                   <div className="space-y-3">
-                     <label className="text-sm font-semibold text-gray-900">
+                     <label className="text-sm font-semibold text-slate-900 dark:text-slate-200">
                       检索模式
                     </label>
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -477,13 +474,13 @@ export default function KnowledgePage() {
                           <input type="radio" name="retrieval_mode" id={mode.value} className="peer sr-only" defaultChecked={mode.value === 'hybrid'} />
                           <label
                             htmlFor={mode.value}
-                            className="flex flex-col p-4 border-2 border-gray-100 rounded-xl cursor-pointer transition-all hover:border-gray-300 peer-checked:border-blue-500 peer-checked:bg-blue-50/30 h-full"
+                            className="flex flex-col p-4 border-2 border-slate-100 dark:border-slate-800 rounded-xl cursor-pointer transition-all hover:border-slate-300 dark:hover:border-slate-600 peer-checked:border-indigo-500 dark:peer-checked:border-indigo-500 peer-checked:bg-indigo-50/30 dark:peer-checked:bg-indigo-900/10 h-full"
                           >
                             <div className="flex items-center gap-2 mb-2">
-                              <mode.icon className="w-4 h-4 text-blue-600" />
-                              <span className="font-medium text-sm text-gray-900">{mode.label}</span>
+                              <mode.icon className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
+                              <span className="font-medium text-sm text-slate-900 dark:text-white">{mode.label}</span>
                             </div>
-                            <span className="text-xs text-gray-500 leading-relaxed">
+                            <span className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
                               {mode.desc}
                             </span>
                           </label>
@@ -492,36 +489,36 @@ export default function KnowledgePage() {
                     </div>
                   </div>
 
-                  <div className="h-px bg-gray-100" />
+                  <div className="h-px bg-slate-100 dark:bg-slate-800" />
 
                   {/* 阈值参数 */}
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                     <div className="space-y-3">
                       <div className="flex justify-between">
-                         <label className="text-sm font-semibold text-gray-900">召回数量 (Top K)</label>
-                         <span className="text-sm font-mono text-blue-600">5</span>
+                         <label className="text-sm font-semibold text-slate-900 dark:text-slate-200">召回数量 (Top K)</label>
+                         <span className="text-sm font-mono text-indigo-600 dark:text-indigo-400">5</span>
                       </div>
-                      <input type="range" min="1" max="20" defaultValue="5" className="w-full h-2 bg-gray-100 rounded-lg appearance-none cursor-pointer accent-blue-600" />
-                      <p className="text-xs text-gray-500">
+                      <input type="range" min="1" max="20" defaultValue="5" className="w-full h-2 bg-slate-100 dark:bg-slate-800 rounded-lg appearance-none cursor-pointer accent-indigo-600" />
+                      <p className="text-xs text-slate-500 dark:text-slate-400">
                         单次检索返回的最大片段数，建议 3-8 之间
                       </p>
                     </div>
 
                     <div className="space-y-3">
                       <div className="flex justify-between">
-                         <label className="text-sm font-semibold text-gray-900">相似度阈值</label>
-                         <span className="text-sm font-mono text-blue-600">0.7</span>
+                         <label className="text-sm font-semibold text-slate-900 dark:text-slate-200">相似度阈值</label>
+                         <span className="text-sm font-mono text-indigo-600 dark:text-indigo-400">0.7</span>
                       </div>
-                      <input type="range" min="0" max="1" step="0.1" defaultValue="0.7" className="w-full h-2 bg-gray-100 rounded-lg appearance-none cursor-pointer accent-blue-600" />
-                      <p className="text-xs text-gray-500">
+                      <input type="range" min="0" max="1" step="0.1" defaultValue="0.7" className="w-full h-2 bg-slate-100 dark:bg-slate-800 rounded-lg appearance-none cursor-pointer accent-indigo-600" />
+                      <p className="text-xs text-slate-500 dark:text-slate-400">
                         过滤低相关度的结果，值越大匹配越精准
                       </p>
                     </div>
                   </div>
                 </div>
 
-                <div className="p-6 bg-gray-50 border-t border-gray-100 flex justify-end">
-                   <Button className="gap-2 bg-gray-900 text-white hover:bg-gray-800">
+                <div className="p-6 bg-slate-50 dark:bg-slate-900 border-t border-slate-100 dark:border-slate-800 flex justify-end">
+                   <Button className="gap-2 bg-slate-900 dark:bg-white text-white dark:text-slate-900 hover:bg-slate-800 dark:hover:bg-slate-100">
                       <Settings className="w-4 h-4" />
                       保存所有更改
                     </Button>
@@ -542,13 +539,13 @@ function DocumentCard({ doc, getStatusConfig, onDelete }: { doc: Document, getSt
   const parserLabel = doc.metadata?.parser_backend ? getParserLabel(doc.metadata.parser_backend as string) : null
 
   return (
-    <div className="group relative bg-white rounded-2xl border border-gray-200 shadow-sm hover:shadow-md hover:border-blue-300 transition-all duration-300 flex flex-col overflow-hidden">
+    <div className="group relative bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm hover:shadow-md hover:border-indigo-300 dark:hover:border-indigo-600 transition-all duration-300 flex flex-col overflow-hidden">
       {/* 顶部装饰条 */}
-      <div className={cn("h-1.5 w-full", status.bg.replace('bg-', 'bg-').replace('50', '500'))} />
+      <div className={cn("h-1.5 w-full", status.bg.replace('bg-', 'bg-').replace('50', '500').replace('/10', ''))} />
       
       <div className="p-5 flex-1 flex flex-col">
         <div className="flex items-start justify-between mb-4">
-          <div className="w-12 h-12 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center">
+          <div className="w-12 h-12 rounded-xl bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-400 flex items-center justify-center">
             <FileText className="w-6 h-6" />
           </div>
           <div className={cn("px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider border", status.bg, status.color, status.border)}>
@@ -556,20 +553,20 @@ function DocumentCard({ doc, getStatusConfig, onDelete }: { doc: Document, getSt
           </div>
         </div>
 
-        <h3 className="font-semibold text-gray-900 line-clamp-2 mb-2 min-h-[2.5rem]" title={doc.filename}>
+        <h3 className="font-semibold text-slate-900 dark:text-white line-clamp-2 mb-2 min-h-[2.5rem]" title={doc.filename}>
           {doc.filename}
         </h3>
 
         <div className="space-y-2 mt-auto">
-          <div className="flex items-center justify-between text-xs text-gray-500">
+          <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
             <span>大小</span>
             <span className="font-mono">{formatFileSize(doc.file_size)}</span>
           </div>
-          <div className="flex items-center justify-between text-xs text-gray-500">
+          <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
             <span>分块</span>
             <span className="font-mono">{doc.chunk_count || '-'}</span>
           </div>
-           <div className="flex items-center justify-between text-xs text-gray-500">
+           <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
             <span>时间</span>
             <span>{formatDate(doc.created_at).split(' ')[0]}</span>
           </div>
@@ -577,13 +574,13 @@ function DocumentCard({ doc, getStatusConfig, onDelete }: { doc: Document, getSt
       </div>
       
       {/* 底部操作栏 - Hover 显示 */}
-      <div className="px-5 py-3 border-t border-gray-100 bg-gray-50/50 flex items-center justify-between opacity-100 lg:opacity-0 lg:group-hover:opacity-100 transition-opacity">
-         <span className="text-[10px] text-gray-400 font-medium truncate max-w-[80px]">
+      <div className="px-5 py-3 border-t border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/50 flex items-center justify-between opacity-100 lg:opacity-0 lg:group-hover:opacity-100 transition-opacity">
+         <span className="text-[10px] text-slate-400 dark:text-slate-500 font-medium truncate max-w-[80px]">
            {parserLabel || 'Auto'}
          </span>
          <div className="flex items-center gap-1">
            <button 
-             className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-md transition-colors"
+             className="p-1.5 text-slate-400 dark:text-slate-500 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-md transition-colors"
              onClick={(e) => {
                e.stopPropagation()
                onDelete(doc.id)
@@ -596,9 +593,9 @@ function DocumentCard({ doc, getStatusConfig, onDelete }: { doc: Document, getSt
 
        {/* 进度条 (处理中) */}
        {doc.status === 'processing' && (
-          <div className="absolute bottom-0 left-0 right-0 h-1 bg-gray-100">
+          <div className="absolute bottom-0 left-0 right-0 h-1 bg-slate-100 dark:bg-slate-800">
             <div 
-              className="h-full bg-blue-500 animate-pulse" 
+              className="h-full bg-indigo-500 animate-pulse" 
               style={{ width: `${doc.processing_progress || 60}%` }} 
             />
           </div>
@@ -610,18 +607,18 @@ function DocumentCard({ doc, getStatusConfig, onDelete }: { doc: Document, getSt
 // 空状态组件
 function EmptyState({ onUpload }: { onUpload: (e: React.ChangeEvent<HTMLInputElement>) => void }) {
   return (
-    <div className="flex flex-col items-center justify-center min-h-[400px] border-2 border-dashed border-gray-200 rounded-3xl bg-gray-50/50 hover:bg-blue-50/30 hover:border-blue-200 transition-all group">
-      <div className="w-20 h-20 bg-white rounded-full shadow-sm flex items-center justify-center mb-6 group-hover:scale-110 transition-transform duration-300">
-        <div className="w-16 h-16 bg-blue-50 rounded-full flex items-center justify-center">
-          <Upload className="w-8 h-8 text-blue-600" />
+    <div className="flex flex-col items-center justify-center min-h-[400px] border-2 border-dashed border-slate-200 dark:border-slate-800 rounded-3xl bg-slate-50/50 dark:bg-slate-900/50 hover:bg-indigo-50/30 dark:hover:bg-indigo-900/10 hover:border-indigo-200 dark:hover:border-indigo-800 transition-all group">
+      <div className="w-20 h-20 bg-white dark:bg-slate-800 rounded-full shadow-sm flex items-center justify-center mb-6 group-hover:scale-110 transition-transform duration-300">
+        <div className="w-16 h-16 bg-indigo-50 dark:bg-indigo-900/20 rounded-full flex items-center justify-center">
+          <Upload className="w-8 h-8 text-indigo-600 dark:text-indigo-400" />
         </div>
       </div>
-      <h3 className="text-xl font-bold text-gray-900 mb-2">知识库空空如也</h3>
-      <p className="text-gray-500 max-w-md text-center mb-8">
+      <h3 className="text-xl font-bold text-slate-900 dark:text-white mb-2">知识库空空如也</h3>
+      <p className="text-slate-500 dark:text-slate-400 max-w-md text-center mb-8">
         上传您的第一份文档，MimirQ 将自动解析并构建专属知识索引
       </p>
       <label>
-        <Button size="lg" className="gap-2 bg-blue-600 hover:bg-blue-700 shadow-lg shadow-blue-200" asChild>
+        <Button size="lg" className="gap-2 bg-indigo-600 hover:bg-indigo-700 shadow-lg shadow-indigo-200 dark:shadow-indigo-900/20 text-white" asChild>
           <span>
             <Upload className="w-5 h-5" />
             立即上传文档
@@ -635,7 +632,7 @@ function EmptyState({ onUpload }: { onUpload: (e: React.ChangeEvent<HTMLInputEle
           onChange={onUpload}
         />
       </label>
-      <p className="text-xs text-gray-400 mt-4">
+      <p className="text-xs text-slate-400 dark:text-slate-500 mt-4">
         支持 PDF, TXT, Markdown, Excel, Word 等常见格式
       </p>
     </div>
