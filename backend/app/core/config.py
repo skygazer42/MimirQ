@@ -68,6 +68,7 @@ class Settings(BaseSettings):
     LLAMA_INDEX_ENABLED: bool = False
     SAG_ENABLED: bool = False
     SAG_CHAT_ENABLED: bool = False
+    CHAT_HISTORY_WINDOW: int = 5
 
     # Multi-tenant defaults
     DEFAULT_TENANT_ID: str = "00000000-0000-0000-0000-000000000000"

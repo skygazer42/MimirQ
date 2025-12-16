@@ -186,6 +186,7 @@ class RAGEngine:
                 meta = doc.metadata or {}
                 citations.append(
                     {
+                        "chunk_id": doc.id,
                         "document_id": meta.get("document_id"),
                         "document_name": meta.get("source", "Unknown"),
                         "chunk_content": doc.page_content[:200] + "...",
@@ -247,7 +248,9 @@ class RAGEngine:
             # 构建对话历史
             if history and len(history) > 0:
                 history_text = ""
-                for msg in history[-5:]:  # 只保留最近5轮对话
+                window = max(settings.CHAT_HISTORY_WINDOW, 0)
+                hist_slice = history[-window:] if window else []
+                for msg in hist_slice:  # 可配置的滑动窗口
                     if isinstance(msg, dict):
                         role_value = msg.get("role")
                         content_value = msg.get("content", "")
