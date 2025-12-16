@@ -1,2 +1,0 @@
-# SAG algorithm modules.
-
