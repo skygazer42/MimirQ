@@ -49,7 +49,7 @@ class Message(Base):
     # Token stats
     token_count = Column(Integer, nullable=True)
     # Optional: store run metadata (retrieval mode/backend, timings, route, etc.)
-    metadata = Column(JSONB, nullable=True)
+    message_metadata = Column(JSONB, nullable=True)
 
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 

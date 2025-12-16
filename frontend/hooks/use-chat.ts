@@ -12,6 +12,7 @@ const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
 interface UseChatOptions {
   conversationId?: string
   documentIds?: string[]
+  promptTemplateId?: string
   onError?: (error: string) => void
 }
 
@@ -64,6 +65,7 @@ export function useChat(options: UseChatOptions = {}) {
             message,
             history,  // 传递历史对话
             document_ids: options.documentIds,
+            prompt_template_id: options.promptTemplateId,
             stream: true,
             rag_config: {
               top_k: 5,

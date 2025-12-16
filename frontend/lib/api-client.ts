@@ -372,4 +372,96 @@ export const evaluationApi = {
   },
 }
 
+// ==================== 提示词模板 API ====================
+
+export interface PromptTemplate {
+  id: string
+  tenant_id: string
+  name: string
+  description?: string
+  content: string
+  variables: string[]
+  is_system: boolean
+  is_active: boolean
+  category?: string
+  tags: string[]
+  usage_count: number
+  created_at: string
+  updated_at: string
+}
+
+export interface PromptTemplateCreate {
+  name: string
+  description?: string
+  content: string
+  variables?: string[]
+  category?: string
+  tags?: string[]
+  is_active?: boolean
+}
+
+export interface PromptTemplateUpdate {
+  name?: string
+  description?: string
+  content?: string
+  variables?: string[]
+  category?: string
+  tags?: string[]
+  is_active?: boolean
+}
+
+export const promptTemplateApi = {
+  /**
+   * 创建提示词模板
+   */
+  async create(params: PromptTemplateCreate): Promise<PromptTemplate> {
+    const { data } = await apiClient.post('/prompt-templates', params)
+    return data
+  },
+
+  /**
+   * 获取提示词模板列表
+   */
+  async list(params?: {
+    skip?: number
+    limit?: number
+    category?: string
+    is_active?: boolean
+  }): Promise<{ total: number; items: PromptTemplate[] }> {
+    const { data } = await apiClient.get('/prompt-templates', { params })
+    return data
+  },
+
+  /**
+   * 获取单个提示词模板
+   */
+  async get(templateId: string): Promise<PromptTemplate> {
+    const { data } = await apiClient.get(`/prompt-templates/${templateId}`)
+    return data
+  },
+
+  /**
+   * 更新提示词模板
+   */
+  async update(templateId: string, params: PromptTemplateUpdate): Promise<PromptTemplate> {
+    const { data } = await apiClient.put(`/prompt-templates/${templateId}`, params)
+    return data
+  },
+
+  /**
+   * 删除提示词模板
+   */
+  async delete(templateId: string): Promise<void> {
+    await apiClient.delete(`/prompt-templates/${templateId}`)
+  },
+
+  /**
+   * 复制提示词模板
+   */
+  async duplicate(templateId: string): Promise<PromptTemplate> {
+    const { data } = await apiClient.post(`/prompt-templates/${templateId}/duplicate`)
+    return data
+  },
+}
+
 export default apiClient

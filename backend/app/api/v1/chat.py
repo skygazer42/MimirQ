@@ -28,6 +28,7 @@ from app.schemas.chat import (
 from app.services.document_access import filter_allowed_document_ids
 from app.services.rag_engine import get_rag_engine
 from app.services.rag_graph import run_rag_graph
+from app.services.metrics_logger import log_metrics
 from app.core.config import settings
 from app.dependencies.tenant import get_tenant_id
 from app.dependencies.auth import get_current_account_id
@@ -235,6 +236,18 @@ async def stream_chat(
                 }
             }
             yield f"data: {json.dumps(done_payload, ensure_ascii=False)}\n\n"
+            log_metrics(
+                {
+                    "event": "rag_done",
+                    "conversation_id": str(conversation_id) if conversation_id else None,
+                    "tenant_id": str(tenant_id) if tenant_id else None,
+                    "vector_backend": settings.VECTOR_BACKEND,
+                    "retrieval_mode": request.rag_config.get('retrieval_mode', 'hybrid'),
+                    "route": graph_result.get("route"),
+                    "model_used": graph_result.get("model_used"),
+                    "metrics": metrics_data,
+                }
+            )
             return
 
         try:
@@ -256,6 +269,8 @@ async def stream_chat(
                 keyword_weight=request.rag_config.get('keyword_weight', 0.4),
                 mmr_lambda=request.rag_config.get('mmr_lambda', settings.RETRIEVAL_MMR_LAMBDA),
                 structured_preset=request.structured_preset,
+                prompt_template_id=request.prompt_template_id,
+                db=db,
             ):
                 # 记录引用信息
                 if event['type'] == 'citations':
@@ -278,7 +293,7 @@ async def stream_chat(
                 content=full_response,
                 citations=citations_data,
                 token_count=len(full_response),
-                metadata=metrics_data
+                message_metadata=metrics_data
             )
             db.add(assistant_message)
 

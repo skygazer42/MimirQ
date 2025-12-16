@@ -4,7 +4,7 @@
 'use client'
 
 import { useState, useRef, useEffect } from 'react'
-import { Send, Loader2, StopCircle, Sparkles, Database } from 'lucide-react'
+import { Send, Loader2, StopCircle, Sparkles, Database, Wand2 } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { useChat } from '@/hooks/use-chat'
@@ -12,12 +12,35 @@ import { useDocuments } from '@/hooks/use-documents'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import type { Message, Citation } from '@/types'
+import { promptTemplateApi, PromptTemplate } from '@/lib/api-client'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 
 export function ChatArea() {
   const [inputValue, setInputValue] = useState('')
+  const [promptTemplateId, setPromptTemplateId] = useState<string>('')
+  const [promptTemplates, setPromptTemplates] = useState<PromptTemplate[]>([])
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
+
+  // Load prompt templates
+  useEffect(() => {
+    const loadTemplates = async () => {
+      try {
+        const response = await promptTemplateApi.list({ is_active: true, limit: 50 })
+        setPromptTemplates(response.items)
+      } catch (error) {
+        console.error('Failed to load prompt templates:', error)
+      }
+    }
+    loadTemplates()
+  }, [])
 
   const {
     messages,
@@ -27,6 +50,7 @@ export function ChatArea() {
     sendMessage,
     stopGeneration,
   } = useChat({
+    promptTemplateId: promptTemplateId || undefined,
     onError: (error) => {
       console.error('Chat error:', error)
       alert(error)
@@ -112,12 +136,44 @@ export function ChatArea() {
 
       {/* 输入框区域 - 悬浮风格 */}
       <div className="px-4 pb-6 pt-2">
-        <div className="max-w-3xl mx-auto relative group">
-          <div className={cn(
-            "relative bg-white/80 dark:bg-slate-900/80 backdrop-blur-xl rounded-3xl shadow-sm border border-slate-200/60 dark:border-slate-800 transition-all duration-300",
-            "focus-within:shadow-md focus-within:border-slate-300 dark:focus-within:border-slate-700 focus-within:ring-2 focus-within:ring-slate-100 dark:focus-within:ring-slate-800",
-            "hover:border-slate-300 dark:hover:border-slate-700 hover:shadow-sm"
-          )}>
+        <div className="max-w-3xl mx-auto space-y-3">
+          {/* 提示词模板选择器 */}
+          {promptTemplates.length > 0 && (
+            <div className="flex items-center gap-2 px-2">
+              <Wand2 className="w-4 h-4 text-slate-400" />
+              <Select value={promptTemplateId} onValueChange={setPromptTemplateId}>
+                <SelectTrigger className="w-[240px] h-8 text-sm">
+                  <SelectValue placeholder="选择提示词模板" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="">默认模板</SelectItem>
+                  {promptTemplates.map((template) => (
+                    <SelectItem key={template.id} value={template.id}>
+                      {template.name}
+                      {template.category && (
+                        <span className="text-xs text-muted-foreground ml-2">
+                          ({template.category})
+                        </span>
+                      )}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {promptTemplateId && (
+                <span className="text-xs text-slate-500">
+                  {promptTemplates.find(t => t.id === promptTemplateId)?.description}
+                </span>
+              )}
+            </div>
+          )}
+
+          {/* 输入框 */}
+          <div className="relative group">
+            <div className={cn(
+              "relative bg-white/80 dark:bg-slate-900/80 backdrop-blur-xl rounded-3xl shadow-sm border border-slate-200/60 dark:border-slate-800 transition-all duration-300",
+              "focus-within:shadow-md focus-within:border-slate-300 dark:focus-within:border-slate-700 focus-within:ring-2 focus-within:ring-slate-100 dark:focus-within:ring-slate-800",
+              "hover:border-slate-300 dark:hover:border-slate-700 hover:shadow-sm"
+            )}>
             <textarea
               ref={textareaRef}
               value={inputValue}
@@ -155,10 +211,11 @@ export function ChatArea() {
               )}
             </div>
           </div>
-          
-          <p className="text-[10px] text-slate-400 dark:text-slate-500 text-center mt-3 font-medium tracking-wide opacity-0 group-hover:opacity-100 transition-opacity duration-500">
+
+          <p className="text-[10px] text-slate-400 dark:text-slate-500 text-center font-medium tracking-wide opacity-0 group-hover:opacity-100 transition-opacity duration-500">
              POWERED BY MIMIRQ AI
           </p>
+          </div>
         </div>
       </div>
     </div>
