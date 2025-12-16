@@ -9,8 +9,9 @@ import uuid
 
 from langchain_core.documents import Document
 from langchain_text_splitters import RecursiveCharacterTextSplitter, TokenTextSplitter
-from llama_index.core.node_parser import HierarchicalNodeParser
-from llama_index.core.schema import NodeRelationship
+# Temporarily disabled: llama-index-core requires datrie which fails to compile on Python 3.11
+# from llama_index.core.node_parser import HierarchicalNodeParser
+# from llama_index.core.schema import NodeRelationship
 
 from app.core.config import settings
 
@@ -194,11 +195,15 @@ class LangChainTokenChunker(BaseChunker):
 
 
 class LlamaIndexChunker(BaseChunker):
-    """基于 LlamaIndex SentenceSplitter 的切片器。"""
+    """基于 LlamaIndex SentenceSplitter 的切片器。
+
+    DISABLED: Requires llama-index-core which has compilation issues with Python 3.11
+    """
 
     def __init__(self, chunk_size: int, chunk_overlap: int):
-        from llama_index.core.node_parser import SentenceSplitter
-        self.splitter = SentenceSplitter(chunk_size=chunk_size, chunk_overlap=chunk_overlap)
+        raise RuntimeError("LlamaIndexChunker is disabled due to llama-index-core dependency issues")
+        # from llama_index.core.node_parser import SentenceSplitter
+        # self.splitter = SentenceSplitter(chunk_size=chunk_size, chunk_overlap=chunk_overlap)
 
     def split_documents(self, documents: List[Document]) -> List[Document]:
         from llama_index.core import Document as LlamaDocument
@@ -362,18 +367,23 @@ class SeparatorChunker(BaseChunker):
 
 
 class LlamaIndexHierarchicalChunker(BaseChunker):
-    """LlamaIndex HierarchicalNodeParser，生成父子块并保留层级信息。"""
+    """LlamaIndex HierarchicalNodeParser，生成父子块并保留层级信息。
+
+    DISABLED: Requires llama-index-core which has compilation issues with Python 3.11
+    """
 
     def __init__(self, chunk_size: int, chunk_overlap: int):
-        base = max(chunk_size, 1)
-        self.chunk_sizes = [base, max(base // 2, 1), max(base // 4, 1)]
-        self.chunk_overlap = max(chunk_overlap, 0)
-        try:
-            self.parser = HierarchicalNodeParser.from_defaults(
-                chunk_sizes=self.chunk_sizes, chunk_overlap=self.chunk_overlap
-            )
-        except TypeError:
-            self.parser = HierarchicalNodeParser.from_defaults(chunk_sizes=self.chunk_sizes)
+        raise RuntimeError("LlamaIndexHierarchicalChunker is disabled due to llama-index-core dependency issues")
+        # base = max(chunk_size, 1)
+        # self.chunk_sizes = [base, max(base // 2, 1), max(base // 4, 1)]
+        # self.chunk_overlap = max(chunk_overlap, 0)
+        # try:
+        #     from llama_index.core.node_parser import HierarchicalNodeParser
+        #     self.parser = HierarchicalNodeParser.from_defaults(
+        #         chunk_sizes=self.chunk_sizes, chunk_overlap=self.chunk_overlap
+        #     )
+        # except TypeError:
+        #     self.parser = HierarchicalNodeParser.from_defaults(chunk_sizes=self.chunk_sizes)
 
     def split_documents(self, documents: List[Document]) -> List[Document]:
         from llama_index.core import Document as LlamaDocument

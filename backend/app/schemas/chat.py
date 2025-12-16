@@ -74,6 +74,7 @@ class ChatRequest(BaseModel):
     document_ids: Optional[List[UUID]] = []
     stream: bool = True
     structured_output: bool = False  # 是否要求结构化(JSON)输出
+    structured_preset: Optional[str] = None  # faq | summary | action_items | custom
     enable_long_term_memory: bool = False  # 是否启用长期记忆召回
     rag_config: Optional[Dict[str, Any]] = {
         "top_k": 5,
@@ -85,6 +86,7 @@ class ChatRequest(BaseModel):
         "vector_weight": 0.6,
         "keyword_weight": 0.4,
         "mmr_lambda": 0.7,  # MMR 多样性权重
+        "use_graph": False,  # 使用 LangGraph 编排（非流式快捷路径）
     }
 
 

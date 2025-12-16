@@ -100,7 +100,7 @@ services:
       - MILVUS_PORT=19530
       - CORS_ORIGINS=http://localhost:3000,http://localhost:3001
     volumes:
-      - ./backend:/app
+      - .:/app
       - upload_data:/app/uploads
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 

@@ -16,7 +16,7 @@ from langchain_core.retrievers import BaseRetriever
 from langchain_community.retrievers.bm25 import BM25Retriever
 from pydantic import PrivateAttr, ConfigDict
 
-from app.services.milvus_store import milvus_store
+from app.services.vector_router import get_vector_store
 from app.models.document import DocumentChunk
 from app.core.config import settings
 
@@ -136,8 +136,9 @@ class HybridRetriever(BaseRetriever):
         # 1) 向量检索
         vector_results: List[Dict[str, Any]] = []
         if retrieval_mode in ("hybrid", "vector", "mmr"):
+            vector_store = get_vector_store()
             try:
-                vector_results = milvus_store.search(
+                vector_results = vector_store.search(
                     query=query,
                     top_k=top_k * 2,
                     score_threshold=score_threshold,
