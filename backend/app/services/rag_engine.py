@@ -134,6 +134,7 @@ class RAGEngine:
         top_k: int = 5,
         score_threshold: float = 0.7,
         tenant_id: Optional[UUID] = None,
+        structured_output: bool = False,
     ) -> AsyncGenerator[Dict[str, Any], None]:
         """
         流式对话接口
@@ -151,6 +152,14 @@ class RAGEngine:
         try:
             llm, model_route, routing_reason = self._select_llm(question, history)
             chain = self.prompt_template | llm | StrOutputParser()
+
+            format_instructions = ""
+            if structured_output:
+                format_instructions = (
+                    "请仅返回 JSON，结构: "
+                    '{"answer": "string", "citations": [{"document_id": "...", "chunk_id": "...", "page_number": null, "relevance_score": 0.0}]} '
+                    "不要输出多余文本。"
+                )
 
             yield {
                 "type": "route",
@@ -266,7 +275,12 @@ class RAGEngine:
             # Step 4: 流式生成回答
             full_response = ""
             async for token in chain.astream(
-                {"context": context, "history": history_text, "question": question}
+                {
+                    "context": context,
+                    "history": history_text,
+                    "question": question,
+                    "format_instructions": format_instructions,
+                }
             ):
                 if not token:
                     continue
@@ -277,6 +291,13 @@ class RAGEngine:
                 }
 
             # Step 5: 发送完成信号
+            structured_data = None
+            if structured_output:
+                try:
+                    structured_data = json.loads(full_response)
+                except Exception:
+                    structured_data = None
+
             yield {
                 "type": "done",
                 "data": {
@@ -285,6 +306,8 @@ class RAGEngine:
                     "citations_count": len(citations),
                     "model_used": getattr(llm, "model_name", None) or getattr(llm, "model", None),
                     "route": model_route,
+                    "structured": bool(structured_data),
+                    "structured_data": structured_data,
                 }
             }
 

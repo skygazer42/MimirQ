@@ -73,6 +73,8 @@ class ChatRequest(BaseModel):
     history: Optional[List[HistoryMessage]] = []  # 对话历史
     document_ids: Optional[List[UUID]] = []
     stream: bool = True
+    structured_output: bool = False  # 是否要求结构化(JSON)输出
+    enable_long_term_memory: bool = False  # 是否启用长期记忆召回
     rag_config: Optional[Dict[str, Any]] = {
         "top_k": 5,
         "score_threshold": 0.7,

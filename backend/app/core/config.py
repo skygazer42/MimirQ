@@ -69,6 +69,9 @@ class Settings(BaseSettings):
     SAG_ENABLED: bool = False
     SAG_CHAT_ENABLED: bool = False
     CHAT_HISTORY_WINDOW: int = 5
+    LONG_TERM_MEMORY_ENABLED: bool = False
+    LONG_TERM_MEMORY_TOP_K: int = 3
+    LONG_TERM_MEMORY_MIN_LEN: int = 20
 
     # Multi-tenant defaults
     DEFAULT_TENANT_ID: str = "00000000-0000-0000-0000-000000000000"

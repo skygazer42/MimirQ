@@ -10,6 +10,9 @@ from typing import Optional, List
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
+import jieba
+from langchain_core.documents import Document
+from langchain_community.retrievers.bm25 import BM25Retriever
 
 from app.core.database import get_db
 from app.models.chat import Conversation, Message
@@ -47,6 +50,59 @@ def _ensure_conversation_access(
     return allowed
 
 
+def _retrieve_long_term_messages(
+    db: Session,
+    conversation_id: UUID,
+    tenant_id: UUID,
+    query: str,
+    top_k: int = 3
+) -> List[dict]:
+    """
+    简单的长期记忆召回：对历史消息做 BM25 检索，取最相关的若干条。
+    仅用于追加到 history 以提供额外上下文，不修改存储。
+    """
+    messages = db.query(Message).filter(
+        Message.conversation_id == conversation_id,
+        Message.tenant_id == tenant_id
+    ).order_by(Message.created_at.asc()).all()
+
+    docs: List[Document] = []
+    for msg in messages:
+        if not msg.content or len(msg.content.strip()) < settings.LONG_TERM_MEMORY_MIN_LEN:
+            continue
+        docs.append(
+            Document(
+                page_content=msg.content,
+                metadata={
+                    "role": msg.role,
+                    "created_at": msg.created_at.isoformat()
+                }
+            )
+        )
+
+    if not docs:
+        return []
+
+    retriever = BM25Retriever.from_documents(
+        docs,
+        preprocess_func=lambda text: list(jieba.cut_for_search(text)),
+        k=top_k
+    )
+    selected = retriever.invoke(query)
+
+    enriched_history = []
+    for doc in selected:
+        enriched_history.append(
+            {
+                "role": doc.metadata.get("role", "assistant"),
+                "content": doc.page_content,
+                "from_long_term": True,
+                "ts": doc.metadata.get("created_at")
+            }
+        )
+    return enriched_history
+
+
 @router.post("/stream")
 async def stream_chat(
     request: ChatRequest,
@@ -62,6 +118,7 @@ async def stream_chat(
     citations_data = []
     full_response = ""
     allowed_doc_ids: list[UUID] = []
+    long_term_messages: list[dict] = []
 
     # 确认租户成员
     DatasetService.ensure_member(db, tenant_id, account_id)
@@ -109,6 +166,16 @@ async def stream_chat(
     db.add(user_message)
     db.commit()
 
+    # 可选：长期记忆召回（基于 BM25 的对话消息检索）
+    if request.enable_long_term_memory and settings.LONG_TERM_MEMORY_ENABLED and conversation_id:
+        long_term_messages = _retrieve_long_term_messages(
+            db=db,
+            conversation_id=conversation_id,
+            tenant_id=tenant_id,
+            query=request.message,
+            top_k=settings.LONG_TERM_MEMORY_TOP_K
+        )
+
     # 更新对话消息计数
     conversation.message_count += 1
     db.commit()
@@ -123,12 +190,13 @@ async def stream_chat(
             engine = get_rag_engine()
             async for event in engine.stream_chat(
                 question=request.message,
-                history=[m.model_dump() for m in (request.history or [])],
+                history=[m.model_dump() for m in (request.history or [])] + long_term_messages,
                 conversation_id=conversation_id,
                 document_ids=doc_ids_to_use,
                 top_k=request.rag_config.get('top_k', settings.RETRIEVAL_TOP_K),
                 score_threshold=request.rag_config.get('score_threshold', settings.SIMILARITY_THRESHOLD),
                 tenant_id=tenant_id,
+                structured_output=request.structured_output
             ):
                 # 记录引用信息
                 if event['type'] == 'citations':
