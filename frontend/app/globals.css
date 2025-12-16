@@ -32,15 +32,15 @@
     @apply border-border;
   }
   body {
-    @apply bg-background text-foreground;
+    @apply bg-background text-foreground antialiased;
     font-feature-settings: "rlig" 1, "calt" 1;
   }
 }
 
 /* 自定义滚动条样式 */
 ::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+  width: 5px;
+  height: 5px;
 }
 
 ::-webkit-scrollbar-track {
@@ -48,12 +48,7 @@
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #e0e0e0;
-  border-radius: 3px;
-}
-
-::-webkit-scrollbar-thumb:hover {
-  background: #c0c0c0;
+  @apply bg-slate-200 rounded-full hover:bg-slate-300 transition-colors;
 }
 
 /* 打字机效果的光标 */

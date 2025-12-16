@@ -3,6 +3,7 @@ import { Inter } from "next/font/google"
 import "./globals.css"
 import { ParserBackendProvider } from "@/contexts/parser-backend-context"
 import { ChunkStrategyProvider } from "@/contexts/chunk-strategy-context"
+import { ThemeProvider } from "@/components/theme-provider"
 
 const inter = Inter({ subsets: ["latin"] })
 
@@ -22,9 +23,16 @@ export default function RootLayout({
   return (
     <html lang="zh-CN">
       <body className={inter.className}>
-        <ParserBackendProvider>
-          <ChunkStrategyProvider>{children}</ChunkStrategyProvider>
-        </ParserBackendProvider>
+        <ThemeProvider
+          attribute="class"
+          defaultTheme="system"
+          enableSystem
+          disableTransitionOnChange
+        >
+          <ParserBackendProvider>
+            <ChunkStrategyProvider>{children}</ChunkStrategyProvider>
+          </ParserBackendProvider>
+        </ThemeProvider>
       </body>
     </html>
   )

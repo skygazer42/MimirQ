@@ -43,7 +43,8 @@
       "Bash(xargs:*)",
       "Bash(cp:*)",
       "Bash(python -m uvicorn:*)",
-      "Bash(PYTHONIOENCODING=utf-8 python:*)"
+      "Bash(PYTHONIOENCODING=utf-8 python:*)",
+      "Bash(docker-compose down:*)"
     ],
     "deny": [],
     "ask": []
