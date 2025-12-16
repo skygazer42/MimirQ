@@ -11,6 +11,7 @@ import type {
   ManualChunk,
   ChunkPreviewResponse,
 } from '@/types'
+import { getAuthHeaders } from '@/lib/auth-headers'
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
 
@@ -19,6 +20,15 @@ const apiClient = axios.create({
   headers: {
     'Content-Type': 'application/json',
   },
+})
+
+// Inject auth/tenant headers for every request (client-side friendly)
+apiClient.interceptors.request.use((config) => {
+  config.headers = {
+    ...(config.headers || {}),
+    ...getAuthHeaders(),
+  }
+  return config
 })
 
 // ==================== 文档管理 API ====================
@@ -293,6 +303,72 @@ export const chatApi = {
     // 注意：实际应该使用 POST 请求，这里简化处理
     // 正确做法是在组件中直接使用 fetch POST
     return `${API_BASE_URL}/api/v1/chat/stream`
+  },
+}
+
+// ==================== RAGAS 评测 API ====================
+
+export interface RagasRun {
+  id: string
+  conversation_id?: string
+  status: 'pending' | 'running' | 'completed' | 'failed' | string
+  metrics: string[]
+  params: Record<string, any>
+  summary: Record<string, any>
+  error_message?: string
+  created_at: string
+  started_at?: string
+  finished_at?: string
+}
+
+export interface RagasItem {
+  id: string
+  run_id: string
+  turn_index: number
+  user_message_id?: string
+  assistant_message_id?: string
+  user_input: string
+  response: string
+  retrieved_contexts?: string[] | null
+  citations: any[]
+  scores: Record<string, any>
+  created_at: string
+}
+
+export interface RagasRunDetail {
+  run: RagasRun
+  items: RagasItem[]
+}
+
+export const evaluationApi = {
+  async createRagasRun(params: {
+    conversation_id: string
+    metrics?: string[]
+    max_turns?: number
+    skip_empty_contexts?: boolean
+    include_contexts_in_response?: boolean
+  }): Promise<RagasRun> {
+    const { data } = await apiClient.post('/evaluations/ragas/runs', params)
+    return data
+  },
+
+  async listRagasRuns(params?: {
+    skip?: number
+    limit?: number
+    conversation_id?: string
+  }): Promise<{ total: number; items: RagasRun[] }> {
+    const { data } = await apiClient.get('/evaluations/ragas/runs', { params })
+    return data
+  },
+
+  async getRagasRun(
+    runId: string,
+    params?: { include_items?: boolean; include_contexts?: boolean }
+  ): Promise<RagasRunDetail> {
+    const { data } = await apiClient.get(`/evaluations/ragas/runs/${runId}`, {
+      params,
+    })
+    return data
   },
 }
 

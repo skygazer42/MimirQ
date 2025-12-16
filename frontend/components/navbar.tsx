@@ -17,6 +17,7 @@ import {
   Scissors,
   ChevronLeft,
   ChevronRight,
+  BarChart3,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
@@ -48,6 +49,11 @@ const menuItems = [
     icon: Share2,
     label: '知识图谱',
     href: '/graph',
+  },
+  {
+    icon: BarChart3,
+    label: '评估对齐',
+    href: '/evaluation',
   },
   {
     icon: Scissors,
