@@ -65,6 +65,8 @@ class Settings(BaseSettings):
     VECTOR_BACKEND: str = "milvus"  # milvus | memory | faiss | chroma
     FAISS_STORE_PATH: str = "./vector_faiss"
     CHROMA_PERSIST_PATH: str = "./vector_chroma"
+    ENABLE_METRICS_LOG: bool = False
+    METRICS_LOG_PATH: str = "./logs/rag_metrics.jsonl"
     DEFAULT_PARSER_BACKEND: str = "auto"
     DEFAULT_CHUNK_STRATEGY: str = "langchain_recursive"
     DEEPDOC_ENABLED: bool = False

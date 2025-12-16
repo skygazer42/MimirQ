@@ -76,6 +76,7 @@ class ChatRequest(BaseModel):
     structured_output: bool = False  # 是否要求结构化(JSON)输出
     structured_preset: Optional[str] = None  # faq | summary | action_items | custom
     enable_long_term_memory: bool = False  # 是否启用长期记忆召回
+    prompt_template_id: Optional[UUID] = None  # 自定义提示词模板 ID
     rag_config: Optional[Dict[str, Any]] = {
         "top_k": 5,
         "score_threshold": 0.7,

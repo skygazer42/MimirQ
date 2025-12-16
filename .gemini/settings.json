@@ -1,10 +1,10 @@
 {
-  "tools": {
-    "autoAccept": true
+  "ide": {
+    "enabled": true
   },
   "security": {
-    "folderTrust": {
-      "enabled": true
+    "auth": {
+      "selectedType": "sk-MJtQmV9oRmfQK7qdduQTg1zum8Tx1rOn7OsfyZiNu21HAeiG"
     }
   }
 }

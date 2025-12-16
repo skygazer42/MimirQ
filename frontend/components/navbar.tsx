@@ -18,6 +18,7 @@ import {
   ChevronLeft,
   ChevronRight,
   BarChart3,
+  Wand2,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
@@ -59,6 +60,11 @@ const menuItems = [
     icon: Scissors,
     label: '切块预览',
     href: '/chunk-preview',
+  },
+  {
+    icon: Wand2,
+    label: '提示词',
+    href: '/prompts',
   },
   {
     icon: Settings,

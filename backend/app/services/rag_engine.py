@@ -14,6 +14,7 @@ import time
 
 from app.core.config import settings
 from app.services.hybrid_retriever import hybrid_retriever
+from app.services.metrics_logger import log_metrics
 
 
 class RAGEngine:
@@ -169,6 +170,8 @@ class RAGEngine:
         vector_weight: float = 0.6,
         keyword_weight: float = 0.4,
         mmr_lambda: float = settings.RETRIEVAL_MMR_LAMBDA,
+        prompt_template_id: Optional[UUID] = None,
+        db: Optional[Any] = None,
     ) -> AsyncGenerator[Dict[str, Any], None]:
         """
         流式对话接口
@@ -185,7 +188,23 @@ class RAGEngine:
         """
         try:
             llm, model_route, routing_reason = self._select_llm(question, history)
-            chain = self.prompt_template | llm | StrOutputParser()
+
+            # Load custom prompt template if provided
+            current_prompt_template = self.prompt_template
+            if prompt_template_id and db:
+                from app.models.prompt_template import PromptTemplate
+                custom_template = db.query(PromptTemplate).filter(
+                    PromptTemplate.id == prompt_template_id,
+                    PromptTemplate.tenant_id == tenant_id,
+                    PromptTemplate.is_active == True
+                ).first()
+                if custom_template:
+                    current_prompt_template = ChatPromptTemplate.from_template(custom_template.content)
+                    # Increment usage count
+                    custom_template.usage_count += 1
+                    db.commit()
+
+            chain = current_prompt_template | llm | StrOutputParser()
 
             format_instructions = ""
             if structured_output:
@@ -353,8 +372,7 @@ class RAGEngine:
                     structured_data = json.loads(full_response)
                 except Exception:
                     structured_data = None
-
-            yield {
+            done_payload = {
                 "type": "done",
                 "data": {
                     "conversation_id": str(conversation_id) if conversation_id else None,
@@ -377,6 +395,21 @@ class RAGEngine:
                     "structured_data": structured_data,
                 }
             }
+            yield done_payload
+
+            # 日志落地（可选）
+            log_metrics(
+                {
+                    "event": "rag_done",
+                    "conversation_id": str(conversation_id) if conversation_id else None,
+                    "tenant_id": str(tenant_id) if tenant_id else None,
+                    "vector_backend": settings.VECTOR_BACKEND,
+                    "retrieval_mode": request_retrieval_mode,
+                    "route": model_route,
+                    "model_used": getattr(llm, "model_name", None) or getattr(llm, "model", None),
+                    "metrics": done_payload["data"]["metrics"],
+                }
+            )
 
         except Exception as e:
             # 错误处理
