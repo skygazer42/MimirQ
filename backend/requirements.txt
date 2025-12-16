@@ -43,7 +43,7 @@ tiktoken==0.7.0
 trio==0.24.0
 xgboost==2.0.3
 huggingface-hub==0.25.2
-Pillow==10.2.0
+Pillow==10.4.0
 opencv-python-headless==4.10.0.84
 onnxruntime==1.19.2
 rapidocr-onnxruntime==1.2.0
@@ -78,3 +78,6 @@ aiofiles==23.2.1
 # Development
 pytest==7.4.4
 httpx==0.26.0
+
+# RAGAS (RAG 评测)
+ragas==0.4.1

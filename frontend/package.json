@@ -24,6 +24,7 @@
     "react-force-graph-2d": "^1.29.0",
     "react-force-graph-3d": "^1.29.0",
     "react-markdown": "^9.0.1",
+    "recharts": "^3.6.0",
     "remark-gfm": "^4.0.0",
     "tailwind-merge": "^2.2.1",
     "tailwindcss-animate": "^1.0.7",
