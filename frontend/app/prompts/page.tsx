@@ -1,12 +1,20 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Textarea } from '@/components/ui/textarea'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { Checkbox } from '@/components/ui/checkbox'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import {
   Dialog,
   DialogContent,
@@ -16,14 +24,24 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { promptTemplateApi, PromptTemplate, PromptTemplateCreate } from '@/lib/api-client'
-import { Plus, Edit, Trash2, Copy, Check, X } from 'lucide-react'
+import { Plus, Edit, Trash2, Copy, Check, X, Eye, Search, Filter } from 'lucide-react'
 import { toast } from 'sonner'
 
 export default function PromptsPage() {
   const [templates, setTemplates] = useState<PromptTemplate[]>([])
   const [loading, setLoading] = useState(true)
   const [dialogOpen, setDialogOpen] = useState(false)
+  const [previewDialogOpen, setPreviewDialogOpen] = useState(false)
   const [editingTemplate, setEditingTemplate] = useState<PromptTemplate | null>(null)
+  const [previewTemplate, setPreviewTemplate] = useState<PromptTemplate | null>(null)
+
+  // Batch selection
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+
+  // Filter & Search
+  const [searchQuery, setSearchQuery] = useState('')
+  const [categoryFilter, setCategoryFilter] = useState<string>('all')
+  const [statusFilter, setStatusFilter] = useState<string>('all')
 
   // Form state
   const [formData, setFormData] = useState<PromptTemplateCreate>({
@@ -54,6 +72,95 @@ export default function PromptsPage() {
     }
   }
 
+  // Get unique categories
+  const categories = useMemo(() => {
+    const cats = new Set(
+      templates
+        .map((t) => t.category)
+        .filter((cat): cat is string => typeof cat === 'string' && cat.trim().length > 0)
+    )
+    return Array.from(cats)
+  }, [templates])
+
+  // Filtered templates
+  const filteredTemplates = useMemo(() => {
+    return templates.filter((template) => {
+      // Search filter
+      if (searchQuery) {
+        const query = searchQuery.toLowerCase()
+        const matchesSearch =
+          template.name.toLowerCase().includes(query) ||
+          template.description?.toLowerCase().includes(query) ||
+          template.content.toLowerCase().includes(query) ||
+          template.tags.some((tag) => tag.toLowerCase().includes(query))
+        if (!matchesSearch) return false
+      }
+
+      // Category filter
+      if (categoryFilter !== 'all' && template.category !== categoryFilter) {
+        return false
+      }
+
+      // Status filter
+      if (statusFilter === 'active' && !template.is_active) return false
+      if (statusFilter === 'inactive' && template.is_active) return false
+
+      return true
+    })
+  }, [templates, searchQuery, categoryFilter, statusFilter])
+
+  // Batch selection handlers
+  const handleSelectAll = () => {
+    if (selectedIds.size === filteredTemplates.length) {
+      setSelectedIds(new Set())
+    } else {
+      setSelectedIds(new Set(filteredTemplates.map((t) => t.id)))
+    }
+  }
+
+  const handleSelectOne = (id: string) => {
+    const newSelected = new Set(selectedIds)
+    if (newSelected.has(id)) {
+      newSelected.delete(id)
+    } else {
+      newSelected.add(id)
+    }
+    setSelectedIds(newSelected)
+  }
+
+  const handleBatchDelete = async () => {
+    if (selectedIds.size === 0) return
+    if (!confirm(`确定要删除 ${selectedIds.size} 个模板吗？`)) return
+
+    try {
+      await Promise.all(Array.from(selectedIds).map((id) => promptTemplateApi.delete(id)))
+      toast.success(`已删除 ${selectedIds.size} 个模板`)
+      setSelectedIds(new Set())
+      loadTemplates()
+    } catch (error) {
+      toast.error('批量删除失败')
+      console.error(error)
+    }
+  }
+
+  const handleBatchActivate = async (activate: boolean) => {
+    if (selectedIds.size === 0) return
+
+    try {
+      await Promise.all(
+        Array.from(selectedIds).map((id) =>
+          promptTemplateApi.update(id, { is_active: activate })
+        )
+      )
+      toast.success(`已${activate ? '启用' : '停用'} ${selectedIds.size} 个模板`)
+      setSelectedIds(new Set())
+      loadTemplates()
+    } catch (error) {
+      toast.error('批量操作失败')
+      console.error(error)
+    }
+  }
+
   const handleCreate = () => {
     setEditingTemplate(null)
     setFormData({
@@ -80,6 +187,11 @@ export default function PromptsPage() {
       is_active: template.is_active,
     })
     setDialogOpen(true)
+  }
+
+  const handlePreview = (template: PromptTemplate) => {
+    setPreviewTemplate(template)
+    setPreviewDialogOpen(true)
   }
 
   const handleSave = async () => {
@@ -149,118 +261,324 @@ export default function PromptsPage() {
         </Button>
       </div>
 
+      {/* Filters & Search */}
+      <div className="mb-6 flex flex-col sm:flex-row gap-4">
+        <div className="flex-1 relative">
+          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+          <Input
+            placeholder="搜索模板名称、描述、内容或标签..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="pl-10"
+          />
+        </div>
+        <Select value={categoryFilter} onValueChange={setCategoryFilter}>
+          <SelectTrigger className="w-[180px]">
+            <Filter className="w-4 h-4 mr-2" />
+            <SelectValue placeholder="筛选分类" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">所有分类</SelectItem>
+            {categories.map((cat) => (
+              <SelectItem key={cat} value={cat}>
+                {cat}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <Select value={statusFilter} onValueChange={setStatusFilter}>
+          <SelectTrigger className="w-[180px]">
+            <SelectValue placeholder="筛选状态" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">所有状态</SelectItem>
+            <SelectItem value="active">已启用</SelectItem>
+            <SelectItem value="inactive">已停用</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+
+      {/* Batch Actions */}
+      {selectedIds.size > 0 && (
+        <div className="mb-4 p-4 bg-slate-100 dark:bg-slate-800 rounded-lg flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Checkbox checked={true} onCheckedChange={handleSelectAll} />
+            <span className="text-sm font-medium">已选择 {selectedIds.size} 个模板</span>
+          </div>
+          <div className="flex gap-2">
+            <Button size="sm" variant="outline" onClick={() => handleBatchActivate(true)}>
+              批量启用
+            </Button>
+            <Button size="sm" variant="outline" onClick={() => handleBatchActivate(false)}>
+              批量停用
+            </Button>
+            <Button size="sm" variant="destructive" onClick={handleBatchDelete}>
+              <Trash2 className="w-3 h-3 mr-1" />
+              批量删除
+            </Button>
+          </div>
+        </div>
+      )}
+
       {loading ? (
         <div className="text-center py-12">加载中...</div>
-      ) : templates.length === 0 ? (
+      ) : filteredTemplates.length === 0 ? (
         <Card>
           <CardContent className="py-12 text-center text-muted-foreground">
-            <p>还没有提示词模板</p>
-            <Button onClick={handleCreate} className="mt-4">
-              创建第一个模板
-            </Button>
+            {templates.length === 0 ? (
+              <>
+                <p>还没有提示词模板</p>
+                <Button onClick={handleCreate} className="mt-4">
+                  创建第一个模板
+                </Button>
+              </>
+            ) : (
+              <p>没有找到匹配的模板</p>
+            )}
           </CardContent>
         </Card>
       ) : (
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-          {templates.map((template) => (
-            <Card key={template.id} className="relative">
-              <CardHeader>
-                <div className="flex items-start justify-between">
-                  <div className="flex-1">
-                    <CardTitle className="flex items-center gap-2">
-                      {template.name}
-                      {template.is_system && (
-                        <Badge variant="secondary">系统</Badge>
-                      )}
-                      {template.is_active ? (
-                        <Badge variant="default" className="bg-green-600">
-                          <Check className="w-3 h-3 mr-1" />
-                          启用
-                        </Badge>
-                      ) : (
-                        <Badge variant="secondary">
-                          <X className="w-3 h-3 mr-1" />
-                          停用
-                        </Badge>
-                      )}
-                    </CardTitle>
-                    {template.category && (
-                      <Badge variant="outline" className="mt-2">
-                        {template.category}
-                      </Badge>
-                    )}
-                  </div>
-                </div>
-                <CardDescription className="mt-2">
-                  {template.description || '无描述'}
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-4">
-                  <div>
-                    <p className="text-sm font-medium mb-2">支持的变量:</p>
-                    <div className="flex flex-wrap gap-1">
-                      {template.variables.length > 0 ? (
-                        template.variables.map((v) => (
-                          <Badge key={v} variant="secondary" className="text-xs">
-                            {`{${v}}`}
+        <div className="space-y-4">
+          {/* Select All */}
+          <div className="flex items-center gap-2 px-2">
+            <Checkbox
+              checked={selectedIds.size === filteredTemplates.length && filteredTemplates.length > 0}
+              onCheckedChange={handleSelectAll}
+            />
+            <span className="text-sm text-muted-foreground">全选</span>
+          </div>
+
+          {/* Template Grid */}
+          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+            {filteredTemplates.map((template) => (
+              <Card
+                key={template.id}
+                className={`relative cursor-pointer transition-colors hover:border-primary ${
+                  selectedIds.has(template.id) ? 'border-primary bg-slate-50 dark:bg-slate-900' : ''
+                }`}
+              >
+                <CardHeader>
+                  <div className="flex items-start gap-3">
+                    <Checkbox
+                      checked={selectedIds.has(template.id)}
+                      onCheckedChange={() => handleSelectOne(template.id)}
+                      onClick={(e) => e.stopPropagation()}
+                    />
+                    <div className="flex-1" onClick={() => handlePreview(template)}>
+                      <CardTitle className="flex items-center gap-2 flex-wrap">
+                        <span className="truncate">{template.name}</span>
+                        {template.is_system && (
+                          <Badge variant="secondary">系统</Badge>
+                        )}
+                        {template.is_active ? (
+                          <Badge variant="default" className="bg-green-600">
+                            <Check className="w-3 h-3 mr-1" />
+                            启用
                           </Badge>
-                        ))
-                      ) : (
-                        <span className="text-sm text-muted-foreground">无</span>
+                        ) : (
+                          <Badge variant="secondary">
+                            <X className="w-3 h-3 mr-1" />
+                            停用
+                          </Badge>
+                        )}
+                      </CardTitle>
+                      {template.category && (
+                        <Badge variant="outline" className="mt-2">
+                          {template.category}
+                        </Badge>
                       )}
+                      <CardDescription className="mt-2 line-clamp-2">
+                        {template.description || '无描述'}
+                      </CardDescription>
                     </div>
                   </div>
+                </CardHeader>
+                <CardContent onClick={() => handlePreview(template)}>
+                  <div className="space-y-3">
+                    <div>
+                      <p className="text-sm font-medium mb-1">支持的变量:</p>
+                      <div className="flex flex-wrap gap-1">
+                        {template.variables.length > 0 ? (
+                          template.variables.map((v) => (
+                            <Badge key={v} variant="secondary" className="text-xs">
+                              {`{${v}}`}
+                            </Badge>
+                          ))
+                        ) : (
+                          <span className="text-sm text-muted-foreground">无</span>
+                        )}
+                      </div>
+                    </div>
 
-                  <div>
-                    <p className="text-sm text-muted-foreground">
-                      使用次数: {template.usage_count}
-                    </p>
-                  </div>
-
-                  <div className="flex gap-2 pt-2">
-                    {!template.is_system && (
-                      <>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => handleEdit(template)}
-                        >
-                          <Edit className="w-3 h-3 mr-1" />
-                          编辑
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => handleDelete(template)}
-                        >
-                          <Trash2 className="w-3 h-3 mr-1" />
-                          删除
-                        </Button>
-                      </>
+                    {template.tags.length > 0 && (
+                      <div>
+                        <p className="text-sm font-medium mb-1">标签:</p>
+                        <div className="flex flex-wrap gap-1">
+                          {template.tags.map((tag) => (
+                            <Badge key={tag} variant="outline" className="text-xs">
+                              {tag}
+                            </Badge>
+                          ))}
+                        </div>
+                      </div>
                     )}
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => handleDuplicate(template)}
-                    >
-                      <Copy className="w-3 h-3 mr-1" />
-                      复制
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant={template.is_active ? 'outline' : 'default'}
-                      onClick={() => handleToggleActive(template)}
-                    >
-                      {template.is_active ? '停用' : '启用'}
-                    </Button>
+
+                    <div className="text-sm text-muted-foreground">
+                      使用次数: {template.usage_count}
+                    </div>
+
+                    <div className="flex flex-wrap gap-2 pt-2" onClick={(e) => e.stopPropagation()}>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => handlePreview(template)}
+                      >
+                        <Eye className="w-3 h-3 mr-1" />
+                        预览
+                      </Button>
+                      {!template.is_system && (
+                        <>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => handleEdit(template)}
+                          >
+                            <Edit className="w-3 h-3 mr-1" />
+                            编辑
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => handleDelete(template)}
+                          >
+                            <Trash2 className="w-3 h-3 mr-1" />
+                            删除
+                          </Button>
+                        </>
+                      )}
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => handleDuplicate(template)}
+                      >
+                        <Copy className="w-3 h-3 mr-1" />
+                        复制
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant={template.is_active ? 'outline' : 'default'}
+                        onClick={() => handleToggleActive(template)}
+                      >
+                        {template.is_active ? '停用' : '启用'}
+                      </Button>
+                    </div>
                   </div>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
+                </CardContent>
+              </Card>
+            ))}
+          </div>
         </div>
       )}
+
+      {/* Preview Dialog */}
+      <Dialog open={previewDialogOpen} onOpenChange={setPreviewDialogOpen}>
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              {previewTemplate?.name}
+              {previewTemplate?.is_system && <Badge variant="secondary">系统</Badge>}
+              {previewTemplate?.is_active ? (
+                <Badge variant="default" className="bg-green-600">
+                  <Check className="w-3 h-3 mr-1" />
+                  启用
+                </Badge>
+              ) : (
+                <Badge variant="secondary">
+                  <X className="w-3 h-3 mr-1" />
+                  停用
+                </Badge>
+              )}
+            </DialogTitle>
+            <DialogDescription>
+              {previewTemplate?.description || '无描述'}
+            </DialogDescription>
+          </DialogHeader>
+
+          {previewTemplate && (
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label className="text-sm font-medium">分类</Label>
+                  <p className="text-sm text-muted-foreground mt-1">
+                    {previewTemplate.category || '无'}
+                  </p>
+                </div>
+                <div>
+                  <Label className="text-sm font-medium">使用次数</Label>
+                  <p className="text-sm text-muted-foreground mt-1">
+                    {previewTemplate.usage_count}
+                  </p>
+                </div>
+              </div>
+
+              <div>
+                <Label className="text-sm font-medium">支持的变量</Label>
+                <div className="flex flex-wrap gap-1 mt-2">
+                  {previewTemplate.variables.length > 0 ? (
+                    previewTemplate.variables.map((v) => (
+                      <Badge key={v} variant="secondary">
+                        {`{${v}}`}
+                      </Badge>
+                    ))
+                  ) : (
+                    <span className="text-sm text-muted-foreground">无</span>
+                  )}
+                </div>
+              </div>
+
+              {previewTemplate.tags.length > 0 && (
+                <div>
+                  <Label className="text-sm font-medium">标签</Label>
+                  <div className="flex flex-wrap gap-1 mt-2">
+                    {previewTemplate.tags.map((tag) => (
+                      <Badge key={tag} variant="outline">
+                        {tag}
+                      </Badge>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <div>
+                <Label className="text-sm font-medium">模板内容</Label>
+                <div className="mt-2 p-4 bg-slate-100 dark:bg-slate-900 rounded-lg">
+                  <pre className="text-sm whitespace-pre-wrap font-mono">
+                    {previewTemplate.content}
+                  </pre>
+                </div>
+              </div>
+            </div>
+          )}
+
+          <DialogFooter>
+            {previewTemplate && !previewTemplate.is_system && (
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setPreviewDialogOpen(false)
+                  handleEdit(previewTemplate)
+                }}
+              >
+                <Edit className="w-4 h-4 mr-2" />
+                编辑
+              </Button>
+            )}
+            <Button variant="outline" onClick={() => setPreviewDialogOpen(false)}>
+              关闭
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Create/Edit Dialog */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>

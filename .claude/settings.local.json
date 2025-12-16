@@ -53,7 +53,11 @@
       "Bash(docker exec:*)",
       "Bash(docker-compose restart:*)",
       "Bash(docker restart:*)",
-      "Bash(git restore:*)"
+      "Bash(git restore:*)",
+      "Bash(taskkill //F //PID 21088)",
+      "Bash(taskkill //F //PID 52688)",
+      "Bash(taskkill //F //PID 10512)",
+      "Bash(taskkill:*)"
     ],
     "deny": [],
     "ask": []
