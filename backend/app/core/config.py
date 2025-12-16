@@ -1,6 +1,8 @@
 """
 Application configuration management.
 """
+from typing import Optional
+
 from pydantic_settings import BaseSettings
 from pydantic import AliasChoices, Field
 
@@ -16,6 +18,11 @@ class Settings(BaseSettings):
     LLM_API_KEY: str = Field(default="", validation_alias=AliasChoices("LLM_API_KEY", "OPENAI_API_KEY"))
     LLM_API_BASE: str = Field(default="https://api.openai.com/v1", validation_alias=AliasChoices("LLM_API_BASE", "OPENAI_BASE_URL"))
     LLM_MODEL: str = Field(default="gpt-4-turbo-preview", validation_alias=AliasChoices("LLM_MODEL", "OPENAI_MODEL"))
+    LLM_MODEL_FAST: Optional[str] = Field(default=None, validation_alias=AliasChoices("LLM_MODEL_FAST", "LLM_MODEL_LIGHT"))
+    LLM_MODEL_HEAVY: Optional[str] = Field(default=None, validation_alias=AliasChoices("LLM_MODEL_HEAVY", "LLM_MODEL_COMPLEX"))
+    ENABLE_DYNAMIC_MODEL_ROUTING: bool = False
+    MODEL_COMPLEXITY_THRESHOLD: int = 160
+    MODEL_COMPLEXITY_HISTORY_WEIGHT: float = 0.35
     LLM_TEMPERATURE: float = 0.7
     LLM_TIMEOUT: int = 60
     LLM_MAX_RETRIES: int = 3

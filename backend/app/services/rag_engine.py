@@ -38,8 +38,8 @@ class RAGEngine:
             )
             trust_env = False
 
-        http_client = httpx.Client(trust_env=trust_env)
-        http_async_client = httpx.AsyncClient(trust_env=trust_env)
+        self.http_client = httpx.Client(trust_env=trust_env)
+        self.http_async_client = httpx.AsyncClient(trust_env=trust_env)
 
         try:
             from langchain_openai import ChatOpenAI
@@ -49,17 +49,15 @@ class RAGEngine:
                 "Please reinstall backend requirements in a clean venv."
             ) from exc
 
-        self.llm = ChatOpenAI(
-            model=settings.LLM_MODEL,
-            api_key=settings.LLM_API_KEY,
-            base_url=settings.LLM_API_BASE,
-            temperature=settings.LLM_TEMPERATURE,
-            streaming=True,
-            timeout=settings.LLM_TIMEOUT,
-            max_retries=settings.LLM_MAX_RETRIES,
-            http_client=http_client,
-            http_async_client=http_async_client,
-        )
+        # Build available models for dynamic routing (inspired by agent middleware pattern)
+        default_model_name = settings.LLM_MODEL or "gpt-4-turbo-preview"
+        self.models: Dict[str, Any] = {}
+        self.models["default"] = self._build_llm(ChatOpenAI, default_model_name)
+        if settings.ENABLE_DYNAMIC_MODEL_ROUTING:
+            if settings.LLM_MODEL_FAST:
+                self.models["fast"] = self._build_llm(ChatOpenAI, settings.LLM_MODEL_FAST or default_model_name)
+            if settings.LLM_MODEL_HEAVY:
+                self.models["heavy"] = self._build_llm(ChatOpenAI, settings.LLM_MODEL_HEAVY or default_model_name)
 
         # Prompt 模板（支持对话历史）
         self.prompt_template = ChatPromptTemplate.from_template(
@@ -84,8 +82,48 @@ class RAGEngine:
 【回答】"""
         )
 
-        # LangChain Runnable chain: prompt -> llm -> string output
-        self.chain = self.prompt_template | self.llm | StrOutputParser()
+
+    def _build_llm(self, chat_cls, model_name: str):
+        """Create a ChatOpenAI-compatible LLM with shared HTTP clients."""
+        return chat_cls(
+            model=model_name,
+            api_key=settings.LLM_API_KEY,
+            base_url=settings.LLM_API_BASE,
+            temperature=settings.LLM_TEMPERATURE,
+            streaming=True,
+            timeout=settings.LLM_TIMEOUT,
+            max_retries=settings.LLM_MAX_RETRIES,
+            http_client=self.http_client,
+            http_async_client=self.http_async_client,
+        )
+
+    def _score_question_complexity(self, question: str, history: Optional[List[Dict[str, str]]]) -> float:
+        """
+        粗粒度复杂度评分：长度 + 历史长度 * 权重。
+        简单且无依赖，便于保持现有接口兼容。
+        """
+        history = history or []
+        history_len = sum(len(msg.get("content", "")) for msg in history if isinstance(msg, dict))
+        return float(len(question)) + settings.MODEL_COMPLEXITY_HISTORY_WEIGHT * float(history_len)
+
+    def _select_llm(self, question: str, history: Optional[List[Dict[str, str]]]) -> tuple[Any, str, str]:
+        """
+        动态模型路由：借鉴 agent/middleware 的动态选模模式。
+        返回: (llm实例, 路由标识, 原因)
+        """
+        if not settings.ENABLE_DYNAMIC_MODEL_ROUTING:
+            return self.models["default"], "default", "routing disabled"
+
+        score = self._score_question_complexity(question, history)
+        threshold = settings.MODEL_COMPLEXITY_THRESHOLD
+
+        if "heavy" in self.models and score >= threshold:
+            return self.models["heavy"], "heavy", f"score {score:.1f} >= threshold {threshold}"
+
+        if "fast" in self.models:
+            return self.models["fast"], "fast", f"score {score:.1f} < threshold {threshold}"
+
+        return self.models["default"], "default", "fallback to default"
 
     async def stream_chat(
         self,
@@ -111,6 +149,18 @@ class RAGEngine:
             流式事件: {"type": "citations|token|done|error", "data": ...}
         """
         try:
+            llm, model_route, routing_reason = self._select_llm(question, history)
+            chain = self.prompt_template | llm | StrOutputParser()
+
+            yield {
+                "type": "route",
+                "data": {
+                    "model_used": getattr(llm, "model_name", None) or getattr(llm, "model", None),
+                    "route": model_route,
+                    "reason": routing_reason,
+                },
+            }
+
             # Step 1: 混合检索（LangChain Retriever）
             retriever = hybrid_retriever.model_copy(
                 update={
@@ -121,7 +171,14 @@ class RAGEngine:
                     "document_ids": document_ids,
                 }
             )
-            docs = retriever.invoke(question)
+            try:
+                docs = retriever.invoke(question)
+            except Exception as exc:
+                yield {
+                    "type": "error",
+                    "data": {"message": f"retrieval failed: {exc}"}
+                }
+                docs = []
 
             # 构建引用信息
             citations: List[Dict[str, Any]] = []
@@ -205,7 +262,7 @@ class RAGEngine:
 
             # Step 4: 流式生成回答
             full_response = ""
-            async for token in self.chain.astream(
+            async for token in chain.astream(
                 {"context": context, "history": history_text, "question": question}
             ):
                 if not token:
@@ -222,7 +279,9 @@ class RAGEngine:
                 "data": {
                     "conversation_id": str(conversation_id) if conversation_id else None,
                     "total_tokens": len(full_response),
-                    "citations_count": len(citations)
+                    "citations_count": len(citations),
+                    "model_used": getattr(llm, "model_name", None) or getattr(llm, "model", None),
+                    "route": model_route,
                 }
             }
 
