@@ -46,7 +46,13 @@
       "Bash(PYTHONIOENCODING=utf-8 python:*)",
       "Bash(docker-compose down:*)",
       "Bash(docker-compose up:*)",
-      "Bash(tee:*)"
+      "Bash(tee:*)",
+      "Bash(timeout 900 docker-compose up:*)",
+      "Bash(python:*)",
+      "Bash(docker logs:*)",
+      "Bash(docker exec:*)",
+      "Bash(docker-compose restart:*)",
+      "Bash(docker restart:*)"
     ],
     "deny": [],
     "ask": []

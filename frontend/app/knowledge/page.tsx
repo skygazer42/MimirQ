@@ -36,6 +36,7 @@ import { Button } from '@/components/ui/button'
 import { useDocuments } from '@/hooks/use-documents'
 import { formatFileSize, formatDate, cn } from '@/lib/utils'
 import { StatCard, StatsGrid } from '@/components/ui/stats-card'
+import { DocumentDetailDialog } from '@/components/document-detail-dialog'
 import { getParserLabel } from '@/lib/parser-options'
 import type { Document } from '@/types'
 
@@ -61,6 +62,8 @@ export default function KnowledgePage() {
   const failedDocs = documents.filter(d => d.status === 'failed').length
   const totalChunks = documents.reduce((sum, d) => sum + (d.chunk_count || 0), 0)
   const totalSize = documents.reduce((sum, d) => sum + (d.file_size || 0), 0)
+  
+  const showExtraCard = processingDocs > 0 || failedDocs > 0
 
   // 处理文件上传
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -155,12 +158,12 @@ export default function KnowledgePage() {
           </div>
 
           {/* 统计卡片区 */}
-          <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-4">
+          <StatsGrid className={showExtraCard ? "lg:grid-cols-5" : "lg:grid-cols-4"}>
             <StatCard
               icon={FileStack}
               label="文档总数"
               value={totalDocs}
-              color="blue"
+              color="indigo"
               className="bg-white/80 dark:bg-slate-900/80 backdrop-blur-sm border-slate-200 dark:border-slate-800 shadow-sm"
             />
             <StatCard
@@ -184,7 +187,7 @@ export default function KnowledgePage() {
               color="orange"
               className="bg-white/80 dark:bg-slate-900/80 backdrop-blur-sm border-slate-200 dark:border-slate-800 shadow-sm"
             />
-            {(processingDocs > 0 || failedDocs > 0) && (
+            {showExtraCard && (
               <StatCard
                 icon={failedDocs > 0 ? XCircle : Loader2}
                 label={failedDocs > 0 ? '需关注' : '处理中'}
@@ -193,7 +196,7 @@ export default function KnowledgePage() {
                 className="bg-white/80 dark:bg-slate-900/80 backdrop-blur-sm border-slate-200 dark:border-slate-800 shadow-sm"
               />
             )}
-          </div>
+          </StatsGrid>
         </header>
 
         {/* 导航栏 & 工具栏 */}
@@ -327,10 +330,22 @@ export default function KnowledgePage() {
                               <td className="px-6 py-4 text-slate-600 dark:text-slate-400">{doc.chunk_count || '-'}</td>
                               <td className="px-6 py-4 text-slate-500 dark:text-slate-500 font-mono text-xs">{formatFileSize(doc.file_size)}</td>
                               <td className="px-6 py-4 text-slate-500 dark:text-slate-500">{formatDate(doc.created_at)}</td>
-                              <td className="px-6 py-4 text-right">
+                              <td className="px-6 py-4 text-right flex items-center justify-end gap-2">
+                                <DocumentDetailDialog 
+                                  document={doc} 
+                                  trigger={
+                                    <button
+                                      className="text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 transition-colors p-2 rounded-lg opacity-0 group-hover:opacity-100"
+                                      title="预览内容"
+                                    >
+                                      <Eye className="w-4 h-4" />
+                                    </button>
+                                  }
+                                />
                                 <button
                                   onClick={() => deleteDocument(doc.id)}
                                   className="text-slate-400 hover:text-red-500 transition-colors p-2 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg opacity-0 group-hover:opacity-100"
+                                  title="删除文档"
                                 >
                                   <Trash2 className="w-4 h-4" />
                                 </button>
@@ -579,12 +594,25 @@ function DocumentCard({ doc, getStatusConfig, onDelete }: { doc: Document, getSt
            {parserLabel || 'Auto'}
          </span>
          <div className="flex items-center gap-1">
+           <DocumentDetailDialog 
+             document={doc}
+             trigger={
+               <button 
+                 className="p-1.5 text-slate-400 dark:text-slate-500 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 rounded-md transition-colors"
+                 title="预览内容"
+                 onClick={(e) => e.stopPropagation()}
+               >
+                 <Eye className="w-4 h-4" />
+               </button>
+             }
+           />
            <button 
              className="p-1.5 text-slate-400 dark:text-slate-500 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-md transition-colors"
              onClick={(e) => {
                e.stopPropagation()
                onDelete(doc.id)
              }}
+             title="删除文档"
            >
              <Trash2 className="w-4 h-4" />
            </button>

@@ -59,6 +59,12 @@ class Settings(BaseSettings):
     RETRIEVAL_TOP_K: int = 5
     SIMILARITY_THRESHOLD: float = 0.7
     RETRIEVAL_MMR_LAMBDA: float = 0.7
+    USE_LANGGRAPH_PIPELINE: bool = False
+    RAG_GRAPH_MAX_RETRIES: int = 2
+    RAG_GRAPH_TIMEOUT_SEC: int = 20
+    VECTOR_BACKEND: str = "milvus"  # milvus | memory | faiss | chroma
+    FAISS_STORE_PATH: str = "./vector_faiss"
+    CHROMA_PERSIST_PATH: str = "./vector_chroma"
     DEFAULT_PARSER_BACKEND: str = "auto"
     DEFAULT_CHUNK_STRATEGY: str = "langchain_recursive"
     DEEPDOC_ENABLED: bool = False

@@ -27,6 +27,7 @@ from app.schemas.chat import (
 )
 from app.services.document_access import filter_allowed_document_ids
 from app.services.rag_engine import get_rag_engine
+from app.services.rag_graph import run_rag_graph
 from app.core.config import settings
 from app.dependencies.tenant import get_tenant_id
 from app.dependencies.auth import get_current_account_id
@@ -185,6 +186,49 @@ async def stream_chat(
         nonlocal citations_data, full_response
         doc_ids_to_use = allowed_doc_ids or []
 
+        # 非流式 LangGraph 快捷通道：更快出完整答复，用于工具/Agent风格编排
+        if request.rag_config.get("use_graph") and not request.stream:
+            graph_result = run_rag_graph(
+                question=request.message,
+                history=[m.model_dump() for m in (request.history or [])] + long_term_messages,
+                document_ids=doc_ids_to_use,
+                tenant_id=tenant_id,
+                top_k=request.rag_config.get('top_k', settings.RETRIEVAL_TOP_K),
+                score_threshold=request.rag_config.get('score_threshold', settings.SIMILARITY_THRESHOLD),
+                retrieval_mode=request.rag_config.get('retrieval_mode', 'hybrid'),
+                alpha=request.rag_config.get('alpha', 0.6),
+                enable_weight_rerank=request.rag_config.get('enable_weight_rerank', True),
+                vector_weight=request.rag_config.get('vector_weight', 0.6),
+                keyword_weight=request.rag_config.get('keyword_weight', 0.4),
+                mmr_lambda=request.rag_config.get('mmr_lambda', settings.RETRIEVAL_MMR_LAMBDA),
+                structured_preset=request.structured_preset,
+                structured_output=request.structured_output,
+            )
+            citations_data = graph_result.get("citations", [])
+            yield f"data: {json.dumps({'type': 'citations', 'data': citations_data}, ensure_ascii=False)}\n\n"
+            answer_text = graph_result.get("answer", "")
+            # 模拟流式输出：按 120 字节分块
+            chunk_size = 120
+            for i in range(0, len(answer_text), chunk_size):
+                token_chunk = answer_text[i:i+chunk_size]
+                yield f"data: {json.dumps({'type': 'token', 'data': {'content': token_chunk}}, ensure_ascii=False)}\n\n"
+                full_response += token_chunk
+            done_payload = {
+                "type": "done",
+                "data": {
+                    "conversation_id": str(conversation_id) if conversation_id else None,
+                    "total_tokens": len(full_response),
+                    "citations_count": len(citations_data),
+                    "model_used": graph_result.get("model_used"),
+                    "route": graph_result.get("route"),
+                    "retrieval_mode": request.rag_config.get('retrieval_mode', 'hybrid'),
+                    "structured": False,
+                    "structured_data": None,
+                }
+            }
+            yield f"data: {json.dumps(done_payload, ensure_ascii=False)}\n\n"
+            return
+
         try:
             # 使用 LangChain Agent
             engine = get_rag_engine()
@@ -203,6 +247,7 @@ async def stream_chat(
                 vector_weight=request.rag_config.get('vector_weight', 0.6),
                 keyword_weight=request.rag_config.get('keyword_weight', 0.4),
                 mmr_lambda=request.rag_config.get('mmr_lambda', settings.RETRIEVAL_MMR_LAMBDA),
+                structured_preset=request.structured_preset,
             ):
                 # 记录引用信息
                 if event['type'] == 'citations':

@@ -86,6 +86,28 @@ class RAGEngine:
 【回答】"""
         )
 
+        # 结构化输出预设格式（可扩展）
+        self.structured_presets: Dict[str, str] = {
+            "faq": (
+                "仅输出 JSON，结构："
+                '{"answer": "string", "citations": [{"document_id": "...", "chunk_id": "..."}],'
+                '"qa_pairs": [{"question": "string", "answer": "string"}]}'
+                " 不要输出多余文本。"
+            ),
+            "summary": (
+                "仅输出 JSON，结构："
+                '{"answer": "string", "citations": [{"document_id": "...", "chunk_id": "..."}],'
+                '"bullets": ["要点1", "要点2"], "summary": "简洁摘要"}'
+                " 不要输出多余文本。"
+            ),
+            "action_items": (
+                "仅输出 JSON，结构："
+                '{"answer": "string", "citations": [{"document_id": "...", "chunk_id": "..."}],'
+                '"actions": [{"item": "动作", "owner": "负责人", "due": "时间"}]}'
+                " 不要输出多余文本。"
+            ),
+        }
+
 
     def _build_llm(self, chat_cls, model_name: str):
         """Create a ChatOpenAI-compatible LLM with shared HTTP clients."""
@@ -139,6 +161,7 @@ class RAGEngine:
         score_threshold: float = 0.7,
         tenant_id: Optional[UUID] = None,
         structured_output: bool = False,
+        structured_preset: Optional[str] = None,
         retrieval_mode: str = "hybrid",
         alpha: float = 0.6,
         enable_weight_rerank: bool = True,
@@ -165,10 +188,14 @@ class RAGEngine:
 
             format_instructions = ""
             if structured_output:
-                format_instructions = (
-                    "请仅返回 JSON，结构: "
-                    '{"answer": "string", "citations": [{"document_id": "...", "chunk_id": "...", "page_number": null, "relevance_score": 0.0}]} '
-                    "不要输出多余文本。"
+                preset_key = (structured_preset or "").lower()
+                format_instructions = self.structured_presets.get(
+                    preset_key,
+                    (
+                        "请仅返回 JSON，结构: "
+                        '{"answer": "string", "citations": [{"document_id": "...", "chunk_id": "...", "page_number": null, "relevance_score": 0.0}]} '
+                        "不要输出多余文本。"
+                    ),
                 )
 
             yield {

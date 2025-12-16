@@ -14,7 +14,7 @@ from app.core.config import settings
 from app.models.document import Document as DBDocument, DocumentChunk
 from app.services.parsers import parser_factory
 from app.services.chunkers import chunker_factory
-from app.services.milvus_store import milvus_store
+from app.services.vector_router import get_vector_store
 from app.services.hybrid_retriever import hybrid_retriever
 
 
@@ -123,8 +123,8 @@ class DocumentProcessorService:
                 db, document_id, "processing", 66, "embedding"
             )
 
-            # Step 4: 生成 Embeddings 并存入 Milvus
-            print(f"Generating embeddings and storing in Milvus...")
+            # Step 4: 生成 Embeddings 并存入向量库（可配置后端）
+            print(f"Generating embeddings and storing in vector backend...")
 
             # 转换为 Milvus 需要的格式
             milvus_docs = []
@@ -134,12 +134,13 @@ class DocumentProcessorService:
                     'metadata': chunk.metadata
                 })
 
+            vector_store = get_vector_store()
             try:
-                vector_ids = milvus_store.add_documents(
+                vector_ids = vector_store.add_documents(
                     milvus_docs, document_id, tenant_id
                 )
             except Exception as exc:
-                print(f"[WARN]  Failed to store vectors in Milvus: {exc}")
+                print(f"[WARN]  Failed to store vectors: {exc}")
                 print("[WARN]  Proceeding without vector ids; BM25-only retrieval will still work.")
                 vector_ids = [None] * len(milvus_docs)
 
