@@ -222,6 +222,11 @@ async def stream_chat(
                     "model_used": graph_result.get("model_used"),
                     "route": graph_result.get("route"),
                     "retrieval_mode": request.rag_config.get('retrieval_mode', 'hybrid'),
+                    "vector_backend": settings.VECTOR_BACKEND,
+                    "metrics": {
+                        "retrieval_mode": request.rag_config.get('retrieval_mode', 'hybrid'),
+                        "vector_backend": settings.VECTOR_BACKEND,
+                    },
                     "structured": False,
                     "structured_data": None,
                 }
