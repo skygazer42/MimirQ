@@ -1,38 +1,58 @@
 """
-Prompt template management API with tenant isolation.
+Prompt template management API endpoints with tenant isolation.
+
+This module provides REST API endpoints for managing prompt templates,
+including CRUD operations and template duplication functionality.
+All operations respect tenant boundaries and access control.
 """
-from uuid import UUID
 from typing import Optional
-from fastapi import APIRouter, Depends, HTTPException
+from uuid import UUID
+
+from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
+from app.dependencies.auth import get_current_account_id
+from app.dependencies.tenant import get_tenant_id
 from app.models.prompt_template import PromptTemplate
 from app.schemas.prompt_template import (
     PromptTemplateCreate,
-    PromptTemplateUpdate,
-    PromptTemplateOut,
     PromptTemplateList,
+    PromptTemplateOut,
+    PromptTemplateUpdate,
 )
-from app.dependencies.tenant import get_tenant_id
-from app.dependencies.auth import get_current_account_id
 from app.services.dataset_service import DatasetService
 
-router = APIRouter()
+router = APIRouter(tags=["prompt-templates"])
 
 
-@router.post("", response_model=PromptTemplateOut, status_code=201)
+@router.post("", response_model=PromptTemplateOut, status_code=status.HTTP_201_CREATED)
 async def create_prompt_template(
     request: PromptTemplateCreate,
     tenant_id: UUID = Depends(get_tenant_id),
     account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db)
-):
-    """Create a new prompt template"""
-    # Ensure user is tenant member
+    db: Session = Depends(get_db),
+) -> PromptTemplate:
+    """
+    Create a new prompt template.
+
+    Creates a new user-defined prompt template within the current tenant's scope.
+    System templates cannot be created through this endpoint.
+
+    Args:
+        request: Template creation data including name, content, and metadata
+        tenant_id: Current tenant identifier (from auth context)
+        account_id: Current user account identifier (from auth context)
+        db: Database session
+
+    Returns:
+        The newly created prompt template with generated ID and timestamps
+
+    Raises:
+        HTTPException: 403 if user is not a tenant member
+    """
     DatasetService.ensure_member(db, tenant_id, account_id)
 
-    # Create template
     template = PromptTemplate(
         tenant_id=tenant_id,
         name=request.name,
@@ -42,7 +62,7 @@ async def create_prompt_template(
         category=request.category,
         tags=request.tags,
         is_active=request.is_active,
-        is_system=False,  # User-created templates are never system templates
+        is_system=False,
     )
 
     db.add(template)
@@ -60,9 +80,30 @@ async def list_prompt_templates(
     is_active: Optional[bool] = None,
     tenant_id: UUID = Depends(get_tenant_id),
     account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db)
-):
-    """List all prompt templates for the tenant"""
+    db: Session = Depends(get_db),
+) -> PromptTemplateList:
+    """
+    List prompt templates with optional filtering and pagination.
+
+    Retrieves prompt templates for the current tenant with support for
+    filtering by category and active status. Results are ordered by
+    system status, usage count, and update time.
+
+    Args:
+        skip: Number of records to skip for pagination (default: 0)
+        limit: Maximum number of records to return (default: 50)
+        category: Optional category filter
+        is_active: Optional active status filter
+        tenant_id: Current tenant identifier (from auth context)
+        account_id: Current user account identifier (from auth context)
+        db: Database session
+
+    Returns:
+        Paginated list of prompt templates with total count
+
+    Raises:
+        HTTPException: 403 if user is not a tenant member
+    """
     DatasetService.ensure_member(db, tenant_id, account_id)
 
     query = db.query(PromptTemplate).filter(PromptTemplate.tenant_id == tenant_id)
@@ -75,16 +116,18 @@ async def list_prompt_templates(
 
     total = query.count()
 
-    templates = query.order_by(
-        PromptTemplate.is_system.desc(),  # System templates first
-        PromptTemplate.usage_count.desc(),  # Then by usage
-        PromptTemplate.updated_at.desc()
-    ).offset(skip).limit(limit).all()
+    templates = (
+        query.order_by(
+            PromptTemplate.is_system.desc(),
+            PromptTemplate.usage_count.desc(),
+            PromptTemplate.updated_at.desc(),
+        )
+        .offset(skip)
+        .limit(limit)
+        .all()
+    )
 
-    return {
-        "total": total,
-        "items": templates
-    }
+    return PromptTemplateList(total=total, items=templates)
 
 
 @router.get("/{template_id}", response_model=PromptTemplateOut)
@@ -92,18 +135,40 @@ async def get_prompt_template(
     template_id: UUID,
     tenant_id: UUID = Depends(get_tenant_id),
     account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db)
-):
-    """Get a specific prompt template"""
+    db: Session = Depends(get_db),
+) -> PromptTemplate:
+    """
+    Retrieve a specific prompt template by ID.
+
+    Args:
+        template_id: Unique identifier of the template
+        tenant_id: Current tenant identifier (from auth context)
+        account_id: Current user account identifier (from auth context)
+        db: Database session
+
+    Returns:
+        The requested prompt template
+
+    Raises:
+        HTTPException: 403 if user is not a tenant member
+        HTTPException: 404 if template not found or not in current tenant
+    """
     DatasetService.ensure_member(db, tenant_id, account_id)
 
-    template = db.query(PromptTemplate).filter(
-        PromptTemplate.id == template_id,
-        PromptTemplate.tenant_id == tenant_id
-    ).first()
+    template = (
+        db.query(PromptTemplate)
+        .filter(
+            PromptTemplate.id == template_id,
+            PromptTemplate.tenant_id == tenant_id,
+        )
+        .first()
+    )
 
     if not template:
-        raise HTTPException(status_code=404, detail="Prompt template not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Prompt template not found",
+        )
 
     return template
 
@@ -114,24 +179,51 @@ async def update_prompt_template(
     request: PromptTemplateUpdate,
     tenant_id: UUID = Depends(get_tenant_id),
     account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db)
-):
-    """Update a prompt template"""
+    db: Session = Depends(get_db),
+) -> PromptTemplate:
+    """
+    Update an existing prompt template.
+
+    Updates the specified template with new values. System templates
+    cannot be modified through this endpoint.
+
+    Args:
+        template_id: Unique identifier of the template to update
+        request: Update data (only provided fields will be updated)
+        tenant_id: Current tenant identifier (from auth context)
+        account_id: Current user account identifier (from auth context)
+        db: Database session
+
+    Returns:
+        The updated prompt template
+
+    Raises:
+        HTTPException: 403 if user is not a tenant member or template is system template
+        HTTPException: 404 if template not found
+    """
     DatasetService.ensure_member(db, tenant_id, account_id)
 
-    template = db.query(PromptTemplate).filter(
-        PromptTemplate.id == template_id,
-        PromptTemplate.tenant_id == tenant_id
-    ).first()
+    template = (
+        db.query(PromptTemplate)
+        .filter(
+            PromptTemplate.id == template_id,
+            PromptTemplate.tenant_id == tenant_id,
+        )
+        .first()
+    )
 
     if not template:
-        raise HTTPException(status_code=404, detail="Prompt template not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Prompt template not found",
+        )
 
-    # Prevent modifying system templates
     if template.is_system:
-        raise HTTPException(status_code=403, detail="Cannot modify system templates")
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Cannot modify system templates",
+        )
 
-    # Update fields
     update_data = request.model_dump(exclude_unset=True)
     for field, value in update_data.items():
         setattr(template, field, value)
@@ -142,53 +234,106 @@ async def update_prompt_template(
     return template
 
 
-@router.delete("/{template_id}", status_code=204)
+@router.delete("/{template_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_prompt_template(
     template_id: UUID,
     tenant_id: UUID = Depends(get_tenant_id),
     account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db)
-):
-    """Delete a prompt template"""
+    db: Session = Depends(get_db),
+) -> None:
+    """
+    Delete a prompt template.
+
+    Permanently deletes the specified template. System templates
+    cannot be deleted through this endpoint.
+
+    Args:
+        template_id: Unique identifier of the template to delete
+        tenant_id: Current tenant identifier (from auth context)
+        account_id: Current user account identifier (from auth context)
+        db: Database session
+
+    Returns:
+        None (HTTP 204 No Content on success)
+
+    Raises:
+        HTTPException: 403 if user is not a tenant member or template is system template
+        HTTPException: 404 if template not found
+    """
     DatasetService.ensure_member(db, tenant_id, account_id)
 
-    template = db.query(PromptTemplate).filter(
-        PromptTemplate.id == template_id,
-        PromptTemplate.tenant_id == tenant_id
-    ).first()
+    template = (
+        db.query(PromptTemplate)
+        .filter(
+            PromptTemplate.id == template_id,
+            PromptTemplate.tenant_id == tenant_id,
+        )
+        .first()
+    )
 
     if not template:
-        raise HTTPException(status_code=404, detail="Prompt template not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Prompt template not found",
+        )
 
-    # Prevent deleting system templates
     if template.is_system:
-        raise HTTPException(status_code=403, detail="Cannot delete system templates")
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Cannot delete system templates",
+        )
 
     db.delete(template)
     db.commit()
 
-    return None
 
-
-@router.post("/{template_id}/duplicate", response_model=PromptTemplateOut, status_code=201)
+@router.post(
+    "/{template_id}/duplicate",
+    response_model=PromptTemplateOut,
+    status_code=status.HTTP_201_CREATED,
+)
 async def duplicate_prompt_template(
     template_id: UUID,
     tenant_id: UUID = Depends(get_tenant_id),
     account_id: str = Depends(get_current_account_id),
-    db: Session = Depends(get_db)
-):
-    """Duplicate an existing prompt template"""
+    db: Session = Depends(get_db),
+) -> PromptTemplate:
+    """
+    Duplicate an existing prompt template.
+
+    Creates a copy of the specified template with a modified name.
+    The duplicate is always created as a user template (not system).
+
+    Args:
+        template_id: Unique identifier of the template to duplicate
+        tenant_id: Current tenant identifier (from auth context)
+        account_id: Current user account identifier (from auth context)
+        db: Database session
+
+    Returns:
+        The newly created duplicate template
+
+    Raises:
+        HTTPException: 403 if user is not a tenant member
+        HTTPException: 404 if template not found
+    """
     DatasetService.ensure_member(db, tenant_id, account_id)
 
-    original = db.query(PromptTemplate).filter(
-        PromptTemplate.id == template_id,
-        PromptTemplate.tenant_id == tenant_id
-    ).first()
+    original = (
+        db.query(PromptTemplate)
+        .filter(
+            PromptTemplate.id == template_id,
+            PromptTemplate.tenant_id == tenant_id,
+        )
+        .first()
+    )
 
     if not original:
-        raise HTTPException(status_code=404, detail="Prompt template not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Prompt template not found",
+        )
 
-    # Create duplicate
     duplicate = PromptTemplate(
         tenant_id=tenant_id,
         name=f"{original.name} (Copy)",
@@ -198,7 +343,7 @@ async def duplicate_prompt_template(
         category=original.category,
         tags=original.tags.copy() if original.tags else [],
         is_active=True,
-        is_system=False,  # Duplicates are never system templates
+        is_system=False,
     )
 
     db.add(duplicate)
