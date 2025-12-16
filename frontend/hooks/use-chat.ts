@@ -5,6 +5,7 @@
 
 import { useState, useCallback, useRef } from 'react'
 import type { Message, Citation, StreamEvent } from '@/types'
+import { getAuthHeaders } from '@/lib/auth-headers'
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
 
@@ -56,6 +57,7 @@ export function useChat(options: UseChatOptions = {}) {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
+            ...getAuthHeaders(),
           },
           body: JSON.stringify({
             conversation_id: options.conversationId,
