@@ -75,9 +75,13 @@ class RAGEngine:
 【回答要求】
 1. 仅基于参考资料回答，不要编造信息
 2. 如果参考资料中没有相关信息，请明确告知用户"根据现有资料无法回答该问题"
-3. 结合对话历史理解上下文，处理代词（如"它"、"这个"）和追问
+3. 结合对话历史理解上下文，处理代词（如"它"、“这个”）和追问
 4. 回答要准确、简洁、专业
 5. 引用资料时可以提及来源文件名
+6. 如指定输出格式，请严格遵守
+
+【输出格式说明】
+{format_instructions}
 
 【回答】"""
         )
@@ -135,6 +139,12 @@ class RAGEngine:
         score_threshold: float = 0.7,
         tenant_id: Optional[UUID] = None,
         structured_output: bool = False,
+        retrieval_mode: str = "hybrid",
+        alpha: float = 0.6,
+        enable_weight_rerank: bool = True,
+        vector_weight: float = 0.6,
+        keyword_weight: float = 0.4,
+        mmr_lambda: float = settings.RETRIEVAL_MMR_LAMBDA,
     ) -> AsyncGenerator[Dict[str, Any], None]:
         """
         流式对话接口
@@ -170,14 +180,26 @@ class RAGEngine:
                 },
             }
 
+            request_retrieval_mode = retrieval_mode or "hybrid"
+            request_alpha = alpha if alpha is not None else 0.6
+            request_enable_weight_rerank = bool(enable_weight_rerank)
+            request_vector_weight = vector_weight if vector_weight is not None else 0.6
+            request_keyword_weight = keyword_weight if keyword_weight is not None else 0.4
+            request_mmr_lambda = mmr_lambda if mmr_lambda is not None else settings.RETRIEVAL_MMR_LAMBDA
+
             # Step 1: 混合检索（LangChain Retriever）
             retriever = hybrid_retriever.model_copy(
                 update={
                     "k": top_k,
                     "score_threshold": score_threshold,
-                    "alpha": 0.6,
+                    "alpha": request_alpha,
                     "tenant_id": tenant_id,
                     "document_ids": document_ids,
+                    "retrieval_mode": request_retrieval_mode,
+                    "enable_weight_rerank": request_enable_weight_rerank,
+                    "vector_weight": request_vector_weight,
+                    "keyword_weight": request_keyword_weight,
+                    "mmr_lambda": request_mmr_lambda,
                 }
             )
             try:
@@ -306,6 +328,7 @@ class RAGEngine:
                     "citations_count": len(citations),
                     "model_used": getattr(llm, "model_name", None) or getattr(llm, "model", None),
                     "route": model_route,
+                    "retrieval_mode": request_retrieval_mode,
                     "structured": bool(structured_data),
                     "structured_data": structured_data,
                 }

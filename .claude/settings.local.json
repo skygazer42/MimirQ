@@ -44,7 +44,9 @@
       "Bash(cp:*)",
       "Bash(python -m uvicorn:*)",
       "Bash(PYTHONIOENCODING=utf-8 python:*)",
-      "Bash(docker-compose down:*)"
+      "Bash(docker-compose down:*)",
+      "Bash(docker-compose up:*)",
+      "Bash(tee:*)"
     ],
     "deny": [],
     "ask": []
