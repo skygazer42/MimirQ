@@ -7,7 +7,7 @@ prompt templates that can be used to customize RAG system behavior.
 import uuid
 from typing import List
 
-from sqlalchemy import Boolean, Column, DateTime, Index, Integer, String, Text
+from sqlalchemy import Boolean, Column, DateTime, Float, Index, Integer, String, Text
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.sql import func
 
@@ -33,6 +33,12 @@ class PromptTemplate(Base):
         category: Optional category for organizing templates
         tags: List of tags for searchability and filtering
         usage_count: Number of times this template has been used
+        template_key: Stable key for versioning / grouping (e.g. "kb_assistant")
+        version: Version number within the same template_key
+        parent_id: Optional parent template id (for lineage)
+        ab_experiment_key: Optional A/B experiment key (e.g. "exp_2025w50")
+        ab_variant: Optional variant label (e.g. "A" / "B")
+        ab_weight: Traffic weight for this variant (default 1.0)
         created_at: Timestamp when template was created
         updated_at: Timestamp when template was last modified
     """
@@ -60,6 +66,14 @@ class PromptTemplate(Base):
     # Analytics
     usage_count = Column(Integer, default=0)
 
+    # Versioning & A/B testing
+    template_key = Column(String(100), nullable=True, index=True)
+    version = Column(Integer, default=1)
+    parent_id = Column(UUID(as_uuid=True), nullable=True)
+    ab_experiment_key = Column(String(100), nullable=True, index=True)
+    ab_variant = Column(String(50), nullable=True)
+    ab_weight = Column(Float, default=1.0)
+
     # Timestamps
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(
@@ -73,4 +87,6 @@ class PromptTemplate(Base):
         Index("ix_prompt_templates_tenant_name", "tenant_id", "name"),
         Index("ix_prompt_templates_tenant_active", "tenant_id", "is_active"),
         Index("ix_prompt_templates_tenant_system", "tenant_id", "is_system"),
+        Index("ix_prompt_templates_tenant_template_key_version", "tenant_id", "template_key", "version"),
+        Index("ix_prompt_templates_tenant_ab_experiment", "tenant_id", "ab_experiment_key"),
     )

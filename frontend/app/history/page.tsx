@@ -16,6 +16,7 @@ import {
   Sparkles,
   Loader2,
   ChevronLeft,
+  BarChart3,
 } from 'lucide-react'
 import { Navbar } from '@/components/navbar'
 import { Button } from '@/components/ui/button'
@@ -133,6 +134,12 @@ function HistoryPageContent() {
     }
   }
 
+  const handleEvaluateConversation = () => {
+    if (selectedConversation) {
+      router.push(`/evaluations?conversation_id=${selectedConversation.id}`, { scroll: false })
+    }
+  }
+
   // 过滤对话
   const filteredConversations = conversations.filter(
     (c) =>
@@ -226,13 +233,23 @@ function HistoryPageContent() {
                   </p>
                 </div>
               </div>
-              <Button
-                onClick={handleContinueChat}
-                className="gap-2"
-              >
-                <Send className="h-4 w-4" />
-                继续对话
-              </Button>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  onClick={handleEvaluateConversation}
+                  className="gap-2"
+                >
+                  <BarChart3 className="h-4 w-4" />
+                  RAGAS 评测
+                </Button>
+                <Button
+                  onClick={handleContinueChat}
+                  className="gap-2"
+                >
+                  <Send className="h-4 w-4" />
+                  继续对话
+                </Button>
+              </div>
             </div>
 
             {/* 消息列表 */}

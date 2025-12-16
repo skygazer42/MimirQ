@@ -7,11 +7,14 @@ from contextlib import asynccontextmanager
 
 from app.core.config import settings
 from app.core.database import Base, SessionLocal, engine
+from app.core.runtime_migrations import apply_runtime_migrations
 from app.api.v1 import router as api_v1_router
 # Ensure SAG models are registered for metadata creation
 import app.models.sag_entities  # noqa: F401
 # Ensure evaluation models are registered for metadata creation
 import app.models.evaluation  # noqa: F401
+# Ensure feedback models are registered for metadata creation
+import app.models.feedback  # noqa: F401
 
 
 # 生命周期管理
@@ -22,6 +25,7 @@ async def lifespan(app: FastAPI):
     print("[*] Starting MimirQ backend...")
     print("[*] Creating database tables...")
     Base.metadata.create_all(bind=engine)
+    apply_runtime_migrations(engine)
     print("[OK] Database initialized")
 
     # 初始化 BM25 索引

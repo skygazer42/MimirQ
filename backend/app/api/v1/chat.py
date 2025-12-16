@@ -25,7 +25,7 @@ from app.schemas.chat import (
     ConversationDetail,
     ConversationList,
 )
-from app.services.document_access import filter_allowed_document_ids
+from app.services.document_access import filter_allowed_document_ids, list_accessible_document_ids
 from app.services.rag_engine import get_rag_engine
 from app.services.rag_graph import run_rag_graph
 from app.services.metrics_logger import log_metrics
@@ -137,16 +137,21 @@ async def stream_chat(
         if target_doc_ids:
             allowed_doc_ids = filter_allowed_document_ids(db, tenant_id, account_id, target_doc_ids)
         else:
-            allowed_doc_ids = []
-            raise HTTPException(status_code=400, detail="document_ids are required for chat retrieval")
+            # 默认：使用当前用户可访问的文档（避免前端未传 document_ids 时直接报错）
+            allowed_doc_ids = list_accessible_document_ids(db, tenant_id, account_id, status="completed")
+            if not allowed_doc_ids:
+                raise HTTPException(status_code=400, detail="No accessible documents for chat retrieval")
         # 更新会话中的文档列表为当前允许的集合
         conversation.document_ids = allowed_doc_ids
         db.commit()
     else:
         # 创建新对话
-        allowed_doc_ids = _filter_allowed_document_ids(db, tenant_id, account_id, request.document_ids or [])
+        if request.document_ids:
+            allowed_doc_ids = filter_allowed_document_ids(db, tenant_id, account_id, request.document_ids)
+        else:
+            allowed_doc_ids = list_accessible_document_ids(db, tenant_id, account_id, status="completed")
         if not allowed_doc_ids:
-            raise HTTPException(status_code=400, detail="document_ids are required for chat retrieval")
+            raise HTTPException(status_code=400, detail="No accessible documents for chat retrieval")
         conversation = Conversation(
             id=uuid.uuid4(),
             tenant_id=tenant_id,
@@ -186,6 +191,7 @@ async def stream_chat(
     async def event_stream():
         nonlocal citations_data, full_response
         doc_ids_to_use = allowed_doc_ids or []
+        request_id = uuid.uuid4()
         metrics_data = {}
 
         # 非流式 LangGraph 快捷通道：更快出完整答复，用于工具/Agent风格编排
@@ -203,19 +209,26 @@ async def stream_chat(
                 vector_weight=request.rag_config.get('vector_weight', 0.6),
                 keyword_weight=request.rag_config.get('keyword_weight', 0.4),
                 mmr_lambda=request.rag_config.get('mmr_lambda', settings.RETRIEVAL_MMR_LAMBDA),
+                enable_reranker=request.rag_config.get('enable_reranker', settings.ENABLE_RERANKER),
+                reranker_top_n=request.rag_config.get('reranker_top_n', settings.RERANKER_TOP_N),
                 structured_preset=request.structured_preset,
                 structured_output=request.structured_output,
+                prompt_template_id=request.prompt_template_id,
+                prompt_template_key=request.prompt_template_key,
+                prompt_ab_experiment_key=request.prompt_ab_experiment_key,
+                ab_user_key=account_id,
+                db=db,
             )
             citations_data = graph_result.get("citations", [])
-            yield f"data: {json.dumps({'type': 'citations', 'data': citations_data}, ensure_ascii=False)}\n\n"
+            yield f"data: {json.dumps({'request_id': str(request_id), 'type': 'citations', 'data': citations_data}, ensure_ascii=False)}\n\n"
             answer_text = graph_result.get("answer", "")
             # 模拟流式输出：按 120 字节分块
             chunk_size = 120
             for i in range(0, len(answer_text), chunk_size):
                 token_chunk = answer_text[i:i+chunk_size]
-                yield f"data: {json.dumps({'type': 'token', 'data': {'content': token_chunk}}, ensure_ascii=False)}\n\n"
+                yield f"data: {json.dumps({'request_id': str(request_id), 'type': 'token', 'data': {'content': token_chunk}}, ensure_ascii=False)}\n\n"
                 full_response += token_chunk
-            metrics_data = {
+            metrics_data = graph_result.get("metrics") or {
                 "retrieval_mode": request.rag_config.get('retrieval_mode', 'hybrid'),
                 "vector_backend": settings.VECTOR_BACKEND,
                 "elapsed_sec": None,
@@ -233,7 +246,8 @@ async def stream_chat(
                     "metrics": metrics_data,
                     "structured": False,
                     "structured_data": None,
-                }
+                },
+                "request_id": str(request_id),
             }
             yield f"data: {json.dumps(done_payload, ensure_ascii=False)}\n\n"
             log_metrics(
@@ -246,8 +260,26 @@ async def stream_chat(
                     "route": graph_result.get("route"),
                     "model_used": graph_result.get("model_used"),
                     "metrics": metrics_data,
+                    "request_id": str(request_id),
                 }
             )
+
+            # 保存助手回复到数据库（Graph 路径同样需要持久化）
+            assistant_message = Message(
+                tenant_id=tenant_id,
+                conversation_id=conversation_id,
+                role='assistant',
+                content=full_response,
+                citations=citations_data,
+                token_count=len(full_response),
+                message_metadata={**(metrics_data or {}), "request_id": str(request_id)}
+            )
+            db.add(assistant_message)
+
+            # 更新对话
+            conversation.message_count += 1
+            conversation.updated_at = datetime.utcnow()
+            db.commit()
             return
 
         try:
@@ -268,9 +300,15 @@ async def stream_chat(
                 vector_weight=request.rag_config.get('vector_weight', 0.6),
                 keyword_weight=request.rag_config.get('keyword_weight', 0.4),
                 mmr_lambda=request.rag_config.get('mmr_lambda', settings.RETRIEVAL_MMR_LAMBDA),
+                enable_reranker=request.rag_config.get('enable_reranker', settings.ENABLE_RERANKER),
+                reranker_top_n=request.rag_config.get('reranker_top_n', settings.RERANKER_TOP_N),
                 structured_preset=request.structured_preset,
                 prompt_template_id=request.prompt_template_id,
+                prompt_template_key=request.prompt_template_key,
+                prompt_ab_experiment_key=request.prompt_ab_experiment_key,
+                ab_user_key=account_id,
                 db=db,
+                request_id=str(request_id),
             ):
                 # 记录引用信息
                 if event['type'] == 'citations':
@@ -283,6 +321,7 @@ async def stream_chat(
                     full_response += event['data']['content']
 
                 # SSE 输出
+                event["request_id"] = str(request_id)
                 yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
 
             # 4. 保存助手回复到数据库
@@ -293,7 +332,7 @@ async def stream_chat(
                 content=full_response,
                 citations=citations_data,
                 token_count=len(full_response),
-                message_metadata=metrics_data
+                message_metadata={**(metrics_data or {}), "request_id": str(request_id)}
             )
             db.add(assistant_message)
 
@@ -328,9 +367,12 @@ async def create_conversation(
     db: Session = Depends(get_db)
 ):
     """创建新对话"""
-    allowed_doc_ids = _filter_allowed_document_ids(db, tenant_id, account_id, request.document_ids or [])
+    if request.document_ids:
+        allowed_doc_ids = filter_allowed_document_ids(db, tenant_id, account_id, request.document_ids)
+    else:
+        allowed_doc_ids = list_accessible_document_ids(db, tenant_id, account_id, status="completed")
     if not allowed_doc_ids:
-        raise HTTPException(status_code=400, detail="document_ids are required for conversation")
+        raise HTTPException(status_code=400, detail="No accessible documents for conversation")
     conversation = Conversation(
         tenant_id=tenant_id,
         title=request.title,

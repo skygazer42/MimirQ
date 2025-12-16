@@ -178,8 +178,22 @@ class DocumentProcessorService:
                 except Exception as exc:
                     print(f"[WARN]  SAG extraction failed: {exc}")
 
-            # Step 8: 重新构建 BM25 索引（按租户）
-            await self._rebuild_bm25_index_for_tenant(db, tenant_id)
+            # Step 8: 增量更新 BM25 索引（按租户，避免每次全量扫描）
+            try:
+                bm25_docs = []
+                for chunk_doc, chunk_id in zip(chunks, chunk_ids):
+                    meta = dict(chunk_doc.metadata or {})
+                    meta.setdefault("tenant_id", str(tenant_id))
+                    meta.setdefault("document_id", str(document_id))
+                    meta.setdefault("chunk_index", meta.get("chunk_index"))
+                    meta.setdefault("source", meta.get("source", "unknown"))
+                    meta.setdefault("page", meta.get("page"))
+                    meta.setdefault("image_id", meta.get("image_id"))
+                    meta.setdefault("image_url", meta.get("image_url"))
+                    bm25_docs.append(Document(page_content=chunk_doc.page_content, id=str(chunk_id), metadata=meta))
+                hybrid_retriever.upsert_bm25_documents(bm25_docs, tenant_id=tenant_id)
+            except Exception as exc:
+                print(f"[WARN]  Failed to update BM25 index incrementally: {exc}")
 
             return {
                 "status": "success",

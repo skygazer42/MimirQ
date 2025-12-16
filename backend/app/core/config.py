@@ -3,7 +3,7 @@ Application configuration management.
 """
 from typing import Optional
 
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 from pydantic import AliasChoices, Field
 
 
@@ -67,6 +67,16 @@ class Settings(BaseSettings):
     CHROMA_PERSIST_PATH: str = "./vector_chroma"
     ENABLE_METRICS_LOG: bool = False
     METRICS_LOG_PATH: str = "./logs/rag_metrics.jsonl"
+    ENABLE_QUERY_REWRITE: bool = False
+    QUERY_REWRITE_TEMPERATURE: float = 0.2
+    QUERY_REWRITE_MAX_CHARS: int = 120
+    # Reranker（可选：使用 LLM 对候选切片重排，提高命中质量）
+    ENABLE_RERANKER: bool = False
+    RERANKER_PROVIDER: str = "llm"  # llm | none
+    RERANKER_MODEL: Optional[str] = None
+    RERANKER_TOP_N: int = 20  # 重排候选数量（越大越慢）
+    RERANKER_MAX_CHARS: int = 800  # 每条候选截断长度
+    RERANKER_TEMPERATURE: float = 0.0
     DEFAULT_PARSER_BACKEND: str = "auto"
     DEFAULT_CHUNK_STRATEGY: str = "langchain_recursive"
     DEEPDOC_ENABLED: bool = False
@@ -86,9 +96,11 @@ class Settings(BaseSettings):
     DEFAULT_TENANT_ID: str = "00000000-0000-0000-0000-000000000000"
     TENANT_HEADER: str = "X-Tenant-ID"
 
-    class Config:
-        env_file = ".env"
-        case_sensitive = True
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        case_sensitive=True,
+        extra="ignore",
+    )
 
 
 settings = Settings()

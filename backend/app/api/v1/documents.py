@@ -10,6 +10,8 @@ import shutil
 import uuid
 from datetime import datetime
 
+from langchain_core.documents import Document as LCDocument
+
 from app.core.database import get_db
 from app.models.document import Document as DBDocument
 from app.schemas.document import (
@@ -31,15 +33,58 @@ from app.services.document_processor import document_processor
 from app.services.parsers import parser_factory
 from app.services.chunkers import chunker_factory
 from app.services.milvus_store import milvus_store
+from app.services.vector_router import get_vector_store
+from app.services.hybrid_retriever import hybrid_retriever
 from app.services.mineru_service import mineru_service
 from app.services.dataset_service import DatasetService
-from app.models.dataset import Dataset
+from app.models.dataset import Dataset, DatasetPermission, DatasetPermissionEnum
 from app.core.config import settings
 from fastapi.responses import FileResponse
 from app.dependencies.tenant import get_tenant_id
 from app.dependencies.auth import get_current_account_id
+from sqlalchemy import or_, false
 
 router = APIRouter()
+
+
+def _resolve_writable_dataset(
+    db: Session,
+    tenant_id: UUID,
+    account_id: str,
+    dataset_id: Optional[UUID],
+) -> Dataset:
+    """
+    Resolve a dataset that the current user can write to.
+
+    - If dataset_id is provided: enforce writable permission.
+    - Otherwise: pick the earliest writable dataset in tenant, or auto-create a default one.
+    """
+    if dataset_id:
+        dataset = DatasetService.get_dataset(db, tenant_id, dataset_id)
+        DatasetService.assert_dataset_writable(db, dataset, account_id)
+        return dataset
+
+    # Ensure member exists and has edit role (assert_dataset_writable enforces it as well).
+    DatasetService.ensure_member(db, tenant_id, account_id)
+
+    datasets = db.query(Dataset).filter(Dataset.tenant_id == tenant_id).order_by(Dataset.created_at.asc()).all()
+    for ds in datasets:
+        try:
+            DatasetService.assert_dataset_writable(db, ds, account_id)
+            return ds
+        except HTTPException:
+            continue
+
+    # Auto-create a default dataset (best-effort, dev-friendly).
+    return DatasetService.create_dataset(
+        db=db,
+        tenant_id=tenant_id,
+        name="默认知识库",
+        description="自动创建（未指定 dataset_id）",
+        permission=DatasetPermissionEnum.ALL_TEAM_MEMBERS,
+        owner_id=account_id,
+        partial_members=[],
+    )
 
 
 @router.post("/upload", response_model=DocumentUploadResponse, status_code=201)
@@ -48,7 +93,7 @@ async def upload_document(
     file: UploadFile = File(...),
     parser_backend: str = Form(default=settings.DEFAULT_PARSER_BACKEND),
     chunk_strategy: str = Form(default=settings.DEFAULT_CHUNK_STRATEGY),
-    dataset_id: UUID = Form(...),
+    dataset_id: Optional[UUID] = Form(default=None),
     tenant_id: UUID = Depends(get_tenant_id),
     account_id: str = Depends(get_current_account_id),
     db: Session = Depends(get_db)
@@ -89,8 +134,7 @@ async def upload_document(
         raise HTTPException(status_code=400, detail=str(exc))
 
     # 权限检查
-    dataset = DatasetService.get_dataset(db, tenant_id, dataset_id)
-    DatasetService.assert_dataset_writable(db, dataset, account_id)
+    dataset = _resolve_writable_dataset(db, tenant_id, account_id, dataset_id)
 
     # 3. 保存文件
     upload_dir = Path(settings.UPLOAD_DIR) / str(tenant_id)
@@ -110,7 +154,7 @@ async def upload_document(
     db_document = DBDocument(
         id=file_id,
         tenant_id=tenant_id,
-        dataset_id=dataset_id,
+        dataset_id=dataset.id,
         filename=file.filename,
         file_type=file_ext.lstrip('.'),
         file_size=file_size,
@@ -155,16 +199,47 @@ async def list_documents(
     """
     获取文档列表
     """
-    if not dataset_id:
-        raise HTTPException(status_code=400, detail="dataset_id is required to list documents")
+    DatasetService.ensure_member(db, tenant_id, account_id)
 
-    dataset = DatasetService.get_dataset(db, tenant_id, dataset_id)
-    DatasetService.assert_dataset_readable(db, dataset, account_id)
+    query = db.query(DBDocument).filter(DBDocument.tenant_id == tenant_id)
 
-    query = db.query(DBDocument).filter(
-        DBDocument.tenant_id == tenant_id,
-        DBDocument.dataset_id == dataset_id
-    )
+    if dataset_id:
+        dataset = DatasetService.get_dataset(db, tenant_id, dataset_id)
+        DatasetService.assert_dataset_readable(db, dataset, account_id)
+        query = query.filter(DBDocument.dataset_id == dataset_id)
+    else:
+        # No dataset_id: return all documents the user can read within the tenant.
+        datasets = db.query(Dataset).filter(Dataset.tenant_id == tenant_id).all()
+        allowed_dataset_ids: set[UUID] = set()
+        partial_dataset_ids: set[UUID] = set()
+        for ds in datasets:
+            if ds.owner_id == account_id:
+                allowed_dataset_ids.add(ds.id)
+                continue
+            if ds.permission == DatasetPermissionEnum.ALL_TEAM_MEMBERS:
+                allowed_dataset_ids.add(ds.id)
+                continue
+            if ds.permission == DatasetPermissionEnum.PARTIAL_MEMBERS:
+                partial_dataset_ids.add(ds.id)
+
+        if partial_dataset_ids:
+            rows = (
+                db.query(DatasetPermission.dataset_id)
+                .filter(
+                    DatasetPermission.tenant_id == tenant_id,
+                    DatasetPermission.account_id == account_id,
+                    DatasetPermission.dataset_id.in_(list(partial_dataset_ids)),
+                )
+                .all()
+            )
+            allowed_dataset_ids.update(row[0] for row in rows)
+
+        query = query.filter(
+            or_(
+                DBDocument.dataset_id.is_(None),
+                DBDocument.dataset_id.in_(list(allowed_dataset_ids)) if allowed_dataset_ids else false(),
+            )
+        )
 
     # 状态过滤
     if status and status != 'all':
@@ -266,8 +341,11 @@ async def delete_document(
         ds = DatasetService.get_dataset(db, tenant_id, document.dataset_id)
         DatasetService.assert_dataset_writable(db, ds, account_id)
 
-    # 1. 删除 Milvus 中的向量
-    milvus_store.delete_by_document_id(document_id, tenant_id=tenant_id)
+    # 1. 删除向量库中的向量（按后端切换）
+    try:
+        get_vector_store().delete_by_document_id(document_id, tenant_id=tenant_id)
+    except Exception as exc:
+        print(f"[WARN]  Failed to delete vectors: {exc}")
 
     # 2. 删除本地文件
     try:
@@ -280,6 +358,12 @@ async def delete_document(
     # 3. 删除数据库记录（级联删除 chunks）
     db.delete(document)
     db.commit()
+
+    # 4. 移除 BM25 索引中的切片（内存索引）
+    try:
+        hybrid_retriever.remove_document_from_bm25_index(document_id, tenant_id=tenant_id)
+    except Exception as exc:
+        print(f"[WARN]  Failed to update BM25 index after deletion: {exc}")
 
     return None
 
@@ -373,7 +457,6 @@ async def preview_document(
 @router.post("/manual", response_model=DocumentUploadResponse, status_code=201)
 async def create_document_with_manual_chunks(
     request: ManualDocumentCreate,
-    dataset_id: UUID = Body(...),
     tenant_id: UUID = Depends(get_tenant_id),
     account_id: str = Depends(get_current_account_id),
     db: Session = Depends(get_db)
@@ -389,8 +472,7 @@ async def create_document_with_manual_chunks(
     5. 更新文档状态为 completed
     """
     # 权限检查
-    dataset = DatasetService.get_dataset(db, tenant_id, dataset_id)
-    DatasetService.assert_dataset_writable(db, dataset, account_id)
+    dataset = _resolve_writable_dataset(db, tenant_id, account_id, request.dataset_id)
 
     # 基本校验
     if not request.chunks:
@@ -409,7 +491,7 @@ async def create_document_with_manual_chunks(
     db_document = DBDocument(
         id=document_id,
         tenant_id=tenant_id,
-        dataset_id=dataset_id,
+        dataset_id=dataset.id,
         filename=request.filename,
         file_type=request.file_type.lower(),
         file_size=request.file_size,
@@ -448,14 +530,13 @@ async def create_document_with_manual_chunks(
                 "metadata": metadata
             })
 
-        # 生成 Embeddings 并写入 Milvus
-        from app.services.milvus_store import milvus_store as _milvus_store
-
-        vector_ids = _milvus_store.add_documents(milvus_docs, document_id, tenant_id)
+        # 生成 Embeddings 并写入向量库（支持后端切换）
+        vector_ids = get_vector_store().add_documents(milvus_docs, document_id, tenant_id)
 
         # 写入 PostgreSQL 的 DocumentChunk
         from app.models.document import DocumentChunk as DBDocumentChunk
 
+        db_chunks = []
         for idx, (chunk, vector_id) in enumerate(zip(request.chunks, vector_ids)):
             db_chunk = DBDocumentChunk(
                 tenant_id=tenant_id,
@@ -469,6 +550,7 @@ async def create_document_with_manual_chunks(
                 vector_id=vector_id
             )
             db.add(db_chunk)
+            db_chunks.append(db_chunk)
 
         db.commit()
 
@@ -481,8 +563,20 @@ async def create_document_with_manual_chunks(
         db.commit()
         db.refresh(db_document)
 
-        # 重建 BM25 索引
-        await document_processor._rebuild_bm25_index_for_tenant(db, tenant_id)
+        # 增量更新 BM25 索引（避免全量扫描）
+        try:
+            bm25_docs = []
+            for db_chunk in db_chunks:
+                meta = dict(db_chunk.doc_metadata or {})
+                meta.setdefault("tenant_id", str(tenant_id))
+                meta.setdefault("document_id", str(document_id))
+                meta.setdefault("chunk_index", db_chunk.chunk_index)
+                meta.setdefault("source", meta.get("source", request.filename))
+                meta.setdefault("page", db_chunk.page_number)
+                bm25_docs.append(LCDocument(page_content=db_chunk.content, id=str(db_chunk.id), metadata=meta))
+            hybrid_retriever.upsert_bm25_documents(bm25_docs, tenant_id=tenant_id)
+        except Exception as exc:
+            print(f"[WARN]  Failed to update BM25 index incrementally: {exc}")
 
         return db_document
 

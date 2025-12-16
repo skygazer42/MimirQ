@@ -9,6 +9,7 @@ from uuid import UUID
 import math
 from collections import Counter
 import jieba
+import time
 
 from langchain_core.documents import Document
 from langchain_core.callbacks import CallbackManagerForRetrieverRun, AsyncCallbackManagerForRetrieverRun
@@ -32,6 +33,8 @@ class HybridRetriever(BaseRetriever):
     vector_weight: float = 0.6
     keyword_weight: float = 0.4
     mmr_lambda: float = settings.RETRIEVAL_MMR_LAMBDA
+    enable_reranker: bool = settings.ENABLE_RERANKER
+    reranker_top_n: int = settings.RERANKER_TOP_N
     tenant_id: Optional[UUID] = None
     document_ids: Optional[List[UUID]] = None
 
@@ -39,6 +42,7 @@ class HybridRetriever(BaseRetriever):
 
     _bm25_retrievers: Dict[str, BM25Retriever] = PrivateAttr(default_factory=dict)
     _bm25_docs: Dict[str, List[Document]] = PrivateAttr(default_factory=dict)
+    _chunk_id_lookup: Dict[str, Dict[str, str]] = PrivateAttr(default_factory=dict)
 
     def _tenant_key(self, tenant_id: Optional[UUID]) -> str:
         return str(tenant_id or settings.DEFAULT_TENANT_ID)
@@ -69,7 +73,82 @@ class HybridRetriever(BaseRetriever):
         )
         self._bm25_retrievers[tenant_key] = retriever
         self._bm25_docs[tenant_key] = docs
+        lookup: Dict[str, str] = {}
+        for d in docs:
+            meta = d.metadata or {}
+            doc_id = meta.get("document_id")
+            chunk_index = meta.get("chunk_index")
+            if doc_id is None or chunk_index is None or d.id is None:
+                continue
+            lookup[f"{doc_id}:{chunk_index}"] = str(d.id)
+        self._chunk_id_lookup[tenant_key] = lookup
         print(f"[OK] BM25 index built with {len(docs)} chunks for tenant {tenant_key}")
+
+    def upsert_bm25_documents(self, docs: List[Document], tenant_id: Optional[UUID] = None):
+        """
+        增量更新 BM25 索引（避免每次从 DB 全量扫描）。
+        注意：BM25Retriever 本身不可增量训练，这里用“在内存合并后重建”代替，
+        但仍显著减少 DB 查询开销，适合知识库大规模场景。
+        """
+        if not docs:
+            return
+        tenant_key = self._tenant_key(tenant_id)
+        existing = self._bm25_docs.get(tenant_key) or []
+        merged: Dict[str, Document] = {str(d.id): d for d in existing if d.id is not None}
+        for d in docs:
+            if d.id is None:
+                continue
+            merged[str(d.id)] = d
+
+        merged_docs = list(merged.values())
+        retriever = BM25Retriever.from_documents(
+            merged_docs,
+            preprocess_func=lambda text: list(jieba.cut_for_search(text)),
+            k=10,
+        )
+        self._bm25_retrievers[tenant_key] = retriever
+        self._bm25_docs[tenant_key] = merged_docs
+        lookup: Dict[str, str] = {}
+        for d in merged_docs:
+            meta = d.metadata or {}
+            doc_id = meta.get("document_id")
+            chunk_index = meta.get("chunk_index")
+            if doc_id is None or chunk_index is None or d.id is None:
+                continue
+            lookup[f"{doc_id}:{chunk_index}"] = str(d.id)
+        self._chunk_id_lookup[tenant_key] = lookup
+        print(f"[OK] BM25 index updated to {len(merged_docs)} chunks for tenant {tenant_key}")
+
+    def remove_document_from_bm25_index(self, document_id: UUID, tenant_id: Optional[UUID] = None):
+        """从 BM25 索引移除指定文档的所有切片。"""
+        tenant_key = self._tenant_key(tenant_id)
+        existing = self._bm25_docs.get(tenant_key) or []
+        if not existing:
+            return
+        filtered = [d for d in existing if str((d.metadata or {}).get("document_id")) != str(document_id)]
+        retriever = BM25Retriever.from_documents(
+            filtered,
+            preprocess_func=lambda text: list(jieba.cut_for_search(text)),
+            k=10,
+        ) if filtered else None
+        if retriever is None:
+            self._bm25_retrievers.pop(tenant_key, None)
+            self._bm25_docs.pop(tenant_key, None)
+            self._chunk_id_lookup.pop(tenant_key, None)
+            print(f"[OK] BM25 index cleared for tenant {tenant_key}")
+            return
+        self._bm25_retrievers[tenant_key] = retriever
+        self._bm25_docs[tenant_key] = filtered
+        lookup: Dict[str, str] = {}
+        for d in filtered:
+            meta = d.metadata or {}
+            doc_id = meta.get("document_id")
+            chunk_index = meta.get("chunk_index")
+            if doc_id is None or chunk_index is None or d.id is None:
+                continue
+            lookup[f"{doc_id}:{chunk_index}"] = str(d.id)
+        self._chunk_id_lookup[tenant_key] = lookup
+        print(f"[OK] BM25 index removed document {document_id} for tenant {tenant_key}")
 
     def _search_bm25(
         self,
@@ -149,6 +228,24 @@ class HybridRetriever(BaseRetriever):
                 print(f"[WARN] Vector search failed: {exc}")
                 vector_results = []
 
+        # 尝试补全向量检索结果的 chunk_id（用于 citations / RAGAS contexts）
+        if vector_results:
+            tenant_key = self._tenant_key(tenant_id)
+            lookup = self._chunk_id_lookup.get(tenant_key) or {}
+            for r in vector_results:
+                meta = r.get("metadata") or {}
+                doc_id = meta.get("document_id")
+                chunk_index = meta.get("chunk_index")
+                if doc_id is None or chunk_index is None:
+                    continue
+                key = f"{doc_id}:{chunk_index}"
+                mapped = lookup.get(key)
+                if not mapped:
+                    continue
+                r["chunk_id"] = mapped
+                meta["chunk_id"] = mapped
+                r["metadata"] = meta
+
         # 2) BM25 检索
         bm25_results: List[Dict[str, Any]] = []
         if retrieval_mode in ("hybrid", "keyword", "mmr"):
@@ -172,6 +269,64 @@ class HybridRetriever(BaseRetriever):
                 vector_weight=vector_weight,
                 keyword_weight=keyword_weight,
             )
+
+        # 5) 可选：LLM Reranker 精排（在最终截断前执行）
+        if merged_results and bool(self.enable_reranker):
+            provider = (settings.RERANKER_PROVIDER or "llm").lower()
+            if provider == "llm":
+                try:
+                    from app.services.llm_reranker import get_llm_reranker
+
+                    reranker = get_llm_reranker()
+                    candidates_n = int(self.reranker_top_n or settings.RERANKER_TOP_N or 20)
+                    candidates_n = max(candidates_n, top_k)
+                    candidates_n = min(candidates_n, len(merged_results))
+                    candidates = []
+                    id_to_doc: Dict[str, Dict[str, Any]] = {}
+                    for doc in merged_results[:candidates_n]:
+                        rid = self._result_key(doc)
+                        text = (doc.get("content") or "").strip()
+                        if not rid or not text:
+                            continue
+                        candidates.append({"id": rid, "text": text})
+                        id_to_doc[rid] = doc
+
+                    if candidates:
+                        start = time.time()
+                        result = reranker.rerank(query=query, candidates=candidates)
+                        rerank_elapsed = result.elapsed_sec or (time.time() - start)
+
+                        ordered = []
+                        used: set[str] = set()
+                        for rid in result.ordered_ids:
+                            d = id_to_doc.get(rid)
+                            if not d or rid in used:
+                                continue
+                            used.add(rid)
+                            new_doc = dict(d)
+                            new_doc["retrieval_score"] = float(new_doc.get("score", 0.0) or 0.0)
+                            if rid in result.score_map:
+                                new_doc["rerank_score"] = float(result.score_map[rid])
+                                new_doc["score"] = float(result.score_map[rid])
+                            new_doc["reranker_provider"] = "llm"
+                            new_doc["rerank_elapsed_sec"] = round(float(rerank_elapsed), 3)
+                            new_doc["rerank_model_used"] = result.model_used
+                            ordered.append(new_doc)
+
+                        # 追加未被 LLM 返回的候选（保持原顺序）
+                        for doc in merged_results[:candidates_n]:
+                            rid = self._result_key(doc)
+                            if rid in used:
+                                continue
+                            new_doc = dict(doc)
+                            new_doc.setdefault("reranker_provider", "llm")
+                            new_doc.setdefault("rerank_elapsed_sec", round(float(rerank_elapsed), 3))
+                            new_doc.setdefault("rerank_model_used", result.model_used)
+                            ordered.append(new_doc)
+
+                        merged_results = ordered + merged_results[candidates_n:]
+                except Exception:
+                    pass
 
         return merged_results[:top_k]
 
@@ -202,6 +357,18 @@ class HybridRetriever(BaseRetriever):
             meta["score"] = r.get("score")
             meta["vector_score"] = r.get("vector_score")
             meta["bm25_score"] = r.get("bm25_score")
+            if "keyword_score" in r:
+                meta["keyword_score"] = r.get("keyword_score")
+            if "rerank_score" in r:
+                meta["rerank_score"] = r.get("rerank_score")
+            if "retrieval_score" in r:
+                meta["retrieval_score"] = r.get("retrieval_score")
+            if "reranker_provider" in r:
+                meta["reranker_provider"] = r.get("reranker_provider")
+            if "rerank_elapsed_sec" in r:
+                meta["rerank_elapsed_sec"] = r.get("rerank_elapsed_sec")
+            if "rerank_model_used" in r:
+                meta["rerank_model_used"] = r.get("rerank_model_used")
             docs.append(Document(page_content=r.get("content", ""), metadata=meta, id=r.get("chunk_id")))
         return docs
 
