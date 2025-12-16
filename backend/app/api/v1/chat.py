@@ -196,7 +196,13 @@ async def stream_chat(
                 top_k=request.rag_config.get('top_k', settings.RETRIEVAL_TOP_K),
                 score_threshold=request.rag_config.get('score_threshold', settings.SIMILARITY_THRESHOLD),
                 tenant_id=tenant_id,
-                structured_output=request.structured_output
+                structured_output=request.structured_output,
+                retrieval_mode=request.rag_config.get('retrieval_mode', 'hybrid'),
+                alpha=request.rag_config.get('alpha', 0.6),
+                enable_weight_rerank=request.rag_config.get('enable_weight_rerank', True),
+                vector_weight=request.rag_config.get('vector_weight', 0.6),
+                keyword_weight=request.rag_config.get('keyword_weight', 0.4),
+                mmr_lambda=request.rag_config.get('mmr_lambda', settings.RETRIEVAL_MMR_LAMBDA),
             ):
                 # 记录引用信息
                 if event['type'] == 'citations':

@@ -78,7 +78,13 @@ class ChatRequest(BaseModel):
     rag_config: Optional[Dict[str, Any]] = {
         "top_k": 5,
         "score_threshold": 0.7,
-        "max_tokens": 2000
+        "max_tokens": 2000,
+        "retrieval_mode": "hybrid",  # hybrid | vector | keyword | mmr
+        "alpha": 0.6,  # hybrid merge weight: vector vs keyword
+        "enable_weight_rerank": True,
+        "vector_weight": 0.6,
+        "keyword_weight": 0.4,
+        "mmr_lambda": 0.7,  # MMR 多样性权重
     }
 
 

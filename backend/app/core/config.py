@@ -58,6 +58,7 @@ class Settings(BaseSettings):
     CHUNK_OVERLAP: int = 200
     RETRIEVAL_TOP_K: int = 5
     SIMILARITY_THRESHOLD: float = 0.7
+    RETRIEVAL_MMR_LAMBDA: float = 0.7
     DEFAULT_PARSER_BACKEND: str = "auto"
     DEFAULT_CHUNK_STRATEGY: str = "langchain_recursive"
     DEEPDOC_ENABLED: bool = False
