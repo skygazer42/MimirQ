@@ -6,7 +6,8 @@
  * - 展示评测运行记录、汇总分数与逐轮明细
  */
 
-import { useEffect, useMemo, useState } from 'react'
+import { Suspense, useEffect, useMemo, useState } from 'react'
+import { useSearchParams } from 'next/navigation'
 import { Navbar } from '@/components/navbar'
 import { Button } from '@/components/ui/button'
 import { StatCard, StatsGrid } from '@/components/ui/stats-card'
@@ -29,6 +30,26 @@ const METRIC_OPTIONS = [
 ] as const
 
 export default function EvaluationsPage() {
+  return (
+    <div className="flex h-screen overflow-hidden bg-slate-50/50 dark:bg-slate-950 transition-colors duration-300">
+      <Navbar />
+      <Suspense fallback={<EvaluationsLoading />}>
+        <EvaluationsPageContent />
+      </Suspense>
+    </div>
+  )
+}
+
+function EvaluationsLoading() {
+  return (
+    <div className="flex-1 flex items-center justify-center">
+      <Loader2 className="h-8 w-8 animate-spin text-slate-400" />
+    </div>
+  )
+}
+
+function EvaluationsPageContent() {
+  const searchParams = useSearchParams()
   const [conversations, setConversations] = useState<Conversation[]>([])
   const [selectedConversationId, setSelectedConversationId] = useState<string>('')
 
@@ -46,6 +67,12 @@ export default function EvaluationsPage() {
   const [isLoading, setIsLoading] = useState(false)
   const [isStarting, setIsStarting] = useState(false)
 
+  // Support deep-linking: /evaluations?conversation_id=...
+  useEffect(() => {
+    const cid = searchParams.get('conversation_id')
+    if (cid) setSelectedConversationId(cid)
+  }, [searchParams])
+
   const loadConversations = async () => {
     try {
       const res = await chatApi.listConversations({ limit: 100 })
@@ -58,9 +85,12 @@ export default function EvaluationsPage() {
     }
   }
 
-  const loadRuns = async () => {
+  const loadRuns = async (conversationId?: string) => {
     try {
-      const res = await evaluationApi.listRagasRuns({ limit: 50 })
+      const res = await evaluationApi.listRagasRuns({
+        limit: 50,
+        conversation_id: conversationId || undefined,
+      })
       setRuns(res.items || [])
       if (!selectedRunId && res.items?.[0]?.id) {
         setSelectedRunId(res.items[0].id)
@@ -76,6 +106,15 @@ export default function EvaluationsPage() {
     Promise.all([loadConversations(), loadRuns()]).finally(() => setIsLoading(false))
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  // When switching conversation, focus run list on that conversation
+  useEffect(() => {
+    if (!selectedConversationId) return
+    setSelectedRunId('')
+    setRunDetail(null)
+    loadRuns(selectedConversationId)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedConversationId])
 
   // Poll run detail
   useEffect(() => {
@@ -122,7 +161,7 @@ export default function EvaluationsPage() {
         skip_empty_contexts: skipEmptyContexts,
         include_contexts_in_response: false,
       })
-      await loadRuns()
+      await loadRuns(selectedConversationId)
       setSelectedRunId(run.id)
     } catch (e) {
       console.error('Failed to start evaluation', e)
@@ -169,10 +208,7 @@ export default function EvaluationsPage() {
   }, [runStatus])
 
   return (
-    <div className="flex h-screen overflow-hidden bg-slate-50/50 dark:bg-slate-950 transition-colors duration-300">
-      <Navbar />
-
-      <main className="flex-1 flex flex-col overflow-hidden relative">
+    <main className="flex-1 flex flex-col overflow-hidden relative">
         <div className="absolute top-0 left-0 right-0 h-64 bg-gradient-to-b from-indigo-50/50 dark:from-indigo-900/10 to-transparent pointer-events-none" />
 
         <header className="px-8 py-6 flex-shrink-0 z-10">
@@ -449,7 +485,5 @@ export default function EvaluationsPage() {
           </div>
         </div>
       </main>
-    </div>
   )
 }
-

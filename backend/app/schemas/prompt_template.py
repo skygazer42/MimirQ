@@ -14,6 +14,12 @@ from pydantic import BaseModel, Field
 class PromptTemplateBase(BaseModel):
     """Base schema containing common prompt template fields."""
 
+    template_key: Optional[str] = Field(
+        default=None,
+        max_length=100,
+        description="模板稳定标识（用于版本化/分组），例如：kb_assistant",
+        example="kb_assistant",
+    )
     name: str = Field(
         ...,
         max_length=200,
@@ -50,6 +56,19 @@ class PromptTemplateBase(BaseModel):
         True,
         description="Whether this template is currently enabled"
     )
+    version: Optional[int] = Field(
+        default=1,
+        ge=1,
+        description="版本号（同一 template_key 内递增）",
+    )
+    parent_id: Optional[UUID] = Field(default=None, description="父版本模板 ID（可选）")
+    ab_experiment_key: Optional[str] = Field(
+        default=None,
+        max_length=100,
+        description="A/B 实验标识（可选），例如：exp_2025w50",
+    )
+    ab_variant: Optional[str] = Field(default=None, max_length=50, description="A/B 变体标识（可选），例如 A/B")
+    ab_weight: Optional[float] = Field(default=1.0, ge=0.0, description="A/B 流量权重（可选，默认 1.0）")
 
 
 class PromptTemplateCreate(PromptTemplateBase):
@@ -61,6 +80,7 @@ class PromptTemplateCreate(PromptTemplateBase):
 class PromptTemplateUpdate(BaseModel):
     """Schema for updating an existing prompt template (all fields optional)."""
 
+    template_key: Optional[str] = Field(None, max_length=100)
     name: Optional[str] = Field(None, max_length=200)
     description: Optional[str] = None
     content: Optional[str] = None
@@ -68,6 +88,28 @@ class PromptTemplateUpdate(BaseModel):
     category: Optional[str] = Field(None, max_length=100)
     tags: Optional[List[str]] = None
     is_active: Optional[bool] = None
+    version: Optional[int] = Field(default=None, ge=1)
+    parent_id: Optional[UUID] = None
+    ab_experiment_key: Optional[str] = Field(None, max_length=100)
+    ab_variant: Optional[str] = Field(None, max_length=50)
+    ab_weight: Optional[float] = Field(default=None, ge=0.0)
+
+
+class PromptTemplateNewVersion(BaseModel):
+    """创建新版本（基于旧模板复制，支持覆盖字段）。"""
+
+    name: Optional[str] = Field(None, max_length=200)
+    description: Optional[str] = None
+    content: Optional[str] = None
+    variables: Optional[List[str]] = None
+    category: Optional[str] = Field(None, max_length=100)
+    tags: Optional[List[str]] = None
+    is_active: bool = True
+    deactivate_previous: bool = Field(default=True, description="是否自动禁用旧版本（默认 true）")
+
+    ab_experiment_key: Optional[str] = Field(None, max_length=100)
+    ab_variant: Optional[str] = Field(None, max_length=50)
+    ab_weight: float = Field(default=1.0, ge=0.0)
 
 
 class PromptTemplateOut(BaseModel):
@@ -75,6 +117,7 @@ class PromptTemplateOut(BaseModel):
 
     id: UUID
     tenant_id: UUID
+    template_key: Optional[str]
     name: str
     description: Optional[str]
     content: str
@@ -84,6 +127,11 @@ class PromptTemplateOut(BaseModel):
     category: Optional[str]
     tags: List[str]
     usage_count: int
+    version: int
+    parent_id: Optional[UUID]
+    ab_experiment_key: Optional[str]
+    ab_variant: Optional[str]
+    ab_weight: float
     created_at: datetime
     updated_at: datetime
 

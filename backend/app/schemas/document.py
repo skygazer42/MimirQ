@@ -86,6 +86,7 @@ class ManualChunkCreate(BaseModel):
 
 class ManualDocumentCreate(BaseModel):
     """基于手动切片创建文档的请求"""
+    dataset_id: Optional[UUID] = None
     filename: str
     file_type: str
     file_size: int

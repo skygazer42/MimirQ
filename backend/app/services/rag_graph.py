@@ -11,8 +11,10 @@ from langgraph.graph import StateGraph, END
 from langgraph.checkpoint.memory import MemorySaver
 from langchain_core.documents import Document
 from langchain_core.output_parsers import StrOutputParser
+from langchain_core.prompts import ChatPromptTemplate
 import concurrent.futures
 from functools import partial
+import time
 
 from app.services.hybrid_retriever import hybrid_retriever
 from app.services.rag_engine import get_rag_engine
@@ -54,26 +56,71 @@ def build_rag_graph() -> Any:
     """构建一个最小 RAG 流程图：检索 -> 生成 -> 结束。"""
     graph = StateGraph(RAGState)
 
-    def run_with_retry(func, state: RAGState):
+    def run_with_retry(node_name: str, func, state: RAGState):
         """节点级重试 + 超时（秒）。"""
         retries = max(settings.RAG_GRAPH_MAX_RETRIES, 0)
         timeout = max(settings.RAG_GRAPH_TIMEOUT_SEC, 0) or None
         last_exc = None
+        attempts = 0
         for _ in range(retries + 1):
+            attempts += 1
             try:
                 if timeout:
                     with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
                         fut = pool.submit(func, state)
-                        return fut.result(timeout=timeout)
+                        result = fut.result(timeout=timeout)
                 else:
-                    return func(state)
+                    result = func(state)
+                metrics = dict(result.get("metrics") or state.get("metrics") or {})
+                metrics[f"{node_name}_attempts"] = attempts
+                metrics[f"{node_name}_retries"] = max(attempts - 1, 0)
+                result["metrics"] = metrics
+                return result
             except Exception as exc:  # noqa: BLE001
                 last_exc = exc
         if last_exc:
+            metrics = dict(state.get("metrics") or {})
+            metrics[f"{node_name}_attempts"] = attempts
+            metrics[f"{node_name}_retries"] = max(attempts - 1, 0)
+            metrics[f"{node_name}_last_error"] = str(last_exc)
+            state["metrics"] = metrics
             raise last_exc
         return state
 
     def retrieve_node(state: RAGState) -> RAGState:
+        question = state["question"]
+        history_text = _build_history_text(state.get("history"))
+        query_for_retrieval = question
+        rewrite_elapsed = 0.0
+        rewrite_used = False
+        rewrite_model_used = None
+
+        if (
+            settings.ENABLE_QUERY_REWRITE
+            and history_text != "（无历史对话）"
+            and len(question) <= settings.QUERY_REWRITE_MAX_CHARS
+        ):
+            engine = get_rag_engine()
+            rewrite_llm = engine.models.get("fast") or engine.models.get("default")  # type: ignore[attr-defined]
+            rewrite_model_used = getattr(rewrite_llm, "model_name", None) or getattr(rewrite_llm, "model", None)
+            try:
+                rewrite_chain = (
+                    engine.rewrite_prompt  # type: ignore[attr-defined]
+                    | rewrite_llm.bind(temperature=settings.QUERY_REWRITE_TEMPERATURE)
+                    | StrOutputParser()
+                )
+                rw_start = time.time()
+                rewritten = rewrite_chain.invoke({"history": history_text, "question": question})
+                rewrite_elapsed = time.time() - rw_start
+                rewritten = (rewritten or "").strip().strip('"')
+                if rewritten:
+                    query_for_retrieval = rewritten
+            except Exception:  # noqa: BLE001
+                query_for_retrieval = question
+                rewrite_elapsed = 0.0
+
+            rewrite_used = query_for_retrieval != question
+
         retriever = hybrid_retriever.model_copy(
             update={
                 "k": state.get("top_k", settings.RETRIEVAL_TOP_K),
@@ -84,15 +131,32 @@ def build_rag_graph() -> Any:
                 "vector_weight": state.get("vector_weight", 0.6),
                 "keyword_weight": state.get("keyword_weight", 0.4),
                 "mmr_lambda": state.get("mmr_lambda", settings.RETRIEVAL_MMR_LAMBDA),
+                "enable_reranker": state.get("enable_reranker", settings.ENABLE_RERANKER),
+                "reranker_top_n": state.get("reranker_top_n", settings.RERANKER_TOP_N),
                 "tenant_id": state.get("tenant_id"),
                 "document_ids": state.get("document_ids"),
             }
         )
-        docs = retriever.invoke(state["question"])
+        start = time.time()
+        docs = retriever.invoke(query_for_retrieval)
+        retrieval_elapsed = time.time() - start
 
         citations = []
         for doc in docs:
             meta = doc.metadata or {}
+            v_score_raw = float(meta.get("vector_score", 0.0) or 0.0)
+            b_score_raw = float(meta.get("bm25_score", 0.0) or 0.0)
+            rerank_score = meta.get("rerank_score")
+            retrieval_score = meta.get("retrieval_score")
+            mode = state.get("retrieval_mode", "hybrid")
+            if mode == "mmr":
+                hit_type = "mmr"
+            elif v_score_raw > b_score_raw:
+                hit_type = "vector"
+            elif b_score_raw > v_score_raw:
+                hit_type = "keyword"
+            else:
+                hit_type = "hybrid"
             citations.append(
                 {
                     "chunk_id": doc.id,
@@ -101,20 +165,49 @@ def build_rag_graph() -> Any:
                     "chunk_content": doc.page_content[:200] + "...",
                     "page_number": meta.get("page"),
                     "relevance_score": meta.get("score"),
+                    "vector_score": round(v_score_raw, 3),
+                    "bm25_score": round(b_score_raw, 3),
+                    "keyword_score": round(float(meta.get("keyword_score", 0.0) or 0.0), 3),
+                    "rerank_score": round(float(rerank_score), 3) if rerank_score is not None else None,
+                    "retrieval_score": round(float(retrieval_score), 3) if retrieval_score is not None else None,
+                    "reranker_provider": meta.get("reranker_provider"),
+                    "rerank_elapsed_sec": meta.get("rerank_elapsed_sec"),
+                    "rerank_model_used": meta.get("rerank_model_used"),
+                    "retrieval_mode": mode,
+                    "vector_backend": settings.VECTOR_BACKEND,
+                    "retrieval_elapsed_sec": round(retrieval_elapsed, 3),
+                    "hit_type": hit_type,
                 }
             )
 
-        return {**state, "docs": docs, "citations": citations}
+        metrics = dict(state.get("metrics") or {})
+        metrics["retrieval_elapsed_sec"] = round(retrieval_elapsed, 3)
+        metrics["retrieval_mode"] = state.get("retrieval_mode", "hybrid")
+        metrics["vector_backend"] = settings.VECTOR_BACKEND
+        metrics["query_rewrite_enabled"] = settings.ENABLE_QUERY_REWRITE
+        metrics["rewrite_used"] = bool(rewrite_used)
+        metrics["rewrite_elapsed_sec"] = round(rewrite_elapsed, 3)
+        metrics["rewrite_model_used"] = rewrite_model_used
+        return {**state, "docs": docs, "citations": citations, "metrics": metrics}
 
     def generate_node(state: RAGState) -> RAGState:
         engine = get_rag_engine()
         llm, route, reason = engine._select_llm(state["question"], state.get("history"))  # type: ignore[attr-defined]
-        chain = engine.prompt_template | llm | StrOutputParser()
+        prompt_obj = engine.prompt_template
+        prompt_content = state.get("prompt_template_content")
+        if prompt_content:
+            try:
+                prompt_obj = ChatPromptTemplate.from_template(str(prompt_content))
+            except Exception:
+                prompt_obj = engine.prompt_template
+
+        chain = prompt_obj | llm | StrOutputParser()
         format_instructions = state.get("format_instructions", "")
 
         ctx = _build_context(state.get("docs") or [])
         hist_text = _build_history_text(state.get("history"))
 
+        start = time.time()
         answer = chain.invoke(
             {
                 "context": ctx,
@@ -123,17 +216,32 @@ def build_rag_graph() -> Any:
                 "format_instructions": format_instructions,
             }
         )
+        generation_elapsed = time.time() - start
 
+        metrics = dict(state.get("metrics") or {})
+        metrics["generation_elapsed_sec"] = round(generation_elapsed, 3)
+        base = generation_elapsed
+        base += float(metrics.get("retrieval_elapsed_sec", 0.0) or 0.0)
+        base += float(metrics.get("rewrite_elapsed_sec", 0.0) or 0.0)
+        metrics["elapsed_sec"] = round(base, 3)
+        metrics["model_route"] = route
+        metrics["model_used"] = getattr(llm, "model_name", None) or getattr(llm, "model", None)
+        metrics["llm_max_retries"] = settings.LLM_MAX_RETRIES
+        metrics["prompt_template_id"] = state.get("prompt_template_id")
+        metrics["prompt_template_key"] = state.get("prompt_template_key")
+        metrics["prompt_ab_experiment_key"] = state.get("prompt_ab_experiment_key")
+        metrics["prompt_ab_variant"] = state.get("prompt_ab_variant")
         return {
             **state,
             "answer": answer,
             "route": route,
             "model_used": getattr(llm, "model_name", None) or getattr(llm, "model", None),
             "routing_reason": reason,
+            "metrics": metrics,
         }
 
-    graph.add_node("retrieve", partial(run_with_retry, retrieve_node))
-    graph.add_node("generate", partial(run_with_retry, generate_node))
+    graph.add_node("retrieve", partial(run_with_retry, "retrieve", retrieve_node))
+    graph.add_node("generate", partial(run_with_retry, "generate", generate_node))
     graph.set_entry_point("retrieve")
     graph.add_edge("retrieve", "generate")
     graph.add_edge("generate", END)
@@ -155,8 +263,15 @@ def run_rag_graph(
     vector_weight: float = 0.6,
     keyword_weight: float = 0.4,
     mmr_lambda: float = settings.RETRIEVAL_MMR_LAMBDA,
+    enable_reranker: bool = settings.ENABLE_RERANKER,
+    reranker_top_n: int = settings.RERANKER_TOP_N,
     structured_output: bool = False,
     structured_preset: Optional[str] = None,
+    prompt_template_id: Optional[UUID] = None,
+    prompt_template_key: Optional[str] = None,
+    prompt_ab_experiment_key: Optional[str] = None,
+    ab_user_key: Optional[str] = None,
+    db: Optional[Any] = None,
 ) -> Dict[str, Any]:
     """执行 LangGraph RAG 流程，返回 answer/citations/模型信息。"""
     engine = get_rag_engine()
@@ -171,6 +286,34 @@ def run_rag_graph(
                 " 不要输出多余文本。"
             ),
         )
+
+    prompt_template_content = None
+    selected_prompt_template_id = None
+    selected_prompt_template_key = None
+    selected_prompt_ab_experiment_key = None
+    selected_prompt_ab_variant = None
+    if db and tenant_id and (prompt_template_id or prompt_template_key or prompt_ab_experiment_key):
+        try:
+            from app.services.prompt_template_selector import resolve_prompt_template
+
+            chosen = resolve_prompt_template(
+                db=db,
+                tenant_id=tenant_id,
+                prompt_template_id=prompt_template_id,
+                template_key=prompt_template_key,
+                ab_experiment_key=prompt_ab_experiment_key,
+                ab_user_key=ab_user_key,
+            )
+            if chosen:
+                prompt_template_content = chosen.content
+                selected_prompt_template_id = str(chosen.id)
+                selected_prompt_template_key = getattr(chosen, "template_key", None)
+                selected_prompt_ab_experiment_key = getattr(chosen, "ab_experiment_key", None)
+                selected_prompt_ab_variant = getattr(chosen, "ab_variant", None)
+                chosen.usage_count += 1
+                db.commit()
+        except Exception:
+            prompt_template_content = None
 
     app = build_rag_graph()
     result = app.invoke(
@@ -187,7 +330,14 @@ def run_rag_graph(
             "vector_weight": vector_weight,
             "keyword_weight": keyword_weight,
             "mmr_lambda": mmr_lambda,
+            "enable_reranker": enable_reranker,
+            "reranker_top_n": reranker_top_n,
             "format_instructions": format_instructions,
+            "prompt_template_content": prompt_template_content,
+            "prompt_template_id": selected_prompt_template_id,
+            "prompt_template_key": selected_prompt_template_key,
+            "prompt_ab_experiment_key": selected_prompt_ab_experiment_key,
+            "prompt_ab_variant": selected_prompt_ab_variant,
         }
     )
     return {
@@ -196,4 +346,5 @@ def run_rag_graph(
         "model_used": result.get("model_used"),
         "route": result.get("route"),
         "routing_reason": result.get("routing_reason"),
+        "metrics": result.get("metrics", {}),
     }

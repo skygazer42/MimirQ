@@ -32,6 +32,9 @@ class BaseVectorStore:
     ) -> List[Dict[str, Any]]:
         raise NotImplementedError
 
+    def delete_by_document_id(self, document_id: UUID, tenant_id: Optional[UUID] = None) -> None:
+        raise NotImplementedError
+
 
 class MilvusVectorStore(BaseVectorStore):
     """Milvus 后端封装。"""
@@ -55,6 +58,9 @@ class MilvusVectorStore(BaseVectorStore):
             tenant_id=tenant_id,
         )
 
+    def delete_by_document_id(self, document_id: UUID, tenant_id: Optional[UUID] = None) -> None:
+        milvus_store.delete_by_document_id(document_id, tenant_id=tenant_id)
+
 
 class StubVectorStore(BaseVectorStore):
     """占位实现，便于未来接入其他后端。"""
@@ -71,6 +77,9 @@ class StubVectorStore(BaseVectorStore):
         tenant_id: Optional[UUID],
     ) -> List[Dict[str, Any]]:
         return []
+
+    def delete_by_document_id(self, document_id: UUID, tenant_id: Optional[UUID] = None) -> None:
+        return
 
 
 class MemoryVectorStore(BaseVectorStore):
@@ -95,6 +104,7 @@ class MemoryVectorStore(BaseVectorStore):
             meta = dict(doc.get("metadata") or {})
             meta.setdefault("document_id", str(document_id))
             meta.setdefault("tenant_id", str(tenant_id))
+            meta.setdefault("content", doc.get("content", ""))
             self.storage.append((vec, meta))
         # 内存场景不返回真实向量 ID，用占位
         return [f"{document_id}_mem_{i}" for i in range(len(texts))]
@@ -138,6 +148,15 @@ class MemoryVectorStore(BaseVectorStore):
             )
         results.sort(key=lambda x: x["score"], reverse=True)
         return results[:top_k]
+
+    def delete_by_document_id(self, document_id: UUID, tenant_id: Optional[UUID] = None) -> None:
+        doc_id = str(document_id)
+        tenant = str(tenant_id) if tenant_id else None
+        self.storage = [
+            (vec, meta)
+            for (vec, meta) in self.storage
+            if not (meta.get("document_id") == doc_id and (tenant is None or meta.get("tenant_id") == tenant))
+        ]
 
 
 class FAISSVectorStore(BaseVectorStore):
@@ -230,6 +249,30 @@ class FAISSVectorStore(BaseVectorStore):
         out.sort(key=lambda x: x["score"], reverse=True)
         return out[:top_k]
 
+    def delete_by_document_id(self, document_id: UUID, tenant_id: Optional[UUID] = None) -> None:
+        key, store = self._get_store(tenant_id)
+        if store is None:
+            return
+        target = str(document_id)
+        ids_to_delete = []
+        try:
+            for doc_id, doc in getattr(store.docstore, "_dict", {}).items():
+                if str((doc.metadata or {}).get("document_id")) == target:
+                    ids_to_delete.append(str(doc_id))
+        except Exception:
+            ids_to_delete = []
+
+        if ids_to_delete and hasattr(store, "delete"):
+            try:
+                store.delete(ids_to_delete)
+            except Exception:
+                pass
+
+        # 持久化（覆盖保存）
+        if self.persist_path:
+            os.makedirs(self.persist_path, exist_ok=True)
+            store.save_local(self.persist_path, index_name=key)
+
 
 class ChromaVectorStore(BaseVectorStore):
     """Chroma 后端，持久化到本地路径。"""
@@ -304,16 +347,40 @@ class ChromaVectorStore(BaseVectorStore):
         out.sort(key=lambda x: x["score"], reverse=True)
         return out[:top_k]
 
+    def delete_by_document_id(self, document_id: UUID, tenant_id: Optional[UUID] = None) -> None:
+        _, store = self._get_store(tenant_id)
+        target = str(document_id)
+        try:
+            # LangChain Chroma 没有稳定的 where delete API，这里使用底层 collection
+            store._collection.delete(where={"document_id": target})  # type: ignore[attr-defined]
+            store.persist()
+        except Exception:
+            return
+
+
+_VECTOR_STORE_SINGLETONS: Dict[str, BaseVectorStore] = {}
+
 
 def get_vector_store() -> BaseVectorStore:
+    """
+    返回当前配置的向量库后端（单例）。
+    说明：memory/faiss 这类后端需要在进程内保留状态；用单例避免每次调用丢失数据。
+    """
     backend = (settings.VECTOR_BACKEND or "milvus").lower()
+    cached = _VECTOR_STORE_SINGLETONS.get(backend)
+    if cached is not None:
+        return cached
+
     if backend == "milvus":
-        return MilvusVectorStore()
-    if backend == "memory":
-        return MemoryVectorStore()
-    if backend == "faiss":
-        return FAISSVectorStore()
-    if backend == "chroma":
-        return ChromaVectorStore()
-    # 其他后端可在此扩展
-    return StubVectorStore()
+        store: BaseVectorStore = MilvusVectorStore()
+    elif backend == "memory":
+        store = MemoryVectorStore()
+    elif backend == "faiss":
+        store = FAISSVectorStore()
+    elif backend == "chroma":
+        store = ChromaVectorStore()
+    else:
+        store = StubVectorStore()
+
+    _VECTOR_STORE_SINGLETONS[backend] = store
+    return store

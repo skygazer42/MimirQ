@@ -110,6 +110,23 @@ class RAGEngine:
             ),
         }
 
+        # Query Rewrite：将追问改写为“可检索”的独立问题（可选开启）
+        self.rewrite_prompt = ChatPromptTemplate.from_template(
+            """你是一个知识库检索助手。请把“当前问题”改写成一个独立、明确、适合检索的查询句。
+要求：
+1) 结合历史对话补全指代（如“它/这个/上面提到的”）
+2) 保留关键实体、时间、范围、约束条件
+3) 只输出改写后的查询句，不要输出解释
+
+【历史对话】
+{history}
+
+【当前问题】
+{question}
+
+【改写后的检索查询】"""
+        )
+
 
     def _build_llm(self, chat_cls, model_name: str):
         """Create a ChatOpenAI-compatible LLM with shared HTTP clients."""
@@ -170,7 +187,13 @@ class RAGEngine:
         vector_weight: float = 0.6,
         keyword_weight: float = 0.4,
         mmr_lambda: float = settings.RETRIEVAL_MMR_LAMBDA,
+        enable_reranker: bool = settings.ENABLE_RERANKER,
+        reranker_top_n: int = settings.RERANKER_TOP_N,
+        request_id: Optional[str] = None,
         prompt_template_id: Optional[UUID] = None,
+        prompt_template_key: Optional[str] = None,
+        prompt_ab_experiment_key: Optional[str] = None,
+        ab_user_key: Optional[str] = None,
         db: Optional[Any] = None,
     ) -> AsyncGenerator[Dict[str, Any], None]:
         """
@@ -189,20 +212,36 @@ class RAGEngine:
         try:
             llm, model_route, routing_reason = self._select_llm(question, history)
 
-            # Load custom prompt template if provided
+            # Load prompt template (id / key latest / A/B experiment)
             current_prompt_template = self.prompt_template
-            if prompt_template_id and db:
-                from app.models.prompt_template import PromptTemplate
-                custom_template = db.query(PromptTemplate).filter(
-                    PromptTemplate.id == prompt_template_id,
-                    PromptTemplate.tenant_id == tenant_id,
-                    PromptTemplate.is_active == True
-                ).first()
-                if custom_template:
-                    current_prompt_template = ChatPromptTemplate.from_template(custom_template.content)
-                    # Increment usage count
-                    custom_template.usage_count += 1
-                    db.commit()
+            selected_prompt_template_id: Optional[UUID] = None
+            selected_prompt_template_key: Optional[str] = None
+            selected_prompt_ab_experiment_key: Optional[str] = None
+            selected_prompt_ab_variant: Optional[str] = None
+
+            if db and tenant_id and (prompt_template_id or prompt_template_key or prompt_ab_experiment_key):
+                try:
+                    from app.services.prompt_template_selector import resolve_prompt_template
+
+                    chosen = resolve_prompt_template(
+                        db=db,
+                        tenant_id=tenant_id,
+                        prompt_template_id=prompt_template_id,
+                        template_key=prompt_template_key,
+                        ab_experiment_key=prompt_ab_experiment_key,
+                        ab_user_key=ab_user_key,
+                    )
+                    if chosen:
+                        current_prompt_template = ChatPromptTemplate.from_template(chosen.content)
+                        chosen.usage_count += 1
+                        db.commit()
+                        selected_prompt_template_id = chosen.id
+                        selected_prompt_template_key = getattr(chosen, "template_key", None)
+                        selected_prompt_ab_experiment_key = getattr(chosen, "ab_experiment_key", None)
+                        selected_prompt_ab_variant = getattr(chosen, "ab_variant", None)
+                except Exception:
+                    # 选模版失败时回退到默认 prompt，避免阻塞主链路
+                    current_prompt_template = self.prompt_template
 
             chain = current_prompt_template | llm | StrOutputParser()
 
@@ -219,13 +258,80 @@ class RAGEngine:
                 )
 
             yield {
-                "type": "route",
-                "data": {
-                    "model_used": getattr(llm, "model_name", None) or getattr(llm, "model", None),
-                    "route": model_route,
-                    "reason": routing_reason,
-                },
-            }
+                    "type": "route",
+                    "data": {
+                        "model_used": getattr(llm, "model_name", None) or getattr(llm, "model", None),
+                        "route": model_route,
+                        "reason": routing_reason,
+                        "prompt_template_id": str(selected_prompt_template_id) if selected_prompt_template_id else None,
+                        "prompt_template_key": selected_prompt_template_key,
+                        "prompt_ab_experiment_key": selected_prompt_ab_experiment_key,
+                        "prompt_ab_variant": selected_prompt_ab_variant,
+                    },
+                }
+
+            # 对话历史（用于 prompt + 可选 Query Rewrite）
+            if history and len(history) > 0:
+                history_text = ""
+                window = max(settings.CHAT_HISTORY_WINDOW, 0)
+                hist_slice = history[-window:] if window else []
+                for msg in hist_slice:  # 可配置的滑动窗口
+                    if isinstance(msg, dict):
+                        role_value = msg.get("role")
+                        content_value = msg.get("content", "")
+                    else:
+                        role_value = getattr(msg, "role", None)
+                        content_value = getattr(msg, "content", "")
+
+                    role = "用户" if role_value == "user" else "助手"
+                    history_text += f"{role}: {content_value}\n\n"
+            else:
+                history_text = "（无历史对话）"
+
+            if not (history_text or "").strip():
+                history_text = "（无历史对话）"
+
+            t_all_start = time.time()
+            query_for_retrieval = question
+            rewrite_elapsed = 0.0
+            rewrite_used = False
+            rewrite_model_used = None
+
+            # Step 0: Query Rewrite（可选）
+            if (
+                settings.ENABLE_QUERY_REWRITE
+                and history_text != "（无历史对话）"
+                and len(question) <= settings.QUERY_REWRITE_MAX_CHARS
+            ):
+                rewrite_llm = self.models.get("fast") or llm
+                rewrite_model_used = getattr(rewrite_llm, "model_name", None) or getattr(rewrite_llm, "model", None)
+                try:
+                    rewrite_chain = (
+                        self.rewrite_prompt
+                        | rewrite_llm.bind(temperature=settings.QUERY_REWRITE_TEMPERATURE)
+                        | StrOutputParser()
+                    )
+                    rw_start = time.time()
+                    rewritten = await rewrite_chain.ainvoke({"history": history_text, "question": question})
+                    rewrite_elapsed = time.time() - rw_start
+                    rewritten = (rewritten or "").strip().strip('"')
+                    if rewritten:
+                        query_for_retrieval = rewritten
+                except Exception:
+                    query_for_retrieval = question
+                    rewrite_elapsed = 0.0
+
+                rewrite_used = query_for_retrieval != question
+                yield {
+                    "type": "rewrite",
+                    "data": {
+                        "original": question,
+                        "rewritten": query_for_retrieval,
+                        "used": rewrite_used,
+                        "elapsed_sec": round(rewrite_elapsed, 3),
+                        "model_used": rewrite_model_used,
+                    },
+                }
 
             request_retrieval_mode = retrieval_mode or "hybrid"
             request_alpha = alpha if alpha is not None else 0.6
@@ -233,6 +339,8 @@ class RAGEngine:
             request_vector_weight = vector_weight if vector_weight is not None else 0.6
             request_keyword_weight = keyword_weight if keyword_weight is not None else 0.4
             request_mmr_lambda = mmr_lambda if mmr_lambda is not None else settings.RETRIEVAL_MMR_LAMBDA
+            request_enable_reranker = bool(enable_reranker)
+            request_reranker_top_n = int(reranker_top_n or settings.RERANKER_TOP_N or 20)
 
             # Step 1: 混合检索（LangChain Retriever）
             retriever = hybrid_retriever.model_copy(
@@ -247,24 +355,37 @@ class RAGEngine:
                     "vector_weight": request_vector_weight,
                     "keyword_weight": request_keyword_weight,
                     "mmr_lambda": request_mmr_lambda,
+                    "enable_reranker": request_enable_reranker,
+                    "reranker_top_n": request_reranker_top_n,
                 }
             )
-            import time
-            t0 = time.time()
+            t_retrieval_start = time.time()
             try:
-                docs = retriever.invoke(question)
+                docs = retriever.invoke(query_for_retrieval)
             except Exception as exc:
                 yield {
                     "type": "error",
                     "data": {"message": f"retrieval failed: {exc}"}
                 }
                 docs = []
-            retrieval_elapsed = time.time() - t0
+            retrieval_elapsed = time.time() - t_retrieval_start
 
             # 构建引用信息
             citations: List[Dict[str, Any]] = []
             for doc in docs:
                 meta = doc.metadata or {}
+                v_score_raw = float(meta.get("vector_score", 0.0) or 0.0)
+                b_score_raw = float(meta.get("bm25_score", 0.0) or 0.0)
+                rerank_score = meta.get("rerank_score")
+                retrieval_score = meta.get("retrieval_score")
+                if request_retrieval_mode == "mmr":
+                    hit_type = "mmr"
+                elif v_score_raw > b_score_raw:
+                    hit_type = "vector"
+                elif b_score_raw > v_score_raw:
+                    hit_type = "keyword"
+                else:
+                    hit_type = "hybrid"
                 citations.append(
                     {
                         "chunk_id": doc.id,
@@ -273,6 +394,18 @@ class RAGEngine:
                         "chunk_content": doc.page_content[:200] + "...",
                         "page_number": meta.get("page"),
                         "relevance_score": round(float(meta.get("score", 0.0)), 2),
+                        "vector_score": round(v_score_raw, 3),
+                        "bm25_score": round(b_score_raw, 3),
+                        "keyword_score": round(float(meta.get("keyword_score", 0.0) or 0.0), 3),
+                        "rerank_score": round(float(rerank_score), 3) if rerank_score is not None else None,
+                        "retrieval_score": round(float(retrieval_score), 3) if retrieval_score is not None else None,
+                        "reranker_provider": meta.get("reranker_provider"),
+                        "rerank_elapsed_sec": meta.get("rerank_elapsed_sec"),
+                        "rerank_model_used": meta.get("rerank_model_used"),
+                        "retrieval_mode": request_retrieval_mode,
+                        "vector_backend": settings.VECTOR_BACKEND,
+                        "retrieval_elapsed_sec": round(retrieval_elapsed, 3),
+                        "hit_type": hit_type,
                     }
                 )
 
@@ -326,24 +459,6 @@ class RAGEngine:
                 context_sections.append(f"【文档切片检索】\n{chunk_context}")
             context = "\n\n".join(context_sections) if context_sections else "没有找到相关的参考资料。"
 
-            # 构建对话历史
-            if history and len(history) > 0:
-                history_text = ""
-                window = max(settings.CHAT_HISTORY_WINDOW, 0)
-                hist_slice = history[-window:] if window else []
-                for msg in hist_slice:  # 可配置的滑动窗口
-                    if isinstance(msg, dict):
-                        role_value = msg.get("role")
-                        content_value = msg.get("content", "")
-                    else:
-                        role_value = getattr(msg, "role", None)
-                        content_value = getattr(msg, "content", "")
-
-                    role = "用户" if role_value == "user" else "助手"
-                    history_text += f"{role}: {content_value}\n\n"
-            else:
-                history_text = "（无历史对话）"
-
             # Step 4: 流式生成回答
             full_response = ""
             gen_start = time.time()
@@ -365,7 +480,7 @@ class RAGEngine:
 
             # Step 5: 发送完成信号
             generation_elapsed = time.time() - gen_start
-            t_total = time.time() - t0
+            t_total = time.time() - t_all_start
             structured_data = None
             if structured_output:
                 try:
@@ -390,6 +505,16 @@ class RAGEngine:
                         "vector_backend": settings.VECTOR_BACKEND,
                         "model_route": model_route,
                         "top_k": top_k,
+                        "llm_max_retries": settings.LLM_MAX_RETRIES,
+                        "query_rewrite_enabled": settings.ENABLE_QUERY_REWRITE,
+                        "rewrite_used": bool(rewrite_used),
+                        "rewrite_elapsed_sec": round(rewrite_elapsed, 3),
+                        "rewrite_model_used": rewrite_model_used,
+                        "structured_preset": structured_preset,
+                        "prompt_template_id": str(selected_prompt_template_id) if selected_prompt_template_id else None,
+                        "prompt_template_key": selected_prompt_template_key,
+                        "prompt_ab_experiment_key": selected_prompt_ab_experiment_key,
+                        "prompt_ab_variant": selected_prompt_ab_variant,
                     },
                     "structured": bool(structured_data),
                     "structured_data": structured_data,
@@ -408,11 +533,23 @@ class RAGEngine:
                     "route": model_route,
                     "model_used": getattr(llm, "model_name", None) or getattr(llm, "model", None),
                     "metrics": done_payload["data"]["metrics"],
+                    "request_id": request_id,
                 }
             )
 
         except Exception as e:
             # 错误处理
+            log_metrics(
+                {
+                    "event": "rag_error",
+                    "conversation_id": str(conversation_id) if conversation_id else None,
+                    "tenant_id": str(tenant_id) if tenant_id else None,
+                    "vector_backend": settings.VECTOR_BACKEND,
+                    "retrieval_mode": retrieval_mode,
+                    "request_id": request_id,
+                    "error": str(e),
+                }
+            )
             yield {
                 "type": "error",
                 "data": {"message": str(e)}
