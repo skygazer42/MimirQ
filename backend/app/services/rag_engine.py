@@ -10,6 +10,7 @@ import json
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
 import httpx
+import time
 
 from app.core.config import settings
 from app.services.hybrid_retriever import hybrid_retriever
@@ -239,6 +240,7 @@ class RAGEngine:
                     "data": {"message": f"retrieval failed: {exc}"}
                 }
                 docs = []
+            retrieval_elapsed = time.time() - t0
 
             # 构建引用信息
             citations: List[Dict[str, Any]] = []
@@ -325,6 +327,7 @@ class RAGEngine:
 
             # Step 4: 流式生成回答
             full_response = ""
+            gen_start = time.time()
             async for token in chain.astream(
                 {
                     "context": context,
@@ -342,6 +345,7 @@ class RAGEngine:
                 }
 
             # Step 5: 发送完成信号
+            generation_elapsed = time.time() - gen_start
             t_total = time.time() - t0
             structured_data = None
             if structured_output:
@@ -362,6 +366,8 @@ class RAGEngine:
                     "vector_backend": settings.VECTOR_BACKEND,
                     "metrics": {
                         "elapsed_sec": round(t_total, 3),
+                        "retrieval_elapsed_sec": round(retrieval_elapsed, 3),
+                        "generation_elapsed_sec": round(generation_elapsed, 3),
                         "retrieval_mode": request_retrieval_mode,
                         "vector_backend": settings.VECTOR_BACKEND,
                         "model_route": model_route,

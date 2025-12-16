@@ -185,6 +185,7 @@ async def stream_chat(
     async def event_stream():
         nonlocal citations_data, full_response
         doc_ids_to_use = allowed_doc_ids or []
+        metrics_data = {}
 
         # 非流式 LangGraph 快捷通道：更快出完整答复，用于工具/Agent风格编排
         if request.rag_config.get("use_graph") and not request.stream:
@@ -213,6 +214,11 @@ async def stream_chat(
                 token_chunk = answer_text[i:i+chunk_size]
                 yield f"data: {json.dumps({'type': 'token', 'data': {'content': token_chunk}}, ensure_ascii=False)}\n\n"
                 full_response += token_chunk
+            metrics_data = {
+                "retrieval_mode": request.rag_config.get('retrieval_mode', 'hybrid'),
+                "vector_backend": settings.VECTOR_BACKEND,
+                "elapsed_sec": None,
+            }
             done_payload = {
                 "type": "done",
                 "data": {
@@ -223,10 +229,7 @@ async def stream_chat(
                     "route": graph_result.get("route"),
                     "retrieval_mode": request.rag_config.get('retrieval_mode', 'hybrid'),
                     "vector_backend": settings.VECTOR_BACKEND,
-                    "metrics": {
-                        "retrieval_mode": request.rag_config.get('retrieval_mode', 'hybrid'),
-                        "vector_backend": settings.VECTOR_BACKEND,
-                    },
+                    "metrics": metrics_data,
                     "structured": False,
                     "structured_data": None,
                 }
@@ -257,6 +260,8 @@ async def stream_chat(
                 # 记录引用信息
                 if event['type'] == 'citations':
                     citations_data = event['data']
+                if event['type'] == 'done':
+                    metrics_data = event['data'].get("metrics", {})
 
                 # 累积完整回复
                 if event['type'] == 'token':
@@ -272,7 +277,8 @@ async def stream_chat(
                 role='assistant',
                 content=full_response,
                 citations=citations_data,
-                token_count=len(full_response)
+                token_count=len(full_response),
+                metadata=metrics_data
             )
             db.add(assistant_message)
 
