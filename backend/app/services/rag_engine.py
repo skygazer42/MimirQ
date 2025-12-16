@@ -229,6 +229,8 @@ class RAGEngine:
                     "mmr_lambda": request_mmr_lambda,
                 }
             )
+            import time
+            t0 = time.time()
             try:
                 docs = retriever.invoke(question)
             except Exception as exc:
@@ -340,6 +342,7 @@ class RAGEngine:
                 }
 
             # Step 5: 发送完成信号
+            t_total = time.time() - t0
             structured_data = None
             if structured_output:
                 try:
@@ -356,6 +359,14 @@ class RAGEngine:
                     "model_used": getattr(llm, "model_name", None) or getattr(llm, "model", None),
                     "route": model_route,
                     "retrieval_mode": request_retrieval_mode,
+                    "vector_backend": settings.VECTOR_BACKEND,
+                    "metrics": {
+                        "elapsed_sec": round(t_total, 3),
+                        "retrieval_mode": request_retrieval_mode,
+                        "vector_backend": settings.VECTOR_BACKEND,
+                        "model_route": model_route,
+                        "top_k": top_k,
+                    },
                     "structured": bool(structured_data),
                     "structured_data": structured_data,
                 }
