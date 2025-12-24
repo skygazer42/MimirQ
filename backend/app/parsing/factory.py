@@ -8,10 +8,10 @@ from typing import List, Optional, Tuple
 
 from langchain_core.documents import Document
 
-from app.services.parsers.pdf_parser import PDFParser
-from app.services.parsers.text_parser import TextParser, MarkdownParser
-from app.services.parsers.mineru_parser import MinerUParser
-from app.services.parsers.markitdown_parser import MarkItDownParser
+from app.parsing.parsers.pdf_parser import PDFParser
+from app.parsing.parsers.text_parser import TextParser, MarkdownParser
+from app.parsing.parsers.mineru_parser import MinerUParser
+from app.parsing.parsers.markitdown_parser import MarkItDownParser
 from app.core.config import settings
 
 
@@ -128,7 +128,7 @@ class ParserFactory:
 
         if backend == "deepdoc":
             if self._deepdoc_parser is None:
-                from app.services.parsers.deepdoc_parser import DeepDocParser
+                from app.parsing.parsers.deepdoc_parser import DeepDocParser
 
                 print("[DeepDoc] Initializing DeepDoc parser for PDF (structure-aware parsing)")
                 self._deepdoc_parser = DeepDocParser()

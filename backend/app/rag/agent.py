@@ -14,7 +14,7 @@ from __future__ import annotations
 from typing import AsyncGenerator, Dict, Any, List, Optional
 from uuid import UUID
 
-from app.services.rag_engine import get_rag_engine, RAGEngine
+from app.rag.engine import get_rag_engine, RAGEngine
 
 
 class RAGAgent:

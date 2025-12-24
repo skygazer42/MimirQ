@@ -13,7 +13,7 @@ import httpx
 import time
 
 from app.core.config import settings
-from app.services.hybrid_retriever import hybrid_retriever
+from app.storage.search.hybrid_retriever import hybrid_retriever
 from app.services.metrics_logger import log_metrics
 
 

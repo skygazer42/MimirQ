@@ -15,8 +15,8 @@ import uuid
 from langchain_core.documents import Document
 
 from app.core.config import settings
-from app.services.parsers import parser_factory
-from app.services.pdf_quality import score_pdf_quality
+from app.parsing.factory import parser_factory
+from app.parsing.quality.scorer import score_pdf_quality
 
 
 class DocumentParserService:

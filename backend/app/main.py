@@ -31,7 +31,7 @@ async def lifespan(app: FastAPI):
     # 初始化 BM25 索引
     print("[*] Initializing BM25 index...")
     try:
-        from app.services.hybrid_retriever import hybrid_retriever
+        from app.storage.search.hybrid_retriever import hybrid_retriever
         from app.models.document import DocumentChunk, Document as DBDocument
 
         db = SessionLocal()
@@ -103,7 +103,7 @@ async def health_check():
     """健康检查"""
     milvus_status = {"status": "disconnected", "count": None}
     try:
-        from app.services.milvus_store import milvus_store
+        from app.storage.vector.milvus import milvus_store
 
         milvus_status["count"] = milvus_store.get_collection_count()
         milvus_status["status"] = "connected"

@@ -26,8 +26,8 @@ from app.schemas.chat import (
     ConversationList,
 )
 from app.services.document_access import filter_allowed_document_ids, list_accessible_document_ids
-from app.services.rag_engine import get_rag_engine
-from app.services.rag_graph import run_rag_graph
+from app.rag.engine import get_rag_engine
+from app.rag.graph import run_rag_graph
 from app.services.metrics_logger import log_metrics
 from app.core.config import settings
 from app.dependencies.tenant import get_tenant_id

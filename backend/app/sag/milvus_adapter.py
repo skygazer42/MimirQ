@@ -5,7 +5,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Optional
 
-from app.services.milvus_store import milvus_store
+from app.storage.vector.milvus import milvus_store
 from app.core.config import settings
 
 

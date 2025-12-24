@@ -16,8 +16,8 @@ import concurrent.futures
 from functools import partial
 import time
 
-from app.services.hybrid_retriever import hybrid_retriever
-from app.services.rag_engine import get_rag_engine
+from app.storage.search.hybrid_retriever import hybrid_retriever
+from app.rag.engine import get_rag_engine
 from app.core.config import settings
 
 

@@ -17,9 +17,9 @@ from app.schemas.pipeline import (
     ChunkPreviewRequest,
     ChunkPreviewResponse,
 )
-from app.services.document_parser_service import document_parser_service
-from app.services.hierarchical_chunking import hierarchical_chunk_markdown
-from app.services.zip_image_processor import zip_image_processor
+from app.parsing.processors.parser_service import document_parser_service
+from app.parsing.chunking.hierarchical import hierarchical_chunk_markdown
+from app.parsing.utils.zip_processor import zip_image_processor
 from app.dependencies.auth import get_current_account_id
 
 router = APIRouter()

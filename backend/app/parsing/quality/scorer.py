@@ -17,7 +17,7 @@ import re
 
 import pdfplumber  # type: ignore
 
-from app.services.rapid_ocr_service import rapid_ocr_service
+from app.parsing.quality.ocr_validator import rapid_ocr_service
 
 
 def score_pdf_quality(
