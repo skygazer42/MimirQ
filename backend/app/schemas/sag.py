@@ -1,7 +1,13 @@
 from typing import Any, Dict, List, Optional
 from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
+
+
+class SAGBaseModel(BaseModel):
+    """BaseModel with orm_mode enabled for compatibility."""
+
+    model_config = ConfigDict(from_attributes=True)
 
 
 class SAGExtractResponse(BaseModel):
