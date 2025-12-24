@@ -29,15 +29,15 @@ from app.schemas.document import (
     BatchUploadResponse,
     BatchTaskStatus
 )
-from app.services.document_processor import document_processor
-from app.services.parsers import parser_factory
-from app.services.chunkers import chunker_factory
-from app.services.milvus_store import milvus_store
-from app.services.vector_router import get_vector_store
-from app.services.hybrid_retriever import hybrid_retriever
+from app.parsing.processors.document_processor import document_processor
+from app.parsing.factory import parser_factory
+from app.parsing.chunking.factory import chunker_factory
+from app.storage.vector.milvus import milvus_store
+from app.storage.vector.router import get_vector_store
+from app.storage.search.hybrid_retriever import hybrid_retriever
 from app.services.mineru_service import mineru_service
 from app.services.dataset_service import DatasetService
-from app.services.minio_service import minio_service
+from app.storage.object.minio import minio_service
 from app.models.dataset import Dataset, DatasetPermission, DatasetPermissionEnum
 from app.core.config import settings
 from fastapi.responses import FileResponse, RedirectResponse
@@ -695,7 +695,7 @@ async def preview_chunking(
 
         # ragflow 预设走独立分支（自解析 + 切块）
         if resolved_chunk_strategy in chunker_factory.RAGFLOW_STRATEGIES:
-            from app.services.document_processor import document_processor
+            from app.parsing.processors.document_processor import document_processor
             chunks = await asyncio.to_thread(
                 document_processor._ragflow_chunk_file,
                 temp_path,

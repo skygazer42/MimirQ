@@ -12,11 +12,11 @@ import hashlib
 
 from app.core.config import settings
 from app.models.document import Document as DBDocument, DocumentChunk
-from app.services.parsers import parser_factory
-from app.services.chunkers import chunker_factory
-from app.services.vector_router import get_vector_store
-from app.services.hybrid_retriever import hybrid_retriever
-from app.services.minio_service import minio_service
+from app.parsing.factory import parser_factory
+from app.parsing.chunking.factory import chunker_factory
+from app.storage.vector.router import get_vector_store
+from app.storage.search.hybrid_retriever import hybrid_retriever
+from app.storage.object.minio import minio_service
 
 
 class DocumentProcessorService:

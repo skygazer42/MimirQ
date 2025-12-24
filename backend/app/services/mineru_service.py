@@ -15,7 +15,7 @@ from typing import List, Dict, Any, Optional
 from langchain_core.documents import Document
 
 from app.core.config import settings
-from app.services.zip_image_processor import zip_image_processor
+from app.parsing.utils.zip_processor import zip_image_processor
 
 
 class MinerUService:

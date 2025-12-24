@@ -17,7 +17,7 @@ from langchain_core.retrievers import BaseRetriever
 from langchain_community.retrievers.bm25 import BM25Retriever
 from pydantic import PrivateAttr, ConfigDict
 
-from app.services.vector_router import get_vector_store
+from app.storage.vector.router import get_vector_store
 from app.models.document import DocumentChunk
 from app.core.config import settings
 
@@ -275,7 +275,7 @@ class HybridRetriever(BaseRetriever):
             provider = (settings.RERANKER_PROVIDER or "llm").lower()
             if provider == "llm":
                 try:
-                    from app.services.llm_reranker import get_llm_reranker
+                    from app.rag.reranking.llm_reranker import get_llm_reranker
 
                     reranker = get_llm_reranker()
                     candidates_n = int(self.reranker_top_n or settings.RERANKER_TOP_N or 20)

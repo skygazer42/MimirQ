@@ -13,7 +13,7 @@ from app.sag.core.ai.base import BaseLLMClient
 from app.sag.core.ai.models import LLMMessage, LLMResponse, LLMRole
 from app.sag.exceptions import ConfigError
 from app.sag.utils import get_logger
-from app.services.milvus_store import milvus_store
+from app.storage.vector.milvus import milvus_store
 
 logger = get_logger("sag.ai.factory")
 

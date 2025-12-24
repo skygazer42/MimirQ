@@ -29,7 +29,7 @@ from app.models.evaluation import (
 )
 from app.services.dataset_service import DatasetService
 from app.services.document_access import filter_allowed_document_ids, list_accessible_document_ids
-from app.services.rag_graph import run_rag_graph
+from app.rag.graph import run_rag_graph
 
 
 def _build_http_clients() -> tuple[httpx.Client, httpx.AsyncClient]:
@@ -272,7 +272,7 @@ def _build_llm_and_embeddings():
     elif provider == "dashscope":
         # Prefer DashScope native embeddings (if SDK is installed); fallback to OpenAI-compatible API mode.
         try:
-            from app.services.milvus_store import DashScopeEmbeddings
+            from app.storage.vector.milvus import DashScopeEmbeddings
 
             embeddings = DashScopeEmbeddings(
                 model=settings.EMBEDDING_MODEL,

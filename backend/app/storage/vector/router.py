@@ -10,7 +10,7 @@ import math
 import os
 
 from app.core.config import settings
-from app.services.milvus_store import milvus_store
+from app.storage.vector.milvus import milvus_store
 from langchain_openai import OpenAIEmbeddings
 from langchain_community.vectorstores import FAISS
 from langchain_community.vectorstores import Chroma

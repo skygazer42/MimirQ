@@ -12,7 +12,7 @@ from typing import Dict, List, Tuple, Optional
 import tempfile
 import shutil
 
-from app.services.minio_service import minio_service
+from app.storage.object.minio import minio_service
 from app.core.config import settings
 
 
