@@ -370,24 +370,18 @@ class DocumentProcessorService:
         调用 ragflow 预设（naive/book/laws/email）直接完成解析+切块，
         返回 LangChain Document 列表。
         """
-        import sys
         from langchain_core.documents import Document
-
-        # 确保 third_party 在路径中（start 脚本已加，这里再兜底）
-        tp = str(Path(__file__).resolve().parents[2] / "third_party")
-        if tp not in sys.path:
-            sys.path.insert(0, tp)
 
         # 选择 ragflow chunk 函数
         strat = strategy.lower()
         if strat == "ragflow_naive":
-            from ragflow.app.naive import chunk as rf_chunk
+            from app.rag.ragflow.chunkers.naive import chunk as rf_chunk
         elif strat == "ragflow_book":
-            from ragflow.app.book import chunk as rf_chunk
+            from app.rag.ragflow.chunkers.book import chunk as rf_chunk
         elif strat == "ragflow_laws":
-            from ragflow.app.laws import chunk as rf_chunk
+            from app.rag.ragflow.chunkers.laws import chunk as rf_chunk
         elif strat == "ragflow_email":
-            from ragflow.app.email import chunk as rf_chunk
+            from app.rag.ragflow.chunkers.email import chunk as rf_chunk
         else:
             raise ValueError(f"Unsupported ragflow strategy: {strategy}")
 

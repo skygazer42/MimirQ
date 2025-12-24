@@ -1,2 +1,0 @@
-# Third-party plugins package.
-

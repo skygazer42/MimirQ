@@ -17,9 +17,9 @@
 import logging
 from email import policy
 from email.parser import BytesParser
-from rag.app.naive import chunk as naive_chunk
+from app.rag.ragflow.chunkers.naive import chunk as naive_chunk
 import re
-from rag.nlp import rag_tokenizer, naive_merge, tokenize_chunks
+from app.rag.ragflow.nlp import rag_tokenizer, naive_merge, tokenize_chunks
 from deepdoc.parser import HtmlParser, TxtParser
 from timeit import default_timer as timer
 import io

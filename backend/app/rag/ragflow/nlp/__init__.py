@@ -18,7 +18,7 @@ import logging
 import random
 from collections import Counter
 
-from common.token_utils import num_tokens_from_string
+from app.rag.ragflow.common.token_utils import num_tokens_from_string
 import re
 import copy
 import roman_numbers as r
