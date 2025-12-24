@@ -37,9 +37,10 @@ from app.services.vector_router import get_vector_store
 from app.services.hybrid_retriever import hybrid_retriever
 from app.services.mineru_service import mineru_service
 from app.services.dataset_service import DatasetService
+from app.services.minio_service import minio_service
 from app.models.dataset import Dataset, DatasetPermission, DatasetPermissionEnum
 from app.core.config import settings
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, RedirectResponse
 from app.dependencies.tenant import get_tenant_id
 from app.dependencies.auth import get_current_account_id
 from sqlalchemy import or_, false
@@ -341,13 +342,31 @@ async def delete_document(
         ds = DatasetService.get_dataset(db, tenant_id, document.dataset_id)
         DatasetService.assert_dataset_writable(db, ds, account_id)
 
-    # 1. 删除向量库中的向量（按后端切换）
+    # 1. 删除 MinIO 中的图片（如果启用）
+    if settings.MINIO_ENABLED:
+        try:
+            from app.models.document import DocumentChunk
+            chunks = db.query(DocumentChunk).filter(
+                DocumentChunk.document_id == document_id
+            ).all()
+            
+            for chunk in chunks:
+                img_id = chunk.doc_metadata.get("img_id") if chunk.doc_metadata else None
+                if img_id:
+                    try:
+                        minio_service.delete_image(img_id, extension="png")
+                    except Exception as e:
+                        print(f"[WARN] 删除 MinIO 图片失败 {img_id}: {e}")
+        except Exception as exc:
+            print(f"[WARN] MinIO 图片删除过程失败: {exc}")
+
+    # 2. 删除向量库中的向量（按后端切换）
     try:
         get_vector_store().delete_by_document_id(document_id, tenant_id=tenant_id)
     except Exception as exc:
         print(f"[WARN]  Failed to delete vectors: {exc}")
 
-    # 2. 删除本地文件
+    # 3. 删除本地文件
     try:
         file_path = Path(document.file_path)
         if file_path.exists():
@@ -355,11 +374,11 @@ async def delete_document(
     except Exception as e:
         print(f"Warning: Failed to delete file: {str(e)}")
 
-    # 3. 删除数据库记录（级联删除 chunks）
+    # 4. 删除数据库记录（级联删除 chunks）
     db.delete(document)
     db.commit()
 
-    # 4. 移除 BM25 索引中的切片（内存索引）
+    # 5. 移除 BM25 索引中的切片（内存索引）
     try:
         hybrid_retriever.remove_document_from_bm25_index(document_id, tenant_id=tenant_id)
     except Exception as exc:
@@ -379,6 +398,29 @@ async def get_image(image_id: str, tenant_id: UUID = Depends(get_tenant_id)):
     if not file_path.exists():
         raise HTTPException(status_code=404, detail="Image not found")
     return FileResponse(file_path, media_type="image/png")
+
+
+@router.get("/image-url/{img_id}")
+async def get_image_url(img_id: str):
+    """
+    根据 img_id（格式：{dataset_id}-{chunk_id}）获取 MinIO 预签名 URL。
+    返回 302 重定向到图片 URL。
+    """
+    if not settings.MINIO_ENABLED:
+        raise HTTPException(
+            status_code=503,
+            detail="MinIO 未启用，无法获取图片 URL"
+        )
+
+    try:
+        url = minio_service.get_image_url(img_id, extension="png")
+        # 直接重定向到 MinIO 预签名 URL
+        return RedirectResponse(url=url, status_code=302)
+    except Exception as e:
+        raise HTTPException(
+            status_code=404,
+            detail=f"图片不存在或获取失败: {str(e)}"
+        )
 
 
 @router.post("/preview", response_model=DocumentParsePreview)

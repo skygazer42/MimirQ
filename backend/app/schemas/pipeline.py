@@ -10,9 +10,26 @@ class ImageInfo(BaseModel):
     filename: str
 
 
+class PDFQualityScore(BaseModel):
+    """
+    PDF 质量评分（前 3 页抽样）。
+    
+    评分维度：
+    - text_quality_score（50%）：文本提取质量
+    - format_consistency_score（30%）：格式一致性
+    - table_quality_score（20%）：表格完整性
+    """
+    score: float = Field(..., description="综合得分 0-1，越高越干净")
+    text_quality_score: float = Field(..., description="文本提取质量（0-1）")
+    format_consistency_score: float = Field(..., description="格式一致性（0-1）")
+    table_quality_score: float = Field(..., description="表格完整性（0-1）")
+    is_scanned: bool = Field(..., description="是否为扫描件")
+    page_count: float = Field(..., description="总页数")
+
+
 class ParsePreviewResponse(BaseModel):
     backend: str
-    pdf_quality: Optional[Dict[str, Any]] = None
+    pdf_quality: Optional[PDFQualityScore] = None
     markdown: str
     images: List[ImageInfo] = Field(default_factory=list)
 

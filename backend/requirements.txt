@@ -23,6 +23,9 @@ chromadb==0.5.11
 # Vector Database
 pymilvus==2.3.5
 
+# Object Storage
+minio==7.2.10
+
 # Embeddings (API mode - no heavy dependencies)
 # 如需使用本地 Embedding 模型，请安装：pip install -r requirements-local.txt
 

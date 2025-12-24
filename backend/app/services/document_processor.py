@@ -16,6 +16,7 @@ from app.services.parsers import parser_factory
 from app.services.chunkers import chunker_factory
 from app.services.vector_router import get_vector_store
 from app.services.hybrid_retriever import hybrid_retriever
+from app.services.minio_service import minio_service
 
 
 class DocumentProcessorService:
@@ -107,17 +108,29 @@ class DocumentProcessorService:
                 )
                 chunks = chunker.split_documents(documents)
 
-            # 为每个 chunk 添加元数据
+            # 查询文档以获取 dataset_id
+            db_document = db.query(DBDocument).filter(
+                DBDocument.id == document_id
+            ).first()
+            dataset_id = str(db_document.dataset_id) if db_document and db_document.dataset_id else str(tenant_id)
+
+            # 为每个 chunk 添加元数据并处理图片上传到 MinIO
             for idx, chunk in enumerate(chunks):
                 chunk.metadata['document_id'] = str(document_id)
                 chunk.metadata['chunk_index'] = idx
                 chunk.metadata['parser_backend'] = resolved_backend
                 chunk.metadata['chunk_strategy'] = resolved_chunk_strategy
-                # try to persist inline image and return an image_id for recall
-                image_id = self._extract_and_save_image(chunk.metadata, tenant_id)
-                if image_id:
-                    chunk.metadata['image_id'] = image_id
-                    chunk.metadata['image_url'] = f"/api/v1/documents/image/{image_id}"
+                
+                # 提取并上传图片到 MinIO（如果启用）
+                # 生成临时 chunk_id（使用 document_id-index）
+                temp_chunk_id = f"{document_id}-{idx}"
+                img_id = self._extract_and_upload_image_to_minio(
+                    chunk.metadata, 
+                    dataset_id=dataset_id,
+                    chunk_id=temp_chunk_id
+                )
+                if img_id:
+                    chunk.metadata['img_id'] = img_id
 
             await self._update_status(
                 db, document_id, "processing", 66, "embedding"
@@ -399,12 +412,86 @@ class DocumentProcessorService:
 
         return documents
 
+    def _extract_and_upload_image_to_minio(
+        self,
+        metadata: Dict[str, Any],
+        dataset_id: str,
+        chunk_id: str
+    ) -> Optional[str]:
+        """
+        检测 chunk metadata 中的图片数据，上传到 MinIO，返回 img_id。
+        图片上传后，原始图片数据会从 metadata 中删除以节省内存。
+        
+        img_id 格式："{dataset_id}-{chunk_id}"
+        
+        识别的字段：image_base64 / image / img_base64 / img / image_data
+        """
+        # 如果已有 img_id，直接返回
+        if isinstance(metadata.get("img_id"), str) and metadata.get("img_id").strip():
+            return metadata.get("img_id")
+
+        # MinIO 未启用时，降级到本地存储
+        if not settings.MINIO_ENABLED:
+            return None
+
+        # 查找图片数据
+        possible_keys = ["image_base64", "image", "img_base64", "img", "image_data"]
+        b64_data = None
+        found_key = None
+        
+        for key in possible_keys:
+            val = metadata.get(key)
+            if isinstance(val, str) and val.strip():
+                b64_data = val
+                found_key = key
+                break
+        
+        if not b64_data:
+            return None
+
+        # 处理 data URI 格式
+        if b64_data.startswith("data:"):
+            parts = b64_data.split(",", 1)
+            if len(parts) == 2:
+                b64_data = parts[1]
+
+        # 解码 base64
+        try:
+            binary = base64.b64decode(b64_data)
+        except Exception as e:
+            print(f"[WARN] 图片 base64 解码失败: {e}")
+            return None
+
+        # 上传到 MinIO
+        try:
+            img_id = minio_service.upload_image(
+                image_data=binary,
+                dataset_id=dataset_id,
+                chunk_id=chunk_id,
+                extension="png"
+            )
+            
+            # 上传成功后，删除内存中的原始图片数据（节省资源）
+            if found_key:
+                del metadata[found_key]
+            
+            # 清理其他可能的图片字段
+            for key in possible_keys:
+                if key in metadata and key != found_key:
+                    del metadata[key]
+            
+            print(f"[MinIO] 图片已上传并绑定: img_id={img_id}")
+            return img_id
+            
+        except Exception as e:
+            print(f"[ERROR] MinIO 图片上传失败: {e}")
+            return None
+
     def _extract_and_save_image(self, metadata: Dict[str, Any], tenant_id: UUID) -> Optional[str]:
         """
-        Detect base64 image payloads in chunk metadata and save to disk, returning image_id.
-        Recognized keys: image_base64 / image / img_base64 / img. Supports data URI.
+        备用方法：检测 chunk metadata 中的图片并保存到本地磁盘。
+        当 MinIO 未启用时使用。
         """
-        # æ—¢æœ‰ img_id åˆ©ç”¨åŽŸæ · ID
         if isinstance(metadata.get("img_id"), str) and metadata.get("img_id").strip():
             return metadata.get("img_id")
 

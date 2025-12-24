@@ -27,6 +27,10 @@ class Citation(BaseModel):
     vector_backend: Optional[str] = None
     retrieval_elapsed_sec: Optional[float] = None
     hit_type: Optional[str] = None  # vector | keyword | mmr | hybrid
+    # 图片相关字段
+    has_image: bool = Field(default=False, description="该引用是否包含图片")
+    img_id: Optional[str] = Field(default=None, description="图片 ID（MinIO 格式：{dataset_id}-{chunk_id}）")
+    img_url: Optional[str] = Field(default=None, description="图片访问 URL")
 
 
 class MessageSchema(BaseModel):

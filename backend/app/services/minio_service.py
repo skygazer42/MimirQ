@@ -1,0 +1,179 @@
+"""
+MinIO 对象存储服务 - 用于存储文档解析中提取的图片
+"""
+from __future__ import annotations
+
+import io
+import uuid
+from pathlib import Path
+from typing import Optional, BinaryIO, Union
+
+from minio import Minio
+from minio.error import S3Error
+
+from app.core.config import settings
+
+
+class MinIOService:
+    """MinIO 对象存储服务"""
+
+    def __init__(self):
+        self._client: Optional[Minio] = None
+        self._bucket_name = settings.MINIO_BUCKET_NAME
+
+    def _get_client(self) -> Minio:
+        """延迟初始化 MinIO 客户端"""
+        if self._client is None:
+            self._client = Minio(
+                endpoint=settings.MINIO_ENDPOINT,
+                access_key=settings.MINIO_ACCESS_KEY,
+                secret_key=settings.MINIO_SECRET_KEY,
+                secure=settings.MINIO_USE_SSL,
+            )
+            # 确保 bucket 存在
+            self._ensure_bucket()
+        return self._client
+
+    def _ensure_bucket(self):
+        """确保 bucket 存在，不存在则创建"""
+        try:
+            client = self._client
+            if not client.bucket_exists(self._bucket_name):
+                client.make_bucket(self._bucket_name)
+                print(f"[MinIO] 创建 bucket: {self._bucket_name}")
+        except S3Error as e:
+            print(f"[WARN] MinIO bucket 检查失败: {e}")
+
+    def upload_image(
+        self,
+        image_data: Union[bytes, BinaryIO],
+        dataset_id: str,
+        chunk_id: str,
+        extension: str = "png"
+    ) -> str:
+        """
+        上传图片到 MinIO，返回 img_id。
+        
+        Args:
+            image_data: 图片二进制数据或文件对象
+            dataset_id: 知识库 ID（对应原 kb_id）
+            chunk_id: 块 ID
+            extension: 文件扩展名（默认 png）
+        
+        Returns:
+            img_id: 格式 "{dataset_id}-{chunk_id}"
+        """
+        img_id = f"{dataset_id}-{chunk_id}"
+        object_name = f"images/{dataset_id}/{chunk_id}.{extension}"
+
+        try:
+            client = self._get_client()
+
+            # 转换为字节流
+            if isinstance(image_data, bytes):
+                data_stream = io.BytesIO(image_data)
+                data_length = len(image_data)
+            else:
+                # 假设是文件对象
+                data_stream = image_data
+                data_stream.seek(0, 2)  # 移到末尾
+                data_length = data_stream.tell()
+                data_stream.seek(0)  # 重置到开头
+
+            # 上传到 MinIO
+            client.put_object(
+                bucket_name=self._bucket_name,
+                object_name=object_name,
+                data=data_stream,
+                length=data_length,
+                content_type=f"image/{extension}",
+            )
+
+            print(f"[MinIO] 图片上传成功: {object_name} -> {img_id}")
+            return img_id
+
+        except S3Error as e:
+            print(f"[ERROR] MinIO 上传失败: {e}")
+            raise RuntimeError(f"MinIO 图片上传失败: {e}") from e
+
+    def get_image_url(self, img_id: str, extension: str = "png") -> str:
+        """
+        获取图片访问 URL（预签名 URL，有效期 7 天）。
+        
+        Args:
+            img_id: 格式 "{dataset_id}-{chunk_id}"
+            extension: 文件扩展名
+        
+        Returns:
+            预签名 URL
+        """
+        try:
+            dataset_id, chunk_id = img_id.split("-", 1)
+            object_name = f"images/{dataset_id}/{chunk_id}.{extension}"
+
+            client = self._get_client()
+            url = client.presigned_get_object(
+                bucket_name=self._bucket_name,
+                object_name=object_name,
+                expires=7 * 24 * 3600,  # 7 天有效期
+            )
+            return url
+
+        except Exception as e:
+            print(f"[ERROR] MinIO 获取 URL 失败: {e}")
+            raise RuntimeError(f"MinIO 获取图片 URL 失败: {e}") from e
+
+    def delete_image(self, img_id: str, extension: str = "png"):
+        """
+        删除图片。
+        
+        Args:
+            img_id: 格式 "{dataset_id}-{chunk_id}"
+            extension: 文件扩展名
+        """
+        try:
+            dataset_id, chunk_id = img_id.split("-", 1)
+            object_name = f"images/{dataset_id}/{chunk_id}.{extension}"
+
+            client = self._get_client()
+            client.remove_object(
+                bucket_name=self._bucket_name,
+                object_name=object_name,
+            )
+            print(f"[MinIO] 图片删除成功: {object_name}")
+
+        except S3Error as e:
+            print(f"[WARN] MinIO 删除图片失败: {e}")
+
+    def delete_dataset_images(self, dataset_id: str):
+        """
+        删除整个知识库的所有图片。
+        
+        Args:
+            dataset_id: 知识库 ID
+        """
+        try:
+            client = self._get_client()
+            prefix = f"images/{dataset_id}/"
+            
+            objects = client.list_objects(
+                bucket_name=self._bucket_name,
+                prefix=prefix,
+                recursive=True,
+            )
+            
+            for obj in objects:
+                client.remove_object(
+                    bucket_name=self._bucket_name,
+                    object_name=obj.object_name,
+                )
+            
+            print(f"[MinIO] 知识库 {dataset_id} 的图片已全部删除")
+
+        except S3Error as e:
+            print(f"[WARN] MinIO 删除知识库图片失败: {e}")
+
+
+# 全局实例
+minio_service = MinIOService()
+
