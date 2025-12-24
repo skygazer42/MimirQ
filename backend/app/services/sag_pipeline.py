@@ -1,6 +1,6 @@
 """
 Facade to run SAG extraction + search inside the existing backend.
-SAG module is under backend/app/sag and can be toggled via settings.SAG_ENABLED.
+SAG module can be toggled via settings.SAG_ENABLED.
 """
 from typing import Dict, Iterable, List, Optional
 from uuid import UUID
@@ -17,8 +17,8 @@ def _load_engine():
         return _engine
     if not settings.SAG_ENABLED:
         raise RuntimeError("SAG plugin is disabled. Set SAG_ENABLED=true to enable.")
-    # dynamic import from app.sag
-    engine_module = importlib.import_module("app.sag.engine.core")
+    # dynamic import from app.rag.sag_engine
+    engine_module = importlib.import_module("app.rag.sag_engine.core")
     engine_cls = getattr(engine_module, "SAGEngine")
     _engine = engine_cls()
     return _engine
