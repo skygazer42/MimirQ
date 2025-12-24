@@ -386,28 +386,43 @@ class RAGEngine:
                     hit_type = "keyword"
                 else:
                     hit_type = "hybrid"
-                citations.append(
-                    {
-                        "chunk_id": doc.id,
-                        "document_id": meta.get("document_id"),
-                        "document_name": meta.get("source", "Unknown"),
-                        "chunk_content": doc.page_content[:200] + "...",
-                        "page_number": meta.get("page"),
-                        "relevance_score": round(float(meta.get("score", 0.0)), 2),
-                        "vector_score": round(v_score_raw, 3),
-                        "bm25_score": round(b_score_raw, 3),
-                        "keyword_score": round(float(meta.get("keyword_score", 0.0) or 0.0), 3),
-                        "rerank_score": round(float(rerank_score), 3) if rerank_score is not None else None,
-                        "retrieval_score": round(float(retrieval_score), 3) if retrieval_score is not None else None,
-                        "reranker_provider": meta.get("reranker_provider"),
-                        "rerank_elapsed_sec": meta.get("rerank_elapsed_sec"),
-                        "rerank_model_used": meta.get("rerank_model_used"),
-                        "retrieval_mode": request_retrieval_mode,
-                        "vector_backend": settings.VECTOR_BACKEND,
-                        "retrieval_elapsed_sec": round(retrieval_elapsed, 3),
-                        "hit_type": hit_type,
-                    }
-                )
+                # 提取图片信息（如果有）
+                img_id = meta.get("img_id")
+                img_url = None
+                if img_id:
+                    # 生成图片访问 URL
+                    img_url = f"/api/v1/documents/image-url/{img_id}"
+                
+                citation = {
+                    "chunk_id": doc.id,
+                    "document_id": meta.get("document_id"),
+                    "document_name": meta.get("source", "Unknown"),
+                    "chunk_content": doc.page_content[:200] + "...",
+                    "page_number": meta.get("page"),
+                    "relevance_score": round(float(meta.get("score", 0.0)), 2),
+                    "vector_score": round(v_score_raw, 3),
+                    "bm25_score": round(b_score_raw, 3),
+                    "keyword_score": round(float(meta.get("keyword_score", 0.0) or 0.0), 3),
+                    "rerank_score": round(float(rerank_score), 3) if rerank_score is not None else None,
+                    "retrieval_score": round(float(retrieval_score), 3) if retrieval_score is not None else None,
+                    "reranker_provider": meta.get("reranker_provider"),
+                    "rerank_elapsed_sec": meta.get("rerank_elapsed_sec"),
+                    "rerank_model_used": meta.get("rerank_model_used"),
+                    "retrieval_mode": request_retrieval_mode,
+                    "vector_backend": settings.VECTOR_BACKEND,
+                    "retrieval_elapsed_sec": round(retrieval_elapsed, 3),
+                    "hit_type": hit_type,
+                }
+                
+                # 添加图片信息（如果存在）
+                if img_id:
+                    citation["img_id"] = img_id
+                    citation["img_url"] = img_url
+                    citation["has_image"] = True
+                else:
+                    citation["has_image"] = False
+                
+                citations.append(citation)
 
             # 发送引用信息
             yield {

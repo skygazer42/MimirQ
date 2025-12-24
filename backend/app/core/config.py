@@ -45,6 +45,9 @@ class Settings(BaseSettings):
     MINERU_API_BASE: str = "https://mineru.net/api/v4"
     MINERU_MODEL_VERSION: str = "vlm"
     MINERU_ENABLED: bool = False
+    # MinerU 本地服务（返回 ZIP 包含 Markdown + images）
+    MINERU_LOCAL_SERVER_URL: str = ""  # 例如：http://localhost:30001
+    MINERU_VL_SERVER: str = ""  # VLM 服务器地址（vlm-http-client 后端需要）
 
     SECRET_KEY: str = "your-secret-key-change-in-production"
     ALGORITHM: str = "HS256"
@@ -86,6 +89,8 @@ class Settings(BaseSettings):
     MARKITDOWN_USE_PLUGINS: bool = False
     MARKITDOWN_DOCINTEL_ENDPOINT: str = ""
     MARKITDOWN_DOCINTEL_KEY: str = ""
+    # RapidOCR 用于 PDF 质量评估（判断是否为扫描件）
+    RAPIDOCR_ENABLED: bool = False
     LLAMA_INDEX_ENABLED: bool = False
     SAG_ENABLED: bool = False
     SAG_CHAT_ENABLED: bool = False
@@ -97,6 +102,14 @@ class Settings(BaseSettings):
     # Multi-tenant defaults
     DEFAULT_TENANT_ID: str = "00000000-0000-0000-0000-000000000000"
     TENANT_HEADER: str = "X-Tenant-ID"
+
+    # MinIO 对象存储（用于存储文档图片）
+    MINIO_ENABLED: bool = False
+    MINIO_ENDPOINT: str = "localhost:9000"
+    MINIO_ACCESS_KEY: str = "minioadmin"
+    MINIO_SECRET_KEY: str = "minioadmin"
+    MINIO_BUCKET_NAME: str = "mimirq-images"
+    MINIO_USE_SSL: bool = False
 
     model_config = SettingsConfigDict(
         env_file=".env",

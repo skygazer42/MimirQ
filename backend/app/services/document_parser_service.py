@@ -38,7 +38,9 @@ class DocumentParserService:
 
         # PDF 评分并选择解析器
         if is_pdf:
-            pdf_quality = score_pdf_quality(file_path)
+            # 启用 OCR 验证以更准确判断扫描件（文本少时自动触发，需配置 RAPIDOCR_ENABLED=True）
+            use_ocr = settings.RAPIDOCR_ENABLED
+            pdf_quality = score_pdf_quality(file_path, sample_pages=3, use_ocr_validation=use_ocr)
             parser_backend = self._choose_pdf_backend(pdf_quality, parser_backend)
         else:
             # 非 PDF 强制走 MarkItDown（office/表格），或文本解析
@@ -68,15 +70,39 @@ class DocumentParserService:
         }
 
     def _choose_pdf_backend(self, quality: Optional[Dict], requested: Optional[str]) -> str:
-        """根据评分和配置选择 PDF 解析后端。"""
+        """
+        根据评分和配置选择 PDF 解析后端。
+        
+        策略：
+        - score >= 0.8：干净可复制 → MarkItDown/basic
+        - is_scanned=True 或 score <= 0.5：扫描件 → DeepDoc/MinerU
+        - 中间档：优先 DeepDoc/MinerU
+        """
         if requested:
             return requested
 
-        score = (quality or {}).get("score", 0.0)
-        if score >= 0.75 and settings.MARKITDOWN_ENABLED:
-            return "markitdown"
+        quality = quality or {}
+        score = quality.get("score", 0.0)
+        is_scanned = quality.get("is_scanned", False)
 
-        # 质量一般，优先结构化/OCR 方案
+        # 高质量干净 PDF
+        if score >= 0.8 and not is_scanned:
+            if settings.MARKITDOWN_ENABLED:
+                return "markitdown"
+            return "basic"
+
+        # 明确的扫描件 → 必须走 OCR/结构化
+        if is_scanned or score <= 0.5:
+            if settings.MINERU_ENABLED and settings.MINERU_API_TOKEN:
+                return "mineru"
+            if settings.DEEPDOC_ENABLED:
+                return "deepdoc"
+            # 无 OCR 方案时降级
+            if settings.MARKITDOWN_ENABLED:
+                return "markitdown"
+            return "basic"
+
+        # 中等质量（0.5 < score < 0.8）→ 优先结构化
         if settings.DEEPDOC_ENABLED:
             return "deepdoc"
         if settings.MINERU_ENABLED and settings.MINERU_API_TOKEN:
