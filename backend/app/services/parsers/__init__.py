@@ -37,6 +37,11 @@ class ParserFactory:
         self.parsers = {
             ".txt": TextParser(),
             ".md": MarkdownParser(),
+            ".doc": None,  # lazy init MarkItDown
+            ".docx": None,
+            ".xls": None,
+            ".xlsx": None,
+            ".csv": None,
         }
 
     def resolve_backend(self, file_ext: str, parser_backend: Optional[str]) -> str:
@@ -51,6 +56,8 @@ class ParserFactory:
                 return "text"
             if file_ext == ".md":
                 return "markdown"
+            if file_ext in {".doc", ".docx", ".xls", ".xlsx", ".csv"}:
+                return "markitdown"
             raise ValueError(f"Unsupported file type: {file_ext}")
 
         if normalized not in self.SUPPORTED_PDF_BACKENDS:
@@ -101,6 +108,8 @@ class ParserFactory:
             parser = self.parsers[".txt"]
         elif file_ext == ".md":
             parser = self.parsers[".md"]
+        elif file_ext in {".doc", ".docx", ".xls", ".xlsx", ".csv"}:
+            parser = self._get_markitdown_parser()
         else:
             raise ValueError(f"Unsupported file type: {file_ext}")
 
@@ -132,6 +141,13 @@ class ParserFactory:
             return self._markitdown_parser
 
         raise ValueError(f"Unsupported PDF parser backend '{backend}'")
+
+    def _get_markitdown_parser(self):
+        """Lazy init MarkItDown parser for non-PDF office formats."""
+        if self._markitdown_parser is None:
+            print("[MarkItDown] Initializing MarkItDown parser for office documents")
+            self._markitdown_parser = MarkItDownParser()
+        return self._markitdown_parser
 
 
 # 全局实例
