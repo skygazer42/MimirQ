@@ -19,12 +19,12 @@ import re
 from io import BytesIO
 
 from deepdoc.parser.utils import get_text
-from rag.app import naive
-from rag.app.naive import by_plaintext, PARSERS
-from rag.nlp import bullets_category, is_english,remove_contents_table, \
+from app.rag.ragflow.chunkers import naive_chunk as naive
+from app.rag.ragflow.chunkers.naive import by_plaintext, PARSERS
+from app.rag.ragflow.nlp import bullets_category, is_english,remove_contents_table, \
     hierarchical_merge, make_colon_as_title, naive_merge, random_choices, tokenize_table, \
     tokenize_chunks, attach_media_context
-from rag.nlp import rag_tokenizer
+from app.rag.ragflow.nlp import rag_tokenizer
 from deepdoc.parser import PdfParser, HtmlParser
 from deepdoc.parser.figure_parser import vision_figure_parser_docx_wrapper
 from PIL import Image
