@@ -34,7 +34,8 @@ class Settings(BaseSettings):
 
     UPLOAD_DIR: str = "./uploads"
     MAX_FILE_SIZE: int = 50_000_000
-    ALLOWED_EXTENSIONS: str = ".pdf,.txt,.md"
+    # 支持常见办公文档与表格，配合 MarkItDown 转 Markdown
+    ALLOWED_EXTENSIONS: str = ".pdf,.txt,.md,.doc,.docx,.xls,.xlsx,.csv"
 
     @property
     def allowed_extensions_list(self):
@@ -80,7 +81,8 @@ class Settings(BaseSettings):
     DEFAULT_PARSER_BACKEND: str = "auto"
     DEFAULT_CHUNK_STRATEGY: str = "langchain_recursive"
     DEEPDOC_ENABLED: bool = False
-    MARKITDOWN_ENABLED: bool = False
+    # MarkItDown 默认开启，用于 doc/docx/xls/xlsx/csv 及可用的 PDF 转 Markdown
+    MARKITDOWN_ENABLED: bool = True
     MARKITDOWN_USE_PLUGINS: bool = False
     MARKITDOWN_DOCINTEL_ENDPOINT: str = ""
     MARKITDOWN_DOCINTEL_KEY: str = ""
