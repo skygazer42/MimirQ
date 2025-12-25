@@ -67,6 +67,9 @@ class CleanPreviewRequest(BaseModel):
     trim_trailing_spaces: bool = True
     collapse_blank_lines: bool = True
     remove_control_chars: bool = True
+    remove_toc_lines: bool = True
+    remove_noise_lines: bool = True
+    unwrap_lines: bool = True
 
 
 class CleanPreviewResponse(BaseModel):
