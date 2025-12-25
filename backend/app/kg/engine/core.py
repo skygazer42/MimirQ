@@ -11,6 +11,7 @@ from app.kg.search.config import SearchConfig
 from app.kg.search.searcher import SAGSearcher
 from app.kg.utils import get_logger
 from app.models.document import DocumentChunk
+from app.services.indexer import IndexingOptions
 
 logger = get_logger("sag.engine")
 
@@ -26,9 +27,14 @@ class SAGEngine:
         tenant_id: Optional[UUID] = None,
         *,
         chunks: Optional[Sequence[DocumentChunk]] = None,
+        index_options: Optional[IndexingOptions] = None,
     ):
         config = ExtractConfig(chunk_ids=list(chunk_ids), tenant_id=tenant_id or settings.DEFAULT_TENANT_ID)
-        return await self.extractor.extract(config, chunks=chunks)
+        return await self.extractor.extract(
+            config,
+            chunks=chunks,
+            index_options=index_options,
+        )
 
     async def search(
         self,

@@ -33,6 +33,14 @@ class IndexScope:
 
 
 @dataclass(frozen=True)
+class IndexingOptions:
+    chunk_vector_enabled: Optional[bool] = None
+    bm25_index_enabled: Optional[bool] = None
+    event_vector_enabled: Optional[bool] = None
+    entity_vector_enabled: Optional[bool] = None
+
+
+@dataclass(frozen=True)
 class ChunkInput:
     content: str
     metadata: Dict[str, Any]
@@ -126,6 +134,26 @@ class Indexer:
         self._event_vector = get_milvus_adapter(collection_name="sag_events", vector_field="embedding")
         self._entity_vector = get_milvus_adapter(collection_name="sag_entities", vector_field="embedding")
 
+    def _resolve_chunk_vector_enabled(self, options: Optional[IndexingOptions]) -> bool:
+        if options and options.chunk_vector_enabled is not None:
+            return bool(options.chunk_vector_enabled)
+        return bool(getattr(settings, "CHUNK_VECTOR_ENABLED", True))
+
+    def _resolve_bm25_enabled(self, options: Optional[IndexingOptions]) -> bool:
+        if options and options.bm25_index_enabled is not None:
+            return bool(options.bm25_index_enabled)
+        return bool(getattr(settings, "BM25_INDEX_ENABLED", True))
+
+    def _resolve_event_vector_enabled(self, options: Optional[IndexingOptions]) -> bool:
+        if options and options.event_vector_enabled is not None:
+            return bool(options.event_vector_enabled)
+        return bool(getattr(settings, "EVENT_VECTOR_ENABLED", True))
+
+    def _resolve_entity_vector_enabled(self, options: Optional[IndexingOptions]) -> bool:
+        if options and options.entity_vector_enabled is not None:
+            return bool(options.entity_vector_enabled)
+        return bool(getattr(settings, "ENTITY_VECTOR_ENABLED", True))
+
     def index(self, kind: IndexKind, **kwargs):
         if kind == IndexKind.CHUNK:
             return self.index_chunks(**kwargs)
@@ -140,6 +168,7 @@ class Indexer:
         records: Sequence[IndexRecord],
         default_source: str = "unknown",
         commit: bool = True,
+        options: Optional[IndexingOptions] = None,
     ) -> IndexBatchResult:
         start = time.time()
         if not records:
@@ -166,6 +195,7 @@ class Indexer:
                 chunks=chunk_inputs,
                 default_source=default_source,
                 commit=commit,
+                options=options,
             )
 
         event_result: Optional[PersistEventsResult] = None
@@ -175,6 +205,7 @@ class Indexer:
                 tenant_id=tenant_id,
                 events=event_inputs,
                 commit=commit,
+                options=options,
             )
 
         elapsed = time.time() - start
@@ -240,6 +271,7 @@ class Indexer:
         chunks: List[ChunkInput],
         default_source: str = "unknown",
         commit: bool = True,
+        options: Optional[IndexingOptions] = None,
     ) -> PersistChunksResult:
         total_characters = sum(len(c.content or "") for c in chunks)
         normalized_chunks: List[ChunkInput] = []
@@ -258,7 +290,12 @@ class Indexer:
             )
             vector_docs.append({"content": c.content, "metadata": meta})
 
-        vector_ids = self._index_chunk_vectors(vector_docs, document_id=document_id, tenant_id=tenant_id)
+        vector_ids = self._index_chunk_vectors(
+            vector_docs,
+            document_id=document_id,
+            tenant_id=tenant_id,
+            enable_vectors=self._resolve_chunk_vector_enabled(options),
+        )
         db_chunks = self._persist_document_chunks(
             document_id=document_id,
             tenant_id=tenant_id,
@@ -273,6 +310,7 @@ class Indexer:
                 tenant_id=tenant_id,
                 document_id=document_id,
                 default_source=default_source,
+                enable_bm25=self._resolve_bm25_enabled(options),
             )
         except Exception as exc:
             print(f"[WARN]  Failed to update BM25 index incrementally: {exc}")
@@ -290,6 +328,7 @@ class Indexer:
         tenant_id: UUID,
         events: Sequence[EventInput],
         commit: bool = True,
+        options: Optional[IndexingOptions] = None,
     ) -> PersistEventsResult:
         if not events:
             return PersistEventsResult(
@@ -357,9 +396,9 @@ class Indexer:
         event_vector_ids: List[str] = []
         entity_vector_ids: List[str] = []
         if commit:
-            if bool(getattr(settings, "EVENT_VECTOR_ENABLED", True)):
+            if self._resolve_event_vector_enabled(options):
                 event_vector_ids = self._index_event_vectors(db_events)
-            if bool(getattr(settings, "ENTITY_VECTOR_ENABLED", True)):
+            if self._resolve_entity_vector_enabled(options):
                 entity_vector_ids = self._index_entity_vectors(list(entity_cache.values()))
 
         return PersistEventsResult(
@@ -501,11 +540,12 @@ class Indexer:
         *,
         document_id: UUID,
         tenant_id: UUID,
+        enable_vectors: bool,
     ) -> List[Optional[str]]:
         if not docs:
             return []
 
-        if not bool(getattr(settings, "CHUNK_VECTOR_ENABLED", True)):
+        if not enable_vectors:
             return [None] * len(docs)
 
         vector_store = get_vector_store()
@@ -572,10 +612,11 @@ class Indexer:
         tenant_id: UUID,
         document_id: UUID,
         default_source: str = "unknown",
+        enable_bm25: bool,
     ) -> None:
         if not db_chunks:
             return
-        if not bool(getattr(settings, "BM25_INDEX_ENABLED", True)):
+        if not enable_bm25:
             return
 
         bm25_docs: List[LCDocument] = []

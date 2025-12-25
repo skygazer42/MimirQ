@@ -12,7 +12,7 @@ from app.ai.factory import create_llm_client
 from app.kg.extraction.config import ExtractConfig
 from app.kg.extraction.processor import EventProcessor
 from app.kg.loading.processor import DocumentProcessor
-from app.services.indexer import EventEntityInput, IndexKind, IndexRecord, Indexer
+from app.services.indexer import EventEntityInput, IndexKind, IndexRecord, Indexer, IndexingOptions
 from app.kg.utils import get_logger
 
 logger = get_logger("sag.extract.extractor")
@@ -29,6 +29,7 @@ class EventExtractor:
         config: ExtractConfig,
         *,
         chunks: Optional[Sequence[DocumentChunk]] = None,
+        index_options: Optional[IndexingOptions] = None,
     ) -> List[SagSourceEvent]:
         session = SessionLocal()
         try:
@@ -142,7 +143,11 @@ class EventExtractor:
                 return []
 
             tenant_id = config.tenant_id or resolved_chunks[0].tenant_id
-            result = Indexer(session).upsert(tenant_id=tenant_id, records=events_to_index).event_result
+            result = Indexer(session).upsert(
+                tenant_id=tenant_id,
+                records=events_to_index,
+                options=index_options,
+            ).event_result
             return result.events if result else []
         except Exception:
             session.rollback()

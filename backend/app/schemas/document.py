@@ -7,6 +7,18 @@ from datetime import datetime
 from uuid import UUID
 
 
+class DocumentPipelineOptions(BaseModel):
+    """Per-document pipeline options."""
+    governance_enabled: Optional[bool] = None
+    chunk_size: Optional[int] = Field(default=None, ge=100, le=4000, description="切块大小")
+    chunk_overlap: Optional[int] = Field(default=None, ge=0, le=1000, description="重叠大小")
+    chunk_vector_enabled: Optional[bool] = None
+    bm25_index_enabled: Optional[bool] = None
+    sag_enabled: Optional[bool] = None
+    event_vector_enabled: Optional[bool] = None
+    entity_vector_enabled: Optional[bool] = None
+
+
 class DocumentUploadResponse(BaseModel):
     """文档上传响应"""
     id: UUID
@@ -92,6 +104,7 @@ class ManualDocumentCreate(BaseModel):
     file_size: int
     chunks: List[ManualChunkCreate]
     metadata: Dict[str, Any] = {}
+    pipeline: Optional[DocumentPipelineOptions] = None
 
 
 class DocumentList(BaseModel):

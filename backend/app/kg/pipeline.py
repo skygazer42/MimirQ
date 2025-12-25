@@ -8,6 +8,7 @@ from uuid import UUID
 from app.core.config import settings
 from app.kg.engine import SAGEngine
 from app.models.document import DocumentChunk
+from app.services.indexer import IndexingOptions
 
 _engine = None
 
@@ -27,9 +28,15 @@ async def extract_events(
     tenant_id: Optional[UUID] = None,
     *,
     chunks: Optional[Sequence[DocumentChunk]] = None,
+    index_options: Optional[IndexingOptions] = None,
 ):
     engine = _load_engine()
-    return await engine.extract(chunk_ids, tenant_id=tenant_id, chunks=chunks)
+    return await engine.extract(
+        chunk_ids,
+        tenant_id=tenant_id,
+        chunks=chunks,
+        index_options=index_options,
+    )
 
 
 async def sag_search(
