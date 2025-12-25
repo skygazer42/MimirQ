@@ -44,6 +44,17 @@ export interface DocumentChunk {
   metadata?: Record<string, any>
 }
 
+export interface DocumentPipelineOptions {
+  governance_enabled?: boolean
+  chunk_size?: number
+  chunk_overlap?: number
+  chunk_vector_enabled?: boolean
+  bm25_index_enabled?: boolean
+  sag_enabled?: boolean
+  event_vector_enabled?: boolean
+  entity_vector_enabled?: boolean
+}
+
 export interface Citation {
   document_id: string
   document_name: string
