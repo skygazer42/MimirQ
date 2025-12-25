@@ -98,6 +98,16 @@ services:
       - DATABASE_URL=postgresql://postgres:postgres@postgres:5432/mimirq
       - MILVUS_HOST=milvus
       - MILVUS_PORT=19530
+      # MinIO for images
+      - MINIO_ENABLED=true
+      - MINIO_ENDPOINT=minio:9000
+      - MINIO_ACCESS_KEY=minioadmin
+      - MINIO_SECRET_KEY=minioadmin
+      - MINIO_BUCKET_NAME=mimirq
+      - MINIO_USE_SSL=false
+      # MinerU 本地 ZIP 模式（如未使用可留空）
+      - MINERU_LOCAL_SERVER_URL=
+      - MINERU_VL_SERVER=
       - CORS_ORIGINS=http://localhost:3000,http://localhost:3001
     volumes:
       - .:/app
