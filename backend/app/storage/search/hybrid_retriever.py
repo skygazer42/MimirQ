@@ -17,7 +17,7 @@ from langchain_core.retrievers import BaseRetriever
 from langchain_community.retrievers.bm25 import BM25Retriever
 from pydantic import PrivateAttr, ConfigDict
 
-from app.storage.vector.router import get_vector_store
+from app.storage.vector.factory import get_vector_store
 from app.models.document import DocumentChunk
 from app.core.config import settings
 

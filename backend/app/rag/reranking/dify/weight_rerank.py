@@ -9,7 +9,7 @@ from typing import Callable
 import numpy as np
 
 from app.models.dify import Document
-from app.parsing.keyword.jieba import JiebaKeywordTableHandler
+from app.governance.keyword import JiebaKeywordTableHandler
 from app.rag.reranking.dify.rerank_base import BaseRerankRunner
 from app.rag.reranking.dify.entity import VectorSetting, Weights
 

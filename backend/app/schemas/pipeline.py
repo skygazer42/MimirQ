@@ -53,3 +53,27 @@ class ChunkPreviewResponse(BaseModel):
     paragraphs: List[ChunkItem]
     sentences: List[ChunkItem]
 
+
+class RegexRuleModel(BaseModel):
+    pattern: str
+    repl: str = ""
+    flags: int = 0
+
+
+class CleanPreviewRequest(BaseModel):
+    markdown: str
+    rules: List[RegexRuleModel] = Field(default_factory=list)
+    normalize_line_endings: bool = True
+    trim_trailing_spaces: bool = True
+    collapse_blank_lines: bool = True
+    remove_control_chars: bool = True
+
+
+class CleanPreviewResponse(BaseModel):
+    markdown: str
+    applied_rules: int
+    changed: bool
+
+
+class CleanRulesResponse(BaseModel):
+    rules: List[RegexRuleModel]

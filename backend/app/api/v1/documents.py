@@ -33,7 +33,7 @@ from app.parsing.processors.document_processor import document_processor
 from app.parsing.factory import parser_factory
 from app.parsing.chunking.factory import chunker_factory
 from app.storage.vector.milvus import milvus_store
-from app.storage.vector.router import get_vector_store
+from app.storage.vector.factory import get_vector_store
 from app.storage.search.hybrid_retriever import hybrid_retriever
 from app.services.mineru_service import mineru_service
 from app.services.dataset_service import DatasetService

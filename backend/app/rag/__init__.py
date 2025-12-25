@@ -4,31 +4,28 @@ RAG 引擎模块
 提供检索增强生成（RAG）核心功能。
 
 主要组件：
+- embedding: 向量嵌入模型
 - engine: 核心 RAG 引擎
 - graph: LangGraph 编排
 - agent: Agent 工具
 - tools: RAG 工具函数
-- reranking: 重排序策略
+
+注意: 为避免循环导入，部分子模块需要直接导入：
+- from app.rag.engine import get_rag_engine
+- from app.rag.agent import RAGAgent
+- from app.rag.tools import search_knowledge_base
 """
 
-# 核心引擎
-from app.rag.engine import get_rag_engine
-
-# LangGraph 编排
-from app.rag.graph import run_rag_graph
-
-# Agent
-from app.rag.agent import RagAgent
-
-# 工具
-from app.rag.tools import get_rag_tools
+# 嵌入模型 (无外部依赖，可以安全导入)
+from app.rag.embedding import (
+    select_embedding_model,
+    test_embedding_model_status,
+    DEFAULT_EMBED_MODELS,
+)
 
 __all__ = [
-    'get_rag_engine',
-    'run_rag_graph',
-    'RagAgent',
-    'get_rag_tools',
+    'select_embedding_model',
+    'test_embedding_model_status',
+    'DEFAULT_EMBED_MODELS',
 ]
-
-
 

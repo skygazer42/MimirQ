@@ -1,25 +1,9 @@
-from dataclasses import dataclass
-from enum import Enum
-from typing import Any, List, Optional
+"""
+DEPRECATED: legacy import path for SAG/KG LLM models.
 
+Canonical implementation moved to `app.ai.models`.
+"""
 
-class LLMRole(str, Enum):
-    SYSTEM = "system"
-    USER = "user"
-    ASSISTANT = "assistant"
+from app.ai.models import LLMMessage, LLMResponse, LLMRole  # noqa: F401
 
-    def __str__(self) -> str:
-        return self.value
-
-
-@dataclass
-class LLMMessage:
-    role: LLMRole
-    content: str
-
-
-@dataclass
-class LLMResponse:
-    content: str
-    raw: Any = None
-    usage: Optional[dict] = None
+__all__ = ["LLMMessage", "LLMResponse", "LLMRole"]

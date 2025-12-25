@@ -1,136 +1,199 @@
 """
 Milvus 向量库服务（LangChain 1.x API 管理）
 
-本模块将 Milvus 的 collection/索引/搜索交给 LangChain 的
-`langchain_community.vectorstores.Milvus` 管理，同时保留项目原有的
-`add_documents/search/delete_by_document_id/get_collection_count` 接口，
-避免影响上层业务。
+
+
+提供两种使用模式：
+1. 单例模式 - 用于文档向量存储（固定 collection）
+2. 多实例模式 - 用于 SAG 实体/事件（可自定义 collection）
 """
 
 from __future__ import annotations
 
 from typing import Any, Dict, List, Optional
 from uuid import UUID
-import os
 import logging
 
-import httpx
-import numpy as np
-
 from app.core.config import settings
+from app.rag.embedding import create_langchain_embeddings_from_config
 
 logger = logging.getLogger(__name__)
 
 
-# ========= Embeddings Providers =========
+# ========= Embedding 初始化 (共享) ==========
 
-try:
-    from sentence_transformers import SentenceTransformer
-    SENTENCE_TRANSFORMERS_AVAILABLE = True
-except ImportError:  # pragma: no cover
-    SENTENCE_TRANSFORMERS_AVAILABLE = False
+def _init_embedding_model():
+    """Initialize embedding model using app.rag.embedding module."""
+    provider = (settings.EMBEDDING_PROVIDER or "local").lower()
+    logger.info("[*] Loading embedding provider: %s", provider)
 
+    provider_map = {
+        "openai": "openai_compatible",
+        "openai_compatible": "openai_compatible",
+        "local": "local",
+        "dashscope": "dashscope",
+    }
 
-def _normalize_embeddings(vectors: List[List[float]]) -> List[List[float]]:
-    array = np.array(vectors, dtype=float)
-    norms = np.linalg.norm(array, axis=1, keepdims=True)
-    norms[norms == 0] = 1.0
-    return (array / norms).tolist()
+    mapped_provider = provider_map.get(provider, "openai_compatible")
+    api_key = settings.EMBEDDING_API_KEY or settings.LLM_API_KEY
+    base_url = settings.EMBEDDING_API_BASE or settings.LLM_API_BASE
 
-
-class LocalEmbeddings:
-    """SentenceTransformer embeddings adapter."""
-
-    def __init__(self, model_name: str):
-        if not SENTENCE_TRANSFORMERS_AVAILABLE:
-            raise ImportError(
-                "本地 Embedding 模型需要安装额外依赖。\n"
-                "请运行: pip install -r requirements-local.txt\n"
-                "或者改用 API 方式: EMBEDDING_PROVIDER=openai_compatible"
-            )
-
-        import torch  # local 模式下要求已安装 torch
-
-        device = "cuda" if torch.cuda.is_available() else "cpu"
-        logger.info("[Device] Using %s for embeddings", device)
-        self._model = SentenceTransformer(model_name, device=device)
-
-    def embed_documents(self, texts: List[str]) -> List[List[float]]:
-        if not texts:
-            return []
-        return (
-            self._model.encode(texts, normalize_embeddings=True, show_progress_bar=False)
-            .tolist()
-        )
-
-    def embed_query(self, text: str) -> List[float]:
-        return self.embed_documents([text])[0]
+    return create_langchain_embeddings_from_config(
+        provider=mapped_provider,
+        model=settings.EMBEDDING_MODEL,
+        api_key=api_key or "",
+        base_url=base_url or "",
+        dimension=None,  # Auto-detect
+    )
 
 
-class DashScopeEmbeddings:
-    """阿里云 DashScope Embedding 封装（返回归一化向量）"""
-
-    def __init__(self, model: str, api_key: str):
-        self.model = model
-        try:
-            import dashscope
-
-            dashscope.api_key = api_key
-            self._dashscope = dashscope
-        except ImportError as exc:  # pragma: no cover
-            raise ImportError("DashScope SDK not found. Please install: pip install dashscope") from exc
-
-    def embed_documents(self, texts: List[str]) -> List[List[float]]:
-        from dashscope import TextEmbedding
-
-        embeddings: List[List[float]] = []
-        batch_size = 25
-        for i in range(0, len(texts), batch_size):
-            batch = texts[i : i + batch_size]
-            response = TextEmbedding.call(model=self.model, input=batch)
-            if response.status_code != 200:
-                raise RuntimeError(f"DashScope API error: {response.code} - {response.message}")
-            for item in response.output["embeddings"]:
-                embeddings.append(item["embedding"])
-        return _normalize_embeddings(embeddings)
-
-    def embed_query(self, text: str) -> List[float]:
-        return self.embed_documents([text])[0]
+def _get_milvus_connection_args() -> Dict[str, Any]:
+    """获取 Milvus 连接配置."""
+    return {
+        "host": settings.MILVUS_HOST,
+        "port": str(settings.MILVUS_PORT),
+        "user": settings.MILVUS_USER,
+        "password": settings.MILVUS_PASSWORD,
+    }
 
 
-class OpenAICompatEmbeddings:
-    """Minimal embeddings client using the official OpenAI SDK (normalized)."""
+def _get_milvus_index_params() -> Dict[str, Any]:
+    """获取 Milvus 索引配置."""
+    return {
+        "metric_type": "COSINE",
+        "index_type": "IVF_FLAT",
+        "params": {"nlist": 1024},
+    }
+
+
+def _get_milvus_search_params() -> Dict[str, Any]:
+    """获取 Milvus 搜索配置."""
+    return {"metric_type": "COSINE", "params": {"nprobe": 10}}
+
+
+# ========= 通用 Milvus 适配器 ==========
+
+class MilvusAdapter:
+    """
+    通用 Milvus 适配器，支持自定义 collection。
+
+    用于 SAG 实体/事件向量存储，支持多 collection。
+    """
 
     def __init__(
         self,
-        model: str,
-        api_key: str,
-        base_url: str,
-        timeout: int = 60,
-        trust_env: bool = True,
+        collection_name: str,
+        vector_field: str = "embedding",
+        text_field: str = "content",
     ):
-        from openai import OpenAI
+        self.collection_name = collection_name
+        self.vector_field = vector_field
+        self.text_field = text_field
+        self._store = None
+        self._embedding_model = None
 
-        http_client = httpx.Client(trust_env=trust_env, timeout=timeout)
-        self.model = model
-        self._client = OpenAI(api_key=api_key, base_url=base_url, http_client=http_client)
+    def _ensure_store(self):
+        if self._store is not None:
+            return
 
-    def embed_documents(self, texts: List[str]) -> List[List[float]]:
-        if not texts:
+        if self._embedding_model is None:
+            self._embedding_model = _init_embedding_model()
+
+        from langchain_community.vectorstores import Milvus as LCMilvus
+
+        self._store = LCMilvus(
+            embedding_function=self._embedding_model,
+            collection_name=self.collection_name,
+            connection_args=_get_milvus_connection_args(),
+            index_params=_get_milvus_index_params(),
+            search_params=_get_milvus_search_params(),
+            auto_id=False,
+            primary_field="id",
+            text_field=self.text_field,
+            vector_field=self.vector_field,
+        )
+
+    def add_vectors(self, items: List[Dict[str, Any]]) -> List[str]:
+        """
+        批量添加向量。
+
+        Args:
+            items: [{"id": str, "content": str, "metadata": dict}]
+
+        Returns:
+            向量 ID 列表
+        """
+        if not items:
             return []
-        resp = self._client.embeddings.create(model=self.model, input=texts)
-        vectors = [item.embedding for item in resp.data]
-        return _normalize_embeddings(vectors)
+        self._ensure_store()
+        assert self._store is not None
 
-    def embed_query(self, text: str) -> List[float]:
-        return self.embed_documents([text])[0]
+        texts = []
+        metadatas = []
+        ids = []
+        for item in items:
+            ids.append(item["id"])
+            texts.append(item.get("content", "")[:65_000])
+            meta = item.get("metadata") or {}
+            meta.setdefault("id", item.get("id"))
+            meta.setdefault("content", item.get("content"))
+            metadatas.append(meta)
+
+        pks = self._store.add_texts(texts=texts, metadatas=metadatas, ids=ids)
+        return [str(pk) for pk in pks]
+
+    def delete(self, ids: List[str]) -> None:
+        """删除指定 ID 的向量。"""
+        if not ids:
+            return
+        self._ensure_store()
+        assert self._store is not None
+        self._store.delete(ids)
+
+    def search(
+        self,
+        query_vector: List[float],
+        top_k: int = 10,
+        expr: Optional[str] = None,
+    ) -> List[Dict[str, Any]]:
+        """
+        向量相似度搜索。
+
+        Args:
+            query_vector: 查询向量
+            top_k: 返回结果数量
+            expr: 过滤表达式
+
+        Returns:
+            搜索结果列表
+        """
+        self._ensure_store()
+        assert self._store is not None
+
+        results = self._store.similarity_search_with_score_by_vector(
+            embedding=query_vector,
+            k=top_k,
+            expr=expr,
+        )
+        return [
+            {
+                "id": doc.id,
+                "metadata": doc.metadata or {},
+                "score": float(score),
+                "content": doc.page_content,
+            }
+            for doc, score in results
+        ]
 
 
-# ========= Milvus Store (LangChain-managed) =========
-
+# ========= 文档向量存储 (单例) ==========
 
 class MilvusVectorStore:
-    """Milvus 向量存储服务（对外接口保持不变）"""
+    """
+    Milvus 向量存储服务（文档向量专用，单例模式）。
+
+    用于知识库文档的向量存储，使用固定的 collection 名称。
+    """
 
     _instance: Optional["MilvusVectorStore"] = None
 
@@ -142,83 +205,27 @@ class MilvusVectorStore:
     def __init__(self):
         self._embedding_provider = (settings.EMBEDDING_PROVIDER or "local").lower()
         self._embedding_model = None
-        self._store = None  # langchain_community.vectorstores.Milvus
+        self._store = None
 
     def _init_embedding_model(self):
-        provider = self._embedding_provider
-        logger.info("[*] Loading embedding provider: %s", provider)
-
-        if provider == "local":
-            return LocalEmbeddings(settings.EMBEDDING_MODEL)
-
-        if provider == "dashscope":
-            return DashScopeEmbeddings(
-                model=settings.EMBEDDING_MODEL,
-                api_key=settings.EMBEDDING_API_KEY or settings.LLM_API_KEY,
-            )
-
-        if provider in {"openai_compatible", "openai"}:
-            proxy_candidates = [
-                os.getenv("OPENAI_PROXY"),
-                os.getenv("HTTPS_PROXY"),
-                os.getenv("HTTP_PROXY"),
-                os.getenv("ALL_PROXY"),
-                os.getenv("https_proxy"),
-                os.getenv("http_proxy"),
-                os.getenv("all_proxy"),
-            ]
-            proxies = [p for p in proxy_candidates if p]
-            trust_env = True
-            socks_proxy = next((p for p in proxies if p.lower().startswith("socks")), None)
-            if socks_proxy:
-                logger.warning(
-                    "Unsupported SOCKS proxy for embeddings: %s. Ignoring env proxies.",
-                    socks_proxy,
-                )
-                trust_env = False
-
-            api_key = settings.EMBEDDING_API_KEY or settings.LLM_API_KEY
-            base_url = settings.EMBEDDING_API_BASE or settings.LLM_API_BASE
-            return OpenAICompatEmbeddings(
-                model=settings.EMBEDDING_MODEL,
-                api_key=api_key,
-                base_url=base_url,
-                timeout=settings.LLM_TIMEOUT,
-                trust_env=trust_env,
-            )
-
-        raise ValueError(f"Unsupported EMBEDDING_PROVIDER: {provider}")
+        """Initialize embedding model (用于 sag_milvus 兼容)."""
+        return _init_embedding_model()
 
     def _ensure_store(self):
         if self._store is not None:
             return
 
         if self._embedding_model is None:
-            self._embedding_model = self._init_embedding_model()
+            self._embedding_model = _init_embedding_model()
 
         from langchain_community.vectorstores import Milvus as LCMilvus
 
-        connection_args = {
-            "host": settings.MILVUS_HOST,
-            "port": str(settings.MILVUS_PORT),
-            "user": settings.MILVUS_USER,
-            "password": settings.MILVUS_PASSWORD,
-        }
-
-        index_params = {
-            "metric_type": "COSINE",
-            "index_type": "IVF_FLAT",
-            "params": {"nlist": 1024},
-        }
-        search_params = {"metric_type": "COSINE", "params": {"nprobe": 10}}
-
-        # 使用项目已有 schema: id/content/embedding + tenant_id/document_id 等标量字段
         self._store = LCMilvus(
             embedding_function=self._embedding_model,
             collection_name=settings.MILVUS_COLLECTION_NAME,
-            connection_args=connection_args,
-            index_params=index_params,
-            search_params=search_params,
+            connection_args=_get_milvus_connection_args(),
+            index_params=_get_milvus_index_params(),
+            search_params=_get_milvus_search_params(),
             auto_id=False,
             primary_field="id",
             text_field="content",
@@ -230,6 +237,7 @@ class MilvusVectorStore:
         document_ids: Optional[List[UUID]] = None,
         tenant_id: Optional[UUID] = None,
     ) -> Optional[str]:
+        """构建 Milvus 过滤表达式。"""
         expr_parts: List[str] = []
         if tenant_id:
             expr_parts.append(f'tenant_id == "{str(tenant_id)}"')
@@ -237,8 +245,6 @@ class MilvusVectorStore:
             doc_id_strs = [f'"{str(doc_id)}"' for doc_id in document_ids]
             expr_parts.append(f"document_id in [{', '.join(doc_id_strs)}]")
         return " and ".join(expr_parts) if expr_parts else None
-
-    # -------- Public API --------
 
     def add_documents(
         self,
@@ -284,7 +290,7 @@ class MilvusVectorStore:
         document_ids: Optional[List[UUID]] = None,
         tenant_id: Optional[UUID] = None,
     ) -> List[Dict[str, Any]]:
-        """向量相似度检索"""
+        """向量相似度检索（使用文本查询）"""
         self._ensure_store()
         assert self._store is not None
 
@@ -338,5 +344,7 @@ class MilvusVectorStore:
             return 0
 
 
-# 全局实例（懒初始化）
+# ========= 全局实例 ==========
+
+# 文档向量存储（单例）
 milvus_store = MilvusVectorStore()
