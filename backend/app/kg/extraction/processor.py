@@ -4,8 +4,8 @@ Simplified event processor: call LLM to extract events and entities from chunk t
 from typing import Any, Dict, List
 
 from app.models.document import DocumentChunk
-from app.ai.base import BaseLLMClient
-from app.ai.models import LLMMessage, LLMRole
+from app.rag.llm.base import BaseLLMClient
+from app.rag.llm.models import LLMMessage, LLMRole
 from app.kg.extraction.parser import EntityValueParser
 from app.kg.utils import get_logger
 

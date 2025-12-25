@@ -3,7 +3,7 @@ Minimal document processor used by SAG recall/expand to generate embeddings.
 """
 from typing import List, Optional
 
-from app.ai.factory import get_embedding_client
+from app.rag.llm.factory import get_embedding_client
 from app.kg.utils import AIError, get_logger
 
 logger = get_logger("sag.load.processor")
