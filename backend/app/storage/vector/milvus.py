@@ -113,34 +113,128 @@ class MilvusAdapter:
             vector_field=self.vector_field,
         )
 
-    def add_vectors(self, items: List[Dict[str, Any]]) -> List[str]:
+    def add_vectors(
+        self,
+        items: List[Dict[str, Any]],
+        embeddings: Optional[List[List[float]]] = None,
+        *,
+        batch_size: int = 1000,
+        timeout: Optional[float] = None,
+        upsert: bool = True,
+        **kwargs: Any,
+    ) -> List[str]:
         """
-        批量添加向量。
+        批量写入向量（支持直接写入预计算 embeddings，避免重复 embedding）。
 
         Args:
             items: [{"id": str, "content": str, "metadata": dict}]
+            embeddings: 可选，预计算向量（List[List[float]]），与 items 一一对应。
+                - 为 None 时：由 LangChain Embeddings 根据 content 自动生成
+                - 不为 None 时：直接写入 Milvus（insert/upsert）
+            batch_size: 写入 batch size
+            timeout: Milvus timeout
+            upsert: True 使用 Milvus upsert；False 使用 insert
 
         Returns:
             向量 ID 列表
         """
         if not items:
             return []
+
         self._ensure_store()
         assert self._store is not None
 
-        texts = []
-        metadatas = []
-        ids = []
+        reserved_fields = {
+            getattr(self._store, "_primary_field", "id"),
+            getattr(self._store, "_text_field", self.text_field),
+            getattr(self._store, "_vector_field", self.vector_field),
+        }
+
+        texts: List[str] = []
+        metadatas: List[Dict[str, Any]] = []
+        ids: List[str] = []
         for item in items:
-            ids.append(item["id"])
-            texts.append(item.get("content", "")[:65_000])
-            meta = item.get("metadata") or {}
-            meta.setdefault("id", item.get("id"))
-            meta.setdefault("content", item.get("content"))
+            ids.append(str(item["id"]))
+            texts.append((item.get("content") or "")[:65_000])
+            meta = dict(item.get("metadata") or {})
+            for key in reserved_fields:
+                meta.pop(key, None)
             metadatas.append(meta)
 
-        pks = self._store.add_texts(texts=texts, metadatas=metadatas, ids=ids)
-        return [str(pk) for pk in pks]
+        # Default path: let LangChain generate embeddings then insert.
+        if embeddings is None:
+            pks = self._store.add_texts(
+                texts=texts,
+                metadatas=metadatas,
+                ids=ids,
+                batch_size=batch_size,
+                timeout=timeout,
+                **kwargs,
+            )
+            return [str(pk) for pk in pks]
+
+        if len(embeddings) != len(items):
+            raise ValueError("embeddings length must match items length")
+
+        from pymilvus import Collection, MilvusException
+
+        # Ensure collection initialized (schema/index/search params/load).
+        if not isinstance(getattr(self._store, "col", None), Collection):
+            init_kwargs: Dict[str, Any] = {"embeddings": embeddings, "metadatas": metadatas}
+            partition_names = getattr(self._store, "partition_names", None)
+            if partition_names:
+                init_kwargs["partition_names"] = partition_names
+            replica_number = getattr(self._store, "replica_number", None)
+            if replica_number:
+                init_kwargs["replica_number"] = replica_number
+            store_timeout = getattr(self._store, "timeout", None)
+            if store_timeout:
+                init_kwargs["timeout"] = store_timeout
+            # `_init` is the internal LangChain helper used by `add_texts`.
+            self._store._init(**init_kwargs)  # type: ignore[attr-defined]
+
+        # Build insert columns (match LangChain Milvus.insert behavior).
+        insert_dict: Dict[str, List[Any]] = {
+            self._store._text_field: texts,  # type: ignore[attr-defined]
+            self._store._vector_field: embeddings,  # type: ignore[attr-defined]
+        }
+        if not getattr(self._store, "auto_id", False):
+            insert_dict[self._store._primary_field] = ids  # type: ignore[attr-defined]
+
+        metadata_field = getattr(self._store, "_metadata_field", None)
+        if metadata_field is not None:
+            insert_dict[metadata_field] = metadatas
+        else:
+            fields = getattr(self._store, "fields", [])
+            for d in metadatas:
+                for key, value in d.items():
+                    keys = (
+                        [x for x in fields if x != self._store._primary_field]  # type: ignore[attr-defined]
+                        if getattr(self._store, "auto_id", False)
+                        else [x for x in fields]
+                    )
+                    if key in keys:
+                        insert_dict.setdefault(key, []).append(value)
+
+        total_count = len(embeddings)
+        pks: List[str] = []
+        assert isinstance(self._store.col, Collection)
+        for i in range(0, total_count, batch_size):
+            end = min(i + batch_size, total_count)
+            insert_list = [insert_dict[x][i:end] for x in self._store.fields if x in insert_dict]
+            try:
+                eff_timeout = getattr(self._store, "timeout", None) or timeout
+                if upsert:
+                    res = self._store.col.upsert(insert_list, timeout=eff_timeout, **kwargs)
+                    pks.extend([str(pk) for pk in res.primary_keys])
+                else:
+                    res = self._store.col.insert(insert_list, timeout=eff_timeout, **kwargs)
+                    pks.extend([str(pk) for pk in res.primary_keys])
+            except MilvusException as e:
+                logger.error("Failed to write vectors batch: %s/%s", i, total_count)
+                raise e
+
+        return pks
 
     def delete(self, ids: List[str]) -> None:
         """删除指定 ID 的向量。"""

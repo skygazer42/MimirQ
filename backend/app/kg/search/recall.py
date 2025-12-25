@@ -71,6 +71,7 @@ class RecallSearcher:
                 [e["entity_id"] for e in key_query_related],
                 tenant_id=tenant_id,
                 limit=config.recall.vector_candidates * 2,
+                document_ids=config.document_ids,
             )
 
             # === Step3: query -> events (vector) ===
@@ -78,6 +79,7 @@ class RecallSearcher:
                 query_vector=query_vec,
                 tenant_id=tenant_id,
                 k=config.recall.vector_candidates,
+                document_ids=config.document_ids,
             )
             event_query_related = [
                 item
@@ -102,6 +104,10 @@ class RecallSearcher:
 
             # === Step5/6: compute event-key weights & event scores ===
             events_detail = event_repo.get_events_by_ids(merged_event_ids)
+            if config.document_ids:
+                allowed_docs = set(config.document_ids)
+                events_detail = [ev for ev in events_detail if ev.document_id in allowed_docs]
+                merged_event_ids = [str(ev.id) for ev in events_detail]
             assoc_map = event_repo.get_event_entities(merged_event_ids)
 
             event_scores: Dict[str, float] = {}

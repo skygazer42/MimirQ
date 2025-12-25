@@ -21,3 +21,10 @@ class DocumentProcessor:
             return await client.generate(text)
         except Exception as exc:
             raise AIError(f"Failed to generate embedding: {exc}") from exc
+
+    async def generate_batch(self, texts: List[str]) -> List[List[float]]:
+        try:
+            client = await get_embedding_client()
+            return await client.generate_batch(texts)
+        except Exception as exc:
+            raise AIError(f"Failed to generate embeddings batch: {exc}") from exc

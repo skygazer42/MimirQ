@@ -167,8 +167,8 @@ function HistoryPageContent() {
             className="w-full justify-start gap-2 bg-white border border-gray-200 text-gray-700 hover:bg-gray-100"
             variant="outline"
           >
-            <Plus className="h-4 w-4" />
-            新建对话
+            <ChevronLeft className="h-4 w-4" />
+            返回首页
           </Button>
 
           {/* 搜索框 */}

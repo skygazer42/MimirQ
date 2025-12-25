@@ -58,6 +58,7 @@ class ExpandSearcher:
                     current_entities,
                     tenant_id=tenant_id,
                     limit=config.expand.max_events_per_hop,
+                    document_ids=config.document_ids,
                 )
                 new_event_ids = [str(e.id) for e in events if str(e.id) not in discovered_events]
                 if not new_event_ids:
