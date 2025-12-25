@@ -17,6 +17,7 @@ from app.parsing.factory import parser_factory
 from app.parsing.chunking.factory import chunker_factory
 from app.storage.object.minio import minio_service
 from app.services.indexer import IndexKind, IndexRecord, Indexer
+from app.governance.processor import governance_processor, GovernanceStats
 
 
 class DocumentProcessorService:
@@ -76,6 +77,7 @@ class DocumentProcessorService:
             document_img_ids: set[str] = set()
 
             use_ragflow = (chunk_strategy or "").lower() in {"ragflow_naive", "ragflow_book", "ragflow_laws", "ragflow_email"}
+            governance_stats: Optional[GovernanceStats] = None
 
             if use_ragflow:
                 resolved_backend = (parser_backend or "ragflow").lower()
@@ -87,6 +89,8 @@ class DocumentProcessorService:
                     file_path,
                     resolved_chunk_strategy
                 )
+                if settings.GOVERNANCE_ENABLED:
+                    chunks, governance_stats = governance_processor.clean_documents(chunks)
 
             else:
                 # Step 2: 解析文档
@@ -138,6 +142,9 @@ class DocumentProcessorService:
                             processed_docs.append(doc)
                     documents = processed_docs
 
+                if settings.GOVERNANCE_ENABLED:
+                    documents, governance_stats = governance_processor.clean_documents(documents)
+
                 resolved_chunk_strategy = chunker_factory.resolve_strategy(chunk_strategy)
                 self._record_processing_metadata(
                     db,
@@ -158,6 +165,9 @@ class DocumentProcessorService:
                     chunk_overlap=settings.CHUNK_OVERLAP
                 )
                 chunks = chunker.split_documents(documents)
+
+            if governance_stats is not None:
+                self._record_governance_metadata(db, document_id, governance_stats)
 
             # 为每个 chunk 添加元数据并处理图片上传到 MinIO
             for idx, chunk in enumerate(chunks):
@@ -351,6 +361,30 @@ class DocumentProcessorService:
         db.commit()
         db.refresh(db_doc)
         # 不抛出异常，避免影响文档处理流程
+
+    def _record_governance_metadata(
+        self,
+        db: Session,
+        document_id: UUID,
+        stats: GovernanceStats,
+    ) -> None:
+        """Persist governance stats on the document metadata."""
+        db_doc = db.query(DBDocument).filter(
+            DBDocument.id == document_id
+        ).first()
+
+        if not db_doc:
+            return
+
+        metadata = dict(db_doc.doc_metadata or {})
+        metadata["governance_enabled"] = True
+        metadata["governance_documents"] = int(stats.documents)
+        metadata["governance_changed_documents"] = int(stats.changed)
+        metadata["governance_rules_applied"] = int(stats.applied_rules)
+
+        db_doc.doc_metadata = metadata
+        db.commit()
+        db.refresh(db_doc)
 
     def _record_document_image_ids(self, db: Session, document_id: UUID, img_ids: set[str]):
         """

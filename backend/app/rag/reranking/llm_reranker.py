@@ -19,6 +19,8 @@ from typing import Any, Dict, List, Optional, Tuple
 import httpx
 
 from app.core.config import settings
+from app.models.dify import Document
+from app.rag.reranking.rerankers import BaseRerankRunner
 
 
 @dataclass
@@ -64,7 +66,7 @@ def _extract_json_array(text: str) -> Optional[str]:
     return text[start : end + 1]
 
 
-class LLMReranker:
+class LLMReranker(BaseRerankRunner):
     """LLM 精排器（单例可复用）。"""
 
     def __init__(self) -> None:
@@ -109,6 +111,80 @@ candidates(JSON): {candidates}
 """
         )
         self._chain = self._prompt | self._llm | StrOutputParser()
+
+
+    def _candidate_id(self, document: Document, fallback_idx: int) -> str:
+        meta = document.metadata or {}
+        for key in ("candidate_id", "doc_id", "chunk_id"):
+            value = meta.get(key)
+            if value:
+                return str(value)
+        doc_id = meta.get("document_id")
+        chunk_index = meta.get("chunk_index")
+        if doc_id is not None and chunk_index is not None:
+            return f"{doc_id}:{chunk_index}"
+        return f"idx:{fallback_idx}"
+
+    def run(
+        self,
+        query: str,
+        documents: list[Document],
+        score_threshold: float | None = None,
+        top_n: int | None = None,
+        user: str | None = None,
+    ) -> list[Document]:
+        if not documents:
+            return []
+
+        candidates: List[Dict[str, Any]] = []
+        id_to_doc: Dict[str, Document] = {}
+        for idx, doc in enumerate(documents):
+            text = (doc.page_content or "").strip()
+            if not text:
+                continue
+            cid = self._candidate_id(doc, idx)
+            candidates.append({"id": cid, "text": text})
+            id_to_doc[cid] = doc
+
+        if not candidates:
+            return documents[:top_n] if top_n else documents
+
+        result = self.rerank(query=query, candidates=candidates)
+        if not result.ordered_ids:
+            return documents[:top_n] if top_n else documents
+
+        ordered: List[Document] = []
+        used: set[str] = set()
+        for cid in result.ordered_ids:
+            doc = id_to_doc.get(cid)
+            if not doc or cid in used:
+                continue
+            used.add(cid)
+            if doc.metadata is None:
+                doc.metadata = {}
+            if cid in result.score_map:
+                doc.metadata["score"] = float(result.score_map[cid])
+            if score_threshold is not None:
+                score = doc.metadata.get("score")
+                if score is not None and float(score) < score_threshold:
+                    continue
+            ordered.append(doc)
+            if top_n and len(ordered) >= top_n:
+                return ordered
+
+        for idx, doc in enumerate(documents):
+            cid = self._candidate_id(doc, idx)
+            if cid in used:
+                continue
+            if score_threshold is not None:
+                score = (doc.metadata or {}).get("score")
+                if score is not None and float(score) < score_threshold:
+                    continue
+            ordered.append(doc)
+            if top_n and len(ordered) >= top_n:
+                break
+
+        return ordered
 
     def rerank(self, query: str, candidates: List[Dict[str, Any]]) -> LLMRerankResult:
         """
