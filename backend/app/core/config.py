@@ -80,6 +80,8 @@ class Settings(BaseSettings):
     VECTOR_BACKEND: str = "milvus"  # milvus | memory | faiss | chroma
     # Indexing toggles (to reduce duplicate pipelines when desired)
     CHUNK_VECTOR_ENABLED: bool = True
+    EVENT_VECTOR_ENABLED: bool = True
+    ENTITY_VECTOR_ENABLED: bool = True
     BM25_INDEX_ENABLED: bool = True
     FAISS_STORE_PATH: str = "./vector_faiss"
     CHROMA_PERSIST_PATH: str = "./vector_chroma"
@@ -90,7 +92,7 @@ class Settings(BaseSettings):
     QUERY_REWRITE_MAX_CHARS: int = 120
     # Reranker（可选：使用 LLM 对候选切片重排，提高命中质量）
     ENABLE_RERANKER: bool = False
-    RERANKER_PROVIDER: str = "llm"  # llm | none
+    RERANKER_PROVIDER: str = "llm"  # llm | pc | none
     RERANKER_MODEL: Optional[str] = None
     RERANKER_TOP_N: int = 20  # 重排候选数量（越大越慢）
     RERANKER_MAX_CHARS: int = 800  # 每条候选截断长度

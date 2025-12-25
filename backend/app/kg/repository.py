@@ -12,14 +12,14 @@ from sqlalchemy import select
 
 from app.core.database import SessionLocal
 from app.kg.models import SagEntity, SagSourceEvent, SagEventEntity
-from app.storage.vector.milvus import MilvusAdapter
+from app.storage.vector.milvus import get_milvus_adapter
 
 class EntityRepository:
     """Entity read/write + similarity search."""
 
     def __init__(self, session: Session):
         self.session = session
-        self._milvus = MilvusAdapter(collection_name="sag_entities", vector_field="embedding")
+        self._milvus = get_milvus_adapter(collection_name="sag_entities", vector_field="embedding")
 
     def search_similar(
         self,
@@ -101,7 +101,7 @@ class EventRepository:
 
     def __init__(self, session: Session):
         self.session = session
-        self._milvus = MilvusAdapter(collection_name="sag_events", vector_field="embedding")
+        self._milvus = get_milvus_adapter(collection_name="sag_events", vector_field="embedding")
 
     def link_event_entities(
         self,

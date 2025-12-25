@@ -30,7 +30,7 @@ from app.schemas.document import (
 from app.parsing.processors.document_processor import document_processor
 from app.parsing.factory import parser_factory
 from app.parsing.chunking.factory import chunker_factory
-from app.services.indexer import ChunkInput, IndexKind, Indexer
+from app.services.indexer import IndexKind, IndexRecord, Indexer
 from app.services.mineru_service import mineru_service
 from app.services.dataset_service import DatasetService
 from app.storage.object.minio import minio_service
@@ -368,9 +368,7 @@ async def delete_document(
             print(f"[WARN] MinIO 图片删除过程失败: {exc}")
 
     # 2. 删除向量库中的向量（按后端切换）
-    indexer = Indexer(db)
-    indexer.delete(IndexKind.CHUNK, tenant_id=tenant_id, document_id=document_id)
-    indexer.delete(IndexKind.EVENT, tenant_id=tenant_id, document_id=document_id, commit=False)
+    Indexer(db).delete_all(tenant_id=tenant_id, document_id=document_id, commit=False)
 
     # 3. 删除本地文件
     try:
@@ -562,7 +560,7 @@ async def create_document_with_manual_chunks(
     db.refresh(db_document)
 
     try:
-        chunk_inputs: List[ChunkInput] = []
+        records: List[IndexRecord] = []
         for idx, chunk in enumerate(request.chunks):
             metadata = {
                 "source": request.filename,
@@ -572,23 +570,25 @@ async def create_document_with_manual_chunks(
                 "chunk_index": idx,
                 **(chunk.metadata or {}),
             }
-            chunk_inputs.append(
-                ChunkInput(
+            records.append(
+                IndexRecord(
+                    kind=IndexKind.CHUNK,
                     content=chunk.content or "",
                     metadata=metadata,
+                    document_id=document_id,
                     page_number=chunk.page_number,
                     start_char=chunk.start_char,
                     end_char=chunk.end_char,
                 )
             )
 
-        persist_result = Indexer(db).index(
-            IndexKind.CHUNK,
-            document_id=document_id,
+        persist_result = Indexer(db).upsert(
             tenant_id=tenant_id,
-            chunks=chunk_inputs,
+            records=records,
             default_source=request.filename,
-        )
+        ).chunk_result
+        if persist_result is None:
+            raise RuntimeError("Chunk indexing returned no result")
 
         # 更新文档统计信息和状态
         db_document.chunk_count = len(request.chunks)

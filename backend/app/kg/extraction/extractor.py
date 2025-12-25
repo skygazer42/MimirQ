@@ -12,7 +12,7 @@ from app.ai.factory import create_llm_client
 from app.kg.extraction.config import ExtractConfig
 from app.kg.extraction.processor import EventProcessor
 from app.kg.loading.processor import DocumentProcessor
-from app.services.indexer import EventEntityInput, EventInput, IndexKind, Indexer
+from app.services.indexer import EventEntityInput, IndexKind, IndexRecord, Indexer
 from app.kg.utils import get_logger
 
 logger = get_logger("sag.extract.extractor")
@@ -54,7 +54,7 @@ class EventExtractor:
             embedder = DocumentProcessor()
 
             embed_cache: Dict[str, List[float]] = {}
-            events_to_index: List[EventInput] = []
+            events_to_index: List[IndexRecord] = []
             for idx, chunk in enumerate(resolved_chunks, 1):
                 events_data = await processor.extract_from_sections([chunk], batch_index=idx)
                 if not events_data:
@@ -125,7 +125,8 @@ class EventExtractor:
                         )
 
                     events_to_index.append(
-                        EventInput(
+                        IndexRecord(
+                            kind=IndexKind.EVENT,
                             title=title,
                             summary=summary,
                             content=content,
@@ -141,8 +142,8 @@ class EventExtractor:
                 return []
 
             tenant_id = config.tenant_id or resolved_chunks[0].tenant_id
-            result = Indexer(session).index(IndexKind.EVENT, tenant_id=tenant_id, events=events_to_index)
-            return result.events
+            result = Indexer(session).upsert(tenant_id=tenant_id, records=events_to_index).event_result
+            return result.events if result else []
         except Exception:
             session.rollback()
             raise

@@ -16,7 +16,7 @@ from app.models.document import Document as DBDocument, DocumentChunk
 from app.parsing.factory import parser_factory
 from app.parsing.chunking.factory import chunker_factory
 from app.storage.object.minio import minio_service
-from app.services.indexer import ChunkInput, IndexKind, Indexer
+from app.services.indexer import IndexKind, IndexRecord, Indexer
 
 
 class DocumentProcessorService:
@@ -190,27 +190,29 @@ class DocumentProcessorService:
 
             # Step 4/5: 向量化 + 写入 PostgreSQL + 增量更新 BM25（统一实现，避免多处重复）
             print(f"Saving chunks to PostgreSQL...")
-            chunk_inputs: List[ChunkInput] = []
+            records: List[IndexRecord] = []
             for chunk in chunks:
                 meta = dict(chunk.metadata or {})
-                chunk_inputs.append(
-                    ChunkInput(
+                records.append(
+                    IndexRecord(
+                        kind=IndexKind.CHUNK,
                         content=chunk.page_content,
                         metadata=meta,
+                        document_id=document_id,
                         page_number=meta.get("page") or meta.get("page_number"),
                         start_char=meta.get("start_char"),
                         end_char=meta.get("end_char"),
                     )
                 )
 
-            persist_result = Indexer(db).index(
-                IndexKind.CHUNK,
-                document_id=document_id,
+            persist_result = Indexer(db).upsert(
                 tenant_id=tenant_id,
-                chunks=chunk_inputs,
+                records=records,
                 default_source=str(file_path.name),
                 commit=False,
-            )
+            ).chunk_result
+            if persist_result is None:
+                raise RuntimeError("Chunk indexing returned no result")
             chunk_ids = persist_result.chunk_ids
 
             # Step 6: 更新文档状态为完成
@@ -304,7 +306,7 @@ class DocumentProcessorService:
 
             if all_chunks:
                 print(f"🔎 Rebuilding BM25 index with {len(all_chunks)} chunks for tenant {tenant_id}...")
-                Indexer(db).rebuild_chunk_indexes(tenant_id=tenant_id)
+                Indexer(db).rebuild_tenant(tenant_id=tenant_id, kinds=[IndexKind.CHUNK])
             else:
                 print("[WARN]  No chunks found for BM25 index")
 
@@ -320,7 +322,7 @@ class DocumentProcessorService:
                 print("[WARN]  No chunks found for BM25 index")
                 return
             for tid in tenant_ids:
-                Indexer(db).rebuild_chunk_indexes(tenant_id=tid)
+                Indexer(db).rebuild_tenant(tenant_id=tid, kinds=[IndexKind.CHUNK])
         except Exception as e:
             print(f"[WARN]  Failed to rebuild BM25 index: {str(e)}")
 

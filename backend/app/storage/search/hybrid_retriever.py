@@ -34,6 +34,7 @@ class HybridRetriever(BaseRetriever):
     keyword_weight: float = 0.4
     mmr_lambda: float = settings.RETRIEVAL_MMR_LAMBDA
     enable_reranker: bool = settings.ENABLE_RERANKER
+    reranker_provider: str = settings.RERANKER_PROVIDER
     reranker_top_n: int = settings.RERANKER_TOP_N
     tenant_id: Optional[UUID] = None
     document_ids: Optional[List[UUID]] = None
@@ -273,29 +274,37 @@ class HybridRetriever(BaseRetriever):
 
         # 5) 可选：LLM Reranker 精排（在最终截断前执行）
         if merged_results and bool(self.enable_reranker):
-            provider = (settings.RERANKER_PROVIDER or "llm").lower()
-            if provider == "llm":
+            provider = (self.reranker_provider or settings.RERANKER_PROVIDER or "llm").lower()
+            if provider not in ("none", "off", "false", "0"):
                 try:
-                    from app.rag.reranking.llm_reranker import get_llm_reranker
+                    from app.reranking.rag import get_rag_reranker
+                    from app.reranking.types import RerankCandidate
 
-                    reranker = get_llm_reranker()
+                    reranker = get_rag_reranker(provider)
                     candidates_n = int(self.reranker_top_n or settings.RERANKER_TOP_N or 20)
                     candidates_n = max(candidates_n, top_k)
                     candidates_n = min(candidates_n, len(merged_results))
-                    candidates = []
+                    candidates: List[RerankCandidate] = []
                     id_to_doc: Dict[str, Dict[str, Any]] = {}
                     for doc in merged_results[:candidates_n]:
                         rid = self._result_key(doc)
                         text = (doc.get("content") or "").strip()
                         if not rid or not text:
                             continue
-                        candidates.append({"id": rid, "text": text})
+                        meta = dict(doc.get("metadata") or {})
+                        meta["score"] = float(doc.get("score", 0.0) or 0.0)
+                        candidates.append(RerankCandidate(id=rid, text=text, metadata=meta))
                         id_to_doc[rid] = doc
 
                     if candidates:
                         start = time.time()
-                        result = reranker.rerank(query=query, candidates=candidates)
+                        result = reranker.rerank(
+                            query=query,
+                            candidates=candidates,
+                            top_n=candidates_n,
+                        )
                         rerank_elapsed = result.elapsed_sec or (time.time() - start)
+                        rerank_provider = result.provider or provider
 
                         ordered = []
                         used: set[str] = set()
@@ -309,7 +318,7 @@ class HybridRetriever(BaseRetriever):
                             if rid in result.score_map:
                                 new_doc["rerank_score"] = float(result.score_map[rid])
                                 new_doc["score"] = float(result.score_map[rid])
-                            new_doc["reranker_provider"] = "llm"
+                            new_doc["reranker_provider"] = rerank_provider
                             new_doc["rerank_elapsed_sec"] = round(float(rerank_elapsed), 3)
                             new_doc["rerank_model_used"] = result.model_used
                             ordered.append(new_doc)
@@ -320,7 +329,7 @@ class HybridRetriever(BaseRetriever):
                             if rid in used:
                                 continue
                             new_doc = dict(doc)
-                            new_doc.setdefault("reranker_provider", "llm")
+                            new_doc.setdefault("reranker_provider", rerank_provider)
                             new_doc.setdefault("rerank_elapsed_sec", round(float(rerank_elapsed), 3))
                             new_doc.setdefault("rerank_model_used", result.model_used)
                             ordered.append(new_doc)

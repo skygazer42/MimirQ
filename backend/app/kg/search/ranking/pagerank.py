@@ -1,11 +1,10 @@
 """
 PageRank-style rerank combining query similarity and entity co-occurrence graph.
 """
-from typing import Any, Dict, List, Tuple
-
-from app.core.config import settings
+from typing import Any, Dict, List
 from app.kg.loading.processor import DocumentProcessor
 from app.kg.search.config import SearchConfig
+from app.kg.search.utils import cosine_similarity, format_events
 from app.kg.repository import EventRepository, get_session
 from app.kg.utils import get_logger
 
@@ -36,21 +35,9 @@ class RerankPageRankSearcher:
             # prepare adjacency via shared entities
             assoc_map = repo.get_entities_for_events(event_ids)
 
-            def cosine(a, b):
-                import math
-
-                if not a or not b or len(a) != len(b):
-                    return 0.0
-                dot = sum(x * y for x, y in zip(a, b))
-                na = math.sqrt(sum(x * x for x in a))
-                nb = math.sqrt(sum(y * y for y in b))
-                if na == 0 or nb == 0:
-                    return 0.0
-                return dot / (na * nb)
-
             base_scores: Dict[str, float] = {**event_scores}
             for ev in events:
-                sim = cosine(query_vec, ev.content_vector or [])
+                sim = cosine_similarity(query_vec, ev.content_vector or [])
                 ents = assoc_map.get(str(ev.id), [])
                 boost = sum(key_weight_map.get(str(e.id), 0.0) for e in ents)
                 # merge recall score if present
@@ -78,23 +65,7 @@ class RerankPageRankSearcher:
                 base_scores=base_scores,
             )
 
-            ranked = sorted(scores.items(), key=lambda x: x[1], reverse=True)
-            results = []
-            for eid, score in ranked[: config.rerank.max_results]:
-                ev = next((e for e in events if str(e.id) == eid), None)
-                if not ev:
-                    continue
-                results.append(
-                    {
-                        "id": str(ev.id),
-                        "title": ev.title,
-                        "summary": ev.summary,
-                        "content": ev.content,
-                        "document_id": str(ev.document_id) if ev.document_id else None,
-                        "chunk_id": str(ev.chunk_id) if ev.chunk_id else None,
-                        "score": score,
-                    }
-                )
+            results = format_events(events, scores, config.rerank.max_results)
 
             return {
                 "events": results,
