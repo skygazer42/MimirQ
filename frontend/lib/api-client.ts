@@ -9,6 +9,7 @@ import type {
   ChatRequest,
   DocumentPreview,
   ManualChunk,
+  DocumentPipelineOptions,
   ChunkPreviewResponse,
   Dataset,
   DatasetCreate,
@@ -89,7 +90,7 @@ export const documentApi = {
    */
   async upload(
     file: File,
-    options: { parser_backend?: string; chunk_strategy?: string; dataset_id?: string } = {}
+    options: { parser_backend?: string; chunk_strategy?: string; dataset_id?: string; pipeline?: DocumentPipelineOptions } = {}
   ): Promise<Document> {
     const formData = new FormData()
     formData.append('file', file)
@@ -97,6 +98,21 @@ export const documentApi = {
     formData.append('chunk_strategy', options.chunk_strategy || 'langchain_recursive')
     if (options.dataset_id) {
       formData.append('dataset_id', options.dataset_id)
+    }
+    if (options.pipeline) {
+      const { pipeline } = options
+      const appendIfDefined = (key: string, value: string | number | boolean | undefined) => {
+        if (value === undefined || value === null) return
+        formData.append(key, String(value))
+      }
+      appendIfDefined('governance_enabled', pipeline.governance_enabled)
+      appendIfDefined('chunk_size', pipeline.chunk_size)
+      appendIfDefined('chunk_overlap', pipeline.chunk_overlap)
+      appendIfDefined('chunk_vector_enabled', pipeline.chunk_vector_enabled)
+      appendIfDefined('bm25_index_enabled', pipeline.bm25_index_enabled)
+      appendIfDefined('sag_enabled', pipeline.sag_enabled)
+      appendIfDefined('event_vector_enabled', pipeline.event_vector_enabled)
+      appendIfDefined('entity_vector_enabled', pipeline.entity_vector_enabled)
     }
 
     const { data } = await apiClient.post('/documents/upload', formData, {
@@ -180,6 +196,7 @@ export const documentApi = {
     chunks: ManualChunk[]
     dataset_id?: string
     metadata?: Record<string, any>
+    pipeline?: DocumentPipelineOptions
   }): Promise<Document> {
     const { data } = await apiClient.post('/documents/manual', params)
     return data

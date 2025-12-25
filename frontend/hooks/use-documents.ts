@@ -8,6 +8,7 @@ import { documentApi } from '@/lib/api-client'
 import type { Document } from '@/types'
 import { useParserBackendPreference } from '@/contexts/parser-backend-context'
 import { useChunkStrategyPreference } from '@/contexts/chunk-strategy-context'
+import { usePipelineOptions } from '@/contexts/pipeline-options-context'
 
 export function useDocuments() {
   const [documents, setDocuments] = useState<Document[]>([])
@@ -15,6 +16,7 @@ export function useDocuments() {
   const [error, setError] = useState<string | null>(null)
   const { parserBackend } = useParserBackendPreference()
   const { chunkStrategy } = useChunkStrategyPreference()
+  const { enabled: pipelineOverridesEnabled, options: pipelineOptions } = usePipelineOptions()
 
   /**
    * 加载文档列表
@@ -92,6 +94,7 @@ export function useDocuments() {
         const newDoc = await documentApi.upload(file, {
           parser_backend: parserBackend,
           chunk_strategy: chunkStrategy,
+          pipeline: pipelineOverridesEnabled ? pipelineOptions : undefined,
         })
         setDocuments((prev) => [newDoc, ...prev])
 
@@ -107,7 +110,7 @@ export function useDocuments() {
         setIsLoading(false)
       }
     },
-    [parserBackend, chunkStrategy, pollDocumentStatus]
+    [parserBackend, chunkStrategy, pipelineOverridesEnabled, pipelineOptions, pollDocumentStatus]
   )
 
   /**

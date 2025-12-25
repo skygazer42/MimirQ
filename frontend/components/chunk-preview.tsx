@@ -39,9 +39,11 @@ import { documentApi } from '@/lib/api-client'
 import type { ChunkPreviewResponse, ChunkPreviewItem } from '@/types'
 import { useParserBackendPreference } from '@/contexts/parser-backend-context'
 import { useChunkStrategyPreference } from '@/contexts/chunk-strategy-context'
+import { usePipelineOptions } from '@/contexts/pipeline-options-context'
 import { getParserLabel } from '@/lib/parser-options'
 import { getChunkStrategyLabel, getChunkStrategyOption } from '@/lib/chunk-strategies'
 import { ChunkStrategyDropdown } from '@/components/ui/chunk-strategy-dropdown'
+import { PipelineOptionsPanel } from '@/components/pipeline-options-panel'
 import { cn } from '@/lib/utils'
 
 // 分隔符配置
@@ -115,8 +117,9 @@ export function ChunkPreview({ onConfirm, onClose }: ChunkPreviewProps) {
   const [processedStatus, setProcessedStatus] = useState<Record<string, 'pending' | 'success' | 'error'>>({})
 
   // 参数状态
-  const [chunkSize, setChunkSize] = useState(1000)
-  const [chunkOverlap, setChunkOverlap] = useState(200)
+  const { enabled: pipelineOverridesEnabled, options: pipelineOptions, updateOption } = usePipelineOptions()
+  const [chunkSize, setChunkSize] = useState(pipelineOptions.chunk_size ?? 1000)
+  const [chunkOverlap, setChunkOverlap] = useState(pipelineOptions.chunk_overlap ?? 200)
 
   // 预览结果
   const [previewData, setPreviewData] = useState<ChunkPreviewResponse | null>(null)
@@ -143,6 +146,18 @@ export function ChunkPreview({ onConfirm, onClose }: ChunkPreviewProps) {
   const hideChunkSizeControl = isSentenceStrategy || isRagflowStrategy
   // 分层切块也不显示普通的 overlap，因为它依赖层级定义
   const showOverlapControl = !isSentenceStrategy && !isRagflowStrategy && !isHierarchicalStrategy && strategyForUi !== 'separator'
+
+  useEffect(() => {
+    if (typeof pipelineOptions.chunk_size === 'number' && pipelineOptions.chunk_size !== chunkSize) {
+      setChunkSize(pipelineOptions.chunk_size)
+    }
+  }, [pipelineOptions.chunk_size, chunkSize])
+
+  useEffect(() => {
+    if (typeof pipelineOptions.chunk_overlap === 'number' && pipelineOptions.chunk_overlap !== chunkOverlap) {
+      setChunkOverlap(pipelineOptions.chunk_overlap)
+    }
+  }, [pipelineOptions.chunk_overlap, chunkOverlap])
 
   // 处理文件拖放
   const handleDragOver = useCallback((e: React.DragEvent) => {
@@ -259,6 +274,19 @@ export function ChunkPreview({ onConfirm, onClose }: ChunkPreviewProps) {
         metadata: chunk.metadata,
       }))
 
+      const pipeline = pipelineOverridesEnabled
+        ? {
+            governance_enabled: pipelineOptions.governance_enabled,
+            chunk_size: chunkSize,
+            chunk_overlap: chunkOverlap,
+            chunk_vector_enabled: pipelineOptions.chunk_vector_enabled,
+            bm25_index_enabled: pipelineOptions.bm25_index_enabled,
+            sag_enabled: pipelineOptions.sag_enabled,
+            event_vector_enabled: pipelineOptions.event_vector_enabled,
+            entity_vector_enabled: pipelineOptions.entity_vector_enabled,
+          }
+        : undefined
+
       await documentApi.createFromChunks({
         filename: previewData.filename,
         file_type: previewData.file_type,
@@ -271,6 +299,7 @@ export function ChunkPreview({ onConfirm, onClose }: ChunkPreviewProps) {
           chunk_strategy_label: getChunkStrategyLabel(previewData.chunk_strategy),
           parser_backend: previewData.parser_backend,
         },
+        pipeline,
       })
 
       setSubmitSuccess(true)
@@ -282,7 +311,7 @@ export function ChunkPreview({ onConfirm, onClose }: ChunkPreviewProps) {
     } finally {
       setIsSubmitting(false)
     }
-  }, [previewData, file, chunkSize, chunkOverlap, onConfirm])
+  }, [previewData, file, chunkSize, chunkOverlap, pipelineOverridesEnabled, pipelineOptions, onConfirm])
 
   // 重置
   const handleReset = useCallback(() => {
@@ -293,7 +322,9 @@ export function ChunkPreview({ onConfirm, onClose }: ChunkPreviewProps) {
     setSubmitSuccess(false)
     setChunkSize(1000)
     setChunkOverlap(200)
-  }, [])
+    updateOption('chunk_size', 1000)
+    updateOption('chunk_overlap', 200)
+  }, [updateOption])
 
   const formatFileSize = (bytes: number) => {
     if (bytes < 1024) return `${bytes} B`
@@ -610,7 +641,11 @@ export function ChunkPreview({ onConfirm, onClose }: ChunkPreviewProps) {
                     max={isTokenStrategy ? 2000 : 4000}
                     step={isTokenStrategy ? 50 : 100}
                     value={chunkSize}
-                    onChange={(e) => setChunkSize(Number(e.target.value))}
+                    onChange={(e) => {
+                      const next = Number(e.target.value)
+                      setChunkSize(next)
+                      updateOption('chunk_size', next)
+                    }}
                     className="w-full h-1.5 bg-gray-200 rounded-full appearance-none cursor-pointer accent-blue-600 hover:accent-blue-700 transition-colors"
                   />
                   <div className="flex justify-between text-[10px] text-gray-400 font-mono">
@@ -636,11 +671,20 @@ export function ChunkPreview({ onConfirm, onClose }: ChunkPreviewProps) {
                     max={Math.min(isTokenStrategy ? 500 : 1000, chunkSize - (isTokenStrategy ? 50 : 100))}
                     step={isTokenStrategy ? 25 : 50}
                     value={chunkOverlap}
-                    onChange={(e) => setChunkOverlap(Number(e.target.value))}
+                    onChange={(e) => {
+                      const next = Number(e.target.value)
+                      setChunkOverlap(next)
+                      updateOption('chunk_overlap', next)
+                    }}
                     className="w-full h-1.5 bg-gray-200 rounded-full appearance-none cursor-pointer accent-blue-600 hover:accent-blue-700 transition-colors"
                   />
                 </div>
               )}
+
+              <div className="space-y-2">
+                <label className="text-xs font-medium text-gray-500">入库管线</label>
+                <PipelineOptionsPanel compact />
+              </div>
 
               <Button
                 onClick={handlePreview}

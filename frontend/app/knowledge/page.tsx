@@ -11,6 +11,7 @@ import {
   Search,
   Settings,
   Upload,
+  Sliders,
   Loader2,
   CheckCircle,
   XCircle,
@@ -33,12 +34,21 @@ import {
 } from 'lucide-react'
 import { Navbar } from '@/components/navbar'
 import { Button } from '@/components/ui/button'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from '@/components/ui/dialog'
 import { useDocuments } from '@/hooks/use-documents'
 import { formatFileSize, formatDate, cn } from '@/lib/utils'
 import { StatCard, StatsGrid } from '@/components/ui/stats-card'
 import { DocumentDetailDialog } from '@/components/document-detail-dialog'
 import { getParserLabel } from '@/lib/parser-options'
 import type { Document } from '@/types'
+import { PipelineOptionsPanel } from '@/components/pipeline-options-panel'
 
 // Tab 类型
 type TabType = 'documents' | 'retrieval' | 'settings'
@@ -139,6 +149,26 @@ export default function KnowledgePage() {
             </div>
 
             <div className="flex items-center gap-3">
+              <Dialog>
+                <DialogTrigger asChild>
+                  <Button
+                    variant="outline"
+                    className="gap-2 border-slate-200 bg-white/80 hover:bg-white text-slate-600"
+                  >
+                    <Sliders className="w-4 h-4" />
+                    管线配置
+                  </Button>
+                </DialogTrigger>
+                <DialogContent className="max-w-2xl">
+                  <DialogHeader>
+                    <DialogTitle>入库管线配置</DialogTitle>
+                    <DialogDescription>
+                      仅影响新上传文档，可随时调整
+                    </DialogDescription>
+                  </DialogHeader>
+                  <PipelineOptionsPanel />
+                </DialogContent>
+              </Dialog>
                <label>
                 <Button className="gap-2 bg-indigo-600 hover:bg-indigo-700 text-white shadow-lg shadow-indigo-200 dark:shadow-indigo-900/20 hover:shadow-indigo-300 transition-all rounded-xl" size="lg" asChild>
                   <span>

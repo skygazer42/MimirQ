@@ -3,7 +3,7 @@
  */
 'use client'
 
-import { useState, useMemo, ChangeEvent, useRef } from 'react'
+import { useState, useMemo, ChangeEvent, useRef, useEffect } from 'react'
 import { Upload, Loader2, FileText, Settings2, Scissors, AlignJustify, Hash, FileType } from 'lucide-react'
 
 import {
@@ -20,8 +20,10 @@ import { documentApi } from '@/lib/api-client'
 import { formatFileSize } from '@/lib/utils'
 import type { DocumentPreview, ManualChunk } from '@/types'
 import { useParserBackendPreference } from '@/contexts/parser-backend-context'
+import { usePipelineOptions } from '@/contexts/pipeline-options-context'
 import { getParserLabel } from '@/lib/parser-options'
 import { cn } from '@/lib/utils'
+import { PipelineOptionsPanel } from '@/components/pipeline-options-panel'
 
 interface ManualUploadDialogProps {
   onUploaded?: () => void
@@ -38,11 +40,24 @@ export function ManualUploadDialog({ onUploaded }: ManualUploadDialogProps) {
   const [error, setError] = useState<string | null>(null)
 
   const [mode, setMode] = useState<ChunkMode>('page')
-  const [chunkSize, setChunkSize] = useState(1000)
-  const [chunkOverlap, setChunkOverlap] = useState(200)
+  const { enabled: pipelineOverridesEnabled, options: pipelineOptions, updateOption } = usePipelineOptions()
+  const [chunkSize, setChunkSize] = useState(pipelineOptions.chunk_size ?? 1000)
+  const [chunkOverlap, setChunkOverlap] = useState(pipelineOptions.chunk_overlap ?? 200)
   const [delimiter, setDelimiter] = useState('## ')
   const { parserBackend } = useParserBackendPreference()
   const fileInputRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    if (typeof pipelineOptions.chunk_size === 'number' && pipelineOptions.chunk_size !== chunkSize) {
+      setChunkSize(pipelineOptions.chunk_size)
+    }
+  }, [pipelineOptions.chunk_size, chunkSize])
+
+  useEffect(() => {
+    if (typeof pipelineOptions.chunk_overlap === 'number' && pipelineOptions.chunk_overlap !== chunkOverlap) {
+      setChunkOverlap(pipelineOptions.chunk_overlap)
+    }
+  }, [pipelineOptions.chunk_overlap, chunkOverlap])
 
   const handleFileChange = async (e: ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files
@@ -170,6 +185,19 @@ export function ManualUploadDialog({ onUploaded }: ManualUploadDialogProps) {
     setError(null)
 
     try {
+      const pipeline = pipelineOverridesEnabled
+        ? {
+            governance_enabled: pipelineOptions.governance_enabled,
+            chunk_size: chunkSize,
+            chunk_overlap: chunkOverlap,
+            chunk_vector_enabled: pipelineOptions.chunk_vector_enabled,
+            bm25_index_enabled: pipelineOptions.bm25_index_enabled,
+            sag_enabled: pipelineOptions.sag_enabled,
+            event_vector_enabled: pipelineOptions.event_vector_enabled,
+            entity_vector_enabled: pipelineOptions.entity_vector_enabled,
+          }
+        : undefined
+
       await documentApi.createFromChunks({
         filename: preview.filename,
         file_type: preview.file_type,
@@ -178,6 +206,7 @@ export function ManualUploadDialog({ onUploaded }: ManualUploadDialogProps) {
         metadata: {
           parser_backend: preview.parser_backend,
         },
+        pipeline,
       })
 
       setOpen(false)
@@ -353,7 +382,11 @@ export function ManualUploadDialog({ onUploaded }: ManualUploadDialogProps) {
                         max={2000}
                         step={50}
                         value={chunkSize}
-                        onChange={(e) => setChunkSize(parseInt(e.target.value))}
+                        onChange={(e) => {
+                          const next = parseInt(e.target.value)
+                          setChunkSize(next)
+                          updateOption('chunk_size', next)
+                        }}
                         className="w-full h-1.5 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
                       />
                     </div>
@@ -368,7 +401,11 @@ export function ManualUploadDialog({ onUploaded }: ManualUploadDialogProps) {
                         max={500}
                         step={10}
                         value={chunkOverlap}
-                        onChange={(e) => setChunkOverlap(parseInt(e.target.value))}
+                        onChange={(e) => {
+                          const next = parseInt(e.target.value)
+                          setChunkOverlap(next)
+                          updateOption('chunk_overlap', next)
+                        }}
                         className="w-full h-1.5 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
                       />
                     </div>
@@ -391,6 +428,14 @@ export function ManualUploadDialog({ onUploaded }: ManualUploadDialogProps) {
                   </div>
                 )}
               </div>
+            </div>
+
+            <div className={cn("space-y-3 transition-opacity duration-300", !preview && "opacity-50 pointer-events-none")}>
+              <label className="text-sm font-semibold text-gray-900 flex items-center gap-2">
+                <span className="w-5 h-5 rounded-full bg-gray-100 text-gray-600 flex items-center justify-center text-xs">3</span>
+                入库管线
+              </label>
+              <PipelineOptionsPanel compact />
             </div>
 
             {error && (
