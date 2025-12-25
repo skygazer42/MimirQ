@@ -17,6 +17,12 @@ from app.parsing.factory import parser_factory
 from app.parsing.chunking.factory import chunker_factory
 from app.storage.object.minio import minio_service
 from app.services.indexer import IndexKind, IndexRecord, Indexer
+from app.services.pipeline_config import (
+    PipelineEffective,
+    build_indexing_options,
+    parse_pipeline_from_metadata,
+    resolve_pipeline_options,
+)
 from app.governance.processor import governance_processor, GovernanceStats
 
 
@@ -76,6 +82,11 @@ class DocumentProcessorService:
             # 记录本次处理过程中关联到该文档的所有 img_id（用于删除清理等）
             document_img_ids: set[str] = set()
 
+            pipeline_options = parse_pipeline_from_metadata(db_document.doc_metadata if db_document else {})
+            pipeline_effective = resolve_pipeline_options(pipeline_options)
+            index_options = build_indexing_options(pipeline_effective)
+            self._record_pipeline_effective(db, document_id, pipeline_effective)
+
             use_ragflow = (chunk_strategy or "").lower() in {"ragflow_naive", "ragflow_book", "ragflow_laws", "ragflow_email"}
             governance_stats: Optional[GovernanceStats] = None
 
@@ -83,13 +94,20 @@ class DocumentProcessorService:
                 resolved_backend = (parser_backend or "ragflow").lower()
                 resolved_chunk_strategy = (chunk_strategy or "ragflow_naive").lower()
 
+                self._record_processing_metadata(
+                    db,
+                    document_id,
+                    parser_backend=resolved_backend,
+                    chunk_strategy=resolved_chunk_strategy,
+                )
+
                 # ragflow 直接解析+切块（同步），放到线程池避免阻塞事件循环
                 chunks = await asyncio.to_thread(
                     self._ragflow_chunk_file,
                     file_path,
                     resolved_chunk_strategy
                 )
-                if settings.GOVERNANCE_ENABLED:
+                if pipeline_effective.governance_enabled:
                     chunks, governance_stats = governance_processor.clean_documents(chunks)
 
             else:
@@ -142,7 +160,7 @@ class DocumentProcessorService:
                             processed_docs.append(doc)
                     documents = processed_docs
 
-                if settings.GOVERNANCE_ENABLED:
+                if pipeline_effective.governance_enabled:
                     documents, governance_stats = governance_processor.clean_documents(documents)
 
                 resolved_chunk_strategy = chunker_factory.resolve_strategy(chunk_strategy)
@@ -159,10 +177,12 @@ class DocumentProcessorService:
 
                 # Step 3: 文本切片
                 print(f"Chunking document into smaller pieces...")
+                if pipeline_effective.chunk_overlap >= pipeline_effective.chunk_size:
+                    raise ValueError("chunk_overlap must be less than chunk_size")
                 chunker = chunker_factory.get_chunker(
                     resolved_chunk_strategy,
-                    chunk_size=settings.CHUNK_SIZE,
-                    chunk_overlap=settings.CHUNK_OVERLAP
+                    chunk_size=pipeline_effective.chunk_size,
+                    chunk_overlap=pipeline_effective.chunk_overlap,
                 )
                 chunks = chunker.split_documents(documents)
 
@@ -220,6 +240,7 @@ class DocumentProcessorService:
                 records=records,
                 default_source=str(file_path.name),
                 commit=False,
+                options=index_options,
             ).chunk_result
             if persist_result is None:
                 raise RuntimeError("Chunk indexing returned no result")
@@ -243,7 +264,7 @@ class DocumentProcessorService:
             )
 
             # Step 7: 如启用则运行 SAG 抽取（事件/实体）
-            if settings.SAG_ENABLED:
+            if pipeline_effective.sag_enabled:
                 try:
                     from app.kg.pipeline import extract_events
 
@@ -252,6 +273,7 @@ class DocumentProcessorService:
                         chunk_ids,
                         tenant_id=tenant_id,
                         chunks=persist_result.db_chunks,
+                        index_options=index_options,
                     )
                     print(f"[OK] SAG extracted {len(events)} events for document {document_id}")
                 except Exception as exc:
@@ -361,6 +383,36 @@ class DocumentProcessorService:
         db.commit()
         db.refresh(db_doc)
         # 不抛出异常，避免影响文档处理流程
+
+    def _record_pipeline_effective(
+        self,
+        db: Session,
+        document_id: UUID,
+        effective: PipelineEffective,
+    ) -> None:
+        """Persist effective pipeline settings on the document metadata."""
+        db_doc = db.query(DBDocument).filter(
+            DBDocument.id == document_id
+        ).first()
+
+        if not db_doc:
+            return
+
+        metadata = dict(db_doc.doc_metadata or {})
+        metadata["pipeline_effective"] = {
+            "governance_enabled": bool(effective.governance_enabled),
+            "chunk_size": int(effective.chunk_size),
+            "chunk_overlap": int(effective.chunk_overlap),
+            "chunk_vector_enabled": bool(effective.chunk_vector_enabled),
+            "bm25_index_enabled": bool(effective.bm25_index_enabled),
+            "sag_enabled": bool(effective.sag_enabled),
+            "event_vector_enabled": bool(effective.event_vector_enabled),
+            "entity_vector_enabled": bool(effective.entity_vector_enabled),
+        }
+
+        db_doc.doc_metadata = metadata
+        db.commit()
+        db.refresh(db_doc)
 
     def _record_governance_metadata(
         self,

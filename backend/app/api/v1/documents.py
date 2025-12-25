@@ -20,6 +20,7 @@ from app.schemas.document import (
     DocumentParsePreview,
     ParsedSegment,
     ManualDocumentCreate,
+    DocumentPipelineOptions,
     ChunkPreviewParams,
     ChunkPreviewItem,
     ChunkPreviewResponse,
@@ -31,6 +32,12 @@ from app.parsing.processors.document_processor import document_processor
 from app.parsing.factory import parser_factory
 from app.parsing.chunking.factory import chunker_factory
 from app.services.indexer import IndexKind, IndexRecord, Indexer
+from app.services.pipeline_config import (
+    PipelineOptions,
+    build_indexing_options,
+    build_pipeline_metadata,
+    resolve_pipeline_options,
+)
 from app.services.mineru_service import mineru_service
 from app.services.dataset_service import DatasetService
 from app.storage.object.minio import minio_service
@@ -42,6 +49,41 @@ from app.dependencies.auth import get_current_account_id
 from sqlalchemy import or_, false
 
 router = APIRouter()
+
+
+def _to_pipeline_options(
+    *,
+    pipeline: Optional[DocumentPipelineOptions] = None,
+    governance_enabled: Optional[bool] = None,
+    chunk_size: Optional[int] = None,
+    chunk_overlap: Optional[int] = None,
+    chunk_vector_enabled: Optional[bool] = None,
+    bm25_index_enabled: Optional[bool] = None,
+    sag_enabled: Optional[bool] = None,
+    event_vector_enabled: Optional[bool] = None,
+    entity_vector_enabled: Optional[bool] = None,
+) -> PipelineOptions:
+    if pipeline is None:
+        pipeline = DocumentPipelineOptions(
+            governance_enabled=governance_enabled,
+            chunk_size=chunk_size,
+            chunk_overlap=chunk_overlap,
+            chunk_vector_enabled=chunk_vector_enabled,
+            bm25_index_enabled=bm25_index_enabled,
+            sag_enabled=sag_enabled,
+            event_vector_enabled=event_vector_enabled,
+            entity_vector_enabled=entity_vector_enabled,
+        )
+    data = pipeline.model_dump(exclude_none=True)
+    return PipelineOptions(**data) if data else PipelineOptions()
+
+
+def _validate_chunk_params(chunk_size: int, chunk_overlap: int) -> None:
+    if chunk_overlap >= chunk_size:
+        raise HTTPException(
+            status_code=400,
+            detail="chunk_overlap must be less than chunk_size",
+        )
 
 
 def _resolve_writable_dataset(
@@ -90,6 +132,14 @@ async def upload_document(
     file: UploadFile = File(...),
     parser_backend: str = Form(default=settings.DEFAULT_PARSER_BACKEND),
     chunk_strategy: str = Form(default=settings.DEFAULT_CHUNK_STRATEGY),
+    governance_enabled: Optional[bool] = Form(default=None),
+    chunk_size: Optional[int] = Form(default=None),
+    chunk_overlap: Optional[int] = Form(default=None),
+    chunk_vector_enabled: Optional[bool] = Form(default=None),
+    bm25_index_enabled: Optional[bool] = Form(default=None),
+    sag_enabled: Optional[bool] = Form(default=None),
+    event_vector_enabled: Optional[bool] = Form(default=None),
+    entity_vector_enabled: Optional[bool] = Form(default=None),
     dataset_id: Optional[UUID] = Form(default=None),
     tenant_id: UUID = Depends(get_tenant_id),
     account_id: str = Depends(get_current_account_id),
@@ -130,6 +180,21 @@ async def upload_document(
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
 
+    pipeline_options = _to_pipeline_options(
+        governance_enabled=governance_enabled,
+        chunk_size=chunk_size,
+        chunk_overlap=chunk_overlap,
+        chunk_vector_enabled=chunk_vector_enabled,
+        bm25_index_enabled=bm25_index_enabled,
+        sag_enabled=sag_enabled,
+        event_vector_enabled=event_vector_enabled,
+        entity_vector_enabled=entity_vector_enabled,
+    )
+    pipeline_effective = resolve_pipeline_options(pipeline_options)
+    if resolved_chunk_strategy not in chunker_factory.RAGFLOW_STRATEGIES:
+        _validate_chunk_params(pipeline_effective.chunk_size, pipeline_effective.chunk_overlap)
+    pipeline_metadata = build_pipeline_metadata(pipeline_options)
+
     # 权限检查
     dataset = _resolve_writable_dataset(db, tenant_id, account_id, dataset_id)
 
@@ -148,6 +213,15 @@ async def upload_document(
         raise HTTPException(status_code=500, detail=f"Failed to save file: {str(e)}")
 
     # 4. 创建数据库记录
+    doc_metadata = {
+        "parser_backend": resolved_parser_backend,
+        "parser_backend_requested": (parser_backend or "").lower(),
+        "chunk_strategy": resolved_chunk_strategy,
+        "chunk_strategy_requested": (chunk_strategy or "").lower(),
+    }
+    if pipeline_metadata:
+        doc_metadata["pipeline"] = pipeline_metadata
+
     db_document = DBDocument(
         id=file_id,
         tenant_id=tenant_id,
@@ -158,12 +232,7 @@ async def upload_document(
         file_path=str(file_path),
         status='pending',
         processing_progress=0,
-        doc_metadata={
-            "parser_backend": resolved_parser_backend,
-            "parser_backend_requested": (parser_backend or "").lower(),
-            "chunk_strategy": resolved_chunk_strategy,
-            "chunk_strategy_requested": (chunk_strategy or "").lower(),
-        }
+        doc_metadata=doc_metadata,
     )
 
     db.add(db_document)
@@ -540,6 +609,15 @@ async def create_document_with_manual_chunks(
 
     # 创建文档记录
     document_id = uuid.uuid4()
+    pipeline_options = _to_pipeline_options(pipeline=request.pipeline)
+    pipeline_effective = resolve_pipeline_options(pipeline_options)
+    index_options = build_indexing_options(pipeline_effective)
+    pipeline_metadata = build_pipeline_metadata(pipeline_options)
+
+    doc_metadata = dict(request.metadata or {})
+    if pipeline_metadata:
+        doc_metadata["pipeline"] = pipeline_metadata
+
     db_document = DBDocument(
         id=document_id,
         tenant_id=tenant_id,
@@ -552,7 +630,7 @@ async def create_document_with_manual_chunks(
         status='processing',
         processing_progress=0,
         current_stage='embedding',
-        doc_metadata=request.metadata or {}
+        doc_metadata=doc_metadata,
     )
 
     db.add(db_document)
@@ -586,6 +664,7 @@ async def create_document_with_manual_chunks(
             tenant_id=tenant_id,
             records=records,
             default_source=request.filename,
+            options=index_options,
         ).chunk_result
         if persist_result is None:
             raise RuntimeError("Chunk indexing returned no result")
@@ -598,6 +677,19 @@ async def create_document_with_manual_chunks(
         db_document.current_stage = 'completed'
         db.commit()
         db.refresh(db_document)
+
+        if pipeline_effective.sag_enabled:
+            try:
+                from app.kg.pipeline import extract_events
+
+                await extract_events(
+                    chunk_ids=persist_result.chunk_ids,
+                    tenant_id=tenant_id,
+                    chunks=persist_result.db_chunks,
+                    index_options=index_options,
+                )
+            except Exception as exc:
+                print(f"[WARN]  SAG extraction failed: {exc}")
 
         return db_document
 

@@ -123,6 +123,11 @@ from app.parsing.processors.document_processor import document_processor
 await document_processor.process_document(file_path, doc_id, tenant_id)
 ```
 
+**可选 pipeline 参数（每文档覆盖默认配置）：**
+- `governance_enabled` / `chunk_size` / `chunk_overlap`
+- `chunk_vector_enabled` / `bm25_index_enabled`
+- `sag_enabled` / `event_vector_enabled` / `entity_vector_enabled`
+
 **子模块：**
 - `quality/` - PDF 质量评估、OCR 验证
 - `parsers/` - 各类解析器实现
