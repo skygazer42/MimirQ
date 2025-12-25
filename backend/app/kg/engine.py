@@ -221,12 +221,18 @@ class SAGEngine:
         )
         return await self.extractor.extract(config)
 
-    async def search(self, query: str, tenant_id: Optional[UUID] = None) -> Dict:
+    async def search(
+        self,
+        query: str,
+        tenant_id: Optional[UUID] = None,
+        document_ids: Optional[List[UUID]] = None,
+    ) -> Dict:
         """Search knowledge graph."""
         from app.kg.search.config import SearchConfig
         config = SearchConfig(
             query=query,
-            tenant_id=tenant_id or settings.DEFAULT_TENANT_ID
+            tenant_id=tenant_id or settings.DEFAULT_TENANT_ID,
+            document_ids=document_ids,
         )
         return await self.searcher.search(config)
 

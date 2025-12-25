@@ -5,7 +5,8 @@ Provides data access for entities and events with both PostgreSQL storage
 and Milvus vector similarity search capabilities.
 """
 import math
-from typing import Iterable, List, Optional, Dict
+from typing import Any, Iterable, List, Optional, Dict
+from uuid import UUID
 
 from sqlalchemy.orm import Session
 from sqlalchemy import select, func
@@ -36,30 +37,35 @@ class EntityRepository:
         self.session = session
         self._milvus = MilvusAdapter(collection_name="sag_entities", vector_field="embedding")
 
+    def push_entities_to_milvus(self, entities: List[SagEntity]) -> List[str]:
+        items: List[Dict[str, Any]] = []
+        embeddings: List[List[float]] = []
+        for ent in entities:
+            if not ent.vector:
+                continue
+            embeddings.append(list(ent.vector))
+            items.append(
+                {
+                    "id": str(ent.id),
+                    "content": ent.name,
+                    "metadata": {
+                        "name": ent.name,
+                        "tenant_id": str(ent.tenant_id),
+                        "type": ent.type,
+                        "description": ent.description or "",
+                    },
+                }
+            )
+        if not items:
+            return []
+        return self._milvus.add_vectors(items, embeddings=embeddings)
+
     def upsert_entities(self, entities: List[SagEntity]) -> List[SagEntity]:
         for ent in entities:
             self.session.merge(ent)
         self.session.commit()
 
-        # push to Milvus if vectors exist
-        items = []
-        for ent in entities:
-            if ent.vector:
-                items.append(
-                    {
-                        "id": str(ent.id),
-                        "content": ent.name,
-                        "metadata": {
-                            "id": str(ent.id),
-                            "name": ent.name,
-                            "tenant_id": str(ent.tenant_id),
-                            "type": ent.type,
-                            "description": ent.description or "",
-                        },
-                    }
-                )
-        if items:
-            self._milvus.add_vectors(items)
+        self.push_entities_to_milvus(entities)
         return entities
 
     def search_similar(
@@ -103,6 +109,8 @@ class EntityRepository:
         normalized_name: str,
         type_: str,
         description: Optional[str] = None,
+        *,
+        commit: bool = True,
     ) -> SagEntity:
         existing = (
             self.session.execute(
@@ -127,8 +135,11 @@ class EntityRepository:
             extra_data=None,
         )
         self.session.add(ent)
-        self.session.commit()
-        self.session.refresh(ent)
+        if commit:
+            self.session.commit()
+            self.session.refresh(ent)
+        else:
+            self.session.flush()
         return ent
 
 
@@ -139,30 +150,36 @@ class EventRepository:
         self.session = session
         self._milvus = MilvusAdapter(collection_name="sag_events", vector_field="embedding")
 
+    def push_events_to_milvus(self, events: List[SagSourceEvent]) -> List[str]:
+        items: List[Dict[str, Any]] = []
+        embeddings: List[List[float]] = []
+        for ev in events:
+            if not ev.content_vector:
+                continue
+            embeddings.append(list(ev.content_vector))
+            items.append(
+                {
+                    "id": str(ev.id),
+                    "content": ev.content,
+                    "metadata": {
+                        "tenant_id": str(ev.tenant_id),
+                        "document_id": str(ev.document_id) if ev.document_id else "",
+                        "chunk_id": str(ev.chunk_id) if ev.chunk_id else "",
+                        "title": ev.title,
+                        "summary": ev.summary,
+                    },
+                }
+            )
+        if not items:
+            return []
+        return self._milvus.add_vectors(items, embeddings=embeddings)
+
     def upsert_events(self, events: List[SagSourceEvent]) -> List[SagSourceEvent]:
         for ev in events:
             self.session.merge(ev)
         self.session.commit()
 
-        items = []
-        for ev in events:
-            if ev.content_vector:
-                items.append(
-                    {
-                        "id": str(ev.id),
-                        "content": ev.content,
-                        "metadata": {
-                            "id": str(ev.id),
-                            "tenant_id": str(ev.tenant_id),
-                            "document_id": str(ev.document_id) if ev.document_id else "",
-                            "chunk_id": str(ev.chunk_id) if ev.chunk_id else "",
-                            "title": ev.title,
-                            "summary": ev.summary,
-                        },
-                    }
-                )
-        if items:
-            self._milvus.add_vectors(items)
+        self.push_events_to_milvus(events)
         return events
 
     def link_event_entities(
@@ -200,8 +217,13 @@ class EventRepository:
         query_vector: List[float],
         tenant_id,
         k: int = 20,
+        document_ids: Optional[List[UUID]] = None,
     ) -> List[dict]:
-        expr = f'tenant_id == "{str(tenant_id)}"'
+        expr_parts = [f'tenant_id == "{str(tenant_id)}"']
+        if document_ids:
+            doc_id_strs = [f'"{str(doc_id)}"' for doc_id in document_ids]
+            expr_parts.append(f"document_id in [{', '.join(doc_id_strs)}]")
+        expr = " and ".join(expr_parts)
         results = self._milvus.search(query_vector=query_vector, top_k=k, expr=expr)
         formatted = []
         for r in results:
@@ -224,6 +246,7 @@ class EventRepository:
         entity_ids: Iterable[str],
         tenant_id,
         limit: int = 50,
+        document_ids: Optional[List[UUID]] = None,
     ) -> List[str]:
         ids = list(entity_ids)
         if not ids:
@@ -234,6 +257,8 @@ class EventRepository:
             .where(SagEventEntity.entity_id.in_(ids))
             .where(SagSourceEvent.tenant_id == tenant_id)
         )
+        if document_ids:
+            stmt = stmt.where(SagSourceEvent.document_id.in_(document_ids))
         rows = self.session.execute(stmt).scalars().all()
         # simple frequency based ranking
         freq: dict[str, int] = {}
@@ -269,7 +294,11 @@ class EventRepository:
         return mapping
 
     def find_events_by_entities(
-        self, entity_ids: Iterable[str], tenant_id, limit: int = 50
+        self,
+        entity_ids: Iterable[str],
+        tenant_id,
+        limit: int = 50,
+        document_ids: Optional[List[UUID]] = None,
     ) -> List[SagSourceEvent]:
         ids = list(entity_ids)
         if not ids:
@@ -281,6 +310,8 @@ class EventRepository:
             .where(SagSourceEvent.tenant_id == tenant_id)
             .limit(limit)
         )
+        if document_ids:
+            stmt = stmt.where(SagSourceEvent.document_id.in_(document_ids))
         return self.session.execute(stmt).scalars().all()
 
 
