@@ -493,6 +493,29 @@ class RAGEngine:
                     "data": {"content": token}
                 }
 
+            # Step 4.5: 将引用图片以内嵌 Markdown 的形式追加到正文（仅非结构化输出）
+            if not structured_output and citations:
+                image_urls: List[str] = []
+                for c in citations:
+                    if not c.get("has_image"):
+                        continue
+                    url = c.get("img_url")
+                    if not isinstance(url, str) or not url.strip():
+                        continue
+                    if url in image_urls:
+                        continue
+                    image_urls.append(url)
+                    if len(image_urls) >= 3:
+                        break
+
+                if image_urls:
+                    images_md_parts = ["\n\n---\n\n### 相关图片\n"]
+                    for i, url in enumerate(image_urls, 1):
+                        images_md_parts.append(f"![引用图片 {i}]({url})")
+                    images_md = "\n\n".join(images_md_parts) + "\n"
+                    full_response += images_md
+                    yield {"type": "token", "data": {"content": images_md}}
+
             # Step 5: 发送完成信号
             generation_elapsed = time.time() - gen_start
             t_total = time.time() - t_all_start

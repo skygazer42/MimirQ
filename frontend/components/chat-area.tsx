@@ -302,6 +302,22 @@ function MessageItem({
                 ol: ({children}) => <ol className="list-decimal pl-4 mb-2 space-y-1 marker:text-slate-400">{children}</ol>,
                 li: ({children}) => <li className="mb-0.5">{children}</li>,
                 a: ({href, children}) => <a href={href} target="_blank" rel="noopener noreferrer" className="text-indigo-600 dark:text-indigo-400 font-medium hover:underline decoration-indigo-300 underline-offset-2">{children}</a>,
+                img: ({src, alt}) => {
+                  const raw = typeof src === 'string' ? src : ''
+                  const resolved = raw
+                    ? raw.startsWith('http')
+                      ? raw
+                      : `${API_BASE_URL}${raw}`
+                    : ''
+                  return (
+                    <img
+                      src={resolved}
+                      alt={alt || 'image'}
+                      loading="lazy"
+                      className="my-2 w-full max-h-96 object-contain rounded-lg border border-slate-200/70 dark:border-slate-700 bg-white dark:bg-slate-900"
+                    />
+                  )
+                },
                 blockquote: ({children}) => <blockquote className="border-l-4 border-indigo-200 dark:border-indigo-800 pl-4 italic text-slate-500 dark:text-slate-400 my-2 bg-slate-50 dark:bg-slate-800/50 py-2 rounded-r-lg">{children}</blockquote>,
                 code: ({node, className, children, ...props}) => {
                   const match = /language-(\w+)/.exec(className || '')

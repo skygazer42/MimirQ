@@ -232,6 +232,27 @@ def build_rag_graph() -> Any:
         )
         generation_elapsed = time.time() - start
 
+        # 将引用图片以内嵌 Markdown 的形式追加到正文（仅非结构化输出）
+        if not bool(state.get("structured_output")):
+            citations = state.get("citations") or []
+            image_urls: List[str] = []
+            for c in citations:
+                if not c.get("has_image"):
+                    continue
+                url = c.get("img_url")
+                if not isinstance(url, str) or not url.strip():
+                    continue
+                if url in image_urls:
+                    continue
+                image_urls.append(url)
+                if len(image_urls) >= 3:
+                    break
+            if image_urls:
+                parts = ["\n\n---\n\n### 相关图片\n"]
+                for i, url in enumerate(image_urls, 1):
+                    parts.append(f"![引用图片 {i}]({url})")
+                answer = (answer or "") + "\n\n".join(parts) + "\n"
+
         metrics = dict(state.get("metrics") or {})
         metrics["generation_elapsed_sec"] = round(generation_elapsed, 3)
         base = generation_elapsed
@@ -347,6 +368,7 @@ def run_rag_graph(
             "enable_reranker": enable_reranker,
             "reranker_top_n": reranker_top_n,
             "format_instructions": format_instructions,
+            "structured_output": bool(structured_output),
             "prompt_template_content": prompt_template_content,
             "prompt_template_id": selected_prompt_template_id,
             "prompt_template_key": selected_prompt_template_key,
