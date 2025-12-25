@@ -97,6 +97,9 @@ async def clean_preview(body: CleanPreviewRequest):
         remove_toc_lines=body.remove_toc_lines,
         remove_noise_lines=body.remove_noise_lines,
         unwrap_lines=body.unwrap_lines,
+        unwrap_max_line_length=body.unwrap_max_line_length,
+        noise_min_chars=body.noise_min_chars,
+        noise_ratio_threshold=body.noise_ratio_threshold,
     )
     return CleanPreviewResponse(
         markdown=result.markdown,

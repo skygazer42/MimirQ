@@ -10,6 +10,15 @@ from uuid import UUID
 class DocumentPipelineOptions(BaseModel):
     """Per-document pipeline options."""
     governance_enabled: Optional[bool] = None
+    governance_remove_toc_lines: Optional[bool] = None
+    governance_remove_noise_lines: Optional[bool] = None
+    governance_unwrap_lines: Optional[bool] = None
+    governance_remove_common_lines: Optional[bool] = None
+    governance_unwrap_max_line_length: Optional[int] = Field(default=None, ge=40, le=400, description="max line length")
+    governance_noise_min_chars: Optional[int] = Field(default=None, ge=1, le=20, description="noise min chars")
+    governance_noise_ratio_threshold: Optional[float] = Field(default=None, ge=0.0, le=1.0, description="noise ratio threshold")
+    governance_common_lines_min_docs: Optional[int] = Field(default=None, ge=2, le=50, description="common line min docs")
+    governance_common_lines_min_ratio: Optional[float] = Field(default=None, ge=0.0, le=1.0, description="common line ratio")
     chunk_size: Optional[int] = Field(default=None, ge=100, le=4000, description="切块大小")
     chunk_overlap: Optional[int] = Field(default=None, ge=0, le=1000, description="重叠大小")
     chunk_vector_enabled: Optional[bool] = None

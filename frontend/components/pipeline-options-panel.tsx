@@ -3,6 +3,7 @@
 import { useMemo } from 'react'
 import { CheckCircle2, Layers, Network, ShieldCheck, Sparkles } from 'lucide-react'
 import { Checkbox } from '@/components/ui/checkbox'
+import { Input } from '@/components/ui/input'
 import { cn } from '@/lib/utils'
 import { usePipelineOptions } from '@/contexts/pipeline-options-context'
 
@@ -14,6 +15,8 @@ type PipelineOptionsPanelProps = {
 export function PipelineOptionsPanel({ className, compact }: PipelineOptionsPanelProps) {
   const { enabled, options, setEnabled, updateOption } = usePipelineOptions()
   const sagEnabled = !!options.sag_enabled
+  const governanceEnabled = !!options.governance_enabled
+  const governanceDisabled = !enabled || !governanceEnabled
 
   const titleClasses = compact ? 'text-xs' : 'text-sm'
   const descClasses = compact ? 'text-[10px]' : 'text-xs'
@@ -71,8 +74,79 @@ export function PipelineOptionsPanel({ className, compact }: PipelineOptionsPane
     },
   ]), [])
 
+  const governanceToggles = [
+    {
+      key: 'governance_remove_toc_lines',
+      label: '清理目录行',
+      hint: '移除目录/索引类噪声',
+    },
+    {
+      key: 'governance_remove_noise_lines',
+      label: '过滤噪声行',
+      hint: '移除符号占比过高的短行',
+    },
+    {
+      key: 'governance_unwrap_lines',
+      label: '合并软换行',
+      hint: '拼接被换行切开的段落',
+    },
+    {
+      key: 'governance_remove_common_lines',
+      label: '去重页眉页脚',
+      hint: '剔除跨页重复行',
+    },
+  ] as const
+
+  const governanceNumbers = [
+    {
+      key: 'governance_unwrap_max_line_length',
+      label: '最大行长',
+      hint: '超过长度不再合并',
+      min: 40,
+      max: 400,
+      step: 10,
+    },
+    {
+      key: 'governance_noise_ratio_threshold',
+      label: '噪声阈值',
+      hint: '越低过滤越激进',
+      min: 0,
+      max: 1,
+      step: 0.05,
+    },
+    {
+      key: 'governance_noise_min_chars',
+      label: '最小字符数',
+      hint: '短行低于该值会剔除',
+      min: 1,
+      max: 20,
+      step: 1,
+    },
+    {
+      key: 'governance_common_lines_min_ratio',
+      label: '重复行比例',
+      hint: '跨页重复比例阈值',
+      min: 0,
+      max: 1,
+      step: 0.05,
+    },
+    {
+      key: 'governance_common_lines_min_docs',
+      label: '重复行文档数',
+      hint: '至少出现的页数',
+      min: 2,
+      max: 50,
+      step: 1,
+    },
+  ] as const
+
   const handleChecked = (key: keyof typeof options, value: boolean | 'indeterminate') => {
     updateOption(key, value === true)
+  }
+
+  const handleNumberChange = <K extends keyof typeof options>(key: K, value: number) => {
+    if (!Number.isFinite(value)) return
+    updateOption(key, value as (typeof options)[K])
   }
 
   return (
@@ -141,6 +215,72 @@ export function PipelineOptionsPanel({ className, compact }: PipelineOptionsPane
                   )
                 })}
               </div>
+
+                            {group.title === '治理' && (
+                <details className="mt-2" open={!compact}>
+                  <summary className={cn("cursor-pointer select-none text-gray-500", descClasses)}>
+                    高级治理
+                  </summary>
+                  <div className={cn("mt-3 space-y-3", compact && "space-y-2")}>
+                    <div className="grid gap-2">
+                      {governanceToggles.map((item) => {
+                        const checked = !!options[item.key as keyof typeof options]
+                        return (
+                          <label
+                            key={item.key}
+                            className={cn(
+                              "flex items-start gap-2 rounded-lg border border-transparent px-2 py-2 transition-colors",
+                              !governanceDisabled && "hover:border-gray-200 hover:bg-white",
+                              governanceDisabled && "opacity-60"
+                            )}
+                          >
+                            <Checkbox
+                              checked={checked}
+                              onCheckedChange={(value) => handleChecked(item.key as keyof typeof options, value)}
+                              disabled={governanceDisabled}
+                              className="mt-0.5"
+                            />
+                            <div>
+                              <div className={cn("font-medium text-gray-800", titleClasses)}>
+                                {item.label}
+                              </div>
+                              <p className={cn("text-gray-500", descClasses)}>
+                                {item.hint}
+                              </p>
+                            </div>
+                          </label>
+                        )
+                      })}
+                    </div>
+                    <div className={cn("grid gap-2", compact ? "gap-2" : "gap-3")}>
+                      {governanceNumbers.map((item) => {
+                        const value = options[item.key as keyof typeof options]
+                        return (
+                          <label key={item.key} className="flex flex-col gap-1">
+                            <div className="flex items-center justify-between text-xs text-gray-600">
+                              <span>{item.label}</span>
+                              <span className="text-[10px] text-gray-400">{item.hint}</span>
+                            </div>
+                            <Input
+                              type="number"
+                              value={typeof value === 'number' ? value : ''}
+                              min={item.min}
+                              max={item.max}
+                              step={item.step}
+                              disabled={governanceDisabled}
+                              onChange={(e) => handleNumberChange(item.key as keyof typeof options, e.currentTarget.valueAsNumber)}
+                              className={cn(
+                                "h-9 text-xs",
+                                compact && "h-8"
+                              )}
+                            />
+                          </label>
+                        )
+                      })}
+                    </div>
+                  </div>
+                </details>
+              )}
 
               {group.title === '知识图谱' && !sagEnabled && (
                 <div className={cn("mt-2 flex items-center gap-2 text-gray-400", descClasses)}>

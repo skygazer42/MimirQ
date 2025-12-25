@@ -86,6 +86,17 @@ class DocumentProcessorService:
             pipeline_effective = resolve_pipeline_options(pipeline_options)
             index_options = build_indexing_options(pipeline_effective)
             self._record_pipeline_effective(db, document_id, pipeline_effective)
+            governance_kwargs = {
+                "remove_toc_lines": pipeline_effective.governance_remove_toc_lines,
+                "remove_noise_lines": pipeline_effective.governance_remove_noise_lines,
+                "unwrap_lines": pipeline_effective.governance_unwrap_lines,
+                "remove_common_lines": pipeline_effective.governance_remove_common_lines,
+                "unwrap_max_line_length": pipeline_effective.governance_unwrap_max_line_length,
+                "noise_min_chars": pipeline_effective.governance_noise_min_chars,
+                "noise_ratio_threshold": pipeline_effective.governance_noise_ratio_threshold,
+                "common_lines_min_docs": pipeline_effective.governance_common_lines_min_docs,
+                "common_lines_min_ratio": pipeline_effective.governance_common_lines_min_ratio,
+            }
 
             use_ragflow = (chunk_strategy or "").lower() in {"ragflow_naive", "ragflow_book", "ragflow_laws", "ragflow_email"}
             governance_stats: Optional[GovernanceStats] = None
@@ -108,7 +119,10 @@ class DocumentProcessorService:
                     resolved_chunk_strategy
                 )
                 if pipeline_effective.governance_enabled:
-                    chunks, governance_stats = governance_processor.clean_documents(chunks)
+                    chunks, governance_stats = governance_processor.clean_documents(
+                        chunks,
+                        **governance_kwargs,
+                    )
 
             else:
                 # Step 2: 解析文档
@@ -161,7 +175,10 @@ class DocumentProcessorService:
                     documents = processed_docs
 
                 if pipeline_effective.governance_enabled:
-                    documents, governance_stats = governance_processor.clean_documents(documents)
+                    documents, governance_stats = governance_processor.clean_documents(
+                        documents,
+                        **governance_kwargs,
+                    )
 
                 resolved_chunk_strategy = chunker_factory.resolve_strategy(chunk_strategy)
                 self._record_processing_metadata(
@@ -401,6 +418,15 @@ class DocumentProcessorService:
         metadata = dict(db_doc.doc_metadata or {})
         metadata["pipeline_effective"] = {
             "governance_enabled": bool(effective.governance_enabled),
+            "governance_remove_toc_lines": bool(effective.governance_remove_toc_lines),
+            "governance_remove_noise_lines": bool(effective.governance_remove_noise_lines),
+            "governance_unwrap_lines": bool(effective.governance_unwrap_lines),
+            "governance_remove_common_lines": bool(effective.governance_remove_common_lines),
+            "governance_unwrap_max_line_length": int(effective.governance_unwrap_max_line_length),
+            "governance_noise_min_chars": int(effective.governance_noise_min_chars),
+            "governance_noise_ratio_threshold": float(effective.governance_noise_ratio_threshold),
+            "governance_common_lines_min_docs": int(effective.governance_common_lines_min_docs),
+            "governance_common_lines_min_ratio": float(effective.governance_common_lines_min_ratio),
             "chunk_size": int(effective.chunk_size),
             "chunk_overlap": int(effective.chunk_overlap),
             "chunk_vector_enabled": bool(effective.chunk_vector_enabled),

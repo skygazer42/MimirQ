@@ -30,12 +30,30 @@ class GovernanceProcessor:
         documents: Sequence[Document],
         *,
         rules: Optional[Iterable[RegexRule]] = None,
+        remove_toc_lines: bool = True,
+        remove_noise_lines: bool = True,
+        unwrap_lines: bool = True,
+        remove_common_lines: bool = True,
+        unwrap_max_line_length: int = 120,
+        noise_min_chars: int = 2,
+        noise_ratio_threshold: float = 0.2,
+        common_lines_min_docs: int = 3,
+        common_lines_min_ratio: float = 0.35,
     ) -> tuple[List[Document], GovernanceStats]:
         if not documents:
             return [], GovernanceStats(documents=0, changed=0, applied_rules=0)
 
         active_rules = list(rules) if rules is not None else self._rules
-        common_lines = build_common_line_signatures([doc.page_content or "" for doc in documents])
+        common_lines = (
+            build_common_line_signatures(
+                [doc.page_content or "" for doc in documents],
+                min_docs=common_lines_min_docs,
+                min_ratio=common_lines_min_ratio,
+                max_line_length=unwrap_max_line_length,
+            )
+            if remove_common_lines
+            else set()
+        )
         cleaned: List[Document] = []
         changed = 0
         applied_total = 0
@@ -45,6 +63,13 @@ class GovernanceProcessor:
                 doc.page_content or "",
                 rules=active_rules,
                 common_lines=common_lines,
+                remove_toc_lines=remove_toc_lines,
+                remove_noise_lines=remove_noise_lines,
+                unwrap_lines=unwrap_lines,
+                remove_common_lines=remove_common_lines,
+                unwrap_max_line_length=unwrap_max_line_length,
+                noise_min_chars=noise_min_chars,
+                noise_ratio_threshold=noise_ratio_threshold,
             )
             applied_total += int(result.applied_rules or 0)
             if result.changed:

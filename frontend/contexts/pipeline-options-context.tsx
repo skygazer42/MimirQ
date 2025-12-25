@@ -7,6 +7,15 @@ const STORAGE_KEY = 'mimirq_pipeline_options'
 
 const DEFAULT_OPTIONS: DocumentPipelineOptions = {
   governance_enabled: false,
+  governance_remove_toc_lines: true,
+  governance_remove_noise_lines: true,
+  governance_unwrap_lines: true,
+  governance_remove_common_lines: true,
+  governance_unwrap_max_line_length: 120,
+  governance_noise_min_chars: 2,
+  governance_noise_ratio_threshold: 0.2,
+  governance_common_lines_min_docs: 3,
+  governance_common_lines_min_ratio: 0.35,
   chunk_size: 1000,
   chunk_overlap: 200,
   chunk_vector_enabled: true,
@@ -36,10 +45,19 @@ const toBool = (value: unknown): boolean | undefined => {
   return undefined
 }
 
-const toNumber = (value: unknown): number | undefined => {
+const toInt = (value: unknown): number | undefined => {
   if (typeof value === 'number' && Number.isFinite(value)) return value
   if (typeof value === 'string') {
     const parsed = Number.parseInt(value, 10)
+    return Number.isFinite(parsed) ? parsed : undefined
+  }
+  return undefined
+}
+
+const toFloat = (value: unknown): number | undefined => {
+  if (typeof value === 'number' && Number.isFinite(value)) return value
+  if (typeof value === 'string') {
+    const parsed = Number.parseFloat(value)
     return Number.isFinite(parsed) ? parsed : undefined
   }
   return undefined
@@ -49,8 +67,17 @@ const normalizeOptions = (raw: any): DocumentPipelineOptions => {
   if (!raw || typeof raw !== 'object') return { ...DEFAULT_OPTIONS }
   return {
     governance_enabled: toBool(raw.governance_enabled) ?? DEFAULT_OPTIONS.governance_enabled,
-    chunk_size: toNumber(raw.chunk_size) ?? DEFAULT_OPTIONS.chunk_size,
-    chunk_overlap: toNumber(raw.chunk_overlap) ?? DEFAULT_OPTIONS.chunk_overlap,
+    governance_remove_toc_lines: toBool(raw.governance_remove_toc_lines) ?? DEFAULT_OPTIONS.governance_remove_toc_lines,
+    governance_remove_noise_lines: toBool(raw.governance_remove_noise_lines) ?? DEFAULT_OPTIONS.governance_remove_noise_lines,
+    governance_unwrap_lines: toBool(raw.governance_unwrap_lines) ?? DEFAULT_OPTIONS.governance_unwrap_lines,
+    governance_remove_common_lines: toBool(raw.governance_remove_common_lines) ?? DEFAULT_OPTIONS.governance_remove_common_lines,
+    governance_unwrap_max_line_length: toInt(raw.governance_unwrap_max_line_length) ?? DEFAULT_OPTIONS.governance_unwrap_max_line_length,
+    governance_noise_min_chars: toInt(raw.governance_noise_min_chars) ?? DEFAULT_OPTIONS.governance_noise_min_chars,
+    governance_noise_ratio_threshold: toFloat(raw.governance_noise_ratio_threshold) ?? DEFAULT_OPTIONS.governance_noise_ratio_threshold,
+    governance_common_lines_min_docs: toInt(raw.governance_common_lines_min_docs) ?? DEFAULT_OPTIONS.governance_common_lines_min_docs,
+    governance_common_lines_min_ratio: toFloat(raw.governance_common_lines_min_ratio) ?? DEFAULT_OPTIONS.governance_common_lines_min_ratio,
+    chunk_size: toInt(raw.chunk_size) ?? DEFAULT_OPTIONS.chunk_size,
+    chunk_overlap: toInt(raw.chunk_overlap) ?? DEFAULT_OPTIONS.chunk_overlap,
     chunk_vector_enabled: toBool(raw.chunk_vector_enabled) ?? DEFAULT_OPTIONS.chunk_vector_enabled,
     bm25_index_enabled: toBool(raw.bm25_index_enabled) ?? DEFAULT_OPTIONS.bm25_index_enabled,
     sag_enabled: toBool(raw.sag_enabled) ?? DEFAULT_OPTIONS.sag_enabled,

@@ -70,6 +70,9 @@ class CleanPreviewRequest(BaseModel):
     remove_toc_lines: bool = True
     remove_noise_lines: bool = True
     unwrap_lines: bool = True
+    unwrap_max_line_length: int = Field(default=120, ge=40, le=400)
+    noise_min_chars: int = Field(default=2, ge=1, le=20)
+    noise_ratio_threshold: float = Field(default=0.2, ge=0.0, le=1.0)
 
 
 class CleanPreviewResponse(BaseModel):
