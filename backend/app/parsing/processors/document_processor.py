@@ -15,7 +15,7 @@ from app.core.config import settings
 from app.models.document import Document as DBDocument, DocumentChunk
 from app.parsing.factory import parser_factory
 from app.parsing.chunking.factory import chunker_factory
-from app.storage.vector.router import get_vector_store
+from app.storage.vector.factory import get_vector_store
 from app.storage.search.hybrid_retriever import hybrid_retriever
 from app.storage.object.minio import minio_service
 
@@ -236,7 +236,7 @@ class DocumentProcessorService:
             # Step 7: 如启用则运行 SAG 抽取（事件/实体）
             if settings.SAG_ENABLED:
                 try:
-                    from app.services.sag_pipeline import extract_events
+                    from app.kg.pipeline import extract_events
 
                     print("[*] Running SAG extraction on document chunks...")
                     events = await extract_events(chunk_ids, tenant_id=tenant_id)
@@ -597,29 +597,9 @@ class DocumentProcessorService:
         """
         from langchain_core.documents import Document
 
-        # 选择 ragflow chunk 函数
-        strat = strategy.lower()
-        if strat == "ragflow_naive":
-            from app.rag.ragflow.chunkers.naive import chunk as rf_chunk
-        elif strat == "ragflow_book":
-            from app.rag.ragflow.chunkers.book import chunk as rf_chunk
-        elif strat == "ragflow_laws":
-            from app.rag.ragflow.chunkers.laws import chunk as rf_chunk
-        elif strat == "ragflow_email":
-            from app.rag.ragflow.chunkers.email import chunk as rf_chunk
-        else:
-            raise ValueError(f"Unsupported ragflow strategy: {strategy}")
+        from app.parsing.chunking.ragflow_legacy import chunk_file
 
-        def callback(prog=None, msg=""):
-            # 简单日志回调
-            if msg:
-                print(f"[ragflow] {msg} ({prog})")
-
-        # ragflow chunk 返回 list[dict]（tokenize_chunks 输出格式）
-        chunks_dict = rf_chunk(
-            str(file_path),
-            callback=callback
-        )
+        chunks_dict = chunk_file(file_path, strategy=strategy)  # type: ignore[arg-type]
 
         documents = []
         for item in chunks_dict:

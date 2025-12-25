@@ -26,12 +26,10 @@ pymilvus==2.3.5
 # Object Storage
 minio==7.2.10
 
-# Embeddings (API mode - no heavy dependencies)
-# 如需使用本地 Embedding 模型，请安装：pip install -r requirements-local.txt
 
 # Document Parsing
 PyMuPDF==1.23.8
-unstructured==0.12.0
+unstructured==0.16.24
 python-magic==0.4.27
 markdown==3.5.2
 markitdown==0.1.4
@@ -54,8 +52,6 @@ pyclipper==1.3.0.post5
 shapely==2.0.3
 tqdm==4.66.4
 beartype==0.18.5
-# llama-index-core==0.14.9  # 暂时禁用,编译datrie失败
-# datrie==0.8.2             # 编译失败,C扩展与Python 3.11不兼容
 hanziconv==0.3.2
 nltk>=3.9
 

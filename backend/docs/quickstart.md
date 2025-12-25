@@ -80,7 +80,7 @@ AI 回答: 根据员工手册第3章...
 
 ### 修改 RAG 参数
 
-编辑 `backend/app/config.py`:
+编辑 `backend/app/core/config.py`:
 
 ```python
 # 文本切片大小
@@ -95,7 +95,7 @@ SIMILARITY_THRESHOLD: float = 0.7  # 提高可过滤低质量结果
 
 ### 切换 LLM 模型
 
-编辑 `backend/app/config.py`:
+编辑 `backend/app/core/config.py`:
 
 ```python
 # 使用 GPT-3.5 (更便宜)
@@ -107,7 +107,7 @@ OPENAI_MODEL: str = "gpt-4-turbo-preview"
 
 ### 使用 Claude 替代 OpenAI
 
-编辑 `backend/app/services/rag_engine.py`:
+编辑 `backend/app/rag/engine.py`:
 
 ```python
 from langchain_anthropic import ChatAnthropic
@@ -164,7 +164,7 @@ docker-compose restart
 
 **检查 CORS 配置**:
 
-编辑 `backend/app/config.py`:
+编辑 `backend/app/core/config.py`:
 ```python
 CORS_ORIGINS: str = "http://localhost:3000,http://localhost:3001"
 ```

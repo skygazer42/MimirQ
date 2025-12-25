@@ -434,7 +434,7 @@ class RAGEngine:
             sag_context = ""
             if settings.SAG_ENABLED and settings.SAG_CHAT_ENABLED and tenant_id and document_ids:
                 try:
-                    from app.services.sag_pipeline import sag_search
+                    from app.kg.pipeline import sag_search
 
                     sag_result = await sag_search(
                         query=question,

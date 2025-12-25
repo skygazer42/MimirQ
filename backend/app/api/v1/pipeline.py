@@ -16,11 +16,17 @@ from app.schemas.pipeline import (
     ParsePreviewResponse,
     ChunkPreviewRequest,
     ChunkPreviewResponse,
+    CleanPreviewRequest,
+    CleanPreviewResponse,
+    CleanRulesResponse,
+    RegexRuleModel,
 )
 from app.parsing.processors.parser_service import document_parser_service
 from app.parsing.chunking.hierarchical import hierarchical_chunk_markdown
 from app.parsing.utils.zip_processor import zip_image_processor
 from app.dependencies.auth import get_current_account_id
+from app.governance.cleaning import clean_markdown, RegexRule
+from app.governance.rules import DEFAULT_MARKDOWN_RULES
 
 router = APIRouter()
 
@@ -70,6 +76,41 @@ async def chunk_preview(body: ChunkPreviewRequest):
     """
     chunks = hierarchical_chunk_markdown(body.markdown)
     return ChunkPreviewResponse(**chunks)
+
+
+@router.post("/clean-preview", response_model=CleanPreviewResponse)
+async def clean_preview(body: CleanPreviewRequest):
+    """
+    对 Markdown 做“数据治理”清洗预览（不入库），用于人工调整前/后对比。
+    """
+    if body.rules:
+        rules = [RegexRule(pattern=r.pattern, repl=r.repl, flags=r.flags) for r in body.rules]
+    else:
+        rules = DEFAULT_MARKDOWN_RULES
+    result = clean_markdown(
+        body.markdown,
+        rules=rules,
+        normalize_line_endings=body.normalize_line_endings,
+        trim_trailing_spaces=body.trim_trailing_spaces,
+        collapse_blank_lines=body.collapse_blank_lines,
+        remove_control_chars=body.remove_control_chars,
+    )
+    return CleanPreviewResponse(
+        markdown=result.markdown,
+        applied_rules=result.applied_rules,
+        changed=result.changed,
+    )
+
+
+@router.get("/clean-rules", response_model=CleanRulesResponse)
+async def list_clean_rules():
+    """
+    返回默认“数据治理”规则列表，供前端做默认勾选/编辑。
+    """
+    return CleanRulesResponse(
+        rules=[RegexRuleModel(pattern=r.pattern, repl=r.repl, flags=r.flags) for r in DEFAULT_MARKDOWN_RULES]
+    )
+
 
 
 @router.post("/upload-zip-with-images")

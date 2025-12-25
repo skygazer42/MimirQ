@@ -10,7 +10,7 @@
 """
 
 # 向量存储
-from app.storage.vector.router import get_vector_store
+from app.storage.vector.factory import get_vector_store
 from app.storage.vector.milvus import milvus_store
 
 # 对象存储
@@ -28,6 +28,7 @@ __all__ = [
     # 检索
     'hybrid_retriever',
 ]
+
 
 
 
