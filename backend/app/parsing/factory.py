@@ -27,7 +27,7 @@ class ParserFactory:
         self._markitdown_parser: Optional[MarkItDownParser] = None
 
         print("[PDF] PyMuPDF parser ready for basic PDF parsing")
-        if settings.MINERU_ENABLED and settings.MINERU_API_TOKEN:
+        if settings.MINERU_ENABLED and (settings.MINERU_API_TOKEN or settings.MINERU_LOCAL_SERVER_URL):
             print("[MinerU] MinerU parser available for PDF parsing (requires selection)")
         if settings.DEEPDOC_ENABLED:
             print("[DeepDoc] DeepDoc parser available for PDF parsing (requires selection)")
@@ -71,7 +71,7 @@ class ParserFactory:
                 return "deepdoc"
             if settings.MARKITDOWN_ENABLED:
                 return "markitdown"
-            if settings.MINERU_ENABLED and settings.MINERU_API_TOKEN:
+            if settings.MINERU_ENABLED and (settings.MINERU_API_TOKEN or settings.MINERU_LOCAL_SERVER_URL):
                 return "mineru"
             return "basic"
 
@@ -79,8 +79,12 @@ class ParserFactory:
             return "basic"
 
         if normalized == "mineru":
-            if not (settings.MINERU_ENABLED and settings.MINERU_API_TOKEN):
-                raise ValueError("MinerU parser is not enabled. Please configure MINERU_API_TOKEN.")
+            if not (settings.MINERU_ENABLED and (settings.MINERU_API_TOKEN or settings.MINERU_LOCAL_SERVER_URL)):
+                raise ValueError(
+                    "MinerU parser is not enabled. "
+                    "Please set MINERU_ENABLED=True and configure MINERU_API_TOKEN (online) "
+                    "or MINERU_LOCAL_SERVER_URL (local ZIP mode)."
+                )
             return "mineru"
 
         if normalized == "deepdoc":
@@ -95,7 +99,13 @@ class ParserFactory:
 
         raise ValueError(f"Unsupported parser backend '{normalized}'")
 
-    def parse(self, file_path: Path, parser_backend: Optional[str] = None) -> Tuple[List[Document], str]:
+    def parse(
+        self,
+        file_path: Path,
+        parser_backend: Optional[str] = None,
+        dataset_id: Optional[str] = None,
+        document_id: Optional[str] = None,
+    ) -> Tuple[List[Document], str]:
         """
         根据文件类型自动选择解析器并返回 Document 列表以及实际使用的解析器名称
         """
@@ -113,7 +123,11 @@ class ParserFactory:
         else:
             raise ValueError(f"Unsupported file type: {file_ext}")
 
-        documents = parser.parse(file_path)
+        # Some parsers (e.g., MinerU local ZIP mode) need dataset/document ids.
+        if backend == "mineru" and isinstance(parser, MinerUParser):
+            documents = parser.parse(file_path, dataset_id=dataset_id, document_id=document_id)
+        else:
+            documents = parser.parse(file_path)
         return documents, backend
 
     def _get_pdf_parser(self, backend: str):

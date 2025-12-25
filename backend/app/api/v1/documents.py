@@ -346,17 +346,28 @@ async def delete_document(
     if settings.MINIO_ENABLED:
         try:
             from app.models.document import DocumentChunk
-            chunks = db.query(DocumentChunk).filter(
-                DocumentChunk.document_id == document_id
-            ).all()
-            
+            img_ids: set[str] = set()
+
+            # 优先使用文档级聚合列表（避免遗漏 ZIP/内嵌图片等“非 chunk_index”资源）
+            doc_meta = document.doc_metadata or {}
+            doc_img_ids = doc_meta.get("img_ids")
+            if isinstance(doc_img_ids, list):
+                for v in doc_img_ids:
+                    if isinstance(v, str) and v.strip():
+                        img_ids.add(v)
+
+            # 兼容：逐 chunk 删除（老数据可能没有 documents.metadata.img_ids）
+            chunks = db.query(DocumentChunk).filter(DocumentChunk.document_id == document_id).all()
             for chunk in chunks:
                 img_id = chunk.doc_metadata.get("img_id") if chunk.doc_metadata else None
-                if img_id:
-                    try:
-                        minio_service.delete_image(img_id, extension="jpg")
-                    except Exception as e:
-                        print(f"[WARN] 删除 MinIO 图片失败 {img_id}: {e}")
+                if isinstance(img_id, str) and img_id.strip():
+                    img_ids.add(img_id)
+
+            for img_id in sorted(img_ids):
+                try:
+                    minio_service.delete_image(img_id, extension="jpg")
+                except Exception as e:
+                    print(f"[WARN] 删除 MinIO 图片失败 {img_id}: {e}")
         except Exception as exc:
             print(f"[WARN] MinIO 图片删除过程失败: {exc}")
 

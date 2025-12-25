@@ -9,6 +9,7 @@ from uuid import UUID
 import asyncio
 import base64
 import hashlib
+import re
 
 from app.core.config import settings
 from app.models.document import Document as DBDocument, DocumentChunk
@@ -68,6 +69,13 @@ class DocumentProcessorService:
                 db, document_id, "processing", 0, "parsing"
             )
 
+            # 提前获取 dataset_id（MinerU 本地 ZIP / MinIO 路径依赖）
+            db_document = db.query(DBDocument).filter(DBDocument.id == document_id).first()
+            dataset_id = str(db_document.dataset_id) if db_document and db_document.dataset_id else str(tenant_id)
+
+            # 记录本次处理过程中关联到该文档的所有 img_id（用于删除清理等）
+            document_img_ids: set[str] = set()
+
             use_ragflow = (chunk_strategy or "").lower() in {"ragflow_naive", "ragflow_book", "ragflow_laws", "ragflow_email"}
 
             if use_ragflow:
@@ -85,8 +93,51 @@ class DocumentProcessorService:
                 # Step 2: 解析文档
                 print(f"Parsing document: {file_path}")
                 documents, resolved_backend = parser_factory.parse(
-                    file_path, parser_backend=parser_backend
+                    file_path,
+                    parser_backend=parser_backend,
+                    dataset_id=dataset_id,
+                    document_id=str(document_id),
                 )
+
+                # 收集解析器已上传的图片（例如 MinerU 本地 ZIP 模式会返回 images 列表）
+                for doc in documents:
+                    images = (doc.metadata or {}).get("images")
+                    if isinstance(images, list):
+                        for item in images:
+                            img_id = item.get("img_id") if isinstance(item, dict) else None
+                            if isinstance(img_id, str) and img_id.strip():
+                                document_img_ids.add(img_id)
+
+                # 对解析结果中的内嵌 data URI 图片进行 MinIO 上传并替换引用
+                #（避免把 base64 直接存入向量库/数据库）
+                if settings.MINIO_ENABLED:
+                    inline_cache: dict[str, str] = {}
+                    asset_idx = 0
+                    processed_docs: List[Document] = []
+                    for doc in documents:
+                        content = doc.page_content or ""
+                        new_content, new_img_ids, asset_idx = self._upload_inline_images_to_minio(
+                            markdown_text=content,
+                            tenant_id=str(tenant_id),
+                            dataset_id=dataset_id,
+                            document_id=str(document_id),
+                            cache=inline_cache,
+                            start_index=asset_idx,
+                        )
+                        for iid in new_img_ids:
+                            document_img_ids.add(iid)
+                        if new_content != content:
+                            processed_docs.append(
+                                Document(
+                                    page_content=new_content,
+                                    metadata=dict(doc.metadata or {}),
+                                    id=doc.id,
+                                )
+                            )
+                        else:
+                            processed_docs.append(doc)
+                    documents = processed_docs
+
                 resolved_chunk_strategy = chunker_factory.resolve_strategy(chunk_strategy)
                 self._record_processing_metadata(
                     db,
@@ -108,12 +159,6 @@ class DocumentProcessorService:
                 )
                 chunks = chunker.split_documents(documents)
 
-            # 查询文档以获取 dataset_id
-            db_document = db.query(DBDocument).filter(
-                DBDocument.id == document_id
-            ).first()
-            dataset_id = str(db_document.dataset_id) if db_document and db_document.dataset_id else str(tenant_id)
-
             # 为每个 chunk 添加元数据并处理图片上传到 MinIO
             for idx, chunk in enumerate(chunks):
                 chunk.metadata['document_id'] = str(document_id)
@@ -129,8 +174,15 @@ class DocumentProcessorService:
                     document_id=str(document_id),
                     chunk_index=idx,
                 )
+                if not img_id:
+                    img_id = self._extract_img_id_from_content(chunk.page_content)
+
                 if img_id:
                     chunk.metadata['img_id'] = img_id
+                    document_img_ids.add(img_id)
+
+            # 将所有图片 img_id 记录到 document.metadata（用于删除清理等）
+            self._record_document_image_ids(db, document_id=document_id, img_ids=document_img_ids)
 
             await self._update_status(
                 db, document_id, "processing", 66, "embedding"
@@ -364,6 +416,148 @@ class DocumentProcessorService:
         db.commit()
         db.refresh(db_doc)
         # 不抛出异常，避免影响文档处理流程
+
+    def _record_document_image_ids(self, db: Session, document_id: UUID, img_ids: set[str]):
+        """
+        将文档关联的所有 img_id 记录到 documents.metadata 中，便于后续删除清理。
+
+        说明：
+        - 这里存的是“文档级”聚合列表（去重），不影响每个 chunk 的 img_id。
+        - 仅当 MinIO 启用时才写入，避免误导。
+        """
+        if not settings.MINIO_ENABLED:
+            return
+        if not img_ids:
+            return
+
+        db_doc = db.query(DBDocument).filter(DBDocument.id == document_id).first()
+        if not db_doc:
+            return
+
+        metadata = dict(db_doc.doc_metadata or {})
+        existing = metadata.get("img_ids")
+        merged: set[str] = set()
+        if isinstance(existing, list):
+            for v in existing:
+                if isinstance(v, str) and v.strip():
+                    merged.add(v)
+
+        merged |= {v for v in img_ids if isinstance(v, str) and v.strip()}
+        if not merged:
+            return
+
+        metadata["img_ids"] = sorted(merged)
+        metadata["image_count"] = len(merged)
+        db_doc.doc_metadata = metadata
+        db.commit()
+        db.refresh(db_doc)
+
+    def _extract_img_id_from_content(self, content: str) -> Optional[str]:
+        """
+        从 chunk 文本内容中提取第一个 image-url/{img_id}，用于将“已替换成 URL 的图片”
+        反向绑定到 chunk metadata（例如 ZIP 模式/MarkItDown data URI 替换后的文本）。
+        """
+        if not isinstance(content, str) or not content:
+            return None
+
+        # 支持：
+        # - ![](/api/v1/documents/image-url/{img_id})
+        # - <img src="/api/v1/documents/image-url/{img_id}">
+        # - http://host/api/v1/documents/image-url/{img_id}
+        pattern = re.compile(r"(?:https?://[^\s)\"']+)?/api/v1/documents/image-url/([^\s)\"']+)")
+        m = pattern.search(content)
+        if not m:
+            return None
+        img_id = m.group(1)
+        return img_id.strip() or None
+
+    def _upload_inline_images_to_minio(
+        self,
+        markdown_text: str,
+        tenant_id: str,
+        dataset_id: str,
+        document_id: str,
+        cache: dict[str, str],
+        start_index: int = 0,
+    ) -> tuple[str, List[str], int]:
+        """
+        将 Markdown/HTML 中的 data URI 图片上传到 MinIO，并把引用替换为 /image-url/{img_id}。
+
+        返回：
+        - 处理后的 markdown_text
+        - 本次新增上传的 img_id 列表
+        - 更新后的 asset 序号（用于生成稳定 chunk_key：asset{n}）
+        """
+        if not settings.MINIO_ENABLED:
+            return markdown_text, [], start_index
+        if not isinstance(markdown_text, str) or "data:image" not in markdown_text:
+            return markdown_text, [], start_index
+
+        # 仅处理 markdown 图片与 html img 的 data URI，避免误伤其他 base64 字符串。
+        md_pat = re.compile(r"!\[[^\]]*\]\((data:image\/[^)]+)\)", flags=re.IGNORECASE)
+        html_pat = re.compile(r"<img[^>]+src=[\"'](data:image\/[^\"']+)[\"']", flags=re.IGNORECASE)
+
+        found: List[str] = []
+        seen: set[str] = set()
+        for pat in (md_pat, html_pat):
+            for m in pat.finditer(markdown_text):
+                data_uri = m.group(1)
+                if not isinstance(data_uri, str) or not data_uri:
+                    continue
+                if data_uri in seen:
+                    continue
+                seen.add(data_uri)
+                found.append(data_uri)
+
+        if not found:
+            return markdown_text, [], start_index
+
+        new_ids: List[str] = []
+        idx = int(start_index or 0)
+
+        for data_uri in found:
+            try:
+                header, b64_part = data_uri.split(",", 1)
+                if "base64" not in header:
+                    continue
+                b64_part = re.sub(r"\s+", "", b64_part)
+                binary = base64.b64decode(b64_part)
+
+                # 统一转 JPEG，保持与 MinIOService.get_image_url 默认扩展一致
+                from io import BytesIO
+                from PIL import Image as PILImage
+
+                img = PILImage.open(BytesIO(binary))
+                if img.mode in ("RGBA", "P"):
+                    img = img.convert("RGB")
+                out = BytesIO()
+                img.save(out, format="JPEG", quality=85, optimize=True)
+                image_bytes = out.getvalue()
+
+                digest = hashlib.sha256(image_bytes).hexdigest()
+                img_id = cache.get(digest)
+                if not img_id:
+                    chunk_key = f"asset{idx}"
+                    idx += 1
+                    img_id = minio_service.upload_image(
+                        image_data=image_bytes,
+                        tenant_id=tenant_id,
+                        dataset_id=dataset_id,
+                        document_id=document_id,
+                        chunk_key=chunk_key,
+                        extension="jpg",
+                    )
+                    cache[digest] = img_id
+                    new_ids.append(img_id)
+
+                url = f"/api/v1/documents/image-url/{img_id}"
+                markdown_text = markdown_text.replace(data_uri, url)
+
+            except Exception as e:
+                print(f"[WARN] 内嵌图片上传失败（跳过）: {e}")
+                continue
+
+        return markdown_text, new_ids, idx
 
     def _ragflow_chunk_file(self, file_path: Path, strategy: str):
         """

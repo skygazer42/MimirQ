@@ -93,7 +93,7 @@ class DocumentParserService:
 
         # 明确的扫描件 → 必须走 OCR/结构化
         if is_scanned or score <= 0.5:
-            if settings.MINERU_ENABLED and settings.MINERU_API_TOKEN:
+            if settings.MINERU_ENABLED and (settings.MINERU_API_TOKEN or settings.MINERU_LOCAL_SERVER_URL):
                 return "mineru"
             if settings.DEEPDOC_ENABLED:
                 return "deepdoc"
@@ -105,7 +105,7 @@ class DocumentParserService:
         # 中等质量（0.5 < score < 0.8）→ 优先结构化
         if settings.DEEPDOC_ENABLED:
             return "deepdoc"
-        if settings.MINERU_ENABLED and settings.MINERU_API_TOKEN:
+        if settings.MINERU_ENABLED and (settings.MINERU_API_TOKEN or settings.MINERU_LOCAL_SERVER_URL):
             return "mineru"
         if settings.MARKITDOWN_ENABLED:
             return "markitdown"
@@ -158,4 +158,3 @@ class DocumentParserService:
 
 
 document_parser_service = DocumentParserService()
-
