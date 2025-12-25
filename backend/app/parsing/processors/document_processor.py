@@ -15,9 +15,8 @@ from app.core.config import settings
 from app.models.document import Document as DBDocument, DocumentChunk
 from app.parsing.factory import parser_factory
 from app.parsing.chunking.factory import chunker_factory
-from app.storage.search.hybrid_retriever import hybrid_retriever
 from app.storage.object.minio import minio_service
-from app.services.chunk_indexing import ChunkInput, index_and_persist_chunks
+from app.services.indexer import ChunkInput, IndexKind, Indexer
 
 
 class DocumentProcessorService:
@@ -204,8 +203,8 @@ class DocumentProcessorService:
                     )
                 )
 
-            persist_result = index_and_persist_chunks(
-                db,
+            persist_result = Indexer(db).index(
+                IndexKind.CHUNK,
                 document_id=document_id,
                 tenant_id=tenant_id,
                 chunks=chunk_inputs,
@@ -305,7 +304,7 @@ class DocumentProcessorService:
 
             if all_chunks:
                 print(f"🔎 Rebuilding BM25 index with {len(all_chunks)} chunks for tenant {tenant_id}...")
-                hybrid_retriever.build_bm25_index(all_chunks, tenant_id=tenant_id)
+                Indexer(db).rebuild_chunk_indexes(tenant_id=tenant_id)
             else:
                 print("[WARN]  No chunks found for BM25 index")
 
@@ -313,19 +312,15 @@ class DocumentProcessorService:
             print(f"[WARN]  Failed to rebuild BM25 index: {str(e)}")
 
     async def _rebuild_bm25_index(self, db: Session):
-        """重新构建 BM25 索引（包含所有已完成的文档片段）"""
+        """Rebuild BM25 indexes for all tenants."""
         try:
-            # 查询所有已完成文档的片段
-            all_chunks = db.query(DocumentChunk).join(DBDocument).filter(
-                DBDocument.status == 'completed'
-            ).all()
-
-            if all_chunks:
-                print(f"🔄 Rebuilding BM25 index with {len(all_chunks)} chunks...")
-                hybrid_retriever.build_bm25_index(all_chunks)
-            else:
+            tenant_rows = db.query(DocumentChunk.tenant_id).distinct().all()
+            tenant_ids = [row[0] for row in tenant_rows if row and row[0]]
+            if not tenant_ids:
                 print("[WARN]  No chunks found for BM25 index")
-
+                return
+            for tid in tenant_ids:
+                Indexer(db).rebuild_chunk_indexes(tenant_id=tid)
         except Exception as e:
             print(f"[WARN]  Failed to rebuild BM25 index: {str(e)}")
 

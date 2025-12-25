@@ -7,15 +7,11 @@ import { useState, useEffect, useRef, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import {
   MessageSquare,
-  Plus,
   Search,
   Trash2,
-  MoreHorizontal,
   Send,
-  StopCircle,
   Sparkles,
   Loader2,
-  ChevronLeft,
   BarChart3,
 } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
@@ -128,10 +124,6 @@ function HistoryPageContent() {
     }
   }
 
-  const handleNewChat = () => {
-    router.push('/')
-  }
-
   const handleContinueChat = () => {
     if (selectedConversation) {
       router.push(`/?conversation=${selectedConversation.id}`)
@@ -162,17 +154,8 @@ function HistoryPageContent() {
       <div className="w-80 border-r border-gray-200 flex flex-col bg-gray-50">
         {/* 头部 */}
         <div className="p-4 border-b border-gray-200">
-          <Button
-            onClick={handleNewChat}
-            className="w-full justify-start gap-2 bg-white border border-gray-200 text-gray-700 hover:bg-gray-100"
-            variant="outline"
-          >
-            <ChevronLeft className="h-4 w-4" />
-            返回首页
-          </Button>
-
           {/* 搜索框 */}
-          <div className="mt-3 relative">
+          <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
             <input
               type="text"
@@ -285,13 +268,9 @@ function HistoryPageContent() {
             <h2 className="text-2xl font-semibold text-gray-900 mb-2">
               问答历史
             </h2>
-            <p className="text-gray-500 max-w-md mb-6">
-              选择左侧的对话记录查看详情，或者开始一个新的对话
+            <p className="text-gray-500 max-w-md">
+              选择左侧的对话记录查看详情
             </p>
-            <Button onClick={handleNewChat} className="gap-2">
-              <Plus className="h-4 w-4" />
-              开始新对话
-            </Button>
           </div>
         )}
       </div>

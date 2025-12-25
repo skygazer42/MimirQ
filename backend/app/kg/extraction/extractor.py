@@ -3,16 +3,16 @@ Event extractor coordinating LLM + embeddings + persistence.
 """
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional, Sequence, Tuple
+from typing import Dict, List, Optional, Sequence
 
 from app.core.database import SessionLocal
 from app.models.document import DocumentChunk
-from app.kg.models import SagEventEntity, SagSourceEvent
+from app.kg.models import SagSourceEvent
 from app.ai.factory import create_llm_client
 from app.kg.extraction.config import ExtractConfig
 from app.kg.extraction.processor import EventProcessor
 from app.kg.loading.processor import DocumentProcessor
-from app.kg.repository import EntityRepository, EventRepository
+from app.services.indexer import EventEntityInput, EventInput, IndexKind, Indexer
 from app.kg.utils import get_logger
 
 logger = get_logger("sag.extract.extractor")
@@ -53,12 +53,8 @@ class EventExtractor:
             processor = EventProcessor(llm_client=llm_client)
             embedder = DocumentProcessor()
 
-            entity_repo = EntityRepository(session)
-            event_repo = EventRepository(session)
-
             embed_cache: Dict[str, List[float]] = {}
-            entity_cache: Dict[Tuple[str, str, str], Any] = {}
-            extracted_events: List[SagSourceEvent] = []
+            events_to_index: List[EventInput] = []
             for idx, chunk in enumerate(resolved_chunks, 1):
                 events_data = await processor.extract_from_sections([chunk], batch_index=idx)
                 if not events_data:
@@ -91,7 +87,7 @@ class EventExtractor:
                     for text, vector in zip(to_embed, vectors):
                         embed_cache[text] = vector
 
-                # Persist events/entities/links
+                # Build index inputs
                 for ev in events_data:
                     title = (ev.get("title") or "").strip()
                     summary = (ev.get("summary") or "").strip()
@@ -107,19 +103,7 @@ class EventExtractor:
                     ev_text = str(ev.get("_embed_text") or content)
                     vector = embed_cache.get(ev_text)
 
-                    event_obj = SagSourceEvent(
-                        tenant_id=config.tenant_id or chunk.tenant_id,
-                        document_id=chunk.document_id,
-                        chunk_id=chunk.id,
-                        title=title,
-                        summary=summary,
-                        content=content,
-                        content_vector=vector,
-                        references={"chunk_index": chunk.chunk_index, "page": chunk.page_number},
-                    )
-                    session.add(event_obj)
-                    extracted_events.append(event_obj)
-
+                    entity_inputs: List[EventEntityInput] = []
                     for ent in ev.get("entities") or []:
                         name = (ent.get("name") or "").strip()
                         if not name:
@@ -127,41 +111,38 @@ class EventExtractor:
 
                         normalized = (ent.get("normalized_name") or name.lower()).strip()
                         ent_type = (ent.get("type") or "unknown").strip() or "unknown"
-                        cache_key = (str(event_obj.tenant_id), normalized, ent_type)
-
-                        entity_obj = entity_cache.get(cache_key)
-                        if entity_obj is None:
-                            entity_obj = entity_repo.get_or_create(
-                                tenant_id=event_obj.tenant_id,
-                                name=name or normalized,
+                        ent_text = str(ent.get("_embed_text") or name)
+                        entity_vec = embed_cache.get(ent_text)
+                        entity_inputs.append(
+                            EventEntityInput(
+                                name=name,
                                 normalized_name=normalized,
-                                type_=ent_type,
+                                type=ent_type,
                                 description=(ent.get("description") or "").strip() or None,
-                                commit=False,
-                            )
-                            entity_cache[cache_key] = entity_obj
-
-                        if not getattr(entity_obj, "vector", None):
-                            ent_text = str(ent.get("_embed_text") or name)
-                            entity_vec = embed_cache.get(ent_text)
-                            if entity_vec:
-                                entity_obj.vector = entity_vec
-
-                        session.add(
-                            SagEventEntity(
-                                event=event_obj,
-                                entity=entity_obj,
-                                weight=1.0,
+                                vector=entity_vec,
                                 role=ent.get("role"),
                             )
                         )
 
-            session.commit()
+                    events_to_index.append(
+                        EventInput(
+                            title=title,
+                            summary=summary,
+                            content=content,
+                            document_id=chunk.document_id,
+                            chunk_id=chunk.id,
+                            references={"chunk_index": chunk.chunk_index, "page": chunk.page_number},
+                            vector=vector,
+                            entities=entity_inputs,
+                        )
+                    )
 
-            # Push vectors to Milvus (avoid duplicate embedding work)
-            event_repo.push_events_to_milvus(extracted_events)
-            entity_repo.push_entities_to_milvus(list(entity_cache.values()))
-            return extracted_events
+            if not events_to_index:
+                return []
+
+            tenant_id = config.tenant_id or resolved_chunks[0].tenant_id
+            result = Indexer(session).index(IndexKind.EVENT, tenant_id=tenant_id, events=events_to_index)
+            return result.events
         except Exception:
             session.rollback()
             raise
