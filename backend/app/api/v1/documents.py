@@ -412,7 +412,7 @@ async def get_image(image_id: str, tenant_id: UUID = Depends(get_tenant_id)):
 
 
 @router.get("/image-url/{img_id}")
-async def get_image_url(img_id: str):
+async def get_image_url(img_id: str, tenant_id: UUID = Depends(get_tenant_id)):
     """
     根据 img_id（格式：{tenant_id}:{dataset_id}:{document_id}:{chunk_index}）获取 MinIO 预签名 URL。
     返回 302 重定向到图片 URL。
@@ -422,6 +422,17 @@ async def get_image_url(img_id: str):
             status_code=503,
             detail="MinIO 未启用，无法获取图片 URL"
         )
+
+    # 基础访问控制：确保 img_id 前缀租户与请求租户一致（兼容老格式 dataset-chunk 不做限制）
+    def _tenant_from_img_id(val: str) -> Optional[str]:
+        if ":" in val:
+            parts = val.split(":", 1)
+            return parts[0]
+        return None
+
+    tenant_in_img = _tenant_from_img_id(img_id)
+    if tenant_in_img and tenant_in_img != str(tenant_id):
+        raise HTTPException(status_code=403, detail="Image access denied for this tenant")
 
     try:
         url = minio_service.get_image_url(img_id, extension="jpg")

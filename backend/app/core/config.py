@@ -22,6 +22,7 @@ class Settings(BaseSettings):
     MINIO_SECRET_KEY: str = "minioadmin"
     MINIO_BUCKET_NAME: str = "mimirq"
     MINIO_USE_SSL: bool = False
+    MINIO_METRICS_LOG_PATH: str = "./logs/minio_metrics.jsonl"
 
     LLM_API_KEY: str = Field(default="", validation_alias=AliasChoices("LLM_API_KEY", "OPENAI_API_KEY"))
     LLM_API_BASE: str = Field(default="https://api.openai.com/v1", validation_alias=AliasChoices("LLM_API_BASE", "OPENAI_BASE_URL"))
@@ -105,6 +106,10 @@ class Settings(BaseSettings):
     LONG_TERM_MEMORY_ENABLED: bool = False
     LONG_TERM_MEMORY_TOP_K: int = 3
     LONG_TERM_MEMORY_MIN_LEN: int = 20
+
+    # 图片展示策略
+    SHOW_IMAGE_IN_ANSWER: bool = True  # 控制回答正文是否附带图片段
+    IMAGE_APPEND_MAX: int = 3          # 回答正文最多附带图片数
 
     # Multi-tenant defaults
     DEFAULT_TENANT_ID: str = "00000000-0000-0000-0000-000000000000"
