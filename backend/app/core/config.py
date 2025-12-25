@@ -91,6 +91,15 @@ class Settings(BaseSettings):
     QUERY_REWRITE_TEMPERATURE: float = 0.2
     QUERY_REWRITE_MAX_CHARS: int = 120
     GOVERNANCE_ENABLED: bool = False
+    GOVERNANCE_REMOVE_TOC_LINES: bool = True
+    GOVERNANCE_REMOVE_NOISE_LINES: bool = True
+    GOVERNANCE_UNWRAP_LINES: bool = True
+    GOVERNANCE_REMOVE_COMMON_LINES: bool = True
+    GOVERNANCE_UNWRAP_MAX_LINE_LENGTH: int = 120
+    GOVERNANCE_NOISE_MIN_CHARS: int = 2
+    GOVERNANCE_NOISE_RATIO_THRESHOLD: float = 0.2
+    GOVERNANCE_COMMON_LINES_MIN_DOCS: int = 3
+    GOVERNANCE_COMMON_LINES_MIN_RATIO: float = 0.35
     # Reranker（可选：使用 LLM 对候选切片重排，提高命中质量）
     ENABLE_RERANKER: bool = False
     RERANKER_PROVIDER: str = "llm"  # llm | pc | none

@@ -46,6 +46,15 @@ export interface DocumentChunk {
 
 export interface DocumentPipelineOptions {
   governance_enabled?: boolean
+  governance_remove_toc_lines?: boolean
+  governance_remove_noise_lines?: boolean
+  governance_unwrap_lines?: boolean
+  governance_remove_common_lines?: boolean
+  governance_unwrap_max_line_length?: number
+  governance_noise_min_chars?: number
+  governance_noise_ratio_threshold?: number
+  governance_common_lines_min_docs?: number
+  governance_common_lines_min_ratio?: number
   chunk_size?: number
   chunk_overlap?: number
   chunk_vector_enabled?: boolean

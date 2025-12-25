@@ -277,6 +277,15 @@ export function ChunkPreview({ onConfirm, onClose }: ChunkPreviewProps) {
       const pipeline = pipelineOverridesEnabled
         ? {
             governance_enabled: pipelineOptions.governance_enabled,
+            governance_remove_toc_lines: pipelineOptions.governance_remove_toc_lines,
+            governance_remove_noise_lines: pipelineOptions.governance_remove_noise_lines,
+            governance_unwrap_lines: pipelineOptions.governance_unwrap_lines,
+            governance_remove_common_lines: pipelineOptions.governance_remove_common_lines,
+            governance_unwrap_max_line_length: pipelineOptions.governance_unwrap_max_line_length,
+            governance_noise_min_chars: pipelineOptions.governance_noise_min_chars,
+            governance_noise_ratio_threshold: pipelineOptions.governance_noise_ratio_threshold,
+            governance_common_lines_min_docs: pipelineOptions.governance_common_lines_min_docs,
+            governance_common_lines_min_ratio: pipelineOptions.governance_common_lines_min_ratio,
             chunk_size: chunkSize,
             chunk_overlap: chunkOverlap,
             chunk_vector_enabled: pipelineOptions.chunk_vector_enabled,
