@@ -4,8 +4,6 @@ MinIO 对象存储服务 - 用于存储文档解析中提取的图片
 from __future__ import annotations
 
 import io
-import uuid
-from pathlib import Path
 from typing import Optional, BinaryIO, Union
 
 from minio import Minio
@@ -47,24 +45,28 @@ class MinIOService:
     def upload_image(
         self,
         image_data: Union[bytes, BinaryIO],
+        tenant_id: str,
         dataset_id: str,
-        chunk_id: str,
-        extension: str = "png"
+        document_id: str,
+        chunk_key: str,
+        extension: str = "jpg",
     ) -> str:
         """
         上传图片到 MinIO，返回 img_id。
         
         Args:
             image_data: 图片二进制数据或文件对象
-            dataset_id: 知识库 ID（对应原 kb_id）
-            chunk_id: 块 ID
-            extension: 文件扩展名（默认 png）
+            tenant_id: 租户 ID
+            dataset_id: 知识库 ID
+            document_id: 文档 ID
+            chunk_key: 块标识（通常为 chunk_index）
+            extension: 文件扩展名（默认 jpg）
         
         Returns:
-            img_id: 格式 "{dataset_id}-{chunk_id}"
+            img_id: 格式 "{tenant_id}:{dataset_id}:{document_id}:{chunk_key}"
         """
-        img_id = f"{dataset_id}-{chunk_id}"
-        object_name = f"images/{dataset_id}/{chunk_id}.{extension}"
+        img_id = f"{tenant_id}:{dataset_id}:{document_id}:{chunk_key}"
+        object_name = f"images/{tenant_id}/{dataset_id}/{document_id}/{chunk_key}.{extension}"
 
         try:
             client = self._get_client()
@@ -81,12 +83,15 @@ class MinIOService:
                 data_stream.seek(0)  # 重置到开头
 
             # 上传到 MinIO
+            content_type = f"image/{extension}"
+            if extension.lower() in {"jpg", "jpeg"}:
+                content_type = "image/jpeg"
             client.put_object(
                 bucket_name=self._bucket_name,
                 object_name=object_name,
                 data=data_stream,
                 length=data_length,
-                content_type=f"image/{extension}",
+                content_type=content_type,
             )
 
             print(f"[MinIO] 图片上传成功: {object_name} -> {img_id}")
@@ -96,22 +101,29 @@ class MinIOService:
             print(f"[ERROR] MinIO 上传失败: {e}")
             raise RuntimeError(f"MinIO 图片上传失败: {e}") from e
 
-    def get_image_url(self, img_id: str, extension: str = "png") -> str:
+    def get_image_url(self, img_id: str, extension: str = "jpg") -> str:
         """
         获取图片访问 URL（预签名 URL，有效期 7 天）。
         
         Args:
-            img_id: 格式 "{dataset_id}-{chunk_id}"
+            img_id: 格式 "{tenant_id}:{dataset_id}:{document_id}:{chunk_key}"
             extension: 文件扩展名
         
         Returns:
             预签名 URL
         """
         try:
-            dataset_id, chunk_id = img_id.split("-", 1)
-            object_name = f"images/{dataset_id}/{chunk_id}.{extension}"
+            if ":" in img_id:
+                tenant_id, dataset_id, document_id, chunk_key = img_id.split(":", 3)
+                object_name = f"images/{tenant_id}/{dataset_id}/{document_id}/{chunk_key}.{extension}"
+            else:
+                # Backward compatible: "{dataset_id}-{chunk_id}"
+                dataset_id, chunk_id = img_id.split("-", 1)
+                object_name = f"images/{dataset_id}/{chunk_id}.{extension}"
 
             client = self._get_client()
+            # 预签名 URL 不会检查对象是否存在，这里先做一次存在性校验，避免前端拿到“死链接”。
+            client.stat_object(bucket_name=self._bucket_name, object_name=object_name)
             url = client.presigned_get_object(
                 bucket_name=self._bucket_name,
                 object_name=object_name,
@@ -123,17 +135,21 @@ class MinIOService:
             print(f"[ERROR] MinIO 获取 URL 失败: {e}")
             raise RuntimeError(f"MinIO 获取图片 URL 失败: {e}") from e
 
-    def delete_image(self, img_id: str, extension: str = "png"):
+    def delete_image(self, img_id: str, extension: str = "jpg"):
         """
         删除图片。
         
         Args:
-            img_id: 格式 "{dataset_id}-{chunk_id}"
+            img_id: 格式 "{tenant_id}:{dataset_id}:{document_id}:{chunk_key}"
             extension: 文件扩展名
         """
         try:
-            dataset_id, chunk_id = img_id.split("-", 1)
-            object_name = f"images/{dataset_id}/{chunk_id}.{extension}"
+            if ":" in img_id:
+                tenant_id, dataset_id, document_id, chunk_key = img_id.split(":", 3)
+                object_name = f"images/{tenant_id}/{dataset_id}/{document_id}/{chunk_key}.{extension}"
+            else:
+                dataset_id, chunk_id = img_id.split("-", 1)
+                object_name = f"images/{dataset_id}/{chunk_id}.{extension}"
 
             client = self._get_client()
             client.remove_object(
@@ -145,16 +161,17 @@ class MinIOService:
         except S3Error as e:
             print(f"[WARN] MinIO 删除图片失败: {e}")
 
-    def delete_dataset_images(self, dataset_id: str):
+    def delete_dataset_images(self, tenant_id: str, dataset_id: str):
         """
         删除整个知识库的所有图片。
         
         Args:
+            tenant_id: 租户 ID
             dataset_id: 知识库 ID
         """
         try:
             client = self._get_client()
-            prefix = f"images/{dataset_id}/"
+            prefix = f"images/{tenant_id}/{dataset_id}/"
             
             objects = client.list_objects(
                 bucket_name=self._bucket_name,
@@ -176,4 +193,3 @@ class MinIOService:
 
 # 全局实例
 minio_service = MinIOService()
-

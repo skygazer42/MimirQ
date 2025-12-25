@@ -412,6 +412,13 @@ function MessageItem({ message }: { message: Message }) {
 
 // 引用卡片
 function CitationCard({ citation, index }: { citation: Citation; index: number }) {
+  const apiBaseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
+  const imgUrl = citation.img_url
+    ? citation.img_url.startsWith('http')
+      ? citation.img_url
+      : `${apiBaseUrl}${citation.img_url}`
+    : null
+
   return (
     <div className="text-xs bg-white rounded-lg p-2 border border-gray-200">
       <div className="flex items-start gap-2">
@@ -424,6 +431,22 @@ function CitationCard({ citation, index }: { citation: Citation; index: number }
             {citation.page_number && ` · 第 ${citation.page_number} 页`}
           </p>
           <p className="text-gray-600 mt-1 line-clamp-2">{citation.chunk_content}</p>
+
+          {citation.has_image && imgUrl && (
+            <div className="mt-2">
+              <a href={imgUrl} target="_blank" rel="noopener noreferrer" className="block">
+                <img
+                  src={imgUrl}
+                  alt="引用图片"
+                  loading="lazy"
+                  className="w-full max-h-48 object-contain rounded border border-gray-200 bg-white"
+                  onError={(e) => {
+                    e.currentTarget.style.display = 'none'
+                  }}
+                />
+              </a>
+            </div>
+          )}
         </div>
       </div>
     </div>

@@ -19,6 +19,7 @@ import {
   ChevronRight,
   BarChart3,
   Wand2,
+  ShieldCheck,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
@@ -47,6 +48,16 @@ const menuItems = [
     href: '/parsing',
   },
   {
+    icon: ShieldCheck,
+    label: '数据治理',
+    href: '/data-governance',
+  },
+  {
+    icon: Scissors,
+    label: '切块预览',
+    href: '/chunk-preview',
+  },
+  {
     icon: Share2,
     label: '知识图谱',
     href: '/graph',
@@ -55,11 +66,6 @@ const menuItems = [
     icon: BarChart3,
     label: 'RAGAS 评测',
     href: '/evaluations',
-  },
-  {
-    icon: Scissors,
-    label: '切块预览',
-    href: '/chunk-preview',
   },
   {
     icon: Wand2,

@@ -23,7 +23,8 @@ class ZipImageProcessor:
     def process_zip_with_images(
         zip_path: Path,
         dataset_id: str,
-        document_id: str
+        document_id: str,
+        tenant_id: Optional[str] = None,
     ) -> Dict[str, any]:
         """
         处理包含 Markdown 和图片的 ZIP 文件。
@@ -37,6 +38,7 @@ class ZipImageProcessor:
         
         Args:
             zip_path: ZIP 文件路径
+            tenant_id: 租户 ID
             dataset_id: 知识库 ID
             document_id: 文档 ID
         
@@ -75,7 +77,8 @@ class ZipImageProcessor:
             print(f"[ZIP处理] 找到 Markdown: {md_file.name}")
             
             # 3. 查找所有图片文件
-            image_extensions = {'.png', '.jpg', '.jpeg', '.gif', '.bmp', '.webp', '.svg'}
+            # 统一转换为 JPEG 上传（节省存储，简化图片访问），因此仅处理常见栅格图片格式。
+            image_extensions = {'.png', '.jpg', '.jpeg', '.gif', '.bmp', '.webp'}
             image_files = []
             for ext in image_extensions:
                 image_files.extend(temp_path.rglob(f"*{ext}"))
@@ -106,15 +109,28 @@ class ZipImageProcessor:
                 # 上传到 MinIO
                 if settings.MINIO_ENABLED:
                     try:
-                        chunk_id = f"{document_id}-img{idx}"
+                        from io import BytesIO
+                        from PIL import Image as PILImage
+
+                        chunk_id = f"asset{idx}"
                         with open(img_file, 'rb') as f:
-                            img_data = f.read()
-                        
+                            img_raw = f.read()
+
+                        img = PILImage.open(BytesIO(img_raw))
+                        if img.mode in ("RGBA", "P"):
+                            img = img.convert("RGB")
+
+                        out = BytesIO()
+                        img.save(out, format="JPEG", quality=85, optimize=True)
+                        img_data = out.getvalue()
+
                         img_id = minio_service.upload_image(
                             image_data=img_data,
+                            tenant_id=tenant_id or dataset_id,
                             dataset_id=dataset_id,
-                            chunk_id=chunk_id,
-                            extension=img_file.suffix.lstrip('.')
+                            document_id=document_id,
+                            chunk_key=chunk_id,
+                            extension="jpg",
                         )
                         
                         # 获取访问 URL
@@ -207,4 +223,3 @@ class ZipImageProcessor:
 
 # 全局实例
 zip_image_processor = ZipImageProcessor()
-

@@ -354,7 +354,7 @@ async def delete_document(
                 img_id = chunk.doc_metadata.get("img_id") if chunk.doc_metadata else None
                 if img_id:
                     try:
-                        minio_service.delete_image(img_id, extension="png")
+                        minio_service.delete_image(img_id, extension="jpg")
                     except Exception as e:
                         print(f"[WARN] 删除 MinIO 图片失败 {img_id}: {e}")
         except Exception as exc:
@@ -403,7 +403,7 @@ async def get_image(image_id: str, tenant_id: UUID = Depends(get_tenant_id)):
 @router.get("/image-url/{img_id}")
 async def get_image_url(img_id: str):
     """
-    根据 img_id（格式：{dataset_id}-{chunk_id}）获取 MinIO 预签名 URL。
+    根据 img_id（格式：{tenant_id}:{dataset_id}:{document_id}:{chunk_index}）获取 MinIO 预签名 URL。
     返回 302 重定向到图片 URL。
     """
     if not settings.MINIO_ENABLED:
@@ -413,7 +413,7 @@ async def get_image_url(img_id: str):
         )
 
     try:
-        url = minio_service.get_image_url(img_id, extension="png")
+        url = minio_service.get_image_url(img_id, extension="jpg")
         # 直接重定向到 MinIO 预签名 URL
         return RedirectResponse(url=url, status_code=302)
     except Exception as e:

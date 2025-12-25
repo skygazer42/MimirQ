@@ -43,7 +43,7 @@ vector_ids = vector_store.add_documents(docs, doc_id, tenant_id)
 
 # MinIO 图片上传
 from app.storage.object.minio import minio_service
-img_id = minio_service.upload_image(image_data, dataset_id, chunk_id)
+img_id = minio_service.upload_image(image_data, tenant_id, dataset_id, document_id, chunk_key)
 url = minio_service.get_image_url(img_id)
 
 # 混合检索
@@ -125,7 +125,7 @@ MINIO_ENABLED = False
 MINIO_ENDPOINT = "localhost:9000"
 MINIO_ACCESS_KEY = "minioadmin"
 MINIO_SECRET_KEY = "minioadmin"
-MINIO_BUCKET_NAME = "mimirq-images"
+MINIO_BUCKET_NAME = "mimirq"
 ```
 
 ### rag 模块配置
@@ -242,6 +242,4 @@ pytest --cov=app --cov-report=html
 ## 重构完成 ✅
 
 新的目录结构更清晰、更易维护，功能完全保持不变！
-
-
 

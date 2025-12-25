@@ -21,6 +21,8 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
+
 export function ChatArea() {
   const [inputValue, setInputValue] = useState('')
   const [promptTemplateId, setPromptTemplateId] = useState<string>('')
@@ -347,6 +349,12 @@ function CitationCard({
   citation: Citation
   index: number
 }) {
+  const imgUrl = citation.img_url
+    ? citation.img_url.startsWith('http')
+      ? citation.img_url
+      : `${API_BASE_URL}${citation.img_url}`
+    : null
+
   return (
     <div className="text-xs bg-slate-50 dark:bg-slate-800/50 hover:bg-white dark:hover:bg-slate-800 rounded-lg p-2.5 border border-slate-100 dark:border-slate-700 hover:border-indigo-200 dark:hover:border-indigo-700 transition-all cursor-pointer group shadow-sm hover:shadow-md">
       <div className="flex items-start gap-2.5">
@@ -368,6 +376,27 @@ function CitationCard({
               <span className="text-slate-300 dark:text-slate-600">P.{citation.page_number}</span>
             )}
           </div>
+
+          {citation.has_image && imgUrl && (
+            <div className="mt-2">
+              <a
+                href={imgUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="block"
+              >
+                <img
+                  src={imgUrl}
+                  alt="引用图片"
+                  loading="lazy"
+                  className="w-full max-h-48 object-contain rounded-md border border-slate-200/70 dark:border-slate-700 bg-white dark:bg-slate-900"
+                  onError={(e) => {
+                    e.currentTarget.style.display = 'none'
+                  }}
+                />
+              </a>
+            </div>
+          )}
         </div>
       </div>
     </div>

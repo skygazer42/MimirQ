@@ -28,6 +28,10 @@ import {
   Database,
   ChevronRight,
   Zap,
+  ShieldCheck,
+  Edit3,
+  Save,
+  X,
 } from 'lucide-react'
 import { Navbar } from '@/components/navbar'
 import { Button } from '@/components/ui/button'
@@ -64,7 +68,7 @@ interface ParsedFile extends FileQueueItemData {
 const WORKFLOW_STEPS = [
   { label: '上传文件' },
   { label: '解析文档' },
-  { label: '预览结果' },
+  { label: '数据治理' },
   { label: '切块入库' },
 ]
 
@@ -78,8 +82,10 @@ export default function ParsingPage() {
   const [copied, setCopied] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
-  // 预览模式
+  // 预览模式 & 编辑模式
   const [previewMode, setPreviewMode] = useState<'raw' | 'rendered'>('rendered')
+  const [isEditing, setIsEditing] = useState(false)
+  const [editedContent, setEditedContent] = useState('')
 
   // 解析器设置
   const { parserBackend, setParserBackend } = useParserBackendPreference()
@@ -292,6 +298,59 @@ export default function ParsingPage() {
     router.push('/chunk-preview')
   }
 
+  // 开始编辑
+  const handleStartEdit = () => {
+    if (!activeFile?.markdownContent) return
+    setEditedContent(activeFile.markdownContent)
+    setIsEditing(true)
+  }
+
+  // 取消编辑
+  const handleCancelEdit = () => {
+    setIsEditing(false)
+    setEditedContent('')
+  }
+
+  // 保存编辑
+  const handleSaveEdit = () => {
+    if (!activeFile) return
+
+    // 更新文件内容
+    setFiles((prev) =>
+      prev.map((f) =>
+        f.id === activeFile.id
+          ? {
+              ...f,
+              markdownContent: editedContent,
+              stats: f.stats ? {
+                ...f.stats,
+                charCount: editedContent.length,
+                lineCount: editedContent.split('\n').length,
+              } : undefined,
+            }
+          : f
+      )
+    )
+
+    setIsEditing(false)
+  }
+
+  // 提交到数据治理
+  const handleSubmitToGovernance = () => {
+    if (!activeFile?.markdownContent) return
+
+    // 使用当前内容（可能是编辑后的）提交到数据治理
+    addParsedFile({
+      filename: activeFile.file.name,
+      fileType: activeFile.file.name.split('.').pop()?.toLowerCase() || '',
+      fileSize: activeFile.file.size,
+      markdownContent: activeFile.markdownContent,
+      parser: activeFile.parserLabel,
+    })
+
+    router.push('/data-governance')
+  }
+
   // 计算统计数据
   const pendingCount = files.filter((f) => f.status === 'pending').length
   const parsingCount = files.filter((f) => f.status === 'parsing').length
@@ -312,7 +371,7 @@ export default function ParsingPage() {
               <div>
                 <h1 className="text-xl font-bold text-gray-900">文档解析工作台</h1>
                 <p className="text-sm text-gray-500">
-                  上传文档 → 智能解析 → Markdown 预览 → 切块入库
+                  上传文档 → 智能解析 → 数据治理 → 切块入库
                 </p>
               </div>
             </div>
@@ -498,48 +557,90 @@ export default function ParsingPage() {
                         {activeFile.chunkStrategyLabel}
                       </span>
                     )}
+                    {isEditing && (
+                      <span className="text-xs text-amber-600 bg-amber-100 px-2 py-0.5 rounded flex items-center gap-1">
+                        <Edit3 className="w-3 h-3" />
+                        编辑中
+                      </span>
+                    )}
                   </div>
 
                   <div className="flex items-center gap-2">
                     {activeFile.status === 'parsed' && (
                       <>
-                        {/* 预览模式切换 */}
-                        <div className="flex items-center bg-gray-200 rounded-lg p-0.5 mr-2">
-                          <button
-                            onClick={() => setPreviewMode('rendered')}
-                            className={cn(
-                              'px-3 py-1.5 text-xs rounded-md transition-all flex items-center gap-1',
-                              previewMode === 'rendered'
-                                ? 'bg-white text-gray-900 shadow-sm'
-                                : 'text-gray-500 hover:text-gray-700'
-                            )}
-                          >
-                            <Eye className="w-3.5 h-3.5" />
-                            预览
-                          </button>
-                          <button
-                            onClick={() => setPreviewMode('raw')}
-                            className={cn(
-                              'px-3 py-1.5 text-xs rounded-md transition-all flex items-center gap-1',
-                              previewMode === 'raw'
-                                ? 'bg-white text-gray-900 shadow-sm'
-                                : 'text-gray-500 hover:text-gray-700'
-                            )}
-                          >
-                            <Code className="w-3.5 h-3.5" />
-                            源码
-                          </button>
-                        </div>
+                        {isEditing ? (
+                          // 编辑模式按钮
+                          <>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={handleCancelEdit}
+                              className="gap-1.5 text-gray-500"
+                            >
+                              <X className="w-4 h-4" />
+                              取消
+                            </Button>
+                            <Button
+                              onClick={handleSaveEdit}
+                              size="sm"
+                              className="gap-1.5 bg-amber-600 hover:bg-amber-700"
+                            >
+                              <Save className="w-4 h-4" />
+                              保存修改
+                            </Button>
+                          </>
+                        ) : (
+                          // 预览模式按钮
+                          <>
+                            {/* 预览模式切换 */}
+                            <div className="flex items-center bg-gray-200 rounded-lg p-0.5 mr-2">
+                              <button
+                                onClick={() => setPreviewMode('rendered')}
+                                className={cn(
+                                  'px-3 py-1.5 text-xs rounded-md transition-all flex items-center gap-1',
+                                  previewMode === 'rendered'
+                                    ? 'bg-white text-gray-900 shadow-sm'
+                                    : 'text-gray-500 hover:text-gray-700'
+                                )}
+                              >
+                                <Eye className="w-3.5 h-3.5" />
+                                预览
+                              </button>
+                              <button
+                                onClick={() => setPreviewMode('raw')}
+                                className={cn(
+                                  'px-3 py-1.5 text-xs rounded-md transition-all flex items-center gap-1',
+                                  previewMode === 'raw'
+                                    ? 'bg-white text-gray-900 shadow-sm'
+                                    : 'text-gray-500 hover:text-gray-700'
+                                )}
+                              >
+                                <Code className="w-3.5 h-3.5" />
+                                源码
+                              </button>
+                            </div>
 
-                        <Button variant="outline" size="sm" onClick={copyMarkdown} className="gap-1.5">
-                          {copied ? <Check className="w-4 h-4 text-green-500" /> : <Copy className="w-4 h-4" />}
-                          {copied ? '已复制' : '复制'}
-                        </Button>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={handleStartEdit}
+                              className="gap-1.5"
+                            >
+                              <Edit3 className="w-4 h-4" />
+                              编辑
+                            </Button>
 
-                        <Button variant="outline" size="sm" onClick={downloadMarkdown} className="gap-1.5">
-                          <Download className="w-4 h-4" />
-                          下载
-                        </Button>
+                            <Button variant="outline" size="sm" onClick={copyMarkdown} className="gap-1.5">
+                              {copied ? <Check className="w-4 h-4 text-green-500" /> : <Copy className="w-4 h-4" />}
+                              {copied ? '已复制' : '复制'}
+                            </Button>
+
+                            <Button variant="outline" size="sm" onClick={downloadMarkdown} className="gap-1.5">
+                              <Download className="w-4 h-4" />
+                              下载
+                            </Button>
+                          </>
+                        )}
                       </>
                     )}
 
@@ -606,13 +707,24 @@ export default function ParsingPage() {
 
                   {activeFile.status === 'parsed' && activeFile.markdownContent && (
                     <div className="p-6">
-                      {previewMode === 'rendered' ? (
+                      {isEditing ? (
+                        // 编辑模式
+                        <textarea
+                          value={editedContent}
+                          onChange={(e) => setEditedContent(e.target.value)}
+                          className="w-full min-h-[500px] p-4 font-mono text-sm leading-relaxed text-gray-700 whitespace-pre-wrap bg-amber-50 border border-amber-200 rounded-xl resize-none focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent"
+                          placeholder="在此编辑内容..."
+                          autoFocus
+                        />
+                      ) : previewMode === 'rendered' ? (
+                        // 预览模式
                         <div className="prose prose-slate max-w-none prose-headings:text-gray-900 prose-p:text-gray-700 prose-a:text-indigo-600 prose-code:text-pink-600 prose-code:bg-pink-50 prose-code:px-1 prose-code:py-0.5 prose-code:rounded prose-pre:bg-gray-900 prose-table:border-collapse prose-th:bg-gray-100 prose-th:border prose-th:border-gray-300 prose-th:p-2 prose-td:border prose-td:border-gray-300 prose-td:p-2">
                           <ReactMarkdown remarkPlugins={[remarkGfm]}>
                             {activeFile.markdownContent}
                           </ReactMarkdown>
                         </div>
                       ) : (
+                        // 源码模式
                         <pre className="font-mono text-sm leading-relaxed text-gray-700 whitespace-pre-wrap bg-gray-50 p-6 rounded-xl border">
                           {activeFile.markdownContent}
                         </pre>
@@ -626,28 +738,44 @@ export default function ParsingPage() {
                   <div className="px-6 py-4 border-t bg-gradient-to-r from-gray-50 to-white">
                     <div className="flex items-center justify-between">
                       <div className="text-sm text-gray-500">
-                        解析完成，可以进入下一步
+                        {isEditing
+                          ? '编辑完成后点击"保存修改"，然后提交到数据治理'
+                          : '可以轻量编辑内容，然后提交到数据治理'
+                        }
                       </div>
                       <div className="flex items-center gap-3">
-                        <Button
-                          variant="outline"
-                          onClick={goToChunkPreview}
-                          className="gap-2"
-                        >
-                          <Scissors className="w-4 h-4" />
-                          进入切块
-                          <ChevronRight className="w-4 h-4" />
-                        </Button>
-                        <Button
-                          onClick={() => {
-                            // TODO: 直接入库功能
-                            alert('直接入库功能开发中')
-                          }}
-                          className="gap-2 bg-indigo-600 hover:bg-indigo-700"
-                        >
-                          <Database className="w-4 h-4" />
-                          直接入库
-                        </Button>
+                        {!isEditing && (
+                          <>
+                            <Button
+                              variant="outline"
+                              onClick={handleSubmitToGovernance}
+                              className="gap-2 border-amber-200 text-amber-700 hover:bg-amber-50"
+                            >
+                              <ShieldCheck className="w-4 h-4" />
+                              提交到数据治理
+                              <ChevronRight className="w-4 h-4" />
+                            </Button>
+                            <Button
+                              variant="outline"
+                              onClick={goToChunkPreview}
+                              className="gap-2"
+                            >
+                              <Scissors className="w-4 h-4" />
+                              跳过切块
+                              <ChevronRight className="w-4 h-4" />
+                            </Button>
+                            <Button
+                              onClick={() => {
+                                // TODO: 直接入库功能
+                                alert('直接入库功能开发中')
+                              }}
+                              className="gap-2 bg-indigo-600 hover:bg-indigo-700"
+                            >
+                              <Database className="w-4 h-4" />
+                              直接入库
+                            </Button>
+                          </>
+                        )}
                       </div>
                     </div>
                   </div>

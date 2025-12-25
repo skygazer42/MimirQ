@@ -21,7 +21,7 @@ MINIO_ENABLED=true
 MINIO_ENDPOINT=localhost:9000
 MINIO_ACCESS_KEY=minioadmin
 MINIO_SECRET_KEY=minioadmin
-MINIO_BUCKET_NAME=mimirq-images
+MINIO_BUCKET_NAME=mimirq
 MINIO_USE_SSL=false
 ```
 
@@ -81,8 +81,8 @@ pip install minio==7.2.10
 在切块阶段：
 
 1. 检测 chunk metadata 中的图片数据
-2. 生成 `img_id = "{dataset_id}-{chunk_id}"`
-3. 上传图片到 MinIO：`images/{dataset_id}/{chunk_id}.png`
+2. 生成 `img_id = "{tenant_id}:{dataset_id}:{document_id}:{chunk_index}"`
+3. 上传图片到 MinIO：`images/{tenant_id}/{dataset_id}/{document_id}/{chunk_index}.jpg`
 4. 删除内存中的原始 base64 数据（节省资源）
 5. 在 metadata 中保留 `img_id`
 
@@ -95,7 +95,7 @@ pip install minio==7.2.10
 GET /api/v1/documents/image-url/{img_id}
 
 # 示例
-GET /api/v1/documents/image-url/dataset123-chunk456
+GET /api/v1/documents/image-url/tenant123:dataset123:doc789:0
 ```
 
 返回 MinIO 预签名 URL（有效期 7 天）。
@@ -114,24 +114,24 @@ DELETE /api/v1/documents/{document_id}
 ### img_id 格式
 
 ```
-{dataset_id}-{chunk_id}
+{tenant_id}:{dataset_id}:{document_id}:{chunk_index}
 ```
 
-示例：`00000000-0000-0000-0000-000000000001-12345`
+示例：`00000000-0000-0000-0000-000000000000:00000000-0000-0000-0000-000000000001:00000000-0000-0000-0000-0000000000ab:12`
 
 ### MinIO 对象路径
 
 ```
-images/{dataset_id}/{chunk_id}.png
+images/{tenant_id}/{dataset_id}/{document_id}/{chunk_index}.jpg
 ```
 
-示例：`images/00000000-0000-0000-0000-000000000001/12345.png`
+示例：`images/00000000-0000-0000-0000-000000000000/00000000-0000-0000-0000-000000000001/00000000-0000-0000-0000-0000000000ab/12.jpg`
 
 ### Chunk Metadata
 
 ```json
 {
-  "img_id": "dataset123-chunk456",
+  "img_id": "tenant123:dataset123:doc789:0",
   "document_id": "doc789",
   "chunk_index": 0,
   "parser_backend": "deepdoc",
@@ -141,15 +141,15 @@ images/{dataset_id}/{chunk_id}.png
 
 **注意**：`image_base64` 等原始图片数据在上传后会被删除。
 
-## 向量数据库集成
+## 检索集成
 
-图片的 `img_id` 会随 chunk metadata 一起存入向量数据库（Milvus）：
+图片的 `img_id` 会随 chunk metadata 一起保存（数据库 / BM25 索引），并在混合检索的 citations 中返回：
 
 ```python
 {
     "content": "文本内容...",
     "metadata": {
-        "img_id": "dataset123-chunk456",
+        "img_id": "tenant123:dataset123:doc789:0",
         "document_id": "...",
         ...
     }
@@ -162,8 +162,8 @@ images/{dataset_id}/{chunk_id}.png
 
 ### 1. 图片格式
 
-- 默认使用 PNG 格式
-- 可根据需要修改 `minio_service.upload_image()` 的 `extension` 参数
+- 默认统一转换为 JPEG 格式（节省存储、简化读取）
+- 如需保留原格式，可扩展 `img_id` 携带扩展名或在 metadata 里记录 `img_ext`
 
 ### 2. 预签名 URL 缓存
 
@@ -175,9 +175,9 @@ images/{dataset_id}/{chunk_id}.png
 删除整个知识库的图片：
 
 ```python
-from app.services.minio_service import minio_service
+from app.storage.object.minio import minio_service
 
-minio_service.delete_dataset_images(dataset_id)
+minio_service.delete_dataset_images(tenant_id, dataset_id)
 ```
 
 ## 故障处理
@@ -208,14 +208,16 @@ minio_service.delete_dataset_images(dataset_id)
 ### 手动上传图片
 
 ```python
-from app.services.minio_service import minio_service
+from app.storage.object.minio import minio_service
 
 # 上传
 img_id = minio_service.upload_image(
     image_data=b"...",
+    tenant_id="tenant123",
     dataset_id="dataset123",
-    chunk_id="chunk456",
-    extension="png"
+    document_id="doc789",
+    chunk_key="0",
+    extension="jpg"
 )
 
 # 获取 URL
@@ -256,6 +258,3 @@ http://localhost:9001
 ### 禁用 MinIO
 
 设置 `MINIO_ENABLED=false`，系统会回退到本地存储（向后兼容）。
-
-
-

@@ -129,6 +129,7 @@ async def upload_zip_with_images(
         doc_id = document_id or file.filename.rsplit('.', 1)[0]
         result = zip_image_processor.process_zip_with_images(
             zip_path=temp_zip_path,
+            tenant_id=str(tenant_id),
             dataset_id=dataset_id,
             document_id=doc_id
         )
@@ -153,4 +154,3 @@ async def upload_zip_with_images(
                 temp_zip_path.unlink()
         except Exception:
             pass
-

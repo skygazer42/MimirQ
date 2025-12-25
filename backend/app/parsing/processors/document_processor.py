@@ -122,12 +122,12 @@ class DocumentProcessorService:
                 chunk.metadata['chunk_strategy'] = resolved_chunk_strategy
                 
                 # 提取并上传图片到 MinIO（如果启用）
-                # 生成临时 chunk_id（使用 document_id-index）
-                temp_chunk_id = f"{document_id}-{idx}"
                 img_id = self._extract_and_upload_image_to_minio(
-                    chunk.metadata, 
+                    chunk.metadata,
+                    tenant_id=str(tenant_id),
                     dataset_id=dataset_id,
-                    chunk_id=temp_chunk_id
+                    document_id=str(document_id),
+                    chunk_index=idx,
                 )
                 if img_id:
                     chunk.metadata['img_id'] = img_id
@@ -409,60 +409,106 @@ class DocumentProcessorService:
     def _extract_and_upload_image_to_minio(
         self,
         metadata: Dict[str, Any],
+        tenant_id: str,
         dataset_id: str,
-        chunk_id: str
+        document_id: str,
+        chunk_index: int,
     ) -> Optional[str]:
         """
         检测 chunk metadata 中的图片数据，上传到 MinIO，返回 img_id。
         图片上传后，原始图片数据会从 metadata 中删除以节省内存。
         
-        img_id 格式："{dataset_id}-{chunk_id}"
+        img_id 格式："{tenant_id}:{dataset_id}:{document_id}:{chunk_index}"
         
-        识别的字段：image_base64 / image / img_base64 / img / image_data
+        识别的字段：image (PIL.Image/bytes) / image_base64 / img_base64 / img / image_data
         """
         # 如果已有 img_id，直接返回
         if isinstance(metadata.get("img_id"), str) and metadata.get("img_id").strip():
             return metadata.get("img_id")
 
-        # MinIO 未启用时，降级到本地存储
+        # MinIO 未启用时，确保清理不可序列化字段
         if not settings.MINIO_ENABLED:
+            if "image" in metadata:
+                metadata.pop("image", None)
             return None
 
         # 查找图片数据
         possible_keys = ["image_base64", "image", "img_base64", "img", "image_data"]
-        b64_data = None
         found_key = None
+        raw_image = None
+        b64_data = None
+
+        # ragflow 输出可能直接在 metadata["image"] 放 PIL.Image/bytes，
+        # 只为真正的图片块（doc_type_kwd == "image"）上传，避免为每个文本块存截图。
+        val = metadata.get("image")
+        if val is not None:
+            doc_type = str(metadata.get("doc_type_kwd") or "").lower()
+            if doc_type == "image":
+                raw_image = val
+                found_key = "image"
+            else:
+                # 非图片块：清理掉 image 字段，避免 JSON 序列化失败
+                metadata.pop("image", None)
+
+        if raw_image is None:
+            for key in possible_keys:
+                val = metadata.get(key)
+                if isinstance(val, str) and val.strip():
+                    b64_data = val
+                    found_key = key
+                    break
         
-        for key in possible_keys:
-            val = metadata.get(key)
-            if isinstance(val, str) and val.strip():
-                b64_data = val
-                found_key = key
-                break
-        
-        if not b64_data:
+        if raw_image is None and not b64_data:
             return None
 
         # 处理 data URI 格式
-        if b64_data.startswith("data:"):
+        if isinstance(b64_data, str) and b64_data.startswith("data:"):
             parts = b64_data.split(",", 1)
             if len(parts) == 2:
                 b64_data = parts[1]
 
-        # 解码 base64
+        # 统一转换为 JPEG bytes（节省存储，简化读取）
         try:
-            binary = base64.b64decode(b64_data)
+            from io import BytesIO
+            from PIL import Image as PILImage
+
+            if raw_image is not None:
+                if isinstance(raw_image, bytes):
+                    img = PILImage.open(BytesIO(raw_image))
+                else:
+                    img = raw_image
+            else:
+                binary = base64.b64decode(b64_data)
+                img = PILImage.open(BytesIO(binary))
+
+            if img.mode in ("RGBA", "P"):
+                img = img.convert("RGB")
+
+            out = BytesIO()
+            img.save(out, format="JPEG", quality=85, optimize=True)
+            image_bytes = out.getvalue()
         except Exception as e:
-            print(f"[WARN] 图片 base64 解码失败: {e}")
+            print(f"[WARN] 图片转换失败（跳过上传）: {e}")
+            # 无论成功与否，都要清理 image 字段，避免入库失败
+            if found_key == "image":
+                metadata.pop("image", None)
             return None
+        finally:
+            if raw_image is not None and not isinstance(raw_image, bytes) and hasattr(raw_image, "close"):
+                try:
+                    raw_image.close()
+                except Exception:
+                    pass
 
         # 上传到 MinIO
         try:
             img_id = minio_service.upload_image(
-                image_data=binary,
+                image_data=image_bytes,
+                tenant_id=tenant_id,
                 dataset_id=dataset_id,
-                chunk_id=chunk_id,
-                extension="png"
+                document_id=document_id,
+                chunk_key=str(chunk_index),
+                extension="jpg",
             )
             
             # 上传成功后，删除内存中的原始图片数据（节省资源）

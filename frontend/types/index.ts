@@ -43,6 +43,9 @@ export interface Citation {
   chunk_content: string
   page_number?: number
   relevance_score: number
+  has_image?: boolean
+  img_id?: string
+  img_url?: string
 }
 
 export interface Message {
