@@ -78,6 +78,9 @@ class Settings(BaseSettings):
     RAG_GRAPH_MAX_RETRIES: int = 2
     RAG_GRAPH_TIMEOUT_SEC: int = 20
     VECTOR_BACKEND: str = "milvus"  # milvus | memory | faiss | chroma
+    # Indexing toggles (to reduce duplicate pipelines when desired)
+    CHUNK_VECTOR_ENABLED: bool = True
+    BM25_INDEX_ENABLED: bool = True
     FAISS_STORE_PATH: str = "./vector_faiss"
     CHROMA_PERSIST_PATH: str = "./vector_chroma"
     ENABLE_METRICS_LOG: bool = False

@@ -10,7 +10,6 @@ import shutil
 import uuid
 from datetime import datetime
 
-from langchain_core.documents import Document as LCDocument
 
 from app.core.database import get_db
 from app.models.document import Document as DBDocument
@@ -32,11 +31,11 @@ from app.schemas.document import (
 from app.parsing.processors.document_processor import document_processor
 from app.parsing.factory import parser_factory
 from app.parsing.chunking.factory import chunker_factory
-from app.storage.vector.milvus import milvus_store
 from app.storage.vector.factory import get_vector_store
 from app.storage.search.hybrid_retriever import hybrid_retriever
 from app.services.mineru_service import mineru_service
 from app.services.dataset_service import DatasetService
+from app.services.chunk_indexing import ChunkInput, index_and_persist_chunks
 from app.storage.object.minio import minio_service
 from app.models.dataset import Dataset, DatasetPermission, DatasetPermissionEnum
 from app.core.config import settings
@@ -572,10 +571,7 @@ async def create_document_with_manual_chunks(
     db.refresh(db_document)
 
     try:
-        # 构建用于向量化的文档列表
-        milvus_docs: List[dict] = []
-        total_characters = 0
-
+        chunk_inputs: List[ChunkInput] = []
         for idx, chunk in enumerate(request.chunks):
             metadata = {
                 "source": request.filename,
@@ -583,64 +579,34 @@ async def create_document_with_manual_chunks(
                 "page": chunk.page_number,
                 "document_id": str(document_id),
                 "chunk_index": idx,
-                **(chunk.metadata or {})
+                **(chunk.metadata or {}),
             }
-
-            content = chunk.content or ""
-            total_characters += len(content)
-
-            milvus_docs.append({
-                "content": content,
-                "metadata": metadata
-            })
-
-        # 生成 Embeddings 并写入向量库（支持后端切换）
-        vector_ids = get_vector_store().add_documents(milvus_docs, document_id, tenant_id)
-
-        # 写入 PostgreSQL 的 DocumentChunk
-        from app.models.document import DocumentChunk as DBDocumentChunk
-
-        db_chunks = []
-        for idx, (chunk, vector_id) in enumerate(zip(request.chunks, vector_ids)):
-            db_chunk = DBDocumentChunk(
-                tenant_id=tenant_id,
-                document_id=document_id,
-                chunk_index=idx,
-                content=chunk.content,
-                page_number=chunk.page_number,
-                start_char=chunk.start_char,
-                end_char=chunk.end_char,
-                doc_metadata=milvus_docs[idx]["metadata"],
-                vector_id=vector_id
+            chunk_inputs.append(
+                ChunkInput(
+                    content=chunk.content or "",
+                    metadata=metadata,
+                    page_number=chunk.page_number,
+                    start_char=chunk.start_char,
+                    end_char=chunk.end_char,
+                )
             )
-            db.add(db_chunk)
-            db_chunks.append(db_chunk)
 
-        db.commit()
+        persist_result = index_and_persist_chunks(
+            db,
+            document_id=document_id,
+            tenant_id=tenant_id,
+            chunks=chunk_inputs,
+            default_source=request.filename,
+        )
 
         # 更新文档统计信息和状态
         db_document.chunk_count = len(request.chunks)
-        db_document.total_characters = total_characters
+        db_document.total_characters = persist_result.total_characters
         db_document.status = 'completed'
         db_document.processing_progress = 100
         db_document.current_stage = 'completed'
         db.commit()
         db.refresh(db_document)
-
-        # 增量更新 BM25 索引（避免全量扫描）
-        try:
-            bm25_docs = []
-            for db_chunk in db_chunks:
-                meta = dict(db_chunk.doc_metadata or {})
-                meta.setdefault("tenant_id", str(tenant_id))
-                meta.setdefault("document_id", str(document_id))
-                meta.setdefault("chunk_index", db_chunk.chunk_index)
-                meta.setdefault("source", meta.get("source", request.filename))
-                meta.setdefault("page", db_chunk.page_number)
-                bm25_docs.append(LCDocument(page_content=db_chunk.content, id=str(db_chunk.id), metadata=meta))
-            hybrid_retriever.upsert_bm25_documents(bm25_docs, tenant_id=tenant_id)
-        except Exception as exc:
-            print(f"[WARN]  Failed to update BM25 index incrementally: {exc}")
 
         return db_document
 

@@ -3,7 +3,7 @@ Event extractor coordinating LLM + embeddings + persistence.
 """
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from app.core.database import SessionLocal
 from app.models.document import DocumentChunk
@@ -24,17 +24,28 @@ class EventExtractor:
     def __init__(self, model_config: Optional[dict] = None):
         self.model_config = model_config
 
-    async def extract(self, config: ExtractConfig) -> List[SagSourceEvent]:
+    async def extract(
+        self,
+        config: ExtractConfig,
+        *,
+        chunks: Optional[Sequence[DocumentChunk]] = None,
+    ) -> List[SagSourceEvent]:
         session = SessionLocal()
         try:
-            # Load chunks
-            chunks = (
-                session.query(DocumentChunk)
-                .filter(DocumentChunk.id.in_(config.chunk_ids))
-                .order_by(DocumentChunk.chunk_index)
-                .all()
-            )
-            if not chunks:
+            # Load chunks (or reuse provided ones to avoid duplicate DB reads)
+            resolved_chunks: List[DocumentChunk]
+            if chunks is None:
+                resolved_chunks = (
+                    session.query(DocumentChunk)
+                    .filter(DocumentChunk.id.in_(config.chunk_ids))
+                    .order_by(DocumentChunk.chunk_index)
+                    .all()
+                )
+            else:
+                resolved_chunks = list(chunks)
+                resolved_chunks.sort(key=lambda c: c.chunk_index)
+
+            if not resolved_chunks:
                 logger.warning("No chunks found for extraction")
                 return []
 
@@ -48,7 +59,7 @@ class EventExtractor:
             embed_cache: Dict[str, List[float]] = {}
             entity_cache: Dict[Tuple[str, str, str], Any] = {}
             extracted_events: List[SagSourceEvent] = []
-            for idx, chunk in enumerate(chunks, 1):
+            for idx, chunk in enumerate(resolved_chunks, 1):
                 events_data = await processor.extract_from_sections([chunk], batch_index=idx)
                 if not events_data:
                     continue

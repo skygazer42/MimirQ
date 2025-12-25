@@ -15,9 +15,9 @@ from app.core.config import settings
 from app.models.document import Document as DBDocument, DocumentChunk
 from app.parsing.factory import parser_factory
 from app.parsing.chunking.factory import chunker_factory
-from app.storage.vector.factory import get_vector_store
 from app.storage.search.hybrid_retriever import hybrid_retriever
 from app.storage.object.minio import minio_service
+from app.services.chunk_indexing import ChunkInput, index_and_persist_chunks
 
 
 class DocumentProcessorService:
@@ -189,35 +189,33 @@ class DocumentProcessorService:
                 db, document_id, "processing", 66, "embedding"
             )
 
-            # Step 4: 生成 Embeddings 并存入向量库（可配置后端）
-            print(f"Generating embeddings and storing in vector backend...")
-
-            # 转换为 Milvus 需要的格式
-            milvus_docs = []
-            for chunk in chunks:
-                milvus_docs.append({
-                    'content': chunk.page_content,
-                    'metadata': chunk.metadata
-                })
-
-            vector_store = get_vector_store()
-            try:
-                vector_ids = vector_store.add_documents(
-                    milvus_docs, document_id, tenant_id
-                )
-            except Exception as exc:
-                print(f"[WARN]  Failed to store vectors: {exc}")
-                print("[WARN]  Proceeding without vector ids; BM25-only retrieval will still work.")
-                vector_ids = [None] * len(milvus_docs)
-
-            # Step 5: 保存切片到数据库
+            # Step 4/5: 向量化 + 写入 PostgreSQL + 增量更新 BM25（统一实现，避免多处重复）
             print(f"Saving chunks to PostgreSQL...")
-            chunk_ids = await self._save_chunks_to_db(
-                db, document_id, chunks, vector_ids, tenant_id
+            chunk_inputs: List[ChunkInput] = []
+            for chunk in chunks:
+                meta = dict(chunk.metadata or {})
+                chunk_inputs.append(
+                    ChunkInput(
+                        content=chunk.page_content,
+                        metadata=meta,
+                        page_number=meta.get("page") or meta.get("page_number"),
+                        start_char=meta.get("start_char"),
+                        end_char=meta.get("end_char"),
+                    )
+                )
+
+            persist_result = index_and_persist_chunks(
+                db,
+                document_id=document_id,
+                tenant_id=tenant_id,
+                chunks=chunk_inputs,
+                default_source=str(file_path.name),
+                commit=False,
             )
+            chunk_ids = persist_result.chunk_ids
 
             # Step 6: 更新文档状态为完成
-            total_chars = sum(len(c.page_content) for c in chunks)
+            total_chars = persist_result.total_characters
             await self._update_status(
                 db,
                 document_id,
@@ -239,27 +237,14 @@ class DocumentProcessorService:
                     from app.kg.pipeline import extract_events
 
                     print("[*] Running SAG extraction on document chunks...")
-                    events = await extract_events(chunk_ids, tenant_id=tenant_id)
+                    events = await extract_events(
+                        chunk_ids,
+                        tenant_id=tenant_id,
+                        chunks=persist_result.db_chunks,
+                    )
                     print(f"[OK] SAG extracted {len(events)} events for document {document_id}")
                 except Exception as exc:
                     print(f"[WARN]  SAG extraction failed: {exc}")
-
-            # Step 8: 增量更新 BM25 索引（按租户，避免每次全量扫描）
-            try:
-                bm25_docs = []
-                for chunk_doc, chunk_id in zip(chunks, chunk_ids):
-                    meta = dict(chunk_doc.metadata or {})
-                    meta.setdefault("tenant_id", str(tenant_id))
-                    meta.setdefault("document_id", str(document_id))
-                    meta.setdefault("chunk_index", meta.get("chunk_index"))
-                    meta.setdefault("source", meta.get("source", "unknown"))
-                    meta.setdefault("page", meta.get("page"))
-                    meta.setdefault("image_id", meta.get("image_id"))
-                    meta.setdefault("image_url", meta.get("image_url"))
-                    bm25_docs.append(Document(page_content=chunk_doc.page_content, id=str(chunk_id), metadata=meta))
-                hybrid_retriever.upsert_bm25_documents(bm25_docs, tenant_id=tenant_id)
-            except Exception as exc:
-                print(f"[WARN]  Failed to update BM25 index incrementally: {exc}")
 
             return {
                 "status": "success",
@@ -309,54 +294,6 @@ class DocumentProcessorService:
 
             db.commit()
             db.refresh(db_doc)
-
-    async def _save_chunks_to_db(
-        self,
-        db: Session,
-        document_id: UUID,
-        chunks: List[Document],
-        vector_ids: List[Optional[str]],
-        tenant_id: UUID
-    ) -> List[UUID]:
-        """保存切片到数据库并返回所有切片ID（用于后续 SAG 提取）"""
-        if not vector_ids:
-            vector_ids = [None] * len(chunks)
-        if len(vector_ids) != len(chunks):
-            raise ValueError(
-                f"Vector ID count ({len(vector_ids)}) does not match chunk count ({len(chunks)})"
-            )
-        db_chunks = []
-        for idx, (chunk, vector_id) in enumerate(zip(chunks, vector_ids)):
-            db_chunks.append(
-                DocumentChunk(
-                    tenant_id=tenant_id,
-                    document_id=document_id,
-                    chunk_index=idx,
-                    content=chunk.page_content,
-                    page_number=chunk.metadata.get('page'),
-                    start_char=chunk.metadata.get('start_char'),
-                    end_char=chunk.metadata.get('end_char'),
-                    doc_metadata=chunk.metadata,
-                    vector_id=vector_id
-                )
-            )
-
-        # 批量插入减少 commit 次数和 ORM 开销
-        db.bulk_save_objects(db_chunks)
-        db.commit()
-
-        # 返回刚写入的切片 ID（再次查询避免 bulk_save_objects 不回填主键）
-        ids = [
-            row[0]
-            for row in db.query(DocumentChunk.id)
-            .filter(
-                DocumentChunk.document_id == document_id,
-                DocumentChunk.tenant_id == tenant_id
-            )
-            .order_by(DocumentChunk.chunk_index)
-            .all()
-        ]
-        return ids
 
     async def _rebuild_bm25_index_for_tenant(self, db: Session, tenant_id: UUID):
         """重建指定租户的 BM25 索引"""
