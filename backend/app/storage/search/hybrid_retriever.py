@@ -184,6 +184,7 @@ class HybridRetriever(BaseRetriever):
                         "source": meta.get("source", "unknown"),
                         "page": meta.get("page"),
                         "chunk_index": meta.get("chunk_index"),
+                        "img_id": meta.get("img_id"),
                         "image_id": meta.get("image_id"),
                         "image_url": meta.get("image_url"),
                         "bm25_score": float(score),
@@ -419,9 +420,25 @@ class HybridRetriever(BaseRetriever):
         for key in set(vector_norm.keys()) | set(bm25_norm.keys()):
             v_score = vector_norm.get(key, {}).get("score", 0.0)
             b_score = bm25_norm.get(key, {}).get("score", 0.0)
-            data = vector_norm.get(key, {}).get("data") or bm25_norm.get(key, {}).get("data")
+            v_data = vector_norm.get(key, {}).get("data")
+            b_data = bm25_norm.get(key, {}).get("data")
+            data = v_data or b_data
             if not data:
                 continue
+
+            # 合并两路 metadata（例如 img_id 可能只存在于 BM25/DB metadata）
+            if v_data and b_data:
+                merged_meta = dict(v_data.get("metadata") or {})
+                b_meta = b_data.get("metadata") or {}
+                for k, v in b_meta.items():
+                    if k not in merged_meta or merged_meta.get(k) in (None, "", [], {}):
+                        merged_meta[k] = v
+                merged_data = dict(v_data)
+                merged_data["metadata"] = merged_meta
+                if not merged_data.get("chunk_id") and b_data.get("chunk_id"):
+                    merged_data["chunk_id"] = b_data.get("chunk_id")
+                data = merged_data
+
             merged[key] = {
                 **data,
                 "vector_score": v_score,

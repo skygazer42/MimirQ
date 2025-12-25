@@ -131,7 +131,7 @@ vector_ids = vector_store.add_documents(docs, doc_id, tenant_id)
 
 # 对象存储（MinIO）
 from app.storage.object.minio import minio_service
-img_id = minio_service.upload_image(image_data, dataset_id, chunk_id)
+img_id = minio_service.upload_image(image_data, tenant_id, dataset_id, document_id, chunk_key)
 url = minio_service.get_image_url(img_id)
 
 # 混合检索
@@ -319,6 +319,5 @@ pytest tests/evaluation/
 ## 迁移完成 ✅
 
 所有文件已按功能域重新组织，导入路径已更新，结构更清晰！
-
 
 

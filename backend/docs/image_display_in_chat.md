@@ -10,9 +10,9 @@
 
 在文档处理过程中：
 - 解析器提取图片（base64 或 ZIP 中的图片文件）
-- 上传到 MinIO，生成 `img_id = "{dataset_id}-{chunk_id}"`
+- 上传到 MinIO，生成 `img_id = "{tenant_id}:{dataset_id}:{document_id}:{chunk_index}"`
 - `img_id` 存储在 chunk metadata 中
-- 图片信息随 chunk 一起存入向量数据库
+- 图片信息随 chunk metadata 一起存入数据库，并在检索 citations 中返回
 
 ### 2. RAG 检索返回图片信息
 
@@ -39,8 +39,8 @@ class Citation(BaseModel):
     ...
     # 图片相关字段
     has_image: bool = False
-    img_id: Optional[str] = None  # 例如："dataset123-chunk456"
-    img_url: Optional[str] = None  # 例如："/api/v1/documents/image-url/dataset123-chunk456"
+    img_id: Optional[str] = None  # 例如："tenant123:dataset123:doc456:0"
+    img_url: Optional[str] = None  # 例如："/api/v1/documents/image-url/tenant123:dataset123:doc456:0"
 ```
 
 ## 前端集成
@@ -58,8 +58,8 @@ class Citation(BaseModel):
       "document_id": "...",
       "chunk_content": "这是关于产品架构的说明...",
       "has_image": true,
-      "img_id": "dataset123-doc456-img0",
-      "img_url": "/api/v1/documents/image-url/dataset123-doc456-img0",
+      "img_id": "tenant123:dataset123:doc456:0",
+      "img_url": "/api/v1/documents/image-url/tenant123:dataset123:doc456:0",
       "relevance_score": 0.95
     },
     {
@@ -334,6 +334,4 @@ MinIO 预签名 URL 有效期 7 天。如果过期：
 - **用户体验**：在对话中看到相关图片，增强理解
 
 启用 `MINIO_ENABLED=true` 后，所有文档解析自动支持图片！
-
-
 
