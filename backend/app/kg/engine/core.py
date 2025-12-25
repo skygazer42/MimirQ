@@ -1,7 +1,7 @@
 """
 Lightweight SAG engine to run Extract -> Search using local adapters.
 """
-from typing import Dict, Optional
+from typing import Dict, List, Optional, Sequence
 from uuid import UUID
 
 from app.core.config import settings
@@ -10,6 +10,7 @@ from app.kg.extraction.extractor import EventExtractor
 from app.kg.search.config import SearchConfig
 from app.kg.search.searcher import SAGSearcher
 from app.kg.utils import get_logger
+from app.models.document import DocumentChunk
 
 logger = get_logger("sag.engine")
 
@@ -19,10 +20,26 @@ class SAGEngine:
         self.extractor = EventExtractor(model_config=model_config)
         self.searcher = SAGSearcher()
 
-    async def extract(self, chunk_ids, tenant_id: Optional[UUID] = None):
+    async def extract(
+        self,
+        chunk_ids,
+        tenant_id: Optional[UUID] = None,
+        *,
+        chunks: Optional[Sequence[DocumentChunk]] = None,
+    ):
         config = ExtractConfig(chunk_ids=list(chunk_ids), tenant_id=tenant_id or settings.DEFAULT_TENANT_ID)
-        return await self.extractor.extract(config)
+        return await self.extractor.extract(config, chunks=chunks)
 
-    async def search(self, query: str, tenant_id: Optional[UUID] = None) -> Dict:
-        config = SearchConfig(query=query, tenant_id=tenant_id or settings.DEFAULT_TENANT_ID)
+    async def search(
+        self,
+        query: str,
+        tenant_id: Optional[UUID] = None,
+        *,
+        document_ids: Optional[List[UUID]] = None,
+    ) -> Dict:
+        config = SearchConfig(
+            query=query,
+            tenant_id=tenant_id or settings.DEFAULT_TENANT_ID,
+            document_ids=document_ids,
+        )
         return await self.searcher.search(config)

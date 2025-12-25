@@ -42,7 +42,6 @@ import { useParserBackendPreference } from '@/contexts/parser-backend-context'
 import { useChunkStrategyPreference } from '@/contexts/chunk-strategy-context'
 import { getParserLabel } from '@/lib/parser-options'
 import { getChunkStrategyLabel } from '@/lib/chunk-strategies'
-import { StepIndicator } from '@/components/ui/step-indicator'
 import { StatCard, StatsGrid } from '@/components/ui/stats-card'
 import { FileQueueItem, FileQueueItemData, FileStatus } from '@/components/ui/file-queue-item'
 import { ParserDropdown } from '@/components/ui/parser-dropdown'
@@ -63,14 +62,6 @@ interface ParsedFile extends FileQueueItemData {
     imageCount?: number
   }
 }
-
-// 工作流步骤
-const WORKFLOW_STEPS = [
-  { label: '上传文件' },
-  { label: '解析文档' },
-  { label: '数据治理' },
-  { label: '切块入库' },
-]
 
 export default function ParsingPage() {
   const router = useRouter()
@@ -96,16 +87,6 @@ export default function ParsingPage() {
 
   // 获取当前选中的文件
   const activeFile = files.find((f) => f.id === activeFileId) || null
-
-  // 计算当前步骤
-  const getCurrentStep = () => {
-    if (files.length === 0) return 0
-    if (!activeFile) return 0
-    if (activeFile.status === 'pending') return 1
-    if (activeFile.status === 'parsing') return 1
-    if (activeFile.status === 'parsed') return 2
-    return 1
-  }
 
   // 生成唯一 ID
   const generateId = () => Math.random().toString(36).substring(2, 15)
@@ -370,15 +351,7 @@ export default function ParsingPage() {
               </div>
               <div>
                 <h1 className="text-xl font-bold text-gray-900">文档解析工作台</h1>
-                <p className="text-sm text-gray-500">
-                  上传文档 → 智能解析 → 数据治理 → 切块入库
-                </p>
               </div>
-            </div>
-
-            {/* 步骤指示器 */}
-            <div className="hidden lg:block w-80">
-              <StepIndicator steps={WORKFLOW_STEPS} currentStep={getCurrentStep()} />
             </div>
           </div>
         </header>

@@ -63,7 +63,11 @@ async def run_sag_extraction_for_document(
             detail="Document has no chunks yet. Process the document first.",
         )
 
-    events = await extract_events([c.id for c in chunks], tenant_id=tenant_id)
+    events = await extract_events(
+        [c.id for c in chunks],
+        tenant_id=tenant_id,
+        chunks=chunks,
+    )
 
     return SAGExtractResponse(
         document_id=document_id,

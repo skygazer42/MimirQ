@@ -2,11 +2,12 @@
 Facade to run SAG extraction + search inside the existing backend.
 SAG module can be toggled via settings.SAG_ENABLED.
 """
-from typing import Dict, Iterable, List, Optional
+from typing import Dict, Iterable, List, Optional, Sequence
 from uuid import UUID
 
 from app.core.config import settings
 from app.kg.engine import SAGEngine
+from app.models.document import DocumentChunk
 
 _engine = None
 
@@ -21,9 +22,14 @@ def _load_engine() -> SAGEngine:
     return _engine
 
 
-async def extract_events(chunk_ids: Iterable[UUID], tenant_id: Optional[UUID] = None):
+async def extract_events(
+    chunk_ids: Iterable[UUID],
+    tenant_id: Optional[UUID] = None,
+    *,
+    chunks: Optional[Sequence[DocumentChunk]] = None,
+):
     engine = _load_engine()
-    return await engine.extract(chunk_ids, tenant_id=tenant_id)
+    return await engine.extract(chunk_ids, tenant_id=tenant_id, chunks=chunks)
 
 
 async def sag_search(
