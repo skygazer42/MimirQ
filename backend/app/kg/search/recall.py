@@ -8,6 +8,7 @@ from app.core.config import settings
 from app.kg.loading.processor import DocumentProcessor
 from app.kg.search.config import SearchConfig
 from app.kg.search.tracker import Tracker
+from app.kg.search.utils import cosine_similarity
 from app.kg.repository import EntityRepository, EventRepository, get_session
 from app.kg.utils import get_logger
 
@@ -115,7 +116,7 @@ class RecallSearcher:
                 ev_id = str(ev.id)
                 sim = 0.0
                 if ev.content_vector:
-                    sim = self._cosine(query_vec, ev.content_vector)
+                    sim = cosine_similarity(query_vec, ev.content_vector)
                 # entity weight sum for recalled keys
                 boost = 0.0
                 for link in assoc_map.get(ev_id, []):
@@ -161,14 +162,3 @@ class RecallSearcher:
         finally:
             session.close()
 
-    def _cosine(self, a: List[float], b: List[float]) -> float:
-        import math
-
-        if not a or not b or len(a) != len(b):
-            return 0.0
-        dot = sum(x * y for x, y in zip(a, b))
-        na = math.sqrt(sum(x * x for x in a))
-        nb = math.sqrt(sum(y * y for y in b))
-        if na == 0 or nb == 0:
-            return 0.0
-        return dot / (na * nb)

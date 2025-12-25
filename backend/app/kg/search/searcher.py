@@ -3,11 +3,11 @@ Unified entry for SAG search: recall -> expand -> rerank.
 """
 from typing import Any, Dict
 
-from app.kg.search.config import RerankStrategy, SearchConfig, ReturnType
+from app.kg.search.config import SearchConfig, ReturnType
 from app.kg.search.recall import RecallSearcher
 from app.kg.search.expand import ExpandSearcher
-from app.kg.search.ranking.pagerank import RerankPageRankSearcher
-from app.kg.search.ranking.rrf import RerankRRFSearcher
+from app.reranking.kg import get_kg_reranker
+from app.reranking.types import RerankCandidate
 from app.kg.utils import get_logger
 
 logger = get_logger("sag.search.searcher")
@@ -17,8 +17,6 @@ class SAGSearcher:
     def __init__(self):
         self.recall_searcher = RecallSearcher()
         self.expand_searcher = ExpandSearcher()
-        self.rerank_pagerank = RerankPageRankSearcher()
-        self.rerank_rrf = RerankRRFSearcher()
 
     async def search(self, config: SearchConfig) -> Dict[str, Any]:
         # recall
@@ -28,26 +26,26 @@ class SAGSearcher:
         expand_result = await self.expand_searcher.expand(config, recall_result)
 
         # rerank
-        if config.rerank.strategy == RerankStrategy.PAGERANK:
-            rerank_result = await self.rerank_pagerank.rerank(
-                config,
-                expand_result.event_ids,
-                expand_result.key_final,
-                expand_result.event_scores,
-            )
-        else:
-            rerank_result = await self.rerank_rrf.rerank(
-                config,
-                expand_result.event_ids,
-                expand_result.event_scores,
-            )
+        candidates = [RerankCandidate(id=str(eid), text="") for eid in expand_result.event_ids]
+        reranker = get_kg_reranker(config.rerank.strategy)
+        rerank_result = await reranker.rerank(
+            query=config.query,
+            candidates=candidates,
+            config=config,
+            event_scores=expand_result.event_scores,
+            key_final=expand_result.key_final,
+        )
 
         if config.return_type == ReturnType.EVENT:
             return {
-                "events": rerank_result.get("events", []),
-                "clues": (expand_result.clues or []) + rerank_result.get("clues", []),
-                "stats": rerank_result.get("stats", {}),
+                "events": rerank_result.items,
+                "clues": (expand_result.clues or []) + (rerank_result.clues or []),
+                "stats": rerank_result.stats,
                 "query": {"original": config.query},
             }
 
-        return rerank_result
+        return {
+            "events": rerank_result.items,
+            "clues": (expand_result.clues or []) + (rerank_result.clues or []),
+            "stats": rerank_result.stats,
+        }

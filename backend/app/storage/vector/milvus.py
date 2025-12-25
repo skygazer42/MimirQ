@@ -10,7 +10,7 @@ Milvus 向量库服务（LangChain 1.x API 管理）
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 from uuid import UUID
 import logging
 
@@ -278,6 +278,24 @@ class MilvusAdapter:
             }
             for doc, score in results
         ]
+
+
+_milvus_adapter_cache: Dict[Tuple[str, str, str], MilvusAdapter] = {}
+
+
+def get_milvus_adapter(
+    collection_name: str,
+    *,
+    vector_field: str = "embedding",
+    text_field: str = "content",
+) -> MilvusAdapter:
+    key = (collection_name, vector_field, text_field)
+    cached = _milvus_adapter_cache.get(key)
+    if cached is not None:
+        return cached
+    adapter = MilvusAdapter(collection_name=collection_name, vector_field=vector_field, text_field=text_field)
+    _milvus_adapter_cache[key] = adapter
+    return adapter
 
 
 # ========= 文档向量存储 (单例) ==========

@@ -65,6 +65,7 @@ class RagasRegressionRunCreateRequest(BaseModel):
     keyword_weight: float = Field(default=0.4, ge=0.0, le=1.0)
     mmr_lambda: float = Field(default=0.7, ge=0.0, le=1.0)
     enable_reranker: bool = Field(default=False, description="是否启用 LLM reranker 精排")
+    reranker_provider: str = Field(default="llm", description="reranker provider: llm | pc | none")
     reranker_top_n: int = Field(default=20, ge=1, le=200, description="精排候选数量（越大越慢）")
 
     # PromptTemplate 选择（可选：用于版本/A-B 对比）

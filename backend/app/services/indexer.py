@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import Enum
+import logging
+import time
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
 from uuid import UUID
 
@@ -13,12 +15,21 @@ from app.kg.models import SagEntity, SagEventEntity, SagSourceEvent
 from app.models.document import Document as DBDocument, DocumentChunk
 from app.storage.search.hybrid_retriever import hybrid_retriever
 from app.storage.vector.factory import get_vector_store
-from app.storage.vector.milvus import MilvusAdapter
+from app.storage.vector.milvus import get_milvus_adapter
+
+logger = logging.getLogger("indexer")
 
 
 class IndexKind(str, Enum):
     CHUNK = "chunk"
     EVENT = "event"
+
+
+@dataclass(frozen=True)
+class IndexScope:
+    tenant_id: UUID
+    document_id: Optional[UUID] = None
+    document_ids: Optional[List[UUID]] = None
 
 
 @dataclass(frozen=True)
@@ -61,6 +72,23 @@ class EventInput:
 
 
 @dataclass(frozen=True)
+class IndexRecord:
+    kind: IndexKind
+    content: str
+    metadata: Dict[str, Any] = field(default_factory=dict)
+    document_id: Optional[UUID] = None
+    chunk_id: Optional[UUID] = None
+    title: Optional[str] = None
+    summary: Optional[str] = None
+    references: Optional[Dict[str, Any]] = None
+    vector: Optional[List[float]] = None
+    entities: List[EventEntityInput] = field(default_factory=list)
+    page_number: Optional[int] = None
+    start_char: Optional[int] = None
+    end_char: Optional[int] = None
+
+
+@dataclass(frozen=True)
 class PersistEventsResult:
     events: List[SagSourceEvent]
     entities: List[SagEntity]
@@ -68,6 +96,12 @@ class PersistEventsResult:
     entity_ids: List[UUID]
     event_vector_ids: List[str]
     entity_vector_ids: List[str]
+
+
+@dataclass(frozen=True)
+class IndexBatchResult:
+    chunk_result: Optional[PersistChunksResult] = None
+    event_result: Optional[PersistEventsResult] = None
 
 
 def _safe_int(value: Any) -> Optional[int]:
@@ -89,8 +123,8 @@ class Indexer:
 
     def __init__(self, db: Session):
         self._db = db
-        self._event_vector = MilvusAdapter(collection_name="sag_events", vector_field="embedding")
-        self._entity_vector = MilvusAdapter(collection_name="sag_entities", vector_field="embedding")
+        self._event_vector = get_milvus_adapter(collection_name="sag_events", vector_field="embedding")
+        self._entity_vector = get_milvus_adapter(collection_name="sag_entities", vector_field="embedding")
 
     def index(self, kind: IndexKind, **kwargs):
         if kind == IndexKind.CHUNK:
@@ -99,6 +133,60 @@ class Indexer:
             return self.index_events(**kwargs)
         raise ValueError(f"Unsupported index kind: {kind}")
 
+    def upsert(
+        self,
+        *,
+        tenant_id: UUID,
+        records: Sequence[IndexRecord],
+        default_source: str = "unknown",
+        commit: bool = True,
+    ) -> IndexBatchResult:
+        start = time.time()
+        if not records:
+            return IndexBatchResult()
+
+        chunk_records = [r for r in records if r.kind == IndexKind.CHUNK]
+        event_records = [r for r in records if r.kind == IndexKind.EVENT]
+        unknown_kinds = {r.kind for r in records if r.kind not in (IndexKind.CHUNK, IndexKind.EVENT)}
+        if unknown_kinds:
+            raise ValueError(f"Unsupported index kinds: {sorted(unknown_kinds)}")
+
+        chunk_result: Optional[PersistChunksResult] = None
+        if chunk_records:
+            doc_ids = {r.document_id for r in chunk_records if r.document_id is not None}
+            if not doc_ids:
+                raise ValueError("Chunk records require document_id")
+            if len(doc_ids) != 1:
+                raise ValueError("Chunk records must share a single document_id per upsert call")
+            document_id = next(iter(doc_ids))
+            chunk_inputs = [self._record_to_chunk_input(r) for r in chunk_records]
+            chunk_result = self.index_chunks(
+                document_id=document_id,
+                tenant_id=tenant_id,
+                chunks=chunk_inputs,
+                default_source=default_source,
+                commit=commit,
+            )
+
+        event_result: Optional[PersistEventsResult] = None
+        if event_records:
+            event_inputs = [self._record_to_event_input(r) for r in event_records]
+            event_result = self.index_events(
+                tenant_id=tenant_id,
+                events=event_inputs,
+                commit=commit,
+            )
+
+        elapsed = time.time() - start
+        logger.info(
+            "indexer.upsert tenant=%s chunks=%s events=%s elapsed=%.3fs",
+            tenant_id,
+            len(chunk_records),
+            len(event_records),
+            elapsed,
+        )
+        return IndexBatchResult(chunk_result=chunk_result, event_result=event_result)
+
     def delete(self, kind: IndexKind, **kwargs) -> None:
         if kind == IndexKind.CHUNK:
             return self.delete_chunk_indexes(**kwargs)
@@ -106,12 +194,43 @@ class Indexer:
             return self.delete_event_indexes(**kwargs)
         raise ValueError(f"Unsupported index kind: {kind}")
 
+    def delete_all(
+        self,
+        *,
+        tenant_id: UUID,
+        document_id: UUID,
+        commit: bool = True,
+    ) -> None:
+        self.delete(IndexKind.CHUNK, tenant_id=tenant_id, document_id=document_id)
+        self.delete(IndexKind.EVENT, tenant_id=tenant_id, document_id=document_id, commit=commit)
+
     def rebuild(self, kind: IndexKind, **kwargs) -> None:
         if kind == IndexKind.CHUNK:
             return self.rebuild_chunk_indexes(**kwargs)
         if kind == IndexKind.EVENT:
             return self.rebuild_event_indexes(**kwargs)
         raise ValueError(f"Unsupported index kind: {kind}")
+
+    def rebuild_all(
+        self,
+        *,
+        tenant_id: UUID,
+        document_ids: Optional[List[UUID]] = None,
+    ) -> None:
+        self.rebuild_tenant(tenant_id=tenant_id, document_ids=document_ids)
+
+    def rebuild_tenant(
+        self,
+        *,
+        tenant_id: UUID,
+        document_ids: Optional[List[UUID]] = None,
+        kinds: Optional[Sequence[IndexKind]] = None,
+    ) -> None:
+        active = set(kinds or (IndexKind.CHUNK, IndexKind.EVENT))
+        if IndexKind.CHUNK in active:
+            self.rebuild_chunk_indexes(tenant_id=tenant_id, document_ids=document_ids)
+        if IndexKind.EVENT in active:
+            self.rebuild_event_indexes(tenant_id=tenant_id, document_ids=document_ids)
 
     def index_chunks(
         self,
@@ -123,12 +242,27 @@ class Indexer:
         commit: bool = True,
     ) -> PersistChunksResult:
         total_characters = sum(len(c.content or "") for c in chunks)
-        vector_docs = [{"content": c.content, "metadata": c.metadata} for c in chunks]
+        normalized_chunks: List[ChunkInput] = []
+        vector_docs: List[Dict[str, Any]] = []
+        for c in chunks:
+            meta = dict(c.metadata or {})
+            meta.setdefault("index_kind", IndexKind.CHUNK.value)
+            normalized_chunks.append(
+                ChunkInput(
+                    content=c.content,
+                    metadata=meta,
+                    page_number=c.page_number,
+                    start_char=c.start_char,
+                    end_char=c.end_char,
+                )
+            )
+            vector_docs.append({"content": c.content, "metadata": meta})
+
         vector_ids = self._index_chunk_vectors(vector_docs, document_id=document_id, tenant_id=tenant_id)
         db_chunks = self._persist_document_chunks(
             document_id=document_id,
             tenant_id=tenant_id,
-            chunks=chunks,
+            chunks=normalized_chunks,
             vector_ids=vector_ids,
             commit=commit,
         )
@@ -223,8 +357,10 @@ class Indexer:
         event_vector_ids: List[str] = []
         entity_vector_ids: List[str] = []
         if commit:
-            event_vector_ids = self._index_event_vectors(db_events)
-            entity_vector_ids = self._index_entity_vectors(list(entity_cache.values()))
+            if bool(getattr(settings, "EVENT_VECTOR_ENABLED", True)):
+                event_vector_ids = self._index_event_vectors(db_events)
+            if bool(getattr(settings, "ENTITY_VECTOR_ENABLED", True)):
+                entity_vector_ids = self._index_entity_vectors(list(entity_cache.values()))
 
         return PersistEventsResult(
             events=db_events,
@@ -300,7 +436,7 @@ class Indexer:
         if document_ids:
             event_query = event_query.filter(SagSourceEvent.document_id.in_(document_ids))
         events = event_query.all()
-        if events:
+        if events and bool(getattr(settings, "EVENT_VECTOR_ENABLED", True)):
             self._index_event_vectors(events)
 
         event_ids = [ev.id for ev in events]
@@ -322,8 +458,42 @@ class Indexer:
             .filter(SagEntity.tenant_id == tenant_id, SagEntity.id.in_(entity_ids))
             .all()
         )
-        if entities:
+        if entities and bool(getattr(settings, "ENTITY_VECTOR_ENABLED", True)):
             self._index_entity_vectors(entities)
+
+    def _record_to_chunk_input(self, record: IndexRecord) -> ChunkInput:
+        meta = dict(record.metadata or {})
+        page_number = record.page_number if record.page_number is not None else meta.get("page") or meta.get("page_number")
+        start_char = record.start_char if record.start_char is not None else meta.get("start_char")
+        end_char = record.end_char if record.end_char is not None else meta.get("end_char")
+        return ChunkInput(
+            content=record.content,
+            metadata=meta,
+            page_number=page_number,
+            start_char=start_char,
+            end_char=end_char,
+        )
+
+    def _record_to_event_input(self, record: IndexRecord) -> EventInput:
+        title = (record.title or "").strip()
+        summary = (record.summary or "").strip()
+        content = (record.content or "").strip()
+        if not content:
+            content = summary or title
+        if not title:
+            title = (summary[:50] if summary else content[:50]).strip() or "Event"
+        if not summary:
+            summary = (content[:200] if content else title).strip() or "Event"
+        return EventInput(
+            title=title,
+            summary=summary,
+            content=content,
+            document_id=record.document_id,
+            chunk_id=record.chunk_id,
+            references=record.references,
+            vector=record.vector,
+            entities=list(record.entities or []),
+        )
 
     def _index_chunk_vectors(
         self,
@@ -411,6 +581,7 @@ class Indexer:
         bm25_docs: List[LCDocument] = []
         for db_chunk in db_chunks:
             meta = dict(db_chunk.doc_metadata or {})
+            meta.setdefault("index_kind", IndexKind.CHUNK.value)
             meta.setdefault("tenant_id", str(tenant_id))
             meta.setdefault("document_id", str(document_id))
             meta.setdefault("chunk_index", db_chunk.chunk_index)
@@ -473,6 +644,7 @@ class Indexer:
                         "chunk_id": str(ev.chunk_id) if ev.chunk_id else "",
                         "title": ev.title,
                         "summary": ev.summary,
+                        "index_kind": IndexKind.EVENT.value,
                     },
                 }
             )
@@ -501,6 +673,7 @@ class Indexer:
                         "tenant_id": str(ent.tenant_id),
                         "type": ent.type,
                         "description": ent.description or "",
+                        "index_kind": "entity",
                     },
                 }
             )

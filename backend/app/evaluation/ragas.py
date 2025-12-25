@@ -561,6 +561,7 @@ def run_regression_ragas_evaluation(
                 keyword_weight=float(rag_params.get("keyword_weight", 0.4)),
                 mmr_lambda=float(rag_params.get("mmr_lambda", settings.RETRIEVAL_MMR_LAMBDA)),
                 enable_reranker=bool(rag_params.get("enable_reranker", settings.ENABLE_RERANKER)),
+                reranker_provider=rag_params.get("reranker_provider") or settings.RERANKER_PROVIDER,
                 reranker_top_n=int(rag_params.get("reranker_top_n", settings.RERANKER_TOP_N)),
                 structured_output=False,
                 structured_preset=None,

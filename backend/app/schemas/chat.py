@@ -107,6 +107,7 @@ class ChatRequest(BaseModel):
         "keyword_weight": 0.4,
         "mmr_lambda": 0.7,  # MMR 多样性权重
         "enable_reranker": False,  # 可选：LLM 精排（更准但更慢）
+        "reranker_provider": "llm",  # llm | pc | none
         "reranker_top_n": 20,  # 精排候选数量（越大越慢）
         "use_graph": False,  # 使用 LangGraph 编排（非流式快捷路径）
     }

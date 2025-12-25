@@ -188,6 +188,7 @@ class RAGEngine:
         keyword_weight: float = 0.4,
         mmr_lambda: float = settings.RETRIEVAL_MMR_LAMBDA,
         enable_reranker: bool = settings.ENABLE_RERANKER,
+        reranker_provider: Optional[str] = settings.RERANKER_PROVIDER,
         reranker_top_n: int = settings.RERANKER_TOP_N,
         request_id: Optional[str] = None,
         prompt_template_id: Optional[UUID] = None,
@@ -340,6 +341,7 @@ class RAGEngine:
             request_keyword_weight = keyword_weight if keyword_weight is not None else 0.4
             request_mmr_lambda = mmr_lambda if mmr_lambda is not None else settings.RETRIEVAL_MMR_LAMBDA
             request_enable_reranker = bool(enable_reranker)
+            request_reranker_provider = reranker_provider or settings.RERANKER_PROVIDER or "llm"
             request_reranker_top_n = int(reranker_top_n or settings.RERANKER_TOP_N or 20)
 
             # Step 1: 混合检索（LangChain Retriever）
@@ -356,6 +358,7 @@ class RAGEngine:
                     "keyword_weight": request_keyword_weight,
                     "mmr_lambda": request_mmr_lambda,
                     "enable_reranker": request_enable_reranker,
+                    "reranker_provider": request_reranker_provider,
                     "reranker_top_n": request_reranker_top_n,
                 }
             )
