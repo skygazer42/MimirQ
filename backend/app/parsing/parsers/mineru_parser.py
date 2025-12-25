@@ -60,7 +60,8 @@ class MinerUParser:
         if not mineru_service.enabled:
             raise Exception(
                 "MinerU parser is not enabled. "
-                "Please set MINERU_ENABLED=True and configure MINERU_API_TOKEN in .env file."
+                "Please set MINERU_ENABLED=True and configure MINERU_API_TOKEN (online) "
+                "or MINERU_LOCAL_SERVER_URL (local ZIP mode) in .env file."
             )
 
         # 检测模式：本地服务优先

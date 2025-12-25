@@ -25,11 +25,15 @@ class MinerUService:
         self.api_base = settings.MINERU_API_BASE
         self.api_token = settings.MINERU_API_TOKEN
         self.model_version = settings.MINERU_MODEL_VERSION
-        self.local_server_url = getattr(settings, 'MINERU_LOCAL_SERVER_URL', None)
-        self.enabled = settings.MINERU_ENABLED and bool(self.api_token)
+        self.local_server_url = (getattr(settings, "MINERU_LOCAL_SERVER_URL", "") or "").strip() or None
+        # MinerU 本地服务不需要 API Token；在线 API 需要。
+        self.enabled = bool(settings.MINERU_ENABLED) and (bool(self.api_token) or bool(self.local_server_url))
 
         if not self.enabled:
-            print("[WARN]  MinerU is disabled. Set MINERU_ENABLED=True and configure MINERU_API_TOKEN to enable.")
+            print(
+                "[WARN]  MinerU is disabled. Set MINERU_ENABLED=True and configure "
+                "MINERU_API_TOKEN (online) or MINERU_LOCAL_SERVER_URL (local) to enable."
+            )
 
     def _get_headers(self) -> Dict[str, str]:
         """获取请求头"""

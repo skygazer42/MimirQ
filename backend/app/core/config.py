@@ -52,6 +52,12 @@ class Settings(BaseSettings):
     MINERU_API_BASE: str = "https://mineru.net/api/v4"
     MINERU_MODEL_VERSION: str = "vlm"
     MINERU_ENABLED: bool = False
+    # MinerU local ZIP mode (Markdown + images)
+    MINERU_LOCAL_SERVER_URL: str = ""
+    MINERU_VL_SERVER: str = ""
+
+    # PDF quality OCR validation (used by parse-preview scoring)
+    RAPIDOCR_ENABLED: bool = False
 
     SECRET_KEY: str = "your-secret-key-change-in-production"
     ALGORITHM: str = "HS256"

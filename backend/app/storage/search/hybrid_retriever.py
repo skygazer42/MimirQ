@@ -333,6 +333,110 @@ class HybridRetriever(BaseRetriever):
 
     # ---- LangChain Retriever API ----
 
+    def _enrich_results_with_db_metadata(self, results: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """
+        向量库返回的 metadata 可能是“裁剪版”（例如不含 img_id）。
+        这里用 chunk_id / (document_id, chunk_index) 回查 DB，补全关键字段：
+        - img_id：用于 MinIO 图片展示
+        - page/source：用于上下文标注（尽量与 DB 保持一致）
+        """
+        if not results:
+            return results
+
+        try:
+            from app.core.database import SessionLocal
+        except Exception:
+            return results
+
+        db = SessionLocal()
+        try:
+            tenant_filter = self.tenant_id
+
+            chunk_ids: List[UUID] = []
+            # 先收集已有 chunk_id（优先用它回查）
+            for r in results:
+                cid = r.get("chunk_id")
+                if not cid:
+                    meta = r.get("metadata") or {}
+                    cid = meta.get("chunk_id")
+                if not cid:
+                    continue
+                try:
+                    chunk_ids.append(UUID(str(cid)))
+                except Exception:
+                    continue
+
+            chunks_by_id: Dict[str, DocumentChunk] = {}
+            if chunk_ids:
+                q = db.query(DocumentChunk).filter(DocumentChunk.id.in_(chunk_ids))
+                if tenant_filter:
+                    q = q.filter(DocumentChunk.tenant_id == tenant_filter)
+                for ck in q.all():
+                    chunks_by_id[str(ck.id)] = ck
+
+            # 对缺失 chunk_id 的结果，尝试按 (document_id, chunk_index) 回查并补齐 chunk_id
+            for r in results:
+                cid = r.get("chunk_id")
+                if cid and str(cid) in chunks_by_id:
+                    continue
+                meta = r.get("metadata") or {}
+                doc_id = meta.get("document_id")
+                chunk_index = meta.get("chunk_index")
+                if doc_id is None or chunk_index is None:
+                    continue
+                try:
+                    doc_uuid = UUID(str(doc_id))
+                    chunk_idx = int(chunk_index)
+                except Exception:
+                    continue
+
+                q = db.query(DocumentChunk).filter(
+                    DocumentChunk.document_id == doc_uuid,
+                    DocumentChunk.chunk_index == chunk_idx,
+                )
+                if tenant_filter:
+                    q = q.filter(DocumentChunk.tenant_id == tenant_filter)
+                ck = q.first()
+                if not ck:
+                    continue
+
+                r["chunk_id"] = str(ck.id)
+                meta = dict(meta)
+                meta["chunk_id"] = str(ck.id)
+                r["metadata"] = meta
+                chunks_by_id[str(ck.id)] = ck
+
+            # 合并 DB metadata（只补空缺字段，避免覆盖向量侧的 score 等）
+            for r in results:
+                meta = dict(r.get("metadata") or {})
+                cid = r.get("chunk_id") or meta.get("chunk_id")
+                ck = chunks_by_id.get(str(cid)) if cid else None
+                if not ck:
+                    continue
+
+                stored_meta = dict(ck.doc_metadata or {})
+                if stored_meta.get("img_id") and not meta.get("img_id"):
+                    meta["img_id"] = stored_meta.get("img_id")
+                if stored_meta.get("source") and not meta.get("source"):
+                    meta["source"] = stored_meta.get("source")
+                if (ck.page_number is not None) and not meta.get("page"):
+                    meta["page"] = ck.page_number
+                if stored_meta.get("parser_backend") and not meta.get("parser_backend"):
+                    meta["parser_backend"] = stored_meta.get("parser_backend")
+                if stored_meta.get("doc_type_kwd") and not meta.get("doc_type_kwd"):
+                    meta["doc_type_kwd"] = stored_meta.get("doc_type_kwd")
+
+                r["metadata"] = meta
+
+            return results
+        except Exception:
+            return results
+        finally:
+            try:
+                db.close()
+            except Exception:
+                pass
+
     def _get_relevant_documents(
         self,
         query: str,
@@ -352,6 +456,7 @@ class HybridRetriever(BaseRetriever):
             retrieval_mode=self.retrieval_mode,
             mmr_lambda=self.mmr_lambda,
         )
+        results = self._enrich_results_with_db_metadata(results)
         docs: List[Document] = []
         for r in results:
             meta = dict(r.get("metadata") or {})
