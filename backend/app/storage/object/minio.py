@@ -5,6 +5,9 @@ from __future__ import annotations
 
 import io
 from typing import Optional, BinaryIO, Union
+import json
+import time
+from pathlib import Path
 
 from minio import Minio
 from minio.error import S3Error
@@ -18,6 +21,7 @@ class MinIOService:
     def __init__(self):
         self._client: Optional[Minio] = None
         self._bucket_name = settings.MINIO_BUCKET_NAME
+        self._metrics_path = Path(settings.MINIO_METRICS_LOG_PATH)
 
     def _get_client(self) -> Minio:
         """延迟初始化 MinIO 客户端"""
@@ -65,6 +69,7 @@ class MinIOService:
         Returns:
             img_id: 格式 "{tenant_id}:{dataset_id}:{document_id}:{chunk_key}"
         """
+        t0 = time.perf_counter()
         img_id = f"{tenant_id}:{dataset_id}:{document_id}:{chunk_key}"
         object_name = f"images/{tenant_id}/{dataset_id}/{document_id}/{chunk_key}.{extension}"
 
@@ -95,10 +100,12 @@ class MinIOService:
             )
 
             print(f"[MinIO] 图片上传成功: {object_name} -> {img_id}")
+            self._log_metric("upload", True, time.perf_counter() - t0, object_name)
             return img_id
 
         except S3Error as e:
             print(f"[ERROR] MinIO 上传失败: {e}")
+            self._log_metric("upload", False, time.perf_counter() - t0, object_name, error=str(e))
             raise RuntimeError(f"MinIO 图片上传失败: {e}") from e
 
     def get_image_url(self, img_id: str, extension: str = "jpg") -> str:
@@ -112,6 +119,7 @@ class MinIOService:
         Returns:
             预签名 URL
         """
+        t0 = time.perf_counter()
         try:
             if ":" in img_id:
                 tenant_id, dataset_id, document_id, chunk_key = img_id.split(":", 3)
@@ -129,10 +137,12 @@ class MinIOService:
                 object_name=object_name,
                 expires=7 * 24 * 3600,  # 7 天有效期
             )
+            self._log_metric("presign", True, time.perf_counter() - t0, object_name)
             return url
 
         except Exception as e:
             print(f"[ERROR] MinIO 获取 URL 失败: {e}")
+            self._log_metric("presign", False, time.perf_counter() - t0, locals().get("object_name", ""), error=str(e))
             raise RuntimeError(f"MinIO 获取图片 URL 失败: {e}") from e
 
     def delete_image(self, img_id: str, extension: str = "jpg"):
@@ -143,6 +153,7 @@ class MinIOService:
             img_id: 格式 "{tenant_id}:{dataset_id}:{document_id}:{chunk_key}"
             extension: 文件扩展名
         """
+        t0 = time.perf_counter()
         try:
             if ":" in img_id:
                 tenant_id, dataset_id, document_id, chunk_key = img_id.split(":", 3)
@@ -157,9 +168,11 @@ class MinIOService:
                 object_name=object_name,
             )
             print(f"[MinIO] 图片删除成功: {object_name}")
+            self._log_metric("delete", True, time.perf_counter() - t0, object_name)
 
         except S3Error as e:
             print(f"[WARN] MinIO 删除图片失败: {e}")
+            self._log_metric("delete", False, time.perf_counter() - t0, locals().get("object_name", ""), error=str(e))
 
     def delete_dataset_images(self, tenant_id: str, dataset_id: str):
         """
@@ -169,6 +182,7 @@ class MinIOService:
             tenant_id: 租户 ID
             dataset_id: 知识库 ID
         """
+        t0 = time.perf_counter()
         try:
             client = self._get_client()
             prefix = f"images/{tenant_id}/{dataset_id}/"
@@ -186,9 +200,31 @@ class MinIOService:
                 )
             
             print(f"[MinIO] 知识库 {dataset_id} 的图片已全部删除")
+            self._log_metric("delete_dataset", True, time.perf_counter() - t0, prefix)
 
         except S3Error as e:
             print(f"[WARN] MinIO 删除知识库图片失败: {e}")
+            self._log_metric("delete_dataset", False, time.perf_counter() - t0, prefix, error=str(e))
+
+    def _log_metric(self, op: str, success: bool, elapsed: float, object_name: str, error: Optional[str] = None):
+        """简单的 JSON 行日志，便于外部采集/监控。"""
+        try:
+            self._metrics_path.parent.mkdir(parents=True, exist_ok=True)
+            record = {
+                "op": op,
+                "success": success,
+                "elapsed_ms": round(elapsed * 1000, 2),
+                "object": object_name,
+                "bucket": self._bucket_name,
+                "ts": time.time(),
+            }
+            if error:
+                record["error"] = error
+            with self._metrics_path.open("a", encoding="utf-8") as f:
+                f.write(json.dumps(record, ensure_ascii=False) + "\n")
+        except Exception:
+            # 监控不应影响主流程
+            pass
 
 
 # 全局实例

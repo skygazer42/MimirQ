@@ -110,10 +110,24 @@ async def health_check():
     except Exception as exc:
         milvus_status["error"] = str(exc)
 
+    minio_status = {"status": "disabled"}
+    if settings.MINIO_ENABLED:
+        try:
+            from app.storage.object.minio import minio_service
+
+            # 尝试列 bucket（或 stat 一个不存在的对象以检查连接），这里检查 bucket 是否存在
+            minio_service._get_client()  # 确保初始化
+            minio_status["status"] = "connected"
+            minio_status["bucket"] = settings.MINIO_BUCKET_NAME
+        except Exception as exc:
+            minio_status["status"] = "error"
+            minio_status["error"] = str(exc)
+
     return {
         "status": "healthy",
         "database": "connected",
         "milvus": milvus_status,
+        "minio": minio_status,
     }
 
 

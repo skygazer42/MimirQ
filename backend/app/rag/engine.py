@@ -493,8 +493,13 @@ class RAGEngine:
                     "data": {"content": token}
                 }
 
-            # Step 4.5: 将引用图片以内嵌 Markdown 的形式追加到正文（仅非结构化输出）
-            if not structured_output and citations:
+            # Step 4.5: 将引用图片以内嵌 Markdown 的形式追加到正文（仅非结构化输出，可配置）
+            if (
+                not structured_output
+                and citations
+                and bool(settings.SHOW_IMAGE_IN_ANSWER)
+                and settings.IMAGE_APPEND_MAX > 0
+            ):
                 image_urls: List[str] = []
                 for c in citations:
                     if not c.get("has_image"):
@@ -505,7 +510,7 @@ class RAGEngine:
                     if url in image_urls:
                         continue
                     image_urls.append(url)
-                    if len(image_urls) >= 3:
+                    if len(image_urls) >= settings.IMAGE_APPEND_MAX:
                         break
 
                 if image_urls:
