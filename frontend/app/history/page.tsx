@@ -18,11 +18,15 @@ import {
   ChevronLeft,
   BarChart3,
 } from 'lucide-react'
+import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
 import { Navbar } from '@/components/navbar'
 import { Button } from '@/components/ui/button'
 import { chatApi } from '@/lib/api-client'
 import { cn } from '@/lib/utils'
 import type { Conversation, Message, Citation } from '@/types'
+
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
 
 export default function HistoryPage() {
   return (
@@ -389,7 +393,35 @@ function MessageItem({ message }: { message: Message }) {
           isUser ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-900'
         )}
       >
-        <div className="whitespace-pre-wrap break-words">{message.content}</div>
+        {isUser ? (
+          <div className="whitespace-pre-wrap break-words">{message.content}</div>
+        ) : (
+          <div className="prose max-w-none break-words prose-slate">
+            <ReactMarkdown
+              remarkPlugins={[remarkGfm]}
+              components={{
+                img: ({ src, alt }) => {
+                  const raw = typeof src === 'string' ? src : ''
+                  const resolved = raw
+                    ? raw.startsWith('http')
+                      ? raw
+                      : `${API_BASE_URL}${raw}`
+                    : ''
+                  return (
+                    <img
+                      src={resolved}
+                      alt={alt || 'image'}
+                      loading="lazy"
+                      className="my-2 w-full max-h-96 object-contain rounded border border-gray-200 bg-white"
+                    />
+                  )
+                },
+              }}
+            >
+              {message.content}
+            </ReactMarkdown>
+          </div>
+        )}
 
         {!isUser && message.citations && message.citations.length > 0 && (
           <div className="mt-3 pt-3 border-t border-gray-200 space-y-2">
@@ -412,11 +444,10 @@ function MessageItem({ message }: { message: Message }) {
 
 // 引用卡片
 function CitationCard({ citation, index }: { citation: Citation; index: number }) {
-  const apiBaseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
   const imgUrl = citation.img_url
     ? citation.img_url.startsWith('http')
       ? citation.img_url
-      : `${apiBaseUrl}${citation.img_url}`
+      : `${API_BASE_URL}${citation.img_url}`
     : null
 
   return (
