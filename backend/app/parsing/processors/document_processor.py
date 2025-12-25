@@ -123,6 +123,7 @@ class DocumentProcessorService:
                             document_id=str(document_id),
                             cache=inline_cache,
                             start_index=asset_idx,
+                            origin_path=file_path,
                         )
                         for iid in new_img_ids:
                             document_img_ids.add(iid)
@@ -479,9 +480,16 @@ class DocumentProcessorService:
         document_id: str,
         cache: dict[str, str],
         start_index: int = 0,
+        origin_path: Optional[Path] = None,
     ) -> tuple[str, List[str], int]:
         """
-        将 Markdown/HTML 中的 data URI 图片上传到 MinIO，并把引用替换为 /image-url/{img_id}。
+        将 Markdown/HTML 中的图片引用上传到 MinIO，并替换为 /image-url/{img_id}。
+
+        支持：
+        - data URI：data:image/...
+        - 本地/相对路径：![alt](images/foo.png) 或 <img src="images/foo.png">
+          路径解析：相对 `origin_path.parent`；若为绝对路径直接使用。
+        - 已是 http/https 或已指向 /api/v1/documents/image-url/... 的跳过。
 
         返回：
         - 处理后的 markdown_text
@@ -493,21 +501,22 @@ class DocumentProcessorService:
         if not isinstance(markdown_text, str) or "data:image" not in markdown_text:
             return markdown_text, [], start_index
 
-        # 仅处理 markdown 图片与 html img 的 data URI，避免误伤其他 base64 字符串。
-        md_pat = re.compile(r"!\[[^\]]*\]\((data:image\/[^)]+)\)", flags=re.IGNORECASE)
-        html_pat = re.compile(r"<img[^>]+src=[\"'](data:image\/[^\"']+)[\"']", flags=re.IGNORECASE)
+        # 仅处理 markdown 图片与 html img，匹配 src 内容
+        md_pat = re.compile(r"!\[[^\]]*\]\(([^)]+)\)", flags=re.IGNORECASE)
+        html_pat = re.compile(r"<img[^>]+src=[\"']([^\"']+)[\"']", flags=re.IGNORECASE)
 
         found: List[str] = []
         seen: set[str] = set()
         for pat in (md_pat, html_pat):
             for m in pat.finditer(markdown_text):
-                data_uri = m.group(1)
-                if not isinstance(data_uri, str) or not data_uri:
+                ref = m.group(1)
+                if not isinstance(ref, str) or not ref:
                     continue
-                if data_uri in seen:
+                ref = ref.strip()
+                if ref in seen:
                     continue
-                seen.add(data_uri)
-                found.append(data_uri)
+                seen.add(ref)
+                found.append(ref)
 
         if not found:
             return markdown_text, [], start_index
@@ -515,15 +524,37 @@ class DocumentProcessorService:
         new_ids: List[str] = []
         idx = int(start_index or 0)
 
-        for data_uri in found:
-            try:
-                header, b64_part = data_uri.split(",", 1)
-                if "base64" not in header:
-                    continue
-                b64_part = re.sub(r"\s+", "", b64_part)
-                binary = base64.b64decode(b64_part)
+        base_dir = origin_path.parent if origin_path else None
 
-                # 统一转 JPEG，保持与 MinIOService.get_image_url 默认扩展一致
+        for ref in found:
+            # 已是远程或已替换过
+            if ref.lower().startswith(("http://", "https://")):
+                continue
+            if "/api/v1/documents/image-url/" in ref:
+                continue
+
+            is_data_uri = ref.startswith("data:image")
+
+            try:
+                if is_data_uri:
+                    header, b64_part = ref.split(",", 1)
+                    if "base64" not in header:
+                        continue
+                    b64_part = re.sub(r"\s+", "", b64_part)
+                    binary = base64.b64decode(b64_part)
+                else:
+                    # 本地/相对路径
+                    path_obj = Path(ref)
+                    if not path_obj.is_absolute():
+                        if base_dir:
+                            path_obj = (base_dir / path_obj).resolve()
+                        else:
+                            path_obj = path_obj.resolve()
+                    if not path_obj.exists() or not path_obj.is_file():
+                        continue
+                    binary = path_obj.read_bytes()
+
+                # 统一转 JPEG
                 from io import BytesIO
                 from PIL import Image as PILImage
 
@@ -551,10 +582,10 @@ class DocumentProcessorService:
                     new_ids.append(img_id)
 
                 url = f"/api/v1/documents/image-url/{img_id}"
-                markdown_text = markdown_text.replace(data_uri, url)
+                markdown_text = markdown_text.replace(ref, url)
 
             except Exception as e:
-                print(f"[WARN] 内嵌图片上传失败（跳过）: {e}")
+                print(f"[WARN] 内嵌/本地图片上传失败（跳过）: {e}")
                 continue
 
         return markdown_text, new_ids, idx
