@@ -92,6 +92,8 @@ from app.dependencies.tenant import get_tenant_id
 
 负责将 Markdown 做“清洗/规范化”（正则规则、空白规范化等），为人工调整与后续分块做准备。
 
+**开关：** `GOVERNANCE_ENABLED` 控制治理流程是否启用（默认 true）。
+
 **预览 API：**
 - `POST /api/v1/pipeline/clean-preview`
 - `GET  /api/v1/pipeline/clean-rules`
@@ -218,6 +220,7 @@ from app.services.prompt_template_selector import select_prompt_template
 - `prompt_template_selector.py` - 提示词选择
 - `metrics_logger.py` - 指标日志
 - `mineru_service.py` - MinerU API 客户端
+- `indexer.py` - 统一索引器（chunk/event 入库、重建、删除）
 - `sag_pipeline.py` - SAG 流程
 
 ### 11. sag/ - SAG 图谱模块

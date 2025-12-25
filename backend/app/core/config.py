@@ -90,6 +90,7 @@ class Settings(BaseSettings):
     ENABLE_QUERY_REWRITE: bool = False
     QUERY_REWRITE_TEMPERATURE: float = 0.2
     QUERY_REWRITE_MAX_CHARS: int = 120
+    GOVERNANCE_ENABLED: bool = False
     # Reranker（可选：使用 LLM 对候选切片重排，提高命中质量）
     ENABLE_RERANKER: bool = False
     RERANKER_PROVIDER: str = "llm"  # llm | pc | none
