@@ -4,31 +4,15 @@ Entity and Event repositories.
 Provides data access for entities and events with both PostgreSQL storage
 and Milvus vector similarity search capabilities.
 """
-import math
-from typing import Any, Iterable, List, Optional, Dict
+from typing import Iterable, List, Optional
 from uuid import UUID
 
 from sqlalchemy.orm import Session
-from sqlalchemy import select, func
+from sqlalchemy import select
 
 from app.core.database import SessionLocal
 from app.kg.models import SagEntity, SagSourceEvent, SagEventEntity
-from app.core.config import settings
 from app.storage.vector.milvus import MilvusAdapter
-
-
-def _cosine(a: List[float], b: List[float]) -> float:
-    if not a or not b:
-        return 0.0
-    if len(a) != len(b):
-        return 0.0
-    dot = sum(x * y for x, y in zip(a, b))
-    na = math.sqrt(sum(x * x for x in a))
-    nb = math.sqrt(sum(y * y for y in b))
-    if na == 0 or nb == 0:
-        return 0.0
-    return dot / (na * nb)
-
 
 class EntityRepository:
     """Entity read/write + similarity search."""
@@ -36,37 +20,6 @@ class EntityRepository:
     def __init__(self, session: Session):
         self.session = session
         self._milvus = MilvusAdapter(collection_name="sag_entities", vector_field="embedding")
-
-    def push_entities_to_milvus(self, entities: List[SagEntity]) -> List[str]:
-        items: List[Dict[str, Any]] = []
-        embeddings: List[List[float]] = []
-        for ent in entities:
-            if not ent.vector:
-                continue
-            embeddings.append(list(ent.vector))
-            items.append(
-                {
-                    "id": str(ent.id),
-                    "content": ent.name,
-                    "metadata": {
-                        "name": ent.name,
-                        "tenant_id": str(ent.tenant_id),
-                        "type": ent.type,
-                        "description": ent.description or "",
-                    },
-                }
-            )
-        if not items:
-            return []
-        return self._milvus.add_vectors(items, embeddings=embeddings)
-
-    def upsert_entities(self, entities: List[SagEntity]) -> List[SagEntity]:
-        for ent in entities:
-            self.session.merge(ent)
-        self.session.commit()
-
-        self.push_entities_to_milvus(entities)
-        return entities
 
     def search_similar(
         self,
@@ -149,38 +102,6 @@ class EventRepository:
     def __init__(self, session: Session):
         self.session = session
         self._milvus = MilvusAdapter(collection_name="sag_events", vector_field="embedding")
-
-    def push_events_to_milvus(self, events: List[SagSourceEvent]) -> List[str]:
-        items: List[Dict[str, Any]] = []
-        embeddings: List[List[float]] = []
-        for ev in events:
-            if not ev.content_vector:
-                continue
-            embeddings.append(list(ev.content_vector))
-            items.append(
-                {
-                    "id": str(ev.id),
-                    "content": ev.content,
-                    "metadata": {
-                        "tenant_id": str(ev.tenant_id),
-                        "document_id": str(ev.document_id) if ev.document_id else "",
-                        "chunk_id": str(ev.chunk_id) if ev.chunk_id else "",
-                        "title": ev.title,
-                        "summary": ev.summary,
-                    },
-                }
-            )
-        if not items:
-            return []
-        return self._milvus.add_vectors(items, embeddings=embeddings)
-
-    def upsert_events(self, events: List[SagSourceEvent]) -> List[SagSourceEvent]:
-        for ev in events:
-            self.session.merge(ev)
-        self.session.commit()
-
-        self.push_events_to_milvus(events)
-        return events
 
     def link_event_entities(
         self,

@@ -8,7 +8,6 @@ from uuid import UUID
 from pathlib import Path
 import shutil
 import uuid
-from datetime import datetime
 
 
 from app.core.database import get_db
@@ -31,11 +30,9 @@ from app.schemas.document import (
 from app.parsing.processors.document_processor import document_processor
 from app.parsing.factory import parser_factory
 from app.parsing.chunking.factory import chunker_factory
-from app.storage.vector.factory import get_vector_store
-from app.storage.search.hybrid_retriever import hybrid_retriever
+from app.services.indexer import ChunkInput, IndexKind, Indexer
 from app.services.mineru_service import mineru_service
 from app.services.dataset_service import DatasetService
-from app.services.chunk_indexing import ChunkInput, index_and_persist_chunks
 from app.storage.object.minio import minio_service
 from app.models.dataset import Dataset, DatasetPermission, DatasetPermissionEnum
 from app.core.config import settings
@@ -371,10 +368,9 @@ async def delete_document(
             print(f"[WARN] MinIO 图片删除过程失败: {exc}")
 
     # 2. 删除向量库中的向量（按后端切换）
-    try:
-        get_vector_store().delete_by_document_id(document_id, tenant_id=tenant_id)
-    except Exception as exc:
-        print(f"[WARN]  Failed to delete vectors: {exc}")
+    indexer = Indexer(db)
+    indexer.delete(IndexKind.CHUNK, tenant_id=tenant_id, document_id=document_id)
+    indexer.delete(IndexKind.EVENT, tenant_id=tenant_id, document_id=document_id, commit=False)
 
     # 3. 删除本地文件
     try:
@@ -389,11 +385,6 @@ async def delete_document(
     db.commit()
 
     # 5. 移除 BM25 索引中的切片（内存索引）
-    try:
-        hybrid_retriever.remove_document_from_bm25_index(document_id, tenant_id=tenant_id)
-    except Exception as exc:
-        print(f"[WARN]  Failed to update BM25 index after deletion: {exc}")
-
     return None
 
 
@@ -591,8 +582,8 @@ async def create_document_with_manual_chunks(
                 )
             )
 
-        persist_result = index_and_persist_chunks(
-            db,
+        persist_result = Indexer(db).index(
+            IndexKind.CHUNK,
             document_id=document_id,
             tenant_id=tenant_id,
             chunks=chunk_inputs,
