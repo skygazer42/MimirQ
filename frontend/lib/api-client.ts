@@ -10,6 +10,20 @@ import type {
   DocumentPreview,
   ManualChunk,
   ChunkPreviewResponse,
+  Dataset,
+  DatasetCreate,
+  DatasetUpdate,
+  DatasetListResponse,
+  MessageFeedback,
+  MessageFeedbackCreate,
+  MessageFeedbackListResponse,
+  SAGExtractResponse,
+  SAGSearchRequest,
+  SAGSearchResponse,
+  BatchUploadRequest,
+  BatchUploadResponse,
+  BatchTaskStatus,
+  BatchFileInfo,
 } from '@/types'
 import { getAuthHeaders } from '@/lib/auth-headers'
 
@@ -31,6 +45,42 @@ apiClient.interceptors.request.use((config) => {
   return config
 })
 
+// 响应拦截器：统一错误处理
+apiClient.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    // 统一错误处理
+    if (error.response) {
+      const status = error.response.status
+      const detail = error.response.data?.detail
+
+      switch (status) {
+        case 401:
+          console.error('[API] 未授权，请检查登录状态')
+          break
+        case 403:
+          console.error('[API] 无权限访问')
+          break
+        case 404:
+          console.error('[API] 资源不存在')
+          break
+        case 422:
+          console.error('[API] 请求参数错误:', detail)
+          break
+        case 500:
+          console.error('[API] 服务器错误:', detail)
+          break
+        default:
+          console.error('[API] 请求失败:', detail || error.message)
+      }
+    } else if (error.request) {
+      console.error('[API] 网络错误，请检查后端服务是否启动')
+    }
+
+    return Promise.reject(error)
+  }
+)
+
 // ==================== 文档管理 API ====================
 
 export const documentApi = {
@@ -39,12 +89,15 @@ export const documentApi = {
    */
   async upload(
     file: File,
-    options: { parser_backend?: string; chunk_strategy?: string } = {}
+    options: { parser_backend?: string; chunk_strategy?: string; dataset_id?: string } = {}
   ): Promise<Document> {
     const formData = new FormData()
     formData.append('file', file)
     formData.append('parser_backend', options.parser_backend || 'auto')
     formData.append('chunk_strategy', options.chunk_strategy || 'langchain_recursive')
+    if (options.dataset_id) {
+      formData.append('dataset_id', options.dataset_id)
+    }
 
     const { data } = await apiClient.post('/documents/upload', formData, {
       headers: {
@@ -62,6 +115,7 @@ export const documentApi = {
     skip?: number
     limit?: number
     status?: string
+    dataset_id?: string
   }): Promise<{ total: number; items: Document[] }> {
     const { data } = await apiClient.get('/documents/', { params })
     return data
@@ -69,8 +123,6 @@ export const documentApi = {
 
   /**
    * 获取文档详情
-   *
-   * 默认不包含 chunks，如需包含传入 options.includeChunks = true
    */
   async get(
     documentId: string,
@@ -126,6 +178,7 @@ export const documentApi = {
     file_type: string
     file_size: number
     chunks: ManualChunk[]
+    dataset_id?: string
     metadata?: Record<string, any>
   }): Promise<Document> {
     const { data } = await apiClient.post('/documents/manual', params)
@@ -159,6 +212,207 @@ export const documentApi = {
       },
     })
 
+    return data
+  },
+
+  /**
+   * 批量上传申请 URL
+   */
+  async applyBatchUploadUrls(files: BatchFileInfo[]): Promise<BatchUploadResponse> {
+    const { data } = await apiClient.post('/documents/batch-upload/apply-urls', { files })
+    return data
+  },
+
+  /**
+   * 获取批量任务状态
+   */
+  async getBatchTaskStatus(batchId: string): Promise<BatchTaskStatus> {
+    const { data } = await apiClient.get(`/documents/batch-upload/status/${batchId}`)
+    return data
+  },
+}
+
+// ==================== 数据集 API ====================
+
+export const datasetApi = {
+  /**
+   * 创建数据集
+   */
+  async create(params: DatasetCreate): Promise<Dataset> {
+    const { data } = await apiClient.post('/datasets/', params)
+    return data
+  },
+
+  /**
+   * 获取数据集列表
+   */
+  async list(params?: {
+    skip?: number
+    limit?: number
+  }): Promise<DatasetListResponse> {
+    const { data } = await apiClient.get('/datasets/', { params })
+    return data
+  },
+
+  /**
+   * 获取数据集详情
+   */
+  async get(datasetId: string): Promise<Dataset> {
+    const { data } = await apiClient.get(`/datasets/${datasetId}`)
+    return data
+  },
+
+  /**
+   * 更新数据集
+   */
+  async update(datasetId: string, params: DatasetUpdate): Promise<Dataset> {
+    const { data } = await apiClient.patch(`/datasets/${datasetId}`, params)
+    return data
+  },
+
+  /**
+   * 删除数据集
+   */
+  async delete(datasetId: string): Promise<void> {
+    await apiClient.delete(`/datasets/${datasetId}`)
+  },
+}
+
+// ==================== 对话 API ====================
+
+export const chatApi = {
+  /**
+   * 创建对话
+   */
+  async createConversation(params?: {
+    title?: string
+    document_ids?: string[]
+  }): Promise<Conversation> {
+    const { data } = await apiClient.post('/chat/conversations', params)
+    return data
+  },
+
+  /**
+   * 获取对话列表
+   */
+  async listConversations(params?: {
+    skip?: number
+    limit?: number
+  }): Promise<{ total: number; items: Conversation[] }> {
+    const { data } = await apiClient.get('/chat/conversations', { params })
+    return data
+  },
+
+  /**
+   * 获取对话消息
+   */
+  async getMessages(conversationId: string): Promise<{ conversation_id: string; messages: Message[] }> {
+    const { data } = await apiClient.get(`/chat/conversations/${conversationId}/messages`)
+    return data
+  },
+
+  /**
+   * 删除对话
+   */
+  async deleteConversation(conversationId: string): Promise<void> {
+    await apiClient.delete(`/chat/conversations/${conversationId}`)
+  },
+
+  /**
+   * 流式对话（返回 EventSource URL）
+   */
+  getStreamUrl(): string {
+    return `${API_BASE_URL}/api/v1/chat/stream`
+  },
+
+  /**
+   * 发送流式聊天请求
+   */
+  async streamChat(request: ChatRequest, onEvent: (event: MessageEvent) => void, onError?: (error: Error) => void): Promise<void> {
+    const response = await fetch(this.getStreamUrl(), {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...getAuthHeaders(),
+      },
+      body: JSON.stringify(request),
+    })
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`)
+    }
+
+    const reader = response.body?.getReader()
+    if (!reader) {
+      throw new Error('No response body')
+    }
+
+    const decoder = new TextDecoder()
+    let buffer = ''
+
+    while (true) {
+      const { done, value } = await reader.read()
+
+      if (done) break
+
+      buffer += decoder.decode(value, { stream: true })
+      const lines = buffer.split('\n')
+      buffer = lines.pop() || ''
+
+      for (const line of lines) {
+        if (line.trim()) {
+          try {
+            const event = new MessageEvent('message', { data: line })
+            onEvent(event)
+          } catch (e) {
+            onError?.(e as Error)
+          }
+        }
+      }
+    }
+  },
+}
+
+// ==================== 反馈 API ====================
+
+export const feedbackApi = {
+  /**
+   * 提交消息反馈
+   */
+  async create(params: MessageFeedbackCreate): Promise<MessageFeedback> {
+    const { data } = await apiClient.post('/feedback/messages', params)
+    return data
+  },
+
+  /**
+   * 获取反馈列表
+   */
+  async list(params?: {
+    skip?: number
+    limit?: number
+    message_id?: string
+  }): Promise<MessageFeedbackListResponse> {
+    const { data } = await apiClient.get('/feedback/messages', { params })
+    return data
+  },
+}
+
+// ==================== SAG API ====================
+
+export const sagApi = {
+  /**
+   * 触发 SAG 实体提取
+   */
+  async extract(documentId: string): Promise<SAGExtractResponse> {
+    const { data } = await apiClient.post(`/sag/documents/${documentId}/extract`)
+    return data
+  },
+
+  /**
+   * SAG 搜索
+   */
+  async search(params: SAGSearchRequest): Promise<SAGSearchResponse> {
+    const { data } = await apiClient.post('/sag/search', params)
     return data
   },
 }
@@ -251,58 +505,6 @@ export const settingsApi = {
   async getStatus(): Promise<SystemStatus> {
     const { data } = await apiClient.get('/settings/status')
     return data
-  },
-}
-
-// ==================== 对话 API ====================
-
-export const chatApi = {
-  /**
-   * 创建对话
-   */
-  async createConversation(params?: {
-    title?: string
-    document_ids?: string[]
-  }): Promise<Conversation> {
-    const { data } = await apiClient.post('/chat/conversations', params)
-    return data
-  },
-
-  /**
-   * 获取对话列表
-   */
-  async listConversations(params?: {
-    skip?: number
-    limit?: number
-  }): Promise<{ total: number; items: Conversation[] }> {
-    const { data } = await apiClient.get('/chat/conversations', { params })
-    return data
-  },
-
-  /**
-   * 获取对话消息
-   */
-  async getMessages(conversationId: string): Promise<{ conversation_id: string; messages: Message[] }> {
-    const { data } = await apiClient.get(`/chat/conversations/${conversationId}/messages`)
-    return data
-  },
-
-  /**
-   * 删除对话
-   */
-  async deleteConversation(conversationId: string): Promise<void> {
-    await apiClient.delete(`/chat/conversations/${conversationId}`)
-  },
-
-  /**
-   * 流式对话（返回 EventSource URL）
-   */
-  getStreamUrl(request: ChatRequest): string {
-    const params = new URLSearchParams()
-
-    // 注意：实际应该使用 POST 请求，这里简化处理
-    // 正确做法是在组件中直接使用 fetch POST
-    return `${API_BASE_URL}/api/v1/chat/stream`
   },
 }
 
