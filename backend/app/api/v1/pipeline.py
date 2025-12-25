@@ -94,6 +94,9 @@ async def clean_preview(body: CleanPreviewRequest):
         trim_trailing_spaces=body.trim_trailing_spaces,
         collapse_blank_lines=body.collapse_blank_lines,
         remove_control_chars=body.remove_control_chars,
+        remove_toc_lines=body.remove_toc_lines,
+        remove_noise_lines=body.remove_noise_lines,
+        unwrap_lines=body.unwrap_lines,
     )
     return CleanPreviewResponse(
         markdown=result.markdown,
