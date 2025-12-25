@@ -8,7 +8,7 @@ from typing import Dict, List, Optional, Sequence
 from app.core.database import SessionLocal
 from app.models.document import DocumentChunk
 from app.kg.models import SagSourceEvent
-from app.ai.factory import create_llm_client
+from app.rag.llm.factory import create_llm_client
 from app.kg.extraction.config import ExtractConfig
 from app.kg.extraction.processor import EventProcessor
 from app.kg.loading.processor import DocumentProcessor
