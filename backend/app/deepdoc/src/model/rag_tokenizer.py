@@ -21,9 +21,14 @@ import os
 import re
 import string
 import sys
+import bisect
+import pickle
 from pathlib import Path
 
-import datrie
+try:
+    import datrie  # type: ignore
+except Exception:  # pragma: no cover
+    datrie = None
 import nltk
 from hanziconv import HanziConv
 from nltk import word_tokenize
@@ -34,6 +39,44 @@ _NLTK_DATA_DIR = Path(__file__).resolve().parents[2] / "resources" / "nltk_data"
 if str(_NLTK_DATA_DIR) not in nltk.data.path:
     nltk.data.path.insert(0, str(_NLTK_DATA_DIR))
 
+class _FallbackTrie:
+    def __init__(self, _alphabet: str = ""):
+        self._data: dict[str, object] = {}
+        self._sorted_keys: list[str] | None = None
+
+    def __contains__(self, key: str) -> bool:
+        return key in self._data
+
+    def __getitem__(self, key: str):
+        return self._data[key]
+
+    def __setitem__(self, key: str, value) -> None:
+        self._data[key] = value
+        self._sorted_keys = None
+
+    def save(self, path: str) -> None:
+        with open(path, "wb") as f:
+            pickle.dump(self._data, f, protocol=pickle.HIGHEST_PROTOCOL)
+
+    @classmethod
+    def load(cls, path: str) -> "_FallbackTrie":
+        with open(path, "rb") as f:
+            data = pickle.load(f)
+        obj = cls()
+        obj._data = data
+        obj._sorted_keys = sorted(obj._data.keys())
+        return obj
+
+    def has_keys_with_prefix(self, prefix: str) -> bool:
+        if self._sorted_keys is None:
+            self._sorted_keys = sorted(self._data.keys())
+        keys = self._sorted_keys
+        idx = bisect.bisect_left(keys, prefix)
+        return idx < len(keys) and keys[idx].startswith(prefix)
+
+
+Trie = datrie.Trie if datrie is not None else _FallbackTrie  # type: ignore[attr-defined]
+
 
 def get_default_resource_dir():
     """
@@ -43,7 +86,7 @@ def get_default_resource_dir():
     If the directory does not exist, it will be created automatically.
     """
     try:
-        from deepdoc.configs import settings as deepdoc_settings
+        from ...configs import settings as deepdoc_settings
 
         token_path = getattr(deepdoc_settings, "TOKENIZER_DICT_PATH", None)
         if token_path:
@@ -102,26 +145,26 @@ class RagTokenizer:
         if os.path.exists(trie_file_name):
             try:
                 # load trie from file
-                self.trie_ = datrie.Trie.load(trie_file_name)
+                self.trie_ = Trie.load(trie_file_name)
                 return
             except Exception:
                 # fail to load trie from file, build default trie
                 logging.exception(f"[HUQIE]:Fail to load trie file {trie_file_name}, build the default trie file")
-                self.trie_ = datrie.Trie(string.printable)
+                self.trie_ = Trie(string.printable)
         else:
             # file not exist, build default trie
             logging.info(f"[HUQIE]:Trie file {trie_file_name} not found, build the default trie file")
-            self.trie_ = datrie.Trie(string.printable)
+            self.trie_ = Trie(string.printable)
 
         # load data from dict file and save to trie file
         self.loadDict_(self.DIR_ + ".txt")
 
     def loadUserDict(self, fnm):
         try:
-            self.trie_ = datrie.Trie.load(fnm + ".trie")
+            self.trie_ = Trie.load(fnm + ".trie")
             return
         except Exception:
-            self.trie_ = datrie.Trie(string.printable)
+            self.trie_ = Trie(string.printable)
         self.loadDict_(fnm)
 
     def addUserDict(self, fnm):

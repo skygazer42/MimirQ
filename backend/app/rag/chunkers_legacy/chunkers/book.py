@@ -18,15 +18,15 @@ import logging
 import re
 from io import BytesIO
 
-from deepdoc.parser.utils import get_text
+from app.deepdoc.parser.utils import get_text
 from app.rag.chunkers_legacy.chunkers import naive_chunk as naive
 from app.rag.chunkers_legacy.chunkers.naive import by_plaintext, PARSERS
 from app.rag.chunkers_legacy.nlp import bullets_category, is_english,remove_contents_table, \
     hierarchical_merge, make_colon_as_title, naive_merge, random_choices, tokenize_table, \
     tokenize_chunks, attach_media_context
 from app.rag.chunkers_legacy.nlp import rag_tokenizer
-from deepdoc.parser import PdfParser, HtmlParser
-from deepdoc.parser.figure_parser import vision_figure_parser_docx_wrapper
+from app.deepdoc.parser import PdfParser, HtmlParser
+from app.deepdoc.parser.figure_parser import vision_figure_parser_docx_wrapper
 from PIL import Image
 
 

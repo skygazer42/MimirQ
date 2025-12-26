@@ -19,7 +19,7 @@ import re
 from collections import Counter
 import numpy as np
 from huggingface_hub import snapshot_download
-from deepdoc.src.model import rag_tokenizer
+from ..src.model import rag_tokenizer
 from .recognizer import Recognizer
 
 
