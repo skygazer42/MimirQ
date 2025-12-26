@@ -18,7 +18,7 @@ import sys
 import threading
 import os
 import pdfplumber
-from deepdoc.vision.recognizer import Recognizer
+from .recognizer import Recognizer
 from .layout_recognizer import LayoutRecognizer4YOLOv10 as LayoutRecognizer
 from .ocr import OCR
 from .table_structure_recognizer import TableStructureRecognizer

@@ -35,9 +35,9 @@ from PIL import Image
 from huggingface_hub import snapshot_download
 from pypdf import PdfReader as pdf2_read
 
-from deepdoc.src.model import rag_tokenizer
-from deepdoc.vision import OCR, LayoutRecognizer, TableStructureRecognizer
-from deepdoc.vision.recognizer import Recognizer
+from ..src.model import rag_tokenizer
+from ..vision import OCR, LayoutRecognizer, TableStructureRecognizer
+from ..vision.recognizer import Recognizer
 
 LIGHTEN = int(os.getenv("LIGHTEN", "0"))  # 结果是 0
 PARALLEL_DEVICES = 0  # cuda torch

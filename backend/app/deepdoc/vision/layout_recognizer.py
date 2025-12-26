@@ -23,8 +23,8 @@ import cv2
 import numpy as np
 from huggingface_hub import snapshot_download
 
-from deepdoc.vision.recognizer import Recognizer
-from deepdoc.vision.operators import nms
+from .recognizer import Recognizer
+from .operators import nms
 
 
 def get_default_resource_dir():

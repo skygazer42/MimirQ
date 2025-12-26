@@ -17,16 +17,23 @@
 import os
 import sys
 
-sys.path.insert(
-    0,
-    os.path.abspath(
-        os.path.join(
-            os.path.dirname(
-                os.path.abspath(__file__)),
-            '../../')))
+if __package__ in {None, ""}:
+    sys.path.insert(
+        0,
+        os.path.abspath(
+            os.path.join(
+                os.path.dirname(
+                    os.path.abspath(__file__)),
+                "../../.."
+            )
+        )
+    )
+    from app.deepdoc.vision.seeit import draw_box
+    from app.deepdoc.vision import OCR, init_in_out
+else:
+    from .seeit import draw_box
+    from . import OCR, init_in_out
 
-from deepdoc.vision.seeit import draw_box
-from deepdoc.vision import OCR, init_in_out
 import argparse
 import numpy as np
 import trio
