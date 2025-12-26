@@ -5,7 +5,7 @@ OpenAI 风格 Reranker
 """
 from __future__ import annotations
 
-from typing import Any, Dict, List
+from typing import Any
 
 from app.rag.reranker.base import APIReranker
 
@@ -16,9 +16,9 @@ class OpenAIReranker(APIReranker):
     def _build_payload(
         self,
         query: str,
-        documents: List[str],
+        documents: list[str],
         max_length: int,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         return {
             "model": self.model,
             "query": query,
@@ -26,5 +26,5 @@ class OpenAIReranker(APIReranker):
             "max_chunks_per_doc": max_length,
         }
 
-    def _extract_results(self, result: Dict[str, Any]) -> List[Dict[str, Any]]:
+    def _extract_results(self, result: dict[str, Any]) -> list[dict[str, Any]]:
         return list(result.get("results", []))
