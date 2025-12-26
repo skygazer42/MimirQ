@@ -20,11 +20,11 @@ from io import BytesIO
 from docx import Document
 
 from app.rag.chunkers_legacy.common.constants import ParserType
-from app.ai.deepdoc.parser.utils import get_text
+from app.deepdoc.parser.utils import get_text
 from app.rag.chunkers_legacy.nlp import bullets_category, remove_contents_table, \
     make_colon_as_title, tokenize_chunks, docx_question_level, tree_merge
 from app.rag.chunkers_legacy.nlp import rag_tokenizer, Node
-from app.ai.deepdoc.parser import PdfParser, DocxParser, HtmlParser
+from app.deepdoc.parser import PdfParser, DocxParser, HtmlParser
 from app.rag.chunkers_legacy.chunkers.naive import by_plaintext, PARSERS
 
 

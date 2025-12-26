@@ -2,7 +2,7 @@
 RAG tokenizer wrapper.
 Integrated from third_party/ragflow/nlp/rag_tokenizer.py
 """
-from app.ai.deepdoc.src.model.rag_tokenizer import RagTokenizer as DeepDocRagTokenizer
+from app.deepdoc.src.model.rag_tokenizer import RagTokenizer as DeepDocRagTokenizer
 
 
 class RagTokenizer(DeepDocRagTokenizer):

@@ -12,7 +12,7 @@ import uuid
 
 from app.core.database import get_db
 from app.models.document import Document as DBDocument, DocumentChunk
-from app.schemas.document import (
+from app.api.schemas.document import (
     DocumentUploadResponse,
     DocumentList,
     DocumentDetail,
@@ -44,8 +44,8 @@ from app.storage.object.minio import minio_service
 from app.models.dataset import Dataset, DatasetPermission, DatasetPermissionEnum
 from app.core.config import settings
 from fastapi.responses import FileResponse, RedirectResponse
-from app.api.deps.tenant import get_tenant_id
-from app.api.deps.auth import get_current_account_id
+from app.api.dependencies.tenant import get_tenant_id
+from app.api.dependencies.auth import get_current_account_id
 from app.kg.pipeline import extract_events
 from sqlalchemy import or_, false
 

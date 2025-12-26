@@ -18,7 +18,7 @@ from app.core.database import get_db
 from app.models.chat import Conversation, Message
 from app.models.document import Document as DBDocument
 from app.services.dataset_service import DatasetService
-from app.schemas.chat import (
+from app.api.schemas.chat import (
     ChatRequest,
     ConversationCreate,
     ConversationSchema,
@@ -29,8 +29,8 @@ from app.services.document_access import filter_allowed_document_ids, list_acces
 from app.rag.engine import get_rag_engine
 from app.services.metrics_logger import log_metrics
 from app.core.config import settings
-from app.api.deps.tenant import get_tenant_id
-from app.api.deps.auth import get_current_account_id
+from app.api.dependencies.tenant import get_tenant_id
+from app.api.dependencies.auth import get_current_account_id
 
 router = APIRouter()
 

@@ -8,7 +8,7 @@ from threading import Lock
 from typing import Any, List
 
 from langchain_core.documents import Document
-from app.ai.deepdoc.parser import PdfParser as DeepDocPdfParser
+from app.deepdoc.parser import PdfParser as DeepDocPdfParser
 
 
 class DeepDocParser:
