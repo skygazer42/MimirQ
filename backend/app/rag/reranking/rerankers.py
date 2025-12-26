@@ -5,7 +5,13 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from collections import Counter
-from enum import StrEnum
+try:
+    from enum import StrEnum
+except ImportError:  # pragma: no cover
+    from enum import Enum
+
+    class StrEnum(str, Enum):
+        pass
 import math
 from typing import Callable
 
