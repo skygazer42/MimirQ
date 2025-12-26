@@ -277,8 +277,8 @@ class HybridRetriever(BaseRetriever):
             provider = (self.reranker_provider or settings.RERANKER_PROVIDER or "llm").lower()
             if provider not in ("none", "off", "false", "0"):
                 try:
-                    from app.reranking.rag import get_rag_reranker
-                    from app.reranking.types import RerankCandidate
+                    from app.rag.reranking.rag import get_rag_reranker
+                    from app.rag.reranking.types import RerankCandidate
 
                     reranker = get_rag_reranker(provider)
                     candidates_n = int(self.reranker_top_n or settings.RERANKER_TOP_N or 20)
