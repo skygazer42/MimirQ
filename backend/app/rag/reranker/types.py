@@ -4,7 +4,7 @@ Reranker 类型定义
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional, Protocol, Sequence
+from typing import Any, Protocol, Sequence
 
 
 @dataclass(frozen=True)
@@ -12,20 +12,20 @@ class RerankCandidate:
     """重排候选项"""
     id: str
     text: str
-    metadata: Dict[str, Any] = field(default_factory=dict)
+    metadata: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass
 class RerankResult:
     """重排结果"""
-    ordered_ids: List[str]
-    score_map: Dict[str, float]
-    items: List[Dict[str, Any]] = field(default_factory=list)
-    clues: List[Dict[str, Any]] = field(default_factory=list)
-    stats: Dict[str, Any] = field(default_factory=dict)
-    elapsed_sec: Optional[float] = None
-    model_used: Optional[str] = None
-    provider: Optional[str] = None
+    ordered_ids: list[str]
+    score_map: dict[str, float]
+    items: list[dict[str, Any]] = field(default_factory=list)
+    clues: list[dict[str, Any]] = field(default_factory=list)
+    stats: dict[str, Any] = field(default_factory=dict)
+    elapsed_sec: float | None = None
+    model_used: str | None = None
+    provider: str | None = None
 
 
 class SyncReranker(Protocol):

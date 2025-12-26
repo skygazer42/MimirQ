@@ -9,9 +9,8 @@ Reranker 模块
 - DashScopeReranker: 阿里云 DashScope
 - WeightedReranker: 权重融合重排
 - ParentChildReranker: 父子关系重排
+- LLMReranker: 基于大模型的精排
 - KGReranker: 知识图谱重排
-
-注意：LLMReranker 已移至 app.rag.llm.reranker 模块
 """
 from app.rag.reranker.base import BaseReranker, APIReranker, DocumentReranker
 from app.rag.reranker.openai import OpenAIReranker
@@ -21,7 +20,7 @@ from app.rag.reranker.parent_child import ParentChildReranker
 from app.rag.reranker.kg import KGReranker, get_kg_reranker
 from app.rag.reranker.types import RerankCandidate, RerankResult
 from app.rag.reranker.factory import get_reranker, get_rag_reranker
-from app.rag.llm.reranker import LLMReranker, get_llm_reranker
+from app.rag.reranker.llm import LLMReranker, LLMRerankResult, get_llm_reranker
 
 __all__ = [
     # 基类
@@ -45,6 +44,7 @@ __all__ = [
     # 类型
     "RerankCandidate",
     "RerankResult",
+    "LLMRerankResult",
     "Weights",
     "VectorSetting",
     "KeywordSetting",

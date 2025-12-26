@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional, Sequence
+from typing import Any, Sequence
 
 from app.rag.kg.search.config import RerankStrategy, SearchConfig
 from app.rag.kg.search.ranking.pagerank import RerankPageRankSearcher
@@ -39,8 +39,8 @@ class KGReranker(BaseReranker):
         candidates: Sequence[RerankCandidate],
         *,
         config: SearchConfig,
-        event_scores: Dict[str, float],
-        key_final: Optional[List[Dict[str, Any]]] = None,
+        event_scores: dict[str, float],
+        key_final: list[dict[str, Any]] | None = None,
     ) -> RerankResult:
         event_ids = [c.id for c in candidates if c.id]
         if not event_ids:
@@ -80,7 +80,7 @@ class KGReranker(BaseReranker):
         )
 
 
-_kg_reranker_cache: Dict[str, KGReranker] = {}
+_kg_reranker_cache: dict[str, KGReranker] = {}
 
 
 def get_kg_reranker(strategy: RerankStrategy) -> KGReranker:

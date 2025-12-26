@@ -5,7 +5,7 @@ Reranker 工厂函数
 """
 from __future__ import annotations
 
-from typing import Any, Callable, Optional
+from typing import Any, Callable
 
 from app.rag.reranker.base import BaseReranker
 from app.rag.reranker.types import RerankCandidate
@@ -73,7 +73,7 @@ def get_reranker(
     
     # Document Rerankers
     elif provider == "llm":
-        from app.rag.llm.reranker import get_llm_reranker
+        from app.rag.reranker.llm import get_llm_reranker
         return get_llm_reranker()
     
     elif provider in ("parent_child", "pc"):
@@ -121,7 +121,7 @@ def get_reranker(
 
 
 # 向后兼容：旧的工厂函数（保留一段时间）
-def get_rag_reranker(provider: Optional[str] = None) -> BaseReranker:
+def get_rag_reranker(provider: str | None = None) -> BaseReranker:
     """
     获取 RAG Reranker（旧接口，已废弃）
     

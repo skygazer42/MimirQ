@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import asyncio
 from abc import ABC, abstractmethod
-from typing import Any, Dict, List, Sequence
+from typing import Any, Sequence
 
 import aiohttp
 import numpy as np
@@ -97,7 +97,7 @@ class APIReranker(BaseReranker):
         }
         self.session: aiohttp.ClientSession | None = None
         self.timeout = aiohttp.ClientTimeout(total=timeout)
-        self.parameters: Dict[str, Any] = dict(kwargs.get("parameters", {}))
+        self.parameters: dict[str, Any] = dict(kwargs.get("parameters", {}))
 
     async def _ensure_session(self) -> None:
         """确保 aiohttp session 可用"""
@@ -111,25 +111,25 @@ class APIReranker(BaseReranker):
     def _build_payload(
         self,
         query: str,
-        documents: List[str],
+        documents: list[str],
         max_length: int,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """构建请求体，子类实现"""
         raise NotImplementedError
 
     @abstractmethod
-    def _extract_results(self, result: Dict[str, Any]) -> List[Dict[str, Any]]:
+    def _extract_results(self, result: dict[str, Any]) -> list[dict[str, Any]]:
         """解析响应结果，子类实现"""
         raise NotImplementedError
 
     async def acompute_score(
         self,
         query: str,
-        documents: List[str],
+        documents: list[str],
         batch_size: int = 32,
         max_length: int = 512,
         normalize: bool = True,
-    ) -> List[float]:
+    ) -> list[float]:
         """
         异步计算重排分数
 
@@ -148,7 +148,7 @@ class APIReranker(BaseReranker):
 
         await self._ensure_session()
 
-        all_scores: List[float] = []
+        all_scores: list[float] = []
         batch_size = max(1, int(batch_size))
 
         for start in range(0, len(documents), batch_size):
@@ -164,9 +164,9 @@ class APIReranker(BaseReranker):
     async def _batch_rerank(
         self,
         query: str,
-        documents: List[str],
+        documents: list[str],
         max_length: int,
-    ) -> List[float]:
+    ) -> list[float]:
         """单批次重排"""
         if not documents:
             return []
@@ -178,7 +178,7 @@ class APIReranker(BaseReranker):
 
         async with self.session.post(self.url, json=payload) as response:
             response.raise_for_status()
-            result: Dict[str, Any] = await response.json()
+            result: dict[str, Any] = await response.json()
 
         processed = sorted(
             self._extract_results(result),
@@ -189,11 +189,11 @@ class APIReranker(BaseReranker):
     def compute_score(
         self,
         query: str,
-        documents: List[str],
+        documents: list[str],
         batch_size: int = 32,
         max_length: int = 512,
         normalize: bool = True,
-    ) -> List[float]:
+    ) -> list[float]:
         """同步计算重排分数"""
         try:
             _ = asyncio.get_running_loop()
@@ -247,9 +247,9 @@ class APIReranker(BaseReranker):
     async def arerank_legacy(
         self,
         query: str,
-        candidates: Sequence[Dict[str, Any]],
+        candidates: Sequence[dict[str, Any]],
         top_n: int | None = None,
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """
         异步重排候选文档（旧版接口，保持向后兼容）
 
@@ -311,11 +311,11 @@ class DocumentReranker(BaseReranker):
     def run(
         self,
         query: str,
-        documents: List[Any],
+        documents: list[Any],
         score_threshold: float | None = None,
         top_n: int | None = None,
         user: str | None = None,
-    ) -> List[Any]:
+    ) -> list[Any]:
         """
         运行重排模型，返回按相关性排序的文档列表
         
@@ -348,7 +348,7 @@ class DocumentReranker(BaseReranker):
             return RerankResult(ordered_ids=[], score_map={})
         
         # 转换为 Document 对象
-        docs: List[DifyDocument] = []
+        docs: list[DifyDocument] = []
         for c in candidates:
             meta = dict(c.metadata or {})
             meta.setdefault("candidate_id", c.id)
@@ -366,8 +366,8 @@ class DocumentReranker(BaseReranker):
         reranked = self.run(query, docs, score_threshold=score_threshold, top_n=top_n)
         
         # 提取结果
-        ordered_ids: List[str] = []
-        score_map: Dict[str, float] = {}
+        ordered_ids: list[str] = []
+        score_map: dict[str, float] = {}
         for doc in reranked:
             meta = doc.metadata or {}
             cid = meta.get("candidate_id")

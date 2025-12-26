@@ -14,7 +14,7 @@ import json
 import os
 import time
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 import httpx
 
@@ -26,10 +26,10 @@ from app.rag.reranker.base import DocumentReranker
 @dataclass
 class LLMRerankResult:
     """LLM 重排结果"""
-    ordered_ids: List[str]
-    score_map: Dict[str, float]
+    ordered_ids: list[str]
+    score_map: dict[str, float]
     elapsed_sec: float
-    model_used: Optional[str]
+    model_used: str | None
 
 
 def _build_http_clients() -> tuple[httpx.Client, httpx.AsyncClient]:
@@ -56,7 +56,7 @@ def _build_http_clients() -> tuple[httpx.Client, httpx.AsyncClient]:
     )
 
 
-def _extract_json_array(text: str) -> Optional[str]:
+def _extract_json_array(text: str) -> str | None:
     """从 LLM 输出中尽量提取 JSON 数组部分。"""
     if not text:
         return None
@@ -146,8 +146,8 @@ candidates(JSON): {candidates}
         if not documents:
             return []
 
-        candidates: List[Dict[str, Any]] = []
-        id_to_doc: Dict[str, Document] = {}
+        candidates: list[dict[str, Any]] = []
+        id_to_doc: dict[str, Document] = {}
         for idx, doc in enumerate(documents):
             text = (doc.page_content or "").strip()
             if not text:
@@ -163,7 +163,7 @@ candidates(JSON): {candidates}
         if not result.ordered_ids:
             return documents[:top_n] if top_n else documents
 
-        ordered: List[Document] = []
+        ordered: list[Document] = []
         used: set[str] = set()
         for cid in result.ordered_ids:
             doc = id_to_doc.get(cid)
@@ -197,7 +197,7 @@ candidates(JSON): {candidates}
 
         return ordered
 
-    def rerank_raw(self, query: str, candidates: List[Dict[str, Any]]) -> LLMRerankResult:
+    def rerank_raw(self, query: str, candidates: list[dict[str, Any]]) -> LLMRerankResult:
         """
         直接调用 LLM 进行重排（原始接口）
         
@@ -237,8 +237,8 @@ candidates(JSON): {candidates}
 
         data = json.loads(json_text)
 
-        ordered: List[str] = []
-        score_map: Dict[str, float] = {}
+        ordered: list[str] = []
+        score_map: dict[str, float] = {}
         for item in data if isinstance(data, list) else []:
             if not isinstance(item, dict):
                 continue
@@ -254,13 +254,13 @@ candidates(JSON): {candidates}
         return LLMRerankResult(ordered_ids=ordered, score_map=score_map, elapsed_sec=elapsed, model_used=self.model_used)
 
 
-_reranker_singleton: Optional[LLMReranker] = None
+_llm_reranker: LLMReranker | None = None
 
 
 def get_llm_reranker() -> LLMReranker:
     """获取 LLM Reranker 单例"""
-    global _reranker_singleton
-    if _reranker_singleton is None:
-        _reranker_singleton = LLMReranker()
-    return _reranker_singleton
+    global _llm_reranker
+    if _llm_reranker is None:
+        _llm_reranker = LLMReranker()
+    return _llm_reranker
 
