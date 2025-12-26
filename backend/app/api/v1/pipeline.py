@@ -11,9 +11,9 @@ import uuid
 from fastapi import APIRouter, UploadFile, File, Form, HTTPException, Depends
 
 from app.core.config import settings
-from app.api.deps.tenant import get_tenant_id
+from app.api.dependencies.tenant import get_tenant_id
 from app.core.database import get_db
-from app.schemas.pipeline import (
+from app.api.schemas.pipeline import (
     ParsePreviewResponse,
     ChunkPreviewRequest,
     ChunkPreviewResponse,
@@ -29,7 +29,7 @@ from app.schemas.pipeline import (
 from app.parsing.processors.parser_service import document_parser_service
 from app.parsing.chunking.hierarchical import hierarchical_chunk_markdown
 from app.parsing.utils.zip_processor import zip_image_processor
-from app.api.deps.auth import get_current_account_id
+from app.api.dependencies.auth import get_current_account_id
 from app.governance.cleaning import clean_markdown, RegexRule, build_repeated_line_signatures
 from app.governance.rules import DEFAULT_MARKDOWN_RULES
 from app.services.prompt_template_selector import resolve_prompt_template

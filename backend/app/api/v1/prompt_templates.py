@@ -13,10 +13,10 @@ from sqlalchemy.sql import func
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
-from app.api.deps.auth import get_current_account_id
-from app.api.deps.tenant import get_tenant_id
+from app.api.dependencies.auth import get_current_account_id
+from app.api.dependencies.tenant import get_tenant_id
 from app.models.prompt_template import PromptTemplate
-from app.schemas.prompt_template import (
+from app.api.schemas.prompt_template import (
     PromptTemplateCreate,
     PromptTemplateList,
     PromptTemplateNewVersion,

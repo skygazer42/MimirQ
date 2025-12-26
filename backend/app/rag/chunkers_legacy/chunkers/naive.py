@@ -31,12 +31,12 @@ from app.rag.chunkers_legacy.common.token_utils import num_tokens_from_string
 from app.rag.chunkers_legacy.common.constants import LLMType
 from app.rag.chunkers_legacy.stubs.llm_service import LLMBundle
 from app.rag.chunkers_legacy.stubs.file_utils import extract_embed_file, extract_links_from_pdf, extract_links_from_docx, extract_html
-from app.ai.deepdoc.parser import DocxParser, ExcelParser, HtmlParser, JsonParser, MarkdownElementExtractor, MarkdownParser, PdfParser, TxtParser
-from app.ai.deepdoc.parser.figure_parser import VisionFigureParser,vision_figure_parser_docx_wrapper,vision_figure_parser_pdf_wrapper
-from app.ai.deepdoc.parser.pdf_parser import PlainParser, VisionParser
-from app.ai.deepdoc.parser.mineru_parser import MinerUParser
-from app.ai.deepdoc.parser.docling_parser import DoclingParser
-from app.ai.deepdoc.parser.tcadp_parser import TCADPParser
+from app.deepdoc.parser import DocxParser, ExcelParser, HtmlParser, JsonParser, MarkdownElementExtractor, MarkdownParser, PdfParser, TxtParser
+from app.deepdoc.parser.figure_parser import VisionFigureParser,vision_figure_parser_docx_wrapper,vision_figure_parser_pdf_wrapper
+from app.deepdoc.parser.pdf_parser import PlainParser, VisionParser
+from app.deepdoc.parser.mineru_parser import MinerUParser
+from app.deepdoc.parser.docling_parser import DoclingParser
+from app.deepdoc.parser.tcadp_parser import TCADPParser
 from app.rag.chunkers_legacy.nlp import concat_img, find_codec, naive_merge, naive_merge_with_images, naive_merge_docx, rag_tokenizer, tokenize_chunks, tokenize_chunks_with_images, tokenize_table, attach_media_context
 
 

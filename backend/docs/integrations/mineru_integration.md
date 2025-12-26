@@ -334,7 +334,7 @@ while True:
 - **解析器**: `backend/app/services/parsers/mineru_parser.py`
 - **API 接口**: `backend/app/api/v1/documents.py`
 - **配置**: `backend/app/config.py`
-- **Schema**: `backend/app/schemas/document.py`
+- **Schema**: `backend/app/api/schemas/document.py`
 
 ---
 
