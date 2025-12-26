@@ -8,20 +8,13 @@ from threading import Lock
 from typing import Any, List
 
 from langchain_core.documents import Document
+from app.ai.deepdoc.parser import PdfParser as DeepDocPdfParser
 
 
 class DeepDocParser:
     """Bridge DeepDoc's parser so we can reuse it inside our pipeline."""
 
     def __init__(self):
-        try:
-            from app.ai.deepdoc.parser import PdfParser as DeepDocPdfParser
-        except ImportError as exc:  # pragma: no cover - dependency guard
-            raise RuntimeError(
-                "DeepDoc is not installed. Please ensure deepdoc and its "
-                "dependencies are available before enabling this parser."
-            ) from exc
-
         self._parser_cls = DeepDocPdfParser
         self._parser = None
         self._lock = Lock()

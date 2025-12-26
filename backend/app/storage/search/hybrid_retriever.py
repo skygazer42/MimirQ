@@ -20,6 +20,9 @@ from pydantic import PrivateAttr, ConfigDict
 from app.storage.vector.factory import get_vector_store
 from app.models.document import DocumentChunk
 from app.core.config import settings
+from app.core.database import SessionLocal
+from app.rag.reranking.rag import get_rag_reranker
+from app.rag.reranking.types import RerankCandidate
 
 
 class HybridRetriever(BaseRetriever):
@@ -276,67 +279,61 @@ class HybridRetriever(BaseRetriever):
         if merged_results and bool(self.enable_reranker):
             provider = (self.reranker_provider or settings.RERANKER_PROVIDER or "llm").lower()
             if provider not in ("none", "off", "false", "0"):
-                try:
-                    from app.rag.reranking.rag import get_rag_reranker
-                    from app.rag.reranking.types import RerankCandidate
+                reranker = get_rag_reranker(provider)
+                candidates_n = int(self.reranker_top_n or settings.RERANKER_TOP_N or 20)
+                candidates_n = max(candidates_n, top_k)
+                candidates_n = min(candidates_n, len(merged_results))
+                candidates: List[RerankCandidate] = []
+                id_to_doc: Dict[str, Dict[str, Any]] = {}
+                for doc in merged_results[:candidates_n]:
+                    rid = self._result_key(doc)
+                    text = (doc.get("content") or "").strip()
+                    if not rid or not text:
+                        continue
+                    meta = dict(doc.get("metadata") or {})
+                    meta["score"] = float(doc.get("score", 0.0) or 0.0)
+                    candidates.append(RerankCandidate(id=rid, text=text, metadata=meta))
+                    id_to_doc[rid] = doc
 
-                    reranker = get_rag_reranker(provider)
-                    candidates_n = int(self.reranker_top_n or settings.RERANKER_TOP_N or 20)
-                    candidates_n = max(candidates_n, top_k)
-                    candidates_n = min(candidates_n, len(merged_results))
-                    candidates: List[RerankCandidate] = []
-                    id_to_doc: Dict[str, Dict[str, Any]] = {}
+                if candidates:
+                    start = time.time()
+                    result = reranker.rerank(
+                        query=query,
+                        candidates=candidates,
+                        top_n=candidates_n,
+                    )
+                    rerank_elapsed = result.elapsed_sec or (time.time() - start)
+                    rerank_provider = result.provider or provider
+
+                    ordered = []
+                    used: set[str] = set()
+                    for rid in result.ordered_ids:
+                        d = id_to_doc.get(rid)
+                        if not d or rid in used:
+                            continue
+                        used.add(rid)
+                        new_doc = dict(d)
+                        new_doc["retrieval_score"] = float(new_doc.get("score", 0.0) or 0.0)
+                        if rid in result.score_map:
+                            new_doc["rerank_score"] = float(result.score_map[rid])
+                            new_doc["score"] = float(result.score_map[rid])
+                        new_doc["reranker_provider"] = rerank_provider
+                        new_doc["rerank_elapsed_sec"] = round(float(rerank_elapsed), 3)
+                        new_doc["rerank_model_used"] = result.model_used
+                        ordered.append(new_doc)
+
+                    # 追加未被 LLM 返回的候选（保持原顺序）
                     for doc in merged_results[:candidates_n]:
                         rid = self._result_key(doc)
-                        text = (doc.get("content") or "").strip()
-                        if not rid or not text:
+                        if rid in used:
                             continue
-                        meta = dict(doc.get("metadata") or {})
-                        meta["score"] = float(doc.get("score", 0.0) or 0.0)
-                        candidates.append(RerankCandidate(id=rid, text=text, metadata=meta))
-                        id_to_doc[rid] = doc
+                        new_doc = dict(doc)
+                        new_doc.setdefault("reranker_provider", rerank_provider)
+                        new_doc.setdefault("rerank_elapsed_sec", round(float(rerank_elapsed), 3))
+                        new_doc.setdefault("rerank_model_used", result.model_used)
+                        ordered.append(new_doc)
 
-                    if candidates:
-                        start = time.time()
-                        result = reranker.rerank(
-                            query=query,
-                            candidates=candidates,
-                            top_n=candidates_n,
-                        )
-                        rerank_elapsed = result.elapsed_sec or (time.time() - start)
-                        rerank_provider = result.provider or provider
-
-                        ordered = []
-                        used: set[str] = set()
-                        for rid in result.ordered_ids:
-                            d = id_to_doc.get(rid)
-                            if not d or rid in used:
-                                continue
-                            used.add(rid)
-                            new_doc = dict(d)
-                            new_doc["retrieval_score"] = float(new_doc.get("score", 0.0) or 0.0)
-                            if rid in result.score_map:
-                                new_doc["rerank_score"] = float(result.score_map[rid])
-                                new_doc["score"] = float(result.score_map[rid])
-                            new_doc["reranker_provider"] = rerank_provider
-                            new_doc["rerank_elapsed_sec"] = round(float(rerank_elapsed), 3)
-                            new_doc["rerank_model_used"] = result.model_used
-                            ordered.append(new_doc)
-
-                        # 追加未被 LLM 返回的候选（保持原顺序）
-                        for doc in merged_results[:candidates_n]:
-                            rid = self._result_key(doc)
-                            if rid in used:
-                                continue
-                            new_doc = dict(doc)
-                            new_doc.setdefault("reranker_provider", rerank_provider)
-                            new_doc.setdefault("rerank_elapsed_sec", round(float(rerank_elapsed), 3))
-                            new_doc.setdefault("rerank_model_used", result.model_used)
-                            ordered.append(new_doc)
-
-                        merged_results = ordered + merged_results[candidates_n:]
-                except Exception:
-                    pass
+                    merged_results = ordered + merged_results[candidates_n:]
 
         return merged_results[:top_k]
 
@@ -350,11 +347,6 @@ class HybridRetriever(BaseRetriever):
         - page/source：用于上下文标注（尽量与 DB 保持一致）
         """
         if not results:
-            return results
-
-        try:
-            from app.core.database import SessionLocal
-        except Exception:
             return results
 
         db = SessionLocal()

@@ -146,10 +146,12 @@ export interface CleanPreviewRequest {
   remove_control_chars?: boolean
   remove_toc_lines?: boolean
   remove_noise_lines?: boolean
+  remove_common_lines?: boolean
   unwrap_lines?: boolean
   unwrap_max_line_length?: number
   noise_min_chars?: number
   noise_ratio_threshold?: number
+  common_lines_min_occurrences?: number
 }
 
 export interface CleanPreviewResponse {
@@ -160,6 +162,29 @@ export interface CleanPreviewResponse {
 
 export interface CleanRulesResponse {
   rules: RegexRuleModel[]
+}
+
+export interface LLMCleanPreviewRequest {
+  markdown: string
+  prompt_template_id?: string
+  template_key?: string
+  ab_experiment_key?: string
+  ab_user_key?: string
+  model?: string
+  temperature?: number
+  max_tokens?: number
+  max_chars?: number
+}
+
+export interface LLMCleanPreviewResponse {
+  markdown: string
+  changed: boolean
+  model_used?: string
+  prompt_template_id?: string
+  template_key?: string
+  ab_experiment_key?: string
+  ab_variant?: string
+  warnings?: string[]
 }
 
 // ==================== 数据集相关类型 ====================

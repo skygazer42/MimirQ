@@ -21,8 +21,16 @@ import {
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
-import { pipelineApi } from '@/lib/api-client'
+import { pipelineApi, promptTemplateApi, PromptTemplate } from '@/lib/api-client'
 import type { CleanPreviewRequest } from '@/types'
+import type { LLMCleanPreviewRequest } from '@/types'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 
 interface DataCleanerProps {
   content: string
@@ -57,6 +65,13 @@ const CLEAN_RULES = [
     id: 'remove-noise-lines',
     label: '过滤噪声行',
     description: '移除符号占比过高的短行（后端）',
+    icon: Eraser,
+    defaultEnabled: true,
+  },
+  {
+    id: 'remove-common-lines',
+    label: '移除重复页眉/页脚',
+    description: '检测并移除文档内重复的短行（后端）',
     icon: Eraser,
     defaultEnabled: true,
   },
@@ -107,6 +122,9 @@ export function DataCleaner({ content, cleanedContent = '', onClean }: DataClean
   const [isApplying, setIsApplying] = useState(false)
   const [backendRulesCount, setBackendRulesCount] = useState<number | null>(null)
   const [backendError, setBackendError] = useState<string | null>(null)
+  const [llmEnabled, setLlmEnabled] = useState(false)
+  const [promptTemplates, setPromptTemplates] = useState<PromptTemplate[]>([])
+  const [promptTemplateId, setPromptTemplateId] = useState<string>('')
 
   useEffect(() => {
     let cancelled = false
@@ -119,6 +137,24 @@ export function DataCleaner({ content, cleanedContent = '', onClean }: DataClean
         if (cancelled) return
         setBackendRulesCount(null)
       })
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  useEffect(() => {
+    let cancelled = false
+    const loadTemplates = async () => {
+      try {
+        const response = await promptTemplateApi.list({ is_active: true, limit: 50 })
+        if (cancelled) return
+        setPromptTemplates(response.items || [])
+      } catch {
+        if (cancelled) return
+        setPromptTemplates([])
+      }
+    }
+    loadTemplates()
     return () => {
       cancelled = true
     }
@@ -227,6 +263,7 @@ export function DataCleaner({ content, cleanedContent = '', onClean }: DataClean
         remove_control_chars: enabledRules.has('special-chars'),
         remove_toc_lines: enabledRules.has('remove-toc'),
         remove_noise_lines: enabledRules.has('remove-noise-lines'),
+        remove_common_lines: enabledRules.has('remove-common-lines'),
         unwrap_lines: enabledRules.has('unwrap-lines'),
       }
 
@@ -249,6 +286,22 @@ export function DataCleaner({ content, cleanedContent = '', onClean }: DataClean
         next = next.trim()
       }
 
+      if (llmEnabled) {
+        try {
+          const llmReq: LLMCleanPreviewRequest = {
+            markdown: next,
+            prompt_template_id: promptTemplateId || undefined,
+          }
+          const llmRes = await pipelineApi.llmCleanPreview(llmReq)
+          next = llmRes.markdown
+          if (llmRes.warnings?.length) {
+            setBackendError(llmRes.warnings.join('；'))
+          }
+        } catch (err: any) {
+          setBackendError(err?.response?.data?.detail || err?.message || 'LLM 清洗失败，已保留规则清洗结果')
+        }
+      }
+
       onClean(next)
     } catch (err: any) {
       setBackendError(err?.response?.data?.detail || err?.message || '后端清洗失败，已回退本地清洗')
@@ -256,7 +309,7 @@ export function DataCleaner({ content, cleanedContent = '', onClean }: DataClean
     } finally {
       setIsApplying(false)
     }
-  }, [content, enabledRules, onClean, cleaned])
+  }, [content, enabledRules, onClean, cleaned, llmEnabled, promptTemplateId])
 
   // 重置
   const handleReset = useCallback(() => {
@@ -275,7 +328,7 @@ export function DataCleaner({ content, cleanedContent = '', onClean }: DataClean
 
   const hasPreviewChanges = cleaned !== content
   const allSelected = enabledRules.size === CLEAN_RULES.length
-  const canApply = !!content && enabledRules.size > 0
+  const canApply = !!content && (enabledRules.size > 0 || llmEnabled)
 
   return (
     <div className="p-6 space-y-6">
@@ -398,6 +451,53 @@ export function DataCleaner({ content, cleanedContent = '', onClean }: DataClean
           )}
           {isApplying ? '清洗中...' : '应用清洗（后端）'}
         </Button>
+      </div>
+
+      {/* LLM 清洗 */}
+      <div className="border border-gray-200 rounded-xl p-4 bg-white">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Sparkles className="w-4 h-4 text-purple-600" />
+            <span className="text-sm font-medium text-gray-800">LLM 清洗（PromptTemplate）</span>
+          </div>
+          <Button
+            variant={llmEnabled ? 'default' : 'outline'}
+            size="sm"
+            onClick={() => setLlmEnabled((v) => !v)}
+            className={cn(llmEnabled ? 'bg-purple-600 hover:bg-purple-700' : '')}
+          >
+            {llmEnabled ? '已启用' : '启用'}
+          </Button>
+        </div>
+
+        {llmEnabled && (
+          <div className="mt-3 space-y-2">
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-gray-500 w-16">模板</span>
+              <Select value={promptTemplateId} onValueChange={setPromptTemplateId}>
+                <SelectTrigger className="h-8 text-xs">
+                  <SelectValue placeholder="选择清洗模板" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="">默认清洗模板（内置）</SelectItem>
+                  {promptTemplates.map((tpl) => (
+                    <SelectItem key={tpl.id} value={tpl.id}>
+                      {tpl.name}
+                      {tpl.category ? (
+                        <span className="text-[10px] text-muted-foreground ml-2">({tpl.category})</span>
+                      ) : null}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            {promptTemplateId && (
+              <div className="text-[11px] text-gray-500">
+                {promptTemplates.find((t) => t.id === promptTemplateId)?.description}
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* 差异对比 */}

@@ -12,6 +12,7 @@ from fastapi import APIRouter, UploadFile, File, Form, HTTPException, Depends
 
 from app.core.config import settings
 from app.api.deps.tenant import get_tenant_id
+from app.core.database import get_db
 from app.schemas.pipeline import (
     ParsePreviewResponse,
     ChunkPreviewRequest,
@@ -22,13 +23,19 @@ from app.schemas.pipeline import (
     RegexRuleModel,
     KeywordExtractRequest,
     KeywordExtractResponse,
+    LLMCleanPreviewRequest,
+    LLMCleanPreviewResponse,
 )
 from app.parsing.processors.parser_service import document_parser_service
 from app.parsing.chunking.hierarchical import hierarchical_chunk_markdown
 from app.parsing.utils.zip_processor import zip_image_processor
 from app.api.deps.auth import get_current_account_id
-from app.governance.cleaning import clean_markdown, RegexRule
+from app.governance.cleaning import clean_markdown, RegexRule, build_repeated_line_signatures
 from app.governance.rules import DEFAULT_MARKDOWN_RULES
+from app.services.prompt_template_selector import resolve_prompt_template
+from app.kg.utils import ConfigError
+from app.rag.llm.factory import create_llm_client
+from app.rag.llm.models import LLMMessage, LLMRole
 
 router = APIRouter()
 
@@ -91,6 +98,15 @@ async def clean_preview(body: CleanPreviewRequest):
         rules = DEFAULT_MARKDOWN_RULES
     else:
         rules = []
+    common_lines = (
+        build_repeated_line_signatures(
+            body.markdown or "",
+            min_occurrences=body.common_lines_min_occurrences,
+            max_line_length=body.unwrap_max_line_length,
+        )
+        if body.remove_common_lines
+        else None
+    )
     result = clean_markdown(
         body.markdown,
         rules=rules,
@@ -101,6 +117,8 @@ async def clean_preview(body: CleanPreviewRequest):
         remove_toc_lines=body.remove_toc_lines,
         remove_noise_lines=body.remove_noise_lines,
         unwrap_lines=body.unwrap_lines,
+        remove_common_lines=body.remove_common_lines,
+        common_lines=common_lines,
         unwrap_max_line_length=body.unwrap_max_line_length,
         noise_min_chars=body.noise_min_chars,
         noise_ratio_threshold=body.noise_ratio_threshold,
@@ -127,28 +145,144 @@ async def extract_keywords(body: KeywordExtractRequest):
     """
     提取关键词（用于治理/标注/分类等）。
 
-    目前支持：
-    - provider=jieba（默认）
-
-    预留：
-    - provider=hanlp（需要额外安装与模型配置）
+    支持：
+    - provider=auto（优先 HanLP，不可用则回退 jieba）
+    - provider=jieba / jieba_tfidf（默认）
+    - provider=jieba_textrank
+    - provider=hanlp（可选依赖：需安装 `hanlp`，并可用 `HANLP_TOKENIZER_MODEL` 指定 tokenizer 模型）
+    - provider=simple（轻量正则分词 + 词频）
     """
+    from app.governance.keyword import (
+        KeywordProviderUnavailable,
+        UnsupportedKeywordProvider,
+        extract_keywords as extract_keywords_fn,
+    )
+
     provider = (body.provider or "jieba").lower()
+    try:
+        keywords = extract_keywords_fn(body.text or "", provider=provider, top_k=int(body.top_k))
+        return KeywordExtractResponse(provider=provider, keywords=keywords)
+    except KeywordProviderUnavailable as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except UnsupportedKeywordProvider as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:  # pragma: no cover
+        raise HTTPException(status_code=500, detail=f"Keyword extraction failed: {str(exc)}") from exc
 
-    if provider == "jieba":
-        from app.governance.keyword import JiebaKeywordTableHandler
 
-        handler = JiebaKeywordTableHandler()
-        keywords = sorted(handler.extract_keywords(body.text or "", max_keywords_per_chunk=int(body.top_k)))
-        return KeywordExtractResponse(provider="jieba", keywords=keywords)
+@router.post("/llm-clean-preview", response_model=LLMCleanPreviewResponse)
+async def llm_clean_preview(
+    body: LLMCleanPreviewRequest,
+    tenant_id=Depends(get_tenant_id),
+    account_id: str = Depends(get_current_account_id),
+    db=Depends(get_db),
+):
+    """
+    使用大模型对 Markdown 做“数据治理”清洗预览（不入库）。
 
-    if provider == "hanlp":
+    说明：
+    - 该接口会调用 LLM（需要正确配置 `LLM_API_KEY/LLM_API_BASE/LLM_MODEL`）。
+    - 支持通过 PromptTemplate 指定清洗策略：`prompt_template_id` / `template_key` / `ab_experiment_key`。
+    """
+    _ = account_id
+
+    markdown = body.markdown or ""
+    if len(markdown) > int(body.max_chars):
         raise HTTPException(
-            status_code=503,
-            detail="HanLP provider not available. Install and configure HanLP before enabling it.",
+            status_code=413,
+            detail=f"Markdown too large for LLM preview (len={len(markdown)} > max_chars={body.max_chars}).",
         )
 
-    raise HTTPException(status_code=400, detail=f"Unsupported keyword provider: {provider}")
+    system_prompt = (
+        "你是一个“Markdown 数据治理清洗器”。\n"
+        "目标：清理解析/复制导致的噪声与格式问题，但不要改变语义，不要编造或补充内容。\n"
+        "要求：\n"
+        "1) 保留标题/列表/表格/代码块结构；不要修改代码块内容。\n"
+        "2) 移除明显页眉页脚/页码/目录引导/重复短行/控制字符/零宽字符。\n"
+        "3) 规范化空白：合并多余空行、去除行尾空格，必要时合并“软换行”。\n"
+        "4) 不要翻译、不做改写；仅做清洗/规范化。\n"
+        "输出：严格返回 JSON，字段包含 markdown/changes/warnings。\n"
+    )
+    selected_prompt_template_id: str | None = None
+    selected_prompt_template_key: str | None = None
+    selected_prompt_ab_experiment_key: str | None = None
+    selected_prompt_ab_variant: str | None = None
+
+    if body.prompt_template_id or body.template_key or body.ab_experiment_key:
+        chosen = resolve_prompt_template(
+            db=db,
+            tenant_id=tenant_id,
+            prompt_template_id=body.prompt_template_id,
+            template_key=body.template_key,
+            ab_experiment_key=body.ab_experiment_key,
+            ab_user_key=body.ab_user_key or account_id,
+        )
+
+        if not chosen:
+            raise HTTPException(status_code=404, detail="PromptTemplate not found or inactive")
+
+        system_prompt = str(chosen.content or "").strip() or system_prompt
+        selected_prompt_template_id = str(chosen.id)
+        selected_prompt_template_key = getattr(chosen, "template_key", None)
+        selected_prompt_ab_experiment_key = getattr(chosen, "ab_experiment_key", None)
+        selected_prompt_ab_variant = getattr(chosen, "ab_variant", None)
+        chosen.usage_count += 1
+        db.commit()
+
+    model_config = {}
+    if body.model:
+        model_config["model"] = body.model
+    if body.temperature is not None:
+        model_config["temperature"] = body.temperature
+
+    llm = await create_llm_client(scenario="governance_cleaning", model_config=model_config or None)
+    resp = await llm.chat_with_schema(
+        [
+            LLMMessage(role=LLMRole.SYSTEM, content=system_prompt),
+            LLMMessage(
+                role=LLMRole.HUMAN,
+                content=f"输入 Markdown：\n```markdown\n{markdown}\n```",
+            ),
+        ],
+        response_schema={
+            "markdown": "string",
+            "changes": ["string"],
+            "warnings": ["string"],
+        },
+        temperature=body.temperature,
+        max_tokens=body.max_tokens,
+    )
+
+    warnings: list[str] = []
+    cleaned = ""
+    if isinstance(resp, dict):
+        val = resp.get("markdown")
+        if isinstance(val, str):
+            cleaned = val
+        else:
+            raw = resp.get("raw")
+            if isinstance(raw, str) and raw.strip():
+                cleaned = raw.strip()
+                warnings.append("LLM 未按 JSON schema 返回，已回退使用 raw 文本。")
+
+        warn_val = resp.get("warnings")
+        if isinstance(warn_val, list):
+            warnings.extend([str(w).strip() for w in warn_val if str(w).strip()])
+
+    if not cleaned.strip():
+        cleaned = markdown
+        warnings.append("LLM 返回为空，已回退原文。")
+
+    return LLMCleanPreviewResponse(
+        markdown=cleaned,
+        changed=(cleaned != markdown),
+        model_used=body.model or settings.LLM_MODEL,
+        prompt_template_id=selected_prompt_template_id,
+        template_key=selected_prompt_template_key,
+        ab_experiment_key=selected_prompt_ab_experiment_key,
+        ab_variant=selected_prompt_ab_variant,
+        warnings=warnings,
+    )
 
 
 

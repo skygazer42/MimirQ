@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from typing import List, Optional, Dict, Any
+from uuid import UUID
 from pydantic import BaseModel, Field
 
 
@@ -70,10 +71,12 @@ class CleanPreviewRequest(BaseModel):
     remove_control_chars: bool = True
     remove_toc_lines: bool = True
     remove_noise_lines: bool = True
+    remove_common_lines: bool = True
     unwrap_lines: bool = True
     unwrap_max_line_length: int = Field(default=120, ge=40, le=400)
     noise_min_chars: int = Field(default=2, ge=1, le=20)
     noise_ratio_threshold: float = Field(default=0.2, ge=0.0, le=1.0)
+    common_lines_min_occurrences: int = Field(default=3, ge=2, le=30)
 
 
 class CleanPreviewResponse(BaseModel):
@@ -95,3 +98,26 @@ class KeywordExtractRequest(BaseModel):
 class KeywordExtractResponse(BaseModel):
     provider: str
     keywords: List[str] = Field(default_factory=list)
+
+
+class LLMCleanPreviewRequest(BaseModel):
+    markdown: str
+    prompt_template_id: Optional[UUID] = None
+    template_key: Optional[str] = None
+    ab_experiment_key: Optional[str] = None
+    ab_user_key: Optional[str] = None
+    model: Optional[str] = None
+    temperature: Optional[float] = Field(default=None, ge=0.0, le=2.0)
+    max_tokens: Optional[int] = Field(default=None, ge=16, le=32768)
+    max_chars: int = Field(default=15000, ge=1000, le=200000)
+
+
+class LLMCleanPreviewResponse(BaseModel):
+    markdown: str
+    changed: bool
+    model_used: Optional[str] = None
+    prompt_template_id: Optional[str] = None
+    template_key: Optional[str] = None
+    ab_experiment_key: Optional[str] = None
+    ab_variant: Optional[str] = None
+    warnings: List[str] = Field(default_factory=list)

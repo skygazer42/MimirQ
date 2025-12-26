@@ -28,6 +28,8 @@ import type {
   CleanPreviewRequest,
   CleanPreviewResponse,
   CleanRulesResponse,
+  LLMCleanPreviewRequest,
+  LLMCleanPreviewResponse,
 } from '@/types'
 import { getAuthHeaders } from '@/lib/auth-headers'
 
@@ -273,6 +275,11 @@ export const pipelineApi = {
 
   async cleanPreview(params: CleanPreviewRequest): Promise<CleanPreviewResponse> {
     const { data } = await apiClient.post('/pipeline/clean-preview', params)
+    return data
+  },
+
+  async llmCleanPreview(params: LLMCleanPreviewRequest): Promise<LLMCleanPreviewResponse> {
+    const { data } = await apiClient.post('/pipeline/llm-clean-preview', params)
     return data
   },
 }

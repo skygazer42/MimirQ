@@ -15,6 +15,9 @@ import time
 from app.core.config import settings
 from app.storage.search.hybrid_retriever import hybrid_retriever
 from app.services.metrics_logger import log_metrics
+from langchain_openai import ChatOpenAI
+from app.services.prompt_template_selector import resolve_prompt_template
+from app.kg.pipeline import sag_search
 
 
 class RAGEngine:
@@ -42,14 +45,6 @@ class RAGEngine:
 
         self.http_client = httpx.Client(trust_env=trust_env)
         self.http_async_client = httpx.AsyncClient(trust_env=trust_env)
-
-        try:
-            from langchain_openai import ChatOpenAI
-        except Exception as exc:
-            raise RuntimeError(
-                "langchain_openai ChatOpenAI is unavailable or incompatible. "
-                "Please reinstall backend requirements in a clean venv."
-            ) from exc
 
         # Build available models for dynamic routing (inspired by agent middleware pattern)
         default_model_name = settings.LLM_MODEL or "gpt-4-turbo-preview"
@@ -221,28 +216,22 @@ class RAGEngine:
             selected_prompt_ab_variant: Optional[str] = None
 
             if db and tenant_id and (prompt_template_id or prompt_template_key or prompt_ab_experiment_key):
-                try:
-                    from app.services.prompt_template_selector import resolve_prompt_template
-
-                    chosen = resolve_prompt_template(
-                        db=db,
-                        tenant_id=tenant_id,
-                        prompt_template_id=prompt_template_id,
-                        template_key=prompt_template_key,
-                        ab_experiment_key=prompt_ab_experiment_key,
-                        ab_user_key=ab_user_key,
-                    )
-                    if chosen:
-                        current_prompt_template = ChatPromptTemplate.from_template(chosen.content)
-                        chosen.usage_count += 1
-                        db.commit()
-                        selected_prompt_template_id = chosen.id
-                        selected_prompt_template_key = getattr(chosen, "template_key", None)
-                        selected_prompt_ab_experiment_key = getattr(chosen, "ab_experiment_key", None)
-                        selected_prompt_ab_variant = getattr(chosen, "ab_variant", None)
-                except Exception:
-                    # 选模版失败时回退到默认 prompt，避免阻塞主链路
-                    current_prompt_template = self.prompt_template
+                chosen = resolve_prompt_template(
+                    db=db,
+                    tenant_id=tenant_id,
+                    prompt_template_id=prompt_template_id,
+                    template_key=prompt_template_key,
+                    ab_experiment_key=prompt_ab_experiment_key,
+                    ab_user_key=ab_user_key,
+                )
+                if chosen:
+                    current_prompt_template = ChatPromptTemplate.from_template(chosen.content)
+                    chosen.usage_count += 1
+                    db.commit()
+                    selected_prompt_template_id = chosen.id
+                    selected_prompt_template_key = getattr(chosen, "template_key", None)
+                    selected_prompt_ab_experiment_key = getattr(chosen, "ab_experiment_key", None)
+                    selected_prompt_ab_variant = getattr(chosen, "ab_variant", None)
 
             chain = current_prompt_template | llm | StrOutputParser()
 
@@ -436,26 +425,21 @@ class RAGEngine:
             # Step 2: 额外召回 SAG 事件（可选）
             sag_context = ""
             if settings.SAG_ENABLED and settings.SAG_CHAT_ENABLED and tenant_id and document_ids:
-                try:
-                    from app.kg.pipeline import sag_search
-
-                    sag_result = await sag_search(
-                        query=question,
-                        tenant_id=tenant_id,
-                        document_ids=document_ids,
-                    )
-                    events = (sag_result or {}).get("events") or []
-                    if events:
-                        parts = []
-                        for idx, ev in enumerate(events[:5], 1):
-                            title = (ev.get("title") or "").strip()
-                            summary = (ev.get("summary") or "").strip()
-                            if len(summary) > 600:
-                                summary = summary[:600] + "..."
-                            parts.append(f"[事件 {idx}] {title}\n{summary}")
-                        sag_context = "\n\n".join(parts)
-                except Exception:
-                    sag_context = ""
+                sag_result = await sag_search(
+                    query=question,
+                    tenant_id=tenant_id,
+                    document_ids=document_ids,
+                )
+                events = (sag_result or {}).get("events") or []
+                if events:
+                    parts = []
+                    for idx, ev in enumerate(events[:5], 1):
+                        title = (ev.get("title") or "").strip()
+                        summary = (ev.get("summary") or "").strip()
+                        if len(summary) > 600:
+                            summary = summary[:600] + "..."
+                        parts.append(f"[事件 {idx}] {title}\n{summary}")
+                    sag_context = "\n\n".join(parts)
 
             # Step 3: 构建上下文（文档切片 + 可选 SAG 事件）
             chunk_context = ""

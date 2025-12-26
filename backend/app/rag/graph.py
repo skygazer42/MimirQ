@@ -19,6 +19,7 @@ import time
 from app.storage.search.hybrid_retriever import hybrid_retriever
 from app.rag.engine import get_rag_engine
 from app.core.config import settings
+from app.services.prompt_template_selector import resolve_prompt_template
 
 
 class RAGState(Dict[str, Any]):
@@ -334,27 +335,22 @@ def run_rag_graph(
     selected_prompt_ab_experiment_key = None
     selected_prompt_ab_variant = None
     if db and tenant_id and (prompt_template_id or prompt_template_key or prompt_ab_experiment_key):
-        try:
-            from app.services.prompt_template_selector import resolve_prompt_template
-
-            chosen = resolve_prompt_template(
-                db=db,
-                tenant_id=tenant_id,
-                prompt_template_id=prompt_template_id,
-                template_key=prompt_template_key,
-                ab_experiment_key=prompt_ab_experiment_key,
-                ab_user_key=ab_user_key,
-            )
-            if chosen:
-                prompt_template_content = chosen.content
-                selected_prompt_template_id = str(chosen.id)
-                selected_prompt_template_key = getattr(chosen, "template_key", None)
-                selected_prompt_ab_experiment_key = getattr(chosen, "ab_experiment_key", None)
-                selected_prompt_ab_variant = getattr(chosen, "ab_variant", None)
-                chosen.usage_count += 1
-                db.commit()
-        except Exception:
-            prompt_template_content = None
+        chosen = resolve_prompt_template(
+            db=db,
+            tenant_id=tenant_id,
+            prompt_template_id=prompt_template_id,
+            template_key=prompt_template_key,
+            ab_experiment_key=prompt_ab_experiment_key,
+            ab_user_key=ab_user_key,
+        )
+        if chosen:
+            prompt_template_content = chosen.content
+            selected_prompt_template_id = str(chosen.id)
+            selected_prompt_template_key = getattr(chosen, "template_key", None)
+            selected_prompt_ab_experiment_key = getattr(chosen, "ab_experiment_key", None)
+            selected_prompt_ab_variant = getattr(chosen, "ab_variant", None)
+            chosen.usage_count += 1
+            db.commit()
 
     app = build_rag_graph()
     result = app.invoke(

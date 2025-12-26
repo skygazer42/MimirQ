@@ -6,12 +6,15 @@ from typing import Dict, Any, List, Optional
 from sqlalchemy.orm import Session
 from langchain_core.documents import Document
 from uuid import UUID
+from io import BytesIO
+from PIL import Image as PILImage
 import asyncio
 import base64
 import hashlib
 import re
 
 from app.core.config import settings
+from app.core.database import SessionLocal
 from app.models.document import Document as DBDocument, DocumentChunk
 from app.parsing.factory import parser_factory
 from app.parsing.chunking.factory import chunker_factory
@@ -24,6 +27,7 @@ from app.services.pipeline_config import (
     resolve_pipeline_options,
 )
 from app.governance.processor import governance_processor, GovernanceStats
+from app.kg.pipeline import extract_events
 
 
 class DocumentProcessorService:
@@ -64,8 +68,6 @@ class DocumentProcessorService:
         """
         owns_db = False
         if db is None:
-            from app.core.database import SessionLocal
-
             db = SessionLocal()
             owns_db = True
 
@@ -282,19 +284,14 @@ class DocumentProcessorService:
 
             # Step 7: 如启用则运行 SAG 抽取（事件/实体）
             if pipeline_effective.sag_enabled:
-                try:
-                    from app.kg.pipeline import extract_events
-
-                    print("[*] Running SAG extraction on document chunks...")
-                    events = await extract_events(
-                        chunk_ids,
-                        tenant_id=tenant_id,
-                        chunks=persist_result.db_chunks,
-                        index_options=index_options,
-                    )
-                    print(f"[OK] SAG extracted {len(events)} events for document {document_id}")
-                except Exception as exc:
-                    print(f"[WARN]  SAG extraction failed: {exc}")
+                print("[*] Running SAG extraction on document chunks...")
+                events = await extract_events(
+                    chunk_ids,
+                    tenant_id=tenant_id,
+                    chunks=persist_result.db_chunks,
+                    index_options=index_options,
+                )
+                print(f"[OK] SAG extracted {len(events)} events for document {document_id}")
 
             return {
                 "status": "success",
@@ -601,9 +598,6 @@ class DocumentProcessorService:
                     binary = path_obj.read_bytes()
 
                 # 统一转 JPEG
-                from io import BytesIO
-                from PIL import Image as PILImage
-
                 img = PILImage.open(BytesIO(binary))
                 if img.mode in ("RGBA", "P"):
                     img = img.convert("RGB")
@@ -720,9 +714,6 @@ class DocumentProcessorService:
 
         # 统一转换为 JPEG bytes（节省存储，简化读取）
         try:
-            from io import BytesIO
-            from PIL import Image as PILImage
-
             if raw_image is not None:
                 if isinstance(raw_image, bytes):
                     img = PILImage.open(BytesIO(raw_image))
