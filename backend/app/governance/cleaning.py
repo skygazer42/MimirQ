@@ -20,6 +20,7 @@ class CleaningResult:
 
 
 _CONTROL_CHARS_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f]")
+_ZERO_WIDTH_RE = re.compile(r"[\u200b\u200c\u200d\u2060\ufeff]")
 _TRAILING_SPACES_RE = re.compile(r"[ \t]+\n")
 _MANY_BLANK_LINES_RE = re.compile(r"\n{3,}")
 _ALNUM_CJK_RE = re.compile(r"[A-Za-z0-9\u4e00-\u9fff]")
@@ -37,6 +38,7 @@ _SENT_END_RE = re.compile(r"[.!?\u3002\uff01\uff1f\uff1b;:\uff1a]\s*$")
 _TRAILING_PAGE_NUM_RE = re.compile(r"\s+\d{1,4}\s*$")
 _TRAILING_PAGE_OF_RE = re.compile(r"\s+\d{1,4}\s*/\s*\d{1,4}\s*$")
 _TRAILING_PAGE_WORD_RE = re.compile(r"\s+(?:page|p\.?)\s*\d{1,4}\s*$", re.IGNORECASE)
+_LEADING_LINE_NUMBER_RE = re.compile(r"^(\s*)\d{1,4}\s+(?=\S)")
 
 
 def clean_markdown(
@@ -69,6 +71,10 @@ def clean_markdown(
     if normalize_line_endings:
         text = text.replace("\r\n", "\n").replace("\r", "\n")
 
+    # Normalize some common Unicode whitespace artifacts from PDF/Office exporters.
+    text = text.replace("\u00a0", " ").replace("\u202f", " ")
+    text = _ZERO_WIDTH_RE.sub("", text)
+
     if remove_control_chars:
         text = _CONTROL_CHARS_RE.sub("", text)
 
@@ -82,6 +88,8 @@ def clean_markdown(
 
     if remove_toc_lines or remove_noise_lines or unwrap_lines or remove_common_lines:
         lines = text.split("\n")
+        if remove_noise_lines and _detect_leading_line_numbers(lines):
+            lines = _strip_leading_line_numbers(lines)
         lines = _filter_lines(
             lines,
             remove_toc_lines=remove_toc_lines,
@@ -133,6 +141,35 @@ def build_common_line_signatures(
         if count >= min_docs and (count / doc_count) >= min_ratio:
             common.add(key)
     return common
+
+
+def build_repeated_line_signatures(
+    text: str,
+    *,
+    min_occurrences: int = 3,
+    max_line_length: int = 120,
+) -> set[str]:
+    if not text:
+        return set()
+
+    counts: dict[str, int] = {}
+    in_code = False
+    for raw_line in text.splitlines():
+        if _CODE_FENCE_RE.match(raw_line):
+            in_code = not in_code
+            continue
+        if in_code:
+            continue
+        if _is_structural_line(raw_line):
+            continue
+        key = _normalize_line_signature(raw_line)
+        if not key:
+            continue
+        if len(key) > max_line_length:
+            continue
+        counts[key] = counts.get(key, 0) + 1
+
+    return {k for k, c in counts.items() if c >= max(2, int(min_occurrences))}
 
 
 def _normalize_line_signature(line: str) -> str:
@@ -187,6 +224,45 @@ def _filter_lines(
         filtered.append(line)
 
     return filtered
+
+
+def _detect_leading_line_numbers(lines: list[str], *, min_ratio: float = 0.6, min_lines: int = 20) -> bool:
+    considered = 0
+    matched = 0
+    in_code = False
+    for line in lines:
+        if _CODE_FENCE_RE.match(line):
+            in_code = not in_code
+            continue
+        if in_code:
+            continue
+        stripped = line.strip()
+        if not stripped:
+            continue
+        if _is_structural_line(line):
+            continue
+        considered += 1
+        if _LEADING_LINE_NUMBER_RE.match(line):
+            matched += 1
+
+    if considered < min_lines:
+        return False
+    return (matched / considered) >= min_ratio
+
+
+def _strip_leading_line_numbers(lines: list[str]) -> list[str]:
+    in_code = False
+    output: list[str] = []
+    for line in lines:
+        if _CODE_FENCE_RE.match(line):
+            in_code = not in_code
+            output.append(line)
+            continue
+        if in_code:
+            output.append(line)
+            continue
+        output.append(_LEADING_LINE_NUMBER_RE.sub(r"\1", line, count=1))
+    return output
 
 
 def _unwrap_soft_line_breaks(lines: list[str], *, max_line_length: int) -> list[str]:

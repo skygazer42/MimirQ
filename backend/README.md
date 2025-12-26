@@ -96,6 +96,11 @@ from app.api.deps.tenant import get_tenant_id
 **预览 API：**
 - `POST /api/v1/pipeline/clean-preview`
 - `GET  /api/v1/pipeline/clean-rules`
+- `POST /api/v1/pipeline/llm-clean-preview`（大模型清洗：支持 `prompt_template_id/template_key/ab_experiment_key` 选择 PromptTemplate）
+
+**关键词 API：**
+- `POST /api/v1/pipeline/extract-keywords`（`provider=auto/jieba/jieba_tfidf/jieba_textrank/hanlp/simple`；HanLP 可用 `HANLP_TOKENIZER_MODEL` 指定 tokenizer 模型）
+  - 停用词：`app/governance/stopwords.py`
 
 #### 使用示例
 

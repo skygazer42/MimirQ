@@ -11,6 +11,7 @@ build/
 dist/
 *.egg-info/
 .pytest_cache/
+*.trie
 
 # Node
 node_modules/

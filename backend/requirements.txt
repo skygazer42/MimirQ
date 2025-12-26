@@ -58,6 +58,7 @@ nltk>=3.9
 # BM25 and Text Processing
 rank-bm25==0.2.2
 jieba==0.42.1
+hanlp>=2.1.0
 word2number==1.1
 cn2an==0.5.22
 roman-numbers==1.0.2

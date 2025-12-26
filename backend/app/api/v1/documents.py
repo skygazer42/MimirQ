@@ -11,7 +11,7 @@ import uuid
 
 
 from app.core.database import get_db
-from app.models.document import Document as DBDocument
+from app.models.document import Document as DBDocument, DocumentChunk
 from app.schemas.document import (
     DocumentUploadResponse,
     DocumentList,
@@ -46,6 +46,7 @@ from app.core.config import settings
 from fastapi.responses import FileResponse, RedirectResponse
 from app.api.deps.tenant import get_tenant_id
 from app.api.deps.auth import get_current_account_id
+from app.kg.pipeline import extract_events
 from sqlalchemy import or_, false
 
 router = APIRouter()
@@ -445,32 +446,28 @@ async def delete_document(
 
     # 1. 删除 MinIO 中的图片（如果启用）
     if settings.MINIO_ENABLED:
-        try:
-            from app.models.document import DocumentChunk
-            img_ids: set[str] = set()
+        img_ids: set[str] = set()
 
-            # 优先使用文档级聚合列表（避免遗漏 ZIP/内嵌图片等“非 chunk_index”资源）
-            doc_meta = document.doc_metadata or {}
-            doc_img_ids = doc_meta.get("img_ids")
-            if isinstance(doc_img_ids, list):
-                for v in doc_img_ids:
-                    if isinstance(v, str) and v.strip():
-                        img_ids.add(v)
+        # 优先使用文档级聚合列表（避免遗漏 ZIP/内嵌图片等"非 chunk_index"资源）
+        doc_meta = document.doc_metadata or {}
+        doc_img_ids = doc_meta.get("img_ids")
+        if isinstance(doc_img_ids, list):
+            for v in doc_img_ids:
+                if isinstance(v, str) and v.strip():
+                    img_ids.add(v)
 
-            # 兼容：逐 chunk 删除（老数据可能没有 documents.metadata.img_ids）
-            chunks = db.query(DocumentChunk).filter(DocumentChunk.document_id == document_id).all()
-            for chunk in chunks:
-                img_id = chunk.doc_metadata.get("img_id") if chunk.doc_metadata else None
-                if isinstance(img_id, str) and img_id.strip():
-                    img_ids.add(img_id)
+        # 兼容：逐 chunk 删除（老数据可能没有 documents.metadata.img_ids）
+        chunks = db.query(DocumentChunk).filter(DocumentChunk.document_id == document_id).all()
+        for chunk in chunks:
+            img_id = chunk.doc_metadata.get("img_id") if chunk.doc_metadata else None
+            if isinstance(img_id, str) and img_id.strip():
+                img_ids.add(img_id)
 
-            for img_id in sorted(img_ids):
-                try:
-                    minio_service.delete_image(img_id, extension="jpg")
-                except Exception as e:
-                    print(f"[WARN] 删除 MinIO 图片失败 {img_id}: {e}")
-        except Exception as exc:
-            print(f"[WARN] MinIO 图片删除过程失败: {exc}")
+        for img_id in sorted(img_ids):
+            try:
+                minio_service.delete_image(img_id, extension="jpg")
+            except Exception as e:
+                print(f"[WARN] 删除 MinIO 图片失败 {img_id}: {e}")
 
     # 2. 删除向量库中的向量（按后端切换）
     Indexer(db).delete_all(tenant_id=tenant_id, document_id=document_id, commit=False)
@@ -715,17 +712,12 @@ async def create_document_with_manual_chunks(
         db.refresh(db_document)
 
         if pipeline_effective.sag_enabled:
-            try:
-                from app.kg.pipeline import extract_events
-
-                await extract_events(
-                    chunk_ids=persist_result.chunk_ids,
-                    tenant_id=tenant_id,
-                    chunks=persist_result.db_chunks,
-                    index_options=index_options,
-                )
-            except Exception as exc:
-                print(f"[WARN]  SAG extraction failed: {exc}")
+            await extract_events(
+                chunk_ids=persist_result.chunk_ids,
+                tenant_id=tenant_id,
+                chunks=persist_result.db_chunks,
+                index_options=index_options,
+            )
 
         return db_document
 

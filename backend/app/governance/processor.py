@@ -8,7 +8,12 @@ from typing import Iterable, List, Optional, Sequence
 
 from langchain_core.documents import Document
 
-from app.governance.cleaning import clean_markdown, RegexRule, build_common_line_signatures
+from app.governance.cleaning import (
+    clean_markdown,
+    RegexRule,
+    build_common_line_signatures,
+    build_repeated_line_signatures,
+)
 from app.governance.rules import DEFAULT_MARKDOWN_RULES
 
 
@@ -44,7 +49,7 @@ class GovernanceProcessor:
             return [], GovernanceStats(documents=0, changed=0, applied_rules=0)
 
         active_rules = list(rules) if rules is not None else self._rules
-        common_lines = (
+        global_common_lines = (
             build_common_line_signatures(
                 [doc.page_content or "" for doc in documents],
                 min_docs=common_lines_min_docs,
@@ -59,6 +64,16 @@ class GovernanceProcessor:
         applied_total = 0
 
         for doc in documents:
+            local_common_lines = (
+                build_repeated_line_signatures(
+                    doc.page_content or "",
+                    min_occurrences=common_lines_min_docs,
+                    max_line_length=unwrap_max_line_length,
+                )
+                if remove_common_lines
+                else set()
+            )
+            common_lines = (global_common_lines | local_common_lines) if remove_common_lines else None
             result = clean_markdown(
                 doc.page_content or "",
                 rules=active_rules,

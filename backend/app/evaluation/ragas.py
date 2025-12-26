@@ -29,8 +29,9 @@ from app.models.evaluation import (
 )
 from app.services.dataset_service import DatasetService
 from app.services.document_access import filter_allowed_document_ids, list_accessible_document_ids
-
-
+from app.rag.embedding import create_langchain_embeddings_from_config
+from langchain_openai import ChatOpenAI, OpenAIEmbeddings
+from langchain_community.embeddings import HuggingFaceEmbeddings
 def _build_http_clients() -> tuple[httpx.Client, httpx.AsyncClient]:
     """
     Reuse the same proxy-handling logic as the RAG engine:
@@ -242,15 +243,8 @@ def _build_llm_and_embeddings():
     """
     Build LangChain LLM + embeddings compatible with RAGAS wrappers.
     """
-    try:
-        from langchain_openai import ChatOpenAI, OpenAIEmbeddings
-    except Exception as exc:  # pragma: no cover
-        raise RuntimeError(
-            "langchain_openai is required for RAGAS evaluation. Please reinstall backend requirements."
-        ) from exc
 
     http_client, http_async_client = _build_http_clients()
-
     llm = ChatOpenAI(
         model=settings.LLM_MODEL,
         api_key=settings.LLM_API_KEY,
@@ -265,26 +259,16 @@ def _build_llm_and_embeddings():
 
     provider = (settings.EMBEDDING_PROVIDER or "openai_compatible").lower()
     if provider == "local":
-        from langchain_community.embeddings import HuggingFaceEmbeddings
 
         embeddings = HuggingFaceEmbeddings(model_name=settings.EMBEDDING_MODEL)
     elif provider == "dashscope":
-        # Prefer DashScope native embeddings (if SDK is installed); fallback to OpenAI-compatible API mode.
-        try:
-            from app.storage.vector.milvus import DashScopeEmbeddings
-
-            embeddings = DashScopeEmbeddings(
-                model=settings.EMBEDDING_MODEL,
-                api_key=settings.EMBEDDING_API_KEY or settings.LLM_API_KEY,
-            )
-        except Exception:
-            api_key = settings.EMBEDDING_API_KEY or settings.LLM_API_KEY
-            base_url = settings.EMBEDDING_API_BASE or settings.LLM_API_BASE
-            embeddings = OpenAIEmbeddings(
-                model=settings.EMBEDDING_MODEL,
-                api_key=api_key,
-                base_url=base_url,
-            )
+        embeddings = create_langchain_embeddings_from_config(
+            provider="dashscope",
+            model=settings.EMBEDDING_MODEL,
+            api_key=settings.EMBEDDING_API_KEY or settings.LLM_API_KEY or "",
+            base_url=settings.EMBEDDING_API_BASE or settings.LLM_API_BASE or "",
+            dimension=None,
+        )
     else:
         api_key = settings.EMBEDDING_API_KEY or settings.LLM_API_KEY
         base_url = settings.EMBEDDING_API_BASE or settings.LLM_API_BASE

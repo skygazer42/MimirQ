@@ -9,6 +9,10 @@ from app.core.config import settings
 from app.core.database import Base, SessionLocal, engine
 from app.core.runtime_migrations import apply_runtime_migrations
 from app.api.v1 import router as api_v1_router
+from app.storage.search.hybrid_retriever import hybrid_retriever
+from app.models.document import DocumentChunk, Document as DBDocument
+from app.storage.vector.milvus import milvus_store
+from app.storage.object.minio import minio_service
 # Ensure SAG models are registered for metadata creation
 import app.kg.models  # noqa: F401
 # Ensure evaluation models are registered for metadata creation
@@ -30,36 +34,28 @@ async def lifespan(app: FastAPI):
 
     # 初始化 BM25 索引
     print("[*] Initializing BM25 index...")
-    try:
-        from app.storage.search.hybrid_retriever import hybrid_retriever
-        from app.models.document import DocumentChunk, Document as DBDocument
+    db = SessionLocal()
+    tenant_ids = db.query(DocumentChunk.tenant_id).join(DBDocument).filter(
+        DBDocument.status == 'completed'
+    ).distinct().all()
 
-        db = SessionLocal()
-        try:
-            tenant_ids = db.query(DocumentChunk.tenant_id).join(DBDocument).filter(
-                DBDocument.status == 'completed'
-            ).distinct().all()
-
-            if tenant_ids:
-                total = 0
-                for (tid,) in tenant_ids:
-                    chunks = db.query(DocumentChunk).join(DBDocument).filter(
-                        DBDocument.status == 'completed',
-                        DocumentChunk.tenant_id == tid
-                    ).all()
-                    if chunks:
-                        hybrid_retriever.build_bm25_index(chunks, tenant_id=tid)
-                        total += len(chunks)
-                if total:
-                    print(f"[OK] BM25 index loaded with {total} chunks across {len(tenant_ids)} tenants")
-                else:
-                    print("[WARN]  No documents found, BM25 index will be built on first upload")
-            else:
-                print("[WARN]  No documents found, BM25 index will be built on first upload")
-        finally:
-            db.close()
-    except Exception as e:
-        print(f"[WARN]  Failed to load BM25 index: {str(e)}")
+    if tenant_ids:
+        total = 0
+        for (tid,) in tenant_ids:
+            chunks = db.query(DocumentChunk).join(DBDocument).filter(
+                DBDocument.status == 'completed',
+                DocumentChunk.tenant_id == tid
+            ).all()
+            if chunks:
+                hybrid_retriever.build_bm25_index(chunks, tenant_id=tid)
+                total += len(chunks)
+        if total:
+            print(f"[OK] BM25 index loaded with {total} chunks across {len(tenant_ids)} tenants")
+        else:
+            print("[WARN]  No documents found, BM25 index will be built on first upload")
+    else:
+        print("[WARN]  No documents found, BM25 index will be built on first upload")
+    db.close()
 
     yield
 
@@ -102,26 +98,14 @@ async def root():
 async def health_check():
     """健康检查"""
     milvus_status = {"status": "disconnected", "count": None}
-    try:
-        from app.storage.vector.milvus import milvus_store
-
-        milvus_status["count"] = milvus_store.get_collection_count()
-        milvus_status["status"] = "connected"
-    except Exception as exc:
-        milvus_status["error"] = str(exc)
+    milvus_status["count"] = milvus_store.get_collection_count()
+    milvus_status["status"] = "connected"
 
     minio_status = {"status": "disabled"}
     if settings.MINIO_ENABLED:
-        try:
-            from app.storage.object.minio import minio_service
-
-            # 尝试列 bucket（或 stat 一个不存在的对象以检查连接），这里检查 bucket 是否存在
-            minio_service._get_client()  # 确保初始化
-            minio_status["status"] = "connected"
-            minio_status["bucket"] = settings.MINIO_BUCKET_NAME
-        except Exception as exc:
-            minio_status["status"] = "error"
-            minio_status["error"] = str(exc)
+        minio_service._get_client()
+        minio_status["status"] = "connected"
+        minio_status["bucket"] = settings.MINIO_BUCKET_NAME
 
     return {
         "status": "healthy",
