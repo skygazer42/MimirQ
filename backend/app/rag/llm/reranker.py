@@ -1,7 +1,7 @@
 """
-LLM Reranker（可选）。
+LLM Reranker（基于大模型的精排器）
 
-用于对检索到的候选切片做“精排”，提升答案引用的相关性。
+用于对检索到的候选切片做"精排"，提升答案引用的相关性。
 实现策略：
 - 输入 query + candidates（截断后的 text）
 - 让 LLM 输出严格 JSON：[{ "id": "...", "score": 0~1 }, ...]，按相关度降序
@@ -14,17 +14,18 @@ import json
 import os
 import time
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
 import httpx
 
 from app.core.config import settings
 from app.models.dify import Document
-from app.rag.reranker.weight import BaseRerankRunner
+from app.rag.reranker.base import DocumentReranker
 
 
 @dataclass
 class LLMRerankResult:
+    """LLM 重排结果"""
     ordered_ids: List[str]
     score_map: Dict[str, float]
     elapsed_sec: float
@@ -66,8 +67,8 @@ def _extract_json_array(text: str) -> Optional[str]:
     return text[start : end + 1]
 
 
-class LLMReranker(BaseRerankRunner):
-    """LLM 精排器（单例可复用）。"""
+class LLMReranker(DocumentReranker):
+    """LLM 精排器（基于大模型的文档重排）"""
 
     def __init__(self) -> None:
         try:
@@ -96,7 +97,7 @@ class LLMReranker(BaseRerankRunner):
         )
 
         self._prompt = ChatPromptTemplate.from_template(
-            """你是一个“检索结果精排器”。给定 query 和候选文段 candidates，请输出严格 JSON 数组：
+            """你是一个"检索结果精排器"。给定 query 和候选文段 candidates，请输出严格 JSON 数组：
 [{"id": "...", "score": 0.0}]
 
 要求：
@@ -114,6 +115,7 @@ candidates(JSON): {candidates}
 
 
     def _candidate_id(self, document: Document, fallback_idx: int) -> str:
+        """从 Document 中提取候选 ID"""
         meta = document.metadata or {}
         for key in ("candidate_id", "doc_id", "chunk_id"):
             value = meta.get(key)
@@ -133,6 +135,19 @@ candidates(JSON): {candidates}
         top_n: int | None = None,
         user: str | None = None,
     ) -> list[Document]:
+        """
+        运行 LLM 重排
+        
+        Args:
+            query: 查询文本
+            documents: 文档列表
+            score_threshold: 分数阈值
+            top_n: 返回前 N 个结果
+            user: 用户标识（未使用）
+            
+        Returns:
+            重排后的文档列表
+        """
         if not documents:
             return []
 
@@ -149,7 +164,7 @@ candidates(JSON): {candidates}
         if not candidates:
             return documents[:top_n] if top_n else documents
 
-        result = self.rerank(query=query, candidates=candidates)
+        result = self.rerank_raw(query=query, candidates=candidates)
         if not result.ordered_ids:
             return documents[:top_n] if top_n else documents
 
@@ -172,6 +187,7 @@ candidates(JSON): {candidates}
             if top_n and len(ordered) >= top_n:
                 return ordered
 
+        # 添加未重排的文档
         for idx, doc in enumerate(documents):
             cid = self._candidate_id(doc, idx)
             if cid in used:
@@ -186,9 +202,16 @@ candidates(JSON): {candidates}
 
         return ordered
 
-    def rerank(self, query: str, candidates: List[Dict[str, Any]]) -> LLMRerankResult:
+    def rerank_raw(self, query: str, candidates: List[Dict[str, Any]]) -> LLMRerankResult:
         """
-        candidates: [{id, text, source?, page? ...}]，这里只会用 id/text 做精排。
+        直接调用 LLM 进行重排（原始接口）
+        
+        Args:
+            query: 查询文本
+            candidates: 候选列表 [{id, text, ...}]
+            
+        Returns:
+            LLMRerankResult: 包含排序后的 ID 列表和分数映射
         """
         payload = []
         max_chars = int(settings.RERANKER_MAX_CHARS or 800)
@@ -246,7 +269,9 @@ _reranker_singleton: Optional[LLMReranker] = None
 
 
 def get_llm_reranker() -> LLMReranker:
+    """获取 LLM Reranker 单例"""
     global _reranker_singleton
     if _reranker_singleton is None:
         _reranker_singleton = LLMReranker()
     return _reranker_singleton
+

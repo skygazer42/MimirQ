@@ -7,10 +7,10 @@ from __future__ import annotations
 
 from typing import Any, Dict, List
 
-from app.rag.reranker.base import BaseReranker
+from app.rag.reranker.base import APIReranker
 
 
-class OpenAIReranker(BaseReranker):
+class OpenAIReranker(APIReranker):
     """OpenAI 风格 API Reranker"""
 
     def _build_payload(

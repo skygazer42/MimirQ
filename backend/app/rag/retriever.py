@@ -21,7 +21,7 @@ from app.storage.vector.factory import get_vector_store
 from app.models.document import DocumentChunk
 from app.core.config import settings
 from app.core.database import SessionLocal
-from app.rag.reranker.factory import get_rag_reranker
+from app.rag.reranker.factory import get_reranker
 from app.rag.reranker.types import RerankCandidate
 
 
@@ -279,7 +279,7 @@ class HybridRetriever(BaseRetriever):
         if merged_results and bool(self.enable_reranker):
             provider = (self.reranker_provider or settings.RERANKER_PROVIDER or "llm").lower()
             if provider not in ("none", "off", "false", "0"):
-                reranker = get_rag_reranker(provider)
+                reranker = get_reranker(provider)
                 candidates_n = int(self.reranker_top_n or settings.RERANKER_TOP_N or 20)
                 candidates_n = max(candidates_n, top_k)
                 candidates_n = min(candidates_n, len(merged_results))

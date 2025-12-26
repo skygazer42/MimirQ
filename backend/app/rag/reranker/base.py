@@ -1,7 +1,10 @@
 """
 Reranker 基类
 
-参考 Yuxi-Know 的设计模式：抽象基类 + 具体实现。
+统一的 Reranker 架构：
+- BaseReranker: 顶层抽象基类，定义统一的 rerank() 接口
+- APIReranker: 用于 HTTP API 调用的 reranker（如 OpenAI, DashScope）
+- DocumentReranker: 用于文档级别重排的 reranker（如 Weight, ParentChild, LLM）
 """
 from __future__ import annotations
 
@@ -12,7 +15,7 @@ from typing import Any, Dict, List, Sequence
 import aiohttp
 import numpy as np
 
-from app.core.config import settings
+from app.rag.reranker.types import RerankCandidate, RerankResult
 
 
 def sigmoid(x: float) -> float:
@@ -22,8 +25,56 @@ def sigmoid(x: float) -> float:
 
 class BaseReranker(ABC):
     """
-    Reranker 抽象基类
+    Reranker 顶层抽象基类
+    
+    所有 reranker 的统一接口，定义 rerank() 方法。
+    子类可以选择实现同步或异步版本。
+    """
 
+    @abstractmethod
+    def rerank(
+        self,
+        query: str,
+        candidates: Sequence[RerankCandidate],
+        **kwargs: Any,
+    ) -> RerankResult:
+        """
+        同步重排接口
+        
+        Args:
+            query: 查询文本
+            candidates: 候选列表
+            **kwargs: 其他参数（如 top_n, score_threshold）
+            
+        Returns:
+            RerankResult: 重排结果
+        """
+        raise NotImplementedError
+
+    async def arerank(
+        self,
+        query: str,
+        candidates: Sequence[RerankCandidate],
+        **kwargs: Any,
+    ) -> RerankResult:
+        """
+        异步重排接口（可选）
+        
+        默认实现：在独立线程中运行同步 rerank()
+        子类可以覆盖提供真正的异步实现。
+        """
+        import concurrent.futures
+        
+        loop = asyncio.get_event_loop()
+        with concurrent.futures.ThreadPoolExecutor() as pool:
+            return await loop.run_in_executor(pool, self.rerank, query, candidates, kwargs)
+
+
+class APIReranker(BaseReranker):
+    """
+    HTTP API 调用型 Reranker 抽象基类
+    
+    用于调用远程 reranker API（如 OpenAI, DashScope, SiliconFlow 等）。
     子类需要实现：
     - _build_payload(): 构建请求体
     - _extract_results(): 解析响应结果
@@ -159,14 +210,52 @@ class BaseReranker(ABC):
             "Use acompute_score instead."
         )
 
-    async def arerank(
+    def rerank(
+        self,
+        query: str,
+        candidates: Sequence[RerankCandidate],
+        **kwargs: Any,
+    ) -> RerankResult:
+        """
+        同步重排接口（实现 BaseReranker）
+        
+        将候选转换为文档列表，调用 API 计算分数。
+        """
+        if not candidates:
+            return RerankResult(ordered_ids=[], score_map={})
+        
+        documents = [c.text for c in candidates]
+        scores = self.compute_score(query, documents)
+        
+        # 构建结果
+        score_map = {c.id: score for c, score in zip(candidates, scores)}
+        ordered_candidates = sorted(
+            zip(candidates, scores),
+            key=lambda x: x[1],
+            reverse=True
+        )
+        ordered_ids = [c.id for c, _ in ordered_candidates]
+        
+        top_n = kwargs.get("top_n")
+        if top_n:
+            ordered_ids = ordered_ids[:top_n]
+            score_map = {cid: score_map[cid] for cid in ordered_ids}
+        
+        return RerankResult(
+            ordered_ids=ordered_ids,
+            score_map=score_map,
+            model_used=self.model,
+            provider=self.__class__.__name__.replace("Reranker", "").lower(),
+        )
+
+    async def arerank_legacy(
         self,
         query: str,
         candidates: Sequence[Dict[str, Any]],
         top_n: int | None = None,
     ) -> List[Dict[str, Any]]:
         """
-        异步重排候选文档
+        异步重排候选文档（旧版接口，保持向后兼容）
 
         Args:
             query: 查询文本
@@ -212,3 +301,88 @@ class BaseReranker(ABC):
                 asyncio.run(self.aclose())
             elif not loop.is_running():
                 loop.run_until_complete(self.aclose())
+
+
+class DocumentReranker(BaseReranker):
+    """
+    文档级别 Reranker 抽象基类
+    
+    用于对文档列表进行重排（如权重融合、父子关系、LLM 精排等）。
+    子类需要实现 run() 方法。
+    """
+
+    @abstractmethod
+    def run(
+        self,
+        query: str,
+        documents: List[Any],
+        score_threshold: float | None = None,
+        top_n: int | None = None,
+        user: str | None = None,
+    ) -> List[Any]:
+        """
+        运行重排模型，返回按相关性排序的文档列表
+        
+        Args:
+            query: 查询文本
+            documents: 文档列表（通常是 Document 对象）
+            score_threshold: 分数阈值
+            top_n: 返回前 N 个结果
+            user: 用户标识（可选）
+            
+        Returns:
+            重排后的文档列表
+        """
+        raise NotImplementedError
+
+    def rerank(
+        self,
+        query: str,
+        candidates: Sequence[RerankCandidate],
+        **kwargs: Any,
+    ) -> RerankResult:
+        """
+        同步重排接口（实现 BaseReranker）
+        
+        将 RerankCandidate 转换为 Document 对象，调用 run() 方法。
+        """
+        from app.models.dify import Document as DifyDocument
+        
+        if not candidates:
+            return RerankResult(ordered_ids=[], score_map={})
+        
+        # 转换为 Document 对象
+        docs: List[DifyDocument] = []
+        for c in candidates:
+            meta = dict(c.metadata or {})
+            meta.setdefault("candidate_id", c.id)
+            docs.append(
+                DifyDocument(
+                    page_content=c.text,
+                    metadata=meta,
+                    provider="reranker"
+                )
+            )
+        
+        # 调用 run 方法
+        top_n = kwargs.get("top_n")
+        score_threshold = kwargs.get("score_threshold")
+        reranked = self.run(query, docs, score_threshold=score_threshold, top_n=top_n)
+        
+        # 提取结果
+        ordered_ids: List[str] = []
+        score_map: Dict[str, float] = {}
+        for doc in reranked:
+            meta = doc.metadata or {}
+            cid = meta.get("candidate_id")
+            if cid is None:
+                continue
+            cid = str(cid)
+            ordered_ids.append(cid)
+            score_map[cid] = float(meta.get("score", 0.0) or 0.0)
+        
+        return RerankResult(
+            ordered_ids=ordered_ids,
+            score_map=score_map,
+            provider=self.__class__.__name__.replace("Reranker", "").lower(),
+        )

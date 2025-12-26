@@ -5,16 +5,35 @@ from typing import Any, Dict, List, Optional, Sequence
 from app.rag.kg.search.config import RerankStrategy, SearchConfig
 from app.rag.kg.search.ranking.pagerank import RerankPageRankSearcher
 from app.rag.kg.search.ranking.rrf import RerankRRFSearcher
+from app.rag.reranker.base import BaseReranker
 from app.rag.reranker.types import RerankCandidate, RerankResult
 
 
-class KgReranker:
+class KGReranker(BaseReranker):
+    """知识图谱重排器：基于图算法（PageRank/RRF）的重排"""
+    
     def __init__(self, strategy: RerankStrategy):
         self.strategy = strategy
         self._rrf = RerankRRFSearcher()
         self._pagerank = RerankPageRankSearcher()
 
-    async def rerank(
+    def rerank(
+        self,
+        query: str,
+        candidates: Sequence[RerankCandidate],
+        **kwargs: Any,
+    ) -> RerankResult:
+        """
+        同步重排接口（KG Reranker 仅支持异步）
+        
+        注意：KG Reranker 是异步的，请使用 arerank_kg() 方法。
+        """
+        raise NotImplementedError(
+            "KGReranker only supports async operations. "
+            "Please use arerank_kg() method instead."
+        )
+
+    async def arerank_kg(
         self,
         query: str,
         candidates: Sequence[RerankCandidate],
@@ -61,15 +80,15 @@ class KgReranker:
         )
 
 
-_kg_reranker_cache: Dict[str, KgReranker] = {}
+_kg_reranker_cache: Dict[str, KGReranker] = {}
 
 
-def get_kg_reranker(strategy: RerankStrategy) -> KgReranker:
+def get_kg_reranker(strategy: RerankStrategy) -> KGReranker:
     key = str(strategy)
     cached = _kg_reranker_cache.get(key)
     if cached is not None:
         return cached
-    reranker = KgReranker(strategy)
+    reranker = KGReranker(strategy)
     _kg_reranker_cache[key] = reranker
     return reranker
 
