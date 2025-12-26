@@ -25,6 +25,9 @@ import type {
   BatchUploadResponse,
   BatchTaskStatus,
   BatchFileInfo,
+  CleanPreviewRequest,
+  CleanPreviewResponse,
+  CleanRulesResponse,
 } from '@/types'
 import { getAuthHeaders } from '@/lib/auth-headers'
 
@@ -256,6 +259,20 @@ export const documentApi = {
    */
   async getBatchTaskStatus(batchId: string): Promise<BatchTaskStatus> {
     const { data } = await apiClient.get(`/documents/batch-upload/status/${batchId}`)
+    return data
+  },
+}
+
+// ==================== 解析/治理流水线 API ====================
+
+export const pipelineApi = {
+  async getCleanRules(): Promise<CleanRulesResponse> {
+    const { data } = await apiClient.get('/pipeline/clean-rules')
+    return data
+  },
+
+  async cleanPreview(params: CleanPreviewRequest): Promise<CleanPreviewResponse> {
+    const { data } = await apiClient.post('/pipeline/clean-preview', params)
     return data
   },
 }

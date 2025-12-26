@@ -76,4 +76,4 @@ def __getattr__(name: str) -> Any:  # pragma: no cover
 
         return TxtParser
 
-    raise AttributeError(f"module 'app.deepdoc.parser' has no attribute {name!r}")
+    raise AttributeError(f"module 'app.ai.deepdoc.parser' has no attribute {name!r}")

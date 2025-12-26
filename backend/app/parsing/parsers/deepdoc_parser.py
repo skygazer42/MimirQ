@@ -15,7 +15,7 @@ class DeepDocParser:
 
     def __init__(self):
         try:
-            from app.deepdoc.parser import PdfParser as DeepDocPdfParser
+            from app.ai.deepdoc.parser import PdfParser as DeepDocPdfParser
         except ImportError as exc:  # pragma: no cover - dependency guard
             raise RuntimeError(
                 "DeepDoc is not installed. Please ensure deepdoc and its "

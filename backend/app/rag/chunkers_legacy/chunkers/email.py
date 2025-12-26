@@ -20,7 +20,7 @@ from email.parser import BytesParser
 from app.rag.chunkers_legacy.chunkers.naive import chunk as naive_chunk
 import re
 from app.rag.chunkers_legacy.nlp import rag_tokenizer, naive_merge, tokenize_chunks
-from app.deepdoc.parser import HtmlParser, TxtParser
+from app.ai.deepdoc.parser import HtmlParser, TxtParser
 from timeit import default_timer as timer
 import io
 
