@@ -1,9 +1,11 @@
 """
-Unified document reranking runners (migrated from third_party/dify).
+Weighted Reranker
+
+融合向量相似度和关键词匹配的加权重排器。
 """
 from __future__ import annotations
 
-from abc import ABC, abstractmethod
+import math
 from collections import Counter
 try:
     from enum import StrEnum
@@ -12,28 +14,12 @@ except ImportError:  # pragma: no cover
 
     class StrEnum(str, Enum):
         pass
-import math
 from typing import Callable
 
 from pydantic import BaseModel
 
 from app.models.dify import Document
-
-
-class BaseRerankRunner(ABC):
-    """Base class for reranking runners operating on document lists."""
-
-    @abstractmethod
-    def run(
-        self,
-        query: str,
-        documents: list[Document],
-        score_threshold: float | None = None,
-        top_n: int | None = None,
-        user: str | None = None,
-    ) -> list[Document]:
-        """Run rerank model and return documents sorted by relevance."""
-        raise NotImplementedError
+from app.rag.reranker.base import DocumentReranker
 
 
 class RerankMode(StrEnum):
@@ -65,60 +51,8 @@ class Weights(BaseModel):
     keyword_setting: KeywordSetting
 
 
-class ParentChildRerankRunner(BaseRerankRunner):
-    """Reranker that groups by parent_id and keeps the strongest child per parent."""
-
-    def run(
-        self,
-        query: str,
-        documents: list[Document],
-        score_threshold: float | None = None,
-        top_n: int | None = None,
-        user: str | None = None,
-    ) -> list[Document]:
-        if not documents:
-            return []
-
-        groups: dict[str, list[Document]] = {}
-        scores: dict[int, float] = {}
-        for doc in documents:
-            meta = doc.metadata or {}
-            score = float(meta.get("score", 0.0) or 0.0)
-            scores[id(doc)] = score
-            group_id = meta.get("parent_id") or meta.get("parent_node_id")
-            if not group_id:
-                doc_id = meta.get("document_id")
-                chunk_index = meta.get("chunk_index")
-                if doc_id is not None and chunk_index is not None:
-                    group_id = f"{doc_id}:{chunk_index}"
-                else:
-                    group_id = f"self:{id(doc)}"
-            groups.setdefault(str(group_id), []).append(doc)
-
-        ranked: list[tuple[Document, float]] = []
-        for _, items in groups.items():
-            children = [d for d in items if (d.metadata or {}).get("chunk_role") == "child"]
-            if children:
-                rep = max(children, key=lambda d: scores.get(id(d), 0.0))
-            else:
-                rep = max(items, key=lambda d: scores.get(id(d), 0.0))
-            ranked.append((rep, scores.get(id(rep), 0.0)))
-
-        ranked.sort(key=lambda x: x[1], reverse=True)
-
-        output: list[Document] = []
-        for doc, score in ranked:
-            if score_threshold is not None and score < score_threshold:
-                continue
-            output.append(doc)
-            if top_n and len(output) >= top_n:
-                break
-
-        return output
-
-
-class WeightRerankRunner(BaseRerankRunner):
-    """Reranker that combines vector similarity and keyword matching with configurable weights."""
+class WeightedReranker(DocumentReranker):
+    """加权重排器：融合向量相似度和关键词匹配"""
 
     def __init__(
         self,
@@ -126,12 +60,13 @@ class WeightRerankRunner(BaseRerankRunner):
         weights: Weights,
         embedding_fn: Callable[[str], list[float]] | None = None,
     ):
-        """Initialize the weight reranker.
+        """
+        初始化加权重排器
 
         Args:
-            tenant_id: Tenant identifier
-            weights: Weight configuration for vector and keyword scores
-            embedding_fn: Optional function to generate embeddings for query
+            tenant_id: 租户标识
+            weights: 向量和关键词权重配置
+            embedding_fn: 可选的 embedding 生成函数
         """
         self.tenant_id = tenant_id
         self.weights = weights
@@ -145,8 +80,8 @@ class WeightRerankRunner(BaseRerankRunner):
         top_n: int | None = None,
         user: str | None = None,
     ) -> list[Document]:
-        """Run weighted reranking."""
-        # Deduplicate documents by doc_id/document_id when available.
+        """运行加权重排"""
+        # 去重
         unique_documents: list[Document] = []
         doc_ids: set[str] = set()
         for document in documents:
@@ -164,11 +99,11 @@ class WeightRerankRunner(BaseRerankRunner):
 
         documents = unique_documents
 
-        # Calculate scores
+        # 计算分数
         query_scores = self._calculate_keyword_score(query, documents)
         query_vector_scores = self._calculate_cosine(query, documents, self.weights.vector_setting)
 
-        # Combine scores
+        # 融合分数
         rerank_documents = []
         for document, query_score, query_vector_score in zip(documents, query_scores, query_vector_scores):
             score = (
@@ -185,7 +120,7 @@ class WeightRerankRunner(BaseRerankRunner):
         return rerank_documents[:top_n] if top_n else rerank_documents
 
     def _calculate_keyword_score(self, query: str, documents: list[Document]) -> list[float]:
-        """Calculate TF-IDF based keyword similarity scores."""
+        """计算基于 TF-IDF 的关键词相似度分数"""
         from app.governance.keyword import JiebaKeywordTableHandler
 
         keyword_table_handler = JiebaKeywordTableHandler()
@@ -254,14 +189,14 @@ class WeightRerankRunner(BaseRerankRunner):
     def _calculate_cosine(
         self, query: str, documents: list[Document], vector_setting: VectorSetting
     ) -> list[float]:
-        """Calculate cosine similarity scores using embeddings."""
+        """使用 embeddings 计算余弦相似度分数"""
         query_vector_scores = []
 
-        # Get query vector
+        # 获取 query 向量
         if self.embedding_fn:
             query_vector = self.embedding_fn(query)
         else:
-            # Return existing scores if no embedding function
+            # 如果没有 embedding 函数，返回现有分数
             for document in documents:
                 if document.metadata and "score" in document.metadata:
                     query_vector_scores.append(document.metadata["score"])
@@ -288,3 +223,4 @@ class WeightRerankRunner(BaseRerankRunner):
                 query_vector_scores.append(0.0)
 
         return query_vector_scores
+

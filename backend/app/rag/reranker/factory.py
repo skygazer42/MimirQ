@@ -1,96 +1,142 @@
+"""
+Reranker 工厂函数
+
+提供统一的 reranker 创建接口。
+"""
 from __future__ import annotations
 
-from typing import Optional, Sequence
+from typing import Any, Callable, Optional
 
-from app.models.dify import Document as DifyDocument
-from app.rag.reranker.llm import get_llm_reranker
-from app.rag.reranker.weight import ParentChildRerankRunner
-from app.rag.reranker.types import RerankCandidate, RerankResult
+from app.rag.reranker.base import BaseReranker
+from app.rag.reranker.types import RerankCandidate
+from app.core.config import settings
 
+def get_reranker(
+    provider: str,
+    model_name: str | None = None,
+    api_key: str | None = None,
+    base_url: str | None = None,
+    **kwargs: Any,
+) -> BaseReranker:
+    """
+    获取 Reranker 实例（统一工厂函数）
 
-class RagLlmReranker:
-    def rerank(
-        self,
-        query: str,
-        candidates: Sequence[RerankCandidate],
-        **kwargs: object,
-    ) -> RerankResult:
-        payload = []
-        for c in candidates:
-            cid = str(c.id).strip()
-            text = (c.text or "").strip()
-            if not cid or not text:
-                continue
-            payload.append({"id": cid, "text": text})
+    Args:
+        provider: 提供商类型
+            - 'openai': OpenAI 风格 API
+            - 'dashscope'/'aliyun': 阿里云 DashScope
+            - 'llm': 基于大模型的精排
+            - 'weighted': 加权融合重排
+            - 'parent_child'/'pc': 父子关系重排
+            - 'kg_pagerank': 知识图谱 PageRank 重排
+            - 'kg_rrf': 知识图谱 RRF 重排
+        model_name: 模型名称（API reranker 需要）
+        api_key: API Key（API reranker 需要）
+        base_url: API Base URL（API reranker 需要）
+        **kwargs: 其他参数
 
-        reranker = get_llm_reranker()
-        result = reranker.rerank(query=query, candidates=payload)
-        return RerankResult(
-            ordered_ids=result.ordered_ids,
-            score_map=result.score_map,
-            elapsed_sec=result.elapsed_sec,
-            model_used=result.model_used,
-            provider="llm",
+    Returns:
+        BaseReranker 实例
+    """
+    
+
+    provider = (provider or "").lower()
+
+    # API Rerankers
+    if provider in ("dashscope", "aliyun"):
+        from app.rag.reranker.dashscope import DashScopeReranker
+        
+        model_name = model_name or settings.RERANKER_MODEL or "BAAI/bge-reranker-v2-m3"
+        api_key = api_key or settings.RERANKER_API_KEY or settings.LLM_API_KEY
+        base_url = base_url or "https://dashscope.aliyuncs.com/api/v1/services/rerank"
+        
+        return DashScopeReranker(
+            model_name=model_name,
+            api_key=api_key,
+            base_url=base_url,
+            **kwargs,
         )
-
-
-class RagParentChildReranker:
-    def __init__(self) -> None:
-        self._runner = ParentChildRerankRunner()
-
-    def rerank(
-        self,
-        query: str,
-        candidates: Sequence[RerankCandidate],
-        **kwargs: object,
-    ) -> RerankResult:
-        docs: list[DifyDocument] = []
-        for c in candidates:
-            cid = str(c.id).strip()
-            text = (c.text or "").strip()
-            if not cid or not text:
-                continue
-            meta = dict(c.metadata or {})
-            meta.setdefault("candidate_id", cid)
-            meta.setdefault("score", meta.get("score", 0.0))
-            docs.append(DifyDocument(page_content=text, metadata=meta, provider="rag"))
-
-        top_n = kwargs.get("top_n")
-        score_threshold = kwargs.get("score_threshold")
-        reranked = self._runner.run(query, docs, score_threshold=score_threshold, top_n=top_n)
-
-        ordered_ids: list[str] = []
-        score_map: dict[str, float] = {}
-        for doc in reranked:
-            meta = doc.metadata or {}
-            cid = meta.get("candidate_id")
-            if cid is None:
-                continue
-            cid = str(cid)
-            ordered_ids.append(cid)
-            score_map[cid] = float(meta.get("score", 0.0) or 0.0)
-
-        return RerankResult(
-            ordered_ids=ordered_ids,
-            score_map=score_map,
-            provider="pc",
+    
+    elif provider == "openai":
+        from app.rag.reranker.openai import OpenAIReranker
+        
+        model_name = model_name or settings.RERANKER_MODEL or "BAAI/bge-reranker-v2-m3"
+        api_key = api_key or settings.RERANKER_API_KEY or settings.LLM_API_KEY
+        base_url = base_url or settings.RERANKER_API_BASE or settings.LLM_API_BASE
+        
+        return OpenAIReranker(
+            model_name=model_name,
+            api_key=api_key,
+            base_url=base_url,
+            **kwargs,
         )
-
-
-_rag_reranker_cache: dict[str, object] = {}
-
-
-def get_rag_reranker(provider: Optional[str] = None) -> object:
-    key = (provider or "llm").lower()
-    cached = _rag_reranker_cache.get(key)
-    if cached is not None:
-        return cached
-
-    if key == "pc":
-        reranker: object = RagParentChildReranker()
+    
+    # Document Rerankers
+    elif provider == "llm":
+        from app.rag.llm.reranker import get_llm_reranker
+        return get_llm_reranker()
+    
+    elif provider in ("parent_child", "pc"):
+        from app.rag.reranker.parent_child import ParentChildReranker
+        return ParentChildReranker()
+    
+    elif provider == "weighted":
+        from app.rag.reranker.weighted import WeightedReranker, Weights
+        
+        weights = kwargs.get("weights")
+        if not weights:
+            raise ValueError("WeightedReranker requires 'weights' parameter")
+        
+        tenant_id = kwargs.get("tenant_id", "")
+        embedding_fn = kwargs.get("embedding_fn")
+        
+        return WeightedReranker(
+            tenant_id=tenant_id,
+            weights=weights,
+            embedding_fn=embedding_fn,
+        )
+    
+    # KG Rerankers
+    elif provider in ("kg_pagerank", "kg_rrf"):
+        from app.rag.kg.search.config import RerankStrategy
+        from app.rag.reranker.kg import KGReranker
+        
+        strategy = RerankStrategy.PAGERANK if provider == "kg_pagerank" else RerankStrategy.RRF
+        return KGReranker(strategy)
+    
+    # 默认使用 OpenAI 风格 API
     else:
-        reranker = RagLlmReranker()
+        from app.rag.reranker.openai import OpenAIReranker
+        
+        model_name = model_name or settings.RERANKER_MODEL or "BAAI/bge-reranker-v2-m3"
+        api_key = api_key or settings.RERANKER_API_KEY or settings.LLM_API_KEY
+        base_url = base_url or settings.RERANKER_API_BASE or settings.LLM_API_BASE
+        
+        return OpenAIReranker(
+            model_name=model_name,
+            api_key=api_key,
+            base_url=base_url,
+            **kwargs,
+        )
 
-    _rag_reranker_cache[key] = reranker
-    return reranker
+
+# 向后兼容：旧的工厂函数（保留一段时间）
+def get_rag_reranker(provider: Optional[str] = None) -> BaseReranker:
+    """
+    获取 RAG Reranker（旧接口，已废弃）
+    
+    请使用 get_reranker() 替代。
+    """
+    import warnings
+    warnings.warn(
+        "get_rag_reranker() is deprecated, use get_reranker() instead",
+        DeprecationWarning,
+        stacklevel=2
+    )
+    
+    provider = (provider or "llm").lower()
+    if provider == "pc":
+        return get_reranker("parent_child")
+    else:
+        return get_reranker("llm")
 

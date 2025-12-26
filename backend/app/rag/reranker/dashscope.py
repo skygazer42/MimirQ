@@ -5,10 +5,10 @@ from __future__ import annotations
 
 from typing import Any, Dict, List
 
-from app.rag.reranker.base import BaseReranker
+from app.rag.reranker.base import APIReranker
 
 
-class DashScopeReranker(BaseReranker):
+class DashScopeReranker(APIReranker):
     """阿里云 DashScope Reranker"""
 
     def _build_payload(
