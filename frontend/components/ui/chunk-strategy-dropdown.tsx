@@ -114,18 +114,22 @@ export function ChunkStrategyDropdown({ value, onChange, className }: ChunkStrat
               const Icon = ICON_MAP[option.icon]
               const color = COLOR_MAP[option.icon]
               const isSelected = option.value === value
+              const isDisabled = !!option.disabled
 
               return (
                 <button
                   key={option.value}
                   type="button"
+                  disabled={isDisabled}
                   onClick={() => {
+                    if (isDisabled) return
                     onChange(option.value)
                     setIsOpen(false)
                   }}
                   className={cn(
                     'w-full flex items-center gap-3 px-3 py-2.5 transition-colors',
-                    isSelected ? 'bg-indigo-50' : 'hover:bg-gray-50'
+                    isSelected ? 'bg-indigo-50' : 'hover:bg-gray-50',
+                    isDisabled && 'opacity-50 cursor-not-allowed hover:bg-transparent'
                   )}
                 >
                   <div className={cn('p-1.5 rounded-lg', color.bg)}>

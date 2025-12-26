@@ -30,7 +30,10 @@ try:
 except Exception:  # pragma: no cover
     datrie = None
 import nltk
-from hanziconv import HanziConv
+try:
+    from hanziconv import HanziConv
+except Exception:  # pragma: no cover
+    HanziConv = None
 from nltk import word_tokenize
 from nltk.stem import PorterStemmer, WordNetLemmatizer
 
@@ -186,6 +189,8 @@ class RagTokenizer:
         return rstring
 
     def _tradi2simp(self, line):
+        if HanziConv is None:
+            return line
         return HanziConv.toSimplified(line)
 
     def dfs_(self, chars, s, preTks, tkslist, _depth=0, _memo=None):

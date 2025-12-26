@@ -208,13 +208,13 @@ export const GraphViewer = forwardRef<GraphViewerRef, GraphViewerProps>(({
           cooldownTicks={100}
           onNodeClick={handleNodeClick}
           onBackgroundClick={onBackgroundClick}
-          onNodeDragEnd={node => {
+          onNodeDragEnd={(node: any) => {
             node.fx = node.x;
             node.fy = node.y;
           }}
           
           // Custom Node Painting
-          nodeCanvasObject={(node: any, ctx, globalScale) => {
+          nodeCanvasObject={(node: any, ctx: CanvasRenderingContext2D, globalScale: number) => {
             const isHighlighted = highlightedNodeIds.size > 0 && highlightedNodeIds.has(node.id)
             const isPathNode = highlightedLinkIds.size > 0 && highlightedNodeIds.has(node.id)
             const isDimmed = (highlightedNodeIds.size > 0 || highlightedLinkIds.size > 0) && !isHighlighted
@@ -271,7 +271,7 @@ export const GraphViewer = forwardRef<GraphViewerRef, GraphViewerProps>(({
 
           // Custom Link Label Painting
           linkCanvasObjectMode={() => 'after'}
-          linkCanvasObject={(link: any, ctx, globalScale) => {
+          linkCanvasObject={(link: any, ctx: CanvasRenderingContext2D, globalScale: number) => {
             const start = link.source
             const end = link.target
 

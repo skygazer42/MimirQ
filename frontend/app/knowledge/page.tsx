@@ -49,6 +49,10 @@ import { DocumentDetailDialog } from '@/components/document-detail-dialog'
 import { getParserLabel } from '@/lib/parser-options'
 import type { Document } from '@/types'
 import { PipelineOptionsPanel } from '@/components/pipeline-options-panel'
+import { ParserDropdown } from '@/components/ui/parser-dropdown'
+import { ChunkStrategyDropdown } from '@/components/ui/chunk-strategy-dropdown'
+import { useParserBackendPreference } from '@/contexts/parser-backend-context'
+import { useChunkStrategyPreference } from '@/contexts/chunk-strategy-context'
 
 // Tab 类型
 type TabType = 'documents' | 'retrieval' | 'settings'
@@ -59,6 +63,8 @@ export default function KnowledgePage() {
   const [activeTab, setActiveTab] = useState<TabType>('documents')
   const [viewMode, setViewMode] = useState<ViewMode>('grid')
   const [selectedDocId, setSelectedDocId] = useState<string | null>(null)
+  const { parserBackend, setParserBackend } = useParserBackendPreference()
+  const { chunkStrategy, setChunkStrategy } = useChunkStrategyPreference()
 
   // 检索测试状态
   const [searchQuery, setSearchQuery] = useState('')
@@ -166,6 +172,16 @@ export default function KnowledgePage() {
                       仅影响新上传文档，可随时调整
                     </DialogDescription>
                   </DialogHeader>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <div className="text-sm font-medium text-gray-700">解析方式</div>
+                      <ParserDropdown value={parserBackend} onChange={setParserBackend} />
+                    </div>
+                    <div className="space-y-2">
+                      <div className="text-sm font-medium text-gray-700">切块策略</div>
+                      <ChunkStrategyDropdown value={chunkStrategy} onChange={setChunkStrategy} />
+                    </div>
+                  </div>
                   <PipelineOptionsPanel />
                 </DialogContent>
               </Dialog>

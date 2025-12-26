@@ -24,6 +24,7 @@ import { usePipelineOptions } from '@/contexts/pipeline-options-context'
 import { getParserLabel } from '@/lib/parser-options'
 import { cn } from '@/lib/utils'
 import { PipelineOptionsPanel } from '@/components/pipeline-options-panel'
+import { ParserDropdown } from '@/components/ui/parser-dropdown'
 
 interface ManualUploadDialogProps {
   onUploaded?: () => void
@@ -44,7 +45,7 @@ export function ManualUploadDialog({ onUploaded }: ManualUploadDialogProps) {
   const [chunkSize, setChunkSize] = useState(pipelineOptions.chunk_size ?? 1000)
   const [chunkOverlap, setChunkOverlap] = useState(pipelineOptions.chunk_overlap ?? 200)
   const [delimiter, setDelimiter] = useState('## ')
-  const { parserBackend } = useParserBackendPreference()
+  const { parserBackend, setParserBackend } = useParserBackendPreference()
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
@@ -285,6 +286,11 @@ export function ManualUploadDialog({ onUploaded }: ManualUploadDialogProps) {
                 <span className="w-5 h-5 rounded-full bg-gray-100 text-gray-600 flex items-center justify-center text-xs">1</span>
                 源文档
               </label>
+
+              <div className="space-y-2">
+                <div className="text-xs font-medium text-gray-500">解析器</div>
+                <ParserDropdown value={parserBackend} onChange={setParserBackend} />
+              </div>
               
               <div 
                 className={cn(

@@ -5,7 +5,6 @@
 ```
 app/
 ├── api/              # API 路由层
-├── ai/               # SAG/KG 用的轻量 AI 适配（LLM/Embedding）
 ├── core/             # 核心配置
 ├── models/           # 数据库模型
 ├── schemas/          # Pydantic Schema
@@ -338,4 +337,3 @@ pytest tests/evaluation/
 ## 迁移完成 ✅
 
 所有文件已按功能域重新组织，导入路径已更新，结构更清晰！
-
