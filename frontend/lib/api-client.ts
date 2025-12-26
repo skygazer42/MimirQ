@@ -1,7 +1,7 @@
 /**
  * API 客户端
  */
-import axios from 'axios'
+import axios, { AxiosHeaders } from 'axios'
 import type {
   Document,
   Conversation,
@@ -39,10 +39,12 @@ const apiClient = axios.create({
 
 // Inject auth/tenant headers for every request (client-side friendly)
 apiClient.interceptors.request.use((config) => {
-  config.headers = {
-    ...(config.headers || {}),
-    ...getAuthHeaders(),
+  const headers = AxiosHeaders.from(config.headers)
+  const authHeaders = getAuthHeaders()
+  for (const [key, value] of Object.entries(authHeaders)) {
+    headers.set(key, value)
   }
+  config.headers = headers
   return config
 })
 

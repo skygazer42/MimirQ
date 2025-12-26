@@ -9,26 +9,40 @@
 - search: 混合检索（BM25 + 向量）
 """
 
-# 向量存储
-from app.storage.vector.factory import get_vector_store
-from app.storage.vector.milvus import milvus_store
+from __future__ import annotations
 
-# 对象存储
-from app.storage.object.minio import minio_service
+from typing import Any
 
-# 混合检索
-from app.storage.search.hybrid_retriever import hybrid_retriever
+__all__ = ["get_vector_store", "milvus_store", "minio_service", "hybrid_retriever"]
 
-__all__ = [
-    # 向量存储
-    'get_vector_store',
-    'milvus_store',
-    # 对象存储
-    'minio_service',
-    # 检索
-    'hybrid_retriever',
-]
 
+def __getattr__(name: str) -> Any:  # pragma: no cover
+    """
+    Lazy exports to avoid importing heavy dependencies at package import time.
+
+    Import submodules directly when possible:
+    - from app.storage.vector.factory import get_vector_store
+    - from app.storage.vector.milvus import milvus_store
+    - from app.storage.object.minio import minio_service
+    - from app.storage.search.hybrid_retriever import hybrid_retriever
+    """
+    if name == "get_vector_store":
+        from app.storage.vector.factory import get_vector_store
+
+        return get_vector_store
+    if name == "milvus_store":
+        from app.storage.vector.milvus import milvus_store
+
+        return milvus_store
+    if name == "minio_service":
+        from app.storage.object.minio import minio_service
+
+        return minio_service
+    if name == "hybrid_retriever":
+        from app.storage.search.hybrid_retriever import hybrid_retriever
+
+        return hybrid_retriever
+    raise AttributeError(f"module 'app.storage' has no attribute {name!r}")
 
 
 

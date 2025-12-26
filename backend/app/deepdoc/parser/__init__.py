@@ -14,14 +14,9 @@
 #  limitations under the License.
 #
 
-from .docx_parser import RAGFlowDocxParser as DocxParser
-from .excel_parser import RAGFlowExcelParser as ExcelParser
-from .html_parser import RAGFlowHtmlParser as HtmlParser
-from .json_parser import RAGFlowJsonParser as JsonParser
-from .markdown_parser import RAGFlowMarkdownParser as MarkdownParser
-from .pdf_parser import RAGFlowPdfParser as PdfParser, PlainParser
-from .ppt_parser import RAGFlowPptParser as PptParser
-from .txt_parser import RAGFlowTxtParser as TxtParser
+from __future__ import annotations
+
+from typing import Any
 
 __all__ = [
     "PdfParser",
@@ -34,3 +29,51 @@ __all__ = [
     "MarkdownParser",
     "TxtParser",
 ]
+
+
+def __getattr__(name: str) -> Any:  # pragma: no cover
+    """
+    Lazy exports.
+
+    DeepDoc supports multiple formats, but some optional parsers pull in extra
+    dependencies. Import them on-demand so PDF parsing can work even if other
+    format dependencies are missing.
+    """
+    if name == "PdfParser":
+        from .pdf_parser import RAGFlowPdfParser as PdfParser
+
+        return PdfParser
+    if name == "PlainParser":
+        from .pdf_parser import PlainParser
+
+        return PlainParser
+    if name == "DocxParser":
+        from .docx_parser import RAGFlowDocxParser as DocxParser
+
+        return DocxParser
+    if name == "ExcelParser":
+        from .excel_parser import RAGFlowExcelParser as ExcelParser
+
+        return ExcelParser
+    if name == "PptParser":
+        from .ppt_parser import RAGFlowPptParser as PptParser
+
+        return PptParser
+    if name == "HtmlParser":
+        from .html_parser import RAGFlowHtmlParser as HtmlParser
+
+        return HtmlParser
+    if name == "JsonParser":
+        from .json_parser import RAGFlowJsonParser as JsonParser
+
+        return JsonParser
+    if name == "MarkdownParser":
+        from .markdown_parser import RAGFlowMarkdownParser as MarkdownParser
+
+        return MarkdownParser
+    if name == "TxtParser":
+        from .txt_parser import RAGFlowTxtParser as TxtParser
+
+        return TxtParser
+
+    raise AttributeError(f"module 'app.deepdoc.parser' has no attribute {name!r}")

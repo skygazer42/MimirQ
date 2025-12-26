@@ -11,38 +11,54 @@
 - utils: 工具函数
 """
 
-# 质量评估
-from app.parsing.quality.scorer import score_pdf_quality
+from __future__ import annotations
 
-# 解析工厂
-from app.parsing.factory import parser_factory
-
-# 切块工厂
-from app.parsing.chunking.factory import chunker_factory
-from app.parsing.chunking.hierarchical import hierarchical_chunk_markdown
-
-# 处理器
-from app.parsing.processors.document_processor import document_processor
-from app.parsing.processors.parser_service import document_parser_service
-
-# ZIP 处理
-from app.parsing.utils.zip_processor import zip_image_processor
+from typing import Any
 
 __all__ = [
-    # 质量评估
-    'score_pdf_quality',
-    # 工厂
-    'parser_factory',
-    'chunker_factory',
-    # 切块
-    'hierarchical_chunk_markdown',
-    # 处理器
-    'document_processor',
-    'document_parser_service',
-    # 工具
-    'zip_image_processor',
+    "score_pdf_quality",
+    "parser_factory",
+    "chunker_factory",
+    "hierarchical_chunk_markdown",
+    "document_processor",
+    "document_parser_service",
+    "zip_image_processor",
 ]
 
 
+def __getattr__(name: str) -> Any:  # pragma: no cover
+    """
+    Lazy exports to keep package import lightweight and avoid circular imports.
 
+    Prefer importing submodules directly when possible.
+    """
+    if name == "score_pdf_quality":
+        from app.parsing.quality.scorer import score_pdf_quality
+
+        return score_pdf_quality
+    if name == "parser_factory":
+        from app.parsing.factory import parser_factory
+
+        return parser_factory
+    if name == "chunker_factory":
+        from app.parsing.chunking.factory import chunker_factory
+
+        return chunker_factory
+    if name == "hierarchical_chunk_markdown":
+        from app.parsing.chunking.hierarchical import hierarchical_chunk_markdown
+
+        return hierarchical_chunk_markdown
+    if name == "document_processor":
+        from app.parsing.processors.document_processor import document_processor
+
+        return document_processor
+    if name == "document_parser_service":
+        from app.parsing.processors.parser_service import document_parser_service
+
+        return document_parser_service
+    if name == "zip_image_processor":
+        from app.parsing.utils.zip_processor import zip_image_processor
+
+        return zip_image_processor
+    raise AttributeError(f"module 'app.parsing' has no attribute {name!r}")
 

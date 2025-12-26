@@ -45,6 +45,7 @@ import { getChunkStrategyLabel } from '@/lib/chunk-strategies'
 import { StatCard, StatsGrid } from '@/components/ui/stats-card'
 import { FileQueueItem, FileQueueItemData, FileStatus } from '@/components/ui/file-queue-item'
 import { ParserDropdown } from '@/components/ui/parser-dropdown'
+import { ChunkStrategyDropdown } from '@/components/ui/chunk-strategy-dropdown'
 
 // 解析后的文件（扩展版）
 interface ParsedFile extends FileQueueItemData {
@@ -80,7 +81,7 @@ export default function ParsingPage() {
 
   // 解析器设置
   const { parserBackend, setParserBackend } = useParserBackendPreference()
-  const { chunkStrategy } = useChunkStrategyPreference()
+  const { chunkStrategy, setChunkStrategy } = useChunkStrategyPreference()
 
   // 共享存储
   const { addParsedFile } = useParsedFiles()
@@ -367,6 +368,17 @@ export default function ParsingPage() {
               <ParserDropdown
                 value={parserBackend}
                 onChange={setParserBackend}
+              />
+            </div>
+
+            {/* 切块策略 */}
+            <div className="p-4 border-b">
+              <div className="flex items-center justify-between mb-3">
+                <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider">切块策略</span>
+              </div>
+              <ChunkStrategyDropdown
+                value={chunkStrategy}
+                onChange={setChunkStrategy}
               />
             </div>
 

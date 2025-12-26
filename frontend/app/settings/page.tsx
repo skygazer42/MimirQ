@@ -17,6 +17,11 @@ import {
 import { Button } from '@/components/ui/button'
 import { settingsApi, type SystemSettings, type SystemStatus, type FeatureFlags } from '@/lib/api-client'
 import { cn } from '@/lib/utils'
+import { ParserDropdown } from '@/components/ui/parser-dropdown'
+import { ChunkStrategyDropdown } from '@/components/ui/chunk-strategy-dropdown'
+import { PipelineOptionsPanel } from '@/components/pipeline-options-panel'
+import { useParserBackendPreference } from '@/contexts/parser-backend-context'
+import { useChunkStrategyPreference } from '@/contexts/chunk-strategy-context'
 
 const CATEGORY_INFO: Record<ProviderCategory, { title: string; description: string; icon: any }> = {
   model: {
@@ -84,6 +89,8 @@ export default function SettingsPage() {
   const [providers, setProviders] = useState<ModelProvider[]>(MODEL_PROVIDERS)
   const [selectedProvider, setSelectedProvider] = useState<ModelProvider | null>(null)
   const [dialogOpen, setDialogOpen] = useState(false)
+  const { parserBackend, setParserBackend } = useParserBackendPreference()
+  const { chunkStrategy, setChunkStrategy } = useChunkStrategyPreference()
 
   // 系统配置状态
   const [settings, setSettings] = useState<SystemSettings | null>(null)
@@ -252,6 +259,37 @@ export default function SettingsPage() {
             </div>
           ) : (
             <div className="space-y-12">
+              {/* 前端偏好设置（本地） */}
+              <section>
+                <div className="flex items-center justify-between mb-6">
+                  <h2 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+                    <Sliders className="h-5 w-5 text-blue-600" />
+                    前端偏好（本地）
+                  </h2>
+                  <div className="flex items-center gap-2 px-3 py-1 bg-gray-100 text-gray-600 rounded-full text-xs font-medium border border-gray-200">
+                    <span>仅保存在浏览器，影响新上传/预览</span>
+                  </div>
+                </div>
+
+                <div className="bg-white rounded-xl p-6 border border-gray-100 shadow-sm space-y-6">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div className="space-y-2">
+                      <div className="text-sm font-medium text-gray-700">解析方式</div>
+                      <ParserDropdown value={parserBackend} onChange={setParserBackend} />
+                    </div>
+                    <div className="space-y-2">
+                      <div className="text-sm font-medium text-gray-700">切块策略</div>
+                      <ChunkStrategyDropdown value={chunkStrategy} onChange={setChunkStrategy} />
+                    </div>
+                  </div>
+
+                  <div>
+                    <div className="text-sm font-medium text-gray-700 mb-3">入库管线</div>
+                    <PipelineOptionsPanel />
+                  </div>
+                </div>
+              </section>
+
               {/* 功能开关区域 */}
               <section>
                 <div className="flex items-center justify-between mb-6">

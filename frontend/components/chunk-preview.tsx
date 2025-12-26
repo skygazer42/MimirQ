@@ -43,6 +43,7 @@ import { usePipelineOptions } from '@/contexts/pipeline-options-context'
 import { getParserLabel } from '@/lib/parser-options'
 import { getChunkStrategyLabel, getChunkStrategyOption } from '@/lib/chunk-strategies'
 import { ChunkStrategyDropdown } from '@/components/ui/chunk-strategy-dropdown'
+import { ParserDropdown } from '@/components/ui/parser-dropdown'
 import { PipelineOptionsPanel } from '@/components/pipeline-options-panel'
 import { cn } from '@/lib/utils'
 
@@ -130,7 +131,7 @@ export function ChunkPreview({ onConfirm, onClose }: ChunkPreviewProps) {
 
   // 选中的块索引（用于高亮联动）
   const [hoveredChunkIndex, setHoveredChunkIndex] = useState<number | null>(null)
-  const { parserBackend } = useParserBackendPreference()
+  const { parserBackend, setParserBackend } = useParserBackendPreference()
   const { chunkStrategy, setChunkStrategy } = useChunkStrategyPreference()
   const chunkStrategyOption = getChunkStrategyOption(chunkStrategy)
   const resolvedChunkStrategy = previewData?.chunk_strategy || chunkStrategy
@@ -621,6 +622,12 @@ export function ChunkPreview({ onConfirm, onClose }: ChunkPreviewProps) {
             </div>
 
             <div className="space-y-8">
+              {/* 解析器选择 */}
+              <div className="space-y-2">
+                <label className="text-xs font-medium text-gray-500">解析器</label>
+                <ParserDropdown value={parserBackend} onChange={setParserBackend} />
+              </div>
+
               {/* 策略选择 */}
               <div className="space-y-2">
                 <label className="text-xs font-medium text-gray-500">切块策略</label>

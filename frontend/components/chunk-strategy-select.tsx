@@ -60,21 +60,21 @@ export function ChunkStrategySelect({
       >
         <optgroup label="LangChain">
           {langchainStrategies.map((option) => (
-            <option key={option.value} value={option.value}>
+            <option key={option.value} value={option.value} disabled={option.disabled}>
               {option.label}
             </option>
           ))}
         </optgroup>
         <optgroup label="LlamaIndex">
           {llamaIndexStrategies.map((option) => (
-            <option key={option.value} value={option.value}>
+            <option key={option.value} value={option.value} disabled={option.disabled}>
               {option.label}
             </option>
           ))}
         </optgroup>
         <optgroup label="RAGFlow">
           {ragflowStrategies.map((option) => (
-            <option key={option.value} value={option.value}>
+            <option key={option.value} value={option.value} disabled={option.disabled}>
               {option.label}
             </option>
           ))}

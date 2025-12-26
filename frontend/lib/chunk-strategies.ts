@@ -5,6 +5,7 @@ export interface ChunkStrategyOption {
   icon: 'recursive' | 'token' | 'sentence' | 'hierarchical' | 'ragflow' | 'separator'
   badge?: string
   group?: 'langchain' | 'llama_index' | 'ragflow'
+  disabled?: boolean
 }
 
 export const CHUNK_STRATEGY_OPTIONS: ChunkStrategyOption[] = [
@@ -45,16 +46,19 @@ export const CHUNK_STRATEGY_OPTIONS: ChunkStrategyOption[] = [
   {
     value: 'llama_index',
     label: 'LlamaIndex 句子切分',
-    description: '按句子语义切片，支持多语言，保留句子边界',
+    description: '暂不可用：后端暂未支持 LlamaIndex 分块',
     icon: 'sentence',
+    badge: '暂不可用',
+    disabled: true,
     group: 'llama_index',
   },
   {
     value: 'llama_index_hierarchical',
     label: 'LlamaIndex 分层切分',
-    description: '父子块多级切分，保留 parent 关系，适合 AutoMerging 检索',
+    description: '暂不可用：后端暂未支持 LlamaIndex 分块',
     icon: 'hierarchical',
-    badge: '父子块',
+    badge: '暂不可用',
+    disabled: true,
     group: 'llama_index',
   },
   // RAGFlow 系列
