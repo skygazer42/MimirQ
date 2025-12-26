@@ -7,7 +7,7 @@ for use with LangChain vector stores (Milvus, FAISS, Chroma, etc.).
 from typing import List
 
 from app.rag.embedding.base import BaseEmbeddingModel
-from app.kg.utils import get_logger
+from app.rag.kg.utils import get_logger
 
 logger = get_logger("rag.embedding.langchain")
 

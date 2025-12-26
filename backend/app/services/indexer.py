@@ -11,9 +11,9 @@ from langchain_core.documents import Document as LCDocument
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
-from app.kg.models import SagEntity, SagEventEntity, SagSourceEvent
+from app.rag.kg.models import SagEntity, SagEventEntity, SagSourceEvent
 from app.models.document import Document as DBDocument, DocumentChunk
-from app.storage.search.hybrid_retriever import hybrid_retriever
+from app.rag.retrieval.hybrid_retriever import hybrid_retriever
 from app.storage.vector.factory import get_vector_store
 from app.storage.vector.milvus import get_milvus_adapter
 

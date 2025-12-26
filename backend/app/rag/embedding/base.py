@@ -7,7 +7,7 @@ import os
 from abc import ABC, abstractmethod
 from typing import Optional
 
-from app.kg.utils import get_logger
+from app.rag.kg.utils import get_logger
 
 logger = get_logger("rag.embedding")
 
