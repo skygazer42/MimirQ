@@ -27,13 +27,13 @@ from app.api.schemas.pipeline import (
     LLMCleanPreviewResponse,
 )
 from app.parsing.processors.parser_service import document_parser_service
-from app.parsing.chunking.hierarchical import hierarchical_chunk_markdown
+from app.rag.chunking.hierarchical import hierarchical_chunk_markdown
 from app.parsing.utils.zip_processor import zip_image_processor
 from app.api.dependencies.auth import get_current_account_id
 from app.governance.cleaning import clean_markdown, RegexRule, build_repeated_line_signatures
 from app.governance.rules import DEFAULT_MARKDOWN_RULES
 from app.services.prompt_template_selector import resolve_prompt_template
-from app.kg.utils import ConfigError
+from app.rag.kg.utils import ConfigError
 from app.rag.llm.factory import create_llm_client
 from app.rag.llm.models import LLMMessage, LLMRole
 

@@ -9,12 +9,12 @@ from app.core.config import settings
 from app.core.database import Base, SessionLocal, engine
 from app.core.runtime_migrations import apply_runtime_migrations
 from app.api.v1 import router as api_v1_router
-from app.storage.search.hybrid_retriever import hybrid_retriever
+from app.rag.retrieval.hybrid_retriever import hybrid_retriever
 from app.models.document import DocumentChunk, Document as DBDocument
 from app.storage.vector.milvus import milvus_store
 from app.storage.object.minio import minio_service
 # Ensure SAG models are registered for metadata creation
-import app.kg.models  # noqa: F401
+import app.rag.kg.models  # noqa: F401
 # Ensure evaluation models are registered for metadata creation
 import app.models.evaluation  # noqa: F401
 # Ensure feedback models are registered for metadata creation

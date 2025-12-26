@@ -30,7 +30,7 @@ from app.api.schemas.document import (
 )
 from app.parsing.processors.document_processor import document_processor
 from app.parsing.factory import parser_factory
-from app.parsing.chunking.factory import chunker_factory
+from app.rag.chunking.factory import chunker_factory
 from app.services.indexer import IndexKind, IndexRecord, Indexer
 from app.services.pipeline_config import (
     PipelineOptions,
@@ -46,7 +46,7 @@ from app.core.config import settings
 from fastapi.responses import FileResponse, RedirectResponse
 from app.api.dependencies.tenant import get_tenant_id
 from app.api.dependencies.auth import get_current_account_id
-from app.kg.pipeline import extract_events
+from app.rag.kg.pipeline import extract_events
 from sqlalchemy import or_, false
 
 router = APIRouter()

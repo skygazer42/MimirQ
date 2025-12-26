@@ -17,7 +17,7 @@ from app.core.config import settings
 from app.core.database import SessionLocal
 from app.models.document import Document as DBDocument, DocumentChunk
 from app.parsing.factory import parser_factory
-from app.parsing.chunking.factory import chunker_factory
+from app.rag.chunking.factory import chunker_factory
 from app.storage.object.minio import minio_service
 from app.services.indexer import IndexKind, IndexRecord, Indexer
 from app.services.pipeline_config import (
@@ -27,7 +27,7 @@ from app.services.pipeline_config import (
     resolve_pipeline_options,
 )
 from app.governance.processor import governance_processor, GovernanceStats
-from app.kg.pipeline import extract_events
+from app.rag.kg.pipeline import extract_events
 
 
 class DocumentProcessorService:
@@ -637,7 +637,7 @@ class DocumentProcessorService:
         """
         from langchain_core.documents import Document
 
-        from app.parsing.chunking.ragflow_legacy import chunk_file
+        from app.rag.chunking.ragflow_legacy import chunk_file
 
         chunks_dict = chunk_file(file_path, strategy=strategy)  # type: ignore[arg-type]
 

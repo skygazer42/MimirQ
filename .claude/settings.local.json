@@ -57,7 +57,9 @@
       "Bash(taskkill //F //PID 21088)",
       "Bash(taskkill //F //PID 52688)",
       "Bash(taskkill //F //PID 10512)",
-      "Bash(taskkill:*)"
+      "Bash(taskkill:*)",
+      "Bash(find:*)",
+      "Bash(grep:*)"
     ],
     "deny": [],
     "ask": []

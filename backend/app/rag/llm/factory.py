@@ -11,7 +11,7 @@ from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from app.core.config import settings
 from app.rag.llm.base import BaseLLMClient
 from app.rag.llm.models import LLMMessage, LLMResponse, LLMRole
-from app.kg.utils import ConfigError, get_logger
+from app.rag.kg.utils import ConfigError, get_logger
 from app.storage.vector.milvus import milvus_store
 
 logger = get_logger("sag.ai.factory")

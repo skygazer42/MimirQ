@@ -12,7 +12,7 @@ from app.api.v1 import (
     feedback,
     pipeline,
 )
-from app.kg.api import routes as kg
+from app.rag.kg.api import routes as kg
 
 router = APIRouter()
 

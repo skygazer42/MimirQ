@@ -2,9 +2,9 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Optional, Sequence
 
-from app.kg.search.config import RerankStrategy, SearchConfig
-from app.kg.search.ranking.pagerank import RerankPageRankSearcher
-from app.kg.search.ranking.rrf import RerankRRFSearcher
+from app.rag.kg.search.config import RerankStrategy, SearchConfig
+from app.rag.kg.search.ranking.pagerank import RerankPageRankSearcher
+from app.rag.kg.search.ranking.rrf import RerankRRFSearcher
 from app.rag.reranking.types import RerankCandidate, RerankResult
 
 

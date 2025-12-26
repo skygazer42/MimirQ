@@ -4,7 +4,12 @@ RAG 引擎模块
 提供检索增强生成（RAG）核心功能。
 
 主要组件：
+- chunking: 文档切块（factory, hierarchical, legacy）
 - embedding: 向量嵌入模型
+- retrieval: 混合检索（向量 + BM25）
+- reranking: 重排序
+- llm: LLM 抽象层
+- kg: 知识图谱 / SAG（实体事件抽取、图谱搜索）
 - engine: 核心 RAG 引擎
 - graph: LangGraph 编排
 - agent: Agent 工具
@@ -12,11 +17,10 @@ RAG 引擎模块
 
 注意: 为避免循环导入，部分子模块需要直接导入：
 - from app.rag.engine import get_rag_engine
-- from app.rag.agent import RAGAgent
-- from app.rag.tools import search_knowledge_base
+- from app.rag.retrieval import hybrid_retriever
+- from app.rag.chunking import chunker_factory
 """
 
-# 嵌入模型 (无外部依赖，可以安全导入)
 from app.rag.embedding import (
     select_embedding_model,
     test_embedding_model_status,
@@ -24,8 +28,7 @@ from app.rag.embedding import (
 )
 
 __all__ = [
-    'select_embedding_model',
-    'test_embedding_model_status',
-    'DEFAULT_EMBED_MODELS',
+    "select_embedding_model",
+    "test_embedding_model_status",
+    "DEFAULT_EMBED_MODELS",
 ]
-

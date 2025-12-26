@@ -16,7 +16,7 @@ import concurrent.futures
 from functools import partial
 import time
 
-from app.storage.search.hybrid_retriever import hybrid_retriever
+from app.rag.retrieval.hybrid_retriever import hybrid_retriever
 from app.rag.engine import get_rag_engine
 from app.core.config import settings
 from app.services.prompt_template_selector import resolve_prompt_template
