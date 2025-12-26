@@ -7,7 +7,7 @@
 - vector: 向量数据库（Milvus、FAISS、Chroma）
 - object: 对象存储（MinIO）
 
-注意：混合检索已移至 app.rag.retrieval 模块。
+注意：混合检索已移至 app.rag.retriever 模块。
 """
 
 from __future__ import annotations

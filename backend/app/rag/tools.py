@@ -6,7 +6,7 @@ from uuid import UUID
 from contextvars import ContextVar
 from pydantic import BaseModel, Field
 
-from app.rag.retrieval.hybrid_retriever import hybrid_retriever
+from app.rag.retriever import hybrid_retriever
 from app.core.config import settings
 
 # Current tenant context, set by rag_agent before tool execution

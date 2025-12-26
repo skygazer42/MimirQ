@@ -5,7 +5,7 @@ from typing import Any, Dict, List, Optional, Sequence
 from app.rag.kg.search.config import RerankStrategy, SearchConfig
 from app.rag.kg.search.ranking.pagerank import RerankPageRankSearcher
 from app.rag.kg.search.ranking.rrf import RerankRRFSearcher
-from app.rag.reranking.types import RerankCandidate, RerankResult
+from app.rag.reranker.types import RerankCandidate, RerankResult
 
 
 class KgReranker:

@@ -6,8 +6,8 @@ RAG 引擎模块
 主要组件：
 - chunking: 文档切块（factory, hierarchical, legacy）
 - embedding: 向量嵌入模型
-- retrieval: 混合检索（向量 + BM25）
-- reranking: 重排序
+- reranker: 重排器（LLM、OpenAI、DashScope、权重融合）
+- retriever: 混合检索器（向量 + BM25）
 - llm: LLM 抽象层
 - kg: 知识图谱 / SAG（实体事件抽取、图谱搜索）
 - engine: 核心 RAG 引擎
@@ -17,7 +17,7 @@ RAG 引擎模块
 
 注意: 为避免循环导入，部分子模块需要直接导入：
 - from app.rag.engine import get_rag_engine
-- from app.rag.retrieval import hybrid_retriever
+- from app.rag.retriever import hybrid_retriever
 - from app.rag.chunking import chunker_factory
 """
 
