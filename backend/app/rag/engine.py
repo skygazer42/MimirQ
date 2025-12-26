@@ -13,7 +13,7 @@ import httpx
 import time
 
 from app.core.config import settings
-from app.rag.retrieval.hybrid_retriever import hybrid_retriever
+from app.rag.retriever import hybrid_retriever
 from app.services.metrics_logger import log_metrics
 from langchain_openai import ChatOpenAI
 from app.services.prompt_template_selector import resolve_prompt_template

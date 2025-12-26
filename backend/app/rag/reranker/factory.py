@@ -3,9 +3,9 @@ from __future__ import annotations
 from typing import Optional, Sequence
 
 from app.models.dify import Document as DifyDocument
-from app.rag.reranking.llm_reranker import get_llm_reranker
-from app.rag.reranking.rerankers import ParentChildRerankRunner
-from app.rag.reranking.types import RerankCandidate, RerankResult
+from app.rag.reranker.llm import get_llm_reranker
+from app.rag.reranker.weight import ParentChildRerankRunner
+from app.rag.reranker.types import RerankCandidate, RerankResult
 
 
 class RagLlmReranker:

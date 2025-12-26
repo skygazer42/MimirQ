@@ -20,7 +20,7 @@ import httpx
 
 from app.core.config import settings
 from app.models.dify import Document
-from app.rag.reranking.rerankers import BaseRerankRunner
+from app.rag.reranker.weight import BaseRerankRunner
 
 
 @dataclass

@@ -21,8 +21,8 @@ from app.storage.vector.factory import get_vector_store
 from app.models.document import DocumentChunk
 from app.core.config import settings
 from app.core.database import SessionLocal
-from app.rag.reranking.rag import get_rag_reranker
-from app.rag.reranking.types import RerankCandidate
+from app.rag.reranker.factory import get_rag_reranker
+from app.rag.reranker.types import RerankCandidate
 
 
 class HybridRetriever(BaseRetriever):

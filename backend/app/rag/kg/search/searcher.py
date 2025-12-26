@@ -6,8 +6,8 @@ from typing import Any, Dict
 from app.rag.kg.search.config import SearchConfig, ReturnType
 from app.rag.kg.search.recall import RecallSearcher
 from app.rag.kg.search.expand import ExpandSearcher
-from app.rag.reranking.kg import get_kg_reranker
-from app.rag.reranking.types import RerankCandidate
+from app.rag.reranker.kg import get_kg_reranker
+from app.rag.reranker.types import RerankCandidate
 from app.rag.kg.utils import get_logger
 
 logger = get_logger("sag.search.searcher")
