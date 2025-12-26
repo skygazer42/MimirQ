@@ -21,13 +21,7 @@ from app.rag.reranker.parent_child import ParentChildReranker
 from app.rag.reranker.kg import KGReranker, get_kg_reranker
 from app.rag.reranker.types import RerankCandidate, RerankResult
 from app.rag.reranker.factory import get_reranker, get_rag_reranker
-
-# 向后兼容：保留旧的导入路径
-try:
-    from app.rag.llm.reranker import LLMReranker, get_llm_reranker
-    _llm_reranker_available = True
-except ImportError:
-    _llm_reranker_available = False
+from app.rag.llm.reranker import LLMReranker, get_llm_reranker
 
 __all__ = [
     # 基类
@@ -42,6 +36,7 @@ __all__ = [
     # Document Rerankers
     "WeightedReranker",
     "ParentChildReranker",
+    "LLMReranker",
     
     # KG Reranker
     "KGReranker",
@@ -58,11 +53,8 @@ __all__ = [
     # 工厂函数
     "get_reranker",
     "get_rag_reranker",  # 已废弃，保留向后兼容
+    "get_llm_reranker",
 ]
-
-# 如果 LLM Reranker 可用，添加到导出列表
-if _llm_reranker_available:
-    __all__.extend(["LLMReranker", "get_llm_reranker"])
 
 
 # 向后兼容：保留旧的模块级工厂函数（在 factory.py 中已定义）

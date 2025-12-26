@@ -71,14 +71,9 @@ class LLMReranker(DocumentReranker):
     """LLM 精排器（基于大模型的文档重排）"""
 
     def __init__(self) -> None:
-        try:
-            from langchain_openai import ChatOpenAI
-            from langchain_core.prompts import ChatPromptTemplate
-            from langchain_core.output_parsers import StrOutputParser
-        except Exception as exc:  # pragma: no cover
-            raise RuntimeError(
-                "LLM reranker requires langchain_openai. Please install backend requirements."
-            ) from exc
+        from langchain_openai import ChatOpenAI
+        from langchain_core.prompts import ChatPromptTemplate
+        from langchain_core.output_parsers import StrOutputParser
 
         model_name = settings.RERANKER_MODEL or settings.LLM_MODEL_FAST or settings.LLM_MODEL
         http_client, http_async_client = _build_http_clients()
@@ -240,10 +235,7 @@ candidates(JSON): {candidates}
         if not json_text:
             return LLMRerankResult(ordered_ids=[], score_map={}, elapsed_sec=elapsed, model_used=self.model_used)
 
-        try:
-            data = json.loads(json_text)
-        except Exception:
-            return LLMRerankResult(ordered_ids=[], score_map={}, elapsed_sec=elapsed, model_used=self.model_used)
+        data = json.loads(json_text)
 
         ordered: List[str] = []
         score_map: Dict[str, float] = {}
@@ -253,10 +245,7 @@ candidates(JSON): {candidates}
             cid = str(item.get("id") or "").strip()
             if not cid:
                 continue
-            try:
-                score = float(item.get("score", 0.0))
-            except Exception:
-                score = 0.0
+            score = float(item.get("score", 0.0))
             score = max(min(score, 1.0), 0.0)
             if cid not in ordered:
                 ordered.append(cid)

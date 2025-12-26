@@ -7,13 +7,7 @@ from __future__ import annotations
 
 import math
 from collections import Counter
-try:
-    from enum import StrEnum
-except ImportError:  # pragma: no cover
-    from enum import Enum
-
-    class StrEnum(str, Enum):
-        pass
+from enum import StrEnum
 from typing import Callable
 
 from pydantic import BaseModel
