@@ -7,12 +7,9 @@
 - ragas: RAGAS 评估框架
 """
 
-from app.evaluation.ragas import evaluate_rag_with_ragas
+from app.evaluation.ragas import run_conversation_ragas_evaluation, run_regression_ragas_evaluation
 
 __all__ = [
-    'evaluate_rag_with_ragas',
+    "run_conversation_ragas_evaluation",
+    "run_regression_ragas_evaluation",
 ]
-
-
-
-

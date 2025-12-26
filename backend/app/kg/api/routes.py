@@ -5,8 +5,8 @@ from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.core.database import get_db
-from app.api.dependencies.auth import get_current_account_id
-from app.api.dependencies.tenant import get_tenant_id
+from app.api.deps.auth import get_current_account_id
+from app.api.deps.tenant import get_tenant_id
 from app.models.document import Document as DBDocument, DocumentChunk
 from app.kg.schemas import SAGExtractResponse, SAGSearchRequest, SAGSearchResponse
 from app.services.document_access import filter_allowed_document_ids

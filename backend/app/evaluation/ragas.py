@@ -29,7 +29,6 @@ from app.models.evaluation import (
 )
 from app.services.dataset_service import DatasetService
 from app.services.document_access import filter_allowed_document_ids, list_accessible_document_ids
-from app.rag.graph import run_rag_graph
 
 
 def _build_http_clients() -> tuple[httpx.Client, httpx.AsyncClient]:
@@ -547,6 +546,8 @@ def run_regression_ragas_evaluation(
             allowed_doc_ids = _resolve_case_document_ids(
                 db=db, tenant_id=tenant_id, account_id=account_id, case=case
             )
+            from app.rag.graph import run_rag_graph
+
             graph_result = run_rag_graph(
                 question=case.question,
                 history=[],

@@ -128,6 +128,40 @@ export interface ChunkPreviewResponse {
   chunk_strategy: string
 }
 
+// ==================== 数据治理（清洗）相关类型 ====================
+
+export interface RegexRuleModel {
+  pattern: string
+  repl?: string
+  flags?: number
+}
+
+export interface CleanPreviewRequest {
+  markdown: string
+  rules?: RegexRuleModel[]
+  use_default_rules?: boolean
+  normalize_line_endings?: boolean
+  trim_trailing_spaces?: boolean
+  collapse_blank_lines?: boolean
+  remove_control_chars?: boolean
+  remove_toc_lines?: boolean
+  remove_noise_lines?: boolean
+  unwrap_lines?: boolean
+  unwrap_max_line_length?: number
+  noise_min_chars?: number
+  noise_ratio_threshold?: number
+}
+
+export interface CleanPreviewResponse {
+  markdown: string
+  applied_rules: number
+  changed: boolean
+}
+
+export interface CleanRulesResponse {
+  rules: RegexRuleModel[]
+}
+
 // ==================== 数据集相关类型 ====================
 
 export interface Dataset {

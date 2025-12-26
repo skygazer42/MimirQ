@@ -27,11 +27,10 @@ from app.schemas.chat import (
 )
 from app.services.document_access import filter_allowed_document_ids, list_accessible_document_ids
 from app.rag.engine import get_rag_engine
-from app.rag.graph import run_rag_graph
 from app.services.metrics_logger import log_metrics
 from app.core.config import settings
-from app.api.dependencies.tenant import get_tenant_id
-from app.api.dependencies.auth import get_current_account_id
+from app.api.deps.tenant import get_tenant_id
+from app.api.deps.auth import get_current_account_id
 
 router = APIRouter()
 
@@ -196,6 +195,8 @@ async def stream_chat(
 
         # 非流式 LangGraph 快捷通道：更快出完整答复，用于工具/Agent风格编排
         if request.rag_config.get("use_graph") and not request.stream:
+            from app.rag.graph import run_rag_graph
+
             graph_result = run_rag_graph(
                 question=request.message,
                 history=[m.model_dump() for m in (request.history or [])] + long_term_messages,

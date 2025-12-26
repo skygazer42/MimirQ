@@ -29,8 +29,8 @@ if __package__ in {None, ""}:
             )
         )
     )
-    from app.deepdoc.vision.seeit import draw_box
-    from app.deepdoc.vision import LayoutRecognizer, TableStructureRecognizer, OCR, init_in_out
+    from app.ai.deepdoc.vision.seeit import draw_box
+    from app.ai.deepdoc.vision import LayoutRecognizer, TableStructureRecognizer, OCR, init_in_out
 else:
     from .seeit import draw_box
     from . import LayoutRecognizer, TableStructureRecognizer, OCR, init_in_out

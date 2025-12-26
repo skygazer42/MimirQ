@@ -63,6 +63,7 @@ class RegexRuleModel(BaseModel):
 class CleanPreviewRequest(BaseModel):
     markdown: str
     rules: List[RegexRuleModel] = Field(default_factory=list)
+    use_default_rules: bool = True
     normalize_line_endings: bool = True
     trim_trailing_spaces: bool = True
     collapse_blank_lines: bool = True
@@ -83,3 +84,14 @@ class CleanPreviewResponse(BaseModel):
 
 class CleanRulesResponse(BaseModel):
     rules: List[RegexRuleModel]
+
+
+class KeywordExtractRequest(BaseModel):
+    text: str
+    provider: str = Field(default="jieba")
+    top_k: int = Field(default=10, ge=1, le=50)
+
+
+class KeywordExtractResponse(BaseModel):
+    provider: str
+    keywords: List[str] = Field(default_factory=list)

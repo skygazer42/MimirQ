@@ -4,7 +4,7 @@
  */
 'use client'
 
-import { useState, useCallback, useMemo } from 'react'
+import { useState, useCallback, useMemo, useEffect } from 'react'
 import {
   Wrench,
   Sparkles,
@@ -16,9 +16,13 @@ import {
   TextCursorInput,
   Hash,
   Scissors,
+  Loader2,
+  Info,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
+import { pipelineApi } from '@/lib/api-client'
+import type { CleanPreviewRequest } from '@/types'
 
 interface DataCleanerProps {
   content: string
@@ -43,6 +47,34 @@ const CLEAN_RULES = [
     defaultEnabled: true,
   },
   {
+    id: 'remove-toc',
+    label: '移除目录行',
+    description: '识别目录/页码引导行并移除（后端）',
+    icon: TextCursorInput,
+    defaultEnabled: true,
+  },
+  {
+    id: 'remove-noise-lines',
+    label: '过滤噪声行',
+    description: '移除符号占比过高的短行（后端）',
+    icon: Eraser,
+    defaultEnabled: true,
+  },
+  {
+    id: 'unwrap-lines',
+    label: '合并软换行',
+    description: '拼接被换行切开的段落（后端）',
+    icon: AlignLeft,
+    defaultEnabled: true,
+  },
+  {
+    id: 'default-regex',
+    label: '默认正则规则',
+    description: '应用内置正则清洗（页码/页眉页脚等，后端）',
+    icon: Wrench,
+    defaultEnabled: true,
+  },
+  {
     id: 'unify-punctuation',
     label: '统一中文标点',
     description: '将英文标点转换为中文标点',
@@ -52,7 +84,7 @@ const CLEAN_RULES = [
   {
     id: 'fix-newlines',
     label: '修复换行',
-    description: '删除行尾空格，统一换行符',
+    description: '统一换行符并删除行尾空格',
     icon: AlignLeft,
     defaultEnabled: true,
   },
@@ -72,6 +104,25 @@ export function DataCleaner({ content, cleanedContent = '', onClean }: DataClean
     new Set(CLEAN_RULES.filter((r) => r.defaultEnabled).map((r) => r.id))
   )
   const [previewDiff, setPreviewDiff] = useState(false)
+  const [isApplying, setIsApplying] = useState(false)
+  const [backendRulesCount, setBackendRulesCount] = useState<number | null>(null)
+  const [backendError, setBackendError] = useState<string | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+    pipelineApi.getCleanRules()
+      .then((res) => {
+        if (cancelled) return
+        setBackendRulesCount(res.rules?.length ?? 0)
+      })
+      .catch(() => {
+        if (cancelled) return
+        setBackendRulesCount(null)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   // 计算清洗后的内容
   const cleaned = useMemo(() => {
@@ -156,13 +207,56 @@ export function DataCleaner({ content, cleanedContent = '', onClean }: DataClean
       return next
     })
     // 清除已保存的清洗内容，使用规则重新计算
+    setBackendError(null)
     onClean('')
   }, [onClean])
 
   // 应用清洗
-  const handleApply = useCallback(() => {
-    onClean(cleaned)
-  }, [cleaned, onClean])
+  const handleApply = useCallback(async () => {
+    setIsApplying(true)
+    setBackendError(null)
+
+    try {
+      const req: CleanPreviewRequest = {
+        markdown: content,
+        use_default_rules: enabledRules.has('default-regex'),
+        rules: [],
+        normalize_line_endings: enabledRules.has('fix-newlines'),
+        trim_trailing_spaces: enabledRules.has('fix-newlines'),
+        collapse_blank_lines: enabledRules.has('extra-spaces'),
+        remove_control_chars: enabledRules.has('special-chars'),
+        remove_toc_lines: enabledRules.has('remove-toc'),
+        remove_noise_lines: enabledRules.has('remove-noise-lines'),
+        unwrap_lines: enabledRules.has('unwrap-lines'),
+      }
+
+      const res = await pipelineApi.cleanPreview(req)
+      let next = res.markdown
+
+      // 本地补充：标点/首尾 trim（避免后端做“语义改写”）
+      if (enabledRules.has('unify-punctuation')) {
+        next = next
+          .replace(/,/g, '，')
+          .replace(/\./g, '。')
+          .replace(/!/g, '！')
+          .replace(/\?/g, '？')
+          .replace(/:/g, '：')
+          .replace(/;/g, '；')
+          .replace(/\(/g, '（')
+          .replace(/\)/g, '）')
+      }
+      if (enabledRules.has('trim-content')) {
+        next = next.trim()
+      }
+
+      onClean(next)
+    } catch (err: any) {
+      setBackendError(err?.response?.data?.detail || err?.message || '后端清洗失败，已回退本地清洗')
+      onClean(cleaned)
+    } finally {
+      setIsApplying(false)
+    }
+  }, [content, enabledRules, onClean, cleaned])
 
   // 重置
   const handleReset = useCallback(() => {
@@ -179,8 +273,9 @@ export function DataCleaner({ content, cleanedContent = '', onClean }: DataClean
     }
   }, [enabledRules.size])
 
-  const hasChanges = cleaned !== content
+  const hasPreviewChanges = cleaned !== content
   const allSelected = enabledRules.size === CLEAN_RULES.length
+  const canApply = !!content && enabledRules.size > 0
 
   return (
     <div className="p-6 space-y-6">
@@ -196,11 +291,17 @@ export function DataCleaner({ content, cleanedContent = '', onClean }: DataClean
       </div>
 
       {/* 快速预览统计 */}
-      {hasChanges && (
+      {hasPreviewChanges && (
         <div className="bg-green-50 border border-green-200 rounded-xl p-4">
           <div className="flex items-center gap-2 mb-3">
             <Sparkles className="w-4 h-4 text-green-600" />
             <span className="text-sm font-medium text-green-700">预览效果</span>
+            {backendRulesCount !== null && enabledRules.has('default-regex') && (
+              <span className="ml-auto text-[10px] text-green-700 bg-green-100 border border-green-200 px-2 py-0.5 rounded-full flex items-center gap-1">
+                <Info className="w-3 h-3" />
+                默认规则 {backendRulesCount}
+              </span>
+            )}
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
@@ -218,6 +319,12 @@ export function DataCleaner({ content, cleanedContent = '', onClean }: DataClean
               <span className="text-green-500"> ({stats.ratio}%)</span>
             </div>
           </div>
+        </div>
+      )}
+
+      {backendError && (
+        <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs text-amber-700">
+          {backendError}
         </div>
       )}
 
@@ -281,16 +388,20 @@ export function DataCleaner({ content, cleanedContent = '', onClean }: DataClean
         </Button>
         <Button
           onClick={handleApply}
-          disabled={!hasChanges}
+          disabled={!canApply || isApplying}
           className="flex-1 gap-2 bg-green-600 hover:bg-green-700"
         >
-          <Sparkles className="w-4 h-4" />
-          应用清洗
+          {isApplying ? (
+            <Loader2 className="w-4 h-4 animate-spin" />
+          ) : (
+            <Sparkles className="w-4 h-4" />
+          )}
+          {isApplying ? '清洗中...' : '应用清洗（后端）'}
         </Button>
       </div>
 
       {/* 差异对比 */}
-      {hasChanges && (
+      {hasPreviewChanges && (
         <div className="border border-gray-200 rounded-xl overflow-hidden">
           <button
             onClick={() => setPreviewDiff(!previewDiff)}

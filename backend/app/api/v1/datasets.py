@@ -7,8 +7,8 @@ from uuid import UUID
 from typing import List
 
 from app.core.database import get_db
-from app.api.dependencies.tenant import get_tenant_id
-from app.api.dependencies.auth import get_current_account_id
+from app.api.deps.tenant import get_tenant_id
+from app.api.deps.auth import get_current_account_id
 from app.schemas.dataset import DatasetCreate, DatasetUpdate, DatasetOut
 from app.models.dataset import DatasetPermissionEnum
 from app.services.dataset_service import DatasetService, DatasetPermissionService

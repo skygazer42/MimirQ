@@ -8,7 +8,7 @@ app/
 ├── core/             # 核心配置
 ├── models/           # 数据库模型
 ├── schemas/          # Pydantic Schema
-├── api/dependencies/ # FastAPI 依赖注入
+├── api/deps/         # FastAPI 依赖注入
 ├── parsing/          # 文档解析模块
 ├── governance/       # 数据治理（Markdown 清洗/规则）
 ├── storage/          # 存储模块
@@ -74,13 +74,13 @@ API 请求/响应的数据验证模型。
 from app.schemas.document import DocumentUploadResponse
 ```
 
-### 5. api/dependencies/ - FastAPI 依赖
+### 5. api/deps/ - FastAPI 依赖
 
 依赖注入函数（鉴权、租户等）。
 
 ```python
-from app.api.dependencies.auth import get_current_account_id
-from app.api.dependencies.tenant import get_tenant_id
+from app.api.deps.auth import get_current_account_id
+from app.api.deps.tenant import get_tenant_id
 ```
 
 ### 6. parsing/ - 文档解析模块 📦

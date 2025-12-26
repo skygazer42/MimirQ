@@ -11,7 +11,7 @@ import uuid
 from fastapi import APIRouter, UploadFile, File, Form, HTTPException, Depends
 
 from app.core.config import settings
-from app.api.dependencies.tenant import get_tenant_id
+from app.api.deps.tenant import get_tenant_id
 from app.schemas.pipeline import (
     ParsePreviewResponse,
     ChunkPreviewRequest,
@@ -20,11 +20,13 @@ from app.schemas.pipeline import (
     CleanPreviewResponse,
     CleanRulesResponse,
     RegexRuleModel,
+    KeywordExtractRequest,
+    KeywordExtractResponse,
 )
 from app.parsing.processors.parser_service import document_parser_service
 from app.parsing.chunking.hierarchical import hierarchical_chunk_markdown
 from app.parsing.utils.zip_processor import zip_image_processor
-from app.api.dependencies.auth import get_current_account_id
+from app.api.deps.auth import get_current_account_id
 from app.governance.cleaning import clean_markdown, RegexRule
 from app.governance.rules import DEFAULT_MARKDOWN_RULES
 
@@ -85,8 +87,10 @@ async def clean_preview(body: CleanPreviewRequest):
     """
     if body.rules:
         rules = [RegexRule(pattern=r.pattern, repl=r.repl, flags=r.flags) for r in body.rules]
-    else:
+    elif body.use_default_rules:
         rules = DEFAULT_MARKDOWN_RULES
+    else:
+        rules = []
     result = clean_markdown(
         body.markdown,
         rules=rules,
@@ -116,6 +120,35 @@ async def list_clean_rules():
     return CleanRulesResponse(
         rules=[RegexRuleModel(pattern=r.pattern, repl=r.repl, flags=r.flags) for r in DEFAULT_MARKDOWN_RULES]
     )
+
+
+@router.post("/extract-keywords", response_model=KeywordExtractResponse)
+async def extract_keywords(body: KeywordExtractRequest):
+    """
+    提取关键词（用于治理/标注/分类等）。
+
+    目前支持：
+    - provider=jieba（默认）
+
+    预留：
+    - provider=hanlp（需要额外安装与模型配置）
+    """
+    provider = (body.provider or "jieba").lower()
+
+    if provider == "jieba":
+        from app.governance.keyword import JiebaKeywordTableHandler
+
+        handler = JiebaKeywordTableHandler()
+        keywords = sorted(handler.extract_keywords(body.text or "", max_keywords_per_chunk=int(body.top_k)))
+        return KeywordExtractResponse(provider="jieba", keywords=keywords)
+
+    if provider == "hanlp":
+        raise HTTPException(
+            status_code=503,
+            detail="HanLP provider not available. Install and configure HanLP before enabling it.",
+        )
+
+    raise HTTPException(status_code=400, detail=f"Unsupported keyword provider: {provider}")
 
 
 

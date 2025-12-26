@@ -10,7 +10,7 @@ from app.core.database import Base, SessionLocal, engine
 from app.core.runtime_migrations import apply_runtime_migrations
 from app.api.v1 import router as api_v1_router
 # Ensure SAG models are registered for metadata creation
-import app.models.sag_entities  # noqa: F401
+import app.kg.models  # noqa: F401
 # Ensure evaluation models are registered for metadata creation
 import app.models.evaluation  # noqa: F401
 # Ensure feedback models are registered for metadata creation
