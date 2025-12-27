@@ -28,7 +28,7 @@ class SAGSearcher:
         # rerank
         candidates = [RerankCandidate(id=str(eid), text="") for eid in expand_result.event_ids]
         reranker = get_kg_reranker(config.rerank.strategy)
-        rerank_result = await reranker.rerank(
+        rerank_result = await reranker.arerank_kg(
             query=config.query,
             candidates=candidates,
             config=config,
