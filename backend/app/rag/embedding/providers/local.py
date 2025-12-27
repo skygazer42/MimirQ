@@ -3,9 +3,8 @@ SentenceTransformer local embedding model.
 
 Supports local sentence-transformers models for embeddings.
 """
-import os
-
-from app.rag.embedding.base import BaseEmbeddingModel, get_docker_safe_url, logger
+from app.rag.embedding.base import BaseEmbeddingModel
+from app.rag.embedding.utils import logger
 
 
 class SentenceTransformerEmbedding(BaseEmbeddingModel):
@@ -67,14 +66,7 @@ class SentenceTransformerEmbedding(BaseEmbeddingModel):
         return self._model
 
     def encode(self, message: str | list[str]) -> list[list[float]]:
-        """Synchronously encode text(s) to embeddings.
-
-        Args:
-            message: Single text string or list of text strings
-
-        Returns:
-            List of normalized embedding vectors
-        """
+        """Synchronously encode text(s) to embeddings."""
         if isinstance(message, str):
             message = [message]
 
@@ -94,12 +86,6 @@ class SentenceTransformerEmbedding(BaseEmbeddingModel):
         """Asynchronously encode text(s) to embeddings.
 
         Note: sentence-transformers is synchronous, so we run it in a thread pool.
-
-        Args:
-            message: Single text string or list of text strings
-
-        Returns:
-            List of normalized embedding vectors
         """
         import asyncio
 
