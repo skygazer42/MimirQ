@@ -502,8 +502,8 @@ async def delete_document(
 @router.get("/image/{image_id}")
 async def get_image(image_id: str, tenant_id: UUID = Depends(get_tenant_id)):
     """
-    æ ¹æ“š image_id è¿”å›žä¿å­˜çš„å›¾ç‰‡ã€‚
-    æ ‡å‡†ä½ç½®ï¼š{UPLOAD_DIR}/images/{image_id}.png
+    根据 image_id 返回保存的图片。
+    标准位置：{UPLOAD_DIR}/images/{image_id}.png
     """
     images_dir = Path(settings.UPLOAD_DIR) / str(tenant_id) / "images"
     file_path = images_dir / f"{image_id}.png"
@@ -932,9 +932,11 @@ async def preview_chunking(
             )
             chunks = chunker.split_documents(documents)
 
-        # 合并所有页面的文本（保留页码信息）
+        # 合并原文：非 ragflow 分支用解析后的 pages；ragflow 预设分支用 chunks 拼接，
+        # 以保证 original_text 与 chunks 一致，便于前端高亮定位。
         page_texts = []
         current_pos = 0
+        ragflow_chunk_start_map: dict[int, int] = {}
 
         if documents:
             for doc in documents:
@@ -948,8 +950,20 @@ async def preview_chunking(
                 })
                 current_pos += len(text) + 1  # +1 for separator
 
-        full_text = "\n".join([p['text'] for p in page_texts]) if page_texts else ""
-        page_start_map = {item['page']: item['start'] for item in page_texts} if page_texts else {}
+            full_text = "\n".join([p['text'] for p in page_texts]) if page_texts else ""
+            page_start_map = {item['page']: item['start'] for item in page_texts} if page_texts else {}
+        else:
+            # ragflow 预设：documents 为空，只能从 chunks 构造“可定位”的原文。
+            # 注意：这不是严格意义上的原始文档全文，但能确保前端定位稳定。
+            parts: list[str] = []
+            for idx, chunk in enumerate(chunks):
+                text = chunk.page_content or ""
+                parts.append(text)
+                ragflow_chunk_start_map[idx] = current_pos
+                current_pos += len(text) + 2  # +2 for "\n\n"
+
+            full_text = "\n\n".join(parts) if parts else ""
+            page_start_map = {}
 
         # 构建响应
         chunk_items: List[ChunkPreviewItem] = []
@@ -958,7 +972,9 @@ async def preview_chunking(
             page_num = meta.get('page') or meta.get('page_number')
             local_start = meta.get('start_char')
 
-            if local_start is not None and page_num in page_start_map:
+            if idx in ragflow_chunk_start_map:
+                start_idx = ragflow_chunk_start_map[idx]
+            elif local_start is not None and page_num in page_start_map:
                 start_idx = page_start_map[page_num] + int(local_start)
             elif page_num in page_start_map:
                 start_idx = page_start_map[page_num]
