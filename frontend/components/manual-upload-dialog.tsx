@@ -71,7 +71,11 @@ export function ManualUploadDialog({ onUploaded }: ManualUploadDialogProps) {
     setIsParsing(true)
 
     try {
-      const result = await documentApi.preview(selected, parserBackend)
+      const result = await documentApi.preview(
+        selected,
+        parserBackend,
+        pipelineOverridesEnabled ? pipelineOptions : undefined
+      )
       setPreview(result)
     } catch (err: any) {
       console.error('Preview parse failed:', err)

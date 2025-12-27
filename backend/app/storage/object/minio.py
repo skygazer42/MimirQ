@@ -13,6 +13,10 @@ from minio import Minio
 from minio.error import S3Error
 
 from app.core.config import settings
+from app.rag.core.logging import get_logger
+
+
+logger = get_logger("storage.minio")
 
 
 class MinIOService:
@@ -42,9 +46,9 @@ class MinIOService:
             client = self._client
             if not client.bucket_exists(self._bucket_name):
                 client.make_bucket(self._bucket_name)
-                print(f"[MinIO] 创建 bucket: {self._bucket_name}")
+                logger.info("Created bucket: %s", self._bucket_name)
         except S3Error as e:
-            print(f"[WARN] MinIO bucket 检查失败: {e}")
+            logger.warning("MinIO bucket check failed: %s", e)
 
     def upload_image(
         self,
@@ -99,12 +103,12 @@ class MinIOService:
                 content_type=content_type,
             )
 
-            print(f"[MinIO] 图片上传成功: {object_name} -> {img_id}")
+            logger.info("Image uploaded: %s -> %s", object_name, img_id)
             self._log_metric("upload", True, time.perf_counter() - t0, object_name)
             return img_id
 
         except S3Error as e:
-            print(f"[ERROR] MinIO 上传失败: {e}")
+            logger.error("MinIO upload failed: %s", e)
             self._log_metric("upload", False, time.perf_counter() - t0, object_name, error=str(e))
             raise RuntimeError(f"MinIO 图片上传失败: {e}") from e
 
@@ -141,7 +145,7 @@ class MinIOService:
             return url
 
         except Exception as e:
-            print(f"[ERROR] MinIO 获取 URL 失败: {e}")
+            logger.error("MinIO presign URL failed: %s", e)
             self._log_metric("presign", False, time.perf_counter() - t0, locals().get("object_name", ""), error=str(e))
             raise RuntimeError(f"MinIO 获取图片 URL 失败: {e}") from e
 
@@ -167,11 +171,11 @@ class MinIOService:
                 bucket_name=self._bucket_name,
                 object_name=object_name,
             )
-            print(f"[MinIO] 图片删除成功: {object_name}")
+            logger.info("Image deleted: %s", object_name)
             self._log_metric("delete", True, time.perf_counter() - t0, object_name)
 
         except S3Error as e:
-            print(f"[WARN] MinIO 删除图片失败: {e}")
+            logger.warning("MinIO delete image failed: %s", e)
             self._log_metric("delete", False, time.perf_counter() - t0, locals().get("object_name", ""), error=str(e))
 
     def delete_dataset_images(self, tenant_id: str, dataset_id: str):
@@ -199,11 +203,11 @@ class MinIOService:
                     object_name=obj.object_name,
                 )
             
-            print(f"[MinIO] 知识库 {dataset_id} 的图片已全部删除")
+            logger.info("All images deleted for dataset %s", dataset_id)
             self._log_metric("delete_dataset", True, time.perf_counter() - t0, prefix)
 
         except S3Error as e:
-            print(f"[WARN] MinIO 删除知识库图片失败: {e}")
+            logger.warning("MinIO delete dataset images failed: %s", e)
             self._log_metric("delete_dataset", False, time.perf_counter() - t0, prefix, error=str(e))
 
     def _log_metric(self, op: str, success: bool, elapsed: float, object_name: str, error: Optional[str] = None):

@@ -49,6 +49,11 @@ from app.api.dependencies.tenant import get_tenant_id
 from app.api.dependencies.auth import get_current_account_id
 from app.rag.kg.pipeline import extract_events
 from sqlalchemy import or_, false
+from app.rag.core.logging import get_logger
+from app.governance.processor import governance_processor
+
+
+logger = get_logger("api.documents")
 
 router = APIRouter()
 
@@ -473,7 +478,7 @@ async def delete_document(
             try:
                 minio_service.delete_image(img_id, extension="jpg")
             except Exception as e:
-                print(f"[WARN] 删除 MinIO 图片失败 {img_id}: {e}")
+                logger.warning("Failed to delete image %s from object storage: %s", img_id, e)
 
     # 2. 删除向量库中的向量（按后端切换）
     Indexer(db).delete_all(tenant_id=tenant_id, document_id=document_id, commit=False)
@@ -484,7 +489,7 @@ async def delete_document(
         if file_path.exists():
             file_path.unlink()
     except Exception as e:
-        print(f"Warning: Failed to delete file: {str(e)}")
+        logger.warning("Failed to delete file: %s", e)
 
     # 4. 删除数据库记录（级联删除 chunks）
     db.delete(document)
@@ -546,6 +551,16 @@ async def preview_document(
     file: UploadFile = File(...),
     parser_backend: str = Form(default=settings.DEFAULT_PARSER_BACKEND),
     chunk_strategy: str = Form(default=settings.DEFAULT_CHUNK_STRATEGY),
+    governance_enabled: Optional[bool] = Form(default=None),
+    governance_remove_toc_lines: Optional[bool] = Form(default=None),
+    governance_remove_noise_lines: Optional[bool] = Form(default=None),
+    governance_unwrap_lines: Optional[bool] = Form(default=None),
+    governance_remove_common_lines: Optional[bool] = Form(default=None),
+    governance_unwrap_max_line_length: Optional[int] = Form(default=None),
+    governance_noise_min_chars: Optional[int] = Form(default=None),
+    governance_noise_ratio_threshold: Optional[float] = Form(default=None),
+    governance_common_lines_min_docs: Optional[int] = Form(default=None),
+    governance_common_lines_min_ratio: Optional[float] = Form(default=None),
     tenant_id: UUID = Depends(get_tenant_id),
 ):
     """
@@ -583,7 +598,48 @@ async def preview_document(
         with temp_path.open("wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
 
-        documents, resolved_backend = parser_factory.parse(temp_path, parser_backend=parser_backend)
+        effective_parser_backend = parser_backend
+        if file_ext == ".pdf":
+            requested = (parser_backend or "").strip().lower()
+            if not requested or requested == "auto":
+                effective_parser_backend, _pdf_quality = route_pdf_backend(
+                    temp_path,
+                    parser_backend,
+                    sample_pages=3,
+                    use_ocr_validation=settings.RAPIDOCR_ENABLED,
+                )
+
+        documents, resolved_backend = parser_factory.parse(
+            temp_path,
+            parser_backend=effective_parser_backend,
+        )
+
+        pipeline_options = _to_pipeline_options(
+            governance_enabled=governance_enabled,
+            governance_remove_toc_lines=governance_remove_toc_lines,
+            governance_remove_noise_lines=governance_remove_noise_lines,
+            governance_unwrap_lines=governance_unwrap_lines,
+            governance_remove_common_lines=governance_remove_common_lines,
+            governance_unwrap_max_line_length=governance_unwrap_max_line_length,
+            governance_noise_min_chars=governance_noise_min_chars,
+            governance_noise_ratio_threshold=governance_noise_ratio_threshold,
+            governance_common_lines_min_docs=governance_common_lines_min_docs,
+            governance_common_lines_min_ratio=governance_common_lines_min_ratio,
+        )
+        pipeline_effective = resolve_pipeline_options(pipeline_options)
+        if pipeline_effective.governance_enabled:
+            documents, _stats = governance_processor.clean_documents(
+                documents,
+                remove_toc_lines=pipeline_effective.governance_remove_toc_lines,
+                remove_noise_lines=pipeline_effective.governance_remove_noise_lines,
+                unwrap_lines=pipeline_effective.governance_unwrap_lines,
+                remove_common_lines=pipeline_effective.governance_remove_common_lines,
+                unwrap_max_line_length=pipeline_effective.governance_unwrap_max_line_length,
+                noise_min_chars=pipeline_effective.governance_noise_min_chars,
+                noise_ratio_threshold=pipeline_effective.governance_noise_ratio_threshold,
+                common_lines_min_docs=pipeline_effective.governance_common_lines_min_docs,
+                common_lines_min_ratio=pipeline_effective.governance_common_lines_min_ratio,
+            )
 
         segments: List[ParsedSegment] = []
         for idx, doc in enumerate(documents):
@@ -744,6 +800,16 @@ async def preview_chunking(
     chunk_overlap: int = 200,
     parser_backend: str = Form(default=settings.DEFAULT_PARSER_BACKEND),
     chunk_strategy: str = Form(default=settings.DEFAULT_CHUNK_STRATEGY),
+    governance_enabled: Optional[bool] = Form(default=None),
+    governance_remove_toc_lines: Optional[bool] = Form(default=None),
+    governance_remove_noise_lines: Optional[bool] = Form(default=None),
+    governance_unwrap_lines: Optional[bool] = Form(default=None),
+    governance_remove_common_lines: Optional[bool] = Form(default=None),
+    governance_unwrap_max_line_length: Optional[int] = Form(default=None),
+    governance_noise_min_chars: Optional[int] = Form(default=None),
+    governance_noise_ratio_threshold: Optional[float] = Form(default=None),
+    governance_common_lines_min_docs: Optional[int] = Form(default=None),
+    governance_common_lines_min_ratio: Optional[float] = Form(default=None),
     tenant_id: UUID = Depends(get_tenant_id),
 ):
     """
@@ -797,6 +863,30 @@ async def preview_chunking(
             shutil.copyfileobj(file.file, buffer)
 
         resolved_chunk_strategy = chunker_factory.resolve_strategy(chunk_strategy)
+        pipeline_options = _to_pipeline_options(
+            governance_enabled=governance_enabled,
+            governance_remove_toc_lines=governance_remove_toc_lines,
+            governance_remove_noise_lines=governance_remove_noise_lines,
+            governance_unwrap_lines=governance_unwrap_lines,
+            governance_remove_common_lines=governance_remove_common_lines,
+            governance_unwrap_max_line_length=governance_unwrap_max_line_length,
+            governance_noise_min_chars=governance_noise_min_chars,
+            governance_noise_ratio_threshold=governance_noise_ratio_threshold,
+            governance_common_lines_min_docs=governance_common_lines_min_docs,
+            governance_common_lines_min_ratio=governance_common_lines_min_ratio,
+        )
+        pipeline_effective = resolve_pipeline_options(pipeline_options)
+        governance_kwargs = {
+            "remove_toc_lines": pipeline_effective.governance_remove_toc_lines,
+            "remove_noise_lines": pipeline_effective.governance_remove_noise_lines,
+            "unwrap_lines": pipeline_effective.governance_unwrap_lines,
+            "remove_common_lines": pipeline_effective.governance_remove_common_lines,
+            "unwrap_max_line_length": pipeline_effective.governance_unwrap_max_line_length,
+            "noise_min_chars": pipeline_effective.governance_noise_min_chars,
+            "noise_ratio_threshold": pipeline_effective.governance_noise_ratio_threshold,
+            "common_lines_min_docs": pipeline_effective.governance_common_lines_min_docs,
+            "common_lines_min_ratio": pipeline_effective.governance_common_lines_min_ratio,
+        }
 
         # ragflow 预设走独立分支（自解析 + 切块）
         if resolved_chunk_strategy in chunker_factory.RAGFLOW_STRATEGIES:
@@ -808,6 +898,11 @@ async def preview_chunking(
             )
             resolved_backend = "ragflow"
             documents = []  # ragflow 已自处理
+            if pipeline_effective.governance_enabled:
+                chunks, _stats = governance_processor.clean_documents(
+                    chunks,
+                    **governance_kwargs,
+                )
         else:
             # 解析文档
             effective_parser_backend = parser_backend
@@ -824,6 +919,11 @@ async def preview_chunking(
                 temp_path,
                 parser_backend=effective_parser_backend,
             )
+            if pipeline_effective.governance_enabled:
+                documents, _stats = governance_processor.clean_documents(
+                    documents,
+                    **governance_kwargs,
+                )
 
             chunker = chunker_factory.get_chunker(
                 resolved_chunk_strategy,

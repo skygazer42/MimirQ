@@ -13,6 +13,10 @@ import fitz  # PyMuPDF
 from PIL import Image
 
 from rapidocr_onnxruntime import RapidOCR
+from app.rag.core.logging import get_logger
+
+
+logger = get_logger("parsing.quality.ocr")
 
 
 class RapidOCRService:
@@ -29,7 +33,7 @@ class RapidOCRService:
 
         try:
             self._ocr = RapidOCR(det_box_thresh=self.det_box_thresh)
-            print(f"[RapidOCR] 模型加载成功 (det_box_thresh={self.det_box_thresh})")
+            logger.info("RapidOCR model loaded (det_box_thresh=%s)", self.det_box_thresh)
         except Exception as e:
             raise RuntimeError(f"RapidOCR 模型加载失败: {e}") from e
 
@@ -77,7 +81,7 @@ class RapidOCRService:
             return combined_text, total_chars
 
         except Exception as e:
-            print(f"[WARN] RapidOCR PDF 处理失败: {e}")
+            logger.warning("RapidOCR PDF processing failed: %s", e)
             return "", 0
 
     def _ocr_image(self, image: Image.Image) -> str:
@@ -102,10 +106,9 @@ class RapidOCRService:
                     tmp_path.unlink()
 
         except Exception as e:
-            print(f"[WARN] RapidOCR 图像识别失败: {e}")
+            logger.warning("RapidOCR image OCR failed: %s", e)
             return ""
 
 
 # 全局实例（延迟初始化）
 rapid_ocr_service = RapidOCRService()
-
