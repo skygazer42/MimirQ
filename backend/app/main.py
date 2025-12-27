@@ -27,6 +27,10 @@ async def lifespan(app: FastAPI):
     """应用启动和关闭时的操作"""
     # 启动时：创建数据库表
     print("[*] Starting MimirQ backend...")
+    # Best-effort runtime migrations (including SAG->KG renames) should run
+    # before `create_all()` to avoid creating new empty `kg_*` tables.
+    apply_runtime_migrations(engine)
+
     print("[*] Creating database tables...")
     Base.metadata.create_all(bind=engine)
     apply_runtime_migrations(engine)

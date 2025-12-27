@@ -3,7 +3,7 @@ Settings API - 系统配置管理
 支持读取和更新 .env 配置
 """
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel
+from pydantic import AliasChoices, BaseModel, Field
 from typing import Optional, Dict, Any
 from pathlib import Path
 import os
@@ -18,7 +18,7 @@ ENV_FILE = Path(__file__).parent.parent.parent.parent / ".env"
 
 class FeatureFlags(BaseModel):
     """功能开关"""
-    sag_enabled: bool = False
+    kg_enabled: bool = Field(default=False, validation_alias=AliasChoices("kg_enabled", "sag_enabled"))
     deepdoc_enabled: bool = False
     markitdown_enabled: bool = False
     llama_index_enabled: bool = False
@@ -143,7 +143,7 @@ async def get_settings():
     """获取当前系统配置"""
     return SystemSettings(
         feature_flags=FeatureFlags(
-            sag_enabled=settings.SAG_ENABLED,
+            kg_enabled=settings.KG_ENABLED,
             deepdoc_enabled=settings.DEEPDOC_ENABLED,
             markitdown_enabled=settings.MARKITDOWN_ENABLED,
             llama_index_enabled=settings.LLAMA_INDEX_ENABLED,
@@ -196,12 +196,12 @@ async def update_settings(request: UpdateSettingsRequest):
         # 更新功能开关
         if request.feature_flags:
             ff = request.feature_flags
-            env_vars["SAG_ENABLED"] = str(ff.sag_enabled).lower()
+            env_vars["KG_ENABLED"] = str(ff.kg_enabled).lower()
             env_vars["DEEPDOC_ENABLED"] = str(ff.deepdoc_enabled).lower()
             env_vars["MARKITDOWN_ENABLED"] = str(ff.markitdown_enabled).lower()
             env_vars["LLAMA_INDEX_ENABLED"] = str(ff.llama_index_enabled).lower()
             env_vars["MINERU_ENABLED"] = str(ff.mineru_enabled).lower()
-            updated_keys.extend(["SAG_ENABLED", "DEEPDOC_ENABLED", "MARKITDOWN_ENABLED", "LLAMA_INDEX_ENABLED", "MINERU_ENABLED"])
+            updated_keys.extend(["KG_ENABLED", "DEEPDOC_ENABLED", "MARKITDOWN_ENABLED", "LLAMA_INDEX_ENABLED", "MINERU_ENABLED"])
 
         # 更新 LLM 配置
         if request.llm:

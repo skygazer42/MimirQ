@@ -23,7 +23,7 @@ class PipelineOptions:
     chunk_overlap: Optional[int] = None
     chunk_vector_enabled: Optional[bool] = None
     bm25_index_enabled: Optional[bool] = None
-    sag_enabled: Optional[bool] = None
+    kg_enabled: Optional[bool] = None
     event_vector_enabled: Optional[bool] = None
     entity_vector_enabled: Optional[bool] = None
 
@@ -44,7 +44,7 @@ class PipelineEffective:
     chunk_overlap: int
     chunk_vector_enabled: bool
     bm25_index_enabled: bool
-    sag_enabled: bool
+    kg_enabled: bool
     event_vector_enabled: bool
     entity_vector_enabled: bool
 
@@ -120,7 +120,7 @@ def parse_pipeline_from_metadata(metadata: Dict[str, Any]) -> PipelineOptions:
         chunk_overlap=_coerce_int(pipeline.get("chunk_overlap")),
         chunk_vector_enabled=_coerce_bool(index.get("chunk_vector_enabled")),
         bm25_index_enabled=_coerce_bool(index.get("bm25_index_enabled")),
-        sag_enabled=_coerce_bool(index.get("sag_enabled")),
+        kg_enabled=_coerce_bool(index.get("kg_enabled")) if "kg_enabled" in index else _coerce_bool(index.get("sag_enabled")),
         event_vector_enabled=_coerce_bool(index.get("event_vector_enabled")),
         entity_vector_enabled=_coerce_bool(index.get("entity_vector_enabled")),
     )
@@ -165,8 +165,8 @@ def build_pipeline_metadata(options: PipelineOptions) -> Optional[Dict[str, Any]
         index["chunk_vector_enabled"] = bool(options.chunk_vector_enabled)
     if options.bm25_index_enabled is not None:
         index["bm25_index_enabled"] = bool(options.bm25_index_enabled)
-    if options.sag_enabled is not None:
-        index["sag_enabled"] = bool(options.sag_enabled)
+    if options.kg_enabled is not None:
+        index["kg_enabled"] = bool(options.kg_enabled)
     if options.event_vector_enabled is not None:
         index["event_vector_enabled"] = bool(options.event_vector_enabled)
     if options.entity_vector_enabled is not None:
@@ -246,7 +246,7 @@ def resolve_pipeline_options(options: PipelineOptions) -> PipelineEffective:
         chunk_overlap=int(chunk_overlap),
         chunk_vector_enabled=_resolve_flag(settings.CHUNK_VECTOR_ENABLED, options.chunk_vector_enabled),
         bm25_index_enabled=_resolve_flag(settings.BM25_INDEX_ENABLED, options.bm25_index_enabled),
-        sag_enabled=_resolve_flag(settings.SAG_ENABLED, options.sag_enabled),
+        kg_enabled=_resolve_flag(settings.KG_ENABLED, options.kg_enabled),
         event_vector_enabled=_resolve_flag(settings.EVENT_VECTOR_ENABLED, options.event_vector_enabled),
         entity_vector_enabled=_resolve_flag(settings.ENTITY_VECTOR_ENABLED, options.entity_vector_enabled),
     )
