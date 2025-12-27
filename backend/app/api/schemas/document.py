@@ -1,7 +1,7 @@
 """
 文档相关 Pydantic Schema
 """
-from pydantic import BaseModel, Field
+from pydantic import AliasChoices, BaseModel, Field
 from typing import Optional, List, Dict, Any
 from datetime import datetime
 from uuid import UUID
@@ -23,7 +23,7 @@ class DocumentPipelineOptions(BaseModel):
     chunk_overlap: Optional[int] = Field(default=None, ge=0, le=1000, description="重叠大小")
     chunk_vector_enabled: Optional[bool] = None
     bm25_index_enabled: Optional[bool] = None
-    sag_enabled: Optional[bool] = None
+    kg_enabled: Optional[bool] = Field(default=None, validation_alias=AliasChoices("kg_enabled", "sag_enabled"))
     event_vector_enabled: Optional[bool] = None
     entity_vector_enabled: Optional[bool] = None
 

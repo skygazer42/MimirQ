@@ -69,7 +69,7 @@ def _to_pipeline_options(
     chunk_overlap: Optional[int] = None,
     chunk_vector_enabled: Optional[bool] = None,
     bm25_index_enabled: Optional[bool] = None,
-    sag_enabled: Optional[bool] = None,
+    kg_enabled: Optional[bool] = None,
     event_vector_enabled: Optional[bool] = None,
     entity_vector_enabled: Optional[bool] = None,
 ) -> PipelineOptions:
@@ -89,7 +89,7 @@ def _to_pipeline_options(
             chunk_overlap=chunk_overlap,
             chunk_vector_enabled=chunk_vector_enabled,
             bm25_index_enabled=bm25_index_enabled,
-            sag_enabled=sag_enabled,
+            kg_enabled=kg_enabled,
             event_vector_enabled=event_vector_enabled,
             entity_vector_enabled=entity_vector_enabled,
         )
@@ -165,7 +165,7 @@ async def upload_document(
     chunk_overlap: Optional[int] = Form(default=None),
     chunk_vector_enabled: Optional[bool] = Form(default=None),
     bm25_index_enabled: Optional[bool] = Form(default=None),
-    sag_enabled: Optional[bool] = Form(default=None),
+    kg_enabled: Optional[bool] = Form(default=None),
     event_vector_enabled: Optional[bool] = Form(default=None),
     entity_vector_enabled: Optional[bool] = Form(default=None),
     dataset_id: Optional[UUID] = Form(default=None),
@@ -223,7 +223,7 @@ async def upload_document(
         chunk_overlap=chunk_overlap,
         chunk_vector_enabled=chunk_vector_enabled,
         bm25_index_enabled=bm25_index_enabled,
-        sag_enabled=sag_enabled,
+        kg_enabled=kg_enabled,
         event_vector_enabled=event_vector_enabled,
         entity_vector_enabled=entity_vector_enabled,
     )
@@ -711,7 +711,7 @@ async def create_document_with_manual_chunks(
         db.commit()
         db.refresh(db_document)
 
-        if pipeline_effective.sag_enabled:
+        if pipeline_effective.kg_enabled:
             await extract_events(
                 chunk_ids=persist_result.chunk_ids,
                 tenant_id=tenant_id,

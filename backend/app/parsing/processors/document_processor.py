@@ -282,16 +282,16 @@ class DocumentProcessorService:
                 f"(parser={resolved_backend}, chunker={resolved_chunk_strategy})"
             )
 
-            # Step 7: 如启用则运行 SAG 抽取（事件/实体）
-            if pipeline_effective.sag_enabled:
-                print("[*] Running SAG extraction on document chunks...")
+            # Step 7: 如启用则运行 KG 抽取（事件/实体）
+            if pipeline_effective.kg_enabled:
+                print("[*] Running KG extraction on document chunks...")
                 events = await extract_events(
                     chunk_ids,
                     tenant_id=tenant_id,
                     chunks=persist_result.db_chunks,
                     index_options=index_options,
                 )
-                print(f"[OK] SAG extracted {len(events)} events for document {document_id}")
+                print(f"[OK] KG extracted {len(events)} events for document {document_id}")
 
             return {
                 "status": "success",
@@ -428,7 +428,7 @@ class DocumentProcessorService:
             "chunk_overlap": int(effective.chunk_overlap),
             "chunk_vector_enabled": bool(effective.chunk_vector_enabled),
             "bm25_index_enabled": bool(effective.bm25_index_enabled),
-            "sag_enabled": bool(effective.sag_enabled),
+            "kg_enabled": bool(effective.kg_enabled),
             "event_vector_enabled": bool(effective.event_vector_enabled),
             "entity_vector_enabled": bool(effective.entity_vector_enabled),
         }
