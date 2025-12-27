@@ -7,9 +7,7 @@ for use with LangChain vector stores (Milvus, FAISS, Chroma, etc.).
 from typing import List
 
 from app.rag.embedding.base import BaseEmbeddingModel
-from app.rag.kg.utils import get_logger
-
-logger = get_logger("rag.embedding.langchain")
+from app.rag.embedding.utils import logger
 
 
 class LangChainEmbeddingsAdapter:
@@ -21,7 +19,7 @@ class LangChainEmbeddingsAdapter:
 
     Usage:
         from app.rag.embedding import select_embedding_model
-        from app.rag.embedding.langchain_adapter import LangChainEmbeddingsAdapter
+        from app.rag.embedding.adapter import LangChainEmbeddingsAdapter
 
         model = select_embedding_model("ollama/nomic-embed-text")
         embeddings = LangChainEmbeddingsAdapter(model)
@@ -75,14 +73,7 @@ class LangChainEmbeddingsAdapter:
         return embeddings[0]
 
     def _normalize_vectors(self, vectors: List[List[float]]) -> List[List[float]]:
-        """Normalize embeddings to unit length.
-
-        Args:
-            vectors: List of embedding vectors
-
-        Returns:
-            Normalized vectors
-        """
+        """Normalize embeddings to unit length."""
         import numpy as np
 
         array = np.array(vectors, dtype=float)
@@ -111,12 +102,12 @@ def create_langchain_embeddings(
         LangChainEmbeddingsAdapter instance
 
     Examples:
-        from app.rag.embedding.langchain_adapter import create_langchain_embeddings
+        from app.rag.embedding.adapter import create_langchain_embeddings
 
         embeddings = create_langchain_embeddings("ollama/nomic-embed-text")
         vectors = embeddings.embed_documents(["Hello", "World"])
     """
-    from app.rag.embedding import select_embedding_model
+    from app.rag.embedding.factory import select_embedding_model
 
     model = select_embedding_model(model_id)
     return LangChainEmbeddingsAdapter(model, normalize=normalize)
@@ -140,9 +131,11 @@ def create_langchain_embeddings_from_config(
     Returns:
         LangChainEmbeddingsAdapter instance
     """
-    from app.rag.embedding.sentence_transformer import SentenceTransformerEmbedding
-    from app.rag.embedding.openai_compatible import OpenAICompatibleEmbedding
-    from app.rag.embedding.dashscope import DashScopeEmbedding
+    from app.rag.embedding.providers import (
+        SentenceTransformerEmbedding,
+        OpenAICompatibleEmbedding,
+        DashScopeEmbedding,
+    )
 
     provider = provider.lower()
 

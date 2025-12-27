@@ -2,10 +2,12 @@
 OpenAI-compatible embedding model implementation.
 
 Supports any embedding API that follows the OpenAI embeddings format:
+- OpenAI
 - SiliconFlow
-- DashScope (Alibaba)
+- DashScope (Alibaba) compatible mode
 - OpenRouter
 - Local vLLM
+- ModelScope
 - Any OpenAI-compatible endpoint
 """
 import json
@@ -13,7 +15,8 @@ import json
 import httpx
 import requests
 
-from app.rag.embedding.base import BaseEmbeddingModel, logger
+from app.rag.embedding.base import BaseEmbeddingModel
+from app.rag.embedding.utils import logger
 
 
 class OpenAICompatibleEmbedding(BaseEmbeddingModel):
@@ -22,15 +25,6 @@ class OpenAICompatibleEmbedding(BaseEmbeddingModel):
     Supports any API following the OpenAI embeddings format:
     - Request: {"model": "...", "input": "..."}
     - Response: {"data": [{"embedding": [...]}]}
-
-    Compatible providers:
-    - OpenAI
-    - SiliconFlow
-    - DashScope (Alibaba)
-    - OpenRouter
-    - vLLM local server
-    - ModelScope
-    - Any OpenAI-compatible endpoint
     """
 
     def __init__(self, **kwargs):
@@ -50,28 +44,11 @@ class OpenAICompatibleEmbedding(BaseEmbeddingModel):
             self.headers["Authorization"] = f"Bearer {self.api_key}"
 
     def _build_payload(self, message: str | list[str]) -> dict:
-        """Build API request payload.
-
-        Args:
-            message: Text or list of texts to encode
-
-        Returns:
-            Request payload dictionary
-        """
+        """Build API request payload."""
         return {"model": self.model, "input": message}
 
     def encode(self, message: str | list[str]) -> list[list[float]]:
-        """Synchronously encode text(s) to embeddings.
-
-        Args:
-            message: Single text string or list of text strings
-
-        Returns:
-            List of embedding vectors
-
-        Raises:
-            ValueError: If request fails or returns invalid response
-        """
+        """Synchronously encode text(s) to embeddings."""
         payload = self._build_payload(message)
         try:
             response = requests.post(
@@ -95,17 +72,7 @@ class OpenAICompatibleEmbedding(BaseEmbeddingModel):
             raise ValueError(f"OpenAI-compatible Embedding request failed: {e}")
 
     async def aencode(self, message: str | list[str]) -> list[list[float]]:
-        """Asynchronously encode text(s) to embeddings.
-
-        Args:
-            message: Single text string or list of text strings
-
-        Returns:
-            List of embedding vectors
-
-        Raises:
-            ValueError: If request fails or returns invalid response
-        """
+        """Asynchronously encode text(s) to embeddings."""
         payload = self._build_payload(message)
         async with httpx.AsyncClient() as client:
             try:
@@ -129,28 +96,3 @@ class OpenAICompatibleEmbedding(BaseEmbeddingModel):
                     f"payload: {payload}, base_url: {self.base_url}"
                 )
                 raise ValueError(f"OpenAI-compatible Embedding async request failed: {e}")
-
-    def encode_queries(self, queries: str | list[str]) -> list[list[float]]:
-        """Encode query text(s) to embeddings.
-
-        For most OpenAI-compatible APIs, queries are encoded the same as documents.
-        Some providers may have separate endpoints for queries vs documents.
-
-        Args:
-            queries: Single query string or list of query strings
-
-        Returns:
-            List of embedding vectors
-        """
-        return self.encode(queries)
-
-    async def aencode_queries(self, queries: str | list[str]) -> list[list[float]]:
-        """Asynchronously encode query text(s) to embeddings.
-
-        Args:
-            queries: Single query string or list of query strings
-
-        Returns:
-            List of embedding vectors
-        """
-        return await self.aencode(queries)

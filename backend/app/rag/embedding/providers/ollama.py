@@ -9,7 +9,8 @@ import json
 import httpx
 import requests
 
-from app.rag.embedding.base import BaseEmbeddingModel, get_docker_safe_url, logger
+from app.rag.embedding.base import BaseEmbeddingModel
+from app.rag.embedding.utils import get_docker_safe_url, logger
 
 
 class OllamaEmbedding(BaseEmbeddingModel):
@@ -39,30 +40,13 @@ class OllamaEmbedding(BaseEmbeddingModel):
         )
 
     def _build_payload(self, message: str | list[str]) -> dict:
-        """Build API request payload.
-
-        Args:
-            message: Text or list of texts to encode
-
-        Returns:
-            Request payload dictionary
-        """
+        """Build API request payload."""
         if isinstance(message, str):
             message = [message]
         return {"model": self.model, "input": message}
 
     def encode(self, message: str | list[str]) -> list[list[float]]:
-        """Synchronously encode text(s) to embeddings.
-
-        Args:
-            message: Single text string or list of text strings
-
-        Returns:
-            List of embedding vectors
-
-        Raises:
-            ValueError: If request fails or returns invalid response
-        """
+        """Synchronously encode text(s) to embeddings."""
         payload = self._build_payload(message)
         try:
             response = requests.post(self.base_url, json=payload, timeout=60)
@@ -81,17 +65,7 @@ class OllamaEmbedding(BaseEmbeddingModel):
             raise ValueError(f"Ollama Embedding request failed: {e}")
 
     async def aencode(self, message: str | list[str]) -> list[list[float]]:
-        """Asynchronously encode text(s) to embeddings.
-
-        Args:
-            message: Single text string or list of text strings
-
-        Returns:
-            List of embedding vectors
-
-        Raises:
-            ValueError: If request fails or returns invalid response
-        """
+        """Asynchronously encode text(s) to embeddings."""
         payload = self._build_payload(message)
         async with httpx.AsyncClient() as client:
             try:
@@ -112,27 +86,3 @@ class OllamaEmbedding(BaseEmbeddingModel):
                     f"payload: {payload}, base_url: {self.base_url}"
                 )
                 raise ValueError(f"Ollama Embedding async request failed: {e}")
-
-    def encode_queries(self, queries: str | list[str]) -> list[list[float]]:
-        """Encode query text(s) to embeddings.
-
-        For Ollama, queries are encoded the same as documents.
-
-        Args:
-            queries: Single query string or list of query strings
-
-        Returns:
-            List of embedding vectors
-        """
-        return self.encode(queries)
-
-    async def aencode_queries(self, queries: str | list[str]) -> list[list[float]]:
-        """Asynchronously encode query text(s) to embeddings.
-
-        Args:
-            queries: Single query string or list of query strings
-
-        Returns:
-            List of embedding vectors
-        """
-        return await self.aencode(queries)

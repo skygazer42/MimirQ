@@ -8,9 +8,7 @@ This module provides functions to:
 """
 import asyncio
 
-from app.rag.kg.utils import get_logger
-
-logger = get_logger("rag.embedding.factory")
+from app.rag.embedding.utils import logger
 from app.rag.embedding.base import BaseEmbeddingModel
 from app.rag.embedding.config import (
     DEFAULT_EMBED_MODELS,
@@ -18,10 +16,12 @@ from app.rag.embedding.config import (
     get_model_info,
     get_supported_model_ids,
 )
-from app.rag.embedding.ollama import OllamaEmbedding
-from app.rag.embedding.openai_compatible import OpenAICompatibleEmbedding
-from app.rag.embedding.sentence_transformer import SentenceTransformerEmbedding
-from app.rag.embedding.dashscope import DashScopeEmbedding
+from app.rag.embedding.providers import (
+    OllamaEmbedding,
+    OpenAICompatibleEmbedding,
+    SentenceTransformerEmbedding,
+    DashScopeEmbedding,
+)
 
 
 def select_embedding_model(model_id: str) -> BaseEmbeddingModel:
@@ -89,11 +89,6 @@ async def test_embedding_model_status(model_id: str) -> dict:
             "message": str,
             "dimension": int | None
         }
-
-    Examples:
-        >>> status = await test_embedding_model_status("ollama/nomic-embed-text")
-        >>> if status["status"] == "available":
-        ...     print(f"Dimension: {status['dimension']}")
     """
     try:
         supported_models = get_supported_model_ids()
@@ -137,13 +132,6 @@ async def test_all_embedding_models_status() -> dict:
             "total": int,
             "available": int
         }
-
-    Examples:
-        >>> results = await test_all_embedding_models_status()
-        >>> print(f"Available: {results['available']}/{results['total']}")
-        >>> for model_id, status in results["models"].items():
-        ...     if status["status"] == "available":
-        ...         print(f"{model_id}: OK")
     """
     supported_models = get_supported_model_ids()
     results = {}
@@ -176,20 +164,12 @@ async def test_all_embedding_models_status() -> dict:
 
 
 def get_default_embedding_model() -> str:
-    """Get the default embedding model ID.
-
-    Returns:
-        Default model_id string. Uses SiliconFlow BGE-M3 as default.
-    """
+    """Get the default embedding model ID."""
     return "siliconflow/BAAI/bge-m3"
 
 
 def list_embedding_providers() -> list[str]:
-    """List all embedding providers.
-
-    Returns:
-        List of provider names (e.g., ["siliconflow", "ollama", "vllm"])
-    """
+    """List all embedding providers."""
     providers = set()
     for model_id in DEFAULT_EMBED_MODELS.keys():
         if "/" in model_id:
@@ -199,14 +179,7 @@ def list_embedding_providers() -> list[str]:
 
 
 def list_models_by_provider(provider: str) -> list[str]:
-    """List all model IDs for a specific provider.
-
-    Args:
-        provider: Provider name (e.g., "siliconflow", "ollama")
-
-    Returns:
-        List of model_ids for the provider
-    """
+    """List all model IDs for a specific provider."""
     return [
         model_id
         for model_id in DEFAULT_EMBED_MODELS.keys()
