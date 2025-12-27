@@ -88,6 +88,106 @@ class UpdateSettingsRequest(BaseModel):
     mineru: Optional[MinerUConfig] = None
 
 
+def _parse_bool(value: Any) -> bool:
+    if isinstance(value, bool):
+        return value
+    text = str(value or "").strip().lower()
+    return text in {"1", "true", "yes", "y", "on"}
+
+
+def _parse_int(value: Any, *, default: int = 0) -> int:
+    try:
+        return int(value)
+    except Exception:
+        return default
+
+
+def _parse_float(value: Any, *, default: float = 0.0) -> float:
+    try:
+        return float(value)
+    except Exception:
+        return default
+
+
+def _apply_runtime_settings(env_vars: Dict[str, str], updated_keys: list[str]) -> None:
+    """
+    Best-effort: apply updated .env values to the in-memory settings object so
+    config changes can take effect without a restart.
+    """
+    # Feature flags
+    if "KG_ENABLED" in updated_keys and "KG_ENABLED" in env_vars:
+        settings.KG_ENABLED = _parse_bool(env_vars["KG_ENABLED"])
+    if "DEEPDOC_ENABLED" in updated_keys and "DEEPDOC_ENABLED" in env_vars:
+        settings.DEEPDOC_ENABLED = _parse_bool(env_vars["DEEPDOC_ENABLED"])
+    if "MARKITDOWN_ENABLED" in updated_keys and "MARKITDOWN_ENABLED" in env_vars:
+        settings.MARKITDOWN_ENABLED = _parse_bool(env_vars["MARKITDOWN_ENABLED"])
+    if "LLAMA_INDEX_ENABLED" in updated_keys and "LLAMA_INDEX_ENABLED" in env_vars:
+        settings.LLAMA_INDEX_ENABLED = _parse_bool(env_vars["LLAMA_INDEX_ENABLED"])
+    if "MINERU_ENABLED" in updated_keys and "MINERU_ENABLED" in env_vars:
+        settings.MINERU_ENABLED = _parse_bool(env_vars["MINERU_ENABLED"])
+
+    # LLM
+    if "LLM_API_KEY" in updated_keys and "LLM_API_KEY" in env_vars:
+        settings.LLM_API_KEY = env_vars["LLM_API_KEY"]
+    if "LLM_API_BASE" in updated_keys and "LLM_API_BASE" in env_vars:
+        settings.LLM_API_BASE = env_vars["LLM_API_BASE"]
+    if "LLM_MODEL" in updated_keys and "LLM_MODEL" in env_vars:
+        settings.LLM_MODEL = env_vars["LLM_MODEL"]
+    if "LLM_TEMPERATURE" in updated_keys and "LLM_TEMPERATURE" in env_vars:
+        settings.LLM_TEMPERATURE = _parse_float(env_vars["LLM_TEMPERATURE"], default=settings.LLM_TEMPERATURE)
+    if "LLM_TIMEOUT" in updated_keys and "LLM_TIMEOUT" in env_vars:
+        settings.LLM_TIMEOUT = _parse_int(env_vars["LLM_TIMEOUT"], default=settings.LLM_TIMEOUT)
+    if "LLM_MAX_RETRIES" in updated_keys and "LLM_MAX_RETRIES" in env_vars:
+        settings.LLM_MAX_RETRIES = _parse_int(env_vars["LLM_MAX_RETRIES"], default=settings.LLM_MAX_RETRIES)
+
+    # Embedding
+    if "EMBEDDING_PROVIDER" in updated_keys and "EMBEDDING_PROVIDER" in env_vars:
+        settings.EMBEDDING_PROVIDER = env_vars["EMBEDDING_PROVIDER"]
+    if "EMBEDDING_MODEL" in updated_keys and "EMBEDDING_MODEL" in env_vars:
+        settings.EMBEDDING_MODEL = env_vars["EMBEDDING_MODEL"]
+    if "EMBEDDING_API_KEY" in updated_keys and "EMBEDDING_API_KEY" in env_vars:
+        settings.EMBEDDING_API_KEY = env_vars["EMBEDDING_API_KEY"]
+    if "EMBEDDING_API_BASE" in updated_keys and "EMBEDDING_API_BASE" in env_vars:
+        settings.EMBEDDING_API_BASE = env_vars["EMBEDDING_API_BASE"]
+
+    # Milvus
+    if "MILVUS_HOST" in updated_keys and "MILVUS_HOST" in env_vars:
+        settings.MILVUS_HOST = env_vars["MILVUS_HOST"]
+    if "MILVUS_PORT" in updated_keys and "MILVUS_PORT" in env_vars:
+        settings.MILVUS_PORT = _parse_int(env_vars["MILVUS_PORT"], default=settings.MILVUS_PORT)
+    if "MILVUS_USER" in updated_keys and "MILVUS_USER" in env_vars:
+        settings.MILVUS_USER = env_vars["MILVUS_USER"]
+    if "MILVUS_PASSWORD" in updated_keys and "MILVUS_PASSWORD" in env_vars:
+        settings.MILVUS_PASSWORD = env_vars["MILVUS_PASSWORD"]
+    if "MILVUS_COLLECTION_NAME" in updated_keys and "MILVUS_COLLECTION_NAME" in env_vars:
+        settings.MILVUS_COLLECTION_NAME = env_vars["MILVUS_COLLECTION_NAME"]
+
+    # RAG knobs
+    if "CHUNK_SIZE" in updated_keys and "CHUNK_SIZE" in env_vars:
+        settings.CHUNK_SIZE = _parse_int(env_vars["CHUNK_SIZE"], default=settings.CHUNK_SIZE)
+    if "CHUNK_OVERLAP" in updated_keys and "CHUNK_OVERLAP" in env_vars:
+        settings.CHUNK_OVERLAP = _parse_int(env_vars["CHUNK_OVERLAP"], default=settings.CHUNK_OVERLAP)
+    if "RETRIEVAL_TOP_K" in updated_keys and "RETRIEVAL_TOP_K" in env_vars:
+        settings.RETRIEVAL_TOP_K = _parse_int(env_vars["RETRIEVAL_TOP_K"], default=settings.RETRIEVAL_TOP_K)
+    if "SIMILARITY_THRESHOLD" in updated_keys and "SIMILARITY_THRESHOLD" in env_vars:
+        settings.SIMILARITY_THRESHOLD = _parse_float(
+            env_vars["SIMILARITY_THRESHOLD"],
+            default=settings.SIMILARITY_THRESHOLD,
+        )
+    if "DEFAULT_PARSER_BACKEND" in updated_keys and "DEFAULT_PARSER_BACKEND" in env_vars:
+        settings.DEFAULT_PARSER_BACKEND = env_vars["DEFAULT_PARSER_BACKEND"]
+    if "DEFAULT_CHUNK_STRATEGY" in updated_keys and "DEFAULT_CHUNK_STRATEGY" in env_vars:
+        settings.DEFAULT_CHUNK_STRATEGY = env_vars["DEFAULT_CHUNK_STRATEGY"]
+
+    # MinerU
+    if "MINERU_API_TOKEN" in updated_keys and "MINERU_API_TOKEN" in env_vars:
+        settings.MINERU_API_TOKEN = env_vars["MINERU_API_TOKEN"]
+    if "MINERU_API_BASE" in updated_keys and "MINERU_API_BASE" in env_vars:
+        settings.MINERU_API_BASE = env_vars["MINERU_API_BASE"]
+    if "MINERU_MODEL_VERSION" in updated_keys and "MINERU_MODEL_VERSION" in env_vars:
+        settings.MINERU_MODEL_VERSION = env_vars["MINERU_MODEL_VERSION"]
+
+
 def read_env_file() -> Dict[str, str]:
     """读取 .env 文件"""
     env_vars = {}
@@ -261,6 +361,19 @@ async def update_settings(request: UpdateSettingsRequest):
             updated_keys.extend(["MINERU_API_BASE", "MINERU_MODEL_VERSION"])
 
         write_env_file(env_vars)
+        try:
+            _apply_runtime_settings(env_vars, updated_keys)
+        except Exception:
+            # Best-effort only.
+            pass
+        if request.llm is not None:
+            # RAG engine caches LLM clients; reset so new settings take effect.
+            try:
+                from app.rag.engine import reset_rag_engine
+
+                reset_rag_engine()
+            except Exception:
+                pass
 
         return {
             "success": True,
@@ -311,3 +424,55 @@ async def get_system_status():
         status["milvus"]["message"] = str(e)[:100]
 
     return status
+
+
+class TestLLMRequest(BaseModel):
+    api_key: str
+    api_base: str = "https://api.openai.com/v1"
+    model: str
+    temperature: float = 0.0
+    timeout: int = 20
+    max_retries: int = 1
+
+
+@router.post("/llm/test")
+async def test_llm_connection(request: TestLLMRequest):
+    """测试 LLM 连接（不写入配置）"""
+    from langchain_openai import ChatOpenAI
+    from langchain_core.messages import HumanMessage
+    import httpx
+
+    from app.rag.core.http import httpx_trust_env
+    from app.rag.core.logging import get_logger
+
+    logger = get_logger("settings.llm_test")
+
+    if not request.api_key.strip():
+        raise HTTPException(status_code=400, detail="api_key is required")
+    if not request.model.strip():
+        raise HTTPException(status_code=400, detail="model is required")
+
+    trust_env = httpx_trust_env(logger=logger)
+    timeout = float(request.timeout) if request.timeout else 20.0
+
+    try:
+        async with httpx.AsyncClient(trust_env=trust_env, timeout=timeout) as http_async_client:
+            llm = ChatOpenAI(
+                model=request.model,
+                api_key=request.api_key,
+                base_url=request.api_base,
+                temperature=float(request.temperature or 0.0),
+                streaming=False,
+                timeout=timeout,
+                max_retries=int(request.max_retries or 1),
+                http_async_client=http_async_client,
+            )
+            resp = await llm.ainvoke([HumanMessage(content="Say 1")])
+            content = (getattr(resp, "content", "") or "").strip()
+            if not content:
+                return {"success": False, "message": "Empty response"}
+            return {"success": True, "message": content[:200]}
+    except Exception as exc:
+        msg = str(exc)
+        logger.warning("LLM test failed: %s", msg[:200])
+        return {"success": False, "message": msg[:400]}

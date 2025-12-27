@@ -15,6 +15,7 @@ import {
 import { Button } from '@/components/ui/button'
 import { ProviderIcon } from '@/components/provider-icon'
 import { cn } from '@/lib/utils'
+import { settingsApi } from '@/lib/api-client'
 import type { ModelProvider, ProviderConfig } from '@/types/models'
 
 interface ModelConfigDialogProps {
@@ -33,6 +34,7 @@ export function ModelConfigDialog({
   const [config, setConfig] = useState<ProviderConfig>({
     apiKey: '',
     apiBase: '',
+    model: '',
     temperature: 0.7,
     maxTokens: 4096,
     timeout: 60,
@@ -46,12 +48,30 @@ export function ModelConfigDialog({
   const [showAdvanced, setShowAdvanced] = useState(false)
 
   useEffect(() => {
+    const modelOptions = provider
+      ? provider.models.filter((m) => {
+          if (provider.category === 'model') return m.type === 'chat'
+          if (provider.category === 'embedding') return m.type === 'embedding'
+          if (provider.category === 'reranker') return m.type === 'reranker'
+          return true
+        })
+      : []
+    const defaultModel = modelOptions[0]?.name || ''
+
     if (provider?.config) {
-      setConfig(provider.config)
+      setConfig({
+        apiKey: provider.config.apiKey || '',
+        apiBase: provider.config.apiBase || getDefaultApiBase(provider.id),
+        model: provider.config.model || defaultModel,
+        temperature: provider.config.temperature ?? 0.7,
+        maxTokens: provider.config.maxTokens ?? 4096,
+        timeout: provider.config.timeout ?? 60,
+      })
     } else if (provider) {
       setConfig({
         apiKey: '',
         apiBase: getDefaultApiBase(provider.id),
+        model: defaultModel,
         temperature: 0.7,
         maxTokens: 4096,
         timeout: 60,
@@ -90,17 +110,35 @@ export function ModelConfigDialog({
     setIsTesting(true)
     setTestResult(null)
 
-    // 模拟测试连接
-    setTimeout(() => {
-      const success = Math.random() > 0.3 // 70% 成功率模拟
-      setTestResult({
-        success,
-        message: success
-          ? '连接成功！配置有效'
-          : '连接失败，请检查 API Key',
+    try {
+      if (!provider) return
+      if (provider.category !== 'model') {
+        setTestResult({ success: false, message: '目前仅支持测试聊天模型连接' })
+        return
+      }
+      if (!config.apiKey) {
+        setTestResult({ success: false, message: '请先填写 API Key' })
+        return
+      }
+      if (!config.model) {
+        setTestResult({ success: false, message: '请选择模型' })
+        return
+      }
+
+      const result = await settingsApi.testLLM({
+        api_key: config.apiKey,
+        api_base: config.apiBase || getDefaultApiBase(provider.id),
+        model: config.model,
+        temperature: config.temperature,
+        timeout: config.timeout,
+        max_retries: 1,
       })
+      setTestResult({ success: !!result.success, message: result.message })
+    } catch (e: any) {
+      setTestResult({ success: false, message: e?.response?.data?.detail || e?.message || '测试失败' })
+    } finally {
       setIsTesting(false)
-    }, 1500)
+    }
   }
 
   if (!provider) return null
@@ -177,6 +215,29 @@ export function ModelConfigDialog({
             />
           </div>
 
+          {/* Model */}
+          <div className="space-y-2">
+            <label className="text-sm font-semibold text-gray-700">模型</label>
+            <select
+              value={config.model || ''}
+              onChange={(e) => setConfig({ ...config, model: e.target.value })}
+              className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-blue-100 focus:border-blue-400 outline-none transition-all text-sm"
+            >
+              {provider.models
+                .filter((m) => {
+                  if (provider.category === 'model') return m.type === 'chat'
+                  if (provider.category === 'embedding') return m.type === 'embedding'
+                  if (provider.category === 'reranker') return m.type === 'reranker'
+                  return true
+                })
+                .map((model) => (
+                  <option key={model.id} value={model.name}>
+                    {model.displayName}
+                  </option>
+                ))}
+            </select>
+          </div>
+
           {/* 高级设置开关 */}
           <div>
             <button
@@ -239,7 +300,7 @@ export function ModelConfigDialog({
             <Button
               variant="outline"
               onClick={handleTest}
-              disabled={!config.apiKey || isTesting}
+              disabled={!config.apiKey || !config.model || isTesting}
               className="flex-1 rounded-xl h-11 border-gray-200 hover:bg-gray-50 hover:text-gray-900"
             >
               {isTesting ? (
@@ -253,7 +314,7 @@ export function ModelConfigDialog({
             </Button>
             <Button 
               onClick={handleSave} 
-              disabled={!config.apiKey}
+              disabled={!config.apiKey || !config.model}
               className="flex-1 rounded-xl h-11 bg-blue-600 hover:bg-blue-700 shadow-lg shadow-blue-100"
             >
               <Save className="h-4 w-4 mr-2" />

@@ -1,6 +1,5 @@
 """
 Clean processor for text preprocessing.
-Integrated from third_party/dify/cleaner/clean_processor.py
 """
 import re
 from typing import Any
