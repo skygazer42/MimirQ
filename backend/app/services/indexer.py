@@ -315,7 +315,7 @@ class Indexer:
                 enable_bm25=self._resolve_bm25_enabled(options),
             )
         except Exception as exc:
-            print(f"[WARN]  Failed to update BM25 index incrementally: {exc}")
+            logger.warning("Failed to update BM25 index incrementally: %s", exc)
 
         return PersistChunksResult(
             db_chunks=db_chunks,
@@ -416,12 +416,12 @@ class Indexer:
         try:
             get_vector_store().delete_by_document_id(document_id, tenant_id=tenant_id)
         except Exception as exc:
-            print(f"[WARN]  Failed to delete vectors: {exc}")
+            logger.warning("Failed to delete vectors: %s", exc)
 
         try:
             hybrid_retriever.remove_document_from_bm25_index(document_id, tenant_id=tenant_id)
         except Exception as exc:
-            print(f"[WARN]  Failed to update BM25 index after deletion: {exc}")
+            logger.warning("Failed to update BM25 index after deletion: %s", exc)
 
     def delete_event_indexes(self, *, tenant_id: UUID, document_id: UUID, commit: bool = True) -> None:
         query = self._db.query(KgSourceEvent).filter(
@@ -434,7 +434,7 @@ class Indexer:
             try:
                 self._event_vector.delete(event_ids)
             except Exception as exc:
-                print(f"[WARN]  Failed to delete KG event vectors: {exc}")
+                logger.warning("Failed to delete KG event vectors: %s", exc)
 
             query.delete(synchronize_session=False)
             if commit:
@@ -462,7 +462,7 @@ class Indexer:
 
         chunks = query.all()
         if not chunks:
-            print("[WARN]  No chunks found for BM25 index")
+            logger.warning("No chunks found for BM25 index")
             return
 
         hybrid_retriever.build_bm25_index(chunks, tenant_id=tenant_id)
@@ -554,8 +554,8 @@ class Indexer:
         try:
             return list(vector_store.add_documents(docs, document_id, tenant_id))
         except Exception as exc:
-            print(f"[WARN]  Failed to store vectors: {exc}")
-            print("[WARN]  Proceeding without vector ids; BM25-only retrieval will still work.")
+            logger.warning("Failed to store vectors: %s", exc)
+            logger.warning("Proceeding without vector ids; BM25-only retrieval will still work.")
             return [None] * len(docs)
 
     def _persist_document_chunks(
@@ -697,7 +697,7 @@ class Indexer:
         try:
             return self._event_vector.add_vectors(items, embeddings=embeddings)
         except Exception as exc:
-            print(f"[WARN]  Failed to store KG event vectors: {exc}")
+            logger.warning("Failed to store KG event vectors: %s", exc)
             return []
 
     def _index_entity_vectors(self, entities: Iterable[KgEntity]) -> List[str]:
@@ -726,5 +726,5 @@ class Indexer:
         try:
             return self._entity_vector.add_vectors(items, embeddings=embeddings)
         except Exception as exc:
-            print(f"[WARN]  Failed to store KG entity vectors: {exc}")
+            logger.warning("Failed to store KG entity vectors: %s", exc)
             return []

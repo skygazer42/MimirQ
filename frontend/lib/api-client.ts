@@ -187,10 +187,30 @@ export const documentApi = {
   /**
    * 文档解析预览（仅解析，不入库）
    */
-  async preview(file: File, parserBackend = 'auto'): Promise<DocumentPreview> {
+  async preview(
+    file: File,
+    parserBackend = 'auto',
+    pipeline?: DocumentPipelineOptions
+  ): Promise<DocumentPreview> {
     const formData = new FormData()
     formData.append('file', file)
     formData.append('parser_backend', parserBackend)
+    if (pipeline) {
+      const appendIfDefined = (key: string, value: string | number | boolean | undefined) => {
+        if (value === undefined || value === null) return
+        formData.append(key, String(value))
+      }
+      appendIfDefined('governance_enabled', pipeline.governance_enabled)
+      appendIfDefined('governance_remove_toc_lines', pipeline.governance_remove_toc_lines)
+      appendIfDefined('governance_remove_noise_lines', pipeline.governance_remove_noise_lines)
+      appendIfDefined('governance_unwrap_lines', pipeline.governance_unwrap_lines)
+      appendIfDefined('governance_remove_common_lines', pipeline.governance_remove_common_lines)
+      appendIfDefined('governance_unwrap_max_line_length', pipeline.governance_unwrap_max_line_length)
+      appendIfDefined('governance_noise_min_chars', pipeline.governance_noise_min_chars)
+      appendIfDefined('governance_noise_ratio_threshold', pipeline.governance_noise_ratio_threshold)
+      appendIfDefined('governance_common_lines_min_docs', pipeline.governance_common_lines_min_docs)
+      appendIfDefined('governance_common_lines_min_ratio', pipeline.governance_common_lines_min_ratio)
+    }
 
     const { data } = await apiClient.post('/documents/preview', formData, {
       headers: {
@@ -227,12 +247,30 @@ export const documentApi = {
       chunk_overlap?: number
       parser_backend?: string
       chunk_strategy?: string
+      pipeline?: DocumentPipelineOptions
     } = {}
   ): Promise<ChunkPreviewResponse> {
     const formData = new FormData()
     formData.append('file', file)
     formData.append('parser_backend', params.parser_backend || 'auto')
     formData.append('chunk_strategy', params.chunk_strategy || 'langchain_recursive')
+    if (params.pipeline) {
+      const pipeline = params.pipeline
+      const appendIfDefined = (key: string, value: string | number | boolean | undefined) => {
+        if (value === undefined || value === null) return
+        formData.append(key, String(value))
+      }
+      appendIfDefined('governance_enabled', pipeline.governance_enabled)
+      appendIfDefined('governance_remove_toc_lines', pipeline.governance_remove_toc_lines)
+      appendIfDefined('governance_remove_noise_lines', pipeline.governance_remove_noise_lines)
+      appendIfDefined('governance_unwrap_lines', pipeline.governance_unwrap_lines)
+      appendIfDefined('governance_remove_common_lines', pipeline.governance_remove_common_lines)
+      appendIfDefined('governance_unwrap_max_line_length', pipeline.governance_unwrap_max_line_length)
+      appendIfDefined('governance_noise_min_chars', pipeline.governance_noise_min_chars)
+      appendIfDefined('governance_noise_ratio_threshold', pipeline.governance_noise_ratio_threshold)
+      appendIfDefined('governance_common_lines_min_docs', pipeline.governance_common_lines_min_docs)
+      appendIfDefined('governance_common_lines_min_ratio', pipeline.governance_common_lines_min_ratio)
+    }
 
     const { data } = await apiClient.post('/documents/chunk-preview', formData, {
       headers: {

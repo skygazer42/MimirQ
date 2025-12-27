@@ -243,6 +243,7 @@ export function ChunkPreview({ onConfirm, onClose }: ChunkPreviewProps) {
         chunk_overlap: chunkOverlap,
         parser_backend: parserBackend,
         chunk_strategy: chunkStrategy,
+        pipeline: pipelineOverridesEnabled ? pipelineOptions : undefined,
       })
       setPreviewData(data)
     } catch (err: any) {
@@ -250,7 +251,7 @@ export function ChunkPreview({ onConfirm, onClose }: ChunkPreviewProps) {
     } finally {
       setIsLoading(false)
     }
-  }, [file, chunkSize, chunkOverlap, parserBackend, chunkStrategy])
+  }, [file, chunkSize, chunkOverlap, parserBackend, chunkStrategy, pipelineOverridesEnabled, pipelineOptions])
 
   // 自动触发预览
   useEffect(() => {

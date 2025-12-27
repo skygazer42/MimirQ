@@ -16,6 +16,10 @@ from langchain_core.documents import Document
 
 from app.core.config import settings
 from app.parsing.utils.zip_processor import zip_image_processor
+from app.rag.core.logging import get_logger
+
+
+logger = get_logger("services.mineru")
 
 
 class MinerUService:
@@ -30,8 +34,8 @@ class MinerUService:
         self.enabled = bool(settings.MINERU_ENABLED) and (bool(self.api_token) or bool(self.local_server_url))
 
         if not self.enabled:
-            print(
-                "[WARN]  MinerU is disabled. Set MINERU_ENABLED=True and configure "
+            logger.warning(
+                "MinerU is disabled. Set MINERU_ENABLED=True and configure "
                 "MINERU_API_TOKEN (online) or MINERU_LOCAL_SERVER_URL (local) to enable."
             )
 
@@ -152,7 +156,7 @@ class MinerUService:
                 return response.status_code == 200
 
         except Exception as e:
-            print(f"[ERR] Upload file failed: {str(e)}")
+            logger.error("Upload file failed: %s", e)
             return False
 
     def get_task_status(self, batch_id: str) -> Dict[str, Any]:
@@ -209,7 +213,7 @@ class MinerUService:
             status = self.get_task_status(batch_id)
             task_status = status.get("status")
 
-            print(f"[*] Task {batch_id} status: {task_status}")
+            logger.info("Task %s status: %s", batch_id, task_status)
 
             if task_status == "completed":
                 return status
@@ -256,22 +260,22 @@ class MinerUService:
 
         # 1. 申请上传 URL
         data_id = data_id or str(file_path.stem)
-        print(f"📤 Applying upload URL for {file_path.name}...")
+        logger.info("Applying upload URL for %s...", file_path.name)
         upload_info = self.apply_upload_url(file_path.name, data_id)
 
         batch_id = upload_info["batch_id"]
         upload_url = upload_info["upload_url"]
 
         # 2. 上传文件
-        print(f"⬆️  Uploading {file_path.name}...")
+        logger.info("Uploading %s...", file_path.name)
         success = self.upload_file(file_path, upload_url)
         if not success:
             raise Exception(f"Failed to upload {file_path.name}")
 
-        print(f"[OK] Upload complete. Batch ID: {batch_id}")
+        logger.info("Upload complete. Batch ID: %s", batch_id)
 
         # 3. 等待解析完成
-        print(f"⏳ Waiting for parsing completion...")
+        logger.info("Waiting for parsing completion...")
         result = self.wait_for_completion(batch_id, timeout=600, poll_interval=5)
 
         # 4. 下载解析结果
@@ -279,7 +283,7 @@ class MinerUService:
         if not result_url:
             raise Exception("No result URL in response")
 
-        print(f"📥 Downloading result...")
+        logger.info("Downloading result...")
         markdown_content = self.download_result(result_url)
 
         # 5. 转换为 LangChain Document
@@ -292,7 +296,7 @@ class MinerUService:
             "model_version": self.model_version
         }
 
-        print(f"[OK] Parse complete. Content length: {len(markdown_content)} chars")
+        logger.info("Parse complete. Content length: %s chars", len(markdown_content))
 
         return [Document(page_content=markdown_content, metadata=metadata)]
 
@@ -340,7 +344,7 @@ class MinerUService:
             if mineru_vl_server:
                 data["server_url"] = mineru_vl_server
         
-        print(f"[MinerU本地] 开始解析: {file_path.name}")
+        logger.info("MinerU local parsing started: %s", file_path.name)
         
         try:
             # 发送文件
@@ -381,7 +385,11 @@ class MinerUService:
                 markdown_content = result["markdown"]
                 images = result["images"]
                 
-                print(f"[MinerU本地] 解析完成: {len(markdown_content)} 字符, {len(images)} 张图片")
+                logger.info(
+                    "MinerU local parse done: %s chars, %s images",
+                    len(markdown_content),
+                    len(images),
+                )
                 
                 # 构建 metadata
                 metadata = {
@@ -400,7 +408,7 @@ class MinerUService:
                     tmp_zip_path.unlink()
         
         except Exception as e:
-            print(f"[ERROR] MinerU 本地解析失败: {e}")
+            logger.error("MinerU local parsing failed: %s", e)
             raise Exception(f"MinerU 本地解析失败: {str(e)}")
 
 

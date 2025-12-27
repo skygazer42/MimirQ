@@ -13,6 +13,10 @@ from app.parsing.parsers.text_parser import TextParser, MarkdownParser
 from app.parsing.parsers.mineru_parser import MinerUParser
 from app.parsing.parsers.markitdown_parser import MarkItDownParser
 from app.core.config import settings
+from app.rag.core.logging import get_logger
+
+
+logger = get_logger("parsing.factory")
 
 
 class ParserFactory:
@@ -27,13 +31,13 @@ class ParserFactory:
         self._deepdoc_parser: Optional["DeepDocParser"] = None
         self._markitdown_parser: Optional[MarkItDownParser] = None
 
-        print("[PDF] PyMuPDF parser ready for basic PDF parsing")
+        logger.info("[pdf] PyMuPDF parser ready (basic)")
         if settings.MINERU_ENABLED and (settings.MINERU_API_TOKEN or settings.MINERU_LOCAL_SERVER_URL):
-            print("[MinerU] MinerU parser available for PDF parsing (requires selection)")
+            logger.info("[pdf] MinerU parser available (requires selection)")
         if settings.DEEPDOC_ENABLED:
-            print("[DeepDoc] DeepDoc parser available for PDF parsing (requires selection)")
+            logger.info("[pdf] DeepDoc parser available (requires selection)")
         if settings.MARKITDOWN_ENABLED:
-            print("[MarkItDown] MarkItDown parser available for PDF parsing (requires selection)")
+            logger.info("[pdf] MarkItDown parser available (requires selection)")
 
         self.parsers = {
             ".txt": TextParser(),
@@ -135,7 +139,7 @@ class ParserFactory:
 
         if backend == "mineru":
             if self._mineru_parser is None:
-                print("[MinerU] Initializing MinerU parser for PDF (advanced parsing)")
+                logger.info("[pdf] Initializing MinerU parser (advanced)")
                 self._mineru_parser = MinerUParser()
             return self._mineru_parser
 
@@ -143,13 +147,13 @@ class ParserFactory:
             if self._deepdoc_parser is None:
                 from app.parsing.parsers.deepdoc_parser import DeepDocParser
 
-                print("[DeepDoc] Initializing DeepDoc parser for PDF (structure-aware parsing)")
+                logger.info("[pdf] Initializing DeepDoc parser (structure-aware)")
                 self._deepdoc_parser = DeepDocParser()
             return self._deepdoc_parser
 
         if backend == "markitdown":
             if self._markitdown_parser is None:
-                print("[MarkItDown] Initializing MarkItDown parser for PDF (markdown-focused parsing)")
+                logger.info("[pdf] Initializing MarkItDown parser (markdown-focused)")
                 self._markitdown_parser = MarkItDownParser()
             return self._markitdown_parser
 
@@ -158,7 +162,7 @@ class ParserFactory:
     def _get_markitdown_parser(self):
         """Lazy init MarkItDown parser for non-PDF office formats."""
         if self._markitdown_parser is None:
-            print("[MarkItDown] Initializing MarkItDown parser for office documents")
+            logger.info("[markitdown] Initializing parser for non-PDF formats")
             self._markitdown_parser = MarkItDownParser()
         return self._markitdown_parser
 

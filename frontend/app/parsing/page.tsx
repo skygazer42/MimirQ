@@ -40,12 +40,14 @@ import { formatFileSize, cn } from '@/lib/utils'
 import { useParsedFiles } from '@/hooks/use-parsed-files'
 import { useParserBackendPreference } from '@/contexts/parser-backend-context'
 import { useChunkStrategyPreference } from '@/contexts/chunk-strategy-context'
+import { usePipelineOptions } from '@/contexts/pipeline-options-context'
 import { getParserLabel } from '@/lib/parser-options'
 import { getChunkStrategyLabel } from '@/lib/chunk-strategies'
 import { StatCard, StatsGrid } from '@/components/ui/stats-card'
 import { FileQueueItem, FileQueueItemData, FileStatus } from '@/components/ui/file-queue-item'
 import { ParserDropdown } from '@/components/ui/parser-dropdown'
 import { ChunkStrategyDropdown } from '@/components/ui/chunk-strategy-dropdown'
+import { PipelineOptionsPanel } from '@/components/pipeline-options-panel'
 
 // 解析后的文件（扩展版）
 interface ParsedFile extends FileQueueItemData {
@@ -82,6 +84,7 @@ export default function ParsingPage() {
   // 解析器设置
   const { parserBackend, setParserBackend } = useParserBackendPreference()
   const { chunkStrategy, setChunkStrategy } = useChunkStrategyPreference()
+  const { enabled: pipelineOverridesEnabled, options: pipelineOptions } = usePipelineOptions()
 
   // 共享存储
   const { addParsedFile } = useParsedFiles()
@@ -183,6 +186,7 @@ export default function ParsingPage() {
         chunk_overlap: 0,
         parser_backend: parserBackend,
         chunk_strategy: chunkStrategy,
+        pipeline: pipelineOverridesEnabled ? pipelineOptions : undefined,
       })
 
       clearInterval(progressInterval)
@@ -380,6 +384,14 @@ export default function ParsingPage() {
                 value={chunkStrategy}
                 onChange={setChunkStrategy}
               />
+            </div>
+
+            {/* 清洗 / 入库管线 */}
+            <div className="p-4 border-b">
+              <div className="flex items-center justify-between mb-3">
+                <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider">清洗与索引</span>
+              </div>
+              <PipelineOptionsPanel compact />
             </div>
 
             {/* 上传区域 */}

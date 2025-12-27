@@ -15,7 +15,12 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Callable, List, Literal, Optional, Any
 
+from app.rag.core.logging import get_logger
+
 ChunkStrategy = Literal["ragflow_naive", "ragflow_book", "ragflow_laws", "ragflow_email"]
+
+
+logger = get_logger("ragflow.bridge")
 
 
 def chunk_file(
@@ -61,6 +66,6 @@ def chunk_file(
     if callback is None:
         def callback(prog=None, msg=""):
             if msg:
-                print(f"[ragflow] {msg} ({prog})")
+                logger.info("[ragflow] %s (%s)", msg, prog)
 
     return rf_chunk(str(file_path), binary=binary, callback=callback, **kwargs)

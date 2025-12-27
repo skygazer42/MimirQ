@@ -19,6 +19,10 @@ from langchain_core.documents import Document
 
 from app.services.mineru_service import mineru_service
 from app.core.config import settings
+from app.rag.core.logging import get_logger
+
+
+logger = get_logger("parsing.mineru_parser")
 
 
 class MinerUParser:
@@ -66,7 +70,7 @@ class MinerUParser:
 
         # 检测模式：本地服务优先
         if mineru_service.local_server_url:
-            print("[MinerU] 使用本地服务模式（ZIP + MinIO）")
+            logger.info("[mineru] local mode (zip + object storage)")
             
             # 本地模式需要 dataset_id 和 document_id 用于 MinIO 上传
             if not dataset_id or not document_id:
@@ -80,5 +84,5 @@ class MinerUParser:
                 document_id=document_id
             )
         else:
-            print("[MinerU] 使用在线 API 模式")
+            logger.info("[mineru] remote api mode")
             return mineru_service.parse_file(file_path)

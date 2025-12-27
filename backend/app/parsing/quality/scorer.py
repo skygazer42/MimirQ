@@ -18,6 +18,10 @@ import re
 import pdfplumber  # type: ignore
 
 from app.parsing.quality.ocr_validator import rapid_ocr_service
+from app.rag.core.logging import get_logger
+
+
+logger = get_logger("parsing.quality.scorer")
 
 
 def score_pdf_quality(
@@ -72,7 +76,7 @@ def score_pdf_quality(
             table_quality_score = _score_table_quality(pages_data)
 
     except Exception as e:
-        print(f"[WARN] PDF 质量评分失败: {e}")
+        logger.warning("PDF quality scoring failed: %s", e)
         # 失败时返回低分
         text_quality_score = 0.0
         format_consistency_score = 0.0
@@ -135,7 +139,7 @@ def _score_text_quality(
     # OCR 验证：文本少时触发
     if use_ocr_validation and (text_density < 0.3 or total_text_chars < 200 * len(pages)):
         try:
-            print(f"[PDF质量] 启用 RapidOCR 验证扫描件...")
+            logger.info("RapidOCR validation enabled for scanned detection")
             _, ocr_chars = rapid_ocr_service.ocr_pdf_pages(
                 file_path,
                 max_pages=min(2, len(pages))
@@ -147,13 +151,13 @@ def _score_text_quality(
                 # OCR增益>50% → 扫描件
                 is_scanned = True
                 score *= 0.4
-                print(f"[PDF质量] 判定为扫描件 (OCR增益={ocr_gain:.2f})")
+                logger.info("Detected scanned PDF (ocr_gain=%.2f)", ocr_gain)
             elif ocr_gain > 0.1:
                 # OCR增益>10% → 部分扫描
                 score *= 0.7
-                print(f"[PDF质量] 部分扫描/混合 (OCR增益={ocr_gain:.2f})")
+                logger.info("Detected mixed/partial scan (ocr_gain=%.2f)", ocr_gain)
         except Exception as e:
-            print(f"[WARN] RapidOCR 验证失败: {e}")
+            logger.warning("RapidOCR validation failed: %s", e)
 
     # 文本极少 → 按扫描件处理
     if total_text_chars < 500 and len(pages) >= 2:
@@ -254,4 +258,3 @@ def _score_table_quality(pages: List) -> float:
     # 完整表格占比
     table_ratio = well_formed_tables / max(1, total_tables)
     return max(0.0, min(1.0, table_ratio))
-

@@ -29,6 +29,10 @@ from app.services.pipeline_config import (
 from app.governance.processor import governance_processor, GovernanceStats
 from app.rag.kg.pipeline import extract_events
 from app.parsing.routing import route_pdf_backend
+from app.rag.core.logging import get_logger
+
+
+logger = get_logger("parsing.document_processor")
 
 
 class DocumentProcessorService:
@@ -129,7 +133,7 @@ class DocumentProcessorService:
 
             else:
                 # Step 2: 解析文档
-                print(f"Parsing document: {file_path}")
+                logger.info("Parsing document: %s", file_path)
                 effective_parser_backend = parser_backend
                 file_ext = file_path.suffix.lower()
                 if file_ext == ".pdf":
@@ -214,7 +218,7 @@ class DocumentProcessorService:
                 )
 
                 # Step 3: 文本切片
-                print(f"Chunking document into smaller pieces...")
+                logger.info("Chunking document into smaller pieces...")
                 if pipeline_effective.chunk_overlap >= pipeline_effective.chunk_size:
                     raise ValueError("chunk_overlap must be less than chunk_size")
                 chunker = chunker_factory.get_chunker(
@@ -257,7 +261,7 @@ class DocumentProcessorService:
             )
 
             # Step 4/5: 向量化 + 写入 PostgreSQL + 增量更新 BM25（统一实现，避免多处重复）
-            print(f"Saving chunks to PostgreSQL...")
+            logger.info("Persisting chunks and indexes...")
             records: List[IndexRecord] = []
             for chunk in chunks:
                 meta = dict(chunk.metadata or {})
@@ -296,21 +300,23 @@ class DocumentProcessorService:
                 total_characters=total_chars
             )
 
-            print(
-                f"[OK] Document processed successfully: {len(chunks)} chunks "
-                f"(parser={resolved_backend}, chunker={resolved_chunk_strategy})"
+            logger.info(
+                "Document processed: %s chunks (parser=%s, chunker=%s)",
+                len(chunks),
+                resolved_backend,
+                resolved_chunk_strategy,
             )
 
             # Step 7: 如启用则运行 KG 抽取（事件/实体）
             if pipeline_effective.kg_enabled:
-                print("[*] Running KG extraction on document chunks...")
+                logger.info("Running KG extraction on document chunks...")
                 events = await extract_events(
                     chunk_ids,
                     tenant_id=tenant_id,
                     chunks=persist_result.db_chunks,
                     index_options=index_options,
                 )
-                print(f"[OK] KG extracted {len(events)} events for document {document_id}")
+                logger.info("KG extracted %s events for document %s", len(events), document_id)
 
             return {
                 "status": "success",
@@ -322,7 +328,7 @@ class DocumentProcessorService:
 
         except Exception as e:
             # 错误处理
-            print(f"[ERR] Error processing document: {str(e)}")
+            logger.exception("Error processing document %s: %s", document_id, e)
             await self._update_status(
                 db,
                 document_id,
@@ -370,13 +376,13 @@ class DocumentProcessorService:
             ).all()
 
             if all_chunks:
-                print(f"🔎 Rebuilding BM25 index with {len(all_chunks)} chunks for tenant {tenant_id}...")
+                logger.info("Rebuilding BM25 index with %s chunks for tenant %s", len(all_chunks), tenant_id)
                 Indexer(db).rebuild_tenant(tenant_id=tenant_id, kinds=[IndexKind.CHUNK])
             else:
-                print("[WARN]  No chunks found for BM25 index")
+                logger.warning("No chunks found for BM25 index")
 
         except Exception as e:
-            print(f"[WARN]  Failed to rebuild BM25 index: {str(e)}")
+            logger.warning("Failed to rebuild BM25 index: %s", e)
 
     async def _rebuild_bm25_index(self, db: Session):
         """Rebuild BM25 indexes for all tenants."""
@@ -384,12 +390,12 @@ class DocumentProcessorService:
             tenant_rows = db.query(DocumentChunk.tenant_id).distinct().all()
             tenant_ids = [row[0] for row in tenant_rows if row and row[0]]
             if not tenant_ids:
-                print("[WARN]  No chunks found for BM25 index")
+                logger.warning("No chunks found for BM25 index")
                 return
             for tid in tenant_ids:
                 Indexer(db).rebuild_tenant(tenant_id=tid, kinds=[IndexKind.CHUNK])
         except Exception as e:
-            print(f"[WARN]  Failed to rebuild BM25 index: {str(e)}")
+            logger.warning("Failed to rebuild BM25 index: %s", e)
 
     def _record_processing_metadata(
         self,
@@ -644,7 +650,7 @@ class DocumentProcessorService:
                 markdown_text = markdown_text.replace(ref, url)
 
             except Exception as e:
-                print(f"[WARN] 内嵌/本地图片上传失败（跳过）: {e}")
+                logger.warning("Inline/local image upload failed (skipped): %s", e)
                 continue
 
         return markdown_text, new_ids, idx
@@ -749,7 +755,7 @@ class DocumentProcessorService:
             img.save(out, format="JPEG", quality=85, optimize=True)
             image_bytes = out.getvalue()
         except Exception as e:
-            print(f"[WARN] 图片转换失败（跳过上传）: {e}")
+            logger.warning("Image conversion failed (skip upload): %s", e)
             # 无论成功与否，都要清理 image 字段，避免入库失败
             if found_key == "image":
                 metadata.pop("image", None)
@@ -780,12 +786,12 @@ class DocumentProcessorService:
             for key in possible_keys:
                 if key in metadata and key != found_key:
                     del metadata[key]
-            
-            print(f"[MinIO] 图片已上传并绑定: img_id={img_id}")
+
+            logger.info("Image uploaded and bound: img_id=%s", img_id)
             return img_id
             
         except Exception as e:
-            print(f"[ERROR] MinIO 图片上传失败: {e}")
+            logger.error("Image upload failed: %s", e)
             return None
 
     def _extract_and_save_image(self, metadata: Dict[str, Any], tenant_id: UUID) -> Optional[str]:

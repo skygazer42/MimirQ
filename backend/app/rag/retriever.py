@@ -23,6 +23,10 @@ from app.core.config import settings
 from app.core.database import SessionLocal
 from app.rag.reranker.factory import get_reranker
 from app.rag.reranker.types import RerankCandidate
+from app.rag.core.logging import get_logger
+
+
+logger = get_logger("rag.retriever")
 
 
 class HybridRetriever(BaseRetriever):
@@ -86,7 +90,7 @@ class HybridRetriever(BaseRetriever):
                 continue
             lookup[f"{doc_id}:{chunk_index}"] = str(d.id)
         self._chunk_id_lookup[tenant_key] = lookup
-        print(f"[OK] BM25 index built with {len(docs)} chunks for tenant {tenant_key}")
+        logger.info("BM25 index built with %s chunks for tenant %s", len(docs), tenant_key)
 
     def upsert_bm25_documents(self, docs: List[Document], tenant_id: Optional[UUID] = None):
         """
@@ -121,7 +125,7 @@ class HybridRetriever(BaseRetriever):
                 continue
             lookup[f"{doc_id}:{chunk_index}"] = str(d.id)
         self._chunk_id_lookup[tenant_key] = lookup
-        print(f"[OK] BM25 index updated to {len(merged_docs)} chunks for tenant {tenant_key}")
+        logger.info("BM25 index updated to %s chunks for tenant %s", len(merged_docs), tenant_key)
 
     def remove_document_from_bm25_index(self, document_id: UUID, tenant_id: Optional[UUID] = None):
         """从 BM25 索引移除指定文档的所有切片。"""
@@ -139,7 +143,7 @@ class HybridRetriever(BaseRetriever):
             self._bm25_retrievers.pop(tenant_key, None)
             self._bm25_docs.pop(tenant_key, None)
             self._chunk_id_lookup.pop(tenant_key, None)
-            print(f"[OK] BM25 index cleared for tenant {tenant_key}")
+            logger.info("BM25 index cleared for tenant %s", tenant_key)
             return
         self._bm25_retrievers[tenant_key] = retriever
         self._bm25_docs[tenant_key] = filtered
@@ -152,7 +156,7 @@ class HybridRetriever(BaseRetriever):
                 continue
             lookup[f"{doc_id}:{chunk_index}"] = str(d.id)
         self._chunk_id_lookup[tenant_key] = lookup
-        print(f"[OK] BM25 index removed document {document_id} for tenant {tenant_key}")
+        logger.info("BM25 index removed document %s for tenant %s", document_id, tenant_key)
 
     def _search_bm25(
         self,
@@ -166,7 +170,7 @@ class HybridRetriever(BaseRetriever):
         retriever = self._bm25_retrievers.get(tenant_key)
         docs = self._bm25_docs.get(tenant_key)
         if retriever is None or docs is None:
-            print("[WARN] BM25 index not initialized, skipping keyword search")
+            logger.warning("BM25 index not initialized, skipping keyword search")
             return []
 
         allowed_ids = {str(doc_id) for doc_id in document_ids} if document_ids else None
@@ -230,7 +234,7 @@ class HybridRetriever(BaseRetriever):
                     tenant_id=tenant_id,
                 )
             except Exception as exc:
-                print(f"[WARN] Vector search failed: {exc}")
+                logger.warning("Vector search failed: %s", exc)
                 vector_results = []
 
         # 尝试补全向量检索结果的 chunk_id（用于 citations / RAGAS contexts）
