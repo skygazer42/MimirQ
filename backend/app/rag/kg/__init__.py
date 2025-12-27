@@ -8,9 +8,19 @@ from __future__ import annotations
 
 from typing import Any
 
-from app.rag.kg.models import SagEntity, SagEventEntity, SagSourceEvent
+from app.rag.kg.models import KgEntity, KgEventEntity, KgSourceEvent, SagEntity, SagEventEntity, SagSourceEvent
 
-__all__ = ["SagEntity", "SagSourceEvent", "SagEventEntity", "EntityRepository", "EventRepository", "get_session"]
+__all__ = [
+    "KgEntity",
+    "KgSourceEvent",
+    "KgEventEntity",
+    "SagEntity",
+    "SagSourceEvent",
+    "SagEventEntity",
+    "EntityRepository",
+    "EventRepository",
+    "get_session",
+]
 
 
 def __getattr__(name: str) -> Any:  # pragma: no cover

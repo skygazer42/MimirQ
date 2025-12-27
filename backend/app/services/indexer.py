@@ -11,11 +11,11 @@ from langchain_core.documents import Document as LCDocument
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
-from app.rag.kg.models import SagEntity, SagEventEntity, SagSourceEvent
+from app.rag.kg.models import KgEntity, KgEventEntity, KgSourceEvent
 from app.models.document import Document as DBDocument, DocumentChunk
 from app.rag.retriever import hybrid_retriever
 from app.storage.vector.factory import get_vector_store
-from app.storage.vector.milvus import get_milvus_adapter
+from app.storage.vector.milvus import get_milvus_adapter, resolve_collection_name
 
 logger = logging.getLogger("indexer")
 
@@ -98,8 +98,8 @@ class IndexRecord:
 
 @dataclass(frozen=True)
 class PersistEventsResult:
-    events: List[SagSourceEvent]
-    entities: List[SagEntity]
+    events: List[KgSourceEvent]
+    entities: List[KgEntity]
     event_ids: List[UUID]
     entity_ids: List[UUID]
     event_vector_ids: List[str]
@@ -131,8 +131,10 @@ class Indexer:
 
     def __init__(self, db: Session):
         self._db = db
-        self._event_vector = get_milvus_adapter(collection_name="sag_events", vector_field="embedding")
-        self._entity_vector = get_milvus_adapter(collection_name="sag_entities", vector_field="embedding")
+        event_collection = resolve_collection_name("kg_events", legacy="sag_events")
+        entity_collection = resolve_collection_name("kg_entities", legacy="sag_entities")
+        self._event_vector = get_milvus_adapter(collection_name=event_collection, vector_field="embedding")
+        self._entity_vector = get_milvus_adapter(collection_name=entity_collection, vector_field="embedding")
 
     def _resolve_chunk_vector_enabled(self, options: Optional[IndexingOptions]) -> bool:
         if options and options.chunk_vector_enabled is not None:
@@ -340,11 +342,11 @@ class Indexer:
                 entity_vector_ids=[],
             )
 
-        entity_cache: Dict[Tuple[str, str, str], SagEntity] = {}
-        db_events: List[SagSourceEvent] = []
+        entity_cache: Dict[Tuple[str, str, str], KgEntity] = {}
+        db_events: List[KgSourceEvent] = []
 
         for item in events:
-            event_obj = SagSourceEvent(
+            event_obj = KgSourceEvent(
                 tenant_id=tenant_id,
                 document_id=item.document_id,
                 chunk_id=item.chunk_id,
@@ -380,7 +382,7 @@ class Indexer:
                     entity_obj.vector = ent.vector
 
                 self._db.add(
-                    SagEventEntity(
+                    KgEventEntity(
                         event=event_obj,
                         entity=entity_obj,
                         weight=1.0,
@@ -422,9 +424,9 @@ class Indexer:
             print(f"[WARN]  Failed to update BM25 index after deletion: {exc}")
 
     def delete_event_indexes(self, *, tenant_id: UUID, document_id: UUID, commit: bool = True) -> None:
-        query = self._db.query(SagSourceEvent).filter(
-            SagSourceEvent.tenant_id == tenant_id,
-            SagSourceEvent.document_id == document_id,
+        query = self._db.query(KgSourceEvent).filter(
+            KgSourceEvent.tenant_id == tenant_id,
+            KgSourceEvent.document_id == document_id,
         )
         events = query.all()
         if events:
@@ -432,7 +434,7 @@ class Indexer:
             try:
                 self._event_vector.delete(event_ids)
             except Exception as exc:
-                print(f"[WARN]  Failed to delete SAG event vectors: {exc}")
+                print(f"[WARN]  Failed to delete KG event vectors: {exc}")
 
             query.delete(synchronize_session=False)
             if commit:
@@ -471,9 +473,9 @@ class Indexer:
         tenant_id: UUID,
         document_ids: Optional[List[UUID]] = None,
     ) -> None:
-        event_query = self._db.query(SagSourceEvent).filter(SagSourceEvent.tenant_id == tenant_id)
+        event_query = self._db.query(KgSourceEvent).filter(KgSourceEvent.tenant_id == tenant_id)
         if document_ids:
-            event_query = event_query.filter(SagSourceEvent.document_id.in_(document_ids))
+            event_query = event_query.filter(KgSourceEvent.document_id.in_(document_ids))
         events = event_query.all()
         if events and bool(getattr(settings, "EVENT_VECTOR_ENABLED", True)):
             self._index_event_vectors(events)
@@ -483,8 +485,8 @@ class Indexer:
             return
 
         entity_id_rows = (
-            self._db.query(SagEventEntity.entity_id)
-            .filter(SagEventEntity.event_id.in_(event_ids))
+            self._db.query(KgEventEntity.entity_id)
+            .filter(KgEventEntity.event_id.in_(event_ids))
             .distinct()
             .all()
         )
@@ -493,8 +495,8 @@ class Indexer:
             return
 
         entities = (
-            self._db.query(SagEntity)
-            .filter(SagEntity.tenant_id == tenant_id, SagEntity.id.in_(entity_ids))
+            self._db.query(KgEntity)
+            .filter(KgEntity.tenant_id == tenant_id, KgEntity.id.in_(entity_ids))
             .all()
         )
         if entities and bool(getattr(settings, "ENTITY_VECTOR_ENABLED", True)):
@@ -642,20 +644,20 @@ class Indexer:
         normalized_name: str,
         type_: str,
         description: Optional[str] = None,
-    ) -> SagEntity:
+    ) -> KgEntity:
         existing = (
-            self._db.query(SagEntity)
+            self._db.query(KgEntity)
             .filter(
-                SagEntity.tenant_id == tenant_id,
-                SagEntity.normalized_name == normalized_name,
-                SagEntity.type == type_,
+                KgEntity.tenant_id == tenant_id,
+                KgEntity.normalized_name == normalized_name,
+                KgEntity.type == type_,
             )
             .first()
         )
         if existing:
             return existing
 
-        entity = SagEntity(
+        entity = KgEntity(
             tenant_id=tenant_id,
             name=name,
             normalized_name=normalized_name,
@@ -668,7 +670,7 @@ class Indexer:
         self._db.flush()
         return entity
 
-    def _index_event_vectors(self, events: Iterable[SagSourceEvent]) -> List[str]:
+    def _index_event_vectors(self, events: Iterable[KgSourceEvent]) -> List[str]:
         items: List[Dict[str, Any]] = []
         embeddings: List[List[float]] = []
         for ev in events:
@@ -695,10 +697,10 @@ class Indexer:
         try:
             return self._event_vector.add_vectors(items, embeddings=embeddings)
         except Exception as exc:
-            print(f"[WARN]  Failed to store SAG event vectors: {exc}")
+            print(f"[WARN]  Failed to store KG event vectors: {exc}")
             return []
 
-    def _index_entity_vectors(self, entities: Iterable[SagEntity]) -> List[str]:
+    def _index_entity_vectors(self, entities: Iterable[KgEntity]) -> List[str]:
         items: List[Dict[str, Any]] = []
         embeddings: List[List[float]] = []
         for ent in entities:
@@ -724,5 +726,5 @@ class Indexer:
         try:
             return self._entity_vector.add_vectors(items, embeddings=embeddings)
         except Exception as exc:
-            print(f"[WARN]  Failed to store SAG entity vectors: {exc}")
+            print(f"[WARN]  Failed to store KG entity vectors: {exc}")
             return []

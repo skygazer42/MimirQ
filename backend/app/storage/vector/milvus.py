@@ -283,6 +283,43 @@ class MilvusAdapter:
 _milvus_adapter_cache: Dict[Tuple[str, str, str], MilvusAdapter] = {}
 
 
+def resolve_collection_name(preferred: str, legacy: Optional[str] = None) -> str:
+    """
+    Resolve a Milvus collection name with an optional legacy fallback.
+
+    This helps smooth migrations where an old collection (e.g. `sag_*`) exists
+    but the new canonical collection (e.g. `kg_*`) hasn't been created yet.
+    """
+    if not legacy:
+        return preferred
+
+    try:
+        from pymilvus import connections, utility
+
+        # Ensure default connection exists (no-op if already connected).
+        try:
+            connections.connect(alias="default", **_get_milvus_connection_args())
+        except Exception:
+            # If already connected or connection fails, utility calls may still work;
+            # otherwise we'll fall back to preferred.
+            pass
+
+        if utility.has_collection(preferred):
+            return preferred
+        if utility.has_collection(legacy):
+            logger.warning(
+                "Milvus collection %s not found; using legacy collection %s (please migrate to %s).",
+                preferred,
+                legacy,
+                preferred,
+            )
+            return legacy
+    except Exception:
+        return preferred
+
+    return preferred
+
+
 def get_milvus_adapter(
     collection_name: str,
     *,
