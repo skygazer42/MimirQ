@@ -9,7 +9,7 @@ from app.rag.llm.models import LLMMessage, LLMRole
 from app.rag.kg.extraction.parser import EntityValueParser
 from app.rag.kg.utils import get_logger
 
-logger = get_logger("sag.extract.processor")
+logger = get_logger("kg.extract.processor")
 
 
 class EventProcessor:

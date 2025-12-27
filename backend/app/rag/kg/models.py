@@ -15,7 +15,7 @@ def _default_tenant() -> uuid.UUID:
 
 
 class SagEntity(Base):
-    """Entity table used by SAG pipelines."""
+    """Entity table used by KG pipelines (legacy: SAG)."""
 
     __tablename__ = "sag_entities"
 

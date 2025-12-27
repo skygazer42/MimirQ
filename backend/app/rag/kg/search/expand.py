@@ -11,7 +11,7 @@ from app.rag.kg.search.tracker import Tracker
 from app.rag.kg.repository import EntityRepository, EventRepository, get_session
 from app.rag.kg.utils import get_logger
 
-logger = get_logger("sag.search.expand")
+logger = get_logger("kg.search.expand")
 
 
 @dataclass

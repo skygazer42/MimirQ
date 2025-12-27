@@ -1,15 +1,15 @@
 from typing import List, Optional
 from uuid import UUID
 
-from app.rag.kg.schemas import SAGBaseModel
+from app.rag.kg.schemas import KGBaseModel
 
 
-class LoadBaseConfig(SAGBaseModel):
+class LoadBaseConfig(KGBaseModel):
     """Placeholder for compatibility."""
     path: str | None = None
 
 
-class LoadResult(SAGBaseModel):
+class LoadResult(KGBaseModel):
     """Placeholder result."""
     success: bool = True
 

@@ -1,59 +1,40 @@
 """
-SAG utilities and exceptions.
-Merged from sag/utils.py and sag/exceptions.py
+KG utilities and exceptions.
+
+Note:
+Historically this module was used as a shared place for logging and common
+exception types. As `kg` is now treated as a plugin under the `rag` package,
+the canonical definitions live in `app.rag.core`.
+
+This file remains as a compatibility layer for existing imports.
 """
-import logging
-from typing import Optional
 
+from __future__ import annotations
 
-def setup_logging(level: int = logging.INFO) -> None:
-    """Initialize basic logging once."""
-    logging.basicConfig(
-        level=level,
-        format="%(asctime)s [%(levelname)s] %(name)s - %(message)s",
-    )
+from app.rag.core import (
+    AIError,
+    ConfigError,
+    ExtractError,
+    LLMError,
+    LLMTimeoutError,
+    LoadError,
+    PromptError,
+    SearchError,
+    estimate_tokens,
+    get_logger,
+    setup_logging,
+)
 
-
-def get_logger(name: Optional[str] = None) -> logging.Logger:
-    """Return a configured logger."""
-    return logging.getLogger(name or "sag")
-
-
-def estimate_tokens(text: str) -> int:
-    """Rough token estimate used for guards; not exact."""
-    return max(1, len(text) // 4)
-
-
-# === Exceptions ===
-
-
-class ExtractError(Exception):
-    """Extraction failure."""
-
-
-class SearchError(Exception):
-    """Search failure."""
-
-
-class AIError(Exception):
-    """Generic AI/LLM error."""
-
-
-class ConfigError(Exception):
-    """Configuration missing or invalid."""
-
-
-class LLMError(Exception):
-    """LLM runtime error."""
-
-
-class LLMTimeoutError(LLMError):
-    """LLM timeout."""
-
-
-class LoadError(Exception):
-    """Document load failure."""
-
-
-class PromptError(Exception):
-    """Prompt template error."""
+__all__ = [
+    "setup_logging",
+    "get_logger",
+    "estimate_tokens",
+    "ExtractError",
+    "SearchError",
+    "AIError",
+    "ConfigError",
+    "LLMError",
+    "LLMTimeoutError",
+    "LoadError",
+    "PromptError",
+]

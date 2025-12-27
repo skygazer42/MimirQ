@@ -1,7 +1,6 @@
 """
 Factory for LLM and embedding clients backed by the existing project settings.
 """
-import os
 from typing import Any, Dict, Optional
 
 import httpx
@@ -9,32 +8,21 @@ from langchain_openai import ChatOpenAI
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 
 from app.core.config import settings
+from app.rag.core.http import httpx_trust_env
 from app.rag.llm.base import BaseLLMClient
 from app.rag.llm.models import LLMMessage, LLMResponse, LLMRole
-from app.rag.kg.utils import ConfigError, get_logger
+from app.rag.core.errors import ConfigError
+from app.rag.core.logging import get_logger
 from app.storage.vector.milvus import milvus_store
 
-logger = get_logger("sag.ai.factory")
+logger = get_logger("rag.llm.factory")
 
 
 class OpenAIChatClient(BaseLLMClient):
     """Thin wrapper around langchain_openai.ChatOpenAI to match BaseLLMClient."""
 
     def __init__(self, model_config: Optional[Dict[str, Any]] = None) -> None:
-        proxy_candidates = [
-            os.getenv("HTTPS_PROXY"),
-            os.getenv("HTTP_PROXY"),
-            os.getenv("ALL_PROXY"),
-            os.getenv("https_proxy"),
-            os.getenv("http_proxy"),
-            os.getenv("all_proxy"),
-        ]
-        proxies = [p for p in proxy_candidates if p]
-        trust_env = True
-        socks_proxy = next((p for p in proxies if p and p.lower().startswith("socks")), None)
-        if socks_proxy:
-            logger.warning("Ignoring SOCKS proxy for LLM: %s", socks_proxy)
-            trust_env = False
+        trust_env = httpx_trust_env(logger=logger)
 
         cfg = model_config or {}
         model_name = cfg.get("model") or settings.LLM_MODEL

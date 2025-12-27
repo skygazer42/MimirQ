@@ -1,4 +1,4 @@
-"""SAG load module."""
+"""KG load module."""
 from app.rag.kg.loading.processor import DocumentProcessor
 from app.rag.kg.loading.config import LoadBaseConfig, LoadResult, DocumentLoadConfig, ConversationLoadConfig
 
