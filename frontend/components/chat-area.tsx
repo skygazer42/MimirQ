@@ -4,6 +4,7 @@
 'use client'
 
 import { useState, useRef, useEffect } from 'react'
+import Image from 'next/image'
 import { Send, Loader2, StopCircle, Sparkles, Database, Wand2 } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
@@ -13,6 +14,7 @@ import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import type { Message, Citation } from '@/types'
 import { promptTemplateApi, PromptTemplate } from '@/lib/api-client'
+import { toAbsoluteBackendUrl } from '@/lib/env'
 import {
   Select,
   SelectContent,
@@ -20,8 +22,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
 
 export function ChatArea() {
   const [inputValue, setInputValue] = useState('')
@@ -307,14 +307,17 @@ function MessageItem({
                   const resolved = raw
                     ? raw.startsWith('http')
                       ? raw
-                      : `${API_BASE_URL}${raw}`
+                      : toAbsoluteBackendUrl(raw)
                     : ''
+                  if (!resolved) return null
                   return (
-                    <img
+                    <Image
                       src={resolved}
                       alt={alt || 'image'}
-                      loading="lazy"
-                      className="my-2 w-full max-h-96 object-contain rounded-lg border border-slate-200/70 dark:border-slate-700 bg-white dark:bg-slate-900"
+                      width={1200}
+                      height={800}
+                      unoptimized
+                      className="my-2 w-full h-auto max-h-96 object-contain rounded-lg border border-slate-200/70 dark:border-slate-700 bg-white dark:bg-slate-900"
                     />
                   )
                 },
@@ -365,10 +368,11 @@ function CitationCard({
   citation: Citation
   index: number
 }) {
+  const [hideImage, setHideImage] = useState(false)
   const imgUrl = citation.img_url
     ? citation.img_url.startsWith('http')
       ? citation.img_url
-      : `${API_BASE_URL}${citation.img_url}`
+      : toAbsoluteBackendUrl(citation.img_url)
     : null
 
   return (
@@ -382,7 +386,7 @@ function CitationCard({
             {citation.document_name}
           </p>
           <p className="text-slate-500 dark:text-slate-400 mt-1 line-clamp-2 leading-relaxed group-hover:text-slate-600 dark:group-hover:text-slate-300">
-            "{citation.chunk_content}"
+            &quot;{citation.chunk_content}&quot;
           </p>
           <div className="flex items-center gap-2 mt-2">
             <span className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-400 dark:text-slate-500 px-1.5 py-0.5 rounded text-[10px] group-hover:border-indigo-100 dark:group-hover:border-indigo-800 group-hover:text-indigo-400 transition-colors">
@@ -393,7 +397,7 @@ function CitationCard({
             )}
           </div>
 
-          {citation.has_image && imgUrl && (
+          {citation.has_image && imgUrl && !hideImage && (
             <div className="mt-2">
               <a
                 href={imgUrl}
@@ -401,14 +405,14 @@ function CitationCard({
                 rel="noopener noreferrer"
                 className="block"
               >
-                <img
+                <Image
                   src={imgUrl}
                   alt="引用图片"
-                  loading="lazy"
-                  className="w-full max-h-48 object-contain rounded-md border border-slate-200/70 dark:border-slate-700 bg-white dark:bg-slate-900"
-                  onError={(e) => {
-                    e.currentTarget.style.display = 'none'
-                  }}
+                  width={800}
+                  height={600}
+                  unoptimized
+                  className="w-full h-auto max-h-48 object-contain rounded-md border border-slate-200/70 dark:border-slate-700 bg-white dark:bg-slate-900"
+                  onError={() => setHideImage(true)}
                 />
               </a>
             </div>

@@ -1,6 +1,7 @@
 """
 FastAPI 主应用入口
 """
+import logging
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
@@ -13,12 +14,14 @@ from app.rag.retriever import hybrid_retriever
 from app.models.document import DocumentChunk, Document as DBDocument
 from app.storage.vector.milvus import milvus_store
 from app.storage.object.minio import minio_service
-# Ensure SAG models are registered for metadata creation
+# Ensure KG models are registered for metadata creation
 import app.rag.kg.models  # noqa: F401
 # Ensure evaluation models are registered for metadata creation
 import app.models.evaluation  # noqa: F401
 # Ensure feedback models are registered for metadata creation
 import app.models.feedback  # noqa: F401
+
+logger = logging.getLogger("mimirq")
 
 
 # 生命周期管理
@@ -26,45 +29,61 @@ import app.models.feedback  # noqa: F401
 async def lifespan(app: FastAPI):
     """应用启动和关闭时的操作"""
     # 启动时：创建数据库表
-    print("[*] Starting MimirQ backend...")
-    # Best-effort runtime migrations (including SAG->KG renames) should run
-    # before `create_all()` to avoid creating new empty `kg_*` tables.
+    logger.info("Starting MimirQ backend...")
+    # Best-effort runtime migrations run before/after `create_all()`:
+    # - before: upgrade existing deployments early (best-effort)
+    # - after: ensure fresh tables get latest columns/indexes
     apply_runtime_migrations(engine)
 
-    print("[*] Creating database tables...")
+    logger.info("Creating database tables...")
     Base.metadata.create_all(bind=engine)
     apply_runtime_migrations(engine)
-    print("[OK] Database initialized")
+    logger.info("Database initialized")
 
     # 初始化 BM25 索引
-    print("[*] Initializing BM25 index...")
+    logger.info("Initializing BM25 index...")
     db = SessionLocal()
-    tenant_ids = db.query(DocumentChunk.tenant_id).join(DBDocument).filter(
-        DBDocument.status == 'completed'
-    ).distinct().all()
+    try:
+        tenant_ids = (
+            db.query(DocumentChunk.tenant_id)
+            .join(DBDocument)
+            .filter(DBDocument.status == "completed")
+            .distinct()
+            .all()
+        )
 
-    if tenant_ids:
-        total = 0
-        for (tid,) in tenant_ids:
-            chunks = db.query(DocumentChunk).join(DBDocument).filter(
-                DBDocument.status == 'completed',
-                DocumentChunk.tenant_id == tid
-            ).all()
-            if chunks:
-                hybrid_retriever.build_bm25_index(chunks, tenant_id=tid)
-                total += len(chunks)
-        if total:
-            print(f"[OK] BM25 index loaded with {total} chunks across {len(tenant_ids)} tenants")
+        if tenant_ids:
+            total = 0
+            for (tid,) in tenant_ids:
+                chunks = (
+                    db.query(DocumentChunk)
+                    .join(DBDocument)
+                    .filter(
+                        DBDocument.status == "completed",
+                        DocumentChunk.tenant_id == tid,
+                    )
+                    .all()
+                )
+                if chunks:
+                    hybrid_retriever.build_bm25_index(chunks, tenant_id=tid)
+                    total += len(chunks)
+            if total:
+                logger.info(
+                    "BM25 index loaded with %s chunks across %s tenants",
+                    total,
+                    len(tenant_ids),
+                )
+            else:
+                logger.warning("No documents found, BM25 index will be built on first upload")
         else:
-            print("[WARN]  No documents found, BM25 index will be built on first upload")
-    else:
-        print("[WARN]  No documents found, BM25 index will be built on first upload")
-    db.close()
+            logger.warning("No documents found, BM25 index will be built on first upload")
+    finally:
+        db.close()
 
     yield
 
     # 关闭时的清理操作
-    print("[*] Shutting down MimirQ backend...")
+    logger.info("Shutting down MimirQ backend...")
 
 
 # 创建 FastAPI 应用
@@ -101,19 +120,38 @@ async def root():
 @app.get("/health")
 async def health_check():
     """健康检查"""
+    from sqlalchemy import text
+
+    db_status = {"status": "disconnected"}
+    db = SessionLocal()
+    try:
+        db.execute(text("SELECT 1"))
+        db_status["status"] = "connected"
+    except Exception as exc:
+        db_status["error"] = str(exc)[:200]
+    finally:
+        db.close()
+
     milvus_status = {"status": "disconnected", "count": None}
-    milvus_status["count"] = milvus_store.get_collection_count()
-    milvus_status["status"] = "connected"
+    try:
+        milvus_status["count"] = milvus_store.get_collection_count()
+        milvus_status["status"] = "connected"
+    except Exception as exc:
+        milvus_status["error"] = str(exc)[:200]
 
     minio_status = {"status": "disabled"}
     if settings.MINIO_ENABLED:
-        minio_service._get_client()
-        minio_status["status"] = "connected"
-        minio_status["bucket"] = settings.MINIO_BUCKET_NAME
+        try:
+            minio_service._get_client()
+            minio_status["status"] = "connected"
+            minio_status["bucket"] = settings.MINIO_BUCKET_NAME
+        except Exception as exc:
+            minio_status["status"] = "disconnected"
+            minio_status["error"] = str(exc)[:200]
 
     return {
         "status": "healthy",
-        "database": "connected",
+        "database": db_status,
         "milvus": milvus_status,
         "minio": minio_status,
     }

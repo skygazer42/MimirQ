@@ -49,7 +49,3 @@ class KGSearcher:
             "clues": (expand_result.clues or []) + (rerank_result.clues or []),
             "stats": rerank_result.stats,
         }
-
-
-# Backward-compatible alias (SAG -> KG)
-SAGSearcher = KGSearcher

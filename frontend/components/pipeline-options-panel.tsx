@@ -14,7 +14,7 @@ type PipelineOptionsPanelProps = {
 
 export function PipelineOptionsPanel({ className, compact }: PipelineOptionsPanelProps) {
   const { enabled, options, setEnabled, updateOption } = usePipelineOptions()
-  const sagEnabled = !!options.sag_enabled
+  const kgEnabled = !!options.kg_enabled
   const governanceEnabled = !!options.governance_enabled
   const governanceDisabled = !enabled || !governanceEnabled
 
@@ -54,21 +54,21 @@ export function PipelineOptionsPanel({ className, compact }: PipelineOptionsPane
       icon: Network,
       items: [
         {
-          key: 'sag_enabled',
-          label: 'SAG 事件抽取',
-          hint: '抽取事件/实体用于 KG 检索',
+          key: 'kg_enabled',
+          label: 'KG 事件抽取',
+          hint: '抽取事件/实体用于知识图谱检索',
         },
         {
           key: 'event_vector_enabled',
           label: '事件向量索引',
           hint: '事件嵌入写入向量库',
-          dependsOn: 'sag_enabled',
+          dependsOn: 'kg_enabled',
         },
         {
           key: 'entity_vector_enabled',
           label: '实体向量索引',
           hint: '实体嵌入写入向量库',
-          dependsOn: 'sag_enabled',
+          dependsOn: 'kg_enabled',
         },
       ],
     },
@@ -185,8 +185,8 @@ export function PipelineOptionsPanel({ className, compact }: PipelineOptionsPane
 
               <div className="space-y-2">
                 {group.items.map((item) => {
-                  const depends = item.dependsOn === 'sag_enabled'
-                  const disabled = !enabled || (depends && !sagEnabled)
+                  const depends = item.dependsOn === 'kg_enabled'
+                  const disabled = !enabled || (depends && !kgEnabled)
                   const checked = !!options[item.key as keyof typeof options]
                   return (
                     <label
@@ -282,10 +282,10 @@ export function PipelineOptionsPanel({ className, compact }: PipelineOptionsPane
                 </details>
               )}
 
-              {group.title === '知识图谱' && !sagEnabled && (
+              {group.title === '知识图谱' && !kgEnabled && (
                 <div className={cn("mt-2 flex items-center gap-2 text-gray-400", descClasses)}>
                   <Sparkles className="h-3 w-3" />
-                  事件/实体索引需先开启 SAG
+                  事件/实体索引需先开启 KG
                 </div>
               )}
             </div>

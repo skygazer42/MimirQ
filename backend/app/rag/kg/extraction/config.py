@@ -15,5 +15,5 @@ class ExtractConfig(KGBaseModel):
     source_config_id: Optional[str] = None
 
 
-# Alias for compatibility with upstream SAG
+# Legacy compatibility alias
 ExtractBaseConfig = ExtractConfig

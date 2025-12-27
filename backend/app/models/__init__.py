@@ -4,7 +4,7 @@
 from app.models.document import Document, DocumentChunk
 from app.models.chat import Conversation, Message
 from app.models.tenant import Tenant, TenantMember
-from app.rag.kg.models import SagEntity, SagSourceEvent, SagEventEntity
+from app.rag.kg.models import KgEntity, KgSourceEvent, KgEventEntity
 from app.models.dataset import Dataset, DatasetPermission, DatasetPermissionEnum
 from app.models.evaluation import RagasEvaluationRun, RagasEvaluationItem
 from app.models.prompt_template import PromptTemplate
@@ -19,9 +19,9 @@ __all__ = [
     "Dataset",
     "DatasetPermission",
     "DatasetPermissionEnum",
-    "SagEntity",
-    "SagSourceEvent",
-    "SagEventEntity",
+    "KgEntity",
+    "KgSourceEvent",
+    "KgEventEntity",
     "RagasEvaluationRun",
     "RagasEvaluationItem",
     "PromptTemplate",

@@ -44,9 +44,9 @@ const CATEGORY_INFO: Record<ProviderCategory, { title: string; description: stri
 // 功能开关配置
 const FEATURE_FLAGS_CONFIG = [
   {
-    key: 'sag_enabled' as keyof FeatureFlags,
-    name: 'SAG 知识抽取',
-    description: '启用 Structured Analytical Generation，自动抽取文档中的实体和事件',
+    key: 'kg_enabled' as keyof FeatureFlags,
+    name: 'KG 知识抽取',
+    description: '启用知识图谱抽取，自动抽取文档中的实体和事件',
     icon: Sparkles,
     color: 'purple',
     dependencies: ['Milvus', 'LLM'],

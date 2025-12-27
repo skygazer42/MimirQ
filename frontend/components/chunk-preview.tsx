@@ -291,7 +291,7 @@ export function ChunkPreview({ onConfirm, onClose }: ChunkPreviewProps) {
             chunk_overlap: chunkOverlap,
             chunk_vector_enabled: pipelineOptions.chunk_vector_enabled,
             bm25_index_enabled: pipelineOptions.bm25_index_enabled,
-            sag_enabled: pipelineOptions.sag_enabled,
+            kg_enabled: pipelineOptions.kg_enabled,
             event_vector_enabled: pipelineOptions.event_vector_enabled,
             entity_vector_enabled: pipelineOptions.entity_vector_enabled,
           }

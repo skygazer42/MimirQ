@@ -1,5 +1,5 @@
 """
-Core LLM data models used by RAG and SAG/KG pipelines.
+Core LLM data models used by RAG and KG pipelines.
 """
 
 from dataclasses import dataclass

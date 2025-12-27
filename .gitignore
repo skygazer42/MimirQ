@@ -43,6 +43,7 @@ backend/chroma_db/
 frontend/.next/
 *.sqlite
 *.db
+*.tsbuildinfo
 
 # Docker
 .dockerignore

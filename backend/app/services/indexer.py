@@ -131,8 +131,8 @@ class Indexer:
 
     def __init__(self, db: Session):
         self._db = db
-        event_collection = resolve_collection_name("kg_events", legacy="sag_events")
-        entity_collection = resolve_collection_name("kg_entities", legacy="sag_entities")
+        event_collection = resolve_collection_name("kg_events")
+        entity_collection = resolve_collection_name("kg_entities")
         self._event_vector = get_milvus_adapter(collection_name=event_collection, vector_field="embedding")
         self._entity_vector = get_milvus_adapter(collection_name=entity_collection, vector_field="embedding")
 

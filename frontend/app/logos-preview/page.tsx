@@ -170,7 +170,7 @@ export default function LogosPreviewPage() {
           <ul className="text-sm text-blue-800 space-y-1">
             <li>• 所有 Logo 使用 SVG 格式,支持任意缩放</li>
             <li>• 图标路径: <code className="bg-blue-100 px-1 rounded">/public/logos/</code></li>
-            <li>• 组件: <code className="bg-blue-100 px-1 rounded">&lt;ProviderIcon providerId="openai" /&gt;</code></li>
+            <li>• 组件: <code className="bg-blue-100 px-1 rounded">&lt;ProviderIcon providerId=&quot;openai&quot; /&gt;</code></li>
             <li>• 建议尺寸: 24px (小)、32px (中)、48px (大)</li>
             <li>• 如需替换,访问 <code className="bg-blue-100 px-1 rounded">/public/logos/README.md</code> 查看指南</li>
           </ul>

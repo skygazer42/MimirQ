@@ -18,22 +18,6 @@ def apply_runtime_migrations(engine) -> None:
         if engine.dialect.name != "postgresql":
             return
         ddl_statements = [
-            # --- 2025-12-27: SAG -> KG table rename (best-effort, idempotent) ---
-            # Run this BEFORE `create_all()` to avoid creating empty `kg_*` tables.
-            """
-            DO $$
-            BEGIN
-              IF to_regclass('public.kg_entities') IS NULL AND to_regclass('public.sag_entities') IS NOT NULL THEN
-                ALTER TABLE public.sag_entities RENAME TO kg_entities;
-              END IF;
-              IF to_regclass('public.kg_source_events') IS NULL AND to_regclass('public.sag_source_events') IS NOT NULL THEN
-                ALTER TABLE public.sag_source_events RENAME TO kg_source_events;
-              END IF;
-              IF to_regclass('public.kg_event_entities') IS NULL AND to_regclass('public.sag_event_entities') IS NOT NULL THEN
-                ALTER TABLE public.sag_event_entities RENAME TO kg_event_entities;
-              END IF;
-            END $$;
-            """,
             # Store per-message run metadata (metrics/request_id/route/etc.)
             'ALTER TABLE messages ADD COLUMN IF NOT EXISTS message_metadata JSONB;',
             # Common query pattern: tenant + conversation timeline

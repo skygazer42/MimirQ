@@ -59,7 +59,7 @@ export interface DocumentPipelineOptions {
   chunk_overlap?: number
   chunk_vector_enabled?: boolean
   bm25_index_enabled?: boolean
-  sag_enabled?: boolean
+  kg_enabled?: boolean
   event_vector_enabled?: boolean
   entity_vector_enabled?: boolean
 }
@@ -295,22 +295,22 @@ export interface MessageFeedbackListResponse {
   items: MessageFeedback[]
 }
 
-// ==================== SAG 相关类型 ====================
+// ==================== KG 相关类型 ====================
 
-export interface SAGExtractResponse {
+export interface KGExtractResponse {
   document_id: string
   chunk_count: number
   event_count: number
   message: string
 }
 
-export interface SAGSearchRequest {
+export interface KGSearchRequest {
   query: string
   tenant_id?: string
   document_ids?: string[]
 }
 
-export interface SAGSearchResponse {
+export interface KGSearchResponse {
   result: Record<string, any>
   query: string
 }

@@ -7,12 +7,15 @@
 cd /data/temp34/MimirQ
 ```
 
-### 2. 配置 OpenAI API Key
+### 2. 配置模型 API Key
 
-编辑 `backend/.env` 文件，填入你的 API Key：
+初始化并编辑 `backend/.env` 文件，填入你的模型配置（OpenAI-compatible）：
 
 ```env
-OPENAI_API_KEY=sk-your-openai-api-key-here
+LLM_API_KEY=sk-your-api-key-here
+# 可选：自定义 Base URL（OpenAI-compatible）
+# LLM_API_BASE=https://api.openai.com/v1
+# LLM_MODEL=gpt-4o-mini
 ```
 
 ### 3. 启动服务
@@ -98,11 +101,11 @@ SIMILARITY_THRESHOLD: float = 0.7  # 提高可过滤低质量结果
 编辑 `backend/app/core/config.py`:
 
 ```python
-# 使用 GPT-3.5 (更便宜)
-OPENAI_MODEL: str = "gpt-3.5-turbo"
+# 使用轻量模型（更便宜）
+LLM_MODEL: str = "gpt-4o-mini"
 
-# 使用 GPT-4 (更强大)
-OPENAI_MODEL: str = "gpt-4-turbo-preview"
+# 使用更强模型
+LLM_MODEL: str = "gpt-4o"
 ```
 
 ### 使用 Claude 替代 OpenAI

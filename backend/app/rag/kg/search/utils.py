@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Sequence
 
-from app.rag.kg.models import SagSourceEvent
+from app.rag.kg.models import KgSourceEvent
 
 
 def cosine_similarity(a: List[float], b: List[float]) -> float:
@@ -17,7 +17,7 @@ def cosine_similarity(a: List[float], b: List[float]) -> float:
 
 
 def format_events(
-    events: Sequence[SagSourceEvent],
+    events: Sequence[KgSourceEvent],
     scores: Dict[str, float],
     limit: int,
 ) -> List[Dict[str, Any]]:

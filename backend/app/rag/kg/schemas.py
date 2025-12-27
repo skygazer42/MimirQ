@@ -32,10 +32,3 @@ class KGSearchResponse(BaseModel):
 
     result: Dict[str, Any]
     query: str
-
-
-# Backward-compatible aliases (SAG -> KG)
-SAGBaseModel = KGBaseModel
-SAGExtractResponse = KGExtractResponse
-SAGSearchRequest = KGSearchRequest
-SAGSearchResponse = KGSearchResponse

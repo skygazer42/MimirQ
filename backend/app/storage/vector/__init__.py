@@ -3,7 +3,7 @@ Vector storage backends.
 
 Exports:
 - MilvusVectorStore: Singleton for document vectors
-- MilvusAdapter: Multi-instance adapter for custom collections (SAG)
+- MilvusAdapter: Multi-instance adapter for custom collections (KG)
 - get_milvus_adapter: Cached adapter factory for custom collections
 - get_vector_store: Factory function from factory.py
 """

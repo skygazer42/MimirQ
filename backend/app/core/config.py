@@ -121,9 +121,8 @@ class Settings(BaseSettings):
     LLAMA_INDEX_ENABLED: bool = False
     # Knowledge Graph (KG) feature flags.
     # Canonical env names: KG_ENABLED / KG_CHAT_ENABLED
-    # Backward-compatible env aliases: SAG_ENABLED / SAG_CHAT_ENABLED
-    KG_ENABLED: bool = Field(default=False, validation_alias=AliasChoices("KG_ENABLED", "SAG_ENABLED"))
-    KG_CHAT_ENABLED: bool = Field(default=False, validation_alias=AliasChoices("KG_CHAT_ENABLED", "SAG_CHAT_ENABLED"))
+    KG_ENABLED: bool = False
+    KG_CHAT_ENABLED: bool = False
     CHAT_HISTORY_WINDOW: int = 5
     LONG_TERM_MEMORY_ENABLED: bool = False
     LONG_TERM_MEMORY_TOP_K: int = 3
@@ -142,14 +141,5 @@ class Settings(BaseSettings):
         case_sensitive=True,
         extra="ignore",
     )
-
-    @property
-    def SAG_ENABLED(self) -> bool:
-        return self.KG_ENABLED
-
-    @property
-    def SAG_CHAT_ENABLED(self) -> bool:
-        return self.KG_CHAT_ENABLED
-
 
 settings = Settings()
