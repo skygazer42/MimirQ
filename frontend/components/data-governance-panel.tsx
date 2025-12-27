@@ -112,18 +112,11 @@ export function DataGovernancePanel() {
   const selectedFile = files.find((f) => f.id === selectedFileId) || null
   const governanceState = selectedFileId ? governanceStates[selectedFileId] : null
 
-  // 初始化：自动选择第一个文件
-  useEffect(() => {
-    if (isLoaded && files.length > 0 && !selectedFileId) {
-      setSelectedFileId(files[0].id)
-      initializeGovernanceState(files[0])
-    }
-  }, [isLoaded, files, selectedFileId])
-
   // 初始化文件治理状态
   const initializeGovernanceState = useCallback((file: { id: string; markdownContent: string }) => {
-    if (!governanceStates[file.id]) {
-      setGovernanceStates((prev) => ({
+    setGovernanceStates((prev) => {
+      if (prev[file.id]) return prev
+      return {
         ...prev,
         [file.id]: {
           id: file.id,
@@ -136,9 +129,17 @@ export function DataGovernancePanel() {
           issues: [],
           isModified: false,
         },
-      }))
+      }
+    })
+  }, [])
+
+  // 初始化：自动选择第一个文件
+  useEffect(() => {
+    if (isLoaded && files.length > 0 && !selectedFileId) {
+      setSelectedFileId(files[0].id)
+      initializeGovernanceState(files[0])
     }
-  }, [governanceStates])
+  }, [isLoaded, files, selectedFileId, initializeGovernanceState])
 
   // 获取当前显示内容
   const displayContent = useMemo(() => {

@@ -3,10 +3,9 @@ Settings API - 系统配置管理
 支持读取和更新 .env 配置
 """
 from fastapi import APIRouter, HTTPException
-from pydantic import AliasChoices, BaseModel, Field
+from pydantic import BaseModel
 from typing import Optional, Dict, Any
 from pathlib import Path
-import os
 
 from app.core.config import settings
 
@@ -18,7 +17,7 @@ ENV_FILE = Path(__file__).parent.parent.parent.parent / ".env"
 
 class FeatureFlags(BaseModel):
     """功能开关"""
-    kg_enabled: bool = Field(default=False, validation_alias=AliasChoices("kg_enabled", "sag_enabled"))
+    kg_enabled: bool = False
     deepdoc_enabled: bool = False
     markitdown_enabled: bool = False
     llama_index_enabled: bool = False

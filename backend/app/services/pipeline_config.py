@@ -120,7 +120,7 @@ def parse_pipeline_from_metadata(metadata: Dict[str, Any]) -> PipelineOptions:
         chunk_overlap=_coerce_int(pipeline.get("chunk_overlap")),
         chunk_vector_enabled=_coerce_bool(index.get("chunk_vector_enabled")),
         bm25_index_enabled=_coerce_bool(index.get("bm25_index_enabled")),
-        kg_enabled=_coerce_bool(index.get("kg_enabled")) if "kg_enabled" in index else _coerce_bool(index.get("sag_enabled")),
+        kg_enabled=_coerce_bool(index.get("kg_enabled")),
         event_vector_enabled=_coerce_bool(index.get("event_vector_enabled")),
         entity_vector_enabled=_coerce_bool(index.get("entity_vector_enabled")),
     )

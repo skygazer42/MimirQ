@@ -20,7 +20,7 @@ const DEFAULT_OPTIONS: DocumentPipelineOptions = {
   chunk_overlap: 200,
   chunk_vector_enabled: true,
   bm25_index_enabled: true,
-  sag_enabled: false,
+  kg_enabled: false,
   event_vector_enabled: true,
   entity_vector_enabled: true,
 }
@@ -80,7 +80,7 @@ const normalizeOptions = (raw: any): DocumentPipelineOptions => {
     chunk_overlap: toInt(raw.chunk_overlap) ?? DEFAULT_OPTIONS.chunk_overlap,
     chunk_vector_enabled: toBool(raw.chunk_vector_enabled) ?? DEFAULT_OPTIONS.chunk_vector_enabled,
     bm25_index_enabled: toBool(raw.bm25_index_enabled) ?? DEFAULT_OPTIONS.bm25_index_enabled,
-    sag_enabled: toBool(raw.sag_enabled) ?? DEFAULT_OPTIONS.sag_enabled,
+    kg_enabled: toBool(raw.kg_enabled) ?? DEFAULT_OPTIONS.kg_enabled,
     event_vector_enabled: toBool(raw.event_vector_enabled) ?? DEFAULT_OPTIONS.event_vector_enabled,
     entity_vector_enabled: toBool(raw.entity_vector_enabled) ?? DEFAULT_OPTIONS.entity_vector_enabled,
   }

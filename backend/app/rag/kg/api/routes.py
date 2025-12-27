@@ -1,6 +1,6 @@
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Response
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
@@ -16,27 +16,16 @@ from app.rag.kg.pipeline import extract_events, kg_search
 router = APIRouter()
 
 
-def deprecate_sag_alias(response: Response) -> None:
-    """
-    Marks `/sag` routes as deprecated aliases of `/kg`.
-
-    This is intended to be applied via `include_router(..., dependencies=[...])`
-    only for the `/sag` prefix.
-    """
-    response.headers["Deprecation"] = "true"
-    response.headers["X-MimirQ-Deprecated-Alias"] = "Use /api/v1/kg (preferred) instead of /api/v1/sag"
-
-
 def _ensure_enabled():
     if not settings.KG_ENABLED:
         raise HTTPException(
             status_code=503,
-            detail="KG is disabled. Set KG_ENABLED=true (alias: SAG_ENABLED) in your environment to enable it.",
+            detail="KG is disabled. Set KG_ENABLED=true in your environment to enable it.",
         )
 
 
 @router.post("/documents/{document_id}/extract", response_model=KGExtractResponse)
-async def run_sag_extraction_for_document(
+async def run_kg_extraction_for_document(
     document_id: UUID,
     tenant_id: UUID = Depends(get_tenant_id),
     account_id: str = Depends(get_current_account_id),
@@ -88,7 +77,7 @@ async def run_sag_extraction_for_document(
 
 
 @router.post("/search", response_model=KGSearchResponse)
-async def run_sag_search(
+async def run_kg_search(
     payload: KGSearchRequest,
     tenant_id: UUID = Depends(get_tenant_id),
     account_id: str = Depends(get_current_account_id),

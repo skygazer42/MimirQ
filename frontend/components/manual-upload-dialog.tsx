@@ -3,7 +3,7 @@
  */
 'use client'
 
-import { useState, useMemo, ChangeEvent, useRef, useEffect } from 'react'
+import { useState, useMemo, ChangeEvent, useRef, useEffect, useCallback } from 'react'
 import { Upload, Loader2, FileText, Settings2, Scissors, AlignJustify, Hash, FileType } from 'lucide-react'
 
 import {
@@ -83,7 +83,7 @@ export function ManualUploadDialog({ onUploaded }: ManualUploadDialogProps) {
     }
   }
 
-  const buildChunks = (): ManualChunk[] => {
+  const buildChunks = useCallback((): ManualChunk[] => {
     if (!preview) return []
 
     const segments = preview.segments || []
@@ -166,12 +166,9 @@ export function ManualUploadDialog({ onUploaded }: ManualUploadDialogProps) {
     }
 
     return []
-  }
-
-  const chunkPreview = useMemo<ManualChunk[]>(() => {
-    if (!preview) return []
-    return buildChunks()
   }, [preview, mode, chunkSize, chunkOverlap, delimiter])
+
+  const chunkPreview = useMemo<ManualChunk[]>(() => buildChunks(), [buildChunks])
 
   const handleSubmit = async () => {
     if (!preview) return
@@ -202,7 +199,7 @@ export function ManualUploadDialog({ onUploaded }: ManualUploadDialogProps) {
             chunk_overlap: chunkOverlap,
             chunk_vector_enabled: pipelineOptions.chunk_vector_enabled,
             bm25_index_enabled: pipelineOptions.bm25_index_enabled,
-            sag_enabled: pipelineOptions.sag_enabled,
+            kg_enabled: pipelineOptions.kg_enabled,
             event_vector_enabled: pipelineOptions.event_vector_enabled,
             entity_vector_enabled: pipelineOptions.entity_vector_enabled,
           }

@@ -171,7 +171,7 @@ function EvaluationsPageContent() {
     }
   }
 
-  const summary = runDetail?.run?.summary || {}
+  const summary = useMemo(() => runDetail?.run?.summary || {}, [runDetail?.run?.summary])
   const displayMetrics = useMemo(() => {
     const ignore = new Set(['items', 'total_tokens', 'total_cost'])
     return Object.entries(summary)

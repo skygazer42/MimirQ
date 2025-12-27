@@ -19,7 +19,7 @@ class EntityRepository:
 
     def __init__(self, session: Session):
         self.session = session
-        collection = resolve_collection_name("kg_entities", legacy="sag_entities")
+        collection = resolve_collection_name("kg_entities")
         self._milvus = get_milvus_adapter(collection_name=collection, vector_field="embedding")
 
     def search_similar(
@@ -102,7 +102,7 @@ class EventRepository:
 
     def __init__(self, session: Session):
         self.session = session
-        collection = resolve_collection_name("kg_events", legacy="sag_events")
+        collection = resolve_collection_name("kg_events")
         self._milvus = get_milvus_adapter(collection_name=collection, vector_field="embedding")
 
     def link_event_entities(

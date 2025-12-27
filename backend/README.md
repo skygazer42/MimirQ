@@ -13,10 +13,9 @@ app/
 ├── governance/       # 数据治理（Markdown 清洗/规则）
 ├── storage/          # 存储模块
 ├── rag/              # RAG 引擎模块
+│   └── kg/           # 知识图谱模块（事件/实体/关系）
 ├── evaluation/       # 评估模块
 ├── services/         # 业务服务
-├── kg/               # SAG/KG 图谱模块（事件/实体/关系）
-├── sag/              # `app.kg` 的别名（仅兼容/语义）
 └── main.py           # 应用入口
 ```
 
@@ -36,7 +35,7 @@ from app.api.v1 import router
 - `v1/datasets.py` - 数据集管理
 - `v1/pipeline.py` - 解析流水线
 - `v1/evaluations.py` - 评估接口
-- `v1/__init__.py` - 路由聚合（包含 `/kg/*` 与 `/sag/*` 别名）
+- `v1/__init__.py` - 路由聚合（包含 `/kg/*`）
 
 ### 2. core/ - 核心配置
 
@@ -130,7 +129,7 @@ await document_processor.process_document(file_path, doc_id, tenant_id)
 **可选 pipeline 参数（每文档覆盖默认配置）：**
 - `governance_enabled` / `chunk_size` / `chunk_overlap`
 - `chunk_vector_enabled` / `bm25_index_enabled`
-- `sag_enabled` / `event_vector_enabled` / `entity_vector_enabled`
+- `kg_enabled` / `event_vector_enabled` / `entity_vector_enabled`
 
 **子模块：**
 - `quality/` - PDF 质量评估、OCR 验证
@@ -230,11 +229,11 @@ from app.services.prompt_template_selector import select_prompt_template
 - `metrics_logger.py` - 指标日志
 - `mineru_service.py` - MinerU API 客户端
 - `indexer.py` - 统一索引器（chunk/event 入库、重建、删除）
-- `sag_pipeline.py` - SAG 流程
+- `pipeline_config.py` - 文档级 pipeline 配置解析/合并
 
-### 11. sag/ - SAG 图谱模块
+### 11. rag/kg/ - 知识图谱模块
 
-结构化分析图谱（SAG）功能。
+知识图谱（KG）功能：从文档 chunks 抽取事件/实体，并提供图谱检索能力。
 
 ## 依赖关系
 

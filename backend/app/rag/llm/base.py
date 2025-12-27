@@ -10,7 +10,7 @@ logger = get_logger("rag.llm.base")
 
 
 class BaseLLMClient(ABC):
-    """Abstract LLM client used by SAG/KG algorithms."""
+    """Abstract LLM client used by RAG/KG algorithms."""
 
     @abstractmethod
     async def chat(

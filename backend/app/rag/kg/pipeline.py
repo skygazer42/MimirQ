@@ -1,6 +1,6 @@
 """
 Facade to run KG extraction + search inside the existing backend.
-KG module can be toggled via settings.KG_ENABLED (env: KG_ENABLED / SAG_ENABLED).
+KG module can be toggled via settings.KG_ENABLED (env: KG_ENABLED).
 """
 from typing import Dict, Iterable, List, Optional, Sequence
 from uuid import UUID
@@ -18,7 +18,7 @@ def _load_engine() -> KGEngine:
     if _engine is not None:
         return _engine
     if not settings.KG_ENABLED:
-        raise RuntimeError("KG plugin is disabled. Set KG_ENABLED=true (alias: SAG_ENABLED) to enable.")
+        raise RuntimeError("KG plugin is disabled. Set KG_ENABLED=true to enable.")
     _engine = KGEngine()
     return _engine
 
@@ -37,14 +37,6 @@ async def extract_events(
         chunks=chunks,
         index_options=index_options,
     )
-
-
-async def sag_search(
-    query: str,
-    tenant_id: Optional[UUID] = None,
-    document_ids: Optional[List[UUID]] = None,
-) -> Dict:
-    return await kg_search(query=query, tenant_id=tenant_id, document_ids=document_ids)
 
 
 async def kg_search(

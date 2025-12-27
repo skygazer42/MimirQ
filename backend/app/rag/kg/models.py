@@ -85,10 +85,3 @@ class KgEventEntity(Base):
 
     event = relationship("KgSourceEvent", back_populates="associations")
     entity = relationship("KgEntity", back_populates="associations")
-
-
-# Backward-compatible aliases (SAG -> KG)
-SagEntity = KgEntity
-SagSourceEvent = KgSourceEvent
-SagEventEntity = KgEventEntity
-

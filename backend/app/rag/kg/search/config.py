@@ -68,5 +68,5 @@ class SearchConfig(KGBaseModel):
         return []
 
 
-# Alias for compatibility with upstream SAG
+# Legacy compatibility alias
 SearchBaseConfig = SearchConfig

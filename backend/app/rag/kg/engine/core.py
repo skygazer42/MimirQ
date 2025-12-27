@@ -49,7 +49,3 @@ class KGEngine:
             document_ids=document_ids,
         )
         return await self.searcher.search(config)
-
-
-# Backward-compatible alias (SAG -> KG)
-SAGEngine = KGEngine

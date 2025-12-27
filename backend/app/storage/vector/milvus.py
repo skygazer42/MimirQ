@@ -5,7 +5,7 @@ Milvus 向量库服务（LangChain 1.x API 管理）
 
 提供两种使用模式：
 1. 单例模式 - 用于文档向量存储（固定 collection）
-2. 多实例模式 - 用于 SAG 实体/事件（可自定义 collection）
+2. 多实例模式 - 用于 KG 实体/事件（可自定义 collection）
 """
 
 from __future__ import annotations
@@ -77,7 +77,7 @@ class MilvusAdapter:
     """
     通用 Milvus 适配器，支持自定义 collection。
 
-    用于 SAG 实体/事件向量存储，支持多 collection。
+    用于 KG 实体/事件向量存储，支持多 collection。
     """
 
     def __init__(
@@ -283,40 +283,8 @@ class MilvusAdapter:
 _milvus_adapter_cache: Dict[Tuple[str, str, str], MilvusAdapter] = {}
 
 
-def resolve_collection_name(preferred: str, legacy: Optional[str] = None) -> str:
-    """
-    Resolve a Milvus collection name with an optional legacy fallback.
-
-    This helps smooth migrations where an old collection (e.g. `sag_*`) exists
-    but the new canonical collection (e.g. `kg_*`) hasn't been created yet.
-    """
-    if not legacy:
-        return preferred
-
-    try:
-        from pymilvus import connections, utility
-
-        # Ensure default connection exists (no-op if already connected).
-        try:
-            connections.connect(alias="default", **_get_milvus_connection_args())
-        except Exception:
-            # If already connected or connection fails, utility calls may still work;
-            # otherwise we'll fall back to preferred.
-            pass
-
-        if utility.has_collection(preferred):
-            return preferred
-        if utility.has_collection(legacy):
-            logger.warning(
-                "Milvus collection %s not found; using legacy collection %s (please migrate to %s).",
-                preferred,
-                legacy,
-                preferred,
-            )
-            return legacy
-    except Exception:
-        return preferred
-
+def resolve_collection_name(preferred: str) -> str:
+    """Resolve canonical Milvus collection name."""
     return preferred
 
 
@@ -357,7 +325,7 @@ class MilvusVectorStore:
         self._store = None
 
     def _init_embedding_model(self):
-        """Initialize embedding model (用于 sag_milvus 兼容)."""
+        """Initialize embedding model."""
         return _init_embedding_model()
 
     def _ensure_store(self):

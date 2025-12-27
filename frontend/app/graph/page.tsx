@@ -5,7 +5,7 @@
  * 功能：上传 .graphml 文件并进行可视化展示
  * 优化：主流视觉设计、交互侧边栏、玻璃拟态控件、搜索与高级筛选、后端集成、路径分析、布局切换、图编辑、RAG可解释性、3D可视化
  */
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useCallback } from 'react'
 import { Navbar } from '@/components/navbar'
 import { Button } from '@/components/ui/button'
 import { 
@@ -103,42 +103,6 @@ export default function GraphPage() {
     }
   }
 
-  // Keyboard Shortcuts
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      // Search (Ctrl/Cmd + F)
-      if ((e.ctrlKey || e.metaKey) && e.key === 'f') {
-        e.preventDefault()
-        searchInputRef.current?.focus()
-      }
-
-      // Escape (Close panels, reset modes)
-      if (e.key === 'Escape') {
-        if (isDetailOpen) setIsDetailOpen(false)
-        if (isPathMode) resetPathMode()
-        if (isConnectMode) resetConnectMode()
-        if (isExplainMode) resetExplainMode()
-        searchInputRef.current?.blur()
-      }
-
-      // Space (Expand Node if selected)
-      if (e.key === ' ' && selectedNode && isDetailOpen && !['INPUT', 'TEXTAREA'].includes((e.target as HTMLElement).tagName)) {
-        e.preventDefault()
-        handleExpandNode()
-      }
-
-      // Delete (Delete Node if selected)
-      if (e.key === 'Delete' || e.key === 'Backspace') {
-        if (selectedNode && isDetailOpen && !['INPUT', 'TEXTAREA'].includes((e.target as HTMLElement).tagName)) {
-           handleDeleteNode()
-        }
-      }
-    }
-
-    window.addEventListener('keydown', handleKeyDown)
-    return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [selectedNode, isDetailOpen, isPathMode, isConnectMode, isExplainMode])
-
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
@@ -171,7 +135,7 @@ export default function GraphPage() {
     fileInputRef.current?.click()
   }
 
-  const handleExpandNode = async () => {
+  const handleExpandNode = useCallback(async () => {
     if (!selectedNode) return
     
     setIsLoading(true)
@@ -195,9 +159,9 @@ export default function GraphPage() {
     } finally {
       setIsLoading(false)
     }
-  }
+  }, [selectedNode])
 
-  const handleDeleteNode = () => {
+  const handleDeleteNode = useCallback(() => {
     if (!selectedNode) return
     if (!confirm(`确定要删除节点 "${selectedNode.label}" 及其所有连线吗？`)) return
 
@@ -213,7 +177,43 @@ export default function GraphPage() {
     
     setSelectedNode(null)
     setIsDetailOpen(false)
-  }
+  }, [selectedNode])
+
+  // Keyboard Shortcuts
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Search (Ctrl/Cmd + F)
+      if ((e.ctrlKey || e.metaKey) && e.key === 'f') {
+        e.preventDefault()
+        searchInputRef.current?.focus()
+      }
+
+      // Escape (Close panels, reset modes)
+      if (e.key === 'Escape') {
+        if (isDetailOpen) setIsDetailOpen(false)
+        if (isPathMode) resetPathMode()
+        if (isConnectMode) resetConnectMode()
+        if (isExplainMode) resetExplainMode()
+        searchInputRef.current?.blur()
+      }
+
+      // Space (Expand Node if selected)
+      if (e.key === ' ' && selectedNode && isDetailOpen && !['INPUT', 'TEXTAREA'].includes((e.target as HTMLElement).tagName)) {
+        e.preventDefault()
+        handleExpandNode()
+      }
+
+      // Delete (Delete Node if selected)
+      if (e.key === 'Delete' || e.key === 'Backspace') {
+        if (selectedNode && isDetailOpen && !['INPUT', 'TEXTAREA'].includes((e.target as HTMLElement).tagName)) {
+          handleDeleteNode()
+        }
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [selectedNode, isDetailOpen, isPathMode, isConnectMode, isExplainMode, handleDeleteNode, handleExpandNode])
 
   const startConnectMode = () => {
     if (!selectedNode) return

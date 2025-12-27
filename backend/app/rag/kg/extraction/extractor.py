@@ -7,7 +7,7 @@ from typing import Dict, List, Optional, Sequence
 
 from app.core.database import SessionLocal
 from app.models.document import DocumentChunk
-from app.rag.kg.models import SagSourceEvent
+from app.rag.kg.models import KgSourceEvent
 from app.rag.llm.factory import create_llm_client
 from app.rag.kg.extraction.config import ExtractConfig
 from app.rag.kg.extraction.processor import EventProcessor
@@ -30,7 +30,7 @@ class EventExtractor:
         *,
         chunks: Optional[Sequence[DocumentChunk]] = None,
         index_options: Optional[IndexingOptions] = None,
-    ) -> List[SagSourceEvent]:
+    ) -> List[KgSourceEvent]:
         session = SessionLocal()
         try:
             # Load chunks (or reuse provided ones to avoid duplicate DB reads)

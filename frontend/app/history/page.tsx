@@ -3,7 +3,8 @@
  */
 'use client'
 
-import { useState, useEffect, useRef, Suspense } from 'react'
+import { useState, useEffect, useRef, Suspense, useCallback } from 'react'
+import Image from 'next/image'
 import { useRouter, useSearchParams } from 'next/navigation'
 import {
   MessageSquare,
@@ -20,9 +21,8 @@ import { Navbar } from '@/components/navbar'
 import { Button } from '@/components/ui/button'
 import { chatApi } from '@/lib/api-client'
 import { cn } from '@/lib/utils'
+import { toAbsoluteBackendUrl } from '@/lib/env'
 import type { Conversation, Message, Citation } from '@/types'
-
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
 
 export default function HistoryPage() {
   return (
@@ -58,27 +58,7 @@ function HistoryPageContent() {
 
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
-  // 加载对话列表
-  useEffect(() => {
-    loadConversations()
-  }, [])
-
-  // 当 URL 中有 id 参数时，自动选中对话
-  useEffect(() => {
-    if (conversationId && conversations.length > 0) {
-      const conv = conversations.find((c) => c.id === conversationId)
-      if (conv) {
-        handleSelectConversation(conv)
-      }
-    }
-  }, [conversationId, conversations])
-
-  // 自动滚动到底部
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [messages])
-
-  const loadConversations = async () => {
+  const loadConversations = useCallback(async () => {
     try {
       setIsLoadingList(true)
       const result = await chatApi.listConversations({ limit: 100 })
@@ -88,9 +68,9 @@ function HistoryPageContent() {
     } finally {
       setIsLoadingList(false)
     }
-  }
+  }, [])
 
-  const handleSelectConversation = async (conversation: Conversation) => {
+  const handleSelectConversation = useCallback(async (conversation: Conversation) => {
     setSelectedConversation(conversation)
     setIsLoadingMessages(true)
 
@@ -106,7 +86,27 @@ function HistoryPageContent() {
     } finally {
       setIsLoadingMessages(false)
     }
-  }
+  }, [router])
+
+  // 加载对话列表
+  useEffect(() => {
+    loadConversations()
+  }, [loadConversations])
+
+  // 当 URL 中有 id 参数时，自动选中对话
+  useEffect(() => {
+    if (conversationId && conversations.length > 0) {
+      const conv = conversations.find((c) => c.id === conversationId)
+      if (conv) {
+        handleSelectConversation(conv)
+      }
+    }
+  }, [conversationId, conversations, handleSelectConversation])
+
+  // 自动滚动到底部
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }, [messages])
 
   const handleDeleteConversation = async (conversationId: string) => {
     try {
@@ -384,14 +384,17 @@ function MessageItem({ message }: { message: Message }) {
                   const resolved = raw
                     ? raw.startsWith('http')
                       ? raw
-                      : `${API_BASE_URL}${raw}`
+                      : toAbsoluteBackendUrl(raw)
                     : ''
+                  if (!resolved) return null
                   return (
-                    <img
+                    <Image
                       src={resolved}
                       alt={alt || 'image'}
-                      loading="lazy"
-                      className="my-2 w-full max-h-96 object-contain rounded border border-gray-200 bg-white"
+                      width={1200}
+                      height={800}
+                      unoptimized
+                      className="my-2 w-full h-auto max-h-96 object-contain rounded border border-gray-200 bg-white"
                     />
                   )
                 },
@@ -423,10 +426,11 @@ function MessageItem({ message }: { message: Message }) {
 
 // 引用卡片
 function CitationCard({ citation, index }: { citation: Citation; index: number }) {
+  const [hideImage, setHideImage] = useState(false)
   const imgUrl = citation.img_url
     ? citation.img_url.startsWith('http')
       ? citation.img_url
-      : `${API_BASE_URL}${citation.img_url}`
+      : toAbsoluteBackendUrl(citation.img_url)
     : null
 
   return (
@@ -442,17 +446,17 @@ function CitationCard({ citation, index }: { citation: Citation; index: number }
           </p>
           <p className="text-gray-600 mt-1 line-clamp-2">{citation.chunk_content}</p>
 
-          {citation.has_image && imgUrl && (
+          {citation.has_image && imgUrl && !hideImage && (
             <div className="mt-2">
               <a href={imgUrl} target="_blank" rel="noopener noreferrer" className="block">
-                <img
+                <Image
                   src={imgUrl}
                   alt="引用图片"
-                  loading="lazy"
-                  className="w-full max-h-48 object-contain rounded border border-gray-200 bg-white"
-                  onError={(e) => {
-                    e.currentTarget.style.display = 'none'
-                  }}
+                  width={800}
+                  height={600}
+                  unoptimized
+                  className="w-full h-auto max-h-48 object-contain rounded border border-gray-200 bg-white"
+                  onError={() => setHideImage(true)}
                 />
               </a>
             </div>

@@ -9,7 +9,7 @@ RAG 引擎模块
 - reranker: 重排器（LLM、OpenAI、DashScope、权重融合）
 - retriever: 混合检索器（向量 + BM25）
 - llm: LLM 抽象层
-- kg: 知识图谱 KG（实体事件抽取、图谱搜索；SAG 为兼容别名）
+- kg: 知识图谱（实体/事件抽取、图谱搜索）
 - engine: 核心 RAG 引擎
 - graph: LangGraph 编排
 - agent: Agent 工具

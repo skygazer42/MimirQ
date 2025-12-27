@@ -13,7 +13,6 @@ __all__ = [
     "SearchConfig",
     "SearchBaseConfig",
     "KGSearcher",
-    "SAGSearcher",
     "RecallSearcher",
     "RecallResult",
     "ExpandSearcher",
@@ -53,10 +52,10 @@ def __getattr__(name: str) -> Any:  # pragma: no cover
             "SearchBaseConfig": SearchBaseConfig,
         }[name]
 
-    if name in {"KGSearcher", "SAGSearcher"}:
-        from app.rag.kg.search.searcher import KGSearcher, SAGSearcher
+    if name == "KGSearcher":
+        from app.rag.kg.search.searcher import KGSearcher
 
-        return {"KGSearcher": KGSearcher, "SAGSearcher": SAGSearcher}[name]
+        return KGSearcher
     if name in {"RecallSearcher", "RecallResult"}:
         from app.rag.kg.search.recall import RecallResult, RecallSearcher
 

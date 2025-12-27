@@ -18,9 +18,9 @@ import type {
   MessageFeedback,
   MessageFeedbackCreate,
   MessageFeedbackListResponse,
-  SAGExtractResponse,
-  SAGSearchRequest,
-  SAGSearchResponse,
+  KGExtractResponse,
+  KGSearchRequest,
+  KGSearchResponse,
   BatchUploadRequest,
   BatchUploadResponse,
   BatchTaskStatus,
@@ -32,11 +32,10 @@ import type {
   LLMCleanPreviewResponse,
 } from '@/types'
 import { getAuthHeaders } from '@/lib/auth-headers'
-
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
+import { API_V1_BASE_URL } from '@/lib/env'
 
 const apiClient = axios.create({
-  baseURL: `${API_BASE_URL}/api/v1`,
+  baseURL: API_V1_BASE_URL,
   headers: {
     'Content-Type': 'application/json',
   },
@@ -126,7 +125,7 @@ export const documentApi = {
       appendIfDefined('chunk_overlap', pipeline.chunk_overlap)
       appendIfDefined('chunk_vector_enabled', pipeline.chunk_vector_enabled)
       appendIfDefined('bm25_index_enabled', pipeline.bm25_index_enabled)
-      appendIfDefined('sag_enabled', pipeline.sag_enabled)
+      appendIfDefined('kg_enabled', pipeline.kg_enabled)
       appendIfDefined('event_vector_enabled', pipeline.event_vector_enabled)
       appendIfDefined('entity_vector_enabled', pipeline.entity_vector_enabled)
     }
@@ -374,7 +373,7 @@ export const chatApi = {
    * 流式对话（返回 EventSource URL）
    */
   getStreamUrl(): string {
-    return `${API_BASE_URL}/api/v1/chat/stream`
+    return `${API_V1_BASE_URL}/chat/stream`
   },
 
   /**
@@ -449,22 +448,22 @@ export const feedbackApi = {
   },
 }
 
-// ==================== SAG API ====================
+// ==================== KG API ====================
 
-export const sagApi = {
+export const kgApi = {
   /**
-   * 触发 SAG 实体提取
+   * 触发 KG 实体/事件抽取
    */
-  async extract(documentId: string): Promise<SAGExtractResponse> {
-    const { data } = await apiClient.post(`/sag/documents/${documentId}/extract`)
+  async extract(documentId: string): Promise<KGExtractResponse> {
+    const { data } = await apiClient.post(`/kg/documents/${documentId}/extract`)
     return data
   },
 
   /**
-   * SAG 搜索
+   * KG 搜索
    */
-  async search(params: SAGSearchRequest): Promise<SAGSearchResponse> {
-    const { data } = await apiClient.post('/sag/search', params)
+  async search(params: KGSearchRequest): Promise<KGSearchResponse> {
+    const { data } = await apiClient.post('/kg/search', params)
     return data
   },
 }
@@ -472,7 +471,7 @@ export const sagApi = {
 // ==================== 设置 API ====================
 
 export interface FeatureFlags {
-  sag_enabled: boolean
+  kg_enabled: boolean
   deepdoc_enabled: boolean
   markitdown_enabled: boolean
   llama_index_enabled: boolean

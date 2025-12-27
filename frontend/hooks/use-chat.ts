@@ -6,8 +6,7 @@
 import { useState, useCallback, useRef } from 'react'
 import type { Message, Citation, StreamEvent } from '@/types'
 import { getAuthHeaders } from '@/lib/auth-headers'
-
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
+import { API_V1_BASE_URL } from '@/lib/env'
 
 interface UseChatOptions {
   conversationId?: string
@@ -54,7 +53,7 @@ export function useChat(options: UseChatOptions = {}) {
           content: msg.content
         }))
 
-        const response = await fetch(`${API_BASE_URL}/api/v1/chat/stream`, {
+        const response = await fetch(`${API_V1_BASE_URL}/chat/stream`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
