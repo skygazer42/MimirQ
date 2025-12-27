@@ -8,7 +8,7 @@ import re
 from collections.abc import Collection, Set
 from typing import Any, Callable, Literal, Union, TypeVar
 
-from app.rag.chunking.splitters.text_splitter import RecursiveCharacterTextSplitter
+from app.rag.chunking.utils.splitters.text_splitter import RecursiveCharacterTextSplitter
 
 TS = TypeVar("TS", bound="EnhanceRecursiveCharacterTextSplitter")
 

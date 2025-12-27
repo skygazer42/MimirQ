@@ -39,3 +39,4 @@ def __getattr__(name: str) -> Any:
 
         return minio_service
     raise AttributeError(f"module 'app.storage' has no attribute {name!r}")
+

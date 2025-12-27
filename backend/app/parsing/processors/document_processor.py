@@ -637,7 +637,7 @@ class DocumentProcessorService:
         """
         from langchain_core.documents import Document
 
-        from app.rag.chunking.ragflow_legacy import chunk_file
+        from app.rag.chunking.ragflow import chunk_file
 
         chunks_dict = chunk_file(file_path, strategy=strategy)  # type: ignore[arg-type]
 

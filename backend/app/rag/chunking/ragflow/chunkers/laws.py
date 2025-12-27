@@ -19,13 +19,13 @@ import re
 from io import BytesIO
 from docx import Document
 
-from app.rag.chunking.legacy.common.constants import ParserType
+from app.rag.chunking.ragflow.common.constants import ParserType
 from app.deepdoc.parser.utils import get_text
-from app.rag.chunking.legacy.nlp import bullets_category, remove_contents_table, \
+from app.rag.chunking.ragflow.nlp import bullets_category, remove_contents_table, \
     make_colon_as_title, tokenize_chunks, docx_question_level, tree_merge
-from app.rag.chunking.legacy.nlp import rag_tokenizer, Node
+from app.rag.chunking.ragflow.nlp import rag_tokenizer, Node
 from app.deepdoc.parser import PdfParser, DocxParser, HtmlParser
-from app.rag.chunking.legacy.chunkers.naive import by_plaintext, PARSERS
+from app.rag.chunking.ragflow.chunkers.naive import by_plaintext, PARSERS
 
 
 

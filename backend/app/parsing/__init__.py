@@ -53,3 +53,4 @@ def __getattr__(name: str) -> Any:
 
         return zip_image_processor
     raise AttributeError(f"module 'app.parsing' has no attribute {name!r}")
+
