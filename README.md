@@ -487,7 +487,7 @@ ENTITY_VECTOR_ENABLED=true
 | 变量 | 说明 | 默认 |
 |------|------|------|
 | `DEFAULT_PARSER_BACKEND` | `auto/basic/mineru/deepdoc/markitdown`，控制未指定时使用的解析器 | `auto` |
-| `DEEPDOC_ENABLED` | 启用 DeepDoc 解析（仓库内置于 `backend/app/ai/deepdoc`） | `false` |
+| `DEEPDOC_ENABLED` | 启用 DeepDoc 解析（仓库内置于 `backend/app/deepdoc`） | `false` |
 | `MARKITDOWN_ENABLED` | 开启微软 MarkItDown 解析，配合 `MARKITDOWN_USE_PLUGINS` 等配置 | `false` |
 | `MINERU_ENABLED` | 开启 MinerU 在线解析（需 `MINERU_API_TOKEN`） | `false` |
 | `GOVERNANCE_ENABLED` | 启用治理清洗流程（Markdown 规范化、正则规则） | `true` |
@@ -497,8 +497,8 @@ ENTITY_VECTOR_ENABLED=true
 
 # === 应用配置 ===
 UPLOAD_DIR=/app/uploads
-MAX_UPLOAD_SIZE=10485760  # 10MB
-ALLOWED_EXTENSIONS=pdf,md,txt
+MAX_FILE_SIZE=10485760  # 10MB
+ALLOWED_EXTENSIONS=.pdf,.txt,.md,.doc,.docx,.xls,.xlsx,.csv,.html,.json
 ```
 
 </details>

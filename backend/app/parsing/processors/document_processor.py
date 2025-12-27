@@ -28,6 +28,7 @@ from app.services.pipeline_config import (
 )
 from app.governance.processor import governance_processor, GovernanceStats
 from app.rag.kg.pipeline import extract_events
+from app.parsing.routing import route_pdf_backend
 
 
 class DocumentProcessorService:
@@ -104,7 +105,7 @@ class DocumentProcessorService:
             governance_stats: Optional[GovernanceStats] = None
 
             if use_ragflow:
-                resolved_backend = (parser_backend or "ragflow").lower()
+                resolved_backend = "ragflow"
                 resolved_chunk_strategy = (chunk_strategy or "ragflow_naive").lower()
 
                 self._record_processing_metadata(
@@ -129,9 +130,27 @@ class DocumentProcessorService:
             else:
                 # Step 2: 解析文档
                 print(f"Parsing document: {file_path}")
+                effective_parser_backend = parser_backend
+                file_ext = file_path.suffix.lower()
+                if file_ext == ".pdf":
+                    requested = (parser_backend or "").strip().lower()
+                    if not requested or requested == "auto":
+                        effective_parser_backend, pdf_quality = route_pdf_backend(
+                            file_path,
+                            parser_backend,
+                            sample_pages=3,
+                            use_ocr_validation=settings.RAPIDOCR_ENABLED,
+                        )
+                        if db_document is not None and isinstance(pdf_quality, dict):
+                            metadata = dict(db_document.doc_metadata or {})
+                            metadata["pdf_quality"] = pdf_quality
+                            db_document.doc_metadata = metadata
+                            db.commit()
+                            db.refresh(db_document)
+
                 documents, resolved_backend = parser_factory.parse(
                     file_path,
-                    parser_backend=parser_backend,
+                    parser_backend=effective_parser_backend,
                     dataset_id=dataset_id,
                     document_id=str(document_id),
                 )

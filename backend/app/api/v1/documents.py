@@ -30,6 +30,7 @@ from app.api.schemas.document import (
 )
 from app.parsing.processors.document_processor import document_processor
 from app.parsing.factory import parser_factory
+from app.parsing.routing import route_pdf_backend
 from app.rag.chunking.factory import chunker_factory
 from app.services.indexer import IndexKind, IndexRecord, Indexer
 from app.services.pipeline_config import (
@@ -203,7 +204,12 @@ async def upload_document(
         )
 
     try:
-        resolved_parser_backend = parser_factory.resolve_backend(file_ext, parser_backend)
+        requested_parser_backend = (parser_backend or "").strip().lower()
+        if file_ext == ".pdf" and requested_parser_backend in {"", "auto"}:
+            # Keep "auto" for background routing (quality scoring happens in DocumentProcessor).
+            resolved_parser_backend = "auto"
+        else:
+            resolved_parser_backend = parser_factory.resolve_backend(file_ext, parser_backend)
         resolved_chunk_strategy = chunker_factory.resolve_strategy(chunk_strategy)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
@@ -804,7 +810,20 @@ async def preview_chunking(
             documents = []  # ragflow 已自处理
         else:
             # 解析文档
-            documents, resolved_backend = parser_factory.parse(temp_path, parser_backend=parser_backend)
+            effective_parser_backend = parser_backend
+            if file_ext == ".pdf":
+                requested = (parser_backend or "").strip().lower()
+                if not requested or requested == "auto":
+                    effective_parser_backend, _pdf_quality = route_pdf_backend(
+                        temp_path,
+                        parser_backend,
+                        sample_pages=3,
+                        use_ocr_validation=settings.RAPIDOCR_ENABLED,
+                    )
+            documents, resolved_backend = parser_factory.parse(
+                temp_path,
+                parser_backend=effective_parser_backend,
+            )
 
             chunker = chunker_factory.get_chunker(
                 resolved_chunk_strategy,

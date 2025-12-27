@@ -19,6 +19,7 @@ class ParserFactory:
     """根据文件类型选择合适的解析器"""
 
     SUPPORTED_PDF_BACKENDS = {"auto", "basic", "mineru", "deepdoc", "markitdown"}
+    SUPPORTED_NON_PDF_MARKITDOWN = {".doc", ".docx", ".xls", ".xlsx", ".csv", ".html", ".json"}
 
     def __init__(self):
         self._basic_pdf_parser = PDFParser()
@@ -42,6 +43,8 @@ class ParserFactory:
             ".xls": None,
             ".xlsx": None,
             ".csv": None,
+            ".html": None,
+            ".json": None,
         }
 
     def resolve_backend(self, file_ext: str, parser_backend: Optional[str]) -> str:
@@ -56,7 +59,7 @@ class ParserFactory:
                 return "text"
             if file_ext == ".md":
                 return "markdown"
-            if file_ext in {".doc", ".docx", ".xls", ".xlsx", ".csv"}:
+            if file_ext in self.SUPPORTED_NON_PDF_MARKITDOWN:
                 return "markitdown"
             raise ValueError(f"Unsupported file type: {file_ext}")
 
@@ -114,7 +117,7 @@ class ParserFactory:
             parser = self.parsers[".txt"]
         elif file_ext == ".md":
             parser = self.parsers[".md"]
-        elif file_ext in {".doc", ".docx", ".xls", ".xlsx", ".csv"}:
+        elif file_ext in self.SUPPORTED_NON_PDF_MARKITDOWN:
             parser = self._get_markitdown_parser()
         else:
             raise ValueError(f"Unsupported file type: {file_ext}")
