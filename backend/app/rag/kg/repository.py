@@ -11,15 +11,16 @@ from sqlalchemy.orm import Session
 from sqlalchemy import select
 
 from app.core.database import SessionLocal
-from app.rag.kg.models import SagEntity, SagSourceEvent, SagEventEntity
-from app.storage.vector.milvus import get_milvus_adapter
+from app.rag.kg.models import KgEntity, KgEventEntity, KgSourceEvent
+from app.storage.vector.milvus import get_milvus_adapter, resolve_collection_name
 
 class EntityRepository:
     """Entity read/write + similarity search."""
 
     def __init__(self, session: Session):
         self.session = session
-        self._milvus = get_milvus_adapter(collection_name="sag_entities", vector_field="embedding")
+        collection = resolve_collection_name("kg_entities", legacy="sag_entities")
+        self._milvus = get_milvus_adapter(collection_name=collection, vector_field="embedding")
 
     def search_similar(
         self,
@@ -48,11 +49,11 @@ class EntityRepository:
             )
         return formatted
 
-    def get_entities_by_ids(self, ids: Iterable[str]) -> List[SagEntity]:
+    def get_entities_by_ids(self, ids: Iterable[str]) -> List[KgEntity]:
         id_list = list(ids)
         if not id_list:
             return []
-        stmt = select(SagEntity).where(SagEntity.id.in_(id_list))
+        stmt = select(KgEntity).where(KgEntity.id.in_(id_list))
         return self.session.execute(stmt).scalars().all()
 
     def get_or_create(
@@ -64,13 +65,13 @@ class EntityRepository:
         description: Optional[str] = None,
         *,
         commit: bool = True,
-    ) -> SagEntity:
+    ) -> KgEntity:
         existing = (
             self.session.execute(
-                select(SagEntity).where(
-                    SagEntity.tenant_id == tenant_id,
-                    SagEntity.normalized_name == normalized_name,
-                    SagEntity.type == type_,
+                select(KgEntity).where(
+                    KgEntity.tenant_id == tenant_id,
+                    KgEntity.normalized_name == normalized_name,
+                    KgEntity.type == type_,
                 )
             )
             .scalars()
@@ -78,7 +79,7 @@ class EntityRepository:
         )
         if existing:
             return existing
-        ent = SagEntity(
+        ent = KgEntity(
             tenant_id=tenant_id,
             name=name,
             normalized_name=normalized_name,
@@ -101,34 +102,35 @@ class EventRepository:
 
     def __init__(self, session: Session):
         self.session = session
-        self._milvus = get_milvus_adapter(collection_name="sag_events", vector_field="embedding")
+        collection = resolve_collection_name("kg_events", legacy="sag_events")
+        self._milvus = get_milvus_adapter(collection_name=collection, vector_field="embedding")
 
     def link_event_entities(
         self,
-        links: List[SagEventEntity],
+        links: List[KgEventEntity],
     ) -> None:
         for link in links:
             self.session.merge(link)
         self.session.commit()
 
-    def get_events_by_ids(self, ids: Iterable[str]) -> List[SagSourceEvent]:
+    def get_events_by_ids(self, ids: Iterable[str]) -> List[KgSourceEvent]:
         id_list = list(ids)
         if not id_list:
             return []
-        stmt = select(SagSourceEvent).where(SagSourceEvent.id.in_(id_list))
+        stmt = select(KgSourceEvent).where(KgSourceEvent.id.in_(id_list))
         return self.session.execute(stmt).scalars().all()
 
-    def get_events_with_entities(self, ids: Iterable[str]) -> List[SagSourceEvent]:
+    def get_events_with_entities(self, ids: Iterable[str]) -> List[KgSourceEvent]:
         id_list = list(ids)
         if not id_list:
             return []
         from sqlalchemy.orm import joinedload
 
         stmt = (
-            select(SagSourceEvent)
-            .where(SagSourceEvent.id.in_(id_list))
+            select(KgSourceEvent)
+            .where(KgSourceEvent.id.in_(id_list))
             .options(
-                joinedload(SagSourceEvent.associations).joinedload(SagEventEntity.entity)
+                joinedload(KgSourceEvent.associations).joinedload(KgEventEntity.entity)
             )
         )
         return self.session.execute(stmt).scalars().all()
@@ -173,13 +175,13 @@ class EventRepository:
         if not ids:
             return []
         stmt = (
-            select(SagEventEntity.event_id)
-            .join(SagSourceEvent, SagSourceEvent.id == SagEventEntity.event_id)
-            .where(SagEventEntity.entity_id.in_(ids))
-            .where(SagSourceEvent.tenant_id == tenant_id)
+            select(KgEventEntity.event_id)
+            .join(KgSourceEvent, KgSourceEvent.id == KgEventEntity.event_id)
+            .where(KgEventEntity.entity_id.in_(ids))
+            .where(KgSourceEvent.tenant_id == tenant_id)
         )
         if document_ids:
-            stmt = stmt.where(SagSourceEvent.document_id.in_(document_ids))
+            stmt = stmt.where(KgSourceEvent.document_id.in_(document_ids))
         rows = self.session.execute(stmt).scalars().all()
         # simple frequency based ranking
         freq: dict[str, int] = {}
@@ -188,28 +190,28 @@ class EventRepository:
         ranked = sorted(freq.items(), key=lambda x: x[1], reverse=True)
         return [eid for eid, _ in ranked[:limit]]
 
-    def get_event_entities(self, event_ids: Iterable[str]) -> dict[str, List[SagEventEntity]]:
+    def get_event_entities(self, event_ids: Iterable[str]) -> dict[str, List[KgEventEntity]]:
         ids = list(event_ids)
         if not ids:
             return {}
-        stmt = select(SagEventEntity).where(SagEventEntity.event_id.in_(ids))
+        stmt = select(KgEventEntity).where(KgEventEntity.event_id.in_(ids))
         rows = self.session.execute(stmt).scalars().all()
-        mapping: dict[str, List[SagEventEntity]] = {}
+        mapping: dict[str, List[KgEventEntity]] = {}
         for row in rows:
             mapping.setdefault(str(row.event_id), []).append(row)
         return mapping
 
-    def get_entities_for_events(self, event_ids: Iterable[str]) -> dict[str, List[SagEntity]]:
+    def get_entities_for_events(self, event_ids: Iterable[str]) -> dict[str, List[KgEntity]]:
         ids = list(event_ids)
         if not ids:
             return {}
         stmt = (
-            select(SagEventEntity, SagEntity)
-            .join(SagEntity, SagEntity.id == SagEventEntity.entity_id)
-            .where(SagEventEntity.event_id.in_(ids))
+            select(KgEventEntity, KgEntity)
+            .join(KgEntity, KgEntity.id == KgEventEntity.entity_id)
+            .where(KgEventEntity.event_id.in_(ids))
         )
         rows = self.session.execute(stmt).all()
-        mapping: dict[str, List[SagEntity]] = {}
+        mapping: dict[str, List[KgEntity]] = {}
         for assoc, ent in rows:
             mapping.setdefault(str(assoc.event_id), []).append(ent)
         return mapping
@@ -220,19 +222,19 @@ class EventRepository:
         tenant_id,
         limit: int = 50,
         document_ids: Optional[List[UUID]] = None,
-    ) -> List[SagSourceEvent]:
+    ) -> List[KgSourceEvent]:
         ids = list(entity_ids)
         if not ids:
             return []
         stmt = (
-            select(SagSourceEvent)
-            .join(SagEventEntity, SagEventEntity.event_id == SagSourceEvent.id)
-            .where(SagEventEntity.entity_id.in_(ids))
-            .where(SagSourceEvent.tenant_id == tenant_id)
+            select(KgSourceEvent)
+            .join(KgEventEntity, KgEventEntity.event_id == KgSourceEvent.id)
+            .where(KgEventEntity.entity_id.in_(ids))
+            .where(KgSourceEvent.tenant_id == tenant_id)
             .limit(limit)
         )
         if document_ids:
-            stmt = stmt.where(SagSourceEvent.document_id.in_(document_ids))
+            stmt = stmt.where(KgSourceEvent.document_id.in_(document_ids))
         return self.session.execute(stmt).scalars().all()
 
 

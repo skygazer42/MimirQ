@@ -1,23 +1,22 @@
 import uuid
 from datetime import datetime
-from typing import Optional
 
-from sqlalchemy import Column, ForeignKey, String, Text, DateTime, JSON, Numeric
+from sqlalchemy import Column, DateTime, ForeignKey, JSON, Numeric, String, Text
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import relationship
 
-from app.core.database import Base
 from app.core.config import settings
+from app.core.database import Base
 
 
 def _default_tenant() -> uuid.UUID:
     return settings.DEFAULT_TENANT_ID
 
 
-class SagEntity(Base):
-    """Entity table used by KG pipelines (legacy: SAG)."""
+class KgEntity(Base):
+    """Entity table used by KG pipelines."""
 
-    __tablename__ = "sag_entities"
+    __tablename__ = "kg_entities"
 
     id = Column(PGUUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     tenant_id = Column(PGUUID(as_uuid=True), nullable=False, default=_default_tenant, index=True)
@@ -32,13 +31,13 @@ class SagEntity(Base):
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
 
-    associations = relationship("SagEventEntity", back_populates="entity", cascade="all, delete-orphan")
+    associations = relationship("KgEventEntity", back_populates="entity", cascade="all, delete-orphan")
 
 
-class SagSourceEvent(Base):
+class KgSourceEvent(Base):
     """Event table extracted from document chunks."""
 
-    __tablename__ = "sag_source_events"
+    __tablename__ = "kg_source_events"
 
     id = Column(PGUUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     tenant_id = Column(PGUUID(as_uuid=True), nullable=False, default=_default_tenant, index=True)
@@ -59,20 +58,37 @@ class SagSourceEvent(Base):
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
 
-    associations = relationship("SagEventEntity", back_populates="event", cascade="all, delete-orphan")
+    associations = relationship("KgEventEntity", back_populates="event", cascade="all, delete-orphan")
 
 
-class SagEventEntity(Base):
+class KgEventEntity(Base):
     """Join table: event to entity with weight."""
 
-    __tablename__ = "sag_event_entities"
+    __tablename__ = "kg_event_entities"
 
     id = Column(PGUUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    event_id = Column(PGUUID(as_uuid=True), ForeignKey("sag_source_events.id", ondelete="CASCADE"), nullable=False, index=True)
-    entity_id = Column(PGUUID(as_uuid=True), ForeignKey("sag_entities.id", ondelete="CASCADE"), nullable=False, index=True)
+    event_id = Column(
+        PGUUID(as_uuid=True),
+        ForeignKey("kg_source_events.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    entity_id = Column(
+        PGUUID(as_uuid=True),
+        ForeignKey("kg_entities.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
     weight = Column(Numeric(5, 2), nullable=False, default=1.00)
     role = Column(String(100), nullable=True)
     extra_data = Column(JSON, nullable=True)
 
-    event = relationship("SagSourceEvent", back_populates="associations")
-    entity = relationship("SagEntity", back_populates="associations")
+    event = relationship("KgSourceEvent", back_populates="associations")
+    entity = relationship("KgEntity", back_populates="associations")
+
+
+# Backward-compatible aliases (SAG -> KG)
+SagEntity = KgEntity
+SagSourceEvent = KgSourceEvent
+SagEventEntity = KgEventEntity
+
