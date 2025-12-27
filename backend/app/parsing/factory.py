@@ -88,13 +88,9 @@ class ParserFactory:
             return "mineru"
 
         if normalized == "deepdoc":
-            if not settings.DEEPDOC_ENABLED:
-                raise ValueError("DeepDoc parser is not enabled. Set DEEPDOC_ENABLED=True to use it.")
             return "deepdoc"
 
         if normalized == "markitdown":
-            if not settings.MARKITDOWN_ENABLED:
-                raise ValueError("MarkItDown parser is not enabled. Set MARKITDOWN_ENABLED=True to use it.")
             return "markitdown"
 
         raise ValueError(f"Unsupported parser backend '{normalized}'")

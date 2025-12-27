@@ -52,22 +52,6 @@ const FEATURE_FLAGS_CONFIG = [
     dependencies: ['Milvus', 'LLM'],
   },
   {
-    key: 'deepdoc_enabled' as keyof FeatureFlags,
-    name: 'DeepDoc 解析',
-    description: '使用 DeepDoc 进行高级文档解析，支持复杂布局',
-    icon: FileSearch,
-    color: 'blue',
-    dependencies: [],
-  },
-  {
-    key: 'markitdown_enabled' as keyof FeatureFlags,
-    name: 'MarkItDown 解析',
-    description: '使用 Microsoft MarkItDown 转换各种格式为 Markdown',
-    icon: FileSearch,
-    color: 'green',
-    dependencies: [],
-  },
-  {
     key: 'llama_index_enabled' as keyof FeatureFlags,
     name: 'LlamaIndex 分块',
     description: '启用 LlamaIndex 高级分块策略',
