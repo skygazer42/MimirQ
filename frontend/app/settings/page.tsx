@@ -150,7 +150,7 @@ export default function SettingsPage() {
     setDialogOpen(true)
   }
 
-  const handleSaveConfig = (providerId: string, config: ProviderConfig) => {
+  const handleSaveConfig = async (providerId: string, config: ProviderConfig) => {
     setProviders((prev) =>
       prev.map((p) =>
         p.id === providerId
@@ -158,6 +158,32 @@ export default function SettingsPage() {
           : p
       )
     )
+
+    const provider = providers.find((p) => p.id === providerId)
+    if (!provider) return
+
+    if (provider.category === 'model') {
+      setSaving(true)
+      setSaveMessage(null)
+      try {
+        const result = await settingsApi.update({
+          llm: {
+            api_key: config.apiKey || '',
+            api_base: config.apiBase || '',
+            model: config.model || '',
+            temperature: config.temperature ?? 0.7,
+            timeout: config.timeout ?? 60,
+            max_retries: 3,
+          },
+        })
+        setSaveMessage({ type: 'success', text: result.message })
+        await loadSettings()
+      } catch (error: any) {
+        setSaveMessage({ type: 'error', text: error.response?.data?.detail || '保存失败' })
+      } finally {
+        setSaving(false)
+      }
+    }
   }
 
   // 按分类分组

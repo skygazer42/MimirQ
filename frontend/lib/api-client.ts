@@ -533,6 +533,20 @@ export interface SystemStatus {
   embedding: { configured: boolean; model: string }
 }
 
+export interface TestLLMRequest {
+  api_key: string
+  api_base: string
+  model: string
+  temperature?: number
+  timeout?: number
+  max_retries?: number
+}
+
+export interface TestLLMResponse {
+  success: boolean
+  message: string
+}
+
 export const settingsApi = {
   /**
    * 获取系统配置
@@ -555,6 +569,14 @@ export const settingsApi = {
    */
   async getStatus(): Promise<SystemStatus> {
     const { data } = await apiClient.get('/settings/status')
+    return data
+  },
+
+  /**
+   * 测试 LLM 连接（不写入配置）
+   */
+  async testLLM(params: TestLLMRequest): Promise<TestLLMResponse> {
+    const { data } = await apiClient.post('/settings/llm/test', params)
     return data
   },
 }

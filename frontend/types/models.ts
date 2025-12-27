@@ -32,6 +32,7 @@ export interface ModelConfig {
 export interface ProviderConfig {
   apiKey?: string
   apiBase?: string
+  model?: string
   organizationId?: string
   projectId?: string
   temperature?: number
