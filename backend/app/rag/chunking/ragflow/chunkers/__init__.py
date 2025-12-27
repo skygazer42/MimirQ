@@ -3,10 +3,10 @@ Ragflow chunkers package.
 Provides document chunking functionality from ragflow.
 """
 
-from app.rag.chunking.legacy.chunkers.naive import chunk as naive_chunk
-from app.rag.chunking.legacy.chunkers.book import chunk as book_chunk
-from app.rag.chunking.legacy.chunkers.laws import chunk as laws_chunk
-from app.rag.chunking.legacy.chunkers.email import chunk as email_chunk
+from app.rag.chunking.ragflow.chunkers.naive import chunk as naive_chunk
+from app.rag.chunking.ragflow.chunkers.book import chunk as book_chunk
+from app.rag.chunking.ragflow.chunkers.laws import chunk as laws_chunk
+from app.rag.chunking.ragflow.chunkers.email import chunk as email_chunk
 
 
 def get_chunker(strategy: str):

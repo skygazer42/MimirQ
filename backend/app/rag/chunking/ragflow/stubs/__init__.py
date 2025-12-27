@@ -1,8 +1,8 @@
 """
 Stubs for ragflow internal modules.
 """
-from app.rag.chunking.legacy.stubs.llm_service import LLMBundle
-from app.rag.chunking.legacy.stubs.file_utils import (
+from app.rag.chunking.ragflow.stubs.llm_service import LLMBundle
+from app.rag.chunking.ragflow.stubs.file_utils import (
     extract_embed_file,
     extract_links_from_pdf,
     extract_links_from_docx,
