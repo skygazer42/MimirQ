@@ -43,7 +43,12 @@ class Settings(BaseSettings):
 
     UPLOAD_DIR: str = "./uploads"
     MAX_FILE_SIZE: int = 50_000_000
-    ALLOWED_EXTENSIONS: str = ".pdf,.txt,.md"
+    # ZIP extraction safety limits (for Markdown+images archives).
+    ZIP_MAX_FILES: int = 2000
+    ZIP_MAX_TOTAL_UNCOMPRESSED_BYTES: int = 500_000_000
+    ZIP_MAX_SINGLE_UNCOMPRESSED_BYTES: int = 100_000_000
+    # Keep this aligned with parser_factory supported non-PDF formats.
+    ALLOWED_EXTENSIONS: str = ".pdf,.txt,.md,.doc,.docx,.xls,.xlsx,.csv,.html,.json"
 
     @property
     def allowed_extensions_list(self):

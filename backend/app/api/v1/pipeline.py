@@ -7,6 +7,7 @@ from __future__ import annotations
 
 from pathlib import Path
 import uuid
+import zipfile
 
 from fastapi import APIRouter, UploadFile, File, Form, HTTPException, Depends
 
@@ -337,6 +338,11 @@ async def upload_zip_with_images(
     try:
         # 写入临时文件
         content = await file.read()
+        if len(content) > settings.MAX_FILE_SIZE:
+            raise HTTPException(
+                status_code=413,
+                detail=f"File too large. Max size: {settings.MAX_FILE_SIZE / 1024 / 1024}MB",
+            )
         temp_zip_path.write_bytes(content)
         
         # 处理 ZIP：提取图片并上传到 MinIO
@@ -356,6 +362,13 @@ async def upload_zip_with_images(
             "document_id": doc_id,
         }
         
+    except HTTPException:
+        raise
+    except (ValueError, zipfile.BadZipFile) as e:
+        raise HTTPException(
+            status_code=400,
+            detail=f"ZIP 格式/内容不合法: {str(e)}",
+        )
     except Exception as e:
         raise HTTPException(
             status_code=500,

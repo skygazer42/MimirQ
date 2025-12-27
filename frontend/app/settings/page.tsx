@@ -12,7 +12,7 @@ import type { ModelProvider, ProviderConfig, ProviderCategory } from '@/types/mo
 import {
   Settings2, Database, Sliders, Lightbulb, Server, Cpu, Layers,
   ToggleLeft, ToggleRight, Save, RefreshCw, CheckCircle2, XCircle,
-  Zap, FileSearch, Sparkles, Network, CloudCog, AlertCircle, Eye, EyeOff
+  Zap, FileSearch, Sparkles, Network, CloudCog, AlertCircle, Eye, EyeOff, ScanLine, FileCode
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { settingsApi, type SystemSettings, type SystemStatus, type FeatureFlags } from '@/lib/api-client'
@@ -50,6 +50,22 @@ const FEATURE_FLAGS_CONFIG = [
     icon: Sparkles,
     color: 'purple',
     dependencies: ['Milvus', 'LLM'],
+  },
+  {
+    key: 'deepdoc_enabled' as keyof FeatureFlags,
+    name: 'DeepDoc 结构化解析',
+    description: '启用视觉 + OCR 解析能力，适合扫描件/图文混排 PDF（自动选择时生效）',
+    icon: ScanLine,
+    color: 'orange',
+    dependencies: [],
+  },
+  {
+    key: 'markitdown_enabled' as keyof FeatureFlags,
+    name: 'MarkItDown 文档解析',
+    description: '启用多格式转 Markdown（Office/表格/PDF），自动选择与解析工作台会使用',
+    icon: FileCode,
+    color: 'purple',
+    dependencies: [],
   },
   {
     key: 'llama_index_enabled' as keyof FeatureFlags,
