@@ -104,6 +104,10 @@ class Settings(BaseSettings):
     ENABLE_RERANKER: bool = False
     RERANKER_PROVIDER: str = "llm"  # llm | pc | none
     RERANKER_MODEL: Optional[str] = None
+    # Optional: use a dedicated API key/base for API-style rerankers (openai/dashscope),
+    # falls back to LLM_API_KEY/LLM_API_BASE when empty.
+    RERANKER_API_KEY: str = ""
+    RERANKER_API_BASE: str = ""
     RERANKER_TOP_N: int = 20  # 重排候选数量（越大越慢）
     RERANKER_MAX_CHARS: int = 800  # 每条候选截断长度
     RERANKER_TEMPERATURE: float = 0.0

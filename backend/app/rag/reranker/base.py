@@ -13,6 +13,7 @@ from abc import ABC, abstractmethod
 from typing import Any, Sequence
 
 import aiohttp
+import httpx
 import numpy as np
 
 from app.rag.reranker.types import RerankCandidate, RerankResult
@@ -63,11 +64,7 @@ class BaseReranker(ABC):
         默认实现：在独立线程中运行同步 rerank()
         子类可以覆盖提供真正的异步实现。
         """
-        import concurrent.futures
-        
-        loop = asyncio.get_event_loop()
-        with concurrent.futures.ThreadPoolExecutor() as pool:
-            return await loop.run_in_executor(pool, self.rerank, query, candidates, kwargs)
+        return await asyncio.to_thread(self.rerank, query, candidates, **kwargs)
 
 
 class APIReranker(BaseReranker):
@@ -194,17 +191,39 @@ class APIReranker(BaseReranker):
         max_length: int = 512,
         normalize: bool = True,
     ) -> list[float]:
-        """同步计算重排分数"""
-        try:
-            _ = asyncio.get_running_loop()
-        except RuntimeError:
-            return asyncio.run(
-                self.acompute_score(query, documents, batch_size, max_length, normalize)
-            )
-        raise RuntimeError(
-            "compute_score cannot be used while an event loop is running. "
-            "Use acompute_score instead."
-        )
+        """
+        同步计算重排分数（线程安全、可在事件循环中调用）。
+
+        说明：
+        - 服务端主链路是 async，但检索流程内部是同步调用（`retriever.invoke()`）。
+        - 这里必须避免 `asyncio.run()` / `aiohttp.ClientSession` 与 running loop 的冲突。
+        - 使用 httpx 做同步 HTTP 请求，保证在 async 环境下也不会直接抛错。
+        """
+        if not documents:
+            return []
+
+        all_scores: list[float] = []
+        batch_size = max(1, int(batch_size))
+        timeout_sec = float(getattr(self.timeout, "total", None) or 30.0)
+
+        with httpx.Client(headers=self.headers, timeout=timeout_sec) as client:
+            for start in range(0, len(documents), batch_size):
+                batch = documents[start : start + batch_size]
+                payload = self._build_payload(query, batch, max_length)
+                resp = client.post(self.url, json=payload)
+                resp.raise_for_status()
+                result: dict[str, Any] = resp.json()
+
+                processed = sorted(
+                    self._extract_results(result),
+                    key=lambda item: item.get("index", 0),
+                )
+                all_scores.extend([float(entry.get("relevance_score", 0.0)) for entry in processed])
+
+        if normalize:
+            all_scores = [float(sigmoid(score)) for score in all_scores]
+
+        return all_scores
 
     def rerank(
         self,

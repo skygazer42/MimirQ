@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import math
 from collections import Counter
-from enum import StrEnum
+from enum import Enum
 from typing import Callable
 
 from pydantic import BaseModel
@@ -16,7 +16,7 @@ from app.models.dify import Document
 from app.rag.reranker.base import DocumentReranker
 
 
-class RerankMode(StrEnum):
+class RerankMode(str, Enum):
     """Rerank mode enumeration."""
 
     RERANKING_MODEL = "reranking_model"
@@ -217,4 +217,3 @@ class WeightedReranker(DocumentReranker):
                 query_vector_scores.append(0.0)
 
         return query_vector_scores
-
