@@ -12,7 +12,7 @@ from app.rag.kg.search.utils import cosine_similarity
 from app.rag.kg.repository import EntityRepository, EventRepository, get_session
 from app.rag.kg.utils import get_logger
 
-logger = get_logger("sag.search.recall")
+logger = get_logger("kg.search.recall")
 
 
 @dataclass
@@ -161,4 +161,3 @@ class RecallSearcher:
             )
         finally:
             session.close()
-

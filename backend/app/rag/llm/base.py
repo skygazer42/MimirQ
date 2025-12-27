@@ -3,9 +3,10 @@ from abc import ABC, abstractmethod
 from typing import Any, AsyncIterator, Dict, List, Optional
 
 from app.rag.llm.models import LLMMessage, LLMResponse, LLMRole
-from app.rag.kg.utils import LLMError, LLMTimeoutError, get_logger
+from app.rag.core.errors import LLMError, LLMTimeoutError
+from app.rag.core.logging import get_logger
 
-logger = get_logger("sag.ai.base")
+logger = get_logger("rag.llm.base")
 
 
 class BaseLLMClient(ABC):

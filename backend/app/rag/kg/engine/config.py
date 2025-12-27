@@ -38,7 +38,7 @@ class OutputConfig(BaseModel):
 class TaskConfig(BaseModel):
     """Unified task config for engine."""
 
-    task_name: str = Field(default="SAG task", description="Task name")
+    task_name: str = Field(default="KG task", description="Task name")
     task_description: Optional[str] = Field(default=None, description="Task description")
 
     source_config_id: Optional[str] = Field(default=None, description="Source config id")

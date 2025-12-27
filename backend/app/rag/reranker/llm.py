@@ -11,7 +11,6 @@ LLM Reranker（基于大模型的精排器）
 from __future__ import annotations
 
 import json
-import os
 import time
 from dataclasses import dataclass
 from typing import Any
@@ -20,6 +19,7 @@ import httpx
 
 from app.core.config import settings
 from app.models.dify import Document
+from app.rag.core.http import httpx_trust_env
 from app.rag.reranker.base import DocumentReranker
 
 
@@ -37,20 +37,7 @@ def _build_http_clients() -> tuple[httpx.Client, httpx.AsyncClient]:
     复用与 RAG 引擎一致的 proxy 处理逻辑：
     - 如果检测到 SOCKS 代理，禁用 trust_env 避免 httpx 兼容问题。
     """
-    proxy_candidates = [
-        os.getenv("OPENAI_PROXY"),
-        os.getenv("HTTPS_PROXY"),
-        os.getenv("HTTP_PROXY"),
-        os.getenv("ALL_PROXY"),
-        os.getenv("https_proxy"),
-        os.getenv("http_proxy"),
-        os.getenv("all_proxy"),
-    ]
-    proxies = [p for p in proxy_candidates if p]
-    trust_env = True
-    socks_proxy = next((p for p in proxies if p.lower().startswith("socks")), None)
-    if socks_proxy:
-        trust_env = False
+    trust_env = httpx_trust_env()
     return httpx.Client(trust_env=trust_env, timeout=settings.LLM_TIMEOUT), httpx.AsyncClient(
         trust_env=trust_env, timeout=settings.LLM_TIMEOUT
     )
@@ -263,4 +250,3 @@ def get_llm_reranker() -> LLMReranker:
     if _llm_reranker is None:
         _llm_reranker = LLMReranker()
     return _llm_reranker
-

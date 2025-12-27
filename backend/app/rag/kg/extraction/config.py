@@ -3,10 +3,10 @@ from uuid import UUID
 
 from pydantic import Field
 
-from app.rag.kg.schemas import SAGBaseModel
+from app.rag.kg.schemas import KGBaseModel
 
 
-class ExtractConfig(SAGBaseModel):
+class ExtractConfig(KGBaseModel):
     """Configuration for event extraction from document chunks."""
 
     chunk_ids: List[UUID] = Field(default_factory=list, description="DocumentChunk IDs to process")

@@ -119,8 +119,11 @@ class Settings(BaseSettings):
     MARKITDOWN_DOCINTEL_ENDPOINT: str = ""
     MARKITDOWN_DOCINTEL_KEY: str = ""
     LLAMA_INDEX_ENABLED: bool = False
-    SAG_ENABLED: bool = False
-    SAG_CHAT_ENABLED: bool = False
+    # Knowledge Graph (KG) feature flags.
+    # Canonical env names: KG_ENABLED / KG_CHAT_ENABLED
+    # Backward-compatible env aliases: SAG_ENABLED / SAG_CHAT_ENABLED
+    SAG_ENABLED: bool = Field(default=False, validation_alias=AliasChoices("SAG_ENABLED", "KG_ENABLED"))
+    SAG_CHAT_ENABLED: bool = Field(default=False, validation_alias=AliasChoices("SAG_CHAT_ENABLED", "KG_CHAT_ENABLED"))
     CHAT_HISTORY_WINDOW: int = 5
     LONG_TERM_MEMORY_ENABLED: bool = False
     LONG_TERM_MEMORY_TOP_K: int = 3
@@ -139,6 +142,14 @@ class Settings(BaseSettings):
         case_sensitive=True,
         extra="ignore",
     )
+
+    @property
+    def KG_ENABLED(self) -> bool:
+        return self.SAG_ENABLED
+
+    @property
+    def KG_CHAT_ENABLED(self) -> bool:
+        return self.SAG_CHAT_ENABLED
 
 
 settings = Settings()

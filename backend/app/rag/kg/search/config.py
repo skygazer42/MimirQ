@@ -4,7 +4,7 @@ from uuid import UUID
 
 from pydantic import Field
 
-from app.rag.kg.schemas import SAGBaseModel
+from app.rag.kg.schemas import KGBaseModel
 
 
 class RerankStrategy(str, Enum):
@@ -22,7 +22,7 @@ class ReturnType(str, Enum):
         return self.value
 
 
-class RecallConfig(SAGBaseModel):
+class RecallConfig(KGBaseModel):
     vector_top_k: int = Field(default=15, ge=1, le=200)
     vector_candidates: int = Field(default=30, ge=1, le=500)
     entity_similarity_threshold: float = Field(default=0.3, ge=0.0, le=1.0)
@@ -33,7 +33,7 @@ class RecallConfig(SAGBaseModel):
     final_entity_count: int = Field(default=20, ge=1, le=200)
 
 
-class ExpandConfig(SAGBaseModel):
+class ExpandConfig(KGBaseModel):
     enabled: bool = True
     max_hops: int = Field(default=2, ge=1, le=5)
     entities_per_hop: int = Field(default=10, ge=1, le=50)
@@ -43,7 +43,7 @@ class ExpandConfig(SAGBaseModel):
     max_events_per_hop: int = Field(default=60, ge=1, le=200)
 
 
-class RerankConfig(SAGBaseModel):
+class RerankConfig(KGBaseModel):
     strategy: RerankStrategy = RerankStrategy.PAGERANK
     score_threshold: float = Field(default=0.2, ge=0.0, le=1.0)
     max_results: int = Field(default=10, ge=1, le=100)
@@ -54,7 +54,7 @@ class RerankConfig(SAGBaseModel):
     rrf_k: int = Field(default=60, ge=1, le=500)
 
 
-class SearchConfig(SAGBaseModel):
+class SearchConfig(KGBaseModel):
     query: str
     tenant_id: Optional[UUID] = None
     document_ids: Optional[List[UUID]] = None

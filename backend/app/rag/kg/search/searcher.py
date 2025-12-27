@@ -1,5 +1,5 @@
 """
-Unified entry for SAG search: recall -> expand -> rerank.
+Unified entry for KG search: recall -> expand -> rerank.
 """
 from typing import Any, Dict
 
@@ -10,10 +10,10 @@ from app.rag.reranker.kg import get_kg_reranker
 from app.rag.reranker.types import RerankCandidate
 from app.rag.kg.utils import get_logger
 
-logger = get_logger("sag.search.searcher")
+logger = get_logger("kg.search.searcher")
 
 
-class SAGSearcher:
+class KGSearcher:
     def __init__(self):
         self.recall_searcher = RecallSearcher()
         self.expand_searcher = ExpandSearcher()
@@ -49,3 +49,7 @@ class SAGSearcher:
             "clues": (expand_result.clues or []) + (rerank_result.clues or []),
             "stats": rerank_result.stats,
         }
+
+
+# Backward-compatible alias (SAG -> KG)
+SAGSearcher = KGSearcher

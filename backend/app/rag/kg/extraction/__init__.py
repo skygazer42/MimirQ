@@ -1,4 +1,4 @@
-"""SAG extract module."""
+"""KG extract module."""
 from app.rag.kg.extraction.config import ExtractConfig, ExtractBaseConfig
 from app.rag.kg.extraction.extractor import EventExtractor
 from app.rag.kg.extraction.processor import EventProcessor

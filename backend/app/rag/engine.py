@@ -13,11 +13,17 @@ import httpx
 import time
 
 from app.core.config import settings
+from app.rag.core.conversation import format_history_text
+from app.rag.core.citations import build_citations_from_docs
+from app.rag.core.http import httpx_trust_env
+from app.rag.core.logging import get_logger
 from app.rag.retriever import hybrid_retriever
 from app.services.metrics_logger import log_metrics
 from langchain_openai import ChatOpenAI
 from app.services.prompt_template_selector import resolve_prompt_template
-from app.rag.kg.pipeline import sag_search
+from app.rag.kg.pipeline import kg_search
+
+logger = get_logger("rag.engine")
 
 
 class RAGEngine:
@@ -25,24 +31,7 @@ class RAGEngine:
 
     def __init__(self):
         # LLM 配置
-        proxy_candidates = [
-            os.getenv("HTTPS_PROXY"),
-            os.getenv("HTTP_PROXY"),
-            os.getenv("ALL_PROXY"),
-            os.getenv("https_proxy"),
-            os.getenv("http_proxy"),
-            os.getenv("all_proxy"),
-        ]
-        proxies = [p for p in proxy_candidates if p]
-        trust_env = True
-        socks_proxy = next((p for p in proxies if p.lower().startswith("socks")), None)
-        if socks_proxy:
-            print(
-                f"[WARN] Unsupported SOCKS proxy for LLM detected: {socks_proxy}. "
-                "Ignoring env proxies."
-            )
-            trust_env = False
-
+        trust_env = httpx_trust_env(logger=logger)
         self.http_client = httpx.Client(trust_env=trust_env)
         self.http_async_client = httpx.AsyncClient(trust_env=trust_env)
 
@@ -261,25 +250,7 @@ class RAGEngine:
                 }
 
             # 对话历史（用于 prompt + 可选 Query Rewrite）
-            if history and len(history) > 0:
-                history_text = ""
-                window = max(settings.CHAT_HISTORY_WINDOW, 0)
-                hist_slice = history[-window:] if window else []
-                for msg in hist_slice:  # 可配置的滑动窗口
-                    if isinstance(msg, dict):
-                        role_value = msg.get("role")
-                        content_value = msg.get("content", "")
-                    else:
-                        role_value = getattr(msg, "role", None)
-                        content_value = getattr(msg, "content", "")
-
-                    role = "用户" if role_value == "user" else "助手"
-                    history_text += f"{role}: {content_value}\n\n"
-            else:
-                history_text = "（无历史对话）"
-
-            if not (history_text or "").strip():
-                history_text = "（无历史对话）"
+            history_text = format_history_text(history, window=settings.CHAT_HISTORY_WINDOW)
 
             t_all_start = time.time()
             query_for_retrieval = question
@@ -363,58 +334,11 @@ class RAGEngine:
             retrieval_elapsed = time.time() - t_retrieval_start
 
             # 构建引用信息
-            citations: List[Dict[str, Any]] = []
-            for doc in docs:
-                meta = doc.metadata or {}
-                v_score_raw = float(meta.get("vector_score", 0.0) or 0.0)
-                b_score_raw = float(meta.get("bm25_score", 0.0) or 0.0)
-                rerank_score = meta.get("rerank_score")
-                retrieval_score = meta.get("retrieval_score")
-                if request_retrieval_mode == "mmr":
-                    hit_type = "mmr"
-                elif v_score_raw > b_score_raw:
-                    hit_type = "vector"
-                elif b_score_raw > v_score_raw:
-                    hit_type = "keyword"
-                else:
-                    hit_type = "hybrid"
-                # 提取图片信息（如果有）
-                img_id = meta.get("img_id")
-                img_url = None
-                if img_id:
-                    # 生成图片访问 URL
-                    img_url = f"/api/v1/documents/image-url/{img_id}"
-                
-                citation = {
-                    "chunk_id": doc.id,
-                    "document_id": meta.get("document_id"),
-                    "document_name": meta.get("source", "Unknown"),
-                    "chunk_content": doc.page_content[:200] + "...",
-                    "page_number": meta.get("page"),
-                    "relevance_score": round(float(meta.get("score", 0.0)), 2),
-                    "vector_score": round(v_score_raw, 3),
-                    "bm25_score": round(b_score_raw, 3),
-                    "keyword_score": round(float(meta.get("keyword_score", 0.0) or 0.0), 3),
-                    "rerank_score": round(float(rerank_score), 3) if rerank_score is not None else None,
-                    "retrieval_score": round(float(retrieval_score), 3) if retrieval_score is not None else None,
-                    "reranker_provider": meta.get("reranker_provider"),
-                    "rerank_elapsed_sec": meta.get("rerank_elapsed_sec"),
-                    "rerank_model_used": meta.get("rerank_model_used"),
-                    "retrieval_mode": request_retrieval_mode,
-                    "vector_backend": settings.VECTOR_BACKEND,
-                    "retrieval_elapsed_sec": round(retrieval_elapsed, 3),
-                    "hit_type": hit_type,
-                }
-                
-                # 添加图片信息（如果存在）
-                if img_id:
-                    citation["img_id"] = img_id
-                    citation["img_url"] = img_url
-                    citation["has_image"] = True
-                else:
-                    citation["has_image"] = False
-                
-                citations.append(citation)
+            citations: List[Dict[str, Any]] = build_citations_from_docs(
+                docs,
+                retrieval_elapsed_sec=retrieval_elapsed,
+                retrieval_mode=request_retrieval_mode,
+            )
 
             # 发送引用信息
             yield {
@@ -422,15 +346,15 @@ class RAGEngine:
                 "data": citations
             }
 
-            # Step 2: 额外召回 SAG 事件（可选）
-            sag_context = ""
-            if settings.SAG_ENABLED and settings.SAG_CHAT_ENABLED and tenant_id and document_ids:
-                sag_result = await sag_search(
+            # Step 2: 额外召回 KG 事件（可选）
+            kg_context = ""
+            if settings.KG_ENABLED and settings.KG_CHAT_ENABLED and tenant_id and document_ids:
+                kg_result = await kg_search(
                     query=question,
                     tenant_id=tenant_id,
                     document_ids=document_ids,
                 )
-                events = (sag_result or {}).get("events") or []
+                events = (kg_result or {}).get("events") or []
                 if events:
                     parts = []
                     for idx, ev in enumerate(events[:5], 1):
@@ -439,9 +363,9 @@ class RAGEngine:
                         if len(summary) > 600:
                             summary = summary[:600] + "..."
                         parts.append(f"[事件 {idx}] {title}\n{summary}")
-                    sag_context = "\n\n".join(parts)
+                    kg_context = "\n\n".join(parts)
 
-            # Step 3: 构建上下文（文档切片 + 可选 SAG 事件）
+            # Step 3: 构建上下文（文档切片 + 可选 KG 事件）
             chunk_context = ""
             if docs:
                 context_parts = []
@@ -455,8 +379,8 @@ class RAGEngine:
                 chunk_context = "\n\n".join(context_parts)
 
             context_sections = []
-            if sag_context:
-                context_sections.append(f"【SAG 事件检索】\n{sag_context}")
+            if kg_context:
+                context_sections.append(f"【KG 事件检索】\n{kg_context}")
             if chunk_context:
                 context_sections.append(f"【文档切片检索】\n{chunk_context}")
             context = "\n\n".join(context_sections) if context_sections else "没有找到相关的参考资料。"

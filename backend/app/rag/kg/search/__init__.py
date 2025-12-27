@@ -1,4 +1,4 @@
-"""SAG search module."""
+"""KG search module."""
 
 from __future__ import annotations
 
@@ -12,6 +12,7 @@ __all__ = [
     "RerankConfig",
     "SearchConfig",
     "SearchBaseConfig",
+    "KGSearcher",
     "SAGSearcher",
     "RecallSearcher",
     "RecallResult",
@@ -52,10 +53,10 @@ def __getattr__(name: str) -> Any:  # pragma: no cover
             "SearchBaseConfig": SearchBaseConfig,
         }[name]
 
-    if name == "SAGSearcher":
-        from app.rag.kg.search.searcher import SAGSearcher
+    if name in {"KGSearcher", "SAGSearcher"}:
+        from app.rag.kg.search.searcher import KGSearcher, SAGSearcher
 
-        return SAGSearcher
+        return {"KGSearcher": KGSearcher, "SAGSearcher": SAGSearcher}[name]
     if name in {"RecallSearcher", "RecallResult"}:
         from app.rag.kg.search.recall import RecallResult, RecallSearcher
 

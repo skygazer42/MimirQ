@@ -15,7 +15,7 @@ from app.rag.kg.loading.processor import DocumentProcessor
 from app.services.indexer import EventEntityInput, IndexKind, IndexRecord, Indexer, IndexingOptions
 from app.rag.kg.utils import get_logger
 
-logger = get_logger("sag.extract.extractor")
+logger = get_logger("kg.extract.extractor")
 
 
 class EventExtractor:

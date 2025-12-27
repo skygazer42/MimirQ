@@ -8,7 +8,7 @@ from app.rag.kg.search.utils import cosine_similarity, format_events
 from app.rag.kg.repository import EventRepository, get_session
 from app.rag.kg.utils import get_logger
 
-logger = get_logger("sag.search.rerank.pagerank")
+logger = get_logger("kg.search.rerank.pagerank")
 
 
 class RerankPageRankSearcher:
