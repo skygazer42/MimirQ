@@ -10,9 +10,10 @@ Milvus 向量库服务（LangChain 1.x API 管理）
 
 from __future__ import annotations
 
+import logging
+import threading
 from typing import Any, Dict, List, Optional, Tuple
 from uuid import UUID
-import logging
 
 from app.core.config import settings
 from app.rag.embedding import create_langchain_embeddings_from_config
@@ -313,10 +314,14 @@ class MilvusVectorStore:
     """
 
     _instance: Optional["MilvusVectorStore"] = None
+    _lock: threading.Lock = threading.Lock()
 
     def __new__(cls):
         if cls._instance is None:
-            cls._instance = super().__new__(cls)
+            with cls._lock:
+                # Double-check locking pattern
+                if cls._instance is None:
+                    cls._instance = super().__new__(cls)
         return cls._instance
 
     def __init__(self):

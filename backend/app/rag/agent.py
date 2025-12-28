@@ -11,6 +11,7 @@ This module is kept for backwards compatibility; it simply forwards calls to
 
 from __future__ import annotations
 
+import threading
 from typing import AsyncGenerator, Dict, Any, List, Optional
 from uuid import UUID
 
@@ -20,7 +21,7 @@ from app.rag.engine import get_rag_engine, RAGEngine
 class RAGAgent:
     """Compatibility wrapper around `RAGEngine`."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         self._engine: RAGEngine = get_rag_engine()
 
     async def stream_chat(
@@ -46,12 +47,15 @@ class RAGAgent:
 
 
 _rag_agent_instance: Optional[RAGAgent] = None
+_rag_agent_lock: threading.Lock = threading.Lock()
 
 
 def get_rag_agent() -> RAGAgent:
-    """Lazily initialize the RAG agent."""
+    """Lazily initialize the RAG agent (thread-safe)."""
     global _rag_agent_instance
     if _rag_agent_instance is None:
-        _rag_agent_instance = RAGAgent()
+        with _rag_agent_lock:
+            if _rag_agent_instance is None:
+                _rag_agent_instance = RAGAgent()
     return _rag_agent_instance
 

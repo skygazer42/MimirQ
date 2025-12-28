@@ -1,13 +1,27 @@
 """
 Application configuration management.
+
+Provides centralized configuration with validation for:
+- Security settings (SECRET_KEY, credentials)
+- LLM/Embedding providers
+- RAG pipeline parameters
+- Storage backends
 """
-from typing import Optional
+from typing import Literal, Optional
+import os
+import warnings
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
-from pydantic import AliasChoices, Field
+from pydantic import AliasChoices, Field, model_validator
 
 
 class Settings(BaseSettings):
+    """
+    Application settings with validation.
+
+    All settings can be overridden via environment variables or .env file.
+    """
+
     DATABASE_URL: str = "postgresql://postgres:postgres@localhost:5432/mimirq"
     MILVUS_HOST: str = "localhost"
     MILVUS_PORT: int = 19530
@@ -250,6 +264,13 @@ class Settings(BaseSettings):
     DEFAULT_TENANT_ID: str = "00000000-0000-0000-0000-000000000000"
     TENANT_HEADER: str = "X-Tenant-ID"
 
+    # Rate Limiting
+    RATE_LIMIT_ENABLED: bool = True
+    RATE_LIMIT_REQUESTS_PER_SECOND: float = 10.0
+    RATE_LIMIT_BURST_SIZE: int = 20
+    RATE_LIMIT_CHAT_RPS: float = 2.0  # Stricter limit for chat endpoints
+    RATE_LIMIT_CHAT_BURST: int = 5
+
     # MCP (Model Context Protocol) configuration
     MCP_ENABLED: bool = False
     MCP_SERVER_URL: str = ""
@@ -270,5 +291,100 @@ class Settings(BaseSettings):
         case_sensitive=True,
         extra="ignore",
     )
+
+    @model_validator(mode="after")
+    def validate_settings(self) -> "Settings":
+        """Validate configuration settings at startup."""
+        # Security: Warn about default SECRET_KEY
+        if self.SECRET_KEY == "your-secret-key-change-in-production":
+            is_production = os.getenv("ENV", "").lower() in ("prod", "production")
+            if is_production:
+                raise ValueError(
+                    "SECRET_KEY must be changed from default in production! "
+                    "Set a secure random value via environment variable."
+                )
+            warnings.warn(
+                "Using default SECRET_KEY. Change this in production!",
+                UserWarning,
+                stacklevel=2,
+            )
+
+        # Security: Warn about default MinIO credentials
+        if self.MINIO_ENABLED:
+            if self.MINIO_ACCESS_KEY == "minioadmin" or self.MINIO_SECRET_KEY == "minioadmin":
+                warnings.warn(
+                    "Using default MinIO credentials. Change in production!",
+                    UserWarning,
+                    stacklevel=2,
+                )
+
+        # Validate chunk settings
+        if self.CHUNK_OVERLAP >= self.CHUNK_SIZE:
+            raise ValueError(
+                f"CHUNK_OVERLAP ({self.CHUNK_OVERLAP}) must be less than "
+                f"CHUNK_SIZE ({self.CHUNK_SIZE})"
+            )
+
+        # Validate LLM temperature
+        if not 0 <= self.LLM_TEMPERATURE <= 2:
+            raise ValueError(
+                f"LLM_TEMPERATURE ({self.LLM_TEMPERATURE}) must be between 0 and 2"
+            )
+
+        # Validate retrieval settings
+        if self.SIMILARITY_THRESHOLD < 0 or self.SIMILARITY_THRESHOLD > 1:
+            raise ValueError(
+                f"SIMILARITY_THRESHOLD ({self.SIMILARITY_THRESHOLD}) must be between 0 and 1"
+            )
+
+        if self.RETRIEVAL_MMR_LAMBDA < 0 or self.RETRIEVAL_MMR_LAMBDA > 1:
+            raise ValueError(
+                f"RETRIEVAL_MMR_LAMBDA ({self.RETRIEVAL_MMR_LAMBDA}) must be between 0 and 1"
+            )
+
+        # Validate workflow mode
+        valid_workflow_modes = {"chain", "routing", "parallel", "react", "planner", "evaluator"}
+        if self.WORKFLOW_MODE not in valid_workflow_modes:
+            raise ValueError(
+                f"WORKFLOW_MODE ({self.WORKFLOW_MODE}) must be one of {valid_workflow_modes}"
+            )
+
+        # Validate vector backend
+        valid_vector_backends = {"milvus", "memory", "faiss", "chroma"}
+        if self.VECTOR_BACKEND not in valid_vector_backends:
+            raise ValueError(
+                f"VECTOR_BACKEND ({self.VECTOR_BACKEND}) must be one of {valid_vector_backends}"
+            )
+
+        # Validate checkpoint backend
+        valid_checkpoint_backends = {"memory", "sqlite"}
+        if self.CHECKPOINT_BACKEND not in valid_checkpoint_backends:
+            raise ValueError(
+                f"CHECKPOINT_BACKEND ({self.CHECKPOINT_BACKEND}) must be one of {valid_checkpoint_backends}"
+            )
+
+        # Validate memory store type
+        valid_memory_stores = {"memory", "sqlite"}
+        if self.MEMORY_STORE_TYPE not in valid_memory_stores:
+            raise ValueError(
+                f"MEMORY_STORE_TYPE ({self.MEMORY_STORE_TYPE}) must be one of {valid_memory_stores}"
+            )
+
+        # Validate reranker provider
+        valid_reranker_providers = {"llm", "pc", "none"}
+        if self.RERANKER_PROVIDER not in valid_reranker_providers:
+            raise ValueError(
+                f"RERANKER_PROVIDER ({self.RERANKER_PROVIDER}) must be one of {valid_reranker_providers}"
+            )
+
+        # Validate retrieval fusion strategy
+        valid_fusion_strategies = {"linear", "rrf"}
+        if self.RETRIEVAL_FUSION_STRATEGY not in valid_fusion_strategies:
+            raise ValueError(
+                f"RETRIEVAL_FUSION_STRATEGY ({self.RETRIEVAL_FUSION_STRATEGY}) must be one of {valid_fusion_strategies}"
+            )
+
+        return self
+
 
 settings = Settings()
