@@ -32,6 +32,9 @@ from app.rag.tools.mcp_client import (
 
 logger = logging.getLogger(__name__)
 
+# Configuration
+MCP_ENABLED = getattr(settings, "MCP_ENABLED", False)
+
 
 # ============================================================================
 # Document Tools

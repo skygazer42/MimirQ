@@ -476,25 +476,69 @@ class MCPToolRegistry:
         """
         arguments = arguments or {}
 
-        # Try local first
-        if name in self._local_tools:
-            try:
-                func = self._local_tools[name]
-                if asyncio.iscoroutinefunction(func):
-                    result = await func(**arguments)
-                else:
-                    result = func(**arguments)
-                return ToolResult(success=True, data=result)
-            except Exception as e:
-                return ToolResult(success=False, error=str(e))
+        try:
+            from app.rag.middleware import ToolMiddlewareChain
+        except Exception:  # noqa: BLE001
+            ToolMiddlewareChain = None  # type: ignore
 
-        # Fall back to remote
-        if self.mcp_client:
-            return await self.mcp_client.call_tool(name, arguments)
+        chain = ToolMiddlewareChain() if ToolMiddlewareChain else None  # type: ignore[operator]
+        tool_state: Dict[str, Any] = {
+            "tool_name": name,
+            "arguments": arguments,
+            "result": None,
+            "error": None,
+            "success": None,
+            "metadata": {},
+        }
+
+        if chain:
+            tool_state = chain.run_before(tool_state)
+
+        async def _execute(state: Dict[str, Any]) -> Dict[str, Any]:
+            tool_name = str(state.get("tool_name") or "")
+            tool_args = state.get("arguments") or {}
+
+            # Try local first
+            if tool_name in self._local_tools:
+                state["metadata"] = {**(state.get("metadata") or {}), "backend": "local"}
+                func = self._local_tools[tool_name]
+                result = await func(**tool_args) if asyncio.iscoroutinefunction(func) else func(**tool_args)
+                state["success"] = True
+                state["result"] = result
+                return state
+
+            # Fall back to remote
+            if self.mcp_client:
+                state["metadata"] = {**(state.get("metadata") or {}), "backend": "remote"}
+                res = await self.mcp_client.call_tool(tool_name, tool_args)
+                state["success"] = bool(res.success)
+                state["result"] = res.data
+                state["error"] = res.error
+                state["metadata"] = {**(state.get("metadata") or {}), **(res.metadata or {})}
+                return state
+
+            state["success"] = False
+            state["error"] = f"Tool not found: {tool_name}"
+            return state
+
+        try:
+            if chain:
+                wrapped = chain.wrap_call(_execute)
+                tool_state = await wrapped(tool_state) if asyncio.iscoroutinefunction(wrapped) else wrapped(tool_state)
+            else:
+                tool_state = await _execute(tool_state)
+        except Exception as exc:  # noqa: BLE001
+            tool_state["success"] = False
+            tool_state["error"] = str(exc)[:500]
+
+        if chain:
+            tool_state = chain.run_after(tool_state)
 
         return ToolResult(
-            success=False,
-            error=f"Tool not found: {name}",
+            success=bool(tool_state.get("success")),
+            data=tool_state.get("result"),
+            error=tool_state.get("error"),
+            metadata=tool_state.get("metadata") or {},
         )
 
 
