@@ -7,6 +7,7 @@ imports:
 - logging helpers
 - shared exception types
 - small text/token utilities
+- Command objects for workflow control
 """
 
 from app.rag.core.errors import (
@@ -21,6 +22,14 @@ from app.rag.core.errors import (
 )
 from app.rag.core.logging import get_logger, setup_logging
 from app.rag.core.text import estimate_tokens
+from app.rag.core.command import (
+    Command,
+    Send,
+    Interrupt,
+    interrupt,
+    CommandProcessor,
+    NodeReturn,
+)
 
 __all__ = [
     "get_logger",
@@ -34,5 +43,12 @@ __all__ = [
     "LoadError",
     "PromptError",
     "SearchError",
+    # Command objects
+    "Command",
+    "Send",
+    "Interrupt",
+    "interrupt",
+    "CommandProcessor",
+    "NodeReturn",
 ]
 

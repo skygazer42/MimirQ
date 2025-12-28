@@ -78,7 +78,9 @@ class Settings(BaseSettings):
     CHUNK_OVERLAP: int = 200
     RETRIEVAL_TOP_K: int = 5
     SIMILARITY_THRESHOLD: float = 0.7
-    RETRIEVAL_MMR_LAMBDA: float = 0.7
+    # MMR (Maximal Marginal Relevance) settings
+    RETRIEVAL_MMR_LAMBDA: float = 0.7  # Balance relevance vs diversity (0=diversity, 1=relevance)
+    RETRIEVAL_MMR_FETCH_K_MULTIPLIER: int = 4  # Fetch k*multiplier candidates for MMR selection
     # Retrieval fusion strategy:
     # - linear: min-max normalize each channel then alpha-blend
     # - rrf: reciprocal-rank fusion (normalized for UI)
@@ -90,6 +92,8 @@ class Settings(BaseSettings):
     RETRIEVAL_DEDUP_MAX_COMPARE: int = 50
     # Per-document diversity (0 disables)
     RETRIEVAL_MAX_CHUNKS_PER_DOC: int = 3
+    # Metadata filtering for vector search
+    RETRIEVAL_METADATA_FILTER_ENABLED: bool = True
     RETRIEVAL_MIN_DISTINCT_DOCS: int = 0
 
     # Prompt context guards (0 disables)
@@ -107,6 +111,18 @@ class Settings(BaseSettings):
     USE_LANGGRAPH_PIPELINE: bool = False
     RAG_GRAPH_MAX_RETRIES: int = 2
     RAG_GRAPH_TIMEOUT_SEC: int = 20
+    # LangGraph 1.0+ Functional API (preferred when available)
+    LANGGRAPH_USE_FUNCTIONAL_API: bool = True
+
+    # Middleware System Configuration
+    MIDDLEWARE_ENABLED: bool = True
+    MIDDLEWARE_ERROR_HANDLER_ENABLED: bool = True
+    MIDDLEWARE_ERROR_HANDLER_MAX_RETRIES: int = 3
+    MIDDLEWARE_DYNAMIC_MODEL_ENABLED: bool = False  # Syncs with ENABLE_DYNAMIC_MODEL_ROUTING
+    MIDDLEWARE_DYNAMIC_PROMPT_ENABLED: bool = True
+    MIDDLEWARE_INJECT_TIME_CONTEXT: bool = True
+    MIDDLEWARE_DEFAULT_RESPONSE_STYLE: str = ""  # professional | casual | technical | concise | detailed
+
     VECTOR_BACKEND: str = "milvus"  # milvus | memory | faiss | chroma
     # Indexing toggles (to reduce duplicate pipelines when desired)
     CHUNK_VECTOR_ENABLED: bool = True
@@ -182,6 +198,27 @@ class Settings(BaseSettings):
     LONG_TERM_MEMORY_ENABLED: bool = False
     LONG_TERM_MEMORY_TOP_K: int = 3
     LONG_TERM_MEMORY_MIN_LEN: int = 20
+    MEMORY_STORE_TYPE: str = "memory"  # memory | sqlite
+    MEMORY_SQLITE_PATH: str = "./data/memory.db"
+    # Short-term memory management
+    SHORT_TERM_MEMORY_MAX_TOKENS: int = 4000
+    SHORT_TERM_MEMORY_STRATEGY: str = "last"  # first | last
+    SUMMARIZATION_THRESHOLD: int = 10  # Messages before auto-summarization
+    SUMMARIZATION_ENABLED: bool = True
+
+    # Workflow mode configuration
+    WORKFLOW_MODE: str = "chain"  # chain | routing | parallel | react | planner | evaluator
+    EVALUATOR_MAX_ITERATIONS: int = 3
+    EVALUATOR_THRESHOLD: float = 0.8
+    # Human-in-the-loop configuration
+    HUMAN_REVIEW_ENABLED: bool = False
+    INTERRUPT_TIMEOUT_SEC: int = 3600  # 1 hour
+    # Stream writer configuration
+    STREAM_WRITER_ENABLED: bool = True
+    STREAM_BUFFER_SIZE: int = 100
+    # Checkpoint persistence configuration
+    CHECKPOINT_BACKEND: str = "memory"  # memory | sqlite
+    CHECKPOINT_SQLITE_PATH: str = "./data/checkpoints.db"
 
     # 图片展示策略
     SHOW_IMAGE_IN_ANSWER: bool = True  # 控制回答正文是否附带图片段
