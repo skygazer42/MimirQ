@@ -51,6 +51,8 @@ import { QualityChecker } from '@/components/data-governance/quality-checker'
 import { DataCleaner } from '@/components/data-governance/data-cleaner'
 import { DataAnnotator } from '@/components/data-governance/data-annotator'
 import { DataClassifier } from '@/components/data-governance/data-classifier'
+import { documentApi } from '@/lib/api-client'
+import { useParserBackendPreference } from '@/contexts/parser-backend-context'
 
 // 工作流步骤
 const WORKFLOW_STEPS = [
@@ -97,13 +99,16 @@ interface FileGovernanceState {
 
 export function DataGovernancePanel() {
   const router = useRouter()
-  const { files, isLoaded, clearAll } = useParsedFiles()
+  const { files, isLoaded, clearAll, addParsedFile } = useParsedFiles()
+  const { parserBackend } = useParserBackendPreference()
 
   // UI 状态
   const [activeTab, setActiveTab] = useState<GovernanceTab>('quality')
   const [selectedFileId, setSelectedFileId] = useState<string | null>(null)
   const [showOriginal, setShowOriginal] = useState(false)
   const [isProcessing, setIsProcessing] = useState(false)
+  const [isDragging, setIsDragging] = useState(false)
+  const [uploading, setUploading] = useState(false)
 
   // 文件治理状态
   const [governanceStates, setGovernanceStates] = useState<Record<string, FileGovernanceState>>({})
@@ -140,6 +145,66 @@ export function DataGovernancePanel() {
       initializeGovernanceState(files[0])
     }
   }, [isLoaded, files, selectedFileId, initializeGovernanceState])
+
+  // 拖放处理
+  const handleDragOver = useCallback((e: React.DragEvent) => {
+    e.preventDefault()
+    setIsDragging(true)
+  }, [])
+
+  const handleDragLeave = useCallback((e: React.DragEvent) => {
+    e.preventDefault()
+    setIsDragging(false)
+  }, [])
+
+  const handleDrop = useCallback(async (e: React.DragEvent) => {
+    e.preventDefault()
+    setIsDragging(false)
+    const files = Array.from(e.dataTransfer.files)
+    if (files.length > 0) {
+      await handleUploadAndParse(files)
+    }
+  }, [])
+
+  const handleFileSelect = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files ? Array.from(e.target.files) : []
+    if (files.length > 0) {
+      await handleUploadAndParse(files)
+    }
+    e.target.value = ''
+  }, [])
+
+  // 上传并解析逻辑
+  const handleUploadAndParse = async (files: File[]) => {
+    setUploading(true)
+    try {
+      for (const file of files) {
+        // 使用 preview 接口快速获取 Markdown
+        const data = await documentApi.preview(file, parserBackend)
+        
+        // 拼接 segments 获取全文
+        const markdownContent = data.segments.map(s => s.content).join('\n\n')
+        
+        const newId = addParsedFile({
+          filename: file.name,
+          fileType: file.name.split('.').pop()?.toLowerCase() || '',
+          fileSize: file.size,
+          markdownContent: markdownContent,
+          parser: data.parser_backend,
+        })
+
+        // 如果是第一个文件，自动选中
+        if (!selectedFileId) {
+          setSelectedFileId(newId)
+        }
+      }
+    } catch (error) {
+      console.error('Failed to parse file:', error)
+      // 可以添加 toast 提示错误
+    } finally {
+      setUploading(false)
+    }
+  }
 
   // 获取当前显示内容
   const displayContent = useMemo(() => {
@@ -250,20 +315,94 @@ export function DataGovernancePanel() {
     return { totalFiles, completedFiles, modifiedFiles, avgScore }
   }, [files, governanceStates])
 
-  // 空状态
+  // 空状态 - 改为上传引导
   if (isLoaded && files.length === 0) {
     return (
-      <div className="flex-1 flex items-center justify-center bg-gray-50">
-        <div className="text-center max-w-md">
-          <div className="w-20 h-20 mx-auto mb-4 bg-gradient-to-br from-amber-100 to-orange-100 rounded-2xl flex items-center justify-center">
-            <ShieldCheck className="w-10 h-10 text-amber-500" />
+      <div className="flex-1 flex flex-col bg-white">
+        <header className="flex-shrink-0 bg-white border-b border-gray-200 px-6 py-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-4">
+              <div className="w-11 h-11 bg-gradient-to-br from-sky-500 to-blue-600 rounded-xl flex items-center justify-center shadow-lg shadow-sky-200">
+                <ShieldCheck className="w-5 h-5 text-white" />
+              </div>
+              <div>
+                <h1 className="text-xl font-bold text-gray-900">数据治理工作台</h1>
+                <p className="text-sm text-gray-500">
+                  上传文档进行质量检测与清洗
+                </p>
+              </div>
+            </div>
+            {/* 步骤导航保持一致，但处于初始状态 */}
+            <div className="hidden md:flex items-center gap-2 opacity-50 pointer-events-none">
+                {/* 简化显示 */}
+            </div>
           </div>
-          <h3 className="text-lg font-medium text-gray-700 mb-2">暂无待治理文件</h3>
-          <p className="text-gray-400 text-sm mb-6">请先在文档解析页面解析文档</p>
-          <Button onClick={handleBackToParsing} className="gap-2">
-            <Upload className="w-4 h-4" />
-            前往解析文档
-          </Button>
+        </header>
+        
+        <div className="flex-1 flex items-center justify-center bg-gray-50 p-6">
+          <div 
+            className={cn(
+              "w-full max-w-2xl border-2 border-dashed rounded-3xl p-12 text-center transition-all duration-300",
+              isDragging 
+                ? "border-sky-500 bg-sky-50 scale-[1.02]" 
+                : "border-gray-300 bg-white hover:border-sky-400 hover:shadow-lg"
+            )}
+            onDragOver={handleDragOver}
+            onDragLeave={handleDragLeave}
+            onDrop={handleDrop}
+          >
+            <div className="w-24 h-24 mx-auto mb-6 bg-sky-100 rounded-full flex items-center justify-center">
+              {uploading ? (
+                <Sparkles className="w-10 h-10 text-sky-600 animate-spin" />
+              ) : (
+                <Upload className="w-10 h-10 text-sky-600" />
+              )}
+            </div>
+            <h3 className="text-2xl font-bold text-gray-900 mb-3">
+              {uploading ? '正在解析文档...' : '上传文档开始治理'}
+            </h3>
+            <p className="text-gray-500 mb-8 max-w-md mx-auto text-lg">
+              {uploading 
+                ? 'AI 正在分析文档结构并提取内容，请稍候...' 
+                : '拖放文件到此处，或点击下方按钮选择文件。支持 PDF, Word, Markdown 等格式。'
+              }
+            </p>
+            
+            <div className="flex justify-center gap-4">
+              <div className="relative">
+                <input
+                  type="file"
+                  multiple
+                  className="hidden"
+                  id="file-upload"
+                  onChange={handleFileSelect}
+                  disabled={uploading}
+                />
+                <label 
+                  htmlFor="file-upload"
+                  className={cn(
+                    "flex items-center gap-2 px-8 py-4 bg-gradient-to-r from-sky-500 to-blue-600 text-white rounded-xl font-medium shadow-lg hover:shadow-xl hover:-translate-y-0.5 transition-all cursor-pointer",
+                    uploading && "opacity-50 cursor-not-allowed"
+                  )}
+                >
+                  <Upload className="w-5 h-5" />
+                  选择文件
+                </label>
+              </div>
+            </div>
+            
+            <div className="mt-8 flex items-center justify-center gap-8 text-sm text-gray-400">
+              <span className="flex items-center gap-2">
+                <FileText className="w-4 h-4" /> 智能解析
+              </span>
+              <span className="flex items-center gap-2">
+                <ShieldCheck className="w-4 h-4" /> 质量检测
+              </span>
+              <span className="flex items-center gap-2">
+                <Sparkles className="w-4 h-4" /> 自动清洗
+              </span>
+            </div>
+          </div>
         </div>
       </div>
     )
@@ -275,7 +414,7 @@ export function DataGovernancePanel() {
       <header className="flex-shrink-0 bg-white border-b border-gray-200 px-6 py-4">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-4">
-            <div className="w-11 h-11 bg-gradient-to-br from-amber-500 to-orange-600 rounded-xl flex items-center justify-center shadow-lg shadow-amber-200">
+            <div className="w-11 h-11 bg-gradient-to-br from-sky-500 to-blue-600 rounded-xl flex items-center justify-center shadow-lg shadow-sky-200">
               <ShieldCheck className="w-5 h-5 text-white" />
             </div>
             <div>
@@ -306,7 +445,7 @@ export function DataGovernancePanel() {
                     className={cn(
                       "flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm transition-all",
                       isActive
-                        ? "bg-amber-100 text-amber-700 font-medium"
+                        ? "bg-sky-100 text-sky-700 font-medium"
                         : isPast
                           ? "bg-green-50 text-green-600 hover:bg-green-100"
                           : "text-gray-400 hover:bg-gray-100"
@@ -357,8 +496,8 @@ export function DataGovernancePanel() {
 
           {stats.avgScore > 0 && (
             <div className="flex items-center gap-2">
-              <div className="w-8 h-8 bg-amber-100 rounded-lg flex items-center justify-center">
-                <Sparkles className="w-4 h-4 text-amber-600" />
+              <div className="w-8 h-8 bg-sky-100 rounded-lg flex items-center justify-center">
+                <Sparkles className="w-4 h-4 text-sky-600" />
               </div>
               <div>
                 <div className="text-xs text-gray-400">平均质量分</div>
@@ -382,7 +521,7 @@ export function DataGovernancePanel() {
             </Button>
             <Button
               onClick={handleSaveAndContinue}
-              className="gap-2 bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-700 hover:to-orange-700"
+              className="gap-2 bg-gradient-to-r from-sky-600 to-blue-600 hover:from-sky-700 hover:to-blue-700"
             >
               <Save className="w-4 h-4" />
               保存并继续
@@ -404,7 +543,7 @@ export function DataGovernancePanel() {
               <input
                 type="text"
                 placeholder="搜索文件..."
-                className="w-full pl-9 pr-3 py-2 text-sm bg-white border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent"
+                className="w-full pl-9 pr-3 py-2 text-sm bg-white border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-transparent"
               />
             </div>
           </div>
@@ -422,7 +561,7 @@ export function DataGovernancePanel() {
                   className={cn(
                     "w-full text-left p-3 rounded-xl border transition-all",
                     selectedFileId === file.id
-                      ? "bg-white border-amber-300 shadow-sm ring-1 ring-amber-100"
+                      ? "bg-white border-sky-300 shadow-sm ring-1 ring-sky-100"
                       : "bg-transparent border-gray-200 hover:bg-white hover:border-gray-300"
                   )}
                 >
