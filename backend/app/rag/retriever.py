@@ -41,6 +41,7 @@ class HybridRetriever(BaseRetriever):
     vector_weight: float = 0.6
     keyword_weight: float = 0.4
     mmr_lambda: float = settings.RETRIEVAL_MMR_LAMBDA
+    mmr_fetch_k_multiplier: int = getattr(settings, "RETRIEVAL_MMR_FETCH_K_MULTIPLIER", 4)
     enable_reranker: bool = settings.ENABLE_RERANKER
     reranker_provider: str = settings.RERANKER_PROVIDER
     reranker_top_n: int = settings.RERANKER_TOP_N
@@ -53,6 +54,9 @@ class HybridRetriever(BaseRetriever):
     min_distinct_docs: int = settings.RETRIEVAL_MIN_DISTINCT_DOCS
     tenant_id: Optional[UUID] = None
     document_ids: Optional[List[UUID]] = None
+    # Metadata filtering
+    metadata_filter: Optional[Dict[str, Any]] = None
+    metadata_filter_enabled: bool = getattr(settings, "RETRIEVAL_METADATA_FILTER_ENABLED", True)
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
@@ -172,6 +176,7 @@ class HybridRetriever(BaseRetriever):
         top_k: int = 10,
         document_ids: Optional[List[UUID]] = None,
         tenant_id: Optional[UUID] = None,
+        metadata_filter: Optional[Dict[str, Any]] = None,
     ) -> List[Dict[str, Any]]:
         """BM25 关键词检索（内部使用，返回带分数的 dict）。"""
         tenant_key = self._tenant_key(tenant_id)
@@ -190,6 +195,10 @@ class HybridRetriever(BaseRetriever):
             meta = doc.metadata or {}
             if allowed_ids and str(meta.get("document_id")) not in allowed_ids:
                 continue
+            # Apply metadata filter if provided
+            if metadata_filter and self.metadata_filter_enabled:
+                if not self._match_metadata_filter(meta, metadata_filter):
+                    continue
             results.append(
                 {
                     "chunk_id": doc.id,
@@ -225,6 +234,8 @@ class HybridRetriever(BaseRetriever):
         keyword_weight: float = 0.4,
         retrieval_mode: str = "hybrid",
         mmr_lambda: float = 0.7,
+        mmr_fetch_k_multiplier: int = 4,
+        metadata_filter: Optional[Dict[str, Any]] = None,
     ) -> List[Dict[str, Any]]:
         """混合检索：向量检索 + BM25，可选重排。"""
         retrieval_mode = (retrieval_mode or "hybrid").lower()
@@ -232,18 +243,28 @@ class HybridRetriever(BaseRetriever):
         want_vector = retrieval_mode in ("hybrid", "vector", "mmr")
         want_bm25 = retrieval_mode in ("hybrid", "keyword", "mmr")
 
+        # MMR mode needs more candidates for diversity selection
+        fetch_k = top_k * 2
+        if retrieval_mode == "mmr":
+            fetch_k = top_k * max(1, mmr_fetch_k_multiplier)
+
         # 1) 向量检索
         vector_results: List[Dict[str, Any]] = []
         if want_vector:
             vector_store = get_vector_store()
             try:
-                vector_results = vector_store.search(
-                    query=query,
-                    top_k=top_k * 2,
-                    score_threshold=score_threshold,
-                    document_ids=document_ids,
-                    tenant_id=tenant_id,
-                )
+                search_kwargs = {
+                    "query": query,
+                    "top_k": fetch_k,
+                    "score_threshold": score_threshold,
+                    "document_ids": document_ids,
+                    "tenant_id": tenant_id,
+                }
+                # Add metadata filter if supported and provided
+                if metadata_filter and self.metadata_filter_enabled:
+                    search_kwargs["metadata_filter"] = metadata_filter
+
+                vector_results = vector_store.search(**search_kwargs)
             except Exception as exc:
                 logger.warning("Vector search failed: %s", exc)
                 vector_results = []
@@ -253,29 +274,34 @@ class HybridRetriever(BaseRetriever):
         if want_bm25:
             bm25_results = self._search_bm25(
                 query=query,
-                top_k=top_k * 2,
+                top_k=fetch_k,
                 document_ids=document_ids,
                 tenant_id=tenant_id,
+                metadata_filter=metadata_filter,
             )
 
         # Fallback: when single-channel mode fails, try the other channel.
         if retrieval_mode == "vector" and not vector_results:
             bm25_results = self._search_bm25(
                 query=query,
-                top_k=top_k * 2,
+                top_k=fetch_k,
                 document_ids=document_ids,
                 tenant_id=tenant_id,
+                metadata_filter=metadata_filter,
             )
         elif retrieval_mode == "keyword" and not bm25_results:
             vector_store = get_vector_store()
             try:
-                vector_results = vector_store.search(
-                    query=query,
-                    top_k=top_k * 2,
-                    score_threshold=score_threshold,
-                    document_ids=document_ids,
-                    tenant_id=tenant_id,
-                )
+                fallback_kwargs = {
+                    "query": query,
+                    "top_k": fetch_k,
+                    "score_threshold": score_threshold,
+                    "document_ids": document_ids,
+                    "tenant_id": tenant_id,
+                }
+                if metadata_filter and self.metadata_filter_enabled:
+                    fallback_kwargs["metadata_filter"] = metadata_filter
+                vector_results = vector_store.search(**fallback_kwargs)
             except Exception as exc:
                 logger.warning("Vector search failed: %s", exc)
                 vector_results = []
@@ -510,6 +536,8 @@ class HybridRetriever(BaseRetriever):
             keyword_weight=self.keyword_weight,
             retrieval_mode=self.retrieval_mode,
             mmr_lambda=self.mmr_lambda,
+            mmr_fetch_k_multiplier=self.mmr_fetch_k_multiplier,
+            metadata_filter=self.metadata_filter,
         )
         results = self._enrich_results_with_db_metadata(results)
         docs: List[Document] = []
@@ -553,6 +581,71 @@ class HybridRetriever(BaseRetriever):
         meta = result.get("metadata") or {}
         doc_id = meta.get("document_id")
         return str(doc_id) if doc_id is not None else ""
+
+    def _match_metadata_filter(self, meta: Dict[str, Any], filter_spec: Dict[str, Any]) -> bool:
+        """
+        Check if metadata matches the filter specification.
+
+        Supports operators:
+        - $eq: exact match (default if no operator)
+        - $ne: not equal
+        - $gt, $gte, $lt, $lte: comparison
+        - $in: value in list
+        - $nin: value not in list
+        - $contains: string contains (case-insensitive)
+
+        Examples:
+            {"source": "doc.pdf"}  # exact match
+            {"page": {"$gte": 10}}  # page >= 10
+            {"source": {"$in": ["a.pdf", "b.pdf"]}}  # source in list
+            {"title": {"$contains": "report"}}  # title contains "report"
+        """
+        if not filter_spec:
+            return True
+
+        for key, condition in filter_spec.items():
+            meta_value = meta.get(key)
+
+            if isinstance(condition, dict):
+                # Operator-based condition
+                for op, expected in condition.items():
+                    if op == "$eq":
+                        if meta_value != expected:
+                            return False
+                    elif op == "$ne":
+                        if meta_value == expected:
+                            return False
+                    elif op == "$gt":
+                        if meta_value is None or meta_value <= expected:
+                            return False
+                    elif op == "$gte":
+                        if meta_value is None or meta_value < expected:
+                            return False
+                    elif op == "$lt":
+                        if meta_value is None or meta_value >= expected:
+                            return False
+                    elif op == "$lte":
+                        if meta_value is None or meta_value > expected:
+                            return False
+                    elif op == "$in":
+                        if meta_value not in expected:
+                            return False
+                    elif op == "$nin":
+                        if meta_value in expected:
+                            return False
+                    elif op == "$contains":
+                        if meta_value is None:
+                            return False
+                        if str(expected).lower() not in str(meta_value).lower():
+                            return False
+                    else:
+                        logger.warning("Unknown filter operator: %s", op)
+            else:
+                # Direct value comparison (implicit $eq)
+                if meta_value != condition:
+                    return False
+
+        return True
 
     @staticmethod
     def _tokenize_for_similarity(text: str) -> set[str]:

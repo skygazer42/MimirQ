@@ -1,0 +1,296 @@
+"""
+ReAct Workflow Pattern.
+
+Reasoning and Acting loop for complex queries.
+Alternates between thinking about the problem and taking actions.
+
+Pattern: Think -> Act -> Observe -> Think -> ... -> Answer
+"""
+
+from __future__ import annotations
+
+import logging
+from typing import Any, Callable, Dict, List, Optional, Awaitable
+
+from app.rag.workflows.base import (
+    BaseWorkflow,
+    WorkflowMode,
+    WorkflowResult,
+)
+
+logger = logging.getLogger(__name__)
+
+
+class Tool:
+    """A tool that can be invoked by the ReAct agent."""
+
+    def __init__(
+        self,
+        name: str,
+        func: Callable[[str], Awaitable[str]],
+        description: str = "",
+    ):
+        self.name = name
+        self.func = func
+        self.description = description
+
+    async def invoke(self, input_text: str) -> str:
+        """Invoke the tool."""
+        return await self.func(input_text)
+
+
+class ReActWorkflow(BaseWorkflow):
+    """
+    ReAct workflow implements reasoning and acting loop.
+
+    The agent reasons about the problem, decides on actions,
+    observes results, and continues until reaching an answer.
+
+    Usage:
+        workflow = ReActWorkflow(llm=my_llm)
+        workflow.add_tool("search", search_func, "Search documents")
+        workflow.add_tool("calculate", calc_func, "Do calculations")
+        result = await workflow.run({"question": "..."})
+    """
+
+    def __init__(
+        self,
+        llm: Optional[Any] = None,
+        max_steps: int = 10,
+        **kwargs,
+    ):
+        """
+        Initialize the ReAct workflow.
+
+        Args:
+            llm: Language model for reasoning
+            max_steps: Maximum reasoning steps
+            **kwargs: Additional configuration
+        """
+        super().__init__(**kwargs)
+        self._llm = llm
+        self._tools: Dict[str, Tool] = {}
+        self.max_steps = max_steps
+
+    @property
+    def mode(self) -> WorkflowMode:
+        return WorkflowMode.REACT
+
+    def add_tool(
+        self,
+        name: str,
+        func: Callable[[str], Awaitable[str]],
+        description: str = "",
+    ) -> "ReActWorkflow":
+        """
+        Add a tool for the agent to use.
+
+        Args:
+            name: Tool name
+            func: Tool function (input -> output)
+            description: Tool description
+
+        Returns:
+            Self for chaining
+        """
+        self._tools[name] = Tool(name, func, description)
+        return self
+
+    def set_llm(self, llm: Any) -> "ReActWorkflow":
+        """Set the language model."""
+        self._llm = llm
+        return self
+
+    def _get_tools_prompt(self) -> str:
+        """Generate tools description for prompt."""
+        if not self._tools:
+            return "No tools available."
+
+        lines = ["Available tools:"]
+        for name, tool in self._tools.items():
+            lines.append(f"- {name}: {tool.description}")
+        return "\n".join(lines)
+
+    async def _reason(self, state: Dict[str, Any]) -> Dict[str, str]:
+        """
+        Generate next thought and action.
+
+        Returns:
+            Dict with 'thought', 'action', and 'action_input' keys
+        """
+        if self._llm is None:
+            raise ValueError("LLM not configured")
+
+        question = self.get_question(state)
+        trace = state.get("reasoning_trace", [])
+        tools_prompt = self._get_tools_prompt()
+
+        history_text = "\n".join(trace) if trace else "None yet."
+
+        prompt = f"""You are a reasoning agent. Your goal is to answer the question by thinking step by step and using tools when needed.
+
+{tools_prompt}
+
+Question: {question}
+
+Previous reasoning steps:
+{history_text}
+
+Based on the above, provide your next step. You must respond in one of these formats:
+
+1. If you need to use a tool:
+Thought: [your reasoning about what to do next]
+Action: [tool name]
+Action Input: [input to the tool]
+
+2. If you have the final answer:
+Thought: [your final reasoning]
+Answer: [your final answer to the question]
+
+Your response:"""
+
+        response = await self._llm.ainvoke(prompt)
+        content = response.content if hasattr(response, 'content') else str(response)
+
+        # Parse response
+        result = {"thought": "", "action": "", "action_input": "", "answer": ""}
+
+        lines = content.strip().split("\n")
+        current_key = None
+
+        for line in lines:
+            line = line.strip()
+            if line.startswith("Thought:"):
+                current_key = "thought"
+                result["thought"] = line[8:].strip()
+            elif line.startswith("Action:"):
+                current_key = "action"
+                result["action"] = line[7:].strip()
+            elif line.startswith("Action Input:"):
+                current_key = "action_input"
+                result["action_input"] = line[13:].strip()
+            elif line.startswith("Answer:"):
+                current_key = "answer"
+                result["answer"] = line[7:].strip()
+            elif current_key:
+                result[current_key] += " " + line
+
+        return result
+
+    async def _act(self, action: str, action_input: str) -> str:
+        """Execute an action using a tool."""
+        tool = self._tools.get(action)
+        if tool is None:
+            return f"Error: Tool '{action}' not found"
+
+        try:
+            return await tool.invoke(action_input)
+        except Exception as e:
+            return f"Error: {str(e)}"
+
+    async def run(self, state: Dict[str, Any]) -> WorkflowResult:
+        """
+        Execute the ReAct workflow.
+
+        Args:
+            state: Initial state
+
+        Returns:
+            WorkflowResult with final state
+        """
+        if not self.validate_state(state):
+            return self.create_result(
+                state,
+                success=False,
+                error="Invalid state: missing question/query",
+            )
+
+        if self._llm is None:
+            return self.create_result(
+                state,
+                success=False,
+                error="LLM not configured",
+            )
+
+        current_state = dict(state)
+        current_state["reasoning_trace"] = []
+        execution_path: List[str] = []
+        iterations = 0
+
+        for step in range(self.max_steps):
+            iterations = step + 1
+
+            # Reason
+            try:
+                reasoning = await self._reason(current_state)
+            except Exception as e:
+                logger.error("Reasoning failed: %s", e)
+                return self.create_result(
+                    current_state,
+                    success=False,
+                    error=f"Reasoning failed: {e}",
+                    execution_path=execution_path,
+                    iterations=iterations,
+                )
+
+            thought = reasoning.get("thought", "")
+            action = reasoning.get("action", "")
+            action_input = reasoning.get("action_input", "")
+            answer = reasoning.get("answer", "")
+
+            # Add thought to trace
+            if thought:
+                current_state["reasoning_trace"].append(f"Thought: {thought}")
+                execution_path.append(f"think:{step}")
+
+            # Check if we have a final answer
+            if answer:
+                current_state["answer"] = answer
+                current_state["reasoning_trace"].append(f"Answer: {answer}")
+                execution_path.append("answer")
+
+                return self.create_result(
+                    current_state,
+                    success=True,
+                    execution_path=execution_path,
+                    iterations=iterations,
+                    metadata={"reasoning_steps": len(current_state["reasoning_trace"])},
+                )
+
+            # Execute action
+            if action:
+                observation = await self._act(action, action_input)
+                current_state["reasoning_trace"].append(f"Action: {action}")
+                current_state["reasoning_trace"].append(f"Action Input: {action_input}")
+                current_state["reasoning_trace"].append(f"Observation: {observation}")
+                execution_path.append(f"act:{action}")
+
+        # Max steps reached
+        current_state["answer"] = "I could not find a complete answer within the allowed steps."
+        return self.create_result(
+            current_state,
+            success=False,
+            error="Max reasoning steps reached",
+            execution_path=execution_path,
+            iterations=iterations,
+        )
+
+
+def create_search_tool(
+    search_func: Callable[[str], Awaitable[List[Dict[str, Any]]]],
+) -> Tool:
+    """Create a search tool wrapper."""
+    async def search_wrapper(query: str) -> str:
+        results = await search_func(query)
+        if not results:
+            return "No results found."
+
+        output_parts = []
+        for i, result in enumerate(results[:3], 1):
+            content = result.get("content", "")[:500]
+            source = result.get("metadata", {}).get("source", "Unknown")
+            output_parts.append(f"[{i}] {source}: {content}")
+
+        return "\n".join(output_parts)
+
+    return Tool("search", search_wrapper, "Search documents for relevant information")

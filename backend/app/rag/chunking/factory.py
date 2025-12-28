@@ -21,6 +21,12 @@ from app.rag.chunking.strategies import (
     SeparatorChunker,
     LlamaIndexChunker,
     LlamaIndexHierarchicalChunker,
+    # New splitters
+    MarkdownHeaderChunker,
+    MarkdownAwareChunker,
+    JSONChunker,
+    CodeChunker,
+    SmartCodeChunker,
 )
 
 
@@ -36,6 +42,11 @@ class ChunkerFactory:
     - separator: Custom separator-based chunking
     - llama_index: LlamaIndex SentenceSplitter (disabled)
     - llama_index_hierarchical: LlamaIndex hierarchical (disabled)
+    - markdown_header: Markdown header-based chunking
+    - markdown_aware: Enhanced markdown-aware chunking
+    - json: JSON structure-aware chunking
+    - code: Programming language-aware chunking
+    - smart_code: AST-like code chunking (Python)
 
     RAGFlow strategies (handled separately):
     - ragflow_naive: General-purpose chunking
@@ -52,6 +63,13 @@ class ChunkerFactory:
         "llama_index": LlamaIndexChunker,
         "llama_index_hierarchical": LlamaIndexHierarchicalChunker,
         "parent_child": ParentChildChunker,
+        # New splitters
+        "markdown_header": MarkdownHeaderChunker,
+        "markdown_aware": MarkdownAwareChunker,
+        "markdown": MarkdownHeaderChunker,  # Alias
+        "json": JSONChunker,
+        "code": CodeChunker,
+        "smart_code": SmartCodeChunker,
     }
 
     RAGFLOW_STRATEGIES = {
