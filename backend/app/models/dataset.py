@@ -7,7 +7,6 @@ from datetime import datetime
 from sqlalchemy import Column, String, DateTime, Enum, ForeignKey, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
-
 from app.core.database import Base
 
 
