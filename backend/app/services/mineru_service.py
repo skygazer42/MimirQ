@@ -366,8 +366,8 @@ class MinerUService:
                 try:
                     error_data = response.json()
                     raise Exception(f"MinerU 解析失败: {error_data}")
-                except:
-                    raise Exception(f"MinerU 返回非预期格式: {content_type}")
+                except (ValueError, TypeError) as json_err:
+                    raise Exception(f"MinerU 返回非预期格式: {content_type}") from json_err
             
             # 保存 ZIP 到临时文件
             with tempfile.NamedTemporaryFile(suffix=".zip", delete=False) as tmp_zip:

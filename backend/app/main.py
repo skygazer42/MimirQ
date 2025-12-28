@@ -8,6 +8,7 @@ from contextlib import asynccontextmanager
 
 from app.core.config import settings
 from app.core.database import Base, SessionLocal, engine
+from app.core.exceptions import register_exception_handlers
 from app.core.runtime_migrations import apply_runtime_migrations
 from app.api.v1 import router as api_v1_router
 from app.rag.retriever import hybrid_retriever
@@ -52,37 +53,29 @@ async def lifespan(app: FastAPI):
     logger.info("Initializing BM25 index...")
     db = SessionLocal()
     try:
-        tenant_ids = (
-            db.query(DocumentChunk.tenant_id)
+        # Single query to get all chunks with completed documents (avoids N+1)
+        all_chunks = (
+            db.query(DocumentChunk)
             .join(DBDocument)
             .filter(DBDocument.status == "completed")
-            .distinct()
             .all()
         )
 
-        if tenant_ids:
-            total = 0
-            for (tid,) in tenant_ids:
-                chunks = (
-                    db.query(DocumentChunk)
-                    .join(DBDocument)
-                    .filter(
-                        DBDocument.status == "completed",
-                        DocumentChunk.tenant_id == tid,
-                    )
-                    .all()
-                )
-                if chunks:
-                    hybrid_retriever.build_bm25_index(chunks, tenant_id=tid)
-                    total += len(chunks)
-            if total:
-                logger.info(
-                    "BM25 index loaded with %s chunks across %s tenants",
-                    total,
-                    len(tenant_ids),
-                )
-            else:
-                logger.warning("No documents found, BM25 index will be built on first upload")
+        if all_chunks:
+            # Group chunks by tenant_id in Python
+            from collections import defaultdict
+            chunks_by_tenant: dict = defaultdict(list)
+            for chunk in all_chunks:
+                chunks_by_tenant[chunk.tenant_id].append(chunk)
+
+            for tid, chunks in chunks_by_tenant.items():
+                hybrid_retriever.build_bm25_index(chunks, tenant_id=tid)
+
+            logger.info(
+                "BM25 index loaded with %s chunks across %s tenants",
+                len(all_chunks),
+                len(chunks_by_tenant),
+            )
         else:
             logger.warning("No documents found, BM25 index will be built on first upload")
     finally:
@@ -111,8 +104,21 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Rate Limiting 中间件
+if settings.RATE_LIMIT_ENABLED:
+    from app.middleware.rate_limit import RateLimitMiddleware
+
+    app.add_middleware(
+        RateLimitMiddleware,
+        requests_per_second=settings.RATE_LIMIT_REQUESTS_PER_SECOND,
+        burst_size=settings.RATE_LIMIT_BURST_SIZE,
+    )
+
 # 注册路由
 app.include_router(api_v1_router, prefix="/api/v1")
+
+# 注册异常处理器
+register_exception_handlers(app)
 
 
 @app.get("/")

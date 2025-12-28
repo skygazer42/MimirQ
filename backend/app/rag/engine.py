@@ -4,7 +4,8 @@ RAG 对话引擎
 from __future__ import annotations
 
 import os
-from typing import AsyncGenerator, Dict, Any, List, Optional
+import threading
+from typing import AsyncGenerator, Dict, Any, List, Optional, Type
 from uuid import UUID
 import json
 from langchain_core.documents import Document
@@ -31,7 +32,7 @@ logger = get_logger("rag.engine")
 class RAGEngine:
     """RAG 对话引擎"""
 
-    def __init__(self):
+    def __init__(self) -> None:
         # LLM 配置
         trust_env = httpx_trust_env(logger=logger)
         self.http_client = httpx.Client(trust_env=trust_env)
@@ -159,7 +160,7 @@ class RAGEngine:
         )
 
 
-    def _build_llm(self, chat_cls, model_name: str):
+    def _build_llm(self, chat_cls: Type[ChatOpenAI], model_name: str) -> ChatOpenAI:
         """Create a ChatOpenAI-compatible LLM with shared HTTP clients."""
         return chat_cls(
             model=model_name,
@@ -1109,17 +1110,22 @@ class RAGEngine:
 
 
 _rag_engine_instance: Optional[RAGEngine] = None
+_rag_engine_lock: threading.Lock = threading.Lock()
 
 
 def get_rag_engine() -> RAGEngine:
-    """Lazily initialize the simple RAG engine."""
+    """Lazily initialize the simple RAG engine (thread-safe)."""
     global _rag_engine_instance
     if _rag_engine_instance is None:
-        _rag_engine_instance = RAGEngine()
+        with _rag_engine_lock:
+            # Double-check locking pattern
+            if _rag_engine_instance is None:
+                _rag_engine_instance = RAGEngine()
     return _rag_engine_instance
 
 
 def reset_rag_engine() -> None:
     """Reset the cached RAG engine so new settings take effect."""
     global _rag_engine_instance
-    _rag_engine_instance = None
+    with _rag_engine_lock:
+        _rag_engine_instance = None

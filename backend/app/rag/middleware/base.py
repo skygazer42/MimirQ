@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import threading
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from enum import Enum
@@ -62,13 +63,17 @@ class MiddlewareRegistry:
     """
 
     _instance: Optional["MiddlewareRegistry"] = None
+    _lock: threading.Lock = threading.Lock()
 
     def __new__(cls) -> "MiddlewareRegistry":
         if cls._instance is None:
-            cls._instance = super().__new__(cls)
-            cls._instance._middlewares: Dict[MiddlewarePhase, List[tuple]] = {
-                phase: [] for phase in MiddlewarePhase
-            }
+            with cls._lock:
+                # Double-check locking pattern
+                if cls._instance is None:
+                    cls._instance = super().__new__(cls)
+                    cls._instance._middlewares: Dict[MiddlewarePhase, List[tuple]] = {
+                        phase: [] for phase in MiddlewarePhase
+                    }
         return cls._instance
 
     @classmethod

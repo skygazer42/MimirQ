@@ -157,25 +157,8 @@ export function DataGovernancePanel() {
     setIsDragging(false)
   }, [])
 
-  const handleDrop = useCallback(async (e: React.DragEvent) => {
-    e.preventDefault()
-    setIsDragging(false)
-    const files = Array.from(e.dataTransfer.files)
-    if (files.length > 0) {
-      await handleUploadAndParse(files)
-    }
-  }, [])
-
-  const handleFileSelect = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files ? Array.from(e.target.files) : []
-    if (files.length > 0) {
-      await handleUploadAndParse(files)
-    }
-    e.target.value = ''
-  }, [])
-
   // 上传并解析逻辑
-  const handleUploadAndParse = async (files: File[]) => {
+  const handleUploadAndParse = useCallback(async (files: File[]) => {
     setUploading(true)
     try {
       for (const file of files) {
@@ -194,9 +177,8 @@ export function DataGovernancePanel() {
         })
 
         // 如果是第一个文件，自动选中
-        if (!selectedFileId) {
-          setSelectedFileId(newId)
-        }
+        initializeGovernanceState({ id: newId, markdownContent })
+        setSelectedFileId((prev) => prev ?? newId)
       }
     } catch (error) {
       console.error('Failed to parse file:', error)
@@ -204,7 +186,24 @@ export function DataGovernancePanel() {
     } finally {
       setUploading(false)
     }
-  }
+  }, [addParsedFile, initializeGovernanceState, parserBackend])
+
+  const handleDrop = useCallback(async (e: React.DragEvent) => {
+    e.preventDefault()
+    setIsDragging(false)
+    const files = Array.from(e.dataTransfer.files)
+    if (files.length > 0) {
+      await handleUploadAndParse(files)
+    }
+  }, [handleUploadAndParse])
+
+  const handleFileSelect = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files ? Array.from(e.target.files) : []
+    if (files.length > 0) {
+      await handleUploadAndParse(files)
+    }
+    e.target.value = ''
+  }, [handleUploadAndParse])
 
   // 获取当前显示内容
   const displayContent = useMemo(() => {
