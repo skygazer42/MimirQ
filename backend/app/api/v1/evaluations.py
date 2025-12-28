@@ -36,7 +36,7 @@ from app.api.schemas.regression import (
     RagasRegressionRunSchema,
 )
 from app.services.dataset_service import DatasetService
-from app.evaluation.ragas import run_conversation_ragas_evaluation, run_regression_ragas_evaluation
+from app.rag.evaluation.ragas import run_conversation_ragas_evaluation, run_regression_ragas_evaluation
 
 router = APIRouter()
 

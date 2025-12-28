@@ -50,7 +50,7 @@ from app.api.dependencies.auth import get_current_account_id
 from app.rag.kg.pipeline import extract_events
 from sqlalchemy import or_, false
 from app.rag.core.logging import get_logger
-from app.governance.processor import governance_processor
+from app.rag.preprocessing.processor import governance_processor
 
 
 logger = get_logger("api.documents")
