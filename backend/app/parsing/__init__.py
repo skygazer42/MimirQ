@@ -8,7 +8,7 @@
 - parsers: 各类文档解析器（PDF、Word、Markdown等）
 - processors: 解析流程编排
 - utils: 工具函数
-- 文本清洗：统一由 app.governance 负责（解析后、切块前）
+- 文本清洗：统一由 app.rag.preprocessing 负责（解析后、切块前）
 
 注意：文本切块功能已移至 app.rag.chunking 模块。
 """
