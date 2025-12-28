@@ -6,13 +6,9 @@ Provides:
 - Global exception handlers
 - Standardized error responses
 """
-
-from __future__ import annotations
-
 import logging
 import traceback
 from typing import Any, Dict, Optional
-
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
