@@ -190,6 +190,10 @@ class Settings(BaseSettings):
     MARKITDOWN_DOCINTEL_ENDPOINT: str = ""
     MARKITDOWN_DOCINTEL_KEY: str = ""
     LLAMA_INDEX_ENABLED: bool = False
+    # Docling advanced document parser
+    DOCLING_ENABLED: bool = False
+    DOCLING_OCR_ENABLED: bool = True
+    DOCLING_TABLE_MODE: str = "markdown"  # markdown | html | plain
     # Knowledge Graph (KG) feature flags.
     # Canonical env names: KG_ENABLED / KG_CHAT_ENABLED
     KG_ENABLED: bool = False
@@ -227,6 +231,21 @@ class Settings(BaseSettings):
     # Multi-tenant defaults
     DEFAULT_TENANT_ID: str = "00000000-0000-0000-0000-000000000000"
     TENANT_HEADER: str = "X-Tenant-ID"
+
+    # MCP (Model Context Protocol) configuration
+    MCP_ENABLED: bool = False
+    MCP_SERVER_URL: str = ""
+    MCP_TIMEOUT: int = 30
+    MCP_MAX_RETRIES: int = 3
+
+    # Agent evaluation framework
+    AGENT_EVALS_ENABLED: bool = False
+
+    # LangSmith Studio tracing
+    LANGSMITH_API_KEY: str = ""
+    LANGSMITH_PROJECT: str = "mimirq"
+    LANGSMITH_ENDPOINT: str = "https://api.smith.langchain.com"
+    LANGSMITH_TRACING_ENABLED: bool = False
 
     model_config = SettingsConfigDict(
         env_file=".env",
