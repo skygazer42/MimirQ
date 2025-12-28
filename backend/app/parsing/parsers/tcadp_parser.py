@@ -1,17 +1,15 @@
 """
-Docling 文档解析器（业务层封装）
+腾讯云 ADP 文档解析器（业务层封装）
 
-封装 deepdoc/parser/docling_parser.py 的底层实现，
+封装 deepdoc/parser/tcadp_parser.py 的底层实现，
 提供 LangChain Document 格式的输出。
 
 支持：
-- 结构感知 PDF 解析
-- 表格结构化提取
-- 图片提取
-- 多格式支持 (PDF, DOCX, PPTX, HTML 等)
+- PDF 文档解析
+- 表格识别
+- 公式识别
+- 多种输出格式
 """
-
-from __future__ import annotations
 
 import logging
 from pathlib import Path
@@ -24,42 +22,39 @@ from app.core.config import settings
 logger = logging.getLogger(__name__)
 
 
-# Configuration
-DOCLING_ENABLED = getattr(settings, "DOCLING_ENABLED", False)
-DOCLING_OCR_ENABLED = getattr(settings, "DOCLING_OCR_ENABLED", True)
-DOCLING_TABLE_MODE = getattr(settings, "DOCLING_TABLE_MODE", "markdown")
-
-
-class DoclingParser:
+class TCADPParser:
     """
-    Docling 文档解析器（业务层封装）
+    腾讯云 ADP 文档解析器（业务层封装）
 
-    调用 deepdoc/parser/docling_parser.py 底层实现，
+    调用 deepdoc/parser/tcadp_parser.py 底层实现，
     将 sections/tables 转换为 LangChain Document 格式。
     """
 
-    SUPPORTED_EXTENSIONS = {".pdf", ".docx", ".pptx", ".html", ".md", ".asciidoc"}
+    SUPPORTED_EXTENSIONS = {".pdf", ".docx", ".xlsx", ".csv"}
 
     def __init__(
         self,
-        ocr_enabled: bool = True,
-        table_mode: str = "markdown",
-        extract_images: bool = False,
-        max_pages: Optional[int] = None,
+        secret_id: Optional[str] = None,
+        secret_key: Optional[str] = None,
+        region: str = "ap-guangzhou",
+        table_result_type: str = "1",
+        markdown_image_response_type: str = "1",
     ):
         """
-        初始化 Docling 解析器。
+        初始化腾讯云 ADP 解析器。
 
         Args:
-            ocr_enabled: 启用 OCR 识别扫描文档
-            table_mode: 表格输出格式 (markdown, html, plain)
-            extract_images: 提取图片
-            max_pages: 最大处理页数 (None = 全部)
+            secret_id: 腾讯云 SecretId
+            secret_key: 腾讯云 SecretKey
+            region: 区域 (默认 ap-guangzhou)
+            table_result_type: 表格输出类型
+            markdown_image_response_type: 图片响应类型
         """
-        self.ocr_enabled = ocr_enabled
-        self.table_mode = table_mode
-        self.extract_images = extract_images
-        self.max_pages = max_pages
+        self.secret_id = secret_id or getattr(settings, "TCADP_SECRET_ID", "")
+        self.secret_key = secret_key or getattr(settings, "TCADP_SECRET_KEY", "")
+        self.region = region
+        self.table_result_type = table_result_type
+        self.markdown_image_response_type = markdown_image_response_type
         self._parser = None
 
     def _get_parser(self):
@@ -67,12 +62,18 @@ class DoclingParser:
         if self._parser is not None:
             return self._parser
 
-        from app.deepdoc.parser.docling_parser import DoclingParser as DeepDocDoclingParser
-        self._parser = DeepDocDoclingParser()
+        from app.deepdoc.parser.tcadp_parser import TCADPParser as DeepDocTCADPParser
+        self._parser = DeepDocTCADPParser(
+            secret_id=self.secret_id,
+            secret_key=self.secret_key,
+            region=self.region,
+            table_result_type=self.table_result_type,
+            markdown_image_response_type=self.markdown_image_response_type,
+        )
         return self._parser
 
     def check_installation(self) -> bool:
-        """检查 Docling 是否可用"""
+        """检查腾讯云 ADP 是否可用"""
         parser = self._get_parser()
         return parser.check_installation()
 
@@ -82,7 +83,7 @@ class DoclingParser:
         **kwargs,
     ) -> List[Document]:
         """
-        使用 Docling 解析文档。
+        使用腾讯云 ADP 解析文档。
 
         Args:
             file_path: 文档文件路径
@@ -106,21 +107,34 @@ class DoclingParser:
 
         # 检查安装
         if not parser.check_installation():
-            raise RuntimeError("Docling not available, please install `docling`")
+            raise RuntimeError("TCADP not available, please check Tencent Cloud API configuration")
 
         # 读取文件
         with open(file_path, "rb") as f:
             binary = f.read()
 
+        # 确定文件类型
+        suffix = file_path.suffix.lower()
+        if suffix == ".pdf":
+            file_type = "PDF"
+        elif suffix in (".xlsx", ".xls"):
+            file_type = "XLSX"
+        elif suffix == ".csv":
+            file_type = "CSV"
+        elif suffix == ".docx":
+            file_type = "DOCX"
+        else:
+            file_type = "PDF"
+
         # 调用底层解析器
         def callback(progress, msg):
-            logger.info(f"[Docling] {progress:.0%} - {msg}")
+            logger.info(f"[TCADP] {progress:.0%} - {msg}")
 
         sections, tables = parser.parse_pdf(
             filepath=str(file_path),
             binary=binary,
             callback=callback,
-            delete_output=True,
+            file_type=file_type,
             **kwargs
         )
 
@@ -129,7 +143,7 @@ class DoclingParser:
         base_metadata = {
             "source": str(file_path),
             "filename": file_path.name,
-            "parser": "docling",
+            "parser": "tcadp",
         }
 
         # 合并 sections 为主文档
@@ -156,12 +170,7 @@ class DoclingParser:
                 if isinstance(table, tuple) and len(table) >= 1:
                     table_data = table[0]
                     if isinstance(table_data, tuple) and len(table_data) >= 2:
-                        # (image, html) 格式
-                        html_content = table_data[1]
-                        if isinstance(html_content, str):
-                            table_content = html_content
-                        elif isinstance(html_content, list):
-                            table_content = "\n".join(str(x) for x in html_content)
+                        table_content = table_data[1] if table_data[1] else ""
                     elif isinstance(table_data, str):
                         table_content = table_data
                 else:
@@ -177,12 +186,7 @@ class DoclingParser:
                         }
                     ))
 
-        logger.info(
-            "Docling parsed %s: %d documents extracted",
-            file_path.name,
-            len(documents),
-        )
-
+        logger.info(f"TCADP parsed {file_path.name}: {len(documents)} documents")
         return documents
 
     async def aparse(

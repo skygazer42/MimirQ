@@ -28,6 +28,9 @@ __all__ = [
     "JsonParser",
     "MarkdownParser",
     "TxtParser",
+    "MinerUParser",
+    "DoclingParser",
+    "TCADPParser",
 ]
 
 
@@ -75,5 +78,17 @@ def __getattr__(name: str) -> Any:  # pragma: no cover
         from .txt_parser import RAGFlowTxtParser as TxtParser
 
         return TxtParser
+    if name == "MinerUParser":
+        from .mineru_parser import MinerUParser
+
+        return MinerUParser
+    if name == "DoclingParser":
+        from .docling_parser import DoclingParser
+
+        return DoclingParser
+    if name == "TCADPParser":
+        from .tcadp_parser import TCADPParser
+
+        return TCADPParser
 
     raise AttributeError(f"module 'app.deepdoc.parser' has no attribute {name!r}")
