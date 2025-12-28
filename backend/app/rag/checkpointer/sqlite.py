@@ -5,6 +5,7 @@ This is a lightweight alternative to `langgraph-checkpoint-sqlite` for local/dev
 usage, and is compatible with LangGraph's `BaseCheckpointSaver` interface.
 """
 
+import re
 import sqlite3
 import threading
 from pathlib import Path
@@ -41,6 +42,11 @@ class SqliteSaver(BaseCheckpointSaver[str]):
         serde=None,
     ) -> None:
         super().__init__(serde=serde)
+        # Validate table_prefix to prevent SQL injection
+        if not re.match(r"^[a-zA-Z_][a-zA-Z0-9_]*$", table_prefix):
+            raise ValueError(
+                f"Invalid table_prefix '{table_prefix}': must be alphanumeric with underscores only"
+            )
         self.db_path = db_path or getattr(settings, "CHECKPOINT_SQLITE_PATH", "./data/checkpoints.db")
         self.table_prefix = table_prefix
         self._local = threading.local()

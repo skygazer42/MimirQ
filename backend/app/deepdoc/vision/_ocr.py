@@ -33,19 +33,22 @@ def pdf_contains_text(pdf_path: str) -> bool:
     超过 50% 的页面有文字就返回 True。
     """
     doc = fitz.open(pdf_path)
-    total_pages = len(doc)
-    if total_pages == 0:
-        return False
+    try:
+        total_pages = len(doc)
+        if total_pages == 0:
+            return False
 
-    text_pages = 0
-    for page_num in range(total_pages):
-        page = doc.load_page(page_num)
-        text = page.get_text()
-        if text.strip():
-            text_pages += 1
+        text_pages = 0
+        for page_num in range(total_pages):
+            page = doc.load_page(page_num)
+            text = page.get_text()
+            if text.strip():
+                text_pages += 1
 
-    text_ratio = text_pages / total_pages
-    return text_ratio > 0.5
+        text_ratio = text_pages / total_pages
+        return text_ratio > 0.5
+    finally:
+        doc.close()
 
 
 def _extract_text_pdf(pdf_file_path: str) -> str:
@@ -202,15 +205,18 @@ class OCRHandler2:
         if not os.path.exists(img_dir):
             os.makedirs(img_dir)
             pdf_data = fitz.open(pdf_file)
-            total_pages = pdf_data.page_count
+            try:
+                total_pages = pdf_data.page_count
 
-            for idx in tqdm(range(total_pages), desc='Converting PDF to images', ncols=100):
-                page_obj = pdf_data[idx]
-                scale = fitz.Matrix(2, 2)
-                pix = page_obj.get_pixmap(matrix=scale, alpha=False)
-                img_name = os.path.join(img_dir, f'pg_{idx + 1}.png')
-                pix.save(img_name)
-                results.append(img_name)
+                for idx in tqdm(range(total_pages), desc='Converting PDF to images', ncols=100):
+                    page_obj = pdf_data[idx]
+                    scale = fitz.Matrix(2, 2)
+                    pix = page_obj.get_pixmap(matrix=scale, alpha=False)
+                    img_name = os.path.join(img_dir, f'pg_{idx + 1}.png')
+                    pix.save(img_name)
+                    results.append(img_name)
+            finally:
+                pdf_data.close()
         else:
             existing_imgs = sorted(os.listdir(img_dir))
             results = [os.path.join(img_dir, fn) for fn in existing_imgs]
