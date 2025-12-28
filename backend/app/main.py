@@ -106,7 +106,7 @@ app.add_middleware(
 
 # Rate Limiting 中间件
 if settings.RATE_LIMIT_ENABLED:
-    from app.middleware.rate_limit import RateLimitMiddleware
+    from app.api.middleware.rate_limit import RateLimitMiddleware
 
     app.add_middleware(
         RateLimitMiddleware,

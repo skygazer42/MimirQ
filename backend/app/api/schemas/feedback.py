@@ -1,9 +1,6 @@
 """
 用户反馈（评测闭环）相关 Schema。
 """
-
-from __future__ import annotations
-
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 from uuid import UUID
