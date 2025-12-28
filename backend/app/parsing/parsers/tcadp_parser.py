@@ -1,6 +1,5 @@
 """
 腾讯云 ADP 文档解析器（业务层封装）
-
 封装 deepdoc/parser/tcadp_parser.py 的底层实现，
 提供 LangChain Document 格式的输出。
 
