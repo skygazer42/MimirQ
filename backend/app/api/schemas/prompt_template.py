@@ -1,8 +1,7 @@
 """
-Pydantic schemas for prompt template API requests and responses.
+提示词模板相关 Schema
 
-This module defines the data validation and serialization schemas
-for prompt template operations using Pydantic models.
+定义提示词模板的创建、更新、查询等接口的数据模型。
 """
 from datetime import datetime
 from typing import List, Optional

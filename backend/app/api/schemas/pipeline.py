@@ -1,3 +1,9 @@
+"""
+文档处理流水线相关 Schema
+
+定义文档解析、分块等流水线操作的数据模型。
+"""
+
 from typing import List, Optional, Dict, Any
 from uuid import UUID
 from pydantic import BaseModel, Field

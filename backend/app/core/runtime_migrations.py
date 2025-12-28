@@ -1,9 +1,9 @@
 """
-Runtime (best-effort) schema migrations.
-This project currently uses `Base.metadata.create_all()` on startup, which does
-NOT alter existing tables. To keep deployments smooth without requiring Alembic
-immediately, we apply a small set of safe `ALTER TABLE ... IF NOT EXISTS` ops.
-Only runs on PostgreSQL. Failures are swallowed to avoid blocking startup.
+运行时（尽力而为）数据库模式迁移模块
+
+本项目当前在启动时使用 `Base.metadata.create_all()`，该方法不会修改现有表。
+为了在不立即使用 Alembic 的情况下保持部署顺畅，我们应用一组安全的 `ALTER TABLE ... IF NOT EXISTS` 操作。
+仅在 PostgreSQL 上运行。失败会被忽略以避免阻塞启动。
 """
 
 from sqlalchemy import text

@@ -1,4 +1,6 @@
 """
-MimirQ Backend Application
+MimirQ 后端应用
+
+知识库管理与 RAG 对话系统的核心后端服务。
 """
 __version__ = "1.0.0"

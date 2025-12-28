@@ -1,8 +1,8 @@
 """
-API Middleware module for MimirQ.
+API 中间件模块
 
-Provides:
-- Rate limiting middleware
+提供 API 层的中间件功能：
+- 请求限流
 """
 
 from app.api.middleware.rate_limit import (

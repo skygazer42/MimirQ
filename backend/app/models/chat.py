@@ -1,5 +1,7 @@
 """
-Conversation and message models with tenant isolation.
+对话和消息数据模型（支持多租户隔离）
+
+定义对话、消息等数据表结构。
 """
 import uuid
 from sqlalchemy import Column, String, Integer, DateTime, Text, ForeignKey

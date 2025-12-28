@@ -1,10 +1,10 @@
 """
-Unified exception handling for MimirQ API.
+MimirQ API 统一异常处理模块
 
-Provides:
-- Custom exception classes
-- Global exception handlers
-- Standardized error responses
+提供以下功能：
+- 自定义异常类
+- 全局异常处理器
+- 标准化错误响应
 """
 import logging
 import traceback

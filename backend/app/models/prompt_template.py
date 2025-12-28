@@ -1,5 +1,7 @@
 """
-Prompt template models for customizable RAG prompts.
+可自定义 RAG 提示词模板的数据模型
+
+定义提示词模板的数据表结构，支持版本管理和 A/B 测试。
 """
 import uuid
 from typing import List

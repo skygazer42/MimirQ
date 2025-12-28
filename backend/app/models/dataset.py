@@ -1,5 +1,7 @@
 """
-Dataset models and permissions.
+知识库数据模型和权限管理
+
+定义知识库、权限关系等数据表结构。
 """
 import enum
 import uuid

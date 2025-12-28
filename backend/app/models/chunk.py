@@ -1,5 +1,7 @@
 """
-Chunk and document models for RAG system.
+RAG 系统的切片和文档模型
+
+定义文档切片相关的数据模型和接口。
 """
 from abc import ABC, abstractmethod
 from collections.abc import Sequence

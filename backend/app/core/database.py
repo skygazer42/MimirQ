@@ -1,5 +1,7 @@
 """
-Database configuration and session management.
+数据库配置和会话管理模块
+
+提供数据库连接、会话工厂和依赖注入功能。
 """
 from sqlalchemy import create_engine
 from sqlalchemy.ext.declarative import declarative_base

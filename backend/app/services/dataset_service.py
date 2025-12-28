@@ -1,5 +1,7 @@
 """
-Dataset service: creation, permission checks, partial member management.
+知识库服务模块
+
+提供知识库的创建、权限检查和部分成员管理功能。
 """
 from typing import List, Optional
 from uuid import UUID

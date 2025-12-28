@@ -1,10 +1,10 @@
 """
-Rate limiting middleware for FastAPI.
+请求限流中间件
 
-Token-bucket rate limiting with:
-- Per-IP / per-user keying
-- Configurable limits via settings
-- Thread-safe implementation
+基于令牌桶算法实现的 FastAPI 请求限流：
+- 支持按 IP 或用户 ID 限流
+- 可通过配置调整限流参数
+- 线程安全实现
 """
 
 from __future__ import annotations

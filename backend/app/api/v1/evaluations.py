@@ -1,5 +1,7 @@
 """
-Evaluation APIs (RAGAS).
+RAGAS 评测 API
+
+提供 RAG 系统评测相关的接口，包括评测任务创建、查询和结果展示。
 """
 
 from uuid import UUID

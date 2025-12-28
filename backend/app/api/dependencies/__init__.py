@@ -1,7 +1,9 @@
 """
-FastAPI dependency helpers.
+FastAPI 依赖注入模块
 
-Keep request-scoped dependencies close to the API layer.
+提供请求级别的依赖注入辅助函数，包括：
+- 用户认证
+- 租户识别
 """
 
 from app.api.dependencies.auth import get_current_account_id
