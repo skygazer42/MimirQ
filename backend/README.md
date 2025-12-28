@@ -202,7 +202,7 @@ response = await agent.run(query, context)
 #### 使用示例
 
 ```python
-from app.evaluation.ragas import evaluate_rag_with_ragas
+from app.rag.evaluation.ragas import evaluate_rag_with_ragas
 
 result = await evaluate_rag_with_ragas(
     questions=questions,
@@ -285,7 +285,7 @@ from app.services.prompt_template_selector import select_prompt_template
 | `app.services.rag_agent` | `app.rag.agent` |
 | `app.services.rag_tools` | `app.rag.tools` |
 | `app.services.llm_reranker` | `app.rag.reranking.llm_reranker` |
-| `app.services.ragas_evaluator` | `app.evaluation.ragas` |
+| `app.services.ragas_evaluator` | `app.rag.evaluation.ragas` |
 
 ## 设计原则
 
@@ -294,8 +294,7 @@ from app.services.prompt_template_selector import select_prompt_template
 每个模块只负责一类功能：
 - `parsing/` 只管解析
 - `storage/` 只管存储
-- `rag/` 只管检索生成
-- `evaluation/` 只管评估
+- `rag/` 只管检索生成和评估
 
 ### 2. 低耦合
 
