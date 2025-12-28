@@ -229,9 +229,44 @@ class HybridRetriever(BaseRetriever):
         """混合检索：向量检索 + BM25，可选重排。"""
         retrieval_mode = (retrieval_mode or "hybrid").lower()
 
+        want_vector = retrieval_mode in ("hybrid", "vector", "mmr")
+        want_bm25 = retrieval_mode in ("hybrid", "keyword", "mmr")
+
         # 1) 向量检索
         vector_results: List[Dict[str, Any]] = []
-        if retrieval_mode in ("hybrid", "vector", "mmr"):
+        if want_vector:
+            vector_store = get_vector_store()
+            try:
+                vector_results = vector_store.search(
+                    query=query,
+                    top_k=top_k * 2,
+                    score_threshold=score_threshold,
+                    document_ids=document_ids,
+                    tenant_id=tenant_id,
+                )
+            except Exception as exc:
+                logger.warning("Vector search failed: %s", exc)
+                vector_results = []
+
+        # 2) BM25 检索
+        bm25_results: List[Dict[str, Any]] = []
+        if want_bm25:
+            bm25_results = self._search_bm25(
+                query=query,
+                top_k=top_k * 2,
+                document_ids=document_ids,
+                tenant_id=tenant_id,
+            )
+
+        # Fallback: when single-channel mode fails, try the other channel.
+        if retrieval_mode == "vector" and not vector_results:
+            bm25_results = self._search_bm25(
+                query=query,
+                top_k=top_k * 2,
+                document_ids=document_ids,
+                tenant_id=tenant_id,
+            )
+        elif retrieval_mode == "keyword" and not bm25_results:
             vector_store = get_vector_store()
             try:
                 vector_results = vector_store.search(
@@ -262,16 +297,6 @@ class HybridRetriever(BaseRetriever):
                 r["chunk_id"] = mapped
                 meta["chunk_id"] = mapped
                 r["metadata"] = meta
-
-        # 2) BM25 检索
-        bm25_results: List[Dict[str, Any]] = []
-        if retrieval_mode in ("hybrid", "keyword", "mmr"):
-            bm25_results = self._search_bm25(
-                query=query,
-                top_k=top_k * 2,
-                document_ids=document_ids,
-                tenant_id=tenant_id,
-            )
 
         # 3) 分数归一 + 线性合并
         merged_results = self._merge_results(
@@ -524,13 +549,162 @@ class HybridRetriever(BaseRetriever):
             return f"{doc_id}:{chunk_index}"
         return str(result.get("chunk_id") or chunk_index or hash(result.get("content", "")))
 
+    def _get_doc_id(self, result: Dict[str, Any]) -> str:
+        meta = result.get("metadata") or {}
+        doc_id = meta.get("document_id")
+        return str(doc_id) if doc_id is not None else ""
+
+    @staticmethod
+    def _tokenize_for_similarity(text: str) -> set[str]:
+        raw = (text or "").strip()
+        if not raw:
+            return set()
+        tokens: list[str] = []
+        for token in jieba.cut_for_search(raw):
+            tok = str(token).strip()
+            if not tok:
+                continue
+            if tok.isascii():
+                if len(tok) < 2:
+                    continue
+                tok = tok.casefold()
+            else:
+                if len(tok) < 2:
+                    continue
+            tokens.append(tok)
+        return set(tokens)
+
+    @staticmethod
+    def _jaccard(a: set[str], b: set[str]) -> float:
+        if not a or not b:
+            return 0.0
+        inter = a & b
+        union = a | b
+        return (len(inter) / len(union)) if union else 0.0
+
+    @staticmethod
+    def _fingerprint(text: str) -> str:
+        norm = re.sub(r"\s+", " ", (text or "").strip())
+        return norm.casefold()
+
+    def _deduplicate_results(self, results: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        if not results or not bool(self.dedup_enabled):
+            return results
+
+        threshold = float(self.dedup_jaccard_threshold or 0.0)
+        threshold = max(0.0, min(threshold, 1.0))
+        max_compare = int(self.dedup_max_compare or 0)
+        max_compare = max(0, max_compare)
+
+        seen_chunk_ids: set[str] = set()
+        seen_fingerprints: set[str] = set()
+        kept: List[Dict[str, Any]] = []
+        kept_tokens_by_doc: Dict[str, List[set[str]]] = {}
+
+        for r in results:
+            meta = r.get("metadata") or {}
+            cid = r.get("chunk_id") or meta.get("chunk_id")
+            if cid:
+                scid = str(cid)
+                if scid in seen_chunk_ids:
+                    continue
+                seen_chunk_ids.add(scid)
+
+            content = (r.get("content") or "").strip()
+            if not content:
+                continue
+
+            fp = self._fingerprint(content)
+            if fp in seen_fingerprints:
+                continue
+            seen_fingerprints.add(fp)
+
+            doc_id = self._get_doc_id(r)
+            if threshold > 0.0 and doc_id:
+                tokens = self._tokenize_for_similarity(content)
+                if tokens:
+                    compare_sets = kept_tokens_by_doc.get(doc_id) or []
+                    if max_compare and len(compare_sets) > max_compare:
+                        compare_sets = compare_sets[-max_compare:]
+                    is_dup = any(self._jaccard(tokens, prev) >= threshold for prev in compare_sets if prev)
+                    if is_dup:
+                        continue
+                    kept_tokens_by_doc.setdefault(doc_id, []).append(tokens)
+
+            kept.append(r)
+
+        return kept
+
+    def _apply_document_diversity(self, results: List[Dict[str, Any]], *, top_k: int) -> List[Dict[str, Any]]:
+        if not results:
+            return results
+
+        max_per_doc = int(self.max_chunks_per_doc or 0)
+        min_docs = int(self.min_distinct_docs or 0)
+        if max_per_doc <= 0 and min_docs <= 0:
+            return results
+
+        groups: Dict[str, List[Dict[str, Any]]] = {}
+        for r in results:
+            groups.setdefault(self._get_doc_id(r), []).append(r)
+
+        must_have: List[Dict[str, Any]] = []
+        if min_docs > 0:
+            firsts = [items[0] for items in groups.values() if items]
+            firsts.sort(key=lambda x: float(x.get("score", 0.0) or 0.0), reverse=True)
+            must_have = firsts[: max(0, min(min_docs, len(firsts), top_k))]
+
+        selected: List[Dict[str, Any]] = []
+        used_keys: set[str] = set()
+        per_doc = Counter()
+        for r in must_have:
+            k = self._result_key(r)
+            if k in used_keys:
+                continue
+            used_keys.add(k)
+            selected.append(r)
+            per_doc[self._get_doc_id(r)] += 1
+
+        overflow: List[Dict[str, Any]] = []
+        for r in results:
+            if len(selected) >= top_k:
+                break
+            k = self._result_key(r)
+            if k in used_keys:
+                continue
+            doc_id = self._get_doc_id(r)
+            if max_per_doc > 0 and per_doc[doc_id] >= max_per_doc:
+                overflow.append(r)
+                continue
+            used_keys.add(k)
+            selected.append(r)
+            per_doc[doc_id] += 1
+
+        if len(selected) < top_k and overflow:
+            for r in overflow:
+                if len(selected) >= top_k:
+                    break
+                k = self._result_key(r)
+                if k in used_keys:
+                    continue
+                used_keys.add(k)
+                selected.append(r)
+
+        if len(selected) >= len(results):
+            return selected
+
+        rest = [r for r in results if self._result_key(r) not in used_keys]
+        return selected + rest
+
     def _merge_results(
         self,
         vector_results: List[Dict[str, Any]],
         bm25_results: List[Dict[str, Any]],
         alpha: float = 0.5,
+        fusion_strategy: str | None = None,
+        rrf_k: int | None = None,
     ) -> List[Dict[str, Any]]:
-        """归一化两路分数后线性合并。"""
+        """Merge vector/BM25 results into a single ranked list."""
 
         def normalize(results: List[Dict[str, Any]]) -> Dict[str, Dict[str, Any]]:
             if not results:
@@ -550,6 +724,74 @@ class HybridRetriever(BaseRetriever):
 
         vector_norm = normalize(vector_results)
         bm25_norm = normalize(bm25_results)
+
+        fusion = (fusion_strategy or "linear").lower().strip()
+        if fusion in ("rrf", "reciprocal_rank_fusion"):
+            v_sorted = sorted(vector_results, key=lambda x: float(x.get("score", 0.0) or 0.0), reverse=True)
+            b_sorted = sorted(bm25_results, key=lambda x: float(x.get("score", 0.0) or 0.0), reverse=True)
+
+            v_rank: Dict[str, int] = {}
+            b_rank: Dict[str, int] = {}
+            for idx, r in enumerate(v_sorted, 1):
+                key = self._result_key(r)
+                if key not in v_rank:
+                    v_rank[key] = idx
+            for idx, r in enumerate(b_sorted, 1):
+                key = self._result_key(r)
+                if key not in b_rank:
+                    b_rank[key] = idx
+
+            k0 = int(rrf_k or 0) or int(getattr(self, "rrf_k", 60) or 60)
+            k0 = max(1, k0)
+
+            merged: Dict[str, Dict[str, Any]] = {}
+            raw_scores: List[float] = []
+            for key in set(vector_norm.keys()) | set(bm25_norm.keys()):
+                v_data = vector_norm.get(key, {}).get("data")
+                b_data = bm25_norm.get(key, {}).get("data")
+                data = v_data or b_data
+                if not data:
+                    continue
+
+                if v_data and b_data:
+                    merged_meta = dict(v_data.get("metadata") or {})
+                    b_meta = b_data.get("metadata") or {}
+                    for mk, mv in b_meta.items():
+                        if mk not in merged_meta or merged_meta.get(mk) in (None, "", [], {}):
+                            merged_meta[mk] = mv
+                    merged_data = dict(v_data)
+                    merged_data["metadata"] = merged_meta
+                    if not merged_data.get("chunk_id") and b_data.get("chunk_id"):
+                        merged_data["chunk_id"] = b_data.get("chunk_id")
+                    data = merged_data
+
+                vr = v_rank.get(key)
+                br = b_rank.get(key)
+                rrf_raw = (1.0 / (k0 + vr)) if vr else 0.0
+                rrf_raw += (1.0 / (k0 + br)) if br else 0.0
+                raw_scores.append(float(rrf_raw))
+
+                merged[key] = {
+                    **data,
+                    "vector_score": float(vector_norm.get(key, {}).get("score", 0.0) or 0.0),
+                    "bm25_score": float(bm25_norm.get(key, {}).get("score", 0.0) or 0.0),
+                    "rrf_score_raw": float(rrf_raw),
+                    "rrf_k": k0,
+                    "rrf_rank_vector": vr,
+                    "rrf_rank_bm25": br,
+                    "fusion_strategy": "rrf",
+                    "score": float(rrf_raw),
+                }
+
+            if merged:
+                min_s = min(raw_scores) if raw_scores else 0.0
+                max_s = max(raw_scores) if raw_scores else 0.0
+                rng = max_s - min_s if max_s > min_s else 1.0
+                for item in merged.values():
+                    raw = float(item.get("rrf_score_raw", 0.0) or 0.0)
+                    item["score"] = (raw - min_s) / rng
+
+            return sorted(merged.values(), key=lambda x: float(x.get("score", 0.0) or 0.0), reverse=True)
 
         merged: Dict[str, Dict[str, Any]] = {}
         for key in set(vector_norm.keys()) | set(bm25_norm.keys()):
@@ -576,12 +818,13 @@ class HybridRetriever(BaseRetriever):
 
             merged[key] = {
                 **data,
-                "vector_score": v_score,
-                "bm25_score": b_score,
-                "score": alpha * v_score + (1 - alpha) * b_score,
+                "vector_score": float(v_score),
+                "bm25_score": float(b_score),
+                "fusion_strategy": "linear",
+                "score": alpha * float(v_score) + (1 - alpha) * float(b_score),
             }
 
-        return sorted(merged.values(), key=lambda x: x["score"], reverse=True)
+        return sorted(merged.values(), key=lambda x: float(x.get("score", 0.0) or 0.0), reverse=True)
 
     def _weight_rerank(
         self,

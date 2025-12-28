@@ -1,10 +1,5 @@
 'use client'
 
-/**
- * 文档解析工作台
- * 优化版本 - 参考 RAGFlow / Dify 设计风格
- * 功能：上传 → 解析 → 预览 → 切块/入库
- */
 import { useState, useCallback, useRef } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
@@ -24,8 +19,6 @@ import {
   Clock,
   Table2,
   Image,
-  Scissors,
-  Database,
   ChevronRight,
   Zap,
   ShieldCheck,
@@ -39,15 +32,10 @@ import { documentApi } from '@/lib/api-client'
 import { formatFileSize, cn } from '@/lib/utils'
 import { useParsedFiles } from '@/hooks/use-parsed-files'
 import { useParserBackendPreference } from '@/contexts/parser-backend-context'
-import { useChunkStrategyPreference } from '@/contexts/chunk-strategy-context'
-import { usePipelineOptions } from '@/contexts/pipeline-options-context'
 import { getParserLabel } from '@/lib/parser-options'
-import { getChunkStrategyLabel } from '@/lib/chunk-strategies'
 import { StatCard, StatsGrid } from '@/components/ui/stats-card'
 import { FileQueueItem, FileQueueItemData, FileStatus } from '@/components/ui/file-queue-item'
 import { ParserDropdown } from '@/components/ui/parser-dropdown'
-import { ChunkStrategyDropdown } from '@/components/ui/chunk-strategy-dropdown'
-import { PipelineOptionsPanel } from '@/components/pipeline-options-panel'
 
 // 解析后的文件（扩展版）
 interface ParsedFile extends FileQueueItemData {
@@ -55,7 +43,6 @@ interface ParsedFile extends FileQueueItemData {
   markdownContent: string | null
   parserBackend: string
   parserLabel: string
-  chunkStrategyLabel?: string
   parseStartTime?: number
   stats?: {
     charCount: number
@@ -83,8 +70,6 @@ export default function ParsingPage() {
 
   // 解析器设置
   const { parserBackend, setParserBackend } = useParserBackendPreference()
-  const { chunkStrategy, setChunkStrategy } = useChunkStrategyPreference()
-  const { enabled: pipelineOverridesEnabled, options: pipelineOptions } = usePipelineOptions()
 
   // 共享存储
   const { addParsedFile } = useParsedFiles()
@@ -98,7 +83,6 @@ export default function ParsingPage() {
   // 添加文件
   const addFiles = useCallback((newFiles: File[]) => {
     const defaultLabel = getParserLabel(parserBackend)
-    const strategyLabel = getChunkStrategyLabel(chunkStrategy)
     const parsedFiles: ParsedFile[] = newFiles.map((file) => ({
       id: generateId(),
       file,
@@ -109,7 +93,6 @@ export default function ParsingPage() {
       error: undefined,
       parserBackend,
       parserLabel: defaultLabel,
-      chunkStrategyLabel: strategyLabel,
     }))
 
     setFiles((prev) => [...prev, ...parsedFiles])
@@ -117,7 +100,7 @@ export default function ParsingPage() {
     if (parsedFiles.length > 0) {
       setActiveFileId(parsedFiles[0].id)
     }
-  }, [parserBackend, chunkStrategy])
+  }, [parserBackend])
 
   // 拖放处理
   const handleDragOver = useCallback((e: React.DragEvent) => {
@@ -181,20 +164,15 @@ export default function ParsingPage() {
     }, 300)
 
     try {
-      const data = await documentApi.chunkPreview(file.file, {
-        chunk_size: 10000,
-        chunk_overlap: 0,
-        parser_backend: parserBackend,
-        chunk_strategy: chunkStrategy,
-        pipeline: pipelineOverridesEnabled ? pipelineOptions : undefined,
-      })
+      // 仅进行解析预览，不应用复杂的清洗和切块策略
+      const data = await documentApi.preview(file.file, parserBackend)
 
       clearInterval(progressInterval)
 
-      const markdownContent = data.original_text || ''
+      // 拼接 segments 获取全文
+      const markdownContent = data.segments.map(s => s.content).join('\n\n')
       const resolvedBackend = data.parser_backend || parserBackend
       const resolvedLabel = getParserLabel(resolvedBackend)
-      const resolvedChunkLabel = getChunkStrategyLabel(data.chunk_strategy)
       const duration = ((Date.now() - startTime) / 1000).toFixed(1)
 
       // 计算统计信息
@@ -216,7 +194,6 @@ export default function ParsingPage() {
                 markdownContent,
                 parserBackend: resolvedBackend,
                 parserLabel: resolvedLabel,
-                chunkStrategyLabel: resolvedChunkLabel,
                 parser: resolvedLabel,
                 progress: 100,
                 duration: parseFloat(duration),
@@ -277,11 +254,6 @@ export default function ParsingPage() {
     a.download = activeFile.file.name.replace(/\.[^/.]+$/, '') + '.md'
     a.click()
     URL.revokeObjectURL(url)
-  }
-
-  // 进入切块页面
-  const goToChunkPreview = () => {
-    router.push('/chunk-preview')
   }
 
   // 开始编辑
@@ -356,6 +328,9 @@ export default function ParsingPage() {
               </div>
               <div>
                 <h1 className="text-xl font-bold text-gray-900">文档解析工作台</h1>
+                <p className="text-sm text-gray-500">
+                  上传文件并转换为 Markdown 格式，为数据治理做准备
+                </p>
               </div>
             </div>
           </div>
@@ -364,7 +339,7 @@ export default function ParsingPage() {
         <div className="flex-1 flex overflow-hidden">
           {/* 左侧：文件列表面板 */}
           <aside className="w-80 bg-white border-r flex flex-col flex-shrink-0">
-            {/* 解析器选择 - RAGFlow 风格 */}
+            {/* 解析器选择 */}
             <div className="p-4 border-b">
               <div className="flex items-center justify-between mb-3">
                 <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider">解析方式</span>
@@ -373,25 +348,6 @@ export default function ParsingPage() {
                 value={parserBackend}
                 onChange={setParserBackend}
               />
-            </div>
-
-            {/* 切块策略 */}
-            <div className="p-4 border-b">
-              <div className="flex items-center justify-between mb-3">
-                <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider">切块策略</span>
-              </div>
-              <ChunkStrategyDropdown
-                value={chunkStrategy}
-                onChange={setChunkStrategy}
-              />
-            </div>
-
-            {/* 清洗 / 入库管线 */}
-            <div className="p-4 border-b">
-              <div className="flex items-center justify-between mb-3">
-                <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider">清洗与索引</span>
-              </div>
-              <PipelineOptionsPanel compact />
             </div>
 
             {/* 上传区域 */}
@@ -549,11 +505,6 @@ export default function ParsingPage() {
                     <span className="text-xs text-gray-400 bg-gray-200 px-2 py-0.5 rounded">
                       {activeFile.parserLabel}
                     </span>
-                    {activeFile.chunkStrategyLabel && (
-                      <span className="text-xs text-purple-600 bg-purple-100 px-2 py-0.5 rounded">
-                        {activeFile.chunkStrategyLabel}
-                      </span>
-                    )}
                     {isEditing && (
                       <span className="text-xs text-amber-600 bg-amber-100 px-2 py-0.5 rounded flex items-center gap-1">
                         <Edit3 className="w-3 h-3" />
@@ -737,41 +688,19 @@ export default function ParsingPage() {
                       <div className="text-sm text-gray-500">
                         {isEditing
                           ? '编辑完成后点击"保存修改"，然后提交到数据治理'
-                          : '可以轻量编辑内容，然后提交到数据治理'
+                          : '确认解析内容无误后，提交到数据治理工作台'
                         }
                       </div>
                       <div className="flex items-center gap-3">
                         {!isEditing && (
-                          <>
-                            <Button
-                              variant="outline"
-                              onClick={handleSubmitToGovernance}
-                              className="gap-2 border-amber-200 text-amber-700 hover:bg-amber-50"
-                            >
-                              <ShieldCheck className="w-4 h-4" />
-                              提交到数据治理
-                              <ChevronRight className="w-4 h-4" />
-                            </Button>
-                            <Button
-                              variant="outline"
-                              onClick={goToChunkPreview}
-                              className="gap-2"
-                            >
-                              <Scissors className="w-4 h-4" />
-                              跳过切块
-                              <ChevronRight className="w-4 h-4" />
-                            </Button>
-                            <Button
-                              onClick={() => {
-                                // TODO: 直接入库功能
-                                alert('直接入库功能开发中')
-                              }}
-                              className="gap-2 bg-indigo-600 hover:bg-indigo-700"
-                            >
-                              <Database className="w-4 h-4" />
-                              直接入库
-                            </Button>
-                          </>
+                          <Button
+                            onClick={handleSubmitToGovernance}
+                            className="gap-2 bg-indigo-600 hover:bg-indigo-700"
+                          >
+                            <ShieldCheck className="w-4 h-4" />
+                            提交到数据治理
+                            <ChevronRight className="w-4 h-4" />
+                          </Button>
                         )}
                       </div>
                     </div>

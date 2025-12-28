@@ -45,6 +45,7 @@ import { getChunkStrategyLabel, getChunkStrategyOption } from '@/lib/chunk-strat
 import { ChunkStrategyDropdown } from '@/components/ui/chunk-strategy-dropdown'
 import { ParserDropdown } from '@/components/ui/parser-dropdown'
 import { PipelineOptionsPanel } from '@/components/pipeline-options-panel'
+import { useParsedFiles } from '@/hooks/use-parsed-files'
 import { cn } from '@/lib/utils'
 
 // 分隔符配置
@@ -110,9 +111,27 @@ interface ChunkPreviewProps {
 export function ChunkPreview({ onConfirm, onClose }: ChunkPreviewProps) {
   // 文件状态
   const [fileList, setFileList] = useState<File[]>([])
+  const { files: parsedFiles } = useParsedFiles()
   const [currentFileIndex, setCurrentFileIndex] = useState<number>(0)
   const file = fileList[currentFileIndex] || null
   const [isDragging, setIsDragging] = useState(false)
+
+  // Initialize from parsedFiles context
+  useEffect(() => {
+    // Only load if fileList is empty and we have parsed files
+    // This prevents overwriting user's dropped files
+    if (fileList.length === 0 && parsedFiles.length > 0) {
+      const convertedFiles = parsedFiles.map(pf => {
+        // Create a File object from the markdown content
+        // Note: We use the original filename but enforce .md extension if it was converted
+        // or keep original extension if it's treated as raw text
+        const content = pf.markdownContent || ''
+        const filename = pf.filename.endsWith('.md') ? pf.filename : `${pf.filename}.md`
+        return new File([content], filename, { type: 'text/markdown' })
+      })
+      setFileList(convertedFiles)
+    }
+  }, [parsedFiles, fileList.length])
 
   // 批量处理状态
   const [processedStatus, setProcessedStatus] = useState<Record<string, 'pending' | 'success' | 'error'>>({})
