@@ -12,6 +12,7 @@ from app.api.v1 import (
     prompt_templates,
     feedback,
     pipeline,
+    rag,
 )
 from app.rag.kg.api import routes as kg
 
@@ -27,3 +28,4 @@ router.include_router(evaluations.router, prefix="/evaluations", tags=["Evaluati
 router.include_router(prompt_templates.router, prefix="/prompt-templates", tags=["Prompt Templates"])
 router.include_router(feedback.router, prefix="/feedback", tags=["Feedback"])
 router.include_router(pipeline.router, prefix="/pipeline", tags=["Pipeline"])
+router.include_router(rag.router, prefix="/rag", tags=["RAG"])

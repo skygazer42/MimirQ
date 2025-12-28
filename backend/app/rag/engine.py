@@ -1032,7 +1032,7 @@ class RAGEngine:
                         "prompt_ab_experiment_key": selected_prompt_ab_experiment_key,
                         "prompt_ab_variant": selected_prompt_ab_variant,
                     },
-                    "structured": bool(structured_data),
+                    "structured": bool(structured_parse_meta.get("ok")) and structured_data is not None,
                     "structured_data": structured_data,
                 }
             }

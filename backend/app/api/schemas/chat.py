@@ -1,11 +1,12 @@
 """
 对话相关 Pydantic Schema
 """
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict, field_validator
 from typing import Optional, List, Dict, Any
 from datetime import datetime
 from uuid import UUID
 
+from app.rag.core.text import normalize_retrieval_mode
 
 class Citation(BaseModel):
     """引用信息"""
@@ -50,7 +51,7 @@ class MessageSchema(BaseModel):
 class ConversationCreate(BaseModel):
     """创建对话"""
     title: Optional[str] = None
-    document_ids: Optional[List[UUID]] = []
+    document_ids: List[UUID] = Field(default_factory=list)
 
 
 class ConversationSchema(BaseModel):
@@ -84,12 +85,44 @@ class HistoryMessage(BaseModel):
     content: str
 
 
+class ChatRAGConfig(BaseModel):
+    """Chat 接口专用的 RAG 参数。"""
+
+    top_k: int = Field(default=5, ge=1, le=100)
+    score_threshold: float = Field(default=0.7, ge=0.0, le=1.0)
+    max_tokens: int = Field(default=2000, ge=1, le=200_000)
+
+    retrieval_mode: str = Field(default="hybrid")  # hybrid | vector | keyword | mmr | auto
+    alpha: float = Field(default=0.6, ge=0.0, le=1.0)  # hybrid merge weight: vector vs keyword
+
+    enable_weight_rerank: bool = True
+    vector_weight: float = Field(default=0.6, ge=0.0, le=1.0)
+    keyword_weight: float = Field(default=0.4, ge=0.0, le=1.0)
+    mmr_lambda: float = Field(default=0.7, ge=0.0, le=1.0)
+
+    enable_reranker: bool = False  # optional: LLM/API rerank
+    reranker_provider: str = "llm"  # llm | pc | none
+    reranker_top_n: int = Field(default=20, ge=1, le=200)
+
+    # LangGraph path toggles
+    use_graph: bool = False
+
+    # Optional: metadata filter for vector search / retrieval scoping
+    metadata_filter: Optional[Dict[str, Any]] = None
+
+    model_config = ConfigDict(extra="ignore")
+
+    @field_validator("retrieval_mode", mode="before")
+    @classmethod
+    def _normalize_retrieval_mode(cls, v: Any) -> str:
+        return normalize_retrieval_mode(str(v) if v is not None else None)
+
 class ChatRequest(BaseModel):
     """聊天请求"""
     conversation_id: Optional[UUID] = None
     message: str
-    history: Optional[List[HistoryMessage]] = []  # 对话历史
-    document_ids: Optional[List[UUID]] = []
+    history: List[HistoryMessage] = Field(default_factory=list)  # 对话历史
+    document_ids: List[UUID] = Field(default_factory=list)
     stream: bool = True
     structured_output: bool = False  # 是否要求结构化(JSON)输出
     structured_preset: Optional[str] = None  # faq | summary | action_items | custom
@@ -97,21 +130,7 @@ class ChatRequest(BaseModel):
     prompt_template_id: Optional[UUID] = None  # 自定义提示词模板 ID
     prompt_template_key: Optional[str] = None  # 按 key 选择最新版本（可选）
     prompt_ab_experiment_key: Optional[str] = None  # A/B 实验 key（可选，按用户稳定分流）
-    rag_config: Optional[Dict[str, Any]] = {
-        "top_k": 5,
-        "score_threshold": 0.7,
-        "max_tokens": 2000,
-        "retrieval_mode": "hybrid",  # hybrid | vector | keyword | mmr
-        "alpha": 0.6,  # hybrid merge weight: vector vs keyword
-        "enable_weight_rerank": True,
-        "vector_weight": 0.6,
-        "keyword_weight": 0.4,
-        "mmr_lambda": 0.7,  # MMR 多样性权重
-        "enable_reranker": False,  # 可选：LLM 精排（更准但更慢）
-        "reranker_provider": "llm",  # llm | pc | none
-        "reranker_top_n": 20,  # 精排候选数量（越大越慢）
-        "use_graph": False,  # 使用 LangGraph 编排（非流式快捷路径）
-    }
+    rag_config: ChatRAGConfig = Field(default_factory=ChatRAGConfig)
 
 
 class StreamEvent(BaseModel):

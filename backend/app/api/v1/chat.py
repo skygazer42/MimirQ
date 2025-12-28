@@ -7,8 +7,9 @@ from datetime import datetime
 import json
 from typing import Optional, List
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
+from fastapi.encoders import jsonable_encoder
 from sqlalchemy.orm import Session
 import jieba
 from langchain_core.documents import Document
@@ -194,35 +195,159 @@ async def stream_chat(
         request_id = uuid.uuid4()
         metrics_data = {}
 
-        # 非流式 LangGraph 快捷通道：更快出完整答复，用于工具/Agent风格编排
-        if request.rag_config.get("use_graph") and not request.stream:
+        # LangGraph 路径：流式输出阶段事件（custom）+ 状态快照（values）
+        if request.rag_config.use_graph:
             try:
-                from app.rag.graph import run_rag_graph
+                from app.rag.pipelines.langgraph import build_rag_state, rag_workflow
 
-                graph_result = run_rag_graph(
+                thread_id = str(conversation_id) if conversation_id else f"rag-{request_id}"
+                runtime_context = {
+                    "request_id": str(request_id),
+                    "conversation_id": str(conversation_id) if conversation_id else None,
+                    "tenant_id": str(tenant_id) if tenant_id else None,
+                    "account_id": account_id,
+                }
+
+                state = build_rag_state(
                     question=request.message,
-                    history=[m.model_dump() for m in (request.history or [])] + long_term_messages,
+                    history=[m.model_dump() for m in request.history] + long_term_messages,
                     document_ids=doc_ids_to_use,
                     tenant_id=tenant_id,
-                    top_k=request.rag_config.get('top_k', settings.RETRIEVAL_TOP_K),
-                    score_threshold=request.rag_config.get('score_threshold', settings.SIMILARITY_THRESHOLD),
-                    retrieval_mode=request.rag_config.get('retrieval_mode', 'hybrid'),
-                    alpha=request.rag_config.get('alpha', 0.6),
-                    enable_weight_rerank=request.rag_config.get('enable_weight_rerank', True),
-                    vector_weight=request.rag_config.get('vector_weight', 0.6),
-                    keyword_weight=request.rag_config.get('keyword_weight', 0.4),
-                    mmr_lambda=request.rag_config.get('mmr_lambda', settings.RETRIEVAL_MMR_LAMBDA),
-                    enable_reranker=request.rag_config.get('enable_reranker', settings.ENABLE_RERANKER),
-                    reranker_provider=request.rag_config.get('reranker_provider', settings.RERANKER_PROVIDER),
-                    reranker_top_n=request.rag_config.get('reranker_top_n', settings.RERANKER_TOP_N),
-                    structured_preset=request.structured_preset,
+                    top_k=request.rag_config.top_k,
+                    score_threshold=request.rag_config.score_threshold,
+                    retrieval_mode=request.rag_config.retrieval_mode,
+                    alpha=request.rag_config.alpha,
+                    enable_weight_rerank=request.rag_config.enable_weight_rerank,
+                    vector_weight=request.rag_config.vector_weight,
+                    keyword_weight=request.rag_config.keyword_weight,
+                    mmr_lambda=request.rag_config.mmr_lambda,
+                    enable_reranker=request.rag_config.enable_reranker,
+                    reranker_provider=request.rag_config.reranker_provider,
+                    reranker_top_n=request.rag_config.reranker_top_n,
                     structured_output=request.structured_output,
+                    structured_preset=request.structured_preset,
                     prompt_template_id=request.prompt_template_id,
                     prompt_template_key=request.prompt_template_key,
                     prompt_ab_experiment_key=request.prompt_ab_experiment_key,
                     ab_user_key=account_id,
                     db=db,
                 )
+
+                recursion_limit = max(1, int(getattr(settings, "LANGGRAPH_RECURSION_LIMIT", 25) or 25))
+                config = {"configurable": {"thread_id": thread_id}, "recursion_limit": recursion_limit}
+                final_state: dict | None = None
+                citations_sent = False
+                answer_sent = False
+
+                for mode, chunk in rag_workflow.stream(
+                    state,
+                    config=config,
+                    context=runtime_context,
+                    stream_mode=["custom", "values"],
+                ):
+                    if mode == "custom":
+                        yield f"data: {json.dumps({'request_id': str(request_id), 'type': 'graph', 'data': chunk}, ensure_ascii=False)}\n\n"
+                        continue
+
+                    if mode != "values" or not isinstance(chunk, dict):
+                        continue
+
+                    final_state = chunk
+
+                    if not citations_sent and "citations" in chunk:
+                        citations_data = chunk.get("citations") or []
+                        citations_sent = True
+                        yield f"data: {json.dumps({'request_id': str(request_id), 'type': 'citations', 'data': citations_data}, ensure_ascii=False)}\n\n"
+
+                    if not answer_sent and "answer" in chunk:
+                        answer_text = chunk.get("answer") or ""
+                        chunk_size = 120
+                        for i in range(0, len(answer_text), chunk_size):
+                            token_chunk = answer_text[i : i + chunk_size]
+                            yield f"data: {json.dumps({'request_id': str(request_id), 'type': 'token', 'data': {'content': token_chunk}}, ensure_ascii=False)}\n\n"
+                            full_response += token_chunk
+                        answer_sent = True
+
+                graph_result = final_state or {}
+
+                if not citations_sent:
+                    citations_data = graph_result.get("citations") or []
+                    yield f"data: {json.dumps({'request_id': str(request_id), 'type': 'citations', 'data': citations_data}, ensure_ascii=False)}\n\n"
+
+                if not answer_sent:
+                    answer_text = graph_result.get("answer") or ""
+                    chunk_size = 120
+                    for i in range(0, len(answer_text), chunk_size):
+                        token_chunk = answer_text[i : i + chunk_size]
+                        yield f"data: {json.dumps({'request_id': str(request_id), 'type': 'token', 'data': {'content': token_chunk}}, ensure_ascii=False)}\n\n"
+                        full_response += token_chunk
+
+                metrics_data = graph_result.get("metrics") or {
+                    "retrieval_mode": request.rag_config.retrieval_mode,
+                    "vector_backend": settings.VECTOR_BACKEND,
+                    "elapsed_sec": None,
+                }
+                metrics_data = dict(metrics_data or {})
+                retrieval_mode_used = metrics_data.get("retrieval_mode") or request.rag_config.retrieval_mode
+                vector_backend_used = metrics_data.get("vector_backend") or settings.VECTOR_BACKEND
+
+                structured_data = None
+                structured_parse_meta = {"ok": False, "method": None, "error": None}
+                if request.structured_output:
+                    structured_data, structured_parse_meta = parse_json_from_text(full_response)
+                    metrics_data["structured_parse_ok"] = bool(structured_parse_meta.get("ok"))
+                    metrics_data["structured_parse_method"] = structured_parse_meta.get("method")
+                    metrics_data["structured_parse_error"] = structured_parse_meta.get("error")
+                    metrics_data["structured_type"] = type(structured_data).__name__ if structured_data is not None else None
+                    metrics_data["structured_preset"] = request.structured_preset
+
+                done_payload = {
+                    "type": "done",
+                    "data": {
+                        "conversation_id": str(conversation_id) if conversation_id else None,
+                        "total_tokens": len(full_response),
+                        "citations_count": len(citations_data),
+                        "model_used": graph_result.get("model_used"),
+                        "route": graph_result.get("route"),
+                        "retrieval_mode": retrieval_mode_used,
+                        "vector_backend": vector_backend_used,
+                        "metrics": metrics_data,
+                        "structured": bool(structured_parse_meta.get("ok")) and structured_data is not None,
+                        "structured_data": structured_data,
+                    },
+                    "request_id": str(request_id),
+                }
+                yield f"data: {json.dumps(done_payload, ensure_ascii=False)}\n\n"
+                log_metrics(
+                    {
+                        "event": "rag_done",
+                        "conversation_id": str(conversation_id) if conversation_id else None,
+                        "tenant_id": str(tenant_id) if tenant_id else None,
+                        "vector_backend": vector_backend_used,
+                        "retrieval_mode": retrieval_mode_used,
+                        "route": graph_result.get("route"),
+                        "model_used": graph_result.get("model_used"),
+                        "metrics": metrics_data,
+                        "request_id": str(request_id),
+                    }
+                )
+
+                assistant_message = Message(
+                    tenant_id=tenant_id,
+                    conversation_id=conversation_id,
+                    role='assistant',
+                    content=full_response,
+                    citations=citations_data,
+                    token_count=len(full_response),
+                    message_metadata={**(metrics_data or {}), "request_id": str(request_id)},
+                )
+                db.add(assistant_message)
+
+                conversation.message_count += 1
+                conversation.updated_at = datetime.utcnow()
+                db.commit()
+                return
+
             except Exception as e:  # noqa: BLE001
                 error_event = {
                     "type": "error",
@@ -234,104 +359,28 @@ async def stream_chat(
                 }
                 yield f"data: {json.dumps(error_event, ensure_ascii=False)}\n\n"
                 return
-            citations_data = graph_result.get("citations", [])
-            yield f"data: {json.dumps({'request_id': str(request_id), 'type': 'citations', 'data': citations_data}, ensure_ascii=False)}\n\n"
-            answer_text = graph_result.get("answer", "")
-            # 模拟流式输出：按 120 字节分块
-            chunk_size = 120
-            for i in range(0, len(answer_text), chunk_size):
-                token_chunk = answer_text[i:i+chunk_size]
-                yield f"data: {json.dumps({'request_id': str(request_id), 'type': 'token', 'data': {'content': token_chunk}}, ensure_ascii=False)}\n\n"
-                full_response += token_chunk
-            metrics_data = graph_result.get("metrics") or {
-                "retrieval_mode": request.rag_config.get('retrieval_mode', 'hybrid'),
-                "vector_backend": settings.VECTOR_BACKEND,
-                "elapsed_sec": None,
-            }
-            metrics_data = dict(metrics_data or {})
-            retrieval_mode_used = metrics_data.get("retrieval_mode") or request.rag_config.get("retrieval_mode", "hybrid")
-            vector_backend_used = metrics_data.get("vector_backend") or settings.VECTOR_BACKEND
-
-            structured_data = None
-            structured_parse_meta = {"ok": False, "method": None, "error": None}
-            if request.structured_output:
-                structured_data, structured_parse_meta = parse_json_from_text(full_response)
-                metrics_data["structured_parse_ok"] = bool(structured_parse_meta.get("ok"))
-                metrics_data["structured_parse_method"] = structured_parse_meta.get("method")
-                metrics_data["structured_parse_error"] = structured_parse_meta.get("error")
-                metrics_data["structured_type"] = type(structured_data).__name__ if structured_data is not None else None
-                metrics_data["structured_preset"] = request.structured_preset
-
-            done_payload = {
-                "type": "done",
-                "data": {
-                    "conversation_id": str(conversation_id) if conversation_id else None,
-                    "total_tokens": len(full_response),
-                    "citations_count": len(citations_data),
-                    "model_used": graph_result.get("model_used"),
-                    "route": graph_result.get("route"),
-                    "retrieval_mode": retrieval_mode_used,
-                    "vector_backend": vector_backend_used,
-                    "metrics": metrics_data,
-                    "structured": bool(structured_parse_meta.get("ok")) and structured_data is not None,
-                    "structured_data": structured_data,
-                },
-                "request_id": str(request_id),
-            }
-            yield f"data: {json.dumps(done_payload, ensure_ascii=False)}\n\n"
-            log_metrics(
-                {
-                    "event": "rag_done",
-                    "conversation_id": str(conversation_id) if conversation_id else None,
-                    "tenant_id": str(tenant_id) if tenant_id else None,
-                    "vector_backend": vector_backend_used,
-                    "retrieval_mode": retrieval_mode_used,
-                    "route": graph_result.get("route"),
-                    "model_used": graph_result.get("model_used"),
-                    "metrics": metrics_data,
-                    "request_id": str(request_id),
-                }
-            )
-
-            # 保存助手回复到数据库（Graph 路径同样需要持久化）
-            assistant_message = Message(
-                tenant_id=tenant_id,
-                conversation_id=conversation_id,
-                role='assistant',
-                content=full_response,
-                citations=citations_data,
-                token_count=len(full_response),
-                message_metadata={**(metrics_data or {}), "request_id": str(request_id)}
-            )
-            db.add(assistant_message)
-
-            # 更新对话
-            conversation.message_count += 1
-            conversation.updated_at = datetime.utcnow()
-            db.commit()
-            return
 
         try:
             # 使用 LangChain Agent
             engine = get_rag_engine()
             async for event in engine.stream_chat(
                 question=request.message,
-                history=[m.model_dump() for m in (request.history or [])] + long_term_messages,
+                history=[m.model_dump() for m in request.history] + long_term_messages,
                 conversation_id=conversation_id,
                 document_ids=doc_ids_to_use,
-                top_k=request.rag_config.get('top_k', settings.RETRIEVAL_TOP_K),
-                score_threshold=request.rag_config.get('score_threshold', settings.SIMILARITY_THRESHOLD),
+                top_k=request.rag_config.top_k,
+                score_threshold=request.rag_config.score_threshold,
                 tenant_id=tenant_id,
                 structured_output=request.structured_output,
-                retrieval_mode=request.rag_config.get('retrieval_mode', 'hybrid'),
-                alpha=request.rag_config.get('alpha', 0.6),
-                enable_weight_rerank=request.rag_config.get('enable_weight_rerank', True),
-                vector_weight=request.rag_config.get('vector_weight', 0.6),
-                keyword_weight=request.rag_config.get('keyword_weight', 0.4),
-                mmr_lambda=request.rag_config.get('mmr_lambda', settings.RETRIEVAL_MMR_LAMBDA),
-                enable_reranker=request.rag_config.get('enable_reranker', settings.ENABLE_RERANKER),
-                reranker_provider=request.rag_config.get('reranker_provider', settings.RERANKER_PROVIDER),
-                reranker_top_n=request.rag_config.get('reranker_top_n', settings.RERANKER_TOP_N),
+                retrieval_mode=request.rag_config.retrieval_mode,
+                alpha=request.rag_config.alpha,
+                enable_weight_rerank=request.rag_config.enable_weight_rerank,
+                vector_weight=request.rag_config.vector_weight,
+                keyword_weight=request.rag_config.keyword_weight,
+                mmr_lambda=request.rag_config.mmr_lambda,
+                enable_reranker=request.rag_config.enable_reranker,
+                reranker_provider=request.rag_config.reranker_provider,
+                reranker_top_n=request.rag_config.reranker_top_n,
                 structured_preset=request.structured_preset,
                 prompt_template_id=request.prompt_template_id,
                 prompt_template_key=request.prompt_template_key,
@@ -500,6 +549,122 @@ async def get_conversation_messages(
         "conversation_id": conversation_id,
         "messages": messages
     }
+
+
+def _checkpoint_values_to_json(values: dict | None) -> dict:
+    data = dict(values or {})
+    data.pop("docs", None)
+    return jsonable_encoder(data)
+
+
+@router.get("/conversations/{conversation_id}/checkpoints")
+async def list_conversation_checkpoints(
+    conversation_id: UUID,
+    limit: int = Query(default=20, ge=1, le=200),
+    before: Optional[str] = Query(default=None),
+    include_values: bool = Query(default=False),
+    tenant_id: UUID = Depends(get_tenant_id),
+    account_id: str = Depends(get_current_account_id),
+    db: Session = Depends(get_db),
+):
+    """列出该会话的 LangGraph checkpoints（用于 time-travel/debug）。"""
+    conversation = db.query(Conversation).filter(
+        Conversation.id == conversation_id,
+        Conversation.tenant_id == tenant_id,
+    ).first()
+    if not conversation:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+    _ensure_conversation_access(db, tenant_id, account_id, conversation)
+
+    from app.rag.pipelines.langgraph import build_rag_graph
+
+    graph = build_rag_graph()
+    thread_id = str(conversation_id)
+    base_config = {"configurable": {"thread_id": thread_id, "checkpoint_ns": ""}}
+    before_config = (
+        {"configurable": {"thread_id": thread_id, "checkpoint_ns": "", "checkpoint_id": before}} if before else None
+    )
+
+    snapshots = list(graph.get_state_history(base_config, before=before_config, limit=limit))
+    items = []
+    for snap in reversed(snapshots):
+        cfg = (snap.config or {}).get("configurable") or {}
+        item = {
+            "checkpoint_id": cfg.get("checkpoint_id"),
+            "checkpoint_ns": cfg.get("checkpoint_ns", ""),
+            "created_at": getattr(snap, "created_at", None),
+            "next": getattr(snap, "next", None),
+            "metadata": getattr(snap, "metadata", None),
+        }
+        if include_values:
+            item["values"] = _checkpoint_values_to_json(getattr(snap, "values", None))
+        items.append(jsonable_encoder(item))
+
+    return {"thread_id": thread_id, "items": items}
+
+
+@router.get("/conversations/{conversation_id}/checkpoints/{checkpoint_id}")
+async def get_conversation_checkpoint(
+    conversation_id: UUID,
+    checkpoint_id: str,
+    include_values: bool = Query(default=True),
+    tenant_id: UUID = Depends(get_tenant_id),
+    account_id: str = Depends(get_current_account_id),
+    db: Session = Depends(get_db),
+):
+    """获取指定 checkpoint 的快照（默认不返回 docs 字段）。"""
+    conversation = db.query(Conversation).filter(
+        Conversation.id == conversation_id,
+        Conversation.tenant_id == tenant_id,
+    ).first()
+    if not conversation:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+    _ensure_conversation_access(db, tenant_id, account_id, conversation)
+
+    from app.rag.pipelines.langgraph import build_rag_graph
+
+    graph = build_rag_graph()
+    thread_id = str(conversation_id)
+    config = {"configurable": {"thread_id": thread_id, "checkpoint_ns": "", "checkpoint_id": checkpoint_id}}
+    snap = graph.get_state(config)
+    if not snap:
+        raise HTTPException(status_code=404, detail="Checkpoint not found")
+
+    cfg = (snap.config or {}).get("configurable") or {}
+    payload = {
+        "thread_id": thread_id,
+        "checkpoint_id": cfg.get("checkpoint_id"),
+        "checkpoint_ns": cfg.get("checkpoint_ns", ""),
+        "created_at": getattr(snap, "created_at", None),
+        "next": getattr(snap, "next", None),
+        "metadata": getattr(snap, "metadata", None),
+    }
+    if include_values:
+        payload["values"] = _checkpoint_values_to_json(getattr(snap, "values", None))
+    return jsonable_encoder(payload)
+
+
+@router.delete("/conversations/{conversation_id}/checkpoints", status_code=204)
+async def delete_conversation_checkpoints(
+    conversation_id: UUID,
+    tenant_id: UUID = Depends(get_tenant_id),
+    account_id: str = Depends(get_current_account_id),
+    db: Session = Depends(get_db),
+):
+    """清除该会话的 checkpoints（仅影响 LangGraph 内部状态，不删除消息/对话）。"""
+    conversation = db.query(Conversation).filter(
+        Conversation.id == conversation_id,
+        Conversation.tenant_id == tenant_id,
+    ).first()
+    if not conversation:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+    _ensure_conversation_access(db, tenant_id, account_id, conversation)
+
+    from app.rag.checkpointer.factory import get_checkpointer
+
+    saver = get_checkpointer()
+    saver.delete_thread(str(conversation_id))
+    return None
 
 
 @router.delete("/conversations/{conversation_id}", status_code=204)

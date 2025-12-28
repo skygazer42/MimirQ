@@ -43,10 +43,13 @@ LANGSMITH_ENDPOINT = getattr(settings, "LANGSMITH_ENDPOINT", "https://api.smith.
 LANGSMITH_TRACING_ENABLED = getattr(settings, "LANGSMITH_TRACING_ENABLED", False)
 
 # Import langsmith if tracing is enabled
+LangSmithClient = None  # type: ignore
 if LANGSMITH_TRACING_ENABLED:
-    from langsmith import Client as LangSmithClient
-else:
-    LangSmithClient = None  # type: ignore
+    try:
+        from langsmith import Client as LangSmithClient  # type: ignore
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("LangSmith tracing enabled but 'langsmith' is not available: %s", exc)
+        LangSmithClient = None  # type: ignore
 
 
 # Type variable for decorators
@@ -100,7 +103,7 @@ class TracingClient:
         self.api_key = api_key or LANGSMITH_API_KEY
         self.project = project or LANGSMITH_PROJECT
         self.endpoint = endpoint or LANGSMITH_ENDPOINT
-        self._enabled = bool(self.api_key) and LANGSMITH_TRACING_ENABLED
+        self._enabled = bool(self.api_key) and LANGSMITH_TRACING_ENABLED and LangSmithClient is not None
         self._client = None
         self._current_spans: Dict[str, SpanContext] = {}
 
