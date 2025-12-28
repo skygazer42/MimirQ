@@ -1,7 +1,5 @@
 """
 Chunk and document models for RAG system.
-
-Provides data structures for document chunks, transformers, and QA pairs.
 """
 from abc import ABC, abstractmethod
 from collections.abc import Sequence

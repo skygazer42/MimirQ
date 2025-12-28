@@ -1,8 +1,5 @@
 """
 Prompt template models for customizable RAG prompts.
-
-This module defines the database model for storing and managing
-prompt templates that can be used to customize RAG system behavior.
 """
 import uuid
 from typing import List
