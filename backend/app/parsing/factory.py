@@ -12,6 +12,7 @@ from app.parsing.parsers.pdf_parser import PDFParser
 from app.parsing.parsers.text_parser import TextParser, MarkdownParser
 from app.parsing.parsers.mineru_parser import MinerUParser
 from app.parsing.parsers.markitdown_parser import MarkItDownParser
+from app.parsing.parsers.docling_parser import DoclingParser
 from app.core.config import settings
 from app.rag.core.logging import get_logger
 
@@ -22,7 +23,7 @@ logger = get_logger("parsing.factory")
 class ParserFactory:
     """根据文件类型选择合适的解析器"""
 
-    SUPPORTED_PDF_BACKENDS = {"auto", "basic", "mineru", "deepdoc", "markitdown"}
+    SUPPORTED_PDF_BACKENDS = {"auto", "basic", "mineru", "deepdoc", "markitdown", "docling"}
     SUPPORTED_NON_PDF_MARKITDOWN = {".doc", ".docx", ".xls", ".xlsx", ".csv", ".html", ".json"}
 
     def __init__(self):
@@ -30,6 +31,7 @@ class ParserFactory:
         self._mineru_parser: Optional[MinerUParser] = None
         self._deepdoc_parser: Optional["DeepDocParser"] = None
         self._markitdown_parser: Optional[MarkItDownParser] = None
+        self._docling_parser: Optional[DoclingParser] = None
 
         logger.info("[pdf] PyMuPDF parser ready (basic)")
         if settings.MINERU_ENABLED and (settings.MINERU_API_TOKEN or settings.MINERU_LOCAL_SERVER_URL):
@@ -38,6 +40,8 @@ class ParserFactory:
             logger.info("[pdf] DeepDoc parser available (requires selection)")
         if settings.MARKITDOWN_ENABLED:
             logger.info("[pdf] MarkItDown parser available (requires selection)")
+        if getattr(settings, "DOCLING_ENABLED", False):
+            logger.info("[pdf] Docling parser available (requires selection)")
 
         self.parsers = {
             ".txt": TextParser(),
@@ -74,6 +78,8 @@ class ParserFactory:
             )
 
         if normalized == "auto":
+            if getattr(settings, "DOCLING_ENABLED", False):
+                return "docling"
             if settings.DEEPDOC_ENABLED:
                 return "deepdoc"
             if settings.MARKITDOWN_ENABLED:
@@ -99,6 +105,14 @@ class ParserFactory:
 
         if normalized == "markitdown":
             return "markitdown"
+
+        if normalized == "docling":
+            if not getattr(settings, "DOCLING_ENABLED", False):
+                raise ValueError(
+                    "Docling parser is not enabled. "
+                    "Please set DOCLING_ENABLED=True."
+                )
+            return "docling"
 
         raise ValueError(f"Unsupported parser backend '{normalized}'")
 
@@ -156,6 +170,12 @@ class ParserFactory:
                 logger.info("[pdf] Initializing MarkItDown parser (markdown-focused)")
                 self._markitdown_parser = MarkItDownParser()
             return self._markitdown_parser
+
+        if backend == "docling":
+            if self._docling_parser is None:
+                logger.info("[pdf] Initializing Docling parser (structure-aware)")
+                self._docling_parser = DoclingParser()
+            return self._docling_parser
 
         raise ValueError(f"Unsupported PDF parser backend '{backend}'")
 
