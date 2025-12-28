@@ -12,7 +12,6 @@ import asyncio
 import base64
 import hashlib
 import re
-
 from app.core.config import settings
 from app.core.database import SessionLocal
 from app.models.document import Document as DBDocument, DocumentChunk

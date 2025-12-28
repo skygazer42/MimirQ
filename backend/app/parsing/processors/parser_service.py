@@ -3,8 +3,6 @@
 - 按文件类型分流（office → MarkItDown；PDF → 评分后选择 MarkItDown / DeepDoc / MinerU / basic）
 - 提取 Markdown、图片落盘并返回预览
 """
-from __future__ import annotations
-
 from pathlib import Path
 from typing import Dict, List, Optional
 from uuid import UUID
