@@ -555,6 +555,25 @@ export interface MinerUConfig {
   model_version: string
 }
 
+export interface ObservabilityConfig {
+  tool_call_log_enabled: boolean
+  tool_call_log_include_preview: boolean
+  tool_call_log_max_preview_chars: number
+  agent_log_enabled: boolean
+  agent_log_include_execution_path: boolean
+  agent_log_max_preview_chars: number
+}
+
+export interface SafetyConfig {
+  pii_redaction_enabled: boolean
+  pii_redaction_mask: string
+  pii_stream_holdback_chars: number
+}
+
+export interface LangGraphConfig {
+  use_subgraphs: boolean
+}
+
 export interface SystemSettings {
   feature_flags: FeatureFlags
   llm: LLMConfig
@@ -562,6 +581,9 @@ export interface SystemSettings {
   milvus: MilvusConfig
   rag: RAGConfig
   mineru: MinerUConfig
+  observability: ObservabilityConfig
+  safety: SafetyConfig
+  langgraph: LangGraphConfig
 }
 
 export interface SystemStatus {

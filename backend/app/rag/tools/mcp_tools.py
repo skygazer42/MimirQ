@@ -60,14 +60,15 @@ async def search_documents(
         Search results
     """
     try:
-        from app.rag.retriever import get_retriever
+        from app.rag.retriever import hybrid_retriever
 
-        retriever = get_retriever()
-        documents = await retriever.aretrieve(
-            query,
-            top_k=top_k,
-            metadata_filter=filter,
+        retriever = hybrid_retriever.model_copy(
+            update={
+                "k": int(top_k or 5),
+                "metadata_filter": filter,
+            }
         )
+        documents = await retriever.ainvoke(query)
 
         results = []
         for doc in documents:

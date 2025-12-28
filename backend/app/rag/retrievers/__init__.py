@@ -3,10 +3,10 @@ Retriever module for RAG systems.
 
 Provides:
 - MultiVectorRetriever: Multi-representation document retrieval
-- HybridRetriever: Vector + BM25 hybrid search (in parent module)
+- HybridRetriever: Vector + BM25 hybrid search (in app.rag.retriever)
 """
 
-from app.rag.retriever.multi_vector import (
+from app.rag.retrievers.multi_vector import (
     MultiVectorRetriever,
     RepresentationType,
     DocumentRepresentation,
