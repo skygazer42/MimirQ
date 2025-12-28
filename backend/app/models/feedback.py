@@ -5,10 +5,8 @@
 以便后续做质量分析、回归集构建、A/B 对比与模型迭代。
 """
 
-from __future__ import annotations
-
+ 
 import uuid
-
 from sqlalchemy import Column, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.sql import func
