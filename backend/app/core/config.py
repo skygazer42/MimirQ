@@ -125,6 +125,14 @@ class Settings(BaseSettings):
     MIDDLEWARE_DYNAMIC_PROMPT_ENABLED: bool = True
     MIDDLEWARE_INJECT_TIME_CONTEXT: bool = True
     MIDDLEWARE_DEFAULT_RESPONSE_STYLE: str = ""  # professional | casual | technical | concise | detailed
+    # Tool-call middleware (logging wrapper)
+    TOOL_CALL_LOG_ENABLED: bool = False
+    TOOL_CALL_LOG_INCLUDE_PREVIEW: bool = False
+    TOOL_CALL_LOG_MAX_PREVIEW_CHARS: int = 500
+    # Agent/workflow lifecycle logging
+    AGENT_LOG_ENABLED: bool = False
+    AGENT_LOG_INCLUDE_EXECUTION_PATH: bool = False
+    AGENT_LOG_MAX_PREVIEW_CHARS: int = 500
 
     VECTOR_BACKEND: str = "milvus"  # milvus | memory | faiss | chroma
     # Indexing toggles (to reduce duplicate pipelines when desired)
