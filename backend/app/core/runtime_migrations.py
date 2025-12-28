@@ -1,16 +1,12 @@
 """
 Runtime (best-effort) schema migrations.
-
 This project currently uses `Base.metadata.create_all()` on startup, which does
 NOT alter existing tables. To keep deployments smooth without requiring Alembic
 immediately, we apply a small set of safe `ALTER TABLE ... IF NOT EXISTS` ops.
-
 Only runs on PostgreSQL. Failures are swallowed to avoid blocking startup.
 """
-from __future__ import annotations
 
 from sqlalchemy import text
-
 
 def apply_runtime_migrations(engine) -> None:
     """Apply small schema changes needed by newer code paths."""
