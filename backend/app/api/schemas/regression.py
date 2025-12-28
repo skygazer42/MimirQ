@@ -5,14 +5,10 @@ RAGAS 回归集（Regression Suite）相关 Schema。
 并将结果落表，形成持续迭代闭环。
 """
 
-from __future__ import annotations
-
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 from uuid import UUID
-
 from pydantic import BaseModel, Field
-
 
 class RagasRegressionCaseCreateRequest(BaseModel):
     question: str = Field(..., min_length=1, description="问题（回归用例的 user_input）")
