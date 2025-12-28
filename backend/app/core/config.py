@@ -79,6 +79,23 @@ class Settings(BaseSettings):
     RETRIEVAL_TOP_K: int = 5
     SIMILARITY_THRESHOLD: float = 0.7
     RETRIEVAL_MMR_LAMBDA: float = 0.7
+    # Retrieval fusion strategy:
+    # - linear: min-max normalize each channel then alpha-blend
+    # - rrf: reciprocal-rank fusion (normalized for UI)
+    RETRIEVAL_FUSION_STRATEGY: str = "linear"  # linear | rrf
+    RETRIEVAL_RRF_K: int = 60
+    # Post-retrieval guards (dedup/diversity)
+    RETRIEVAL_DEDUP_ENABLED: bool = True
+    RETRIEVAL_DEDUP_JACCARD_THRESHOLD: float = 0.92
+    RETRIEVAL_DEDUP_MAX_COMPARE: int = 50
+    # Per-document diversity (0 disables)
+    RETRIEVAL_MAX_CHUNKS_PER_DOC: int = 3
+    RETRIEVAL_MIN_DISTINCT_DOCS: int = 0
+
+    # Prompt context guards (0 disables)
+    RAG_CONTEXT_MAX_CHARS_PER_CHUNK: int = 1500
+    RAG_CONTEXT_MAX_TOTAL_CHARS: int = 12_000
+    RAG_CONTEXT_MAX_KG_CHARS: int = 3_000
     USE_LANGGRAPH_PIPELINE: bool = False
     RAG_GRAPH_MAX_RETRIES: int = 2
     RAG_GRAPH_TIMEOUT_SEC: int = 20

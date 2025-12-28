@@ -7,6 +7,7 @@ from __future__ import annotations
 from typing import List, Dict, Any, Optional
 from uuid import UUID
 import math
+import re
 from collections import Counter
 import jieba
 import time
@@ -43,6 +44,13 @@ class HybridRetriever(BaseRetriever):
     enable_reranker: bool = settings.ENABLE_RERANKER
     reranker_provider: str = settings.RERANKER_PROVIDER
     reranker_top_n: int = settings.RERANKER_TOP_N
+    fusion_strategy: str = settings.RETRIEVAL_FUSION_STRATEGY
+    rrf_k: int = settings.RETRIEVAL_RRF_K
+    dedup_enabled: bool = settings.RETRIEVAL_DEDUP_ENABLED
+    dedup_jaccard_threshold: float = settings.RETRIEVAL_DEDUP_JACCARD_THRESHOLD
+    dedup_max_compare: int = settings.RETRIEVAL_DEDUP_MAX_COMPARE
+    max_chunks_per_doc: int = settings.RETRIEVAL_MAX_CHUNKS_PER_DOC
+    min_distinct_docs: int = settings.RETRIEVAL_MIN_DISTINCT_DOCS
     tenant_id: Optional[UUID] = None
     document_ids: Optional[List[UUID]] = None
 
@@ -266,7 +274,15 @@ class HybridRetriever(BaseRetriever):
             )
 
         # 3) 分数归一 + 线性合并
-        merged_results = self._merge_results(vector_results, bm25_results, alpha=alpha)
+        merged_results = self._merge_results(
+            vector_results,
+            bm25_results,
+            alpha=alpha,
+            fusion_strategy=self.fusion_strategy,
+            rrf_k=self.rrf_k,
+        )
+
+        merged_results = self._deduplicate_results(merged_results)
 
         # 4) 重排策略
         if retrieval_mode == "mmr" and merged_results:
@@ -300,45 +316,54 @@ class HybridRetriever(BaseRetriever):
                     id_to_doc[rid] = doc
 
                 if candidates:
-                    start = time.time()
-                    result = reranker.rerank(
-                        query=query,
-                        candidates=candidates,
-                        top_n=candidates_n,
-                    )
-                    rerank_elapsed = result.elapsed_sec or (time.time() - start)
-                    rerank_provider = result.provider or provider
+                    try:
+                        start = time.time()
+                        result = reranker.rerank(
+                            query=query,
+                            candidates=candidates,
+                            top_n=candidates_n,
+                        )
+                        rerank_elapsed = result.elapsed_sec or (time.time() - start)
+                        rerank_provider = result.provider or provider
 
-                    ordered = []
-                    used: set[str] = set()
-                    for rid in result.ordered_ids:
-                        d = id_to_doc.get(rid)
-                        if not d or rid in used:
-                            continue
-                        used.add(rid)
-                        new_doc = dict(d)
-                        new_doc["retrieval_score"] = float(new_doc.get("score", 0.0) or 0.0)
-                        if rid in result.score_map:
-                            new_doc["rerank_score"] = float(result.score_map[rid])
-                            new_doc["score"] = float(result.score_map[rid])
-                        new_doc["reranker_provider"] = rerank_provider
-                        new_doc["rerank_elapsed_sec"] = round(float(rerank_elapsed), 3)
-                        new_doc["rerank_model_used"] = result.model_used
-                        ordered.append(new_doc)
+                        ordered = []
+                        used: set[str] = set()
+                        for rid in result.ordered_ids:
+                            d = id_to_doc.get(rid)
+                            if not d or rid in used:
+                                continue
+                            used.add(rid)
+                            new_doc = dict(d)
+                            new_doc["retrieval_score"] = float(new_doc.get("score", 0.0) or 0.0)
+                            if rid in result.score_map:
+                                new_doc["rerank_score"] = float(result.score_map[rid])
+                                new_doc["score"] = float(result.score_map[rid])
+                            new_doc["reranker_provider"] = rerank_provider
+                            new_doc["rerank_elapsed_sec"] = round(float(rerank_elapsed), 3)
+                            new_doc["rerank_model_used"] = result.model_used
+                            ordered.append(new_doc)
 
-                    # 追加未被 LLM 返回的候选（保持原顺序）
-                    for doc in merged_results[:candidates_n]:
-                        rid = self._result_key(doc)
-                        if rid in used:
-                            continue
-                        new_doc = dict(doc)
-                        new_doc.setdefault("reranker_provider", rerank_provider)
-                        new_doc.setdefault("rerank_elapsed_sec", round(float(rerank_elapsed), 3))
-                        new_doc.setdefault("rerank_model_used", result.model_used)
-                        ordered.append(new_doc)
+                        # 追加未被 reranker 返回的候选（保持原顺序）
+                        for doc in merged_results[:candidates_n]:
+                            rid = self._result_key(doc)
+                            if rid in used:
+                                continue
+                            new_doc = dict(doc)
+                            new_doc.setdefault("reranker_provider", rerank_provider)
+                            new_doc.setdefault("rerank_elapsed_sec", round(float(rerank_elapsed), 3))
+                            new_doc.setdefault("rerank_model_used", result.model_used)
+                            ordered.append(new_doc)
 
-                    merged_results = ordered + merged_results[candidates_n:]
+                        merged_results = ordered + merged_results[candidates_n:]
+                    except Exception as exc:
+                        logger.warning("Reranker failed (%s): %s", provider, exc)
+                        for doc in merged_results[:candidates_n]:
+                            meta = dict(doc.get("metadata") or {})
+                            meta.setdefault("reranker_provider", provider)
+                            meta.setdefault("reranker_error", str(exc)[:200])
+                            doc["metadata"] = meta
 
+        merged_results = self._apply_document_diversity(merged_results, top_k=top_k)
         return merged_results[:top_k]
 
     # ---- LangChain Retriever API ----
