@@ -34,11 +34,23 @@ def _build_context(docs: List[Document]) -> str:
     if not docs:
         return "没有找到相关的参考资料。"
     parts = []
+    max_per_chunk = max(0, int(settings.RAG_CONTEXT_MAX_CHARS_PER_CHUNK or 0))
+    max_total = max(0, int(settings.RAG_CONTEXT_MAX_TOTAL_CHARS or 0))
+    total_chars = 0
     for idx, doc in enumerate(docs, 1):
         meta = doc.metadata or {}
         source = meta.get("source", "Unknown")
         page = meta.get("page", "N/A")
-        parts.append(f"[来源 {idx}: {source} - 第{page}页]\n{doc.page_content}")
+        content = (doc.page_content or "").strip()
+        if max_per_chunk and len(content) > max_per_chunk:
+            content = content[:max_per_chunk] + "..."
+        part = f"[来源 {idx}: {source} - 第{page}页]\n{content}"
+        if max_total and parts and (total_chars + len(part)) > max_total:
+            break
+        parts.append(part)
+        total_chars += len(part)
+        if max_total and total_chars >= max_total:
+            break
     return "\n\n".join(parts)
 
 
@@ -139,6 +151,7 @@ def _retrieve_node(state: RAGState) -> RAGState:
         docs,
         retrieval_elapsed_sec=retrieval_elapsed,
         retrieval_mode=state.get("retrieval_mode", "hybrid"),
+        query=query_for_retrieval,
     )
 
     metrics = dict(state.get("metrics") or {})

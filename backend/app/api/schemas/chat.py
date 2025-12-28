@@ -13,6 +13,7 @@ class Citation(BaseModel):
     document_name: str
     chunk_id: UUID
     chunk_content: str
+    matched_terms: Optional[List[str]] = None
     page_number: Optional[int] = None
     relevance_score: float = 0.0
     vector_score: Optional[float] = None

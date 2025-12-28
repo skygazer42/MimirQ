@@ -338,6 +338,7 @@ class RAGEngine:
                 docs,
                 retrieval_elapsed_sec=retrieval_elapsed,
                 retrieval_mode=request_retrieval_mode,
+                query=query_for_retrieval,
             )
 
             # 发送引用信息
@@ -364,18 +365,30 @@ class RAGEngine:
                             summary = summary[:600] + "..."
                         parts.append(f"[事件 {idx}] {title}\n{summary}")
                     kg_context = "\n\n".join(parts)
+                    if settings.RAG_CONTEXT_MAX_KG_CHARS > 0 and len(kg_context) > settings.RAG_CONTEXT_MAX_KG_CHARS:
+                        kg_context = kg_context[: settings.RAG_CONTEXT_MAX_KG_CHARS] + "..."
 
             # Step 3: 构建上下文（文档切片 + 可选 KG 事件）
             chunk_context = ""
             if docs:
+                max_per_chunk = max(0, int(settings.RAG_CONTEXT_MAX_CHARS_PER_CHUNK or 0))
+                max_total = max(0, int(settings.RAG_CONTEXT_MAX_TOTAL_CHARS or 0))
+                total_chars = 0
                 context_parts = []
                 for idx, doc in enumerate(docs, 1):
                     meta = doc.metadata or {}
                     source = meta.get("source", "Unknown")
                     page = meta.get("page", "N/A")
+                    content = (doc.page_content or "").strip()
+                    if max_per_chunk and len(content) > max_per_chunk:
+                        content = content[:max_per_chunk] + "..."
                     context_parts.append(
-                        f"[来源 {idx}: {source} - 第 {page} 页]\n{doc.page_content}"
+                        f"[来源 {idx}: {source} - 第 {page} 页]\n{content}"
                     )
+                    if max_total:
+                        total_chars += len(context_parts[-1])
+                        if total_chars >= max_total:
+                            break
                 chunk_context = "\n\n".join(context_parts)
 
             context_sections = []
@@ -384,6 +397,43 @@ class RAGEngine:
             if chunk_context:
                 context_sections.append(f"【文档切片检索】\n{chunk_context}")
             context = "\n\n".join(context_sections) if context_sections else "没有找到相关的参考资料。"
+
+            # Optional trace log for debugging/regression replay (guarded by ENABLE_METRICS_LOG).
+            log_metrics(
+                {
+                    "event": "rag_trace",
+                    "conversation_id": str(conversation_id) if conversation_id else None,
+                    "tenant_id": str(tenant_id) if tenant_id else None,
+                    "request_id": request_id,
+                    "question": question,
+                    "query_for_retrieval": query_for_retrieval,
+                    "history_chars": len(history_text or ""),
+                    "context_chars": len(context or ""),
+                    "retrieval": {
+                        "mode": request_retrieval_mode,
+                        "alpha": request_alpha,
+                        "enable_weight_rerank": request_enable_weight_rerank,
+                        "vector_weight": request_vector_weight,
+                        "keyword_weight": request_keyword_weight,
+                        "mmr_lambda": request_mmr_lambda,
+                        "enable_reranker": request_enable_reranker,
+                        "reranker_provider": request_reranker_provider,
+                        "reranker_top_n": request_reranker_top_n,
+                    },
+                    "citations": citations[: min(len(citations), int(top_k or 5))],
+                    "prompt": {
+                        "prompt_template_id": str(selected_prompt_template_id) if selected_prompt_template_id else None,
+                        "prompt_template_key": selected_prompt_template_key,
+                        "prompt_ab_experiment_key": selected_prompt_ab_experiment_key,
+                        "prompt_ab_variant": selected_prompt_ab_variant,
+                    },
+                    "route": {
+                        "model_route": model_route,
+                        "model_used": getattr(llm, "model_name", None) or getattr(llm, "model", None),
+                        "reason": routing_reason,
+                    },
+                }
+            )
 
             # Step 4: 流式生成回答
             full_response = ""
@@ -456,9 +506,18 @@ class RAGEngine:
                         "retrieval_elapsed_sec": round(retrieval_elapsed, 3),
                         "generation_elapsed_sec": round(generation_elapsed, 3),
                         "retrieval_mode": request_retrieval_mode,
+                        "retrieval_fusion_strategy": settings.RETRIEVAL_FUSION_STRATEGY,
+                        "retrieval_rrf_k": settings.RETRIEVAL_RRF_K if settings.RETRIEVAL_FUSION_STRATEGY == "rrf" else None,
+                        "retrieval_dedup_enabled": bool(settings.RETRIEVAL_DEDUP_ENABLED),
+                        "retrieval_max_chunks_per_doc": int(settings.RETRIEVAL_MAX_CHUNKS_PER_DOC or 0),
+                        "retrieval_min_distinct_docs": int(settings.RETRIEVAL_MIN_DISTINCT_DOCS or 0),
                         "vector_backend": settings.VECTOR_BACKEND,
                         "model_route": model_route,
                         "top_k": top_k,
+                        "docs_returned": len(docs),
+                        "distinct_documents": len({c.get("document_id") for c in citations if c.get("document_id")}),
+                        "history_chars": len(history_text or ""),
+                        "context_chars": len(context or ""),
                         "llm_max_retries": settings.LLM_MAX_RETRIES,
                         "query_rewrite_enabled": settings.ENABLE_QUERY_REWRITE,
                         "rewrite_used": bool(rewrite_used),
