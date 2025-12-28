@@ -5,7 +5,7 @@ Parent-Child Reranker
 """
 from __future__ import annotations
 
-from app.models.dify import Document
+from app.models.chunk import Document
 from app.rag.reranker.base import DocumentReranker
 
 

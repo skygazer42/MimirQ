@@ -12,7 +12,7 @@ from typing import Callable
 
 from pydantic import BaseModel
 
-from app.models.dify import Document
+from app.models.chunk import Document
 from app.rag.reranker.base import DocumentReranker
 
 
