@@ -3,12 +3,10 @@ RAGAS evaluation run models (tenant isolated).
 """
 
 import uuid
-
 from sqlalchemy import Column, String, Integer, DateTime, Text, ForeignKey
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
-
 from app.core.database import Base
 
 
