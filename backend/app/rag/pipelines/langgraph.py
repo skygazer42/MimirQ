@@ -595,16 +595,30 @@ def _generate_node(state: RAGState) -> RAGState:
     ctx = _build_context(state.get("docs") or [], query=state.get("query_for_retrieval") or state.get("question"))
     hist_text = _build_history_text(state.get("history"))
 
+    pii_on = False
+    redact_text = None  # type: ignore[assignment]
+    try:
+        from app.rag.middleware.pii import pii_enabled, redact_text as _redact_text
+
+        pii_on = bool(pii_enabled())
+        redact_text = _redact_text
+    except Exception:  # noqa: BLE001
+        pii_on = False
+        redact_text = None  # type: ignore[assignment]
+
     start = time.time()
     answer = chain.invoke(
         {
-            "context": ctx,
-            "history": hist_text,
-            "question": state["question"],
+            "context": redact_text(ctx) if pii_on and redact_text else ctx,
+            "history": redact_text(hist_text) if pii_on and redact_text else hist_text,
+            "question": redact_text(state["question"]) if pii_on and redact_text else state["question"],
             "format_instructions": format_instructions,
         }
     )
     generation_elapsed = time.time() - start
+
+    if pii_on and redact_text:
+        answer = redact_text(str(answer))
 
     # 将引用图片以内嵌 Markdown 的形式追加到正文（仅非结构化输出，可配置）
     if not bool(state.get("structured_output")) and bool(settings.SHOW_IMAGE_IN_ANSWER) and settings.IMAGE_APPEND_MAX > 0:
@@ -898,6 +912,9 @@ def run_rag_workflow_functional(
 
 def build_rag_graph() -> Any:
     """构建一个最小 RAG 流程图：检索 -> 生成 -> 结束。"""
+    if bool(getattr(settings, "LANGGRAPH_USE_SUBGRAPHS", False)):
+        return build_rag_graph_subgraphs()
+
     graph = StateGraph(RAGState)
 
     graph.add_node(
@@ -917,6 +934,54 @@ def build_rag_graph() -> Any:
     checkpointer = get_checkpointer()
     store = get_langgraph_store()
     return graph.compile(checkpointer=checkpointer, store=store)
+
+
+def _build_retrieve_subgraph() -> Any:
+    """Subgraph: retrieve only (END after retrieval)."""
+    g = StateGraph(RAGState)
+    g.add_node(
+        "retrieve",
+        partial(_run_with_retry, "retrieve", _retrieve_node),
+        retry_policy=_RAG_TASK_RETRY_POLICY,
+    )
+    g.set_entry_point("retrieve")
+    g.add_edge("retrieve", END)
+    return g.compile(name="rag_retrieve_subgraph")
+
+
+def _build_generate_subgraph() -> Any:
+    """Subgraph: generate only (END after generation)."""
+    g = StateGraph(RAGState)
+    g.add_node(
+        "generate",
+        partial(_run_with_retry, "generate", _generate_node),
+        retry_policy=_RAG_TASK_RETRY_POLICY,
+    )
+    g.set_entry_point("generate")
+    g.add_edge("generate", END)
+    return g.compile(name="rag_generate_subgraph")
+
+
+def build_rag_graph_subgraphs() -> Any:
+    """
+    Build a modular RAG graph using LangGraph subgraphs.
+
+    This enables composition of reusable subgraphs (retrieve/generate/…)
+    and mirrors the reference project's "subgraph as node" pattern.
+    """
+    retrieve_subgraph = _build_retrieve_subgraph()
+    generate_subgraph = _build_generate_subgraph()
+
+    g = StateGraph(RAGState)
+    g.add_node("retrieve_flow", retrieve_subgraph)
+    g.add_node("generate_flow", generate_subgraph)
+    g.set_entry_point("retrieve_flow")
+    g.add_edge("retrieve_flow", "generate_flow")
+    g.add_edge("generate_flow", END)
+
+    checkpointer = get_checkpointer()
+    store = get_langgraph_store()
+    return g.compile(checkpointer=checkpointer, store=store, name="rag_graph_subgraphs")
 
 
 def build_rag_state(

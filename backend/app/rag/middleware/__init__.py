@@ -39,8 +39,15 @@ from app.rag.middleware.base import (
     after_model,
     wrap_model_call,
     dynamic_prompt,
+    before_tool_call,
+    after_tool_call,
+    wrap_tool_call,
+    before_agent,
+    after_agent,
     MiddlewareRegistry,
     MiddlewareChain,
+    ToolMiddlewareChain,
+    AgentMiddlewareChain,
     apply_middlewares,
 )
 from app.rag.middleware.error_handler import (
@@ -60,6 +67,7 @@ from app.rag.middleware.dynamic_prompt import (
     StyleInjector,
     TimeInjector,
 )
+from app.rag.middleware.pii import PIIMiddleware
 
 __all__ = [
     # Decorators
@@ -67,9 +75,16 @@ __all__ = [
     "after_model",
     "wrap_model_call",
     "dynamic_prompt",
+    "before_tool_call",
+    "after_tool_call",
+    "wrap_tool_call",
+    "before_agent",
+    "after_agent",
     # Registry and Chain
     "MiddlewareRegistry",
     "MiddlewareChain",
+    "ToolMiddlewareChain",
+    "AgentMiddlewareChain",
     "apply_middlewares",
     # Error Handling
     "ErrorHandlerMiddleware",
@@ -85,4 +100,6 @@ __all__ = [
     "ContextInjector",
     "StyleInjector",
     "TimeInjector",
+    # PII
+    "PIIMiddleware",
 ]

@@ -6,6 +6,10 @@ Provides the core infrastructure for the three-layer middleware system:
 - after_model: Post-processing hooks
 - wrap_model_call: Wrapping hooks
 - dynamic_prompt: Dynamic prompt injection
+
+Additional optional phases:
+- before_tool_call / after_tool_call / wrap_tool_call: Tool execution hooks
+- before_agent / after_agent: Agent/workflow lifecycle hooks
 """
 
 from __future__ import annotations
@@ -33,6 +37,11 @@ class MiddlewarePhase(str, Enum):
     AFTER_MODEL = "after_model"
     WRAP_MODEL = "wrap_model"
     DYNAMIC_PROMPT = "dynamic_prompt"
+    BEFORE_TOOL_CALL = "before_tool_call"
+    AFTER_TOOL_CALL = "after_tool_call"
+    WRAP_TOOL_CALL = "wrap_tool_call"
+    BEFORE_AGENT = "before_agent"
+    AFTER_AGENT = "after_agent"
 
 
 @dataclass
@@ -237,6 +246,226 @@ def dynamic_prompt(
     if func is not None:
         return decorator(func)
     return decorator
+
+
+def before_tool_call(
+    func: Optional[Callable] = None,
+    *,
+    priority: int = 100,
+    name: Optional[str] = None,
+) -> Callable:
+    """
+    Decorator for pre-tool hooks.
+
+    Tool middlewares operate on a tool-call state dict. A typical shape:
+        {
+          "tool_name": str,
+          "arguments": dict,
+          "result": Any | None,
+          "error": str | None,
+        }
+    """
+    def decorator(f: Callable) -> Callable:
+        _registry.register(f, MiddlewarePhase.BEFORE_TOOL_CALL, priority, name)
+
+        @wraps(f)
+        def wrapper(state: StateDict) -> StateDict:
+            return f(state)
+
+        return wrapper
+
+    if func is not None:
+        return decorator(func)
+    return decorator
+
+
+def after_tool_call(
+    func: Optional[Callable] = None,
+    *,
+    priority: int = 100,
+    name: Optional[str] = None,
+) -> Callable:
+    """Decorator for post-tool hooks (runs after a tool call completes)."""
+    def decorator(f: Callable) -> Callable:
+        _registry.register(f, MiddlewarePhase.AFTER_TOOL_CALL, priority, name)
+
+        @wraps(f)
+        def wrapper(state: StateDict) -> StateDict:
+            return f(state)
+
+        return wrapper
+
+    if func is not None:
+        return decorator(func)
+    return decorator
+
+
+def wrap_tool_call(
+    func: Optional[Callable] = None,
+    *,
+    priority: int = 100,
+    name: Optional[str] = None,
+) -> Callable:
+    """
+    Decorator for wrapping tool calls.
+
+    The decorated function should be a wrapper factory that takes the
+    original tool-call function and returns a wrapped version.
+    """
+    def decorator(f: Callable) -> Callable:
+        _registry.register(f, MiddlewarePhase.WRAP_TOOL_CALL, priority, name)
+        return f
+
+    if func is not None:
+        return decorator(func)
+    return decorator
+
+
+def before_agent(
+    func: Optional[Callable] = None,
+    *,
+    priority: int = 100,
+    name: Optional[str] = None,
+) -> Callable:
+    """Decorator for agent/workflow lifecycle hooks (runs at agent start)."""
+    def decorator(f: Callable) -> Callable:
+        _registry.register(f, MiddlewarePhase.BEFORE_AGENT, priority, name)
+
+        @wraps(f)
+        def wrapper(state: StateDict) -> StateDict:
+            return f(state)
+
+        return wrapper
+
+    if func is not None:
+        return decorator(func)
+    return decorator
+
+
+def after_agent(
+    func: Optional[Callable] = None,
+    *,
+    priority: int = 100,
+    name: Optional[str] = None,
+) -> Callable:
+    """Decorator for agent/workflow lifecycle hooks (runs at agent end)."""
+    def decorator(f: Callable) -> Callable:
+        _registry.register(f, MiddlewarePhase.AFTER_AGENT, priority, name)
+
+        @wraps(f)
+        def wrapper(state: StateDict) -> StateDict:
+            return f(state)
+
+        return wrapper
+
+    if func is not None:
+        return decorator(func)
+    return decorator
+
+
+class ToolMiddlewareChain:
+    """Tool-call middleware chain (before/after + wrapper)."""
+
+    def __init__(self, registry: Optional[MiddlewareRegistry] = None):
+        self._registry = registry or _registry
+        self._custom_before: List[Callable] = []
+        self._custom_after: List[Callable] = []
+        self._custom_wrappers: List[Callable] = []
+
+    def add_before(self, func: Callable) -> "ToolMiddlewareChain":
+        self._custom_before.append(func)
+        return self
+
+    def add_after(self, func: Callable) -> "ToolMiddlewareChain":
+        self._custom_after.append(func)
+        return self
+
+    def add_wrapper(self, wrapper: Callable) -> "ToolMiddlewareChain":
+        self._custom_wrappers.append(wrapper)
+        return self
+
+    def run_before(self, state: StateDict) -> StateDict:
+        for func in self._registry.get_middlewares(MiddlewarePhase.BEFORE_TOOL_CALL):
+            try:
+                state = func(state)
+            except Exception as e:
+                logger.warning(f"Before-tool middleware failed: {e}")
+        for func in self._custom_before:
+            try:
+                state = func(state)
+            except Exception as e:
+                logger.warning(f"Custom before-tool middleware failed: {e}")
+        return state
+
+    def run_after(self, state: StateDict) -> StateDict:
+        for func in self._registry.get_middlewares(MiddlewarePhase.AFTER_TOOL_CALL):
+            try:
+                state = func(state)
+            except Exception as e:
+                logger.warning(f"After-tool middleware failed: {e}")
+        for func in self._custom_after:
+            try:
+                state = func(state)
+            except Exception as e:
+                logger.warning(f"Custom after-tool middleware failed: {e}")
+        return state
+
+    def wrap_call(self, func: Callable) -> Callable:
+        wrapped = func
+        for wrapper in self._registry.get_middlewares(MiddlewarePhase.WRAP_TOOL_CALL):
+            try:
+                wrapped = wrapper(wrapped)
+            except Exception as e:
+                logger.warning(f"Wrap-tool middleware failed: {e}")
+        for wrapper in self._custom_wrappers:
+            try:
+                wrapped = wrapper(wrapped)
+            except Exception as e:
+                logger.warning(f"Custom tool wrapper failed: {e}")
+        return wrapped
+
+
+class AgentMiddlewareChain:
+    """Agent lifecycle middleware chain (before/after)."""
+
+    def __init__(self, registry: Optional[MiddlewareRegistry] = None):
+        self._registry = registry or _registry
+        self._custom_before: List[Callable] = []
+        self._custom_after: List[Callable] = []
+
+    def add_before(self, func: Callable) -> "AgentMiddlewareChain":
+        self._custom_before.append(func)
+        return self
+
+    def add_after(self, func: Callable) -> "AgentMiddlewareChain":
+        self._custom_after.append(func)
+        return self
+
+    def run_before(self, state: StateDict) -> StateDict:
+        for func in self._registry.get_middlewares(MiddlewarePhase.BEFORE_AGENT):
+            try:
+                state = func(state)
+            except Exception as e:
+                logger.warning(f"Before-agent middleware failed: {e}")
+        for func in self._custom_before:
+            try:
+                state = func(state)
+            except Exception as e:
+                logger.warning(f"Custom before-agent middleware failed: {e}")
+        return state
+
+    def run_after(self, state: StateDict) -> StateDict:
+        for func in self._registry.get_middlewares(MiddlewarePhase.AFTER_AGENT):
+            try:
+                state = func(state)
+            except Exception as e:
+                logger.warning(f"After-agent middleware failed: {e}")
+        for func in self._custom_after:
+            try:
+                state = func(state)
+            except Exception as e:
+                logger.warning(f"Custom after-agent middleware failed: {e}")
+        return state
 
 
 class MiddlewareChain:

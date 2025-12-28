@@ -115,6 +115,7 @@ class Settings(BaseSettings):
     # LangGraph 1.0+ Functional API (preferred when available)
     LANGGRAPH_USE_FUNCTIONAL_API: bool = True
     LANGGRAPH_RECURSION_LIMIT: int = 25
+    LANGGRAPH_USE_SUBGRAPHS: bool = False
 
     # Middleware System Configuration
     MIDDLEWARE_ENABLED: bool = True
@@ -222,6 +223,10 @@ class Settings(BaseSettings):
     # Stream writer configuration
     STREAM_WRITER_ENABLED: bool = True
     STREAM_BUFFER_SIZE: int = 100
+    # PII redaction (disabled by default)
+    PII_REDACTION_ENABLED: bool = False
+    PII_REDACTION_MASK: str = "[REDACTED]"
+    PII_STREAM_HOLDBACK_CHARS: int = 128
     # Checkpoint persistence configuration
     CHECKPOINT_BACKEND: str = "memory"  # memory | sqlite
     CHECKPOINT_SQLITE_PATH: str = "./data/checkpoints.db"

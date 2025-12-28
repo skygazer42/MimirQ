@@ -906,21 +906,56 @@ class RAGEngine:
             # Step 4: 流式生成回答
             full_response = ""
             gen_start = time.time()
+            pii_on = False
+            redact_text = None  # type: ignore[assignment]
+            try:
+                from app.rag.middleware.pii import pii_enabled, redact_text as _redact_text
+
+                pii_on = bool(pii_enabled())
+                redact_text = _redact_text
+            except Exception:  # noqa: BLE001
+                pii_on = False
+                redact_text = None  # type: ignore[assignment]
+
+            holdback = max(0, int(getattr(settings, "PII_STREAM_HOLDBACK_CHARS", 128) or 128))
+            context_for_model = redact_text(context) if pii_on and redact_text else context
+            history_for_model = redact_text(history_text) if pii_on and redact_text else history_text
+            question_for_model = redact_text(question) if pii_on and redact_text else question
+
+            pending = ""
             async for token in chain.astream(
                 {
-                    "context": context,
-                    "history": history_text,
-                    "question": question,
+                    "context": context_for_model,
+                    "history": history_for_model,
+                    "question": question_for_model,
                     "format_instructions": format_instructions,
                 }
             ):
                 if not token:
                     continue
-                full_response += token
-                yield {
-                    "type": "token",
-                    "data": {"content": token}
-                }
+                token_text = token if isinstance(token, str) else str(token)
+
+                if not pii_on or not redact_text:
+                    full_response += token_text
+                    yield {"type": "token", "data": {"content": token_text}}
+                    continue
+
+                pending += token_text
+                if holdback and len(pending) <= holdback:
+                    continue
+
+                emit_raw = pending[:-holdback] if holdback else pending
+                pending = pending[-holdback:] if holdback else ""
+                emit_safe = redact_text(emit_raw)
+                if emit_safe:
+                    full_response += emit_safe
+                    yield {"type": "token", "data": {"content": emit_safe}}
+
+            if pii_on and redact_text and pending:
+                emit_safe = redact_text(pending)
+                if emit_safe:
+                    full_response += emit_safe
+                    yield {"type": "token", "data": {"content": emit_safe}}
 
             # Step 4.5: 将引用图片以内嵌 Markdown 的形式追加到正文（仅非结构化输出，可配置）
             if (
@@ -947,8 +982,9 @@ class RAGEngine:
                     for i, url in enumerate(image_urls, 1):
                         images_md_parts.append(f"![引用图片 {i}]({url})")
                     images_md = "\n\n".join(images_md_parts) + "\n"
-                    full_response += images_md
-                    yield {"type": "token", "data": {"content": images_md}}
+                    images_md_safe = redact_text(images_md) if pii_on and redact_text else images_md
+                    full_response += images_md_safe
+                    yield {"type": "token", "data": {"content": images_md_safe}}
 
             # Step 5: 发送完成信号
             generation_elapsed = time.time() - gen_start
