@@ -18,7 +18,7 @@ from app.rag.core.conversation import format_history_text
 from app.rag.core.citations import build_citations_from_docs
 from app.rag.core.http import httpx_trust_env
 from app.rag.core.logging import get_logger
-from app.rag.core.text import parse_json_from_text, extract_evidence_text, guess_retrieval_mode
+from app.rag.core.text import parse_json_from_text, extract_evidence_text, guess_retrieval_mode, normalize_retrieval_mode
 from app.rag.retriever import hybrid_retriever
 from app.services.metrics_logger import log_metrics
 from langchain_openai import ChatOpenAI
@@ -445,7 +445,7 @@ class RAGEngine:
                 }
 
             requested_retrieval_mode = retrieval_mode or "hybrid"
-            request_retrieval_mode = requested_retrieval_mode
+            request_retrieval_mode = normalize_retrieval_mode(requested_retrieval_mode)
             retrieval_mode_routed = False
             mode_norm = (request_retrieval_mode or "hybrid").lower().strip()
             if mode_norm == "auto":

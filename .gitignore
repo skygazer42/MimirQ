@@ -16,6 +16,7 @@ dist/
 # Node
 node_modules/
 .next/
+.next_build/
 out/
 dist/
 .npm
@@ -41,6 +42,7 @@ Thumbs.db
 backend/uploads/
 backend/chroma_db/
 frontend/.next/
+frontend/.next_build/
 *.sqlite
 *.db
 *.tsbuildinfo

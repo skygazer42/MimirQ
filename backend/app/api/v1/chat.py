@@ -196,32 +196,44 @@ async def stream_chat(
 
         # 非流式 LangGraph 快捷通道：更快出完整答复，用于工具/Agent风格编排
         if request.rag_config.get("use_graph") and not request.stream:
-            from app.rag.graph import run_rag_graph
+            try:
+                from app.rag.graph import run_rag_graph
 
-            graph_result = run_rag_graph(
-                question=request.message,
-                history=[m.model_dump() for m in (request.history or [])] + long_term_messages,
-                document_ids=doc_ids_to_use,
-                tenant_id=tenant_id,
-                top_k=request.rag_config.get('top_k', settings.RETRIEVAL_TOP_K),
-                score_threshold=request.rag_config.get('score_threshold', settings.SIMILARITY_THRESHOLD),
-                retrieval_mode=request.rag_config.get('retrieval_mode', 'hybrid'),
-                alpha=request.rag_config.get('alpha', 0.6),
-                enable_weight_rerank=request.rag_config.get('enable_weight_rerank', True),
-                vector_weight=request.rag_config.get('vector_weight', 0.6),
-                keyword_weight=request.rag_config.get('keyword_weight', 0.4),
-                mmr_lambda=request.rag_config.get('mmr_lambda', settings.RETRIEVAL_MMR_LAMBDA),
-                enable_reranker=request.rag_config.get('enable_reranker', settings.ENABLE_RERANKER),
-                reranker_provider=request.rag_config.get('reranker_provider', settings.RERANKER_PROVIDER),
-                reranker_top_n=request.rag_config.get('reranker_top_n', settings.RERANKER_TOP_N),
-                structured_preset=request.structured_preset,
-                structured_output=request.structured_output,
-                prompt_template_id=request.prompt_template_id,
-                prompt_template_key=request.prompt_template_key,
-                prompt_ab_experiment_key=request.prompt_ab_experiment_key,
-                ab_user_key=account_id,
-                db=db,
-            )
+                graph_result = run_rag_graph(
+                    question=request.message,
+                    history=[m.model_dump() for m in (request.history or [])] + long_term_messages,
+                    document_ids=doc_ids_to_use,
+                    tenant_id=tenant_id,
+                    top_k=request.rag_config.get('top_k', settings.RETRIEVAL_TOP_K),
+                    score_threshold=request.rag_config.get('score_threshold', settings.SIMILARITY_THRESHOLD),
+                    retrieval_mode=request.rag_config.get('retrieval_mode', 'hybrid'),
+                    alpha=request.rag_config.get('alpha', 0.6),
+                    enable_weight_rerank=request.rag_config.get('enable_weight_rerank', True),
+                    vector_weight=request.rag_config.get('vector_weight', 0.6),
+                    keyword_weight=request.rag_config.get('keyword_weight', 0.4),
+                    mmr_lambda=request.rag_config.get('mmr_lambda', settings.RETRIEVAL_MMR_LAMBDA),
+                    enable_reranker=request.rag_config.get('enable_reranker', settings.ENABLE_RERANKER),
+                    reranker_provider=request.rag_config.get('reranker_provider', settings.RERANKER_PROVIDER),
+                    reranker_top_n=request.rag_config.get('reranker_top_n', settings.RERANKER_TOP_N),
+                    structured_preset=request.structured_preset,
+                    structured_output=request.structured_output,
+                    prompt_template_id=request.prompt_template_id,
+                    prompt_template_key=request.prompt_template_key,
+                    prompt_ab_experiment_key=request.prompt_ab_experiment_key,
+                    ab_user_key=account_id,
+                    db=db,
+                )
+            except Exception as e:  # noqa: BLE001
+                error_event = {
+                    "type": "error",
+                    "data": {
+                        "message": str(e),
+                        "conversation_id": str(conversation_id) if conversation_id else None,
+                    },
+                    "request_id": str(request_id),
+                }
+                yield f"data: {json.dumps(error_event, ensure_ascii=False)}\n\n"
+                return
             citations_data = graph_result.get("citations", [])
             yield f"data: {json.dumps({'request_id': str(request_id), 'type': 'citations', 'data': citations_data}, ensure_ascii=False)}\n\n"
             answer_text = graph_result.get("answer", "")
@@ -362,7 +374,11 @@ async def stream_chat(
         except Exception as e:
             error_event = {
                 "type": "error",
-                "data": {"message": str(e)}
+                "data": {
+                    "message": str(e),
+                    "conversation_id": str(conversation_id) if conversation_id else None,
+                },
+                "request_id": str(request_id),
             }
             yield f"data: {json.dumps(error_event, ensure_ascii=False)}\n\n"
 
