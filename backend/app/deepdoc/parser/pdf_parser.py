@@ -1176,26 +1176,31 @@ class RAGFlowPdfParser:
         self.page_layout = []
         self.page_from = page_from
         start = timer()
+        pdfplumber_pdf = None
         try:
             with sys.modules[LOCK_KEY_pdfplumber]:
-                self.pdf = pdfplumber.open(fnm) if isinstance(
+                pdfplumber_pdf = pdfplumber.open(fnm) if isinstance(
                     fnm, str) else pdfplumber.open(BytesIO(fnm))
                 self.page_images = [p.to_image(resolution=72 * zoomin).annotated for i, p in
-                                    enumerate(self.pdf.pages[page_from:page_to])]
+                                    enumerate(pdfplumber_pdf.pages[page_from:page_to])]
                 try:
                     self.page_chars = [[c for c in page.dedupe_chars().chars if self._has_color(c)] for page in
-                                       self.pdf.pages[page_from:page_to]]
+                                       pdfplumber_pdf.pages[page_from:page_to]]
                 except Exception as e:
                     logging.warning(f"Failed to extract characters for pages {page_from}-{page_to}: {str(e)}")
                     self.page_chars = [[] for _ in
                                        range(page_to - page_from)]  # If failed to extract, using empty list instead.
 
-                self.total_page = len(self.pdf.pages)
+                self.total_page = len(pdfplumber_pdf.pages)
         except Exception:
             logging.exception("RAGFlowPdfParser __images__")
+        finally:
+            if pdfplumber_pdf is not None:
+                pdfplumber_pdf.close()
         logging.info(f"__images__ dedupe_chars cost {timer() - start}s")
 
         self.outlines = []
+        self.pdf = None
         try:
             self.pdf = pdf2_read(fnm if isinstance(fnm, str) else BytesIO(fnm))
             outlines = self.pdf.outline

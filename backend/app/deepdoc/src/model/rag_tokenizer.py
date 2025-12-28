@@ -113,23 +113,22 @@ class RagTokenizer:
     def loadDict_(self, fnm):
         logging.info(f"[HUQIE]:Build trie from {fnm}")
         try:
-            of = open(fnm, "r", encoding='utf-8')
-            while True:
-                line = of.readline()
-                if not line:
-                    break
-                line = re.sub(r"[\r\n]+", "", line)
-                line = re.split(r"[ \t]", line)
-                k = self.key_(line[0])
-                F = int(math.log(float(line[1]) / self.DENOMINATOR) + .5)
-                if k not in self.trie_ or self.trie_[k][0] < F:
-                    self.trie_[self.key_(line[0])] = (F, line[2])
-                self.trie_[self.rkey_(line[0])] = 1
+            with open(fnm, "r", encoding='utf-8') as of:
+                while True:
+                    line = of.readline()
+                    if not line:
+                        break
+                    line = re.sub(r"[\r\n]+", "", line)
+                    line = re.split(r"[ \t]", line)
+                    k = self.key_(line[0])
+                    F = int(math.log(float(line[1]) / self.DENOMINATOR) + .5)
+                    if k not in self.trie_ or self.trie_[k][0] < F:
+                        self.trie_[self.key_(line[0])] = (F, line[2])
+                    self.trie_[self.rkey_(line[0])] = 1
 
-            dict_file_cache = fnm + ".trie"
-            logging.info(f"[HUQIE]:Build trie cache to {dict_file_cache}")
-            self.trie_.save(dict_file_cache)
-            of.close()
+                dict_file_cache = fnm + ".trie"
+                logging.info(f"[HUQIE]:Build trie cache to {dict_file_cache}")
+                self.trie_.save(dict_file_cache)
         except Exception:
             logging.exception(f"[HUQIE]:Build trie {fnm} failed")
 
