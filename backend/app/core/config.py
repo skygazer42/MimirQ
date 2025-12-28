@@ -96,6 +96,10 @@ class Settings(BaseSettings):
     RAG_CONTEXT_MAX_CHARS_PER_CHUNK: int = 1500
     RAG_CONTEXT_MAX_TOTAL_CHARS: int = 12_000
     RAG_CONTEXT_MAX_KG_CHARS: int = 3_000
+    # Context evidence extraction (query-focused sentence selection)
+    RAG_CONTEXT_EVIDENCE_ENABLED: bool = False
+    RAG_CONTEXT_EVIDENCE_MAX_SENTENCES_PER_CHUNK: int = 6
+    RAG_CONTEXT_EVIDENCE_MIN_SENTENCE_CHARS: int = 10
     USE_LANGGRAPH_PIPELINE: bool = False
     RAG_GRAPH_MAX_RETRIES: int = 2
     RAG_GRAPH_TIMEOUT_SEC: int = 20
@@ -112,6 +116,19 @@ class Settings(BaseSettings):
     ENABLE_QUERY_REWRITE: bool = False
     QUERY_REWRITE_TEMPERATURE: float = 0.2
     QUERY_REWRITE_MAX_CHARS: int = 120
+    ENABLE_MULTI_QUERY: bool = False
+    MULTI_QUERY_COUNT: int = 3
+    MULTI_QUERY_TEMPERATURE: float = 0.2
+    MULTI_QUERY_MAX_CHARS: int = 200
+    ENABLE_HYDE: bool = False
+    HYDE_TEMPERATURE: float = 0.2
+    HYDE_MAX_CHARS: int = 200
+    HYDE_OUTPUT_MAX_CHARS: int = 800
+    ENABLE_QUERY_DECOMPOSITION: bool = False
+    QUERY_DECOMPOSITION_MAX_SUBQUESTIONS: int = 3
+    QUERY_DECOMPOSITION_TEMPERATURE: float = 0.2
+    QUERY_DECOMPOSITION_MIN_CHARS: int = 60
+    QUERY_DECOMPOSITION_MAX_CHARS: int = 400
     GOVERNANCE_ENABLED: bool = False
     GOVERNANCE_REMOVE_TOC_LINES: bool = True
     GOVERNANCE_REMOVE_NOISE_LINES: bool = True
@@ -133,6 +150,18 @@ class Settings(BaseSettings):
     RERANKER_TOP_N: int = 20  # 重排候选数量（越大越慢）
     RERANKER_MAX_CHARS: int = 800  # 每条候选截断长度
     RERANKER_TEMPERATURE: float = 0.0
+    # API Reranker engineering knobs (batch/concurrency/rate-limit/circuit/cache)
+    RERANKER_API_TIMEOUT_SEC: float = 30.0
+    RERANKER_API_BATCH_SIZE: int = 32
+    RERANKER_API_MAX_CONCURRENCY: int = 4
+    RERANKER_API_RATE_LIMIT_QPS: float = 0.0  # 0 disables
+    RERANKER_API_MAX_RETRIES: int = 2
+    RERANKER_API_RETRY_BACKOFF_SEC: float = 0.5
+    RERANKER_API_CIRCUIT_BREAKER_FAILURE_THRESHOLD: int = 5
+    RERANKER_API_CIRCUIT_BREAKER_RESET_SEC: int = 60
+    RERANKER_API_CACHE_ENABLED: bool = True
+    RERANKER_API_CACHE_MAX_ENTRIES: int = 2000
+    RERANKER_API_CACHE_TTL_SEC: int = 3600
     DEFAULT_PARSER_BACKEND: str = "auto"
     DEFAULT_CHUNK_STRATEGY: str = "langchain_recursive"
     DEEPDOC_ENABLED: bool = False

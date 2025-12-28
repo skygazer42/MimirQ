@@ -6,10 +6,21 @@ Reranker 工厂函数
 from __future__ import annotations
 
 from typing import Any, Callable
+import hashlib
+import threading
 
 from app.rag.reranker.base import BaseReranker
 from app.rag.reranker.types import RerankCandidate
 from app.core.config import settings
+
+_api_reranker_lock = threading.Lock()
+_api_reranker_cache: dict[str, BaseReranker] = {}
+
+
+def _api_cache_key(provider: str, *, model: str, base_url: str, api_key: str) -> str:
+    key_hash = hashlib.sha256((api_key or "").encode("utf-8", errors="ignore")).hexdigest()[:12]
+    return f"{provider}:{model}:{base_url}:{key_hash}"
+
 
 def get_reranker(
     provider: str,
@@ -50,12 +61,21 @@ def get_reranker(
         api_key = api_key or settings.RERANKER_API_KEY or settings.LLM_API_KEY
         base_url = base_url or "https://dashscope.aliyuncs.com/api/v1/services/rerank"
         
-        return DashScopeReranker(
-            model_name=model_name,
-            api_key=api_key,
-            base_url=base_url,
-            **kwargs,
-        )
+        timeout = float(kwargs.pop("timeout", None) or settings.RERANKER_API_TIMEOUT_SEC or 30.0)
+        cache_key = _api_cache_key(provider, model=model_name, base_url=base_url, api_key=api_key)
+        with _api_reranker_lock:
+            cached = _api_reranker_cache.get(cache_key)
+            if cached is not None:
+                return cached
+            inst = DashScopeReranker(
+                model_name=model_name,
+                api_key=api_key,
+                base_url=base_url,
+                timeout=timeout,
+                **kwargs,
+            )
+            _api_reranker_cache[cache_key] = inst
+            return inst
     
     elif provider == "openai":
         from app.rag.reranker.openai import OpenAIReranker
@@ -64,12 +84,21 @@ def get_reranker(
         api_key = api_key or settings.RERANKER_API_KEY or settings.LLM_API_KEY
         base_url = base_url or settings.RERANKER_API_BASE or settings.LLM_API_BASE
         
-        return OpenAIReranker(
-            model_name=model_name,
-            api_key=api_key,
-            base_url=base_url,
-            **kwargs,
-        )
+        timeout = float(kwargs.pop("timeout", None) or settings.RERANKER_API_TIMEOUT_SEC or 30.0)
+        cache_key = _api_cache_key(provider, model=model_name, base_url=base_url, api_key=api_key)
+        with _api_reranker_lock:
+            cached = _api_reranker_cache.get(cache_key)
+            if cached is not None:
+                return cached
+            inst = OpenAIReranker(
+                model_name=model_name,
+                api_key=api_key,
+                base_url=base_url,
+                timeout=timeout,
+                **kwargs,
+            )
+            _api_reranker_cache[cache_key] = inst
+            return inst
     
     # Document Rerankers
     elif provider == "llm":
@@ -112,12 +141,21 @@ def get_reranker(
         api_key = api_key or settings.RERANKER_API_KEY or settings.LLM_API_KEY
         base_url = base_url or settings.RERANKER_API_BASE or settings.LLM_API_BASE
         
-        return OpenAIReranker(
-            model_name=model_name,
-            api_key=api_key,
-            base_url=base_url,
-            **kwargs,
-        )
+        timeout = float(kwargs.pop("timeout", None) or settings.RERANKER_API_TIMEOUT_SEC or 30.0)
+        cache_key = _api_cache_key("openai", model=model_name, base_url=base_url, api_key=api_key)
+        with _api_reranker_lock:
+            cached = _api_reranker_cache.get(cache_key)
+            if cached is not None:
+                return cached
+            inst = OpenAIReranker(
+                model_name=model_name,
+                api_key=api_key,
+                base_url=base_url,
+                timeout=timeout,
+                **kwargs,
+            )
+            _api_reranker_cache[cache_key] = inst
+            return inst
 
 
 # 向后兼容：旧的工厂函数（保留一段时间）

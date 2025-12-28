@@ -19,6 +19,7 @@ import time
 
 from app.rag.core.citations import build_citations_from_docs
 from app.rag.core.conversation import format_history_text
+from app.rag.core.text import parse_json_from_text, extract_evidence_text, guess_retrieval_mode
 from app.rag.retriever import hybrid_retriever
 from app.rag.engine import get_rag_engine
 from app.core.config import settings
@@ -29,7 +30,7 @@ class RAGState(Dict[str, Any]):
     """Graph state: question, history, docs, citations, answer, meta."""
 
 
-def _build_context(docs: List[Document]) -> str:
+def _build_context(docs: List[Document], *, query: str | None = None) -> str:
     """格式化检索到的文档上下文。"""
     if not docs:
         return "没有找到相关的参考资料。"
@@ -41,8 +42,17 @@ def _build_context(docs: List[Document]) -> str:
         meta = doc.metadata or {}
         source = meta.get("source", "Unknown")
         page = meta.get("page", "N/A")
-        content = (doc.page_content or "").strip()
-        if max_per_chunk and len(content) > max_per_chunk:
+        raw_content = (doc.page_content or "").strip()
+        content = raw_content
+        if bool(settings.RAG_CONTEXT_EVIDENCE_ENABLED) and query:
+            content = extract_evidence_text(
+                raw_content,
+                str(query),
+                max_chars=max_per_chunk,
+                max_sentences=settings.RAG_CONTEXT_EVIDENCE_MAX_SENTENCES_PER_CHUNK,
+                min_sentence_chars=settings.RAG_CONTEXT_EVIDENCE_MIN_SENTENCE_CHARS,
+            )
+        elif max_per_chunk and len(content) > max_per_chunk:
             content = content[:max_per_chunk] + "..."
         part = f"[来源 {idx}: {source} - 第{page}页]\n{content}"
         if max_total and parts and (total_chars + len(part)) > max_total:
@@ -95,6 +105,7 @@ def _run_with_retry(node_name: str, func, state: RAGState) -> RAGState:
 def _retrieve_node(state: RAGState) -> RAGState:
     question = state["question"]
     history_text = _build_history_text(state.get("history"))
+    engine = get_rag_engine()
     query_for_retrieval = question
     rewrite_elapsed = 0.0
     rewrite_used = False
@@ -105,7 +116,6 @@ def _retrieve_node(state: RAGState) -> RAGState:
         and history_text != "（无历史对话）"
         and len(question) <= settings.QUERY_REWRITE_MAX_CHARS
     ):
-        engine = get_rag_engine()
         rewrite_llm = engine.models.get("fast") or engine.models.get("default")  # type: ignore[attr-defined]
         rewrite_model_used = getattr(rewrite_llm, "model_name", None) or getattr(rewrite_llm, "model", None)
         try:
@@ -126,12 +136,24 @@ def _retrieve_node(state: RAGState) -> RAGState:
 
         rewrite_used = query_for_retrieval != question
 
+    requested_retrieval_mode = state.get("retrieval_mode", "hybrid") or "hybrid"
+    request_retrieval_mode = requested_retrieval_mode
+    retrieval_mode_routed = False
+    mode_norm = str(request_retrieval_mode or "hybrid").lower().strip()
+    if mode_norm == "auto":
+        request_retrieval_mode = guess_retrieval_mode(query_for_retrieval)
+        retrieval_mode_routed = True
+        mode_norm = str(request_retrieval_mode or "hybrid").lower().strip()
+    if mode_norm not in ("hybrid", "vector", "keyword", "mmr"):
+        request_retrieval_mode = "hybrid"
+        mode_norm = "hybrid"
+
     retriever = hybrid_retriever.model_copy(
         update={
             "k": state.get("top_k", settings.RETRIEVAL_TOP_K),
             "score_threshold": state.get("score_threshold", settings.SIMILARITY_THRESHOLD),
             "alpha": state.get("alpha", 0.6),
-            "retrieval_mode": state.get("retrieval_mode", "hybrid"),
+            "retrieval_mode": request_retrieval_mode,
             "enable_weight_rerank": state.get("enable_weight_rerank", True),
             "vector_weight": state.get("vector_weight", 0.6),
             "keyword_weight": state.get("keyword_weight", 0.4),
@@ -143,26 +165,214 @@ def _retrieve_node(state: RAGState) -> RAGState:
             "document_ids": state.get("document_ids"),
         }
     )
+    # Query Expansion（Multi-Query / HyDE，可选）
+    multi_query_elapsed = 0.0
+    multi_query_used = False
+    multi_query_model_used = None
+    multi_query_parse_meta: Dict[str, Any] = {"ok": False, "method": None, "error": None}
+    multi_queries: List[str] = []
+
+    mq_n = max(0, min(int(settings.MULTI_QUERY_COUNT or 0), 8))
+    mq_max_chars = max(0, int(settings.MULTI_QUERY_MAX_CHARS or 0))
+    if bool(settings.ENABLE_MULTI_QUERY) and mq_n > 0 and mq_max_chars > 0 and len(query_for_retrieval) <= mq_max_chars:
+        mq_llm = engine.models.get("fast") or engine.models.get("default")  # type: ignore[attr-defined]
+        multi_query_model_used = getattr(mq_llm, "model_name", None) or getattr(mq_llm, "model", None)
+        try:
+            mq_chain = (
+                engine.multi_query_prompt  # type: ignore[attr-defined]
+                | mq_llm.bind(temperature=settings.MULTI_QUERY_TEMPERATURE)
+                | StrOutputParser()
+            )
+            mq_start = time.time()
+            mq_raw = mq_chain.invoke({"query": query_for_retrieval, "n": mq_n})
+            multi_query_elapsed = time.time() - mq_start
+            mq_data, multi_query_parse_meta = parse_json_from_text(mq_raw)
+
+            if isinstance(mq_data, list):
+                seen: set[str] = set()
+                for item in mq_data:
+                    if not isinstance(item, str):
+                        continue
+                    q = (item or "").strip().strip('"').strip()
+                    if not q:
+                        continue
+                    if q == query_for_retrieval:
+                        continue
+                    if q in seen:
+                        continue
+                    if len(q) > 400:
+                        q = q[:400] + "..."
+                    seen.add(q)
+                    multi_queries.append(q)
+                    if len(multi_queries) >= mq_n:
+                        break
+        except Exception as exc:  # noqa: BLE001
+            multi_query_elapsed = 0.0
+            multi_query_parse_meta = {"ok": False, "method": None, "error": str(exc)[:200]}
+            multi_queries = []
+
+    multi_query_used = bool(multi_queries)
+
+    hyde_used = False
+    hyde_elapsed = 0.0
+    hyde_model_used = None
+    hyde_text = ""
+    hyde_max_chars = max(0, int(settings.HYDE_MAX_CHARS or 0))
+    retrieval_mode_norm = str(request_retrieval_mode or "hybrid").lower()
+    if bool(settings.ENABLE_HYDE) and retrieval_mode_norm not in ("keyword",) and hyde_max_chars > 0 and len(query_for_retrieval) <= hyde_max_chars:
+        hyde_llm = engine.models.get("fast") or engine.models.get("default")  # type: ignore[attr-defined]
+        hyde_model_used = getattr(hyde_llm, "model_name", None) or getattr(hyde_llm, "model", None)
+        try:
+            hyde_chain = (
+                engine.hyde_prompt  # type: ignore[attr-defined]
+                | hyde_llm.bind(temperature=settings.HYDE_TEMPERATURE)
+                | StrOutputParser()
+            )
+            hyde_start = time.time()
+            hyde_text = hyde_chain.invoke({"query": query_for_retrieval})
+            hyde_elapsed = time.time() - hyde_start
+            hyde_text = (hyde_text or "").strip()
+            out_max = max(0, int(settings.HYDE_OUTPUT_MAX_CHARS or 0))
+            if out_max and len(hyde_text) > out_max:
+                hyde_text = hyde_text[:out_max] + "..."
+            hyde_used = bool(hyde_text)
+        except Exception:  # noqa: BLE001
+            hyde_text = ""
+            hyde_elapsed = 0.0
+            hyde_used = False
+
+    decompose_elapsed = 0.0
+    decompose_used = False
+    decompose_model_used = None
+    decompose_parse_meta: Dict[str, Any] = {"ok": False, "method": None, "error": None}
+    sub_questions: List[str] = []
+
+    dq_n = max(0, min(int(settings.QUERY_DECOMPOSITION_MAX_SUBQUESTIONS or 0), 8))
+    dq_min_chars = max(0, int(settings.QUERY_DECOMPOSITION_MIN_CHARS or 0))
+    dq_max_chars = max(0, int(settings.QUERY_DECOMPOSITION_MAX_CHARS or 0))
+    if (
+        bool(settings.ENABLE_QUERY_DECOMPOSITION)
+        and dq_n > 0
+        and len(query_for_retrieval) >= dq_min_chars
+        and (dq_max_chars <= 0 or len(query_for_retrieval) <= dq_max_chars)
+    ):
+        dq_llm = engine.models.get("fast") or engine.models.get("default")  # type: ignore[attr-defined]
+        decompose_model_used = getattr(dq_llm, "model_name", None) or getattr(dq_llm, "model", None)
+        try:
+            dq_chain = (
+                engine.decompose_prompt  # type: ignore[attr-defined]
+                | dq_llm.bind(temperature=settings.QUERY_DECOMPOSITION_TEMPERATURE)
+                | StrOutputParser()
+            )
+            dq_start = time.time()
+            dq_raw = dq_chain.invoke({"query": query_for_retrieval, "n": dq_n})
+            decompose_elapsed = time.time() - dq_start
+            dq_data, decompose_parse_meta = parse_json_from_text(dq_raw)
+
+            if isinstance(dq_data, list):
+                seen: set[str] = set()
+                for item in dq_data:
+                    if not isinstance(item, str):
+                        continue
+                    q = (item or "").strip().strip('"').strip()
+                    if not q:
+                        continue
+                    if q == query_for_retrieval:
+                        continue
+                    if q in seen:
+                        continue
+                    if len(q) > 500:
+                        q = q[:500] + "..."
+                    seen.add(q)
+                    sub_questions.append(q)
+                    if len(sub_questions) >= dq_n:
+                        break
+        except Exception as exc:  # noqa: BLE001
+            decompose_elapsed = 0.0
+            decompose_parse_meta = {"ok": False, "method": None, "error": str(exc)[:200]}
+            sub_questions = []
+
+    decompose_used = bool(sub_questions)
+
+    retrieval_queries: List[tuple[str, str]] = [("main", query_for_retrieval)]
+    for q in multi_queries:
+        retrieval_queries.append(("mq", q))
+    for q in sub_questions:
+        retrieval_queries.append(("subq", q))
+    if hyde_used and hyde_text:
+        retrieval_queries.append(("hyde", hyde_text))
+
+    docs_by_query: List[List[Document]] = []
+    retrieval_errors: List[str] = []
     start = time.time()
-    docs = retriever.invoke(query_for_retrieval)
+    for kind, q in retrieval_queries:
+        r = retriever
+        if kind != "main":
+            if kind == "hyde":
+                r = retriever.model_copy(
+                    update={
+                        "enable_reranker": False,
+                        "retrieval_mode": "vector",
+                        "enable_weight_rerank": False,
+                    }
+                )
+            else:
+                r = retriever.model_copy(update={"enable_reranker": False})
+        try:
+            docs_i = r.invoke(q)
+        except Exception as exc:  # noqa: BLE001
+            retrieval_errors.append(f"{kind}:{str(exc)[:160]}")
+            docs_i = []
+        docs_by_query.append(docs_i or [])
     retrieval_elapsed = time.time() - start
+
+    if len(docs_by_query) <= 1:
+        docs = docs_by_query[0] if docs_by_query else []
+    else:
+        docs = engine.fuse_docs_rrf(docs_by_query, rrf_k=settings.RETRIEVAL_RRF_K, meta_prefix="query_expansion")  # type: ignore[attr-defined]
+    top_k = int(state.get("top_k", settings.RETRIEVAL_TOP_K) or settings.RETRIEVAL_TOP_K or 5)
+    docs = (docs or [])[: max(0, top_k)]
 
     citations = build_citations_from_docs(
         docs,
         retrieval_elapsed_sec=retrieval_elapsed,
-        retrieval_mode=state.get("retrieval_mode", "hybrid"),
+        retrieval_mode=request_retrieval_mode,
         query=query_for_retrieval,
     )
 
     metrics = dict(state.get("metrics") or {})
     metrics["retrieval_elapsed_sec"] = round(retrieval_elapsed, 3)
-    metrics["retrieval_mode"] = state.get("retrieval_mode", "hybrid")
+    metrics["retrieval_mode"] = request_retrieval_mode
+    metrics["retrieval_mode_requested"] = requested_retrieval_mode
+    metrics["retrieval_mode_auto_routed"] = bool(retrieval_mode_routed)
     metrics["vector_backend"] = settings.VECTOR_BACKEND
+    if retrieval_errors:
+        metrics["retrieval_errors"] = retrieval_errors[:5]
     metrics["query_rewrite_enabled"] = settings.ENABLE_QUERY_REWRITE
     metrics["rewrite_used"] = bool(rewrite_used)
     metrics["rewrite_elapsed_sec"] = round(rewrite_elapsed, 3)
     metrics["rewrite_model_used"] = rewrite_model_used
-    return {**state, "docs": docs, "citations": citations, "metrics": metrics}
+    metrics["multi_query_enabled"] = bool(settings.ENABLE_MULTI_QUERY)
+    metrics["multi_query_used"] = bool(multi_query_used)
+    metrics["multi_query_count"] = len(multi_queries)
+    metrics["multi_query_elapsed_sec"] = round(multi_query_elapsed, 3)
+    metrics["multi_query_model_used"] = multi_query_model_used
+    metrics["multi_query_parse_ok"] = bool(multi_query_parse_meta.get("ok"))
+    metrics["multi_query_parse_method"] = multi_query_parse_meta.get("method")
+    metrics["multi_query_parse_error"] = multi_query_parse_meta.get("error")
+    metrics["hyde_enabled"] = bool(settings.ENABLE_HYDE)
+    metrics["hyde_used"] = bool(hyde_used)
+    metrics["hyde_elapsed_sec"] = round(hyde_elapsed, 3)
+    metrics["hyde_model_used"] = hyde_model_used
+    metrics["decompose_enabled"] = bool(settings.ENABLE_QUERY_DECOMPOSITION)
+    metrics["decompose_used"] = bool(decompose_used)
+    metrics["decompose_count"] = len(sub_questions)
+    metrics["decompose_elapsed_sec"] = round(decompose_elapsed, 3)
+    metrics["decompose_model_used"] = decompose_model_used
+    metrics["decompose_parse_ok"] = bool(decompose_parse_meta.get("ok"))
+    metrics["decompose_parse_method"] = decompose_parse_meta.get("method")
+    metrics["decompose_parse_error"] = decompose_parse_meta.get("error")
+    return {**state, "query_for_retrieval": query_for_retrieval, "docs": docs, "citations": citations, "metrics": metrics}
 
 
 def _generate_node(state: RAGState) -> RAGState:
@@ -179,7 +389,7 @@ def _generate_node(state: RAGState) -> RAGState:
     chain = prompt_obj | llm | StrOutputParser()
     format_instructions = state.get("format_instructions", "")
 
-    ctx = _build_context(state.get("docs") or [])
+    ctx = _build_context(state.get("docs") or [], query=state.get("query_for_retrieval") or state.get("question"))
     hist_text = _build_history_text(state.get("history"))
 
     start = time.time()
@@ -216,9 +426,19 @@ def _generate_node(state: RAGState) -> RAGState:
 
     metrics = dict(state.get("metrics") or {})
     metrics["generation_elapsed_sec"] = round(generation_elapsed, 3)
+    metrics["context_evidence_enabled"] = bool(settings.RAG_CONTEXT_EVIDENCE_ENABLED)
+    metrics["context_evidence_max_sentences_per_chunk"] = (
+        int(settings.RAG_CONTEXT_EVIDENCE_MAX_SENTENCES_PER_CHUNK or 0) if bool(settings.RAG_CONTEXT_EVIDENCE_ENABLED) else None
+    )
+    metrics["context_evidence_min_sentence_chars"] = (
+        int(settings.RAG_CONTEXT_EVIDENCE_MIN_SENTENCE_CHARS or 0) if bool(settings.RAG_CONTEXT_EVIDENCE_ENABLED) else None
+    )
     base = generation_elapsed
     base += float(metrics.get("retrieval_elapsed_sec", 0.0) or 0.0)
     base += float(metrics.get("rewrite_elapsed_sec", 0.0) or 0.0)
+    base += float(metrics.get("multi_query_elapsed_sec", 0.0) or 0.0)
+    base += float(metrics.get("hyde_elapsed_sec", 0.0) or 0.0)
+    base += float(metrics.get("decompose_elapsed_sec", 0.0) or 0.0)
     metrics["elapsed_sec"] = round(base, 3)
     metrics["model_route"] = route
     metrics["model_used"] = getattr(llm, "model_name", None) or getattr(llm, "model", None)

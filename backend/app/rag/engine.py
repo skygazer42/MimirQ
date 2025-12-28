@@ -7,6 +7,7 @@ import os
 from typing import AsyncGenerator, Dict, Any, List, Optional
 from uuid import UUID
 import json
+from langchain_core.documents import Document
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
 import httpx
@@ -17,6 +18,7 @@ from app.rag.core.conversation import format_history_text
 from app.rag.core.citations import build_citations_from_docs
 from app.rag.core.http import httpx_trust_env
 from app.rag.core.logging import get_logger
+from app.rag.core.text import parse_json_from_text, extract_evidence_text, guess_retrieval_mode
 from app.rag.retriever import hybrid_retriever
 from app.services.metrics_logger import log_metrics
 from langchain_openai import ChatOpenAI
@@ -112,6 +114,51 @@ class RAGEngine:
         )
 
 
+        # Multi-Query：生成多个表述/角度的检索查询（可选开启）
+        self.multi_query_prompt = ChatPromptTemplate.from_template(
+            """你是一个知识库检索 Query 扩展器。请基于以下“检索查询”生成 {n} 条不同表述/角度的检索查询，用于提升召回。
+要求：
+1) 仅输出 JSON 数组（array），元素都是字符串
+2) 不要输出解释、不要 Markdown、不要多余字段
+3) 每条尽量简短，保留关键实体/时间/限定条件
+4) 避免与原查询完全重复
+
+【检索查询】
+{query}
+
+【JSON 数组】"""
+        )
+
+        # HyDE：生成“假想的参考资料片段”用于向量检索增强（可选开启）
+        self.hyde_prompt = ChatPromptTemplate.from_template(
+            """你是一个知识库检索助手。请针对以下“问题”写一段“假想的参考资料片段”，用来帮助向量检索召回相关内容。
+要求：
+1) 只输出纯文本，不要 Markdown，不要标题/编号
+2) 尽量包含可能出现的关键词、术语、实体、步骤、同义表达
+3) 不要出现“无法回答/不知道”等否定句
+
+【问题】
+{query}
+
+【假想片段】"""
+        )
+
+        # Query Decomposition：将复杂问题拆成多个子问题分别检索（可选开启）
+        self.decompose_prompt = ChatPromptTemplate.from_template(
+            """你是一个知识库检索问题拆解器。请把下面的“检索查询”拆解成最多 {n} 个子问题，用于分别检索并融合召回。
+要求：
+1) 仅输出 JSON 数组（array），元素都是字符串
+2) 不要输出解释、不要 Markdown、不要多余字段
+3) 子问题尽量覆盖不同方面/约束条件，避免重复
+4) 每个子问题都应当是可检索、可独立理解的一句话
+
+【检索查询】
+{query}
+
+【JSON 数组】"""
+        )
+
+
     def _build_llm(self, chat_cls, model_name: str):
         """Create a ChatOpenAI-compatible LLM with shared HTTP clients."""
         return chat_cls(
@@ -153,6 +200,109 @@ class RAGEngine:
             return self.models["fast"], "fast", f"score {score:.1f} < threshold {threshold}"
 
         return self.models["default"], "default", "fallback to default"
+
+    @staticmethod
+    def _doc_key(doc: Document) -> str:
+        meta = doc.metadata or {}
+        doc_id = meta.get("document_id")
+        chunk_index = meta.get("chunk_index")
+        if doc_id is not None and chunk_index is not None:
+            return f"{doc_id}:{chunk_index}"
+        cid = getattr(doc, "id", None) or meta.get("chunk_id")
+        if cid:
+            return str(cid)
+        content = (doc.page_content or "").strip()
+        return f"content:{hash(content)}"
+
+    @staticmethod
+    def _merge_meta(dst: Dict[str, Any], src: Dict[str, Any]) -> Dict[str, Any]:
+        for k, v in (src or {}).items():
+            if k not in dst or dst.get(k) in (None, "", [], {}):
+                dst[k] = v
+        return dst
+
+    @staticmethod
+    def _doc_is_reranked(doc: Document) -> bool:
+        meta = doc.metadata or {}
+        return meta.get("rerank_score") is not None
+
+    @classmethod
+    def _prefer_doc(cls, current: Document, candidate: Document) -> Document:
+        if cls._doc_is_reranked(candidate) and not cls._doc_is_reranked(current):
+            return candidate
+        if cls._doc_is_reranked(current) and not cls._doc_is_reranked(candidate):
+            return current
+        a = float((current.metadata or {}).get("score", 0.0) or 0.0)
+        b = float((candidate.metadata or {}).get("score", 0.0) or 0.0)
+        return candidate if b > a else current
+
+    @classmethod
+    def fuse_docs_rrf(
+        cls,
+        docs_by_query: List[List[Document]],
+        *,
+        rrf_k: int | None = None,
+        meta_prefix: str = "query_expansion",
+    ) -> List[Document]:
+        if not docs_by_query:
+            return []
+
+        k0 = int(rrf_k or 0) or int(settings.RETRIEVAL_RRF_K or 60)
+        k0 = max(1, k0)
+
+        score_map: Dict[str, float] = {}
+        hit_counts: Dict[str, int] = {}
+        best_docs: Dict[str, Document] = {}
+        merged_meta: Dict[str, Dict[str, Any]] = {}
+
+        for docs in docs_by_query:
+            seen_in_query: set[str] = set()
+            for rank, doc in enumerate(docs or [], 1):
+                key = cls._doc_key(doc)
+                if key in seen_in_query:
+                    continue
+                seen_in_query.add(key)
+
+                score_map[key] = float(score_map.get(key, 0.0) or 0.0) + (1.0 / (k0 + rank))
+                hit_counts[key] = int(hit_counts.get(key, 0) or 0) + 1
+
+                meta = dict(doc.metadata or {})
+                if key not in best_docs:
+                    best_docs[key] = doc
+                    merged_meta[key] = meta
+                else:
+                    merged_meta[key] = cls._merge_meta(merged_meta.get(key) or {}, meta)
+                    best_docs[key] = cls._prefer_doc(best_docs[key], doc)
+
+        if not score_map:
+            return []
+
+        raw_scores = list(score_map.values())
+        min_s = min(raw_scores) if raw_scores else 0.0
+        max_s = max(raw_scores) if raw_scores else 0.0
+        rng = (max_s - min_s) if max_s > min_s else 1.0
+
+        fused: List[Document] = []
+        for key, doc in best_docs.items():
+            meta = dict(merged_meta.get(key) or {})
+            base_score = meta.get("score")
+            if base_score is not None and f"{meta_prefix}_base_score" not in meta:
+                meta[f"{meta_prefix}_base_score"] = base_score
+            meta[f"{meta_prefix}_rrf_raw"] = float(score_map.get(key, 0.0) or 0.0)
+            meta[f"{meta_prefix}_rrf_k"] = k0
+            meta[f"{meta_prefix}_hits"] = int(hit_counts.get(key, 0) or 0)
+            meta[f"{meta_prefix}_fused"] = True
+            meta["score"] = (float(score_map.get(key, 0.0) or 0.0) - min_s) / rng
+            fused.append(
+                Document(
+                    page_content=doc.page_content,
+                    metadata=meta,
+                    id=getattr(doc, "id", None) or meta.get("chunk_id"),
+                )
+            )
+
+        fused.sort(key=lambda d: float((d.metadata or {}).get("score", 0.0) or 0.0), reverse=True)
+        return fused
 
     async def stream_chat(
         self,
@@ -294,7 +444,17 @@ class RAGEngine:
                     },
                 }
 
-            request_retrieval_mode = retrieval_mode or "hybrid"
+            requested_retrieval_mode = retrieval_mode or "hybrid"
+            request_retrieval_mode = requested_retrieval_mode
+            retrieval_mode_routed = False
+            mode_norm = (request_retrieval_mode or "hybrid").lower().strip()
+            if mode_norm == "auto":
+                request_retrieval_mode = guess_retrieval_mode(query_for_retrieval)
+                retrieval_mode_routed = True
+                mode_norm = request_retrieval_mode.lower().strip()
+            if mode_norm not in ("hybrid", "vector", "keyword", "mmr"):
+                request_retrieval_mode = "hybrid"
+                mode_norm = "hybrid"
             request_alpha = alpha if alpha is not None else 0.6
             request_enable_weight_rerank = bool(enable_weight_rerank)
             request_vector_weight = vector_weight if vector_weight is not None else 0.6
@@ -303,6 +463,135 @@ class RAGEngine:
             request_enable_reranker = bool(enable_reranker)
             request_reranker_provider = reranker_provider or settings.RERANKER_PROVIDER or "llm"
             request_reranker_top_n = int(reranker_top_n or settings.RERANKER_TOP_N or 20)
+
+            # Step 0.5: Query Expansion（Multi-Query / HyDE，可选）
+            multi_query_elapsed = 0.0
+            multi_query_used = False
+            multi_query_model_used = None
+            multi_query_parse_meta: Dict[str, Any] = {"ok": False, "method": None, "error": None}
+            multi_queries: List[str] = []
+
+            mq_n = max(0, min(int(settings.MULTI_QUERY_COUNT or 0), 8))
+            mq_max_chars = max(0, int(settings.MULTI_QUERY_MAX_CHARS or 0))
+            if bool(settings.ENABLE_MULTI_QUERY) and mq_n > 0 and mq_max_chars > 0 and len(query_for_retrieval) <= mq_max_chars:
+                mq_llm = self.models.get("fast") or llm
+                multi_query_model_used = getattr(mq_llm, "model_name", None) or getattr(mq_llm, "model", None)
+                try:
+                    mq_chain = (
+                        self.multi_query_prompt
+                        | mq_llm.bind(temperature=settings.MULTI_QUERY_TEMPERATURE)
+                        | StrOutputParser()
+                    )
+                    mq_start = time.time()
+                    mq_raw = await mq_chain.ainvoke({"query": query_for_retrieval, "n": mq_n})
+                    multi_query_elapsed = time.time() - mq_start
+                    mq_data, multi_query_parse_meta = parse_json_from_text(mq_raw)
+
+                    if isinstance(mq_data, list):
+                        seen: set[str] = set()
+                        for item in mq_data:
+                            if not isinstance(item, str):
+                                continue
+                            q = (item or "").strip().strip('"').strip()
+                            if not q:
+                                continue
+                            if q == query_for_retrieval:
+                                continue
+                            if q in seen:
+                                continue
+                            if len(q) > 400:
+                                q = q[:400] + "..."
+                            seen.add(q)
+                            multi_queries.append(q)
+                            if len(multi_queries) >= mq_n:
+                                break
+                except Exception as exc:  # noqa: BLE001
+                    multi_query_elapsed = 0.0
+                    multi_query_parse_meta = {"ok": False, "method": None, "error": str(exc)[:200]}
+                    multi_queries = []
+
+            multi_query_used = bool(multi_queries)
+
+            hyde_used = False
+            hyde_elapsed = 0.0
+            hyde_model_used = None
+            hyde_text = ""
+            hyde_max_chars = max(0, int(settings.HYDE_MAX_CHARS or 0))
+            retrieval_mode_norm = (request_retrieval_mode or "hybrid").lower()
+            if bool(settings.ENABLE_HYDE) and retrieval_mode_norm not in ("keyword",) and hyde_max_chars > 0 and len(query_for_retrieval) <= hyde_max_chars:
+                hyde_llm = self.models.get("fast") or llm
+                hyde_model_used = getattr(hyde_llm, "model_name", None) or getattr(hyde_llm, "model", None)
+                try:
+                    hyde_chain = (
+                        self.hyde_prompt
+                        | hyde_llm.bind(temperature=settings.HYDE_TEMPERATURE)
+                        | StrOutputParser()
+                    )
+                    hyde_start = time.time()
+                    hyde_text = await hyde_chain.ainvoke({"query": query_for_retrieval})
+                    hyde_elapsed = time.time() - hyde_start
+                    hyde_text = (hyde_text or "").strip()
+                    out_max = max(0, int(settings.HYDE_OUTPUT_MAX_CHARS or 0))
+                    if out_max and len(hyde_text) > out_max:
+                        hyde_text = hyde_text[:out_max] + "..."
+                    hyde_used = bool(hyde_text)
+                except Exception:  # noqa: BLE001
+                    hyde_text = ""
+                    hyde_elapsed = 0.0
+                    hyde_used = False
+
+            decompose_elapsed = 0.0
+            decompose_used = False
+            decompose_model_used = None
+            decompose_parse_meta: Dict[str, Any] = {"ok": False, "method": None, "error": None}
+            sub_questions: List[str] = []
+
+            dq_n = max(0, min(int(settings.QUERY_DECOMPOSITION_MAX_SUBQUESTIONS or 0), 8))
+            dq_min_chars = max(0, int(settings.QUERY_DECOMPOSITION_MIN_CHARS or 0))
+            dq_max_chars = max(0, int(settings.QUERY_DECOMPOSITION_MAX_CHARS or 0))
+            if (
+                bool(settings.ENABLE_QUERY_DECOMPOSITION)
+                and dq_n > 0
+                and len(query_for_retrieval) >= dq_min_chars
+                and (dq_max_chars <= 0 or len(query_for_retrieval) <= dq_max_chars)
+            ):
+                dq_llm = self.models.get("fast") or llm
+                decompose_model_used = getattr(dq_llm, "model_name", None) or getattr(dq_llm, "model", None)
+                try:
+                    dq_chain = (
+                        self.decompose_prompt
+                        | dq_llm.bind(temperature=settings.QUERY_DECOMPOSITION_TEMPERATURE)
+                        | StrOutputParser()
+                    )
+                    dq_start = time.time()
+                    dq_raw = await dq_chain.ainvoke({"query": query_for_retrieval, "n": dq_n})
+                    decompose_elapsed = time.time() - dq_start
+                    dq_data, decompose_parse_meta = parse_json_from_text(dq_raw)
+
+                    if isinstance(dq_data, list):
+                        seen: set[str] = set()
+                        for item in dq_data:
+                            if not isinstance(item, str):
+                                continue
+                            q = (item or "").strip().strip('"').strip()
+                            if not q:
+                                continue
+                            if q == query_for_retrieval:
+                                continue
+                            if q in seen:
+                                continue
+                            if len(q) > 500:
+                                q = q[:500] + "..."
+                            seen.add(q)
+                            sub_questions.append(q)
+                            if len(sub_questions) >= dq_n:
+                                break
+                except Exception as exc:  # noqa: BLE001
+                    decompose_elapsed = 0.0
+                    decompose_parse_meta = {"ok": False, "method": None, "error": str(exc)[:200]}
+                    sub_questions = []
+
+            decompose_used = bool(sub_questions)
 
             # Step 1: 混合检索（LangChain Retriever）
             retriever = hybrid_retriever.model_copy(
@@ -322,16 +611,44 @@ class RAGEngine:
                     "reranker_top_n": request_reranker_top_n,
                 }
             )
+
+            retrieval_queries: List[tuple[str, str]] = [("main", query_for_retrieval)]
+            for q in multi_queries:
+                retrieval_queries.append(("mq", q))
+            for q in sub_questions:
+                retrieval_queries.append(("subq", q))
+            if hyde_used and hyde_text:
+                retrieval_queries.append(("hyde", hyde_text))
+
+            docs_by_query: List[List[Document]] = []
             t_retrieval_start = time.time()
-            try:
-                docs = retriever.invoke(query_for_retrieval)
-            except Exception as exc:
-                yield {
-                    "type": "error",
-                    "data": {"message": f"retrieval failed: {exc}"}
-                }
-                docs = []
+            for kind, q in retrieval_queries:
+                r = retriever
+                if kind != "main":
+                    if kind == "hyde":
+                        r = retriever.model_copy(
+                            update={
+                                "enable_reranker": False,
+                                "retrieval_mode": "vector",
+                                "enable_weight_rerank": False,
+                            }
+                        )
+                    else:
+                        r = retriever.model_copy(update={"enable_reranker": False})
+                try:
+                    docs_i = r.invoke(q)
+                except Exception as exc:  # noqa: BLE001
+                    if kind == "main":
+                        yield {"type": "error", "data": {"message": f"retrieval failed: {exc}"}}
+                    docs_i = []
+                docs_by_query.append(docs_i or [])
+
             retrieval_elapsed = time.time() - t_retrieval_start
+            if len(docs_by_query) <= 1:
+                docs = docs_by_query[0] if docs_by_query else []
+            else:
+                docs = self.fuse_docs_rrf(docs_by_query, rrf_k=settings.RETRIEVAL_RRF_K, meta_prefix="query_expansion")
+            docs = docs[: max(0, int(top_k or 0))] if docs else []
 
             # 构建引用信息
             citations: List[Dict[str, Any]] = build_citations_from_docs(
@@ -379,8 +696,17 @@ class RAGEngine:
                     meta = doc.metadata or {}
                     source = meta.get("source", "Unknown")
                     page = meta.get("page", "N/A")
-                    content = (doc.page_content or "").strip()
-                    if max_per_chunk and len(content) > max_per_chunk:
+                    raw_content = (doc.page_content or "").strip()
+                    content = raw_content
+                    if bool(settings.RAG_CONTEXT_EVIDENCE_ENABLED):
+                        content = extract_evidence_text(
+                            raw_content,
+                            query_for_retrieval,
+                            max_chars=max_per_chunk,
+                            max_sentences=settings.RAG_CONTEXT_EVIDENCE_MAX_SENTENCES_PER_CHUNK,
+                            min_sentence_chars=settings.RAG_CONTEXT_EVIDENCE_MIN_SENTENCE_CHARS,
+                        )
+                    elif max_per_chunk and len(content) > max_per_chunk:
                         content = content[:max_per_chunk] + "..."
                     context_parts.append(
                         f"[来源 {idx}: {source} - 第 {page} 页]\n{content}"
@@ -409,8 +735,35 @@ class RAGEngine:
                     "query_for_retrieval": query_for_retrieval,
                     "history_chars": len(history_text or ""),
                     "context_chars": len(context or ""),
+                    "context_evidence": {
+                        "enabled": bool(settings.RAG_CONTEXT_EVIDENCE_ENABLED),
+                        "max_sentences_per_chunk": int(settings.RAG_CONTEXT_EVIDENCE_MAX_SENTENCES_PER_CHUNK or 0),
+                        "min_sentence_chars": int(settings.RAG_CONTEXT_EVIDENCE_MIN_SENTENCE_CHARS or 0),
+                    },
+                    "query_expansion": {
+                        "multi_query_enabled": bool(settings.ENABLE_MULTI_QUERY),
+                        "multi_query_used": bool(multi_query_used),
+                        "multi_query_count": len(multi_queries),
+                        "multi_query_elapsed_sec": round(multi_query_elapsed, 3),
+                        "multi_query_model_used": multi_query_model_used,
+                        "multi_query_parse_ok": bool(multi_query_parse_meta.get("ok")),
+                        "multi_query_parse_error": multi_query_parse_meta.get("error"),
+                        "hyde_enabled": bool(settings.ENABLE_HYDE),
+                        "hyde_used": bool(hyde_used),
+                        "hyde_elapsed_sec": round(hyde_elapsed, 3),
+                        "hyde_model_used": hyde_model_used,
+                        "decompose_enabled": bool(settings.ENABLE_QUERY_DECOMPOSITION),
+                        "decompose_used": bool(decompose_used),
+                        "decompose_count": len(sub_questions),
+                        "decompose_elapsed_sec": round(decompose_elapsed, 3),
+                        "decompose_model_used": decompose_model_used,
+                        "decompose_parse_ok": bool(decompose_parse_meta.get("ok")),
+                        "decompose_parse_error": decompose_parse_meta.get("error"),
+                    },
                     "retrieval": {
                         "mode": request_retrieval_mode,
+                        "requested_mode": requested_retrieval_mode,
+                        "auto_routed": bool(retrieval_mode_routed),
                         "alpha": request_alpha,
                         "enable_weight_rerank": request_enable_weight_rerank,
                         "vector_weight": request_vector_weight,
@@ -486,11 +839,9 @@ class RAGEngine:
             generation_elapsed = time.time() - gen_start
             t_total = time.time() - t_all_start
             structured_data = None
+            structured_parse_meta = {"ok": False, "method": None, "error": None}
             if structured_output:
-                try:
-                    structured_data = json.loads(full_response)
-                except Exception:
-                    structured_data = None
+                structured_data, structured_parse_meta = parse_json_from_text(full_response)
             done_payload = {
                 "type": "done",
                 "data": {
@@ -506,6 +857,8 @@ class RAGEngine:
                         "retrieval_elapsed_sec": round(retrieval_elapsed, 3),
                         "generation_elapsed_sec": round(generation_elapsed, 3),
                         "retrieval_mode": request_retrieval_mode,
+                        "retrieval_mode_requested": requested_retrieval_mode,
+                        "retrieval_mode_auto_routed": bool(retrieval_mode_routed),
                         "retrieval_fusion_strategy": settings.RETRIEVAL_FUSION_STRATEGY,
                         "retrieval_rrf_k": settings.RETRIEVAL_RRF_K if settings.RETRIEVAL_FUSION_STRATEGY == "rrf" else None,
                         "retrieval_dedup_enabled": bool(settings.RETRIEVAL_DEDUP_ENABLED),
@@ -518,11 +871,46 @@ class RAGEngine:
                         "distinct_documents": len({c.get("document_id") for c in citations if c.get("document_id")}),
                         "history_chars": len(history_text or ""),
                         "context_chars": len(context or ""),
+                        "context_evidence_enabled": bool(settings.RAG_CONTEXT_EVIDENCE_ENABLED),
+                        "context_evidence_max_sentences_per_chunk": (
+                            int(settings.RAG_CONTEXT_EVIDENCE_MAX_SENTENCES_PER_CHUNK or 0)
+                            if bool(settings.RAG_CONTEXT_EVIDENCE_ENABLED)
+                            else None
+                        ),
+                        "context_evidence_min_sentence_chars": (
+                            int(settings.RAG_CONTEXT_EVIDENCE_MIN_SENTENCE_CHARS or 0)
+                            if bool(settings.RAG_CONTEXT_EVIDENCE_ENABLED)
+                            else None
+                        ),
                         "llm_max_retries": settings.LLM_MAX_RETRIES,
                         "query_rewrite_enabled": settings.ENABLE_QUERY_REWRITE,
                         "rewrite_used": bool(rewrite_used),
                         "rewrite_elapsed_sec": round(rewrite_elapsed, 3),
                         "rewrite_model_used": rewrite_model_used,
+                        "multi_query_enabled": bool(settings.ENABLE_MULTI_QUERY),
+                        "multi_query_used": bool(multi_query_used),
+                        "multi_query_count": len(multi_queries),
+                        "multi_query_elapsed_sec": round(multi_query_elapsed, 3),
+                        "multi_query_model_used": multi_query_model_used,
+                        "multi_query_parse_ok": bool(multi_query_parse_meta.get("ok")),
+                        "multi_query_parse_method": multi_query_parse_meta.get("method"),
+                        "multi_query_parse_error": multi_query_parse_meta.get("error"),
+                        "hyde_enabled": bool(settings.ENABLE_HYDE),
+                        "hyde_used": bool(hyde_used),
+                        "hyde_elapsed_sec": round(hyde_elapsed, 3),
+                        "hyde_model_used": hyde_model_used,
+                        "decompose_enabled": bool(settings.ENABLE_QUERY_DECOMPOSITION),
+                        "decompose_used": bool(decompose_used),
+                        "decompose_count": len(sub_questions),
+                        "decompose_elapsed_sec": round(decompose_elapsed, 3),
+                        "decompose_model_used": decompose_model_used,
+                        "decompose_parse_ok": bool(decompose_parse_meta.get("ok")),
+                        "decompose_parse_method": decompose_parse_meta.get("method"),
+                        "decompose_parse_error": decompose_parse_meta.get("error"),
+                        "structured_parse_ok": bool(structured_parse_meta.get("ok")),
+                        "structured_parse_method": structured_parse_meta.get("method"),
+                        "structured_parse_error": structured_parse_meta.get("error"),
+                        "structured_type": type(structured_data).__name__ if structured_data is not None else None,
                         "structured_preset": structured_preset,
                         "prompt_template_id": str(selected_prompt_template_id) if selected_prompt_template_id else None,
                         "prompt_template_key": selected_prompt_template_key,
