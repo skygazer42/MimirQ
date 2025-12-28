@@ -3,9 +3,9 @@
  */
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import Link from 'next/link'
-import { usePathname } from 'next/navigation'
+import { usePathname, useRouter } from 'next/navigation'
 import {
   MessageSquare,
   Database,
@@ -24,6 +24,7 @@ import {
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import { ModeToggle } from '@/components/mode-toggle'
+import { API_V1_BASE_URL } from '@/lib/env'
 
 // 导航菜单配置
 const menuItems = [
@@ -90,6 +91,28 @@ export function Navbar({
   const isSidebarOpen = externalIsOpen ?? internalIsOpen
   const setSidebarOpen = externalSetOpen ?? setInternalIsOpen
   const pathname = usePathname()
+  const router = useRouter()
+  const [backendOk, setBackendOk] = useState<boolean | null>(null)
+
+  useEffect(() => {
+    let alive = true
+    const ping = async () => {
+      try {
+        const res = await fetch(`${API_V1_BASE_URL}/health`, { method: 'GET' })
+        if (!alive) return
+        setBackendOk(res.ok)
+      } catch {
+        if (!alive) return
+        setBackendOk(false)
+      }
+    }
+    ping()
+    const t = window.setInterval(ping, 30_000)
+    return () => {
+      alive = false
+      window.clearInterval(t)
+    }
+  }, [])
 
   return (
     <>
@@ -116,7 +139,10 @@ export function Navbar({
         <div className="p-4 pb-2">
           <Button
             className="w-full justify-start gap-2 bg-primary hover:bg-primary/90 text-primary-foreground shadow-sm h-10 rounded-xl transition-all"
-            onClick={() => setSidebarOpen(false)}
+            onClick={() => {
+              router.push('/')
+              setSidebarOpen(false)
+            }}
           >
             <Plus className="h-4 w-4" />
             <span className="font-medium">新对话</span>
@@ -165,6 +191,20 @@ export function Navbar({
               </div>
             </div>
             <ModeToggle />
+          </div>
+
+          <div className="mt-2 flex items-center gap-2 text-xs text-slate-400 dark:text-slate-500">
+            <span
+              className={cn(
+                'inline-block h-2 w-2 rounded-full',
+                backendOk === true && 'bg-green-500',
+                backendOk === false && 'bg-red-500',
+                backendOk === null && 'bg-slate-300 dark:bg-slate-600'
+              )}
+            />
+            <span>
+              Backend：{backendOk === true ? 'OK' : backendOk === false ? 'Down' : '...'}
+            </span>
           </div>
         </div>
       </nav>

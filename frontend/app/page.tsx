@@ -1,21 +1,14 @@
-'use client'
-
 /**
- * 主页面 - 对话界面
+ * 首页 - 对话界面（服务端读取 searchParams，再交给客户端组件渲染）
  */
-import { useState } from 'react'
-import { Navbar } from '@/components/navbar'
-import { ChatArea } from '@/components/chat-area'
+import { ChatPageClient } from '@/components/chat-page-client'
 
-export default function Home() {
-  const [isSidebarOpen, setSidebarOpen] = useState(true)
-
-  return (
-    <div className="flex h-screen overflow-hidden bg-white">
-      <Navbar isSidebarOpen={isSidebarOpen} setSidebarOpen={setSidebarOpen} />
-      <div className={`flex-1 flex flex-col ${isSidebarOpen ? 'ml-64' : 'ml-0'}`}>
-        <ChatArea />
-      </div>
-    </div>
-  )
+export default function Home({
+  searchParams,
+}: {
+  searchParams?: {
+    conversation?: string
+  }
+}) {
+  return <ChatPageClient initialConversationId={searchParams?.conversation} />
 }

@@ -252,15 +252,37 @@ export interface StreamEvent {
   data: any
 }
 
+export interface ChatHistoryMessage {
+  role: 'user' | 'assistant' | string
+  content: string
+}
+
 export interface ChatRequest {
   conversation_id?: string
   message: string
+  history?: ChatHistoryMessage[]
   document_ids?: string[]
   stream: boolean
+  structured_output?: boolean
+  structured_preset?: 'faq' | 'summary' | 'action_items' | 'custom' | string | null
+  enable_long_term_memory?: boolean
+  prompt_template_id?: string
+  prompt_template_key?: string
+  prompt_ab_experiment_key?: string
   rag_config?: {
     top_k?: number
     score_threshold?: number
     max_tokens?: number
+    retrieval_mode?: 'auto' | 'hybrid' | 'vector' | 'keyword' | 'mmr' | string
+    alpha?: number
+    enable_weight_rerank?: boolean
+    vector_weight?: number
+    keyword_weight?: number
+    mmr_lambda?: number
+    enable_reranker?: boolean
+    reranker_provider?: string
+    reranker_top_n?: number
+    use_graph?: boolean
   }
 }
 

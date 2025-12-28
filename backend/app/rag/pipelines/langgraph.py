@@ -23,7 +23,7 @@ import time
 
 from app.rag.core.citations import build_citations_from_docs
 from app.rag.core.conversation import format_history_text
-from app.rag.core.text import parse_json_from_text, extract_evidence_text, guess_retrieval_mode
+from app.rag.core.text import parse_json_from_text, extract_evidence_text, guess_retrieval_mode, normalize_retrieval_mode
 from app.rag.retriever import hybrid_retriever
 from app.rag.engine import get_rag_engine
 from app.core.config import settings
@@ -185,7 +185,7 @@ def _retrieve_node(state: RAGState) -> RAGState:
         rewrite_used = query_for_retrieval != question
 
     requested_retrieval_mode = state.get("retrieval_mode", "hybrid") or "hybrid"
-    request_retrieval_mode = requested_retrieval_mode
+    request_retrieval_mode = normalize_retrieval_mode(requested_retrieval_mode)
     retrieval_mode_routed = False
     mode_norm = str(request_retrieval_mode or "hybrid").lower().strip()
     if mode_norm == "auto":

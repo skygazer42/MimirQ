@@ -23,13 +23,35 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 
-export function ChatArea() {
+export function ChatArea({
+  initialConversationId,
+  onConversationId,
+}: {
+  initialConversationId?: string
+  onConversationId?: (conversationId: string) => void
+} = {}) {
   const [inputValue, setInputValue] = useState('')
   const [promptTemplateId, setPromptTemplateId] = useState<string>('')
   const [promptTemplates, setPromptTemplates] = useState<PromptTemplate[]>([])
+  const [showRagSettings, setShowRagSettings] = useState(false)
+  const [ragConfig, setRagConfig] = useState<{
+    top_k: number
+    score_threshold: number
+    retrieval_mode: string
+    use_graph: boolean
+  }>(() => ({
+    top_k: 5,
+    score_threshold: 0.7,
+    retrieval_mode: 'hybrid',
+    use_graph: false,
+  }))
+  const [structuredOutput, setStructuredOutput] = useState(false)
+  const [structuredPreset, setStructuredPreset] = useState<string>('')
+  const [enableLongTermMemory, setEnableLongTermMemory] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
+  const prevInitialConversationIdRef = useRef<string | undefined>(initialConversationId)
 
   // Load prompt templates
   useEffect(() => {
@@ -51,8 +73,17 @@ export function ChatArea() {
     currentCitations,
     sendMessage,
     stopGeneration,
+    conversationId,
+    loadConversation,
+    resetConversation,
   } = useChat({
+    conversationId: initialConversationId,
     promptTemplateId: promptTemplateId || undefined,
+    ragConfig,
+    structuredOutput,
+    structuredPreset: structuredPreset || undefined,
+    enableLongTermMemory,
+    onConversationId,
     onError: (error) => {
       console.error('Chat error:', error)
       alert(error)
@@ -60,6 +91,27 @@ export function ChatArea() {
   })
 
   const { uploadDocument, loadDocuments } = useDocuments()
+
+  // Sync URL conversation -> local state (History -> Chat)
+  useEffect(() => {
+    const prev = (prevInitialConversationIdRef.current || '').trim()
+    const desired = (initialConversationId || '').trim()
+    prevInitialConversationIdRef.current = initialConversationId
+
+    const current = (conversationId || '').trim()
+    if (desired) {
+      if (desired !== current) {
+        loadConversation(desired).catch((err) => {
+          console.error('Failed to load conversation:', err)
+        })
+      }
+      return
+    }
+    // URL cleared: only reset when we were previously bound to a conversation id.
+    if (prev && current) {
+      resetConversation()
+    }
+  }, [initialConversationId, conversationId, loadConversation, resetConversation])
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files
@@ -166,6 +218,111 @@ export function ChatArea() {
                   {promptTemplates.find(t => t.id === promptTemplateId)?.description}
                 </span>
               )}
+            </div>
+          )}
+
+          {/* RAG 参数（联调用：让前端能直接控制后端 rag_config） */}
+          <div className="px-2">
+            <Button
+              type="button"
+              variant="ghost"
+              className="h-8 px-2 text-xs text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-100"
+              onClick={() => setShowRagSettings((v) => !v)}
+            >
+              <Database className="w-4 h-4 mr-2" />
+              RAG 设置
+            </Button>
+          </div>
+
+          {showRagSettings && (
+            <div className="px-2 flex flex-wrap items-center gap-3 text-xs text-slate-600 dark:text-slate-300">
+              <div className="flex items-center gap-2">
+                <span className="text-slate-400">检索</span>
+                <Select
+                  value={ragConfig.retrieval_mode}
+                  onValueChange={(v) => setRagConfig((prev) => ({ ...prev, retrieval_mode: v }))}
+                >
+                  <SelectTrigger className="w-[140px] h-8 text-xs">
+                    <SelectValue placeholder="选择模式" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="auto">auto（自动）</SelectItem>
+                    <SelectItem value="hybrid">hybrid（混合）</SelectItem>
+                    <SelectItem value="vector">vector（向量）</SelectItem>
+                    <SelectItem value="keyword">keyword（全文）</SelectItem>
+                    <SelectItem value="mmr">mmr（多样性）</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <label className="flex items-center gap-2">
+                <span className="text-slate-400">TopK</span>
+                <input
+                  type="number"
+                  min={1}
+                  max={50}
+                  value={ragConfig.top_k}
+                  onChange={(e) => setRagConfig((prev) => ({ ...prev, top_k: Number(e.target.value || 0) }))}
+                  className="w-16 h-8 px-2 rounded-md border border-slate-200 dark:border-slate-700 bg-white/70 dark:bg-slate-900/70"
+                />
+              </label>
+
+              <label className="flex items-center gap-2">
+                <span className="text-slate-400">阈值</span>
+                <input
+                  type="number"
+                  min={0}
+                  max={1}
+                  step={0.05}
+                  value={ragConfig.score_threshold}
+                  onChange={(e) => setRagConfig((prev) => ({ ...prev, score_threshold: Number(e.target.value || 0) }))}
+                  className="w-20 h-8 px-2 rounded-md border border-slate-200 dark:border-slate-700 bg-white/70 dark:bg-slate-900/70"
+                />
+              </label>
+
+              <label className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={ragConfig.use_graph}
+                  onChange={(e) => setRagConfig((prev) => ({ ...prev, use_graph: e.target.checked }))}
+                />
+                <span>LangGraph</span>
+              </label>
+
+              <label className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={structuredOutput}
+                  onChange={(e) => setStructuredOutput(e.target.checked)}
+                />
+                <span>结构化</span>
+              </label>
+
+              {structuredOutput && (
+                <div className="flex items-center gap-2">
+                  <span className="text-slate-400">Preset</span>
+                  <Select value={structuredPreset} onValueChange={setStructuredPreset}>
+                    <SelectTrigger className="w-[160px] h-8 text-xs">
+                      <SelectValue placeholder="选择 preset" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="">custom（默认）</SelectItem>
+                      <SelectItem value="faq">faq</SelectItem>
+                      <SelectItem value="summary">summary</SelectItem>
+                      <SelectItem value="action_items">action_items</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+
+              <label className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={enableLongTermMemory}
+                  onChange={(e) => setEnableLongTermMemory(e.target.checked)}
+                />
+                <span>长记忆</span>
+              </label>
             </div>
           )}
 
