@@ -11,6 +11,10 @@ from abc import ABC, abstractmethod
 from enum import Enum
 from typing import Any, Dict, List, Optional, TypedDict, Callable, Awaitable
 from dataclasses import dataclass, field
+import asyncio
+from functools import wraps
+
+from app.core.config import settings
 
 
 class WorkflowMode(str, Enum):
@@ -89,6 +93,57 @@ class BaseWorkflow(ABC):
         self.max_iterations = max_iterations
         self.timeout_sec = timeout_sec
         self._config = kwargs
+        self._wrap_agent_middlewares()
+
+    def _wrap_agent_middlewares(self) -> None:
+        enabled = bool(getattr(settings, "MIDDLEWARE_ENABLED", True))
+        if not enabled:
+            return
+
+        try:
+            from app.rag.middleware import AgentMiddlewareChain
+        except Exception:  # noqa: BLE001
+            return
+
+        chain = AgentMiddlewareChain()
+        original_run = self.run
+        if not asyncio.iscoroutinefunction(original_run):
+            return
+
+        @wraps(original_run)
+        async def wrapped(state: Dict[str, Any]) -> "WorkflowResult":
+            initial_state = dict(state or {})
+            initial_state["_agent"] = {
+                "workflow": self.name,
+                "mode": self.mode.value,
+            }
+            initial_state = chain.run_before(initial_state)
+
+            result = await original_run(initial_state)
+
+            final_state = dict((result.state or {}))
+            agent_ctx = dict(final_state.get("_agent") or {})
+            agent_ctx.update(
+                {
+                    "workflow": self.name,
+                    "mode": self.mode.value,
+                    "success": result.success,
+                    "error": result.error,
+                    "iterations": result.iterations,
+                    "execution_path": result.execution_path,
+                }
+            )
+            final_state["_agent"] = agent_ctx
+            final_state = chain.run_after(final_state)
+            final_state.pop("_agent", None)
+
+            result.state = final_state
+            if "answer" in final_state:
+                result.answer = final_state.get("answer") or result.answer
+            return result
+
+        # Monkey-patch instance method to keep API stable for all workflows.
+        self.run = wrapped  # type: ignore[method-assign]
 
     @property
     @abstractmethod

@@ -9,6 +9,7 @@ Pattern: Think -> Act -> Observe -> Think -> ... -> Answer
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from typing import Any, Callable, Dict, List, Optional, Awaitable
 
@@ -17,6 +18,7 @@ from app.rag.workflows.base import (
     WorkflowMode,
     WorkflowResult,
 )
+from app.rag.middleware import ToolMiddlewareChain
 
 logger = logging.getLogger(__name__)
 
@@ -177,16 +179,65 @@ Your response:"""
 
         return result
 
-    async def _act(self, action: str, action_input: str) -> str:
-        """Execute an action using a tool."""
+    async def _act(self, workflow_state: Dict[str, Any], action: str, action_input: str) -> str:
+        """Execute an action using a tool (with tool-call middlewares)."""
         tool = self._tools.get(action)
-        if tool is None:
-            return f"Error: Tool '{action}' not found"
 
-        try:
-            return await tool.invoke(action_input)
-        except Exception as e:
-            return f"Error: {str(e)}"
+        chain = ToolMiddlewareChain()
+        tool_state: Dict[str, Any] = {
+            "tool_name": action,
+            "arguments": {"input_text": action_input},
+            "result": None,
+            "error": None,
+            "success": None,
+            "metadata": {
+                "workflow": self.name,
+                "mode": self.mode.value,
+            },
+        }
+        tool_state = chain.run_before(tool_state)
+
+        async def _execute(state: Dict[str, Any]) -> Dict[str, Any]:
+            name = str(state.get("tool_name") or "")
+            args = state.get("arguments") or {}
+            input_text = str(args.get("input_text") or "")
+
+            target = self._tools.get(name)
+            if target is None:
+                state["success"] = False
+                state["error"] = f"Tool '{name}' not found"
+                return state
+
+            try:
+                state["result"] = await target.invoke(input_text)
+                state["success"] = True
+                return state
+            except Exception as exc:  # noqa: BLE001
+                state["success"] = False
+                state["error"] = str(exc)[:500]
+                return state
+
+        wrapped = chain.wrap_call(_execute)
+        result = wrapped(tool_state)
+        tool_state = await result if asyncio.iscoroutine(result) else result
+        tool_state = chain.run_after(tool_state)
+
+        workflow_state.setdefault("tool_calls", []).append(
+            {
+                "tool_name": tool_state.get("tool_name"),
+                "arguments": {
+                    "input_text_preview": str((tool_state.get("arguments") or {}).get("input_text") or "")[:500]
+                },
+                "success": tool_state.get("success"),
+                "error": tool_state.get("error"),
+                "metadata": tool_state.get("metadata"),
+            }
+        )
+
+        if not bool(tool_state.get("success")):
+            return f"Error: {tool_state.get('error') or 'Tool call failed'}"
+
+        return str(tool_state.get("result") or "")
 
     async def run(self, state: Dict[str, Any]) -> WorkflowResult:
         """
@@ -259,7 +310,7 @@ Your response:"""
 
             # Execute action
             if action:
-                observation = await self._act(action, action_input)
+                observation = await self._act(current_state, action, action_input)
                 current_state["reasoning_trace"].append(f"Action: {action}")
                 current_state["reasoning_trace"].append(f"Action Input: {action_input}")
                 current_state["reasoning_trace"].append(f"Observation: {observation}")

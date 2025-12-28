@@ -68,6 +68,8 @@ from app.rag.middleware.dynamic_prompt import (
     TimeInjector,
 )
 from app.rag.middleware.pii import PIIMiddleware
+from app.rag.middleware.tool_logging import ToolCallLoggingMiddleware
+from app.rag.middleware.agent_logging import AgentExecutionLoggingMiddleware
 
 __all__ = [
     # Decorators
@@ -102,4 +104,8 @@ __all__ = [
     "TimeInjector",
     # PII
     "PIIMiddleware",
+    # Tool logging
+    "ToolCallLoggingMiddleware",
+    # Agent logging
+    "AgentExecutionLoggingMiddleware",
 ]
