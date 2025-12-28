@@ -30,6 +30,14 @@ async def lifespan(app: FastAPI):
     """应用启动和关闭时的操作"""
     # 启动时：创建数据库表
     logger.info("Starting MimirQ backend...")
+
+    if bool(getattr(settings, "LANGSMITH_TRACING_ENABLED", False)):
+        try:
+            from app.rag.tracing import setup_tracing
+
+            setup_tracing()
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Failed to setup LangSmith tracing: %s", str(exc)[:200])
     # Best-effort runtime migrations run before/after `create_all()`:
     # - before: upgrade existing deployments early (best-effort)
     # - after: ensure fresh tables get latest columns/indexes

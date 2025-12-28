@@ -7,11 +7,12 @@ Provides configuration-based checkpointer selection.
 from __future__ import annotations
 
 import logging
-from typing import Optional, Union
+from typing import Optional
 
 from app.rag.checkpointer.sqlite import SqliteSaver
-from app.rag.checkpointer.memory import MemorySaver
 from app.core.config import settings
+from langgraph.checkpoint.base import BaseCheckpointSaver
+from langgraph.checkpoint.memory import InMemorySaver
 
 logger = logging.getLogger(__name__)
 
@@ -19,17 +20,14 @@ logger = logging.getLogger(__name__)
 CHECKPOINT_BACKEND = getattr(settings, "CHECKPOINT_BACKEND", "memory")
 CHECKPOINT_SQLITE_PATH = getattr(settings, "CHECKPOINT_SQLITE_PATH", "./data/checkpoints.db")
 
-# Type alias
-Checkpointer = Union[SqliteSaver, MemorySaver]
-
 # Global instance
-_checkpointer: Optional[Checkpointer] = None
+_checkpointer: Optional[BaseCheckpointSaver] = None
 
 
 def get_checkpointer(
     backend: Optional[str] = None,
     **kwargs,
-) -> Checkpointer:
+) -> BaseCheckpointSaver:
     """
     Get or create a checkpointer instance.
 
@@ -52,13 +50,13 @@ def get_checkpointer(
         _checkpointer = SqliteSaver(db_path=db_path)
         logger.info("Using SQLite checkpointer: %s", db_path)
     else:
-        _checkpointer = MemorySaver()
+        _checkpointer = InMemorySaver()
         logger.info("Using in-memory checkpointer")
 
     return _checkpointer
 
 
-def set_checkpointer(checkpointer: Checkpointer) -> None:
+def set_checkpointer(checkpointer: BaseCheckpointSaver) -> None:
     """
     Set the global checkpointer instance.
 

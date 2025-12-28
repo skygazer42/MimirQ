@@ -111,8 +111,10 @@ class Settings(BaseSettings):
     USE_LANGGRAPH_PIPELINE: bool = False
     RAG_GRAPH_MAX_RETRIES: int = 2
     RAG_GRAPH_TIMEOUT_SEC: int = 20
+    RAG_GRAPH_CACHE_TTL_SEC: int = 0
     # LangGraph 1.0+ Functional API (preferred when available)
     LANGGRAPH_USE_FUNCTIONAL_API: bool = True
+    LANGGRAPH_RECURSION_LIMIT: int = 25
 
     # Middleware System Configuration
     MIDDLEWARE_ENABLED: bool = True
@@ -223,6 +225,9 @@ class Settings(BaseSettings):
     # Checkpoint persistence configuration
     CHECKPOINT_BACKEND: str = "memory"  # memory | sqlite
     CHECKPOINT_SQLITE_PATH: str = "./data/checkpoints.db"
+    # LangGraph Store (long-term memory scaffold; default disabled)
+    LANGGRAPH_STORE_ENABLED: bool = False
+    LANGGRAPH_STORE_BACKEND: str = "memory"  # memory | postgres (future)
 
     # 图片展示策略
     SHOW_IMAGE_IN_ANSWER: bool = True  # 控制回答正文是否附带图片段

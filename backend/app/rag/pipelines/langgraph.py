@@ -9,9 +9,10 @@ Refactored to use LangGraph 1.0+ Functional API with @entrypoint and @task decor
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 import logging
 from typing import Any, Dict, List, Optional, TypedDict
-from uuid import UUID
+from uuid import UUID, uuid4
 
 import json
 from langchain_core.documents import Document
@@ -26,15 +27,30 @@ from app.rag.core.conversation import format_history_text
 from app.rag.core.text import parse_json_from_text, extract_evidence_text, guess_retrieval_mode, normalize_retrieval_mode
 from app.rag.retriever import hybrid_retriever
 from app.rag.engine import get_rag_engine
+from app.rag.checkpointer.factory import get_checkpointer
+from app.rag.store.factory import get_langgraph_store
 from app.core.config import settings
 from app.services.prompt_template_selector import resolve_prompt_template
 
 # LangGraph 1.0+ Functional API imports
 from langgraph.func import entrypoint, task
+from langgraph.config import get_stream_writer
 from langgraph.graph import StateGraph, END
-from langgraph.checkpoint.memory import MemorySaver
+from langgraph.runtime import Runtime
+from langgraph.types import RetryPolicy, CachePolicy
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass
+class RAGRuntimeContext:
+    """Runtime-only context passed to LangGraph nodes (not persisted in state)."""
+
+    request_id: Optional[str] = None
+    conversation_id: Optional[str] = None
+    tenant_id: Optional[str] = None
+    account_id: Optional[str] = None
+    user_role: Optional[str] = None
 
 
 class RAGState(TypedDict, total=False):
@@ -78,6 +94,47 @@ class RAGState(TypedDict, total=False):
     abstain_reason: Optional[str]
 
 
+_RAG_TASK_RETRY_POLICY = RetryPolicy(
+    max_attempts=max(1, int(getattr(settings, "RAG_GRAPH_MAX_RETRIES", 0) or 0) + 1),
+    retry_on=lambda exc: not isinstance(exc, (ValueError, TypeError, KeyError)),
+)
+
+
+_RAG_RETRIEVE_CACHE_TTL_SEC = max(0, int(getattr(settings, "RAG_GRAPH_CACHE_TTL_SEC", 0) or 0))
+
+
+def _retrieve_cache_key(state: Dict[str, Any]) -> str:
+    history_text = format_history_text(state.get("history") or [], window=settings.CHAT_HISTORY_WINDOW)
+    history_text = history_text[:2000]
+    doc_ids = state.get("document_ids") or []
+    doc_ids_key = ",".join(sorted(str(x) for x in doc_ids))[:2000]
+    key_obj = {
+        "question": (state.get("question") or "")[:800],
+        "history": history_text,
+        "tenant_id": str(state.get("tenant_id") or ""),
+        "document_ids": doc_ids_key,
+        "top_k": int(state.get("top_k") or settings.RETRIEVAL_TOP_K),
+        "score_threshold": float(state.get("score_threshold") or settings.SIMILARITY_THRESHOLD),
+        "retrieval_mode": str(state.get("retrieval_mode") or ""),
+        "alpha": float(state.get("alpha") or 0.0),
+        "enable_weight_rerank": bool(state.get("enable_weight_rerank")),
+        "vector_weight": float(state.get("vector_weight") or 0.0),
+        "keyword_weight": float(state.get("keyword_weight") or 0.0),
+        "mmr_lambda": float(state.get("mmr_lambda") or 0.0),
+        "enable_reranker": bool(state.get("enable_reranker")),
+        "reranker_provider": str(state.get("reranker_provider") or ""),
+        "reranker_top_n": int(state.get("reranker_top_n") or 0),
+    }
+    return json.dumps(key_obj, ensure_ascii=False, sort_keys=True)
+
+
+_RAG_RETRIEVE_CACHE_POLICY = (
+    CachePolicy(key_func=_retrieve_cache_key, ttl=_RAG_RETRIEVE_CACHE_TTL_SEC)
+    if _RAG_RETRIEVE_CACHE_TTL_SEC > 0
+    else None
+)
+
+
 def _build_context(docs: List[Document], *, query: str | None = None) -> str:
     """格式化检索到的文档上下文。"""
     if not docs:
@@ -119,35 +176,30 @@ def _build_history_text(history: Optional[List[Dict[str, str]]]) -> str:
 
 def _run_with_retry(node_name: str, func, state: RAGState) -> RAGState:
     """节点级重试 + 超时（秒）。"""
-    retries = max(settings.RAG_GRAPH_MAX_RETRIES, 0)
     timeout = max(settings.RAG_GRAPH_TIMEOUT_SEC, 0) or None
-    last_exc: Optional[Exception] = None
-    attempts = 0
-    for _ in range(retries + 1):
-        attempts += 1
-        try:
-            if timeout:
-                with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
-                    fut = pool.submit(func, state)
-                    result = fut.result(timeout=timeout)
-            else:
-                result = func(state)
-            metrics = dict(result.get("metrics") or state.get("metrics") or {})
-            metrics[f"{node_name}_attempts"] = attempts
-            metrics[f"{node_name}_retries"] = max(attempts - 1, 0)
-            result["metrics"] = metrics
-            return result
-        except Exception as exc:  # noqa: BLE001
-            last_exc = exc
+    metrics = dict(state.get("metrics") or {})
+    attempts = int(metrics.get(f"{node_name}_attempts", 0) or 0) + 1
 
-    if last_exc:
-        metrics = dict(state.get("metrics") or {})
+    try:
+        if timeout:
+            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+                fut = pool.submit(func, state)
+                result = fut.result(timeout=timeout)
+        else:
+            result = func(state)
+
+        merged = dict(metrics)
+        merged.update(result.get("metrics") or {})
+        merged[f"{node_name}_attempts"] = attempts
+        merged[f"{node_name}_retries"] = max(attempts - 1, 0)
+        result["metrics"] = merged
+        return result
+    except Exception as exc:  # noqa: BLE001
         metrics[f"{node_name}_attempts"] = attempts
         metrics[f"{node_name}_retries"] = max(attempts - 1, 0)
-        metrics[f"{node_name}_last_error"] = str(last_exc)
+        metrics[f"{node_name}_last_error"] = str(exc)[:300]
         state["metrics"] = metrics
-        raise last_exc
-    return state
+        raise
 
 
 def _retrieve_node(state: RAGState) -> RAGState:
@@ -620,38 +672,187 @@ def _get_checkpointer():
     """获取或创建全局 checkpointer 实例。"""
     global _functional_checkpointer
     if _functional_checkpointer is None:
-        _functional_checkpointer = MemorySaver()
+        _functional_checkpointer = get_checkpointer()
     return _functional_checkpointer
 
 
-@task
+@task(retry_policy=_RAG_TASK_RETRY_POLICY, cache_policy=_RAG_RETRIEVE_CACHE_POLICY)
 def retrieve_task(state: Dict[str, Any]) -> Dict[str, Any]:
     """
     检索任务 - 使用 Functional API @task 装饰器。
 
     支持重试和超时机制，与原有 _retrieve_node 逻辑一致。
     """
-    return _run_with_retry("retrieve", _retrieve_node, state)
+    writer = None
+    if bool(getattr(settings, "STREAM_WRITER_ENABLED", True)):
+        try:
+            writer = get_stream_writer()
+        except Exception:  # noqa: BLE001
+            writer = None
+
+    if writer:
+        writer(
+            {
+                "event": "retrieve_start",
+                "question": (state.get("question") or "")[:500],
+                "retrieval_mode": state.get("retrieval_mode"),
+                "top_k": state.get("top_k"),
+            }
+        )
+
+    tracing_client = None
+    try:
+        from app.rag.tracing import get_tracing_client
+
+        tracing_client = get_tracing_client()
+    except Exception:  # noqa: BLE001
+        tracing_client = None
+
+    if tracing_client and tracing_client.enabled:
+        metrics_in = dict((state.get("metrics") or {}))
+        with tracing_client.trace(
+            name="rag_retrieve",
+            run_type="retriever",
+            inputs={
+                "question": (state.get("question") or "")[:2000],
+                "retrieval_mode": state.get("retrieval_mode"),
+                "top_k": state.get("top_k"),
+                "document_ids_count": len(state.get("document_ids") or []),
+            },
+            metadata={
+                "request_id": metrics_in.get("request_id"),
+                "conversation_id": metrics_in.get("conversation_id"),
+                "tenant_id": metrics_in.get("tenant_id") or str(state.get("tenant_id") or ""),
+                "account_id": metrics_in.get("account_id"),
+            },
+            tags=["rag", "langgraph", "retrieval"],
+        ) as span:
+            result = _run_with_retry("retrieve", _retrieve_node, state)
+            citations = result.get("citations") or []
+            metrics_out = result.get("metrics") or {}
+            span.outputs = {
+                "citations_count": len(citations),
+                "query_for_retrieval": (result.get("query_for_retrieval") or "")[:2000],
+                "retrieval_elapsed_sec": metrics_out.get("retrieval_elapsed_sec"),
+            }
+    else:
+        result = _run_with_retry("retrieve", _retrieve_node, state)
+
+    if writer:
+        citations = result.get("citations") or []
+        metrics = result.get("metrics") or {}
+        writer(
+            {
+                "event": "retrieve_done",
+                "query_for_retrieval": (result.get("query_for_retrieval") or "")[:500],
+                "citations_count": len(citations),
+                "retrieval_mode": metrics.get("retrieval_mode") or result.get("retrieval_mode"),
+                "elapsed_sec": metrics.get("retrieval_elapsed_sec"),
+            }
+        )
+
+    return result
 
 
-@task
+@task(retry_policy=_RAG_TASK_RETRY_POLICY)
 def generate_task(state: Dict[str, Any]) -> Dict[str, Any]:
     """
     生成任务 - 使用 Functional API @task 装饰器。
 
     支持重试和超时机制，与原有 _generate_node 逻辑一致。
     """
-    return _run_with_retry("generate", _generate_node, state)
+    writer = None
+    if bool(getattr(settings, "STREAM_WRITER_ENABLED", True)):
+        try:
+            writer = get_stream_writer()
+        except Exception:  # noqa: BLE001
+            writer = None
+
+    if writer:
+        writer(
+            {
+                "event": "generate_start",
+                "structured_output": bool(state.get("structured_output")),
+                "structured_preset": state.get("structured_preset"),
+            }
+        )
+
+    tracing_client = None
+    try:
+        from app.rag.tracing import get_tracing_client
+
+        tracing_client = get_tracing_client()
+    except Exception:  # noqa: BLE001
+        tracing_client = None
+
+    if tracing_client and tracing_client.enabled:
+        metrics_in = dict((state.get("metrics") or {}))
+        with tracing_client.trace(
+            name="rag_generate",
+            run_type="llm",
+            inputs={
+                "question": (state.get("question") or "")[:2000],
+                "structured_output": bool(state.get("structured_output")),
+                "structured_preset": state.get("structured_preset"),
+            },
+            metadata={
+                "request_id": metrics_in.get("request_id"),
+                "conversation_id": metrics_in.get("conversation_id"),
+                "tenant_id": metrics_in.get("tenant_id") or str(state.get("tenant_id") or ""),
+                "account_id": metrics_in.get("account_id"),
+            },
+            tags=["rag", "langgraph", "generation"],
+        ) as span:
+            result = _run_with_retry("generate", _generate_node, state)
+            metrics_out = result.get("metrics") or {}
+            span.outputs = {
+                "answer_chars": len(result.get("answer") or ""),
+                "route": result.get("route"),
+                "model_used": result.get("model_used"),
+                "generation_elapsed_sec": metrics_out.get("generation_elapsed_sec"),
+            }
+    else:
+        result = _run_with_retry("generate", _generate_node, state)
+
+    if writer:
+        metrics = result.get("metrics") or {}
+        writer(
+            {
+                "event": "generate_done",
+                "answer_chars": len(result.get("answer") or ""),
+                "route": result.get("route"),
+                "model_used": result.get("model_used"),
+                "elapsed_sec": metrics.get("generation_elapsed_sec"),
+            }
+        )
+
+    return result
 
 
-@entrypoint(checkpointer=_get_checkpointer())
-def rag_workflow(state: Dict[str, Any]) -> Dict[str, Any]:
+@entrypoint(checkpointer=_get_checkpointer(), store=get_langgraph_store(), context_schema=RAGRuntimeContext)
+def rag_workflow(state: Dict[str, Any], runtime: Runtime[RAGRuntimeContext]) -> Dict[str, Any]:
     """
     RAG 工作流入口点 - 使用 Functional API @entrypoint 装饰器。
 
     执行检索 -> 生成的流程，支持检查点持久化。
     """
     # 执行检索任务
+    metrics = dict(state.get("metrics") or {})
+    if runtime and getattr(runtime, "context", None):
+        ctx = runtime.context
+        if ctx.request_id:
+            metrics["request_id"] = ctx.request_id
+        if ctx.conversation_id:
+            metrics["conversation_id"] = ctx.conversation_id
+        if ctx.tenant_id:
+            metrics["tenant_id"] = ctx.tenant_id
+        if ctx.account_id:
+            metrics["account_id"] = ctx.account_id
+        if ctx.user_role:
+            metrics["user_role"] = ctx.user_role
+    if metrics:
+        state["metrics"] = metrics
+
     state = retrieve_task(state).result()
 
     # 执行生成任务
@@ -665,6 +866,7 @@ def run_rag_workflow_functional(
     *,
     thread_id: Optional[str] = None,
     stream_mode: Optional[str] = None,
+    context: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """
     使用 Functional API 执行 RAG 工作流。
@@ -677,33 +879,134 @@ def run_rag_workflow_functional(
     Returns:
         执行结果状态
     """
-    config = {}
-    if thread_id:
-        config["configurable"] = {"thread_id": thread_id}
+    recursion_limit = max(1, int(getattr(settings, "LANGGRAPH_RECURSION_LIMIT", 25) or 25))
+    config: Dict[str, Any] = {
+        "configurable": {"thread_id": thread_id or f"rag-{uuid4()}"},
+        "recursion_limit": recursion_limit,
+    }
 
     if stream_mode:
         # 流式执行
         result = None
-        for step in rag_workflow.stream(state, config=config, stream_mode=stream_mode):
+        for step in rag_workflow.stream(state, config=config, stream_mode=stream_mode, context=context):
             result = step
         return result or state
     else:
         # 同步执行
-        return rag_workflow.invoke(state, config=config)
+        return rag_workflow.invoke(state, config=config, context=context)
 
 
 def build_rag_graph() -> Any:
     """构建一个最小 RAG 流程图：检索 -> 生成 -> 结束。"""
     graph = StateGraph(RAGState)
 
-    graph.add_node("retrieve", partial(_run_with_retry, "retrieve", _retrieve_node))
-    graph.add_node("generate", partial(_run_with_retry, "generate", _generate_node))
+    graph.add_node(
+        "retrieve",
+        partial(_run_with_retry, "retrieve", _retrieve_node),
+        retry_policy=_RAG_TASK_RETRY_POLICY,
+    )
+    graph.add_node(
+        "generate",
+        partial(_run_with_retry, "generate", _generate_node),
+        retry_policy=_RAG_TASK_RETRY_POLICY,
+    )
     graph.set_entry_point("retrieve")
     graph.add_edge("retrieve", "generate")
     graph.add_edge("generate", END)
 
-    memory = MemorySaver()
-    return graph.compile(checkpointer=memory)
+    checkpointer = get_checkpointer()
+    store = get_langgraph_store()
+    return graph.compile(checkpointer=checkpointer, store=store)
+
+
+def build_rag_state(
+    *,
+    question: str,
+    history: Optional[List[Dict[str, str]]] = None,
+    document_ids: Optional[List[UUID]] = None,
+    tenant_id: Optional[UUID] = None,
+    top_k: int = 5,
+    score_threshold: float = 0.7,
+    retrieval_mode: str = "hybrid",
+    alpha: float = 0.6,
+    enable_weight_rerank: bool = True,
+    vector_weight: float = 0.6,
+    keyword_weight: float = 0.4,
+    mmr_lambda: float = settings.RETRIEVAL_MMR_LAMBDA,
+    enable_reranker: bool = settings.ENABLE_RERANKER,
+    reranker_provider: Optional[str] = settings.RERANKER_PROVIDER,
+    reranker_top_n: int = settings.RERANKER_TOP_N,
+    structured_output: bool = False,
+    structured_preset: Optional[str] = None,
+    prompt_template_id: Optional[UUID] = None,
+    prompt_template_key: Optional[str] = None,
+    prompt_ab_experiment_key: Optional[str] = None,
+    ab_user_key: Optional[str] = None,
+    db: Optional[Any] = None,
+) -> Dict[str, Any]:
+    """Build initial RAG graph state shared by run/stream entrypoints."""
+
+    engine = get_rag_engine()
+    preset_key = (structured_preset or "").lower()
+    format_instructions = ""
+    if structured_output:
+        format_instructions = engine.structured_presets.get(
+            preset_key,
+            (
+                "请仅返回 JSON，结构 "
+                '{"answer": "string", "citations": [{"document_id": "...", "chunk_id": "...", "page_number": null, "relevance_score": 0.0}]}'
+                " 不要输出多余文本。"
+            ),
+        )
+
+    prompt_template_content = None
+    selected_prompt_template_id = None
+    selected_prompt_template_key = None
+    selected_prompt_ab_experiment_key = None
+    selected_prompt_ab_variant = None
+    if db and tenant_id and (prompt_template_id or prompt_template_key or prompt_ab_experiment_key):
+        chosen = resolve_prompt_template(
+            db=db,
+            tenant_id=tenant_id,
+            prompt_template_id=prompt_template_id,
+            template_key=prompt_template_key,
+            ab_experiment_key=prompt_ab_experiment_key,
+            ab_user_key=ab_user_key,
+        )
+        if chosen:
+            prompt_template_content = chosen.content
+            selected_prompt_template_id = str(chosen.id)
+            selected_prompt_template_key = getattr(chosen, "template_key", None)
+            selected_prompt_ab_experiment_key = getattr(chosen, "ab_experiment_key", None)
+            selected_prompt_ab_variant = getattr(chosen, "ab_variant", None)
+            chosen.usage_count += 1
+            db.commit()
+
+    return {
+        "question": question,
+        "history": history or [],
+        "document_ids": document_ids,
+        "tenant_id": tenant_id,
+        "top_k": top_k,
+        "score_threshold": score_threshold,
+        "retrieval_mode": retrieval_mode,
+        "alpha": alpha,
+        "enable_weight_rerank": enable_weight_rerank,
+        "vector_weight": vector_weight,
+        "keyword_weight": keyword_weight,
+        "mmr_lambda": mmr_lambda,
+        "enable_reranker": enable_reranker,
+        "reranker_provider": reranker_provider,
+        "reranker_top_n": reranker_top_n,
+        "format_instructions": format_instructions,
+        "structured_output": bool(structured_output),
+        "structured_preset": structured_preset,
+        "prompt_template_content": prompt_template_content,
+        "prompt_template_id": selected_prompt_template_id,
+        "prompt_template_key": selected_prompt_template_key,
+        "prompt_ab_experiment_key": selected_prompt_ab_experiment_key,
+        "prompt_ab_variant": selected_prompt_ab_variant,
+    }
 
 
 def run_rag_graph(
@@ -714,6 +1017,8 @@ def run_rag_graph(
     top_k: int = 5,
     score_threshold: float = 0.7,
     retrieval_mode: str = "hybrid",
+    thread_id: Optional[str] = None,
+    runtime_context: Optional[Dict[str, Any]] = None,
     alpha: float = 0.6,
     enable_weight_rerank: bool = True,
     vector_weight: float = 0.6,
@@ -797,11 +1102,16 @@ def run_rag_graph(
     use_functional_api = bool(getattr(settings, "LANGGRAPH_USE_FUNCTIONAL_API", True))
 
     if use_functional_api:
-        result = run_rag_workflow_functional(state)
+        result = run_rag_workflow_functional(state, thread_id=thread_id, context=runtime_context)
         logger.debug("RAG workflow executed using Functional API")
     else:
         app = build_rag_graph()
-        result = app.invoke(state)
+        recursion_limit = max(1, int(getattr(settings, "LANGGRAPH_RECURSION_LIMIT", 25) or 25))
+        config = {
+            "configurable": {"thread_id": thread_id or f"rag-{uuid4()}"},
+            "recursion_limit": recursion_limit,
+        }
+        result = app.invoke(state, config=config, context=runtime_context)
 
     return {
         "answer": result.get("answer", ""),
@@ -822,6 +1132,7 @@ def stream_rag_graph(
     score_threshold: float = 0.7,
     retrieval_mode: str = "hybrid",
     thread_id: Optional[str] = None,
+    context: Optional[Dict[str, Any]] = None,
     **kwargs,
 ):
     """
@@ -841,11 +1152,13 @@ def stream_rag_graph(
         **kwargs,
     }
 
-    config = {}
-    if thread_id:
-        config["configurable"] = {"thread_id": thread_id}
+    recursion_limit = max(1, int(getattr(settings, "LANGGRAPH_RECURSION_LIMIT", 25) or 25))
+    config: Dict[str, Any] = {
+        "configurable": {"thread_id": thread_id or f"rag-{uuid4()}"},
+        "recursion_limit": recursion_limit,
+    }
 
-    for step in rag_workflow.stream(state, config=config, stream_mode="updates"):
+    for step in rag_workflow.stream(state, config=config, stream_mode="updates", context=context):
         yield step
 
 
