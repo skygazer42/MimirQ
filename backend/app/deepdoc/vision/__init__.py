@@ -47,14 +47,18 @@ def init_in_out(args):
 
     def pdf_pages(fnm, zoomin=3):
         nonlocal outputs, images
-        with sys.modules[LOCK_KEY_pdfplumber]:
-            pdf = pdfplumber.open(fnm)
-            images = [p.to_image(resolution=72 * zoomin).annotated for i, p in
-                      enumerate(pdf.pages)]
+        pdf = None
+        try:
+            with sys.modules[LOCK_KEY_pdfplumber]:
+                pdf = pdfplumber.open(fnm)
+                images = [p.to_image(resolution=72 * zoomin).annotated for i, p in
+                          enumerate(pdf.pages)]
 
-        for i, page in enumerate(images):
-            outputs.append(os.path.split(fnm)[-1] + f"_{i}.jpg")
-        pdf.close()
+            for i, page in enumerate(images):
+                outputs.append(os.path.split(fnm)[-1] + f"_{i}.jpg")
+        finally:
+            if pdf is not None:
+                pdf.close()
 
     def images_and_outputs(fnm):
         nonlocal outputs, images
@@ -62,9 +66,8 @@ def init_in_out(args):
             pdf_pages(fnm)
             return
         try:
-            fp = open(fnm, 'rb')
-            binary = fp.read()
-            fp.close()
+            with open(fnm, 'rb') as fp:
+                binary = fp.read()
             images.append(Image.open(io.BytesIO(binary)).convert('RGB'))
             outputs.append(os.path.split(fnm)[-1])
         except Exception:
