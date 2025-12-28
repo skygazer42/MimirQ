@@ -5,8 +5,6 @@ Provides token counting and truncation functions using tiktoken.
 Supports cl100k_base encoding (GPT-4, GPT-3.5-turbo, etc.).
 """
 from typing import Any
-
-# Global encoder instance (cl100k_base for GPT-4/3.5-turbo)
 _encoder = None
 
 
