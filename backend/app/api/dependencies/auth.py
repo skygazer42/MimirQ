@@ -1,6 +1,3 @@
-"""
-Simple auth dependency: extract user/account id from header.
-"""
 
 from fastapi import Header, HTTPException
 
