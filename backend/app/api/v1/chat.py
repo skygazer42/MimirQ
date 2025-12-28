@@ -29,7 +29,7 @@ from app.api.schemas.chat import (
 from app.services.document_access import filter_allowed_document_ids, list_accessible_document_ids
 from app.rag.engine import get_rag_engine
 from app.rag.core.text import parse_json_from_text
-from app.services.metrics_logger import log_metrics
+from app.services.metrics_logger import log_metrics, set_metrics_context
 from app.core.config import settings
 from app.api.dependencies.tenant import get_tenant_id
 from app.api.dependencies.auth import get_current_account_id
@@ -194,6 +194,12 @@ async def stream_chat(
         doc_ids_to_use = allowed_doc_ids or []
         request_id = uuid.uuid4()
         metrics_data = {}
+        set_metrics_context(
+            request_id=request_id,
+            tenant_id=tenant_id,
+            conversation_id=conversation_id,
+            account_id=account_id,
+        )
 
         # LangGraph 路径：流式输出阶段事件（custom）+ 状态快照（values）
         if request.rag_config.use_graph:

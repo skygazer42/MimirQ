@@ -1,10 +1,8 @@
 """
 MinerU 文档解析服务
-
 支持两种模式：
 1. MinerU 在线 API：https://mineru.net（返回 Markdown URL）
 2. MinerU 本地服务：返回 ZIP 包（Markdown + images）
-
 两种模式都支持高级 PDF 解析（表格、图片、公式等）
 """
 import requests
@@ -13,7 +11,6 @@ import tempfile
 from pathlib import Path
 from typing import List, Dict, Any, Optional
 from langchain_core.documents import Document
-
 from app.core.config import settings
 from app.parsing.utils.zip_processor import zip_image_processor
 from app.rag.core.logging import get_logger

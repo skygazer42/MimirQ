@@ -1,24 +1,9 @@
 """
 Time Travel Debugging for LangGraph workflows.
-
 Provides mechanisms for:
 - Listing checkpoint history
 - Replaying from specific checkpoints
 - Forking execution with modified state
-
-Usage:
-    from app.rag.checkpointer.time_travel import TimeTravel
-
-    tt = TimeTravel(graph)
-
-    # List all checkpoints for a thread
-    history = tt.get_history(thread_id)
-
-    # Replay from a checkpoint
-    result = tt.replay(thread_id, checkpoint_id)
-
-    # Fork with modified state
-    result = tt.fork(thread_id, checkpoint_id, updates={"topic": "new_topic"})
 """
 
 from __future__ import annotations

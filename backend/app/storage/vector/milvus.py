@@ -1,13 +1,10 @@
 """
-Milvus 向量库服务（LangChain 1.x API 管理）
-
-
+Milvus 向量库服务
 
 提供两种使用模式：
 1. 单例模式 - 用于文档向量存储（固定 collection）
 2. 多实例模式 - 用于 KG 实体/事件（可自定义 collection）
 """
-
 from __future__ import annotations
 
 import logging
@@ -21,7 +18,7 @@ from app.rag.embedding import create_langchain_embeddings_from_config
 logger = logging.getLogger(__name__)
 
 
-# ========= Embedding 初始化 (共享) ==========
+# ========= Embedding 初始化 ==========
 
 def _init_embedding_model():
     """Initialize embedding model using app.rag.embedding module."""

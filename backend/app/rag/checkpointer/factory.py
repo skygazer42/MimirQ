@@ -4,11 +4,8 @@ Checkpointer factory for creating checkpoint savers.
 Provides configuration-based checkpointer selection.
 """
 
-from __future__ import annotations
-
 import logging
 from typing import Optional
-
 from app.rag.checkpointer.sqlite import SqliteSaver
 from app.core.config import settings
 from langgraph.checkpoint.base import BaseCheckpointSaver

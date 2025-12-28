@@ -5,10 +5,8 @@ from typing import List, Optional
 from uuid import UUID
 from sqlalchemy.orm import Session
 from fastapi import HTTPException, status
-
 from app.models.dataset import Dataset, DatasetPermission, DatasetPermissionEnum
 from app.models.tenant import TenantMember
-
 
 EDIT_ROLES = {"owner", "admin", "editor", "dataset_operator"}
 
