@@ -15,7 +15,16 @@ import {
   Zap, FileSearch, Sparkles, Network, CloudCog, AlertCircle, Eye, EyeOff, ScanLine, FileCode
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { settingsApi, type SystemSettings, type SystemStatus, type FeatureFlags } from '@/lib/api-client'
+import { Input } from '@/components/ui/input'
+import {
+  settingsApi,
+  type SystemSettings,
+  type SystemStatus,
+  type FeatureFlags,
+  type ObservabilityConfig,
+  type SafetyConfig,
+  type LangGraphConfig,
+} from '@/lib/api-client'
 import { cn } from '@/lib/utils'
 import { ParserDropdown } from '@/components/ui/parser-dropdown'
 import { ChunkStrategyDropdown } from '@/components/ui/chunk-strategy-dropdown'
@@ -84,6 +93,25 @@ const FEATURE_FLAGS_CONFIG = [
     dependencies: ['MinerU API Token'],
   },
 ]
+
+const DEFAULT_OBSERVABILITY: ObservabilityConfig = {
+  tool_call_log_enabled: false,
+  tool_call_log_include_preview: false,
+  tool_call_log_max_preview_chars: 500,
+  agent_log_enabled: false,
+  agent_log_include_execution_path: false,
+  agent_log_max_preview_chars: 500,
+}
+
+const DEFAULT_SAFETY: SafetyConfig = {
+  pii_redaction_enabled: false,
+  pii_redaction_mask: '[REDACTED]',
+  pii_stream_holdback_chars: 128,
+}
+
+const DEFAULT_LANGGRAPH: LangGraphConfig = {
+  use_subgraphs: false,
+}
 
 export default function SettingsPage() {
   const [providers, setProviders] = useState<ModelProvider[]>(MODEL_PROVIDERS)
@@ -156,6 +184,24 @@ export default function SettingsPage() {
       return editedSettings.feature_flags[key]
     }
     return settings?.feature_flags?.[key] ?? false
+  }
+
+  const updateObservability = (patch: Partial<ObservabilityConfig>) => {
+    const current = (editedSettings.observability || settings?.observability || DEFAULT_OBSERVABILITY) as ObservabilityConfig
+    const next = { ...current, ...patch }
+    setEditedSettings((prev) => ({ ...prev, observability: next }))
+  }
+
+  const updateSafety = (patch: Partial<SafetyConfig>) => {
+    const current = (editedSettings.safety || settings?.safety || DEFAULT_SAFETY) as SafetyConfig
+    const next = { ...current, ...patch }
+    setEditedSettings((prev) => ({ ...prev, safety: next }))
+  }
+
+  const updateLangGraph = (patch: Partial<LangGraphConfig>) => {
+    const current = (editedSettings.langgraph || settings?.langgraph || DEFAULT_LANGGRAPH) as LangGraphConfig
+    const next = { ...current, ...patch }
+    setEditedSettings((prev) => ({ ...prev, langgraph: next }))
   }
 
   // 检查是否有未保存的更改
@@ -547,6 +593,211 @@ export default function SettingsPage() {
                       <p className="text-xs text-gray-400 mt-2">
                         文档分块的目标字符数
                       </p>
+                    </div>
+                  </div>
+                </div>
+              </section>
+
+              {/* 观测与调试 */}
+              <section>
+                <div className="flex items-center justify-between mb-6">
+                  <h2 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+                    <Eye className="h-5 w-5 text-indigo-600" />
+                    观测与调试
+                  </h2>
+                  <div className="flex items-center gap-2 px-3 py-1 bg-indigo-50 text-indigo-700 rounded-full text-xs font-medium border border-indigo-100">
+                    <span>保存后通常可立即生效</span>
+                  </div>
+                </div>
+
+                <div className="bg-white border border-gray-100 rounded-2xl p-6 shadow-sm space-y-8">
+                  {/* Tool call logging */}
+                  <div className="space-y-3">
+                    <div className="flex items-start justify-between gap-4">
+                      <div>
+                        <div className="text-sm font-semibold text-gray-900 flex items-center gap-2">
+                          <FileSearch className="h-4 w-4 text-gray-600" />
+                          Tool Call 日志
+                        </div>
+                        <div className="text-xs text-gray-500 mt-1">
+                          记录工具调用耗时、成功/失败与参数键名（preview 可选，建议配合 PII 脱敏）
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          updateObservability({
+                            tool_call_log_enabled: !((editedSettings.observability?.tool_call_log_enabled ?? settings?.observability?.tool_call_log_enabled) ?? DEFAULT_OBSERVABILITY.tool_call_log_enabled),
+                          })
+                        }
+                        className="shrink-0"
+                      >
+                        {((editedSettings.observability?.tool_call_log_enabled ?? settings?.observability?.tool_call_log_enabled) ?? DEFAULT_OBSERVABILITY.tool_call_log_enabled) ? (
+                          <ToggleRight className="w-10 h-10 text-indigo-600" />
+                        ) : (
+                          <ToggleLeft className="w-10 h-10 text-gray-300 hover:text-gray-400" />
+                        )}
+                      </button>
+                    </div>
+
+                    {((editedSettings.observability?.tool_call_log_enabled ?? settings?.observability?.tool_call_log_enabled) ?? DEFAULT_OBSERVABILITY.tool_call_log_enabled) && (
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-2">
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="checkbox"
+                            checked={((editedSettings.observability?.tool_call_log_include_preview ?? settings?.observability?.tool_call_log_include_preview) ?? DEFAULT_OBSERVABILITY.tool_call_log_include_preview)}
+                            onChange={(e) => updateObservability({ tool_call_log_include_preview: e.target.checked })}
+                            className="h-4 w-4 accent-indigo-600"
+                          />
+                          <span className="text-sm text-gray-700">包含结果 preview</span>
+                        </div>
+                        <div>
+                          <div className="text-xs text-gray-500 mb-1">preview 最大字符数</div>
+                          <Input
+                            type="number"
+                            min={0}
+                            max={5000}
+                            value={((editedSettings.observability?.tool_call_log_max_preview_chars ?? settings?.observability?.tool_call_log_max_preview_chars) ?? DEFAULT_OBSERVABILITY.tool_call_log_max_preview_chars)}
+                            onChange={(e) => updateObservability({ tool_call_log_max_preview_chars: parseInt(e.target.value || '0', 10) })}
+                          />
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Agent/workflow logging */}
+                  <div className="space-y-3 border-t pt-6">
+                    <div className="flex items-start justify-between gap-4">
+                      <div>
+                        <div className="text-sm font-semibold text-gray-900 flex items-center gap-2">
+                          <Settings2 className="h-4 w-4 text-gray-600" />
+                          Workflow 生命周期日志
+                        </div>
+                        <div className="text-xs text-gray-500 mt-1">
+                          记录工作流总耗时、steps、success/fail（可选携带 execution path）
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          updateObservability({
+                            agent_log_enabled: !((editedSettings.observability?.agent_log_enabled ?? settings?.observability?.agent_log_enabled) ?? DEFAULT_OBSERVABILITY.agent_log_enabled),
+                          })
+                        }
+                        className="shrink-0"
+                      >
+                        {((editedSettings.observability?.agent_log_enabled ?? settings?.observability?.agent_log_enabled) ?? DEFAULT_OBSERVABILITY.agent_log_enabled) ? (
+                          <ToggleRight className="w-10 h-10 text-indigo-600" />
+                        ) : (
+                          <ToggleLeft className="w-10 h-10 text-gray-300 hover:text-gray-400" />
+                        )}
+                      </button>
+                    </div>
+
+                    {((editedSettings.observability?.agent_log_enabled ?? settings?.observability?.agent_log_enabled) ?? DEFAULT_OBSERVABILITY.agent_log_enabled) && (
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-2">
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="checkbox"
+                            checked={((editedSettings.observability?.agent_log_include_execution_path ?? settings?.observability?.agent_log_include_execution_path) ?? DEFAULT_OBSERVABILITY.agent_log_include_execution_path)}
+                            onChange={(e) => updateObservability({ agent_log_include_execution_path: e.target.checked })}
+                            className="h-4 w-4 accent-indigo-600"
+                          />
+                          <span className="text-sm text-gray-700">包含 execution path</span>
+                        </div>
+                        <div>
+                          <div className="text-xs text-gray-500 mb-1">错误 preview 最大字符数</div>
+                          <Input
+                            type="number"
+                            min={0}
+                            max={5000}
+                            value={((editedSettings.observability?.agent_log_max_preview_chars ?? settings?.observability?.agent_log_max_preview_chars) ?? DEFAULT_OBSERVABILITY.agent_log_max_preview_chars)}
+                            onChange={(e) => updateObservability({ agent_log_max_preview_chars: parseInt(e.target.value || '0', 10) })}
+                          />
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Safety / PII */}
+                  <div className="space-y-3 border-t pt-6">
+                    <div className="flex items-start justify-between gap-4">
+                      <div>
+                        <div className="text-sm font-semibold text-gray-900 flex items-center gap-2">
+                          <EyeOff className="h-4 w-4 text-gray-600" />
+                          PII 脱敏
+                        </div>
+                        <div className="text-xs text-gray-500 mt-1">
+                          对模型输入/输出与工具调用做脱敏（流式输出会做 holdback 以减少漏出）
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          updateSafety({
+                            pii_redaction_enabled: !((editedSettings.safety?.pii_redaction_enabled ?? settings?.safety?.pii_redaction_enabled) ?? DEFAULT_SAFETY.pii_redaction_enabled),
+                          })
+                        }
+                        className="shrink-0"
+                      >
+                        {((editedSettings.safety?.pii_redaction_enabled ?? settings?.safety?.pii_redaction_enabled) ?? DEFAULT_SAFETY.pii_redaction_enabled) ? (
+                          <ToggleRight className="w-10 h-10 text-indigo-600" />
+                        ) : (
+                          <ToggleLeft className="w-10 h-10 text-gray-300 hover:text-gray-400" />
+                        )}
+                      </button>
+                    </div>
+
+                    {((editedSettings.safety?.pii_redaction_enabled ?? settings?.safety?.pii_redaction_enabled) ?? DEFAULT_SAFETY.pii_redaction_enabled) && (
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-2">
+                        <div>
+                          <div className="text-xs text-gray-500 mb-1">脱敏占位符</div>
+                          <Input
+                            value={editedSettings.safety?.pii_redaction_mask ?? settings?.safety?.pii_redaction_mask ?? DEFAULT_SAFETY.pii_redaction_mask}
+                            onChange={(e) => updateSafety({ pii_redaction_mask: e.target.value })}
+                          />
+                        </div>
+                        <div>
+                          <div className="text-xs text-gray-500 mb-1">流式 holdback 字符数</div>
+                          <Input
+                            type="number"
+                            min={0}
+                            max={2048}
+                            value={editedSettings.safety?.pii_stream_holdback_chars ?? settings?.safety?.pii_stream_holdback_chars ?? DEFAULT_SAFETY.pii_stream_holdback_chars}
+                            onChange={(e) => updateSafety({ pii_stream_holdback_chars: parseInt(e.target.value || '0', 10) })}
+                          />
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* LangGraph */}
+                  <div className="space-y-3 border-t pt-6">
+                    <div className="flex items-start justify-between gap-4">
+                      <div>
+                        <div className="text-sm font-semibold text-gray-900 flex items-center gap-2">
+                          <Network className="h-4 w-4 text-gray-600" />
+                          LangGraph 子图组合（Subgraph）
+                        </div>
+                        <div className="text-xs text-gray-500 mt-1">
+                          将 retrieve/generate 作为子图节点组合（更模块化，便于后续扩展）
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          updateLangGraph({
+                            use_subgraphs: !((editedSettings.langgraph?.use_subgraphs ?? settings?.langgraph?.use_subgraphs) ?? DEFAULT_LANGGRAPH.use_subgraphs),
+                          })
+                        }
+                        className="shrink-0"
+                      >
+                        {((editedSettings.langgraph?.use_subgraphs ?? settings?.langgraph?.use_subgraphs) ?? DEFAULT_LANGGRAPH.use_subgraphs) ? (
+                          <ToggleRight className="w-10 h-10 text-indigo-600" />
+                        ) : (
+                          <ToggleLeft className="w-10 h-10 text-gray-300 hover:text-gray-400" />
+                        )}
+                      </button>
                     </div>
                   </div>
                 </div>

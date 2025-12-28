@@ -10,7 +10,7 @@ Supports multiple vector representations per document:
 This enables decoupling retrieval representations from synthesis content.
 
 Usage:
-    from app.rag.retriever.multi_vector import MultiVectorRetriever
+    from app.rag.retrievers.multi_vector import MultiVectorRetriever
 
     retriever = MultiVectorRetriever(
         vectorstore=my_vectorstore,

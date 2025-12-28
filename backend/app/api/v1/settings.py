@@ -61,6 +61,29 @@ class RAGConfig(BaseModel):
     default_chunk_strategy: str = "langchain_recursive"
 
 
+class ObservabilityConfig(BaseModel):
+    """观测/调试相关配置"""
+    tool_call_log_enabled: bool = False
+    tool_call_log_include_preview: bool = False
+    tool_call_log_max_preview_chars: int = 500
+
+    agent_log_enabled: bool = False
+    agent_log_include_execution_path: bool = False
+    agent_log_max_preview_chars: int = 500
+
+
+class SafetyConfig(BaseModel):
+    """安全/隐私相关配置"""
+    pii_redaction_enabled: bool = False
+    pii_redaction_mask: str = "[REDACTED]"
+    pii_stream_holdback_chars: int = 128
+
+
+class LangGraphConfig(BaseModel):
+    """LangGraph 运行方式配置"""
+    use_subgraphs: bool = False
+
+
 class MinerUConfig(BaseModel):
     """MinerU 配置"""
     api_token: str = ""
@@ -76,6 +99,9 @@ class SystemSettings(BaseModel):
     milvus: MilvusConfig
     rag: RAGConfig
     mineru: MinerUConfig
+    observability: ObservabilityConfig
+    safety: SafetyConfig
+    langgraph: LangGraphConfig
 
 
 class UpdateSettingsRequest(BaseModel):
@@ -86,6 +112,9 @@ class UpdateSettingsRequest(BaseModel):
     milvus: Optional[MilvusConfig] = None
     rag: Optional[RAGConfig] = None
     mineru: Optional[MinerUConfig] = None
+    observability: Optional[ObservabilityConfig] = None
+    safety: Optional[SafetyConfig] = None
+    langgraph: Optional[LangGraphConfig] = None
 
 
 def _parse_bool(value: Any) -> bool:
@@ -187,6 +216,42 @@ def _apply_runtime_settings(env_vars: Dict[str, str], updated_keys: list[str]) -
     if "MINERU_MODEL_VERSION" in updated_keys and "MINERU_MODEL_VERSION" in env_vars:
         settings.MINERU_MODEL_VERSION = env_vars["MINERU_MODEL_VERSION"]
 
+    # Observability / debug toggles
+    if "TOOL_CALL_LOG_ENABLED" in updated_keys and "TOOL_CALL_LOG_ENABLED" in env_vars:
+        settings.TOOL_CALL_LOG_ENABLED = _parse_bool(env_vars["TOOL_CALL_LOG_ENABLED"])
+    if "TOOL_CALL_LOG_INCLUDE_PREVIEW" in updated_keys and "TOOL_CALL_LOG_INCLUDE_PREVIEW" in env_vars:
+        settings.TOOL_CALL_LOG_INCLUDE_PREVIEW = _parse_bool(env_vars["TOOL_CALL_LOG_INCLUDE_PREVIEW"])
+    if "TOOL_CALL_LOG_MAX_PREVIEW_CHARS" in updated_keys and "TOOL_CALL_LOG_MAX_PREVIEW_CHARS" in env_vars:
+        settings.TOOL_CALL_LOG_MAX_PREVIEW_CHARS = _parse_int(
+            env_vars["TOOL_CALL_LOG_MAX_PREVIEW_CHARS"],
+            default=settings.TOOL_CALL_LOG_MAX_PREVIEW_CHARS,
+        )
+
+    if "AGENT_LOG_ENABLED" in updated_keys and "AGENT_LOG_ENABLED" in env_vars:
+        settings.AGENT_LOG_ENABLED = _parse_bool(env_vars["AGENT_LOG_ENABLED"])
+    if "AGENT_LOG_INCLUDE_EXECUTION_PATH" in updated_keys and "AGENT_LOG_INCLUDE_EXECUTION_PATH" in env_vars:
+        settings.AGENT_LOG_INCLUDE_EXECUTION_PATH = _parse_bool(env_vars["AGENT_LOG_INCLUDE_EXECUTION_PATH"])
+    if "AGENT_LOG_MAX_PREVIEW_CHARS" in updated_keys and "AGENT_LOG_MAX_PREVIEW_CHARS" in env_vars:
+        settings.AGENT_LOG_MAX_PREVIEW_CHARS = _parse_int(
+            env_vars["AGENT_LOG_MAX_PREVIEW_CHARS"],
+            default=settings.AGENT_LOG_MAX_PREVIEW_CHARS,
+        )
+
+    # Safety / PII
+    if "PII_REDACTION_ENABLED" in updated_keys and "PII_REDACTION_ENABLED" in env_vars:
+        settings.PII_REDACTION_ENABLED = _parse_bool(env_vars["PII_REDACTION_ENABLED"])
+    if "PII_REDACTION_MASK" in updated_keys and "PII_REDACTION_MASK" in env_vars:
+        settings.PII_REDACTION_MASK = env_vars["PII_REDACTION_MASK"]
+    if "PII_STREAM_HOLDBACK_CHARS" in updated_keys and "PII_STREAM_HOLDBACK_CHARS" in env_vars:
+        settings.PII_STREAM_HOLDBACK_CHARS = _parse_int(
+            env_vars["PII_STREAM_HOLDBACK_CHARS"],
+            default=settings.PII_STREAM_HOLDBACK_CHARS,
+        )
+
+    # LangGraph
+    if "LANGGRAPH_USE_SUBGRAPHS" in updated_keys and "LANGGRAPH_USE_SUBGRAPHS" in env_vars:
+        settings.LANGGRAPH_USE_SUBGRAPHS = _parse_bool(env_vars["LANGGRAPH_USE_SUBGRAPHS"])
+
 
 def read_env_file() -> Dict[str, str]:
     """读取 .env 文件"""
@@ -282,6 +347,22 @@ async def get_settings():
             api_base=settings.MINERU_API_BASE,
             model_version=settings.MINERU_MODEL_VERSION,
         ),
+        observability=ObservabilityConfig(
+            tool_call_log_enabled=settings.TOOL_CALL_LOG_ENABLED,
+            tool_call_log_include_preview=settings.TOOL_CALL_LOG_INCLUDE_PREVIEW,
+            tool_call_log_max_preview_chars=settings.TOOL_CALL_LOG_MAX_PREVIEW_CHARS,
+            agent_log_enabled=settings.AGENT_LOG_ENABLED,
+            agent_log_include_execution_path=settings.AGENT_LOG_INCLUDE_EXECUTION_PATH,
+            agent_log_max_preview_chars=settings.AGENT_LOG_MAX_PREVIEW_CHARS,
+        ),
+        safety=SafetyConfig(
+            pii_redaction_enabled=settings.PII_REDACTION_ENABLED,
+            pii_redaction_mask=settings.PII_REDACTION_MASK,
+            pii_stream_holdback_chars=settings.PII_STREAM_HOLDBACK_CHARS,
+        ),
+        langgraph=LangGraphConfig(
+            use_subgraphs=settings.LANGGRAPH_USE_SUBGRAPHS,
+        ),
     )
 
 
@@ -359,6 +440,40 @@ async def update_settings(request: UpdateSettingsRequest):
             env_vars["MINERU_API_BASE"] = mn.api_base
             env_vars["MINERU_MODEL_VERSION"] = mn.model_version
             updated_keys.extend(["MINERU_API_BASE", "MINERU_MODEL_VERSION"])
+
+        # 更新观测/调试配置
+        if request.observability:
+            ob = request.observability
+            env_vars["TOOL_CALL_LOG_ENABLED"] = str(ob.tool_call_log_enabled).lower()
+            env_vars["TOOL_CALL_LOG_INCLUDE_PREVIEW"] = str(ob.tool_call_log_include_preview).lower()
+            env_vars["TOOL_CALL_LOG_MAX_PREVIEW_CHARS"] = str(int(ob.tool_call_log_max_preview_chars or 0))
+            env_vars["AGENT_LOG_ENABLED"] = str(ob.agent_log_enabled).lower()
+            env_vars["AGENT_LOG_INCLUDE_EXECUTION_PATH"] = str(ob.agent_log_include_execution_path).lower()
+            env_vars["AGENT_LOG_MAX_PREVIEW_CHARS"] = str(int(ob.agent_log_max_preview_chars or 0))
+            updated_keys.extend(
+                [
+                    "TOOL_CALL_LOG_ENABLED",
+                    "TOOL_CALL_LOG_INCLUDE_PREVIEW",
+                    "TOOL_CALL_LOG_MAX_PREVIEW_CHARS",
+                    "AGENT_LOG_ENABLED",
+                    "AGENT_LOG_INCLUDE_EXECUTION_PATH",
+                    "AGENT_LOG_MAX_PREVIEW_CHARS",
+                ]
+            )
+
+        # 更新安全/隐私配置
+        if request.safety:
+            sf = request.safety
+            env_vars["PII_REDACTION_ENABLED"] = str(sf.pii_redaction_enabled).lower()
+            env_vars["PII_REDACTION_MASK"] = sf.pii_redaction_mask
+            env_vars["PII_STREAM_HOLDBACK_CHARS"] = str(int(sf.pii_stream_holdback_chars or 0))
+            updated_keys.extend(["PII_REDACTION_ENABLED", "PII_REDACTION_MASK", "PII_STREAM_HOLDBACK_CHARS"])
+
+        # 更新 LangGraph 配置
+        if request.langgraph:
+            lg = request.langgraph
+            env_vars["LANGGRAPH_USE_SUBGRAPHS"] = str(lg.use_subgraphs).lower()
+            updated_keys.append("LANGGRAPH_USE_SUBGRAPHS")
 
         write_env_file(env_vars)
         try:
