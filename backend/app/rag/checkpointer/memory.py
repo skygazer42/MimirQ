@@ -1,8 +1,8 @@
 """
-In-memory checkpoint saver for workflow state.
+内存检查点保存器（用于工作流状态）
 
-Non-persistent checkpointing suitable for development
-and testing. Data is lost on application restart.
+非持久化检查点，适用于开发和测试环境。
+应用重启后数据会丢失。
 """
 
 import logging

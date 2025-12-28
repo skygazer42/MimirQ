@@ -1,5 +1,7 @@
 """
-Tenant models for multi-tenant isolation.
+多租户隔离数据模型
+
+定义租户、租户成员等数据表结构，实现多租户数据隔离。
 """
 from datetime import datetime
 import uuid

@@ -1,9 +1,10 @@
 """
-Time Travel Debugging for LangGraph workflows.
-Provides mechanisms for:
-- Listing checkpoint history
-- Replaying from specific checkpoints
-- Forking execution with modified state
+LangGraph 工作流的时间旅行调试模块
+
+提供以下功能：
+- 列出检查点历史记录
+- 从特定检查点重放执行
+- 使用修改后的状态分叉执行
 """
 
 from __future__ import annotations

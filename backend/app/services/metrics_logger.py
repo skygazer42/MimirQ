@@ -1,14 +1,14 @@
 """
-Lightweight JSONL metrics logger (optional).
+轻量级 JSONL 指标日志记录器（可选）
 
-Controlled by:
-- ENABLE_METRICS_LOG
-- METRICS_LOG_PATH
+通过以下配置项控制：
+- ENABLE_METRICS_LOG：是否启用日志记录
+- METRICS_LOG_PATH：日志文件路径
 
-Features:
-- Non-blocking: writes happen on a background thread (bounded queue; drops on overload)
-- Enrichment: adds timestamp/host/pid/thread + contextvars (request_id/tenant_id/...) when available
-- Safety: best-effort PII redaction when `settings.PII_REDACTION_ENABLED` is on
+功能特性：
+- 非阻塞：在后台线程中写入（有界队列；过载时丢弃）
+- 数据增强：添加时间戳/主机/PID/线程 + 上下文变量（request_id/tenant_id/...）当可用时
+- 安全性：当 `settings.PII_REDACTION_ENABLED` 开启时，尽力而为的 PII 脱敏
 """
 
 from __future__ import annotations

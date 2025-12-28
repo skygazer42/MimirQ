@@ -1,5 +1,7 @@
 """
-Document related database models with multi-tenant support.
+文档相关数据库模型（支持多租户）
+
+定义文档、文档切片等数据表结构。
 """
 import uuid
 from sqlalchemy import Column, String, Integer, BigInteger, DateTime, Text, ForeignKey

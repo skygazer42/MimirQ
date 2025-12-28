@@ -1,5 +1,7 @@
 """
-Health check endpoints.
+健康检查端点
+
+提供系统健康状态检查接口，用于前端和开发工具监控。
 """
 
 from __future__ import annotations

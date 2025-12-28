@@ -1,5 +1,7 @@
 """
-Pydantic schemas for datasets.
+知识库相关 Pydantic Schema
+
+定义知识库的创建、更新、查询等接口的数据模型。
 """
 from typing import List, Optional
 from uuid import UUID

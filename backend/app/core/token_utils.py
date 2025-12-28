@@ -1,8 +1,8 @@
 """
-Token utilities.
+Token 工具模块
 
-Provides token counting and truncation functions using tiktoken.
-Supports cl100k_base encoding (GPT-4, GPT-3.5-turbo, etc.).
+提供基于 tiktoken 的 token 计数和截断功能。
+支持 cl100k_base 编码（GPT-4、GPT-3.5-turbo 等）。
 """
 from typing import Any
 _encoder = None

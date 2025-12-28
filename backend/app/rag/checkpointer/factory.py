@@ -1,7 +1,7 @@
 """
-Checkpointer factory for creating checkpoint savers.
+检查点保存器工厂模块
 
-Provides configuration-based checkpointer selection.
+提供基于配置的检查点保存器选择功能。
 """
 
 import logging

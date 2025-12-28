@@ -1,5 +1,7 @@
 """
-RAGAS evaluation schemas.
+RAGAS 评测相关 Schema
+
+定义评测任务和评测结果的数据模型。
 """
 
 from datetime import datetime

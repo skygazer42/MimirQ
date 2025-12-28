@@ -1,5 +1,7 @@
 """
-RAGAS evaluation run models (tenant isolated).
+RAGAS 评测运行数据模型（支持多租户隔离）
+
+定义评测任务、评测结果和回归测试相关的数据库模型。
 """
 
 import uuid

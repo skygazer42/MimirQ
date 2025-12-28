@@ -1,11 +1,11 @@
 """
-Application configuration management.
+应用配置管理模块
 
-Provides centralized configuration with validation for:
-- Security settings (SECRET_KEY, credentials)
-- LLM/Embedding providers
-- RAG pipeline parameters
-- Storage backends
+提供集中式配置管理，包含以下功能：
+- 安全设置（SECRET_KEY、凭证等）
+- LLM/Embedding 提供商配置
+- RAG 流水线参数
+- 存储后端配置
 """
 from typing import Literal, Optional
 import os
