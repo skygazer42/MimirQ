@@ -5,8 +5,6 @@ Non-persistent checkpointing suitable for development
 and testing. Data is lost on application restart.
 """
 
-from __future__ import annotations
-
 import logging
 import threading
 from collections import defaultdict

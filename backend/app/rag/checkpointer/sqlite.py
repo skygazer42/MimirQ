@@ -5,8 +5,6 @@ This is a lightweight alternative to `langgraph-checkpoint-sqlite` for local/dev
 usage, and is compatible with LangGraph's `BaseCheckpointSaver` interface.
 """
 
-from __future__ import annotations
-
 import sqlite3
 import threading
 from pathlib import Path

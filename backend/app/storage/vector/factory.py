@@ -2,8 +2,6 @@
 Vector store 路由器：支持多后端占位，当前实现 Milvus，其他后端留作扩展。
 在配置 VECTOR_BACKEND 切换，确保知识库检索路径集中管理。
 """
-from __future__ import annotations
-
 from typing import List, Dict, Any, Optional, Tuple
 from uuid import UUID
 import math

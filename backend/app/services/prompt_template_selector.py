@@ -3,7 +3,6 @@ PromptTemplate 选择器：支持
 - 指定 prompt_template_id
 - 按 template_key 选择最新可用版本
 - A/B 实验（按 ab_experiment_key + 权重）做稳定分流
-
 该模块用于 chat/RAG 引擎侧在运行时决定“到底用哪个模板”，并把结果写入 message_metadata，
 以便评测闭环（对比版本/A-B、关联用户反馈、回归集等）。
 """

@@ -1,8 +1,6 @@
 """
 MinIO 对象存储服务 - 用于存储文档解析中提取的图片
 """
-from __future__ import annotations
-
 import io
 from typing import Optional, BinaryIO, Union
 import json

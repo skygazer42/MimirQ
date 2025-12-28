@@ -1,37 +1,16 @@
 """
 Prebuilt Agent Integration for LangGraph.
 
-Provides integration with LangGraph's prebuilt agents:
-- create_react_agent: ReAct-style agent with tool calling
-- ToolNode: Node for executing tools
-- tools_condition: Routing based on tool calls
-
-Usage:
-    from app.rag.agents.prebuilt import create_rag_agent, ToolNode
-
-    # Create a RAG agent with tools
-    agent = create_rag_agent(
-        model="openai:gpt-4",
-        tools=[search_tool, retrieve_tool],
-        system_prompt="You are a helpful RAG assistant",
-    )
-
-    # Run the agent
-    result = await agent.ainvoke({"messages": [HumanMessage(content="query")]})
 """
-
-from __future__ import annotations
 
 import logging
 from typing import Any, Callable, Dict, List, Optional, Sequence, Union
-
 from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import BaseMessage, HumanMessage, SystemMessage
 from langchain_core.tools import BaseTool
 from langgraph.graph.state import CompiledStateGraph
 from langgraph.prebuilt import create_react_agent, ToolNode
 from langgraph.prebuilt.tool_node import tools_condition
-
 from app.core.config import settings
 from app.rag.checkpointer.factory import get_checkpointer
 
