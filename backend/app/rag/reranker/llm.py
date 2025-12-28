@@ -18,7 +18,7 @@ from typing import Any
 import httpx
 
 from app.core.config import settings
-from app.models.dify import Document
+from app.models.chunk import Document
 from app.rag.core.http import httpx_trust_env
 from app.rag.reranker.base import DocumentReranker
 

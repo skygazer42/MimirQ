@@ -1,6 +1,7 @@
 """
-Dify document models.
-Integrated from third_party/dify/models/document.py and entities/
+Chunk and document models for RAG system.
+
+Provides data structures for document chunks, transformers, and QA pairs.
 """
 from abc import ABC, abstractmethod
 from collections.abc import Sequence
@@ -23,7 +24,7 @@ class Document(BaseModel):
     page_content: str
     vector: list[float] | None = None
     metadata: dict = Field(default_factory=dict)
-    provider: str | None = "dify"
+    provider: str | None = None
     children: list[ChildDocument] | None = None
 
 

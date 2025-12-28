@@ -776,18 +776,18 @@ class DocumentReranker(BaseReranker):
         
         将 RerankCandidate 转换为 Document 对象，调用 run() 方法。
         """
-        from app.models.dify import Document as DifyDocument
+        from app.models.chunk import Document as ChunkDocument
         
         if not candidates:
             return RerankResult(ordered_ids=[], score_map={})
         
         # 转换为 Document 对象
-        docs: list[DifyDocument] = []
+        docs: list[ChunkDocument] = []
         for c in candidates:
             meta = dict(c.metadata or {})
             meta.setdefault("candidate_id", c.id)
             docs.append(
-                DifyDocument(
+                ChunkDocument(
                     page_content=c.text,
                     metadata=meta,
                     provider="reranker"

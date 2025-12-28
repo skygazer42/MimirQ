@@ -17,7 +17,7 @@ from typing import (
     Union,
 )
 
-from app.models.dify import BaseDocumentTransformer, Document
+from app.models.chunk import BaseDocumentTransformer, Document
 
 logger = logging.getLogger(__name__)
 
