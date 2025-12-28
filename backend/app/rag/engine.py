@@ -664,6 +664,121 @@ class RAGEngine:
                 "data": citations
             }
 
+            # Step 1.5: 无召回/低证据拒答（可选）
+            abstain_enabled = bool(settings.RAG_ABSTAIN_ENABLED)
+            abstain_triggered = False
+            abstain_reason: str | None = None
+            top_rel = 0.0
+            if citations:
+                try:
+                    top_rel = max(float(c.get("relevance_score", 0.0) or 0.0) for c in citations)
+                except Exception:
+                    top_rel = 0.0
+
+            if abstain_enabled:
+                min_citations = max(0, int(settings.RAG_ABSTAIN_MIN_CITATIONS or 0))
+                min_top_rel = float(settings.RAG_ABSTAIN_MIN_TOP_RELEVANCE_SCORE or 0.0)
+
+                if min_citations > 0 and len(citations) < min_citations:
+                    abstain_triggered = True
+                    abstain_reason = "citations_lt_min"
+                elif min_top_rel > 0 and top_rel < min_top_rel:
+                    abstain_triggered = True
+                    abstain_reason = "top_relevance_lt_min"
+
+            if abstain_triggered:
+                abstain_message = '根据现有资料无法回答该问题。你可以补充上传相关文档，或缩小问题范围后再问。'
+
+                structured_data = None
+                structured_parse_meta = {"ok": False, "method": None, "error": None}
+                full_response = abstain_message
+
+                if structured_output:
+                    preset_key = (structured_preset or "").lower()
+                    structured_citations: List[Dict[str, Any]] = []
+                    for c in citations[: max(0, int(top_k or 0))] if citations else []:
+                        structured_citations.append(
+                            {
+                                "document_id": c.get("document_id"),
+                                "chunk_id": c.get("chunk_id"),
+                                "page_number": c.get("page_number"),
+                                "relevance_score": c.get("relevance_score"),
+                            }
+                        )
+                    payload: Dict[str, Any] = {"answer": abstain_message, "citations": structured_citations}
+                    if preset_key == "faq":
+                        payload["qa_pairs"] = []
+                    elif preset_key == "summary":
+                        payload["bullets"] = []
+                        payload["summary"] = ""
+                    elif preset_key == "action_items":
+                        payload["actions"] = []
+                    structured_data = payload
+                    structured_parse_meta = {"ok": True, "method": "abstain", "error": None}
+                    full_response = json.dumps(payload, ensure_ascii=False)
+
+                # 让前端/DB 有内容可保存
+                yield {"type": "token", "data": {"content": full_response}}
+
+                t_total = time.time() - t_all_start
+                done_payload = {
+                    "type": "done",
+                    "data": {
+                        "conversation_id": str(conversation_id) if conversation_id else None,
+                        "total_tokens": len(full_response),
+                        "citations_count": len(citations),
+                        "model_used": getattr(llm, "model_name", None) or getattr(llm, "model", None),
+                        "route": model_route,
+                        "retrieval_mode": request_retrieval_mode,
+                        "vector_backend": settings.VECTOR_BACKEND,
+                        "metrics": {
+                            "elapsed_sec": round(t_total, 3),
+                            "retrieval_elapsed_sec": round(retrieval_elapsed, 3),
+                            "generation_elapsed_sec": 0.0,
+                            "retrieval_mode": request_retrieval_mode,
+                            "retrieval_mode_requested": requested_retrieval_mode,
+                            "retrieval_mode_auto_routed": bool(retrieval_mode_routed),
+                            "vector_backend": settings.VECTOR_BACKEND,
+                            "model_route": model_route,
+                            "top_k": top_k,
+                            "docs_returned": len(docs),
+                            "distinct_documents": len({c.get("document_id") for c in citations if c.get("document_id")}),
+                            "history_chars": len(history_text or ""),
+                            "context_chars": 0,
+                            "llm_max_retries": settings.LLM_MAX_RETRIES,
+                            "abstain_enabled": bool(abstain_enabled),
+                            "abstain_triggered": True,
+                            "abstain_reason": abstain_reason,
+                            "abstain_min_citations": int(settings.RAG_ABSTAIN_MIN_CITATIONS or 0),
+                            "abstain_min_top_relevance_score": float(settings.RAG_ABSTAIN_MIN_TOP_RELEVANCE_SCORE or 0.0),
+                            "top_relevance_score": round(float(top_rel or 0.0), 3),
+                            "structured_parse_ok": bool(structured_parse_meta.get("ok")),
+                            "structured_parse_method": structured_parse_meta.get("method"),
+                            "structured_parse_error": structured_parse_meta.get("error"),
+                            "structured_type": type(structured_data).__name__ if structured_data is not None else None,
+                            "structured_preset": structured_preset,
+                        },
+                        "structured": bool(structured_data),
+                        "structured_data": structured_data,
+                    },
+                }
+                yield done_payload
+
+                log_metrics(
+                    {
+                        "event": "rag_done",
+                        "conversation_id": str(conversation_id) if conversation_id else None,
+                        "tenant_id": str(tenant_id) if tenant_id else None,
+                        "vector_backend": settings.VECTOR_BACKEND,
+                        "retrieval_mode": request_retrieval_mode,
+                        "route": model_route,
+                        "model_used": getattr(llm, "model_name", None) or getattr(llm, "model", None),
+                        "metrics": done_payload["data"]["metrics"],
+                        "request_id": request_id,
+                    }
+                )
+                return
+
             # Step 2: 额外召回 KG 事件（可选）
             kg_context = ""
             if settings.KG_ENABLED and settings.KG_CHAT_ENABLED and tenant_id and document_ids:

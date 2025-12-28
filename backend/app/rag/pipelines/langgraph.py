@@ -10,6 +10,7 @@ from __future__ import annotations
 from typing import Any, Dict, List, Optional
 from uuid import UUID
 
+import json
 from langchain_core.documents import Document
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.prompts import ChatPromptTemplate
@@ -372,10 +373,113 @@ def _retrieve_node(state: RAGState) -> RAGState:
     metrics["decompose_parse_ok"] = bool(decompose_parse_meta.get("ok"))
     metrics["decompose_parse_method"] = decompose_parse_meta.get("method")
     metrics["decompose_parse_error"] = decompose_parse_meta.get("error")
-    return {**state, "query_for_retrieval": query_for_retrieval, "docs": docs, "citations": citations, "metrics": metrics}
+
+    # Grounding guard: abstain when evidence is weak/empty.
+    abstain_enabled = bool(settings.RAG_ABSTAIN_ENABLED)
+    abstain_triggered = False
+    abstain_reason: str | None = None
+    top_rel = 0.0
+    if citations:
+        try:
+            top_rel = max(float(c.get("relevance_score", 0.0) or 0.0) for c in citations)
+        except Exception:
+            top_rel = 0.0
+
+    if abstain_enabled:
+        min_citations = max(0, int(settings.RAG_ABSTAIN_MIN_CITATIONS or 0))
+        min_top_rel = float(settings.RAG_ABSTAIN_MIN_TOP_RELEVANCE_SCORE or 0.0)
+        if min_citations > 0 and len(citations) < min_citations:
+            abstain_triggered = True
+            abstain_reason = "citations_lt_min"
+        elif min_top_rel > 0 and top_rel < min_top_rel:
+            abstain_triggered = True
+            abstain_reason = "top_relevance_lt_min"
+
+    metrics["abstain_enabled"] = bool(abstain_enabled)
+    metrics["abstain_triggered"] = bool(abstain_triggered)
+    metrics["abstain_reason"] = abstain_reason
+    metrics["abstain_min_citations"] = int(settings.RAG_ABSTAIN_MIN_CITATIONS or 0)
+    metrics["abstain_min_top_relevance_score"] = float(settings.RAG_ABSTAIN_MIN_TOP_RELEVANCE_SCORE or 0.0)
+    metrics["top_relevance_score"] = round(float(top_rel or 0.0), 3)
+
+    return {
+        **state,
+        "query_for_retrieval": query_for_retrieval,
+        "docs": docs,
+        "citations": citations,
+        "metrics": metrics,
+        "abstain_triggered": bool(abstain_triggered),
+        "abstain_reason": abstain_reason,
+    }
 
 
 def _generate_node(state: RAGState) -> RAGState:
+    # Grounding guard: retrieval already decided to abstain, skip generation.
+    if bool(state.get("abstain_triggered")):
+        engine = get_rag_engine()
+        llm, route, reason = engine._select_llm(state["question"], state.get("history"))  # type: ignore[attr-defined]
+
+        abstain_message = "根据现有资料无法回答该问题。你可以补充上传相关文档，或缩小问题范围后再问。"
+        answer = abstain_message
+        if bool(state.get("structured_output")):
+            preset_key = (state.get("structured_preset") or "").lower()
+            citations = state.get("citations") or []
+            top_k = int(state.get("top_k", settings.RETRIEVAL_TOP_K) or settings.RETRIEVAL_TOP_K or 5)
+            structured_citations: List[Dict[str, Any]] = []
+            for c in citations[: max(0, int(top_k or 0))]:
+                structured_citations.append(
+                    {
+                        "document_id": c.get("document_id"),
+                        "chunk_id": c.get("chunk_id"),
+                        "page_number": c.get("page_number"),
+                        "relevance_score": c.get("relevance_score"),
+                    }
+                )
+            payload: Dict[str, Any] = {"answer": abstain_message, "citations": structured_citations}
+            if preset_key == "faq":
+                payload["qa_pairs"] = []
+            elif preset_key == "summary":
+                payload["bullets"] = []
+                payload["summary"] = ""
+            elif preset_key == "action_items":
+                payload["actions"] = []
+            answer = json.dumps(payload, ensure_ascii=False)
+
+        metrics = dict(state.get("metrics") or {})
+        metrics["generation_elapsed_sec"] = 0.0
+        metrics["context_evidence_enabled"] = bool(settings.RAG_CONTEXT_EVIDENCE_ENABLED)
+        metrics["context_evidence_max_sentences_per_chunk"] = (
+            int(settings.RAG_CONTEXT_EVIDENCE_MAX_SENTENCES_PER_CHUNK or 0) if bool(settings.RAG_CONTEXT_EVIDENCE_ENABLED) else None
+        )
+        metrics["context_evidence_min_sentence_chars"] = (
+            int(settings.RAG_CONTEXT_EVIDENCE_MIN_SENTENCE_CHARS or 0) if bool(settings.RAG_CONTEXT_EVIDENCE_ENABLED) else None
+        )
+
+        base = 0.0
+        base += float(metrics.get("retrieval_elapsed_sec", 0.0) or 0.0)
+        base += float(metrics.get("rewrite_elapsed_sec", 0.0) or 0.0)
+        base += float(metrics.get("multi_query_elapsed_sec", 0.0) or 0.0)
+        base += float(metrics.get("hyde_elapsed_sec", 0.0) or 0.0)
+        base += float(metrics.get("decompose_elapsed_sec", 0.0) or 0.0)
+        metrics["elapsed_sec"] = round(base, 3)
+
+        metrics["model_route"] = route
+        metrics["model_used"] = getattr(llm, "model_name", None) or getattr(llm, "model", None)
+        metrics["llm_max_retries"] = settings.LLM_MAX_RETRIES
+        metrics["prompt_template_id"] = state.get("prompt_template_id")
+        metrics["prompt_template_key"] = state.get("prompt_template_key")
+        metrics["prompt_ab_experiment_key"] = state.get("prompt_ab_experiment_key")
+        metrics["prompt_ab_variant"] = state.get("prompt_ab_variant")
+
+        return {
+            **state,
+            "answer": answer,
+            "route": route,
+            "model_used": getattr(llm, "model_name", None) or getattr(llm, "model", None),
+            "routing_reason": reason,
+            "metrics": metrics,
+        }
+
     engine = get_rag_engine()
     llm, route, reason = engine._select_llm(state["question"], state.get("history"))  # type: ignore[attr-defined]
     prompt_obj = engine.prompt_template
@@ -565,6 +669,7 @@ def run_rag_graph(
         "reranker_top_n": reranker_top_n,
         "format_instructions": format_instructions,
         "structured_output": bool(structured_output),
+        "structured_preset": structured_preset,
         "prompt_template_content": prompt_template_content,
         "prompt_template_id": selected_prompt_template_id,
         "prompt_template_key": selected_prompt_template_key,

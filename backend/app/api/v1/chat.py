@@ -27,6 +27,7 @@ from app.api.schemas.chat import (
 )
 from app.services.document_access import filter_allowed_document_ids, list_accessible_document_ids
 from app.rag.engine import get_rag_engine
+from app.rag.core.text import parse_json_from_text
 from app.services.metrics_logger import log_metrics
 from app.core.config import settings
 from app.api.dependencies.tenant import get_tenant_id
@@ -235,6 +236,20 @@ async def stream_chat(
                 "vector_backend": settings.VECTOR_BACKEND,
                 "elapsed_sec": None,
             }
+            metrics_data = dict(metrics_data or {})
+            retrieval_mode_used = metrics_data.get("retrieval_mode") or request.rag_config.get("retrieval_mode", "hybrid")
+            vector_backend_used = metrics_data.get("vector_backend") or settings.VECTOR_BACKEND
+
+            structured_data = None
+            structured_parse_meta = {"ok": False, "method": None, "error": None}
+            if request.structured_output:
+                structured_data, structured_parse_meta = parse_json_from_text(full_response)
+                metrics_data["structured_parse_ok"] = bool(structured_parse_meta.get("ok"))
+                metrics_data["structured_parse_method"] = structured_parse_meta.get("method")
+                metrics_data["structured_parse_error"] = structured_parse_meta.get("error")
+                metrics_data["structured_type"] = type(structured_data).__name__ if structured_data is not None else None
+                metrics_data["structured_preset"] = request.structured_preset
+
             done_payload = {
                 "type": "done",
                 "data": {
@@ -243,11 +258,11 @@ async def stream_chat(
                     "citations_count": len(citations_data),
                     "model_used": graph_result.get("model_used"),
                     "route": graph_result.get("route"),
-                    "retrieval_mode": request.rag_config.get('retrieval_mode', 'hybrid'),
-                    "vector_backend": settings.VECTOR_BACKEND,
+                    "retrieval_mode": retrieval_mode_used,
+                    "vector_backend": vector_backend_used,
                     "metrics": metrics_data,
-                    "structured": False,
-                    "structured_data": None,
+                    "structured": bool(structured_parse_meta.get("ok")) and structured_data is not None,
+                    "structured_data": structured_data,
                 },
                 "request_id": str(request_id),
             }
@@ -257,8 +272,8 @@ async def stream_chat(
                     "event": "rag_done",
                     "conversation_id": str(conversation_id) if conversation_id else None,
                     "tenant_id": str(tenant_id) if tenant_id else None,
-                    "vector_backend": settings.VECTOR_BACKEND,
-                    "retrieval_mode": request.rag_config.get('retrieval_mode', 'hybrid'),
+                    "vector_backend": vector_backend_used,
+                    "retrieval_mode": retrieval_mode_used,
                     "route": graph_result.get("route"),
                     "model_used": graph_result.get("model_used"),
                     "metrics": metrics_data,

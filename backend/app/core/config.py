@@ -100,6 +100,10 @@ class Settings(BaseSettings):
     RAG_CONTEXT_EVIDENCE_ENABLED: bool = False
     RAG_CONTEXT_EVIDENCE_MAX_SENTENCES_PER_CHUNK: int = 6
     RAG_CONTEXT_EVIDENCE_MIN_SENTENCE_CHARS: int = 10
+    # Grounding guard: abstain when evidence is weak/empty.
+    RAG_ABSTAIN_ENABLED: bool = False
+    RAG_ABSTAIN_MIN_CITATIONS: int = 1
+    RAG_ABSTAIN_MIN_TOP_RELEVANCE_SCORE: float = 0.0  # 0 disables
     USE_LANGGRAPH_PIPELINE: bool = False
     RAG_GRAPH_MAX_RETRIES: int = 2
     RAG_GRAPH_TIMEOUT_SEC: int = 20
