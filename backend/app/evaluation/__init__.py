@@ -1,16 +1,21 @@
 """
-评估模块
+DEPRECATED: This module has been moved to app.rag.evaluation
 
-提供 RAG 系统评估功能。
-
-主要组件：
-- ragas: RAGAS 评估框架
+Please update your imports to use the new location:
+    from app.rag.evaluation import run_conversation_ragas_evaluation, run_regression_ragas_evaluation
 """
 
-from app.evaluation.ragas import run_conversation_ragas_evaluation, run_regression_ragas_evaluation
+import warnings
+warnings.warn(
+    "app.evaluation is deprecated. Use app.rag.evaluation instead.",
+    DeprecationWarning,
+    stacklevel=2
+)
+
+# Re-export for backward compatibility
+from app.rag.evaluation.ragas import run_conversation_ragas_evaluation, run_regression_ragas_evaluation
 
 __all__ = [
     "run_conversation_ragas_evaluation",
     "run_regression_ragas_evaluation",
 ]
-

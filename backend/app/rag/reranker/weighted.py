@@ -115,7 +115,7 @@ class WeightedReranker(DocumentReranker):
 
     def _calculate_keyword_score(self, query: str, documents: list[Document]) -> list[float]:
         """计算基于 TF-IDF 的关键词相似度分数"""
-        from app.governance.keyword import JiebaKeywordTableHandler
+        from app.rag.preprocessing.keyword import JiebaKeywordTableHandler
 
         keyword_table_handler = JiebaKeywordTableHandler()
         query_keywords = keyword_table_handler.extract_keywords(query, None)

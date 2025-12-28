@@ -1,18 +1,10 @@
 """
-DEPRECATED: This module has been moved to app.rag.preprocessing
+RAG Preprocessing module.
 
-Please update your imports to use the new location:
-    from app.rag.preprocessing import clean_markdown, GovernanceProcessor, etc.
+Provides text cleaning and preprocessing utilities for RAG workflows.
+Merged from app/governance/.
 """
 
-import warnings
-warnings.warn(
-    "app.governance is deprecated. Use app.rag.preprocessing instead.",
-    DeprecationWarning,
-    stacklevel=2
-)
-
-# Re-export for backward compatibility
 from app.rag.preprocessing.cleaning import clean_markdown, CleaningResult, RegexRule
 from app.rag.preprocessing.processor import GovernanceProcessor, GovernanceStats, governance_processor
 from app.rag.preprocessing.rules import DEFAULT_MARKDOWN_RULES

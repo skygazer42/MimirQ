@@ -26,7 +26,7 @@ from app.services.pipeline_config import (
     parse_pipeline_from_metadata,
     resolve_pipeline_options,
 )
-from app.governance.processor import governance_processor, GovernanceStats
+from app.rag.preprocessing.processor import governance_processor, GovernanceStats
 from app.rag.kg.pipeline import extract_events
 from app.parsing.routing import route_pdf_backend
 from app.rag.core.logging import get_logger
