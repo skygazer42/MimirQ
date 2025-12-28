@@ -129,9 +129,9 @@ class DoclingParser:
 
         try:
             return self._parse_with_docling(file_path)
-        except ImportError:
-            logger.warning("Docling not available, falling back to basic parsing")
-            return self._fallback_parse(file_path)
+        except Exception as e:
+            logger.error("Docling parsing failed: %s", e)
+            raise
 
     def _parse_with_docling(self, file_path: Path) -> List[Document]:
         """Parse using Docling library."""
@@ -275,117 +275,6 @@ class DoclingParser:
             lines.append("\t".join(str(cell) for cell in row))
 
         return "\n".join(lines)
-
-    def _fallback_parse(self, file_path: Path) -> List[Document]:
-        """Fallback parsing when Docling is not available."""
-        ext = file_path.suffix.lower()
-
-        if ext == ".pdf":
-            return self._fallback_pdf(file_path)
-        elif ext in {".docx", ".pptx"}:
-            return self._fallback_office(file_path)
-        elif ext in {".html", ".md"}:
-            return self._fallback_text(file_path)
-        else:
-            return self._fallback_text(file_path)
-
-    def _fallback_pdf(self, file_path: Path) -> List[Document]:
-        """Fallback PDF parsing using PyMuPDF."""
-        try:
-            import fitz  # PyMuPDF
-
-            doc = fitz.open(str(file_path))
-            documents = []
-
-            for page_num in range(len(doc)):
-                if self.max_pages and page_num >= self.max_pages:
-                    break
-
-                page = doc[page_num]
-                text = page.get_text()
-
-                if text.strip():
-                    documents.append(Document(
-                        page_content=text,
-                        metadata={
-                            "source": str(file_path),
-                            "filename": file_path.name,
-                            "page": page_num + 1,
-                            "parser": "pymupdf_fallback",
-                        },
-                    ))
-
-            doc.close()
-            return documents
-
-        except ImportError:
-            logger.error("PyMuPDF not available for fallback")
-            return []
-
-    def _fallback_office(self, file_path: Path) -> List[Document]:
-        """Fallback Office document parsing."""
-        ext = file_path.suffix.lower()
-
-        if ext == ".docx":
-            try:
-                from docx import Document as DocxDocument
-
-                doc = DocxDocument(str(file_path))
-                text = "\n".join(para.text for para in doc.paragraphs)
-
-                return [Document(
-                    page_content=text,
-                    metadata={
-                        "source": str(file_path),
-                        "filename": file_path.name,
-                        "parser": "python-docx_fallback",
-                    },
-                )]
-            except ImportError:
-                logger.error("python-docx not available for fallback")
-                return []
-
-        elif ext == ".pptx":
-            try:
-                from pptx import Presentation
-
-                prs = Presentation(str(file_path))
-                text_parts = []
-
-                for slide in prs.slides:
-                    for shape in slide.shapes:
-                        if hasattr(shape, "text"):
-                            text_parts.append(shape.text)
-
-                return [Document(
-                    page_content="\n".join(text_parts),
-                    metadata={
-                        "source": str(file_path),
-                        "filename": file_path.name,
-                        "parser": "python-pptx_fallback",
-                    },
-                )]
-            except ImportError:
-                logger.error("python-pptx not available for fallback")
-                return []
-
-        return []
-
-    def _fallback_text(self, file_path: Path) -> List[Document]:
-        """Fallback text file parsing."""
-        try:
-            text = file_path.read_text(encoding="utf-8")
-            return [Document(
-                page_content=text,
-                metadata={
-                    "source": str(file_path),
-                    "filename": file_path.name,
-                    "parser": "text_fallback",
-                },
-            )]
-        except Exception as e:
-            logger.error("Failed to read file: %s", e)
-            return []
 
     async def aparse(
         self,

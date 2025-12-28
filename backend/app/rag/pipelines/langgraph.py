@@ -30,15 +30,9 @@ from app.core.config import settings
 from app.services.prompt_template_selector import resolve_prompt_template
 
 # LangGraph 1.0+ Functional API imports
-try:
-    from langgraph.func import entrypoint, task
-    from langgraph.checkpoint.memory import MemorySaver
-    FUNCTIONAL_API_AVAILABLE = True
-except ImportError:
-    FUNCTIONAL_API_AVAILABLE = False
-    entrypoint = None
-    task = None
-    MemorySaver = None
+from langgraph.func import entrypoint, task
+from langgraph.graph import StateGraph, END
+from langgraph.checkpoint.memory import MemorySaver
 
 logger = logging.getLogger(__name__)
 
@@ -614,12 +608,6 @@ def _generate_node(state: RAGState) -> RAGState:
     }
 
 
-def _run_rag_sequential(state: RAGState) -> RAGState:
-    state = _run_with_retry("retrieve", _retrieve_node, state)
-    state = _run_with_retry("generate", _generate_node, state)
-    return state
-
-
 # =============================================================================
 # LangGraph 1.0+ Functional API Implementation
 # =============================================================================
@@ -631,110 +619,81 @@ _functional_checkpointer = None
 def _get_checkpointer():
     """获取或创建全局 checkpointer 实例。"""
     global _functional_checkpointer
-    if _functional_checkpointer is None and MemorySaver is not None:
+    if _functional_checkpointer is None:
         _functional_checkpointer = MemorySaver()
     return _functional_checkpointer
 
 
-if FUNCTIONAL_API_AVAILABLE:
-    @task
-    def retrieve_task(state: Dict[str, Any]) -> Dict[str, Any]:
-        """
-        检索任务 - 使用 Functional API @task 装饰器。
+@task
+def retrieve_task(state: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    检索任务 - 使用 Functional API @task 装饰器。
 
-        支持重试和超时机制，与原有 _retrieve_node 逻辑一致。
-        """
-        return _run_with_retry("retrieve", _retrieve_node, state)
+    支持重试和超时机制，与原有 _retrieve_node 逻辑一致。
+    """
+    return _run_with_retry("retrieve", _retrieve_node, state)
 
-    @task
-    def generate_task(state: Dict[str, Any]) -> Dict[str, Any]:
-        """
-        生成任务 - 使用 Functional API @task 装饰器。
 
-        支持重试和超时机制，与原有 _generate_node 逻辑一致。
-        """
-        return _run_with_retry("generate", _generate_node, state)
+@task
+def generate_task(state: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    生成任务 - 使用 Functional API @task 装饰器。
 
-    @entrypoint(checkpointer=_get_checkpointer())
-    def rag_workflow(state: Dict[str, Any]) -> Dict[str, Any]:
-        """
-        RAG 工作流入口点 - 使用 Functional API @entrypoint 装饰器。
+    支持重试和超时机制，与原有 _generate_node 逻辑一致。
+    """
+    return _run_with_retry("generate", _generate_node, state)
 
-        执行检索 -> 生成的流程，支持检查点持久化。
-        """
-        # 执行检索任务
-        state = retrieve_task(state).result()
 
-        # 执行生成任务
-        state = generate_task(state).result()
+@entrypoint(checkpointer=_get_checkpointer())
+def rag_workflow(state: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    RAG 工作流入口点 - 使用 Functional API @entrypoint 装饰器。
 
-        return state
+    执行检索 -> 生成的流程，支持检查点持久化。
+    """
+    # 执行检索任务
+    state = retrieve_task(state).result()
 
-    def run_rag_workflow_functional(
-        state: Dict[str, Any],
-        *,
-        thread_id: Optional[str] = None,
-        stream_mode: Optional[str] = None,
-    ) -> Dict[str, Any]:
-        """
-        使用 Functional API 执行 RAG 工作流。
+    # 执行生成任务
+    state = generate_task(state).result()
 
-        Args:
-            state: RAG 状态字典
-            thread_id: 可选的线程 ID，用于会话持久化
-            stream_mode: 流式模式 ("updates", "values", None)
+    return state
 
-        Returns:
-            执行结果状态
-        """
-        config = {}
-        if thread_id:
-            config["configurable"] = {"thread_id": thread_id}
 
-        if stream_mode:
-            # 流式执行
-            result = None
-            for step in rag_workflow.stream(state, config=config, stream_mode=stream_mode):
-                result = step
-            return result or state
-        else:
-            # 同步执行
-            return rag_workflow.invoke(state, config=config)
+def run_rag_workflow_functional(
+    state: Dict[str, Any],
+    *,
+    thread_id: Optional[str] = None,
+    stream_mode: Optional[str] = None,
+) -> Dict[str, Any]:
+    """
+    使用 Functional API 执行 RAG 工作流。
 
-else:
-    # Fallback: 当 Functional API 不可用时的占位符
-    def retrieve_task(state: Dict[str, Any]) -> Dict[str, Any]:
-        return _run_with_retry("retrieve", _retrieve_node, state)
+    Args:
+        state: RAG 状态字典
+        thread_id: 可选的线程 ID，用于会话持久化
+        stream_mode: 流式模式 ("updates", "values", None)
 
-    def generate_task(state: Dict[str, Any]) -> Dict[str, Any]:
-        return _run_with_retry("generate", _generate_node, state)
+    Returns:
+        执行结果状态
+    """
+    config = {}
+    if thread_id:
+        config["configurable"] = {"thread_id": thread_id}
 
-    def rag_workflow(state: Dict[str, Any]) -> Dict[str, Any]:
-        state = retrieve_task(state)
-        state = generate_task(state)
-        return state
-
-    def run_rag_workflow_functional(
-        state: Dict[str, Any],
-        *,
-        thread_id: Optional[str] = None,
-        stream_mode: Optional[str] = None,
-    ) -> Dict[str, Any]:
-        logger.warning("Functional API not available, falling back to sequential execution")
-        return _run_rag_sequential(state)
+    if stream_mode:
+        # 流式执行
+        result = None
+        for step in rag_workflow.stream(state, config=config, stream_mode=stream_mode):
+            result = step
+        return result or state
+    else:
+        # 同步执行
+        return rag_workflow.invoke(state, config=config)
 
 
 def build_rag_graph() -> Any:
     """构建一个最小 RAG 流程图：检索 -> 生成 -> 结束。"""
-    try:
-        from langgraph.graph import StateGraph, END
-        from langgraph.checkpoint.memory import MemorySaver
-    except Exception as exc:  # noqa: BLE001
-        raise RuntimeError(
-            "LangGraph pipeline is unavailable. "
-            "Please install/fix the `langgraph` dependency to use `use_graph=true`."
-        ) from exc
-
     graph = StateGraph(RAGState)
 
     graph.add_node("retrieve", partial(_run_with_retry, "retrieve", _retrieve_node))
@@ -834,27 +793,15 @@ def run_rag_graph(
         "prompt_ab_variant": selected_prompt_ab_variant,
     }
 
-    # Prefer Functional API when available (LangGraph 1.0+)
-    use_functional_api = FUNCTIONAL_API_AVAILABLE and bool(
-        getattr(settings, "LANGGRAPH_USE_FUNCTIONAL_API", True)
-    )
+    # 使用 Functional API (LangGraph 1.0+)
+    use_functional_api = bool(getattr(settings, "LANGGRAPH_USE_FUNCTIONAL_API", True))
 
     if use_functional_api:
-        try:
-            result = run_rag_workflow_functional(state)
-            logger.debug("RAG workflow executed using Functional API")
-        except Exception as exc:
-            logger.warning("Functional API failed, falling back to StateGraph: %s", exc)
-            use_functional_api = False
-
-    if not use_functional_api:
-        try:
-            app = build_rag_graph()
-            result = app.invoke(state)
-        except RuntimeError as exc:
-            if "LangGraph pipeline is unavailable" not in str(exc):
-                raise
-            result = _run_rag_sequential(state)
+        result = run_rag_workflow_functional(state)
+        logger.debug("RAG workflow executed using Functional API")
+    else:
+        app = build_rag_graph()
+        result = app.invoke(state)
 
     return {
         "answer": result.get("answer", ""),
@@ -894,35 +841,12 @@ def stream_rag_graph(
         **kwargs,
     }
 
-    if not FUNCTIONAL_API_AVAILABLE:
-        # Fallback: 非流式执行
-        result = _run_rag_sequential(state)
-        yield {
-            "step": "complete",
-            "answer": result.get("answer", ""),
-            "citations": result.get("citations", []),
-            "metrics": result.get("metrics", {}),
-        }
-        return
-
     config = {}
     if thread_id:
         config["configurable"] = {"thread_id": thread_id}
 
-    try:
-        for step in rag_workflow.stream(state, config=config, stream_mode="updates"):
-            yield step
-    except Exception as exc:
-        logger.error("Streaming workflow failed: %s", exc)
-        # Fallback to sequential
-        result = _run_rag_sequential(state)
-        yield {
-            "step": "complete",
-            "answer": result.get("answer", ""),
-            "citations": result.get("citations", []),
-            "metrics": result.get("metrics", {}),
-            "error": str(exc),
-        }
+    for step in rag_workflow.stream(state, config=config, stream_mode="updates"):
+        yield step
 
 
 # =============================================================================
@@ -936,7 +860,6 @@ __all__ = [
     "build_rag_graph",
     "run_rag_graph",
     # LangGraph 1.0+ Functional API
-    "FUNCTIONAL_API_AVAILABLE",
     "retrieve_task",
     "generate_task",
     "rag_workflow",

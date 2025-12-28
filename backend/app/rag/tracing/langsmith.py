@@ -42,6 +42,12 @@ LANGSMITH_PROJECT = getattr(settings, "LANGSMITH_PROJECT", "mimirq")
 LANGSMITH_ENDPOINT = getattr(settings, "LANGSMITH_ENDPOINT", "https://api.smith.langchain.com")
 LANGSMITH_TRACING_ENABLED = getattr(settings, "LANGSMITH_TRACING_ENABLED", False)
 
+# Import langsmith if tracing is enabled
+if LANGSMITH_TRACING_ENABLED:
+    from langsmith import Client as LangSmithClient
+else:
+    LangSmithClient = None  # type: ignore
+
 
 # Type variable for decorators
 F = TypeVar("F", bound=Callable)
@@ -111,22 +117,15 @@ class TracingClient:
         if not self._enabled:
             return None
 
-        try:
-            from langsmith import Client
-            self._client = Client(
-                api_key=self.api_key,
-                api_url=self.endpoint,
-            )
-            logger.info("LangSmith client initialized")
-            return self._client
-        except ImportError:
-            logger.warning("langsmith package not installed")
-            self._enabled = False
+        if LangSmithClient is None:
             return None
-        except Exception as e:
-            logger.error("Failed to initialize LangSmith client: %s", e)
-            self._enabled = False
-            return None
+
+        self._client = LangSmithClient(
+            api_key=self.api_key,
+            api_url=self.endpoint,
+        )
+        logger.info("LangSmith client initialized")
+        return self._client
 
     def start_span(
         self,
