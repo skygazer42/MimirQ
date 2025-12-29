@@ -1,13 +1,16 @@
 """
 文档管理 API
 """
+import asyncio
+import contextlib
 from fastapi import APIRouter, Depends, UploadFile, File, HTTPException, BackgroundTasks, Form, Body
 from sqlalchemy.orm import Session
 from typing import List, Optional
 from uuid import UUID
 from pathlib import Path
-import shutil
 import uuid
+
+import aiofiles
 
 
 from app.core.database import get_db
@@ -56,6 +59,45 @@ from app.rag.preprocessing.processor import governance_processor
 logger = get_logger("api.documents")
 
 router = APIRouter()
+
+
+async def _save_upload_file(
+    upload_file: UploadFile,
+    destination: Path,
+    *,
+    max_bytes: int,
+    chunk_size: int = 1024 * 1024,
+) -> int:
+    """
+    Stream-upload to disk with a hard size limit to avoid large in-memory reads.
+    Returns the written size (bytes).
+    """
+    total_size = 0
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        async with aiofiles.open(destination, "wb") as f:
+            while True:
+                chunk = await upload_file.read(chunk_size)
+                if not chunk:
+                    break
+                total_size += len(chunk)
+                if total_size > max_bytes:
+                    raise HTTPException(
+                        status_code=413,
+                        detail=f"File too large. Max size: {max_bytes / 1024 / 1024}MB",
+                    )
+                await f.write(chunk)
+        return total_size
+    except HTTPException:
+        with contextlib.suppress(Exception):
+            if destination.exists():
+                destination.unlink()
+        raise
+    except Exception as e:
+        with contextlib.suppress(Exception):
+            if destination.exists():
+                destination.unlink()
+        raise HTTPException(status_code=500, detail=f"Failed to save file: {str(e)}")
 
 
 def _to_pipeline_options(
@@ -197,17 +239,6 @@ async def upload_document(
             detail=f"Unsupported file type. Allowed: {settings.allowed_extensions_list}"
         )
 
-    # 2. 验证文件大小
-    file.file.seek(0, 2)  # 移动到文件末尾
-    file_size = file.file.tell()
-    file.file.seek(0)  # 重置到开头
-
-    if file_size > settings.MAX_FILE_SIZE:
-        raise HTTPException(
-            status_code=413,
-            detail=f"File too large. Max size: {settings.MAX_FILE_SIZE / 1024 / 1024}MB"
-        )
-
     try:
         requested_parser_backend = (parser_backend or "").strip().lower()
         if file_ext == ".pdf" and requested_parser_backend in {"", "auto"}:
@@ -255,10 +286,9 @@ async def upload_document(
     file_path = upload_dir / f"{file_id}{file_ext}"
 
     try:
-        with file_path.open("wb") as buffer:
-            shutil.copyfileobj(file.file, buffer)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to save file: {str(e)}")
+        file_size = await _save_upload_file(file, file_path, max_bytes=settings.MAX_FILE_SIZE)
+    except HTTPException:
+        raise
 
     # 4. 创建数据库记录
     doc_metadata = {
@@ -506,7 +536,16 @@ async def get_image(image_id: str, tenant_id: UUID = Depends(get_tenant_id)):
     标准位置：{UPLOAD_DIR}/images/{image_id}.png
     """
     images_dir = Path(settings.UPLOAD_DIR) / str(tenant_id) / "images"
-    file_path = images_dir / f"{image_id}.png"
+    # 防止路径穿越：仅允许 UUID / 32位十六进制（内部生成的 image_id）
+    try:
+        safe_id = uuid.UUID(image_id).hex
+    except Exception:
+        raise HTTPException(status_code=404, detail="Image not found")
+
+    images_dir_resolved = images_dir.resolve(strict=False)
+    file_path = (images_dir / f"{safe_id}.png").resolve(strict=False)
+    if images_dir_resolved != file_path.parent and images_dir_resolved not in file_path.parents:
+        raise HTTPException(status_code=404, detail="Image not found")
     if not file_path.exists():
         raise HTTPException(status_code=404, detail="Image not found")
     return FileResponse(file_path, media_type="image/png")
@@ -577,17 +616,6 @@ async def preview_document(
             detail=f"Unsupported file type. Allowed: {settings.allowed_extensions_list}"
         )
 
-    # 验证文件大小
-    file.file.seek(0, 2)
-    file_size = file.file.tell()
-    file.file.seek(0)
-
-    if file_size > settings.MAX_FILE_SIZE:
-        raise HTTPException(
-            status_code=413,
-            detail=f"File too large. Max size: {settings.MAX_FILE_SIZE / 1024 / 1024}MB"
-        )
-
     # 将文件保存到临时路径进行解析
     upload_dir = Path(settings.UPLOAD_DIR) / str(tenant_id) / "preview"
     upload_dir.mkdir(parents=True, exist_ok=True)
@@ -595,8 +623,7 @@ async def preview_document(
     temp_path = upload_dir / f"{uuid.uuid4()}{file_ext}"
 
     try:
-        with temp_path.open("wb") as buffer:
-            shutil.copyfileobj(file.file, buffer)
+        file_size = await _save_upload_file(file, temp_path, max_bytes=settings.MAX_FILE_SIZE)
 
         effective_parser_backend = parser_backend
         if file_ext == ".pdf":
@@ -760,6 +787,7 @@ async def create_document_with_manual_chunks(
             records=records,
             default_source=request.filename,
             options=index_options,
+            commit=False,
         ).chunk_result
         if persist_result is None:
             raise RuntimeError("Chunk indexing returned no result")
@@ -774,16 +802,26 @@ async def create_document_with_manual_chunks(
         db.refresh(db_document)
 
         if pipeline_effective.kg_enabled:
-            await extract_events(
-                chunk_ids=persist_result.chunk_ids,
-                tenant_id=tenant_id,
-                chunks=persist_result.db_chunks,
-                index_options=index_options,
-            )
+            try:
+                await extract_events(
+                    chunk_ids=persist_result.chunk_ids,
+                    tenant_id=tenant_id,
+                    chunks=persist_result.db_chunks,
+                    index_options=index_options,
+                )
+            except Exception as exc:
+                # KG 抽取是可选增强，失败不影响主流程（避免“已入库但标记 failed”）。
+                logger.warning("KG extraction failed for document %s: %s", document_id, str(exc)[:200])
 
         return db_document
 
     except Exception as e:
+        db.rollback()
+        # Best-effort cleanup for partially indexed vectors / BM25
+        try:
+            Indexer(db).delete_chunk_indexes(tenant_id=tenant_id, document_id=document_id)
+        except Exception:
+            pass
         db_document.status = 'failed'
         db_document.processing_progress = 0
         db_document.current_stage = 'failed'
@@ -842,25 +880,13 @@ async def preview_chunking(
             detail=f"Unsupported file type. Allowed: {settings.allowed_extensions_list}"
         )
 
-    # 验证文件大小
-    file.file.seek(0, 2)
-    file_size = file.file.tell()
-    file.file.seek(0)
-
-    if file_size > settings.MAX_FILE_SIZE:
-        raise HTTPException(
-            status_code=413,
-            detail=f"File too large. Max size: {settings.MAX_FILE_SIZE / 1024 / 1024}MB"
-        )
-
     # 保存到临时路径
     upload_dir = Path(settings.UPLOAD_DIR) / str(tenant_id) / "preview"
     upload_dir.mkdir(parents=True, exist_ok=True)
     temp_path = upload_dir / f"{uuid.uuid4()}{file_ext}"
 
     try:
-        with temp_path.open("wb") as buffer:
-            shutil.copyfileobj(file.file, buffer)
+        await _save_upload_file(file, temp_path, max_bytes=settings.MAX_FILE_SIZE)
 
         resolved_chunk_strategy = chunker_factory.resolve_strategy(chunk_strategy)
         pipeline_options = _to_pipeline_options(

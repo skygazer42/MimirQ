@@ -10,6 +10,7 @@ from typing import Optional, List
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
 from fastapi.encoders import jsonable_encoder
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 import jieba
 from langchain_core.documents import Document
@@ -502,6 +503,34 @@ async def list_conversations(
             continue
 
     result_items = []
+    last_message_by_conversation_id: dict[UUID, Message] = {}
+    conv_ids = [conv.id for conv in conversations]
+    if conv_ids:
+        latest_message_subq = (
+            db.query(
+                Message.id.label("id"),
+                Message.conversation_id.label("conversation_id"),
+                func.row_number()
+                .over(
+                    partition_by=Message.conversation_id,
+                    order_by=(Message.created_at.desc(), Message.id.desc()),
+                )
+                .label("rn"),
+            )
+            .filter(
+                Message.tenant_id == tenant_id,
+                Message.conversation_id.in_(conv_ids),
+            )
+            .subquery()
+        )
+        latest_messages = (
+            db.query(Message)
+            .join(latest_message_subq, Message.id == latest_message_subq.c.id)
+            .filter(latest_message_subq.c.rn == 1)
+            .all()
+        )
+        last_message_by_conversation_id = {m.conversation_id: m for m in latest_messages}
+
     for conv in conversations:
         conv_dict = {
             "id": conv.id,
@@ -512,11 +541,7 @@ async def list_conversations(
             "last_message": None
         }
 
-        last_msg = db.query(Message).filter(
-            Message.conversation_id == conv.id,
-            Message.tenant_id == tenant_id
-        ).order_by(Message.created_at.desc()).first()
-
+        last_msg = last_message_by_conversation_id.get(conv.id)
         if last_msg:
             conv_dict["last_message"] = last_msg.content[:100] + "..." if len(last_msg.content) > 100 else last_msg.content
 
