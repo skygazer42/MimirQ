@@ -1,7 +1,6 @@
 """
-运行时（尽力而为）数据库模式迁移模块
-
-本项目当前在启动时使用 `Base.metadata.create_all()`，该方法不会修改现有表。
+数据库模式迁移模块
+在启动时使用 `Base.metadata.create_all()`，该方法不会修改现有表。
 为了在不立即使用 Alembic 的情况下保持部署顺畅，我们应用一组安全的 `ALTER TABLE ... IF NOT EXISTS` 操作。
 仅在 PostgreSQL 上运行。失败会被忽略以避免阻塞启动。
 """

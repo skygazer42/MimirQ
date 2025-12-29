@@ -34,15 +34,11 @@ from typing import Any, Callable, Optional
 
 import requests
 
-try:
-    from tencentcloud.common import credential
-    from tencentcloud.common.profile.client_profile import ClientProfile
-    from tencentcloud.common.profile.http_profile import HttpProfile
-    from tencentcloud.common.exception.tencent_cloud_sdk_exception import TencentCloudSDKException
-    from tencentcloud.lkeap.v20240522 import lkeap_client, models
-    TENCENT_SDK_AVAILABLE = True
-except ImportError:
-    TENCENT_SDK_AVAILABLE = False
+from tencentcloud.common import credential
+from tencentcloud.common.profile.client_profile import ClientProfile
+from tencentcloud.common.profile.http_profile import HttpProfile
+from tencentcloud.common.exception.tencent_cloud_sdk_exception import TencentCloudSDKException
+from tencentcloud.lkeap.v20240522 import lkeap_client, models
 
 from app.core.config import settings
 from app.deepdoc.parser.pdf_parser import RAGFlowPdfParser
@@ -52,9 +48,6 @@ class TencentCloudAPIClient:
     """Tencent Cloud API client using official SDK"""
 
     def __init__(self, secret_id, secret_key, region):
-        if not TENCENT_SDK_AVAILABLE:
-            raise ImportError("tencentcloud-sdk-python is not installed. Run: pip install tencentcloud-sdk-python")
-
         self.secret_id = secret_id
         self.secret_key = secret_key
         self.region = region
@@ -208,10 +201,6 @@ class TCADPParser(RAGFlowPdfParser):
 
     def check_installation(self) -> bool:
         """Check if Tencent Cloud API configuration is correct"""
-        if not TENCENT_SDK_AVAILABLE:
-            self.logger.error("[TCADP] tencentcloud-sdk-python is not installed")
-            return False
-
         try:
             if not self.secret_id or not self.secret_key:
                 self.logger.error("[TCADP] Tencent Cloud API configuration incomplete")

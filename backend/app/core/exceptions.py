@@ -1,10 +1,5 @@
 """
 MimirQ API 统一异常处理模块
-
-提供以下功能：
-- 自定义异常类
-- 全局异常处理器
-- 标准化错误响应
 """
 import logging
 import traceback

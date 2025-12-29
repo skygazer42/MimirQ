@@ -1,5 +1,5 @@
 """
-对话 API（含租户隔离）
+对话 API
 """
 from uuid import UUID
 import uuid

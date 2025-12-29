@@ -6,9 +6,6 @@
 - 可通过配置调整限流参数
 - 线程安全实现
 """
-
-from __future__ import annotations
-
 import logging
 import time
 from dataclasses import dataclass, field
