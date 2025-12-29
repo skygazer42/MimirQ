@@ -412,6 +412,7 @@ async def get_document(
     """
     获取文档详情
     """
+    DatasetService.ensure_member(db, tenant_id, account_id)
     document = db.query(DBDocument).filter(
         DBDocument.id == document_id,
         DBDocument.tenant_id == tenant_id
@@ -442,6 +443,7 @@ async def get_document_status(
     """
     获取文档处理状态（用于轮询）
     """
+    DatasetService.ensure_member(db, tenant_id, account_id)
     document = db.query(DBDocument).filter(
         DBDocument.id == document_id,
         DBDocument.tenant_id == tenant_id
@@ -473,6 +475,7 @@ async def delete_document(
     """
     删除文档
     """
+    DatasetService.ensure_member(db, tenant_id, account_id)
     document = db.query(DBDocument).filter(
         DBDocument.id == document_id,
         DBDocument.tenant_id == tenant_id
