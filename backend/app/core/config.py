@@ -160,6 +160,8 @@ class Settings(BaseSettings):
     ENTITY_VECTOR_ENABLED: bool = True
     BM25_INDEX_ENABLED: bool = True
     FAISS_STORE_PATH: str = "./vector_faiss"
+    # FAISS persistence uses pickle; enable only when the index directory is fully trusted.
+    FAISS_ALLOW_DANGEROUS_DESERIALIZATION: bool = False
     CHROMA_PERSIST_PATH: str = "./vector_chroma"
     ENABLE_METRICS_LOG: bool = False
     METRICS_LOG_PATH: str = "./logs/rag_metrics.jsonl"
@@ -338,6 +340,9 @@ class Settings(BaseSettings):
                     UserWarning,
                     stacklevel=2,
                 )
+
+        if is_production and bool(getattr(self, "FAISS_ALLOW_DANGEROUS_DESERIALIZATION", False)):
+            raise ValueError("FAISS_ALLOW_DANGEROUS_DESERIALIZATION is not allowed in production")
 
         # Validate chunk settings
         if self.CHUNK_OVERLAP >= self.CHUNK_SIZE:

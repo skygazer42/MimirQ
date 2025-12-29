@@ -2,17 +2,76 @@
 Settings API - 系统配置管理
 支持读取和更新 .env 配置
 """
-from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel
-from typing import Optional, Dict, Any
-from pathlib import Path
+from __future__ import annotations
 
+import ipaddress
+from pathlib import Path
+from typing import Any, Dict, Optional
+from urllib.parse import urlparse
+from uuid import UUID
+
+from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
+from sqlalchemy.orm import Session
+
+from app.api.dependencies.auth import get_current_account_id
+from app.api.dependencies.tenant import get_tenant_id
 from app.core.config import settings
+from app.core.database import get_db
+from app.services.dataset_service import DatasetService
 
 router = APIRouter()
 
 # .env 文件路径
 ENV_FILE = Path(__file__).parent.parent.parent.parent / ".env"
+
+_SETTINGS_ADMIN_ROLES = {"owner", "admin"}
+
+
+def _sanitize_env_value(key: str, value: Any) -> str:
+    text = "" if value is None else str(value)
+    if "\x00" in text or "\n" in text or "\r" in text:
+        raise HTTPException(status_code=400, detail=f"Invalid value for {key}")
+    if len(text) > 10_000:
+        raise HTTPException(status_code=400, detail=f"Value too long for {key}")
+    return text.strip()
+
+
+def _ensure_settings_readable(db: Session, tenant_id: UUID, account_id: str) -> None:
+    DatasetService.ensure_member(db, tenant_id, account_id)
+
+
+def _ensure_settings_writable(db: Session, tenant_id: UUID, account_id: str) -> None:
+    member = DatasetService.ensure_member(db, tenant_id, account_id)
+    role = (member.role or "").lower()
+    if role not in _SETTINGS_ADMIN_ROLES:
+        raise HTTPException(status_code=403, detail="No permission to manage system settings")
+
+
+def _validate_public_base_url(base_url: str) -> None:
+    parsed = urlparse(str(base_url or "").strip())
+    if parsed.scheme not in {"https", "http"}:
+        raise HTTPException(status_code=400, detail="api_base must be http(s) URL")
+    if not parsed.netloc:
+        raise HTTPException(status_code=400, detail="api_base must include host")
+    if parsed.username or parsed.password:
+        raise HTTPException(status_code=400, detail="api_base must not include userinfo")
+
+    host = (parsed.hostname or "").strip()
+    if not host:
+        raise HTTPException(status_code=400, detail="api_base must include host")
+    host_lower = host.lower()
+    if host_lower in {"localhost"} or host_lower.endswith(".localhost"):
+        raise HTTPException(status_code=400, detail="api_base host not allowed")
+
+    # Block private/loopback/link-local IPs to reduce SSRF risk.
+    try:
+        ip = ipaddress.ip_address(host_lower)
+    except ValueError:
+        # hostname (best-effort): allow
+        return
+    if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved or ip.is_multicast:
+        raise HTTPException(status_code=400, detail="api_base host not allowed")
 
 
 class FeatureFlags(BaseModel):
@@ -303,8 +362,13 @@ def mask_secret(value: str) -> str:
 
 
 @router.get("", response_model=SystemSettings)
-async def get_settings():
+async def get_settings(
+    tenant_id: UUID = Depends(get_tenant_id),
+    account_id: str = Depends(get_current_account_id),
+    db: Session = Depends(get_db),
+):
     """获取当前系统配置"""
+    _ensure_settings_readable(db, tenant_id, account_id)
     return SystemSettings(
         feature_flags=FeatureFlags(
             kg_enabled=settings.KG_ENABLED,
@@ -367,8 +431,14 @@ async def get_settings():
 
 
 @router.put("")
-async def update_settings(request: UpdateSettingsRequest):
+async def update_settings(
+    request: UpdateSettingsRequest,
+    tenant_id: UUID = Depends(get_tenant_id),
+    account_id: str = Depends(get_current_account_id),
+    db: Session = Depends(get_db),
+):
     """更新系统配置（写入 .env 文件）"""
+    _ensure_settings_writable(db, tenant_id, account_id)
     try:
         env_vars = read_env_file()
         updated_keys = []
@@ -388,10 +458,10 @@ async def update_settings(request: UpdateSettingsRequest):
             llm = request.llm
             # 只有非掩码值才更新
             if llm.api_key and "***" not in llm.api_key:
-                env_vars["LLM_API_KEY"] = llm.api_key
+                env_vars["LLM_API_KEY"] = _sanitize_env_value("LLM_API_KEY", llm.api_key)
                 updated_keys.append("LLM_API_KEY")
-            env_vars["LLM_API_BASE"] = llm.api_base
-            env_vars["LLM_MODEL"] = llm.model
+            env_vars["LLM_API_BASE"] = _sanitize_env_value("LLM_API_BASE", llm.api_base)
+            env_vars["LLM_MODEL"] = _sanitize_env_value("LLM_MODEL", llm.model)
             env_vars["LLM_TEMPERATURE"] = str(llm.temperature)
             env_vars["LLM_TIMEOUT"] = str(llm.timeout)
             env_vars["LLM_MAX_RETRIES"] = str(llm.max_retries)
@@ -400,24 +470,24 @@ async def update_settings(request: UpdateSettingsRequest):
         # 更新 Embedding 配置
         if request.embedding:
             emb = request.embedding
-            env_vars["EMBEDDING_PROVIDER"] = emb.provider
-            env_vars["EMBEDDING_MODEL"] = emb.model
+            env_vars["EMBEDDING_PROVIDER"] = _sanitize_env_value("EMBEDDING_PROVIDER", emb.provider)
+            env_vars["EMBEDDING_MODEL"] = _sanitize_env_value("EMBEDDING_MODEL", emb.model)
             if emb.api_key and "***" not in emb.api_key:
-                env_vars["EMBEDDING_API_KEY"] = emb.api_key
+                env_vars["EMBEDDING_API_KEY"] = _sanitize_env_value("EMBEDDING_API_KEY", emb.api_key)
                 updated_keys.append("EMBEDDING_API_KEY")
-            env_vars["EMBEDDING_API_BASE"] = emb.api_base
+            env_vars["EMBEDDING_API_BASE"] = _sanitize_env_value("EMBEDDING_API_BASE", emb.api_base)
             updated_keys.extend(["EMBEDDING_PROVIDER", "EMBEDDING_MODEL", "EMBEDDING_API_BASE"])
 
         # 更新 Milvus 配置
         if request.milvus:
             mv = request.milvus
-            env_vars["MILVUS_HOST"] = mv.host
+            env_vars["MILVUS_HOST"] = _sanitize_env_value("MILVUS_HOST", mv.host)
             env_vars["MILVUS_PORT"] = str(mv.port)
-            env_vars["MILVUS_USER"] = mv.user
+            env_vars["MILVUS_USER"] = _sanitize_env_value("MILVUS_USER", mv.user)
             if mv.password and "***" not in mv.password:
-                env_vars["MILVUS_PASSWORD"] = mv.password
+                env_vars["MILVUS_PASSWORD"] = _sanitize_env_value("MILVUS_PASSWORD", mv.password)
                 updated_keys.append("MILVUS_PASSWORD")
-            env_vars["MILVUS_COLLECTION_NAME"] = mv.collection_name
+            env_vars["MILVUS_COLLECTION_NAME"] = _sanitize_env_value("MILVUS_COLLECTION_NAME", mv.collection_name)
             updated_keys.extend(["MILVUS_HOST", "MILVUS_PORT", "MILVUS_USER", "MILVUS_COLLECTION_NAME"])
 
         # 更新 RAG 配置
@@ -427,18 +497,18 @@ async def update_settings(request: UpdateSettingsRequest):
             env_vars["CHUNK_OVERLAP"] = str(rag.chunk_overlap)
             env_vars["RETRIEVAL_TOP_K"] = str(rag.retrieval_top_k)
             env_vars["SIMILARITY_THRESHOLD"] = str(rag.similarity_threshold)
-            env_vars["DEFAULT_PARSER_BACKEND"] = rag.default_parser_backend
-            env_vars["DEFAULT_CHUNK_STRATEGY"] = rag.default_chunk_strategy
+            env_vars["DEFAULT_PARSER_BACKEND"] = _sanitize_env_value("DEFAULT_PARSER_BACKEND", rag.default_parser_backend)
+            env_vars["DEFAULT_CHUNK_STRATEGY"] = _sanitize_env_value("DEFAULT_CHUNK_STRATEGY", rag.default_chunk_strategy)
             updated_keys.extend(["CHUNK_SIZE", "CHUNK_OVERLAP", "RETRIEVAL_TOP_K", "SIMILARITY_THRESHOLD", "DEFAULT_PARSER_BACKEND", "DEFAULT_CHUNK_STRATEGY"])
 
         # 更新 MinerU 配置
         if request.mineru:
             mn = request.mineru
             if mn.api_token and "***" not in mn.api_token:
-                env_vars["MINERU_API_TOKEN"] = mn.api_token
+                env_vars["MINERU_API_TOKEN"] = _sanitize_env_value("MINERU_API_TOKEN", mn.api_token)
                 updated_keys.append("MINERU_API_TOKEN")
-            env_vars["MINERU_API_BASE"] = mn.api_base
-            env_vars["MINERU_MODEL_VERSION"] = mn.model_version
+            env_vars["MINERU_API_BASE"] = _sanitize_env_value("MINERU_API_BASE", mn.api_base)
+            env_vars["MINERU_MODEL_VERSION"] = _sanitize_env_value("MINERU_MODEL_VERSION", mn.model_version)
             updated_keys.extend(["MINERU_API_BASE", "MINERU_MODEL_VERSION"])
 
         # 更新观测/调试配置
@@ -465,7 +535,7 @@ async def update_settings(request: UpdateSettingsRequest):
         if request.safety:
             sf = request.safety
             env_vars["PII_REDACTION_ENABLED"] = str(sf.pii_redaction_enabled).lower()
-            env_vars["PII_REDACTION_MASK"] = sf.pii_redaction_mask
+            env_vars["PII_REDACTION_MASK"] = _sanitize_env_value("PII_REDACTION_MASK", sf.pii_redaction_mask)
             env_vars["PII_STREAM_HOLDBACK_CHARS"] = str(int(sf.pii_stream_holdback_chars or 0))
             updated_keys.extend(["PII_REDACTION_ENABLED", "PII_REDACTION_MASK", "PII_STREAM_HOLDBACK_CHARS"])
 
@@ -500,8 +570,13 @@ async def update_settings(request: UpdateSettingsRequest):
 
 
 @router.get("/status")
-async def get_system_status():
+async def get_system_status(
+    tenant_id: UUID = Depends(get_tenant_id),
+    account_id: str = Depends(get_current_account_id),
+    db: Session = Depends(get_db),
+):
     """获取系统状态"""
+    _ensure_settings_readable(db, tenant_id, account_id)
     from sqlalchemy import text
     from app.core.database import SessionLocal
     from pymilvus import connections
@@ -551,8 +626,14 @@ class TestLLMRequest(BaseModel):
 
 
 @router.post("/llm/test")
-async def test_llm_connection(request: TestLLMRequest):
+async def test_llm_connection(
+    request: TestLLMRequest,
+    tenant_id: UUID = Depends(get_tenant_id),
+    account_id: str = Depends(get_current_account_id),
+    db: Session = Depends(get_db),
+):
     """测试 LLM 连接（不写入配置）"""
+    _ensure_settings_writable(db, tenant_id, account_id)
     from langchain_openai import ChatOpenAI
     from langchain_core.messages import HumanMessage
     import httpx
@@ -566,6 +647,8 @@ async def test_llm_connection(request: TestLLMRequest):
         raise HTTPException(status_code=400, detail="api_key is required")
     if not request.model.strip():
         raise HTTPException(status_code=400, detail="model is required")
+
+    _validate_public_base_url(request.api_base)
 
     trust_env = httpx_trust_env(logger=logger)
     timeout = float(request.timeout) if request.timeout else 20.0

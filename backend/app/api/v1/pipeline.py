@@ -9,9 +9,11 @@ import contextlib
 from pathlib import Path
 import uuid
 import zipfile
+from uuid import UUID
 
 import aiofiles
 from fastapi import APIRouter, UploadFile, File, Form, HTTPException, Depends
+from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.api.dependencies.tenant import get_tenant_id
@@ -35,6 +37,7 @@ from app.parsing.utils.zip_processor import zip_image_processor
 from app.api.dependencies.auth import get_current_account_id
 from app.rag.preprocessing.cleaning import clean_markdown, RegexRule, build_repeated_line_signatures
 from app.rag.preprocessing.rules import DEFAULT_MARKDOWN_RULES
+from app.services.dataset_service import DatasetService
 from app.services.prompt_template_selector import resolve_prompt_template
 from app.rag.kg.utils import ConfigError
 from app.rag.llm.factory import create_llm_client
@@ -86,11 +89,15 @@ async def _save_upload_file(
 async def parse_preview(
     file: UploadFile = File(...),
     parser_backend: str | None = Form(default=None),
-    tenant_id=Depends(get_tenant_id),
+    tenant_id: UUID = Depends(get_tenant_id),
+    account_id: str = Depends(get_current_account_id),
+    db: Session = Depends(get_db),
 ):
     """
     解析文件为 Markdown 预览，不入库；提取内嵌图片到 uploads/{tenant}/images。
     """
+    DatasetService.ensure_member(db, tenant_id, account_id)
+
     file_ext = Path(file.filename).suffix.lower()
     if file_ext not in settings.allowed_extensions_list:
         raise HTTPException(
@@ -120,19 +127,31 @@ async def parse_preview(
 
 
 @router.post("/chunk-preview", response_model=ChunkPreviewResponse)
-async def chunk_preview(body: ChunkPreviewRequest):
+async def chunk_preview(
+    body: ChunkPreviewRequest,
+    tenant_id: UUID = Depends(get_tenant_id),
+    account_id: str = Depends(get_current_account_id),
+    db: Session = Depends(get_db),
+):
     """
     对 Markdown 文本进行分层切块（段落/句子），返回可用于高亮的起止位置。
     """
+    DatasetService.ensure_member(db, tenant_id, account_id)
     chunks = hierarchical_chunk_markdown(body.markdown)
     return ChunkPreviewResponse(**chunks)
 
 
 @router.post("/clean-preview", response_model=CleanPreviewResponse)
-async def clean_preview(body: CleanPreviewRequest):
+async def clean_preview(
+    body: CleanPreviewRequest,
+    tenant_id: UUID = Depends(get_tenant_id),
+    account_id: str = Depends(get_current_account_id),
+    db: Session = Depends(get_db),
+):
     """
     对 Markdown 做“数据治理”清洗预览（不入库），用于人工调整前/后对比。
     """
+    DatasetService.ensure_member(db, tenant_id, account_id)
     if body.rules:
         rules = [RegexRule(pattern=r.pattern, repl=r.repl, flags=r.flags) for r in body.rules]
     elif body.use_default_rules:
@@ -172,17 +191,27 @@ async def clean_preview(body: CleanPreviewRequest):
 
 
 @router.get("/clean-rules", response_model=CleanRulesResponse)
-async def list_clean_rules():
+async def list_clean_rules(
+    tenant_id: UUID = Depends(get_tenant_id),
+    account_id: str = Depends(get_current_account_id),
+    db: Session = Depends(get_db),
+):
     """
     返回默认“数据治理”规则列表，供前端做默认勾选/编辑。
     """
+    DatasetService.ensure_member(db, tenant_id, account_id)
     return CleanRulesResponse(
         rules=[RegexRuleModel(pattern=r.pattern, repl=r.repl, flags=r.flags) for r in DEFAULT_MARKDOWN_RULES]
     )
 
 
 @router.post("/extract-keywords", response_model=KeywordExtractResponse)
-async def extract_keywords(body: KeywordExtractRequest):
+async def extract_keywords(
+    body: KeywordExtractRequest,
+    tenant_id: UUID = Depends(get_tenant_id),
+    account_id: str = Depends(get_current_account_id),
+    db: Session = Depends(get_db),
+):
     """
     提取关键词（用于治理/标注/分类等）。
 
@@ -193,6 +222,7 @@ async def extract_keywords(body: KeywordExtractRequest):
     - provider=hanlp（可选依赖：需安装 `hanlp`，并可用 `HANLP_TOKENIZER_MODEL` 指定 tokenizer 模型）
     - provider=simple（轻量正则分词 + 词频）
     """
+    DatasetService.ensure_member(db, tenant_id, account_id)
     from app.rag.preprocessing.keyword import (
         KeywordProviderUnavailable,
         UnsupportedKeywordProvider,
@@ -214,9 +244,9 @@ async def extract_keywords(body: KeywordExtractRequest):
 @router.post("/llm-clean-preview", response_model=LLMCleanPreviewResponse)
 async def llm_clean_preview(
     body: LLMCleanPreviewRequest,
-    tenant_id=Depends(get_tenant_id),
+    tenant_id: UUID = Depends(get_tenant_id),
     account_id: str = Depends(get_current_account_id),
-    db=Depends(get_db),
+    db: Session = Depends(get_db),
 ):
     """
     使用大模型对 Markdown 做“数据治理”清洗预览（不入库）。
@@ -225,7 +255,7 @@ async def llm_clean_preview(
     - 该接口会调用 LLM（需要正确配置 `LLM_API_KEY/LLM_API_BASE/LLM_MODEL`）。
     - 支持通过 PromptTemplate 指定清洗策略：`prompt_template_id` / `template_key` / `ab_experiment_key`。
     """
-    _ = account_id
+    DatasetService.ensure_member(db, tenant_id, account_id)
 
     markdown = body.markdown or ""
     if len(markdown) > int(body.max_chars):
@@ -332,8 +362,9 @@ async def upload_zip_with_images(
     file: UploadFile = File(...),
     dataset_id: str = Form(...),
     document_id: str | None = Form(default=None),
-    tenant_id=Depends(get_tenant_id),
+    tenant_id: UUID = Depends(get_tenant_id),
     account_id: str = Depends(get_current_account_id),
+    db: Session = Depends(get_db),
 ):
     """
     上传包含 Markdown + images 的 ZIP 文件。
@@ -368,6 +399,13 @@ async def upload_zip_with_images(
             status_code=400,
             detail="仅支持 ZIP 格式文件"
         )
+
+    try:
+        dataset_uuid = UUID(str(dataset_id))
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid dataset_id")
+    dataset = DatasetService.get_dataset(db, tenant_id, dataset_uuid)
+    DatasetService.assert_dataset_writable(db, dataset, account_id)
     
     # 保存到临时文件
     temp_dir = Path(settings.UPLOAD_DIR) / str(tenant_id) / "temp_zip"

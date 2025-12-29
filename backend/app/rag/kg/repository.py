@@ -14,6 +14,21 @@ from app.core.database import SessionLocal
 from app.rag.kg.models import KgEntity, KgEventEntity, KgSourceEvent
 from app.storage.vector.milvus import get_milvus_adapter, resolve_collection_name
 
+
+def _quote_milvus_str(value: str, *, max_len: int = 256) -> str:
+    """
+    Quote and escape a string literal for Milvus expr to avoid injection.
+    Milvus uses double-quoted string literals.
+    """
+    text = "" if value is None else str(value)
+    if "\x00" in text or "\n" in text or "\r" in text:
+        raise ValueError("Invalid string")
+    if len(text) > max_len:
+        raise ValueError("String too long")
+    escaped = text.replace("\\", "\\\\").replace('"', '\\"')
+    return f'"{escaped}"'
+
+
 class EntityRepository:
     """Entity read/write + similarity search."""
 
@@ -29,9 +44,9 @@ class EntityRepository:
         k: int = 10,
         entity_type: Optional[str] = None,
     ) -> List[dict]:
-        expr_parts = [f'tenant_id == "{str(tenant_id)}"']
+        expr_parts = [f"tenant_id == {_quote_milvus_str(str(tenant_id))}"]
         if entity_type:
-            expr_parts.append(f'type == "{entity_type}"')
+            expr_parts.append(f"type == {_quote_milvus_str(entity_type)}")
         expr = " and ".join(expr_parts)
 
         results = self._milvus.search(query_vector=query_vector, top_k=k, expr=expr)

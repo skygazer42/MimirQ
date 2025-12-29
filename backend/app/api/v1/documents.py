@@ -43,7 +43,7 @@ from app.services.pipeline_config import (
     resolve_pipeline_options,
 )
 from app.services.mineru_service import mineru_service
-from app.services.dataset_service import DatasetService
+from app.services.dataset_service import DatasetService, EDIT_ROLES
 from app.storage.object.minio import minio_service
 from app.models.dataset import Dataset, DatasetPermission, DatasetPermissionEnum
 from app.core.config import settings
@@ -530,11 +530,17 @@ async def delete_document(
 
 
 @router.get("/image/{image_id}")
-async def get_image(image_id: str, tenant_id: UUID = Depends(get_tenant_id)):
+async def get_image(
+    image_id: str,
+    tenant_id: UUID = Depends(get_tenant_id),
+    account_id: str = Depends(get_current_account_id),
+    db: Session = Depends(get_db),
+):
     """
     根据 image_id 返回保存的图片。
     标准位置：{UPLOAD_DIR}/images/{image_id}.png
     """
+    DatasetService.ensure_member(db, tenant_id, account_id)
     images_dir = Path(settings.UPLOAD_DIR) / str(tenant_id) / "images"
     # 防止路径穿越：仅允许 UUID / 32位十六进制（内部生成的 image_id）
     try:
@@ -552,7 +558,12 @@ async def get_image(image_id: str, tenant_id: UUID = Depends(get_tenant_id)):
 
 
 @router.get("/image-url/{img_id}")
-async def get_image_url(img_id: str, tenant_id: UUID = Depends(get_tenant_id)):
+async def get_image_url(
+    img_id: str,
+    tenant_id: UUID = Depends(get_tenant_id),
+    account_id: str = Depends(get_current_account_id),
+    db: Session = Depends(get_db),
+):
     """
     根据 img_id（格式：{tenant_id}:{dataset_id}:{document_id}:{chunk_index}）获取 MinIO 预签名 URL。
     返回 302 重定向到图片 URL。
@@ -562,6 +573,8 @@ async def get_image_url(img_id: str, tenant_id: UUID = Depends(get_tenant_id)):
             status_code=503,
             detail="MinIO 未启用，无法获取图片 URL"
         )
+
+    DatasetService.ensure_member(db, tenant_id, account_id)
 
     # 基础访问控制：确保 img_id 前缀租户与请求租户一致（兼容老格式 dataset-chunk 不做限制）
     def _tenant_from_img_id(val: str) -> Optional[str]:
@@ -573,6 +586,37 @@ async def get_image_url(img_id: str, tenant_id: UUID = Depends(get_tenant_id)):
     tenant_in_img = _tenant_from_img_id(img_id)
     if tenant_in_img and tenant_in_img != str(tenant_id):
         raise HTTPException(status_code=403, detail="Image access denied for this tenant")
+
+    # 权限校验：尽可能根据 img_id 解析出 dataset/document，做 dataset 级权限控制
+    if ":" in img_id:
+        try:
+            _tenant_part, dataset_part, document_part, _chunk_key = img_id.split(":", 3)
+            dataset_uuid = UUID(dataset_part)
+            document_uuid = UUID(document_part)
+        except Exception:
+            raise HTTPException(status_code=404, detail="Image not found")
+
+        document = (
+            db.query(DBDocument)
+            .filter(DBDocument.id == document_uuid, DBDocument.tenant_id == tenant_id)
+            .first()
+        )
+        if not document:
+            raise HTTPException(status_code=404, detail="Image not found")
+        if document.dataset_id and document.dataset_id != dataset_uuid:
+            raise HTTPException(status_code=404, detail="Image not found")
+        if document.dataset_id:
+            ds = DatasetService.get_dataset(db, tenant_id, document.dataset_id)
+            DatasetService.assert_dataset_readable(db, ds, account_id)
+    else:
+        # Backward compatible: "{dataset_id}-{chunk_id}"
+        try:
+            dataset_part = img_id.split("-", 1)[0]
+            dataset_uuid = UUID(dataset_part)
+        except Exception:
+            raise HTTPException(status_code=404, detail="Image not found")
+        ds = DatasetService.get_dataset(db, tenant_id, dataset_uuid)
+        DatasetService.assert_dataset_readable(db, ds, account_id)
 
     try:
         url = minio_service.get_image_url(img_id, extension="jpg")
@@ -601,6 +645,8 @@ async def preview_document(
     governance_common_lines_min_docs: Optional[int] = Form(default=None),
     governance_common_lines_min_ratio: Optional[float] = Form(default=None),
     tenant_id: UUID = Depends(get_tenant_id),
+    account_id: str = Depends(get_current_account_id),
+    db: Session = Depends(get_db),
 ):
     """
     文档解析预览接口
@@ -608,6 +654,7 @@ async def preview_document(
     仅解析文档并返回结构化片段，不创建文档记录或入库。
     适用于前端根据解析结果自定义切片。
     """
+    DatasetService.ensure_member(db, tenant_id, account_id)
     # 验证文件类型
     file_ext = Path(file.filename).suffix.lower()
     if file_ext not in settings.allowed_extensions_list:
@@ -849,6 +896,8 @@ async def preview_chunking(
     governance_common_lines_min_docs: Optional[int] = Form(default=None),
     governance_common_lines_min_ratio: Optional[float] = Form(default=None),
     tenant_id: UUID = Depends(get_tenant_id),
+    account_id: str = Depends(get_current_account_id),
+    db: Session = Depends(get_db),
 ):
     """
     切块预览接口
@@ -864,6 +913,7 @@ async def preview_chunking(
     Returns:
         切块预览结果，包含每个块的内容和位置信息
     """
+    DatasetService.ensure_member(db, tenant_id, account_id)
     # 参数校验
     if chunk_size < 100 or chunk_size > 4000:
         raise HTTPException(status_code=400, detail="chunk_size must be between 100 and 4000")
@@ -1049,7 +1099,12 @@ async def preview_chunking(
 # ==================== MinerU 批量上传 API ====================
 
 @router.post("/batch-upload/apply-urls", response_model=BatchUploadResponse)
-async def apply_batch_upload_urls(request: BatchUploadRequest):
+async def apply_batch_upload_urls(
+    request: BatchUploadRequest,
+    tenant_id: UUID = Depends(get_tenant_id),
+    account_id: str = Depends(get_current_account_id),
+    db: Session = Depends(get_db),
+):
     """
     批量申请文件上传 URL（MinerU 在线解析）
 
@@ -1086,6 +1141,11 @@ async def apply_batch_upload_urls(request: BatchUploadRequest):
         # Step 3: 查询状态
         requests.get(f"/api/v1/documents/batch-upload/status/{batch_id}")
     """
+    member = DatasetService.ensure_member(db, tenant_id, account_id)
+    role = (member.role or "").lower()
+    if role not in EDIT_ROLES:
+        raise HTTPException(status_code=403, detail="No permission to apply upload URLs")
+
     try:
         result = mineru_service.apply_batch_upload_urls(
             files=[f.model_dump() for f in request.files]
@@ -1104,7 +1164,12 @@ async def apply_batch_upload_urls(request: BatchUploadRequest):
 
 
 @router.get("/batch-upload/status/{batch_id}", response_model=BatchTaskStatus)
-async def get_batch_task_status(batch_id: str):
+async def get_batch_task_status(
+    batch_id: str,
+    tenant_id: UUID = Depends(get_tenant_id),
+    account_id: str = Depends(get_current_account_id),
+    db: Session = Depends(get_db),
+):
     """
     查询批量解析任务状态
 
@@ -1114,6 +1179,7 @@ async def get_batch_task_status(batch_id: str):
     Returns:
         任务状态信息，包括进度、完成数量等
     """
+    DatasetService.ensure_member(db, tenant_id, account_id)
     try:
         status = mineru_service.get_task_status(batch_id)
 
