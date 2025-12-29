@@ -4,6 +4,7 @@ Vector store 路由器：支持多后端占位，当前实现 Milvus，其他后
 """
 from typing import List, Dict, Any, Optional, Tuple
 from uuid import UUID
+import logging
 import math
 import os
 
@@ -12,6 +13,9 @@ from app.storage.vector.milvus import milvus_store
 from langchain_openai import OpenAIEmbeddings
 from langchain_community.vectorstores import FAISS
 from langchain_community.vectorstores import Chroma
+
+
+logger = logging.getLogger(__name__)
 
 
 class BaseVectorStore:
@@ -171,12 +175,25 @@ class FAISSVectorStore(BaseVectorStore):
         self.emb = OpenAIEmbeddings(api_key=api_key, base_url=base_url, model=model)
         self.store_by_tenant: Dict[str, FAISS] = {}
         self.persist_path = settings.FAISS_STORE_PATH
+        self.allow_dangerous_deserialization = bool(
+            getattr(settings, "FAISS_ALLOW_DANGEROUS_DESERIALIZATION", False)
+        )
+        self._warned_dangerous_deserialization = False
 
     def _get_store(self, tenant_id: Optional[UUID]) -> Tuple[str, Optional[FAISS]]:
         key = str(tenant_id or settings.DEFAULT_TENANT_ID)
         store = self.store_by_tenant.get(key)
         # 若存在持久化路径且内存中未加载，则尝试加载
         if store is None and self.persist_path and os.path.isdir(self.persist_path):
+            if not self.allow_dangerous_deserialization:
+                if not self._warned_dangerous_deserialization:
+                    logger.warning(
+                        "FAISS persistence found at %s but loading is disabled. "
+                        "Set FAISS_ALLOW_DANGEROUS_DESERIALIZATION=true only if the directory is trusted.",
+                        self.persist_path,
+                    )
+                    self._warned_dangerous_deserialization = True
+                return key, None
             try:
                 store = FAISS.load_local(
                     folder_path=self.persist_path,
