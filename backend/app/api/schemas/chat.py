@@ -5,7 +5,6 @@ from pydantic import BaseModel, Field, ConfigDict, field_validator
 from typing import Optional, List, Dict, Any
 from datetime import datetime
 from uuid import UUID
-
 from app.rag.core.text import normalize_retrieval_mode
 
 class Citation(BaseModel):

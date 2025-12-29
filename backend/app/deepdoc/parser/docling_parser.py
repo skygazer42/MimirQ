@@ -27,16 +27,8 @@ from typing import Any, Callable, Iterable, Optional
 import pdfplumber
 from PIL import Image
 
-try:
-    from docling.document_converter import DocumentConverter
-except Exception:
-    DocumentConverter = None
-
-try:
-    from app.deepdoc.parser.pdf_parser import RAGFlowPdfParser
-except Exception:
-    class RAGFlowPdfParser:
-        pass
+from docling.document_converter import DocumentConverter
+from app.deepdoc.parser.pdf_parser import RAGFlowPdfParser
 
 
 class DoclingContentType(str, Enum):
@@ -65,9 +57,6 @@ class DoclingParser(RAGFlowPdfParser):
 
 
     def check_installation(self) -> bool:
-        if DocumentConverter is None:
-            self.logger.warning("[Docling] 'docling' is not importable, please: pip install docling")
-            return False
         try:
             _ = DocumentConverter()
             return True

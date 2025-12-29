@@ -1,6 +1,5 @@
 """
 提示词模板相关 Schema
-
 定义提示词模板的创建、更新、查询等接口的数据模型。
 """
 from datetime import datetime

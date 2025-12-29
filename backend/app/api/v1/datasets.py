@@ -1,6 +1,5 @@
 """
 知识库管理 API
-
 支持知识库的创建、查询、更新、删除，以及权限管理。
 """
 from fastapi import APIRouter, Depends, HTTPException
