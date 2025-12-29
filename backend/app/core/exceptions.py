@@ -171,6 +171,42 @@ class RetrievalError(MimirQException):
         )
 
 
+# =============================================================================
+# Lightweight RAG Exceptions (no HTTP status codes)
+# These are used internally by RAG pipelines and should remain lightweight
+# to avoid circular imports.
+# =============================================================================
+
+class ExtractError(Exception):
+    """Extraction failure."""
+
+
+class SearchError(Exception):
+    """Search failure."""
+
+
+class AIError(Exception):
+    """Generic AI/LLM error."""
+
+
+class ConfigError(Exception):
+    """Configuration missing or invalid."""
+
+
+class LLMTimeoutError(LLMError):
+    """LLM timeout error."""
+    def __init__(self, message: str = "LLM request timed out", provider: Optional[str] = None):
+        super().__init__(message=message, provider=provider)
+
+
+class LoadError(Exception):
+    """Document load failure."""
+
+
+class PromptError(Exception):
+    """Prompt template error."""
+
+
 def get_request_id(request: Request) -> Optional[str]:
     return request.headers.get("X-Request-ID") or getattr(request.state, "request_id", None)
 

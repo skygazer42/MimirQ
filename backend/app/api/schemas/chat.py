@@ -7,6 +7,8 @@ from datetime import datetime
 from uuid import UUID
 from app.rag.core.text import normalize_retrieval_mode
 
+from .base import OrmModel
+
 class Citation(BaseModel):
     """引用信息"""
     document_id: UUID
@@ -34,7 +36,7 @@ class Citation(BaseModel):
     img_url: Optional[str] = Field(default=None, description="图片访问 URL")
 
 
-class MessageSchema(BaseModel):
+class MessageSchema(OrmModel):
     """消息"""
     id: UUID
     role: str  # user | assistant
@@ -43,9 +45,6 @@ class MessageSchema(BaseModel):
     message_metadata: Optional[Dict[str, Any]] = None
     created_at: datetime
 
-    class Config:
-        from_attributes = True
-
 
 class ConversationCreate(BaseModel):
     """创建对话"""
@@ -53,7 +52,7 @@ class ConversationCreate(BaseModel):
     document_ids: List[UUID] = Field(default_factory=list)
 
 
-class ConversationSchema(BaseModel):
+class ConversationSchema(OrmModel):
     """对话会话"""
     id: UUID
     title: Optional[str] = None
@@ -61,9 +60,6 @@ class ConversationSchema(BaseModel):
     message_count: int
     created_at: datetime
     updated_at: datetime
-
-    class Config:
-        from_attributes = True
 
 
 class ConversationDetail(BaseModel):

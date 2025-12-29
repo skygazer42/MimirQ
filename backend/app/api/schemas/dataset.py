@@ -7,6 +7,7 @@ from uuid import UUID
 from pydantic import BaseModel, Field
 
 from app.models.dataset import DatasetPermissionEnum
+from .base import OrmModel
 
 
 class DatasetBase(BaseModel):
@@ -27,7 +28,7 @@ class DatasetUpdate(BaseModel):
     partial_member_list: Optional[List[str]] = None
 
 
-class DatasetOut(BaseModel):
+class DatasetOut(OrmModel):
     id: UUID
     tenant_id: UUID
     name: str
@@ -35,6 +36,3 @@ class DatasetOut(BaseModel):
     permission: DatasetPermissionEnum
     owner_id: Optional[str]
     partial_member_list: Optional[List[str]] = None
-
-    class Config:
-        from_attributes = True

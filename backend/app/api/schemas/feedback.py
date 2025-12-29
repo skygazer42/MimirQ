@@ -6,6 +6,8 @@ from typing import Any, Dict, List, Optional
 from uuid import UUID
 from pydantic import BaseModel, Field
 
+from .base import OrmModel
+
 
 class MessageFeedbackCreateRequest(BaseModel):
     """提交/更新一条消息反馈（按 tenant + message_id + account_id 幂等）。"""
@@ -18,7 +20,7 @@ class MessageFeedbackCreateRequest(BaseModel):
     extra: Dict[str, Any] = Field(default_factory=dict, description="扩展字段（可选）")
 
 
-class MessageFeedbackOut(BaseModel):
+class MessageFeedbackOut(OrmModel):
     id: UUID
     tenant_id: UUID
     conversation_id: UUID
@@ -31,9 +33,6 @@ class MessageFeedbackOut(BaseModel):
     extra: Dict[str, Any] = {}
     created_at: datetime
     updated_at: datetime
-
-    class Config:
-        from_attributes = True
 
 
 class MessageFeedbackList(BaseModel):
