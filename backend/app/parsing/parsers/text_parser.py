@@ -3,7 +3,6 @@
 """
 from pathlib import Path
 from typing import List
-
 from langchain_core.documents import Document
 import markdown  # type: ignore
 from bs4 import BeautifulSoup  # type: ignore
@@ -11,7 +10,6 @@ from bs4 import BeautifulSoup  # type: ignore
 
 class TextParser:
     """纯文本解析器"""
-
     def parse(self, file_path: Path) -> List[Document]:
         """
         解析纯文本文件为 Document 列表。

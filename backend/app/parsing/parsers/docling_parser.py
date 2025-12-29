@@ -15,7 +15,7 @@ from __future__ import annotations
 
 from pathlib import Path
 from typing import Any, Callable, List, Optional, Tuple
-
+from app.deepdoc.parser.docling_parser import DoclingParser as DeepDocDoclingParser
 from app.core.config import settings
 from .base_parser import BaseAdvancedParser
 
@@ -62,7 +62,7 @@ class DoclingParser(BaseAdvancedParser):
         return "docling"
 
     def _create_parser(self) -> Any:
-        from app.deepdoc.parser.docling_parser import DoclingParser as DeepDocDoclingParser
+
         return DeepDocDoclingParser()
 
     def _check_parser_installation(self, parser: Any) -> Tuple[bool, str]:

@@ -12,16 +12,12 @@
 
 from pathlib import Path
 from typing import Any, Callable, List, Optional, Tuple
-
 from app.core.config import settings
 from .base_parser import BaseAdvancedParser
-
+from app.deepdoc.parser.tcadp_parser import TCADPParser as DeepDocTCADPParser
 
 class TCADPParser(BaseAdvancedParser):
     """
-    腾讯云 ADP 文档解析器（业务层封装）
-
-    调用 deepdoc/parser/tcadp_parser.py 底层实现，
     将 sections/tables 转换为 LangChain Document 格式。
     """
 
@@ -56,7 +52,7 @@ class TCADPParser(BaseAdvancedParser):
         return "tcadp"
 
     def _create_parser(self) -> Any:
-        from app.deepdoc.parser.tcadp_parser import TCADPParser as DeepDocTCADPParser
+
         return DeepDocTCADPParser(
             secret_id=self.secret_id,
             secret_key=self.secret_key,

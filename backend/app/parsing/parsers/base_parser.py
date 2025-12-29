@@ -1,8 +1,5 @@
 """
 高级解析器基类
-
-提供 LangChain Document 格式输出的解析器公共逻辑，
-消除 MinerU、Docling、TCADP 等解析器的代码重复。
 """
 
 from __future__ import annotations

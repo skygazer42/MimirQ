@@ -13,7 +13,7 @@ MinerU PDF 解析器（业务层封装）
 import os
 from pathlib import Path
 from typing import Any, Callable, List, Tuple
-
+from app.deepdoc.parser.mineru_parser import MinerUParser as DeepDocMinerUParser
 from app.core.config import settings
 from .base_parser import BaseAdvancedParser
 
@@ -35,7 +35,7 @@ class MinerUParser(BaseAdvancedParser):
         return "mineru"
 
     def _create_parser(self) -> Any:
-        from app.deepdoc.parser.mineru_parser import MinerUParser as DeepDocMinerUParser
+
         return DeepDocMinerUParser(
             mineru_api=self._api,
             mineru_server_url=self._server_url
