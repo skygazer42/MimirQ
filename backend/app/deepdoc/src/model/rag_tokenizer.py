@@ -22,7 +22,7 @@ import re
 import string
 import sys
 import bisect
-import pickle
+import json
 from pathlib import Path
 
 try:
@@ -58,13 +58,15 @@ class _FallbackTrie:
         self._sorted_keys = None
 
     def save(self, path: str) -> None:
-        with open(path, "wb") as f:
-            pickle.dump(self._data, f, protocol=pickle.HIGHEST_PROTOCOL)
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(self._data, f, ensure_ascii=False, separators=(",", ":"))
 
     @classmethod
     def load(cls, path: str) -> "_FallbackTrie":
-        with open(path, "rb") as f:
-            data = pickle.load(f)
+        with open(path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        if not isinstance(data, dict) or not all(isinstance(k, str) for k in data.keys()):
+            raise ValueError("Invalid trie cache format")
         obj = cls()
         obj._data = data
         obj._sorted_keys = sorted(obj._data.keys())

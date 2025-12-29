@@ -457,6 +457,7 @@ async def create_conversation(
     db: Session = Depends(get_db)
 ):
     """创建新对话"""
+    DatasetService.ensure_member(db, tenant_id, account_id)
     if request.document_ids:
         allowed_doc_ids = filter_allowed_document_ids(db, tenant_id, account_id, request.document_ids)
     else:
@@ -561,6 +562,7 @@ async def get_conversation_messages(
     db: Session = Depends(get_db)
 ):
     """获取对话历史"""
+    DatasetService.ensure_member(db, tenant_id, account_id)
     conversation = db.query(Conversation).filter(
         Conversation.id == conversation_id,
         Conversation.tenant_id == tenant_id
@@ -599,6 +601,7 @@ async def list_conversation_checkpoints(
     db: Session = Depends(get_db),
 ):
     """列出该会话的 LangGraph checkpoints（用于 time-travel/debug）。"""
+    DatasetService.ensure_member(db, tenant_id, account_id)
     conversation = db.query(Conversation).filter(
         Conversation.id == conversation_id,
         Conversation.tenant_id == tenant_id,
@@ -644,6 +647,7 @@ async def get_conversation_checkpoint(
     db: Session = Depends(get_db),
 ):
     """获取指定 checkpoint 的快照（默认不返回 docs 字段）。"""
+    DatasetService.ensure_member(db, tenant_id, account_id)
     conversation = db.query(Conversation).filter(
         Conversation.id == conversation_id,
         Conversation.tenant_id == tenant_id,
@@ -683,6 +687,7 @@ async def delete_conversation_checkpoints(
     db: Session = Depends(get_db),
 ):
     """清除该会话的 checkpoints（仅影响 LangGraph 内部状态，不删除消息/对话）。"""
+    DatasetService.ensure_member(db, tenant_id, account_id)
     conversation = db.query(Conversation).filter(
         Conversation.id == conversation_id,
         Conversation.tenant_id == tenant_id,
@@ -706,6 +711,7 @@ async def delete_conversation(
     db: Session = Depends(get_db)
 ):
     """删除对话"""
+    DatasetService.ensure_member(db, tenant_id, account_id)
     conversation = db.query(Conversation).filter(
         Conversation.id == conversation_id,
         Conversation.tenant_id == tenant_id

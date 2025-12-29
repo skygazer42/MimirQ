@@ -17,6 +17,7 @@ def filter_allowed_document_ids(
     Validate documents exist under tenant and enforce dataset read permissions.
     Returns the list of allowed document IDs (preserves input order when possible).
     """
+    DatasetService.ensure_member(db, tenant_id, account_id)
     if not doc_ids:
         return []
 
@@ -68,6 +69,7 @@ def list_accessible_document_ids(
     This is a batched/efficient variant for "default scope" scenarios (e.g. chat without explicit document_ids).
     It enforces dataset permissions without issuing 1 query per document.
     """
+    DatasetService.ensure_member(db, tenant_id, account_id)
     query = db.query(DBDocument).filter(DBDocument.tenant_id == tenant_id)
     if status:
         query = query.filter(DBDocument.status == status)
