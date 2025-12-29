@@ -9,6 +9,8 @@ from typing import Any, Dict, List, Optional
 from uuid import UUID
 from pydantic import BaseModel, Field
 
+from .base import OrmModel
+
 
 class RagasRunCreateRequest(BaseModel):
     """Create a RAGAS evaluation run for a conversation."""
@@ -23,7 +25,7 @@ class RagasRunCreateRequest(BaseModel):
     include_contexts_in_response: bool = Field(default=False, description="在明细中返回 contexts（可能较大）")
 
 
-class RagasRunSchema(BaseModel):
+class RagasRunSchema(OrmModel):
     """Evaluation run metadata."""
 
     id: UUID
@@ -37,11 +39,8 @@ class RagasRunSchema(BaseModel):
     started_at: Optional[datetime] = None
     finished_at: Optional[datetime] = None
 
-    class Config:
-        from_attributes = True
 
-
-class RagasItemSchema(BaseModel):
+class RagasItemSchema(OrmModel):
     """Per-turn evaluation item."""
 
     id: UUID
@@ -55,9 +54,6 @@ class RagasItemSchema(BaseModel):
     citations: List[Dict[str, Any]] = []
     scores: Dict[str, Any] = {}
     created_at: datetime
-
-    class Config:
-        from_attributes = True
 
 
 class RagasRunDetail(BaseModel):

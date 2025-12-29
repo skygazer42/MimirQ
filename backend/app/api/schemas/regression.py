@@ -1,7 +1,7 @@
 """
 RAGAS 回归集（Regression Suite）相关 Schema。
 
-目标：把“固定的一组问题”沉淀为可复用回归用例，支持在不同 prompt/模型/检索策略下重复跑评测，
+目标：把"固定的一组问题"沉淀为可复用回归用例，支持在不同 prompt/模型/检索策略下重复跑评测，
 并将结果落表，形成持续迭代闭环。
 """
 
@@ -9,6 +9,8 @@ from datetime import datetime
 from typing import Any, Dict, List, Optional
 from uuid import UUID
 from pydantic import BaseModel, Field
+
+from .base import OrmModel
 
 class RagasRegressionCaseCreateRequest(BaseModel):
     question: str = Field(..., min_length=1, description="问题（回归用例的 user_input）")
@@ -19,7 +21,7 @@ class RagasRegressionCaseCreateRequest(BaseModel):
     extra: Dict[str, Any] = Field(default_factory=dict, description="扩展字段（可选）")
 
 
-class RagasRegressionCaseOut(BaseModel):
+class RagasRegressionCaseOut(OrmModel):
     id: UUID
     tenant_id: UUID
     dataset_id: Optional[UUID] = None
@@ -31,9 +33,6 @@ class RagasRegressionCaseOut(BaseModel):
     created_by: Optional[str] = None
     created_at: datetime
     updated_at: datetime
-
-    class Config:
-        from_attributes = True
 
 
 class RagasRegressionCaseList(BaseModel):
@@ -70,7 +69,7 @@ class RagasRegressionRunCreateRequest(BaseModel):
     prompt_ab_experiment_key: Optional[str] = None
 
 
-class RagasRegressionRunSchema(BaseModel):
+class RagasRegressionRunSchema(OrmModel):
     id: UUID
     tenant_id: UUID
     account_id: Optional[str] = None
@@ -83,11 +82,8 @@ class RagasRegressionRunSchema(BaseModel):
     started_at: Optional[datetime] = None
     finished_at: Optional[datetime] = None
 
-    class Config:
-        from_attributes = True
 
-
-class RagasRegressionItemSchema(BaseModel):
+class RagasRegressionItemSchema(OrmModel):
     id: UUID
     run_id: UUID
     case_id: UUID
@@ -97,9 +93,6 @@ class RagasRegressionItemSchema(BaseModel):
     citations: List[Dict[str, Any]] = []
     scores: Dict[str, Any] = {}
     created_at: datetime
-
-    class Config:
-        from_attributes = True
 
 
 class RagasRegressionRunDetail(BaseModel):

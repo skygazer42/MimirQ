@@ -8,6 +8,8 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field
 
+from .base import OrmModel
+
 
 class PromptTemplateBase(BaseModel):
     """Base schema containing common prompt template fields."""
@@ -110,7 +112,7 @@ class PromptTemplateNewVersion(BaseModel):
     ab_weight: float = Field(default=1.0, ge=0.0)
 
 
-class PromptTemplateOut(BaseModel):
+class PromptTemplateOut(OrmModel):
     """Schema for prompt template responses with all database fields."""
 
     id: UUID
@@ -132,11 +134,6 @@ class PromptTemplateOut(BaseModel):
     ab_weight: float
     created_at: datetime
     updated_at: datetime
-
-    class Config:
-        """Pydantic configuration."""
-
-        from_attributes = True
 
 
 class PromptTemplateList(BaseModel):

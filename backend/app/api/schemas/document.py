@@ -6,6 +6,8 @@ from typing import Optional, List, Dict, Any
 from datetime import datetime
 from uuid import UUID
 
+from .base import OrmModel
+
 
 class DocumentPipelineOptions(BaseModel):
     """Per-document pipeline options."""
@@ -28,7 +30,7 @@ class DocumentPipelineOptions(BaseModel):
     entity_vector_enabled: Optional[bool] = None
 
 
-class DocumentUploadResponse(BaseModel):
+class DocumentUploadResponse(OrmModel):
     """文档上传响应"""
     id: UUID
     dataset_id: Optional[UUID] = None
@@ -39,11 +41,8 @@ class DocumentUploadResponse(BaseModel):
     created_at: datetime
     metadata: Dict[str, Any] = {}
 
-    class Config:
-        from_attributes = True
 
-
-class DocumentChunkSchema(BaseModel):
+class DocumentChunkSchema(OrmModel):
     """文档块"""
     id: UUID
     content: str
@@ -53,11 +52,8 @@ class DocumentChunkSchema(BaseModel):
     chunk_index: int
     metadata: Dict[str, Any] = {}
 
-    class Config:
-        from_attributes = True
 
-
-class DocumentDetail(BaseModel):
+class DocumentDetail(OrmModel):
     """文档详情"""
     id: UUID
     filename: str
@@ -74,9 +70,6 @@ class DocumentDetail(BaseModel):
     dataset_id: Optional[UUID] = None
     metadata: Dict[str, Any] = {}
     chunks: Optional[List[DocumentChunkSchema]] = None
-
-    class Config:
-        from_attributes = True
 
 
 class ParsedSegment(BaseModel):
@@ -122,16 +115,13 @@ class DocumentList(BaseModel):
     items: List[DocumentDetail]
 
 
-class DocumentStatus(BaseModel):
+class DocumentStatus(OrmModel):
     """文档处理状态"""
     id: UUID
     status: str
     processing_progress: int
     current_stage: Optional[str] = None
     error_message: Optional[str] = None
-
-    class Config:
-        from_attributes = True
 
 
 # ============ 切块预览相关 Schema ============

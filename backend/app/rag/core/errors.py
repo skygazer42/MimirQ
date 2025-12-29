@@ -1,39 +1,28 @@
 """
 Shared error types used across RAG pipelines and plugins.
 
-These exceptions are intentionally lightweight and should not import heavy
-dependencies to avoid circular imports.
+Re-exports from app.core.exceptions to maintain backward compatibility.
+All exceptions are now centralized in app/core/exceptions.py.
 """
 
+from app.core.exceptions import (
+    ExtractError,
+    SearchError,
+    AIError,
+    ConfigError,
+    LLMError,
+    LLMTimeoutError,
+    LoadError,
+    PromptError,
+)
 
-class ExtractError(Exception):
-    """Extraction failure."""
-
-
-class SearchError(Exception):
-    """Search failure."""
-
-
-class AIError(Exception):
-    """Generic AI/LLM error."""
-
-
-class ConfigError(Exception):
-    """Configuration missing or invalid."""
-
-
-class LLMError(Exception):
-    """LLM runtime error."""
-
-
-class LLMTimeoutError(LLMError):
-    """LLM timeout."""
-
-
-class LoadError(Exception):
-    """Document load failure."""
-
-
-class PromptError(Exception):
-    """Prompt template error."""
-
+__all__ = [
+    "ExtractError",
+    "SearchError",
+    "AIError",
+    "ConfigError",
+    "LLMError",
+    "LLMTimeoutError",
+    "LoadError",
+    "PromptError",
+]
