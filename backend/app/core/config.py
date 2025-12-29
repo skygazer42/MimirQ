@@ -79,6 +79,11 @@ class Settings(BaseSettings):
     # PDF quality OCR validation (used by parse-preview scoring)
     RAPIDOCR_ENABLED: bool = False
 
+    # Auth
+    # - jwt: require Authorization: Bearer <JWT> (validated with SECRET_KEY)
+    # - header: require X-User-ID header (unsafe; intended for local/dev only)
+    AUTH_MODE: Literal["jwt", "header"] = "jwt"
+
     SECRET_KEY: str = "your-secret-key-change-in-production"
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
@@ -295,23 +300,39 @@ class Settings(BaseSettings):
     @model_validator(mode="after")
     def validate_settings(self) -> "Settings":
         """Validate configuration settings at startup."""
-        # Security: Warn about default SECRET_KEY
-        if self.SECRET_KEY == "your-secret-key-change-in-production":
-            is_production = os.getenv("ENV", "").lower() in ("prod", "production")
-            if is_production:
-                raise ValueError(
-                    "SECRET_KEY must be changed from default in production! "
-                    "Set a secure random value via environment variable."
+        is_production = os.getenv("ENV", "").lower() in ("prod", "production")
+
+        # Security: Auth mode guard
+        auth_mode = (getattr(self, "AUTH_MODE", "jwt") or "jwt").lower()
+        if auth_mode not in ("jwt", "header"):
+            raise ValueError(f"Unsupported AUTH_MODE: {auth_mode}")
+        if auth_mode == "header" and is_production:
+            raise ValueError("AUTH_MODE=header is not allowed in production")
+
+        # Security: Validate SECRET_KEY (required for JWT verification)
+        if auth_mode == "jwt":
+            if (
+                not self.SECRET_KEY
+                or self.SECRET_KEY == "your-secret-key-change-in-production"
+                or len(self.SECRET_KEY) < 32
+            ):
+                raise ValueError("SECRET_KEY required for JWT auth (min 32 chars)")
+        else:
+            # Best-effort warning for other uses (sessions, future JWT issuance, etc.)
+            if self.SECRET_KEY == "your-secret-key-change-in-production":
+                warnings.warn(
+                    "Using default SECRET_KEY. Change this in production!",
+                    UserWarning,
+                    stacklevel=2,
                 )
-            warnings.warn(
-                "Using default SECRET_KEY. Change this in production!",
-                UserWarning,
-                stacklevel=2,
-            )
 
         # Security: Warn about default MinIO credentials
         if self.MINIO_ENABLED:
+            if not self.MINIO_ACCESS_KEY or not self.MINIO_SECRET_KEY:
+                raise ValueError("MINIO_ACCESS_KEY and MINIO_SECRET_KEY are required when MINIO_ENABLED=true")
             if self.MINIO_ACCESS_KEY == "minioadmin" or self.MINIO_SECRET_KEY == "minioadmin":
+                if is_production:
+                    raise ValueError("Default MinIO credentials are not allowed in production when MINIO_ENABLED=true")
                 warnings.warn(
                     "Using default MinIO credentials. Change in production!",
                     UserWarning,

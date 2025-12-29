@@ -15,6 +15,7 @@ Usage:
 
 from __future__ import annotations
 
+import ast
 import logging
 import math
 import re
@@ -132,6 +133,154 @@ async def get_document_content(
 # ============================================================================
 
 
+_MAX_MATH_EXPRESSION_CHARS = 256
+_MAX_MATH_AST_NODES = 200
+_MAX_MATH_INT_BITS = 4096
+_MAX_MATH_POW_ABS_EXP = 4096
+
+
+def _safe_eval_math(expression: str, allowed_names: Dict[str, Any]) -> Any:
+    expr = (expression or "").strip().lower()
+    if not expr:
+        raise ValueError("Empty expression")
+    if len(expr) > _MAX_MATH_EXPRESSION_CHARS:
+        raise ValueError("Expression too long")
+
+    # Keep compatibility: treat "^" as power.
+    expr = expr.replace("^", "**")
+
+    tree = ast.parse(expr, mode="eval")
+
+    node_count = 0
+
+    def _bump(node: ast.AST) -> None:
+        nonlocal node_count
+        node_count += 1
+        if node_count > _MAX_MATH_AST_NODES:
+            raise ValueError("Expression too complex")
+
+    def _ensure_number_safe(value: Any) -> None:
+        if isinstance(value, bool):
+            raise ValueError("Invalid number")
+        if isinstance(value, int):
+            if value.bit_length() > _MAX_MATH_INT_BITS:
+                raise ValueError("Number too large")
+
+    def _safe_pow(base: Any, exp: Any, mod: Any | None = None) -> Any:
+        if isinstance(base, bool) or isinstance(exp, bool) or isinstance(mod, bool):
+            raise ValueError("Invalid number")
+
+        if isinstance(exp, int):
+            if abs(exp) > _MAX_MATH_POW_ABS_EXP:
+                raise ValueError("Exponent too large")
+            if isinstance(base, int) and exp >= 0 and base not in (0, 1, -1):
+                estimated_bits = abs(exp) * max(1, base.bit_length())
+                if estimated_bits > _MAX_MATH_INT_BITS:
+                    raise ValueError("Number too large")
+
+        if mod is not None:
+            if not (isinstance(base, int) and isinstance(exp, int) and isinstance(mod, int)):
+                raise ValueError("pow(a, b, mod) only supports integers")
+            if mod == 0:
+                raise ValueError("Modulo cannot be zero")
+            out = pow(base, exp, mod)
+            _ensure_number_safe(out)
+            return out
+
+        out = base ** exp
+        _ensure_number_safe(out)
+        return out
+
+    def _eval(node: ast.AST) -> Any:
+        _bump(node)
+
+        if isinstance(node, ast.Expression):
+            return _eval(node.body)
+
+        if isinstance(node, ast.Constant):
+            if isinstance(node.value, (int, float)) and not isinstance(node.value, bool):
+                _ensure_number_safe(node.value)
+                return node.value
+            raise ValueError("Only numbers are allowed")
+
+        if isinstance(node, ast.UnaryOp):
+            operand = _eval(node.operand)
+            if isinstance(node.op, ast.UAdd):
+                out = +operand
+            elif isinstance(node.op, ast.USub):
+                out = -operand
+            else:
+                raise ValueError("Unsupported unary operator")
+            _ensure_number_safe(out)
+            return out
+
+        if isinstance(node, ast.BinOp):
+            left = _eval(node.left)
+            right = _eval(node.right)
+
+            if isinstance(node.op, ast.Add):
+                out = left + right
+            elif isinstance(node.op, ast.Sub):
+                out = left - right
+            elif isinstance(node.op, ast.Mult):
+                if isinstance(left, int) and isinstance(right, int):
+                    if left.bit_length() + right.bit_length() > _MAX_MATH_INT_BITS:
+                        raise ValueError("Number too large")
+                out = left * right
+            elif isinstance(node.op, ast.Div):
+                out = left / right
+            elif isinstance(node.op, ast.FloorDiv):
+                out = left // right
+            elif isinstance(node.op, ast.Mod):
+                out = left % right
+            elif isinstance(node.op, ast.Pow):
+                out = _safe_pow(left, right)
+            else:
+                raise ValueError("Unsupported operator")
+
+            _ensure_number_safe(out)
+            return out
+
+        if isinstance(node, ast.Name):
+            name = node.id
+            if name not in allowed_names:
+                raise ValueError(f"Unknown name: {name}")
+            value = allowed_names[name]
+            if isinstance(value, (int, float)) and not isinstance(value, bool):
+                _ensure_number_safe(value)
+                return value
+            raise ValueError(f"'{name}' must be called as a function")
+
+        if isinstance(node, ast.Call):
+            if not isinstance(node.func, ast.Name):
+                raise ValueError("Only direct function calls are allowed")
+            if node.keywords:
+                raise ValueError("Keyword arguments are not allowed")
+
+            name = node.func.id
+            fn = allowed_names.get(name)
+            if fn is None or not callable(fn):
+                raise ValueError(f"Unknown function: {name}")
+
+            args = [_eval(a) for a in node.args]
+
+            if name == "pow":
+                if len(args) not in (2, 3):
+                    raise ValueError("pow() expects 2 or 3 arguments")
+                return _safe_pow(args[0], args[1], args[2] if len(args) == 3 else None)
+
+            out = fn(*args)
+            _ensure_number_safe(out)
+            return out
+
+        if isinstance(node, (ast.Tuple, ast.List)):
+            return [_eval(elt) for elt in node.elts]
+
+        raise ValueError("Unsupported expression")
+
+    return _eval(tree)
+
+
 def get_current_time(
     format: str = "%Y-%m-%d %H:%M:%S",
     timezone: Optional[str] = None,
@@ -171,7 +320,6 @@ def calculate(expression: str) -> Dict[str, Any]:
     Returns:
         Calculation result
     """
-    # Only allow safe operations
     allowed_names = {
         "abs": abs,
         "round": round,
@@ -190,14 +338,8 @@ def calculate(expression: str) -> Dict[str, Any]:
         "e": math.e,
     }
 
-    # Remove dangerous characters
-    safe_expr = re.sub(r"[^0-9+\-*/().,%^a-z ]", "", expression.lower())
-
     try:
-        # Replace ^ with **
-        safe_expr = safe_expr.replace("^", "**")
-
-        result = eval(safe_expr, {"__builtins__": {}}, allowed_names)
+        result = _safe_eval_math(expression, allowed_names)
 
         return {
             "expression": expression,
