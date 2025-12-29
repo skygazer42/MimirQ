@@ -60,6 +60,8 @@ hanziconv==0.3.2
 nltk>=3.9
 docling==2.55.0
 tencentcloud-sdk-python==3.0.1274
+html-text==0.6.2
+readability-lxml==0.8.1
 
 # BM25 and Text Processing
 rank-bm25==0.2.2
