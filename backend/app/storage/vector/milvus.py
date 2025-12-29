@@ -13,6 +13,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from uuid import UUID
 
 from app.core.config import settings
+from app.core.constants import MilvusConfig, EmbeddingProviders
 from app.rag.embedding import create_langchain_embeddings_from_config
 
 logger = logging.getLogger(__name__)
@@ -25,14 +26,7 @@ def _init_embedding_model():
     provider = (settings.EMBEDDING_PROVIDER or "local").lower()
     logger.info("[*] Loading embedding provider: %s", provider)
 
-    provider_map = {
-        "openai": "openai_compatible",
-        "openai_compatible": "openai_compatible",
-        "local": "local",
-        "dashscope": "dashscope",
-    }
-
-    mapped_provider = provider_map.get(provider, "openai_compatible")
+    mapped_provider = EmbeddingProviders.PROVIDER_MAP.get(provider, "openai_compatible")
     api_key = settings.EMBEDDING_API_KEY or settings.LLM_API_KEY
     base_url = settings.EMBEDDING_API_BASE or settings.LLM_API_BASE
 
@@ -57,16 +51,12 @@ def _get_milvus_connection_args() -> Dict[str, Any]:
 
 def _get_milvus_index_params() -> Dict[str, Any]:
     """获取 Milvus 索引配置."""
-    return {
-        "metric_type": "COSINE",
-        "index_type": "IVF_FLAT",
-        "params": {"nlist": 1024},
-    }
+    return MilvusConfig.get_index_params()
 
 
 def _get_milvus_search_params() -> Dict[str, Any]:
     """获取 Milvus 搜索配置."""
-    return {"metric_type": "COSINE", "params": {"nprobe": 10}}
+    return MilvusConfig.get_search_params()
 
 
 # ========= 通用 Milvus 适配器 ==========

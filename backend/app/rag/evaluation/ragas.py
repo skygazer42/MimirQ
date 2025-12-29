@@ -17,6 +17,7 @@ import httpx
 
 from app.core.config import settings
 from app.core.database import SessionLocal
+from app.core.utils import get_proxy_url
 from app.models.chat import Conversation, Message
 from app.models.document import DocumentChunk
 from app.models.document import Document as DBDocument
@@ -32,24 +33,16 @@ from app.services.document_access import filter_allowed_document_ids, list_acces
 from app.rag.embedding import create_langchain_embeddings_from_config
 from langchain_openai import ChatOpenAI, OpenAIEmbeddings
 from langchain_community.embeddings import HuggingFaceEmbeddings
+
+
 def _build_http_clients() -> tuple[httpx.Client, httpx.AsyncClient]:
     """
     Reuse the same proxy-handling logic as the RAG engine:
     - If a SOCKS proxy is detected, disable trust_env to avoid httpx issues.
     """
-    proxy_candidates = [
-        os.getenv("OPENAI_PROXY"),
-        os.getenv("HTTPS_PROXY"),
-        os.getenv("HTTP_PROXY"),
-        os.getenv("ALL_PROXY"),
-        os.getenv("https_proxy"),
-        os.getenv("http_proxy"),
-        os.getenv("all_proxy"),
-    ]
-    proxies = [p for p in proxy_candidates if p]
+    proxy_url = get_proxy_url()
     trust_env = True
-    socks_proxy = next((p for p in proxies if p.lower().startswith("socks")), None)
-    if socks_proxy:
+    if proxy_url and proxy_url.lower().startswith("socks"):
         trust_env = False
     return httpx.Client(trust_env=trust_env), httpx.AsyncClient(trust_env=trust_env)
 
