@@ -4,10 +4,13 @@
 从请求头中解析用户身份信息。
 """
 
+import logging
 from fastapi import Header, HTTPException
-from jose import JWTError, jwt
+from jose import jwt, ExpiredSignatureError, JWTError
 
 from app.core.config import settings
+
+logger = logging.getLogger(__name__)
 
 
 def get_current_account_id(
@@ -37,12 +40,22 @@ def get_current_account_id(
         raise HTTPException(status_code=401, detail="Invalid Authorization header")
 
     try:
-        payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
-    except JWTError:
+        payload = jwt.decode(
+            token,
+            settings.SECRET_KEY,
+            algorithms=[settings.ALGORITHM],
+            options={"verify_exp": True}  # 显式启用过期检查
+        )
+    except ExpiredSignatureError:
+        logger.warning("Expired token attempted for access")
+        raise HTTPException(status_code=401, detail="Token expired")
+    except JWTError as e:
+        logger.warning("Invalid token: %s", str(e)[:100])
         raise HTTPException(status_code=401, detail="Invalid token")
 
     user_id = payload.get("sub")
     if not user_id:
+        logger.warning("Token missing 'sub' claim")
         raise HTTPException(status_code=401, detail="Invalid token")
 
     return str(user_id)

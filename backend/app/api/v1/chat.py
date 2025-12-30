@@ -187,7 +187,7 @@ async def stream_chat(
         )
 
     # 更新对话消息计数
-    conversation.message_count += 1
+    conversation.message_count = (conversation.message_count or 0) + 1
     db.commit()
 
     # 3. 流式响应函数

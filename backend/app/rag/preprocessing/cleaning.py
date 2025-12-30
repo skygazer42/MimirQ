@@ -23,7 +23,10 @@ _CONTROL_CHARS_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f]")
 _ZERO_WIDTH_RE = re.compile(r"[\u200b\u200c\u200d\u2060\ufeff]")
 _TRAILING_SPACES_RE = re.compile(r"[ \t]+\n")
 _MANY_BLANK_LINES_RE = re.compile(r"\n{3,}")
+_MID_WS_RE = re.compile(r"(?<=\S)[ \t]{2,}(?=\S)")
 _ALNUM_CJK_RE = re.compile(r"[A-Za-z0-9\u4e00-\u9fff]")
+_UPPER_RUN_RE = re.compile(r"[A-Z]{3,}")
+_SOFT_HYPHEN_RE = re.compile("\u00ad")
 _TOC_HEADER_RE = re.compile(r"^\s*(?:table of contents|contents|\u76ee\u5f55)\s*$", re.IGNORECASE)
 _TOC_LINE_RE = re.compile(
     r"^\s*(?:\d+|[IVXLC]+|[\u4e00-\u9fff]+)[\.\-\u3001)]?\s+.+"
@@ -39,6 +42,26 @@ _TRAILING_PAGE_NUM_RE = re.compile(r"\s+\d{1,4}\s*$")
 _TRAILING_PAGE_OF_RE = re.compile(r"\s+\d{1,4}\s*/\s*\d{1,4}\s*$")
 _TRAILING_PAGE_WORD_RE = re.compile(r"\s+(?:page|p\.?)\s*\d{1,4}\s*$", re.IGNORECASE)
 _LEADING_LINE_NUMBER_RE = re.compile(r"^(\s*)\d{1,4}\s+(?=\S)")
+_PDF_LIGATURES = {
+    "\ufb00": "ff",
+    "\ufb01": "fi",
+    "\ufb02": "fl",
+    "\ufb03": "ffi",
+    "\ufb04": "ffl",
+    "\ufb05": "ft",
+    "\ufb06": "st",
+}
+
+_PDF_BULLETS: tuple[str, ...] = (
+    "\u2022",  # •
+    "\u25cf",  # ●
+    "\u25aa",  # ▪
+    "\u25a0",  # ■
+    "\u25c6",  # ◆
+    "\u25e6",  # ◦
+    "\u2043",  # ⁃
+    "\uf0b7",  #  (common private-use bullet from some PDF extractors)
+)
 
 
 def clean_markdown(
@@ -72,8 +95,13 @@ def clean_markdown(
         text = text.replace("\r\n", "\n").replace("\r", "\n")
 
     # Normalize some common Unicode whitespace artifacts from PDF/Office exporters.
-    text = text.replace("\u00a0", " ").replace("\u202f", " ")
+    text = text.replace("\u00a0", " ").replace("\u202f", " ").replace("\u3000", " ")
     text = _ZERO_WIDTH_RE.sub("", text)
+    text = _SOFT_HYPHEN_RE.sub("", text)
+    # Normalize common PDF ligatures (ﬁ/ﬂ/ﬃ/ﬄ/…); keeps semantics while improving tokenization/search.
+    for src, dst in _PDF_LIGATURES.items():
+        if src in text:
+            text = text.replace(src, dst)
 
     if remove_control_chars:
         text = _CONTROL_CHARS_RE.sub("", text)
@@ -101,6 +129,8 @@ def clean_markdown(
         )
         if unwrap_lines:
             lines = _unwrap_soft_line_breaks(lines, max_line_length=unwrap_max_line_length)
+        # Post-process line-level artifacts typical for PDF/DOC exporters.
+        lines = _normalize_text_lines(lines)
         text = "\n".join(lines)
 
     if trim_trailing_spaces:
@@ -265,6 +295,126 @@ def _strip_leading_line_numbers(lines: list[str]) -> list[str]:
     return output
 
 
+def _normalize_text_lines(lines: list[str]) -> list[str]:
+    """
+    Normalize per-line artifacts while preserving Markdown structure.
+
+    - Collapses mid-line excessive whitespace (keeps leading indentation).
+    - Repairs OCR/PDF "spaced letters" like "t h i s" -> "this" (conservative).
+    """
+    if not lines:
+        return []
+
+    out: list[str] = []
+    in_code = False
+    for line in lines:
+        if _CODE_FENCE_RE.match(line):
+            in_code = not in_code
+            out.append(line)
+            continue
+        if in_code:
+            out.append(line)
+            continue
+
+        bullet_normalized = _normalize_pdf_bullet_line(line)
+        if bullet_normalized is not None:
+            out.append(bullet_normalized)
+            continue
+
+        if not line.strip() or _is_structural_line(line):
+            out.append(line)
+            continue
+
+        # Order matters:
+        # - collapse OCR spaced letters first (to preserve intentional word boundaries)
+        # - then collapse excessive mid-line whitespace from PDF exporters
+        text = _collapse_spaced_letters(line)
+        text = _MID_WS_RE.sub(" ", text)
+        out.append(text)
+    return out
+
+
+def _normalize_pdf_bullet_line(line: str) -> str | None:
+    """
+    Normalize common PDF bullet characters to Markdown list syntax.
+
+    This is intentionally conservative:
+    - Only triggers when the bullet is the first visible character on the line.
+    - Skips code fences/blocks (handled by caller).
+    - Does not touch already-structured list lines.
+    """
+    if not line or not line.strip():
+        return None
+
+    prefix = line[: len(line) - len(line.lstrip(" \t"))]
+    stripped = line.strip()
+    for bullet in _PDF_BULLETS:
+        if stripped.startswith(bullet):
+            rest = stripped[len(bullet) :].lstrip()
+            if not rest:
+                return None
+            return f"{prefix}- {rest}"
+    return None
+
+
+def _collapse_spaced_letters(line: str) -> str:
+    """
+    Collapse OCR-style spaced letters inside a single line.
+
+    Example:
+      "t h i s i s a t e s t" -> "this is a test"
+
+    Safety:
+      - Requires >=5 letters in the spaced sequence.
+      - Skips ALL-CAPS sequences (e.g. "U S A F") to avoid mangling acronyms.
+    """
+    if not line or " " not in line:
+        return line
+
+    out: list[str] = []
+    i = 0
+    n = len(line)
+
+    while i < n:
+        ch = line[i]
+        if ch.isalpha() and (i == 0 or not line[i - 1].isalpha()):
+            # Capture sequences like "t h i s" (single spaces between letters).
+            j = i
+            letters = [ch]
+            # Keep collapsing only when each letter is separated by spaces, i.e. avoid
+            # accidentally consuming the first character of a normal word like "t e s t".
+            while (
+                j + 2 < n
+                and line[j + 1] == " "
+                and line[j + 2].isalpha()
+                and (j + 3 >= n or line[j + 3] == " ")
+            ):
+                letters.append(line[j + 2])
+                j += 2
+
+            if len(letters) >= 4:
+                word = "".join(letters)
+                # Skip ALL-CAPS sequences to avoid mangling acronyms like "U S A F".
+                if (
+                    not word.isupper()
+                    and not _UPPER_RUN_RE.search(word)
+                    and sum(1 for c in word if c.islower()) >= 2
+                ):
+                    out.append(word)
+                    i = j + 1
+                    continue
+
+            # Not a safe collapse target: keep original slice.
+            out.append(line[i : j + 1])
+            i = j + 1
+            continue
+
+        out.append(ch)
+        i += 1
+
+    return "".join(out)
+
+
 def _unwrap_soft_line_breaks(lines: list[str], *, max_line_length: int) -> list[str]:
     merged: list[str] = []
     in_code = False
@@ -317,6 +467,12 @@ def _merge_lines(line: str, next_line: str) -> str:
 
 
 def _is_structural_line(line: str) -> bool:
+    stripped = line.lstrip(" \t")
+    if stripped:
+        for bullet in _PDF_BULLETS:
+            if stripped.startswith(bullet) and (len(stripped) == 1 or stripped[1].isspace()):
+                return True
+
     return bool(
         _HEADING_RE.match(line)
         or _LIST_RE.match(line)
