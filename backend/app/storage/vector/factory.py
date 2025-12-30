@@ -9,13 +9,33 @@ import math
 import os
 
 from app.core.config import settings
+from app.core.constants import EmbeddingProviders
 from app.storage.vector.milvus import milvus_store
-from langchain_openai import OpenAIEmbeddings
 from langchain_community.vectorstores import FAISS
 from langchain_community.vectorstores import Chroma
+from app.rag.embedding import create_langchain_embeddings_from_config
 
 
 logger = logging.getLogger(__name__)
+
+
+def _match_metadata_filter(meta: Dict[str, Any], filter_spec: Dict[str, Any]) -> bool:
+    """Simple equality/containment metadata filter."""
+    if not filter_spec:
+        return True
+    if not isinstance(meta, dict):
+        return False
+    for key, expected in filter_spec.items():
+        if key not in meta:
+            return False
+        val = meta.get(key)
+        if isinstance(expected, list):
+            if val not in expected:
+                return False
+        else:
+            if val != expected:
+                return False
+    return True
 
 
 class BaseVectorStore:
@@ -31,6 +51,7 @@ class BaseVectorStore:
         score_threshold: float,
         document_ids: Optional[List[UUID]],
         tenant_id: Optional[UUID],
+        metadata_filter: Optional[Dict[str, Any]] = None,
     ) -> List[Dict[str, Any]]:
         raise NotImplementedError
 
@@ -91,12 +112,19 @@ class MemoryVectorStore(BaseVectorStore):
     """
 
     def __init__(self):
+        provider = EmbeddingProviders.PROVIDER_MAP.get(
+            (settings.EMBEDDING_PROVIDER or "openai_compatible").lower(), "openai_compatible"
+        )
         api_key = settings.EMBEDDING_API_KEY or settings.LLM_API_KEY or ""
         base_url = settings.EMBEDDING_API_BASE or settings.LLM_API_BASE or ""
         model = settings.EMBEDDING_MODEL or "text-embedding-3-small"
-        if not api_key:
-            raise RuntimeError("MemoryVectorStore requires EMBEDDING_API_KEY or LLM_API_KEY")
-        self.emb = OpenAIEmbeddings(api_key=api_key, base_url=base_url, model=model)
+        self.emb = create_langchain_embeddings_from_config(
+            provider=provider,
+            model=model,
+            api_key=api_key or "",
+            base_url=base_url or "",
+            dimension=None,
+        )
         self.storage: List[Tuple[List[float], Dict[str, Any]]] = []
 
     def add_documents(self, docs: List[Dict[str, Any]], document_id: UUID, tenant_id: UUID):
@@ -118,6 +146,7 @@ class MemoryVectorStore(BaseVectorStore):
         score_threshold: float,
         document_ids: Optional[List[UUID]],
         tenant_id: Optional[UUID],
+        metadata_filter: Optional[Dict[str, Any]] = None,
     ) -> List[Dict[str, Any]]:
         if not self.storage:
             return []
@@ -135,6 +164,8 @@ class MemoryVectorStore(BaseVectorStore):
             if allowed_tenant and meta.get("tenant_id") != allowed_tenant:
                 continue
             if allowed_ids and meta.get("document_id") not in allowed_ids:
+                continue
+            if metadata_filter and not _match_metadata_filter(meta, metadata_filter):
                 continue
             score = cosine(qvec, vec)
             if score < score_threshold:
@@ -170,9 +201,16 @@ class FAISSVectorStore(BaseVectorStore):
         api_key = settings.EMBEDDING_API_KEY or settings.LLM_API_KEY or ""
         base_url = settings.EMBEDDING_API_BASE or settings.LLM_API_BASE or ""
         model = settings.EMBEDDING_MODEL or "text-embedding-3-small"
-        if not api_key:
-            raise RuntimeError("FAISSVectorStore requires EMBEDDING_API_KEY or LLM_API_KEY")
-        self.emb = OpenAIEmbeddings(api_key=api_key, base_url=base_url, model=model)
+        provider = EmbeddingProviders.PROVIDER_MAP.get(
+            (settings.EMBEDDING_PROVIDER or "openai_compatible").lower(), "openai_compatible"
+        )
+        self.emb = create_langchain_embeddings_from_config(
+            provider=provider,
+            model=model,
+            api_key=api_key or "",
+            base_url=base_url or "",
+            dimension=None,
+        )
         self.store_by_tenant: Dict[str, FAISS] = {}
         self.persist_path = settings.FAISS_STORE_PATH
         self.allow_dangerous_deserialization = bool(
@@ -215,6 +253,10 @@ class FAISSVectorStore(BaseVectorStore):
             meta.setdefault("document_id", str(document_id))
             meta.setdefault("tenant_id", str(tenant_id))
             meta.setdefault("chunk_index", idx)
+            if "img_id" in meta and "image_id" not in meta:
+                meta["image_id"] = meta.get("img_id")
+            if "image_url" not in meta:
+                meta.setdefault("image_url", meta.get("img_url"))
             metadatas.append(meta)
             ids.append(f"{document_id}_{idx}")
 
@@ -238,6 +280,7 @@ class FAISSVectorStore(BaseVectorStore):
         score_threshold: float,
         document_ids: Optional[List[UUID]],
         tenant_id: Optional[UUID],
+        metadata_filter: Optional[Dict[str, Any]] = None,
     ) -> List[Dict[str, Any]]:
         key, store = self._get_store(tenant_id)
         if store is None:
@@ -248,6 +291,8 @@ class FAISSVectorStore(BaseVectorStore):
         for doc, score in results:
             meta = doc.metadata or {}
             if allowed and meta.get("document_id") not in allowed:
+                continue
+            if metadata_filter and not _match_metadata_filter(meta, metadata_filter):
                 continue
             similarity = 1.0 / (1.0 + float(score))
             if similarity < score_threshold:
@@ -296,9 +341,16 @@ class ChromaVectorStore(BaseVectorStore):
         api_key = settings.EMBEDDING_API_KEY or settings.LLM_API_KEY or ""
         base_url = settings.EMBEDDING_API_BASE or settings.LLM_API_BASE or ""
         model = settings.EMBEDDING_MODEL or "text-embedding-3-small"
-        if not api_key:
-            raise RuntimeError("ChromaVectorStore requires EMBEDDING_API_KEY or LLM_API_KEY")
-        self.emb = OpenAIEmbeddings(api_key=api_key, base_url=base_url, model=model)
+        provider = EmbeddingProviders.PROVIDER_MAP.get(
+            (settings.EMBEDDING_PROVIDER or "openai_compatible").lower(), "openai_compatible"
+        )
+        self.emb = create_langchain_embeddings_from_config(
+            provider=provider,
+            model=model,
+            api_key=api_key or "",
+            base_url=base_url or "",
+            dimension=None,
+        )
         self.persist_path = settings.CHROMA_PERSIST_PATH
         os.makedirs(self.persist_path, exist_ok=True)
         self.store_by_tenant: Dict[str, Chroma] = {}
@@ -324,6 +376,9 @@ class ChromaVectorStore(BaseVectorStore):
             meta.setdefault("document_id", str(document_id))
             meta.setdefault("tenant_id", str(tenant_id))
             meta.setdefault("chunk_index", idx)
+            if "img_id" in meta and "image_id" not in meta:
+                meta["image_id"] = meta.get("img_id")
+            meta.setdefault("image_url", meta.get("img_url"))
             metadatas.append(meta)
             ids.append(f"{document_id}_{idx}")
         key, store = self._get_store(tenant_id)
@@ -338,6 +393,7 @@ class ChromaVectorStore(BaseVectorStore):
         score_threshold: float,
         document_ids: Optional[List[UUID]],
         tenant_id: Optional[UUID],
+        metadata_filter: Optional[Dict[str, Any]] = None,
     ) -> List[Dict[str, Any]]:
         _, store = self._get_store(tenant_id)
         allowed = {str(did) for did in document_ids} if document_ids else None
@@ -346,6 +402,8 @@ class ChromaVectorStore(BaseVectorStore):
         for doc, score in results:
             meta = doc.metadata or {}
             if allowed and meta.get("document_id") not in allowed:
+                continue
+            if metadata_filter and not _match_metadata_filter(meta, metadata_filter):
                 continue
             similarity = 1.0 / (1.0 + float(score))
             if similarity < score_threshold:

@@ -31,6 +31,7 @@ from app.services.document_access import filter_allowed_document_ids, list_acces
 from app.rag.engine import get_rag_engine
 from app.rag.core.text import parse_json_from_text
 from app.services.metrics_logger import log_metrics, set_metrics_context
+from app.core.token_utils import num_tokens_from_string
 from app.core.config import settings
 from app.api.dependencies.tenant import get_tenant_id
 from app.api.dependencies.auth import get_current_account_id
@@ -312,7 +313,8 @@ async def stream_chat(
                     "type": "done",
                     "data": {
                         "conversation_id": str(conversation_id) if conversation_id else None,
-                        "total_tokens": len(full_response),
+                        "total_tokens": num_tokens_from_string(full_response or ""),
+                        "total_chars": len(full_response or ""),
                         "citations_count": len(citations_data),
                         "model_used": graph_result.get("model_used"),
                         "route": graph_result.get("route"),
@@ -345,7 +347,7 @@ async def stream_chat(
                     role='assistant',
                     content=full_response,
                     citations=citations_data,
-                    token_count=len(full_response),
+                    token_count=num_tokens_from_string(full_response or ""),
                     message_metadata={**(metrics_data or {}), "request_id": str(request_id)},
                 )
                 db.add(assistant_message)
@@ -417,7 +419,7 @@ async def stream_chat(
                 role='assistant',
                 content=full_response,
                 citations=citations_data,
-                token_count=len(full_response),
+                token_count=num_tokens_from_string(full_response or ""),
                 message_metadata={**(metrics_data or {}), "request_id": str(request_id)}
             )
             db.add(assistant_message)

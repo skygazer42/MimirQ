@@ -114,14 +114,32 @@ def get_default_limiter() -> RateLimiter:
 def get_client_key(request: Request) -> str:
     forwarded = request.headers.get("X-Forwarded-For")
     if forwarded:
-        client_ip = forwarded.split(",")[0].strip()
+        client_ip = (forwarded.split(",")[0] or "").strip() or "unknown"
     else:
-        client_ip = request.client.host if request.client else "unknown"
+        real_ip = request.headers.get("X-Real-IP")
+        client_ip = (real_ip or "").strip() if real_ip else (request.client.host if request.client else "unknown")
 
-    user_id = getattr(request.state, "user_id", None)
+    tenant_id = (request.headers.get("X-Tenant-ID") or "").strip()
+
+    # Prefer explicit user id header (AUTH_MODE=header) then JWT subject when available.
+    user_id = getattr(request.state, "user_id", None) or (request.headers.get("X-User-ID") or "").strip()
+    if not user_id:
+        auth = (request.headers.get("Authorization") or "").strip()
+        if auth.lower().startswith("bearer "):
+            token = auth[7:].strip()
+            if token:
+                try:
+                    from jose import jwt
+                    from app.core.config import settings
+
+                    payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
+                    user_id = (payload.get("sub") or "").strip()
+                except Exception:  # noqa: BLE001
+                    user_id = ""
+
     if user_id:
-        return f"user:{user_id}"
-    return f"ip:{client_ip}"
+        return f"tenant:{tenant_id}:user:{user_id}" if tenant_id else f"user:{user_id}"
+    return f"tenant:{tenant_id}:ip:{client_ip}" if tenant_id else f"ip:{client_ip}"
 
 
 class RateLimitMiddleware(BaseHTTPMiddleware):

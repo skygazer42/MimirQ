@@ -5,13 +5,11 @@
 """
 from __future__ import annotations
 
-import contextlib
 from pathlib import Path
 import uuid
 import zipfile
 from uuid import UUID
 
-import aiofiles
 from fastapi import APIRouter, UploadFile, File, Form, HTTPException, Depends
 from sqlalchemy.orm import Session
 
@@ -42,47 +40,9 @@ from app.services.prompt_template_selector import resolve_prompt_template
 from app.rag.kg.utils import ConfigError
 from app.rag.llm.factory import create_llm_client
 from app.rag.llm.models import LLMMessage, LLMRole
+from app.api.utils.upload import save_upload_file
 
 router = APIRouter()
-
-
-async def _save_upload_file(
-    upload_file: UploadFile,
-    destination: Path,
-    *,
-    max_bytes: int,
-    chunk_size: int = 1024 * 1024,
-) -> int:
-    """
-    Stream-upload to disk with a hard size limit to avoid large in-memory reads.
-    Returns the written size (bytes).
-    """
-    total_size = 0
-    destination.parent.mkdir(parents=True, exist_ok=True)
-    try:
-        async with aiofiles.open(destination, "wb") as f:
-            while True:
-                chunk = await upload_file.read(chunk_size)
-                if not chunk:
-                    break
-                total_size += len(chunk)
-                if total_size > max_bytes:
-                    raise HTTPException(
-                        status_code=413,
-                        detail=f"File too large. Max size: {max_bytes / 1024 / 1024}MB",
-                    )
-                await f.write(chunk)
-        return total_size
-    except HTTPException:
-        with contextlib.suppress(Exception):
-            if destination.exists():
-                destination.unlink()
-        raise
-    except Exception as e:
-        with contextlib.suppress(Exception):
-            if destination.exists():
-                destination.unlink()
-        raise HTTPException(status_code=500, detail=f"Failed to save file: {str(e)}")
 
 
 @router.post("/parse-preview", response_model=ParsePreviewResponse)
@@ -110,7 +70,7 @@ async def parse_preview(
     preview_dir.mkdir(parents=True, exist_ok=True)
     temp_path = preview_dir / f"{uuid.uuid4()}{file_ext}"
     try:
-        await _save_upload_file(file, temp_path, max_bytes=settings.MAX_FILE_SIZE)
+        await save_upload_file(file, temp_path, max_bytes=settings.MAX_FILE_SIZE)
 
         result = document_parser_service.parse_for_preview(
             file_path=temp_path,
@@ -415,7 +375,7 @@ async def upload_zip_with_images(
     
     try:
         # 写入临时文件（流式，限制大小）
-        await _save_upload_file(file, temp_zip_path, max_bytes=settings.MAX_FILE_SIZE)
+        await save_upload_file(file, temp_zip_path, max_bytes=settings.MAX_FILE_SIZE)
         
         # 处理 ZIP：提取图片并上传到 MinIO
         doc_id = document_id or file.filename.rsplit('.', 1)[0]

@@ -1,52 +1,15 @@
+"""
+流水线配置服务
+
+提供流水线配置的解析、构建和解析功能。
+"""
 from __future__ import annotations
 
-from dataclasses import dataclass
 from typing import Any, Dict, Optional
 
+from app.api.schemas.indexing import IndexingOptions
+from app.api.schemas.pipeline import PipelineEffective, PipelineOptions
 from app.core.config import settings
-from app.services.indexer import IndexingOptions
-
-
-@dataclass(frozen=True)
-class PipelineOptions:
-    governance_enabled: Optional[bool] = None
-    governance_remove_toc_lines: Optional[bool] = None
-    governance_remove_noise_lines: Optional[bool] = None
-    governance_unwrap_lines: Optional[bool] = None
-    governance_remove_common_lines: Optional[bool] = None
-    governance_unwrap_max_line_length: Optional[int] = None
-    governance_noise_min_chars: Optional[int] = None
-    governance_noise_ratio_threshold: Optional[float] = None
-    governance_common_lines_min_docs: Optional[int] = None
-    governance_common_lines_min_ratio: Optional[float] = None
-    chunk_size: Optional[int] = None
-    chunk_overlap: Optional[int] = None
-    chunk_vector_enabled: Optional[bool] = None
-    bm25_index_enabled: Optional[bool] = None
-    kg_enabled: Optional[bool] = None
-    event_vector_enabled: Optional[bool] = None
-    entity_vector_enabled: Optional[bool] = None
-
-
-@dataclass(frozen=True)
-class PipelineEffective:
-    governance_enabled: bool
-    governance_remove_toc_lines: bool
-    governance_remove_noise_lines: bool
-    governance_unwrap_lines: bool
-    governance_remove_common_lines: bool
-    governance_unwrap_max_line_length: int
-    governance_noise_min_chars: int
-    governance_noise_ratio_threshold: float
-    governance_common_lines_min_docs: int
-    governance_common_lines_min_ratio: float
-    chunk_size: int
-    chunk_overlap: int
-    chunk_vector_enabled: bool
-    bm25_index_enabled: bool
-    kg_enabled: bool
-    event_vector_enabled: bool
-    entity_vector_enabled: bool
 
 
 def _coerce_bool(value: Any) -> Optional[bool]:
@@ -253,6 +216,7 @@ def resolve_pipeline_options(options: PipelineOptions) -> PipelineEffective:
 
 
 def build_indexing_options(effective: PipelineEffective) -> IndexingOptions:
+    """从有效配置构建索引选项"""
     return IndexingOptions(
         chunk_vector_enabled=effective.chunk_vector_enabled,
         bm25_index_enabled=effective.bm25_index_enabled,

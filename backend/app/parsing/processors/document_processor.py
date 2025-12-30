@@ -18,9 +18,10 @@ from app.models.document import Document as DBDocument, DocumentChunk
 from app.parsing.factory import parser_factory
 from app.rag.chunking.factory import chunker_factory
 from app.storage.object.minio import minio_service
-from app.services.indexer import IndexKind, IndexRecord, Indexer
+from app.api.schemas.indexing import IndexKind, IndexRecord
+from app.api.schemas.pipeline import PipelineEffective
+from app.services.indexer import Indexer
 from app.services.pipeline_config import (
-    PipelineEffective,
     build_indexing_options,
     parse_pipeline_from_metadata,
     resolve_pipeline_options,
@@ -40,7 +41,7 @@ class DocumentProcessorService:
     def __init__(self):
         pass
 
-    # ragflow 预设策略（直接解析+切块）
+    #  预设策略（直接解析+切块）
     RAGFLOW_STRATEGIES = {"ragflow_naive", "ragflow_book", "ragflow_laws", "ragflow_email"}
 
     async def process_document(
@@ -76,22 +77,30 @@ class DocumentProcessorService:
             owns_db = True
 
         try:
+            db_document = (
+                db.query(DBDocument)
+                .filter(DBDocument.id == document_id, DBDocument.tenant_id == tenant_id)
+                .first()
+            )
+            if db_document is None:
+                logger.warning("Document not found for processing: tenant=%s document=%s", tenant_id, document_id)
+                return {"status": "skipped", "reason": "document_not_found"}
+
             # Step 1: 更新状态为 processing
             await self._update_status(
-                db, document_id, "processing", 0, "parsing"
+                db, tenant_id, document_id, "processing", 0, "parsing"
             )
 
             # 提前获取 dataset_id（MinerU 本地 ZIP / MinIO 路径依赖）
-            db_document = db.query(DBDocument).filter(DBDocument.id == document_id).first()
-            dataset_id = str(db_document.dataset_id) if db_document and db_document.dataset_id else str(tenant_id)
+            dataset_id = str(db_document.dataset_id) if db_document.dataset_id else str(tenant_id)
 
             # 记录本次处理过程中关联到该文档的所有 img_id（用于删除清理等）
             document_img_ids: set[str] = set()
 
-            pipeline_options = parse_pipeline_from_metadata(db_document.doc_metadata if db_document else {})
+            pipeline_options = parse_pipeline_from_metadata(db_document.doc_metadata or {})
             pipeline_effective = resolve_pipeline_options(pipeline_options)
             index_options = build_indexing_options(pipeline_effective)
-            self._record_pipeline_effective(db, document_id, pipeline_effective)
+            self._record_pipeline_effective(db, tenant_id, document_id, pipeline_effective)
             governance_kwargs = {
                 "remove_toc_lines": pipeline_effective.governance_remove_toc_lines,
                 "remove_noise_lines": pipeline_effective.governance_remove_noise_lines,
@@ -113,6 +122,7 @@ class DocumentProcessorService:
 
                 self._record_processing_metadata(
                     db,
+                    tenant_id,
                     document_id,
                     parser_backend=resolved_backend,
                     chunk_strategy=resolved_chunk_strategy,
@@ -207,13 +217,14 @@ class DocumentProcessorService:
                 resolved_chunk_strategy = chunker_factory.resolve_strategy(chunk_strategy)
                 self._record_processing_metadata(
                     db,
+                    tenant_id,
                     document_id,
                     parser_backend=resolved_backend,
                     chunk_strategy=resolved_chunk_strategy
                 )
 
                 await self._update_status(
-                    db, document_id, "processing", 33, "chunking"
+                    db, tenant_id, document_id, "processing", 33, "chunking"
                 )
 
                 # Step 3: 文本切片
@@ -228,7 +239,7 @@ class DocumentProcessorService:
                 chunks = chunker.split_documents(documents)
 
             if governance_stats is not None:
-                self._record_governance_metadata(db, document_id, governance_stats)
+                self._record_governance_metadata(db, tenant_id, document_id, governance_stats)
 
             # 为每个 chunk 添加元数据并处理图片上传到 MinIO
             for idx, chunk in enumerate(chunks):
@@ -253,10 +264,10 @@ class DocumentProcessorService:
                     document_img_ids.add(img_id)
 
             # 将所有图片 img_id 记录到 document.metadata（用于删除清理等）
-            self._record_document_image_ids(db, document_id=document_id, img_ids=document_img_ids)
+            self._record_document_image_ids(db, tenant_id=tenant_id, document_id=document_id, img_ids=document_img_ids)
 
             await self._update_status(
-                db, document_id, "processing", 66, "embedding"
+                db, tenant_id, document_id, "processing", 66, "embedding"
             )
 
             # Step 4/5: 向量化 + 写入 PostgreSQL + 增量更新 BM25（统一实现，避免多处重复）
@@ -291,6 +302,7 @@ class DocumentProcessorService:
             total_chars = persist_result.total_characters
             await self._update_status(
                 db,
+                tenant_id,
                 document_id,
                 "completed",
                 100,
@@ -330,6 +342,7 @@ class DocumentProcessorService:
             logger.exception("Error processing document %s: %s", document_id, e)
             await self._update_status(
                 db,
+                tenant_id,
                 document_id,
                 "failed",
                 0,
@@ -344,6 +357,7 @@ class DocumentProcessorService:
     async def _update_status(
         self,
         db: Session,
+        tenant_id: UUID,
         document_id: UUID,
         status: str,
         progress: int,
@@ -352,7 +366,8 @@ class DocumentProcessorService:
     ):
         """更新文档处理状态"""
         db_doc = db.query(DBDocument).filter(
-            DBDocument.id == document_id
+            DBDocument.id == document_id,
+            DBDocument.tenant_id == tenant_id,
         ).first()
 
         if db_doc:
@@ -399,13 +414,15 @@ class DocumentProcessorService:
     def _record_processing_metadata(
         self,
         db: Session,
+        tenant_id: UUID,
         document_id: UUID,
         parser_backend: str,
         chunk_strategy: str
     ):
         """确保文档元数据里记录了最终选用的解析器。"""
         db_doc = db.query(DBDocument).filter(
-            DBDocument.id == document_id
+            DBDocument.id == document_id,
+            DBDocument.tenant_id == tenant_id,
         ).first()
 
         if not db_doc:
@@ -425,12 +442,14 @@ class DocumentProcessorService:
     def _record_pipeline_effective(
         self,
         db: Session,
+        tenant_id: UUID,
         document_id: UUID,
         effective: PipelineEffective,
     ) -> None:
         """Persist effective pipeline settings on the document metadata."""
         db_doc = db.query(DBDocument).filter(
-            DBDocument.id == document_id
+            DBDocument.id == document_id,
+            DBDocument.tenant_id == tenant_id,
         ).first()
 
         if not db_doc:
@@ -464,12 +483,14 @@ class DocumentProcessorService:
     def _record_governance_metadata(
         self,
         db: Session,
+        tenant_id: UUID,
         document_id: UUID,
         stats: GovernanceStats,
     ) -> None:
         """Persist governance stats on the document metadata."""
         db_doc = db.query(DBDocument).filter(
-            DBDocument.id == document_id
+            DBDocument.id == document_id,
+            DBDocument.tenant_id == tenant_id,
         ).first()
 
         if not db_doc:
@@ -485,7 +506,7 @@ class DocumentProcessorService:
         db.commit()
         db.refresh(db_doc)
 
-    def _record_document_image_ids(self, db: Session, document_id: UUID, img_ids: set[str]):
+    def _record_document_image_ids(self, db: Session, tenant_id: UUID, document_id: UUID, img_ids: set[str]):
         """
         将文档关联的所有 img_id 记录到 documents.metadata 中，便于后续删除清理。
 
@@ -498,7 +519,11 @@ class DocumentProcessorService:
         if not img_ids:
             return
 
-        db_doc = db.query(DBDocument).filter(DBDocument.id == document_id).first()
+        db_doc = (
+            db.query(DBDocument)
+            .filter(DBDocument.id == document_id, DBDocument.tenant_id == tenant_id)
+            .first()
+        )
         if not db_doc:
             return
 
@@ -565,11 +590,17 @@ class DocumentProcessorService:
         """
         if not settings.MINIO_ENABLED:
             return markdown_text, [], start_index
-        if not isinstance(markdown_text, str) or "data:image" not in markdown_text:
+        if not isinstance(markdown_text, str) or not markdown_text:
+            return markdown_text, [], start_index
+        lowered = markdown_text.lower()
+        if "data:image" not in lowered and "![" not in lowered and "<img" not in lowered:
             return markdown_text, [], start_index
 
         # 仅处理 markdown 图片与 html img，匹配 src 内容
-        md_pat = re.compile(r"!\[[^\]]*\]\(([^)]+)\)", flags=re.IGNORECASE)
+        md_pat = re.compile(
+            r"!\[[^\]]*\]\(\s*(?:<)?([^)\s>]+)(?:>)?(?:\s+['\"][^'\"]*['\"])?\s*\)",
+            flags=re.IGNORECASE,
+        )
         html_pat = re.compile(r"<img[^>]+src=[\"']([^\"']+)[\"']", flags=re.IGNORECASE)
 
         found: List[str] = []
@@ -592,6 +623,9 @@ class DocumentProcessorService:
         idx = int(start_index or 0)
 
         base_dir = origin_path.parent if origin_path else None
+        base_dir_resolved = base_dir.resolve(strict=False) if base_dir else None
+        max_image_bytes = int(getattr(settings, "MAX_INLINE_IMAGE_BYTES", 10_000_000) or 10_000_000)
+        max_image_bytes = max(1_000_000, max_image_bytes)
 
         for ref in found:
             # 已是远程或已替换过
@@ -608,26 +642,60 @@ class DocumentProcessorService:
                     if "base64" not in header:
                         continue
                     b64_part = re.sub(r"\s+", "", b64_part)
+                    if len(b64_part) > int(max_image_bytes * 4 / 3) + 32:
+                        continue
                     binary = base64.b64decode(b64_part)
                 else:
                     # 本地/相对路径
                     path_obj = Path(ref)
                     if not path_obj.is_absolute():
-                        if base_dir:
-                            path_obj = (base_dir / path_obj).resolve()
-                        else:
-                            path_obj = path_obj.resolve()
+                        if not base_dir_resolved:
+                            continue
+                        path_obj = (base_dir_resolved / path_obj).resolve(strict=False)
+                    else:
+                        if not base_dir_resolved:
+                            continue
+                        path_obj = path_obj.resolve(strict=False)
+                    if base_dir_resolved:
+                        try:
+                            path_obj.relative_to(base_dir_resolved)
+                        except Exception:
+                            continue
                     if not path_obj.exists() or not path_obj.is_file():
                         continue
+                    try:
+                        if path_obj.stat().st_size > max_image_bytes:
+                            continue
+                    except Exception:
+                        continue
                     binary = path_obj.read_bytes()
+                if len(binary) > max_image_bytes:
+                    continue
 
                 # 统一转 JPEG
-                img = PILImage.open(BytesIO(binary))
-                if img.mode in ("RGBA", "P"):
-                    img = img.convert("RGB")
-                out = BytesIO()
-                img.save(out, format="JPEG", quality=85, optimize=True)
-                image_bytes = out.getvalue()
+                img = None
+                converted = None
+                try:
+                    img = PILImage.open(BytesIO(binary))
+                    if img.mode in ("RGBA", "P"):
+                        converted = img.convert("RGB")
+                        out_img = converted
+                    else:
+                        out_img = img
+                    out = BytesIO()
+                    out_img.save(out, format="JPEG", quality=85, optimize=True)
+                    image_bytes = out.getvalue()
+                finally:
+                    if converted is not None:
+                        try:
+                            converted.close()
+                        except Exception:
+                            pass
+                    if img is not None:
+                        try:
+                            img.close()
+                        except Exception:
+                            pass
 
                 digest = hashlib.sha256(image_bytes).hexdigest()
                 img_id = cache.get(digest)

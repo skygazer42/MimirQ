@@ -138,6 +138,11 @@ def create_langchain_embeddings_from_config(
     )
 
     provider = provider.lower()
+    base_url = (base_url or "").strip()
+    if provider in {"openai", "openai_compatible", "dashscope"}:
+        stripped = base_url.rstrip("/")
+        if stripped.endswith("/v1"):
+            base_url = stripped + "/embeddings"
 
     if provider == "local":
         embedding_model = SentenceTransformerEmbedding(
