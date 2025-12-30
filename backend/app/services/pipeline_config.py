@@ -7,8 +7,8 @@ from __future__ import annotations
 
 from typing import Any, Dict, Optional
 
-from app.api.schemas.indexing import IndexingOptions
-from app.api.schemas.pipeline import PipelineEffective, PipelineOptions
+from app.types.indexing import IndexingOptions
+from app.types.pipeline import PipelineEffective, PipelineOptions
 from app.core.config import settings
 
 

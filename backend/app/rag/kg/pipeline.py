@@ -8,7 +8,7 @@ from uuid import UUID
 from app.core.config import settings
 from app.rag.kg.engine import KGEngine
 from app.models.document import DocumentChunk
-from app.api.schemas.indexing import IndexingOptions
+from app.types.indexing import IndexingOptions
 
 _engine = None
 

@@ -11,7 +11,7 @@ from uuid import UUID
 from langchain_core.documents import Document as LCDocument
 from sqlalchemy.orm import Session
 
-from app.api.schemas.indexing import (
+from app.types.indexing import (
     ChunkInput,
     EventEntityInput,
     EventInput,
@@ -28,6 +28,7 @@ from app.models.document import Document as DBDocument, DocumentChunk
 from app.rag.retriever import hybrid_retriever
 from app.storage.vector.factory import get_vector_store
 from app.storage.vector.milvus import get_milvus_adapter, resolve_collection_name
+from app.rag.core.metadata import normalize_image_metadata
 
 logger = logging.getLogger("indexer")
 
@@ -498,11 +499,7 @@ class Indexer:
         db_chunks: List[DocumentChunk] = []
         for idx, (chunk, vector_id) in enumerate(zip(chunks, vector_ids)):
             meta = dict(chunk.metadata or {})
-            # Normalize image keys
-            if "img_id" in meta and "image_id" not in meta:
-                meta["image_id"] = meta.get("img_id")
-            if "image_url" not in meta and "img_url" in meta:
-                meta["image_url"] = meta.get("img_url")
+            normalize_image_metadata(meta)
             page_number = (
                 _safe_int(chunk.page_number)
                 if chunk.page_number is not None
@@ -549,14 +546,15 @@ class Indexer:
         bm25_docs: List[LCDocument] = []
         for db_chunk in db_chunks:
             meta = dict(db_chunk.doc_metadata or {})
+            normalize_image_metadata(meta)
             meta.setdefault("index_kind", IndexKind.CHUNK.value)
             meta.setdefault("tenant_id", str(tenant_id))
             meta.setdefault("document_id", str(document_id))
             meta.setdefault("chunk_index", db_chunk.chunk_index)
             meta.setdefault("source", meta.get("source", default_source))
             meta.setdefault("page", db_chunk.page_number)
-            meta.setdefault("image_id", meta.get("image_id") or meta.get("img_id"))
-            meta.setdefault("image_url", meta.get("image_url") or meta.get("img_url"))
+            meta.setdefault("image_id", meta.get("image_id"))
+            meta.setdefault("image_url", meta.get("image_url"))
             bm25_docs.append(LCDocument(page_content=db_chunk.content, id=str(db_chunk.id), metadata=meta))
 
         hybrid_retriever.upsert_bm25_documents(bm25_docs, tenant_id=tenant_id)
