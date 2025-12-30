@@ -41,7 +41,7 @@ def __getattr__(name: str) -> Any:
 
         return parser_factory
     if name == "document_processor":
-        from app.parsing.processors.document_processor import document_processor
+        from app.parsing.processors.processor import document_processor
 
         return document_processor
     if name == "document_parser_service":

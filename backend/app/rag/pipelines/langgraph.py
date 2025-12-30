@@ -30,7 +30,7 @@ from app.rag.engine import get_rag_engine
 from app.rag.checkpointer.factory import get_checkpointer
 from app.rag.store.factory import get_langgraph_store
 from app.core.config import settings
-from app.services.prompt_template_selector import resolve_prompt_template
+from app.services.prompt_resolver import resolve_prompt_template
 
 # LangGraph 1.0+ Functional API imports
 from langgraph.func import entrypoint, task

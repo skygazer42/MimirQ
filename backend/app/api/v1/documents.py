@@ -27,7 +27,7 @@ from app.api.schemas.document import (
     BatchUploadResponse,
     BatchTaskStatus
 )
-from app.parsing.processors.document_processor import document_processor
+from app.parsing.processors.processor import document_processor
 from app.parsing.factory import parser_factory
 from app.parsing.routing import route_pdf_backend
 from app.rag.chunking.factory import chunker_factory
@@ -932,7 +932,7 @@ async def preview_chunking(
 
         # ragflow 预设走独立分支（自解析 + 切块）
         if resolved_chunk_strategy in chunker_factory.RAGFLOW_STRATEGIES:
-            from app.parsing.processors.document_processor import document_processor
+            from app.parsing.processors.processor import document_processor
             chunks = await asyncio.to_thread(
                 document_processor._ragflow_chunk_file,
                 temp_path,
