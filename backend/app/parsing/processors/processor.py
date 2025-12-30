@@ -1,6 +1,7 @@
 """
 文档处理服务 - 核心处理流程
 """
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, Any, List, Optional
 from sqlalchemy.orm import Session
@@ -18,8 +19,8 @@ from app.models.document import Document as DBDocument, DocumentChunk
 from app.parsing.factory import parser_factory
 from app.rag.chunking.factory import chunker_factory
 from app.storage.object.minio import minio_service
-from app.api.schemas.indexing import IndexKind, IndexRecord
-from app.api.schemas.pipeline import PipelineEffective
+from app.types.indexing import IndexKind, IndexRecord
+from app.types.pipeline import PipelineEffective
 from app.services.indexer import Indexer
 from app.services.pipeline_config import (
     build_indexing_options,
@@ -30,9 +31,285 @@ from app.rag.preprocessing.processor import governance_processor, GovernanceStat
 from app.rag.kg.pipeline import extract_events
 from app.parsing.routing import route_pdf_backend
 from app.rag.core.logging import get_logger
+from app.rag.core.metadata import normalize_image_metadata
 
 
 logger = get_logger("parsing.document_processor")
+
+
+@dataclass(frozen=True)
+class ParseResult:
+    resolved_backend: str
+    resolved_chunk_strategy: str
+    documents: Optional[List[Document]] = None
+    chunks: Optional[List[Document]] = None
+
+
+@dataclass(frozen=True)
+class InlineAssetResult:
+    documents: List[Document]
+    uploaded_img_ids: List[str]
+    next_asset_index: int
+
+
+@dataclass(frozen=True)
+class GovernanceResult:
+    items: List[Document]
+    stats: Optional[GovernanceStats] = None
+
+
+@dataclass(frozen=True)
+class ChunkingResult:
+    chunks: List[Document]
+
+
+@dataclass(frozen=True)
+class ChunkAssetResult:
+    chunks: List[Document]
+    img_ids: List[str]
+
+
+@dataclass(frozen=True)
+class IndexResult:
+    chunk_ids: List[UUID]
+    total_characters: int
+    db_chunks: List[DocumentChunk]
+
+
+class ParsingStage:
+    def __init__(self, service: "DocumentProcessorService"):
+        self._svc = service
+
+    async def run(
+        self,
+        *,
+        db: Session,
+        db_document: DBDocument,
+        file_path: Path,
+        document_id: UUID,
+        tenant_id: UUID,
+        dataset_id: str,
+        parser_backend: Optional[str],
+        chunk_strategy: Optional[str],
+    ) -> ParseResult:
+        use_ragflow = (chunk_strategy or "").lower() in self._svc.RAGFLOW_STRATEGIES
+        if use_ragflow:
+            resolved_backend = "ragflow"
+            resolved_chunk_strategy = (chunk_strategy or "ragflow_naive").lower()
+            self._svc._record_processing_metadata(
+                db,
+                tenant_id,
+                document_id,
+                parser_backend=resolved_backend,
+                chunk_strategy=resolved_chunk_strategy,
+            )
+            chunks = await asyncio.to_thread(self._svc._ragflow_chunk_file, file_path, resolved_chunk_strategy)
+            return ParseResult(
+                resolved_backend=resolved_backend,
+                resolved_chunk_strategy=resolved_chunk_strategy,
+                chunks=chunks,
+            )
+
+        logger.info("Parsing document: %s", file_path)
+        effective_parser_backend = parser_backend
+        file_ext = file_path.suffix.lower()
+        if file_ext == ".pdf":
+            requested = (parser_backend or "").strip().lower()
+            if not requested or requested == "auto":
+                effective_parser_backend, pdf_quality = route_pdf_backend(
+                    file_path,
+                    parser_backend,
+                    sample_pages=3,
+                    use_ocr_validation=settings.RAPIDOCR_ENABLED,
+                )
+                if isinstance(pdf_quality, dict):
+                    metadata = dict(db_document.doc_metadata or {})
+                    metadata["pdf_quality"] = pdf_quality
+                    db_document.doc_metadata = metadata
+                    db.commit()
+                    db.refresh(db_document)
+
+        documents, resolved_backend = parser_factory.parse(
+            file_path,
+            parser_backend=effective_parser_backend,
+            dataset_id=dataset_id,
+            document_id=str(document_id),
+        )
+        resolved_chunk_strategy = chunker_factory.resolve_strategy(chunk_strategy)
+        self._svc._record_processing_metadata(
+            db,
+            tenant_id,
+            document_id,
+            parser_backend=resolved_backend,
+            chunk_strategy=resolved_chunk_strategy,
+        )
+        return ParseResult(
+            resolved_backend=resolved_backend,
+            resolved_chunk_strategy=resolved_chunk_strategy,
+            documents=documents,
+        )
+
+
+class InlineAssetStage:
+    def __init__(self, service: "DocumentProcessorService"):
+        self._svc = service
+
+    def run(
+        self,
+        *,
+        documents: List[Document],
+        tenant_id: UUID,
+        dataset_id: str,
+        document_id: UUID,
+        origin_path: Path,
+        start_index: int = 0,
+    ) -> InlineAssetResult:
+        if not settings.MINIO_ENABLED:
+            return InlineAssetResult(documents=documents, uploaded_img_ids=[], next_asset_index=int(start_index or 0))
+
+        inline_cache: dict[str, str] = {}
+        asset_idx = int(start_index or 0)
+        uploaded: List[str] = []
+        processed_docs: List[Document] = []
+
+        for doc in documents:
+            content = doc.page_content or ""
+            new_content, new_img_ids, asset_idx = self._svc._upload_inline_images_to_minio(
+                markdown_text=content,
+                tenant_id=str(tenant_id),
+                dataset_id=dataset_id,
+                document_id=str(document_id),
+                cache=inline_cache,
+                start_index=asset_idx,
+                origin_path=origin_path,
+            )
+            uploaded.extend(list(new_img_ids or []))
+            if new_content != content:
+                processed_docs.append(
+                    Document(
+                        page_content=new_content,
+                        metadata=dict(doc.metadata or {}),
+                        id=doc.id,
+                    )
+                )
+            else:
+                processed_docs.append(doc)
+
+        return InlineAssetResult(documents=processed_docs, uploaded_img_ids=uploaded, next_asset_index=asset_idx)
+
+
+class GovernanceStage:
+    def run(
+        self,
+        *,
+        items: List[Document],
+        enabled: bool,
+        kwargs: Dict[str, Any],
+    ) -> GovernanceResult:
+        if not enabled:
+            return GovernanceResult(items=items, stats=None)
+        cleaned, stats = governance_processor.clean_documents(items, **kwargs)
+        return GovernanceResult(items=cleaned, stats=stats)
+
+
+class ChunkingStage:
+    def run(
+        self,
+        *,
+        documents: List[Document],
+        chunk_strategy: str,
+        chunk_size: int,
+        chunk_overlap: int,
+    ) -> ChunkingResult:
+        logger.info("Chunking document into smaller pieces...")
+        if chunk_overlap >= chunk_size:
+            raise ValueError("chunk_overlap must be less than chunk_size")
+        chunker = chunker_factory.get_chunker(
+            chunk_strategy,
+            chunk_size=chunk_size,
+            chunk_overlap=chunk_overlap,
+        )
+        return ChunkingResult(chunks=chunker.split_documents(documents))
+
+
+class ChunkAssetStage:
+    def __init__(self, service: "DocumentProcessorService"):
+        self._svc = service
+
+    def run(
+        self,
+        *,
+        chunks: List[Document],
+        tenant_id: UUID,
+        dataset_id: str,
+        document_id: UUID,
+        resolved_backend: str,
+        resolved_chunk_strategy: str,
+    ) -> ChunkAssetResult:
+        img_ids: List[str] = []
+        for idx, chunk in enumerate(chunks):
+            chunk.metadata["document_id"] = str(document_id)
+            chunk.metadata["chunk_index"] = idx
+            chunk.metadata["parser_backend"] = resolved_backend
+            chunk.metadata["chunk_strategy"] = resolved_chunk_strategy
+
+            img_id = self._svc._extract_and_upload_image_to_minio(
+                chunk.metadata,
+                tenant_id=str(tenant_id),
+                dataset_id=dataset_id,
+                document_id=str(document_id),
+                chunk_index=idx,
+            )
+            if not img_id:
+                img_id = self._svc._extract_img_id_from_content(chunk.page_content)
+            if img_id:
+                chunk.metadata["img_id"] = img_id
+                normalize_image_metadata(chunk.metadata)
+                img_ids.append(img_id)
+        return ChunkAssetResult(chunks=chunks, img_ids=img_ids)
+
+
+class IndexStage:
+    def run(
+        self,
+        *,
+        db: Session,
+        tenant_id: UUID,
+        document_id: UUID,
+        file_path: Path,
+        chunks: List[Document],
+        options,
+    ) -> IndexResult:
+        logger.info("Persisting chunks and indexes...")
+        records: List[IndexRecord] = []
+        for chunk in chunks:
+            meta = dict(chunk.metadata or {})
+            records.append(
+                IndexRecord(
+                    kind=IndexKind.CHUNK,
+                    content=chunk.page_content,
+                    metadata=meta,
+                    document_id=document_id,
+                    page_number=meta.get("page") or meta.get("page_number"),
+                    start_char=meta.get("start_char"),
+                    end_char=meta.get("end_char"),
+                )
+            )
+
+        persist_result = Indexer(db).upsert(
+            tenant_id=tenant_id,
+            records=records,
+            default_source=str(file_path.name),
+            commit=False,
+            options=options,
+        ).chunk_result
+        if persist_result is None:
+            raise RuntimeError("Chunk indexing returned no result")
+        return IndexResult(
+            chunk_ids=persist_result.chunk_ids,
+            total_characters=persist_result.total_characters,
+            db_chunks=persist_result.db_chunks,
+        )
 
 
 class DocumentProcessorService:
@@ -113,63 +390,30 @@ class DocumentProcessorService:
                 "common_lines_min_ratio": pipeline_effective.governance_common_lines_min_ratio,
             }
 
-            use_ragflow = (chunk_strategy or "").lower() in {"ragflow_naive", "ragflow_book", "ragflow_laws", "ragflow_email"}
-            governance_stats: Optional[GovernanceStats] = None
+            parsing_stage = ParsingStage(self)
+            inline_asset_stage = InlineAssetStage(self)
+            governance_stage = GovernanceStage()
+            chunking_stage = ChunkingStage()
+            chunk_asset_stage = ChunkAssetStage(self)
+            index_stage = IndexStage()
 
-            if use_ragflow:
-                resolved_backend = "ragflow"
-                resolved_chunk_strategy = (chunk_strategy or "ragflow_naive").lower()
+            parsed = await parsing_stage.run(
+                db=db,
+                db_document=db_document,
+                file_path=file_path,
+                document_id=document_id,
+                tenant_id=tenant_id,
+                dataset_id=dataset_id,
+                parser_backend=parser_backend,
+                chunk_strategy=chunk_strategy,
+            )
 
-                self._record_processing_metadata(
-                    db,
-                    tenant_id,
-                    document_id,
-                    parser_backend=resolved_backend,
-                    chunk_strategy=resolved_chunk_strategy,
-                )
+            resolved_backend = parsed.resolved_backend
+            resolved_chunk_strategy = parsed.resolved_chunk_strategy
 
-                # ragflow 直接解析+切块（同步），放到线程池避免阻塞事件循环
-                chunks = await asyncio.to_thread(
-                    self._ragflow_chunk_file,
-                    file_path,
-                    resolved_chunk_strategy
-                )
-                if pipeline_effective.governance_enabled:
-                    chunks, governance_stats = governance_processor.clean_documents(
-                        chunks,
-                        **governance_kwargs,
-                    )
-
-            else:
-                # Step 2: 解析文档
-                logger.info("Parsing document: %s", file_path)
-                effective_parser_backend = parser_backend
-                file_ext = file_path.suffix.lower()
-                if file_ext == ".pdf":
-                    requested = (parser_backend or "").strip().lower()
-                    if not requested or requested == "auto":
-                        effective_parser_backend, pdf_quality = route_pdf_backend(
-                            file_path,
-                            parser_backend,
-                            sample_pages=3,
-                            use_ocr_validation=settings.RAPIDOCR_ENABLED,
-                        )
-                        if db_document is not None and isinstance(pdf_quality, dict):
-                            metadata = dict(db_document.doc_metadata or {})
-                            metadata["pdf_quality"] = pdf_quality
-                            db_document.doc_metadata = metadata
-                            db.commit()
-                            db.refresh(db_document)
-
-                documents, resolved_backend = parser_factory.parse(
-                    file_path,
-                    parser_backend=effective_parser_backend,
-                    dataset_id=dataset_id,
-                    document_id=str(document_id),
-                )
-
-                # 收集解析器已上传的图片（例如 MinerU 本地 ZIP 模式会返回 images 列表）
-                for doc in documents:
+            # 收集解析器已上传的图片（例如 MinerU 本地 ZIP 模式会返回 images 列表）
+            if parsed.documents:
+                for doc in parsed.documents:
                     images = (doc.metadata or {}).get("images")
                     if isinstance(images, list):
                         for item in images:
@@ -177,129 +421,84 @@ class DocumentProcessorService:
                             if isinstance(img_id, str) and img_id.strip():
                                 document_img_ids.add(img_id)
 
-                # 对解析结果中的内嵌 data URI 图片进行 MinIO 上传并替换引用
-                #（避免把 base64 直接存入向量库/数据库）
-                if settings.MINIO_ENABLED:
-                    inline_cache: dict[str, str] = {}
-                    asset_idx = 0
-                    processed_docs: List[Document] = []
-                    for doc in documents:
-                        content = doc.page_content or ""
-                        new_content, new_img_ids, asset_idx = self._upload_inline_images_to_minio(
-                            markdown_text=content,
-                            tenant_id=str(tenant_id),
-                            dataset_id=dataset_id,
-                            document_id=str(document_id),
-                            cache=inline_cache,
-                            start_index=asset_idx,
-                            origin_path=file_path,
-                        )
-                        for iid in new_img_ids:
-                            document_img_ids.add(iid)
-                        if new_content != content:
-                            processed_docs.append(
-                                Document(
-                                    page_content=new_content,
-                                    metadata=dict(doc.metadata or {}),
-                                    id=doc.id,
-                                )
-                            )
-                        else:
-                            processed_docs.append(doc)
-                    documents = processed_docs
-
-                if pipeline_effective.governance_enabled:
-                    documents, governance_stats = governance_processor.clean_documents(
-                        documents,
-                        **governance_kwargs,
-                    )
-
-                resolved_chunk_strategy = chunker_factory.resolve_strategy(chunk_strategy)
-                self._record_processing_metadata(
-                    db,
-                    tenant_id,
-                    document_id,
-                    parser_backend=resolved_backend,
-                    chunk_strategy=resolved_chunk_strategy
+            # Inline image assets（仅非 ragflow 分支：documents -> documents）
+            if parsed.documents:
+                inline_result = inline_asset_stage.run(
+                    documents=parsed.documents,
+                    tenant_id=tenant_id,
+                    dataset_id=dataset_id,
+                    document_id=document_id,
+                    origin_path=file_path,
+                    start_index=0,
                 )
+                parsed_documents = inline_result.documents
+                for iid in inline_result.uploaded_img_ids:
+                    if isinstance(iid, str) and iid.strip():
+                        document_img_ids.add(iid)
+            else:
+                parsed_documents = None
 
-                await self._update_status(
-                    db, tenant_id, document_id, "processing", 33, "chunking"
+            # Governance：对 documents 或 ragflow chunks 做统一清洗
+            governance_stats: Optional[GovernanceStats] = None
+            if parsed.chunks is not None:
+                gov = governance_stage.run(
+                    items=parsed.chunks,
+                    enabled=bool(pipeline_effective.governance_enabled),
+                    kwargs=governance_kwargs,
                 )
+                chunks = gov.items
+                governance_stats = gov.stats
+            else:
+                gov = governance_stage.run(
+                    items=parsed_documents or [],
+                    enabled=bool(pipeline_effective.governance_enabled),
+                    kwargs=governance_kwargs,
+                )
+                parsed_documents = gov.items
+                governance_stats = gov.stats
 
-                # Step 3: 文本切片
-                logger.info("Chunking document into smaller pieces...")
-                if pipeline_effective.chunk_overlap >= pipeline_effective.chunk_size:
-                    raise ValueError("chunk_overlap must be less than chunk_size")
-                chunker = chunker_factory.get_chunker(
-                    resolved_chunk_strategy,
-                    chunk_size=pipeline_effective.chunk_size,
-                    chunk_overlap=pipeline_effective.chunk_overlap,
+                await self._update_status(db, tenant_id, document_id, "processing", 33, "chunking")
+                chunked = chunking_stage.run(
+                    documents=parsed_documents,
+                    chunk_strategy=resolved_chunk_strategy,
+                    chunk_size=int(pipeline_effective.chunk_size),
+                    chunk_overlap=int(pipeline_effective.chunk_overlap),
                 )
-                chunks = chunker.split_documents(documents)
+                chunks = chunked.chunks
 
             if governance_stats is not None:
                 self._record_governance_metadata(db, tenant_id, document_id, governance_stats)
 
-            # 为每个 chunk 添加元数据并处理图片上传到 MinIO
-            for idx, chunk in enumerate(chunks):
-                chunk.metadata['document_id'] = str(document_id)
-                chunk.metadata['chunk_index'] = idx
-                chunk.metadata['parser_backend'] = resolved_backend
-                chunk.metadata['chunk_strategy'] = resolved_chunk_strategy
-                
-                # 提取并上传图片到 MinIO（如果启用）
-                img_id = self._extract_and_upload_image_to_minio(
-                    chunk.metadata,
-                    tenant_id=str(tenant_id),
-                    dataset_id=dataset_id,
-                    document_id=str(document_id),
-                    chunk_index=idx,
-                )
-                if not img_id:
-                    img_id = self._extract_img_id_from_content(chunk.page_content)
-
-                if img_id:
-                    chunk.metadata['img_id'] = img_id
-                    document_img_ids.add(img_id)
+            # Chunk-level assets & metadata（图片上传/绑定）
+            chunk_asset = chunk_asset_stage.run(
+                chunks=chunks,
+                tenant_id=tenant_id,
+                dataset_id=dataset_id,
+                document_id=document_id,
+                resolved_backend=resolved_backend,
+                resolved_chunk_strategy=resolved_chunk_strategy,
+            )
+            chunks = chunk_asset.chunks
+            for iid in chunk_asset.img_ids:
+                if isinstance(iid, str) and iid.strip():
+                    document_img_ids.add(iid)
 
             # 将所有图片 img_id 记录到 document.metadata（用于删除清理等）
             self._record_document_image_ids(db, tenant_id=tenant_id, document_id=document_id, img_ids=document_img_ids)
 
-            await self._update_status(
-                db, tenant_id, document_id, "processing", 66, "embedding"
-            )
+            await self._update_status(db, tenant_id, document_id, "processing", 66, "embedding")
 
-            # Step 4/5: 向量化 + 写入 PostgreSQL + 增量更新 BM25（统一实现，避免多处重复）
-            logger.info("Persisting chunks and indexes...")
-            records: List[IndexRecord] = []
-            for chunk in chunks:
-                meta = dict(chunk.metadata or {})
-                records.append(
-                    IndexRecord(
-                        kind=IndexKind.CHUNK,
-                        content=chunk.page_content,
-                        metadata=meta,
-                        document_id=document_id,
-                        page_number=meta.get("page") or meta.get("page_number"),
-                        start_char=meta.get("start_char"),
-                        end_char=meta.get("end_char"),
-                    )
-                )
-
-            persist_result = Indexer(db).upsert(
+            indexed = index_stage.run(
+                db=db,
                 tenant_id=tenant_id,
-                records=records,
-                default_source=str(file_path.name),
-                commit=False,
+                document_id=document_id,
+                file_path=file_path,
+                chunks=chunks,
                 options=index_options,
-            ).chunk_result
-            if persist_result is None:
-                raise RuntimeError("Chunk indexing returned no result")
-            chunk_ids = persist_result.chunk_ids
+            )
+            chunk_ids = indexed.chunk_ids
+            total_chars = indexed.total_characters
 
-            # Step 6: 更新文档状态为完成
-            total_chars = persist_result.total_characters
             await self._update_status(
                 db,
                 tenant_id,
@@ -324,7 +523,7 @@ class DocumentProcessorService:
                 events = await extract_events(
                     chunk_ids,
                     tenant_id=tenant_id,
-                    chunks=persist_result.db_chunks,
+                chunks=indexed.db_chunks,
                     index_options=index_options,
                 )
                 logger.info("KG extracted %s events for document %s", len(events), document_id)
@@ -621,6 +820,7 @@ class DocumentProcessorService:
 
         new_ids: List[str] = []
         idx = int(start_index or 0)
+        replacements: dict[str, str] = {}
 
         base_dir = origin_path.parent if origin_path else None
         base_dir_resolved = base_dir.resolve(strict=False) if base_dir else None
@@ -714,11 +914,32 @@ class DocumentProcessorService:
                     new_ids.append(img_id)
 
                 url = f"/api/v1/documents/image-url/{img_id}"
-                markdown_text = markdown_text.replace(ref, url)
+                replacements[ref] = url
 
             except Exception as e:
                 logger.warning("Inline/local image upload failed (skipped): %s", e)
                 continue
+
+        if replacements:
+            # 单次扫描替换：仅替换图片语法中的 src/ref，避免对全文做 N 次 replace（O(N*M)）
+            def _md_repl(m: re.Match) -> str:
+                raw = m.group(1) or ""
+                key = raw.strip()
+                new = replacements.get(key)
+                if not new:
+                    return m.group(0)
+                return m.group(0).replace(raw, new, 1)
+
+            def _html_repl(m: re.Match) -> str:
+                raw = m.group(1) or ""
+                key = raw.strip()
+                new = replacements.get(key)
+                if not new:
+                    return m.group(0)
+                return m.group(0).replace(raw, new, 1)
+
+            markdown_text = md_pat.sub(_md_repl, markdown_text)
+            markdown_text = html_pat.sub(_html_repl, markdown_text)
 
         return markdown_text, new_ids, idx
 

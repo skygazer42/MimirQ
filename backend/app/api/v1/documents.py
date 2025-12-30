@@ -31,8 +31,8 @@ from app.parsing.processors.processor import document_processor
 from app.parsing.factory import parser_factory
 from app.parsing.routing import route_pdf_backend
 from app.rag.chunking.factory import chunker_factory
-from app.api.schemas.indexing import IndexKind, IndexRecord
-from app.api.schemas.pipeline import PipelineOptions
+from app.types.indexing import IndexKind, IndexRecord
+from app.types.pipeline import PipelineOptions
 from app.services.indexer import Indexer
 from app.services.pipeline_config import (
     build_indexing_options,

@@ -12,7 +12,7 @@ from app.rag.llm.factory import create_llm_client
 from app.rag.kg.extraction.config import ExtractConfig
 from app.rag.kg.extraction.processor import EventProcessor
 from app.rag.kg.loading.processor import DocumentProcessor
-from app.api.schemas.indexing import EventEntityInput, IndexKind, IndexRecord, IndexingOptions
+from app.types.indexing import EventEntityInput, IndexKind, IndexRecord, IndexingOptions
 from app.services.indexer import Indexer
 from app.rag.kg.utils import get_logger
 

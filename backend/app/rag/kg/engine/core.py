@@ -11,7 +11,7 @@ from app.rag.kg.search.config import SearchConfig
 from app.rag.kg.search.searcher import KGSearcher
 from app.rag.kg.utils import get_logger
 from app.models.document import DocumentChunk
-from app.api.schemas.indexing import IndexingOptions
+from app.types.indexing import IndexingOptions
 
 logger = get_logger("kg.engine")
 

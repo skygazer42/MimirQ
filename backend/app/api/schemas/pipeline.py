@@ -3,7 +3,6 @@
 定义文档解析、分块等流水线操作的数据模型。
 """
 
-from dataclasses import dataclass
 from typing import List, Optional, Dict, Any
 from uuid import UUID
 from pydantic import BaseModel, Field
@@ -125,48 +124,3 @@ class LLMCleanPreviewResponse(BaseModel):
     ab_experiment_key: Optional[str] = None
     ab_variant: Optional[str] = None
     warnings: List[str] = Field(default_factory=list)
-
-
-# 内部配置使用的 dataclass（用于服务层，非 API 层）
-@dataclass(frozen=True)
-class PipelineOptions:
-    """流水线配置选项（可选值）"""
-    governance_enabled: Optional[bool] = None
-    governance_remove_toc_lines: Optional[bool] = None
-    governance_remove_noise_lines: Optional[bool] = None
-    governance_unwrap_lines: Optional[bool] = None
-    governance_remove_common_lines: Optional[bool] = None
-    governance_unwrap_max_line_length: Optional[int] = None
-    governance_noise_min_chars: Optional[int] = None
-    governance_noise_ratio_threshold: Optional[float] = None
-    governance_common_lines_min_docs: Optional[int] = None
-    governance_common_lines_min_ratio: Optional[float] = None
-    chunk_size: Optional[int] = None
-    chunk_overlap: Optional[int] = None
-    chunk_vector_enabled: Optional[bool] = None
-    bm25_index_enabled: Optional[bool] = None
-    kg_enabled: Optional[bool] = None
-    event_vector_enabled: Optional[bool] = None
-    entity_vector_enabled: Optional[bool] = None
-
-
-@dataclass(frozen=True)
-class PipelineEffective:
-    """流水线有效配置（最终值）"""
-    governance_enabled: bool
-    governance_remove_toc_lines: bool
-    governance_remove_noise_lines: bool
-    governance_unwrap_lines: bool
-    governance_remove_common_lines: bool
-    governance_unwrap_max_line_length: int
-    governance_noise_min_chars: int
-    governance_noise_ratio_threshold: float
-    governance_common_lines_min_docs: int
-    governance_common_lines_min_ratio: float
-    chunk_size: int
-    chunk_overlap: int
-    chunk_vector_enabled: bool
-    bm25_index_enabled: bool
-    kg_enabled: bool
-    event_vector_enabled: bool
-    entity_vector_enabled: bool
