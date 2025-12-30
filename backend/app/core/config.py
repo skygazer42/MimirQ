@@ -230,6 +230,13 @@ class Settings(BaseSettings):
     # Canonical env names: KG_ENABLED / KG_CHAT_ENABLED
     KG_ENABLED: bool = False
     KG_CHAT_ENABLED: bool = False
+    # KG extraction prompt selector (optional; tenant-scoped PromptTemplate).
+    # - Prefer using `KG_EXTRACT_PROMPT_TEMPLATE_KEY` (latest active version).
+    # - Or set `KG_EXTRACT_PROMPT_TEMPLATE_ID` to pin a specific template.
+    # - Or set `KG_EXTRACT_PROMPT_AB_EXPERIMENT_KEY` for A/B variants (seeded by account_id when available).
+    KG_EXTRACT_PROMPT_TEMPLATE_ID: str = ""
+    KG_EXTRACT_PROMPT_TEMPLATE_KEY: str = ""
+    KG_EXTRACT_PROMPT_AB_EXPERIMENT_KEY: str = ""
     CHAT_HISTORY_WINDOW: int = 5
     LONG_TERM_MEMORY_ENABLED: bool = False
     LONG_TERM_MEMORY_TOP_K: int = 3

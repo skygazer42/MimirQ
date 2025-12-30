@@ -73,6 +73,7 @@ class EventInput:
     document_id: Optional[UUID]
     chunk_id: Optional[UUID]
     references: Optional[Dict[str, Any]] = None
+    extra_data: Optional[Dict[str, Any]] = None
     vector: Optional[List[float]] = None
     entities: List[EventEntityInput] = field(default_factory=list)
 
@@ -87,6 +88,7 @@ class IndexRecord:
     title: Optional[str] = None
     summary: Optional[str] = None
     references: Optional[Dict[str, Any]] = None
+    extra_data: Optional[Dict[str, Any]] = None
     vector: Optional[List[float]] = None
     entities: List[EventEntityInput] = field(default_factory=list)
     page_number: Optional[int] = None
@@ -122,5 +124,4 @@ __all__ = [
     "PersistChunksResult",
     "PersistEventsResult",
 ]
-
 

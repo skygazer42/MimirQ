@@ -276,6 +276,7 @@ class Indexer:
                 content=item.content,
                 content_vector=item.vector,
                 references=item.references,
+                extra_data=item.extra_data,
             )
             self._db.add(event_obj)
             db_events.append(event_obj)
@@ -453,6 +454,7 @@ class Indexer:
             document_id=record.document_id,
             chunk_id=record.chunk_id,
             references=record.references,
+            extra_data=record.extra_data,
             vector=record.vector,
             entities=list(record.entities or []),
         )

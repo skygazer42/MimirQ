@@ -15,6 +15,7 @@ from app.rag.kg.loading.processor import DocumentProcessor
 from app.types.indexing import EventEntityInput, IndexKind, IndexRecord, IndexingOptions
 from app.services.indexer import Indexer
 from app.rag.kg.utils import get_logger
+from app.services.prompt_resolver import resolve_prompt_template
 
 logger = get_logger("kg.extract.extractor")
 
@@ -51,8 +52,30 @@ class EventExtractor:
                 logger.warning("No chunks found for extraction")
                 return []
 
+            tenant_id = config.tenant_id or resolved_chunks[0].tenant_id
+            prompt_template_content: str | None = None
+            chosen_template_id: str | None = None
+            if config.prompt_template_id or config.prompt_template_key or config.prompt_ab_experiment_key:
+                chosen = resolve_prompt_template(
+                    db=session,
+                    tenant_id=tenant_id,
+                    prompt_template_id=config.prompt_template_id,
+                    template_key=config.prompt_template_key,
+                    ab_experiment_key=config.prompt_ab_experiment_key,
+                    ab_user_key=config.ab_user_key,
+                )
+                if chosen and chosen.content:
+                    prompt_template_content = str(chosen.content).strip() or None
+                    chosen_template_id = str(chosen.id)
+                    try:
+                        chosen.usage_count += 1
+                        session.commit()
+                    except Exception:
+                        session.rollback()
+                        logger.warning("Failed to update kg extract prompt usage_count for template %s", chosen_template_id)
+
             llm_client = await create_llm_client(scenario="extract", model_config=self.model_config)
-            processor = EventProcessor(llm_client=llm_client)
+            processor = EventProcessor(llm_client=llm_client, prompt_template=prompt_template_content)
             embedder = DocumentProcessor()
 
             embed_cache: Dict[str, List[float]] = {}
@@ -137,13 +160,17 @@ class EventExtractor:
                             references={"chunk_index": chunk.chunk_index, "page": chunk.page_number},
                             vector=vector,
                             entities=entity_inputs,
+                            extra_data={
+                                "kg_prompt_template_id": chosen_template_id,
+                                "kg_prompt_template_key": config.prompt_template_key,
+                                "kg_prompt_ab_experiment_key": config.prompt_ab_experiment_key,
+                            },
                         )
                     )
 
             if not events_to_index:
                 return []
 
-            tenant_id = config.tenant_id or resolved_chunks[0].tenant_id
             result = Indexer(session).upsert(
                 tenant_id=tenant_id,
                 records=events_to_index,

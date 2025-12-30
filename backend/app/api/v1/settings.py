@@ -83,6 +83,14 @@ class FeatureFlags(BaseModel):
     mineru_enabled: bool = False
 
 
+class KGConfig(BaseModel):
+    """KG 相关配置"""
+    chat_enabled: bool = False
+    extract_prompt_template_id: str = ""
+    extract_prompt_template_key: str = ""
+    extract_prompt_ab_experiment_key: str = ""
+
+
 class LLMConfig(BaseModel):
     """LLM 配置"""
     api_key: str = ""
@@ -153,6 +161,7 @@ class MinerUConfig(BaseModel):
 class SystemSettings(BaseModel):
     """完整系统配置"""
     feature_flags: FeatureFlags
+    kg: KGConfig
     llm: LLMConfig
     embedding: EmbeddingConfig
     milvus: MilvusConfig
@@ -166,6 +175,7 @@ class SystemSettings(BaseModel):
 class UpdateSettingsRequest(BaseModel):
     """更新配置请求"""
     feature_flags: Optional[FeatureFlags] = None
+    kg: Optional[KGConfig] = None
     llm: Optional[LLMConfig] = None
     embedding: Optional[EmbeddingConfig] = None
     milvus: Optional[MilvusConfig] = None
@@ -205,6 +215,8 @@ def _apply_runtime_settings(env_vars: Dict[str, str], updated_keys: list[str]) -
     # Feature flags
     if "KG_ENABLED" in updated_keys and "KG_ENABLED" in env_vars:
         settings.KG_ENABLED = _parse_bool(env_vars["KG_ENABLED"])
+    if "KG_CHAT_ENABLED" in updated_keys and "KG_CHAT_ENABLED" in env_vars:
+        settings.KG_CHAT_ENABLED = _parse_bool(env_vars["KG_CHAT_ENABLED"])
     if "DEEPDOC_ENABLED" in updated_keys and "DEEPDOC_ENABLED" in env_vars:
         settings.DEEPDOC_ENABLED = _parse_bool(env_vars["DEEPDOC_ENABLED"])
     if "MARKITDOWN_ENABLED" in updated_keys and "MARKITDOWN_ENABLED" in env_vars:
@@ -213,6 +225,14 @@ def _apply_runtime_settings(env_vars: Dict[str, str], updated_keys: list[str]) -
         settings.LLAMA_INDEX_ENABLED = _parse_bool(env_vars["LLAMA_INDEX_ENABLED"])
     if "MINERU_ENABLED" in updated_keys and "MINERU_ENABLED" in env_vars:
         settings.MINERU_ENABLED = _parse_bool(env_vars["MINERU_ENABLED"])
+
+    # KG prompt selector
+    if "KG_EXTRACT_PROMPT_TEMPLATE_ID" in updated_keys and "KG_EXTRACT_PROMPT_TEMPLATE_ID" in env_vars:
+        settings.KG_EXTRACT_PROMPT_TEMPLATE_ID = env_vars["KG_EXTRACT_PROMPT_TEMPLATE_ID"]
+    if "KG_EXTRACT_PROMPT_TEMPLATE_KEY" in updated_keys and "KG_EXTRACT_PROMPT_TEMPLATE_KEY" in env_vars:
+        settings.KG_EXTRACT_PROMPT_TEMPLATE_KEY = env_vars["KG_EXTRACT_PROMPT_TEMPLATE_KEY"]
+    if "KG_EXTRACT_PROMPT_AB_EXPERIMENT_KEY" in updated_keys and "KG_EXTRACT_PROMPT_AB_EXPERIMENT_KEY" in env_vars:
+        settings.KG_EXTRACT_PROMPT_AB_EXPERIMENT_KEY = env_vars["KG_EXTRACT_PROMPT_AB_EXPERIMENT_KEY"]
 
     # LLM
     if "LLM_API_KEY" in updated_keys and "LLM_API_KEY" in env_vars:
@@ -377,6 +397,12 @@ async def get_settings(
             llama_index_enabled=settings.LLAMA_INDEX_ENABLED,
             mineru_enabled=settings.MINERU_ENABLED,
         ),
+        kg=KGConfig(
+            chat_enabled=settings.KG_CHAT_ENABLED,
+            extract_prompt_template_id=getattr(settings, "KG_EXTRACT_PROMPT_TEMPLATE_ID", "") or "",
+            extract_prompt_template_key=getattr(settings, "KG_EXTRACT_PROMPT_TEMPLATE_KEY", "") or "",
+            extract_prompt_ab_experiment_key=getattr(settings, "KG_EXTRACT_PROMPT_AB_EXPERIMENT_KEY", "") or "",
+        ),
         llm=LLMConfig(
             api_key=mask_secret(settings.LLM_API_KEY),
             api_base=settings.LLM_API_BASE,
@@ -452,6 +478,33 @@ async def update_settings(
             env_vars["LLAMA_INDEX_ENABLED"] = str(ff.llama_index_enabled).lower()
             env_vars["MINERU_ENABLED"] = str(ff.mineru_enabled).lower()
             updated_keys.extend(["KG_ENABLED", "DEEPDOC_ENABLED", "MARKITDOWN_ENABLED", "LLAMA_INDEX_ENABLED", "MINERU_ENABLED"])
+
+        # 更新 KG 配置
+        if request.kg:
+            kg = request.kg
+            env_vars["KG_CHAT_ENABLED"] = str(bool(kg.chat_enabled)).lower()
+            updated_keys.append("KG_CHAT_ENABLED")
+
+            template_id = _sanitize_env_value("KG_EXTRACT_PROMPT_TEMPLATE_ID", kg.extract_prompt_template_id or "")
+            if template_id:
+                try:
+                    UUID(template_id)
+                except Exception:
+                    raise HTTPException(status_code=400, detail="Invalid KG_EXTRACT_PROMPT_TEMPLATE_ID")
+            env_vars["KG_EXTRACT_PROMPT_TEMPLATE_ID"] = template_id
+            env_vars["KG_EXTRACT_PROMPT_TEMPLATE_KEY"] = _sanitize_env_value(
+                "KG_EXTRACT_PROMPT_TEMPLATE_KEY", kg.extract_prompt_template_key or ""
+            )
+            env_vars["KG_EXTRACT_PROMPT_AB_EXPERIMENT_KEY"] = _sanitize_env_value(
+                "KG_EXTRACT_PROMPT_AB_EXPERIMENT_KEY", kg.extract_prompt_ab_experiment_key or ""
+            )
+            updated_keys.extend(
+                [
+                    "KG_EXTRACT_PROMPT_TEMPLATE_ID",
+                    "KG_EXTRACT_PROMPT_TEMPLATE_KEY",
+                    "KG_EXTRACT_PROMPT_AB_EXPERIMENT_KEY",
+                ]
+            )
 
         # 更新 LLM 配置
         if request.llm:

@@ -29,6 +29,10 @@ async def extract_events(
     *,
     chunks: Optional[Sequence[DocumentChunk]] = None,
     index_options: Optional[IndexingOptions] = None,
+    prompt_template_id: Optional[UUID] = None,
+    prompt_template_key: Optional[str] = None,
+    prompt_ab_experiment_key: Optional[str] = None,
+    ab_user_key: Optional[str] = None,
 ):
     engine = _load_engine()
     return await engine.extract(
@@ -36,6 +40,10 @@ async def extract_events(
         tenant_id=tenant_id,
         chunks=chunks,
         index_options=index_options,
+        prompt_template_id=prompt_template_id,
+        prompt_template_key=prompt_template_key,
+        prompt_ab_experiment_key=prompt_ab_experiment_key,
+        ab_user_key=ab_user_key,
     )
 
 
