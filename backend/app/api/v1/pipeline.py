@@ -36,7 +36,7 @@ from app.api.dependencies.auth import get_current_account_id
 from app.rag.preprocessing.cleaning import clean_markdown, RegexRule, build_repeated_line_signatures
 from app.rag.preprocessing.rules import DEFAULT_MARKDOWN_RULES
 from app.services.dataset_service import DatasetService
-from app.services.prompt_template_selector import resolve_prompt_template
+from app.services.prompt_resolver import resolve_prompt_template
 from app.rag.kg.utils import ConfigError
 from app.rag.llm.factory import create_llm_client
 from app.rag.llm.models import LLMMessage, LLMRole

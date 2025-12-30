@@ -28,7 +28,7 @@
 ## 相关代码入口（便于你定位）
 
 - DeepDoc 解析适配：`backend/app/parsing/parsers/deepdoc_parser.py`
-- 切块阶段上传/替换/绑定：`backend/app/parsing/processors/document_processor.py`
+- 切块阶段上传/替换/绑定：`backend/app/parsing/processors/processor.py`
 - MinerU 本地 ZIP 支持：`backend/app/services/mineru_service.py`、`backend/app/parsing/factory.py`
 - 向量检索 metadata 回查补齐：`backend/app/storage/search/hybrid_retriever.py`
 - 图片 URL API：`backend/app/api/v1/documents.py`

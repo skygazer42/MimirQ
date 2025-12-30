@@ -9,7 +9,7 @@ from contextlib import asynccontextmanager
 from app.core.config import settings
 from app.core.database import Base, SessionLocal, engine
 from app.core.exceptions import register_exception_handlers
-from app.core.runtime_migrations import apply_runtime_migrations
+from app.core.migrations import apply_runtime_migrations
 from app.api.v1 import router as api_v1_router
 from app.rag.retriever import hybrid_retriever
 from app.models.document import DocumentChunk, Document as DBDocument

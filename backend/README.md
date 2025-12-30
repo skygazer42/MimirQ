@@ -49,7 +49,7 @@ from app.core.database import get_db
 **文件：**
 - `config.py` - 配置管理（Settings）
 - `database.py` - 数据库连接
-- `runtime_migrations.py` - 运行时迁移
+- `migrations.py` - 运行时迁移
 
 ### 3. models/ - 数据库模型
 
@@ -122,7 +122,7 @@ from app.parsing.chunking.hierarchical import hierarchical_chunk_markdown
 result = hierarchical_chunk_markdown(markdown_text)
 
 # 完整流程
-from app.parsing.processors.document_processor import document_processor
+from app.parsing.processors.processor import document_processor
 await document_processor.process_document(file_path, doc_id, tenant_id)
 ```
 
@@ -219,13 +219,13 @@ result = await evaluate_rag_with_ragas(
 ```python
 from app.services.dataset_service import DatasetService
 from app.services.document_access import filter_allowed_document_ids
-from app.services.prompt_template_selector import select_prompt_template
+from app.services.prompt_resolver import resolve_prompt_template
 ```
 
 **保留的服务：**
 - `dataset_service.py` - 数据集管理
 - `document_access.py` - 文档权限
-- `prompt_template_selector.py` - 提示词选择
+- `prompt_resolver.py` - 提示词解析/选择
 - `metrics_logger.py` - 指标日志
 - `mineru_service.py` - MinerU API 客户端
 - `indexer.py` - 统一索引器（chunk/event 入库、重建、删除）
@@ -273,7 +273,7 @@ from app.services.prompt_template_selector import select_prompt_template
 | `app.services.parsers` | `app.parsing.factory` |
 | `app.services.chunkers` | `app.parsing.chunking.factory` |
 | `app.services.hierarchical_chunking` | `app.parsing.chunking.hierarchical` |
-| `app.services.document_processor` | `app.parsing.processors.document_processor` |
+| `app.services.document_processor` | `app.parsing.processors.processor` |
 | `app.services.document_parser_service` | `app.parsing.processors.parser_service` |
 | `app.services.zip_image_processor` | `app.parsing.utils.zip_processor` |
 | `app.services.vector_router` | `app.storage.vector.factory` |

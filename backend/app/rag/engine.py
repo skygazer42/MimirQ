@@ -24,7 +24,7 @@ from app.rag.core.text import parse_json_from_text, extract_evidence_text, guess
 from app.rag.retriever import hybrid_retriever
 from app.services.metrics_logger import log_metrics
 from langchain_openai import ChatOpenAI
-from app.services.prompt_template_selector import resolve_prompt_template
+from app.services.prompt_resolver import resolve_prompt_template
 from app.rag.kg.pipeline import kg_search
 
 logger = get_logger("rag.engine")
