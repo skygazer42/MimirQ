@@ -2,6 +2,7 @@
 文档管理 API
 """
 import asyncio
+import re
 from fastapi import APIRouter, Depends, UploadFile, File, HTTPException, BackgroundTasks, Form, Body
 from sqlalchemy.orm import Session
 from typing import List, Optional
@@ -48,7 +49,7 @@ from fastapi.responses import FileResponse, RedirectResponse
 from app.api.dependencies.tenant import get_tenant_id
 from app.api.dependencies.auth import get_current_account_id
 from app.rag.kg.pipeline import extract_events
-from sqlalchemy import or_, false
+from sqlalchemy import or_, false, and_
 from app.rag.core.logging import get_logger
 from app.rag.preprocessing.processor import governance_processor
 from app.api.utils.upload import save_upload_file
@@ -57,6 +58,19 @@ from app.api.utils.upload import save_upload_file
 logger = get_logger("api.documents")
 
 router = APIRouter()
+
+# 文件名安全字符：字母、数字、中文、日文、韩文、空格、点、下划线、连字符
+SAFE_FILENAME_PATTERN = re.compile(r'^[a-zA-Z0-9\u4e00-\u9fff\u3040-\u30ff\uac00-\ud7af._\-\s]+$')
+
+
+def _validate_filename(filename: str) -> None:
+    """验证文件名安全性"""
+    if not filename:
+        raise HTTPException(status_code=400, detail="Filename is required")
+    if len(filename) > 255:
+        raise HTTPException(status_code=400, detail="Filename too long (max 255 characters)")
+    if not SAFE_FILENAME_PATTERN.match(filename):
+        raise HTTPException(status_code=400, detail="Filename contains invalid characters")
 
 
 def _to_pipeline_options(
@@ -198,6 +212,9 @@ async def upload_document(
     4. 后台异步处理文档（解析、切片、向量化）
     """
 
+    # 0. 验证文件名安全性
+    _validate_filename(file.filename)
+
     # 1. 验证文件类型
     file_ext = Path(file.filename).suffix.lower()
     if file_ext not in settings.allowed_extensions_list:
@@ -320,35 +337,45 @@ async def list_documents(
         query = query.filter(DBDocument.dataset_id == dataset_id)
     else:
         # No dataset_id: return all documents the user can read within the tenant.
-        datasets = db.query(Dataset).filter(Dataset.tenant_id == tenant_id).all()
-        allowed_dataset_ids: set[UUID] = set()
-        partial_dataset_ids: set[UUID] = set()
-        for ds in datasets:
-            if ds.owner_id == account_id:
-                allowed_dataset_ids.add(ds.id)
-                continue
-            if ds.permission == DatasetPermissionEnum.ALL_TEAM_MEMBERS:
-                allowed_dataset_ids.add(ds.id)
-                continue
-            if ds.permission == DatasetPermissionEnum.PARTIAL_MEMBERS:
-                partial_dataset_ids.add(ds.id)
+        # 优化：使用数据库级别的过滤，避免 N+1 查询
 
-        if partial_dataset_ids:
-            rows = (
-                db.query(DatasetPermission.dataset_id)
-                .filter(
-                    DatasetPermission.tenant_id == tenant_id,
-                    DatasetPermission.account_id == account_id,
-                    DatasetPermission.dataset_id.in_(list(partial_dataset_ids)),
-                )
-                .all()
+        # 子查询：获取 PARTIAL_MEMBERS 权限中用户有权访问的数据集 ID
+        partial_member_subq = (
+            db.query(DatasetPermission.dataset_id)
+            .filter(
+                DatasetPermission.tenant_id == tenant_id,
+                DatasetPermission.account_id == account_id,
             )
-            allowed_dataset_ids.update(row[0] for row in rows)
+            .subquery()
+        )
+
+        # 构建允许访问的数据集过滤条件
+        allowed_dataset_filter = or_(
+            # 用户是所有者
+            Dataset.owner_id == account_id,
+            # ALL_TEAM_MEMBERS 权限
+            Dataset.permission == DatasetPermissionEnum.ALL_TEAM_MEMBERS,
+            # PARTIAL_MEMBERS 权限且用户在列表中
+            and_(
+                Dataset.permission == DatasetPermissionEnum.PARTIAL_MEMBERS,
+                Dataset.id.in_(partial_member_subq)
+            )
+        )
+
+        # 获取允许访问的数据集 ID
+        allowed_dataset_ids_subq = (
+            db.query(Dataset.id)
+            .filter(
+                Dataset.tenant_id == tenant_id,
+                allowed_dataset_filter
+            )
+            .subquery()
+        )
 
         query = query.filter(
             or_(
                 DBDocument.dataset_id.is_(None),
-                DBDocument.dataset_id.in_(list(allowed_dataset_ids)) if allowed_dataset_ids else false(),
+                DBDocument.dataset_id.in_(allowed_dataset_ids_subq),
             )
         )
 
@@ -710,16 +737,19 @@ async def preview_document(
             parser_backend=resolved_backend
         )
     except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=400, detail=f"Invalid input: {str(e)[:100]}")
+    except IOError as e:
+        logger.error("File read error during preview: %s", str(e)[:200])
+        raise HTTPException(status_code=500, detail="File read error")
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to parse document: {str(e)}")
+        logger.error("Unexpected error during document preview: %s", str(e)[:200])
+        raise HTTPException(status_code=500, detail="Failed to parse document")
     finally:
         try:
             if temp_path.exists():
                 temp_path.unlink()
-        except Exception:
-            # 临时文件删除失败不影响主流程
-            pass
+        except OSError as e:
+            logger.warning("Failed to clean up temporary file %s: %s", temp_path, e)
 
 
 @router.post("/manual", response_model=DocumentUploadResponse, status_code=201)
@@ -831,11 +861,22 @@ async def create_document_with_manual_chunks(
 
         if pipeline_effective.kg_enabled:
             try:
+                prompt_template_id = None
+                raw_tid = (getattr(settings, "KG_EXTRACT_PROMPT_TEMPLATE_ID", "") or "").strip()
+                if raw_tid:
+                    try:
+                        prompt_template_id = UUID(raw_tid)
+                    except Exception:
+                        logger.warning("Invalid KG_EXTRACT_PROMPT_TEMPLATE_ID: %s", raw_tid[:50])
                 await extract_events(
                     chunk_ids=persist_result.chunk_ids,
                     tenant_id=tenant_id,
                     chunks=persist_result.db_chunks,
                     index_options=index_options,
+                    prompt_template_id=prompt_template_id,
+                    prompt_template_key=(getattr(settings, "KG_EXTRACT_PROMPT_TEMPLATE_KEY", "") or "").strip() or None,
+                    prompt_ab_experiment_key=(getattr(settings, "KG_EXTRACT_PROMPT_AB_EXPERIMENT_KEY", "") or "").strip() or None,
+                    ab_user_key=account_id,
                 )
             except Exception as exc:
                 # KG 抽取是可选增强，失败不影响主流程（避免“已入库但标记 failed”）。

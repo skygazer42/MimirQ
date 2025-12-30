@@ -28,8 +28,19 @@ class KGEngine:
         *,
         chunks: Optional[Sequence[DocumentChunk]] = None,
         index_options: Optional[IndexingOptions] = None,
+        prompt_template_id: Optional[UUID] = None,
+        prompt_template_key: Optional[str] = None,
+        prompt_ab_experiment_key: Optional[str] = None,
+        ab_user_key: Optional[str] = None,
     ):
-        config = ExtractConfig(chunk_ids=list(chunk_ids), tenant_id=tenant_id or settings.DEFAULT_TENANT_ID)
+        config = ExtractConfig(
+            chunk_ids=list(chunk_ids),
+            tenant_id=tenant_id or settings.DEFAULT_TENANT_ID,
+            prompt_template_id=prompt_template_id,
+            prompt_template_key=prompt_template_key,
+            prompt_ab_experiment_key=prompt_ab_experiment_key,
+            ab_user_key=ab_user_key,
+        )
         return await self.extractor.extract(
             config,
             chunks=chunks,

@@ -1,6 +1,7 @@
 """
 对话 API
 """
+import logging
 from uuid import UUID
 import uuid
 from datetime import datetime
@@ -35,6 +36,8 @@ from app.core.token_utils import num_tokens_from_string
 from app.core.config import settings
 from app.api.dependencies.tenant import get_tenant_id
 from app.api.dependencies.auth import get_current_account_id
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -358,10 +361,11 @@ async def stream_chat(
                 return
 
             except Exception as e:  # noqa: BLE001
+                logger.error("LangGraph stream error: %s", str(e)[:200])
                 error_event = {
                     "type": "error",
                     "data": {
-                        "message": str(e),
+                        "message": "An error occurred during chat processing",
                         "conversation_id": str(conversation_id) if conversation_id else None,
                     },
                     "request_id": str(request_id),
@@ -430,11 +434,13 @@ async def stream_chat(
             db.commit()
 
         except Exception as e:
+            logger.error("Chat stream error: %s", str(e)[:200])
             error_event = {
                 "type": "error",
                 "data": {
-                    "message": str(e),
+                    "message": "An error occurred during chat processing",
                     "conversation_id": str(conversation_id) if conversation_id else None,
+                    "error_id": str(request_id),
                 },
                 "request_id": str(request_id),
             }

@@ -520,11 +520,21 @@ class DocumentProcessorService:
             # Step 7: 如启用则运行 KG 抽取（事件/实体）
             if pipeline_effective.kg_enabled:
                 logger.info("Running KG extraction on document chunks...")
+                prompt_template_id = None
+                raw_tid = (getattr(settings, "KG_EXTRACT_PROMPT_TEMPLATE_ID", "") or "").strip()
+                if raw_tid:
+                    try:
+                        prompt_template_id = UUID(raw_tid)
+                    except Exception:
+                        logger.warning("Invalid KG_EXTRACT_PROMPT_TEMPLATE_ID: %s", raw_tid[:50])
                 events = await extract_events(
                     chunk_ids,
                     tenant_id=tenant_id,
-                chunks=indexed.db_chunks,
+                    chunks=indexed.db_chunks,
                     index_options=index_options,
+                    prompt_template_id=prompt_template_id,
+                    prompt_template_key=(getattr(settings, "KG_EXTRACT_PROMPT_TEMPLATE_KEY", "") or "").strip() or None,
+                    prompt_ab_experiment_key=(getattr(settings, "KG_EXTRACT_PROMPT_AB_EXPERIMENT_KEY", "") or "").strip() or None,
                 )
                 logger.info("KG extracted %s events for document %s", len(events), document_id)
 

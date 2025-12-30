@@ -26,6 +26,7 @@ import {
 import { promptTemplateApi, PromptTemplate, PromptTemplateCreate } from '@/lib/api-client'
 import { Plus, Edit, Trash2, Copy, Check, X, Eye, Search, Filter } from 'lucide-react'
 import { toast } from 'sonner'
+import { KgExtractPromptSettings } from '@/components/kg-extract-prompt-settings'
 
 export default function PromptsPage() {
   const [templates, setTemplates] = useState<PromptTemplate[]>([])
@@ -259,6 +260,10 @@ export default function PromptsPage() {
           <Plus className="w-4 h-4 mr-2" />
           创建模板
         </Button>
+      </div>
+
+      <div className="mb-6">
+        <KgExtractPromptSettings templates={templates} />
       </div>
 
       {/* Filters & Search */}

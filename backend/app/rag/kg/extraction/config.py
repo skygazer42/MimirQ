@@ -13,6 +13,11 @@ class ExtractConfig(KGBaseModel):
     tenant_id: Optional[UUID] = None
     max_concurrency: int = 3
     source_config_id: Optional[str] = None
+    # Optional PromptTemplate selectors (tenant-scoped).
+    prompt_template_id: Optional[UUID] = None
+    prompt_template_key: Optional[str] = None
+    prompt_ab_experiment_key: Optional[str] = None
+    ab_user_key: Optional[str] = None
 
 
 # Legacy compatibility alias

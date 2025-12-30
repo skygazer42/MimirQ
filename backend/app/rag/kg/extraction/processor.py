@@ -15,9 +15,10 @@ logger = get_logger("kg.extract.processor")
 class EventProcessor:
     """Core extraction logic."""
 
-    def __init__(self, llm_client: BaseLLMClient):
+    def __init__(self, llm_client: BaseLLMClient, *, prompt_template: str | None = None):
         self.llm_client = llm_client
         self.parser = EntityValueParser()
+        self.prompt_template = (prompt_template or "").strip() or None
 
     async def extract_from_sections(
         self, sections: List[DocumentChunk], batch_index: int
@@ -62,12 +63,24 @@ class EventProcessor:
             },
         }
 
-        prompt = (
-            "Read the following text chunks and extract 2-3 important events. "
-            "Return JSON only. Each event should have title, summary (50-200 words) "
-            "and an entity list (name/type/description optional).\n"
-            f"{context}"
-        )
+        if self.prompt_template:
+            schema_hint = __import__("json").dumps(schema, ensure_ascii=False)
+            template_vars = {
+                "context": context,
+                "schema": schema_hint,
+            }
+            try:
+                prompt = self.prompt_template.format_map(template_vars)
+            except Exception:
+                # Best-effort: avoid failing extraction due to template formatting issues.
+                prompt = f"{self.prompt_template}\n\n{context}"
+        else:
+            prompt = (
+                "Read the following text chunks and extract 2-3 important events. "
+                "Return JSON only. Each event should have title, summary (50-200 words) "
+                "and an entity list (name/type/description optional).\n"
+                f"{context}"
+            )
         messages = [LLMMessage(role=LLMRole.USER, content=prompt)]
 
         result = await self.llm_client.chat_with_schema(messages, response_schema=schema, temperature=0.2)

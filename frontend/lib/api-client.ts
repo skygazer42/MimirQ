@@ -516,6 +516,13 @@ export interface FeatureFlags {
   mineru_enabled: boolean
 }
 
+export interface KGConfig {
+  chat_enabled: boolean
+  extract_prompt_template_id: string
+  extract_prompt_template_key: string
+  extract_prompt_ab_experiment_key: string
+}
+
 export interface LLMConfig {
   api_key: string
   api_base: string
@@ -576,6 +583,7 @@ export interface LangGraphConfig {
 
 export interface SystemSettings {
   feature_flags: FeatureFlags
+  kg: KGConfig
   llm: LLMConfig
   embedding: EmbeddingConfig
   milvus: MilvusConfig

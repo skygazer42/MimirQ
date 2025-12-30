@@ -1,6 +1,6 @@
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
@@ -27,6 +27,9 @@ def _ensure_enabled():
 @router.post("/documents/{document_id}/extract", response_model=KGExtractResponse)
 async def run_kg_extraction_for_document(
     document_id: UUID,
+    prompt_template_id: UUID | None = Query(default=None),
+    prompt_template_key: str | None = Query(default=None),
+    prompt_ab_experiment_key: str | None = Query(default=None),
     tenant_id: UUID = Depends(get_tenant_id),
     account_id: str = Depends(get_current_account_id),
     db: Session = Depends(get_db),
@@ -63,10 +66,26 @@ async def run_kg_extraction_for_document(
             detail="Document has no chunks yet. Process the document first.",
         )
 
+    eff_prompt_template_id = prompt_template_id
+    if eff_prompt_template_id is None:
+        raw_tid = (getattr(settings, "KG_EXTRACT_PROMPT_TEMPLATE_ID", "") or "").strip()
+        if raw_tid:
+            try:
+                eff_prompt_template_id = UUID(raw_tid)
+            except Exception:
+                eff_prompt_template_id = None
+
+    eff_prompt_template_key = (prompt_template_key or "").strip() or (getattr(settings, "KG_EXTRACT_PROMPT_TEMPLATE_KEY", "") or "").strip() or None
+    eff_prompt_ab_experiment_key = (prompt_ab_experiment_key or "").strip() or (getattr(settings, "KG_EXTRACT_PROMPT_AB_EXPERIMENT_KEY", "") or "").strip() or None
+
     events = await extract_events(
         [c.id for c in chunks],
         tenant_id=tenant_id,
         chunks=chunks,
+        prompt_template_id=eff_prompt_template_id,
+        prompt_template_key=eff_prompt_template_key,
+        prompt_ab_experiment_key=eff_prompt_ab_experiment_key,
+        ab_user_key=account_id,
     )
 
     return KGExtractResponse(
