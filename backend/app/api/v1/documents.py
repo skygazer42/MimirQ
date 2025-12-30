@@ -130,7 +130,7 @@ def _resolve_writable_dataset(
         return dataset
 
     # Ensure member exists and has edit role (assert_dataset_writable enforces it as well).
-    DatasetService.ensure_member(db, tenant_id, account_id)
+    member = DatasetService.ensure_member(db, tenant_id, account_id)
 
     datasets = db.query(Dataset).filter(Dataset.tenant_id == tenant_id).order_by(Dataset.created_at.asc()).all()
     for ds in datasets:
@@ -140,13 +140,21 @@ def _resolve_writable_dataset(
         except HTTPException:
             continue
 
-    # Auto-create a default dataset (best-effort, dev-friendly).
+    # 验证用户是否有权限创建数据集
+    role = (getattr(member, 'role', None) or "").lower()
+    if role not in EDIT_ROLES:
+        raise HTTPException(
+            status_code=403,
+            detail="No permission to create dataset. Please contact an administrator."
+        )
+
+    # Auto-create a default dataset with restricted permission (ONLY_ME).
     return DatasetService.create_dataset(
         db=db,
         tenant_id=tenant_id,
         name="默认知识库",
         description="自动创建（未指定 dataset_id）",
-        permission=DatasetPermissionEnum.ALL_TEAM_MEMBERS,
+        permission=DatasetPermissionEnum.ONLY_ME,  # 限制权限，避免权限提升
         owner_id=account_id,
         partial_members=[],
     )
@@ -516,9 +524,13 @@ async def get_image(
 
     images_dir_resolved = images_dir.resolve(strict=False)
     file_path = (images_dir / f"{safe_id}.png").resolve(strict=False)
-    if images_dir_resolved != file_path.parent and images_dir_resolved not in file_path.parents:
+
+    # 安全检查：确保 file_path 在 images_dir 目录下（防止路径穿越）
+    if not str(file_path).startswith(str(images_dir_resolved) + "/"):
         raise HTTPException(status_code=404, detail="Image not found")
-    if not file_path.exists():
+
+    # 检查文件是否存在且为普通文件
+    if not file_path.exists() or not file_path.is_file():
         raise HTTPException(status_code=404, detail="Image not found")
     return FileResponse(file_path, media_type="image/png")
 
@@ -769,8 +781,7 @@ async def create_document_with_manual_chunks(
     )
 
     db.add(db_document)
-    db.commit()
-    db.refresh(db_document)
+    db.flush()  # 仅 flush，不 commit，便于后续回滚
 
     try:
         records: List[IndexRecord] = []
@@ -804,6 +815,10 @@ async def create_document_with_manual_chunks(
         ).chunk_result
         if persist_result is None:
             raise RuntimeError("Chunk indexing returned no result")
+        if not persist_result.chunk_ids:
+            raise RuntimeError("No chunks were indexed")
+        if not persist_result.db_chunks:
+            raise RuntimeError("Database chunks were not persisted")
 
         # 更新文档统计信息和状态
         db_document.chunk_count = len(request.chunks)
