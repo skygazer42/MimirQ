@@ -1,13 +1,14 @@
 """
 Dataset service: creation, permission checks, partial member management.
 """
+import os
 from typing import List, Optional
 from uuid import UUID
 from sqlalchemy.orm import Session
 from fastapi import HTTPException, status
 
 from app.models.dataset import Dataset, DatasetPermission, DatasetPermissionEnum
-from app.models.tenant import TenantMember
+from app.models.tenant import Tenant, TenantMember
 
 
 EDIT_ROLES = {"owner", "admin", "editor", "dataset_operator"}
@@ -21,6 +22,29 @@ class DatasetService:
             TenantMember.user_id == account_id
         ).first()
         if not member:
+            is_production = os.getenv("ENV", "").lower() in ("prod", "production")
+            if not is_production:
+                # Dev-friendly bootstrap: create tenant + membership on first use.
+                tenant = db.query(Tenant).filter(Tenant.id == tenant_id).first()
+                if not tenant:
+                    db.add(
+                        Tenant(
+                            id=tenant_id,
+                            name=f"tenant-{tenant_id}",
+                            status="active",
+                            plan="basic",
+                        )
+                    )
+                member = TenantMember(
+                    tenant_id=tenant_id,
+                    user_id=account_id,
+                    role="owner",
+                    is_current=True,
+                )
+                db.add(member)
+                db.commit()
+                db.refresh(member)
+                return member
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not a tenant member")
         return member
 

@@ -2,16 +2,12 @@
 文档管理 API
 """
 import asyncio
-import contextlib
 from fastapi import APIRouter, Depends, UploadFile, File, HTTPException, BackgroundTasks, Form, Body
 from sqlalchemy.orm import Session
 from typing import List, Optional
 from uuid import UUID
 from pathlib import Path
 import uuid
-
-import aiofiles
-
 
 from app.core.database import get_db
 from app.models.document import Document as DBDocument, DocumentChunk
@@ -35,9 +31,10 @@ from app.parsing.processors.document_processor import document_processor
 from app.parsing.factory import parser_factory
 from app.parsing.routing import route_pdf_backend
 from app.rag.chunking.factory import chunker_factory
-from app.services.indexer import IndexKind, IndexRecord, Indexer
+from app.api.schemas.indexing import IndexKind, IndexRecord
+from app.api.schemas.pipeline import PipelineOptions
+from app.services.indexer import Indexer
 from app.services.pipeline_config import (
-    PipelineOptions,
     build_indexing_options,
     build_pipeline_metadata,
     resolve_pipeline_options,
@@ -54,50 +51,12 @@ from app.rag.kg.pipeline import extract_events
 from sqlalchemy import or_, false
 from app.rag.core.logging import get_logger
 from app.rag.preprocessing.processor import governance_processor
+from app.api.utils.upload import save_upload_file
 
 
 logger = get_logger("api.documents")
 
 router = APIRouter()
-
-
-async def _save_upload_file(
-    upload_file: UploadFile,
-    destination: Path,
-    *,
-    max_bytes: int,
-    chunk_size: int = 1024 * 1024,
-) -> int:
-    """
-    Stream-upload to disk with a hard size limit to avoid large in-memory reads.
-    Returns the written size (bytes).
-    """
-    total_size = 0
-    destination.parent.mkdir(parents=True, exist_ok=True)
-    try:
-        async with aiofiles.open(destination, "wb") as f:
-            while True:
-                chunk = await upload_file.read(chunk_size)
-                if not chunk:
-                    break
-                total_size += len(chunk)
-                if total_size > max_bytes:
-                    raise HTTPException(
-                        status_code=413,
-                        detail=f"File too large. Max size: {max_bytes / 1024 / 1024}MB",
-                    )
-                await f.write(chunk)
-        return total_size
-    except HTTPException:
-        with contextlib.suppress(Exception):
-            if destination.exists():
-                destination.unlink()
-        raise
-    except Exception as e:
-        with contextlib.suppress(Exception):
-            if destination.exists():
-                destination.unlink()
-        raise HTTPException(status_code=500, detail=f"Failed to save file: {str(e)}")
 
 
 def _to_pipeline_options(
@@ -286,7 +245,7 @@ async def upload_document(
     file_path = upload_dir / f"{file_id}{file_ext}"
 
     try:
-        file_size = await _save_upload_file(file, file_path, max_bytes=settings.MAX_FILE_SIZE)
+        file_size = await save_upload_file(file, file_path, max_bytes=settings.MAX_FILE_SIZE)
     except HTTPException:
         raise
 
@@ -501,7 +460,11 @@ async def delete_document(
                     img_ids.add(v)
 
         # 兼容：逐 chunk 删除（老数据可能没有 documents.metadata.img_ids）
-        chunks = db.query(DocumentChunk).filter(DocumentChunk.document_id == document_id).all()
+        chunks = (
+            db.query(DocumentChunk)
+            .filter(DocumentChunk.document_id == document_id, DocumentChunk.tenant_id == tenant_id)
+            .all()
+        )
         for chunk in chunks:
             img_id = chunk.doc_metadata.get("img_id") if chunk.doc_metadata else None
             if isinstance(img_id, str) and img_id.strip():
@@ -673,7 +636,7 @@ async def preview_document(
     temp_path = upload_dir / f"{uuid.uuid4()}{file_ext}"
 
     try:
-        file_size = await _save_upload_file(file, temp_path, max_bytes=settings.MAX_FILE_SIZE)
+        file_size = await save_upload_file(file, temp_path, max_bytes=settings.MAX_FILE_SIZE)
 
         effective_parser_backend = parser_backend
         if file_ext == ".pdf":
@@ -939,7 +902,7 @@ async def preview_chunking(
     temp_path = upload_dir / f"{uuid.uuid4()}{file_ext}"
 
     try:
-        await _save_upload_file(file, temp_path, max_bytes=settings.MAX_FILE_SIZE)
+        await save_upload_file(file, temp_path, max_bytes=settings.MAX_FILE_SIZE)
 
         resolved_chunk_strategy = chunker_factory.resolve_strategy(chunk_strategy)
         pipeline_options = _to_pipeline_options(

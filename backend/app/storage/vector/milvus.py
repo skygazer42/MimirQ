@@ -15,6 +15,23 @@ from uuid import UUID
 from app.core.config import settings
 from app.core.constants import MilvusConfig, EmbeddingProviders
 from app.rag.embedding import create_langchain_embeddings_from_config
+def _match_metadata_filter(meta: Dict[str, Any], filter_spec: Dict[str, Any]) -> bool:
+    """Simple metadata equality/inclusion matcher."""
+    if not filter_spec:
+        return True
+    if not isinstance(meta, dict):
+        return False
+    for key, expected in filter_spec.items():
+        if key not in meta:
+            return False
+        val = meta.get(key)
+        if isinstance(expected, list):
+            if val not in expected:
+                return False
+        else:
+            if val != expected:
+                return False
+    return True
 
 logger = logging.getLogger(__name__)
 
@@ -237,6 +254,7 @@ class MilvusAdapter:
         query_vector: List[float],
         top_k: int = 10,
         expr: Optional[str] = None,
+        metadata_filter: Optional[Dict[str, Any]] = None,
     ) -> List[Dict[str, Any]]:
         """
         向量相似度搜索。
@@ -265,6 +283,7 @@ class MilvusAdapter:
                 "content": doc.page_content,
             }
             for doc, score in results
+            if not metadata_filter or _match_metadata_filter(doc.metadata or {}, metadata_filter)
         ]
 
 
@@ -385,6 +404,9 @@ class MilvusVectorStore:
                     "page_number": int(meta.get("page") or meta.get("page_number") or 0),
                     "source": str(meta.get("source", "unknown"))[:500],
                     "file_type": str(meta.get("file_type", "unknown"))[:20],
+                    "img_id": meta.get("img_id") or meta.get("image_id"),
+                    "image_id": meta.get("image_id") or meta.get("img_id"),
+                    "image_url": meta.get("image_url") or meta.get("img_url"),
                 }
             )
 
@@ -398,6 +420,7 @@ class MilvusVectorStore:
         score_threshold: float = 0.7,
         document_ids: Optional[List[UUID]] = None,
         tenant_id: Optional[UUID] = None,
+        metadata_filter: Optional[Dict[str, Any]] = None,
     ) -> List[Dict[str, Any]]:
         """向量相似度检索（使用文本查询）"""
         self._ensure_store()
@@ -411,6 +434,8 @@ class MilvusVectorStore:
             if score < score_threshold:
                 continue
             meta = doc.metadata or {}
+            if metadata_filter and not _match_metadata_filter(meta, metadata_filter):
+                continue
             formatted.append(
                 {
                     "content": doc.page_content,
@@ -420,6 +445,9 @@ class MilvusVectorStore:
                         "source": meta.get("source", "unknown"),
                         "page": meta.get("page_number"),
                         "chunk_index": meta.get("chunk_index"),
+                        "img_id": meta.get("img_id") or meta.get("image_id"),
+                        "image_id": meta.get("image_id") or meta.get("img_id"),
+                        "image_url": meta.get("image_url") or meta.get("img_url"),
                         "score": float(score),
                     },
                     "score": float(score),

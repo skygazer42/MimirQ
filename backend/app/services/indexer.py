@@ -1,13 +1,27 @@
-from dataclasses import dataclass, field
-from enum import Enum
+"""
+索引服务实现
+
+提供文档分块和事件索引的统一服务接口。
+"""
 import logging
 import time
-from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
+from typing import Any, Dict, Iterable, List, Optional, Sequence
 from uuid import UUID
 
 from langchain_core.documents import Document as LCDocument
 from sqlalchemy.orm import Session
 
+from app.api.schemas.indexing import (
+    ChunkInput,
+    EventEntityInput,
+    EventInput,
+    IndexBatchResult,
+    IndexKind,
+    IndexingOptions,
+    IndexRecord,
+    PersistChunksResult,
+    PersistEventsResult,
+)
 from app.core.config import settings
 from app.rag.kg.models import KgEntity, KgEventEntity, KgSourceEvent
 from app.models.document import Document as DBDocument, DocumentChunk
@@ -16,98 +30,6 @@ from app.storage.vector.factory import get_vector_store
 from app.storage.vector.milvus import get_milvus_adapter, resolve_collection_name
 
 logger = logging.getLogger("indexer")
-
-
-class IndexKind(str, Enum):
-    CHUNK = "chunk"
-    EVENT = "event"
-
-
-@dataclass(frozen=True)
-class IndexScope:
-    tenant_id: UUID
-    document_id: Optional[UUID] = None
-    document_ids: Optional[List[UUID]] = None
-
-
-@dataclass(frozen=True)
-class IndexingOptions:
-    chunk_vector_enabled: Optional[bool] = None
-    bm25_index_enabled: Optional[bool] = None
-    event_vector_enabled: Optional[bool] = None
-    entity_vector_enabled: Optional[bool] = None
-
-
-@dataclass(frozen=True)
-class ChunkInput:
-    content: str
-    metadata: Dict[str, Any]
-    page_number: Optional[int] = None
-    start_char: Optional[int] = None
-    end_char: Optional[int] = None
-
-
-@dataclass(frozen=True)
-class PersistChunksResult:
-    db_chunks: List[DocumentChunk]
-    chunk_ids: List[UUID]
-    vector_ids: List[Optional[str]]
-    total_characters: int
-
-
-@dataclass(frozen=True)
-class EventEntityInput:
-    name: str
-    normalized_name: str
-    type: str
-    description: Optional[str] = None
-    vector: Optional[List[float]] = None
-    role: Optional[str] = None
-
-
-@dataclass(frozen=True)
-class EventInput:
-    title: str
-    summary: str
-    content: str
-    document_id: Optional[UUID]
-    chunk_id: Optional[UUID]
-    references: Optional[Dict[str, Any]] = None
-    vector: Optional[List[float]] = None
-    entities: List[EventEntityInput] = field(default_factory=list)
-
-
-@dataclass(frozen=True)
-class IndexRecord:
-    kind: IndexKind
-    content: str
-    metadata: Dict[str, Any] = field(default_factory=dict)
-    document_id: Optional[UUID] = None
-    chunk_id: Optional[UUID] = None
-    title: Optional[str] = None
-    summary: Optional[str] = None
-    references: Optional[Dict[str, Any]] = None
-    vector: Optional[List[float]] = None
-    entities: List[EventEntityInput] = field(default_factory=list)
-    page_number: Optional[int] = None
-    start_char: Optional[int] = None
-    end_char: Optional[int] = None
-
-
-@dataclass(frozen=True)
-class PersistEventsResult:
-    events: List[KgSourceEvent]
-    entities: List[KgEntity]
-    event_ids: List[UUID]
-    entity_ids: List[UUID]
-    event_vector_ids: List[str]
-    entity_vector_ids: List[str]
-
-
-@dataclass(frozen=True)
-class IndexBatchResult:
-    chunk_result: Optional[PersistChunksResult] = None
-    event_result: Optional[PersistEventsResult] = None
 
 
 def _safe_int(value: Any) -> Optional[int]:
@@ -576,6 +498,11 @@ class Indexer:
         db_chunks: List[DocumentChunk] = []
         for idx, (chunk, vector_id) in enumerate(zip(chunks, vector_ids)):
             meta = dict(chunk.metadata or {})
+            # Normalize image keys
+            if "img_id" in meta and "image_id" not in meta:
+                meta["image_id"] = meta.get("img_id")
+            if "image_url" not in meta and "img_url" in meta:
+                meta["image_url"] = meta.get("img_url")
             page_number = (
                 _safe_int(chunk.page_number)
                 if chunk.page_number is not None
@@ -628,8 +555,8 @@ class Indexer:
             meta.setdefault("chunk_index", db_chunk.chunk_index)
             meta.setdefault("source", meta.get("source", default_source))
             meta.setdefault("page", db_chunk.page_number)
-            meta.setdefault("image_id", meta.get("image_id"))
-            meta.setdefault("image_url", meta.get("image_url"))
+            meta.setdefault("image_id", meta.get("image_id") or meta.get("img_id"))
+            meta.setdefault("image_url", meta.get("image_url") or meta.get("img_url"))
             bm25_docs.append(LCDocument(page_content=db_chunk.content, id=str(db_chunk.id), metadata=meta))
 
         hybrid_retriever.upsert_bm25_documents(bm25_docs, tenant_id=tenant_id)

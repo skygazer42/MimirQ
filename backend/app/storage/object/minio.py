@@ -23,6 +23,7 @@ class MinIOService:
     def __init__(self):
         self._client: Optional[Minio] = None
         self._bucket_name = settings.MINIO_BUCKET_NAME
+        self._bucket_ready = False
         self._metrics_path = Path(settings.MINIO_METRICS_LOG_PATH)
 
     def _get_client(self) -> Minio:
@@ -34,19 +35,38 @@ class MinIOService:
                 secret_key=settings.MINIO_SECRET_KEY,
                 secure=settings.MINIO_USE_SSL,
             )
-            # 确保 bucket 存在
+        if not self._bucket_ready:
             self._ensure_bucket()
         return self._client
 
     def _ensure_bucket(self):
         """确保 bucket 存在，不存在则创建"""
+        client = self._client
+        if client is None:
+            return
+
         try:
-            client = self._client
-            if not client.bucket_exists(self._bucket_name):
-                client.make_bucket(self._bucket_name)
-                logger.info("Created bucket: %s", self._bucket_name)
-        except S3Error as e:
+            exists = client.bucket_exists(self._bucket_name)
+        except Exception as e:  # noqa: BLE001
             logger.warning("MinIO bucket check failed: %s", e)
+            return
+
+        if exists:
+            self._bucket_ready = True
+            return
+
+        try:
+            client.make_bucket(self._bucket_name)
+            self._bucket_ready = True
+            logger.info("Created bucket: %s", self._bucket_name)
+        except S3Error as e:
+            # Bucket may be created concurrently by another process.
+            if getattr(e, "code", None) in {"BucketAlreadyOwnedByYou", "BucketAlreadyExists"}:
+                self._bucket_ready = True
+                return
+            logger.warning("MinIO bucket create failed: %s", e)
+        except Exception as e:  # noqa: BLE001
+            logger.warning("MinIO bucket create failed: %s", e)
 
     def upload_image(
         self,

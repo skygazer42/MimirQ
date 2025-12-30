@@ -15,6 +15,7 @@ import httpx
 import time
 
 from app.core.config import settings
+from app.core.token_utils import num_tokens_from_string
 from app.rag.core.conversation import format_history_text
 from app.rag.core.citations import build_citations_from_docs
 from app.rag.core.http import httpx_trust_env
@@ -445,25 +446,25 @@ class RAGEngine:
                     },
                 }
 
-            requested_retrieval_mode = retrieval_mode or "hybrid"
-            request_retrieval_mode = normalize_retrieval_mode(requested_retrieval_mode)
-            retrieval_mode_routed = False
-            mode_norm = (request_retrieval_mode or "hybrid").lower().strip()
+            mode_req = retrieval_mode or "hybrid"
+            mode_used = normalize_retrieval_mode(mode_req)
+            mode_auto = False
+            mode_norm = (mode_used or "hybrid").lower().strip()
             if mode_norm == "auto":
-                request_retrieval_mode = guess_retrieval_mode(query_for_retrieval)
-                retrieval_mode_routed = True
-                mode_norm = request_retrieval_mode.lower().strip()
+                mode_used = guess_retrieval_mode(query_for_retrieval)
+                mode_auto = True
+                mode_norm = mode_used.lower().strip()
             if mode_norm not in ("hybrid", "vector", "keyword", "mmr"):
-                request_retrieval_mode = "hybrid"
+                mode_used = "hybrid"
                 mode_norm = "hybrid"
-            request_alpha = alpha if alpha is not None else 0.6
-            request_enable_weight_rerank = bool(enable_weight_rerank)
-            request_vector_weight = vector_weight if vector_weight is not None else 0.6
-            request_keyword_weight = keyword_weight if keyword_weight is not None else 0.4
-            request_mmr_lambda = mmr_lambda if mmr_lambda is not None else settings.RETRIEVAL_MMR_LAMBDA
-            request_enable_reranker = bool(enable_reranker)
-            request_reranker_provider = reranker_provider or settings.RERANKER_PROVIDER or "llm"
-            request_reranker_top_n = int(reranker_top_n or settings.RERANKER_TOP_N or 20)
+            alpha_val = alpha if alpha is not None else 0.6
+            weight_rerank = bool(enable_weight_rerank)
+            vec_w = vector_weight if vector_weight is not None else 0.6
+            kw_w = keyword_weight if keyword_weight is not None else 0.4
+            mmr_lambda_val = mmr_lambda if mmr_lambda is not None else settings.RETRIEVAL_MMR_LAMBDA
+            rerank_on = bool(enable_reranker)
+            rerank_provider = reranker_provider or settings.RERANKER_PROVIDER or "llm"
+            rerank_top_n = int(reranker_top_n or settings.RERANKER_TOP_N or 20)
 
             # Step 0.5: Query Expansion（Multi-Query / HyDE，可选）
             multi_query_elapsed = 0.0
@@ -518,7 +519,7 @@ class RAGEngine:
             hyde_model_used = None
             hyde_text = ""
             hyde_max_chars = max(0, int(settings.HYDE_MAX_CHARS or 0))
-            retrieval_mode_norm = (request_retrieval_mode or "hybrid").lower()
+            retrieval_mode_norm = (mode_used or "hybrid").lower()
             if bool(settings.ENABLE_HYDE) and retrieval_mode_norm not in ("keyword",) and hyde_max_chars > 0 and len(query_for_retrieval) <= hyde_max_chars:
                 hyde_llm = self.models.get("fast") or llm
                 hyde_model_used = getattr(hyde_llm, "model_name", None) or getattr(hyde_llm, "model", None)
@@ -599,17 +600,17 @@ class RAGEngine:
                 update={
                     "k": top_k,
                     "score_threshold": score_threshold,
-                    "alpha": request_alpha,
+                    "alpha": alpha_val,
                     "tenant_id": tenant_id,
                     "document_ids": document_ids,
-                    "retrieval_mode": request_retrieval_mode,
-                    "enable_weight_rerank": request_enable_weight_rerank,
-                    "vector_weight": request_vector_weight,
-                    "keyword_weight": request_keyword_weight,
-                    "mmr_lambda": request_mmr_lambda,
-                    "enable_reranker": request_enable_reranker,
-                    "reranker_provider": request_reranker_provider,
-                    "reranker_top_n": request_reranker_top_n,
+                    "retrieval_mode": mode_used,
+                    "enable_weight_rerank": weight_rerank,
+                    "vector_weight": vec_w,
+                    "keyword_weight": kw_w,
+                    "mmr_lambda": mmr_lambda_val,
+                    "enable_reranker": rerank_on,
+                    "reranker_provider": rerank_provider,
+                    "reranker_top_n": rerank_top_n,
                 }
             )
 
@@ -655,7 +656,7 @@ class RAGEngine:
             citations: List[Dict[str, Any]] = build_citations_from_docs(
                 docs,
                 retrieval_elapsed_sec=retrieval_elapsed,
-                retrieval_mode=request_retrieval_mode,
+                retrieval_mode=mode_used,
                 query=query_for_retrieval,
             )
 
@@ -722,23 +723,26 @@ class RAGEngine:
                 yield {"type": "token", "data": {"content": full_response}}
 
                 t_total = time.time() - t_all_start
+                answer_chars = len(full_response or "")
+                answer_tokens = num_tokens_from_string(full_response or "")
                 done_payload = {
                     "type": "done",
                     "data": {
                         "conversation_id": str(conversation_id) if conversation_id else None,
-                        "total_tokens": len(full_response),
+                        "total_tokens": answer_tokens,
+                        "total_chars": answer_chars,
                         "citations_count": len(citations),
                         "model_used": getattr(llm, "model_name", None) or getattr(llm, "model", None),
                         "route": model_route,
-                        "retrieval_mode": request_retrieval_mode,
+                        "retrieval_mode": mode_used,
                         "vector_backend": settings.VECTOR_BACKEND,
                         "metrics": {
                             "elapsed_sec": round(t_total, 3),
                             "retrieval_elapsed_sec": round(retrieval_elapsed, 3),
                             "generation_elapsed_sec": 0.0,
-                            "retrieval_mode": request_retrieval_mode,
-                            "retrieval_mode_requested": requested_retrieval_mode,
-                            "retrieval_mode_auto_routed": bool(retrieval_mode_routed),
+                            "retrieval_mode": mode_used,
+                            "retrieval_mode_requested": mode_req,
+                            "retrieval_mode_auto_routed": bool(mode_auto),
                             "vector_backend": settings.VECTOR_BACKEND,
                             "model_route": model_route,
                             "top_k": top_k,
@@ -753,6 +757,8 @@ class RAGEngine:
                             "abstain_min_citations": int(settings.RAG_ABSTAIN_MIN_CITATIONS or 0),
                             "abstain_min_top_relevance_score": float(settings.RAG_ABSTAIN_MIN_TOP_RELEVANCE_SCORE or 0.0),
                             "top_relevance_score": round(float(top_rel or 0.0), 3),
+                            "answer_chars": answer_chars,
+                            "answer_tokens": answer_tokens,
                             "structured_parse_ok": bool(structured_parse_meta.get("ok")),
                             "structured_parse_method": structured_parse_meta.get("method"),
                             "structured_parse_error": structured_parse_meta.get("error"),
@@ -771,7 +777,7 @@ class RAGEngine:
                         "conversation_id": str(conversation_id) if conversation_id else None,
                         "tenant_id": str(tenant_id) if tenant_id else None,
                         "vector_backend": settings.VECTOR_BACKEND,
-                        "retrieval_mode": request_retrieval_mode,
+                        "retrieval_mode": mode_used,
                         "route": model_route,
                         "model_used": getattr(llm, "model_name", None) or getattr(llm, "model", None),
                         "metrics": done_payload["data"]["metrics"],
@@ -877,17 +883,17 @@ class RAGEngine:
                         "decompose_parse_error": decompose_parse_meta.get("error"),
                     },
                     "retrieval": {
-                        "mode": request_retrieval_mode,
-                        "requested_mode": requested_retrieval_mode,
-                        "auto_routed": bool(retrieval_mode_routed),
-                        "alpha": request_alpha,
-                        "enable_weight_rerank": request_enable_weight_rerank,
-                        "vector_weight": request_vector_weight,
-                        "keyword_weight": request_keyword_weight,
-                        "mmr_lambda": request_mmr_lambda,
-                        "enable_reranker": request_enable_reranker,
-                        "reranker_provider": request_reranker_provider,
-                        "reranker_top_n": request_reranker_top_n,
+                        "mode": mode_used,
+                        "requested_mode": mode_req,
+                        "auto_routed": bool(mode_auto),
+                        "alpha": alpha_val,
+                        "enable_weight_rerank": weight_rerank,
+                        "vector_weight": vec_w,
+                        "keyword_weight": kw_w,
+                        "mmr_lambda": mmr_lambda_val,
+                        "enable_reranker": rerank_on,
+                        "reranker_provider": rerank_provider,
+                        "reranker_top_n": rerank_top_n,
                     },
                     "citations": citations[: min(len(citations), int(top_k or 5))],
                     "prompt": {
@@ -994,23 +1000,26 @@ class RAGEngine:
             structured_parse_meta = {"ok": False, "method": None, "error": None}
             if structured_output:
                 structured_data, structured_parse_meta = parse_json_from_text(full_response)
+            answer_chars = len(full_response or "")
+            answer_tokens = num_tokens_from_string(full_response or "")
             done_payload = {
                 "type": "done",
                 "data": {
                     "conversation_id": str(conversation_id) if conversation_id else None,
-                    "total_tokens": len(full_response),
+                    "total_tokens": answer_tokens,
+                    "total_chars": answer_chars,
                     "citations_count": len(citations),
                     "model_used": getattr(llm, "model_name", None) or getattr(llm, "model", None),
                     "route": model_route,
-                    "retrieval_mode": request_retrieval_mode,
+                    "retrieval_mode": mode_used,
                     "vector_backend": settings.VECTOR_BACKEND,
                     "metrics": {
                         "elapsed_sec": round(t_total, 3),
                         "retrieval_elapsed_sec": round(retrieval_elapsed, 3),
                         "generation_elapsed_sec": round(generation_elapsed, 3),
-                        "retrieval_mode": request_retrieval_mode,
-                        "retrieval_mode_requested": requested_retrieval_mode,
-                        "retrieval_mode_auto_routed": bool(retrieval_mode_routed),
+                        "retrieval_mode": mode_used,
+                        "retrieval_mode_requested": mode_req,
+                        "retrieval_mode_auto_routed": bool(mode_auto),
                         "retrieval_fusion_strategy": settings.RETRIEVAL_FUSION_STRATEGY,
                         "retrieval_rrf_k": settings.RETRIEVAL_RRF_K if settings.RETRIEVAL_FUSION_STRATEGY == "rrf" else None,
                         "retrieval_dedup_enabled": bool(settings.RETRIEVAL_DEDUP_ENABLED),
@@ -1023,6 +1032,8 @@ class RAGEngine:
                         "distinct_documents": len({c.get("document_id") for c in citations if c.get("document_id")}),
                         "history_chars": len(history_text or ""),
                         "context_chars": len(context or ""),
+                        "answer_chars": answer_chars,
+                        "answer_tokens": answer_tokens,
                         "context_evidence_enabled": bool(settings.RAG_CONTEXT_EVIDENCE_ENABLED),
                         "context_evidence_max_sentences_per_chunk": (
                             int(settings.RAG_CONTEXT_EVIDENCE_MAX_SENTENCES_PER_CHUNK or 0)
@@ -1082,7 +1093,7 @@ class RAGEngine:
                     "conversation_id": str(conversation_id) if conversation_id else None,
                     "tenant_id": str(tenant_id) if tenant_id else None,
                     "vector_backend": settings.VECTOR_BACKEND,
-                    "retrieval_mode": request_retrieval_mode,
+                    "retrieval_mode": mode_used,
                     "route": model_route,
                     "model_used": getattr(llm, "model_name", None) or getattr(llm, "model", None),
                     "metrics": done_payload["data"]["metrics"],
