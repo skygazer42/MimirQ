@@ -1,0 +1,13 @@
+node_modules/
+.next/
+.next_build/
+out/
+dist/
+*.log
+
+.env.local
+.env.*.local
+
+.git
+.gitignore
+

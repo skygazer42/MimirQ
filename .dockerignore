@@ -1,17 +1,16 @@
+.git
+.gitignore
+
 # Python
 __pycache__/
 *.py[cod]
-*$py.class
-*.so
-.Python
+.pytest_cache/
 venv/
 env/
 ENV/
 build/
 dist/
 *.egg-info/
-.pytest_cache/
-*.trie
 
 # Node
 node_modules/
@@ -19,32 +18,16 @@ node_modules/
 .next_build/
 out/
 dist/
-.npm
 *.log
 
-# Environment
+# Local env / data
 .env
 .env.local
 .env.*.local
-
-# IDEs
-.vscode/
-.idea/
-*.swp
-*.swo
-*~
-
-# OS
-.DS_Store
-Thumbs.db
-
-# Project specific
 backend/uploads/
 backend/chroma_db/
 frontend/.next/
 frontend/.next_build/
 *.sqlite
 *.db
-*.tsbuildinfo
 
-# Docker

@@ -82,7 +82,7 @@ class Settings(BaseSettings):
     # Auth
     # - jwt: require Authorization: Bearer <JWT> (validated with SECRET_KEY)
     # - header: require X-User-ID header (unsafe; intended for local/dev only)
-    AUTH_MODE: Literal["jwt", "header"] = "jwt"
+    AUTH_MODE: Literal["jwt", "header"] = "header"
 
     SECRET_KEY: str = "your-secret-key-change-in-production"
     ALGORITHM: str = "HS256"

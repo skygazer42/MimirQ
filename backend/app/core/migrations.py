@@ -38,9 +38,33 @@ def apply_runtime_migrations(engine) -> None:
             'ON prompt_templates (tenant_id, template_key, version);',
             'CREATE INDEX IF NOT EXISTS ix_prompt_templates_tenant_ab_experiment_key '
             'ON prompt_templates (tenant_id, ab_experiment_key);',
+
+            # Conversations: common tenant timeline queries
+            'CREATE INDEX IF NOT EXISTS ix_conversations_tenant_updated_at '
+            'ON conversations (tenant_id, updated_at);',
+            'CREATE INDEX IF NOT EXISTS ix_conversations_tenant_created_at '
+            'ON conversations (tenant_id, created_at);',
+
+            # Datasets / permissions: access control checks
+            'CREATE INDEX IF NOT EXISTS ix_datasets_tenant_updated_at '
+            'ON datasets (tenant_id, updated_at);',
+            'CREATE INDEX IF NOT EXISTS ix_dataset_permissions_tenant_account_id '
+            'ON dataset_permissions (tenant_id, account_id);',
+
+            # KG (optional): lookups by tenant/doc and join table hot paths
+            'CREATE INDEX IF NOT EXISTS ix_kg_source_events_tenant_document '
+            'ON kg_source_events (tenant_id, document_id);',
+            'CREATE INDEX IF NOT EXISTS ix_kg_event_entities_event '
+            'ON kg_event_entities (event_id);',
+            'CREATE INDEX IF NOT EXISTS ix_kg_event_entities_entity '
+            'ON kg_event_entities (entity_id);',
         ]
         with engine.begin() as conn:
             for ddl in ddl_statements:
-                conn.execute(text(ddl))
+                try:
+                    conn.execute(text(ddl))
+                except Exception:
+                    # Best-effort migrations should never block startup.
+                    continue
     except Exception:
         return
