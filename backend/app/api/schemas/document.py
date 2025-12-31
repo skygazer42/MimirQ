@@ -1,7 +1,7 @@
 """
 文档相关 Pydantic Schema
 """
-from pydantic import BaseModel, Field
+from pydantic import AliasChoices, BaseModel, Field
 from typing import Optional, List, Dict, Any
 from datetime import datetime
 from uuid import UUID
@@ -30,18 +30,6 @@ class DocumentPipelineOptions(BaseModel):
     entity_vector_enabled: Optional[bool] = None
 
 
-class DocumentUploadResponse(OrmModel):
-    """文档上传响应"""
-    id: UUID
-    dataset_id: Optional[UUID] = None
-    filename: str
-    file_type: str
-    file_size: int
-    status: str
-    created_at: datetime
-    metadata: Dict[str, Any] = {}
-
-
 class DocumentChunkSchema(OrmModel):
     """文档块"""
     id: UUID
@@ -50,7 +38,10 @@ class DocumentChunkSchema(OrmModel):
     start_char: Optional[int] = None
     end_char: Optional[int] = None
     chunk_index: int
-    metadata: Dict[str, Any] = {}
+    metadata: Dict[str, Any] = Field(
+        default_factory=dict,
+        validation_alias=AliasChoices("doc_metadata", "metadata"),
+    )
 
 
 class DocumentDetail(OrmModel):
@@ -68,8 +59,13 @@ class DocumentDetail(OrmModel):
     processed_at: Optional[datetime] = None
     error_message: Optional[str] = None
     dataset_id: Optional[UUID] = None
-    metadata: Dict[str, Any] = {}
-    chunks: Optional[List[DocumentChunkSchema]] = None
+    metadata: Dict[str, Any] = Field(
+        default_factory=dict,
+        validation_alias=AliasChoices("doc_metadata", "metadata"),
+    )
+    # Avoid accidental lazy-loading on list endpoints: only include chunks when
+    # the API handler explicitly sets `chunks_loaded` on the ORM instance.
+    chunks: Optional[List[DocumentChunkSchema]] = Field(default=None, validation_alias="chunks_loaded")
 
 
 class ParsedSegment(BaseModel):
@@ -77,7 +73,7 @@ class ParsedSegment(BaseModel):
     index: int
     content: str
     page_number: Optional[int] = None
-    metadata: Dict[str, Any] = {}
+    metadata: Dict[str, Any] = Field(default_factory=dict)
 
 
 class DocumentParsePreview(BaseModel):
@@ -95,7 +91,7 @@ class ManualChunkCreate(BaseModel):
     page_number: Optional[int] = None
     start_char: Optional[int] = None
     end_char: Optional[int] = None
-    metadata: Dict[str, Any] = {}
+    metadata: Dict[str, Any] = Field(default_factory=dict)
 
 
 class ManualDocumentCreate(BaseModel):
@@ -105,7 +101,7 @@ class ManualDocumentCreate(BaseModel):
     file_type: str
     file_size: int
     chunks: List[ManualChunkCreate]
-    metadata: Dict[str, Any] = {}
+    metadata: Dict[str, Any] = Field(default_factory=dict)
     pipeline: Optional[DocumentPipelineOptions] = None
 
 
@@ -140,7 +136,7 @@ class ChunkPreviewItem(BaseModel):
     start_index: int  # 在原文中的起始位置
     end_index: int    # 在原文中的结束位置
     page_number: Optional[int] = None
-    metadata: Dict[str, Any] = {}
+    metadata: Dict[str, Any] = Field(default_factory=dict)
 
 
 class ChunkPreviewResponse(BaseModel):

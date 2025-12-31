@@ -8,7 +8,7 @@ from app.core.database import get_db
 from app.api.dependencies.auth import get_current_account_id
 from app.api.dependencies.tenant import get_tenant_id
 from app.models.document import Document as DBDocument, DocumentChunk
-from app.rag.kg.schemas import KGExtractResponse, KGSearchRequest, KGSearchResponse, KGGraphResponse
+from app.rag.kg.schemas import KGExtractResponse, KGSearchRequest, KGSearchResponse, KGGraphNode, KGGraphResponse
 from app.services.document_access import filter_allowed_document_ids, list_accessible_document_ids
 from app.services.dataset_service import DatasetService
 from app.rag.kg.pipeline import extract_events, kg_search
@@ -22,6 +22,19 @@ def _ensure_enabled():
             status_code=503,
             detail="KG is disabled. Set KG_ENABLED=true in your environment to enable it.",
         )
+
+
+def _resolve_allowed_documents(
+    *,
+    document_ids: list[UUID] | None,
+    tenant_id: UUID,
+    account_id: str,
+    db: Session,
+    limit: int = 500,
+) -> list[UUID]:
+    if document_ids:
+        return filter_allowed_document_ids(db, tenant_id, account_id, document_ids)
+    return list_accessible_document_ids(db, tenant_id, account_id, status="completed", limit=limit)
 
 
 @router.get("/graph", response_model=KGGraphResponse)
@@ -46,10 +59,13 @@ async def get_kg_graph(
     DatasetService.ensure_member(db, tenant_id, account_id)
 
     allowed_doc_ids: list[UUID]
-    if document_ids:
-        allowed_doc_ids = filter_allowed_document_ids(db, tenant_id, account_id, document_ids)
-    else:
-        allowed_doc_ids = list_accessible_document_ids(db, tenant_id, account_id, status="completed", limit=500)
+    allowed_doc_ids = _resolve_allowed_documents(
+        document_ids=document_ids,
+        tenant_id=tenant_id,
+        account_id=account_id,
+        db=db,
+        limit=500,
+    )
 
     if not allowed_doc_ids:
         return KGGraphResponse(nodes=[], links=[], stats={"reason": "no_accessible_documents"})
@@ -170,6 +186,357 @@ async def get_kg_graph(
             "links": min(len(links), int(max_links)),
         },
     )
+
+
+@router.get("/graph/expand", response_model=KGGraphResponse)
+async def expand_kg_graph(
+    node_id: UUID = Query(..., description="Center node id (KgSourceEvent.id or KgEntity.id)"),
+    document_ids: list[UUID] | None = Query(default=None),
+    max_events: int = Query(default=50, ge=1, le=500),
+    max_entities: int = Query(default=400, ge=1, le=5000),
+    max_links: int = Query(default=5000, ge=1, le=20000),
+    tenant_id: UUID = Depends(get_tenant_id),
+    account_id: str = Depends(get_current_account_id),
+    db: Session = Depends(get_db),
+):
+    """
+    Expand a single node (event/entity) into a small neighborhood subgraph.
+
+    - Requires KG_ENABLED=true.
+    - Enforces document-level access control.
+    """
+    _ensure_enabled()
+    DatasetService.ensure_member(db, tenant_id, account_id)
+
+    allowed_doc_ids = _resolve_allowed_documents(
+        document_ids=document_ids,
+        tenant_id=tenant_id,
+        account_id=account_id,
+        db=db,
+        limit=500,
+    )
+    if not allowed_doc_ids:
+        return KGGraphResponse(nodes=[], links=[], stats={"reason": "no_accessible_documents"})
+
+    from collections import Counter
+
+    from app.rag.kg.models import KgEntity, KgEventEntity, KgSourceEvent
+
+    # Determine node kind: event (scoped by allowed documents) or entity (tenant-scoped).
+    center_event = (
+        db.query(KgSourceEvent)
+        .filter(
+            KgSourceEvent.tenant_id == tenant_id,
+            KgSourceEvent.id == node_id,
+            KgSourceEvent.document_id.in_(allowed_doc_ids),
+        )
+        .first()
+    )
+
+    events: list[KgSourceEvent] = []
+
+    if center_event:
+        # Expand event -> entities -> other related events (by shared entities)
+        entity_ids = (
+            db.query(KgEventEntity.entity_id)
+            .filter(KgEventEntity.event_id == center_event.id)
+            .limit(2000)
+            .all()
+        )
+        entity_ids_flat = [row[0] for row in entity_ids]
+
+        related_event_ids: list[UUID] = []
+        if entity_ids_flat and int(max_events) > 1:
+            related_event_ids = [
+                row[0]
+                for row in (
+                    db.query(KgEventEntity.event_id)
+                    .join(KgSourceEvent, KgSourceEvent.id == KgEventEntity.event_id)
+                    .filter(
+                        KgSourceEvent.tenant_id == tenant_id,
+                        KgSourceEvent.document_id.in_(allowed_doc_ids),
+                        KgEventEntity.entity_id.in_(entity_ids_flat),
+                        KgEventEntity.event_id != center_event.id,
+                    )
+                    .order_by(KgSourceEvent.updated_at.desc())
+                    .limit(max(0, int(max_events) - 1))
+                    .all()
+                )
+            ]
+
+        event_ids = [center_event.id] + related_event_ids
+        events = (
+            db.query(KgSourceEvent)
+            .filter(
+                KgSourceEvent.tenant_id == tenant_id,
+                KgSourceEvent.id.in_(event_ids),
+                KgSourceEvent.document_id.in_(allowed_doc_ids),
+            )
+            .order_by(KgSourceEvent.updated_at.desc())
+            .limit(int(max_events))
+            .all()
+        )
+    else:
+        center_entity = (
+            db.query(KgEntity)
+            .filter(
+                KgEntity.tenant_id == tenant_id,
+                KgEntity.id == node_id,
+            )
+            .first()
+        )
+        if not center_entity:
+            raise HTTPException(status_code=404, detail="KG node not found")
+
+        event_ids = [
+            row[0]
+            for row in (
+                db.query(KgEventEntity.event_id)
+                .join(KgSourceEvent, KgSourceEvent.id == KgEventEntity.event_id)
+                .filter(
+                    KgSourceEvent.tenant_id == tenant_id,
+                    KgSourceEvent.document_id.in_(allowed_doc_ids),
+                    KgEventEntity.entity_id == center_entity.id,
+                )
+                .order_by(KgSourceEvent.updated_at.desc())
+                .limit(int(max_events))
+                .all()
+            )
+        ]
+        if not event_ids:
+            return KGGraphResponse(nodes=[], links=[], stats={"reason": "no_related_events"})
+
+        events = (
+            db.query(KgSourceEvent)
+            .filter(
+                KgSourceEvent.tenant_id == tenant_id,
+                KgSourceEvent.id.in_(event_ids),
+                KgSourceEvent.document_id.in_(allowed_doc_ids),
+            )
+            .order_by(KgSourceEvent.updated_at.desc())
+            .limit(int(max_events))
+            .all()
+        )
+
+    if not events:
+        return KGGraphResponse(nodes=[], links=[], stats={"events": 0, "entities": 0, "links": 0})
+
+    event_ids = [e.id for e in events]
+    rows = (
+        db.query(KgEventEntity, KgEntity)
+        .join(KgEntity, KgEntity.id == KgEventEntity.entity_id)
+        .filter(KgEventEntity.event_id.in_(event_ids))
+        .all()
+    )
+
+    entity_hit_count: Counter[str] = Counter()
+    event_degree: Counter[str] = Counter()
+    for assoc, ent in rows:
+        ent_id = str(ent.id)
+        entity_hit_count[ent_id] += 1
+        event_degree[str(assoc.event_id)] += 1
+
+    allowed_entity_ids = set(entity_hit_count.keys())
+    if max_entities and len(allowed_entity_ids) > int(max_entities):
+        allowed_entity_ids = {eid for (eid, _cnt) in entity_hit_count.most_common(int(max_entities))}
+
+    # Stable grouping by entity type for frontend coloring.
+    type_to_group: dict[str, int] = {}
+    next_group = 1
+
+    def _group_for(entity_type: str) -> int:
+        nonlocal next_group
+        key = (entity_type or "unknown").strip().lower() or "unknown"
+        if key not in type_to_group:
+            type_to_group[key] = next_group
+            next_group += 1
+        return type_to_group[key]
+
+    nodes: list[dict] = []
+    links: list[dict] = []
+
+    # Event nodes
+    for ev in events:
+        ev_id = str(ev.id)
+        nodes.append(
+            {
+                "id": ev_id,
+                "label": (ev.title or "").strip() or ev_id,
+                "group": 0,
+                "val": max(1, int(event_degree.get(ev_id, 0))),
+                "meta": {
+                    "kind": "event",
+                    "document_id": str(ev.document_id) if ev.document_id else "",
+                    "chunk_id": str(ev.chunk_id) if ev.chunk_id else "",
+                    "center": str(ev.id) == str(node_id),
+                },
+            }
+        )
+
+    seen_entities: set[str] = set()
+    for assoc, ent in rows:
+        ent_id = str(ent.id)
+        if ent_id not in allowed_entity_ids:
+            continue
+
+        if ent_id not in seen_entities:
+            seen_entities.add(ent_id)
+            nodes.append(
+                {
+                    "id": ent_id,
+                    "label": (ent.name or "").strip() or ent_id,
+                    "group": _group_for(getattr(ent, "type", "") or "unknown"),
+                    "val": max(1, int(entity_hit_count.get(ent_id, 0))),
+                    "meta": {
+                        "kind": "entity",
+                        "type": getattr(ent, "type", None),
+                        "normalized_name": getattr(ent, "normalized_name", None),
+                        "center": str(ent.id) == str(node_id),
+                    },
+                }
+            )
+
+        if len(links) >= int(max_links):
+            continue
+
+        links.append(
+            {
+                "source": str(assoc.event_id),
+                "target": ent_id,
+                "label": (assoc.role or "").strip() or getattr(ent, "type", "") or "mentions",
+                "weight": float(getattr(assoc, "weight", 1.0) or 1.0),
+                "meta": {},
+            }
+        )
+
+    return KGGraphResponse(
+        nodes=nodes,
+        links=links,
+        stats={
+            "center_node_id": str(node_id),
+            "events": len(events),
+            "entities": len(seen_entities),
+            "links": min(len(links), int(max_links)),
+        },
+    )
+
+
+@router.get("/graph/search", response_model=list[KGGraphNode])
+async def search_kg_graph_nodes(
+    q: str = Query(..., min_length=1, description="Search query"),
+    kind: str = Query(default="all", description="entity | event | all"),
+    limit: int = Query(default=20, ge=1, le=100),
+    document_ids: list[UUID] | None = Query(default=None),
+    tenant_id: UUID = Depends(get_tenant_id),
+    account_id: str = Depends(get_current_account_id),
+    db: Session = Depends(get_db),
+):
+    """
+    Search KG nodes (entities/events) for UI autocomplete / quick jump.
+    """
+    _ensure_enabled()
+    DatasetService.ensure_member(db, tenant_id, account_id)
+
+    allowed_doc_ids = _resolve_allowed_documents(
+        document_ids=document_ids,
+        tenant_id=tenant_id,
+        account_id=account_id,
+        db=db,
+        limit=500,
+    )
+
+    from sqlalchemy import or_
+
+    from app.rag.kg.models import KgEntity, KgSourceEvent
+
+    q_text = (q or "").strip()
+    if not q_text:
+        return []
+
+    mode = (kind or "all").strip().lower()
+    if mode not in {"all", "entity", "event"}:
+        mode = "all"
+
+    nodes: list[KGGraphNode] = []
+
+    # Deterministic grouping for entities in this response.
+    type_to_group: dict[str, int] = {}
+    next_group = 1
+
+    def _group_for(entity_type: str) -> int:
+        nonlocal next_group
+        key = (entity_type or "unknown").strip().lower() or "unknown"
+        if key not in type_to_group:
+            type_to_group[key] = next_group
+            next_group += 1
+        return type_to_group[key]
+
+    pattern = f"%{q_text}%"
+
+    if mode in {"all", "entity"}:
+        ents = (
+            db.query(KgEntity)
+            .filter(
+                KgEntity.tenant_id == tenant_id,
+                or_(
+                    KgEntity.name.ilike(pattern),
+                    KgEntity.normalized_name.ilike(pattern),
+                ),
+            )
+            .order_by(KgEntity.updated_at.desc())
+            .limit(int(limit))
+            .all()
+        )
+        for ent in ents:
+            nodes.append(
+                KGGraphNode(
+                    id=str(ent.id),
+                    label=(ent.name or "").strip() or str(ent.id),
+                    group=_group_for(getattr(ent, "type", "") or "unknown"),
+                    val=1,
+                    meta={
+                        "kind": "entity",
+                        "type": getattr(ent, "type", None),
+                        "normalized_name": getattr(ent, "normalized_name", None),
+                    },
+                )
+            )
+
+    remaining = int(limit) - len(nodes)
+    if remaining <= 0 or not allowed_doc_ids:
+        return nodes[: int(limit)]
+
+    if mode in {"all", "event"}:
+        events = (
+            db.query(KgSourceEvent)
+            .filter(
+                KgSourceEvent.tenant_id == tenant_id,
+                KgSourceEvent.document_id.in_(allowed_doc_ids),
+                or_(
+                    KgSourceEvent.title.ilike(pattern),
+                    KgSourceEvent.summary.ilike(pattern),
+                ),
+            )
+            .order_by(KgSourceEvent.updated_at.desc())
+            .limit(remaining)
+            .all()
+        )
+        for ev in events:
+            nodes.append(
+                KGGraphNode(
+                    id=str(ev.id),
+                    label=(ev.title or "").strip() or str(ev.id),
+                    group=0,
+                    val=1,
+                    meta={
+                        "kind": "event",
+                        "document_id": str(ev.document_id) if ev.document_id else "",
+                        "chunk_id": str(ev.chunk_id) if ev.chunk_id else "",
+                    },
+                )
+            )
+
+    return nodes[: int(limit)]
 
 
 @router.post("/documents/{document_id}/extract", response_model=KGExtractResponse)

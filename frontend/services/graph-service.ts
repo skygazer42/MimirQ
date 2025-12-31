@@ -5,6 +5,9 @@ import { getAuthHeaders } from '@/lib/auth-headers'
 // Mock delay to simulate network request
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms))
 
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+
 export class GraphService {
   /**
    * Fetch the initial graph data (e.g., top entities or root nodes)
@@ -56,6 +59,29 @@ export class GraphService {
    * Fetch neighbors for a specific node (Lazy Loading)
    */
   static async expandNode(nodeId: string): Promise<GraphData> {
+    // Prefer backend KG expansion for UUID-like nodes; otherwise fallback to mock expansion
+    if (UUID_RE.test(String(nodeId || '').trim())) {
+      try {
+        const res = await fetch(
+          `${API_V1_BASE_URL}/kg/graph/expand?node_id=${encodeURIComponent(nodeId)}&max_events=50&max_entities=400&max_links=5000`,
+          {
+            method: 'GET',
+            headers: {
+              ...getAuthHeaders(),
+            },
+          }
+        )
+        if (res.ok) {
+          const data = (await res.json()) as GraphData
+          if (data?.nodes && data?.links) {
+            return JSON.parse(JSON.stringify(data))
+          }
+        }
+      } catch {
+        // ignore and fallback
+      }
+    }
+
     await delay(600)
 
     // Generate pseudo-random neighbors based on ID to be deterministic but look dynamic
@@ -89,10 +115,24 @@ export class GraphService {
    * Search for nodes by query
    */
   static async searchNodes(query: string): Promise<GraphNode[]> {
-    await delay(300)
-    // In a real app, this would query the backend. 
-    // Here we just return empty as we handle client-side search in the component for now,
-    // or we could mock a global search result.
-    return [] 
+    const q = (query || '').trim()
+    if (!q) return []
+
+    try {
+      const res = await fetch(
+        `${API_V1_BASE_URL}/kg/graph/search?q=${encodeURIComponent(q)}&kind=all&limit=20`,
+        {
+          method: 'GET',
+          headers: {
+            ...getAuthHeaders(),
+          },
+        }
+      )
+      if (!res.ok) return []
+      const nodes = (await res.json()) as GraphNode[]
+      return Array.isArray(nodes) ? nodes : []
+    } catch {
+      return []
+    }
   }
 }

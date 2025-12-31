@@ -31,9 +31,9 @@ class RagasRunSchema(OrmModel):
     id: UUID
     conversation_id: Optional[UUID] = None
     status: str
-    metrics: List[str] = []
-    params: Dict[str, Any] = {}
-    summary: Dict[str, Any] = {}
+    metrics: List[str] = Field(default_factory=list)
+    params: Dict[str, Any] = Field(default_factory=dict)
+    summary: Dict[str, Any] = Field(default_factory=dict)
     error_message: Optional[str] = None
     created_at: datetime
     started_at: Optional[datetime] = None
@@ -51,14 +51,14 @@ class RagasItemSchema(OrmModel):
     user_input: str
     response: str
     retrieved_contexts: Optional[List[str]] = None
-    citations: List[Dict[str, Any]] = []
-    scores: Dict[str, Any] = {}
+    citations: List[Dict[str, Any]] = Field(default_factory=list)
+    scores: Dict[str, Any] = Field(default_factory=dict)
     created_at: datetime
 
 
 class RagasRunDetail(BaseModel):
     run: RagasRunSchema
-    items: List[RagasItemSchema] = []
+    items: List[RagasItemSchema] = Field(default_factory=list)
 
 
 class RagasRunList(BaseModel):
