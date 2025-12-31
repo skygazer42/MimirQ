@@ -25,11 +25,11 @@ class RagasRegressionCaseOut(OrmModel):
     id: UUID
     tenant_id: UUID
     dataset_id: Optional[UUID] = None
-    document_ids: List[UUID] = []
+    document_ids: List[UUID] = Field(default_factory=list)
     question: str
     expected_answer: Optional[str] = None
-    tags: List[str] = []
-    extra: Dict[str, Any] = {}
+    tags: List[str] = Field(default_factory=list)
+    extra: Dict[str, Any] = Field(default_factory=dict)
     created_by: Optional[str] = None
     created_at: datetime
     updated_at: datetime
@@ -74,9 +74,9 @@ class RagasRegressionRunSchema(OrmModel):
     tenant_id: UUID
     account_id: Optional[str] = None
     status: str
-    metrics: List[str] = []
-    params: Dict[str, Any] = {}
-    summary: Dict[str, Any] = {}
+    metrics: List[str] = Field(default_factory=list)
+    params: Dict[str, Any] = Field(default_factory=dict)
+    summary: Dict[str, Any] = Field(default_factory=dict)
     error_message: Optional[str] = None
     created_at: datetime
     started_at: Optional[datetime] = None
@@ -90,14 +90,14 @@ class RagasRegressionItemSchema(OrmModel):
     question: str
     response: str
     retrieved_contexts: Optional[List[str]] = None
-    citations: List[Dict[str, Any]] = []
-    scores: Dict[str, Any] = {}
+    citations: List[Dict[str, Any]] = Field(default_factory=list)
+    scores: Dict[str, Any] = Field(default_factory=dict)
     created_at: datetime
 
 
 class RagasRegressionRunDetail(BaseModel):
     run: RagasRegressionRunSchema
-    items: List[RagasRegressionItemSchema] = []
+    items: List[RagasRegressionItemSchema] = Field(default_factory=list)
 
 
 class RagasRegressionRunList(BaseModel):

@@ -13,7 +13,6 @@ import uuid
 from app.core.database import get_db
 from app.models.document import Document as DBDocument, DocumentChunk
 from app.api.schemas.document import (
-    DocumentUploadResponse,
     DocumentList,
     DocumentDetail,
     DocumentStatus,
@@ -174,7 +173,7 @@ def _resolve_writable_dataset(
     )
 
 
-@router.post("/upload", response_model=DocumentUploadResponse, status_code=201)
+@router.post("/upload", response_model=DocumentDetail, status_code=201)
 async def upload_document(
     background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
@@ -423,6 +422,9 @@ async def get_document(
     # 如果需要包含切片，访问一次关系以确保加载
     if include_chunks:
         _ = document.chunks
+        # Expose a non-relationship attribute for Pydantic to serialize without triggering
+        # accidental lazy-loading when include_chunks=false.
+        setattr(document, "chunks_loaded", document.chunks)
 
     return document
 
@@ -752,7 +754,7 @@ async def preview_document(
             logger.warning("Failed to clean up temporary file %s: %s", temp_path, e)
 
 
-@router.post("/manual", response_model=DocumentUploadResponse, status_code=201)
+@router.post("/manual", response_model=DocumentDetail, status_code=201)
 async def create_document_with_manual_chunks(
     request: ManualDocumentCreate,
     tenant_id: UUID = Depends(get_tenant_id),

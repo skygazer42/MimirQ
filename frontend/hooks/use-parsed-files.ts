@@ -80,6 +80,15 @@ export function useParsedFiles() {
     })
   }, [])
 
+  // 更新文件（用于数据治理/编辑后同步到后续流程）
+  const updateParsedFile = useCallback((id: string, updates: Partial<Omit<ParsedFileData, 'id'>>) => {
+    setFiles((prev) => {
+      const updated = prev.map((f) => (f.id === id ? { ...f, ...updates, id: f.id } : f))
+      saveToStorage(updated)
+      return updated
+    })
+  }, [])
+
   // 清空所有
   const clearAll = useCallback(() => {
     setFiles([])
@@ -92,6 +101,7 @@ export function useParsedFiles() {
     addParsedFile,
     getFile,
     removeFile,
+    updateParsedFile,
     clearAll,
   }
 }

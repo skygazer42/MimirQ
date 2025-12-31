@@ -1,4 +1,4 @@
-.PHONY: help up down ps logs backend frontend test
+.PHONY: help up down ps logs backend frontend test api-check verify
 
 help:
 	@echo "MimirQ dev commands:"
@@ -9,6 +9,8 @@ help:
 	@echo "  make backend   - run backend locally (uvicorn --reload)"
 	@echo "  make frontend  - run frontend locally (next dev)"
 	@echo "  make test      - run backend tests (pytest)"
+	@echo "  make api-check - verify frontend routes exist in backend"
+	@echo "  make verify    - run quick local checks"
 
 up:
 	docker compose up -d --build
@@ -31,3 +33,10 @@ frontend:
 test:
 	cd backend && pytest -q
 
+api-check:
+	node scripts/check-api-contract.mjs
+
+verify:
+	@$(MAKE) api-check
+	cd frontend && pnpm run lint
+	python3 -m compileall -q backend/app

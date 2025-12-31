@@ -28,9 +28,9 @@ class MessageFeedbackOut(OrmModel):
     account_id: str
     rating: int
     reason: Optional[str]
-    tags: List[str] = []
+    tags: List[str] = Field(default_factory=list)
     expected_answer: Optional[str]
-    extra: Dict[str, Any] = {}
+    extra: Dict[str, Any] = Field(default_factory=dict)
     created_at: datetime
     updated_at: datetime
 
@@ -38,4 +38,3 @@ class MessageFeedbackOut(OrmModel):
 class MessageFeedbackList(BaseModel):
     total: int
     items: List[MessageFeedbackOut]
-

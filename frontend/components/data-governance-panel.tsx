@@ -45,6 +45,7 @@ import {
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { useRouter } from 'next/navigation'
+import { toast } from 'sonner'
 import { useParsedFiles } from '@/hooks/use-parsed-files'
 import { cn } from '@/lib/utils'
 import { QualityChecker } from '@/components/data-governance/quality-checker'
@@ -99,7 +100,7 @@ interface FileGovernanceState {
 
 export function DataGovernancePanel() {
   const router = useRouter()
-  const { files, isLoaded, clearAll, addParsedFile } = useParsedFiles()
+  const { files, isLoaded, clearAll, addParsedFile, updateParsedFile } = useParsedFiles()
   const { parserBackend } = useParserBackendPreference()
 
   // UI 状态
@@ -293,9 +294,17 @@ export function DataGovernancePanel() {
 
   // 保存并进入下一步
   const handleSaveAndContinue = useCallback(() => {
-    // TODO: 保存治理后的数据到后端或 localStorage
+    // 将治理后的内容回写到共享存储（localStorage），以便 /chunk-preview 使用最新版本
+    for (const f of files) {
+      const state = governanceStates[f.id]
+      if (!state) continue
+      if (state.cleanedContent != null && state.cleanedContent !== f.markdownContent) {
+        updateParsedFile(f.id, { markdownContent: state.cleanedContent })
+      }
+    }
+    toast.success('已保存治理结果')
     router.push('/chunk-preview')
-  }, [router])
+  }, [files, governanceStates, updateParsedFile, router])
 
   // 返回解析页面
   const handleBackToParsing = useCallback(() => {
