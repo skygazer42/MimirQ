@@ -49,37 +49,61 @@ async def lifespan(app: FastAPI):
     apply_runtime_migrations(engine)
     logger.info("Database initialized")
 
-    # 初始化 BM25 索引
-    logger.info("Initializing BM25 index...")
-    db = SessionLocal()
-    try:
-        # Single query to get all chunks with completed documents (avoids N+1)
-        all_chunks = (
-            db.query(DocumentChunk)
-            .join(DBDocument)
-            .filter(DBDocument.status == "completed")
-            .all()
-        )
+    # 初始化 BM25 索引（可选：大规模部署建议依赖 lazy-build）
+    if not bool(getattr(settings, "BM25_INDEX_ENABLED", True)):
+        logger.info("BM25 indexing disabled; skipping startup build")
+    elif not bool(getattr(settings, "BM25_STARTUP_BUILD_ENABLED", False)):
+        logger.info("BM25 startup build disabled (BM25_STARTUP_BUILD_ENABLED=false)")
+    else:
+        logger.info("Initializing BM25 index (startup build)...")
+        db = SessionLocal()
+        try:
+            from sqlalchemy import func
 
-        if all_chunks:
-            # Group chunks by tenant_id in Python
-            from collections import defaultdict
-            chunks_by_tenant: dict = defaultdict(list)
-            for chunk in all_chunks:
-                chunks_by_tenant[chunk.tenant_id].append(chunk)
+            max_chunks = int(getattr(settings, "BM25_STARTUP_BUILD_MAX_CHUNKS", 0) or 0)
+            total_chunks = (
+                db.query(func.count(DocumentChunk.id))
+                .join(DBDocument)
+                .filter(DBDocument.status == "completed")
+                .scalar()
+            ) or 0
 
-            for tid, chunks in chunks_by_tenant.items():
-                hybrid_retriever.build_bm25_index(chunks, tenant_id=tid)
+            if max_chunks > 0 and int(total_chunks) > max_chunks:
+                logger.warning(
+                    "Skipping BM25 startup build: %s chunks exceeds cap %s; "
+                    "enable BM25_LAZY_BUILD_ENABLED for on-demand builds",
+                    int(total_chunks),
+                    max_chunks,
+                )
+            else:
+                # Single query to get all chunks with completed documents (avoids N+1)
+                all_chunks = (
+                    db.query(DocumentChunk)
+                    .join(DBDocument)
+                    .filter(DBDocument.status == "completed")
+                    .all()
+                )
 
-            logger.info(
-                "BM25 index loaded with %s chunks across %s tenants",
-                len(all_chunks),
-                len(chunks_by_tenant),
-            )
-        else:
-            logger.warning("No documents found, BM25 index will be built on first upload")
-    finally:
-        db.close()
+                if all_chunks:
+                    # Group chunks by tenant_id in Python
+                    from collections import defaultdict
+
+                    chunks_by_tenant: dict = defaultdict(list)
+                    for chunk in all_chunks:
+                        chunks_by_tenant[chunk.tenant_id].append(chunk)
+
+                    for tid, chunks in chunks_by_tenant.items():
+                        hybrid_retriever.build_bm25_index(chunks, tenant_id=tid)
+
+                    logger.info(
+                        "BM25 index loaded with %s chunks across %s tenants",
+                        len(all_chunks),
+                        len(chunks_by_tenant),
+                    )
+                else:
+                    logger.warning("No documents found, BM25 index will be built on first upload")
+        finally:
+            db.close()
 
     yield
 
@@ -112,6 +136,9 @@ if settings.RATE_LIMIT_ENABLED:
         RateLimitMiddleware,
         requests_per_second=settings.RATE_LIMIT_REQUESTS_PER_SECOND,
         burst_size=settings.RATE_LIMIT_BURST_SIZE,
+        chat_requests_per_second=settings.RATE_LIMIT_CHAT_RPS,
+        chat_burst_size=settings.RATE_LIMIT_CHAT_BURST,
+        chat_prefixes=["/api/v1/chat/stream"],
     )
 
 # 注册路由

@@ -11,7 +11,6 @@ from pathlib import Path
 from typing import Dict, Optional, Tuple
 
 from app.core.config import settings
-from app.parsing.quality.scorer import score_pdf_quality
 
 
 def choose_pdf_backend(quality: Optional[Dict], requested: Optional[str]) -> str:
@@ -65,7 +64,8 @@ def route_pdf_backend(
     """
     Score a PDF and return (chosen_backend, quality).
     """
+    from app.parsing.quality.scorer import score_pdf_quality
+
     use_ocr = settings.RAPIDOCR_ENABLED if use_ocr_validation is None else bool(use_ocr_validation)
     quality = score_pdf_quality(file_path, sample_pages=sample_pages, use_ocr_validation=use_ocr)
     return choose_pdf_backend(quality, requested), quality
-

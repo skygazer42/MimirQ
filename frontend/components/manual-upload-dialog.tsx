@@ -303,7 +303,7 @@ export function ManualUploadDialog({ onUploaded }: ManualUploadDialogProps) {
                 <input 
                   ref={fileInputRef}
                   type="file" 
-                  accept=".pdf,.txt,.md" 
+                  accept=".pdf,.txt,.md,.doc,.docx,.xls,.xlsx,.csv,.html,.json" 
                   className="hidden" 
                   onChange={handleFileChange} 
                 />

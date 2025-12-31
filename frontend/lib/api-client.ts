@@ -30,6 +30,10 @@ import type {
   CleanRulesResponse,
   LLMCleanPreviewRequest,
   LLMCleanPreviewResponse,
+  RetrievePreviewRequest,
+  RetrievePreviewResponse,
+  PromptPreviewRequest,
+  PromptPreviewResponse,
 } from '@/types'
 import { getAuthHeaders } from '@/lib/auth-headers'
 import { API_V1_BASE_URL } from '@/lib/env'
@@ -317,6 +321,20 @@ export const pipelineApi = {
 
   async llmCleanPreview(params: LLMCleanPreviewRequest): Promise<LLMCleanPreviewResponse> {
     const { data } = await apiClient.post('/pipeline/llm-clean-preview', params)
+    return data
+  },
+}
+
+// ==================== RAG 调试 API ====================
+
+export const ragApi = {
+  async retrievePreview(params: RetrievePreviewRequest): Promise<RetrievePreviewResponse> {
+    const { data } = await apiClient.post('/rag/retrieve-preview', params)
+    return data
+  },
+
+  async promptPreview(params: PromptPreviewRequest): Promise<PromptPreviewResponse> {
+    const { data } = await apiClient.post('/rag/prompt-preview', params)
     return data
   },
 }

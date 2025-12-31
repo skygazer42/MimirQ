@@ -32,3 +32,31 @@ class KGSearchResponse(BaseModel):
 
     result: Dict[str, Any]
     query: str
+
+
+class KGGraphNode(BaseModel):
+    """Graph node for frontend visualization."""
+
+    id: str
+    label: str
+    group: int = 0
+    val: int = 1
+    meta: Dict[str, Any] = Field(default_factory=dict)
+
+
+class KGGraphLink(BaseModel):
+    """Graph link for frontend visualization."""
+
+    source: str
+    target: str
+    label: str = ""
+    weight: float = 1.0
+    meta: Dict[str, Any] = Field(default_factory=dict)
+
+
+class KGGraphResponse(BaseModel):
+    """KG graph response."""
+
+    nodes: List[KGGraphNode]
+    links: List[KGGraphLink]
+    stats: Dict[str, Any] = Field(default_factory=dict)

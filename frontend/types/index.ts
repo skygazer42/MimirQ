@@ -337,6 +337,46 @@ export interface KGSearchResponse {
   query: string
 }
 
+// ==================== RAG 调试相关类型 ====================
+
+export interface RetrievePreviewRequest {
+  query: string
+  history?: ChatHistoryMessage[]
+  document_ids?: string[]
+  rag_config?: ChatRequest['rag_config']
+}
+
+export interface RetrievePreviewResponse {
+  query_for_retrieval: string
+  citations: Citation[]
+  metrics: Record<string, any>
+}
+
+export interface PromptPreviewRequest {
+  query: string
+  history?: ChatHistoryMessage[]
+  document_ids?: string[]
+  rag_config?: ChatRequest['rag_config']
+  structured_output?: boolean
+  structured_preset?: string
+  prompt_template_id?: string
+  prompt_template_key?: string
+  prompt_ab_experiment_key?: string
+}
+
+export interface PromptPreviewResponse {
+  query_for_retrieval: string
+  prompt_messages: Array<{ type: string; content: any }>
+  prompt_text: string
+  variables: Record<string, any>
+  citations: Citation[]
+  metrics: Record<string, any>
+  prompt_template_id?: string
+  prompt_template_key?: string
+  prompt_ab_experiment_key?: string
+  prompt_ab_variant?: string
+}
+
 // ==================== 批量上传相关类型 ====================
 
 export interface BatchFileInfo {

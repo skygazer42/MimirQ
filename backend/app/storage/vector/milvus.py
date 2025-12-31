@@ -15,7 +15,6 @@ from uuid import UUID
 
 from app.core.config import settings
 from app.core.constants import MilvusConfig, EmbeddingProviders
-from app.rag.embedding import create_langchain_embeddings_from_config
 from app.rag.core.filters import match_metadata_filter as _match_metadata_filter
 
 logger = logging.getLogger(__name__)
@@ -184,6 +183,8 @@ def _build_milvus_metadata_expr(metadata_filter: Optional[Dict[str, Any]]) -> Op
 
 def _init_embedding_model():
     """Initialize embedding model using app.rag.embedding module."""
+    from app.rag.embedding import create_langchain_embeddings_from_config
+
     provider = (settings.EMBEDDING_PROVIDER or "local").lower()
     logger.info("[*] Loading embedding provider: %s", provider)
 

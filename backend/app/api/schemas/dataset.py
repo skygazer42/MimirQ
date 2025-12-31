@@ -36,3 +36,8 @@ class DatasetOut(OrmModel):
     permission: DatasetPermissionEnum
     owner_id: Optional[str]
     partial_member_list: Optional[List[str]] = None
+
+
+class DatasetListResponse(BaseModel):
+    total: int
+    items: List[DatasetOut]

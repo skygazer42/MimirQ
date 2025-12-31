@@ -364,14 +364,14 @@ export default function ParsingPage() {
                 onDrop={handleDrop}
                 onClick={() => fileInputRef.current?.click()}
               >
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  multiple
-                  accept=".pdf,.txt,.md,.xlsx,.xls,.docx,.doc"
-                  className="hidden"
-                  onChange={handleFileSelect}
-                />
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    multiple
+                    accept=".pdf,.txt,.md,.doc,.docx,.xls,.xlsx,.csv,.html,.json"
+                    className="hidden"
+                    onChange={handleFileSelect}
+                  />
                 <Upload className="w-7 h-7 mx-auto mb-2 text-gray-400" />
                 <p className="text-sm font-medium text-gray-700">拖放或点击上传</p>
                 <p className="text-xs text-gray-400 mt-1">PDF, Word, Excel, TXT, MD</p>
