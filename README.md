@@ -238,15 +238,18 @@ vim backend/.env
 
 ```bash
 # 拉取并启动所有服务 (首次运行可能需要几分钟下载镜像)
-docker-compose up -d
+# 说明：默认使用 X-User-ID 本地鉴权（AUTH_MODE=header），便于前后端联调
+docker compose up -d --build
 
 # 检查服务状态
-docker-compose ps
+docker compose ps
 ```
 
 ### 访问服务
 
 等待约 1 分钟服务完全启动后，访问：
+1. 前端界面: http://localhost:3000
+2. 后端接口文档: http://localhost:8000/docs
 
 ---
 
@@ -322,7 +325,7 @@ source venv/bin/activate  # Windows: venv\Scripts\activate
 pip install -r requirements.txt
 
 # 启动 PostgreSQL + Milvus (Docker)
-docker-compose up -d postgres etcd minio milvus
+docker compose -f ../docker-compose.yml up -d postgres etcd minio milvus
 
 # 启动后端服务
 uvicorn app.main:app --reload --host 0.0.0.0 --port 8000

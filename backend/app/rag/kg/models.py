@@ -10,7 +10,17 @@ from app.core.database import Base
 
 
 def _default_tenant() -> uuid.UUID:
-    return settings.DEFAULT_TENANT_ID
+    """
+    Provide a UUID default for tenant_id fields.
+
+    NOTE: `settings.DEFAULT_TENANT_ID` is stored as a string, but SQLAlchemy's
+    PG UUID columns expect an actual uuid.UUID object when `as_uuid=True`.
+    """
+    raw = str(getattr(settings, "DEFAULT_TENANT_ID", "") or "").strip()
+    try:
+        return uuid.UUID(raw)
+    except Exception:
+        return uuid.UUID("00000000-0000-0000-0000-000000000000")
 
 
 class KgEntity(Base):
