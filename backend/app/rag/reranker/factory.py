@@ -61,7 +61,8 @@ def get_reranker(
         api_key = api_key or settings.RERANKER_API_KEY or settings.LLM_API_KEY
         base_url = base_url or "https://dashscope.aliyuncs.com/api/v1/services/rerank"
         
-        timeout = float(kwargs.pop("timeout", None) or settings.RERANKER_API_TIMEOUT_SEC or 30.0)
+        timeout = float(kwargs.get("timeout") or settings.RERANKER_API_TIMEOUT_SEC or 30.0)
+        kwargs_copy = {k: v for k, v in kwargs.items() if k != "timeout"}
         cache_key = _api_cache_key(provider, model=model_name, base_url=base_url, api_key=api_key)
         with _api_reranker_lock:
             cached = _api_reranker_cache.get(cache_key)
@@ -72,7 +73,7 @@ def get_reranker(
                 api_key=api_key,
                 base_url=base_url,
                 timeout=timeout,
-                **kwargs,
+                **kwargs_copy,
             )
             _api_reranker_cache[cache_key] = inst
             return inst
@@ -84,7 +85,8 @@ def get_reranker(
         api_key = api_key or settings.RERANKER_API_KEY or settings.LLM_API_KEY
         base_url = base_url or settings.RERANKER_API_BASE or settings.LLM_API_BASE
         
-        timeout = float(kwargs.pop("timeout", None) or settings.RERANKER_API_TIMEOUT_SEC or 30.0)
+        timeout = float(kwargs.get("timeout") or settings.RERANKER_API_TIMEOUT_SEC or 30.0)
+        kwargs_copy = {k: v for k, v in kwargs.items() if k != "timeout"}
         cache_key = _api_cache_key(provider, model=model_name, base_url=base_url, api_key=api_key)
         with _api_reranker_lock:
             cached = _api_reranker_cache.get(cache_key)
@@ -141,7 +143,8 @@ def get_reranker(
         api_key = api_key or settings.RERANKER_API_KEY or settings.LLM_API_KEY
         base_url = base_url or settings.RERANKER_API_BASE or settings.LLM_API_BASE
         
-        timeout = float(kwargs.pop("timeout", None) or settings.RERANKER_API_TIMEOUT_SEC or 30.0)
+        timeout = float(kwargs.get("timeout") or settings.RERANKER_API_TIMEOUT_SEC or 30.0)
+        kwargs_copy = {k: v for k, v in kwargs.items() if k != "timeout"}
         cache_key = _api_cache_key("openai", model=model_name, base_url=base_url, api_key=api_key)
         with _api_reranker_lock:
             cached = _api_reranker_cache.get(cache_key)
@@ -152,7 +155,7 @@ def get_reranker(
                 api_key=api_key,
                 base_url=base_url,
                 timeout=timeout,
-                **kwargs,
+                **kwargs_copy,
             )
             _api_reranker_cache[cache_key] = inst
             return inst
