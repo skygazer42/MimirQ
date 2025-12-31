@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import logging
 import threading
+import re
 from typing import Any, Dict, List, Optional, Tuple
 from uuid import UUID
 
@@ -18,6 +19,165 @@ from app.rag.embedding import create_langchain_embeddings_from_config
 from app.rag.core.filters import match_metadata_filter as _match_metadata_filter
 
 logger = logging.getLogger(__name__)
+
+_MILVUS_MAX_VARCHAR_BYTES = 65_535
+_MILVUS_EXPR_MAX_CHARS = 8000
+_MILVUS_FIELD_NAME_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+
+# Safe allowlist for metadata expr pushdown (must exist in collection schema).
+_MILVUS_NUMERIC_FIELDS = frozenset({"chunk_index", "page_number"})
+_MILVUS_STRING_FIELDS = frozenset(
+    {
+        "tenant_id",
+        "document_id",
+        "chunk_id",
+        "source",
+        "file_type",
+        "img_id",
+        "image_id",
+        "image_url",
+        # KG (optional; depends on collection schema)
+        "index_kind",
+        "type",
+        "name",
+        "title",
+    }
+)
+_MILVUS_ALLOWED_FILTER_FIELDS = _MILVUS_NUMERIC_FIELDS | _MILVUS_STRING_FIELDS
+
+
+def _coerce_milvus_metadata_value(value: Any) -> Any:
+    """Milvus does not support None values for scalar fields."""
+    if value is None:
+        return ""
+    if isinstance(value, bool):
+        return bool(value)
+    if isinstance(value, int):
+        return int(value)
+    if isinstance(value, float):
+        return float(value)
+    if isinstance(value, str):
+        return value[:_MILVUS_MAX_VARCHAR_BYTES]
+    return str(value)[:_MILVUS_MAX_VARCHAR_BYTES]
+
+
+def _normalize_milvus_metadata_batch(metadatas: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Ensure consistent keys and Milvus-compatible values across a batch."""
+    if not metadatas:
+        return metadatas
+
+    schema_meta: Dict[str, Any] = {}
+    for k, v in (metadatas[0] or {}).items():
+        schema_meta[str(k)] = _coerce_milvus_metadata_value(v)
+
+    schema_keys = list(schema_meta.keys())
+    for meta in metadatas:
+        # Normalize values for known keys first.
+        for k in list(meta.keys()):
+            meta[k] = _coerce_milvus_metadata_value(meta.get(k))
+
+        # Fill missing schema keys so insert columns remain aligned.
+        for k in schema_keys:
+            if k in meta and meta[k] != "":
+                continue
+            exemplar = schema_meta.get(k)
+            if isinstance(exemplar, bool):
+                meta[k] = False
+            elif isinstance(exemplar, int):
+                meta[k] = 0
+            elif isinstance(exemplar, float):
+                meta[k] = 0.0
+            else:
+                meta[k] = ""
+
+    return metadatas
+
+
+def _escape_milvus_string(value: str) -> str:
+    # Milvus expr strings use double quotes; escape minimal set.
+    return value.replace("\\", "\\\\").replace('"', '\\"')
+
+
+def _milvus_value_expr(field: str, value: Any) -> Optional[str]:
+    if field in _MILVUS_NUMERIC_FIELDS:
+        try:
+            return str(int(value))
+        except Exception:
+            return None
+    if field in _MILVUS_STRING_FIELDS:
+        return f"\"{_escape_milvus_string(str(value))}\""
+    return None
+
+
+def _milvus_in_list_expr(field: str, values: Any) -> Optional[str]:
+    if not isinstance(values, (list, tuple, set)):
+        return None
+    items: List[str] = []
+    for v in values:
+        expr = _milvus_value_expr(field, v)
+        if expr is None:
+            continue
+        items.append(expr)
+    if not items:
+        return None
+    return f"[{', '.join(items)}]"
+
+
+def _build_milvus_metadata_expr(metadata_filter: Optional[Dict[str, Any]]) -> Optional[str]:
+    """Best-effort translation of metadata_filter into Milvus expr (AND semantics)."""
+    if not metadata_filter or not isinstance(metadata_filter, dict):
+        return None
+
+    parts: List[str] = []
+    for key, condition in metadata_filter.items():
+        if not isinstance(key, str):
+            continue
+        if key not in _MILVUS_ALLOWED_FILTER_FIELDS:
+            continue
+        if not _MILVUS_FIELD_NAME_RE.match(key):
+            continue
+
+        if isinstance(condition, dict):
+            for op, expected in condition.items():
+                if op in ("$eq", "$ne"):
+                    rhs = _milvus_value_expr(key, expected)
+                    if rhs is None:
+                        continue
+                    parts.append(f"{key} {'==' if op == '$eq' else '!='} {rhs}")
+                elif op in ("$gt", "$gte", "$lt", "$lte"):
+                    if key not in _MILVUS_NUMERIC_FIELDS:
+                        continue
+                    rhs = _milvus_value_expr(key, expected)
+                    if rhs is None:
+                        continue
+                    cmp_op = {  # noqa: RUF027
+                        "$gt": ">",
+                        "$gte": ">=",
+                        "$lt": "<",
+                        "$lte": "<=",
+                    }.get(op)
+                    if cmp_op:
+                        parts.append(f"{key} {cmp_op} {rhs}")
+                elif op in ("$in", "$nin"):
+                    rhs = _milvus_in_list_expr(key, expected)
+                    if rhs is None:
+                        continue
+                    parts.append(f"{key} {'in' if op == '$in' else 'not in'} {rhs}")
+                else:
+                    # Unsupported op (e.g. $contains): skip pushdown for this clause.
+                    continue
+        else:
+            rhs = _milvus_value_expr(key, condition)
+            if rhs is None:
+                continue
+            parts.append(f"{key} == {rhs}")
+
+    if not parts:
+        return None
+    expr = " and ".join(parts)
+    if len(expr) > _MILVUS_EXPR_MAX_CHARS:
+        return None
+    return expr
 
 
 # ========= Embedding 初始化 ==========
@@ -149,6 +309,7 @@ class MilvusAdapter:
             for key in reserved_fields:
                 meta.pop(key, None)
             metadatas.append(meta)
+        metadatas = _normalize_milvus_metadata_batch(metadatas)
 
         # Default path: let LangChain generate embeddings then insert.
         if embeddings is None:
@@ -254,11 +415,25 @@ class MilvusAdapter:
         self._ensure_store()
         assert self._store is not None
 
-        results = self._store.similarity_search_with_score_by_vector(
-            embedding=query_vector,
-            k=top_k,
-            expr=expr,
-        )
+        metadata_expr = _build_milvus_metadata_expr(metadata_filter)
+        if expr and metadata_expr:
+            combined_expr = f"({expr}) and ({metadata_expr})"
+        else:
+            combined_expr = expr or metadata_expr
+
+        try:
+            results = self._store.similarity_search_with_score_by_vector(
+                embedding=query_vector,
+                k=top_k,
+                expr=combined_expr,
+            )
+        except Exception:
+            # Fallback: ignore pushdown on schema/expr mismatch; still apply client-side filtering.
+            results = self._store.similarity_search_with_score_by_vector(
+                embedding=query_vector,
+                k=top_k,
+                expr=expr,
+            )
         return [
             {
                 "id": doc.id,
@@ -382,21 +557,26 @@ class MilvusVectorStore:
             ids.append(vector_id)
             texts.append(content)
 
+            img_id = meta.get("img_id") or meta.get("image_id") or ""
+            image_id = meta.get("image_id") or meta.get("img_id") or ""
+            image_url = meta.get("image_url") or meta.get("img_url") or ""
+
             metadatas.append(
                 {
                     "tenant_id": str(tenant_id),
                     "document_id": str(document_id),
                     "chunk_index": int(meta.get("chunk_index", idx)),
-                    "chunk_id": str(chunk_id) if chunk_id else None,
+                    "chunk_id": str(chunk_id) if chunk_id else "",
                     "page_number": int(meta.get("page") or meta.get("page_number") or 0),
                     "source": str(meta.get("source", "unknown"))[:500],
                     "file_type": str(meta.get("file_type", "unknown"))[:20],
-                    "img_id": meta.get("img_id") or meta.get("image_id"),
-                    "image_id": meta.get("image_id") or meta.get("img_id"),
-                    "image_url": meta.get("image_url") or meta.get("img_url"),
+                    "img_id": str(img_id)[:500],
+                    "image_id": str(image_id)[:500],
+                    "image_url": str(image_url)[:2000],
                 }
             )
 
+        metadatas = _normalize_milvus_metadata_batch(metadatas)
         pks = self._store.add_texts(texts=texts, metadatas=metadatas, ids=ids)
         return [str(pk) for pk in pks]
 
@@ -413,8 +593,18 @@ class MilvusVectorStore:
         self._ensure_store()
         assert self._store is not None
 
-        expr = self._build_expr(document_ids=document_ids, tenant_id=tenant_id)
-        results = self._store.similarity_search_with_score(query, k=top_k * 2, expr=expr)
+        base_expr = self._build_expr(document_ids=document_ids, tenant_id=tenant_id)
+        metadata_expr = _build_milvus_metadata_expr(metadata_filter)
+        if base_expr and metadata_expr:
+            combined_expr = f"({base_expr}) and ({metadata_expr})"
+        else:
+            combined_expr = base_expr or metadata_expr
+
+        try:
+            results = self._store.similarity_search_with_score(query, k=top_k * 2, expr=combined_expr)
+        except Exception:
+            # Fallback for legacy collections / unsupported expr clauses.
+            results = self._store.similarity_search_with_score(query, k=top_k * 2, expr=base_expr)
 
         formatted: List[Dict[str, Any]] = []
         for doc, score in results:

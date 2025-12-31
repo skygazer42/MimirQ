@@ -12,6 +12,7 @@ from collections import Counter
 import heapq
 import jieba
 import time
+import threading
 
 from langchain_core.documents import Document
 from langchain_core.callbacks import CallbackManagerForRetrieverRun, AsyncCallbackManagerForRetrieverRun
@@ -21,7 +22,7 @@ from pydantic import PrivateAttr, ConfigDict
 from sqlalchemy import tuple_
 
 from app.storage.vector.factory import get_vector_store
-from app.models.document import DocumentChunk
+from app.models.document import DocumentChunk, Document as DBDocument
 from app.core.config import settings
 from app.core.database import SessionLocal
 from app.rag.core.filters import match_metadata_filter
@@ -67,9 +68,85 @@ class HybridRetriever(BaseRetriever):
     _bm25_retrievers: Dict[str, BM25Retriever] = PrivateAttr(default_factory=dict)
     _bm25_docs: Dict[str, List[Document]] = PrivateAttr(default_factory=dict)
     _chunk_id_lookup: Dict[str, Dict[str, str]] = PrivateAttr(default_factory=dict)
+    _bm25_build_locks: Dict[str, threading.Lock] = PrivateAttr(default_factory=dict)
 
     def _tenant_key(self, tenant_id: Optional[UUID]) -> str:
         return str(tenant_id or settings.DEFAULT_TENANT_ID)
+
+    def _get_bm25_build_lock(self, tenant_key: str) -> threading.Lock:
+        lock = self._bm25_build_locks.get(tenant_key)
+        if lock is None:
+            lock = threading.Lock()
+            self._bm25_build_locks[tenant_key] = lock
+        return lock
+
+    def _lazy_build_bm25_index(
+        self,
+        *,
+        tenant_id: Optional[UUID],
+        document_ids: Optional[List[UUID]],
+    ) -> bool:
+        """Build BM25 index on-demand to mitigate cold-start in multi-process deployments."""
+        if not bool(getattr(settings, "BM25_INDEX_ENABLED", True)):
+            return False
+        if not bool(getattr(settings, "BM25_LAZY_BUILD_ENABLED", True)):
+            return False
+
+        tenant_uuid: Optional[UUID] = tenant_id
+        if tenant_uuid is None:
+            try:
+                tenant_uuid = UUID(str(getattr(settings, "DEFAULT_TENANT_ID", "") or ""))
+            except Exception:
+                tenant_uuid = None
+        if tenant_uuid is None:
+            return False
+
+        tenant_key = self._tenant_key(tenant_uuid)
+        if self._bm25_retrievers.get(tenant_key) is not None and self._bm25_docs.get(tenant_key) is not None:
+            return True
+
+        lock = self._get_bm25_build_lock(tenant_key)
+        with lock:
+            if self._bm25_retrievers.get(tenant_key) is not None and self._bm25_docs.get(tenant_key) is not None:
+                return True
+
+            full_tenant = bool(getattr(settings, "BM25_LAZY_BUILD_FULL_TENANT", False))
+            if not document_ids and not full_tenant:
+                return False
+
+            max_chunks = max(0, int(getattr(settings, "BM25_LAZY_BUILD_MAX_CHUNKS", 0) or 0))
+            db = SessionLocal()
+            try:
+                q = (
+                    db.query(DocumentChunk)
+                    .join(DBDocument)
+                    .filter(DBDocument.status == "completed")
+                    .filter(DocumentChunk.tenant_id == tenant_uuid)
+                )
+                if document_ids:
+                    q = q.filter(DocumentChunk.document_id.in_(document_ids))
+                q = q.order_by(DocumentChunk.document_id.asc(), DocumentChunk.chunk_index.asc())
+                if max_chunks:
+                    q = q.limit(max_chunks)
+                chunks = q.all()
+                if not chunks:
+                    return False
+                self.build_bm25_index(chunks, tenant_id=tenant_uuid)
+                logger.info(
+                    "BM25 lazy-built %s chunks for tenant %s (doc_ids=%s)",
+                    len(chunks),
+                    tenant_key,
+                    len(document_ids) if document_ids else 0,
+                )
+                return True
+            except Exception as exc:
+                logger.warning("BM25 lazy build failed for tenant %s: %s", tenant_key, str(exc)[:200])
+                return False
+            finally:
+                try:
+                    db.close()
+                except Exception:
+                    pass
 
     @staticmethod
     def _bm25_tokenize(text: str) -> List[str]:
@@ -208,8 +285,12 @@ class HybridRetriever(BaseRetriever):
         retriever = self._bm25_retrievers.get(tenant_key)
         docs = self._bm25_docs.get(tenant_key)
         if retriever is None or docs is None:
-            logger.warning("BM25 index not initialized, skipping keyword search")
-            return []
+            self._lazy_build_bm25_index(tenant_id=tenant_id, document_ids=document_ids)
+            retriever = self._bm25_retrievers.get(tenant_key)
+            docs = self._bm25_docs.get(tenant_key)
+            if retriever is None or docs is None:
+                logger.warning("BM25 index not initialized, skipping keyword search")
+                return []
 
         allowed_ids = {str(doc_id) for doc_id in document_ids} if document_ids else None
         processed_query = retriever.preprocess_func(query)
@@ -577,6 +658,126 @@ class HybridRetriever(BaseRetriever):
             except Exception:
                 pass
 
+    def _expand_results_with_neighbors(self, results: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """Optionally attach adjacent chunks around top hits for better continuity."""
+        if not results:
+            return results
+
+        window = max(0, int(getattr(settings, "RAG_CONTEXT_NEIGHBOR_WINDOW", 0) or 0))
+        if window <= 0:
+            return results
+
+        max_added = max(0, int(getattr(settings, "RAG_CONTEXT_NEIGHBOR_MAX_ADDED", 0) or 0))
+        tenant_filter = self.tenant_id
+
+        anchors: list[tuple[Dict[str, Any], UUID | None, int | None]] = []
+        for r in results:
+            meta = r.get("metadata") or {}
+            doc_id = meta.get("document_id")
+            chunk_index = meta.get("chunk_index")
+            try:
+                doc_uuid = UUID(str(doc_id)) if doc_id is not None else None
+                idx = int(chunk_index) if chunk_index is not None else None
+            except Exception:
+                doc_uuid = None
+                idx = None
+            anchors.append((r, doc_uuid, idx))
+
+        needed_pairs: set[tuple[UUID, int]] = set()
+        for _, doc_uuid, idx in anchors:
+            if doc_uuid is None or idx is None:
+                continue
+            for delta in range(-window, window + 1):
+                if delta == 0:
+                    continue
+                neighbor_idx = idx + delta
+                if neighbor_idx < 0:
+                    continue
+                needed_pairs.add((doc_uuid, neighbor_idx))
+
+        if not needed_pairs:
+            return results
+
+        neighbors_by_pair: dict[tuple[str, int], DocumentChunk] = {}
+        db = SessionLocal()
+        try:
+            q = db.query(DocumentChunk).filter(
+                tuple_(DocumentChunk.document_id, DocumentChunk.chunk_index).in_(list(needed_pairs))
+            )
+            if tenant_filter:
+                q = q.filter(DocumentChunk.tenant_id == tenant_filter)
+            for ck in q.all():
+                neighbors_by_pair[(str(ck.document_id), int(ck.chunk_index))] = ck
+        except Exception:
+            return results
+        finally:
+            try:
+                db.close()
+            except Exception:
+                pass
+
+        seen: set[str] = set()
+        for r in results:
+            cid = r.get("chunk_id") or (r.get("metadata") or {}).get("chunk_id")
+            if cid:
+                seen.add(str(cid))
+
+        expanded: list[Dict[str, Any]] = []
+        added_neighbors = 0
+        for r, doc_uuid, idx in anchors:
+            meta = r.get("metadata") or {}
+            anchor_cid = str(r.get("chunk_id") or meta.get("chunk_id") or "")
+
+            # Build a [prev..anchor..next] group in document order.
+            if doc_uuid is not None and idx is not None:
+                doc_key = str(doc_uuid)
+                for gi in range(idx - window, idx + window + 1):
+                    if gi < 0:
+                        continue
+                    if gi == idx:
+                        if anchor_cid and anchor_cid not in seen:
+                            seen.add(anchor_cid)
+                        expanded.append(r)
+                        continue
+
+                    ck = neighbors_by_pair.get((doc_key, gi))
+                    if ck is None:
+                        continue
+                    ck_id = str(ck.id)
+                    if ck_id in seen:
+                        continue
+                    if max_added and added_neighbors >= max_added:
+                        continue
+
+                    stored_meta = dict(ck.doc_metadata or {})
+                    stored_meta.setdefault("tenant_id", str(ck.tenant_id))
+                    stored_meta.setdefault("document_id", str(ck.document_id))
+                    stored_meta.setdefault("chunk_index", int(ck.chunk_index))
+                    stored_meta.setdefault("chunk_id", ck_id)
+                    if ck.page_number is not None:
+                        stored_meta.setdefault("page", ck.page_number)
+                    if not stored_meta.get("source"):
+                        stored_meta["source"] = "unknown"
+                    stored_meta["neighbor_of"] = anchor_cid
+                    stored_meta["retrieval_role"] = "neighbor"
+
+                    anchor_score = float(r.get("score", 0.0) or 0.0)
+                    neighbor_score = float(anchor_score * 0.85) if anchor_score else 0.0
+                    expanded.append(
+                        {
+                            "chunk_id": ck_id,
+                            "content": ck.content,
+                            "metadata": stored_meta,
+                            "score": neighbor_score,
+                        }
+                    )
+                    seen.add(ck_id)
+                    added_neighbors += 1
+            else:
+                expanded.append(r)
+
+        return expanded
+
     def _get_relevant_documents(
         self,
         query: str,
@@ -599,6 +800,7 @@ class HybridRetriever(BaseRetriever):
             metadata_filter=self.metadata_filter,
         )
         results = self._enrich_results_with_db_metadata(results)
+        results = self._expand_results_with_neighbors(results)
         docs: List[Document] = []
         for r in results:
             meta = dict(r.get("metadata") or {})

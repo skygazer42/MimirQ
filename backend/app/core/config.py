@@ -121,6 +121,10 @@ class Settings(BaseSettings):
     RAG_CONTEXT_MAX_CHARS_PER_CHUNK: int = 1500
     RAG_CONTEXT_MAX_TOTAL_CHARS: int = 12_000
     RAG_CONTEXT_MAX_KG_CHARS: int = 3_000
+    # Optional: include adjacent chunks around top hits to improve continuity (0 disables).
+    RAG_CONTEXT_NEIGHBOR_WINDOW: int = 0
+    # Max number of neighbor chunks to add in total (0 disables the cap).
+    RAG_CONTEXT_NEIGHBOR_MAX_ADDED: int = 20
     # Context evidence extraction (query-focused sentence selection)
     RAG_CONTEXT_EVIDENCE_ENABLED: bool = False
     RAG_CONTEXT_EVIDENCE_MAX_SENTENCES_PER_CHUNK: int = 6
@@ -161,6 +165,12 @@ class Settings(BaseSettings):
     EVENT_VECTOR_ENABLED: bool = True
     ENTITY_VECTOR_ENABLED: bool = True
     BM25_INDEX_ENABLED: bool = True
+    # BM25 cold-start mitigation (build on first query when index missing).
+    BM25_LAZY_BUILD_ENABLED: bool = True
+    # When true and document_ids not provided, build BM25 for the whole tenant (can be expensive).
+    BM25_LAZY_BUILD_FULL_TENANT: bool = False
+    # Upper bound for lazy-built chunks (0 disables the cap).
+    BM25_LAZY_BUILD_MAX_CHUNKS: int = 8000
     FAISS_STORE_PATH: str = "./vector_faiss"
     # FAISS persistence uses pickle; enable only when the index directory is fully trusted.
     FAISS_ALLOW_DANGEROUS_DESERIALIZATION: bool = False
