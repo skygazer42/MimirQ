@@ -36,6 +36,7 @@ from app.core.token_utils import num_tokens_from_string
 from app.core.config import settings
 from app.api.dependencies.tenant import get_tenant_id
 from app.api.dependencies.auth import get_current_account_id
+from app.rag.preprocessing.stopwords import STOPWORDS
 
 logger = logging.getLogger(__name__)
 
@@ -91,9 +92,26 @@ def _retrieve_long_term_messages(
     if not docs:
         return []
 
+    def _bm25_tokenize(text: str) -> list[str]:
+        raw = (text or "").strip()
+        if not raw:
+            return []
+        tokens: list[str] = []
+        for token in jieba.cut_for_search(raw):
+            tok = str(token).strip()
+            if not tok:
+                continue
+            norm = tok.casefold() if tok.isascii() else tok
+            if norm in STOPWORDS:
+                continue
+            if len(norm) < 2:
+                continue
+            tokens.append(norm)
+        return tokens
+
     retriever = BM25Retriever.from_documents(
         docs,
-        preprocess_func=lambda text: list(jieba.cut_for_search(text)),
+        preprocess_func=_bm25_tokenize,
         k=top_k
     )
     selected = retriever.invoke(query)

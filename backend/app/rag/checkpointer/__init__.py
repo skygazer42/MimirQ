@@ -8,21 +8,24 @@ Provides:
 """
 
 from app.rag.checkpointer.sqlite import SqliteSaver
-from langgraph.checkpoint.memory import InMemorySaver as MemorySaver
-from app.rag.checkpointer.factory import get_checkpointer
-from app.rag.checkpointer.time_travel import (
-    TimeTravel,
-    CheckpointInfo,
-    ForkResult,
-    get_time_travel,
-)
+try:  # LangGraph 1.0.x compatibility
+    from langgraph.checkpoint.memory import InMemorySaver as MemorySaver  # type: ignore
+except Exception:  # pragma: no cover
+    from langgraph.checkpoint.memory import MemorySaver  # type: ignore
 
-__all__ = [
-    "SqliteSaver",
-    "MemorySaver",
-    "get_checkpointer",
-    "TimeTravel",
-    "CheckpointInfo",
-    "ForkResult",
-    "get_time_travel",
-]
+from app.rag.checkpointer.factory import get_checkpointer
+
+__all__ = ["SqliteSaver", "MemorySaver", "get_checkpointer"]
+
+# Optional: time-travel utilities depend on LangGraph graph internals (version-sensitive).
+try:  # pragma: no cover
+    from app.rag.checkpointer.time_travel import (  # noqa: F401
+        TimeTravel,
+        CheckpointInfo,
+        ForkResult,
+        get_time_travel,
+    )
+
+    __all__.extend(["TimeTravel", "CheckpointInfo", "ForkResult", "get_time_travel"])
+except Exception:
+    pass

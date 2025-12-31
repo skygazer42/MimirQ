@@ -146,7 +146,15 @@ def _build_context(docs: List[Document], *, query: str | None = None) -> str:
     for idx, doc in enumerate(docs, 1):
         meta = doc.metadata or {}
         source = meta.get("source", "Unknown")
-        page = meta.get("page", "N/A")
+        page_info = None
+        page_raw = meta.get("page")
+        try:
+            page_int = int(page_raw) if page_raw is not None else None
+            if page_int and page_int > 0:
+                page_info = f"第{page_int}页"
+        except Exception:
+            page_info = None
+        header = meta.get("header_path") or meta.get("header_context")
         raw_content = (doc.page_content or "").strip()
         content = raw_content
         if bool(settings.RAG_CONTEXT_EVIDENCE_ENABLED) and query:
@@ -159,7 +167,12 @@ def _build_context(docs: List[Document], *, query: str | None = None) -> str:
             )
         elif max_per_chunk and len(content) > max_per_chunk:
             content = content[:max_per_chunk] + "..."
-        part = f"[来源 {idx}: {source} - 第{page}页]\n{content}"
+        info_parts = [str(source)]
+        if page_info:
+            info_parts.append(page_info)
+        if header:
+            info_parts.append(str(header))
+        part = f"[来源 {idx}: {' | '.join(info_parts)}]\n{content}"
         if max_total and parts and (total_chars + len(part)) > max_total:
             break
         parts.append(part)

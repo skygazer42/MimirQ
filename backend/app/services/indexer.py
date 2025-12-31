@@ -6,6 +6,7 @@
 import logging
 import time
 from typing import Any, Dict, Iterable, List, Optional, Sequence
+import uuid
 from uuid import UUID
 
 from langchain_core.documents import Document as LCDocument
@@ -38,6 +39,17 @@ def _safe_int(value: Any) -> Optional[int]:
         return None
     try:
         return int(value)
+    except Exception:
+        return None
+
+
+def _safe_uuid(value: Any) -> Optional[UUID]:
+    if value is None:
+        return None
+    if isinstance(value, UUID):
+        return value
+    try:
+        return UUID(str(value))
     except Exception:
         return None
 
@@ -199,9 +211,16 @@ class Indexer:
         total_characters = sum(len(c.content or "") for c in chunks)
         normalized_chunks: List[ChunkInput] = []
         vector_docs: List[Dict[str, Any]] = []
+        chunk_ids: List[UUID] = []
         for c in chunks:
             meta = dict(c.metadata or {})
             meta.setdefault("index_kind", IndexKind.CHUNK.value)
+            meta.setdefault("tenant_id", str(tenant_id))
+            meta.setdefault("document_id", str(document_id))
+            # Ensure every chunk has a stable UUID for cross-system linking.
+            chunk_id = _safe_uuid(meta.get("chunk_id")) or uuid.uuid4()
+            meta["chunk_id"] = str(chunk_id)
+            chunk_ids.append(chunk_id)
             normalized_chunks.append(
                 ChunkInput(
                     content=c.content,
@@ -224,6 +243,7 @@ class Indexer:
             tenant_id=tenant_id,
             chunks=normalized_chunks,
             vector_ids=vector_ids,
+            chunk_ids=chunk_ids,
             commit=commit,
         )
 
@@ -488,6 +508,7 @@ class Indexer:
         tenant_id: UUID,
         chunks: List[ChunkInput],
         vector_ids: Optional[List[Optional[str]]] = None,
+        chunk_ids: Optional[List[UUID]] = None,
         commit: bool = True,
     ) -> List[DocumentChunk]:
         if not chunks:
@@ -498,10 +519,19 @@ class Indexer:
         if len(vector_ids) != len(chunks):
             raise ValueError(f"vector_ids length {len(vector_ids)} != chunks length {len(chunks)}")
 
+        if chunk_ids is None:
+            chunk_ids = [uuid.uuid4() for _ in chunks]
+        if len(chunk_ids) != len(chunks):
+            raise ValueError(f"chunk_ids length {len(chunk_ids)} != chunks length {len(chunks)}")
+
         db_chunks: List[DocumentChunk] = []
-        for idx, (chunk, vector_id) in enumerate(zip(chunks, vector_ids)):
+        for idx, (chunk, vector_id, chunk_id) in enumerate(zip(chunks, vector_ids, chunk_ids)):
             meta = dict(chunk.metadata or {})
             normalize_image_metadata(meta)
+            meta.setdefault("tenant_id", str(tenant_id))
+            meta.setdefault("document_id", str(document_id))
+            meta.setdefault("chunk_index", idx)
+            meta["chunk_id"] = str(chunk_id)
             page_number = (
                 _safe_int(chunk.page_number)
                 if chunk.page_number is not None
@@ -512,6 +542,7 @@ class Indexer:
 
             db_chunks.append(
                 DocumentChunk(
+                    id=chunk_id,
                     tenant_id=tenant_id,
                     document_id=document_id,
                     chunk_index=idx,
@@ -553,6 +584,7 @@ class Indexer:
             meta.setdefault("tenant_id", str(tenant_id))
             meta.setdefault("document_id", str(document_id))
             meta.setdefault("chunk_index", db_chunk.chunk_index)
+            meta.setdefault("chunk_id", str(db_chunk.id))
             meta.setdefault("source", meta.get("source", default_source))
             meta.setdefault("page", db_chunk.page_number)
             meta.setdefault("image_id", meta.get("image_id"))

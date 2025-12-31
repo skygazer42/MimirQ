@@ -150,13 +150,22 @@ def build_common_line_signatures(
     max_line_length: int = 120,
 ) -> set[str]:
     doc_count = len(texts)
+    min_docs = max(2, int(min_docs or 0))
     if doc_count < min_docs:
         return set()
 
     line_docs: dict[str, int] = {}
     for text in texts:
         seen: set[str] = set()
+        in_code = False
         for line in text.splitlines():
+            if _CODE_FENCE_RE.match(line):
+                in_code = not in_code
+                continue
+            if in_code:
+                continue
+            if _is_structural_line(line):
+                continue
             key = _normalize_line_signature(line)
             if not key:
                 continue
@@ -392,7 +401,7 @@ def _collapse_spaced_letters(line: str) -> str:
                 letters.append(line[j + 2])
                 j += 2
 
-            if len(letters) >= 4:
+            if len(letters) >= 5:
                 word = "".join(letters)
                 # Skip ALL-CAPS sequences to avoid mangling acronyms like "U S A F".
                 if (

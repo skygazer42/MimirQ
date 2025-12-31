@@ -15,23 +15,7 @@ from uuid import UUID
 from app.core.config import settings
 from app.core.constants import MilvusConfig, EmbeddingProviders
 from app.rag.embedding import create_langchain_embeddings_from_config
-def _match_metadata_filter(meta: Dict[str, Any], filter_spec: Dict[str, Any]) -> bool:
-    """Simple metadata equality/inclusion matcher."""
-    if not filter_spec:
-        return True
-    if not isinstance(meta, dict):
-        return False
-    for key, expected in filter_spec.items():
-        if key not in meta:
-            return False
-        val = meta.get(key)
-        if isinstance(expected, list):
-            if val not in expected:
-                return False
-        else:
-            if val != expected:
-                return False
-    return True
+from app.rag.core.filters import match_metadata_filter as _match_metadata_filter
 
 logger = logging.getLogger(__name__)
 
@@ -392,7 +376,9 @@ class MilvusVectorStore:
             content = (doc.get("content") or "")[:65_535]
             meta = doc.get("metadata") or {}
 
-            vector_id = f"{document_id}_{idx}"
+            # Prefer stable chunk_id (UUID string) when available to avoid collisions on re-index.
+            chunk_id = meta.get("chunk_id")
+            vector_id = str(chunk_id) if chunk_id else f"{document_id}_{idx}"
             ids.append(vector_id)
             texts.append(content)
 
@@ -401,6 +387,7 @@ class MilvusVectorStore:
                     "tenant_id": str(tenant_id),
                     "document_id": str(document_id),
                     "chunk_index": int(meta.get("chunk_index", idx)),
+                    "chunk_id": str(chunk_id) if chunk_id else None,
                     "page_number": int(meta.get("page") or meta.get("page_number") or 0),
                     "source": str(meta.get("source", "unknown"))[:500],
                     "file_type": str(meta.get("file_type", "unknown"))[:20],
@@ -436,8 +423,10 @@ class MilvusVectorStore:
             meta = doc.metadata or {}
             if metadata_filter and not _match_metadata_filter(meta, metadata_filter):
                 continue
+            chunk_id = meta.get("chunk_id")
             formatted.append(
                 {
+                    "chunk_id": chunk_id,
                     "content": doc.page_content,
                     "metadata": {
                         "tenant_id": meta.get("tenant_id"),
@@ -445,6 +434,7 @@ class MilvusVectorStore:
                         "source": meta.get("source", "unknown"),
                         "page": meta.get("page_number"),
                         "chunk_index": meta.get("chunk_index"),
+                        "chunk_id": chunk_id,
                         "img_id": meta.get("img_id") or meta.get("image_id"),
                         "image_id": meta.get("image_id") or meta.get("img_id"),
                         "image_url": meta.get("image_url") or meta.get("img_url"),

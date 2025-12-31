@@ -20,8 +20,16 @@ from langgraph.checkpoint.base import (
     CheckpointTuple,
     WRITES_IDX_MAP,
     get_checkpoint_id,
-    get_checkpoint_metadata,
 )
+
+try:  # LangGraph 1.0.x compatibility
+    from langgraph.checkpoint.base import get_checkpoint_metadata  # type: ignore
+except Exception:  # pragma: no cover
+    def get_checkpoint_metadata(  # type: ignore[no-redef]
+        _config: RunnableConfig,
+        metadata: CheckpointMetadata,
+    ) -> CheckpointMetadata:
+        return metadata
 
 from app.core.config import settings
 

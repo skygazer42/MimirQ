@@ -135,6 +135,9 @@ def build_citations_from_docs(
             "chunk_content": snippet or ((doc.page_content or "")[:200] + "..."),
             "matched_terms": matched_terms,
             "page_number": meta.get("page"),
+            "header_path": meta.get("header_path") or meta.get("header_context"),
+            "chunk_strategy": meta.get("chunk_strategy"),
+            "chunk_role": meta.get("chunk_role"),
             "relevance_score": round(float(meta.get("score", 0.0) or 0.0), 2),
             "vector_score": round(v_score_raw, 3),
             "bm25_score": round(b_score_raw, 3),
@@ -159,4 +162,3 @@ def build_citations_from_docs(
 
         citations.append(citation)
     return citations
-

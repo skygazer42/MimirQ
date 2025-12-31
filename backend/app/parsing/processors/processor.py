@@ -466,6 +466,24 @@ class DocumentProcessorService:
                 )
                 chunks = chunked.chunks
 
+            # Drop extremely short chunks to reduce retrieval noise (keep image-bearing chunks).
+            min_chars = max(0, int(getattr(settings, "CHUNK_MIN_CHARS", 0) or 0))
+            if min_chars > 0 and chunks:
+                before = len(chunks)
+                filtered = []
+                for c in chunks:
+                    content = (c.page_content or "").strip()
+                    if len(content) >= min_chars:
+                        filtered.append(c)
+                        continue
+                    meta = c.metadata or {}
+                    if meta.get("img_id") or meta.get("image_id") or meta.get("image_url"):
+                        filtered.append(c)
+                chunks = filtered
+                dropped = before - len(chunks)
+                if dropped:
+                    logger.info("Dropped %s short chunks (<%s chars) for document %s", dropped, min_chars, document_id)
+
             if governance_stats is not None:
                 self._record_governance_metadata(db, tenant_id, document_id, governance_stats)
 
