@@ -8,7 +8,13 @@ export default function Home({
 }: {
   searchParams?: {
     conversation?: string
+    prompt?: string
   }
 }) {
-  return <ChatPageClient initialConversationId={searchParams?.conversation} />
+  return (
+    <ChatPageClient
+      initialConversationId={searchParams?.conversation}
+      initialPrompt={searchParams?.prompt}
+    />
+  )
 }

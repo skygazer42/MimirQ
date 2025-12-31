@@ -84,7 +84,7 @@ export function Sidebar() {
             id="file-upload"
             type="file"
             multiple
-            accept=".pdf,.txt,.md"
+            accept=".pdf,.txt,.md,.doc,.docx,.xls,.xlsx,.csv,.html,.json"
             className="hidden"
             onChange={handleFileUpload}
           />

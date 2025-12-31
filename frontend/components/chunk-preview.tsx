@@ -428,7 +428,7 @@ export function ChunkPreview({ onConfirm, onClose }: ChunkPreviewProps) {
               <input
                 id="chunk-file-input"
                 type="file"
-                accept=".pdf,.txt,.md"
+                accept=".pdf,.txt,.md,.doc,.docx,.xls,.xlsx,.csv,.html,.json"
                 multiple
                 className="hidden"
                 onChange={handleFileSelect}
@@ -593,7 +593,7 @@ export function ChunkPreview({ onConfirm, onClose }: ChunkPreviewProps) {
                   <input
                     id="add-file-input"
                     type="file"
-                    accept=".pdf,.txt,.md"
+                    accept=".pdf,.txt,.md,.doc,.docx,.xls,.xlsx,.csv,.html,.json"
                     multiple
                     className="hidden"
                     onChange={handleFileSelect}

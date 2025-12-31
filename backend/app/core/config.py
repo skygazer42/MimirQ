@@ -171,6 +171,10 @@ class Settings(BaseSettings):
     BM25_LAZY_BUILD_FULL_TENANT: bool = False
     # Upper bound for lazy-built chunks (0 disables the cap).
     BM25_LAZY_BUILD_MAX_CHUNKS: int = 8000
+    # Startup BM25 bootstrap (can be expensive; prefer lazy-build for large deployments).
+    BM25_STARTUP_BUILD_ENABLED: bool = False
+    # Upper bound for startup-built chunks across the whole instance (0 disables the cap).
+    BM25_STARTUP_BUILD_MAX_CHUNKS: int = 8000
     FAISS_STORE_PATH: str = "./vector_faiss"
     # FAISS persistence uses pickle; enable only when the index directory is fully trusted.
     FAISS_ALLOW_DANGEROUS_DESERIALIZATION: bool = False

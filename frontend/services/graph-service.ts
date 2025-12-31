@@ -1,4 +1,6 @@
 import { GraphData, GraphNode, GraphLink } from '@/lib/graph-parser'
+import { API_V1_BASE_URL } from '@/lib/env'
+import { getAuthHeaders } from '@/lib/auth-headers'
 
 // Mock delay to simulate network request
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms))
@@ -8,9 +10,26 @@ export class GraphService {
    * Fetch the initial graph data (e.g., top entities or root nodes)
    */
   static async fetchInitialGraph(): Promise<GraphData> {
-    console.log('[GraphService] Fetching initial graph...')
-    await delay(800) // Simulate latency
-    
+    // Try KG live graph first; fallback to mock data (so the page remains usable when KG is disabled).
+    try {
+      const res = await fetch(`${API_V1_BASE_URL}/kg/graph`, {
+        method: 'GET',
+        headers: {
+          ...getAuthHeaders(),
+        },
+      })
+      if (res.ok) {
+        const data = (await res.json()) as GraphData
+        if (data?.nodes && data?.links) {
+          return JSON.parse(JSON.stringify(data))
+        }
+      }
+    } catch {
+      // ignore and fallback
+    }
+
+    await delay(200) // keep a tiny delay for UI consistency
+
     // Mock Data: Core Concepts
     const nodes: GraphNode[] = [
       { id: '1', label: 'Artificial Intelligence', group: 1, val: 20 },
@@ -18,7 +37,7 @@ export class GraphService {
       { id: '3', label: 'Deep Learning', group: 1, val: 10 },
       { id: '4', label: 'NLP', group: 2, val: 12 },
       { id: '5', label: 'Computer Vision', group: 3, val: 12 },
-      { id: '6', label: 'Reinforcement Learning', group: 1, val: 10 }
+      { id: '6', label: 'Reinforcement Learning', group: 1, val: 10 },
     ]
 
     const links: GraphLink[] = [

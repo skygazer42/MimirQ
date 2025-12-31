@@ -148,6 +148,9 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         app,
         requests_per_second: float = 10.0,
         burst_size: Optional[int] = None,
+        chat_requests_per_second: Optional[float] = None,
+        chat_burst_size: Optional[int] = None,
+        chat_prefixes: Optional[list[str]] = None,
         exclude_paths: Optional[list] = None,
     ) -> None:
         super().__init__(app)
@@ -155,6 +158,13 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
             requests_per_second=requests_per_second,
             burst_size=burst_size,
         )
+        self.chat_limiter: Optional[RateLimiter] = None
+        if chat_requests_per_second is not None:
+            self.chat_limiter = RateLimiter(
+                requests_per_second=float(chat_requests_per_second),
+                burst_size=chat_burst_size,
+            )
+        self.chat_prefixes = tuple(chat_prefixes or [])
         self.exclude_paths = set(exclude_paths or ["/health", "/", "/docs", "/openapi.json", "/redoc"])
 
     async def dispatch(self, request: Request, call_next: Callable) -> Response:
@@ -162,7 +172,13 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
             return await call_next(request)
 
         key = get_client_key(request)
-        allowed, retry_after = await self.limiter.acheck(key)
+        limiter = self.limiter
+        if self.chat_limiter is not None and self.chat_prefixes:
+            path = request.url.path
+            if any(path.startswith(prefix) for prefix in self.chat_prefixes):
+                limiter = self.chat_limiter
+
+        allowed, retry_after = await limiter.acheck(key)
         if not allowed:
             logger.warning("Rate limit exceeded for %s on %s", key, request.url.path)
             return JSONResponse(

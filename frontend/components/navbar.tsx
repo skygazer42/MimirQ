@@ -9,6 +9,7 @@ import { usePathname, useRouter } from 'next/navigation'
 import {
   MessageSquare,
   Database,
+  Layers,
   History,
   Settings,
   FileText,
@@ -37,6 +38,11 @@ const menuItems = [
     icon: Database,
     label: '知识库',
     href: '/knowledge',
+  },
+  {
+    icon: Layers,
+    label: '数据集',
+    href: '/datasets',
   },
   {
     icon: History,

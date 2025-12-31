@@ -47,7 +47,8 @@ import { formatFileSize, formatDate, cn } from '@/lib/utils'
 import { StatCard, StatsGrid } from '@/components/ui/stats-card'
 import { DocumentDetailDialog } from '@/components/document-detail-dialog'
 import { getParserLabel } from '@/lib/parser-options'
-import type { Document } from '@/types'
+import type { Citation, Document } from '@/types'
+import { ragApi } from '@/lib/api-client'
 import { PipelineOptionsPanel } from '@/components/pipeline-options-panel'
 import { ParserDropdown } from '@/components/ui/parser-dropdown'
 import { ChunkStrategyDropdown } from '@/components/ui/chunk-strategy-dropdown'
@@ -68,7 +69,10 @@ export default function KnowledgePage() {
 
   // 检索测试状态
   const [searchQuery, setSearchQuery] = useState('')
-  const [searchResults, setSearchResults] = useState<any[]>([])
+  const [searchResults, setSearchResults] = useState<Citation[]>([])
+  const [searchQueryForRetrieval, setSearchQueryForRetrieval] = useState<string>('')
+  const [searchMetrics, setSearchMetrics] = useState<Record<string, any> | null>(null)
+  const [searchError, setSearchError] = useState<string | null>(null)
   const [isSearching, setIsSearching] = useState(false)
 
   // 计算统计数据
@@ -101,16 +105,27 @@ export default function KnowledgePage() {
     if (!searchQuery.trim()) return
 
     setIsSearching(true)
+    setSearchError(null)
+    setSearchResults([])
+    setSearchQueryForRetrieval('')
+    setSearchMetrics(null)
     try {
-      // 模拟搜索结果
-      await new Promise(resolve => setTimeout(resolve, 800))
-      setSearchResults([
-        { id: '1', content: 'MimirQ 是一个基于 RAG 架构的智能知识库系统，旨在帮助用户高效管理和检索文档数据...', score: 0.95, source: 'README.md' },
-        { id: '2', content: '系统支持多种文档格式，包括 PDF, TXT, Markdown, Excel 等，并能够自动进行文本分块和向量化...', score: 0.87, source: 'Feature_List.pdf' },
-        { id: '3', content: '在部署方面，支持 Docker Compose 一键启动，包含后端 API、前端界面和向量数据库 Milvus...', score: 0.76, source: 'Deploy_Guide.docx' },
-      ])
-    } catch (error) {
+      const res = await ragApi.retrievePreview({
+        query: searchQuery.trim(),
+        history: [],
+        document_ids: [],
+        rag_config: {
+          top_k: 5,
+          score_threshold: 0.7,
+          retrieval_mode: 'hybrid',
+        },
+      })
+      setSearchResults(res.citations || [])
+      setSearchQueryForRetrieval(res.query_for_retrieval || '')
+      setSearchMetrics(res.metrics || null)
+    } catch (error: any) {
       console.error('Search failed:', error)
+      setSearchError(error?.response?.data?.detail || error?.message || '检索失败，请检查后端服务状态')
     } finally {
       setIsSearching(false)
     }
@@ -195,7 +210,7 @@ export default function KnowledgePage() {
                 <input
                   type="file"
                   multiple
-                  accept=".pdf,.txt,.md,.xlsx,.xls,.docx,.doc"
+                  accept=".pdf,.txt,.md,.doc,.docx,.xls,.xlsx,.csv,.html,.json"
                   className="hidden"
                   onChange={handleFileUpload}
                 />
@@ -447,15 +462,38 @@ export default function KnowledgePage() {
                   </div>
                 </div>
 
+                {searchError && (
+                  <div className="max-w-2xl mx-auto mb-6 text-left">
+                    <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl p-4 text-sm text-red-700 dark:text-red-300">
+                      {searchError}
+                    </div>
+                  </div>
+                )}
+
                 {searchResults.length > 0 && (
                   <div className="text-left space-y-4 animate-in fade-in slide-in-from-bottom-4">
                     <div className="flex items-center justify-between px-2">
                       <h4 className="text-sm font-semibold text-slate-900 dark:text-white">召回结果</h4>
-                      <span className="text-xs text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-800 px-2 py-1 rounded-full">Top 3</span>
+                      <span className="text-xs text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-800 px-2 py-1 rounded-full">
+                        Top {searchResults.length}
+                      </span>
                     </div>
+
+                    {searchQueryForRetrieval && searchQueryForRetrieval !== searchQuery.trim() && (
+                      <div className="px-2 text-xs text-slate-500 dark:text-slate-400">
+                        实际检索 Query：<span className="font-mono">{searchQueryForRetrieval}</span>
+                      </div>
+                    )}
+
+                    {searchMetrics && (
+                      <div className="px-2 text-xs text-slate-500 dark:text-slate-400">
+                        Metrics：<span className="font-mono">{JSON.stringify(searchMetrics)}</span>
+                      </div>
+                    )}
+
                     {searchResults.map((result, index) => (
                       <div
-                        key={result.id}
+                        key={`${result.document_id}-${index}`}
                         className="group p-5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl hover:border-indigo-300 dark:hover:border-indigo-600 hover:shadow-md hover:shadow-indigo-50 dark:hover:shadow-indigo-900/10 transition-all duration-300 relative overflow-hidden"
                       >
                          <div className="absolute left-0 top-0 bottom-0 w-1 bg-indigo-500 opacity-0 group-hover:opacity-100 transition-opacity" />
@@ -465,15 +503,23 @@ export default function KnowledgePage() {
                           </div>
                           <div className="flex-1">
                             <p className="text-slate-800 dark:text-slate-200 leading-relaxed text-sm mb-3">
-                              {result.content}
+                              {result.chunk_content}
                             </p>
                             <div className="flex items-center gap-3 text-xs">
                               <span className="flex items-center gap-1 text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-800 px-2 py-1 rounded-md">
                                 <FileIcon className="w-3 h-3" />
-                                {result.source}
+                                {result.document_name}
                               </span>
                               <span className="text-slate-300 dark:text-slate-600">|</span>
-                              <span className="font-medium text-indigo-600 dark:text-indigo-400">相似度 {(result.score * 100).toFixed(0)}%</span>
+                              <span className="font-medium text-indigo-600 dark:text-indigo-400">
+                                相似度 {(result.relevance_score * 100).toFixed(0)}%
+                              </span>
+                              {typeof result.page_number === 'number' && (
+                                <>
+                                  <span className="text-slate-300 dark:text-slate-600">|</span>
+                                  <span className="text-slate-500 dark:text-slate-400">P.{result.page_number}</span>
+                                </>
+                              )}
                             </div>
                           </div>
                         </div>
@@ -701,7 +747,7 @@ function EmptyState({ onUpload }: { onUpload: (e: React.ChangeEvent<HTMLInputEle
         <input
           type="file"
           multiple
-          accept=".pdf,.txt,.md,.xlsx,.xls,.docx,.doc"
+          accept=".pdf,.txt,.md,.doc,.docx,.xls,.xlsx,.csv,.html,.json"
           className="hidden"
           onChange={onUpload}
         />

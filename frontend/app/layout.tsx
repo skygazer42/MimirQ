@@ -5,6 +5,7 @@ import { ParserBackendProvider } from "@/contexts/parser-backend-context"
 import { ChunkStrategyProvider } from "@/contexts/chunk-strategy-context"
 import { PipelineOptionsProvider } from "@/contexts/pipeline-options-context"
 import { ThemeProvider } from "@/components/theme-provider"
+import { SonnerToaster } from "@/components/sonner-toaster"
 
 const inter = Inter({ subsets: ["latin"] })
 
@@ -30,6 +31,7 @@ export default function RootLayout({
           enableSystem
           disableTransitionOnChange
         >
+          <SonnerToaster />
           <ParserBackendProvider>
             <ChunkStrategyProvider>
               <PipelineOptionsProvider>{children}</PipelineOptionsProvider>

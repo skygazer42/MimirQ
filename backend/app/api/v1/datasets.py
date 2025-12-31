@@ -2,16 +2,15 @@
 知识库管理 API
 支持知识库的创建、查询、更新、删除，以及权限管理。
 """
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 from uuid import UUID
-from typing import List
 
 from app.core.database import get_db
 from app.api.dependencies.tenant import get_tenant_id
 from app.api.dependencies.auth import get_current_account_id
-from app.api.schemas.dataset import DatasetCreate, DatasetUpdate, DatasetOut
-from app.models.dataset import DatasetPermissionEnum
+from app.api.schemas.dataset import DatasetCreate, DatasetUpdate, DatasetOut, DatasetListResponse
+from app.models.dataset import DatasetPermissionEnum, DatasetPermission
 from app.services.dataset_service import DatasetService, DatasetPermissionService
 from app.models.dataset import Dataset
 
@@ -50,23 +49,44 @@ def create_dataset(
     )
 
 
-@router.get("/", response_model=List[DatasetOut])
+@router.get("/", response_model=DatasetListResponse)
 def list_datasets(
+    skip: int = 0,
+    limit: int = 20,
     tenant_id: UUID = Depends(get_tenant_id),
     account_id: str = Depends(get_current_account_id),
     db: Session = Depends(get_db)
 ):
     DatasetService.ensure_member(db, tenant_id, account_id)
     # list all datasets in tenant
-    datasets = db.query(Dataset).filter(
-        Dataset.tenant_id == tenant_id
-    ).all()
+    query = db.query(Dataset).filter(Dataset.tenant_id == tenant_id)
+    total = query.count()
+    datasets = query.order_by(Dataset.created_at.desc()).offset(skip).limit(limit).all()
+
+    # Avoid N+1 queries for PARTIAL_MEMBERS datasets
+    partial_ids = [ds.id for ds in datasets if ds.permission == DatasetPermissionEnum.PARTIAL_MEMBERS]
+    partial_member_map = {}
+    if partial_ids:
+        rows = (
+            db.query(DatasetPermission)
+            .filter(
+                DatasetPermission.tenant_id == tenant_id,
+                DatasetPermission.dataset_id.in_(partial_ids),
+            )
+            .all()
+        )
+        from collections import defaultdict
+
+        tmp = defaultdict(list)
+        for row in rows:
+            tmp[row.dataset_id].append(row.account_id)
+        partial_member_map = dict(tmp)
 
     results = []
     for ds in datasets:
         partial_list = None
         if ds.permission == DatasetPermissionEnum.PARTIAL_MEMBERS:
-            partial_list = DatasetPermissionService.get_dataset_partial_member_list(db, tenant_id, ds.id)
+            partial_list = partial_member_map.get(ds.id, [])
         results.append(DatasetOut(
             id=ds.id,
             tenant_id=ds.tenant_id,
@@ -76,7 +96,7 @@ def list_datasets(
             owner_id=ds.owner_id,
             partial_member_list=partial_list
         ))
-    return results
+    return {"total": total, "items": results}
 
 
 @router.get("/{dataset_id}", response_model=DatasetOut)

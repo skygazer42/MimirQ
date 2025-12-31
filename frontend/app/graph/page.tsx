@@ -6,6 +6,8 @@
  * 优化：主流视觉设计、交互侧边栏、玻璃拟态控件、搜索与高级筛选、后端集成、路径分析、布局切换、图编辑、RAG可解释性、3D可视化
  */
 import { useState, useRef, useEffect, useCallback } from 'react'
+import { useRouter } from 'next/navigation'
+import { toast } from 'sonner'
 import { Navbar } from '@/components/navbar'
 import { Button } from '@/components/ui/button'
 import { 
@@ -46,6 +48,7 @@ import { findShortestPath } from '@/lib/graph-algorithms'
 import { cn } from '@/lib/utils'
 
 export default function GraphPage() {
+  const router = useRouter()
   const [isSidebarOpen, setSidebarOpen] = useState(true)
   const [graphData, setGraphData] = useState<GraphData>({ nodes: [], links: [] })
   const [fileName, setFileName] = useState<string | null>(null)
@@ -122,7 +125,7 @@ export default function GraphPage() {
         resetExplainMode()
       } catch (error) {
         console.error('Failed to parse graph file:', error)
-        alert('解析文件失败，请确保是有效的 GraphML 文件')
+        toast.error('解析文件失败，请确保是有效的 GraphML 文件')
       } finally {
         setIsLoading(false)
       }
@@ -220,13 +223,13 @@ export default function GraphPage() {
     setConnectSourceNode(selectedNode)
     setIsConnectMode(true)
     setIsDetailOpen(false)
-    alert(`已进入连线模式。\n当前起点: ${selectedNode.label}\n请点击图谱上的另一个节点作为终点。`)
+    toast(`连线模式：请选择终点节点（起点：${selectedNode.label}）`)
   }
 
   const finishConnection = (targetNode: any) => {
     if (!connectSourceNode) return
     if (connectSourceNode.id === targetNode.id) {
-      alert("不能连接自己！")
+      toast.error('不能连接自己')
       return
     }
 
@@ -256,7 +259,7 @@ export default function GraphPage() {
   // --- Explainability Logic ---
   const startExplainMode = () => {
     if (graphData.nodes.length < 3) {
-      alert("图谱节点过少，无法演示推理路径")
+      toast.warning('图谱节点过少，无法演示推理路径')
       return
     }
 
@@ -383,7 +386,7 @@ export default function GraphPage() {
          graphRef.current.zoomToFit() 
       }
     } else {
-      alert("未找到连接这两个节点的路径")
+      toast.info('未找到连接这两个节点的路径')
       setPathEndNode(null)
     }
   }
@@ -452,11 +455,18 @@ export default function GraphPage() {
   }
 
   const handleChatWithNode = () => {
-    alert(`跳转到对话页面，预填 Prompt: "请告诉我关于 ${selectedNode.label} 的信息"`)
+    if (!selectedNode?.label) return
+    const prompt = `请告诉我关于 ${selectedNode.label} 的信息`
+    router.push(`/?prompt=${encodeURIComponent(prompt)}`)
   }
 
   const handleViewSource = () => {
-    alert(`打开源文档: ${selectedNode.source || 'Unknown Document'}`)
+    const docId = selectedNode?.meta?.document_id || selectedNode?.source
+    if (docId) {
+      toast(`源文档：${docId}`)
+      return
+    }
+    toast('未找到源文档信息')
   }
 
   return (

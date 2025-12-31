@@ -8,6 +8,7 @@ import Image from 'next/image'
 import { Send, Loader2, StopCircle, Sparkles, Database, Wand2 } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
+import { toast } from 'sonner'
 import { useChat } from '@/hooks/use-chat'
 import { useDocuments } from '@/hooks/use-documents'
 import { Button } from '@/components/ui/button'
@@ -25,12 +26,14 @@ import {
 
 export function ChatArea({
   initialConversationId,
+  initialPrompt,
   onConversationId,
 }: {
   initialConversationId?: string
+  initialPrompt?: string
   onConversationId?: (conversationId: string) => void
 } = {}) {
-  const [inputValue, setInputValue] = useState('')
+  const [inputValue, setInputValue] = useState(() => (initialPrompt || '').trim())
   const [promptTemplateId, setPromptTemplateId] = useState<string>('')
   const [promptTemplates, setPromptTemplates] = useState<PromptTemplate[]>([])
   const [showRagSettings, setShowRagSettings] = useState(false)
@@ -86,7 +89,7 @@ export function ChatArea({
     onConversationId,
     onError: (error) => {
       console.error('Chat error:', error)
-      alert(error)
+      toast.error(error || '聊天请求失败')
     },
   })
 
@@ -140,6 +143,13 @@ export function ChatArea({
       textareaRef.current.style.height = `${textareaRef.current.scrollHeight}px`
     }
   }, [inputValue])
+
+  // Support deep-linking with prefilled prompt (?prompt=...)
+  useEffect(() => {
+    const p = (initialPrompt || '').trim()
+    if (!p) return
+    setInputValue((prev) => (prev.trim() ? prev : p))
+  }, [initialPrompt])
 
   // 发送消息
   const handleSend = () => {

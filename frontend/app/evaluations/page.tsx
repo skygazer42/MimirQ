@@ -21,6 +21,7 @@ import {
   RefreshCw,
   XCircle,
 } from 'lucide-react'
+import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
 
 const METRIC_OPTIONS = [
@@ -165,7 +166,7 @@ function EvaluationsPageContent() {
       setSelectedRunId(run.id)
     } catch (e) {
       console.error('Failed to start evaluation', e)
-      alert('启动评测失败，请检查后端日志/配置。')
+      toast.error('启动评测失败，请检查后端日志/配置。')
     } finally {
       setIsStarting(false)
     }
