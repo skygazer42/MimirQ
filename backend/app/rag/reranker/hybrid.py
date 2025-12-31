@@ -1,7 +1,12 @@
 """
-Weighted Reranker
+Hybrid Reranker（混合重排器）
 
-融合向量相似度和关键词匹配的加权重排器。
+融合向量相似度和关键词匹配的混合重排策略。
+
+实现：
+- 向量检索：基于语义相似度
+- 关键词检索：基于 TF-IDF
+- 加权融合：可配置权重组合两种分数
 """
 from __future__ import annotations
 

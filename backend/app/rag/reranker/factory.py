@@ -104,7 +104,7 @@ def get_reranker(
     
     # Document Rerankers
     elif provider == "llm":
-        from app.rag.reranker.llm import get_llm_reranker
+        from app.rag.reranker.llm_based import get_llm_reranker
         return get_llm_reranker()
     
     elif provider in ("parent_child", "pc"):
@@ -112,7 +112,7 @@ def get_reranker(
         return ParentChildReranker()
     
     elif provider == "weighted":
-        from app.rag.reranker.weighted import WeightedReranker, Weights
+        from app.rag.reranker.hybrid import WeightedReranker, Weights
         
         weights = kwargs.get("weights")
         if not weights:

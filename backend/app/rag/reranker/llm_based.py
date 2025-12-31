@@ -1,11 +1,14 @@
 """
-LLM Reranker（基于大模型的精排器）
+LLM-Based Reranker（基于大模型的精排器）
 
 用于对检索到的候选切片做"精排"，提升答案引用的相关性。
+
 实现策略：
 - 输入 query + candidates（截断后的 text）
 - 让 LLM 输出严格 JSON：[{ "id": "...", "score": 0~1 }, ...]，按相关度降序
 - 解析失败则回退到原顺序
+
+注意：此模块是 reranker 的一种实现，不要与 app.rag.llm（LLM客户端）混淆。
 """
 
 from __future__ import annotations
