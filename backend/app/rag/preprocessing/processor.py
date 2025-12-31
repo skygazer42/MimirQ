@@ -49,14 +49,20 @@ class GovernanceProcessor:
             return [], GovernanceStats(documents=0, changed=0, applied_rules=0)
 
         active_rules = list(rules) if rules is not None else self._rules
+        doc_count = len(documents)
+        min_docs_eff = max(2, int(common_lines_min_docs or 0))
+        if doc_count >= 2:
+            min_docs_eff = min(min_docs_eff, doc_count)
+        else:
+            min_docs_eff = 0
         global_common_lines = (
             build_common_line_signatures(
                 [doc.page_content or "" for doc in documents],
-                min_docs=common_lines_min_docs,
+                min_docs=min_docs_eff,
                 min_ratio=common_lines_min_ratio,
                 max_line_length=unwrap_max_line_length,
             )
-            if remove_common_lines
+            if remove_common_lines and min_docs_eff >= 2
             else set()
         )
         cleaned: List[Document] = []

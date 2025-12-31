@@ -9,6 +9,7 @@ from uuid import UUID
 import math
 import re
 from collections import Counter
+import heapq
 import jieba
 import time
 
@@ -17,14 +18,17 @@ from langchain_core.callbacks import CallbackManagerForRetrieverRun, AsyncCallba
 from langchain_core.retrievers import BaseRetriever
 from langchain_community.retrievers.bm25 import BM25Retriever
 from pydantic import PrivateAttr, ConfigDict
+from sqlalchemy import tuple_
 
 from app.storage.vector.factory import get_vector_store
 from app.models.document import DocumentChunk
 from app.core.config import settings
 from app.core.database import SessionLocal
+from app.rag.core.filters import match_metadata_filter
 from app.rag.reranker.factory import get_reranker
 from app.rag.reranker.types import RerankCandidate
 from app.rag.core.logging import get_logger
+from app.rag.preprocessing.stopwords import STOPWORDS
 
 
 logger = get_logger("rag.retriever")
@@ -67,6 +71,26 @@ class HybridRetriever(BaseRetriever):
     def _tenant_key(self, tenant_id: Optional[UUID]) -> str:
         return str(tenant_id or settings.DEFAULT_TENANT_ID)
 
+    @staticmethod
+    def _bm25_tokenize(text: str) -> List[str]:
+        """Tokenize text for BM25 (jieba + stopwords + simple length guards)."""
+        raw = (text or "").strip()
+        if not raw:
+            return []
+        tokens: List[str] = []
+        for token in jieba.cut_for_search(raw):
+            tok = str(token).strip()
+            if not tok:
+                continue
+            norm = tok.casefold() if tok.isascii() else tok
+            if norm in STOPWORDS:
+                continue
+            # Skip single-character tokens (too noisy for BM25).
+            if len(norm) < 2:
+                continue
+            tokens.append(norm)
+        return tokens
+
     def build_bm25_index(self, chunks: List[DocumentChunk], tenant_id: Optional[UUID] = None):
         """构建/重建 BM25 索引。"""
         if not chunks:
@@ -79,6 +103,7 @@ class HybridRetriever(BaseRetriever):
             meta.setdefault("tenant_id", str(chunk.tenant_id))
             meta.setdefault("document_id", str(chunk.document_id))
             meta.setdefault("chunk_index", chunk.chunk_index)
+            meta.setdefault("chunk_id", str(chunk.id))
             meta.setdefault("source", meta.get("source", "unknown"))
             meta.setdefault("page", chunk.page_number or meta.get("page"))
             meta.setdefault("image_id", meta.get("image_id"))
@@ -88,7 +113,7 @@ class HybridRetriever(BaseRetriever):
 
         retriever = BM25Retriever.from_documents(
             docs,
-            preprocess_func=lambda text: list(jieba.cut_for_search(text)),
+            preprocess_func=self._bm25_tokenize,
             k=10,
         )
         self._bm25_retrievers[tenant_key] = retriever
@@ -123,7 +148,7 @@ class HybridRetriever(BaseRetriever):
         merged_docs = list(merged.values())
         retriever = BM25Retriever.from_documents(
             merged_docs,
-            preprocess_func=lambda text: list(jieba.cut_for_search(text)),
+            preprocess_func=self._bm25_tokenize,
             k=10,
         )
         self._bm25_retrievers[tenant_key] = retriever
@@ -148,7 +173,7 @@ class HybridRetriever(BaseRetriever):
         filtered = [d for d in existing if str((d.metadata or {}).get("document_id")) != str(document_id)]
         retriever = BM25Retriever.from_documents(
             filtered,
-            preprocess_func=lambda text: list(jieba.cut_for_search(text)),
+            preprocess_func=self._bm25_tokenize,
             k=10,
         ) if filtered else None
         if retriever is None:
@@ -209,6 +234,7 @@ class HybridRetriever(BaseRetriever):
                         "source": meta.get("source", "unknown"),
                         "page": meta.get("page"),
                         "chunk_index": meta.get("chunk_index"),
+                        "chunk_id": meta.get("chunk_id") or doc.id,
                         "img_id": meta.get("img_id"),
                         "image_id": meta.get("image_id"),
                         "image_url": meta.get("image_url"),
@@ -218,8 +244,9 @@ class HybridRetriever(BaseRetriever):
                 }
             )
 
-        results.sort(key=lambda x: x["score"], reverse=True)
-        return results[:top_k]
+        if not results:
+            return []
+        return heapq.nlargest(max(0, int(top_k or 0)), results, key=lambda x: float(x.get("score", 0.0) or 0.0))
 
     def _hybrid_search(
         self,
@@ -308,10 +335,21 @@ class HybridRetriever(BaseRetriever):
 
         # 尝试补全向量检索结果的 chunk_id（用于 citations / RAGAS contexts）
         if vector_results:
+            if metadata_filter and self.metadata_filter_enabled:
+                vector_results = [
+                    r for r in vector_results if self._match_metadata_filter((r.get("metadata") or {}), metadata_filter)
+                ]
             tenant_key = self._tenant_key(tenant_id)
             lookup = self._chunk_id_lookup.get(tenant_key) or {}
             for r in vector_results:
                 meta = r.get("metadata") or {}
+                existing = r.get("chunk_id") or meta.get("chunk_id")
+                if existing:
+                    r["chunk_id"] = str(existing)
+                    meta = dict(meta)
+                    meta["chunk_id"] = str(existing)
+                    r["metadata"] = meta
+                    continue
                 doc_id = meta.get("document_id")
                 chunk_index = meta.get("chunk_index")
                 if doc_id is None or chunk_index is None:
@@ -455,7 +493,8 @@ class HybridRetriever(BaseRetriever):
                 for ck in q.all():
                     chunks_by_id[str(ck.id)] = ck
 
-            # 对缺失 chunk_id 的结果，尝试按 (document_id, chunk_index) 回查并补齐 chunk_id
+            # Batch lookup missing chunk_id by (document_id, chunk_index) to avoid N+1 queries.
+            missing_pairs: set[tuple[UUID, int]] = set()
             for r in results:
                 cid = r.get("chunk_id")
                 if cid and str(cid) in chunks_by_id:
@@ -470,46 +509,66 @@ class HybridRetriever(BaseRetriever):
                     chunk_idx = int(chunk_index)
                 except Exception:
                     continue
+                missing_pairs.add((doc_uuid, chunk_idx))
 
+            chunks_by_pair: Dict[tuple[str, int], DocumentChunk] = {}
+            if missing_pairs:
                 q = db.query(DocumentChunk).filter(
-                    DocumentChunk.document_id == doc_uuid,
-                    DocumentChunk.chunk_index == chunk_idx,
+                    tuple_(DocumentChunk.document_id, DocumentChunk.chunk_index).in_(list(missing_pairs))
                 )
                 if tenant_filter:
                     q = q.filter(DocumentChunk.tenant_id == tenant_filter)
-                ck = q.first()
-                if not ck:
-                    continue
+                for ck in q.all():
+                    chunks_by_pair[(str(ck.document_id), int(ck.chunk_index))] = ck
 
-                r["chunk_id"] = str(ck.id)
-                meta = dict(meta)
-                meta["chunk_id"] = str(ck.id)
-                r["metadata"] = meta
-                chunks_by_id[str(ck.id)] = ck
-
-            # 合并 DB metadata（只补空缺字段，避免覆盖向量侧的 score 等）
+            resolved: List[Dict[str, Any]] = []
             for r in results:
                 meta = dict(r.get("metadata") or {})
                 cid = r.get("chunk_id") or meta.get("chunk_id")
                 ck = chunks_by_id.get(str(cid)) if cid else None
-                if not ck:
+
+                if ck is None:
+                    doc_id = meta.get("document_id")
+                    chunk_index = meta.get("chunk_index")
+                    try:
+                        doc_uuid = UUID(str(doc_id))
+                        chunk_idx = int(chunk_index)
+                    except Exception:
+                        doc_uuid = None
+                        chunk_idx = None
+                    if doc_uuid is not None and chunk_idx is not None:
+                        ck = chunks_by_pair.get((str(doc_uuid), chunk_idx))
+
+                # If we know tenant_id, treat unresolved results as stale (e.g. orphan vectors).
+                if ck is None and tenant_filter:
                     continue
 
-                stored_meta = dict(ck.doc_metadata or {})
-                if stored_meta.get("img_id") and not meta.get("img_id"):
-                    meta["img_id"] = stored_meta.get("img_id")
-                if stored_meta.get("source") and not meta.get("source"):
-                    meta["source"] = stored_meta.get("source")
-                if (ck.page_number is not None) and not meta.get("page"):
-                    meta["page"] = ck.page_number
-                if stored_meta.get("parser_backend") and not meta.get("parser_backend"):
-                    meta["parser_backend"] = stored_meta.get("parser_backend")
-                if stored_meta.get("doc_type_kwd") and not meta.get("doc_type_kwd"):
-                    meta["doc_type_kwd"] = stored_meta.get("doc_type_kwd")
+                if ck is not None:
+                    cid_str = str(ck.id)
+                    r["chunk_id"] = cid_str
+                    meta["chunk_id"] = cid_str
+                    chunks_by_id[cid_str] = ck
+
+                    # 合并 DB metadata（只补空缺字段，避免覆盖向量侧的 score 等）
+                    stored_meta = dict(ck.doc_metadata or {})
+                    if stored_meta.get("img_id") and not meta.get("img_id"):
+                        meta["img_id"] = stored_meta.get("img_id")
+                    if stored_meta.get("source") and not meta.get("source"):
+                        meta["source"] = stored_meta.get("source")
+                    if (ck.page_number is not None) and not meta.get("page"):
+                        meta["page"] = ck.page_number
+                    if stored_meta.get("parser_backend") and not meta.get("parser_backend"):
+                        meta["parser_backend"] = stored_meta.get("parser_backend")
+                    if stored_meta.get("doc_type_kwd") and not meta.get("doc_type_kwd"):
+                        meta["doc_type_kwd"] = stored_meta.get("doc_type_kwd")
+                    for key in ("header_path", "header_context", "chunk_strategy", "chunk_role", "parent_id"):
+                        if stored_meta.get(key) and not meta.get(key):
+                            meta[key] = stored_meta.get(key)
 
                 r["metadata"] = meta
+                resolved.append(r)
 
-            return results
+            return resolved
         except Exception:
             return results
         finally:
@@ -583,69 +642,7 @@ class HybridRetriever(BaseRetriever):
         return str(doc_id) if doc_id is not None else ""
 
     def _match_metadata_filter(self, meta: Dict[str, Any], filter_spec: Dict[str, Any]) -> bool:
-        """
-        Check if metadata matches the filter specification.
-
-        Supports operators:
-        - $eq: exact match (default if no operator)
-        - $ne: not equal
-        - $gt, $gte, $lt, $lte: comparison
-        - $in: value in list
-        - $nin: value not in list
-        - $contains: string contains (case-insensitive)
-
-        Examples:
-            {"source": "doc.pdf"}  # exact match
-            {"page": {"$gte": 10}}  # page >= 10
-            {"source": {"$in": ["a.pdf", "b.pdf"]}}  # source in list
-            {"title": {"$contains": "report"}}  # title contains "report"
-        """
-        if not filter_spec:
-            return True
-
-        for key, condition in filter_spec.items():
-            meta_value = meta.get(key)
-
-            if isinstance(condition, dict):
-                # Operator-based condition
-                for op, expected in condition.items():
-                    if op == "$eq":
-                        if meta_value != expected:
-                            return False
-                    elif op == "$ne":
-                        if meta_value == expected:
-                            return False
-                    elif op == "$gt":
-                        if meta_value is None or meta_value <= expected:
-                            return False
-                    elif op == "$gte":
-                        if meta_value is None or meta_value < expected:
-                            return False
-                    elif op == "$lt":
-                        if meta_value is None or meta_value >= expected:
-                            return False
-                    elif op == "$lte":
-                        if meta_value is None or meta_value > expected:
-                            return False
-                    elif op == "$in":
-                        if meta_value not in expected:
-                            return False
-                    elif op == "$nin":
-                        if meta_value in expected:
-                            return False
-                    elif op == "$contains":
-                        if meta_value is None:
-                            return False
-                        if str(expected).lower() not in str(meta_value).lower():
-                            return False
-                    else:
-                        logger.warning("Unknown filter operator: %s", op)
-            else:
-                # Direct value comparison (implicit $eq)
-                if meta_value != condition:
-                    return False
-
-        return True
+        return match_metadata_filter(meta, filter_spec)
 
     @staticmethod
     def _tokenize_for_similarity(text: str) -> set[str]:

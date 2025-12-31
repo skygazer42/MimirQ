@@ -95,6 +95,8 @@ class Settings(BaseSettings):
 
     CHUNK_SIZE: int = 1000
     CHUNK_OVERLAP: int = 200
+    # Drop extremely short chunks during indexing (0 disables).
+    CHUNK_MIN_CHARS: int = 30
     RETRIEVAL_TOP_K: int = 5
     SIMILARITY_THRESHOLD: float = 0.7
     # MMR (Maximal Marginal Relevance) settings

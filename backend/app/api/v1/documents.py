@@ -1030,6 +1030,24 @@ async def preview_chunking(
             )
             chunks = chunker.split_documents(documents)
 
+        # Align with ingestion: drop extremely short chunks (keep image-bearing chunks).
+        min_chars = max(0, int(getattr(settings, "CHUNK_MIN_CHARS", 0) or 0))
+        if min_chars > 0 and chunks:
+            before = len(chunks)
+            filtered = []
+            for c in chunks:
+                content = (c.page_content or "").strip()
+                if len(content) >= min_chars:
+                    filtered.append(c)
+                    continue
+                meta = c.metadata or {}
+                if meta.get("img_id") or meta.get("image_id") or meta.get("image_url"):
+                    filtered.append(c)
+            chunks = filtered
+            dropped = before - len(chunks)
+            if dropped:
+                logger.info("Chunk preview dropped %s short chunks (<%s chars)", dropped, min_chars)
+
         # 合并原文：非 ragflow 分支用解析后的 pages；ragflow 预设分支用 chunks 拼接，
         # 以保证 original_text 与 chunks 一致，便于前端高亮定位。
         page_texts = []

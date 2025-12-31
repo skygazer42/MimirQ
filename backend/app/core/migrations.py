@@ -18,6 +18,13 @@ def apply_runtime_migrations(engine) -> None:
             # Common query pattern: tenant + conversation timeline
             'CREATE INDEX IF NOT EXISTS ix_messages_tenant_conversation_created_at '
             'ON messages (tenant_id, conversation_id, created_at);',
+            # Retrieval hot paths: document chunks and document status filters
+            'CREATE INDEX IF NOT EXISTS ix_document_chunks_tenant_document '
+            'ON document_chunks (tenant_id, document_id);',
+            'CREATE INDEX IF NOT EXISTS ix_document_chunks_tenant_document_chunk_index '
+            'ON document_chunks (tenant_id, document_id, chunk_index);',
+            'CREATE INDEX IF NOT EXISTS ix_documents_tenant_status '
+            'ON documents (tenant_id, status);',
             # Prompt templates: versioning + A/B testing
             'ALTER TABLE prompt_templates ADD COLUMN IF NOT EXISTS template_key VARCHAR(100);',
             'ALTER TABLE prompt_templates ADD COLUMN IF NOT EXISTS version INTEGER DEFAULT 1;',

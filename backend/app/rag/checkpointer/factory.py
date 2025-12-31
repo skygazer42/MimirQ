@@ -9,7 +9,10 @@ from typing import Optional
 from app.rag.checkpointer.sqlite import SqliteSaver
 from app.core.config import settings
 from langgraph.checkpoint.base import BaseCheckpointSaver
-from langgraph.checkpoint.memory import InMemorySaver
+try:  # LangGraph 1.0.x compatibility
+    from langgraph.checkpoint.memory import InMemorySaver  # type: ignore
+except Exception:  # pragma: no cover
+    from langgraph.checkpoint.memory import MemorySaver as InMemorySaver  # type: ignore
 
 logger = logging.getLogger(__name__)
 

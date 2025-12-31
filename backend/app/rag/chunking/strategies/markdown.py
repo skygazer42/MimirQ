@@ -93,9 +93,8 @@ class MarkdownHeaderChunker(BaseChunker):
             List of chunked Document objects with header metadata
         """
         all_chunks: List[Document] = []
-        char_offset = 0
 
-        for doc_idx, doc in enumerate(documents):
+        for doc in documents:
             text = doc.page_content or ""
             original_metadata = dict(doc.metadata or {})
 
@@ -105,21 +104,22 @@ class MarkdownHeaderChunker(BaseChunker):
             # Check if document appears to be markdown
             if not self._is_markdown(text):
                 # Fall back to recursive splitting
-                chunks = self._fallback_split(doc, char_offset)
+                chunks = self._fallback_split(doc)
                 all_chunks.extend(chunks)
-                char_offset += len(text)
                 continue
 
             try:
                 # Split by markdown headers
                 md_chunks = self._md_splitter.split_text(text)
+                search_pos = 0
 
                 for chunk_idx, md_doc in enumerate(md_chunks):
                     # Calculate character positions
                     chunk_text = md_doc.page_content
-                    start_pos = text.find(chunk_text, char_offset - (len(text) if doc_idx > 0 else 0))
-                    if start_pos == -1:
-                        start_pos = char_offset
+                    start_pos = text.find(chunk_text, max(0, int(search_pos)))
+                    if start_pos < 0:
+                        start_pos = max(0, min(int(search_pos), len(text)))
+                    end_pos = min(len(text), start_pos + len(chunk_text))
 
                     # Build metadata
                     chunk_metadata = {
@@ -127,8 +127,10 @@ class MarkdownHeaderChunker(BaseChunker):
                         **(md_doc.metadata or {}),
                         "chunk_strategy": "markdown_header",
                         "chunk_index": len(all_chunks),
-                        "start_char": char_offset + start_pos if start_pos >= 0 else char_offset,
-                        "end_char": char_offset + start_pos + len(chunk_text) if start_pos >= 0 else char_offset + len(chunk_text),
+                        # IMPORTANT: positions are local to `doc.page_content`
+                        # (the caller may rebase with page_start_map later).
+                        "start_char": start_pos,
+                        "end_char": end_pos,
                     }
 
                     # Build header path for better context
@@ -140,29 +142,37 @@ class MarkdownHeaderChunker(BaseChunker):
                     if len(chunk_text) > self.chunk_size * 1.5:
                         # Split large chunks with fallback splitter
                         sub_chunks = self._fallback_splitter.split_text(chunk_text)
+                        sub_search_pos = 0
                         for sub_idx, sub_text in enumerate(sub_chunks):
+                            rel = chunk_text.find(sub_text, max(0, int(sub_search_pos)))
+                            if rel < 0:
+                                rel = max(0, min(int(sub_search_pos), len(chunk_text)))
+                            sub_start = start_pos + rel
+                            sub_end = min(len(text), sub_start + len(sub_text))
                             sub_metadata = {
                                 **chunk_metadata,
                                 "chunk_index": len(all_chunks),
                                 "sub_chunk_index": sub_idx,
+                                "start_char": sub_start,
+                                "end_char": sub_end,
                             }
                             all_chunks.append(Document(
                                 page_content=sub_text,
                                 metadata=sub_metadata,
                             ))
+                            sub_search_pos = max(sub_end - self.chunk_overlap - start_pos, rel + 1)
                     else:
                         all_chunks.append(Document(
                             page_content=chunk_text,
                             metadata=chunk_metadata,
                         ))
 
-                char_offset += len(text)
+                    search_pos = max(end_pos - self.chunk_overlap, start_pos + 1)
 
             except Exception as e:
                 logger.warning(f"Markdown splitting failed, using fallback: {e}")
-                chunks = self._fallback_split(doc, char_offset)
+                chunks = self._fallback_split(doc)
                 all_chunks.extend(chunks)
-                char_offset += len(text)
 
         return all_chunks
 
@@ -199,7 +209,7 @@ class MarkdownHeaderChunker(BaseChunker):
                 parts.append(str(metadata[meta_key]))
         return " > ".join(parts) if parts else ""
 
-    def _fallback_split(self, doc: Document, char_offset: int) -> List[Document]:
+    def _fallback_split(self, doc: Document) -> List[Document]:
         """Split document using fallback splitter."""
         text = doc.page_content or ""
         original_metadata = dict(doc.metadata or {})
@@ -218,8 +228,8 @@ class MarkdownHeaderChunker(BaseChunker):
                 **original_metadata,
                 "chunk_strategy": "markdown_fallback_recursive",
                 "chunk_index": chunk_idx,
-                "start_char": char_offset + pos,
-                "end_char": char_offset + pos + len(chunk_text),
+                "start_char": pos,
+                "end_char": pos + len(chunk_text),
             }
 
             result.append(Document(
@@ -302,22 +312,28 @@ class MarkdownAwareChunker(BaseChunker):
             raw_chunks = self._splitter.split_text(protected_text)
 
             # Restore code blocks and create documents
-            char_offset = 0
+            search_pos = 0
             for chunk_idx, chunk_text in enumerate(raw_chunks):
                 # Restore code blocks in this chunk
                 restored_text = self._restore_code_blocks(chunk_text, code_blocks)
 
                 # Calculate positions
-                pos = text.find(restored_text[:50] if len(restored_text) > 50 else restored_text)
-                if pos == -1:
-                    pos = char_offset
+                pos = text.find(restored_text, max(0, int(search_pos)))
+                if pos < 0:
+                    probe = (restored_text or "").strip()
+                    if probe:
+                        probe = probe[: min(120, len(probe))]
+                        pos = text.find(probe, max(0, int(search_pos)))
+                if pos < 0:
+                    pos = max(0, min(int(search_pos), len(text)))
+                end_pos = min(len(text), pos + len(restored_text))
 
                 chunk_metadata = {
                     **original_metadata,
                     "chunk_strategy": "markdown_aware",
                     "chunk_index": len(all_chunks),
                     "start_char": pos,
-                    "end_char": pos + len(restored_text),
+                    "end_char": end_pos,
                 }
 
                 # Extract current header context
@@ -330,7 +346,7 @@ class MarkdownAwareChunker(BaseChunker):
                     metadata=chunk_metadata,
                 ))
 
-                char_offset = pos + len(restored_text) - self.chunk_overlap
+                search_pos = max(end_pos - self.chunk_overlap, pos + 1)
 
         return all_chunks
 

@@ -19,29 +19,90 @@ def _estimate_tokens(text: str) -> int:
     return max(1, len(text) // 4)
 
 
+_HEADING_RE = re.compile(r"^\s*#{1,6}\s+")
+_LIST_RE = re.compile(r"^\s*(?:[-*+]|(?:\d{1,3}[.)]))\s+")
+_BLOCKQUOTE_RE = re.compile(r"^\s*>")
+_CODE_FENCE_RE = re.compile(r"^\s*```")
+_TABLE_ROW_RE = re.compile(r"^\s*\|.*\|\s*$")
+
+
 def _split_paragraphs(text: str) -> List[Tuple[str, int, int]]:
     """
-    Split text by double newlines or Markdown headers/lists.
+    Split text into paragraph-like blocks while preserving offsets.
+
+    Rules (conservative):
+    - Blank lines split paragraphs.
+    - Headings/list items/blockquote start new paragraphs.
+    - Code fences are kept as a single paragraph (fenced block).
+    - Tables (pipe rows) are kept as a single paragraph.
 
     Returns:
         List of (paragraph_text, start_pos, end_pos)
     """
-    paragraphs = []
-    pattern = re.compile(r"\n{2,}|(?=^#{1,6}\s)|(?=^- |\* )", re.MULTILINE)
-    last = 0
+    if not text:
+        return []
 
-    for m in pattern.finditer(text):
-        end = m.start()
-        seg = text[last:end]
-        paragraphs.append((seg, last, end))
-        last = m.end()
+    paragraphs: List[Tuple[str, int, int]] = []
+    buf: List[str] = []
+    buf_start = 0
+    offset = 0
+    in_code = False
+    in_table = False
 
-    # Handle trailing text
-    if last < len(text):
-        paragraphs.append((text[last:], last, len(text)))
+    def flush(end_offset: int) -> None:
+        nonlocal buf, buf_start, in_table
+        if not buf:
+            return
+        seg = "".join(buf)
+        if seg.strip():
+            paragraphs.append((seg, buf_start, end_offset))
+        buf = []
+        buf_start = end_offset
+        in_table = False
 
-    # Filter empty segments
-    return [(seg, s, e) for seg, s, e in paragraphs if seg.strip()]
+    for line in text.splitlines(keepends=True):
+        line_start = offset
+        line_end = offset + len(line)
+        offset = line_end
+
+        if _CODE_FENCE_RE.match(line):
+            if not in_code and buf and "".join(buf).strip():
+                flush(line_start)
+            buf.append(line)
+            in_code = not in_code
+            if not in_code:
+                flush(line_end)
+            continue
+
+        if in_code:
+            buf.append(line)
+            continue
+
+        stripped = line.strip()
+        if not stripped:
+            flush(line_start)
+            buf_start = line_end
+            continue
+
+        is_table = bool(_TABLE_ROW_RE.match(line))
+        if in_table and not is_table:
+            flush(line_start)
+            buf_start = line_start
+
+        is_boundary = bool(_HEADING_RE.match(line) or _LIST_RE.match(line) or _BLOCKQUOTE_RE.match(line))
+        if is_boundary and buf and "".join(buf).strip():
+            flush(line_start)
+            buf_start = line_start
+
+        if is_table and not in_table and buf and "".join(buf).strip():
+            flush(line_start)
+            buf_start = line_start
+
+        buf.append(line)
+        in_table = is_table or in_table
+
+    flush(len(text))
+    return paragraphs
 
 
 def _split_sentences(paragraph: str, base_offset: int) -> List[Tuple[str, int, int]]:

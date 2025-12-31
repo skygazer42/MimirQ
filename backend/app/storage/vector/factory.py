@@ -14,28 +14,15 @@ from app.storage.vector.milvus import milvus_store
 from langchain_community.vectorstores import FAISS
 from langchain_community.vectorstores import Chroma
 from app.rag.embedding import create_langchain_embeddings_from_config
+from app.rag.core.filters import match_metadata_filter
 
 
 logger = logging.getLogger(__name__)
 
 
 def _match_metadata_filter(meta: Dict[str, Any], filter_spec: Dict[str, Any]) -> bool:
-    """Simple equality/containment metadata filter."""
-    if not filter_spec:
-        return True
-    if not isinstance(meta, dict):
-        return False
-    for key, expected in filter_spec.items():
-        if key not in meta:
-            return False
-        val = meta.get(key)
-        if isinstance(expected, list):
-            if val not in expected:
-                return False
-        else:
-            if val != expected:
-                return False
-    return True
+    """Metadata filter matcher (supports operators)."""
+    return match_metadata_filter(meta, filter_spec)
 
 
 class BaseVectorStore:
@@ -72,6 +59,7 @@ class MilvusVectorStore(BaseVectorStore):
         score_threshold: float,
         document_ids: Optional[List[UUID]],
         tenant_id: Optional[UUID],
+        metadata_filter: Optional[Dict[str, Any]] = None,
     ) -> List[Dict[str, Any]]:
         return milvus_store.search(
             query=query,
@@ -79,6 +67,7 @@ class MilvusVectorStore(BaseVectorStore):
             score_threshold=score_threshold,
             document_ids=document_ids,
             tenant_id=tenant_id,
+            metadata_filter=metadata_filter,
         )
 
     def delete_by_document_id(self, document_id: UUID, tenant_id: Optional[UUID] = None) -> None:
@@ -98,6 +87,7 @@ class StubVectorStore(BaseVectorStore):
         score_threshold: float,
         document_ids: Optional[List[UUID]],
         tenant_id: Optional[UUID],
+        metadata_filter: Optional[Dict[str, Any]] = None,
     ) -> List[Dict[str, Any]]:
         return []
 
@@ -134,10 +124,17 @@ class MemoryVectorStore(BaseVectorStore):
             meta = dict(doc.get("metadata") or {})
             meta.setdefault("document_id", str(document_id))
             meta.setdefault("tenant_id", str(tenant_id))
+            if meta.get("chunk_id"):
+                meta["chunk_id"] = str(meta.get("chunk_id"))
             meta.setdefault("content", doc.get("content", ""))
             self.storage.append((vec, meta))
         # 内存场景不返回真实向量 ID，用占位
-        return [f"{document_id}_mem_{i}" for i in range(len(texts))]
+        ids: List[str] = []
+        for i, d in enumerate(docs):
+            meta = dict(d.get("metadata") or {})
+            cid = meta.get("chunk_id")
+            ids.append(str(cid) if cid else f"{document_id}_mem_{i}")
+        return ids
 
     def search(
         self,
@@ -253,12 +250,14 @@ class FAISSVectorStore(BaseVectorStore):
             meta.setdefault("document_id", str(document_id))
             meta.setdefault("tenant_id", str(tenant_id))
             meta.setdefault("chunk_index", idx)
+            if meta.get("chunk_id"):
+                meta["chunk_id"] = str(meta.get("chunk_id"))
             if "img_id" in meta and "image_id" not in meta:
                 meta["image_id"] = meta.get("img_id")
             if "image_url" not in meta:
                 meta.setdefault("image_url", meta.get("img_url"))
             metadatas.append(meta)
-            ids.append(f"{document_id}_{idx}")
+            ids.append(str(meta.get("chunk_id")) if meta.get("chunk_id") else f"{document_id}_{idx}")
 
         key, store = self._get_store(tenant_id)
         if store is None:
@@ -376,11 +375,13 @@ class ChromaVectorStore(BaseVectorStore):
             meta.setdefault("document_id", str(document_id))
             meta.setdefault("tenant_id", str(tenant_id))
             meta.setdefault("chunk_index", idx)
+            if meta.get("chunk_id"):
+                meta["chunk_id"] = str(meta.get("chunk_id"))
             if "img_id" in meta and "image_id" not in meta:
                 meta["image_id"] = meta.get("img_id")
             meta.setdefault("image_url", meta.get("img_url"))
             metadatas.append(meta)
-            ids.append(f"{document_id}_{idx}")
+            ids.append(str(meta.get("chunk_id")) if meta.get("chunk_id") else f"{document_id}_{idx}")
         key, store = self._get_store(tenant_id)
         store.add_texts(texts=texts, metadatas=metadatas, ids=ids)
         store.persist()
