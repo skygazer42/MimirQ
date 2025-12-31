@@ -27,6 +27,9 @@ from app.services.metrics_logger import log_metrics
 
 logger = get_logger("rag.reranker")
 
+# HTTP 状态码：可重试的错误
+RETRYABLE_HTTP_CODES = frozenset({408, 429, 500, 502, 503, 504})
+
 
 class _ScoreCache:
     def __init__(self) -> None:
@@ -126,7 +129,7 @@ class BaseReranker(ABC):
         默认实现：在独立线程中运行同步 rerank()
         子类可以覆盖提供真正的异步实现。
         """
-        return await asyncio.to_thread(self.rerank, query, candidates, **kwargs)
+        return await asyncio.to_thread(lambda: self.rerank(query, candidates, **kwargs))
 
 
 class APIReranker(BaseReranker):
@@ -306,7 +309,7 @@ class APIReranker(BaseReranker):
                     except Exception as exc:  # noqa: BLE001
                         last_exc = exc
                         status = getattr(exc, "status", None)
-                        retryable = status in (408, 429, 500, 502, 503, 504) or isinstance(exc, (aiohttp.ClientError, asyncio.TimeoutError))
+                        retryable = status in RETRYABLE_HTTP_CODES or isinstance(exc, (aiohttp.ClientError, asyncio.TimeoutError))
                         if attempt < max_retries and retryable:
                             await asyncio.sleep(backoff * (2**attempt))
                             continue
@@ -400,7 +403,7 @@ class APIReranker(BaseReranker):
         def should_retry(exc: Exception) -> bool:
             if isinstance(exc, httpx.HTTPStatusError):
                 status = exc.response.status_code
-                return status in (408, 429, 500, 502, 503, 504)
+                return status in RETRYABLE_HTTP_CODES
             return isinstance(exc, httpx.RequestError)
 
         def post_one(batch_docs: list[str], *, client: httpx.Client | None = None) -> list[float]:
@@ -603,10 +606,15 @@ class APIReranker(BaseReranker):
                         }
                     )
                 raise
-            if len(network_scores) < len(missing_docs):
-                network_scores = list(network_scores) + [0.0] * (len(missing_docs) - len(network_scores))
-            if len(network_scores) > len(missing_docs):
-                network_scores = list(network_scores)[: len(missing_docs)]
+            if len(network_scores) != len(missing_docs):
+                logger.warning(
+                    "API reranker score count mismatch: expected %d, got %d (provider=%s, model=%s)",
+                    len(missing_docs), len(network_scores), provider, self.model
+                )
+                if len(network_scores) < len(missing_docs):
+                    network_scores = list(network_scores) + [0.0] * (len(missing_docs) - len(network_scores))
+                else:
+                    network_scores = list(network_scores)[: len(missing_docs)]
 
             for idx, score in zip(missing_indices, network_scores):
                 scores[idx] = float(score)
