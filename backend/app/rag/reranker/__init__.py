@@ -5,22 +5,26 @@ Reranker 模块
 - BaseReranker: 顶层抽象基类
 - APIReranker: HTTP API 调用型 reranker
 - DocumentReranker: 文档级别 reranker
+
+API Rerankers:
 - OpenAIReranker: OpenAI 风格 API
 - DashScopeReranker: 阿里云 DashScope
-- WeightedReranker: 权重融合重排
+
+Document Rerankers:
+- WeightedReranker: 混合重排（向量+关键词）[hybrid.py]
 - ParentChildReranker: 父子关系重排
-- LLMReranker: 基于大模型的精排
+- LLMReranker: 基于大模型的精排 [llm_based.py]
 - KGReranker: 知识图谱重排
 """
 from app.rag.reranker.base import BaseReranker, APIReranker, DocumentReranker
 from app.rag.reranker.openai import OpenAIReranker
 from app.rag.reranker.dashscope import DashScopeReranker
-from app.rag.reranker.weighted import WeightedReranker, Weights, VectorSetting, KeywordSetting, RerankMode
+from app.rag.reranker.hybrid import WeightedReranker, Weights, VectorSetting, KeywordSetting, RerankMode
 from app.rag.reranker.parent_child import ParentChildReranker
 from app.rag.reranker.kg import KGReranker, get_kg_reranker
 from app.rag.reranker.types import RerankCandidate, RerankResult
 from app.rag.reranker.factory import get_reranker, get_rag_reranker
-from app.rag.reranker.llm import LLMReranker, LLMRerankResult, get_llm_reranker
+from app.rag.reranker.llm_based import LLMReranker, LLMRerankResult, get_llm_reranker
 
 __all__ = [
     # 基类
