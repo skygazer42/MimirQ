@@ -100,6 +100,37 @@ export function Navbar({
   const router = useRouter()
   const [backendOk, setBackendOk] = useState<boolean | null>(null)
 
+  // Dev UX: warm up route chunks in the background so first-click navigation feels snappier.
+  useEffect(() => {
+    if (process.env.NODE_ENV === 'production') return
+    if (typeof window === 'undefined') return
+    const key = '__mimirq_routes_prefetched__'
+    if ((window as any)[key]) return
+    ;(window as any)[key] = true
+
+    const hrefs = menuItems.map((i) => i.href).filter(Boolean)
+    const prefetchAll = () => {
+      for (const href of hrefs) {
+        if (href === pathname) continue
+        try {
+          router.prefetch(href)
+        } catch {
+          // ignore
+        }
+      }
+    }
+
+    // Prefer idle time to avoid blocking initial render.
+    const w = window as any
+    if (typeof w.requestIdleCallback === 'function') {
+      const id = w.requestIdleCallback(prefetchAll, { timeout: 2000 })
+      return () => w.cancelIdleCallback?.(id)
+    }
+
+    const t = window.setTimeout(prefetchAll, 800)
+    return () => window.clearTimeout(t)
+  }, [router, pathname])
+
   useEffect(() => {
     let alive = true
     const ping = async () => {
@@ -167,6 +198,7 @@ export function Navbar({
                 <div key={item.href}>
                   <Link
                     href={item.href}
+                    prefetch
                     onClick={() => setSidebarOpen(false)}
                     className={cn(
                       'flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-200 group',
