@@ -36,7 +36,10 @@ from app.deepdoc.parser.figure_parser import VisionFigureParser,vision_figure_pa
 from app.deepdoc.parser.pdf_parser import PlainParser, VisionParser
 from app.deepdoc.parser.mineru_parser import MinerUParser
 from app.deepdoc.parser.docling_parser import DoclingParser
-from app.deepdoc.parser.tcadp_parser import TCADPParser
+try:
+    from app.deepdoc.parser.tcadp_parser import TCADPParser
+except Exception:  # noqa: BLE001
+    TCADPParser = None
 from app.rag.chunking.ragflow.nlp import concat_img, find_codec, naive_merge, naive_merge_with_images, naive_merge_docx, rag_tokenizer, tokenize_chunks, tokenize_chunks_with_images, tokenize_table, attach_media_context
 
 
@@ -100,6 +103,10 @@ def by_docling(filename, binary=None, from_page=0, to_page=100000, lang="Chinese
 
 
 def by_tcadp(filename, binary=None, from_page=0, to_page=100000, lang="Chinese", callback=None, pdf_cls = None ,**kwargs):
+    if TCADPParser is None:
+        callback(-1, "TCADP parser dependency missing. Please install/enable Tencent Cloud SDK (lkeap).")
+        return None, None, None
+
     tcadp_parser = TCADPParser()
 
     if not tcadp_parser.check_installation():
@@ -729,6 +736,10 @@ def chunk(filename, binary=None, from_page=0, to_page=100000, lang="Chinese", ca
         # Check if tcadp_parser is selected for spreadsheet files
         layout_recognizer = parser_config.get("layout_recognize", "DeepDOC")
         if layout_recognizer == "TCADP Parser":
+            if TCADPParser is None:
+                callback(-1, "TCADP parser dependency missing. Please install/enable Tencent Cloud SDK (lkeap).")
+                return res
+
             table_result_type = parser_config.get("table_result_type", "1")
             markdown_image_response_type = parser_config.get("markdown_image_response_type", "1")
             tcadp_parser = TCADPParser(
