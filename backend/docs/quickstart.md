@@ -35,6 +35,18 @@ pnpm install
 pnpm dev
 ```
 
+可选：本地启动后端（Python），依赖服务仍用 Docker：
+```bash
+cd backend
+cp .env.example .env
+
+# 只启动依赖（Postgres / Milvus / MinIO）
+docker compose up -d postgres etcd minio milvus
+
+pip install -r requirements.txt
+python main.py
+```
+
 ### 4. 访问应用
 
 打开浏览器访问:
