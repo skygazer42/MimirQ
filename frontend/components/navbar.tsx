@@ -99,6 +99,14 @@ export function Navbar({
   const pathname = usePathname()
   const router = useRouter()
   const [backendOk, setBackendOk] = useState<boolean | null>(null)
+  const closeSidebarOnMobile = () => {
+    if (typeof window === 'undefined') return
+    try {
+      if (window.matchMedia('(max-width: 768px)').matches) setSidebarOpen(false)
+    } catch {
+      // ignore
+    }
+  }
 
   // Dev UX: warm up route chunks in the background so first-click navigation feels snappier.
   useEffect(() => {
@@ -178,7 +186,7 @@ export function Navbar({
             className="w-full justify-start gap-2 bg-primary hover:bg-primary/90 text-primary-foreground shadow-sm h-10 rounded-xl transition-all"
             onClick={() => {
               router.push('/')
-              setSidebarOpen(false)
+              closeSidebarOnMobile()
             }}
           >
             <Plus className="h-4 w-4" />
@@ -199,7 +207,7 @@ export function Navbar({
                   <Link
                     href={item.href}
                     prefetch
-                    onClick={() => setSidebarOpen(false)}
+                    onClick={closeSidebarOnMobile}
                     className={cn(
                       'flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-200 group',
                       isActive

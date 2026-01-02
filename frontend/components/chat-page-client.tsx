@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useState } from 'react'
+import { useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 
 import { Navbar } from '@/components/navbar'
@@ -13,7 +13,6 @@ export function ChatPageClient({
   initialConversationId?: string
   initialPrompt?: string
 }) {
-  const [isSidebarOpen, setSidebarOpen] = useState(true)
   const router = useRouter()
 
   const handleConversationId = useCallback(
@@ -28,14 +27,14 @@ export function ChatPageClient({
 
   return (
     <div className="flex h-screen overflow-hidden bg-white">
-      <Navbar isSidebarOpen={isSidebarOpen} setSidebarOpen={setSidebarOpen} />
-      <div className={`flex-1 flex flex-col ${isSidebarOpen ? 'ml-64' : 'ml-0'}`}>
+      <Navbar />
+      <main className="flex-1 flex flex-col overflow-hidden">
         <ChatArea
           initialConversationId={initialConversationId}
           initialPrompt={initialPrompt}
           onConversationId={handleConversationId}
         />
-      </div>
+      </main>
     </div>
   )
 }

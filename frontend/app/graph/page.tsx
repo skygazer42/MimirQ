@@ -49,7 +49,6 @@ import { cn } from '@/lib/utils'
 
 export default function GraphPage() {
   const router = useRouter()
-  const [isSidebarOpen, setSidebarOpen] = useState(true)
   const [graphData, setGraphData] = useState<GraphData>({ nodes: [], links: [] })
   const [fileName, setFileName] = useState<string | null>(null)
   const [selectedNode, setSelectedNode] = useState<any | null>(null)
@@ -471,7 +470,7 @@ export default function GraphPage() {
 
   return (
     <div className="flex h-screen overflow-hidden bg-slate-50">
-      <Navbar isSidebarOpen={isSidebarOpen} setSidebarOpen={setSidebarOpen} />
+      <Navbar />
       
       <main className="flex-1 flex flex-col transition-all duration-300 relative">
         {/* Header */}

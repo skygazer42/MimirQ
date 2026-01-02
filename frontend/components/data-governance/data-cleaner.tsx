@@ -24,6 +24,8 @@ import {
 import { usePipelineOptions } from '@/contexts/pipeline-options-context'
 import { PipelineOptionsPanel } from '@/components/pipeline-options-panel'
 
+const SELECT_DEFAULT_VALUE = '__mimirq_default__'
+
 interface DataCleanerProps {
   content: string
   cleanedContent?: string
@@ -187,12 +189,15 @@ export function DataCleaner({ content, cleanedContent = '', onClean }: DataClean
           <div className="mt-3 space-y-2">
             <div className="flex items-center gap-2">
               <span className="text-xs text-gray-500 w-16">提示词</span>
-              <Select value={promptTemplateId} onValueChange={setPromptTemplateId}>
+              <Select
+                value={promptTemplateId || SELECT_DEFAULT_VALUE}
+                onValueChange={(v) => setPromptTemplateId(v === SELECT_DEFAULT_VALUE ? '' : v)}
+              >
                 <SelectTrigger className="h-8 text-xs w-full">
                   <SelectValue placeholder="选择清洗模板" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">默认清洗模板（内置）</SelectItem>
+                  <SelectItem value={SELECT_DEFAULT_VALUE}>默认清洗模板（内置）</SelectItem>
                   {promptTemplates.map((tpl) => (
                     <SelectItem key={tpl.id} value={tpl.id}>
                       {tpl.name}

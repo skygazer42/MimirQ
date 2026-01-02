@@ -52,7 +52,6 @@ function HistoryPageContent() {
   const searchParams = useSearchParams()
   const conversationId = searchParams.get('id')
 
-  const [isSidebarOpen, setSidebarOpen] = useState(true)
   const [conversations, setConversations] = useState<Conversation[]>([])
   const [selectedConversation, setSelectedConversation] = useState<Conversation | null>(null)
   const [messages, setMessages] = useState<Message[]>([])
@@ -158,7 +157,7 @@ function HistoryPageContent() {
 
   return (
     <div className="flex h-screen overflow-hidden bg-white dark:bg-slate-950 transition-colors duration-300">
-      <Navbar isSidebarOpen={isSidebarOpen} setSidebarOpen={setSidebarOpen} />
+      <Navbar />
 
       <div className="flex-1 flex overflow-hidden">
         {/* 侧边栏 - 对话列表 */}

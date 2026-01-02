@@ -24,6 +24,8 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 
+const SELECT_DEFAULT_VALUE = '__mimirq_default__'
+
 export function ChatArea({
   initialConversationId,
   initialPrompt,
@@ -205,12 +207,15 @@ export function ChatArea({
           {promptTemplates.length > 0 && (
             <div className="flex items-center gap-2 px-2">
               <Wand2 className="w-4 h-4 text-slate-400" />
-              <Select value={promptTemplateId} onValueChange={setPromptTemplateId}>
+              <Select
+                value={promptTemplateId || SELECT_DEFAULT_VALUE}
+                onValueChange={(v) => setPromptTemplateId(v === SELECT_DEFAULT_VALUE ? '' : v)}
+              >
                 <SelectTrigger className="w-[240px] h-8 text-sm">
                   <SelectValue placeholder="选择提示词模板" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">默认模板</SelectItem>
+                  <SelectItem value={SELECT_DEFAULT_VALUE}>默认模板</SelectItem>
                   {promptTemplates.map((template) => (
                     <SelectItem key={template.id} value={template.id}>
                       {template.name}
@@ -308,19 +313,22 @@ export function ChatArea({
                 <span>结构化</span>
               </label>
 
-              {structuredOutput && (
-                <div className="flex items-center gap-2">
-                  <span className="text-slate-400">Preset</span>
-                  <Select value={structuredPreset} onValueChange={setStructuredPreset}>
-                    <SelectTrigger className="w-[160px] h-8 text-xs">
-                      <SelectValue placeholder="选择 preset" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="">custom（默认）</SelectItem>
-                      <SelectItem value="faq">faq</SelectItem>
-                      <SelectItem value="summary">summary</SelectItem>
-                      <SelectItem value="action_items">action_items</SelectItem>
-                    </SelectContent>
+                {structuredOutput && (
+                  <div className="flex items-center gap-2">
+                    <span className="text-slate-400">Preset</span>
+                    <Select
+                      value={structuredPreset || SELECT_DEFAULT_VALUE}
+                      onValueChange={(v) => setStructuredPreset(v === SELECT_DEFAULT_VALUE ? '' : v)}
+                    >
+                      <SelectTrigger className="w-[160px] h-8 text-xs">
+                        <SelectValue placeholder="选择 preset" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value={SELECT_DEFAULT_VALUE}>custom（默认）</SelectItem>
+                        <SelectItem value="faq">faq</SelectItem>
+                        <SelectItem value="summary">summary</SelectItem>
+                        <SelectItem value="action_items">action_items</SelectItem>
+                      </SelectContent>
                   </Select>
                 </div>
               )}
