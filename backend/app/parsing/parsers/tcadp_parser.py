@@ -14,7 +14,6 @@ from pathlib import Path
 from typing import Any, Callable, List, Optional, Tuple
 from app.core.config import settings
 from .base_parser import BaseAdvancedParser
-from app.deepdoc.parser.tcadp_parser import TCADPParser as DeepDocTCADPParser
 
 class TCADPParser(BaseAdvancedParser):
     """
@@ -52,6 +51,17 @@ class TCADPParser(BaseAdvancedParser):
         return "tcadp"
 
     def _create_parser(self) -> Any:
+        try:
+            from app.deepdoc.parser.tcadp_parser import TCADPParser as DeepDocTCADPParser
+        except Exception as exc:  # noqa: BLE001
+            class _UnavailableTCADPParser:  # local stub
+                def __init__(self, reason: str):
+                    self._unavailable_reason = reason
+
+                def check_installation(self) -> bool:
+                    return False
+
+            return _UnavailableTCADPParser(f"TCADP dependency missing: {type(exc).__name__}: {exc}")
 
         return DeepDocTCADPParser(
             secret_id=self.secret_id,
@@ -62,6 +72,9 @@ class TCADPParser(BaseAdvancedParser):
         )
 
     def _check_parser_installation(self, parser: Any) -> Tuple[bool, str]:
+        unavailable_reason = getattr(parser, "_unavailable_reason", "")
+        if unavailable_reason:
+            return (False, unavailable_reason)
         ok = parser.check_installation()
         return (ok, "" if ok else "TCADP not configured")
 
