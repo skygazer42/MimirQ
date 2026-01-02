@@ -4,7 +4,8 @@
 
 ### 1. 克隆项目
 ```bash
-cd /data/temp34/MimirQ
+git clone https://github.com/yourusername/MimirQ.git
+cd MimirQ
 ```
 
 ### 2. 配置模型 API Key
@@ -20,19 +21,25 @@ LLM_API_KEY=sk-your-api-key-here
 
 ### 3. 启动服务
 
-**Linux/Mac**:
 ```bash
-./start.sh
-```
+cd backend
+# 如未创建 .env，可先从模板复制
+cp .env.example .env
 
-**Windows**:
-```bash
-start.bat
+docker compose up -d --build
+docker compose ps
+
+# (可选) 启动前端
+cd ../frontend
+pnpm install
+pnpm dev
 ```
 
 ### 4. 访问应用
 
-打开浏览器访问: http://localhost:3000
+打开浏览器访问:
+- 后端 API 文档: http://localhost:8000/docs
+- 前端界面 (需启动前端): http://localhost:3000
 
 ---
 
@@ -185,8 +192,8 @@ gunicorn app.main:app -w 4 -k uvicorn.workers.UvicornWorker
 
 **Next.js 生产构建** (frontend):
 ```bash
-npm run build
-npm start
+pnpm build
+pnpm start
 ```
 
 ### 2. Milvus 性能优化

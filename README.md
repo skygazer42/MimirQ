@@ -181,6 +181,8 @@ MimirQ/
 │   │   ├── models/      # 数据模型 (Pydantic/SQLModel)
 │   │   ├── services/    # 业务逻辑 (RAG/Milvus/LangChain)
 │   │   └── deepdoc/     # 深度文档解析模块
+│   ├── docker-compose.yml   # 后端一键部署 (含依赖服务)
+│   ├── Makefile             # 后端常用命令
 │   └── Dockerfile       # 后端构建文件
 ├── frontend/            # Next.js 前端界面
 │   ├── app/             # 页面路由
@@ -188,7 +190,6 @@ MimirQ/
 │   ├── lib/             # 工具函数与 API 客户端
 │   └── public/          # 静态资源
 ├── docs/                # 项目文档
-├── docker-compose.yml   # 容器编排配置
 └── README.md            # 项目说明
 ```
 
@@ -237,19 +238,24 @@ vim backend/.env
 **3. 启动服务**
 
 ```bash
-# 拉取并启动所有服务 (首次运行可能需要几分钟下载镜像)
-# 说明：默认使用 X-User-ID 本地鉴权（AUTH_MODE=header），便于前后端联调
+# 启动后端 (PostgreSQL + Milvus + FastAPI)
+cd backend
 docker compose up -d --build
 
 # 检查服务状态
 docker compose ps
+
+# (可选) 启动前端
+cd ../frontend
+pnpm install
+pnpm dev
 ```
 
 ### 访问服务
 
-等待约 1 分钟服务完全启动后，访问：
-1. 前端界面: http://localhost:3000
-2. 后端接口文档: http://localhost:8000/docs
+等待后端服务启动后，访问：
+1. 后端接口文档: http://localhost:8000/docs
+2. 前端界面 (需启动前端): http://localhost:3000
 
 ---
 
@@ -325,7 +331,7 @@ source venv/bin/activate  # Windows: venv\Scripts\activate
 pip install -r requirements.txt
 
 # 启动 PostgreSQL + Milvus (Docker)
-docker compose -f ../docker-compose.yml up -d postgres etcd minio milvus
+docker compose up -d postgres etcd minio milvus
 
 # 启动后端服务
 uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
@@ -337,13 +343,13 @@ uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 cd frontend
 
 # 安装依赖
-npm install
+pnpm install
 
 # 启动开发服务器
-npm run dev
+pnpm dev
 
 # 构建生产版本
-npm run build
+pnpm build
 ```
 
 ---
@@ -427,11 +433,8 @@ docs = retriever.invoke(query)
 ### Docker Compose (推荐)
 
 ```bash
-# 生产环境部署
-docker-compose -f docker-compose.yml -f docker-compose.prod.yml up -d
-
-# 扩容后端服务
-docker-compose up -d --scale backend=3
+cd backend
+docker compose up -d --build
 ```
 
 ### Kubernetes
