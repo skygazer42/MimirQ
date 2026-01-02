@@ -31,7 +31,11 @@ import numpy as np
 import pdfplumber
 import requests
 from PIL import Image
-from strenum import StrEnum
+
+try:
+    from enum import StrEnum  # py>=3.11
+except ImportError:  # pragma: no cover
+    from strenum import StrEnum  # py<3.11
 
 from app.deepdoc.parser.pdf_parser import RAGFlowPdfParser
 

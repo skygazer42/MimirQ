@@ -4,7 +4,7 @@ Default embedding model configurations.
 This module defines the supported embedding models with their configurations.
 Models are identified by "provider/model_name" format.
 """
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class EmbedModelInfo(BaseModel):
@@ -17,6 +17,8 @@ class EmbedModelInfo(BaseModel):
         api_key: API key or environment variable name
         model_id: Optional unique model identifier
     """
+
+    model_config = ConfigDict(protected_namespaces=())
 
     name: str = Field(..., description="Model name")
     dimension: int = Field(..., description="Vector dimension")
