@@ -26,6 +26,8 @@ const DEFAULT_KG_CONFIG: KGConfig = {
   extract_prompt_ab_experiment_key: '',
 }
 
+const SELECT_DEFAULT_VALUE = '__mimirq_default__'
+
 export function KgExtractPromptSettings({ templates }: { templates: PromptTemplate[] }) {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -123,12 +125,15 @@ export function KgExtractPromptSettings({ templates }: { templates: PromptTempla
 
         <div className="space-y-2">
           <Label>抽取模板（按 ID 固定）</Label>
-          <Select value={draft.extract_prompt_template_id} onValueChange={onPickTemplate}>
+          <Select
+            value={draft.extract_prompt_template_id || SELECT_DEFAULT_VALUE}
+            onValueChange={(v) => onPickTemplate(v === SELECT_DEFAULT_VALUE ? '' : v)}
+          >
             <SelectTrigger>
               <SelectValue placeholder="默认（内置提示词）" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="">默认（内置提示词）</SelectItem>
+              <SelectItem value={SELECT_DEFAULT_VALUE}>默认（内置提示词）</SelectItem>
               {templates.map((t) => (
                 <SelectItem key={t.id} value={t.id} disabled={!t.is_active}>
                   {t.name}{t.is_active ? '' : '（已停用）'}
