@@ -4,16 +4,17 @@
 
 ## 快速启动
 
-- Docker（推荐）：`docker compose up -d --build`
-  - 前端：`http://localhost:3000`
+- Docker（推荐）：先启动后端 `cd backend; docker compose up -d --build`，再启动前端 `cd frontend; pnpm install; pnpm dev`
   - 后端：`http://localhost:8000/docs`
+  - 前端：`http://localhost:3000`
 - 本地开发（不推荐混用 Conda/系统 Python 时请注意环境一致性）
   - 后端：`cd backend; python -m pip install -r requirements.txt; uvicorn app.main:app --reload`
-  - 前端：`cd frontend; npm i; npm run dev`
+  - 前端：`cd frontend; pnpm install; pnpm dev`
 
 ## 最小联调流程（建议照这个走一遍）
 
-1. 启动：`docker compose up -d --build`
+1. 启动后端：`cd backend; docker compose up -d --build`
+2. 启动前端：`cd frontend; pnpm dev`
 2. 打开前端：`http://localhost:3000`，观察左下角 `Backend：OK`
 3. 上传文档：进入「知识库」页上传 PDF/TXT/MD，等待状态变为 `completed`
 4. 聊天验证：回到「对话」页提问，确认能看到 citations（包含页码/相似度/图片）
@@ -25,7 +26,7 @@
 - **400 Invalid tenant id**：检查 `NEXT_PUBLIC_TENANT_ID` / localStorage `mimirq_tenant_id` 是否是合法 UUID
 - **CORS**：后端 `.env` 的 `CORS_ORIGINS` 需包含 `http://localhost:3000`
 - **图片不显示**：确认后端 `MINIO_ENABLED=true`，并能访问 `GET /api/v1/documents/image-url/{img_id}`
-- **Next build 报 EPERM .next/trace**：用 `NEXT_DIST_DIR=.next_build npm run build`（已支持可配置 distDir）
+- **Next build 报 EPERM .next/trace**：用 `NEXT_DIST_DIR=.next_build pnpm build`（已支持可配置 distDir）
 
 ## 20 个任务（计划 + 执行）
 

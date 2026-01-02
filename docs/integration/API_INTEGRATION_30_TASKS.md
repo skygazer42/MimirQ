@@ -31,13 +31,13 @@
 20. ✅ 数据治理“保存并继续”：将清洗后的 markdown 回写到共享存储，并 toast 提示
 
 21. ✅ 增加自动化“接口契约存在性”校验脚本：`scripts/check-api-contract.mjs`
-22. ✅ Makefile 增加 `make api-check`（运行接口契约校验）
-23. ✅ Makefile 增加 `make verify`（api-check + frontend lint + backend compileall）
+22. ✅ backend/Makefile 增加 `make api-check`（运行接口契约校验）
+23. ✅ backend/Makefile 增加 `make verify`（api-check + frontend lint + backend compileall）
 
 24. ✅ 增加后端单测：验证 Document Schema 优先读取 `doc_metadata`（避免误读 SQLAlchemy `.metadata`）
 25. ✅ 补充 schema 可变默认值清理（`Field(default_factory=...)`），避免跨请求污染
 
-26. ✅ 运行 `make api-check`：确认前端调用的路由在后端均存在
+26. ✅ 运行 `cd backend && make api-check`：确认前端调用的路由在后端均存在
 27. ✅ 运行 `pnpm run lint`：确认前端无 lint 错误
 28. ✅ 运行 `python3 -m compileall backend/app`：确认后端语法可编译
 
@@ -50,5 +50,5 @@
 - 后端 KG 增量接口：`backend/app/rag/kg/api/routes.py`
 - 前端 KG 接入：`frontend/services/graph-service.ts`
 - 数据治理保存链路：`frontend/hooks/use-parsed-files.ts`、`frontend/components/data-governance-panel.tsx`
-- 自动化校验：`scripts/check-api-contract.mjs`、`Makefile`
+- 自动化校验：`scripts/check-api-contract.mjs`、`backend/Makefile`
 

@@ -2,11 +2,14 @@ FROM node:20-alpine
 
 WORKDIR /app
 
-# 复制 package 文件
-COPY package*.json ./
+# Enable pnpm via Corepack
+RUN corepack enable
+
+# 复制依赖文件
+COPY package.json pnpm-lock.yaml ./
 
 # 安装依赖
-RUN npm install
+RUN pnpm install --frozen-lockfile
 
 # 复制应用代码
 COPY . .
@@ -15,4 +18,4 @@ COPY . .
 EXPOSE 3000
 
 # 启动命令
-CMD ["npm", "run", "dev"]
+CMD ["pnpm", "dev"]

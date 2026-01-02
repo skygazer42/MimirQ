@@ -4,8 +4,8 @@
 
 ## 已完成清单（20/20）
 
-1. ✅ 增加根目录一键启动的全栈 `docker-compose.yml`（`docker-compose.yml`）
-2. ✅ 增加根目录 `Makefile`，统一常用命令（`Makefile`）
+1. ✅ 增加后端一键启动的 `docker-compose.yml`（`backend/docker-compose.yml`）
+2. ✅ 增加后端 `Makefile`，统一常用命令（`backend/Makefile`）
 3. ✅ 增加/修正 `.dockerignore`（根目录 + 前后端），减少构建上下文、加速镜像构建（`.dockerignore`、`backend/.dockerignore`、`frontend/.dockerignore`）
 4. ✅ 修正 `.gitignore`，确保 `.dockerignore` 被纳入版本控制（`.gitignore`）
 5. ✅ 更新根目录 `README.md`：统一 `docker compose` 用法、补充访问地址与启动说明（`README.md`）
