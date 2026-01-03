@@ -26,6 +26,10 @@ from app.api.schemas.evaluation import (
     RagasRunDetail,
     RagasRunList,
     RagasRunSchema,
+    TestGenFromDocsRequest,
+    TestGenFromConversationsRequest,
+    TestGenResponse,
+    GeneratedQuestion,
 )
 from app.api.schemas.regression import (
     RagasRegressionCaseCreateRequest,
@@ -39,6 +43,10 @@ from app.api.schemas.regression import (
 )
 from app.services.dataset_service import DatasetService
 from app.rag.evaluation.ragas import run_conversation_ragas_evaluation, run_regression_ragas_evaluation
+from app.rag.evaluation.test_generator import (
+    generate_questions_from_documents,
+    generate_questions_from_conversations,
+)
 
 router = APIRouter()
 
@@ -338,3 +346,144 @@ async def get_ragas_regression_run(
             items_out.append(payload)
 
     return {"run": run, "items": items_out}
+
+
+@router.post("/ragas/test-gen/from-documents", response_model=TestGenResponse)
+async def generate_test_cases_from_documents(
+    request: TestGenFromDocsRequest,
+    tenant_id: UUID = Depends(get_tenant_id),
+    account_id: str = Depends(get_current_account_id),
+    db: Session = Depends(get_db),
+):
+    """从文档生成测试问题"""
+    DatasetService.ensure_member(db, tenant_id, account_id)
+
+    try:
+        # 生成问题
+        questions = generate_questions_from_documents(
+            db=db,
+            tenant_id=tenant_id,
+            account_id=account_id,
+            dataset_id=request.dataset_id,
+            document_ids=request.document_ids or None,
+            num_questions=request.num_questions,
+            question_types=request.question_types,
+        )
+
+        # 转换为响应格式
+        generated_questions = [
+            GeneratedQuestion(
+                question=q.question,
+                expected_answer=q.expected_answer,
+                context=q.context,
+                source_type="document",
+                source_id=q.metadata.get("source_id", ""),
+                metadata=q.metadata,
+            )
+            for q in questions
+        ]
+
+        # 如果需要自动保存为用例
+        saved_case_ids = []
+        if request.auto_save_as_cases:
+            for q in questions:
+                case = RagasRegressionCase(
+                    tenant_id=tenant_id,
+                    dataset_id=request.dataset_id,
+                    document_ids=[q.metadata.get("source_id")] if q.metadata.get("source_id") else [],
+                    question=q.question,
+                    expected_answer=q.expected_answer,
+                    tags=["auto_generated", "from_documents"],
+                    extra=q.metadata,
+                    created_by=account_id,
+                )
+                db.add(case)
+                db.flush()
+                saved_case_ids.append(case.id)
+            
+            db.commit()
+
+        return TestGenResponse(
+            status="completed",
+            generated_questions=generated_questions,
+            saved_case_ids=saved_case_ids,
+        )
+
+    except Exception as e:
+        db.rollback()
+        return TestGenResponse(
+            status="failed",
+            generated_questions=[],
+            saved_case_ids=[],
+            error_message=str(e),
+        )
+
+
+@router.post("/ragas/test-gen/from-conversations", response_model=TestGenResponse)
+async def generate_test_cases_from_conversations(
+    request: TestGenFromConversationsRequest,
+    tenant_id: UUID = Depends(get_tenant_id),
+    account_id: str = Depends(get_current_account_id),
+    db: Session = Depends(get_db),
+):
+    """从对话历史生成测试问题"""
+    DatasetService.ensure_member(db, tenant_id, account_id)
+
+    try:
+        # 生成问题
+        questions = generate_questions_from_conversations(
+            db=db,
+            tenant_id=tenant_id,
+            account_id=account_id,
+            conversation_ids=request.conversation_ids,
+            num_questions=request.num_questions,
+            quality_threshold=request.quality_threshold,
+        )
+
+        # 转换为响应格式
+        generated_questions = [
+            GeneratedQuestion(
+                question=q.question,
+                expected_answer=q.expected_answer,
+                context=q.context,
+                source_type="conversation",
+                source_id=q.metadata.get("source_id", ""),
+                metadata=q.metadata,
+            )
+            for q in questions
+        ]
+
+        # 如果需要自动保存为用例
+        saved_case_ids = []
+        if request.auto_save_as_cases:
+            for q in questions:
+                case = RagasRegressionCase(
+                    tenant_id=tenant_id,
+                    dataset_id=None,
+                    document_ids=[],
+                    question=q.question,
+                    expected_answer=q.expected_answer,
+                    tags=["auto_generated", "from_conversations"],
+                    extra=q.metadata,
+                    created_by=account_id,
+                )
+                db.add(case)
+                db.flush()
+                saved_case_ids.append(case.id)
+            
+            db.commit()
+
+        return TestGenResponse(
+            status="completed",
+            generated_questions=generated_questions,
+            saved_case_ids=saved_case_ids,
+        )
+
+    except Exception as e:
+        db.rollback()
+        return TestGenResponse(
+            status="failed",
+            generated_questions=[],
+            saved_case_ids=[],
+            error_message=str(e),
+        )

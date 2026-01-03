@@ -34,6 +34,15 @@ import type {
   RetrievePreviewResponse,
   PromptPreviewRequest,
   PromptPreviewResponse,
+  RegressionCase,
+  RegressionCaseCreate,
+  RegressionCaseList,
+  TestGenFromDocsRequest,
+  TestGenFromConversationsRequest,
+  TestGenResponse,
+  RegressionRunCreate,
+  RegressionRunList,
+  RegressionRunDetail,
 } from '@/types'
 import { getAuthHeaders } from '@/lib/auth-headers'
 import { API_V1_BASE_URL } from '@/lib/env'
@@ -727,6 +736,63 @@ export const evaluationApi = {
     params?: { include_items?: boolean; include_contexts?: boolean }
   ): Promise<RagasRunDetail> {
     const { data } = await apiClient.get(`/evaluations/ragas/runs/${runId}`, {
+      params,
+    })
+    return data
+  },
+
+  // ==================== 回归测试用例管理 ====================
+
+  async createRegressionCase(params: RegressionCaseCreate): Promise<RegressionCase> {
+    const { data } = await apiClient.post('/evaluations/ragas/regression/cases', params)
+    return data
+  },
+
+  async listRegressionCases(params?: {
+    skip?: number
+    limit?: number
+    dataset_id?: string
+  }): Promise<RegressionCaseList> {
+    const { data } = await apiClient.get('/evaluations/ragas/regression/cases', { params })
+    return data
+  },
+
+  async deleteRegressionCase(caseId: string): Promise<void> {
+    await apiClient.delete(`/evaluations/ragas/regression/cases/${caseId}`)
+  },
+
+  // ==================== AI 生成测试问题 ====================
+
+  async generateFromDocuments(params: TestGenFromDocsRequest): Promise<TestGenResponse> {
+    const { data } = await apiClient.post('/evaluations/ragas/test-gen/from-documents', params)
+    return data
+  },
+
+  async generateFromConversations(params: TestGenFromConversationsRequest): Promise<TestGenResponse> {
+    const { data } = await apiClient.post('/evaluations/ragas/test-gen/from-conversations', params)
+    return data
+  },
+
+  // ==================== 回归测试运行 ====================
+
+  async createRegressionRun(params: RegressionRunCreate): Promise<RegressionRun> {
+    const { data } = await apiClient.post('/evaluations/ragas/regression/runs', params)
+    return data
+  },
+
+  async listRegressionRuns(params?: {
+    skip?: number
+    limit?: number
+  }): Promise<RegressionRunList> {
+    const { data } = await apiClient.get('/evaluations/ragas/regression/runs', { params })
+    return data
+  },
+
+  async getRegressionRun(
+    runId: string,
+    params?: { include_items?: boolean; include_contexts?: boolean }
+  ): Promise<RegressionRunDetail> {
+    const { data } = await apiClient.get(`/evaluations/ragas/regression/runs/${runId}`, {
       params,
     })
     return data
