@@ -221,6 +221,19 @@ export function DataGovernancePanel() {
     }
   }, [files, initializeGovernanceState])
 
+  // 手动编辑回调
+  const handleManualEdit = useCallback((newContent: string) => {
+    if (!selectedFileId) return
+    setGovernanceStates((prev) => ({
+      ...prev,
+      [selectedFileId]: {
+        ...prev[selectedFileId],
+        cleanedContent: newContent,
+        isModified: true, // 手动修改也被视为已修改
+      },
+    }))
+  }, [selectedFileId])
+
   // 质量检测完成回调
   const handleQualityCheck = useCallback((result: { score: number; issues: FileGovernanceState['issues'] }) => {
     if (!selectedFileId) return
@@ -721,12 +734,20 @@ export function DataGovernancePanel() {
 
                   {/* 预览内容 */}
                   <div className="flex-1 overflow-y-auto p-8 bg-gray-50/50">
-                    <div className="max-w-4xl mx-auto">
-                      <div className="prose prose-slate max-w-none">
-                        <pre className="whitespace-pre-wrap font-sans text-base leading-7 tracking-tight text-slate-800 bg-white border border-slate-200 p-10 rounded-2xl shadow-md min-h-[800px]">
-                          {displayContent}
-                        </pre>
-                      </div>
+                    <div className="max-w-4xl mx-auto h-full pb-8">
+                      <textarea
+                        value={displayContent}
+                        onChange={(e) => handleManualEdit(e.target.value)}
+                        readOnly={showOriginal}
+                        placeholder={showOriginal ? "原文内容（只读）" : "在这里直接编辑内容..."}
+                        spellCheck={false}
+                        className={cn(
+                          "w-full h-full min-h-[800px] p-10 rounded-2xl shadow-md border resize-none focus:outline-none focus:ring-2 focus:ring-sky-500/20 transition-all font-sans text-base leading-7 tracking-tight text-slate-800",
+                          showOriginal 
+                            ? "bg-gray-50/50 border-gray-200 text-gray-600" 
+                            : "bg-white border-slate-200"
+                        )}
+                      />
                     </div>
                   </div>
                 </div>
