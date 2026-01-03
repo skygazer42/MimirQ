@@ -270,7 +270,7 @@ export function ChunkPreview({ onConfirm, onClose }: ChunkPreviewProps) {
       setPreviewData(data)
     } catch (err: any) {
       if (previewRequestIdRef.current !== requestId) return
-      setError(err.response?.data?.detail || err.message || '预览失败')
+      setError(err.response?.data?.detail || err.response?.data?.message || err.message || '预览失败')
     } finally {
       if (previewRequestIdRef.current === requestId) {
         setIsLoading(false)
@@ -342,7 +342,7 @@ export function ChunkPreview({ onConfirm, onClose }: ChunkPreviewProps) {
       setProcessedStatus(prev => ({ ...prev, [file.name]: 'success' }))
       onConfirm?.({ chunk_size: chunkSize, chunk_overlap: chunkOverlap })
     } catch (err: any) {
-      setError(err.response?.data?.detail || err.message || '入库失败')
+      setError(err.response?.data?.detail || err.response?.data?.message || err.message || '入库失败')
       setProcessedStatus(prev => ({ ...prev, [file.name]: 'error' }))
     } finally {
       setIsSubmitting(false)
