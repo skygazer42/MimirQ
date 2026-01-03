@@ -224,11 +224,21 @@ async def upload_document(
 
     try:
         requested_parser_backend = (parser_backend or "").strip().lower()
+        effective_parser_backend = parser_backend
+        if file_ext == ".pdf" and requested_parser_backend == "mineru":
+            mineru_available = bool(
+                settings.MINERU_ENABLED
+                and (settings.MINERU_API_TOKEN or settings.MINERU_LOCAL_SERVER_URL)
+            )
+            if not mineru_available:
+                effective_parser_backend = "auto"
+                requested_parser_backend = "auto"
+
         if file_ext == ".pdf" and requested_parser_backend in {"", "auto"}:
             # Keep "auto" for background routing (quality scoring happens in DocumentProcessor).
             resolved_parser_backend = "auto"
         else:
-            resolved_parser_backend = parser_factory.resolve_backend(file_ext, parser_backend)
+            resolved_parser_backend = parser_factory.resolve_backend(file_ext, effective_parser_backend)
         resolved_chunk_strategy = chunker_factory.resolve_strategy(chunk_strategy)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
@@ -679,16 +689,27 @@ async def preview_document(
     try:
         file_size = await save_upload_file(file, temp_path, max_bytes=settings.MAX_FILE_SIZE)
 
-        effective_parser_backend = parser_backend
         if file_ext == ".pdf":
             requested = (parser_backend or "").strip().lower()
+            if requested == "mineru":
+                mineru_available = bool(
+                    settings.MINERU_ENABLED
+                    and (settings.MINERU_API_TOKEN or settings.MINERU_LOCAL_SERVER_URL)
+                )
+                if not mineru_available:
+                    requested = "auto"
+
             if not requested or requested == "auto":
                 effective_parser_backend, _pdf_quality = route_pdf_backend(
                     temp_path,
-                    parser_backend,
+                    requested,
                     sample_pages=3,
                     use_ocr_validation=settings.RAPIDOCR_ENABLED,
                 )
+            else:
+                effective_parser_backend = requested
+        else:
+            effective_parser_backend = parser_backend
 
         documents, resolved_backend = parser_factory.parse(
             temp_path,
@@ -1013,16 +1034,27 @@ async def preview_chunking(
                 )
         else:
             # 解析文档
-            effective_parser_backend = parser_backend
             if file_ext == ".pdf":
                 requested = (parser_backend or "").strip().lower()
+                if requested == "mineru":
+                    mineru_available = bool(
+                        settings.MINERU_ENABLED
+                        and (settings.MINERU_API_TOKEN or settings.MINERU_LOCAL_SERVER_URL)
+                    )
+                    if not mineru_available:
+                        requested = "auto"
+
                 if not requested or requested == "auto":
                     effective_parser_backend, _pdf_quality = route_pdf_backend(
                         temp_path,
-                        parser_backend,
+                        requested,
                         sample_pages=3,
                         use_ocr_validation=settings.RAPIDOCR_ENABLED,
                     )
+                else:
+                    effective_parser_backend = requested
+            else:
+                effective_parser_backend = parser_backend
             documents, resolved_backend = parser_factory.parse(
                 temp_path,
                 parser_backend=effective_parser_backend,

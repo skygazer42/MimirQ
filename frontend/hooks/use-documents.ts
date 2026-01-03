@@ -29,7 +29,13 @@ export function useDocuments() {
       const response = await documentApi.list({ limit: 100 })
       setDocuments(response.items)
     } catch (err: any) {
-      setError(err.message || 'Failed to load documents')
+      setError(
+        err.response?.data?.detail ||
+          err.response?.data?.message ||
+          (typeof err.response?.data === 'string' ? err.response.data : undefined) ||
+          err.message ||
+          'Failed to load documents'
+      )
       console.error('Load documents error:', err)
     } finally {
       setIsLoading(false)
@@ -103,7 +109,13 @@ export function useDocuments() {
 
         return newDoc
       } catch (err: any) {
-        setError(err.message || 'Failed to upload document')
+        setError(
+          err.response?.data?.detail ||
+            err.response?.data?.message ||
+            (typeof err.response?.data === 'string' ? err.response.data : undefined) ||
+            err.message ||
+            'Failed to upload document'
+        )
         console.error('Upload error:', err)
         throw err
       } finally {
@@ -121,7 +133,13 @@ export function useDocuments() {
       await documentApi.delete(documentId)
       setDocuments((prev) => prev.filter((doc) => doc.id !== documentId))
     } catch (err: any) {
-      setError(err.message || 'Failed to delete document')
+      setError(
+        err.response?.data?.detail ||
+          err.response?.data?.message ||
+          (typeof err.response?.data === 'string' ? err.response.data : undefined) ||
+          err.message ||
+          'Failed to delete document'
+      )
       console.error('Delete error:', err)
       throw err
     }
