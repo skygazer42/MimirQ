@@ -5,6 +5,8 @@
 'use client'
 
 import { useState, useCallback, useMemo, useEffect } from 'react'
+import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
 import {
   ShieldCheck,
   Sparkles,
@@ -107,6 +109,7 @@ export function DataGovernancePanel() {
   const [activeTab, setActiveTab] = useState<GovernanceTab>('quality')
   const [selectedFileId, setSelectedFileId] = useState<string | null>(null)
   const [viewMode, setViewMode] = useState<'edit' | 'preview' | 'original'>('edit')
+  const [previewFormat, setPreviewFormat] = useState<'rendered' | 'markdown'>('rendered')
   const [isProcessing, setIsProcessing] = useState(false)
   const [isDragging, setIsDragging] = useState(false)
   const [uploading, setUploading] = useState(false)
@@ -119,21 +122,23 @@ export function DataGovernancePanel() {
   const governanceState = selectedFileId ? governanceStates[selectedFileId] : null
 
   // 初始化文件治理状态
-  const initializeGovernanceState = useCallback((file: { id: string; markdownContent: string }) => {
+  const initializeGovernanceState = useCallback((file: { id: string; markdownContent: string; originalMarkdownContent?: string }) => {
+    const originalContent = file.originalMarkdownContent ?? file.markdownContent
+    const cleanedContent = file.markdownContent
     setGovernanceStates((prev) => {
       if (prev[file.id]) return prev
       return {
         ...prev,
         [file.id]: {
           id: file.id,
-          originalContent: file.markdownContent,
-          cleanedContent: file.markdownContent,
+          originalContent,
+          cleanedContent,
           annotations: [],
           tags: [],
           category: null,
           qualityScore: 0,
           issues: [],
-          isModified: false,
+          isModified: cleanedContent !== originalContent,
         },
       }
     })
@@ -311,8 +316,19 @@ export function DataGovernancePanel() {
     for (const f of files) {
       const state = governanceStates[f.id]
       if (!state) continue
-      if (state.cleanedContent != null && state.cleanedContent !== f.markdownContent) {
-        updateParsedFile(f.id, { markdownContent: state.cleanedContent })
+
+      // 如果历史数据没有保存 originalMarkdownContent，先用当前内容补齐，避免被后续保存覆盖掉。
+      const originalMarkdownContent =
+        typeof f.originalMarkdownContent === 'string' ? f.originalMarkdownContent : f.markdownContent
+
+      const shouldUpdateMarkdown = state.cleanedContent != null && state.cleanedContent !== f.markdownContent
+      const shouldSetOriginal = typeof f.originalMarkdownContent !== 'string'
+
+      if (shouldUpdateMarkdown || shouldSetOriginal) {
+        updateParsedFile(f.id, {
+          ...(shouldUpdateMarkdown ? { markdownContent: state.cleanedContent } : {}),
+          ...(shouldSetOriginal ? { originalMarkdownContent } : {}),
+        })
       }
     }
   }, [files, governanceStates, updateParsedFile])
@@ -364,7 +380,7 @@ export function DataGovernancePanel() {
   // 空状态 - 改为上传引导
   if (isLoaded && files.length === 0) {
     return (
-      <div className="flex-1 flex flex-col bg-white">
+      <div className="flex-1 flex flex-col bg-white min-h-0">
         <header className="flex-shrink-0 bg-white border-b border-gray-200 px-6 py-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
@@ -455,7 +471,7 @@ export function DataGovernancePanel() {
   }
 
   return (
-    <div className="flex-1 flex flex-col bg-white">
+    <div className="flex-1 flex flex-col bg-white min-h-0">
       {/* 顶部标题栏 */}
       <header className="flex-shrink-0 bg-white border-b border-gray-200 px-6 py-4">
         <div className="flex items-center justify-between">
@@ -599,7 +615,7 @@ export function DataGovernancePanel() {
         </div>
       </div>
 
-      <div className="flex-1 flex overflow-hidden">
+      <div className="flex-1 flex overflow-hidden min-h-0">
         {/* 左侧文件列表 */}
         <aside className="w-72 bg-gray-50 border-r border-gray-200 flex flex-col flex-shrink-0">
           <div className="p-4 border-b border-gray-200">
@@ -673,7 +689,7 @@ export function DataGovernancePanel() {
         </aside>
 
         {/* 主内容区 */}
-        <main className="flex-1 flex flex-col overflow-hidden">
+        <main className="flex-1 flex flex-col overflow-hidden min-h-0">
           {selectedFile && governanceState ? (
             <>
               {/* 治理标签页导航 */}
@@ -710,7 +726,7 @@ export function DataGovernancePanel() {
               </div>
 
               {/* 内容区 */}
-              <div className="flex-1 flex overflow-hidden">
+              <div className="flex-1 flex overflow-hidden min-h-0">
                 {/* 左侧治理面板 */}
                 <div className="w-[450px] flex-shrink-0 border-r border-gray-200 bg-gray-50/50 overflow-y-auto">
                   {activeTab === 'quality' && (
@@ -746,11 +762,21 @@ export function DataGovernancePanel() {
                 </div>
 
                 {/* 右侧预览区 */}
-                <div className="flex-1 flex flex-col overflow-hidden bg-white">
+                <div className="flex-1 flex flex-col overflow-hidden bg-white min-h-0">
                   {/* 预览工具栏 */}
                   <div className="flex-shrink-0 h-12 border-b border-gray-100 flex items-center justify-between px-4 bg-gray-50">
                     <div className="flex items-center gap-2">
                       <span className="text-xs font-medium text-gray-500">预览内容</span>
+                      <span className={cn(
+                        "text-xs px-2 py-0.5 rounded",
+                        viewMode === 'original'
+                          ? "text-gray-700 bg-gray-100"
+                          : viewMode === 'preview'
+                            ? "text-sky-700 bg-sky-50"
+                            : "text-slate-700 bg-white border border-gray-200"
+                      )}>
+                        {viewMode === 'original' ? '解析原文' : viewMode === 'preview' ? '预览' : '编辑'}
+                      </span>
                       {governanceState.isModified && (
                         <span className="text-xs text-purple-600 bg-purple-50 px-2 py-0.5 rounded">
                           已修改
@@ -761,7 +787,10 @@ export function DataGovernancePanel() {
                       <Button
                         variant="ghost"
                         size="sm"
-                        onClick={() => setViewMode((m) => (m === 'edit' ? 'preview' : 'edit'))}
+                        onClick={() => {
+                          if (viewMode === 'edit') setPreviewFormat('rendered')
+                          setViewMode((m) => (m === 'edit' ? 'preview' : 'edit'))
+                        }}
                         className="h-7 text-xs gap-1"
                       >
                         {viewMode === 'edit' ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5" />}
@@ -770,8 +799,18 @@ export function DataGovernancePanel() {
                       <Button
                         variant="ghost"
                         size="sm"
+                        onClick={() => {
+                          if (viewMode === 'edit') setViewMode('preview')
+                          setPreviewFormat((m) => (m === 'rendered' ? 'markdown' : 'rendered'))
+                        }}
+                        className="h-7 text-xs gap-1"
+                      >
+                        {previewFormat === 'rendered' ? 'Markdown 源码' : '渲染预览'}
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
                         onClick={() => setViewMode((m) => (m === 'original' ? 'preview' : 'original'))}
-                        disabled={governanceState.cleanedContent === governanceState.originalContent}
                         className="h-7 text-xs gap-1"
                       >
                         <FileText className="w-3.5 h-3.5" />
@@ -789,27 +828,44 @@ export function DataGovernancePanel() {
                   </div>
 
                   {/* 预览内容 */}
-                  <div className="flex-1 overflow-y-auto p-8 bg-gray-50/50">
-                    <div className="max-w-4xl mx-auto h-full pb-8">
-                      <textarea
-                        value={displayContent}
-                        onChange={(e) => handleManualEdit(e.target.value)}
-                        readOnly={viewMode !== 'edit'}
-                        placeholder={
-                          viewMode === 'original'
-                            ? "解析原文内容（只读）"
-                            : viewMode === 'preview'
-                              ? "预览内容（只读）"
-                              : "在这里直接编辑内容..."
-                        }
-                        spellCheck={false}
-                        className={cn(
-                          "w-full h-full min-h-[800px] p-10 rounded-2xl shadow-md border resize-none focus:outline-none focus:ring-2 focus:ring-sky-500/20 transition-all font-sans text-base leading-7 tracking-tight text-slate-800",
-                          viewMode !== 'edit' 
-                            ? "bg-gray-50/50 border-gray-200 text-gray-600" 
-                            : "bg-white border-slate-200"
-                        )}
-                      />
+                  <div className="flex-1 overflow-y-auto p-8 bg-gray-50/50 min-h-0">
+                    <div className="max-w-4xl mx-auto pb-8">
+                      {viewMode === 'edit' ? (
+                        <textarea
+                          value={displayContent}
+                          onChange={(e) => handleManualEdit(e.target.value)}
+                          placeholder="在这里直接编辑内容..."
+                          spellCheck={false}
+                          className={cn(
+                            "w-full min-h-[800px] p-10 rounded-2xl shadow-md border resize-none focus:outline-none focus:ring-2 focus:ring-sky-500/20 transition-all font-sans text-base leading-7 tracking-tight text-slate-800",
+                            "bg-white border-slate-200"
+                          )}
+                        />
+                      ) : (
+                        <div
+                          className={cn(
+                            "w-full min-h-[800px] p-10 rounded-2xl shadow-md border",
+                            viewMode === 'original'
+                              ? "bg-gray-50/50 border-gray-200 text-gray-600"
+                              : "bg-white border-slate-200"
+                          )}
+                        >
+                          {previewFormat === 'rendered' ? (
+                            <div className="prose prose-slate max-w-none prose-headings:text-gray-900 prose-p:text-gray-700 prose-a:text-sky-700 prose-code:text-pink-600 prose-code:bg-pink-50 prose-code:px-1 prose-code:py-0.5 prose-code:rounded prose-pre:bg-gray-900 prose-table:border-collapse prose-th:bg-gray-100 prose-th:border prose-th:border-gray-300 prose-th:p-2 prose-td:border prose-td:border-gray-300 prose-td:p-2">
+                              <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                                {displayContent || ''}
+                              </ReactMarkdown>
+                            </div>
+                          ) : (
+                            <pre className={cn(
+                              "font-mono text-sm leading-relaxed whitespace-pre-wrap break-words",
+                              viewMode === 'original' ? "text-gray-600" : "text-slate-800"
+                            )}>
+                              {displayContent || ''}
+                            </pre>
+                          )}
+                        </div>
+                      )}
                     </div>
                   </div>
                 </div>

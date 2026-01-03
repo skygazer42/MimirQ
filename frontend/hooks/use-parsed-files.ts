@@ -12,6 +12,7 @@ export interface ParsedFileData {
   fileType: string
   fileSize: number
   markdownContent: string
+  originalMarkdownContent?: string
   parsedAt: string
   parser: string
 }
@@ -23,7 +24,24 @@ const loadFromStorage = (): ParsedFileData[] => {
   if (typeof window === 'undefined') return []
   try {
     const data = localStorage.getItem(STORAGE_KEY)
-    return data ? JSON.parse(data) : []
+    const parsed = data ? JSON.parse(data) : []
+    if (!Array.isArray(parsed)) return []
+
+    const migrated = parsed
+      .filter((f) => f && typeof f === 'object')
+      .map((f: any) => {
+        const markdownContent = typeof f.markdownContent === 'string' ? f.markdownContent : ''
+        const originalMarkdownContent =
+          typeof f.originalMarkdownContent === 'string' ? f.originalMarkdownContent : markdownContent
+        return {
+          ...f,
+          markdownContent,
+          originalMarkdownContent,
+        } as ParsedFileData
+      })
+
+    saveToStorage(migrated)
+    return migrated
   } catch {
     return []
   }
@@ -53,6 +71,7 @@ export function useParsedFiles() {
   const addParsedFile = useCallback((file: Omit<ParsedFileData, 'id' | 'parsedAt'>) => {
     const newFile: ParsedFileData = {
       ...file,
+      originalMarkdownContent: file.originalMarkdownContent ?? file.markdownContent,
       id: Math.random().toString(36).substring(2, 15),
       parsedAt: new Date().toISOString(),
     }
