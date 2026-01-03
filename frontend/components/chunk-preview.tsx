@@ -47,6 +47,8 @@ import { ParserDropdown } from '@/components/ui/parser-dropdown'
 import { PipelineOptionsPanel } from '@/components/pipeline-options-panel'
 import { useParsedFiles } from '@/hooks/use-parsed-files'
 import { cn } from '@/lib/utils'
+import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
 
 // 分隔符配置
 const SEPARATORS = ['\\n\\n', '\\n', '。', '！', '？', '.', '!', '?']
@@ -151,6 +153,7 @@ export function ChunkPreview({ onConfirm, onClose }: ChunkPreviewProps) {
 
   // 选中的块索引（用于高亮联动）
   const [hoveredChunkIndex, setHoveredChunkIndex] = useState<number | null>(null)
+  const [originalPreviewMode, setOriginalPreviewMode] = useState<'raw' | 'rendered'>('raw')
   const { parserBackend, setParserBackend } = useParserBackendPreference()
   const { chunkStrategy, setChunkStrategy } = useChunkStrategyPreference()
   const chunkStrategyOption = getChunkStrategyOption(chunkStrategy)
@@ -375,10 +378,15 @@ export function ChunkPreview({ onConfirm, onClose }: ChunkPreviewProps) {
     if (!chunk) return null
 
     const text = previewData.original_text
+    const start = Math.max(0, Number(chunk.start_index) || 0)
+    const end = Math.max(start, Number(chunk.end_index) || start)
+    if (start >= text.length) return null
+    const safeEnd = Math.min(end, text.length)
+    if (safeEnd <= start) return null
     return {
-      before: text.slice(0, chunk.start_index),
-      highlighted: text.slice(chunk.start_index, chunk.end_index),
-      after: text.slice(chunk.end_index),
+      before: text.slice(0, start),
+      highlighted: text.slice(start, safeEnd),
+      after: text.slice(safeEnd),
     }
   }, [previewData, hoveredChunkIndex])
 
@@ -776,33 +784,63 @@ export function ChunkPreview({ onConfirm, onClose }: ChunkPreviewProps) {
                  <FileText className="w-3.5 h-3.5" />
                  解析原文
                </span>
-               {previewData && (
-                 <span className="text-[10px] font-mono text-gray-400">
-                    {previewData.total_characters.toLocaleString()} chars
-                 </span>
-               )}
-            </div>
+               <div className="flex items-center gap-2">
+                 {previewData && (
+                   <span className="text-[10px] font-mono text-gray-400">
+                     {previewData.total_characters.toLocaleString()} chars
+                   </span>
+                 )}
+                 <Button
+                   variant="ghost"
+                   size="sm"
+                   className="h-7 px-2 text-[11px]"
+                   onClick={() => setOriginalPreviewMode((m) => (m === 'raw' ? 'rendered' : 'raw'))}
+                   disabled={!previewData?.original_text}
+                 >
+                   {originalPreviewMode === 'raw' ? '渲染' : '源码'}
+                 </Button>
+               </div>
+             </div>
             
             <div className="flex-1 overflow-y-auto p-6 scroll-smooth">
-              {previewData?.original_text ? (
-                <div className="font-mono text-sm leading-relaxed text-gray-600 whitespace-pre-wrap max-w-3xl mx-auto">
-                  {hoveredChunkIndex !== null && getHighlightedText ? (
-                    <>
-                      <span className="opacity-40">{getHighlightedText.before}</span>
-                      <mark className="bg-yellow-200 text-gray-900 rounded px-0.5 py-0.5 mx-0.5 shadow-sm font-medium">
-                        {getHighlightedText.highlighted}
-                      </mark>
-                      <span className="opacity-40">{getHighlightedText.after}</span>
-                    </>
+              {previewData ? (
+                previewData.original_text ? (
+                  originalPreviewMode === 'rendered' ? (
+                    <div className="max-w-3xl mx-auto">
+                      <div className="prose prose-slate max-w-none prose-headings:text-gray-900 prose-p:text-gray-700 prose-a:text-sky-700 prose-code:text-pink-600 prose-code:bg-pink-50 prose-code:px-1 prose-code:py-0.5 prose-code:rounded prose-pre:bg-gray-900">
+                        <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                          {previewData.original_text}
+                        </ReactMarkdown>
+                      </div>
+                      <p className="mt-4 text-[11px] text-gray-400">渲染模式不支持切片悬停高亮定位</p>
+                    </div>
                   ) : (
-                    previewData.original_text
-                  )}
-                </div>
+                    <div className="font-mono text-sm leading-relaxed text-gray-600 whitespace-pre-wrap max-w-3xl mx-auto">
+                      {hoveredChunkIndex !== null && getHighlightedText ? (
+                        <>
+                          <span className="opacity-40">{getHighlightedText.before}</span>
+                          <mark className="bg-yellow-200 text-gray-900 rounded px-0.5 py-0.5 mx-0.5 shadow-sm font-medium">
+                            {getHighlightedText.highlighted}
+                          </mark>
+                          <span className="opacity-40">{getHighlightedText.after}</span>
+                        </>
+                      ) : (
+                        previewData.original_text
+                      )}
+                    </div>
+                  )
+                ) : (
+                  <div className="h-full flex flex-col items-center justify-center text-gray-400 gap-2">
+                    <FileText className="w-12 h-12 opacity-10" />
+                    <p className="text-xs">原文未返回（可能内容过大）</p>
+                    <p className="text-xs text-gray-400">仍可查看右侧切片结果</p>
+                  </div>
+                )
               ) : isLoading ? (
-                 <div className="h-full flex flex-col items-center justify-center text-gray-400 gap-2">
-                   <Loader2 className="w-8 h-8 animate-spin opacity-20" />
-                   <p className="text-xs">解析中...</p>
-                 </div>
+                <div className="h-full flex flex-col items-center justify-center text-gray-400 gap-2">
+                  <Loader2 className="w-8 h-8 animate-spin opacity-20" />
+                  <p className="text-xs">解析中...</p>
+                </div>
               ) : error ? (
                 <div className="h-full flex flex-col items-center justify-center text-gray-400 gap-2">
                   <AlertCircle className="w-10 h-10 opacity-20" />
@@ -813,8 +851,8 @@ export function ChunkPreview({ onConfirm, onClose }: ChunkPreviewProps) {
                 </div>
               ) : (
                 <div className="h-full flex flex-col items-center justify-center text-gray-300 gap-2">
-                   <FileText className="w-12 h-12 opacity-10" />
-                   <p className="text-xs">等待生成预览</p>
+                  <FileText className="w-12 h-12 opacity-10" />
+                  <p className="text-xs">等待生成预览</p>
                 </div>
               )}
             </div>

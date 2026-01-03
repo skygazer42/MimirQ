@@ -318,7 +318,7 @@ export default function ParsingPage() {
     <div className="flex h-screen overflow-hidden bg-gray-50">
       <Navbar />
 
-      <main className="flex-1 flex flex-col overflow-hidden">
+      <main className="flex-1 flex flex-col overflow-hidden min-h-0">
         {/* 顶部标题栏 */}
         <header className="bg-white border-b px-6 py-4 flex-shrink-0">
           <div className="flex items-center justify-between">
@@ -336,7 +336,7 @@ export default function ParsingPage() {
           </div>
         </header>
 
-        <div className="flex-1 flex overflow-hidden">
+        <div className="flex-1 flex overflow-hidden min-h-0">
           {/* 左侧：文件列表面板 */}
           <aside className="w-80 bg-white border-r flex flex-col flex-shrink-0">
             {/* 解析器选择 */}
@@ -441,7 +441,7 @@ export default function ParsingPage() {
           </aside>
 
           {/* 右侧：预览区域 */}
-          <div className="flex-1 flex flex-col bg-white overflow-hidden">
+          <div className="flex-1 flex flex-col bg-white overflow-hidden min-h-0">
             {!activeFile ? (
               // 空状态
               <div className="flex-1 flex items-center justify-center">

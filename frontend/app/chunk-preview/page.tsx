@@ -8,7 +8,7 @@ export default function ChunkPreviewPage() {
     <div className="flex h-screen overflow-hidden bg-gray-50">
       <Navbar />
 
-      <main className="flex-1 flex flex-col overflow-hidden">
+      <main className="flex-1 flex flex-col overflow-hidden min-h-0">
         <ChunkPreview />
       </main>
     </div>
