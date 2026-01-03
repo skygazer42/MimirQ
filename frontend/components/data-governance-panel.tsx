@@ -721,7 +721,7 @@ export function DataGovernancePanel() {
 
                   {/* 预览内容 */}
                   <div className="flex-1 overflow-y-auto p-8 bg-gray-50/50">
-                    <div className="max-w-5xl mx-auto">
+                    <div className="max-w-4xl mx-auto">
                       <div className="prose prose-slate max-w-none">
                         <pre className="whitespace-pre-wrap font-sans text-base leading-7 tracking-tight text-slate-800 bg-white border border-slate-200 p-10 rounded-2xl shadow-md min-h-[800px]">
                           {displayContent}
