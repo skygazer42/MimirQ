@@ -4,7 +4,7 @@
  */
 'use client'
 
-import { useState, useCallback, useMemo, useEffect } from 'react'
+import { useState, useCallback, useMemo, useEffect, useRef } from 'react'
 import {
   Upload,
   FileText,
@@ -147,6 +147,7 @@ export function ChunkPreview({ onConfirm, onClose }: ChunkPreviewProps) {
   const [error, setError] = useState<string | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [submitSuccess, setSubmitSuccess] = useState(false)
+  const previewRequestIdRef = useRef(0)
 
   // 选中的块索引（用于高亮联动）
   const [hoveredChunkIndex, setHoveredChunkIndex] = useState<number | null>(null)
@@ -253,6 +254,7 @@ export function ChunkPreview({ onConfirm, onClose }: ChunkPreviewProps) {
   const handlePreview = useCallback(async () => {
     if (!file) return
 
+    const requestId = ++previewRequestIdRef.current
     setIsLoading(true)
     setError(null)
 
@@ -264,20 +266,24 @@ export function ChunkPreview({ onConfirm, onClose }: ChunkPreviewProps) {
         chunk_strategy: chunkStrategy,
         pipeline: pipelineOverridesEnabled ? pipelineOptions : undefined,
       })
+      if (previewRequestIdRef.current !== requestId) return
       setPreviewData(data)
     } catch (err: any) {
+      if (previewRequestIdRef.current !== requestId) return
       setError(err.response?.data?.detail || err.message || '预览失败')
     } finally {
-      setIsLoading(false)
+      if (previewRequestIdRef.current === requestId) {
+        setIsLoading(false)
+      }
     }
   }, [file, chunkSize, chunkOverlap, parserBackend, chunkStrategy, pipelineOverridesEnabled, pipelineOptions])
 
   // 自动触发预览
   useEffect(() => {
-    if (file && !previewData && !isLoading && !isSubmitting) {
+    if (file && !previewData && !isLoading && !isSubmitting && !error) {
       handlePreview()
     }
-  }, [file, previewData, isLoading, isSubmitting, handlePreview])
+  }, [file, previewData, isLoading, isSubmitting, error, handlePreview])
 
   // 确认入库
   const handleSubmit = useCallback(async () => {
@@ -797,6 +803,14 @@ export function ChunkPreview({ onConfirm, onClose }: ChunkPreviewProps) {
                    <Loader2 className="w-8 h-8 animate-spin opacity-20" />
                    <p className="text-xs">解析中...</p>
                  </div>
+              ) : error ? (
+                <div className="h-full flex flex-col items-center justify-center text-gray-400 gap-2">
+                  <AlertCircle className="w-10 h-10 opacity-20" />
+                  <p className="text-xs text-gray-500">预览生成失败</p>
+                  <p className="text-xs text-gray-400 max-w-[360px] text-center break-words line-clamp-3">
+                    {error}
+                  </p>
+                </div>
               ) : (
                 <div className="h-full flex flex-col items-center justify-center text-gray-300 gap-2">
                    <FileText className="w-12 h-12 opacity-10" />
@@ -835,6 +849,11 @@ export function ChunkPreview({ onConfirm, onClose }: ChunkPreviewProps) {
                 <div className="h-full flex flex-col items-center justify-center text-gray-400 gap-2">
                    <Loader2 className="w-8 h-8 animate-spin opacity-20" />
                    <p className="text-xs">切片中...</p>
+                 </div>
+              ) : error ? (
+                <div className="h-full flex flex-col items-center justify-center text-gray-400 gap-2">
+                   <AlertCircle className="w-10 h-10 opacity-20" />
+                   <p className="text-xs text-gray-500">预览生成失败</p>
                  </div>
               ) : (
                 <div className="h-full flex flex-col items-center justify-center text-gray-300 gap-2">
