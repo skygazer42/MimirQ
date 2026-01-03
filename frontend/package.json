@@ -27,14 +27,12 @@
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "react-force-graph-2d": "^1.29.0",
-    "react-force-graph-3d": "^1.29.0",
     "react-markdown": "^9.0.1",
     "recharts": "^3.6.0",
     "remark-gfm": "^4.0.0",
     "sonner": "^2.0.7",
     "tailwind-merge": "^2.2.1",
-    "tailwindcss-animate": "^1.0.7",
-    "three-spritetext": "^1.10.0"
+    "tailwindcss-animate": "^1.0.7"
   },
   "devDependencies": {
     "@tailwindcss/typography": "^0.5.10",
