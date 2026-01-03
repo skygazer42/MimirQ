@@ -720,10 +720,10 @@ export function DataGovernancePanel() {
                   </div>
 
                   {/* 预览内容 */}
-                  <div className="flex-1 overflow-y-auto p-6">
+                  <div className="flex-1 overflow-y-auto p-6 bg-gray-50/30">
                     <div className="max-w-3xl mx-auto">
-                      <div className="prose prose-slate max-w-none prose-headings:text-gray-900 prose-p:text-gray-700 prose-a:text-amber-600 prose-code:text-pink-600 prose-code:bg-pink-50 prose-code:px-1 prose-code:py-0.5 prose-code:rounded prose-pre:bg-gray-900">
-                        <pre className="whitespace-pre-wrap font-sans text-sm leading-relaxed text-gray-700">
+                      <div className="prose prose-slate max-w-none prose-headings:text-gray-900 prose-p:text-gray-700 prose-a:text-amber-600 prose-code:text-pink-600 prose-code:bg-pink-50 prose-code:px-1 prose-code:py-0.5 prose-code:rounded">
+                        <pre className="whitespace-pre-wrap font-sans text-sm leading-relaxed text-gray-800 bg-white border border-gray-200 p-6 rounded-2xl shadow-sm">
                           {displayContent}
                         </pre>
                       </div>

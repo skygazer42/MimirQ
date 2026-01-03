@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import warnings
 from pathlib import Path
 
 
@@ -10,6 +11,13 @@ def main() -> None:
     os.chdir(backend_root)
 
     import uvicorn
+
+    # Avoid noisy dev-only warning when running with AUTH_MODE=header.
+    warnings.filterwarnings(
+        "ignore",
+        message=r"Using default SECRET_KEY\. Change this in production!",
+        category=UserWarning,
+    )
 
     from app.core.config import settings
 
@@ -23,4 +31,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-
