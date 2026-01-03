@@ -305,7 +305,7 @@ export function DataGovernancePanel() {
     }))
   }, [selectedFileId, governanceState])
 
-  // 保存并进入下一步
+  // 保存并继续（留在治理页面）
   const handleSaveAndContinue = useCallback(() => {
     // 将治理后的内容回写到共享存储（localStorage），以便 /chunk-preview 使用最新版本
     for (const f of files) {
@@ -316,8 +316,17 @@ export function DataGovernancePanel() {
       }
     }
     toast.success('已保存治理结果')
-    router.push('/chunk-preview')
-  }, [files, governanceStates, updateParsedFile, router])
+
+    // “继续”含义：继续处理下一份文件，而不是跳转回解析流程。
+    if (!selectedFileId || files.length === 0) return
+    const currentIndex = files.findIndex((f) => f.id === selectedFileId)
+    const nextIndex = currentIndex >= 0 ? (currentIndex + 1) % files.length : 0
+    const nextFile = files[nextIndex]
+    if (nextFile) {
+      setSelectedFileId(nextFile.id)
+      initializeGovernanceState(nextFile)
+    }
+  }, [files, governanceStates, updateParsedFile, selectedFileId, initializeGovernanceState])
 
   // 返回解析页面
   const handleBackToParsing = useCallback(() => {
