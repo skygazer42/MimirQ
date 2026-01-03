@@ -40,6 +40,7 @@ import type {
   TestGenFromDocsRequest,
   TestGenFromConversationsRequest,
   TestGenResponse,
+  RegressionRun,
   RegressionRunCreate,
   RegressionRunList,
   RegressionRunDetail,

@@ -57,6 +57,7 @@ function EvaluationsLoading() {
 function EvaluationsPageContent() {
   const searchParams = useSearchParams()
   const [activeTab, setActiveTab] = useState<TabType>('conversation')
+  const isActiveTab = (tab: TabType) => activeTab === tab
   const [conversations, setConversations] = useState<Conversation[]>([])
   const [selectedConversationId, setSelectedConversationId] = useState<string>('')
 
@@ -227,7 +228,7 @@ function EvaluationsPageContent() {
                 onClick={() => setActiveTab('conversation')}
                 className={cn(
                   'flex items-center gap-2 px-4 py-2 rounded-lg transition text-sm font-medium',
-                  activeTab === 'conversation'
+                  isActiveTab('conversation')
                     ? 'bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 shadow-sm border border-slate-200 dark:border-slate-800'
                     : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
                 )}
@@ -239,7 +240,7 @@ function EvaluationsPageContent() {
                 onClick={() => setActiveTab('regression')}
                 className={cn(
                   'flex items-center gap-2 px-4 py-2 rounded-lg transition text-sm font-medium',
-                  activeTab === 'regression'
+                  isActiveTab('regression')
                     ? 'bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 shadow-sm border border-slate-200 dark:border-slate-800'
                     : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
                 )}
@@ -519,7 +520,7 @@ function EvaluationsPageContent() {
               </div>
             </div>
           </div>
-        </header>
+        </div>
         </>
       )}
 
