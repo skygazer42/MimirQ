@@ -960,7 +960,7 @@ async def preview_chunking(
     temp_path = upload_dir / f"{uuid.uuid4()}{file_ext}"
 
     try:
-        await save_upload_file(file, temp_path, max_bytes=settings.MAX_FILE_SIZE)
+        file_size = await save_upload_file(file, temp_path, max_bytes=settings.MAX_FILE_SIZE)
 
         resolved_chunk_strategy = chunker_factory.resolve_strategy(chunk_strategy)
         pipeline_options = _to_pipeline_options(

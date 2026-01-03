@@ -63,7 +63,7 @@ apiClient.interceptors.response.use(
     // 统一错误处理
     if (error.response) {
       const status = error.response.status
-      const detail = error.response.data?.detail
+      const detail = error.response.data?.detail || error.response.data?.message
 
       switch (status) {
         case 401:
