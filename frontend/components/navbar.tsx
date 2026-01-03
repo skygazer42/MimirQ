@@ -135,8 +135,8 @@ export function Navbar({
       return () => w.cancelIdleCallback?.(id)
     }
 
-    const t = window.setTimeout(prefetchAll, 800)
-    return () => window.clearTimeout(t)
+    const t = setTimeout(prefetchAll, 800)
+    return () => clearTimeout(t)
   }, [router, pathname])
 
   useEffect(() => {
@@ -152,10 +152,10 @@ export function Navbar({
       }
     }
     ping()
-    const t = window.setInterval(ping, 30_000)
+    const t = setInterval(ping, 30_000)
     return () => {
       alive = false
-      window.clearInterval(t)
+      clearInterval(t)
     }
   }, [])
 

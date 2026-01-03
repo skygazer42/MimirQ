@@ -10,9 +10,6 @@ from langchain_core.documents import Document
 
 from app.parsing.parsers.pdf_parser import PDFParser
 from app.parsing.parsers.text_parser import TextParser, MarkdownParser
-from app.parsing.parsers.mineru_parser import MinerUParser
-from app.parsing.parsers.markitdown_parser import MarkItDownParser
-from app.parsing.parsers.docling_parser import DoclingParser
 from app.core.config import settings
 from app.rag.core.logging import get_logger
 
@@ -28,10 +25,10 @@ class ParserFactory:
 
     def __init__(self):
         self._basic_pdf_parser = PDFParser()
-        self._mineru_parser: Optional[MinerUParser] = None
+        self._mineru_parser: Optional["MinerUParser"] = None
         self._deepdoc_parser: Optional["DeepDocParser"] = None
-        self._markitdown_parser: Optional[MarkItDownParser] = None
-        self._docling_parser: Optional[DoclingParser] = None
+        self._markitdown_parser: Optional["MarkItDownParser"] = None
+        self._docling_parser: Optional["DoclingParser"] = None
 
         logger.info("[pdf] PyMuPDF parser ready (basic)")
         if settings.MINERU_ENABLED and (settings.MINERU_API_TOKEN or settings.MINERU_LOCAL_SERVER_URL):
@@ -141,7 +138,7 @@ class ParserFactory:
             raise ValueError(f"Unsupported file type: {file_ext}")
 
         # Some parsers (e.g., MinerU local ZIP mode) need dataset/document ids.
-        if backend == "mineru" and isinstance(parser, MinerUParser):
+        if backend == "mineru":
             documents = parser.parse(file_path, dataset_id=dataset_id, document_id=document_id)
         else:
             documents = parser.parse(file_path)
@@ -153,6 +150,8 @@ class ParserFactory:
 
         if backend == "mineru":
             if self._mineru_parser is None:
+                from app.parsing.parsers.mineru_parser import MinerUParser
+
                 logger.info("[pdf] Initializing MinerU parser (advanced)")
                 self._mineru_parser = MinerUParser()
             return self._mineru_parser
@@ -167,12 +166,16 @@ class ParserFactory:
 
         if backend == "markitdown":
             if self._markitdown_parser is None:
+                from app.parsing.parsers.markitdown_parser import MarkItDownParser
+
                 logger.info("[pdf] Initializing MarkItDown parser (markdown-focused)")
                 self._markitdown_parser = MarkItDownParser()
             return self._markitdown_parser
 
         if backend == "docling":
             if self._docling_parser is None:
+                from app.parsing.parsers.docling_parser import DoclingParser
+
                 logger.info("[pdf] Initializing Docling parser (structure-aware)")
                 self._docling_parser = DoclingParser()
             return self._docling_parser
@@ -182,6 +185,8 @@ class ParserFactory:
     def _get_markitdown_parser(self):
         """Lazy init MarkItDown parser for non-PDF office formats."""
         if self._markitdown_parser is None:
+            from app.parsing.parsers.markitdown_parser import MarkItDownParser
+
             logger.info("[markitdown] Initializing parser for non-PDF formats")
             self._markitdown_parser = MarkItDownParser()
         return self._markitdown_parser
