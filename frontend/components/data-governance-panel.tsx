@@ -106,7 +106,7 @@ export function DataGovernancePanel() {
   // UI 状态
   const [activeTab, setActiveTab] = useState<GovernanceTab>('quality')
   const [selectedFileId, setSelectedFileId] = useState<string | null>(null)
-  const [showOriginal, setShowOriginal] = useState(false)
+  const [viewMode, setViewMode] = useState<'edit' | 'preview' | 'original'>('edit')
   const [isProcessing, setIsProcessing] = useState(false)
   const [isDragging, setIsDragging] = useState(false)
   const [uploading, setUploading] = useState(false)
@@ -209,14 +209,15 @@ export function DataGovernancePanel() {
   // 获取当前显示内容
   const displayContent = useMemo(() => {
     if (!governanceState) return ''
-    return showOriginal ? governanceState.originalContent : governanceState.cleanedContent
-  }, [governanceState, showOriginal])
+    return viewMode === 'original' ? governanceState.originalContent : governanceState.cleanedContent
+  }, [governanceState, viewMode])
 
   // 文件选择
   const handleSelectFile = useCallback((fileId: string) => {
     const file = files.find((f) => f.id === fileId)
     if (file) {
       setSelectedFileId(fileId)
+      setViewMode('edit')
       initializeGovernanceState(file)
     }
   }, [files, initializeGovernanceState])
@@ -333,6 +334,7 @@ export function DataGovernancePanel() {
     const nextFile = files[nextIndex]
     if (nextFile) {
       setSelectedFileId(nextFile.id)
+      setViewMode('edit')
       initializeGovernanceState(nextFile)
     }
   }, [persistGovernanceEdits, selectedFileId, files, initializeGovernanceState])
@@ -759,12 +761,21 @@ export function DataGovernancePanel() {
                       <Button
                         variant="ghost"
                         size="sm"
-                        onClick={() => setShowOriginal(!showOriginal)}
+                        onClick={() => setViewMode((m) => (m === 'edit' ? 'preview' : 'edit'))}
+                        className="h-7 text-xs gap-1"
+                      >
+                        {viewMode === 'edit' ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5" />}
+                        {viewMode === 'edit' ? '预览（只读）' : '继续编辑'}
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setViewMode((m) => (m === 'original' ? 'preview' : 'original'))}
                         disabled={governanceState.cleanedContent === governanceState.originalContent}
                         className="h-7 text-xs gap-1"
                       >
-                        {showOriginal ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5" />}
-                        {showOriginal ? '查看原文' : '查看原文'}
+                        <FileText className="w-3.5 h-3.5" />
+                        {viewMode === 'original' ? '返回修改版' : '对比解析原文'}
                       </Button>
                       <Button
                         variant="ghost"
@@ -783,12 +794,18 @@ export function DataGovernancePanel() {
                       <textarea
                         value={displayContent}
                         onChange={(e) => handleManualEdit(e.target.value)}
-                        readOnly={showOriginal}
-                        placeholder={showOriginal ? "原文内容（只读）" : "在这里直接编辑内容..."}
+                        readOnly={viewMode !== 'edit'}
+                        placeholder={
+                          viewMode === 'original'
+                            ? "解析原文内容（只读）"
+                            : viewMode === 'preview'
+                              ? "预览内容（只读）"
+                              : "在这里直接编辑内容..."
+                        }
                         spellCheck={false}
                         className={cn(
                           "w-full h-full min-h-[800px] p-10 rounded-2xl shadow-md border resize-none focus:outline-none focus:ring-2 focus:ring-sky-500/20 transition-all font-sans text-base leading-7 tracking-tight text-slate-800",
-                          showOriginal 
+                          viewMode !== 'edit' 
                             ? "bg-gray-50/50 border-gray-200 text-gray-600" 
                             : "bg-white border-slate-200"
                         )}
