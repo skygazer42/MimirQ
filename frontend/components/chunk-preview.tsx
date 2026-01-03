@@ -110,30 +110,61 @@ interface ChunkPreviewProps {
   onClose?: () => void
 }
 
+type ChunkPreviewFileItem = {
+  id: string
+  file: File
+  displayName: string
+  originalFileType?: string
+  originalFileSize?: number
+}
+
 export function ChunkPreview({ onConfirm, onClose }: ChunkPreviewProps) {
   // 文件状态
-  const [fileList, setFileList] = useState<File[]>([])
+  const [fileList, setFileList] = useState<ChunkPreviewFileItem[]>([])
   const { files: parsedFiles } = useParsedFiles()
   const [currentFileIndex, setCurrentFileIndex] = useState<number>(0)
-  const file = fileList[currentFileIndex] || null
+  const currentFileItem = fileList[currentFileIndex] || null
+  const file = currentFileItem?.file || null
   const [isDragging, setIsDragging] = useState(false)
+
+  const makeId = useCallback(
+    () =>
+      (typeof crypto !== 'undefined' && 'randomUUID' in crypto && typeof crypto.randomUUID === 'function'
+        ? crypto.randomUUID()
+        : Math.random().toString(36).slice(2)),
+    []
+  )
 
   // Initialize from parsedFiles context
   useEffect(() => {
     // Only load if fileList is empty and we have parsed files
     // This prevents overwriting user's dropped files
     if (fileList.length === 0 && parsedFiles.length > 0) {
-      const convertedFiles = parsedFiles.map(pf => {
-        // Create a File object from the markdown content
-        // Note: We use the original filename but enforce .md extension if it was converted
-        // or keep original extension if it's treated as raw text
+      const convertedFiles: ChunkPreviewFileItem[] = parsedFiles.map((pf) => {
         const content = pf.markdownContent || ''
-        const filename = pf.filename.endsWith('.md') ? pf.filename : `${pf.filename}.md`
-        return new File([content], filename, { type: 'text/markdown' })
+        const originalFilename = pf.filename || 'document'
+
+        // `chunk-preview` uses file extension to choose parser; parsed-files content is Markdown.
+        // Keep upload filename as `.md`, but display the original filename (e.g. `a.pdf`).
+        const base =
+          originalFilename.toLowerCase().endsWith('.md')
+            ? originalFilename
+            : originalFilename.replace(/\.[^/.]+$/, '')
+        const internalFilename = originalFilename.toLowerCase().endsWith('.md') ? originalFilename : `${base}.md`
+
+        const fileObj = new File([content], internalFilename, { type: 'text/markdown' })
+
+        return {
+          id: pf.id || makeId(),
+          file: fileObj,
+          displayName: originalFilename,
+          originalFileType: pf.fileType,
+          originalFileSize: pf.fileSize,
+        }
       })
       setFileList(convertedFiles)
     }
-  }, [parsedFiles, fileList.length])
+  }, [parsedFiles, fileList.length, makeId])
 
   // 批量处理状态
   const [processedStatus, setProcessedStatus] = useState<Record<string, 'pending' | 'success' | 'error'>>({})
@@ -201,38 +232,76 @@ export function ChunkPreview({ onConfirm, onClose }: ChunkPreviewProps) {
     if (e.dataTransfer.items) {
       const files = await scanFiles(e.dataTransfer.items)
       if (files.length > 0) {
-        setFileList(prev => [...prev, ...files])
+        setFileList((prev) => [
+          ...prev,
+          ...files.map((f) => ({
+            id: makeId(),
+            file: f,
+            displayName: f.name,
+            originalFileType: f.name.split('.').pop()?.toLowerCase(),
+            originalFileSize: f.size,
+          })),
+        ])
         setPreviewData(null)
         setError(null)
         setSubmitSuccess(false)
       }
     } else if (e.dataTransfer.files.length > 0) {
-       setFileList(prev => [...prev, ...Array.from(e.dataTransfer.files)])
+       const files = Array.from(e.dataTransfer.files)
+       setFileList((prev) => [
+         ...prev,
+         ...files.map((f) => ({
+           id: makeId(),
+           file: f,
+           displayName: f.name,
+           originalFileType: f.name.split('.').pop()?.toLowerCase(),
+           originalFileSize: f.size,
+         })),
+       ])
        setPreviewData(null)
        setError(null)
        setSubmitSuccess(false)
     }
-  }, [])
+  }, [makeId])
 
   const handleFileSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFiles = e.target.files
     if (selectedFiles && selectedFiles.length > 0) {
-      setFileList(prev => [...prev, ...Array.from(selectedFiles)])
+      const files = Array.from(selectedFiles)
+      setFileList((prev) => [
+        ...prev,
+        ...files.map((f) => ({
+          id: makeId(),
+          file: f,
+          displayName: f.name,
+          originalFileType: f.name.split('.').pop()?.toLowerCase(),
+          originalFileSize: f.size,
+        })),
+      ])
       setPreviewData(null)
       setError(null)
       setSubmitSuccess(false)
     }
-  }, [])
+    e.target.value = ''
+  }, [makeId])
 
   const handleUseExample = useCallback(() => {
     const blob = new Blob([EXAMPLE_TEXT], { type: 'text/plain' })
     const exampleFile = new File([blob], 'rag-introduction.md', { type: 'text/markdown' })
-    setFileList([exampleFile])
+    setFileList([
+      {
+        id: makeId(),
+        file: exampleFile,
+        displayName: exampleFile.name,
+        originalFileType: 'md',
+        originalFileSize: exampleFile.size,
+      },
+    ])
     setCurrentFileIndex(0)
     setPreviewData(null)
     setError(null)
     setSubmitSuccess(false)
-  }, [])
+  }, [makeId])
 
   const handleRemoveFile = useCallback((index: number) => {
     setFileList(prev => {
@@ -342,15 +411,15 @@ export function ChunkPreview({ onConfirm, onClose }: ChunkPreviewProps) {
       })
 
       setSubmitSuccess(true)
-      setProcessedStatus(prev => ({ ...prev, [file.name]: 'success' }))
+      setProcessedStatus((prev) => ({ ...prev, [currentFileItem?.id || file.name]: 'success' }))
       onConfirm?.({ chunk_size: chunkSize, chunk_overlap: chunkOverlap })
     } catch (err: any) {
       setError(err.response?.data?.detail || err.response?.data?.message || err.message || '入库失败')
-      setProcessedStatus(prev => ({ ...prev, [file.name]: 'error' }))
+      setProcessedStatus((prev) => ({ ...prev, [currentFileItem?.id || file.name]: 'error' }))
     } finally {
       setIsSubmitting(false)
     }
-  }, [previewData, file, chunkSize, chunkOverlap, pipelineOverridesEnabled, pipelineOptions, onConfirm])
+  }, [previewData, file, currentFileItem?.id, chunkSize, chunkOverlap, pipelineOverridesEnabled, pipelineOptions, onConfirm])
 
   // 重置
   const handleReset = useCallback(() => {
@@ -358,6 +427,7 @@ export function ChunkPreview({ onConfirm, onClose }: ChunkPreviewProps) {
     setCurrentFileIndex(0)
     setPreviewData(null)
     setError(null)
+    setProcessedStatus({})
     setSubmitSuccess(false)
     setChunkSize(1000)
     setChunkOverlap(200)
@@ -528,9 +598,14 @@ export function ChunkPreview({ onConfirm, onClose }: ChunkPreviewProps) {
             <h1 className="text-sm font-bold text-gray-900 tracking-tight">切片预览工作台</h1>
             <p className="text-[10px] text-gray-400 font-mono mt-0.5 flex items-center gap-2">
               <span className="bg-gray-100 px-1.5 rounded text-gray-600 font-bold">{currentFileIndex + 1}/{fileList.length}</span>
-              <span>{file.name}</span>
+              <span>{currentFileItem?.displayName || file.name}</span>
+              {currentFileItem?.originalFileType && (
+                <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-gray-100 text-gray-500">
+                  {String(currentFileItem.originalFileType).toUpperCase()}
+                </span>
+              )}
               <span className="w-1 h-1 rounded-full bg-gray-300"/>
-              <span>{formatFileSize(file.size)}</span>
+              <span>{formatFileSize(currentFileItem?.originalFileSize ?? file.size)}</span>
               {previewData && (
                 <>
                    <span className="w-1 h-1 rounded-full bg-gray-300"/>
@@ -614,30 +689,37 @@ export function ChunkPreview({ onConfirm, onClose }: ChunkPreviewProps) {
                   />
                </div>
                
-               <div className="space-y-2 max-h-[200px] overflow-y-auto custom-scrollbar pr-1">
-                 {fileList.map((f, idx) => (
-                   <div 
-                      key={`${f.name}-${idx}`}
-                      onClick={() => handleSelectFile(idx)}
-                      className={cn(
-                        "group flex items-center justify-between p-2 rounded-lg text-xs cursor-pointer transition-colors border",
-                        idx === currentFileIndex 
-                          ? "bg-white border-blue-200 shadow-sm ring-1 ring-blue-100" 
-                          : "bg-transparent border-transparent hover:bg-gray-100 hover:border-gray-200"
-                      )}
-                   >
-                     <div className="flex items-center gap-2 min-w-0 flex-1">
-                       <FileIcon className={cn("w-3.5 h-3.5 flex-shrink-0", idx === currentFileIndex ? "text-blue-600" : "text-gray-400")} />
-                       <span className={cn("truncate font-medium", idx === currentFileIndex ? "text-gray-900" : "text-gray-600")}>{f.name}</span>
-                     </div>
-                     
-                     <div className="flex items-center gap-1 flex-shrink-0">
-                       {processedStatus[f.name] === 'success' && <Check className="w-3.5 h-3.5 text-green-500" />}
-                       {processedStatus[f.name] === 'error' && <AlertCircle className="w-3.5 h-3.5 text-red-500" />}
-                       
-                       <div 
-                         onClick={(e) => {
-                           e.stopPropagation()
+                <div className="space-y-2 max-h-[200px] overflow-y-auto custom-scrollbar pr-1">
+                  {fileList.map((f, idx) => (
+                    <div 
+                       key={f.id}
+                       onClick={() => handleSelectFile(idx)}
+                       className={cn(
+                         "group flex items-center justify-between p-2 rounded-lg text-xs cursor-pointer transition-colors border",
+                         idx === currentFileIndex 
+                           ? "bg-white border-blue-200 shadow-sm ring-1 ring-blue-100" 
+                           : "bg-transparent border-transparent hover:bg-gray-100 hover:border-gray-200"
+                       )}
+                    >
+                      <div className="flex items-center gap-2 min-w-0 flex-1">
+                        <FileIcon className={cn("w-3.5 h-3.5 flex-shrink-0", idx === currentFileIndex ? "text-blue-600" : "text-gray-400")} />
+                        <span className={cn("truncate font-medium", idx === currentFileIndex ? "text-gray-900" : "text-gray-600")}>
+                          {f.displayName}
+                        </span>
+                      </div>
+                      
+                      <div className="flex items-center gap-1 flex-shrink-0">
+                        {f.originalFileType && (
+                          <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-gray-100 text-gray-500">
+                            {String(f.originalFileType).toUpperCase()}
+                          </span>
+                        )}
+                        {processedStatus[f.id] === 'success' && <Check className="w-3.5 h-3.5 text-green-500" />}
+                        {processedStatus[f.id] === 'error' && <AlertCircle className="w-3.5 h-3.5 text-red-500" />}
+                        
+                        <div 
+                          onClick={(e) => {
+                            e.stopPropagation()
                            handleRemoveFile(idx)
                          }}
                          className="opacity-0 group-hover:opacity-100 p-1 hover:bg-red-50 hover:text-red-600 rounded transition-all"
