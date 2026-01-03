@@ -46,19 +46,17 @@ export const CHUNK_STRATEGY_OPTIONS: ChunkStrategyOption[] = [
   {
     value: 'llama_index',
     label: 'LlamaIndex 句子切分',
-    description: '暂不可用：后端暂未支持 LlamaIndex 分块',
+    description: '基于句子边界的智能切分，保持语义完整性',
     icon: 'sentence',
-    badge: '暂不可用',
-    disabled: true,
+    badge: 'LlamaIndex',
     group: 'llama_index',
   },
   {
     value: 'llama_index_hierarchical',
     label: 'LlamaIndex 分层切分',
-    description: '暂不可用：后端暂未支持 LlamaIndex 分块',
+    description: '多层级切分策略，适合复杂文档结构',
     icon: 'hierarchical',
-    badge: '暂不可用',
-    disabled: true,
+    badge: '分层',
     group: 'llama_index',
   },
   // RAGFlow 系列
