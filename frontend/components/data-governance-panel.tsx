@@ -305,9 +305,8 @@ export function DataGovernancePanel() {
     }))
   }, [selectedFileId, governanceState])
 
-  // 保存并继续（留在治理页面）
-  const handleSaveAndContinue = useCallback(() => {
-    // 将治理后的内容回写到共享存储（localStorage），以便 /chunk-preview 使用最新版本
+  // 将治理后的内容回写到共享存储（localStorage），以便 /chunk-preview 使用最新版本
+  const persistGovernanceEdits = useCallback(() => {
     for (const f of files) {
       const state = governanceStates[f.id]
       if (!state) continue
@@ -315,6 +314,16 @@ export function DataGovernancePanel() {
         updateParsedFile(f.id, { markdownContent: state.cleanedContent })
       }
     }
+  }, [files, governanceStates, updateParsedFile])
+
+  const handleSave = useCallback(() => {
+    persistGovernanceEdits()
+    toast.success('已保存治理结果')
+  }, [persistGovernanceEdits])
+
+  // 保存并下一份（留在治理页面）
+  const handleSaveAndNextFile = useCallback(() => {
+    persistGovernanceEdits()
     toast.success('已保存治理结果')
 
     // “继续”含义：继续处理下一份文件，而不是跳转回解析流程。
@@ -326,7 +335,12 @@ export function DataGovernancePanel() {
       setSelectedFileId(nextFile.id)
       initializeGovernanceState(nextFile)
     }
-  }, [files, governanceStates, updateParsedFile, selectedFileId, initializeGovernanceState])
+  }, [persistGovernanceEdits, selectedFileId, files, initializeGovernanceState])
+
+  const handlePushToChunkPreview = useCallback(() => {
+    persistGovernanceEdits()
+    router.push('/chunk-preview')
+  }, [persistGovernanceEdits, router])
 
   // 返回解析页面
   const handleBackToParsing = useCallback(() => {
@@ -550,12 +564,34 @@ export function DataGovernancePanel() {
               重置当前
             </Button>
             <Button
-              onClick={handleSaveAndContinue}
+              size="sm"
+              onClick={handleSave}
+              disabled={!governanceState}
               className="gap-2 bg-gradient-to-r from-sky-600 to-blue-600 hover:from-sky-700 hover:to-blue-700"
             >
               <Save className="w-4 h-4" />
-              保存并继续
+              保存
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleSaveAndNextFile}
+              disabled={!governanceState}
+              className="gap-2"
+            >
+              保存并下一份
               <ChevronRight className="w-4 h-4" />
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handlePushToChunkPreview}
+              disabled={!isLoaded || files.length === 0}
+              className="gap-2"
+            >
+              <Layers className="w-4 h-4" />
+              推送到切块预览
+              <ArrowRight className="w-4 h-4" />
             </Button>
           </div>
         </div>
