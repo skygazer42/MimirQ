@@ -79,7 +79,13 @@ export function ManualUploadDialog({ onUploaded }: ManualUploadDialogProps) {
       setPreview(result)
     } catch (err: any) {
       console.error('Preview parse failed:', err)
-      setError(err.message || '文档解析失败')
+      setError(
+        err.response?.data?.detail ||
+          err.response?.data?.message ||
+          (typeof err.response?.data === 'string' ? err.response.data : undefined) ||
+          err.message ||
+          '文档解析失败'
+      )
     } finally {
       setIsParsing(false)
       // 清空 input，方便下次选同一文件
@@ -227,7 +233,13 @@ export function ManualUploadDialog({ onUploaded }: ManualUploadDialogProps) {
       if (onUploaded) onUploaded()
     } catch (err: any) {
       console.error('Manual upload failed:', err)
-      setError(err.message || '手动切片上传失败')
+      setError(
+        err.response?.data?.detail ||
+          err.response?.data?.message ||
+          (typeof err.response?.data === 'string' ? err.response.data : undefined) ||
+          err.message ||
+          '手动切片上传失败'
+      )
     } finally {
       setIsSubmitting(false)
     }

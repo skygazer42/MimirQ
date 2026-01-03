@@ -219,7 +219,12 @@ export default function ParsingPage() {
             ? {
                 ...f,
                 status: 'error' as FileStatus,
-                error: err.response?.data?.detail || err.message || '解析失败',
+                error:
+                  err.response?.data?.detail ||
+                  err.response?.data?.message ||
+                  (typeof err.response?.data === 'string' ? err.response.data : undefined) ||
+                  err.message ||
+                  '解析失败',
                 progress: 0,
               }
             : f
