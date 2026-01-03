@@ -1,6 +1,20 @@
 """
 FastAPI 主应用入口
 """
+import warnings
+
+# Quiet noisy third-party deprecation warnings during local development.
+warnings.filterwarnings(
+    "ignore",
+    message=r"pkg_resources is deprecated as an API\..*",
+    category=UserWarning,
+)
+warnings.filterwarnings(
+    "ignore",
+    message=r"The pynvml package is deprecated\..*",
+    category=FutureWarning,
+)
+
 import logging
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
