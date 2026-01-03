@@ -58,13 +58,41 @@ class _FallbackTrie:
         self._sorted_keys = None
 
     def save(self, path: str) -> None:
-        with open(path, "w", encoding="utf-8") as f:
-            json.dump(self._data, f, ensure_ascii=False, separators=(",", ":"))
+        # Write atomically to avoid producing partially-written caches on crashes/reloads.
+        tmp = f"{path}.tmp"
+        try:
+            with open(tmp, "w", encoding="utf-8") as f:
+                json.dump(self._data, f, ensure_ascii=False, separators=(",", ":"))
+            os.replace(tmp, path)
+        finally:
+            try:
+                if os.path.exists(tmp):
+                    os.remove(tmp)
+            except Exception:
+                pass
 
     @classmethod
     def load(cls, path: str) -> "_FallbackTrie":
-        with open(path, "r", encoding="utf-8") as f:
-            data = json.load(f)
+        # The cache file may be:
+        # - JSON (this fallback implementation)
+        # - a binary datrie cache generated in a different environment
+        # - partially written / corrupted
+        # Fast sniff prevents noisy UnicodeDecodeError on binary caches.
+        with open(path, "rb") as f:
+            head = f.read(128)
+        head = head.lstrip()
+        if head.startswith(b"\xef\xbb\xbf"):
+            head = head[3:]
+        if not head or head[:1] not in (b"{", b"["):
+            raise ValueError("Trie cache is not JSON (possibly a binary datrie cache)")
+
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+        except UnicodeDecodeError as exc:
+            raise ValueError("Trie cache is not UTF-8 JSON") from exc
+        except json.JSONDecodeError as exc:
+            raise ValueError("Trie cache is not valid JSON") from exc
         if not isinstance(data, dict) or not all(isinstance(k, str) for k in data.keys()):
             raise ValueError("Invalid trie cache format")
         obj = cls()
@@ -151,9 +179,23 @@ class RagTokenizer:
                 # load trie from file
                 self.trie_ = Trie.load(trie_file_name)
                 return
-            except Exception:
-                # fail to load trie from file, build default trie
-                logging.exception(f"[HUQIE]:Fail to load trie file {trie_file_name}, build the default trie file")
+            except Exception as exc:
+                # Fail to load trie from file, rebuild from source dictionary.
+                # In dev, this may happen if a binary datrie cache exists but datrie is not installed.
+                if self.DEBUG:
+                    logging.exception(
+                        f"[HUQIE]:Fail to load trie file {trie_file_name}, rebuild the default trie file"
+                    )
+                else:
+                    logging.warning(
+                        "[HUQIE]:Fail to load trie file %s (%s), rebuild the default trie file",
+                        trie_file_name,
+                        str(exc)[:200],
+                    )
+                try:
+                    os.remove(trie_file_name)
+                except Exception:
+                    pass
                 self.trie_ = Trie(string.printable)
         else:
             # file not exist, build default trie
