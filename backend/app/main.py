@@ -14,6 +14,11 @@ warnings.filterwarnings(
     message=r"The pynvml package is deprecated\..*",
     category=FutureWarning,
 )
+warnings.filterwarnings(
+    "ignore",
+    message=r"Using default SECRET_KEY\. Change this in production!",
+    category=UserWarning,
+)
 
 import logging
 from fastapi import FastAPI
