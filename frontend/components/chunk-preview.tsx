@@ -738,12 +738,6 @@ export function ChunkPreview({ onConfirm, onClose }: ChunkPreviewProps) {
             </div>
 
             <div className="space-y-8">
-              {/* 解析器选择 */}
-              <div className="space-y-2">
-                <label className="text-xs font-medium text-gray-500">解析器</label>
-                <ParserDropdown value={parserBackend} onChange={setParserBackend} />
-              </div>
-
               {/* 策略选择 */}
               <div className="space-y-2">
                 <label className="text-xs font-medium text-gray-500">切块策略</label>
