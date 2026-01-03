@@ -64,3 +64,48 @@ class RagasRunDetail(BaseModel):
 class RagasRunList(BaseModel):
     total: int
     items: List[RagasRunSchema]
+
+
+# ==================== 测试问题生成 Schema ====================
+
+
+class TestGenFromDocsRequest(BaseModel):
+    """从文档生成测试问题的请求"""
+    
+    dataset_id: Optional[UUID] = Field(default=None, description="知识库 ID（可选）")
+    document_ids: List[UUID] = Field(default_factory=list, description="文档 ID 列表（优先于 dataset_id）")
+    num_questions: int = Field(default=10, ge=1, le=50, description="生成问题数量")
+    question_types: List[str] = Field(
+        default_factory=lambda: ["factual", "reasoning", "comparison"],
+        description="问题类型：factual（事实型）、reasoning（推理型）、comparison（对比型）"
+    )
+    auto_save_as_cases: bool = Field(default=True, description="自动保存为回归测试用例")
+
+
+class TestGenFromConversationsRequest(BaseModel):
+    """从对话历史生成测试问题的请求"""
+    
+    conversation_ids: List[UUID] = Field(..., min_length=1, description="对话 ID 列表")
+    num_questions: int = Field(default=10, ge=1, le=50, description="生成问题数量")
+    quality_threshold: float = Field(default=0.7, ge=0.0, le=1.0, description="质量阈值")
+    auto_save_as_cases: bool = Field(default=True, description="自动保存为回归测试用例")
+
+
+class GeneratedQuestion(BaseModel):
+    """生成的问题"""
+    
+    question: str = Field(..., description="问题内容")
+    expected_answer: Optional[str] = Field(default=None, description="期望答案")
+    context: Optional[str] = Field(default=None, description="问题来源上下文")
+    source_type: str = Field(..., description="来源类型：document 或 conversation")
+    source_id: str = Field(..., description="来源 ID")
+    metadata: Dict[str, Any] = Field(default_factory=dict, description="额外元数据")
+
+
+class TestGenResponse(BaseModel):
+    """测试问题生成响应"""
+    
+    status: str = Field(..., description="状态：completed 或 failed")
+    generated_questions: List[GeneratedQuestion] = Field(default_factory=list, description="生成的问题列表")
+    saved_case_ids: List[UUID] = Field(default_factory=list, description="已保存为用例的 ID 列表")
+    error_message: Optional[str] = Field(default=None, description="错误信息（如果失败）")

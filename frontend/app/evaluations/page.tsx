@@ -1,9 +1,9 @@
 'use client'
 
 /**
- * RAGAS 评测页面
- * - 基于对话历史 + 引用上下文运行 RAGAS 指标
- * - 展示评测运行记录、汇总分数与逐轮明细
+ * RAGAS 评测页面 - 支持 Tab 切换
+ * Tab 1: 对话评测（基于对话历史）
+ * Tab 2: 回归测试（基于测试用例）
  */
 
 import { Suspense, useEffect, useMemo, useState } from 'react'
@@ -20,9 +20,14 @@ import {
   PlayCircle,
   RefreshCw,
   XCircle,
+  MessageSquare,
+  TestTube2,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
+import { RegressionTestTab } from '@/components/evaluation/regression-tab'
+
+type TabType = 'conversation' | 'regression'
 
 const METRIC_OPTIONS = [
   { key: 'faithfulness', label: 'Faithfulness（忠实度）' },
@@ -51,6 +56,7 @@ function EvaluationsLoading() {
 
 function EvaluationsPageContent() {
   const searchParams = useSearchParams()
+  const [activeTab, setActiveTab] = useState<TabType>('conversation')
   const [conversations, setConversations] = useState<Conversation[]>([])
   const [selectedConversationId, setSelectedConversationId] = useState<string>('')
 
@@ -210,9 +216,38 @@ function EvaluationsPageContent() {
 
   return (
     <main className="flex-1 flex flex-col overflow-hidden relative">
-        <div className="absolute top-0 left-0 right-0 h-64 bg-gradient-to-b from-indigo-50/50 dark:from-indigo-900/10 to-transparent pointer-events-none" />
+      {activeTab === 'conversation' && (
+        <>
+          <div className="absolute top-0 left-0 right-0 h-64 bg-gradient-to-b from-indigo-50/50 dark:from-indigo-900/10 to-transparent pointer-events-none" />
 
-        <header className="px-8 py-6 flex-shrink-0 z-10">
+          <header className="px-8 py-6 flex-shrink-0 z-10">
+            {/* Tab 切换 */}
+            <div className="flex items-center gap-2 mb-6">
+              <button
+                onClick={() => setActiveTab('conversation')}
+                className={cn(
+                  'flex items-center gap-2 px-4 py-2 rounded-lg transition text-sm font-medium',
+                  activeTab === 'conversation'
+                    ? 'bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 shadow-sm border border-slate-200 dark:border-slate-800'
+                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
+                )}
+              >
+                <MessageSquare className="w-4 h-4" />
+                对话评测
+              </button>
+              <button
+                onClick={() => setActiveTab('regression')}
+                className={cn(
+                  'flex items-center gap-2 px-4 py-2 rounded-lg transition text-sm font-medium',
+                  activeTab === 'regression'
+                    ? 'bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 shadow-sm border border-slate-200 dark:border-slate-800'
+                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
+                )}
+              >
+                <TestTube2 className="w-4 h-4" />
+                回归测试
+              </button>
+            </div>
           <div className="flex items-center justify-between mb-6">
             <div className="flex items-center gap-4">
               <div className="w-12 h-12 bg-white dark:bg-slate-900 rounded-2xl flex items-center justify-center shadow-sm border border-slate-100 dark:border-slate-800">
@@ -484,7 +519,12 @@ function EvaluationsPageContent() {
               </div>
             </div>
           </div>
-        </div>
-      </main>
+        </header>
+        </>
+      )}
+
+      {/* 回归测试 Tab */}
+      {activeTab === 'regression' && <RegressionTestTab />}
+    </main>
   )
 }

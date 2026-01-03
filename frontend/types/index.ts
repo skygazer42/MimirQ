@@ -405,3 +405,122 @@ export interface BatchTaskStatus {
   result_url?: string
   error?: string
 }
+
+// ==================== RAGAS 回归测试相关类型 ====================
+
+export interface RegressionCase {
+  id: string
+  tenant_id: string
+  dataset_id?: string
+  document_ids: string[]
+  question: string
+  expected_answer?: string
+  tags: string[]
+  extra: Record<string, any>
+  created_by?: string
+  created_at: string
+  updated_at: string
+}
+
+export interface RegressionCaseCreate {
+  question: string
+  dataset_id?: string
+  document_ids?: string[]
+  expected_answer?: string
+  tags?: string[]
+  extra?: Record<string, any>
+}
+
+export interface RegressionCaseList {
+  total: number
+  items: RegressionCase[]
+}
+
+export interface GeneratedQuestion {
+  question: string
+  expected_answer?: string
+  context?: string
+  source_type: 'document' | 'conversation'
+  source_id: string
+  metadata: Record<string, any>
+}
+
+export interface TestGenFromDocsRequest {
+  dataset_id?: string
+  document_ids?: string[]
+  num_questions?: number
+  question_types?: string[]
+  auto_save_as_cases?: boolean
+}
+
+export interface TestGenFromConversationsRequest {
+  conversation_ids: string[]
+  num_questions?: number
+  quality_threshold?: number
+  auto_save_as_cases?: boolean
+}
+
+export interface TestGenResponse {
+  status: string
+  generated_questions: GeneratedQuestion[]
+  saved_case_ids: string[]
+  error_message?: string
+}
+
+export interface RegressionRun {
+  id: string
+  tenant_id: string
+  account_id?: string
+  status: string
+  metrics: string[]
+  params: Record<string, any>
+  summary: Record<string, any>
+  error_message?: string
+  created_at: string
+  started_at?: string
+  finished_at?: string
+}
+
+export interface RegressionRunCreate {
+  case_ids?: string[]
+  dataset_id?: string
+  metrics?: string[]
+  skip_empty_contexts?: boolean
+  max_cases?: number
+  top_k?: number
+  score_threshold?: number
+  retrieval_mode?: string
+  alpha?: number
+  enable_weight_rerank?: boolean
+  vector_weight?: number
+  keyword_weight?: number
+  mmr_lambda?: number
+  enable_reranker?: boolean
+  reranker_provider?: string
+  reranker_top_n?: number
+  prompt_template_id?: string
+  prompt_template_key?: string
+  prompt_ab_experiment_key?: string
+}
+
+export interface RegressionRunList {
+  total: number
+  items: RegressionRun[]
+}
+
+export interface RegressionItem {
+  id: string
+  run_id: string
+  case_id: string
+  question: string
+  response: string
+  retrieved_contexts?: string[]
+  citations: any[]
+  scores: Record<string, any>
+  created_at: string
+}
+
+export interface RegressionRunDetail {
+  run: RegressionRun
+  items: RegressionItem[]
+}
