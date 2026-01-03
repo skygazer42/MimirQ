@@ -1,7 +1,7 @@
 'use client'
 
 import dynamic from 'next/dynamic'
-import { useRef, useEffect, useState, forwardRef, useImperativeHandle, useCallback } from 'react'
+import { useRef, useEffect, useState, forwardRef, useImperativeHandle, useCallback, useMemo } from 'react'
 import { useResizeObserver } from '@/hooks/use-resize-observer'
 import { Loader2 } from 'lucide-react'
 
@@ -47,6 +47,30 @@ export const GraphViewer = forwardRef<GraphViewerRef, GraphViewerProps>(({
   const { width, height } = useResizeObserver(containerRef)
   const [mounted, setMounted] = useState(false)
 
+  // Sanitize data to ensure fresh 2D simulation
+  // 1. Clone nodes/links to break references (especially when switching from 3D)
+  // 2. Convert link source/target objects back to IDs so d3 re-resolves them against the new node array
+  // 3. Clear 3D-specific props or fixed positions
+  const sanitizedData = useMemo(() => {
+    return {
+      nodes: data.nodes.map(node => {
+        // Destructure to remove 3D specific or fixed position props
+        const { fx, fy, fz, vz, vy, vx, z, ...rest } = node
+        return { ...rest }
+      }),
+      links: data.links.map(link => ({
+        ...link,
+        // Reset source/target to IDs if they are objects (from previous d3 simulation)
+        source: (typeof link.source === 'object' && link.source !== null && 'id' in link.source) 
+          ? (link.source as any).id 
+          : link.source,
+        target: (typeof link.target === 'object' && link.target !== null && 'id' in link.target)
+          ? (link.target as any).id
+          : link.target
+      }))
+    }
+  }, [data])
+
   // Debug: Log dimensions
   useEffect(() => {
     // Only log if dimensions change or on mount
@@ -85,7 +109,8 @@ export const GraphViewer = forwardRef<GraphViewerRef, GraphViewerProps>(({
       }
     },
     focusNode: (nodeId: string) => {
-      const node = data.nodes.find(n => n.id === nodeId)
+      // Use sanitizedData because that's what d3 is updating with x,y coords
+      const node = sanitizedData.nodes.find(n => n.id === nodeId)
       if (node && fgRef.current) {
         fgRef.current.centerAt(node.x, node.y, 1000)
         fgRef.current.zoom(3, 1000)
@@ -99,7 +124,7 @@ export const GraphViewer = forwardRef<GraphViewerRef, GraphViewerProps>(({
     const maxAttempts = 10
     
     const tryZoom = () => {
-      if (fgRef.current && data.nodes.length > 0) {
+      if (fgRef.current && sanitizedData.nodes.length > 0) {
         console.log('[GraphViewer] Zooming to fit...')
         fgRef.current.zoomToFit(400, 20)
       } else if (attempts < maxAttempts) {
@@ -110,7 +135,7 @@ export const GraphViewer = forwardRef<GraphViewerRef, GraphViewerProps>(({
     
     // Initial delay to allow render
     setTimeout(tryZoom, 300)
-  }, [data])
+  }, [sanitizedData])
 
   const handleNodeClick = useCallback((node: any) => {
     if (fgRef.current) {
@@ -170,7 +195,7 @@ export const GraphViewer = forwardRef<GraphViewerRef, GraphViewerProps>(({
           graphRef={fgRef}
           width={width}
           height={height}
-          graphData={data}
+          graphData={sanitizedData}
           backgroundColor="rgba(0,0,0,0)"
           nodeLabel="label"
           nodeColor={getNodeColor}

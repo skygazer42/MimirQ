@@ -5,16 +5,79 @@
 仅在 PostgreSQL 上运行。失败会被忽略以避免阻塞启动。
 """
 
+from __future__ import annotations
+
+from uuid import UUID
+
 from sqlalchemy import text
+
+def _default_tenant_uuid() -> str:
+    """
+    Resolve default tenant UUID for backfilling legacy rows.
+
+    Keep this best-effort and side-effect free: if settings are unavailable or invalid,
+    fall back to the well-known all-zero UUID.
+    """
+    fallback = "00000000-0000-0000-0000-000000000000"
+    try:
+        from app.core.config import settings
+
+        raw = str(getattr(settings, "DEFAULT_TENANT_ID", "") or "").strip()
+        return str(UUID(raw)) if raw else fallback
+    except Exception:  # noqa: BLE001
+        return fallback
+
+
+def _tenant_id_migrations(table: str, default_tenant: str) -> list[str]:
+    """
+    Add tenant_id to legacy tables and ensure it is non-null with a stable default.
+
+    Notes:
+    - We avoid assumptions about existing data; single-tenant legacy rows are backfilled
+      with DEFAULT_TENANT_ID.
+    - Each statement is idempotent and executed best-effort.
+    """
+    return [
+        # Add column for legacy schemas (covers the "column does not exist" crashes).
+        f"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS tenant_id UUID NOT NULL DEFAULT '{default_tenant}'::uuid;",
+        # If the column existed but was nullable, backfill and harden.
+        f"UPDATE {table} SET tenant_id = '{default_tenant}'::uuid WHERE tenant_id IS NULL;",
+        f"ALTER TABLE {table} ALTER COLUMN tenant_id SET DEFAULT '{default_tenant}'::uuid;",
+        f"ALTER TABLE {table} ALTER COLUMN tenant_id SET NOT NULL;",
+    ]
+
 
 def apply_runtime_migrations(engine) -> None:
     """Apply small schema changes needed by newer code paths."""
     try:
         if engine.dialect.name != "postgresql":
             return
+
+        default_tenant = _default_tenant_uuid()
         ddl_statements = [
+            # =========================
+            # Multi-tenant columns (legacy DB compatibility)
+            # =========================
+            *_tenant_id_migrations("documents", default_tenant),
+            *_tenant_id_migrations("document_chunks", default_tenant),
+            *_tenant_id_migrations("conversations", default_tenant),
+            *_tenant_id_migrations("messages", default_tenant),
+            *_tenant_id_migrations("datasets", default_tenant),
+            *_tenant_id_migrations("dataset_permissions", default_tenant),
+            *_tenant_id_migrations("prompt_templates", default_tenant),
+            *_tenant_id_migrations("tenant_members", default_tenant),
+            *_tenant_id_migrations("message_feedback", default_tenant),
+            *_tenant_id_migrations("ragas_evaluation_runs", default_tenant),
+            *_tenant_id_migrations("ragas_evaluation_items", default_tenant),
+            *_tenant_id_migrations("ragas_regression_cases", default_tenant),
+            *_tenant_id_migrations("ragas_regression_runs", default_tenant),
+            *_tenant_id_migrations("ragas_regression_items", default_tenant),
+
             # Store per-message run metadata (metrics/request_id/route/etc.)
             'ALTER TABLE messages ADD COLUMN IF NOT EXISTS message_metadata JSONB;',
+
+            # Prompt templates: versioning + A/B testing
+            'ALTER TABLE prompt_templates ADD COLUMN IF NOT EXISTS template_key VARCHAR(100);',
             # Common query pattern: tenant + conversation timeline
             'CREATE INDEX IF NOT EXISTS ix_messages_tenant_conversation_created_at '
             'ON messages (tenant_id, conversation_id, created_at);',
@@ -25,8 +88,6 @@ def apply_runtime_migrations(engine) -> None:
             'ON document_chunks (tenant_id, document_id, chunk_index);',
             'CREATE INDEX IF NOT EXISTS ix_documents_tenant_status '
             'ON documents (tenant_id, status);',
-            # Prompt templates: versioning + A/B testing
-            'ALTER TABLE prompt_templates ADD COLUMN IF NOT EXISTS template_key VARCHAR(100);',
             'ALTER TABLE prompt_templates ADD COLUMN IF NOT EXISTS version INTEGER DEFAULT 1;',
             'ALTER TABLE prompt_templates ADD COLUMN IF NOT EXISTS parent_id UUID;',
             'ALTER TABLE prompt_templates ADD COLUMN IF NOT EXISTS ab_experiment_key VARCHAR(100);',

@@ -37,11 +37,8 @@ import {
   Link as LinkIcon,
   PlusCircle,
   Lightbulb,
-  Box,
-  BoxSelect
 } from 'lucide-react'
 import { GraphViewer, GraphViewerRef, LayoutMode } from '@/components/graph/graph-viewer'
-import { GraphViewer3D, GraphViewer3DRef } from '@/components/graph/graph-viewer-3d'
 import { parseGraphML, GraphData } from '@/lib/graph-parser'
 import { GraphService } from '@/services/graph-service'
 import { findShortestPath } from '@/lib/graph-algorithms'
@@ -68,7 +65,6 @@ export default function GraphPage() {
 
   // Layout & View Mode
   const [layoutMode, setLayoutMode] = useState<LayoutMode>('force')
-  const [is3DMode, setIs3DMode] = useState(false)
 
   // Editing State
   const [isConnectMode, setIsConnectMode] = useState(false)
@@ -79,7 +75,7 @@ export default function GraphPage() {
   const [explainSteps, setExplainSteps] = useState<{node: string, reason: string}[]>([])
   const [currentStepIndex, setCurrentStepIndex] = useState(-1)
 
-  const graphRef = useRef<GraphViewerRef | GraphViewer3DRef>(null)
+  const graphRef = useRef<GraphViewerRef>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const searchInputRef = useRef<HTMLInputElement>(null)
 
@@ -583,29 +579,16 @@ export default function GraphPage() {
           }}></div>
 
           {graphData.nodes.length > 0 ? (
-            is3DMode ? (
-              <GraphViewer3D 
-                ref={graphRef as React.RefObject<GraphViewer3DRef>}
-                data={graphData} 
-                onNodeClick={handleNodeClick}
-                onBackgroundClick={() => setIsDetailOpen(false)}
-                highlightedNodeIds={highlightedNodeIds}
-                highlightedLinkIds={highlightedLinkIds}
-                showEdgeLabels={showEdgeLabels}
-                layoutMode={layoutMode}
-              />
-            ) : (
-              <GraphViewer 
-                ref={graphRef as React.RefObject<GraphViewerRef>}
-                data={graphData} 
-                onNodeClick={handleNodeClick}
-                onBackgroundClick={() => setIsDetailOpen(false)}
-                highlightedNodeIds={highlightedNodeIds}
-                highlightedLinkIds={highlightedLinkIds}
-                showEdgeLabels={showEdgeLabels}
-                layoutMode={layoutMode}
-              />
-            )
+            <GraphViewer 
+              ref={graphRef as React.RefObject<GraphViewerRef>}
+              data={graphData} 
+              onNodeClick={handleNodeClick}
+              onBackgroundClick={() => setIsDetailOpen(false)}
+              highlightedNodeIds={highlightedNodeIds}
+              highlightedLinkIds={highlightedLinkIds}
+              showEdgeLabels={showEdgeLabels}
+              layoutMode={layoutMode}
+            />
           ) : (
             <div className="absolute inset-0 flex flex-col items-center justify-center z-10">
               <div className="w-32 h-32 bg-white rounded-full shadow-xl shadow-indigo-100 flex items-center justify-center mb-8 animate-in zoom-in-50 duration-500">
@@ -688,18 +671,6 @@ export default function GraphPage() {
                 <Button 
                    variant="ghost" 
                    size="icon" 
-                   onClick={() => setIs3DMode(!is3DMode)}
-                   className={cn(
-                     "rounded-xl hover:bg-blue-50 hover:text-blue-600 transition-colors", 
-                     is3DMode && "bg-blue-100 text-blue-600 ring-2 ring-blue-500/20"
-                   )}
-                   title={is3DMode ? "切换回 2D" : "切换到 3D"}
-                >
-                  <Box className="w-5 h-5" />
-                </Button>
-                <Button 
-                   variant="ghost" 
-                   size="icon" 
                    onClick={startExplainMode}
                    className={cn(
                      "rounded-xl hover:bg-purple-50 hover:text-purple-600 transition-colors", 
@@ -731,17 +702,15 @@ export default function GraphPage() {
                 >
                   <Route className="w-5 h-5" />
                 </Button>
-                {!is3DMode && (
-                  <Button 
-                    variant="ghost" 
-                    size="icon" 
-                    onClick={() => setShowEdgeLabels(!showEdgeLabels)} 
-                    className={cn("rounded-xl hover:bg-indigo-50 hover:text-indigo-600", showEdgeLabels && "bg-indigo-50 text-indigo-600")} 
-                    title="显示/隐藏连线标签"
-                  >
-                    <Type className="w-5 h-5" />
-                  </Button>
-                )}
+                <Button 
+                  variant="ghost" 
+                  size="icon" 
+                  onClick={() => setShowEdgeLabels(!showEdgeLabels)} 
+                  className={cn("rounded-xl hover:bg-indigo-50 hover:text-indigo-600", showEdgeLabels && "bg-indigo-50 text-indigo-600")} 
+                  title="显示/隐藏连线标签"
+                >
+                  <Type className="w-5 h-5" />
+                </Button>
              </div>
           </div>
 
