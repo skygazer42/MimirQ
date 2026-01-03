@@ -15,6 +15,16 @@ def main() -> None:
     # Avoid noisy dev-only warning when running with AUTH_MODE=header.
     warnings.filterwarnings(
         "ignore",
+        message=r"pkg_resources is deprecated as an API\..*",
+        category=UserWarning,
+    )
+    warnings.filterwarnings(
+        "ignore",
+        message=r"The pynvml package is deprecated\..*",
+        category=FutureWarning,
+    )
+    warnings.filterwarnings(
+        "ignore",
         message=r"Using default SECRET_KEY\. Change this in production!",
         category=UserWarning,
     )

@@ -959,8 +959,16 @@ async def preview_chunking(
     upload_dir.mkdir(parents=True, exist_ok=True)
     temp_path = upload_dir / f"{uuid.uuid4()}{file_ext}"
 
+    # Defensive default: avoid NameError if any branch exits early.
+    file_size: int = 0
+
     try:
-        file_size = await save_upload_file(file, temp_path, max_bytes=settings.MAX_FILE_SIZE)
+        file_size = int(await save_upload_file(file, temp_path, max_bytes=settings.MAX_FILE_SIZE) or 0)
+        if file_size <= 0:
+            try:
+                file_size = temp_path.stat().st_size
+            except Exception:
+                pass
 
         resolved_chunk_strategy = chunker_factory.resolve_strategy(chunk_strategy)
         pipeline_options = _to_pipeline_options(
