@@ -4,10 +4,39 @@ LangChain-compatible embeddings adapter.
 Adapts app.rag.embedding models to LangChain's Embeddings interface
 for use with LangChain vector stores (Milvus, FAISS, Chroma, etc.).
 """
-from typing import List
+from __future__ import annotations
+
+from typing import List, Optional, Dict, Any, Tuple
+import hashlib
+import json
 
 from app.rag.embedding.base import BaseEmbeddingModel
 from app.rag.embedding.utils import logger
+from app.core.config import settings
+
+_redis_client = None
+
+
+def _get_redis_client():
+    global _redis_client
+    if _redis_client is not None:
+        return _redis_client
+    try:
+        import redis  # type: ignore
+
+        _redis_client = redis.Redis.from_url(settings.REDIS_URL)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Embedding cache disabled (redis init failed): %s", str(exc)[:200])
+        _redis_client = None
+    return _redis_client
+
+
+def _embed_cache_key(text: str) -> str:
+    # 绑定模型与版本（当前使用 provider/model；未来如有显式版本，可追加）
+    model_key = f"{settings.EMBEDDING_PROVIDER}/{settings.EMBEDDING_MODEL}"
+    digest = hashlib.sha256(text.encode("utf-8", "ignore")).hexdigest()
+    prefix = getattr(settings, "EMBEDDING_CACHE_PREFIX", "emb")
+    return f"{prefix}:{model_key}:{digest}"
 
 
 class LangChainEmbeddingsAdapter:
@@ -49,7 +78,52 @@ class LangChainEmbeddingsAdapter:
         Returns:
             List of embedding vectors
         """
-        embeddings = self._model.encode(texts)
+        # Best-effort Redis cache to avoid repeated embedding calls during ingest.
+        if bool(getattr(settings, "EMBEDDING_CACHE_ENABLED", True)):
+            client = _get_redis_client()
+        else:
+            client = None
+
+        embeddings: List[List[float]]
+        if client is None or not texts:
+            embeddings = self._model.encode(texts)
+        else:
+            keys = [_embed_cache_key(t) for t in texts]
+            cached_raw = client.mget(keys)
+
+            missing: List[Tuple[int, str]] = []
+            out: List[Optional[List[float]]] = [None] * len(texts)
+            for i, raw in enumerate(cached_raw):
+                if raw:
+                    try:
+                        out[i] = json.loads(raw)
+                    except Exception:  # noqa: BLE001
+                        missing.append((i, texts[i]))
+                else:
+                    missing.append((i, texts[i]))
+
+            if missing:
+                missing_texts = [t for _, t in missing]
+                computed = self._model.encode(missing_texts)
+                ttl = int(getattr(settings, "EMBEDDING_CACHE_TTL_SEC", 7 * 24 * 3600) or 0)
+                pipe = client.pipeline(transaction=False)
+                for (idx, _t), vec in zip(missing, computed):
+                    out[idx] = vec
+                    try:
+                        payload = json.dumps(vec, separators=(",", ":")).encode("utf-8")
+                        if ttl > 0:
+                            pipe.set(keys[idx], payload, ex=ttl)
+                        else:
+                            pipe.set(keys[idx], payload)
+                    except Exception:  # noqa: BLE001
+                        # 缓存失败不影响主流程
+                        pass
+                try:
+                    pipe.execute()
+                except Exception:  # noqa: BLE001
+                    pass
+
+            embeddings = [v if v is not None else [] for v in out]
 
         if self._normalize:
             embeddings = self._normalize_vectors(embeddings)
@@ -65,7 +139,33 @@ class LangChainEmbeddingsAdapter:
         Returns:
             Embedding vector
         """
-        embeddings = self._model.encode([text])
+        if bool(getattr(settings, "EMBEDDING_CACHE_ENABLED", True)):
+            client = _get_redis_client()
+        else:
+            client = None
+
+        if client is None:
+            embeddings = self._model.encode([text])
+        else:
+            key = _embed_cache_key(text)
+            raw = client.get(key)
+            if raw:
+                try:
+                    vec = json.loads(raw)
+                    embeddings = [vec]
+                except Exception:  # noqa: BLE001
+                    embeddings = self._model.encode([text])
+            else:
+                embeddings = self._model.encode([text])
+                try:
+                    ttl = int(getattr(settings, "EMBEDDING_CACHE_TTL_SEC", 7 * 24 * 3600) or 0)
+                    payload = json.dumps(embeddings[0], separators=(",", ":")).encode("utf-8")
+                    if ttl > 0:
+                        client.set(key, payload, ex=ttl)
+                    else:
+                        client.set(key, payload)
+                except Exception:  # noqa: BLE001
+                    pass
 
         if self._normalize:
             embeddings = self._normalize_vectors(embeddings)

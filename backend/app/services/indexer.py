@@ -611,7 +611,40 @@ class Indexer:
 
         vector_store = get_vector_store()
         try:
-            return list(vector_store.add_documents(docs, document_id, tenant_id))
+            batch_size = int(getattr(settings, "VECTOR_WRITE_BATCH_SIZE", 256) or 256)
+            max_retries = int(getattr(settings, "VECTOR_WRITE_MAX_RETRIES", 1) or 1)
+            backoff = float(getattr(settings, "VECTOR_WRITE_RETRY_BACKOFF_SEC", 0.5) or 0.5)
+
+            out: List[Optional[str]] = []
+            for i in range(0, len(docs), batch_size):
+                batch = docs[i : i + batch_size]
+                last_exc: Optional[Exception] = None
+                for attempt in range(max_retries + 1):
+                    try:
+                        out.extend(list(vector_store.add_documents(batch, document_id, tenant_id)))
+                        last_exc = None
+                        break
+                    except Exception as exc:  # noqa: BLE001
+                        last_exc = exc
+                        if attempt < max_retries:
+                            logger.warning(
+                                "Vector write failed (attempt %s/%s), retrying in %.2fs: %s",
+                                attempt + 1,
+                                max_retries + 1,
+                                backoff,
+                                str(exc)[:200],
+                            )
+                            time.sleep(backoff)
+                            backoff *= 2
+                        else:
+                            raise
+
+                if last_exc is not None:
+                    raise last_exc
+
+            if len(out) != len(docs):
+                raise ValueError(f"vector ids length {len(out)} != docs length {len(docs)}")
+            return out
         except Exception as exc:
             logger.warning("Failed to store vectors: %s", exc)
             logger.warning("Proceeding without vector ids; BM25-only retrieval will still work.")

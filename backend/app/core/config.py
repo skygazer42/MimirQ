@@ -38,6 +38,29 @@ class Settings(BaseSettings):
     MINIO_USE_SSL: bool = False
     MINIO_METRICS_LOG_PATH: str = "./logs/minio_metrics.jsonl"
 
+    # Task Queue / Redis (ingest 吞吐优化)
+    # - 任务队列默认关闭：不影响现有 API 兼容性；开启后由 worker 异步处理文档解析/索引。
+    TASK_QUEUE_ENABLED: bool = False
+    REDIS_URL: str = "redis://localhost:6379/0"
+    # Arq queue name
+    TASK_QUEUE_NAME: str = "mimirq"
+    # Worker 并发（Arq 的 max_jobs）
+    TASK_WORKER_MAX_JOBS: int = 10
+    # 任务执行超时（秒）
+    TASK_JOB_TIMEOUT_SEC: int = 60 * 30
+    # 默认重试次数（网络/外部 API 抖动场景）
+    TASK_JOB_MAX_TRIES: int = 3
+
+    # Embedding 缓存（Redis，提升 ingest 吞吐；best-effort）
+    EMBEDDING_CACHE_ENABLED: bool = True
+    EMBEDDING_CACHE_TTL_SEC: int = 7 * 24 * 3600
+    EMBEDDING_CACHE_PREFIX: str = "emb"
+
+    # Vector write batching (Milvus/Chroma/etc). Smaller batches reduce tail latency and memory spikes.
+    VECTOR_WRITE_BATCH_SIZE: int = 256
+    VECTOR_WRITE_MAX_RETRIES: int = 1
+    VECTOR_WRITE_RETRY_BACKOFF_SEC: float = 0.5
+
     LLM_API_KEY: str = Field(default="", validation_alias=AliasChoices("LLM_API_KEY", "OPENAI_API_KEY"))
     LLM_API_BASE: str = Field(default="https://api.openai.com/v1", validation_alias=AliasChoices("LLM_API_BASE", "OPENAI_BASE_URL"))
     LLM_MODEL: str = Field(default="gpt-4-turbo-preview", validation_alias=AliasChoices("LLM_MODEL", "OPENAI_MODEL"))

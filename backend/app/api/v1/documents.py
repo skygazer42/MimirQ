@@ -52,6 +52,7 @@ from sqlalchemy import or_, false, and_
 from app.rag.core.logging import get_logger
 from app.rag.preprocessing.processor import governance_processor
 from app.api.utils.upload import save_upload_file
+from app.tasks.queue import enqueue_document_processing
 
 
 logger = get_logger("api.documents")
@@ -310,15 +311,29 @@ async def upload_document(
     db.commit()
     db.refresh(db_document)
 
-    # 5. 后台处理文档
-    background_tasks.add_task(
-        document_processor.process_document,
-        file_path,
-        file_id,
-        tenant_id,
-        resolved_parser_backend,
-        resolved_chunk_strategy
+    # 5. 后台处理文档：优先入队（保持 API 兼容；未启用队列则回退 BackgroundTasks）
+    job_id = f"doc:{tenant_id}:{file_id}"
+    task_id = await enqueue_document_processing(
+        tenant_id=tenant_id,
+        document_id=file_id,
+        requested_by=account_id,
+        job_id=job_id,
     )
+    if task_id:
+        meta = dict(db_document.doc_metadata or {})
+        meta["task_id"] = task_id
+        db_document.doc_metadata = meta
+        db.commit()
+        db.refresh(db_document)
+    else:
+        background_tasks.add_task(
+            document_processor.process_document,
+            file_path,
+            file_id,
+            tenant_id,
+            resolved_parser_backend,
+            resolved_chunk_strategy,
+        )
 
     return db_document
 
@@ -474,15 +489,29 @@ async def upload_documents_batch(
                 db.commit()
                 db.refresh(db_document)
                 
-                # 后台处理文档
-                background_tasks.add_task(
-                    document_processor.process_document,
-                    file_path,
-                    file_id,
-                    tenant_id,
-                    resolved_parser_backend,
-                    resolved_chunk_strategy
+                # 后台处理文档：优先入队（保持 API 兼容；未启用队列则回退 BackgroundTasks）
+                job_id = f"doc:{tenant_id}:{file_id}"
+                task_id = await enqueue_document_processing(
+                    tenant_id=tenant_id,
+                    document_id=file_id,
+                    requested_by=account_id,
+                    job_id=job_id,
                 )
+                if task_id:
+                    meta = dict(db_document.doc_metadata or {})
+                    meta["task_id"] = task_id
+                    db_document.doc_metadata = meta
+                    db.commit()
+                    db.refresh(db_document)
+                else:
+                    background_tasks.add_task(
+                        document_processor.process_document,
+                        file_path,
+                        file_id,
+                        tenant_id,
+                        resolved_parser_backend,
+                        resolved_chunk_strategy,
+                    )
                 
                 return {
                     "success": True,

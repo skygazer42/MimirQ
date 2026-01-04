@@ -35,6 +35,7 @@ from app.models.document import DocumentChunk, Document as DBDocument
 from app.storage.vector.milvus import milvus_store
 from app.storage.object.minio import minio_service
 from app.core.http_client import close_http_client_pool
+from app.tasks.queue import init_queue, close_queue
 # Ensure KG models are registered for metadata creation
 import app.rag.kg.models  # noqa: F401
 # Ensure evaluation models are registered for metadata creation
@@ -68,6 +69,12 @@ async def lifespan(app: FastAPI):
     Base.metadata.create_all(bind=engine)
     apply_runtime_migrations(engine)
     logger.info("Database initialized")
+
+    # 初始化任务队列（可选）
+    try:
+        await init_queue()
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Failed to init task queue: %s", str(exc)[:200])
 
     # 初始化 BM25 索引（可选：大规模部署建议依赖 lazy-build）
     if not bool(getattr(settings, "BM25_INDEX_ENABLED", True)):
@@ -133,6 +140,9 @@ async def lifespan(app: FastAPI):
     # 关闭 HTTP 客户端连接池
     await close_http_client_pool()
     logger.info("HTTP client pool closed")
+
+    # 关闭任务队列连接（可选）
+    await close_queue()
 
 
 # 创建 FastAPI 应用

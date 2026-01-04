@@ -93,3 +93,7 @@ ragas==0.4.1
 
 # LlamaIndex (用于高级切块策略)
 llama-index-core==0.11.14
+
+# Task Queue / Redis (用于 ingest 吞吐优化：任务队列、幂等锁、缓存)
+redis==5.0.1
+arq==0.26.0
