@@ -496,7 +496,7 @@ ENTITY_VECTOR_ENABLED=true
 | `DEEPDOC_ENABLED` | 启用 DeepDoc 解析（仓库内置于 `backend/app/deepdoc`） | `false` |
 | `MARKITDOWN_ENABLED` | 开启微软 MarkItDown 解析，配合 `MARKITDOWN_USE_PLUGINS` 等配置 | `false` |
 | `MINERU_ENABLED` | 开启 MinerU 在线解析（需 `MINERU_API_TOKEN`） | `false` |
-| `GOVERNANCE_ENABLED` | 启用治理清洗流程（Markdown 规范化、正则规则） | `true` |
+| `GOVERNANCE_ENABLED` | 启用治理清洗流程（Markdown 规范化、正则规则） | `false` |
 | `DEFAULT_CHUNK_STRATEGY` | 默认切块策略：`langchain_recursive` 或 `llama_index` | `langchain_recursive` |
 | `LLAMA_INDEX_ENABLED` | 允许调用 LlamaIndex SentenceSplitter；为 `true` 前端才可选择该切块方式 | `false` |
 
