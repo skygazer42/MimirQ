@@ -50,6 +50,9 @@ class Settings(BaseSettings):
     TASK_JOB_TIMEOUT_SEC: int = 60 * 30
     # 默认重试次数（网络/外部 API 抖动场景）
     TASK_JOB_MAX_TRIES: int = 3
+    # per-tenant 并发限制：避免单租户占满 worker（0 表示不限制）
+    TASK_TENANT_MAX_CONCURRENCY_DOC: int = 2
+    TASK_TENANT_MAX_CONCURRENCY_KG: int = 1
 
     # Embedding 缓存（Redis，提升 ingest 吞吐；best-effort）
     EMBEDDING_CACHE_ENABLED: bool = True

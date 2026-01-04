@@ -537,24 +537,48 @@ class DocumentProcessorService:
 
             # Step 7: 如启用则运行 KG 抽取（事件/实体）
             if pipeline_effective.kg_enabled:
-                logger.info("Running KG extraction on document chunks...")
-                prompt_template_id = None
-                raw_tid = (getattr(settings, "KG_EXTRACT_PROMPT_TEMPLATE_ID", "") or "").strip()
-                if raw_tid:
+                # 队列开启时：把 KG 抽取迁到 worker，提升 ingest 吞吐与稳定性
+                if bool(getattr(settings, "TASK_QUEUE_ENABLED", False)):
                     try:
-                        prompt_template_id = UUID(raw_tid)
-                    except Exception:
-                        logger.warning("Invalid KG_EXTRACT_PROMPT_TEMPLATE_ID: %s", raw_tid[:50])
-                events = await extract_events(
-                    chunk_ids,
-                    tenant_id=tenant_id,
-                    chunks=indexed.db_chunks,
-                    index_options=index_options,
-                    prompt_template_id=prompt_template_id,
-                    prompt_template_key=(getattr(settings, "KG_EXTRACT_PROMPT_TEMPLATE_KEY", "") or "").strip() or None,
-                    prompt_ab_experiment_key=(getattr(settings, "KG_EXTRACT_PROMPT_AB_EXPERIMENT_KEY", "") or "").strip() or None,
-                )
-                logger.info("KG extracted %s events for document %s", len(events), document_id)
+                        from app.tasks.queue import enqueue_kg_extraction
+
+                        pipeline_hash = (db_document.doc_metadata or {}).get("pipeline_hash") or "unknown"
+                        job_id = f"kg:{tenant_id}:{document_id}:{pipeline_hash}"
+                        kg_task_id = await enqueue_kg_extraction(
+                            tenant_id=tenant_id,
+                            document_id=document_id,
+                            requested_by="system",
+                            job_id=job_id,
+                        )
+                        if kg_task_id:
+                            meta = dict(db_document.doc_metadata or {})
+                            meta["kg_task_id"] = kg_task_id
+                            db_document.doc_metadata = meta
+                            db.commit()
+                            db.refresh(db_document)
+                        logger.info("KG extraction enqueued for document %s (task_id=%s)", document_id, kg_task_id)
+                    except Exception as exc:  # noqa: BLE001
+                        # 队列异常不应影响文档主流程
+                        logger.warning("Failed to enqueue KG extraction: %s", str(exc)[:200])
+                else:
+                    logger.info("Running KG extraction on document chunks...")
+                    prompt_template_id = None
+                    raw_tid = (getattr(settings, "KG_EXTRACT_PROMPT_TEMPLATE_ID", "") or "").strip()
+                    if raw_tid:
+                        try:
+                            prompt_template_id = UUID(raw_tid)
+                        except Exception:
+                            logger.warning("Invalid KG_EXTRACT_PROMPT_TEMPLATE_ID: %s", raw_tid[:50])
+                    events = await extract_events(
+                        chunk_ids,
+                        tenant_id=tenant_id,
+                        chunks=indexed.db_chunks,
+                        index_options=index_options,
+                        prompt_template_id=prompt_template_id,
+                        prompt_template_key=(getattr(settings, "KG_EXTRACT_PROMPT_TEMPLATE_KEY", "") or "").strip() or None,
+                        prompt_ab_experiment_key=(getattr(settings, "KG_EXTRACT_PROMPT_AB_EXPERIMENT_KEY", "") or "").strip() or None,
+                    )
+                    logger.info("KG extracted %s events for document %s", len(events), document_id)
 
             return {
                 "status": "success",
@@ -611,6 +635,17 @@ class DocumentProcessorService:
     async def _rebuild_bm25_index_for_tenant(self, db: Session, tenant_id: UUID):
         """重建指定租户的 BM25 索引"""
         try:
+            if bool(getattr(settings, "TASK_QUEUE_ENABLED", False)):
+                try:
+                    from app.tasks.queue import enqueue_rebuild_indexes
+
+                    job_id = f"rebuild:{tenant_id}"
+                    await enqueue_rebuild_indexes(tenant_id=tenant_id, requested_by="system", job_id=job_id)
+                    logger.info("Rebuild indexes enqueued for tenant %s", tenant_id)
+                    return
+                except Exception as exc:  # noqa: BLE001
+                    logger.warning("Failed to enqueue rebuild indexes (fallback to inline): %s", str(exc)[:200])
+
             all_chunks = db.query(DocumentChunk).join(DBDocument).filter(
                 DBDocument.status == 'completed',
                 DocumentChunk.tenant_id == tenant_id
@@ -628,6 +663,20 @@ class DocumentProcessorService:
     async def _rebuild_bm25_index(self, db: Session):
         """Rebuild BM25 indexes for all tenants."""
         try:
+            if bool(getattr(settings, "TASK_QUEUE_ENABLED", False)):
+                try:
+                    from app.tasks.queue import enqueue_rebuild_indexes
+
+                    tenant_rows = db.query(DocumentChunk.tenant_id).distinct().all()
+                    tenant_ids = [row[0] for row in tenant_rows if row and row[0]]
+                    for tid in tenant_ids:
+                        job_id = f"rebuild:{tid}"
+                        await enqueue_rebuild_indexes(tenant_id=tid, requested_by="system", job_id=job_id)
+                    logger.info("Rebuild indexes enqueued for %s tenants", len(tenant_ids))
+                    return
+                except Exception as exc:  # noqa: BLE001
+                    logger.warning("Failed to enqueue rebuild indexes (fallback to inline): %s", str(exc)[:200])
+
             tenant_rows = db.query(DocumentChunk.tenant_id).distinct().all()
             tenant_ids = [row[0] for row in tenant_rows if row and row[0]]
             if not tenant_ids:
