@@ -290,5 +290,59 @@ class BaseAdvancedParser(ABC):
         file_path: Path,
         **kwargs,
     ) -> List[Document]:
-        """异步解析"""
-        return await asyncio.to_thread(self.parse, file_path, **kwargs)
+        """
+        异步解析文档（使用 aiofiles 进行异步文件读取）
+        
+        Args:
+            file_path: 文档文件路径
+            **kwargs: 额外参数
+        
+        Returns:
+            LangChain Document 列表
+        """
+        import aiofiles
+        
+        file_path = Path(file_path)
+        self._validate_file(file_path)
+
+        parser = self._get_parser()
+
+        # 检查安装
+        ok, reason = self._check_parser_installation(parser)
+        if not ok:
+            raise RuntimeError(f"{self._get_parser_name()} not available: {reason}")
+
+        # 异步读取文件
+        async with aiofiles.open(file_path, "rb") as f:
+            binary = await f.read()
+
+        # 在线程池中调用底层解析器（解析器本身可能是同步的）
+        def _parse_in_thread():
+            callback = self._create_callback()
+            sections, tables = self._call_parse_method(
+                parser=parser,
+                file_path=file_path,
+                binary=binary,
+                callback=callback,
+                **kwargs
+            )
+            
+            # 转换为 LangChain Document 格式
+            base_metadata = {
+                "source": str(file_path),
+                "filename": file_path.name,
+                "parser": self._get_parser_name(),
+            }
+
+            documents = []
+            documents.extend(self._convert_sections_to_documents(sections, base_metadata))
+            documents.extend(self._convert_tables_to_documents(tables, base_metadata))
+            
+            return documents
+        
+        documents = await asyncio.to_thread(_parse_in_thread)
+        
+        self._logger.info(
+            f"{self._get_parser_name()} parsed {file_path.name}: {len(documents)} documents"
+        )
+        return documents

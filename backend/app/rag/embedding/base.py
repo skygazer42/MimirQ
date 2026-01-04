@@ -138,17 +138,21 @@ class BaseEmbeddingModel(ABC):
         return data
 
     async def abatch_encode(
-        self, messages: list[str], batch_size: int = 40
+        self, messages: list[str], batch_size: int = 40, max_concurrent: int = 3
     ) -> list[list[float]]:
-        """Asynchronously encode messages in batches.
+        """Asynchronously encode messages in batches with concurrent control.
 
         Args:
             messages: List of text strings to encode
             batch_size: Number of messages per batch
+            max_concurrent: Maximum number of concurrent API calls (default: 3)
 
         Returns:
             List of embedding vectors
         """
+        if not messages:
+            return []
+        
         data = []
         task_id = None
 
@@ -160,12 +164,27 @@ class BaseEmbeddingModel(ABC):
                 "progress": 0,
             }
 
-        tasks = []
+        # Split into batches
+        batches = []
         for i in range(0, len(messages), batch_size):
             group_msg = messages[i : i + batch_size]
-            tasks.append(self.aencode(group_msg))
+            batches.append((i, group_msg))
 
+        # Process with concurrent control using semaphore
+        semaphore = asyncio.Semaphore(max_concurrent)
+        
+        async def encode_batch_with_limit(batch_info):
+            idx, group_msg = batch_info
+            async with semaphore:
+                logger.info(f"Encoding batch [{idx}/{len(messages)}] (bsz={len(group_msg)}, concurrent={max_concurrent})")
+                result = await self.aencode(group_msg)
+                if task_id:
+                    self.embed_state[task_id]["progress"] = min(idx + len(group_msg), len(messages))
+                return result
+
+        tasks = [encode_batch_with_limit(batch) for batch in batches]
         results = await asyncio.gather(*tasks)
+        
         for res in results:
             data.extend(res)
 

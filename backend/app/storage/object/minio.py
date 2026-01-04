@@ -1,8 +1,9 @@
 """
 MinIO 对象存储服务 - 用于存储文档解析中提取的图片
 """
+import asyncio
 import io
-from typing import Optional, BinaryIO, Union
+from typing import Optional, BinaryIO, Union, List, Dict, Any
 import json
 import time
 from pathlib import Path
@@ -129,6 +130,118 @@ class MinIOService:
             logger.error("MinIO upload failed: %s", e)
             self._log_metric("upload", False, time.perf_counter() - t0, object_name, error=str(e))
             raise RuntimeError(f"MinIO 图片上传失败: {e}") from e
+
+    async def upload_image_async(
+        self,
+        image_data: Union[bytes, BinaryIO],
+        tenant_id: str,
+        dataset_id: str,
+        document_id: str,
+        chunk_key: str,
+        extension: str = "jpg",
+    ) -> str:
+        """
+        异步上传图片到 MinIO（在线程池中执行同步操作）
+        
+        Args:
+            image_data: 图片二进制数据或文件对象
+            tenant_id: 租户 ID
+            dataset_id: 知识库 ID
+            document_id: 文档 ID
+            chunk_key: 块标识（通常为 chunk_index）
+            extension: 文件扩展名（默认 jpg）
+        
+        Returns:
+            img_id: 格式 "{tenant_id}:{dataset_id}:{document_id}:{chunk_key}"
+        """
+        return await asyncio.to_thread(
+            self.upload_image,
+            image_data,
+            tenant_id,
+            dataset_id,
+            document_id,
+            chunk_key,
+            extension
+        )
+
+    async def upload_images_batch(
+        self,
+        images: List[Dict[str, Any]],
+        max_concurrent: int = 10
+    ) -> List[Dict[str, Any]]:
+        """
+        批量并发上传图片到 MinIO
+        
+        Args:
+            images: 图片列表，每个元素为字典，包含：
+                - image_data: 图片二进制数据
+                - tenant_id: 租户 ID
+                - dataset_id: 知识库 ID
+                - document_id: 文档 ID
+                - chunk_key: 块标识
+                - extension: 文件扩展名（可选，默认 jpg）
+            max_concurrent: 最大并发上传数，默认10
+        
+        Returns:
+            上传结果列表，每个元素为字典：
+                - success: 是否成功
+                - img_id: 图片 ID（成功时）
+                - error: 错误信息（失败时）
+                - chunk_key: 原始 chunk_key
+        """
+        if not images:
+            return []
+        
+        t0 = time.perf_counter()
+        semaphore = asyncio.Semaphore(max_concurrent)
+        
+        async def upload_single(img_info: Dict[str, Any]) -> Dict[str, Any]:
+            async with semaphore:
+                try:
+                    img_id = await self.upload_image_async(
+                        image_data=img_info["image_data"],
+                        tenant_id=img_info["tenant_id"],
+                        dataset_id=img_info["dataset_id"],
+                        document_id=img_info["document_id"],
+                        chunk_key=img_info["chunk_key"],
+                        extension=img_info.get("extension", "jpg")
+                    )
+                    return {
+                        "success": True,
+                        "img_id": img_id,
+                        "chunk_key": img_info["chunk_key"]
+                    }
+                except Exception as e:
+                    logger.error(f"Batch upload failed for chunk_key {img_info.get('chunk_key')}: {str(e)}")
+                    return {
+                        "success": False,
+                        "error": str(e),
+                        "chunk_key": img_info.get("chunk_key")
+                    }
+        
+        tasks = [upload_single(img) for img in images]
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+        
+        # 处理异常
+        processed_results = []
+        for i, result in enumerate(results):
+            if isinstance(result, Exception):
+                processed_results.append({
+                    "success": False,
+                    "error": str(result),
+                    "chunk_key": images[i].get("chunk_key")
+                })
+            else:
+                processed_results.append(result)
+        
+        elapsed = time.perf_counter() - t0
+        success_count = sum(1 for r in processed_results if r.get("success"))
+        logger.info(
+            f"Batch upload completed: {success_count}/{len(images)} successful, "
+            f"elapsed: {elapsed:.2f}s"
+        )
+        
+        return processed_results
 
     def get_image_url(self, img_id: str, extension: str = "jpg") -> str:
         """

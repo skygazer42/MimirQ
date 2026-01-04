@@ -323,6 +323,226 @@ async def upload_document(
     return db_document
 
 
+@router.post("/upload-batch", status_code=201)
+async def upload_documents_batch(
+    background_tasks: BackgroundTasks,
+    files: List[UploadFile] = File(...),
+    parser_backend: str = Form(default=settings.DEFAULT_PARSER_BACKEND),
+    chunk_strategy: str = Form(default=settings.DEFAULT_CHUNK_STRATEGY),
+    governance_enabled: Optional[bool] = Form(default=None),
+    governance_remove_toc_lines: Optional[bool] = Form(default=None),
+    governance_remove_noise_lines: Optional[bool] = Form(default=None),
+    governance_unwrap_lines: Optional[bool] = Form(default=None),
+    governance_remove_common_lines: Optional[bool] = Form(default=None),
+    governance_unwrap_max_line_length: Optional[int] = Form(default=None),
+    governance_noise_min_chars: Optional[int] = Form(default=None),
+    governance_noise_ratio_threshold: Optional[float] = Form(default=None),
+    governance_common_lines_min_docs: Optional[int] = Form(default=None),
+    governance_common_lines_min_ratio: Optional[float] = Form(default=None),
+    chunk_size: Optional[int] = Form(default=None),
+    chunk_overlap: Optional[int] = Form(default=None),
+    chunk_vector_enabled: Optional[bool] = Form(default=None),
+    bm25_index_enabled: Optional[bool] = Form(default=None),
+    kg_enabled: Optional[bool] = Form(default=None),
+    event_vector_enabled: Optional[bool] = Form(default=None),
+    entity_vector_enabled: Optional[bool] = Form(default=None),
+    dataset_id: Optional[UUID] = Form(default=None),
+    tenant_id: UUID = Depends(get_tenant_id),
+    account_id: str = Depends(get_current_account_id),
+    db: Session = Depends(get_db),
+    max_concurrent: int = Form(default=5)
+):
+    """
+    批量上传文档（并发优化版）
+    
+    支持同时上传多个文档，使用并发处理以提升性能。
+    
+    Args:
+        files: 文档文件列表
+        max_concurrent: 最大并发处理数，默认5
+        其他参数同单文件上传接口
+    
+    Returns:
+        {
+            "total": 总文件数,
+            "successful": 成功上传的文档列表,
+            "failed": 失败的文件列表（包含错误信息）
+        }
+    """
+    if not files:
+        raise HTTPException(status_code=400, detail="No files provided")
+    
+    if len(files) > 50:
+        raise HTTPException(status_code=400, detail="Too many files. Maximum 50 files per batch.")
+    
+    # 控制并发数
+    max_concurrent = min(max_concurrent, 10)  # 最多10个并发
+    semaphore = asyncio.Semaphore(max_concurrent)
+    
+    async def process_single_file(file: UploadFile) -> dict:
+        """处理单个文件的上传"""
+        async with semaphore:
+            try:
+                # 验证文件名
+                _validate_filename(file.filename)
+                
+                # 验证文件类型
+                file_ext = Path(file.filename).suffix.lower()
+                if file_ext not in settings.allowed_extensions_list:
+                    return {
+                        "success": False,
+                        "filename": file.filename,
+                        "error": f"Unsupported file type: {file_ext}"
+                    }
+                
+                # 解析器验证
+                requested_parser_backend = (parser_backend or "").strip().lower()
+                effective_parser_backend = parser_backend
+                if file_ext == ".pdf" and requested_parser_backend == "mineru":
+                    mineru_available = bool(
+                        settings.MINERU_ENABLED
+                        and (settings.MINERU_API_TOKEN or settings.MINERU_LOCAL_SERVER_URL)
+                    )
+                    if not mineru_available:
+                        effective_parser_backend = "auto"
+                        requested_parser_backend = "auto"
+                
+                if file_ext == ".pdf" and requested_parser_backend in {"", "auto"}:
+                    resolved_parser_backend = "auto"
+                else:
+                    resolved_parser_backend = parser_factory.resolve_backend(file_ext, effective_parser_backend)
+                resolved_chunk_strategy = chunker_factory.resolve_strategy(chunk_strategy)
+                
+                pipeline_options = _to_pipeline_options(
+                    governance_enabled=governance_enabled,
+                    governance_remove_toc_lines=governance_remove_toc_lines,
+                    governance_remove_noise_lines=governance_remove_noise_lines,
+                    governance_unwrap_lines=governance_unwrap_lines,
+                    governance_remove_common_lines=governance_remove_common_lines,
+                    governance_unwrap_max_line_length=governance_unwrap_max_line_length,
+                    governance_noise_min_chars=governance_noise_min_chars,
+                    governance_noise_ratio_threshold=governance_noise_ratio_threshold,
+                    governance_common_lines_min_docs=governance_common_lines_min_docs,
+                    governance_common_lines_min_ratio=governance_common_lines_min_ratio,
+                    chunk_size=chunk_size,
+                    chunk_overlap=chunk_overlap,
+                    chunk_vector_enabled=chunk_vector_enabled,
+                    bm25_index_enabled=bm25_index_enabled,
+                    kg_enabled=kg_enabled,
+                    event_vector_enabled=event_vector_enabled,
+                    entity_vector_enabled=entity_vector_enabled,
+                )
+                pipeline_effective = resolve_pipeline_options(pipeline_options)
+                if resolved_chunk_strategy not in chunker_factory.RAGFLOW_STRATEGIES:
+                    _validate_chunk_params(pipeline_effective.chunk_size, pipeline_effective.chunk_overlap)
+                pipeline_metadata = build_pipeline_metadata(pipeline_options)
+                
+                # 权限检查（在 semaphore 外部已完成）
+                # 保存文件
+                upload_dir = Path(settings.UPLOAD_DIR) / str(tenant_id)
+                upload_dir.mkdir(parents=True, exist_ok=True)
+                
+                file_id = uuid.uuid4()
+                file_path = upload_dir / f"{file_id}{file_ext}"
+                
+                file_size = await save_upload_file(file, file_path, max_bytes=settings.MAX_FILE_SIZE)
+                
+                # 创建数据库记录
+                doc_metadata = {
+                    "parser_backend": resolved_parser_backend,
+                    "parser_backend_requested": (parser_backend or "").lower(),
+                    "chunk_strategy": resolved_chunk_strategy,
+                    "chunk_strategy_requested": (chunk_strategy or "").lower(),
+                }
+                if pipeline_metadata:
+                    doc_metadata["pipeline"] = pipeline_metadata
+                
+                db_document = DBDocument(
+                    id=file_id,
+                    tenant_id=tenant_id,
+                    dataset_id=dataset.id if dataset else None,
+                    filename=file.filename,
+                    file_type=file_ext.lstrip('.'),
+                    file_size=file_size,
+                    file_path=str(file_path),
+                    status='pending',
+                    processing_progress=0,
+                    doc_metadata=doc_metadata,
+                )
+                
+                db.add(db_document)
+                db.commit()
+                db.refresh(db_document)
+                
+                # 后台处理文档
+                background_tasks.add_task(
+                    document_processor.process_document,
+                    file_path,
+                    file_id,
+                    tenant_id,
+                    resolved_parser_backend,
+                    resolved_chunk_strategy
+                )
+                
+                return {
+                    "success": True,
+                    "filename": file.filename,
+                    "document_id": str(file_id),
+                    "document": db_document
+                }
+                
+            except Exception as e:
+                logger.error(f"Error processing file {file.filename}: {str(e)}")
+                return {
+                    "success": False,
+                    "filename": file.filename,
+                    "error": str(e)
+                }
+    
+    # 权限检查（一次性完成）
+    dataset = _resolve_writable_dataset(db, tenant_id, account_id, dataset_id)
+    
+    # 并发处理所有文件
+    tasks = [process_single_file(file) for file in files]
+    results = await asyncio.gather(*tasks, return_exceptions=True)
+    
+    # 处理异常结果
+    processed_results = []
+    for result in results:
+        if isinstance(result, Exception):
+            processed_results.append({
+                "success": False,
+                "filename": "unknown",
+                "error": str(result)
+            })
+        else:
+            processed_results.append(result)
+    
+    successful = [r for r in processed_results if r.get("success")]
+    failed = [r for r in processed_results if not r.get("success")]
+    
+    return {
+        "total": len(files),
+        "successful_count": len(successful),
+        "failed_count": len(failed),
+        "successful": [
+            {
+                "document_id": r["document_id"],
+                "filename": r["filename"],
+                "status": r["document"].status
+            }
+            for r in successful
+        ],
+        "failed": [
+            {
+                "filename": r["filename"],
+                "error": r.get("error", "Unknown error")
+            }
+            for r in failed
+        ]
+    }
+
+
 @router.get("/", response_model=DocumentList)
 async def list_documents(
     skip: int = 0,
