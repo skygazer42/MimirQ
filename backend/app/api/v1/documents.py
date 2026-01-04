@@ -2,6 +2,8 @@
 文档管理 API
 """
 import asyncio
+import hashlib
+import json
 import re
 from fastapi import APIRouter, Depends, UploadFile, File, HTTPException, BackgroundTasks, Form, Body
 from sqlalchemy.orm import Session
@@ -61,6 +63,23 @@ router = APIRouter()
 
 # 文件名安全字符：字母、数字、中文、日文、韩文、空格、点、下划线、连字符
 SAFE_FILENAME_PATTERN = re.compile(r'^[a-zA-Z0-9\u4e00-\u9fff\u3040-\u30ff\uac00-\ud7af._\-\s]+$')
+
+def _compute_pipeline_hash(doc_metadata: dict) -> str:
+    """
+    基于 doc_metadata 中与处理流程相关的字段，生成稳定的 pipeline_hash。
+    用途：任务幂等、锁 key、job_id 去重（同文档不同配置不会互相阻塞）。
+    """
+    relevant = {
+        # parser/chunk策略
+        "parser_backend": doc_metadata.get("parser_backend"),
+        "parser_backend_requested": doc_metadata.get("parser_backend_requested"),
+        "chunk_strategy": doc_metadata.get("chunk_strategy"),
+        "chunk_strategy_requested": doc_metadata.get("chunk_strategy_requested"),
+        # pipeline options（已是相对稳定的结构）
+        "pipeline": doc_metadata.get("pipeline") or {},
+    }
+    raw = json.dumps(relevant, sort_keys=True, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+    return hashlib.sha256(raw).hexdigest()[:16]
 
 
 def _validate_filename(filename: str) -> None:
@@ -293,6 +312,8 @@ async def upload_document(
     }
     if pipeline_metadata:
         doc_metadata["pipeline"] = pipeline_metadata
+    pipeline_hash = _compute_pipeline_hash(doc_metadata)
+    doc_metadata["pipeline_hash"] = pipeline_hash
 
     db_document = DBDocument(
         id=file_id,
@@ -312,7 +333,7 @@ async def upload_document(
     db.refresh(db_document)
 
     # 5. 后台处理文档：优先入队（保持 API 兼容；未启用队列则回退 BackgroundTasks）
-    job_id = f"doc:{tenant_id}:{file_id}"
+    job_id = f"doc:{tenant_id}:{file_id}:{pipeline_hash}"
     task_id = await enqueue_document_processing(
         tenant_id=tenant_id,
         document_id=file_id,
@@ -471,6 +492,8 @@ async def upload_documents_batch(
                 }
                 if pipeline_metadata:
                     doc_metadata["pipeline"] = pipeline_metadata
+                pipeline_hash = _compute_pipeline_hash(doc_metadata)
+                doc_metadata["pipeline_hash"] = pipeline_hash
                 
                 db_document = DBDocument(
                     id=file_id,
@@ -490,7 +513,7 @@ async def upload_documents_batch(
                 db.refresh(db_document)
                 
                 # 后台处理文档：优先入队（保持 API 兼容；未启用队列则回退 BackgroundTasks）
-                job_id = f"doc:{tenant_id}:{file_id}"
+                job_id = f"doc:{tenant_id}:{file_id}:{pipeline_hash}"
                 task_id = await enqueue_document_processing(
                     tenant_id=tenant_id,
                     document_id=file_id,
