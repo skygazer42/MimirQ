@@ -99,3 +99,49 @@ async def enqueue_document_processing(
     return getattr(job, "job_id", None) or job_id
 
 
+async def enqueue_kg_extraction(
+    *,
+    tenant_id: UUID,
+    document_id: UUID,
+    requested_by: str,
+    job_id: Optional[str] = None,
+) -> Optional[str]:
+    """入队 KG 抽取任务（队列未开启则返回 None）。"""
+    q = await get_queue()
+    if q is None:
+        return None
+    queue_name = getattr(settings, "TASK_QUEUE_NAME", "mimirq")
+    job = await q.enqueue_job(
+        "extract_kg_job",
+        str(tenant_id),
+        str(document_id),
+        requested_by,
+        _queue_name=queue_name,
+        _job_id=job_id,
+        _job_try=1,
+    )
+    return getattr(job, "job_id", None) or job_id
+
+
+async def enqueue_rebuild_indexes(
+    *,
+    tenant_id: UUID,
+    requested_by: str,
+    job_id: Optional[str] = None,
+) -> Optional[str]:
+    """入队“重建索引（BM25/向量等）”任务（队列未开启则返回 None）。"""
+    q = await get_queue()
+    if q is None:
+        return None
+    queue_name = getattr(settings, "TASK_QUEUE_NAME", "mimirq")
+    job = await q.enqueue_job(
+        "rebuild_indexes_job",
+        str(tenant_id),
+        requested_by,
+        _queue_name=queue_name,
+        _job_id=job_id,
+        _job_try=1,
+    )
+    return getattr(job, "job_id", None) or job_id
+
+
