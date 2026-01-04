@@ -90,3 +90,6 @@ httpx>=0.27.0
 
 # RAGAS 
 ragas==0.4.1
+
+# LlamaIndex (用于高级切块策略)
+llama-index-core>=0.10.0
