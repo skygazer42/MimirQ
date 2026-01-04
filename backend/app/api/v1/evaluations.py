@@ -215,6 +215,29 @@ async def list_ragas_regression_cases(
     return {"total": total, "items": items}
 
 
+@router.delete("/ragas/regression/cases/{case_id}", status_code=204)
+async def delete_ragas_regression_case(
+    case_id: UUID,
+    tenant_id: UUID = Depends(get_tenant_id),
+    account_id: str = Depends(get_current_account_id),
+    db: Session = Depends(get_db),
+):
+    """删除一条回归用例。"""
+    DatasetService.ensure_member(db, tenant_id, account_id)
+
+    row = (
+        db.query(RagasRegressionCase)
+        .filter(RagasRegressionCase.id == case_id, RagasRegressionCase.tenant_id == tenant_id)
+        .first()
+    )
+    if not row:
+        raise HTTPException(status_code=404, detail="Case not found")
+
+    db.delete(row)
+    db.commit()
+    return None
+
+
 @router.post("/ragas/regression/runs", response_model=RagasRegressionRunSchema, status_code=201)
 async def create_ragas_regression_run(
     request: RagasRegressionRunCreateRequest,
