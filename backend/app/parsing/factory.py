@@ -10,6 +10,7 @@ from langchain_core.documents import Document
 
 from app.parsing.parsers.pdf_parser import PDFParser
 from app.parsing.parsers.text_parser import TextParser, MarkdownParser
+from app.parsing.backends import normalize_parser_backend
 from app.core.config import settings
 from app.rag.core.logging import get_logger
 
@@ -20,7 +21,7 @@ logger = get_logger("parsing.factory")
 class ParserFactory:
     """根据文件类型选择合适的解析器"""
 
-    SUPPORTED_PDF_BACKENDS = {"auto", "basic", "mineru", "deepdoc", "markitdown", "docling"}
+    SUPPORTED_PDF_BACKENDS = {"auto", "basic", "mineru", "deepdoc", "markitdown", "docling", "magicpdf"}
     SUPPORTED_NON_PDF_MARKITDOWN = {".doc", ".docx", ".xls", ".xlsx", ".csv", ".html", ".json"}
 
     def __init__(self):
@@ -29,6 +30,7 @@ class ParserFactory:
         self._deepdoc_parser: Optional["DeepDocParser"] = None
         self._markitdown_parser: Optional["MarkItDownParser"] = None
         self._docling_parser: Optional["DoclingParser"] = None
+        self._magicpdf_parser: Optional["MagicPDFParser"] = None
 
         logger.info("[pdf] PyMuPDF parser ready (basic)")
         if settings.MINERU_ENABLED and (settings.MINERU_API_TOKEN or settings.MINERU_LOCAL_SERVER_URL):
@@ -39,6 +41,8 @@ class ParserFactory:
             logger.info("[pdf] MarkItDown parser available (requires selection)")
         if getattr(settings, "DOCLING_ENABLED", False):
             logger.info("[pdf] Docling parser available (requires selection)")
+        if getattr(settings, "MAGIC_PDF_ENABLED", False):
+            logger.info("[pdf] MagicPDF parser available (requires selection)")
 
         self.parsers = {
             ".txt": TextParser(),
@@ -56,7 +60,7 @@ class ParserFactory:
         """
         根据文件类型和用户选择，解析出将要使用的实际解析器。
         """
-        normalized = (parser_backend or settings.DEFAULT_PARSER_BACKEND or "auto").lower()
+        normalized = normalize_parser_backend(parser_backend or settings.DEFAULT_PARSER_BACKEND or "auto") or "auto"
         file_ext = file_ext.lower()
 
         if file_ext != ".pdf":
@@ -83,6 +87,8 @@ class ParserFactory:
                 return "markitdown"
             if settings.MINERU_ENABLED and (settings.MINERU_API_TOKEN or settings.MINERU_LOCAL_SERVER_URL):
                 return "mineru"
+            if getattr(settings, "MAGIC_PDF_ENABLED", False):
+                return "magicpdf"
             return "basic"
 
         if normalized == "basic":
@@ -111,6 +117,14 @@ class ParserFactory:
                 )
             return "docling"
 
+        if normalized == "magicpdf":
+            if not getattr(settings, "MAGIC_PDF_ENABLED", False):
+                raise ValueError(
+                    "MagicPDF parser is not enabled. "
+                    "Please set MAGIC_PDF_ENABLED=True and install magic-pdf."
+                )
+            return "magicpdf"
+
         raise ValueError(f"Unsupported parser backend '{normalized}'")
 
     def parse(
@@ -138,10 +152,16 @@ class ParserFactory:
             raise ValueError(f"Unsupported file type: {file_ext}")
 
         # Some parsers (e.g., MinerU local ZIP mode) need dataset/document ids.
-        if backend == "mineru":
+        if backend in {"mineru", "magicpdf"}:
             documents = parser.parse(file_path, dataset_id=dataset_id, document_id=document_id)
         else:
             documents = parser.parse(file_path)
+
+        for doc in documents:
+            meta = doc.metadata or {}
+            meta.setdefault("parser_backend", backend)
+            meta.setdefault("source", str(file_path.name))
+            doc.metadata = meta
         return documents, backend
 
     def _get_pdf_parser(self, backend: str):
@@ -179,6 +199,14 @@ class ParserFactory:
                 logger.info("[pdf] Initializing Docling parser (structure-aware)")
                 self._docling_parser = DoclingParser()
             return self._docling_parser
+
+        if backend == "magicpdf":
+            if self._magicpdf_parser is None:
+                from app.parsing.parsers.magic_pdf_parser import MagicPDFParser
+
+                logger.info("[pdf] Initializing MagicPDF parser (local advanced)")
+                self._magicpdf_parser = MagicPDFParser()
+            return self._magicpdf_parser
 
         raise ValueError(f"Unsupported PDF parser backend '{backend}'")
 

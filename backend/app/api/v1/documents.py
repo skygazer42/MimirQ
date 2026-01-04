@@ -5,6 +5,7 @@ import asyncio
 import hashlib
 import json
 import re
+import shutil
 from fastapi import APIRouter, Depends, UploadFile, File, HTTPException, BackgroundTasks, Form, Body
 from sqlalchemy.orm import Session
 from typing import List, Optional
@@ -957,6 +958,7 @@ async def preview_document(
     upload_dir.mkdir(parents=True, exist_ok=True)
 
     temp_path = upload_dir / f"{uuid.uuid4()}{file_ext}"
+    artifact_dirs: set[str] = set()
 
     try:
         file_size = await save_upload_file(file, temp_path, max_bytes=settings.MAX_FILE_SIZE)
@@ -987,6 +989,10 @@ async def preview_document(
             temp_path,
             parser_backend=effective_parser_backend,
         )
+        for doc in documents:
+            artifact_dir = (doc.metadata or {}).get("artifact_dir")
+            if isinstance(artifact_dir, str) and artifact_dir.strip():
+                artifact_dirs.add(artifact_dir.strip())
 
         pipeline_options = _to_pipeline_options(
             governance_enabled=governance_enabled,
@@ -1045,6 +1051,25 @@ async def preview_document(
                 temp_path.unlink()
         except OSError as e:
             logger.warning("Failed to clean up temporary file %s: %s", temp_path, e)
+
+        # Best-effort cleanup for preview parser artifacts (e.g., MagicPDF output).
+        if artifact_dirs and not bool(getattr(settings, "MAGIC_PDF_KEEP_ARTIFACTS", False)):
+            upload_root = Path(settings.UPLOAD_DIR).resolve(strict=False)
+            tenant_root = (upload_root / str(tenant_id)).resolve(strict=False)
+            for raw in sorted(artifact_dirs):
+                try:
+                    path = Path(raw).resolve(strict=False)
+                    if not path.exists():
+                        continue
+                    if ".magicpdf" not in path.parts:
+                        continue
+                    path.relative_to(tenant_root)
+                except Exception:
+                    continue
+                try:
+                    shutil.rmtree(path, ignore_errors=True)
+                except Exception:
+                    pass
 
 
 @router.post("/manual", response_model=DocumentDetail, status_code=201)

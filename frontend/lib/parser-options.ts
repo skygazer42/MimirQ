@@ -2,7 +2,7 @@ export interface ParserBackendOption {
   value: string
   label: string
   description: string
-  icon: 'auto' | 'basic' | 'mineru' | 'deepdoc' | 'markitdown'
+  icon: 'auto' | 'basic' | 'mineru' | 'deepdoc' | 'markitdown' | 'magicpdf'
   badge?: string
 }
 
@@ -39,12 +39,26 @@ export const PARSER_BACKEND_OPTIONS: ParserBackendOption[] = [
     description: '微软 MarkItDown，多种格式转 Markdown',
     icon: 'markitdown',
   },
+  {
+    value: 'magicpdf',
+    label: 'MagicPDF',
+    description: 'magic-pdf · 本地高级解析（依赖较重）',
+    icon: 'magicpdf',
+    badge: '本地',
+  },
 ]
+
+function normalizeParserValue(value?: string) {
+  const raw = (value || '').toLowerCase().trim()
+  const normalized = raw.replace(/_/g, '-')
+  if (normalized === 'magic-pdf') return 'magicpdf'
+  return normalized
+}
 
 export function getParserOption(value?: string) {
   return (
     PARSER_BACKEND_OPTIONS.find(
-      (option) => option.value === (value || '').toLowerCase()
+      (option) => option.value === normalizeParserValue(value)
     ) || PARSER_BACKEND_OPTIONS[0]
   )
 }

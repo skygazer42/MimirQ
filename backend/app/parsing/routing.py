@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Dict, Optional, Tuple
 
 from app.core.config import settings
+from app.parsing.backends import normalize_parser_backend
 
 
 def choose_pdf_backend(quality: Optional[Dict], requested: Optional[str]) -> str:
@@ -23,13 +24,21 @@ def choose_pdf_backend(quality: Optional[Dict], requested: Optional[str]) -> str
     - scanned or score <= 0.5 -> prefer MinerU/DeepDoc, fallback MarkItDown/basic.
     - mid range -> prefer DeepDoc/MinerU, fallback MarkItDown/basic.
     """
-    requested_norm = (requested or "").strip().lower()
+    requested_norm = normalize_parser_backend(requested)
     if requested_norm and requested_norm != "auto":
         return requested_norm
 
     quality = quality or {}
     score = float(quality.get("score", 0.0) or 0.0)
     is_scanned = bool(quality.get("is_scanned", False))
+
+    def _magicpdf_available() -> bool:
+        if not bool(getattr(settings, "MAGIC_PDF_ENABLED", False)):
+            return False
+        import shutil
+
+        cli = (getattr(settings, "MAGIC_PDF_CLI", "") or "magic-pdf").strip() or "magic-pdf"
+        return bool(shutil.which(cli))
 
     if score >= 0.8 and not is_scanned:
         if settings.MARKITDOWN_ENABLED:
@@ -41,6 +50,8 @@ def choose_pdf_backend(quality: Optional[Dict], requested: Optional[str]) -> str
             return "mineru"
         if settings.DEEPDOC_ENABLED:
             return "deepdoc"
+        if _magicpdf_available():
+            return "magicpdf"
         if settings.MARKITDOWN_ENABLED:
             return "markitdown"
         return "basic"
@@ -49,6 +60,8 @@ def choose_pdf_backend(quality: Optional[Dict], requested: Optional[str]) -> str
         return "deepdoc"
     if settings.MINERU_ENABLED and (settings.MINERU_API_TOKEN or settings.MINERU_LOCAL_SERVER_URL):
         return "mineru"
+    if _magicpdf_available():
+        return "magicpdf"
     if settings.MARKITDOWN_ENABLED:
         return "markitdown"
     return "basic"

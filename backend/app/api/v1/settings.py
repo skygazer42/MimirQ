@@ -81,6 +81,7 @@ class FeatureFlags(BaseModel):
     markitdown_enabled: bool = False
     llama_index_enabled: bool = False
     mineru_enabled: bool = False
+    magicpdf_enabled: bool = False
 
 
 class KGConfig(BaseModel):
@@ -158,6 +159,16 @@ class MinerUConfig(BaseModel):
     model_version: str = "vlm"
 
 
+class MagicPDFConfig(BaseModel):
+    """MagicPDF (magic-pdf) 配置"""
+    cli: str = "magic-pdf"
+    method: str = "auto"  # auto | ocr | txt
+    lang: str = ""
+    debug: bool = False
+    timeout_sec: int = 600
+    keep_artifacts: bool = False
+
+
 class SystemSettings(BaseModel):
     """完整系统配置"""
     feature_flags: FeatureFlags
@@ -167,6 +178,7 @@ class SystemSettings(BaseModel):
     milvus: MilvusConfig
     rag: RAGConfig
     mineru: MinerUConfig
+    magicpdf: MagicPDFConfig
     observability: ObservabilityConfig
     safety: SafetyConfig
     langgraph: LangGraphConfig
@@ -181,6 +193,7 @@ class UpdateSettingsRequest(BaseModel):
     milvus: Optional[MilvusConfig] = None
     rag: Optional[RAGConfig] = None
     mineru: Optional[MinerUConfig] = None
+    magicpdf: Optional[MagicPDFConfig] = None
     observability: Optional[ObservabilityConfig] = None
     safety: Optional[SafetyConfig] = None
     langgraph: Optional[LangGraphConfig] = None
@@ -225,6 +238,8 @@ def _apply_runtime_settings(env_vars: Dict[str, str], updated_keys: list[str]) -
         settings.LLAMA_INDEX_ENABLED = _parse_bool(env_vars["LLAMA_INDEX_ENABLED"])
     if "MINERU_ENABLED" in updated_keys and "MINERU_ENABLED" in env_vars:
         settings.MINERU_ENABLED = _parse_bool(env_vars["MINERU_ENABLED"])
+    if "MAGIC_PDF_ENABLED" in updated_keys and "MAGIC_PDF_ENABLED" in env_vars:
+        settings.MAGIC_PDF_ENABLED = _parse_bool(env_vars["MAGIC_PDF_ENABLED"])
 
     # KG prompt selector
     if "KG_EXTRACT_PROMPT_TEMPLATE_ID" in updated_keys and "KG_EXTRACT_PROMPT_TEMPLATE_ID" in env_vars:
@@ -294,6 +309,20 @@ def _apply_runtime_settings(env_vars: Dict[str, str], updated_keys: list[str]) -
         settings.MINERU_API_BASE = env_vars["MINERU_API_BASE"]
     if "MINERU_MODEL_VERSION" in updated_keys and "MINERU_MODEL_VERSION" in env_vars:
         settings.MINERU_MODEL_VERSION = env_vars["MINERU_MODEL_VERSION"]
+
+    # MagicPDF
+    if "MAGIC_PDF_CLI" in updated_keys and "MAGIC_PDF_CLI" in env_vars:
+        settings.MAGIC_PDF_CLI = env_vars["MAGIC_PDF_CLI"]
+    if "MAGIC_PDF_METHOD" in updated_keys and "MAGIC_PDF_METHOD" in env_vars:
+        settings.MAGIC_PDF_METHOD = env_vars["MAGIC_PDF_METHOD"]
+    if "MAGIC_PDF_LANG" in updated_keys and "MAGIC_PDF_LANG" in env_vars:
+        settings.MAGIC_PDF_LANG = env_vars["MAGIC_PDF_LANG"]
+    if "MAGIC_PDF_DEBUG" in updated_keys and "MAGIC_PDF_DEBUG" in env_vars:
+        settings.MAGIC_PDF_DEBUG = _parse_bool(env_vars["MAGIC_PDF_DEBUG"])
+    if "MAGIC_PDF_TIMEOUT_SEC" in updated_keys and "MAGIC_PDF_TIMEOUT_SEC" in env_vars:
+        settings.MAGIC_PDF_TIMEOUT_SEC = _parse_int(env_vars["MAGIC_PDF_TIMEOUT_SEC"], default=settings.MAGIC_PDF_TIMEOUT_SEC)
+    if "MAGIC_PDF_KEEP_ARTIFACTS" in updated_keys and "MAGIC_PDF_KEEP_ARTIFACTS" in env_vars:
+        settings.MAGIC_PDF_KEEP_ARTIFACTS = _parse_bool(env_vars["MAGIC_PDF_KEEP_ARTIFACTS"])
 
     # Observability / debug toggles
     if "TOOL_CALL_LOG_ENABLED" in updated_keys and "TOOL_CALL_LOG_ENABLED" in env_vars:
@@ -396,6 +425,7 @@ async def get_settings(
             markitdown_enabled=settings.MARKITDOWN_ENABLED,
             llama_index_enabled=settings.LLAMA_INDEX_ENABLED,
             mineru_enabled=settings.MINERU_ENABLED,
+            magicpdf_enabled=bool(getattr(settings, "MAGIC_PDF_ENABLED", False)),
         ),
         kg=KGConfig(
             chat_enabled=settings.KG_CHAT_ENABLED,
@@ -437,6 +467,14 @@ async def get_settings(
             api_base=settings.MINERU_API_BASE,
             model_version=settings.MINERU_MODEL_VERSION,
         ),
+        magicpdf=MagicPDFConfig(
+            cli=getattr(settings, "MAGIC_PDF_CLI", "magic-pdf") or "magic-pdf",
+            method=getattr(settings, "MAGIC_PDF_METHOD", "auto") or "auto",
+            lang=getattr(settings, "MAGIC_PDF_LANG", "") or "",
+            debug=bool(getattr(settings, "MAGIC_PDF_DEBUG", False)),
+            timeout_sec=int(getattr(settings, "MAGIC_PDF_TIMEOUT_SEC", 600) or 600),
+            keep_artifacts=bool(getattr(settings, "MAGIC_PDF_KEEP_ARTIFACTS", False)),
+        ),
         observability=ObservabilityConfig(
             tool_call_log_enabled=settings.TOOL_CALL_LOG_ENABLED,
             tool_call_log_include_preview=settings.TOOL_CALL_LOG_INCLUDE_PREVIEW,
@@ -477,7 +515,17 @@ async def update_settings(
             env_vars["MARKITDOWN_ENABLED"] = str(ff.markitdown_enabled).lower()
             env_vars["LLAMA_INDEX_ENABLED"] = str(ff.llama_index_enabled).lower()
             env_vars["MINERU_ENABLED"] = str(ff.mineru_enabled).lower()
-            updated_keys.extend(["KG_ENABLED", "DEEPDOC_ENABLED", "MARKITDOWN_ENABLED", "LLAMA_INDEX_ENABLED", "MINERU_ENABLED"])
+            env_vars["MAGIC_PDF_ENABLED"] = str(getattr(ff, "magicpdf_enabled", False)).lower()
+            updated_keys.extend(
+                [
+                    "KG_ENABLED",
+                    "DEEPDOC_ENABLED",
+                    "MARKITDOWN_ENABLED",
+                    "LLAMA_INDEX_ENABLED",
+                    "MINERU_ENABLED",
+                    "MAGIC_PDF_ENABLED",
+                ]
+            )
 
         # 更新 KG 配置
         if request.kg:
@@ -564,6 +612,25 @@ async def update_settings(
             env_vars["MINERU_MODEL_VERSION"] = _sanitize_env_value("MINERU_MODEL_VERSION", mn.model_version)
             updated_keys.extend(["MINERU_API_BASE", "MINERU_MODEL_VERSION"])
 
+        if request.magicpdf:
+            mp = request.magicpdf
+            env_vars["MAGIC_PDF_CLI"] = _sanitize_env_value("MAGIC_PDF_CLI", mp.cli)
+            env_vars["MAGIC_PDF_METHOD"] = _sanitize_env_value("MAGIC_PDF_METHOD", mp.method)
+            env_vars["MAGIC_PDF_LANG"] = _sanitize_env_value("MAGIC_PDF_LANG", mp.lang)
+            env_vars["MAGIC_PDF_DEBUG"] = str(bool(mp.debug)).lower()
+            env_vars["MAGIC_PDF_TIMEOUT_SEC"] = str(int(mp.timeout_sec or 0))
+            env_vars["MAGIC_PDF_KEEP_ARTIFACTS"] = str(bool(mp.keep_artifacts)).lower()
+            updated_keys.extend(
+                [
+                    "MAGIC_PDF_CLI",
+                    "MAGIC_PDF_METHOD",
+                    "MAGIC_PDF_LANG",
+                    "MAGIC_PDF_DEBUG",
+                    "MAGIC_PDF_TIMEOUT_SEC",
+                    "MAGIC_PDF_KEEP_ARTIFACTS",
+                ]
+            )
+
         # 更新观测/调试配置
         if request.observability:
             ob = request.observability
@@ -640,6 +707,60 @@ async def get_system_status(
         "llm": {"configured": bool(settings.LLM_API_KEY), "model": settings.LLM_MODEL},
         "embedding": {"configured": bool(settings.EMBEDDING_API_KEY or settings.LLM_API_KEY), "model": settings.EMBEDDING_MODEL},
     }
+    def _check_import(module: str) -> tuple[bool, str]:
+        try:
+            __import__(module)
+            return True, "ok"
+        except Exception as exc:
+            return False, str(exc)[:120]
+
+    import shutil
+
+    parsers: dict[str, dict] = {
+        "basic": {"enabled": True, "available": True, "message": "built-in"},
+    }
+
+    ok, msg = _check_import("markitdown")
+    parsers["markitdown"] = {
+        "enabled": bool(getattr(settings, "MARKITDOWN_ENABLED", False)),
+        "available": ok,
+        "message": "installed" if ok else msg,
+    }
+
+    ok, msg = _check_import("app.deepdoc.parser")
+    parsers["deepdoc"] = {
+        "enabled": bool(getattr(settings, "DEEPDOC_ENABLED", False)),
+        "available": ok,
+        "message": "available" if ok else msg,
+    }
+
+    ok, msg = _check_import("docling")
+    parsers["docling"] = {
+        "enabled": bool(getattr(settings, "DOCLING_ENABLED", False)),
+        "available": ok,
+        "message": "installed" if ok else msg,
+    }
+
+    mineru_configured = bool(
+        getattr(settings, "MINERU_ENABLED", False)
+        and (getattr(settings, "MINERU_API_TOKEN", "") or getattr(settings, "MINERU_LOCAL_SERVER_URL", ""))
+    )
+    parsers["mineru"] = {
+        "enabled": bool(getattr(settings, "MINERU_ENABLED", False)),
+        "available": mineru_configured,
+        "message": "configured" if mineru_configured else "missing api_token or local_server_url",
+    }
+
+    magicpdf_enabled = bool(getattr(settings, "MAGIC_PDF_ENABLED", False))
+    magicpdf_cli = (getattr(settings, "MAGIC_PDF_CLI", "") or "magic-pdf").strip() or "magic-pdf"
+    magicpdf_cli_ok = bool(shutil.which(magicpdf_cli))
+    parsers["magicpdf"] = {
+        "enabled": magicpdf_enabled,
+        "available": bool(magicpdf_enabled and magicpdf_cli_ok),
+        "message": "configured" if (magicpdf_enabled and magicpdf_cli_ok) else ("disabled" if not magicpdf_enabled else f"missing cli: {magicpdf_cli}"),
+    }
+
+    status["parsers"] = parsers
 
     # 检查数据库连接
     try:

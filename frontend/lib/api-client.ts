@@ -542,6 +542,7 @@ export interface FeatureFlags {
   markitdown_enabled: boolean
   llama_index_enabled: boolean
   mineru_enabled: boolean
+  magicpdf_enabled: boolean
 }
 
 export interface KGConfig {
@@ -590,6 +591,15 @@ export interface MinerUConfig {
   model_version: string
 }
 
+export interface MagicPDFConfig {
+  cli: string
+  method: string
+  lang: string
+  debug: boolean
+  timeout_sec: number
+  keep_artifacts: boolean
+}
+
 export interface ObservabilityConfig {
   tool_call_log_enabled: boolean
   tool_call_log_include_preview: boolean
@@ -617,9 +627,16 @@ export interface SystemSettings {
   milvus: MilvusConfig
   rag: RAGConfig
   mineru: MinerUConfig
+  magicpdf: MagicPDFConfig
   observability: ObservabilityConfig
   safety: SafetyConfig
   langgraph: LangGraphConfig
+}
+
+export interface ParserBackendStatus {
+  enabled: boolean
+  available: boolean
+  message: string
 }
 
 export interface SystemStatus {
@@ -627,6 +644,7 @@ export interface SystemStatus {
   milvus: { connected: boolean; message: string }
   llm: { configured: boolean; model: string }
   embedding: { configured: boolean; model: string }
+  parsers?: Record<string, ParserBackendStatus>
 }
 
 export interface TestLLMRequest {
