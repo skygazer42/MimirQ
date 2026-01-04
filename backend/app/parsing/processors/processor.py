@@ -13,6 +13,7 @@ import asyncio
 import base64
 import hashlib
 import re
+import shutil
 from app.core.config import settings
 from app.core.database import SessionLocal
 from app.models.document import Document as DBDocument, DocumentChunk
@@ -174,6 +175,10 @@ class InlineAssetStage:
 
         for doc in documents:
             content = doc.page_content or ""
+            origin_for_doc = origin_path
+            base_dir = (doc.metadata or {}).get("asset_base_dir")
+            if isinstance(base_dir, str) and base_dir.strip():
+                origin_for_doc = Path(base_dir.strip())
             new_content, new_img_ids, asset_idx = self._svc._upload_inline_images_to_minio(
                 markdown_text=content,
                 tenant_id=str(tenant_id),
@@ -181,7 +186,7 @@ class InlineAssetStage:
                 document_id=str(document_id),
                 cache=inline_cache,
                 start_index=asset_idx,
-                origin_path=origin_path,
+                origin_path=origin_for_doc,
             )
             uploaded.extend(list(new_img_ids or []))
             if new_content != content:
@@ -373,6 +378,7 @@ class DocumentProcessorService:
 
             # 记录本次处理过程中关联到该文档的所有 img_id（用于删除清理等）
             document_img_ids: set[str] = set()
+            artifact_dirs: set[str] = set()
 
             pipeline_options = parse_pipeline_from_metadata(db_document.doc_metadata or {})
             pipeline_effective = resolve_pipeline_options(pipeline_options)
@@ -420,6 +426,9 @@ class DocumentProcessorService:
                             img_id = item.get("img_id") if isinstance(item, dict) else None
                             if isinstance(img_id, str) and img_id.strip():
                                 document_img_ids.add(img_id)
+                    artifact_dir = (doc.metadata or {}).get("artifact_dir")
+                    if isinstance(artifact_dir, str) and artifact_dir.strip():
+                        artifact_dirs.add(artifact_dir.strip())
 
             # Inline image assets（仅非 ragflow 分支：documents -> documents）
             if parsed.documents:
@@ -437,6 +446,9 @@ class DocumentProcessorService:
                         document_img_ids.add(iid)
             else:
                 parsed_documents = None
+
+            # Best-effort cleanup for parser artifact directories (e.g., MagicPDF output).
+            self._cleanup_parser_artifacts(artifact_dirs, tenant_id=tenant_id)
 
             # Governance：对 documents 或 ragflow chunks 做统一清洗
             governance_stats: Optional[GovernanceStats] = None
@@ -715,6 +727,34 @@ class DocumentProcessorService:
         db.refresh(db_doc)
         # 不抛出异常，避免影响文档处理流程
 
+    def _cleanup_parser_artifacts(self, artifact_dirs: set[str], *, tenant_id: UUID) -> None:
+        if not artifact_dirs:
+            return
+        if bool(getattr(settings, "MAGIC_PDF_KEEP_ARTIFACTS", False)):
+            return
+
+        upload_root = Path(settings.UPLOAD_DIR).resolve(strict=False)
+        tenant_root = (upload_root / str(tenant_id)).resolve(strict=False)
+
+        for raw in sorted(artifact_dirs):
+            try:
+                path = Path(raw).resolve(strict=False)
+                if not path.exists():
+                    continue
+                if ".magicpdf" not in path.parts:
+                    continue
+                # Safety: only delete within this tenant's upload directory.
+                path.relative_to(tenant_root)
+            except Exception:
+                logger.warning("Skipping unsafe parser artifact cleanup: %s", str(raw)[:200])
+                continue
+
+            try:
+                shutil.rmtree(path, ignore_errors=True)
+            except Exception:
+                # Best-effort only.
+                pass
+
     def _record_pipeline_effective(
         self,
         db: Session,
@@ -900,6 +940,9 @@ class DocumentProcessorService:
         replacements: dict[str, str] = {}
 
         base_dir = origin_path.parent if origin_path else None
+        if origin_path is not None:
+            origin_path = origin_path.resolve(strict=False)
+            base_dir = origin_path if origin_path.is_dir() else origin_path.parent
         base_dir_resolved = base_dir.resolve(strict=False) if base_dir else None
         max_image_bytes = int(getattr(settings, "MAX_INLINE_IMAGE_BYTES", 10_000_000) or 10_000_000)
         max_image_bytes = max(1_000_000, max_image_bytes)

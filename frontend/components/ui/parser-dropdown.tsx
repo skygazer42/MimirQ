@@ -11,6 +11,7 @@ import {
   Cloud,
   ScanLine,
   FileCode,
+  Wand2,
   ChevronDown,
   Check,
 } from 'lucide-react'
@@ -24,6 +25,7 @@ const ICON_MAP = {
   mineru: Cloud,
   deepdoc: ScanLine,
   markitdown: FileCode,
+  magicpdf: Wand2,
 }
 
 // 颜色映射
@@ -33,6 +35,7 @@ const COLOR_MAP = {
   mineru: { bg: 'bg-blue-100', text: 'text-blue-600' },
   deepdoc: { bg: 'bg-orange-100', text: 'text-orange-600' },
   markitdown: { bg: 'bg-purple-100', text: 'text-purple-600' },
+  magicpdf: { bg: 'bg-fuchsia-100', text: 'text-fuchsia-700' },
 }
 
 interface ParserDropdownProps {

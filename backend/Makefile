@@ -1,4 +1,4 @@
-.PHONY: help up down ps logs restart backend frontend test api-check verify
+.PHONY: help up down ps logs restart backend frontend test api-check verify parser-status
 
 help:
 	@echo "MimirQ dev commands (run from ./backend):"
@@ -12,6 +12,7 @@ help:
 	@echo "  make test      - run backend tests (pytest)"
 	@echo "  make api-check - verify frontend routes exist in backend"
 	@echo "  make verify    - api-check + frontend lint + backend compileall"
+	@echo "  make parser-status - print parser backend availability"
 
 up:
 	docker compose up -d --build
@@ -35,7 +36,10 @@ frontend:
 	cd ../frontend && pnpm dev
 
 test:
-	pytest -q
+	python3 -m pytest -q
+
+parser-status:
+	python3 scripts/check_parsers.py
 
 api-check:
 	node ../scripts/check-api-contract.mjs
@@ -43,4 +47,4 @@ api-check:
 verify:
 	@$(MAKE) api-check
 	cd ../frontend && pnpm run lint
-	PYTHONPYCACHEPREFIX=/tmp/mimirq-pycache python -m compileall -q app
+	PYTHONPYCACHEPREFIX=/tmp/mimirq-pycache python3 -m compileall -q app

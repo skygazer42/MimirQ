@@ -12,7 +12,7 @@ import type { ModelProvider, ProviderConfig, ProviderCategory } from '@/types/mo
 import {
   Settings2, Database, Sliders, Lightbulb, Server, Cpu, Layers,
   ToggleLeft, ToggleRight, Save, RefreshCw, CheckCircle2, XCircle,
-  Zap, FileSearch, Sparkles, Network, CloudCog, AlertCircle, Eye, EyeOff, ScanLine, FileCode
+  Zap, FileSearch, Sparkles, Network, CloudCog, AlertCircle, Eye, EyeOff, ScanLine, FileCode, Wand2,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -21,6 +21,7 @@ import {
   type SystemSettings,
   type SystemStatus,
   type FeatureFlags,
+  type MagicPDFConfig,
   type ObservabilityConfig,
   type SafetyConfig,
   type LangGraphConfig,
@@ -92,6 +93,14 @@ const FEATURE_FLAGS_CONFIG = [
     color: 'cyan',
     dependencies: ['MinerU API Token'],
   },
+  {
+    key: 'magicpdf_enabled' as keyof FeatureFlags,
+    name: 'MagicPDF 本地解析',
+    description: '启用 magic-pdf 本地高级解析后端（可在解析器下拉中选择）',
+    icon: Wand2,
+    color: 'purple',
+    dependencies: ['magic-pdf'],
+  },
 ]
 
 const DEFAULT_OBSERVABILITY: ObservabilityConfig = {
@@ -111,6 +120,15 @@ const DEFAULT_SAFETY: SafetyConfig = {
 
 const DEFAULT_LANGGRAPH: LangGraphConfig = {
   use_subgraphs: false,
+}
+
+const DEFAULT_MAGICPDF: MagicPDFConfig = {
+  cli: 'magic-pdf',
+  method: 'auto',
+  lang: '',
+  debug: false,
+  timeout_sec: 600,
+  keep_artifacts: false,
 }
 
 export default function SettingsPage() {
@@ -202,6 +220,12 @@ export default function SettingsPage() {
     const current = (editedSettings.langgraph || settings?.langgraph || DEFAULT_LANGGRAPH) as LangGraphConfig
     const next = { ...current, ...patch }
     setEditedSettings((prev) => ({ ...prev, langgraph: next }))
+  }
+
+  const updateMagicPDF = (patch: Partial<MagicPDFConfig>) => {
+    const current = (editedSettings.magicpdf || settings?.magicpdf || DEFAULT_MAGICPDF) as MagicPDFConfig
+    const next = { ...current, ...patch }
+    setEditedSettings((prev) => ({ ...prev, magicpdf: next }))
   }
 
   // 检查是否有未保存的更改
@@ -435,6 +459,71 @@ export default function SettingsPage() {
                 </div>
               </section>
 
+              {/* MagicPDF 配置 */}
+              <section>
+                <h2 className="text-lg font-semibold text-gray-900 mb-6 flex items-center gap-2">
+                  <Wand2 className="h-5 w-5 text-fuchsia-700" />
+                  MagicPDF 配置
+                </h2>
+
+                <div className="bg-white border border-gray-100 rounded-2xl p-6 shadow-sm space-y-4">
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium text-gray-700">解析方法</label>
+                      <select
+                        value={editedSettings.magicpdf?.method ?? settings?.magicpdf?.method ?? DEFAULT_MAGICPDF.method}
+                        onChange={(e) => updateMagicPDF({ method: e.target.value })}
+                        className="w-full px-3 py-2 rounded-lg border border-gray-200 bg-white text-sm"
+                      >
+                        <option value="auto">auto（自动）</option>
+                        <option value="txt">txt（文本优先）</option>
+                        <option value="ocr">ocr（OCR 优先）</option>
+                      </select>
+                    </div>
+
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium text-gray-700">语言（可选）</label>
+                      <Input
+                        value={editedSettings.magicpdf?.lang ?? settings?.magicpdf?.lang ?? DEFAULT_MAGICPDF.lang}
+                        onChange={(e) => updateMagicPDF({ lang: e.target.value })}
+                        placeholder='例如 "ch"'
+                      />
+                    </div>
+
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium text-gray-700">超时（秒）</label>
+                      <Input
+                        type="number"
+                        min={30}
+                        value={editedSettings.magicpdf?.timeout_sec ?? settings?.magicpdf?.timeout_sec ?? DEFAULT_MAGICPDF.timeout_sec}
+                        onChange={(e) => updateMagicPDF({ timeout_sec: parseInt(e.target.value || '0', 10) || DEFAULT_MAGICPDF.timeout_sec })}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-between border-t border-gray-100 pt-4">
+                    <div>
+                      <div className="text-sm font-medium text-gray-700">保留解析产物</div>
+                      <div className="text-xs text-gray-500 mt-0.5">
+                        默认会在入库流程完成后清理 `.magicpdf/` 目录
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => updateMagicPDF({ keep_artifacts: !(editedSettings.magicpdf?.keep_artifacts ?? settings?.magicpdf?.keep_artifacts ?? DEFAULT_MAGICPDF.keep_artifacts) })}
+                      className={cn(
+                        'px-3 py-1.5 rounded-full text-xs font-medium border',
+                        (editedSettings.magicpdf?.keep_artifacts ?? settings?.magicpdf?.keep_artifacts ?? DEFAULT_MAGICPDF.keep_artifacts)
+                          ? 'bg-fuchsia-50 text-fuchsia-700 border-fuchsia-200'
+                          : 'bg-gray-50 text-gray-600 border-gray-200'
+                      )}
+                    >
+                      {(editedSettings.magicpdf?.keep_artifacts ?? settings?.magicpdf?.keep_artifacts ?? DEFAULT_MAGICPDF.keep_artifacts) ? '已开启' : '已关闭'}
+                    </button>
+                  </div>
+                </div>
+              </section>
+
               {/* 系统状态 */}
               {status && (
                 <section>
@@ -465,6 +554,28 @@ export default function SettingsPage() {
                       message={status.embedding.model}
                     />
                   </div>
+
+                  {status.parsers && (
+                    <div className="mt-6 bg-white border border-gray-100 rounded-2xl p-5 shadow-sm">
+                      <div className="text-sm font-medium text-gray-700 mb-3">解析器状态</div>
+                      <div className="flex flex-wrap gap-2">
+                        {Object.entries(status.parsers).map(([key, info]) => (
+                          <span
+                            key={key}
+                            title={info.message}
+                            className={cn(
+                              'text-xs px-2.5 py-1 rounded-full border',
+                              info.available
+                                ? 'bg-green-50 text-green-700 border-green-200'
+                                : 'bg-gray-50 text-gray-600 border-gray-200'
+                            )}
+                          >
+                            {key} {info.available ? '可用' : '不可用'}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </section>
               )}
 

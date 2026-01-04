@@ -364,6 +364,7 @@ pnpm build
 - [LangChain RAG 架构文档](./backend/docs/guides/langchain_agent_migration.md) - Retriever/Runnable 链路
 - [依赖说明](./backend/docs/guides/dependencies.md) - 不同解析及 Embedding 模式的依赖组合
 - [MinerU 集成](./backend/docs/integrations/mineru_integration.md) - 高级 PDF 解析配置
+- [MagicPDF 集成](./backend/docs/guides/magicpdf_guide.md) - 可选本地高级 PDF 解析（magic-pdf）
 - [ChromaDB → Milvus 迁移](./backend/docs/integrations/migration_chromadb_to_milvus.md) - 架构选择、数据迁移脚本
 
 ### API 文档

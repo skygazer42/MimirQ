@@ -260,6 +260,14 @@ class Settings(BaseSettings):
     DEFAULT_CHUNK_STRATEGY: str = "langchain_recursive"
     DEEPDOC_ENABLED: bool = False
     MARKITDOWN_ENABLED: bool = False
+    # MagicPDF (magic-pdf) local parser (optional; heavy dependencies)
+    MAGIC_PDF_ENABLED: bool = False
+    MAGIC_PDF_CLI: str = "magic-pdf"
+    MAGIC_PDF_METHOD: str = "auto"  # auto | ocr | txt
+    MAGIC_PDF_LANG: str = ""  # optional PaddleOCR language code, e.g. "ch"
+    MAGIC_PDF_DEBUG: bool = False
+    MAGIC_PDF_TIMEOUT_SEC: int = 600
+    MAGIC_PDF_KEEP_ARTIFACTS: bool = False
     MARKITDOWN_USE_PLUGINS: bool = False
     MARKITDOWN_DOCINTEL_ENDPOINT: str = ""
     MARKITDOWN_DOCINTEL_KEY: str = ""

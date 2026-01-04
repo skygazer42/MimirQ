@@ -1,0 +1,6 @@
+# Optional MagicPDF parser dependencies.
+#
+# NOTE: magic-pdf typically pulls heavyweight ML dependencies (torch/transformers).
+# Install only when you plan to use the `magicpdf` parser backend.
+magic-pdf==1.3.10
+

@@ -78,3 +78,45 @@ def test_choose_pdf_backend_mid_prefers_deepdoc(monkeypatch: pytest.MonkeyPatch)
     quality = {"score": 0.65, "is_scanned": False}
     assert choose_pdf_backend(quality, None) == "deepdoc"
 
+
+def test_choose_pdf_backend_honors_magicpdf_alias(monkeypatch: pytest.MonkeyPatch):
+    _set_flags(monkeypatch, MAGIC_PDF_ENABLED=True, MAGIC_PDF_CLI="magic-pdf")
+    # Even when not installed, requested backend should be normalized.
+    quality = {"score": 0.0, "is_scanned": True}
+    assert choose_pdf_backend(quality, "magic-pdf") == "magicpdf"
+
+
+def test_choose_pdf_backend_scanned_prefers_magicpdf_when_available(monkeypatch: pytest.MonkeyPatch):
+    import shutil
+
+    _set_flags(
+        monkeypatch,
+        MARKITDOWN_ENABLED=False,
+        MINERU_ENABLED=False,
+        MINERU_API_TOKEN="",
+        MINERU_LOCAL_SERVER_URL="",
+        DEEPDOC_ENABLED=False,
+        MAGIC_PDF_ENABLED=True,
+        MAGIC_PDF_CLI="magic-pdf",
+    )
+    monkeypatch.setattr(shutil, "which", lambda _cmd: "/usr/bin/magic-pdf")
+    quality = {"score": 0.2, "is_scanned": True}
+    assert choose_pdf_backend(quality, None) == "magicpdf"
+
+
+def test_choose_pdf_backend_scanned_prefers_deepdoc_over_magicpdf(monkeypatch: pytest.MonkeyPatch):
+    import shutil
+
+    _set_flags(
+        monkeypatch,
+        MARKITDOWN_ENABLED=False,
+        MINERU_ENABLED=False,
+        MINERU_API_TOKEN="",
+        MINERU_LOCAL_SERVER_URL="",
+        DEEPDOC_ENABLED=True,
+        MAGIC_PDF_ENABLED=True,
+        MAGIC_PDF_CLI="magic-pdf",
+    )
+    monkeypatch.setattr(shutil, "which", lambda _cmd: "/usr/bin/magic-pdf")
+    quality = {"score": 0.2, "is_scanned": True}
+    assert choose_pdf_backend(quality, None) == "deepdoc"
