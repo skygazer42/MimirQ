@@ -90,7 +90,7 @@ from app.api.dependencies.tenant import get_tenant_id
 
 负责将 Markdown 做“清洗/规范化”（正则规则、空白规范化等），为人工调整与后续分块做准备。
 
-**开关：** `GOVERNANCE_ENABLED` 控制治理流程是否启用（默认 true）。
+**开关：** `GOVERNANCE_ENABLED` 控制治理流程是否启用（默认 false）。
 
 **预览 API：**
 - `POST /api/v1/pipeline/clean-preview`

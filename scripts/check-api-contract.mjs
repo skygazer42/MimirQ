@@ -121,18 +121,52 @@ function extractFrontendRoutesFromFile(rel) {
   return out
 }
 
-function parseFrontendRoutes() {
-  const files = [
-    'frontend/lib/api-client.ts',
-    'frontend/services/graph-service.ts',
-    'frontend/hooks/use-chat.ts',
-    'frontend/components/navbar.tsx',
-  ]
+function listFrontendSourceFiles() {
+  const frontendRoot = path.join(ROOT, 'frontend')
+  if (!fs.existsSync(frontendRoot)) return []
 
+  const IGNORE_DIRS = new Set([
+    'node_modules',
+    '.next',
+    '.next_build',
+    'out',
+    'dist',
+    'coverage',
+  ])
+
+  const exts = new Set(['.ts', '.tsx'])
+  const files = []
+
+  function walk(dirAbs) {
+    const entries = fs.readdirSync(dirAbs, { withFileTypes: true })
+    for (const ent of entries) {
+      const abs = path.join(dirAbs, ent.name)
+      if (ent.isDirectory()) {
+        if (IGNORE_DIRS.has(ent.name)) continue
+        walk(abs)
+        continue
+      }
+      if (!ent.isFile()) continue
+      const ext = path.extname(ent.name)
+      if (!exts.has(ext)) continue
+      const rel = path.relative(ROOT, abs)
+      files.push(rel)
+    }
+  }
+
+  walk(frontendRoot)
+  return files
+}
+
+function parseFrontendRoutes() {
+  const files = listFrontendSourceFiles()
   const routes = []
   for (const rel of files) {
-    if (!fs.existsSync(path.join(ROOT, rel))) continue
-    routes.push(...extractFrontendRoutesFromFile(rel))
+    try {
+      routes.push(...extractFrontendRoutesFromFile(rel))
+    } catch {
+      // ignore unreadable files
+    }
   }
 
   // Dedup
@@ -169,4 +203,3 @@ function main() {
 }
 
 main()
-

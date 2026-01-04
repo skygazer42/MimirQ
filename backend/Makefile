@@ -43,4 +43,4 @@ api-check:
 verify:
 	@$(MAKE) api-check
 	cd ../frontend && pnpm run lint
-	python -m compileall -q app
+	PYTHONPYCACHEPREFIX=/tmp/mimirq-pycache python -m compileall -q app

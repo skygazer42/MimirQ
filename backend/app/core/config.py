@@ -237,7 +237,7 @@ class Settings(BaseSettings):
     MARKITDOWN_USE_PLUGINS: bool = False
     MARKITDOWN_DOCINTEL_ENDPOINT: str = ""
     MARKITDOWN_DOCINTEL_KEY: str = ""
-    LLAMA_INDEX_ENABLED: bool = True
+    LLAMA_INDEX_ENABLED: bool = False
     # Docling advanced document parser
     DOCLING_ENABLED: bool = False
     DOCLING_OCR_ENABLED: bool = True
