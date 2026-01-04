@@ -34,6 +34,7 @@ from app.rag.retriever import hybrid_retriever
 from app.models.document import DocumentChunk, Document as DBDocument
 from app.storage.vector.milvus import milvus_store
 from app.storage.object.minio import minio_service
+from app.core.http_client import close_http_client_pool
 # Ensure KG models are registered for metadata creation
 import app.rag.kg.models  # noqa: F401
 # Ensure evaluation models are registered for metadata creation
@@ -128,6 +129,10 @@ async def lifespan(app: FastAPI):
 
     # 关闭时的清理操作
     logger.info("Shutting down MimirQ backend...")
+    
+    # 关闭 HTTP 客户端连接池
+    await close_http_client_pool()
+    logger.info("HTTP client pool closed")
 
 
 # 创建 FastAPI 应用

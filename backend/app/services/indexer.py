@@ -3,6 +3,7 @@
 
 提供文档分块和事件索引的统一服务接口。
 """
+import asyncio
 import logging
 import time
 from typing import Any, Dict, Iterable, List, Optional, Sequence
@@ -258,6 +259,121 @@ class Indexer:
         except Exception as exc:
             logger.warning("Failed to update BM25 index incrementally: %s", exc)
 
+        return PersistChunksResult(
+            db_chunks=db_chunks,
+            chunk_ids=[c.id for c in db_chunks],
+            vector_ids=vector_ids,
+            total_characters=total_characters,
+        )
+
+    async def index_chunks_async(
+        self,
+        *,
+        document_id: UUID,
+        tenant_id: UUID,
+        chunks: List[ChunkInput],
+        default_source: str = "unknown",
+        commit: bool = True,
+        options: Optional[IndexingOptions] = None,
+    ) -> PersistChunksResult:
+        """
+        异步并发索引文档分块（并发执行向量存储、PostgreSQL、BM25）
+        
+        Args:
+            document_id: 文档 ID
+            tenant_id: 租户 ID
+            chunks: 分块列表
+            default_source: 默认来源
+            commit: 是否提交数据库事务
+            options: 索引选项
+        
+        Returns:
+            持久化结果
+        """
+        total_characters = sum(len(c.content or "") for c in chunks)
+        normalized_chunks: List[ChunkInput] = []
+        vector_docs: List[Dict[str, Any]] = []
+        chunk_ids: List[UUID] = []
+        
+        for c in chunks:
+            meta = dict(c.metadata or {})
+            meta.setdefault("index_kind", IndexKind.CHUNK.value)
+            meta.setdefault("tenant_id", str(tenant_id))
+            meta.setdefault("document_id", str(document_id))
+            chunk_id = _safe_uuid(meta.get("chunk_id")) or uuid.uuid4()
+            meta["chunk_id"] = str(chunk_id)
+            chunk_ids.append(chunk_id)
+            normalized_chunks.append(
+                ChunkInput(
+                    content=c.content,
+                    metadata=meta,
+                    page_number=c.page_number,
+                    start_char=c.start_char,
+                    end_char=c.end_char,
+                )
+            )
+            vector_docs.append({"content": c.content, "metadata": meta})
+        
+        # 并发执行：向量索引 + PostgreSQL 持久化
+        enable_vectors = self._resolve_chunk_vector_enabled(options)
+        enable_bm25 = self._resolve_bm25_enabled(options)
+        
+        async def index_vectors_async():
+            """异步索引向量"""
+            return await asyncio.to_thread(
+                self._index_chunk_vectors,
+                vector_docs,
+                document_id=document_id,
+                tenant_id=tenant_id,
+                enable_vectors=enable_vectors,
+            )
+        
+        async def persist_chunks_async():
+            """异步持久化到 PostgreSQL"""
+            return await asyncio.to_thread(
+                self._persist_document_chunks,
+                document_id=document_id,
+                tenant_id=tenant_id,
+                chunks=normalized_chunks,
+                vector_ids=[],  # 稍后更新
+                chunk_ids=chunk_ids,
+                commit=commit,
+            )
+        
+        # 并发执行向量索引和数据库写入
+        vector_ids, db_chunks = await asyncio.gather(
+            index_vectors_async(),
+            persist_chunks_async(),
+            return_exceptions=True
+        )
+        
+        # 处理异常
+        if isinstance(vector_ids, Exception):
+            logger.error(f"Vector indexing failed: {vector_ids}")
+            vector_ids = []
+        
+        if isinstance(db_chunks, Exception):
+            logger.error(f"DB persistence failed: {db_chunks}")
+            raise db_chunks
+        
+        # BM25 索引更新（独立执行，不阻塞主流程）
+        async def update_bm25_async():
+            """异步更新 BM25 索引"""
+            try:
+                await asyncio.to_thread(
+                    self._update_bm25_for_chunks,
+                    db_chunks=db_chunks,
+                    tenant_id=tenant_id,
+                    document_id=document_id,
+                    default_source=default_source,
+                    enable_bm25=enable_bm25,
+                )
+            except Exception as exc:
+                logger.warning("Failed to update BM25 index incrementally: %s", exc)
+        
+        # 启动 BM25 更新任务（不等待）
+        asyncio.create_task(update_bm25_async())
+        
         return PersistChunksResult(
             db_chunks=db_chunks,
             chunk_ids=[c.id for c in db_chunks],
