@@ -235,26 +235,6 @@ from app.services.prompt_resolver import resolve_prompt_template
 
 知识图谱（KG）功能：从文档 chunks 抽取事件/实体，并提供图谱检索能力。
 
-**开关与配置（env）**
-- `KG_ENABLED=true`：启用 KG 模块（默认关闭）
-- `KG_CHAT_ENABLED=true`：允许 Chat 在上下文中使用 KG（可选）
-- `KG_EXTRACT_PROMPT_TEMPLATE_KEY` / `KG_EXTRACT_PROMPT_TEMPLATE_ID`：抽取 Prompt 选择（优先 key）
-- `KG_EXTRACT_PROMPT_AB_EXPERIMENT_KEY`：A/B Prompt 试验 key（可选，按 account_id 作为 seed）
-- `TASK_QUEUE_ENABLED=true`：开启异步抽取（依赖 Redis/worker）
-
-**API（/api/v1/kg）**
-- `GET /kg/graph`：按可访问文档范围返回可视化图谱（带 `max_events/max_entities/max_links` 上限）
-- `GET /kg/graph/expand`：围绕某个节点扩展邻域子图（event/entity）
-- `GET /kg/graph/search`：节点搜索（autocomplete），同样受文档 ACL 约束
-- `POST /kg/documents/{document_id}/extract?async=true`：触发文档 KG 抽取；异步返回 `202` + `X-Task-Id`
-- `POST /kg/search`：KG 检索（recall -> expand -> rerank）
-
-**限额/安全**
-- `document_ids` 上限：500；`/kg/graph/search?q=` 上限：200；`KGSearchRequest.query` 上限：2048
-- 所有 KG 路由统一校验 tenant 成员 + 文档 ACL；无可访问文档时返回空结果/错误
-- KG Search 的实体召回也按 `document_ids` 范围过滤，避免同租户跨文档信息泄露
-- 异步 KG 抽取在 worker 侧使用 Redis 幂等锁：`lock:kg:{tenant_id}:{document_id}:{pipeline_hash}`
-
 ## 依赖关系
 
 ```

@@ -373,7 +373,7 @@ class Indexer:
         
         # 启动 BM25 更新任务（不等待）
         asyncio.create_task(update_bm25_async())
-        
+
         return PersistChunksResult(
             db_chunks=db_chunks,
             chunk_ids=[c.id for c in db_chunks],
