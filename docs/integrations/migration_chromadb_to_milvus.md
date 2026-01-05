@@ -34,15 +34,15 @@
 ### ✅ 已完成的迁移
 
 1. **后端代码**
-   - ✅ `backend/app/services/milvus_store.py` (新向量存储服务)
-   - ✅ `backend/app/services/document_processor.py` (更新为使用 Milvus)
-   - ✅ `backend/app/services/rag_engine.py` (更新检索逻辑)
-   - ✅ `backend/app/api/v1/documents.py` (更新删除逻辑)
+   - ✅ `app/services/milvus_store.py` (新向量存储服务)
+   - ✅ `app/services/document_processor.py` (更新为使用 Milvus)
+   - ✅ `app/services/rag_engine.py` (更新检索逻辑)
+   - ✅ `app/api/v1/documents.py` (更新删除逻辑)
 
 2. **配置文件**
-   - ✅ `backend/app/config.py` (Milvus 配置)
-   - ✅ `backend/.env.example` (环境变量模板)
-   - ✅ `backend/requirements.txt` (添加 pymilvus)
+   - ✅ `app/config.py` (Milvus 配置)
+   - ✅ `.env.example` (环境变量模板)
+   - ✅ `requirements.txt` (添加 pymilvus)
 
 3. **Docker 部署**
    - ✅ `docker-compose.yml` (添加 Milvus、Etcd、MinIO)

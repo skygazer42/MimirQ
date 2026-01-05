@@ -19,7 +19,7 @@ MimirQ 现已集成 **MinerU 在线文档解析服务**，支持高级 PDF 解�
 
 ### 2. 配置环境变量
 
-编辑 `backend/.env` 文件：
+编辑 `.env` 文件：
 
 ```bash
 # MinerU Online API
@@ -330,11 +330,11 @@ while True:
 
 相关代码文件：
 
-- **服务类**: `backend/app/services/mineru_service.py`
-- **解析器**: `backend/app/services/parsers/mineru_parser.py`
-- **API 接口**: `backend/app/api/v1/documents.py`
-- **配置**: `backend/app/config.py`
-- **Schema**: `backend/app/api/schemas/document.py`
+- **服务类**: `app/services/mineru_service.py`
+- **解析器**: `app/services/parsers/mineru_parser.py`
+- **API 接口**: `app/api/v1/documents.py`
+- **配置**: `app/config.py`
+- **Schema**: `app/api/schemas/document.py`
 
 ---
 

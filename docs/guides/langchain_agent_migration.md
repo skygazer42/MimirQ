@@ -46,21 +46,21 @@ PostgreSQL 持久化 Message / Conversation
 
 ### 关键模块
 
-- `backend/app/services/milvus_store.py`
+- `app/services/milvus_store.py`
   - LangChain Milvus vectorstore 管理。
   - 对外保留 `add_documents/search/delete_by_document_id/get_collection_count`。
-- `backend/app/services/hybrid_retriever.py`
+- `app/services/hybrid_retriever.py`
   - 继承 `BaseRetriever`，对外 `invoke/ainvoke`。
   - BM25 索引按租户缓存，`build_bm25_index()` 在启动和上传后重建。
-- `backend/app/services/rag_engine.py`
+- `app/services/rag_engine.py`
   - Runnable chain + 流式生成。
   - `stream_chat()` 负责 citations/context/history 拼接与事件输出。
-- `backend/app/api/v1/chat.py`
+- `app/api/v1/chat.py`
   - 调用 `get_rag_engine().stream_chat(...)`，SSE 输出。
 
 ## 依赖（LangChain 1.x）
 
-`backend/requirements.txt` 中保留：
+`requirements.txt` 中保留：
 
 ```txt
 langchain==1.1.0

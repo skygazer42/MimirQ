@@ -1,17 +1,17 @@
-.PHONY: help up down ps logs restart backend frontend test api-check verify parser-status
+.PHONY: help up down ps logs restart backend web test api-check verify parser-status
 
 help:
-	@echo "MimirQ dev commands (run from ./backend):"
+	@echo "MimirQ dev commands (run from repo root):"
 	@echo "  make up        - docker compose up (build + detach)"
 	@echo "  make down      - docker compose down"
 	@echo "  make ps        - docker compose ps"
 	@echo "  make logs      - docker compose logs -f"
 	@echo "  make restart   - docker compose restart backend"
 	@echo "  make backend   - run backend locally (uvicorn --reload)"
-	@echo "  make frontend  - run frontend locally (pnpm dev)"
+	@echo "  make web       - run web locally (pnpm dev)"
 	@echo "  make test      - run backend tests (pytest)"
-	@echo "  make api-check - verify frontend routes exist in backend"
-	@echo "  make verify    - api-check + frontend lint + backend compileall"
+	@echo "  make api-check - verify web routes exist in backend"
+	@echo "  make verify    - api-check + web lint + backend compileall"
 	@echo "  make parser-status - print parser backend availability"
 
 up:
@@ -32,8 +32,8 @@ restart:
 backend:
 	uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 
-frontend:
-	cd ../frontend && pnpm dev
+web:
+	cd web && pnpm dev
 
 test:
 	python3 -m pytest -q
@@ -46,5 +46,5 @@ api-check:
 
 verify:
 	@$(MAKE) api-check
-	cd ../frontend && pnpm run lint
+	cd web && pnpm run lint
 	PYTHONPYCACHEPREFIX=/tmp/mimirq-pycache python3 -m compileall -q app

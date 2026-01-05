@@ -15,7 +15,7 @@
 - `time travel`：基于 checkpointer 的 `get_state_history` + `update_state`，用于回放/回归调试。
 
 MimirQ 对应现状：
-- 已有 LangGraph pipeline：`backend/app/rag/pipelines/langgraph.py`（Functional API + StateGraph 兼容入口）。
+- 已有 LangGraph pipeline：`app/rag/pipelines/langgraph.py`（Functional API + StateGraph 兼容入口）。
 - 目前 graph state 以 TypedDict 为主，runtime context / retry / cache / checkpoint 管理仍偏“手工/自定义”。
 
 本轮计划落地点：

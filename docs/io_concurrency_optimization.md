@@ -8,7 +8,7 @@
 
 ### 1. 批量文档上传并发化 ✅
 
-**文件**: `backend/app/api/v1/documents.py`
+**文件**: `app/api/v1/documents.py`
 
 **改进内容**:
 - 新增 `/upload-batch` 端点，支持批量文档上传
@@ -35,7 +35,7 @@ async def upload_documents_batch(
 
 ### 2. 图片上传并发化 ✅
 
-**文件**: `backend/app/storage/object/minio.py`
+**文件**: `app/storage/object/minio.py`
 
 **改进内容**:
 - 新增 `upload_image_async` 异步方法
@@ -62,8 +62,8 @@ async def upload_images_batch(
 ### 3. 文件 I/O 异步化 ✅
 
 **文件**: 
-- `backend/app/api/utils/upload.py` (已使用 aiofiles)
-- `backend/app/parsing/parsers/base_parser.py`
+- `app/api/utils/upload.py` (已使用 aiofiles)
+- `app/parsing/parsers/base_parser.py`
 
 **改进内容**:
 - 解析器的 `aparse` 方法使用 `aiofiles` 进行异步文件读取
@@ -86,7 +86,7 @@ async def aparse(self, file_path: Path, **kwargs):
 
 ### 4. Embedding 生成并发化 ✅
 
-**文件**: `backend/app/rag/embedding/base.py`
+**文件**: `app/rag/embedding/base.py`
 
 **改进内容**:
 - 增强 `abatch_encode` 方法，支持并发控制
@@ -113,7 +113,7 @@ async def abatch_encode(
 
 ### 5. 向量索引并发写入 ✅
 
-**文件**: `backend/app/services/indexer.py`
+**文件**: `app/services/indexer.py`
 
 **改进内容**:
 - 新增 `index_chunks_async` 异步方法
@@ -141,7 +141,7 @@ async def index_chunks_async(self, ...):
 
 ### 6. 外部 API 连接池 ✅
 
-**文件**: `backend/app/core/http_client.py` (新文件)
+**文件**: `app/core/http_client.py` (新文件)
 
 **改进内容**:
 - 创建全局 `HTTPClientPool` 单例
@@ -175,7 +175,7 @@ class HTTPClientPool:
         # 自动重试逻辑
 ```
 
-**集成位置**: `backend/app/main.py` 的 `lifespan` 函数
+**集成位置**: `app/main.py` 的 `lifespan` 函数
 
 **预期收益**: 多轮对话时 LLM 调用响应时间稳定性提升 30%
 
@@ -183,7 +183,7 @@ class HTTPClientPool:
 
 ### 7. 性能测试和基准对比 ✅
 
-**文件**: `backend/scripts/benchmark_io_concurrency.py` (新文件)
+**文件**: `scripts/benchmark_io_concurrency.py` (新文件)
 
 **功能**:
 - Embedding 并发 vs 串行性能对比
@@ -244,7 +244,7 @@ python scripts/benchmark_io_concurrency.py --test image_upload
 
 ## 依赖更新
 
-已确认 `backend/requirements.txt` 中包含所需依赖：
+已确认 `requirements.txt` 中包含所需依赖：
 - ✅ `aiofiles==23.2.1` - 异步文件 I/O
 - ✅ `httpx==0.28.1` - 异步 HTTP 客户端
 - ✅ `asyncio` - Python 标准库

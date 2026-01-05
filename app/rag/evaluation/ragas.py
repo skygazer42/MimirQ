@@ -211,7 +211,7 @@ def _resolve_metrics(metric_names: List[str]):
         from ragas.metrics import Faithfulness, ResponseRelevancy, LLMContextPrecisionWithoutReference
     except Exception as exc:  # pragma: no cover
         raise RuntimeError(
-            "RAGAS is not installed. Please run: pip install -r backend/requirements.txt"
+            "RAGAS is not installed. Please run: pip install -r requirements.txt"
         ) from exc
 
     resolved = []

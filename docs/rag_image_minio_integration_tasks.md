@@ -6,7 +6,7 @@
 
 1. [ ] 准备 MinIO（本地或集群）并确认可访问（endpoint/AK/SK）。
 2. [ ] 在后端 `.env` 配置 `MINIO_ENABLED=true` + `MINIO_ENDPOINT/MINIO_*`。
-3. [ ] 若用 `backend/docker-compose.yml`，把后端服务环境变量补齐 `MINIO_ENDPOINT=minio:9000` 等。
+3. [ ] 若用 `docker-compose.yml`，把后端服务环境变量补齐 `MINIO_ENDPOINT=minio:9000` 等。
 4. [x] 修复/增强 DeepDoc 解析适配：输出“文本 Document + 图片 Document”。
 5. [x] DeepDoc 图片 Document 的 metadata 统一为 `doc_type_kwd=image` + `image=<PIL.Image>`（供后续上传）。
 6. [x] 在切块阶段将 `metadata["image"]` 上传到 MinIO，并写回 `metadata["img_id"]`。
@@ -27,10 +27,10 @@
 
 ## 相关代码入口（便于你定位）
 
-- DeepDoc 解析适配：`backend/app/parsing/parsers/deepdoc_parser.py`
-- 切块阶段上传/替换/绑定：`backend/app/parsing/processors/processor.py`
-- MinerU 本地 ZIP 支持：`backend/app/services/mineru_service.py`、`backend/app/parsing/factory.py`
-- 向量检索 metadata 回查补齐：`backend/app/storage/search/hybrid_retriever.py`
-- 图片 URL API：`backend/app/api/v1/documents.py`
-- 正文渲染（Markdown img）：`frontend/components/chat-area.tsx`
+- DeepDoc 解析适配：`app/parsing/parsers/deepdoc_parser.py`
+- 切块阶段上传/替换/绑定：`app/parsing/processors/processor.py`
+- MinerU 本地 ZIP 支持：`app/services/mineru_service.py`、`app/parsing/factory.py`
+- 向量检索 metadata 回查补齐：`app/storage/search/hybrid_retriever.py`
+- 图片 URL API：`app/api/v1/documents.py`
+- 正文渲染（Markdown img）：`web/components/chat-area.tsx`
 

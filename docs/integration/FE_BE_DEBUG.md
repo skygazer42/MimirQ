@@ -1,6 +1,6 @@
 # 前后端联调（20 个任务清单）
 
-本清单面向 `frontend/`（Next.js）与 `backend/`（FastAPI）联调，目标是把“能跑”提升到“可用 + 可排障”。
+本清单面向 `web/`（Next.js）与 ``（FastAPI）联调，目标是把“能跑”提升到“可用 + 可排障”。
 
 ## 快速启动
 
@@ -22,7 +22,7 @@
 
 ## 常见问题速查
 
-- **401 未授权**：前端需要 `X-User-ID`，用 `frontend/.env.local.example` 配好 `NEXT_PUBLIC_USER_ID`，或设置 localStorage `mimirq_user_id`
+- **401 未授权**：前端需要 `X-User-ID`，用 `web/.env.local.example` 配好 `NEXT_PUBLIC_USER_ID`，或设置 localStorage `mimirq_user_id`
 - **400 Invalid tenant id**：检查 `NEXT_PUBLIC_TENANT_ID` / localStorage `mimirq_tenant_id` 是否是合法 UUID
 - **CORS**：后端 `.env` 的 `CORS_ORIGINS` 需包含 `http://localhost:3000`
 - **图片不显示**：确认后端 `MINIO_ENABLED=true`，并能访问 `GET /api/v1/documents/image-url/{img_id}`

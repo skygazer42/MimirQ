@@ -12,7 +12,7 @@ MimirQ 支持将 **MagicPDF（PyPI: `magic-pdf`）** 作为可选 PDF 高级解�
 pip install -r requirements-magicpdf.txt
 ```
 
-2. 配置后端环境变量（`backend/.env`）
+2. 配置后端环境变量（`.env`）
 
 ```bash
 MAGIC_PDF_ENABLED=true

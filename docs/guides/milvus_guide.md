@@ -129,7 +129,7 @@ index_params = {
 
 ### 1. 切换索引类型
 
-编辑 `backend/app/services/milvus_store.py`:
+编辑 `app/services/milvus_store.py`:
 
 #### HNSW 索引（高精度，慢速）
 
