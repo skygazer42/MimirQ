@@ -6,7 +6,7 @@ RAGAS 评测 API
 
 from uuid import UUID
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
@@ -102,8 +102,8 @@ async def create_ragas_run(
 
 @router.get("/ragas/runs", response_model=RagasRunList)
 async def list_ragas_runs(
-    skip: int = 0,
-    limit: int = 50,
+    skip: int = Query(default=0, ge=0),
+    limit: int = Query(default=50, ge=1, le=200),
     conversation_id: UUID | None = None,
     tenant_id: UUID = Depends(get_tenant_id),
     account_id: str = Depends(get_current_account_id),
