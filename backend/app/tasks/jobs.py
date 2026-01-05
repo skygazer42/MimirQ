@@ -186,6 +186,8 @@ async def extract_kg_job(ctx, tenant_id: str, document_id: str, requested_by: st
 
     db = SessionLocal()
     redis = None
+    lock_key = None
+    lock_val = None
     sem_key = None
     try:
         try:
@@ -212,6 +214,26 @@ async def extract_kg_job(ctx, tenant_id: str, document_id: str, requested_by: st
                 raise Retry(defer=5)
             return {"ok": False, "reason": "document_not_completed", "status": doc.status}
 
+        pipeline_hash = (doc.doc_metadata or {}).get("pipeline_hash") or "unknown"
+        lock_key = f"lock:kg:{tenant_id}:{document_id}:{pipeline_hash}"
+        lock_val = f"{requested_by}:{int(time.time())}"
+        lock_ttl = 60 * 40  # 40 min
+        if redis is not None:
+            try:
+                acquired = await redis.set(lock_key, lock_val, ex=lock_ttl, nx=True)
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("Redis lock acquire failed (continue without lock): %s", str(exc)[:200])
+                acquired = True
+            if not acquired:
+                logger.info("Skip KG extraction job due to active lock: %s", lock_key)
+                return {
+                    "ok": True,
+                    "skipped": "locked",
+                    "tenant_id": tenant_id,
+                    "document_id": document_id,
+                    "pipeline_hash": pipeline_hash,
+                }
+
         chunks = (
             db.query(DocumentChunk)
             .filter(DocumentChunk.document_id == did, DocumentChunk.tenant_id == tid)
@@ -235,6 +257,14 @@ async def extract_kg_job(ctx, tenant_id: str, document_id: str, requested_by: st
         elapsed = time.perf_counter() - t0
         return {"ok": True, "event_count": len(events), "elapsed_sec": round(elapsed, 3)}
     finally:
+        if redis is not None and lock_key and lock_val:
+            try:
+                cur = await redis.get(lock_key)
+                cur_decoded = cur.decode("utf-8", "ignore") if isinstance(cur, (bytes, bytearray)) else cur
+                if cur_decoded == lock_val:
+                    await redis.delete(lock_key)
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("Redis lock release failed: %s", str(exc)[:200])
         if redis is not None:
             await _tenant_release(redis, sem_key)
         db.close()
@@ -274,5 +304,4 @@ async def rebuild_indexes_job(ctx, tenant_id: str, requested_by: str) -> dict:  
         if redis is not None:
             await _tenant_release(redis, sem_key)
         db.close()
-
 

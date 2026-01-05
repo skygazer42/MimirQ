@@ -104,12 +104,13 @@ class RecallSearcher:
             )[: config.recall.max_events]
 
             # === Step5/6: compute event-key weights & event scores ===
-            events_detail = event_repo.get_events_by_ids(merged_event_ids)
-            if config.document_ids:
-                allowed_docs = set(config.document_ids)
-                events_detail = [ev for ev in events_detail if ev.document_id in allowed_docs]
-                merged_event_ids = [str(ev.id) for ev in events_detail]
-            assoc_map = event_repo.get_event_entities(merged_event_ids)
+            events_detail = event_repo.get_events_by_ids(
+                merged_event_ids,
+                tenant_id=tenant_id,
+                document_ids=config.document_ids,
+            )
+            merged_event_ids = [str(ev.id) for ev in events_detail]
+            assoc_map = event_repo.get_event_entities(merged_event_ids, tenant_id=tenant_id)
 
             event_scores: Dict[str, float] = {}
             for ev in events_detail:

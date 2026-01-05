@@ -9,11 +9,13 @@ from app.api.dependencies.auth import get_current_account_id
 from app.api.dependencies.tenant import get_tenant_id
 from app.models.document import Document as DBDocument, DocumentChunk
 from app.rag.kg.schemas import KGExtractResponse, KGSearchRequest, KGSearchResponse, KGGraphNode, KGGraphResponse
+from app.rag.kg.utils import get_logger
 from app.services.document_access import filter_allowed_document_ids, list_accessible_document_ids
 from app.services.dataset_service import DatasetService
 from app.rag.kg.pipeline import extract_events, kg_search
 
 router = APIRouter()
+logger = get_logger("kg.api")
 
 MAX_DOCUMENT_IDS = 500
 MAX_GRAPH_SEARCH_QUERY_LEN = 200
@@ -642,7 +644,12 @@ async def run_kg_extraction_for_document(
         except HTTPException:
             raise
         except Exception as exc:  # noqa: BLE001
-            raise HTTPException(status_code=503, detail=f"Failed to enqueue KG extraction: {str(exc)[:200]}") from exc
+            logger.exception(
+                "Failed to enqueue KG extraction tenant_id=%s document_id=%s",
+                str(tenant_id),
+                str(document_id),
+            )
+            raise HTTPException(status_code=503, detail="Failed to enqueue KG extraction") from exc
 
     events = await extract_events(
         [c.id for c in chunks],
@@ -693,6 +700,7 @@ async def run_kg_search(
             document_ids=allowed_doc_ids,
         )
     except Exception as exc:
-        raise HTTPException(status_code=500, detail=f"KG search failed: {exc}") from exc
+        logger.exception("KG search failed tenant_id=%s account_id=%s", str(tenant_id), str(account_id))
+        raise HTTPException(status_code=500, detail="KG search failed") from exc
 
     return KGSearchResponse(result=result, query=payload.query)

@@ -29,6 +29,19 @@ def _quote_milvus_str(value: str, *, max_len: int = 256) -> str:
     return f'"{escaped}"'
 
 
+def _as_uuid_list(values: Iterable[str | UUID]) -> List[UUID]:
+    out: List[UUID] = []
+    for v in values:
+        if isinstance(v, UUID):
+            out.append(v)
+            continue
+        try:
+            out.append(UUID(str(v)))
+        except Exception:
+            continue
+    return out
+
+
 class EntityRepository:
     """Entity read/write + similarity search."""
 
@@ -64,11 +77,13 @@ class EntityRepository:
             )
         return formatted
 
-    def get_entities_by_ids(self, ids: Iterable[str]) -> List[KgEntity]:
-        id_list = list(ids)
+    def get_entities_by_ids(self, ids: Iterable[str | UUID], *, tenant_id: UUID | None = None) -> List[KgEntity]:
+        id_list = _as_uuid_list(ids)
         if not id_list:
             return []
         stmt = select(KgEntity).where(KgEntity.id.in_(id_list))
+        if tenant_id is not None:
+            stmt = stmt.where(KgEntity.tenant_id == tenant_id)
         return self.session.execute(stmt).scalars().all()
 
     def get_or_create(
@@ -128,15 +143,25 @@ class EventRepository:
             self.session.merge(link)
         self.session.commit()
 
-    def get_events_by_ids(self, ids: Iterable[str]) -> List[KgSourceEvent]:
-        id_list = list(ids)
+    def get_events_by_ids(
+        self,
+        ids: Iterable[str | UUID],
+        *,
+        tenant_id: UUID | None = None,
+        document_ids: Optional[List[UUID]] = None,
+    ) -> List[KgSourceEvent]:
+        id_list = _as_uuid_list(ids)
         if not id_list:
             return []
         stmt = select(KgSourceEvent).where(KgSourceEvent.id.in_(id_list))
+        if tenant_id is not None:
+            stmt = stmt.where(KgSourceEvent.tenant_id == tenant_id)
+        if document_ids:
+            stmt = stmt.where(KgSourceEvent.document_id.in_(document_ids))
         return self.session.execute(stmt).scalars().all()
 
-    def get_events_with_entities(self, ids: Iterable[str]) -> List[KgSourceEvent]:
-        id_list = list(ids)
+    def get_events_with_entities(self, ids: Iterable[str | UUID], *, tenant_id: UUID | None = None) -> List[KgSourceEvent]:
+        id_list = _as_uuid_list(ids)
         if not id_list:
             return []
         from sqlalchemy.orm import joinedload
@@ -148,6 +173,8 @@ class EventRepository:
                 joinedload(KgSourceEvent.associations).joinedload(KgEventEntity.entity)
             )
         )
+        if tenant_id is not None:
+            stmt = stmt.where(KgSourceEvent.tenant_id == tenant_id)
         return self.session.execute(stmt).scalars().all()
 
     def search_similar_by_content(
@@ -157,9 +184,9 @@ class EventRepository:
         k: int = 20,
         document_ids: Optional[List[UUID]] = None,
     ) -> List[dict]:
-        expr_parts = [f'tenant_id == "{str(tenant_id)}"']
+        expr_parts = [f"tenant_id == {_quote_milvus_str(str(tenant_id))}"]
         if document_ids:
-            doc_id_strs = [f'"{str(doc_id)}"' for doc_id in document_ids]
+            doc_id_strs = [_quote_milvus_str(str(doc_id)) for doc_id in document_ids[:500]]
             expr_parts.append(f"document_id in [{', '.join(doc_id_strs)}]")
         expr = " and ".join(expr_parts)
         results = self._milvus.search(query_vector=query_vector, top_k=k, expr=expr)
@@ -205,19 +232,33 @@ class EventRepository:
         ranked = sorted(freq.items(), key=lambda x: x[1], reverse=True)
         return [eid for eid, _ in ranked[:limit]]
 
-    def get_event_entities(self, event_ids: Iterable[str]) -> dict[str, List[KgEventEntity]]:
-        ids = list(event_ids)
+    def get_event_entities(
+        self,
+        event_ids: Iterable[str | UUID],
+        *,
+        tenant_id: UUID | None = None,
+    ) -> dict[str, List[KgEventEntity]]:
+        ids = _as_uuid_list(event_ids)
         if not ids:
             return {}
         stmt = select(KgEventEntity).where(KgEventEntity.event_id.in_(ids))
+        if tenant_id is not None:
+            stmt = stmt.join(KgSourceEvent, KgSourceEvent.id == KgEventEntity.event_id).where(
+                KgSourceEvent.tenant_id == tenant_id
+            )
         rows = self.session.execute(stmt).scalars().all()
         mapping: dict[str, List[KgEventEntity]] = {}
         for row in rows:
             mapping.setdefault(str(row.event_id), []).append(row)
         return mapping
 
-    def get_entities_for_events(self, event_ids: Iterable[str]) -> dict[str, List[KgEntity]]:
-        ids = list(event_ids)
+    def get_entities_for_events(
+        self,
+        event_ids: Iterable[str | UUID],
+        *,
+        tenant_id: UUID | None = None,
+    ) -> dict[str, List[KgEntity]]:
+        ids = _as_uuid_list(event_ids)
         if not ids:
             return {}
         stmt = (
@@ -225,6 +266,12 @@ class EventRepository:
             .join(KgEntity, KgEntity.id == KgEventEntity.entity_id)
             .where(KgEventEntity.event_id.in_(ids))
         )
+        if tenant_id is not None:
+            stmt = (
+                stmt.join(KgSourceEvent, KgSourceEvent.id == KgEventEntity.event_id)
+                .where(KgSourceEvent.tenant_id == tenant_id)
+                .where(KgEntity.tenant_id == tenant_id)
+            )
         rows = self.session.execute(stmt).all()
         mapping: dict[str, List[KgEntity]] = {}
         for assoc, ent in rows:
