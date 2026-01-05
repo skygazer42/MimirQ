@@ -6,8 +6,9 @@
 import { useCallback, useRef, useState } from 'react'
 import type { Citation, Message, StreamEvent } from '@/types'
 import { getAuthHeaders } from '@/lib/auth-headers'
-import { API_V1_BASE_URL } from '@/lib/env'
+import { API_TIMEOUT_MS, API_V1_BASE_URL } from '@/lib/env'
 import { chatApi } from '@/lib/api-client'
+import { createSseDataParser } from '@/lib/sse'
 
 interface UseChatOptions {
   conversationId?: string
@@ -98,6 +99,12 @@ export function useChat({
       abortControllerRef.current?.abort()
       abortControllerRef.current = new AbortController()
 
+      let didTimeout = false
+      const timeoutId = window.setTimeout(() => {
+        didTimeout = true
+        abortControllerRef.current?.abort()
+      }, API_TIMEOUT_MS)
+
       try {
         const history = messages.slice(-10).map((m) => ({
           role: m.role,
@@ -132,6 +139,8 @@ export function useChat({
           signal: abortControllerRef.current.signal,
         })
 
+        window.clearTimeout(timeoutId)
+
         if (!response.ok) {
           throw new Error(`HTTP error: ${response.status}`)
         }
@@ -142,7 +151,7 @@ export function useChat({
         }
 
         const decoder = new TextDecoder()
-        let buffer = ''
+        const sse = createSseDataParser()
         let fullResponse = ''
         let citations: Citation[] = []
 
@@ -150,15 +159,8 @@ export function useChat({
           const { done, value } = await reader.read()
           if (done) break
 
-          buffer += decoder.decode(value, { stream: true })
-          const lines = buffer.split('\n')
-          buffer = lines.pop() || ''
-
-          for (const rawLine of lines) {
-            const line = rawLine.trim()
-            if (!line.startsWith('data: ')) continue
-
-            const jsonStr = line.slice(6)
+          const chunkText = decoder.decode(value, { stream: true })
+          for (const jsonStr of sse.feed(chunkText)) {
             try {
               const event: StreamEvent = JSON.parse(jsonStr)
 
@@ -203,14 +205,35 @@ export function useChat({
             }
           }
         }
+
+        // Flush any remaining decoder output (best-effort).
+        for (const jsonStr of sse.feed(decoder.decode())) {
+          try {
+            const event: StreamEvent = JSON.parse(jsonStr)
+            if (event.type === 'citations') {
+              citations = event.data
+              setCurrentCitations(citations)
+            } else if (event.type === 'token') {
+              fullResponse += event.data.content
+              setCurrentResponse(fullResponse)
+            }
+          } catch {
+            // ignore
+          }
+        }
       } catch (err: any) {
         if (err?.name === 'AbortError') {
-          console.log('Request aborted')
+          if (didTimeout) {
+            onError?.('Request timed out')
+          } else {
+            console.log('Request aborted')
+          }
         } else {
           console.error('Chat error:', err)
           onError?.(err?.message || 'Failed to send message')
         }
       } finally {
+        window.clearTimeout(timeoutId)
         setIsLoading(false)
         abortControllerRef.current = null
       }

@@ -2,6 +2,7 @@
 const nextConfig = {
   reactStrictMode: true,
   swcMinify: true,
+  poweredByHeader: false,
   distDir:
     process.env.NEXT_DIST_DIR ||
     (process.env.NODE_ENV === 'production' ? '.next_build' : '.next'),
