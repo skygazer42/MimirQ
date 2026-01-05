@@ -22,7 +22,6 @@ LLM_API_KEY=sk-your-api-key-here
 ### 3. 启动服务
 
 ```bash
-cd backend
 # 如未创建 .env，可先从模板复制
 cp .env.example .env
 
@@ -30,14 +29,13 @@ docker compose up -d --build
 docker compose ps
 
 # (可选) 启动前端
-cd ../frontend
+cd web
 pnpm install
 pnpm dev
 ```
 
 可选：本地启动后端（Python），依赖服务仍用 Docker：
 ```bash
-cd backend
 cp .env.example .env
 
 # 只启动依赖（Postgres / Milvus / MinIO）

@@ -21,7 +21,7 @@ router = APIRouter()
 @router.get("/health")
 def health() -> dict:
     """
-    Lightweight health check for frontend/dev tooling.
+    Lightweight health check for web/dev tooling.
     """
     now = datetime.now(timezone.utc).isoformat()
     return {

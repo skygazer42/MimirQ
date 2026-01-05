@@ -6,9 +6,9 @@ from pathlib import Path
 
 
 def main() -> None:
-    # Ensure relative paths (like `.env` and `./uploads`) resolve from backend/
-    backend_root = Path(__file__).resolve().parent
-    os.chdir(backend_root)
+    # Ensure relative paths (like `.env` and `./uploads`) resolve from repo root.
+    project_root = Path(__file__).resolve().parent
+    os.chdir(project_root)
 
     import uvicorn
 

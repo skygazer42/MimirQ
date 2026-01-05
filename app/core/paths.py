@@ -23,14 +23,14 @@ def _find_project_root() -> Path:
         项目根目录路径
     """
     current = Path(__file__).resolve()
-    # app/core/paths.py -> app/core -> app -> backend (root)
+    # app/core/paths.py -> app/core -> app -> repo root
     return current.parents[2]
 
 
-# 项目根目录 (backend/)
+# 项目根目录 (repo root)
 PROJECT_ROOT: Path = _find_project_root()
 
-# 应用目录 (backend/app/)
+# 应用目录 (app/)
 APP_DIR: Path = PROJECT_ROOT / "app"
 
 

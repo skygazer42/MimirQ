@@ -265,11 +265,10 @@ reranked_results = reranker.rank(query, candidate_docs)
 
 ```bash
 # 安装新依赖
-cd backend
 pip install -r requirements.txt
 
 # 启动服务
-docker-compose up -d
+docker compose up -d
 ```
 
 ### 2. 验证功能
