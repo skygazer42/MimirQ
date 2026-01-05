@@ -1,8 +1,6 @@
 # FastAPI Core
 --extra-index-url https://download.pytorch.org/whl/cpu
 
-# PyTorch (CPU only) - 放最前面，避免解析时先选到 CUDA 版 torch 拉入 nvidia/* 巨大依赖
-# magic-pdf: torch >=2.2.2,<3 且排除 2.5.0/2.5.1
 torch==2.4.1
 torchvision==0.19.1
 
