@@ -8,7 +8,7 @@ from typing import Iterable, List, Optional
 from uuid import UUID
 
 from sqlalchemy.orm import Session
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from app.core.database import SessionLocal
 from app.rag.kg.models import KgEntity, KgEventEntity, KgSourceEvent
@@ -31,14 +31,22 @@ def _quote_milvus_str(value: str, *, max_len: int = 256) -> str:
 
 def _as_uuid_list(values: Iterable[str | UUID]) -> List[UUID]:
     out: List[UUID] = []
+    seen: set[UUID] = set()
     for v in values:
         if isinstance(v, UUID):
+            if v in seen:
+                continue
+            seen.add(v)
             out.append(v)
             continue
         try:
-            out.append(UUID(str(v)))
+            u = UUID(str(v))
         except Exception:
             continue
+        if u in seen:
+            continue
+        seen.add(u)
+        out.append(u)
     return out
 
 
@@ -208,29 +216,52 @@ class EventRepository:
 
     def search_events_by_entities(
         self,
-        entity_ids: Iterable[str],
+        entity_ids: Iterable[str | UUID],
         tenant_id,
         limit: int = 50,
         document_ids: Optional[List[UUID]] = None,
-    ) -> List[str]:
-        ids = list(entity_ids)
+    ) -> List[UUID]:
+        ids = _as_uuid_list(entity_ids)
         if not ids:
             return []
         stmt = (
-            select(KgEventEntity.event_id)
+            select(
+                KgEventEntity.event_id,
+                func.count(KgEventEntity.entity_id).label("cnt"),
+            )
             .join(KgSourceEvent, KgSourceEvent.id == KgEventEntity.event_id)
             .where(KgEventEntity.entity_id.in_(ids))
             .where(KgSourceEvent.tenant_id == tenant_id)
+            .group_by(KgEventEntity.event_id)
+            .order_by(func.count(KgEventEntity.entity_id).desc(), KgEventEntity.event_id.asc())
+            .limit(limit)
         )
         if document_ids:
             stmt = stmt.where(KgSourceEvent.document_id.in_(document_ids))
-        rows = self.session.execute(stmt).scalars().all()
-        # simple frequency based ranking
-        freq: dict[str, int] = {}
-        for eid in rows:
-            freq[eid] = freq.get(eid, 0) + 1
-        ranked = sorted(freq.items(), key=lambda x: x[1], reverse=True)
-        return [eid for eid, _ in ranked[:limit]]
+        rows = self.session.execute(stmt).all()
+        return [row[0] for row in rows]
+
+    def filter_entity_ids_in_documents(
+        self,
+        entity_ids: Iterable[str | UUID],
+        *,
+        tenant_id: UUID,
+        document_ids: List[UUID],
+    ) -> set[UUID]:
+        ids = _as_uuid_list(entity_ids)
+        if not ids or not document_ids:
+            return set()
+        stmt = (
+            select(KgEventEntity.entity_id)
+            .join(KgSourceEvent, KgSourceEvent.id == KgEventEntity.event_id)
+            .where(
+                KgSourceEvent.tenant_id == tenant_id,
+                KgSourceEvent.document_id.in_(document_ids),
+                KgEventEntity.entity_id.in_(ids),
+            )
+            .distinct()
+        )
+        return set(self.session.execute(stmt).scalars().all())
 
     def get_event_entities(
         self,

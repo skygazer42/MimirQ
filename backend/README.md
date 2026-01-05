@@ -252,6 +252,7 @@ from app.services.prompt_resolver import resolve_prompt_template
 **限额/安全**
 - `document_ids` 上限：500；`/kg/graph/search?q=` 上限：200；`KGSearchRequest.query` 上限：2048
 - 所有 KG 路由统一校验 tenant 成员 + 文档 ACL；无可访问文档时返回空结果/错误
+- KG Search 的实体召回也按 `document_ids` 范围过滤，避免同租户跨文档信息泄露
 - 异步 KG 抽取在 worker 侧使用 Redis 幂等锁：`lock:kg:{tenant_id}:{document_id}:{pipeline_hash}`
 
 ## 依赖关系
