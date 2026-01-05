@@ -16,7 +16,11 @@ MimirQ 支持两种 Embedding 模式，对应不同的依赖需求。
 
 **安装**：
 ```bash
-pip install -r requirements.txt
+# 推荐：精简依赖（安装更快，覆盖默认核心能力）
+pip install -r requirements-minimal.txt
+
+# 或：完整依赖（包含更多可选解析/评测组件与开发依赖）
+# pip install -r requirements.txt
 ```
 
 **配置**：
@@ -28,7 +32,7 @@ EMBEDDING_API_KEY=your-api-key
 EMBEDDING_API_BASE=https://api.openai.com/v1
 ```
 
-**依赖大小**：约 200MB
+**说明**：如需启用更多可选能力（本地 Embedding / OCR / 高级解析等），参考下方条目安装额外依赖。
 
 ---
 
@@ -48,8 +52,8 @@ EMBEDDING_API_BASE=https://api.openai.com/v1
 
 **安装**：
 ```bash
-# 先安装基础依赖
-pip install -r requirements.txt
+# 先安装基础依赖（推荐精简）
+pip install -r requirements-minimal.txt
 
 # 再安装本地模型依赖
 pip install -r requirements-local.txt
