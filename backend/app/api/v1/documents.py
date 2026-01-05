@@ -1502,7 +1502,9 @@ async def apply_batch_upload_urls(
 
     Example:
         # Step 1: 申请上传 URL
-        response = requests.post("/api/v1/documents/batch-upload/apply-urls", json={
+        response = requests.post("http://localhost:8000/api/v1/documents/batch-upload/apply-urls", headers={
+            "X-User-ID": "demo",
+        }, json={
             "files": [
                 {"name": "file1.pdf", "data_id": "doc1"},
                 {"name": "file2.pdf", "data_id": "doc2"}
@@ -1518,7 +1520,9 @@ async def apply_batch_upload_urls(
                 requests.put(url, data=f)
 
         # Step 3: 查询状态
-        requests.get(f"/api/v1/documents/batch-upload/status/{batch_id}")
+        requests.get(f"http://localhost:8000/api/v1/documents/batch-upload/status/{batch_id}", headers={
+            "X-User-ID": "demo",
+        })
     """
     member = DatasetService.ensure_member(db, tenant_id, account_id)
     role = (member.role or "").lower()
