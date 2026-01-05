@@ -44,6 +44,197 @@ def _resolve_allowed_documents(
     return list_accessible_document_ids(db, tenant_id, account_id, status="completed", limit=limit)
 
 
+def _build_graph_response(
+    *,
+    db: Session,
+    tenant_id: UUID,
+    events: list,
+    max_entities: int,
+    max_links: int,
+    center_node_id: UUID | None = None,
+    center_node_kind: str | None = None,
+) -> KGGraphResponse:
+    from collections import Counter
+
+    from sqlalchemy import case, func
+
+    from app.rag.kg.models import KgEntity, KgEventEntity
+
+    if not events:
+        stats = {"events": 0, "entities": 0, "links": 0}
+        if center_node_id is not None:
+            stats["center_node_id"] = str(center_node_id)
+        return KGGraphResponse(nodes=[], links=[], stats=stats)
+
+    event_ids = [e.id for e in events]
+
+    forced_entity_id: UUID | None = center_node_id if center_node_kind == "entity" else None
+
+    entity_counts = (
+        db.query(KgEventEntity.entity_id, func.count(KgEventEntity.event_id))
+        .join(KgEntity, KgEntity.id == KgEventEntity.entity_id)
+        .filter(
+            KgEventEntity.event_id.in_(event_ids),
+            KgEntity.tenant_id == tenant_id,
+        )
+        .group_by(KgEventEntity.entity_id)
+        .order_by(func.count(KgEventEntity.event_id).desc())
+        .limit(int(max_entities))
+        .all()
+    )
+    entity_ids = [row[0] for row in entity_counts]
+    entity_hit_count: Counter[str] = Counter({str(eid): int(cnt) for eid, cnt in entity_counts})
+    if forced_entity_id is not None and forced_entity_id not in entity_ids:
+        if max_entities and len(entity_ids) >= int(max_entities):
+            entity_ids[-1] = forced_entity_id
+        else:
+            entity_ids.append(forced_entity_id)
+    if forced_entity_id is not None and str(forced_entity_id) not in entity_hit_count:
+        cnt = (
+            db.query(func.count(KgEventEntity.event_id))
+            .filter(
+                KgEventEntity.event_id.in_(event_ids),
+                KgEventEntity.entity_id == forced_entity_id,
+            )
+            .scalar()
+        )
+        entity_hit_count[str(forced_entity_id)] = int(cnt or 0)
+
+    nodes: list[dict] = []
+    links: list[dict] = []
+    entity_node_count = 0
+
+    # Stable grouping by entity type for frontend coloring.
+    type_to_group: dict[str, int] = {}
+    next_group = 1
+
+    def _group_for(entity_type: str) -> int:
+        nonlocal next_group
+        key = (entity_type or "unknown").strip().lower() or "unknown"
+        if key not in type_to_group:
+            type_to_group[key] = next_group
+            next_group += 1
+        return type_to_group[key]
+
+    included_entity_ids: set[UUID] = set()
+    event_degree: Counter[str] = Counter()
+
+    entity_by_id: dict[UUID, KgEntity] = {}
+    if entity_ids:
+        entities = (
+            db.query(KgEntity)
+            .filter(
+                KgEntity.tenant_id == tenant_id,
+                KgEntity.id.in_(entity_ids),
+            )
+            .all()
+        )
+        entity_by_id = {ent.id: ent for ent in entities}
+
+        associations = (
+            db.query(KgEventEntity)
+            .filter(
+                KgEventEntity.event_id.in_(event_ids),
+                KgEventEntity.entity_id.in_(entity_ids),
+            )
+            .order_by(
+                *(
+                    [case((KgEventEntity.event_id == center_node_id, 0), else_=1)]
+                    if center_node_kind == "event" and center_node_id is not None
+                    else []
+                ),
+                *(
+                    [case((KgEventEntity.entity_id == center_node_id, 0), else_=1)]
+                    if center_node_kind == "entity" and center_node_id is not None
+                    else []
+                ),
+                KgEventEntity.weight.desc(),
+                KgEventEntity.id.asc(),
+            )
+            .limit(int(max_links))
+            .all()
+        )
+
+        included_entity_ids = {assoc.entity_id for assoc in associations}
+        if forced_entity_id is not None:
+            included_entity_ids.add(forced_entity_id)
+        for assoc in associations:
+            event_degree[str(assoc.event_id)] += 1
+
+        for assoc in associations:
+            ent = entity_by_id.get(assoc.entity_id)
+            if not ent:
+                continue
+            links.append(
+                {
+                    "source": str(assoc.event_id),
+                    "target": str(ent.id),
+                    "label": (assoc.role or "").strip() or getattr(ent, "type", "") or "mentions",
+                    "weight": float(getattr(assoc, "weight", 1.0) or 1.0),
+                    "meta": {},
+                }
+            )
+
+    # Event nodes
+    for ev in events:
+        ev_id = str(ev.id)
+        meta = {
+            "kind": "event",
+            "document_id": str(ev.document_id) if ev.document_id else "",
+            "chunk_id": str(ev.chunk_id) if ev.chunk_id else "",
+        }
+        if center_node_id is not None:
+            meta["center"] = str(ev.id) == str(center_node_id)
+        nodes.append(
+            {
+                "id": ev_id,
+                "label": (ev.title or "").strip() or ev_id,
+                "group": 0,
+                "val": max(1, int(event_degree.get(ev_id, 0))),
+                "meta": meta,
+            }
+        )
+
+    # Entity nodes (ordered by hit count)
+    ordered_entity_ids = entity_ids
+    if forced_entity_id is not None and forced_entity_id in ordered_entity_ids:
+        ordered_entity_ids = [forced_entity_id] + [eid for eid in ordered_entity_ids if eid != forced_entity_id]
+
+    for ent_id in ordered_entity_ids:
+        if ent_id not in included_entity_ids:
+            continue
+        ent = entity_by_id.get(ent_id)
+        if not ent:
+            continue
+        meta = {
+            "kind": "entity",
+            "type": getattr(ent, "type", None),
+            "normalized_name": getattr(ent, "normalized_name", None),
+        }
+        if center_node_id is not None:
+            meta["center"] = str(ent.id) == str(center_node_id)
+        nodes.append(
+            {
+                "id": str(ent.id),
+                "label": (ent.name or "").strip() or str(ent.id),
+                "group": _group_for(getattr(ent, "type", "") or "unknown"),
+                "val": max(1, int(entity_hit_count.get(str(ent.id), 0))),
+                "meta": meta,
+            }
+        )
+        entity_node_count += 1
+
+    stats = {
+        "events": len(events),
+        "entities": entity_node_count,
+        "links": min(len(links), int(max_links)),
+    }
+    if center_node_id is not None:
+        stats["center_node_id"] = str(center_node_id)
+
+    return KGGraphResponse(nodes=nodes, links=links, stats=stats)
+
+
 @router.get("/graph", response_model=KGGraphResponse)
 async def get_kg_graph(
     document_ids: list[UUID] | None = Query(default=None),
@@ -77,9 +268,7 @@ async def get_kg_graph(
     if not allowed_doc_ids:
         return KGGraphResponse(nodes=[], links=[], stats={"reason": "no_accessible_documents"})
 
-    from collections import Counter
-
-    from app.rag.kg.models import KgEntity, KgEventEntity, KgSourceEvent
+    from app.rag.kg.models import KgSourceEvent
 
     events = (
         db.query(KgSourceEvent)
@@ -92,106 +281,12 @@ async def get_kg_graph(
         .all()
     )
 
-    if not events:
-        return KGGraphResponse(nodes=[], links=[], stats={"events": 0, "entities": 0, "links": 0})
-
-    event_ids = [e.id for e in events]
-
-    # Fetch join rows in one pass (event_id -> entity details + edge metadata)
-    rows = (
-        db.query(KgEventEntity, KgEntity)
-        .join(KgEntity, KgEntity.id == KgEventEntity.entity_id)
-        .filter(KgEventEntity.event_id.in_(event_ids))
-        .all()
-    )
-
-    entity_hit_count: Counter[str] = Counter()
-    event_degree: Counter[str] = Counter()
-    for assoc, ent in rows:
-        eid = str(ent.id)
-        entity_hit_count[eid] += 1
-        event_degree[str(assoc.event_id)] += 1
-
-    allowed_entity_ids = set(entity_hit_count.keys())
-    if max_entities and len(allowed_entity_ids) > int(max_entities):
-        allowed_entity_ids = {eid for (eid, _cnt) in entity_hit_count.most_common(int(max_entities))}
-
-    # Deterministic grouping for entity types (for stable coloring on frontend).
-    type_to_group: dict[str, int] = {}
-    next_group = 1
-
-    def _group_for(entity_type: str) -> int:
-        nonlocal next_group
-        key = (entity_type or "unknown").strip().lower() or "unknown"
-        if key not in type_to_group:
-            type_to_group[key] = next_group
-            next_group += 1
-        return type_to_group[key]
-
-    nodes: list[dict] = []
-    links: list[dict] = []
-
-    # Event nodes
-    for ev in events:
-        eid = str(ev.id)
-        nodes.append(
-            {
-                "id": eid,
-                "label": (ev.title or "").strip() or eid,
-                "group": 0,
-                "val": max(1, int(event_degree.get(eid, 0))),
-                "meta": {
-                    "kind": "event",
-                    "document_id": str(ev.document_id) if ev.document_id else "",
-                    "chunk_id": str(ev.chunk_id) if ev.chunk_id else "",
-                },
-            }
-        )
-
-    # Entity nodes + links (capped)
-    seen_entities: set[str] = set()
-    for assoc, ent in rows:
-        ent_id = str(ent.id)
-        if ent_id not in allowed_entity_ids:
-            continue
-
-        if ent_id not in seen_entities:
-            seen_entities.add(ent_id)
-            nodes.append(
-                {
-                    "id": ent_id,
-                    "label": (ent.name or "").strip() or ent_id,
-                    "group": _group_for(getattr(ent, "type", "") or "unknown"),
-                    "val": max(1, int(entity_hit_count.get(ent_id, 0))),
-                    "meta": {
-                        "kind": "entity",
-                        "type": getattr(ent, "type", None),
-                        "normalized_name": getattr(ent, "normalized_name", None),
-                    },
-                }
-            )
-
-        if len(links) >= int(max_links):
-            continue
-
-        links.append(
-            {
-                "source": str(assoc.event_id),
-                "target": ent_id,
-                "label": (assoc.role or "").strip() or getattr(ent, "type", "") or "mentions",
-                "weight": float(getattr(assoc, "weight", 1.0) or 1.0),
-                "meta": {},
-            }
-        )
-
-    return KGGraphResponse(
-        nodes=nodes,
-        links=links,
-        stats={
-            "events": len(events),
-            "entities": len(seen_entities),
-            "links": min(len(links), int(max_links)),
-        },
+    return _build_graph_response(
+        db=db,
+        tenant_id=tenant_id,
+        events=events,
+        max_entities=int(max_entities),
+        max_links=int(max_links),
     )
 
 
@@ -224,8 +319,6 @@ async def expand_kg_graph(
     )
     if not allowed_doc_ids:
         return KGGraphResponse(nodes=[], links=[], stats={"reason": "no_accessible_documents"})
-
-    from collections import Counter
 
     from app.rag.kg.models import KgEntity, KgEventEntity, KgSourceEvent
 
@@ -325,106 +418,15 @@ async def expand_kg_graph(
             .all()
         )
 
-    if not events:
-        return KGGraphResponse(nodes=[], links=[], stats={"events": 0, "entities": 0, "links": 0})
-
-    event_ids = [e.id for e in events]
-    rows = (
-        db.query(KgEventEntity, KgEntity)
-        .join(KgEntity, KgEntity.id == KgEventEntity.entity_id)
-        .filter(KgEventEntity.event_id.in_(event_ids))
-        .all()
-    )
-
-    entity_hit_count: Counter[str] = Counter()
-    event_degree: Counter[str] = Counter()
-    for assoc, ent in rows:
-        ent_id = str(ent.id)
-        entity_hit_count[ent_id] += 1
-        event_degree[str(assoc.event_id)] += 1
-
-    allowed_entity_ids = set(entity_hit_count.keys())
-    if max_entities and len(allowed_entity_ids) > int(max_entities):
-        allowed_entity_ids = {eid for (eid, _cnt) in entity_hit_count.most_common(int(max_entities))}
-
-    # Stable grouping by entity type for frontend coloring.
-    type_to_group: dict[str, int] = {}
-    next_group = 1
-
-    def _group_for(entity_type: str) -> int:
-        nonlocal next_group
-        key = (entity_type or "unknown").strip().lower() or "unknown"
-        if key not in type_to_group:
-            type_to_group[key] = next_group
-            next_group += 1
-        return type_to_group[key]
-
-    nodes: list[dict] = []
-    links: list[dict] = []
-
-    # Event nodes
-    for ev in events:
-        ev_id = str(ev.id)
-        nodes.append(
-            {
-                "id": ev_id,
-                "label": (ev.title or "").strip() or ev_id,
-                "group": 0,
-                "val": max(1, int(event_degree.get(ev_id, 0))),
-                "meta": {
-                    "kind": "event",
-                    "document_id": str(ev.document_id) if ev.document_id else "",
-                    "chunk_id": str(ev.chunk_id) if ev.chunk_id else "",
-                    "center": str(ev.id) == str(node_id),
-                },
-            }
-        )
-
-    seen_entities: set[str] = set()
-    for assoc, ent in rows:
-        ent_id = str(ent.id)
-        if ent_id not in allowed_entity_ids:
-            continue
-
-        if ent_id not in seen_entities:
-            seen_entities.add(ent_id)
-            nodes.append(
-                {
-                    "id": ent_id,
-                    "label": (ent.name or "").strip() or ent_id,
-                    "group": _group_for(getattr(ent, "type", "") or "unknown"),
-                    "val": max(1, int(entity_hit_count.get(ent_id, 0))),
-                    "meta": {
-                        "kind": "entity",
-                        "type": getattr(ent, "type", None),
-                        "normalized_name": getattr(ent, "normalized_name", None),
-                        "center": str(ent.id) == str(node_id),
-                    },
-                }
-            )
-
-        if len(links) >= int(max_links):
-            continue
-
-        links.append(
-            {
-                "source": str(assoc.event_id),
-                "target": ent_id,
-                "label": (assoc.role or "").strip() or getattr(ent, "type", "") or "mentions",
-                "weight": float(getattr(assoc, "weight", 1.0) or 1.0),
-                "meta": {},
-            }
-        )
-
-    return KGGraphResponse(
-        nodes=nodes,
-        links=links,
-        stats={
-            "center_node_id": str(node_id),
-            "events": len(events),
-            "entities": len(seen_entities),
-            "links": min(len(links), int(max_links)),
-        },
+    center_kind = "event" if center_event else "entity"
+    return _build_graph_response(
+        db=db,
+        tenant_id=tenant_id,
+        events=events,
+        max_entities=int(max_entities),
+        max_links=int(max_links),
+        center_node_id=node_id,
+        center_node_kind=center_kind,
     )
 
 
