@@ -48,7 +48,7 @@ chardet==5.2.0
 tiktoken==0.7.0
 trio==0.26.0
 xgboost==2.1.0
-huggingface-hub==0.25.2
+huggingface-hub==0.34.6
 Pillow==10.4.0
 opencv-python-headless==4.10.0.84
 onnxruntime==1.19.2
