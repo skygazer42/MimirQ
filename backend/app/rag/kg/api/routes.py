@@ -630,6 +630,8 @@ async def run_kg_extraction_for_document(
                 requested_by=account_id,
                 job_id=job_id,
             )
+            if not task_id:
+                raise HTTPException(status_code=503, detail="Task queue unavailable")
             if task_id:
                 meta = dict(document.doc_metadata or {})
                 meta["kg_task_id"] = task_id
@@ -640,7 +642,12 @@ async def run_kg_extraction_for_document(
             response.status_code = 202
             if task_id:
                 response.headers["X-Task-Id"] = str(task_id)
-            return KGExtractResponse(document_id=document_id, chunk_count=len(chunks), event_count=0)
+            return KGExtractResponse(
+                document_id=document_id,
+                chunk_count=len(chunks),
+                event_count=0,
+                message="KG extraction queued",
+            )
         except HTTPException:
             raise
         except Exception as exc:  # noqa: BLE001
