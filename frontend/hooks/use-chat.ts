@@ -210,7 +210,7 @@ export function useChat({
           console.error('Chat error:', err)
           onError?.(err?.message || 'Failed to send message')
         }
-  } finally {
+      } finally {
         setIsLoading(false)
         abortControllerRef.current = null
       }

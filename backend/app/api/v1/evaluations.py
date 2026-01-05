@@ -191,8 +191,8 @@ async def create_ragas_regression_case(
 
 @router.get("/ragas/regression/cases", response_model=RagasRegressionCaseList)
 async def list_ragas_regression_cases(
-    skip: int = 0,
-    limit: int = 50,
+    skip: int = Query(default=0, ge=0),
+    limit: int = Query(default=50, ge=1, le=200),
     dataset_id: UUID | None = None,
     tenant_id: UUID = Depends(get_tenant_id),
     account_id: str = Depends(get_current_account_id),
@@ -314,8 +314,8 @@ async def create_ragas_regression_run(
 
 @router.get("/ragas/regression/runs", response_model=RagasRegressionRunList)
 async def list_ragas_regression_runs(
-    skip: int = 0,
-    limit: int = 50,
+    skip: int = Query(default=0, ge=0),
+    limit: int = Query(default=50, ge=1, le=200),
     tenant_id: UUID = Depends(get_tenant_id),
     account_id: str = Depends(get_current_account_id),
     db: Session = Depends(get_db),
