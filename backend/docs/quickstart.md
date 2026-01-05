@@ -52,6 +52,9 @@ python main.py
 打开浏览器访问:
 - 后端 API 文档: http://localhost:8000/docs
 - 前端界面 (需启动前端): http://localhost:3000
+- 健康检查: http://localhost:8000/api/v1/health
+- 就绪探针: http://localhost:8000/api/v1/health/ready
+- 详细依赖状态: http://localhost:8000/health
 
 ---
 

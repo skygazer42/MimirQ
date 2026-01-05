@@ -86,7 +86,7 @@ aiofiles==23.2.1
 
 # Development
 pytest==7.4.4
-httpx==0.28.1
+httpx[http2]==0.28.1
 
 # RAGAS 
 ragas==0.4.1

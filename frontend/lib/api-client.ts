@@ -46,13 +46,12 @@ import type {
   RegressionRunDetail,
 } from '@/types'
 import { getAuthHeaders } from '@/lib/auth-headers'
-import { API_V1_BASE_URL } from '@/lib/env'
+import { API_TIMEOUT_MS, API_V1_BASE_URL } from '@/lib/env'
+import { appendPipelineOptionsToFormData } from '@/lib/form-data'
 
 const apiClient = axios.create({
   baseURL: API_V1_BASE_URL,
-  headers: {
-    'Content-Type': 'application/json',
-  },
+  timeout: API_TIMEOUT_MS,
 })
 
 // Inject auth/tenant headers for every request (client-side friendly)
@@ -119,36 +118,9 @@ export const documentApi = {
     if (options.dataset_id) {
       formData.append('dataset_id', options.dataset_id)
     }
-    if (options.pipeline) {
-      const { pipeline } = options
-      const appendIfDefined = (key: string, value: string | number | boolean | undefined) => {
-        if (value === undefined || value === null) return
-        formData.append(key, String(value))
-      }
-      appendIfDefined('governance_enabled', pipeline.governance_enabled)
-      appendIfDefined('governance_remove_toc_lines', pipeline.governance_remove_toc_lines)
-      appendIfDefined('governance_remove_noise_lines', pipeline.governance_remove_noise_lines)
-      appendIfDefined('governance_unwrap_lines', pipeline.governance_unwrap_lines)
-      appendIfDefined('governance_remove_common_lines', pipeline.governance_remove_common_lines)
-      appendIfDefined('governance_unwrap_max_line_length', pipeline.governance_unwrap_max_line_length)
-      appendIfDefined('governance_noise_min_chars', pipeline.governance_noise_min_chars)
-      appendIfDefined('governance_noise_ratio_threshold', pipeline.governance_noise_ratio_threshold)
-      appendIfDefined('governance_common_lines_min_docs', pipeline.governance_common_lines_min_docs)
-      appendIfDefined('governance_common_lines_min_ratio', pipeline.governance_common_lines_min_ratio)
-      appendIfDefined('chunk_size', pipeline.chunk_size)
-      appendIfDefined('chunk_overlap', pipeline.chunk_overlap)
-      appendIfDefined('chunk_vector_enabled', pipeline.chunk_vector_enabled)
-      appendIfDefined('bm25_index_enabled', pipeline.bm25_index_enabled)
-      appendIfDefined('kg_enabled', pipeline.kg_enabled)
-      appendIfDefined('event_vector_enabled', pipeline.event_vector_enabled)
-      appendIfDefined('entity_vector_enabled', pipeline.entity_vector_enabled)
-    }
+    appendPipelineOptionsToFormData(formData, options.pipeline)
 
-    const { data } = await apiClient.post('/documents/upload', formData, {
-      headers: {
-        'Content-Type': 'multipart/form-data',
-      },
-    })
+    const { data } = await apiClient.post('/documents/upload', formData)
 
     return data
   },
@@ -209,28 +181,9 @@ export const documentApi = {
     const formData = new FormData()
     formData.append('file', file)
     formData.append('parser_backend', parserBackend)
-    if (pipeline) {
-      const appendIfDefined = (key: string, value: string | number | boolean | undefined) => {
-        if (value === undefined || value === null) return
-        formData.append(key, String(value))
-      }
-      appendIfDefined('governance_enabled', pipeline.governance_enabled)
-      appendIfDefined('governance_remove_toc_lines', pipeline.governance_remove_toc_lines)
-      appendIfDefined('governance_remove_noise_lines', pipeline.governance_remove_noise_lines)
-      appendIfDefined('governance_unwrap_lines', pipeline.governance_unwrap_lines)
-      appendIfDefined('governance_remove_common_lines', pipeline.governance_remove_common_lines)
-      appendIfDefined('governance_unwrap_max_line_length', pipeline.governance_unwrap_max_line_length)
-      appendIfDefined('governance_noise_min_chars', pipeline.governance_noise_min_chars)
-      appendIfDefined('governance_noise_ratio_threshold', pipeline.governance_noise_ratio_threshold)
-      appendIfDefined('governance_common_lines_min_docs', pipeline.governance_common_lines_min_docs)
-      appendIfDefined('governance_common_lines_min_ratio', pipeline.governance_common_lines_min_ratio)
-    }
+    appendPipelineOptionsToFormData(formData, pipeline)
 
-    const { data } = await apiClient.post('/documents/preview', formData, {
-      headers: {
-        'Content-Type': 'multipart/form-data',
-      },
-    })
+    const { data } = await apiClient.post('/documents/preview', formData)
 
     return data
   },
@@ -268,31 +221,15 @@ export const documentApi = {
     formData.append('file', file)
     formData.append('parser_backend', params.parser_backend || 'auto')
     formData.append('chunk_strategy', params.chunk_strategy || 'langchain_recursive')
-    if (params.pipeline) {
-      const pipeline = params.pipeline
-      const appendIfDefined = (key: string, value: string | number | boolean | undefined) => {
-        if (value === undefined || value === null) return
-        formData.append(key, String(value))
-      }
-      appendIfDefined('governance_enabled', pipeline.governance_enabled)
-      appendIfDefined('governance_remove_toc_lines', pipeline.governance_remove_toc_lines)
-      appendIfDefined('governance_remove_noise_lines', pipeline.governance_remove_noise_lines)
-      appendIfDefined('governance_unwrap_lines', pipeline.governance_unwrap_lines)
-      appendIfDefined('governance_remove_common_lines', pipeline.governance_remove_common_lines)
-      appendIfDefined('governance_unwrap_max_line_length', pipeline.governance_unwrap_max_line_length)
-      appendIfDefined('governance_noise_min_chars', pipeline.governance_noise_min_chars)
-      appendIfDefined('governance_noise_ratio_threshold', pipeline.governance_noise_ratio_threshold)
-      appendIfDefined('governance_common_lines_min_docs', pipeline.governance_common_lines_min_docs)
-      appendIfDefined('governance_common_lines_min_ratio', pipeline.governance_common_lines_min_ratio)
-    }
+    appendPipelineOptionsToFormData(formData, params.pipeline)
+
+    const effectiveChunkSize = params.chunk_size ?? params.pipeline?.chunk_size ?? 1000
+    const effectiveChunkOverlap = params.chunk_overlap ?? params.pipeline?.chunk_overlap ?? 200
 
     const { data } = await apiClient.post('/documents/chunk-preview', formData, {
-      headers: {
-        'Content-Type': 'multipart/form-data',
-      },
       params: {
-        chunk_size: params.chunk_size ?? 1000,
-        chunk_overlap: params.chunk_overlap ?? 200,
+        chunk_size: effectiveChunkSize,
+        chunk_overlap: effectiveChunkOverlap,
       },
     })
 

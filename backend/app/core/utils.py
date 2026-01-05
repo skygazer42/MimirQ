@@ -187,6 +187,24 @@ def safe_str(value: Any, default: str = "") -> str:
 # 配置工具
 # =============================================================================
 
+def parse_csv(value: Optional[str]) -> List[str]:
+    """
+    Parse a comma-separated env/config value into a list of non-empty strings.
+
+    - Strips whitespace around items
+    - Ignores empty items
+    - Preserves literal "*" when provided
+    """
+    if value is None:
+        return []
+    raw = str(value).strip()
+    if not raw:
+        return []
+    if raw == "*":
+        return ["*"]
+    return [part.strip() for part in raw.split(",") if part.strip()]
+
+
 def get_env_bool(key: str, default: bool = False) -> bool:
     """
     获取布尔类型环境变量

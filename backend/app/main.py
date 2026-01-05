@@ -21,6 +21,7 @@ warnings.filterwarnings(
 )
 
 import logging
+from pathlib import Path
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
@@ -29,13 +30,14 @@ from app.core.config import settings
 from app.core.database import Base, SessionLocal, engine
 from app.core.exceptions import register_exception_handlers
 from app.core.migrations import apply_runtime_migrations
+from app.core.utils import parse_csv
 from app.api.v1 import router as api_v1_router
 from app.rag.retriever import hybrid_retriever
 from app.models.document import DocumentChunk, Document as DBDocument
 from app.storage.vector.milvus import milvus_store
 from app.storage.object.minio import minio_service
 from app.core.http_client import close_http_client_pool
-from app.tasks.queue import init_queue, close_queue
+from app.tasks.queue import init_queue, close_queue, is_queue_initialized
 # Ensure KG models are registered for metadata creation
 import app.rag.kg.models  # noqa: F401
 # Ensure evaluation models are registered for metadata creation
@@ -52,6 +54,35 @@ async def lifespan(app: FastAPI):
     """应用启动和关闭时的操作"""
     # 启动时：创建数据库表
     logger.info("Starting MimirQ backend...")
+
+    # Ensure local directories exist (uploads/logs/vector persistence).
+    for dir_path in [
+        settings.UPLOAD_DIR,
+        settings.FAISS_STORE_PATH if getattr(settings, "VECTOR_BACKEND", "milvus") == "faiss" else None,
+        settings.CHROMA_PERSIST_PATH if getattr(settings, "VECTOR_BACKEND", "milvus") == "chroma" else None,
+    ]:
+        if not dir_path:
+            continue
+        try:
+            Path(str(dir_path)).mkdir(parents=True, exist_ok=True)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Failed to ensure directory %s: %s", str(dir_path), str(exc)[:200])
+
+    if bool(getattr(settings, "ENABLE_METRICS_LOG", False)):
+        try:
+            Path(str(getattr(settings, "METRICS_LOG_PATH", "./logs/rag_metrics.jsonl"))).parent.mkdir(
+                parents=True, exist_ok=True
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Failed to ensure metrics log dir: %s", str(exc)[:200])
+
+    if bool(getattr(settings, "MINIO_ENABLED", False)):
+        try:
+            Path(str(getattr(settings, "MINIO_METRICS_LOG_PATH", "./logs/minio_metrics.jsonl"))).parent.mkdir(
+                parents=True, exist_ok=True
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Failed to ensure MinIO metrics log dir: %s", str(exc)[:200])
 
     if bool(getattr(settings, "LANGSMITH_TRACING_ENABLED", False)):
         try:
@@ -156,7 +187,7 @@ app = FastAPI(
 # CORS 配置
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.CORS_ORIGINS.split(","),
+    allow_origins=parse_csv(settings.CORS_ORIGINS),
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["*"],
@@ -207,12 +238,26 @@ async def health_check():
     finally:
         db.close()
 
-    milvus_status = {"status": "disconnected", "count": None}
-    try:
-        milvus_status["count"] = milvus_store.get_collection_count()
-        milvus_status["status"] = "connected"
-    except Exception as exc:
-        milvus_status["error"] = str(exc)[:200]
+    vector_backend = (getattr(settings, "VECTOR_BACKEND", "milvus") or "milvus").lower()
+    vector_status: dict = {"backend": vector_backend, "status": "unknown"}
+
+    milvus_status = {"status": "not_configured", "count": None}
+    if vector_backend == "milvus":
+        milvus_status = {"status": "disconnected", "count": None}
+        try:
+            milvus_status["count"] = milvus_store.get_collection_count()
+            milvus_status["status"] = "connected"
+        except Exception as exc:
+            milvus_status["error"] = str(exc)[:200]
+        vector_status.update(milvus_status)
+    elif vector_backend == "faiss":
+        path = Path(str(getattr(settings, "FAISS_STORE_PATH", "./vector_faiss")))
+        vector_status.update({"status": "ready" if path.exists() else "missing", "path": str(path)})
+    elif vector_backend == "chroma":
+        path = Path(str(getattr(settings, "CHROMA_PERSIST_PATH", "./vector_chroma")))
+        vector_status.update({"status": "ready" if path.exists() else "missing", "path": str(path)})
+    elif vector_backend == "memory":
+        vector_status.update({"status": "ready"})
 
     minio_status = {"status": "disabled"}
     if settings.MINIO_ENABLED:
@@ -224,10 +269,49 @@ async def health_check():
             minio_status["status"] = "disconnected"
             minio_status["error"] = str(exc)[:200]
 
+    uploads_status = {"status": "unknown", "path": settings.UPLOAD_DIR}
+    try:
+        upload_dir = Path(settings.UPLOAD_DIR)
+        upload_dir.mkdir(parents=True, exist_ok=True)
+        uploads_status["status"] = "ready"
+    except Exception as exc:  # noqa: BLE001
+        uploads_status["status"] = "unavailable"
+        uploads_status["error"] = str(exc)[:200]
+
+    redis_status = {"status": "disabled"}
+    if bool(getattr(settings, "TASK_QUEUE_ENABLED", False)) or bool(getattr(settings, "EMBEDDING_CACHE_ENABLED", False)):
+        try:
+            import redis
+
+            r = redis.Redis.from_url(
+                settings.REDIS_URL,
+                socket_timeout=1,
+                socket_connect_timeout=1,
+                decode_responses=True,
+            )
+            r.ping()
+            redis_status["status"] = "connected"
+        except Exception as exc:  # noqa: BLE001
+            redis_status["status"] = "disconnected"
+            redis_status["error"] = str(exc)[:200]
+
+    task_queue_status = {
+        "enabled": bool(getattr(settings, "TASK_QUEUE_ENABLED", False)),
+        "queue": getattr(settings, "TASK_QUEUE_NAME", "mimirq"),
+        "status": "disabled",
+    }
+    if task_queue_status["enabled"]:
+        task_queue_status["initialized"] = is_queue_initialized()
+        task_queue_status["status"] = "connected" if task_queue_status["initialized"] else "not_initialized"
+
     return {
         "status": "healthy",
         "database": db_status,
+        "vector": vector_status,
         "milvus": milvus_status,
+        "redis": redis_status,
+        "task_queue": task_queue_status,
+        "uploads": uploads_status,
         "minio": minio_status,
     }
 
