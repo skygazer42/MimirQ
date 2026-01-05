@@ -68,8 +68,16 @@ def ready(response: Response) -> dict:
     else:
         vector_status["status"] = "ready"
 
-    redis_status = {"status": "disabled"}
-    if bool(getattr(settings, "TASK_QUEUE_ENABLED", False)) or bool(getattr(settings, "EMBEDDING_CACHE_ENABLED", False)):
+    redis_required = bool(getattr(settings, "TASK_QUEUE_ENABLED", False))
+    redis_optional_cache = bool(getattr(settings, "EMBEDDING_CACHE_ENABLED", False))
+    redis_enabled = redis_required or redis_optional_cache
+    redis_status = {
+        "status": "disabled",
+        "enabled": redis_enabled,
+        "required": redis_required,
+        "embedding_cache_enabled": redis_optional_cache,
+    }
+    if redis_enabled:
         try:
             import redis
 
@@ -82,9 +90,11 @@ def ready(response: Response) -> dict:
             r.ping()
             redis_status["status"] = "connected"
         except Exception as exc:  # noqa: BLE001
-            ok = False
             redis_status["status"] = "disconnected"
             redis_status["error"] = str(exc)[:200]
+            # Redis is only required when the task queue is enabled.
+            if redis_required:
+                ok = False
 
     if not ok:
         response.status_code = 503

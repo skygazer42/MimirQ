@@ -90,6 +90,7 @@ aiofiles==23.2.1
 
 # Development
 pytest==7.4.4
+pytest-asyncio==0.23.8
 httpx[http2]==0.28.1
 
 # RAGAS

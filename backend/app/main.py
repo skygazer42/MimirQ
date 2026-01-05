@@ -278,8 +278,16 @@ async def health_check():
         uploads_status["status"] = "unavailable"
         uploads_status["error"] = str(exc)[:200]
 
-    redis_status = {"status": "disabled"}
-    if bool(getattr(settings, "TASK_QUEUE_ENABLED", False)) or bool(getattr(settings, "EMBEDDING_CACHE_ENABLED", False)):
+    redis_required = bool(getattr(settings, "TASK_QUEUE_ENABLED", False))
+    redis_optional_cache = bool(getattr(settings, "EMBEDDING_CACHE_ENABLED", False))
+    redis_enabled = redis_required or redis_optional_cache
+    redis_status = {
+        "status": "disabled",
+        "enabled": redis_enabled,
+        "required": redis_required,
+        "embedding_cache_enabled": redis_optional_cache,
+    }
+    if redis_enabled:
         try:
             import redis
 
