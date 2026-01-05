@@ -40,7 +40,6 @@ MINERU_ENABLED=true
 ### 3. 重启后端服务
 
 ```bash
-cd backend
 uvicorn app.main:app --reload
 ```
 

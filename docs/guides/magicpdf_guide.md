@@ -26,7 +26,6 @@ MAGIC_PDF_KEEP_ARTIFACTS=false
 3. 重启后端
 
 ```bash
-cd backend
 uvicorn app.main:app --reload
 ```
 

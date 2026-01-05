@@ -339,7 +339,6 @@ response = await pool.get(
 ### 运行基准测试
 
 ```bash
-cd backend
 python scripts/benchmark_io_concurrency.py --test all
 ```
 
@@ -437,4 +436,3 @@ python scripts/benchmark_io_concurrency.py --test all
 - 详细的性能监控
 
 这些优化为 MimirQ 提供了更好的用户体验和更高的系统吞吐量！
-

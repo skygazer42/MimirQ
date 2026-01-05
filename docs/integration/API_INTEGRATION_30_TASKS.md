@@ -37,8 +37,8 @@
 24. ✅ 增加后端单测：验证 Document Schema 优先读取 `doc_metadata`（避免误读 SQLAlchemy `.metadata`）
 25. ✅ 补充 schema 可变默认值清理（`Field(default_factory=...)`），避免跨请求污染
 
-26. ✅ 运行 `cd backend && make api-check`：确认前端调用的路由在后端均存在
-27. ✅ 运行 `pnpm run lint`：确认前端无 lint 错误
+26. ✅ 运行 `make api-check`：确认前端调用的路由在后端均存在
+27. ✅ 运行 `cd web && pnpm run lint`：确认前端无 lint 错误
 28. ✅ 运行 `python3 -m compileall app`：确认后端语法可编译
 
 29. ✅ 全仓检查并清零前端 TODO（数据治理保存链路已落地）
@@ -51,4 +51,3 @@
 - 前端 KG 接入：`web/services/graph-service.ts`
 - 数据治理保存链路：`web/hooks/use-parsed-files.ts`、`web/components/data-governance-panel.tsx`
 - 自动化校验：`scripts/check-api-contract.mjs`、`Makefile`
-
