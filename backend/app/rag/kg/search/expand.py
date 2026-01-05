@@ -66,7 +66,7 @@ class ExpandSearcher:
                 discovered_events.extend(new_event_ids)
 
                 # score new events using existing entity weights
-                assoc_map = event_repo.get_entities_for_events(new_event_ids)
+                assoc_map = event_repo.get_entities_for_events(new_event_ids, tenant_id=tenant_id)
                 for ev in events:
                     ev_id = str(ev.id)
                     base = recall_result.event_scores.get(ev_id, 0.0)
@@ -108,7 +108,7 @@ class ExpandSearcher:
 
             # build key_final list
             key_final: List[Dict[str, any]] = []
-            ent_objects = entity_repo.get_entities_by_ids(list(known_entities))
+            ent_objects = entity_repo.get_entities_by_ids(list(known_entities), tenant_id=tenant_id)
             for ent in ent_objects:
                 key_final.append(
                     {

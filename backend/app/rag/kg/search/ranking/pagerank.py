@@ -25,7 +25,7 @@ class RerankPageRankSearcher:
         session = get_session()
         try:
             repo = EventRepository(session)
-            events = repo.get_events_by_ids(event_ids)
+            events = repo.get_events_by_ids(event_ids, tenant_id=config.tenant_id)
             if not events:
                 return {"events": [], "clues": [], "stats": {}}
 
@@ -33,7 +33,7 @@ class RerankPageRankSearcher:
             key_weight_map = {k.get("entity_id"): k.get("weight", 0.0) for k in key_final}
 
             # prepare adjacency via shared entities
-            assoc_map = repo.get_entities_for_events(event_ids)
+            assoc_map = repo.get_entities_for_events(event_ids, tenant_id=config.tenant_id)
 
             base_scores: Dict[str, float] = {**event_scores}
             for ev in events:
