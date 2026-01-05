@@ -309,7 +309,7 @@ class MinIOService:
             logger.info("Image deleted: %s", object_name)
             self._log_metric("delete", True, time.perf_counter() - t0, object_name)
 
-        except S3Error as e:
+        except Exception as e:  # noqa: BLE001
             logger.warning("MinIO delete image failed: %s", e)
             self._log_metric("delete", False, time.perf_counter() - t0, locals().get("object_name", ""), error=str(e))
 
@@ -341,7 +341,7 @@ class MinIOService:
             logger.info("All images deleted for dataset %s", dataset_id)
             self._log_metric("delete_dataset", True, time.perf_counter() - t0, prefix)
 
-        except S3Error as e:
+        except Exception as e:  # noqa: BLE001
             logger.warning("MinIO delete dataset images failed: %s", e)
             self._log_metric("delete_dataset", False, time.perf_counter() - t0, prefix, error=str(e))
 
