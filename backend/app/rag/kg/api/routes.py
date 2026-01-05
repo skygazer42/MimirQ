@@ -1,6 +1,6 @@
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
@@ -542,6 +542,8 @@ async def search_kg_graph_nodes(
 @router.post("/documents/{document_id}/extract", response_model=KGExtractResponse)
 async def run_kg_extraction_for_document(
     document_id: UUID,
+    response: Response,
+    async_mode: bool = Query(default=False, alias="async"),
     prompt_template_id: UUID | None = Query(default=None),
     prompt_template_key: str | None = Query(default=None),
     prompt_ab_experiment_key: str | None = Query(default=None),
@@ -592,6 +594,37 @@ async def run_kg_extraction_for_document(
 
     eff_prompt_template_key = (prompt_template_key or "").strip() or (getattr(settings, "KG_EXTRACT_PROMPT_TEMPLATE_KEY", "") or "").strip() or None
     eff_prompt_ab_experiment_key = (prompt_ab_experiment_key or "").strip() or (getattr(settings, "KG_EXTRACT_PROMPT_AB_EXPERIMENT_KEY", "") or "").strip() or None
+
+    # async=true：入队执行 KG 抽取（默认仍同步执行，保持兼容）
+    if bool(async_mode):
+        if not bool(getattr(settings, "TASK_QUEUE_ENABLED", False)):
+            raise HTTPException(status_code=400, detail="Task queue is disabled (TASK_QUEUE_ENABLED=false)")
+        try:
+            from app.tasks.queue import enqueue_kg_extraction
+
+            pipeline_hash = (document.doc_metadata or {}).get("pipeline_hash") or "unknown"
+            job_id = f"kg:{tenant_id}:{document_id}:{pipeline_hash}"
+            task_id = await enqueue_kg_extraction(
+                tenant_id=tenant_id,
+                document_id=document_id,
+                requested_by=account_id,
+                job_id=job_id,
+            )
+            if task_id:
+                meta = dict(document.doc_metadata or {})
+                meta["kg_task_id"] = task_id
+                document.doc_metadata = meta
+                db.commit()
+                db.refresh(document)
+
+            response.status_code = 202
+            if task_id:
+                response.headers["X-Task-Id"] = str(task_id)
+            return KGExtractResponse(document_id=document_id, chunk_count=len(chunks), event_count=0)
+        except HTTPException:
+            raise
+        except Exception as exc:  # noqa: BLE001
+            raise HTTPException(status_code=503, detail=f"Failed to enqueue KG extraction: {str(exc)[:200]}") from exc
 
     events = await extract_events(
         [c.id for c in chunks],
