@@ -1,0 +1,70 @@
+# Minimal runtime dependencies (API mode)
+#
+# Supports:
+# - FastAPI backend + basic RAG pipeline
+# - PostgreSQL + Milvus
+# - PDF/TXT/Markdown ingestion (basic)
+# - BM25 hybrid retrieval
+#
+# Excludes (install separately if you need them):
+# - Local embedding models (PyTorch / sentence-transformers)
+# - DeepDoc / RapidOCR / Docling / MagicPDF
+# - FAISS / Chroma vector backends
+# - HanLP keyword extraction
+# - RAGAS evaluation + LlamaIndex chunkers
+
+# FastAPI Core
+fastapi==0.128.0
+uvicorn[standard]==0.40.0
+python-multipart==0.0.21
+aiofiles==23.2.1
+
+# gRPC (Milvus)
+grpcio==1.67.1
+grpcio-tools==1.67.1
+
+# Database
+sqlalchemy==2.0.25
+asyncpg==0.31.0
+alembic==1.13.1
+psycopg2-binary==2.9.9
+
+# LangChain Ecosystem
+langchain==1.1.0
+langchain-core==1.1.0
+langchain-community==0.4.1
+langchain-openai==1.1.0
+langchain-anthropic==1.1.0
+langchain-text-splitters==1.0.0
+langgraph==1.0.5
+
+# Vector Database
+pymilvus==2.4.10
+
+# Document Parsing (basic)
+PyMuPDF==1.24.14
+python-magic==0.4.27
+pdfplumber==0.11.7
+pypdf==6.5.0
+chardet==5.2.0
+Pillow==10.4.0
+
+# BM25 and Text Processing
+rank-bm25==0.2.2
+jieba==0.42.1
+
+# Auth
+python-jose[cryptography]==3.3.0
+passlib[bcrypt]==1.7.4
+
+# Utilities
+pydantic==2.10.5
+pydantic-settings==2.10.1
+python-dotenv==1.0.1
+requests==2.32.5
+httpx[http2]==0.28.1
+numpy==1.26.4
+tqdm==4.67.1
+backports.tarfile==1.2.0
+strenum==0.4.15
+tiktoken==0.7.0
