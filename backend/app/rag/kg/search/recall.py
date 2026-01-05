@@ -44,6 +44,29 @@ class RecallSearcher:
                 tenant_id=tenant_id,
                 k=config.recall.vector_candidates,
             )
+            if config.document_ids and raw_entities:
+                # Prevent cross-document leakage within tenant: only keep entities that appear
+                # in events scoped by the requested documents.
+                from uuid import UUID
+
+                candidate_ids = [e.get("entity_id") or e.get("id") for e in raw_entities]
+                allowed_entity_ids = event_repo.filter_entity_ids_in_documents(
+                    candidate_ids,
+                    tenant_id=tenant_id,
+                    document_ids=config.document_ids,
+                )
+                filtered_entities: List[dict] = []
+                for ent in raw_entities:
+                    ent_id = ent.get("entity_id") or ent.get("id")
+                    if ent_id is None:
+                        continue
+                    try:
+                        ent_uuid = UUID(str(ent_id))
+                    except Exception:
+                        continue
+                    if ent_uuid in allowed_entity_ids:
+                        filtered_entities.append(ent)
+                raw_entities = filtered_entities
             key_query_related = [
                 e for e in raw_entities if e.get("similarity", 0.0) >= config.recall.entity_similarity_threshold
             ][: config.recall.max_entities]
