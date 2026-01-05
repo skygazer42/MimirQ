@@ -194,9 +194,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Request-id middleware (propagates X-Request-ID for tracing).
-app.add_middleware(RequestIDMiddleware)
-
 # Rate Limiting 中间件
 if settings.RATE_LIMIT_ENABLED:
     from app.api.middleware.rate_limit import RateLimitMiddleware
@@ -209,6 +206,19 @@ if settings.RATE_LIMIT_ENABLED:
         chat_burst_size=settings.RATE_LIMIT_CHAT_BURST,
         chat_prefixes=["/api/v1/chat/stream"],
     )
+
+# Response compression (safe for SSE; event-stream is excluded by Starlette).
+if bool(getattr(settings, "GZIP_ENABLED", True)):
+    from starlette.middleware.gzip import GZipMiddleware
+
+    app.add_middleware(
+        GZipMiddleware,
+        minimum_size=int(getattr(settings, "GZIP_MIN_SIZE", 1000)),
+        compresslevel=int(getattr(settings, "GZIP_COMPRESS_LEVEL", 5)),
+    )
+
+# Request-id middleware (outermost; propagates X-Request-ID for tracing).
+app.add_middleware(RequestIDMiddleware)
 
 # 注册路由
 app.include_router(api_v1_router, prefix="/api/v1")

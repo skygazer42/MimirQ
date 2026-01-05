@@ -133,6 +133,12 @@ class Settings(BaseSettings):
     HOST: str = "0.0.0.0"
     PORT: int = 8000
 
+    # Response compression (Starlette GZipMiddleware).
+    # NOTE: text/event-stream is excluded by default (safe for SSE).
+    GZIP_ENABLED: bool = True
+    GZIP_MIN_SIZE: int = 1000
+    GZIP_COMPRESS_LEVEL: int = 5
+
     CHUNK_SIZE: int = 1000
     CHUNK_OVERLAP: int = 200
     # Drop extremely short chunks during indexing (0 disables).
