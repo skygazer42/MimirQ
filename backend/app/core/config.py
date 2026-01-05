@@ -23,6 +23,12 @@ class Settings(BaseSettings):
     """
 
     DATABASE_URL: str = "postgresql://postgres:postgres@localhost:5432/mimirq"
+    # SQLAlchemy connection pool (ignored for SQLite).
+    DB_POOL_SIZE: int = 10
+    DB_MAX_OVERFLOW: int = 20
+    DB_POOL_TIMEOUT_SEC: int = 30
+    DB_POOL_RECYCLE_SEC: int = 1800
+    DB_POOL_PRE_PING: bool = True
     MILVUS_HOST: str = "localhost"
     MILVUS_PORT: int = 19530
     MILVUS_USER: str = ""
