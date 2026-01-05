@@ -23,7 +23,7 @@ langchain-text-splitters==1.0.0
 langgraph==1.0.15
 faiss-cpu==1.8.0
 chromadb==1.4.0
-
+magic-pdf==1.3.10
 # Vector Database
 pymilvus==2.4.10
 
@@ -88,7 +88,7 @@ aiofiles==23.2.1
 pytest==7.4.4
 httpx[http2]==0.28.1
 
-# RAGAS 
+# RAGAS
 ragas==0.4.1
 
 # LlamaIndex (用于高级切块策略)
