@@ -1,6 +1,4 @@
 # FastAPI Core
---extra-index-url https://download.pytorch.org/whl/cpu
-
 fastapi==0.128.0
 uvicorn[standard]==0.40.0
 python-multipart==0.0.21
@@ -14,10 +12,6 @@ sqlalchemy==2.0.25
 asyncpg==0.31.0
 alembic==1.13.1
 psycopg2-binary==2.9.9
-
-# PyTorch (CPU only)
-torch==2.4.1
-torchvision==0.19.1
 
 # LangChain Ecosystem (latest major versions)
 langchain==1.1.0
