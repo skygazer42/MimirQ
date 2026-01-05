@@ -42,7 +42,7 @@ parser-status:
 	python3 scripts/check_parsers.py
 
 api-check:
-	node ../scripts/check-api-contract.mjs
+	node scripts/check-api-contract.mjs
 
 verify:
 	@$(MAKE) api-check

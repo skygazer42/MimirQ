@@ -4,7 +4,8 @@ import { fileURLToPath } from 'node:url'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
-const ROOT = path.resolve(__dirname, '..')
+// This script lives under backend/scripts. Repo root is two levels up.
+const ROOT = path.resolve(__dirname, '..', '..')
 
 function readText(relPath) {
   return fs.readFileSync(path.join(ROOT, relPath), 'utf8')
@@ -104,7 +105,8 @@ function extractFrontendRoutesFromFile(rel) {
   }
 
   // fetch(`${API_V1_BASE_URL}/...`, { method: 'GET' })
-  const fetchRe = /fetch\(\s*`?\$\{API_V1_BASE_URL\}([^`"']+)`?\s*,\s*\{[\s\S]*?method\s*:\s*'([^']+)'/g
+  const fetchRe =
+    /fetch\(\s*`?\$\{API_V1_BASE_URL\}([^`"']+)`?\s*,\s*\{[\s\S]*?method\s*:\s*'([^']+)'/g
   while ((m = fetchRe.exec(text))) {
     const rawPath = m[1] || ''
     const method = String(m[2] || 'GET').toUpperCase()
@@ -203,3 +205,5 @@ function main() {
 }
 
 main()
+
+
