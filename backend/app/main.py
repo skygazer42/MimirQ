@@ -38,6 +38,7 @@ from app.storage.vector.milvus import milvus_store
 from app.storage.object.minio import minio_service
 from app.core.http_client import close_http_client_pool
 from app.tasks.queue import init_queue, close_queue, is_queue_initialized
+from app.api.middleware.request_id import RequestIDMiddleware
 # Ensure KG models are registered for metadata creation
 import app.rag.kg.models  # noqa: F401
 # Ensure evaluation models are registered for metadata creation
@@ -192,6 +193,9 @@ app.add_middleware(
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["*"],
 )
+
+# Request-id middleware (propagates X-Request-ID for tracing).
+app.add_middleware(RequestIDMiddleware)
 
 # Rate Limiting 中间件
 if settings.RATE_LIMIT_ENABLED:
