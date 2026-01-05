@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
@@ -81,8 +81,8 @@ async def upsert_message_feedback(
 
 @router.get("/messages", response_model=MessageFeedbackList)
 async def list_message_feedback(
-    skip: int = 0,
-    limit: int = 50,
+    skip: int = Query(default=0, ge=0),
+    limit: int = Query(default=50, ge=1, le=200),
     conversation_id: UUID | None = None,
     message_id: UUID | None = None,
     min_rating: int | None = None,

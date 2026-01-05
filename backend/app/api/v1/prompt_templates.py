@@ -8,7 +8,7 @@ All operations respect tenant boundaries and access control.
 from typing import Optional
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.sql import func
 from sqlalchemy.orm import Session
 
@@ -108,8 +108,8 @@ async def create_prompt_template(
 
 @router.get("", response_model=PromptTemplateList)
 async def list_prompt_templates(
-    skip: int = 0,
-    limit: int = 50,
+    skip: int = Query(default=0, ge=0),
+    limit: int = Query(default=50, ge=1, le=200),
     category: Optional[str] = None,
     is_active: Optional[bool] = None,
     tenant_id: UUID = Depends(get_tenant_id),
