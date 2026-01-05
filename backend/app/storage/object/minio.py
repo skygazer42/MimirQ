@@ -3,13 +3,10 @@ MinIO 对象存储服务 - 用于存储文档解析中提取的图片
 """
 import asyncio
 import io
-from typing import Optional, BinaryIO, Union, List, Dict, Any
+from typing import Any, Optional, BinaryIO, Union, List, Dict
 import json
 import time
 from pathlib import Path
-
-from minio import Minio
-from minio.error import S3Error
 
 from app.core.config import settings
 from app.rag.core.logging import get_logger
@@ -22,14 +19,23 @@ class MinIOService:
     """MinIO 对象存储服务"""
 
     def __init__(self):
-        self._client: Optional[Minio] = None
+        self._client: Optional[Any] = None
         self._bucket_name = settings.MINIO_BUCKET_NAME
         self._bucket_ready = False
         self._metrics_path = Path(settings.MINIO_METRICS_LOG_PATH)
 
-    def _get_client(self) -> Minio:
+    def _get_client(self):
         """延迟初始化 MinIO 客户端"""
+        if not bool(getattr(settings, "MINIO_ENABLED", False)):
+            raise RuntimeError("MinIO is disabled (MINIO_ENABLED=false)")
+
         if self._client is None:
+            try:
+                from minio import Minio  # type: ignore
+            except ImportError as exc:
+                raise RuntimeError(
+                    "MinIO dependencies are missing. Install `minio` or set MINIO_ENABLED=false."
+                ) from exc
             self._client = Minio(
                 endpoint=settings.MINIO_ENDPOINT,
                 access_key=settings.MINIO_ACCESS_KEY,
@@ -60,13 +66,11 @@ class MinIOService:
             client.make_bucket(self._bucket_name)
             self._bucket_ready = True
             logger.info("Created bucket: %s", self._bucket_name)
-        except S3Error as e:
+        except Exception as e:  # noqa: BLE001
             # Bucket may be created concurrently by another process.
             if getattr(e, "code", None) in {"BucketAlreadyOwnedByYou", "BucketAlreadyExists"}:
                 self._bucket_ready = True
                 return
-            logger.warning("MinIO bucket create failed: %s", e)
-        except Exception as e:  # noqa: BLE001
             logger.warning("MinIO bucket create failed: %s", e)
 
     def upload_image(
@@ -126,7 +130,7 @@ class MinIOService:
             self._log_metric("upload", True, time.perf_counter() - t0, object_name)
             return img_id
 
-        except S3Error as e:
+        except Exception as e:  # noqa: BLE001
             logger.error("MinIO upload failed: %s", e)
             self._log_metric("upload", False, time.perf_counter() - t0, object_name, error=str(e))
             raise RuntimeError(f"MinIO 图片上传失败: {e}") from e

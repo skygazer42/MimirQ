@@ -7,12 +7,11 @@ from __future__ import annotations
 
 import tempfile
 from pathlib import Path
-from typing import Optional, Tuple
+from typing import Any, Optional, Tuple
 
 import fitz  # PyMuPDF
 from PIL import Image
 
-from rapidocr_onnxruntime import RapidOCR
 from app.rag.core.logging import get_logger
 
 
@@ -23,7 +22,7 @@ class RapidOCRService:
     """RapidOCR 服务（延迟加载）"""
 
     def __init__(self, det_box_thresh: float = 0.3):
-        self._ocr: Optional[RapidOCR] = None
+        self._ocr: Optional[Any] = None
         self.det_box_thresh = det_box_thresh
 
     def _load_model(self):
@@ -32,8 +31,15 @@ class RapidOCRService:
             return
 
         try:
+            from rapidocr_onnxruntime import RapidOCR  # type: ignore
+
             self._ocr = RapidOCR(det_box_thresh=self.det_box_thresh)
             logger.info("RapidOCR model loaded (det_box_thresh=%s)", self.det_box_thresh)
+        except ImportError as e:
+            raise RuntimeError(
+                "RapidOCR is not installed. Install `rapidocr-onnxruntime` (and its runtime deps) "
+                "or set RAPIDOCR_ENABLED=false."
+            ) from e
         except Exception as e:
             raise RuntimeError(f"RapidOCR 模型加载失败: {e}") from e
 

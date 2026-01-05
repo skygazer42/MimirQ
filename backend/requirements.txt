@@ -1,4 +1,6 @@
 # FastAPI Core
+--extra-index-url https://download.pytorch.org/whl/cpu
+
 fastapi==0.128.0
 uvicorn[standard]==0.40.0
 python-multipart==0.0.21
@@ -98,6 +100,10 @@ ragas==0.4.1
 
 # LlamaIndex (用于高级切块策略)
 llama-index-core==0.11.14
+
+# PyTorch (CPU only) - 避免安装 CUDA 版 torch 拉入 nvidia/* 巨大依赖
+torch==2.5.1
+torchvision==0.20.1
 
 # Task Queue / Redis (用于 ingest 吞吐优化：任务队列、幂等锁、缓存)
 redis==4.6.0
