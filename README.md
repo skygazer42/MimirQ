@@ -327,8 +327,13 @@ cd backend
 python -m venv venv
 source venv/bin/activate  # Windows: venv\Scripts\activate
 
-# 安装依赖
+# 安装依赖（完整 / 精简二选一）
 pip install -r requirements.txt
+# 或（仅核心能力，安装更快）：
+# pip install -r requirements-minimal.txt
+#
+# （可选）本地 Embedding 模式额外依赖：
+# pip install -r requirements-local.txt
 
 # 启动 PostgreSQL + Milvus (Docker)
 docker compose up -d postgres etcd minio milvus
@@ -350,6 +355,9 @@ pnpm dev
 
 # 构建生产版本
 pnpm build
+
+# （可选）构建前端生产镜像
+# docker build -f Dockerfile.prod -t mimirq-frontend:prod .
 ```
 
 ---
@@ -370,6 +378,15 @@ pnpm build
 ### API 文档
 
 完整 API 文档请访问: http://localhost:8000/docs
+
+### 健康检查 / 诊断
+
+```bash
+curl http://localhost:8000/api/v1/health
+curl http://localhost:8000/api/v1/health/ready
+```
+
+后端会在响应头返回 `X-Request-ID`（也支持客户端主动传入同名请求头），便于排查链路问题。
 
 **快速参考**:
 
