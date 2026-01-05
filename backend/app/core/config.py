@@ -76,6 +76,20 @@ class Settings(BaseSettings):
     LLM_TIMEOUT: int = 60
     LLM_MAX_RETRIES: int = 3
 
+    # HTTP client (httpx) knobs for external API calls
+    HTTP_CLIENT_HTTP2_ENABLED: bool = True
+    HTTP_CLIENT_MAX_CONNECTIONS: int = 100
+    HTTP_CLIENT_MAX_KEEPALIVE_CONNECTIONS: int = 20
+    HTTP_CLIENT_KEEPALIVE_EXPIRY_SEC: float = 30.0
+    HTTP_CLIENT_TIMEOUT_CONNECT_SEC: float = 10.0
+    HTTP_CLIENT_TIMEOUT_READ_SEC: float = 60.0
+    HTTP_CLIENT_TIMEOUT_WRITE_SEC: float = 30.0
+    HTTP_CLIENT_TIMEOUT_POOL_SEC: float = 5.0
+    HTTP_CLIENT_RETRY_MAX_RETRIES: int = 3
+    HTTP_CLIENT_RETRY_INITIAL_DELAY_SEC: float = 1.0
+    HTTP_CLIENT_RETRY_BACKOFF_FACTOR: float = 2.0
+    HTTP_CLIENT_RETRY_JITTER_SEC: float = 0.2
+
     EMBEDDING_PROVIDER: str = "openai_compatible"
     EMBEDDING_MODEL: str = "text-embedding-3-small"
     EMBEDDING_API_KEY: str = ""

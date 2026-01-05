@@ -3,12 +3,20 @@
 提供统一的 httpx AsyncClient 配置，用于所有外部 API 调用
 """
 import asyncio
+import random
 from typing import Optional
 import httpx
 from app.core.config import settings
 from app.rag.core.logging import get_logger
 
 logger = get_logger("http_client")
+
+try:
+    import h2  # noqa: F401
+
+    _HTTP2_AVAILABLE = True
+except ImportError:
+    _HTTP2_AVAILABLE = False
 
 
 class HTTPClientPool:
@@ -25,32 +33,46 @@ class HTTPClientPool:
                 if self._client is None:
                     # 配置连接池和超时
                     limits = httpx.Limits(
-                        max_connections=100,  # 最大连接数
-                        max_keepalive_connections=20,  # 保持活动的连接数
-                        keepalive_expiry=30.0,  # 连接保持时间（秒）
+                        max_connections=int(getattr(settings, "HTTP_CLIENT_MAX_CONNECTIONS", 100)),
+                        max_keepalive_connections=int(
+                            getattr(settings, "HTTP_CLIENT_MAX_KEEPALIVE_CONNECTIONS", 20)
+                        ),
+                        keepalive_expiry=float(getattr(settings, "HTTP_CLIENT_KEEPALIVE_EXPIRY_SEC", 30.0)),
                     )
                     
                     timeout = httpx.Timeout(
-                        connect=10.0,  # 连接超时
-                        read=60.0,  # 读取超时
-                        write=30.0,  # 写入超时
-                        pool=5.0,  # 连接池获取超时
+                        connect=float(getattr(settings, "HTTP_CLIENT_TIMEOUT_CONNECT_SEC", 10.0)),
+                        read=float(getattr(settings, "HTTP_CLIENT_TIMEOUT_READ_SEC", 60.0)),
+                        write=float(getattr(settings, "HTTP_CLIENT_TIMEOUT_WRITE_SEC", 30.0)),
+                        pool=float(getattr(settings, "HTTP_CLIENT_TIMEOUT_POOL_SEC", 5.0)),
                     )
+
+                    http2_enabled = bool(getattr(settings, "HTTP_CLIENT_HTTP2_ENABLED", True))
+                    http2 = bool(http2_enabled and _HTTP2_AVAILABLE)
+                    if http2_enabled and not http2:
+                        logger.info("HTTP/2 disabled: missing dependency 'h2' (install httpx[http2] to enable)")
                     
                     self._client = httpx.AsyncClient(
                         limits=limits,
                         timeout=timeout,
                         follow_redirects=True,
-                        http2=True,  # 启用 HTTP/2
+                        http2=http2,
                     )
-                    logger.info("HTTP client pool initialized with max_connections=100")
+                    logger.info(
+                        "HTTP client pool initialized max_connections=%s http2=%s",
+                        limits.max_connections,
+                        http2,
+                    )
         
         return self._client
     
     async def close(self):
         """关闭客户端连接池"""
         if self._client is not None:
-            await self._client.aclose()
+            try:
+                await self._client.aclose()
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("Failed to close HTTP client pool: %s", str(exc)[:200])
             self._client = None
             logger.info("HTTP client pool closed")
     
@@ -59,9 +81,10 @@ class HTTPClientPool:
         method: str,
         url: str,
         *,
-        max_retries: int = 3,
-        retry_delay: float = 1.0,
-        backoff_factor: float = 2.0,
+        max_retries: Optional[int] = None,
+        retry_delay: Optional[float] = None,
+        backoff_factor: Optional[float] = None,
+        jitter: Optional[float] = None,
         **kwargs
     ) -> httpx.Response:
         """
@@ -83,6 +106,16 @@ class HTTPClientPool:
         """
         client = await self.get_client()
         last_exception = None
+
+        max_retries = int(max_retries if max_retries is not None else getattr(settings, "HTTP_CLIENT_RETRY_MAX_RETRIES", 3))
+        retry_delay = float(
+            retry_delay if retry_delay is not None else getattr(settings, "HTTP_CLIENT_RETRY_INITIAL_DELAY_SEC", 1.0)
+        )
+        backoff_factor = float(
+            backoff_factor if backoff_factor is not None else getattr(settings, "HTTP_CLIENT_RETRY_BACKOFF_FACTOR", 2.0)
+        )
+        jitter = float(jitter if jitter is not None else getattr(settings, "HTTP_CLIENT_RETRY_JITTER_SEC", 0.0))
+
         current_delay = retry_delay
         
         for attempt in range(max_retries + 1):
@@ -94,24 +127,42 @@ class HTTPClientPool:
             except (httpx.TimeoutException, httpx.NetworkError) as e:
                 last_exception = e
                 if attempt < max_retries:
+                    sleep_for = current_delay + (random.random() * jitter if jitter > 0 else 0.0)
                     logger.warning(
-                        f"Request failed (attempt {attempt + 1}/{max_retries + 1}): {e}. "
-                        f"Retrying in {current_delay}s..."
+                        "Request failed (attempt %s/%s): %s. Retrying in %.2fs...",
+                        attempt + 1,
+                        max_retries + 1,
+                        str(e)[:200],
+                        sleep_for,
                     )
-                    await asyncio.sleep(current_delay)
+                    await asyncio.sleep(sleep_for)
                     current_delay *= backoff_factor
                 else:
-                    logger.error(f"Request failed after {max_retries + 1} attempts: {e}")
+                    logger.error("Request failed after %s attempts: %s", max_retries + 1, str(e)[:200])
             
             except httpx.HTTPStatusError as e:
-                # 对于 5xx 错误重试，4xx 错误直接抛出
-                if e.response.status_code >= 500 and attempt < max_retries:
+                # 对于 5xx/429 错误重试，其他 4xx 错误直接抛出
+                status = int(getattr(e.response, "status_code", 0) or 0)
+                retryable = status >= 500 or status == 429
+                if retryable and attempt < max_retries:
                     last_exception = e
+                    retry_after = None
+                    if status == 429:
+                        try:
+                            retry_after = float(e.response.headers.get("Retry-After", ""))
+                        except Exception:
+                            retry_after = None
+
+                    base_delay = max(current_delay, retry_after) if retry_after else current_delay
+                    sleep_for = base_delay + (random.random() * jitter if jitter > 0 else 0.0)
                     logger.warning(
-                        f"Server error {e.response.status_code} (attempt {attempt + 1}/{max_retries + 1}). "
-                        f"Retrying in {current_delay}s..."
+                        "HTTP %s (attempt %s/%s). Retrying in %.2fs...",
+                        status,
+                        attempt + 1,
+                        max_retries + 1,
+                        sleep_for,
                     )
-                    await asyncio.sleep(current_delay)
+                    await asyncio.sleep(sleep_for)
                     current_delay *= backoff_factor
                 else:
                     raise
@@ -165,4 +216,3 @@ __all__ = [
     "get_http_client_pool",
     "close_http_client_pool",
 ]
-

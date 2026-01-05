@@ -8,9 +8,11 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Response
 
 from app.core.config import settings
+from app.core.database import SessionLocal
+from app.storage.vector.milvus import milvus_store
 
 
 router = APIRouter()
@@ -29,3 +31,67 @@ def health() -> dict:
         "use_langgraph_pipeline": bool(getattr(settings, "USE_LANGGRAPH_PIPELINE", False)),
     }
 
+
+@router.get("/health/ready")
+def ready(response: Response) -> dict:
+    """
+    Readiness probe for orchestration (k8s, compose, etc).
+
+    - Returns 200 when required deps are reachable
+    - Returns 503 when one or more deps are down
+    """
+    from sqlalchemy import text
+
+    ok = True
+
+    db_status = {"status": "disconnected"}
+    db = SessionLocal()
+    try:
+        db.execute(text("SELECT 1"))
+        db_status["status"] = "connected"
+    except Exception as exc:  # noqa: BLE001
+        ok = False
+        db_status["error"] = str(exc)[:200]
+    finally:
+        db.close()
+
+    vector_backend = (getattr(settings, "VECTOR_BACKEND", "milvus") or "milvus").lower()
+    vector_status: dict = {"backend": vector_backend, "status": "unknown"}
+    if vector_backend == "milvus":
+        try:
+            milvus_store.get_collection_count()
+            vector_status["status"] = "connected"
+        except Exception as exc:  # noqa: BLE001
+            ok = False
+            vector_status["status"] = "disconnected"
+            vector_status["error"] = str(exc)[:200]
+    else:
+        vector_status["status"] = "ready"
+
+    redis_status = {"status": "disabled"}
+    if bool(getattr(settings, "TASK_QUEUE_ENABLED", False)) or bool(getattr(settings, "EMBEDDING_CACHE_ENABLED", False)):
+        try:
+            import redis
+
+            r = redis.Redis.from_url(
+                settings.REDIS_URL,
+                socket_timeout=1,
+                socket_connect_timeout=1,
+                decode_responses=True,
+            )
+            r.ping()
+            redis_status["status"] = "connected"
+        except Exception as exc:  # noqa: BLE001
+            ok = False
+            redis_status["status"] = "disconnected"
+            redis_status["error"] = str(exc)[:200]
+
+    if not ok:
+        response.status_code = 503
+
+    return {
+        "ok": ok,
+        "database": db_status,
+        "vector": vector_status,
+        "redis": redis_status,
+    }

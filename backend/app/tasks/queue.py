@@ -21,6 +21,11 @@ _queue: Optional[Any] = None
 _queue_lock = asyncio.Lock()
 
 
+def is_queue_initialized() -> bool:
+    """Whether the global arq queue pool has been created."""
+    return _queue is not None
+
+
 def _redis_settings():
     # arq 的 RedisSettings 支持传入完整 DSN
     from arq.connections import RedisSettings
@@ -143,5 +148,4 @@ async def enqueue_rebuild_indexes(
         _job_try=1,
     )
     return getattr(job, "job_id", None) or job_id
-
 
