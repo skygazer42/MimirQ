@@ -6,7 +6,7 @@ import hashlib
 import json
 import re
 import shutil
-from fastapi import APIRouter, Depends, UploadFile, File, HTTPException, BackgroundTasks, Form, Body
+from fastapi import APIRouter, Depends, UploadFile, File, HTTPException, BackgroundTasks, Form, Body, Query
 from sqlalchemy.orm import Session
 from typing import List, Optional
 from uuid import UUID
@@ -598,8 +598,8 @@ async def upload_documents_batch(
 
 @router.get("/", response_model=DocumentList)
 async def list_documents(
-    skip: int = 0,
-    limit: int = 20,
+    skip: int = Query(default=0, ge=0),
+    limit: int = Query(default=20, ge=1, le=200),
     status: Optional[str] = None,
     dataset_id: Optional[UUID] = None,
     tenant_id: UUID = Depends(get_tenant_id),

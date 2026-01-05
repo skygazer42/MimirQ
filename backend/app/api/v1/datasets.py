@@ -2,7 +2,7 @@
 知识库管理 API
 支持知识库的创建、查询、更新、删除，以及权限管理。
 """
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 from uuid import UUID
 
@@ -51,8 +51,8 @@ def create_dataset(
 
 @router.get("/", response_model=DatasetListResponse)
 def list_datasets(
-    skip: int = 0,
-    limit: int = 20,
+    skip: int = Query(default=0, ge=0),
+    limit: int = Query(default=20, ge=1, le=200),
     tenant_id: UUID = Depends(get_tenant_id),
     account_id: str = Depends(get_current_account_id),
     db: Session = Depends(get_db)

@@ -505,8 +505,8 @@ async def create_conversation(
 
 @router.get("/conversations", response_model=ConversationList)
 async def list_conversations(
-    skip: int = 0,
-    limit: int = 20,
+    skip: int = Query(default=0, ge=0),
+    limit: int = Query(default=20, ge=1, le=200),
     tenant_id: UUID = Depends(get_tenant_id),
     account_id: str = Depends(get_current_account_id),
     db: Session = Depends(get_db)
