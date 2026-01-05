@@ -83,7 +83,7 @@ pydantic-settings==2.7.1
 backports.tarfile==1.2.0
 strenum; python_version < "3.11"
 python-dotenv==1.0.1
-requests==2.32.3
+requests==2.32.5
 aiofiles==23.2.1
 
 # Development
