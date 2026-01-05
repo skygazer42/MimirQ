@@ -322,8 +322,6 @@ pnpm dev
 ### 后端开发
 
 ```bash
-cd backend
-
 # 创建虚拟环境
 python -m venv venv
 source venv/bin/activate  # Windows: venv\Scripts\activate
@@ -346,7 +344,7 @@ uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ### 前端开发
 
 ```bash
-cd frontend
+cd web
 
 # 安装依赖
 pnpm install
@@ -452,7 +450,6 @@ docs = retriever.invoke(query)
 ### Docker Compose (推荐)
 
 ```bash
-cd backend
 docker compose up -d --build
 ```
 
