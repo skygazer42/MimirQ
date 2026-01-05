@@ -84,9 +84,12 @@ class LangChainEmbeddingsAdapter:
         else:
             client = None
 
+        if not texts:
+            return []
+
         embeddings: List[List[float]]
-        if client is None or not texts:
-        embeddings = self._model.encode(texts)
+        if client is None:
+            embeddings = self._model.encode(texts)
         else:
             keys = [_embed_cache_key(t) for t in texts]
             cached_raw = client.mget(keys)
@@ -156,7 +159,7 @@ class LangChainEmbeddingsAdapter:
                 except Exception:  # noqa: BLE001
                     embeddings = self._model.encode([text])
             else:
-        embeddings = self._model.encode([text])
+                embeddings = self._model.encode([text])
                 try:
                     ttl = int(getattr(settings, "EMBEDDING_CACHE_TTL_SEC", 7 * 24 * 3600) or 0)
                     payload = json.dumps(embeddings[0], separators=(",", ":")).encode("utf-8")
