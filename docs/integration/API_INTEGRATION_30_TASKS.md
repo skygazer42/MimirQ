@@ -4,10 +4,10 @@
 
 ## 30/30 已完成
 
-1. ✅ 盘点 `frontend/lib/api-client.ts` 的所有 axios 路由调用点
+1. ✅ 盘点 `web/lib/api-client.ts` 的所有 axios 路由调用点
 2. ✅ 盘点前端所有 `fetch(${API_V1_BASE_URL}...)` 直连调用点（chat/navbar/graph）
 3. ✅ 汇总前端调用路径 + HTTP 方法，形成“前端 API 面”
-4. ✅ 盘点 `backend/app/api/v1/__init__.py` 的路由挂载前缀（prefix）
+4. ✅ 盘点 `app/api/v1/__init__.py` 的路由挂载前缀（prefix）
 5. ✅ 盘点后端各模块 `@router.<method>(...)` 路由定义（含 KG 路由）
 
 6. ✅ 修复 Documents 上传返回结构与前端不一致（`/documents/upload` 返回完整文档字段）
@@ -30,25 +30,25 @@
 19. ✅ 补齐数据治理→切块预览的数据传递：新增 `useParsedFiles.updateParsedFile()`
 20. ✅ 数据治理“保存并继续”：将清洗后的 markdown 回写到共享存储，并 toast 提示
 
-21. ✅ 增加自动化“接口契约存在性”校验脚本：`backend/scripts/check-api-contract.mjs`
-22. ✅ backend/Makefile 增加 `make api-check`（运行接口契约校验）
-23. ✅ backend/Makefile 增加 `make verify`（api-check + frontend lint + backend compileall）
+21. ✅ 增加自动化“接口契约存在性”校验脚本：`scripts/check-api-contract.mjs`
+22. ✅ Makefile 增加 `make api-check`（运行接口契约校验）
+23. ✅ Makefile 增加 `make verify`（api-check + frontend lint + backend compileall）
 
 24. ✅ 增加后端单测：验证 Document Schema 优先读取 `doc_metadata`（避免误读 SQLAlchemy `.metadata`）
 25. ✅ 补充 schema 可变默认值清理（`Field(default_factory=...)`），避免跨请求污染
 
 26. ✅ 运行 `cd backend && make api-check`：确认前端调用的路由在后端均存在
 27. ✅ 运行 `pnpm run lint`：确认前端无 lint 错误
-28. ✅ 运行 `python3 -m compileall backend/app`：确认后端语法可编译
+28. ✅ 运行 `python3 -m compileall app`：确认后端语法可编译
 
 29. ✅ 全仓检查并清零前端 TODO（数据治理保存链路已落地）
 30. ✅ 输出本审查文档，作为后续回归与 PR Checklist 基准
 
 ## 关键落点文件
 
-- 后端 Documents 契约修复：`backend/app/api/schemas/document.py`、`backend/app/api/v1/documents.py`
-- 后端 KG 增量接口：`backend/app/rag/kg/api/routes.py`
-- 前端 KG 接入：`frontend/services/graph-service.ts`
-- 数据治理保存链路：`frontend/hooks/use-parsed-files.ts`、`frontend/components/data-governance-panel.tsx`
-- 自动化校验：`backend/scripts/check-api-contract.mjs`、`backend/Makefile`
+- 后端 Documents 契约修复：`app/api/schemas/document.py`、`app/api/v1/documents.py`
+- 后端 KG 增量接口：`app/rag/kg/api/routes.py`
+- 前端 KG 接入：`web/services/graph-service.ts`
+- 数据治理保存链路：`web/hooks/use-parsed-files.ts`、`web/components/data-governance-panel.tsx`
+- 自动化校验：`scripts/check-api-contract.mjs`、`Makefile`
 

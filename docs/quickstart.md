@@ -10,7 +10,7 @@ cd MimirQ
 
 ### 2. 配置模型 API Key
 
-初始化并编辑 `backend/.env` 文件，填入你的模型配置（OpenAI-compatible）：
+初始化并编辑 `.env` 文件，填入你的模型配置（OpenAI-compatible）：
 
 ```env
 LLM_API_KEY=sk-your-api-key-here
@@ -105,7 +105,7 @@ AI 回答: 根据员工手册第3章...
 
 ### 修改 RAG 参数
 
-编辑 `backend/app/core/config.py`:
+编辑 `app/core/config.py`:
 
 ```python
 # 文本切片大小
@@ -120,7 +120,7 @@ SIMILARITY_THRESHOLD: float = 0.7  # 提高可过滤低质量结果
 
 ### 切换 LLM 模型
 
-编辑 `backend/app/core/config.py`:
+编辑 `app/core/config.py`:
 
 ```python
 # 使用轻量模型（更便宜）
@@ -132,7 +132,7 @@ LLM_MODEL: str = "gpt-4o"
 
 ### 使用 Claude 替代 OpenAI
 
-编辑 `backend/app/rag/engine.py`:
+编辑 `app/rag/engine.py`:
 
 ```python
 from langchain_anthropic import ChatAnthropic
@@ -189,7 +189,7 @@ docker-compose restart
 
 **检查 CORS 配置**:
 
-编辑 `backend/app/core/config.py`:
+编辑 `app/core/config.py`:
 ```python
 CORS_ORIGINS: str = "http://localhost:3000,http://localhost:3001"
 ```
@@ -215,7 +215,7 @@ pnpm start
 
 **使用 HNSW 索引（更高精度）**:
 
-编辑 `backend/app/services/milvus_store.py`:
+编辑 `app/services/milvus_store.py`:
 
 ```python
 index_params = {

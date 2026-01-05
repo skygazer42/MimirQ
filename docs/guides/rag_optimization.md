@@ -39,7 +39,7 @@ AI: Milvus 支持 IVF_FLAT、HNSW、IVF_SQ8 等索引...
 #### 1. 更新 Prompt Template
 
 ```python
-# backend/app/services/rag_engine.py
+# app/services/rag_engine.py
 template = """
 【参考资料】
 {context}
@@ -118,7 +118,7 @@ BM25 检索: 精确匹配 "A123" 的文档  ✅
 #### 1. BM25 索引构建
 
 ```python
-# backend/app/services/hybrid_retriever.py
+# app/services/hybrid_retriever.py
 from langchain_community.retrievers.bm25 import BM25Retriever
 from langchain_core.documents import Document
 import jieba
@@ -302,7 +302,7 @@ curl -X POST http://localhost:8000/api/v1/chat/stream \
 
 #### 调整混合检索权重
 
-编辑 `backend/app/services/rag_engine.py:83`:
+编辑 `app/services/rag_engine.py:83`:
 
 ```python
 retriever = hybrid_retriever.model_copy(update={
@@ -321,7 +321,7 @@ docs = retriever.invoke(question)
 
 #### 调整历史对话长度
 
-编辑 `backend/app/services/rag_engine.py:117`:
+编辑 `app/services/rag_engine.py:117`:
 
 ```python
 for msg in history[-5:]:  # 改为 -3 或 -10
@@ -353,7 +353,7 @@ docker-compose restart backend
 
 **解决方案**: 减少历史对话轮数
 ```python
-# frontend/hooks/use-chat.ts:50
+# web/hooks/use-chat.ts:50
 const history = messages.slice(-6)  # 改为 -6（只发 3 轮）
 ```
 

@@ -174,17 +174,19 @@
 
 ```bash
 MimirQ/
-├── backend/             # FastAPI 后端服务
-│   ├── app/             # 应用核心代码
-│   │   ├── api/         # API 路由
-│   │   ├── core/        # 核心配置与数据库
-│   │   ├── models/      # 数据模型 (Pydantic/SQLModel)
-│   │   ├── services/    # 业务逻辑 (RAG/Milvus/LangChain)
-│   │   └── deepdoc/     # 深度文档解析模块
-│   ├── docker-compose.yml   # 后端一键部署 (含依赖服务)
-│   ├── Makefile             # 后端常用命令
-│   └── Dockerfile       # 后端构建文件
-├── frontend/            # Next.js 前端界面
+├── app/                 # FastAPI 后端服务（核心代码）
+│   ├── api/             # API 路由
+│   ├── core/            # 核心配置与数据库
+│   ├── models/          # 数据模型 (Pydantic/SQLModel)
+│   ├── services/        # 业务逻辑 (RAG/Milvus/LangChain)
+│   └── deepdoc/         # 深度文档解析模块
+├── docker-compose.yml   # 一键部署 (含依赖服务)
+├── Makefile             # 常用命令
+├── Dockerfile           # 后端构建文件
+├── requirements.txt     # 后端依赖
+├── scripts/             # 工具脚本
+├── tests/               # 后端测试
+├── web/                 # Next.js 前端界面
 │   ├── app/             # 页面路由
 │   ├── components/      # UI 组件
 │   ├── lib/             # 工具函数与 API 客户端
@@ -218,17 +220,17 @@ git clone https://github.com/yourusername/MimirQ.git
 cd MimirQ
 
 # 配置环境变量 (使用默认模板)
-cp backend/.env.example backend/.env
-cp frontend/.env.local.example frontend/.env.local
+cp .env.example .env
+cp web/.env.local.example web/.env.local
 ```
 
 **2. 配置模型密钥 (可选)**
 
-编辑 `backend/.env` 文件，填入您的 API Key：
+编辑 `.env` 文件，填入您的 API Key：
 
 ```bash
 # 推荐使用 vim 或 nano 编辑
-vim backend/.env
+vim .env
 
 # 关键配置项:
 # LLM_API_KEY=sk-xxxx
@@ -239,14 +241,13 @@ vim backend/.env
 
 ```bash
 # 启动后端 (PostgreSQL + Milvus + FastAPI)
-cd backend
 docker compose up -d --build
 
 # 检查服务状态
 docker compose ps
 
 # (可选) 启动前端
-cd ../frontend
+cd web
 pnpm install
 pnpm dev
 ```
@@ -366,14 +367,14 @@ pnpm build
 
 ### 核心文档
 
-- [快速入门](./backend/docs/quickstart.md) - 本地开发、Docker Compose、环境检查
-- [Milvus 向量数据库指南](./backend/docs/guides/milvus_guide.md) - 索引类型、性能调优、GPU 加速
-- [RAG 优化指南](./backend/docs/guides/rag_optimization.md) - 对话历史、混合检索、Rerank
-- [LangChain RAG 架构文档](./backend/docs/guides/langchain_agent_migration.md) - Retriever/Runnable 链路
-- [依赖说明](./backend/docs/guides/dependencies.md) - 不同解析及 Embedding 模式的依赖组合
-- [MinerU 集成](./backend/docs/integrations/mineru_integration.md) - 高级 PDF 解析配置
-- [MagicPDF 集成](./backend/docs/guides/magicpdf_guide.md) - 可选本地高级 PDF 解析（magic-pdf）
-- [ChromaDB → Milvus 迁移](./backend/docs/integrations/migration_chromadb_to_milvus.md) - 架构选择、数据迁移脚本
+- [快速入门](./docs/quickstart.md) - 本地开发、Docker Compose、环境检查
+- [Milvus 向量数据库指南](./docs/guides/milvus_guide.md) - 索引类型、性能调优、GPU 加速
+- [RAG 优化指南](./docs/guides/rag_optimization.md) - 对话历史、混合检索、Rerank
+- [LangChain RAG 架构文档](./docs/guides/langchain_agent_migration.md) - Retriever/Runnable 链路
+- [依赖说明](./docs/guides/dependencies.md) - 不同解析及 Embedding 模式的依赖组合
+- [MinerU 集成](./docs/integrations/mineru_integration.md) - 高级 PDF 解析配置
+- [MagicPDF 集成](./docs/guides/magicpdf_guide.md) - 可选本地高级 PDF 解析（magic-pdf）
+- [ChromaDB → Milvus 迁移](./docs/integrations/migration_chromadb_to_milvus.md) - 架构选择、数据迁移脚本
 
 ### API 文档
 
@@ -511,7 +512,7 @@ ENTITY_VECTOR_ENABLED=true
 | 变量 | 说明 | 默认 |
 |------|------|------|
 | `DEFAULT_PARSER_BACKEND` | `auto/basic/mineru/deepdoc/markitdown`，控制未指定时使用的解析器 | `auto` |
-| `DEEPDOC_ENABLED` | 启用 DeepDoc 解析（仓库内置于 `backend/app/deepdoc`） | `false` |
+| `DEEPDOC_ENABLED` | 启用 DeepDoc 解析（仓库内置于 `app/deepdoc`） | `false` |
 | `MARKITDOWN_ENABLED` | 开启微软 MarkItDown 解析，配合 `MARKITDOWN_USE_PLUGINS` 等配置 | `false` |
 | `MINERU_ENABLED` | 开启 MinerU 在线解析（需 `MINERU_API_TOKEN`） | `false` |
 | `GOVERNANCE_ENABLED` | 启用治理清洗流程（Markdown 规范化、正则规则） | `false` |

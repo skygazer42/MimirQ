@@ -4,8 +4,8 @@ import { fileURLToPath } from 'node:url'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
-// This script lives under backend/scripts. Repo root is two levels up.
-const ROOT = path.resolve(__dirname, '..', '..')
+// This script lives under scripts/. Repo root is one level up.
+const ROOT = path.resolve(__dirname, '..')
 
 function readText(relPath) {
   return fs.readFileSync(path.join(ROOT, relPath), 'utf8')
@@ -29,7 +29,7 @@ function normalizeRoute(routePath) {
 }
 
 function parseBackendPrefixes() {
-  const initPy = readText('backend/app/api/v1/__init__.py')
+  const initPy = readText('app/api/v1/__init__.py')
   const map = new Map()
 
   // Matches: router.include_router(documents.router, prefix="/documents", ...)
@@ -52,9 +52,9 @@ function parseBackendRoutes() {
   const backendModules = []
   for (const [mod, prefix] of prefixes.entries()) {
     if (mod === 'kg') {
-      backendModules.push({ mod, prefix, rel: 'backend/app/rag/kg/api/routes.py' })
+      backendModules.push({ mod, prefix, rel: 'app/rag/kg/api/routes.py' })
     } else {
-      backendModules.push({ mod, prefix, rel: `backend/app/api/v1/${mod}.py` })
+      backendModules.push({ mod, prefix, rel: `app/api/v1/${mod}.py` })
     }
   }
 
@@ -124,8 +124,8 @@ function extractFrontendRoutesFromFile(rel) {
 }
 
 function listFrontendSourceFiles() {
-  const frontendRoot = path.join(ROOT, 'frontend')
-  if (!fs.existsSync(frontendRoot)) return []
+  const webRoot = path.join(ROOT, 'web')
+  if (!fs.existsSync(webRoot)) return []
 
   const IGNORE_DIRS = new Set([
     'node_modules',
@@ -156,7 +156,7 @@ function listFrontendSourceFiles() {
     }
   }
 
-  walk(frontendRoot)
+  walk(webRoot)
   return files
 }
 
@@ -193,11 +193,11 @@ function main() {
   }
 
   if (missing.length === 0) {
-    console.log('[api-contract] OK: all frontend routes exist in backend')
+    console.log('[api-contract] OK: all web routes exist in backend')
     return
   }
 
-  console.error('[api-contract] FAIL: missing backend routes for frontend calls:')
+  console.error('[api-contract] FAIL: missing backend routes for web calls:')
   for (const m of missing) {
     console.error(`- ${m.key}  (from ${m.src})`)
   }
@@ -205,5 +205,4 @@ function main() {
 }
 
 main()
-
 

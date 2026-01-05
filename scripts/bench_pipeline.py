@@ -6,7 +6,7 @@
 - 默认不做“写库/向量化/MinIO 上传”，避免本地环境差异导致不可比
 
 示例：
-  python scripts/bench_pipeline.py backend/app/deepdoc/data/picture.pdf --chunk-strategy langchain_recursive
+  python scripts/bench_pipeline.py app/deepdoc/data/picture.pdf --chunk-strategy langchain_recursive
   python scripts/bench_pipeline.py xxx.pdf --parser-backend auto --governance
 """
 
@@ -100,5 +100,4 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-
 

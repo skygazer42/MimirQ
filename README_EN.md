@@ -41,16 +41,15 @@ MimirQ is a full‑stack knowledge base Q&A system built around RAG (Retrieval�
 ### 1) Configure env files
 
 ```bash
-cp backend/.env.example backend/.env
-cp frontend/.env.local.example frontend/.env.local
+cp .env.example .env
+cp web/.env.local.example web/.env.local
 ```
 
-Edit `backend/.env` and set your LLM/Embedding keys (OpenAI‑compatible API is supported).
+Edit `.env` and set your LLM/Embedding keys (OpenAI‑compatible API is supported).
 
 ### 2) Start backend services
 
 ```bash
-cd backend
 docker compose up -d --build
 docker compose ps
 ```
@@ -58,7 +57,7 @@ docker compose ps
 ### 3) Start frontend (optional)
 
 ```bash
-cd frontend
+cd web
 pnpm install
 pnpm dev
 ```
@@ -76,5 +75,4 @@ pnpm dev
 
 ## Docs
 
-See `backend/docs/README.md` for backend docs and guides.
-
+See `docs/README.md` for docs and guides.
