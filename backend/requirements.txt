@@ -60,6 +60,8 @@ beartype==0.18.5
 hanziconv==0.3.2
 nltk==3.9.1
 docling==2.55.0
+docling-ibm-models==3.10.3
+accelerate==1.12.0
 tencentcloud-sdk-python==3.0.1274
 html-text==0.6.2
 readability-lxml==0.8.1
