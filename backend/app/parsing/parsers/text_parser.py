@@ -4,8 +4,6 @@
 from pathlib import Path
 from typing import List
 from langchain_core.documents import Document
-import markdown  # type: ignore
-from bs4 import BeautifulSoup  # type: ignore
 
 
 class TextParser:
@@ -46,4 +44,3 @@ class MarkdownParser:
         }
 
         return [Document(page_content=md_content, metadata=metadata)]
-
