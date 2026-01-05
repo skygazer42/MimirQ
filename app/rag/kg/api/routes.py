@@ -15,6 +15,8 @@ from app.rag.kg.pipeline import extract_events, kg_search
 
 router = APIRouter()
 
+MAX_DOCUMENT_IDS = 500
+
 
 def _ensure_enabled():
     if not settings.KG_ENABLED:
@@ -30,10 +32,21 @@ def _resolve_allowed_documents(
     tenant_id: UUID,
     account_id: str,
     db: Session,
-    limit: int = 500,
+    limit: int = MAX_DOCUMENT_IDS,
 ) -> list[UUID]:
     if document_ids:
-        return filter_allowed_document_ids(db, tenant_id, account_id, document_ids)
+        # Deduplicate while preserving original order.
+        seen: set[UUID] = set()
+        deduped: list[UUID] = []
+        for doc_id in document_ids:
+            if doc_id not in seen:
+                seen.add(doc_id)
+                deduped.append(doc_id)
+
+        if len(deduped) > int(limit):
+            raise HTTPException(status_code=400, detail=f"Too many document_ids (max {int(limit)})")
+
+        return filter_allowed_document_ids(db, tenant_id, account_id, deduped)
     return list_accessible_document_ids(db, tenant_id, account_id, status="completed", limit=limit)
 
 
@@ -64,7 +77,7 @@ async def get_kg_graph(
         tenant_id=tenant_id,
         account_id=account_id,
         db=db,
-        limit=500,
+        limit=MAX_DOCUMENT_IDS,
     )
 
     if not allowed_doc_ids:
@@ -213,7 +226,7 @@ async def expand_kg_graph(
         tenant_id=tenant_id,
         account_id=account_id,
         db=db,
-        limit=500,
+        limit=MAX_DOCUMENT_IDS,
     )
     if not allowed_doc_ids:
         return KGGraphResponse(nodes=[], links=[], stats={"reason": "no_accessible_documents"})
@@ -442,7 +455,7 @@ async def search_kg_graph_nodes(
         tenant_id=tenant_id,
         account_id=account_id,
         db=db,
-        limit=500,
+        limit=MAX_DOCUMENT_IDS,
     )
 
     from sqlalchemy import or_
@@ -451,6 +464,9 @@ async def search_kg_graph_nodes(
 
     q_text = (q or "").strip()
     if not q_text:
+        return []
+
+    if not allowed_doc_ids:
         return []
 
     mode = (kind or "all").strip().lower()
@@ -654,12 +670,22 @@ async def run_kg_search(
     Run KG search (query -> recall/expand/rerank) for the current tenant.
     """
     _ensure_enabled()
+
+    if payload.tenant_id and payload.tenant_id != tenant_id:
+        raise HTTPException(status_code=400, detail="tenant_id mismatch")
+
     DatasetService.ensure_member(db, tenant_id, account_id)
 
     if not payload.document_ids:
         raise HTTPException(status_code=400, detail="document_ids are required for KG search")
 
-    allowed_doc_ids = filter_allowed_document_ids(db, tenant_id, account_id, payload.document_ids)
+    allowed_doc_ids = _resolve_allowed_documents(
+        document_ids=payload.document_ids,
+        tenant_id=tenant_id,
+        account_id=account_id,
+        db=db,
+        limit=MAX_DOCUMENT_IDS,
+    )
 
     try:
         result = await kg_search(
