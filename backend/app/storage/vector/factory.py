@@ -2,7 +2,7 @@
 Vector store 路由器：支持多后端占位，当前实现 Milvus，其他后端留作扩展。
 在配置 VECTOR_BACKEND 切换，确保知识库检索路径集中管理。
 """
-from typing import List, Dict, Any, Optional, Tuple
+from typing import List, Dict, Any, Optional, Tuple, TYPE_CHECKING
 from uuid import UUID
 import logging
 import math
@@ -11,13 +11,50 @@ import os
 from app.core.config import settings
 from app.core.constants import EmbeddingProviders
 from app.storage.vector.milvus import milvus_store
-from langchain_community.vectorstores import FAISS
-from langchain_community.vectorstores import Chroma
 from app.rag.embedding import create_langchain_embeddings_from_config
 from app.rag.core.filters import match_metadata_filter
 
 
 logger = logging.getLogger(__name__)
+
+if TYPE_CHECKING:
+    from langchain_community.vectorstores import FAISS as _LCFAISS
+    from langchain_community.vectorstores import Chroma as _LCChroma
+
+_FAISS_CLS = None
+_CHROMA_CLS = None
+
+
+def _get_faiss_cls():
+    global _FAISS_CLS
+    if _FAISS_CLS is not None:
+        return _FAISS_CLS
+    try:
+        from langchain_community.vectorstores import FAISS
+
+        _FAISS_CLS = FAISS
+        return _FAISS_CLS
+    except Exception as exc:  # noqa: BLE001
+        raise RuntimeError(
+            "FAISS vector backend requires optional dependencies. "
+            "Install `faiss-cpu` and `langchain-community`."
+        ) from exc
+
+
+def _get_chroma_cls():
+    global _CHROMA_CLS
+    if _CHROMA_CLS is not None:
+        return _CHROMA_CLS
+    try:
+        from langchain_community.vectorstores import Chroma
+
+        _CHROMA_CLS = Chroma
+        return _CHROMA_CLS
+    except Exception as exc:  # noqa: BLE001
+        raise RuntimeError(
+            "Chroma vector backend requires optional dependencies. "
+            "Install `chromadb` and `langchain-community`."
+        ) from exc
 
 
 def _match_metadata_filter(meta: Dict[str, Any], filter_spec: Dict[str, Any]) -> bool:
@@ -208,14 +245,14 @@ class FAISSVectorStore(BaseVectorStore):
             base_url=base_url or "",
             dimension=None,
         )
-        self.store_by_tenant: Dict[str, FAISS] = {}
+        self.store_by_tenant: Dict[str, Any] = {}
         self.persist_path = settings.FAISS_STORE_PATH
         self.allow_dangerous_deserialization = bool(
             getattr(settings, "FAISS_ALLOW_DANGEROUS_DESERIALIZATION", False)
         )
         self._warned_dangerous_deserialization = False
 
-    def _get_store(self, tenant_id: Optional[UUID]) -> Tuple[str, Optional[FAISS]]:
+    def _get_store(self, tenant_id: Optional[UUID]) -> Tuple[str, Optional[Any]]:
         key = str(tenant_id or settings.DEFAULT_TENANT_ID)
         store = self.store_by_tenant.get(key)
         # 若存在持久化路径且内存中未加载，则尝试加载
@@ -230,7 +267,8 @@ class FAISSVectorStore(BaseVectorStore):
                     self._warned_dangerous_deserialization = True
                 return key, None
             try:
-                store = FAISS.load_local(
+                faiss_cls = _get_faiss_cls()
+                store = faiss_cls.load_local(
                     folder_path=self.persist_path,
                     embeddings=self.emb,
                     index_name=key,
@@ -261,7 +299,8 @@ class FAISSVectorStore(BaseVectorStore):
 
         key, store = self._get_store(tenant_id)
         if store is None:
-            store = FAISS.from_texts(texts=texts, embedding=self.emb, metadatas=metadatas, ids=ids)
+            faiss_cls = _get_faiss_cls()
+            store = faiss_cls.from_texts(texts=texts, embedding=self.emb, metadatas=metadatas, ids=ids)
         else:
             store.add_texts(texts=texts, metadatas=metadatas, ids=ids)
 
@@ -352,13 +391,14 @@ class ChromaVectorStore(BaseVectorStore):
         )
         self.persist_path = settings.CHROMA_PERSIST_PATH
         os.makedirs(self.persist_path, exist_ok=True)
-        self.store_by_tenant: Dict[str, Chroma] = {}
+        self.store_by_tenant: Dict[str, Any] = {}
 
-    def _get_store(self, tenant_id: Optional[UUID]) -> Tuple[str, Chroma]:
+    def _get_store(self, tenant_id: Optional[UUID]) -> Tuple[str, Any]:
         key = str(tenant_id or settings.DEFAULT_TENANT_ID)
         store = self.store_by_tenant.get(key)
         if store is None:
-            store = Chroma(
+            chroma_cls = _get_chroma_cls()
+            store = chroma_cls(
                 collection_name=key,
                 embedding_function=self.emb,
                 persist_directory=self.persist_path,
