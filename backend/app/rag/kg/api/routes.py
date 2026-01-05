@@ -15,6 +15,9 @@ from app.rag.kg.pipeline import extract_events, kg_search
 
 router = APIRouter()
 
+MAX_DOCUMENT_IDS = 500
+MAX_GRAPH_SEARCH_QUERY_LEN = 200
+
 
 def _ensure_enabled():
     if not settings.KG_ENABLED:
@@ -33,7 +36,11 @@ def _resolve_allowed_documents(
     limit: int = 500,
 ) -> list[UUID]:
     if document_ids:
-        return filter_allowed_document_ids(db, tenant_id, account_id, document_ids)
+        # Avoid abuse: cap list size and dedupe while preserving input order.
+        unique_ids = list(dict.fromkeys(document_ids))
+        if limit and len(unique_ids) > int(limit):
+            raise HTTPException(status_code=400, detail=f"Too many document_ids (max {int(limit)})")
+        return filter_allowed_document_ids(db, tenant_id, account_id, unique_ids)
     return list_accessible_document_ids(db, tenant_id, account_id, status="completed", limit=limit)
 
 
@@ -64,7 +71,7 @@ async def get_kg_graph(
         tenant_id=tenant_id,
         account_id=account_id,
         db=db,
-        limit=500,
+        limit=MAX_DOCUMENT_IDS,
     )
 
     if not allowed_doc_ids:
@@ -213,7 +220,7 @@ async def expand_kg_graph(
         tenant_id=tenant_id,
         account_id=account_id,
         db=db,
-        limit=500,
+        limit=MAX_DOCUMENT_IDS,
     )
     if not allowed_doc_ids:
         return KGGraphResponse(nodes=[], links=[], stats={"reason": "no_accessible_documents"})
@@ -423,7 +430,7 @@ async def expand_kg_graph(
 
 @router.get("/graph/search", response_model=list[KGGraphNode])
 async def search_kg_graph_nodes(
-    q: str = Query(..., min_length=1, description="Search query"),
+    q: str = Query(..., min_length=1, max_length=MAX_GRAPH_SEARCH_QUERY_LEN, description="Search query"),
     kind: str = Query(default="all", description="entity | event | all"),
     limit: int = Query(default=20, ge=1, le=100),
     document_ids: list[UUID] | None = Query(default=None),
@@ -442,15 +449,20 @@ async def search_kg_graph_nodes(
         tenant_id=tenant_id,
         account_id=account_id,
         db=db,
-        limit=500,
+        limit=MAX_DOCUMENT_IDS,
     )
 
     from sqlalchemy import or_
 
-    from app.rag.kg.models import KgEntity, KgSourceEvent
+    from app.rag.kg.models import KgEntity, KgEventEntity, KgSourceEvent
 
     q_text = (q or "").strip()
     if not q_text:
+        return []
+
+    # Keep entity/event search consistent with other KG routes: if the user has no accessible
+    # documents in scope, do not return any KG nodes.
+    if not allowed_doc_ids:
         return []
 
     mode = (kind or "all").strip().lower()
@@ -476,13 +488,13 @@ async def search_kg_graph_nodes(
     if mode in {"all", "entity"}:
         ents = (
             db.query(KgEntity)
-            .filter(
-                KgEntity.tenant_id == tenant_id,
-                or_(
-                    KgEntity.name.ilike(pattern),
-                    KgEntity.normalized_name.ilike(pattern),
-                ),
-            )
+            .join(KgEventEntity, KgEventEntity.entity_id == KgEntity.id)
+            .join(KgSourceEvent, KgSourceEvent.id == KgEventEntity.event_id)
+            .filter(KgEntity.tenant_id == tenant_id)
+            .filter(KgSourceEvent.tenant_id == tenant_id)
+            .filter(KgSourceEvent.document_id.in_(allowed_doc_ids))
+            .filter(or_(KgEntity.name.ilike(pattern), KgEntity.normalized_name.ilike(pattern)))
+            .distinct()
             .order_by(KgEntity.updated_at.desc())
             .limit(int(limit))
             .all()
@@ -555,6 +567,7 @@ async def run_kg_extraction_for_document(
     Trigger KG extraction for a processed document (rebuilds events/entities from chunks).
     """
     _ensure_enabled()
+    DatasetService.ensure_member(db, tenant_id, account_id)
 
     document = (
         db.query(DBDocument)
@@ -567,6 +580,9 @@ async def run_kg_extraction_for_document(
     if document.dataset_id:
         dataset = DatasetService.get_dataset(db, tenant_id, document.dataset_id)
         DatasetService.assert_dataset_readable(db, dataset, account_id)
+
+    if (getattr(document, "status", "") or "").lower() != "completed":
+        raise HTTPException(status_code=400, detail="Document is not completed yet. Process it first.")
 
     chunks = (
         db.query(DocumentChunk)
@@ -656,10 +672,17 @@ async def run_kg_search(
     _ensure_enabled()
     DatasetService.ensure_member(db, tenant_id, account_id)
 
+    if payload.tenant_id and payload.tenant_id != tenant_id:
+        raise HTTPException(status_code=400, detail="tenant_id mismatch")
+
     if not payload.document_ids:
         raise HTTPException(status_code=400, detail="document_ids are required for KG search")
 
-    allowed_doc_ids = filter_allowed_document_ids(db, tenant_id, account_id, payload.document_ids)
+    doc_ids = list(dict.fromkeys(payload.document_ids))
+    if len(doc_ids) > MAX_DOCUMENT_IDS:
+        raise HTTPException(status_code=400, detail=f"Too many document_ids (max {MAX_DOCUMENT_IDS})")
+
+    allowed_doc_ids = filter_allowed_document_ids(db, tenant_id, account_id, doc_ids)
 
     try:
         result = await kg_search(

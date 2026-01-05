@@ -22,9 +22,9 @@ class KGExtractResponse(BaseModel):
 class KGSearchRequest(BaseModel):
     """KG search request."""
 
-    query: str = Field(..., min_length=1, description="Natural language query")
+    query: str = Field(..., min_length=1, max_length=2048, description="Natural language query")
     tenant_id: Optional[UUID] = None
-    document_ids: Optional[List[UUID]] = None
+    document_ids: Optional[List[UUID]] = Field(default=None, max_length=500)
 
 
 class KGSearchResponse(BaseModel):
