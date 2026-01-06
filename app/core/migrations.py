@@ -129,6 +129,10 @@ def apply_runtime_migrations(engine) -> None:
             'ON kg_event_entities (event_id);',
             'CREATE INDEX IF NOT EXISTS ix_kg_event_entities_entity '
             'ON kg_event_entities (entity_id);',
+
+            # Users (auth)
+            'CREATE UNIQUE INDEX IF NOT EXISTS ix_users_email ON users (email);',
+            'CREATE UNIQUE INDEX IF NOT EXISTS ix_users_username ON users (username);',
         ]
         with engine.begin() as conn:
             for ddl in ddl_statements:
