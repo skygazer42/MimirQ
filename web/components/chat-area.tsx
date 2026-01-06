@@ -3,7 +3,7 @@
  */
 'use client'
 
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useCallback } from 'react'
 import Image from 'next/image'
 import { Send, Loader2, StopCircle, Sparkles, Database, Wand2 } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
