@@ -3,8 +3,9 @@
 提供统一的 httpx AsyncClient 配置，用于所有外部 API 调用
 """
 import asyncio
+import contextlib
 import random
-from typing import Optional
+from typing import Any, Optional
 import httpx
 from app.core.config import settings
 from app.rag.core.logging import get_logger
@@ -68,13 +69,17 @@ class HTTPClientPool:
     
     async def close(self):
         """关闭客户端连接池"""
-        if self._client is not None:
-            try:
-                await self._client.aclose()
-            except Exception as exc:  # noqa: BLE001
-                logger.warning("Failed to close HTTP client pool: %s", str(exc)[:200])
+        async with self._lock:
+            client = self._client
             self._client = None
-            logger.info("HTTP client pool closed")
+
+        if client is None:
+            return
+        try:
+            await client.aclose()
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Failed to close HTTP client pool: %s", str(exc)[:200])
+        logger.info("HTTP client pool closed")
     
     async def request_with_retry(
         self,
@@ -85,7 +90,7 @@ class HTTPClientPool:
         retry_delay: Optional[float] = None,
         backoff_factor: Optional[float] = None,
         jitter: Optional[float] = None,
-        **kwargs
+        **kwargs: Any,
     ) -> httpx.Response:
         """
         发送 HTTP 请求，支持自动重试
@@ -146,6 +151,9 @@ class HTTPClientPool:
                 retryable = status >= 500 or status == 429
                 if retryable and attempt < max_retries:
                     last_exception = e
+                    # Ensure the connection is released before sleeping/retrying.
+                    with contextlib.suppress(Exception):
+                        await e.response.aclose()
                     retry_after = None
                     if status == 429:
                         try:
@@ -165,6 +173,9 @@ class HTTPClientPool:
                     await asyncio.sleep(sleep_for)
                     current_delay *= backoff_factor
                 else:
+                    # Release connection for non-retryable errors too.
+                    with contextlib.suppress(Exception):
+                        await e.response.aclose()
                     raise
         
         # 所有重试都失败了

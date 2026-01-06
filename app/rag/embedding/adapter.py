@@ -24,11 +24,21 @@ def _get_redis_client():
     try:
         import redis  # type: ignore
 
-        _redis_client = redis.Redis.from_url(settings.REDIS_URL)
+        _redis_client = redis.Redis.from_url(
+            settings.REDIS_URL,
+            socket_timeout=1,
+            socket_connect_timeout=1,
+            decode_responses=False,
+        )
     except Exception as exc:  # noqa: BLE001
         logger.warning("Embedding cache disabled (redis init failed): %s", str(exc)[:200])
         _redis_client = None
     return _redis_client
+
+
+def _invalidate_redis_client() -> None:
+    global _redis_client
+    _redis_client = None
 
 
 def _embed_cache_key(text: str) -> str:
@@ -92,7 +102,18 @@ class LangChainEmbeddingsAdapter:
             embeddings = self._model.encode(texts)
         else:
             keys = [_embed_cache_key(t) for t in texts]
-            cached_raw = client.mget(keys)
+            try:
+                cached_raw = client.mget(keys)
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("Embedding cache read failed (mget): %s", str(exc)[:200])
+                _invalidate_redis_client()
+                cached_raw = None
+
+            if cached_raw is None:
+                embeddings = self._model.encode(texts)
+                if self._normalize:
+                    embeddings = self._normalize_vectors(embeddings)
+                return embeddings
 
             missing: List[Tuple[int, str]] = []
             out: List[Optional[List[float]]] = [None] * len(texts)
@@ -109,22 +130,25 @@ class LangChainEmbeddingsAdapter:
                 missing_texts = [t for _, t in missing]
                 computed = self._model.encode(missing_texts)
                 ttl = int(getattr(settings, "EMBEDDING_CACHE_TTL_SEC", 7 * 24 * 3600) or 0)
-                pipe = client.pipeline(transaction=False)
-                for (idx, _t), vec in zip(missing, computed):
-                    out[idx] = vec
-                    try:
-                        payload = json.dumps(vec, separators=(",", ":")).encode("utf-8")
-                        if ttl > 0:
-                            pipe.set(keys[idx], payload, ex=ttl)
-                        else:
-                            pipe.set(keys[idx], payload)
-                    except Exception:  # noqa: BLE001
-                        # 缓存失败不影响主流程
-                        pass
                 try:
-                    pipe.execute()
+                    pipe = client.pipeline(transaction=False)
+                    for (idx, _t), vec in zip(missing, computed):
+                        out[idx] = vec
+                        try:
+                            payload = json.dumps(vec, separators=(",", ":")).encode("utf-8")
+                            if ttl > 0:
+                                pipe.set(keys[idx], payload, ex=ttl)
+                            else:
+                                pipe.set(keys[idx], payload)
+                        except Exception:  # noqa: BLE001
+                            # 缓存失败不影响主流程
+                            pass
+                    try:
+                        pipe.execute()
+                    except Exception:  # noqa: BLE001
+                        _invalidate_redis_client()
                 except Exception:  # noqa: BLE001
-                    pass
+                    _invalidate_redis_client()
 
             embeddings = [v if v is not None else [] for v in out]
 
@@ -151,7 +175,12 @@ class LangChainEmbeddingsAdapter:
             embeddings = self._model.encode([text])
         else:
             key = _embed_cache_key(text)
-            raw = client.get(key)
+            try:
+                raw = client.get(key)
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("Embedding cache read failed (get): %s", str(exc)[:200])
+                _invalidate_redis_client()
+                raw = None
             if raw:
                 try:
                     vec = json.loads(raw)
@@ -168,7 +197,7 @@ class LangChainEmbeddingsAdapter:
                     else:
                         client.set(key, payload)
                 except Exception:  # noqa: BLE001
-                    pass
+                    _invalidate_redis_client()
 
         if self._normalize:
             embeddings = self._normalize_vectors(embeddings)
