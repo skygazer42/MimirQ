@@ -3,6 +3,7 @@ API v1 路由
 """
 from fastapi import APIRouter
 from app.api.v1 import (
+    auth,
     chat,
     datasets,
     documents,
@@ -19,6 +20,7 @@ from app.rag.kg.api import routes as kg
 router = APIRouter()
 
 router.include_router(health.router, tags=["Health"])
+router.include_router(auth.router, prefix="/auth", tags=["Auth"])
 router.include_router(documents.router, prefix="/documents", tags=["Documents"])
 router.include_router(chat.router, prefix="/chat", tags=["Chat"])
 router.include_router(datasets.router, prefix="/datasets", tags=["Datasets"])
