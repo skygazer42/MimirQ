@@ -124,3 +124,22 @@ class LLMCleanPreviewResponse(BaseModel):
     ab_experiment_key: Optional[str] = None
     ab_variant: Optional[str] = None
     warnings: List[str] = Field(default_factory=list)
+
+
+class ParserBackendInfo(BaseModel):
+    name: str
+    available: bool
+    notes: Optional[str] = None
+
+
+class ChunkStrategyInfo(BaseModel):
+    name: str
+    available: bool
+    notes: Optional[str] = None
+
+
+class PipelineCapabilitiesResponse(BaseModel):
+    default_parser_backend: str
+    default_chunk_strategy: str
+    pdf_backends: List[ParserBackendInfo] = Field(default_factory=list)
+    chunk_strategies: List[ChunkStrategyInfo] = Field(default_factory=list)

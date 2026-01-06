@@ -4,6 +4,7 @@ import { Info } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { PARSER_BACKEND_OPTIONS, getParserOption } from '@/lib/parser-options'
 import { useParserBackendPreference } from '@/contexts/parser-backend-context'
+import { usePipelineCapabilities } from '@/contexts/pipeline-capabilities-context'
 
 interface ParserBackendSelectProps {
   label?: string
@@ -17,6 +18,7 @@ export function ParserBackendSelect({
   compact = false,
 }: ParserBackendSelectProps) {
   const { parserBackend, setParserBackend } = useParserBackendPreference()
+  const { parserBackendAvailable } = usePipelineCapabilities()
   const currentOption = getParserOption(parserBackend)
 
   return (
@@ -44,7 +46,7 @@ export function ParserBackendSelect({
         )}
       >
         {PARSER_BACKEND_OPTIONS.map((option) => (
-          <option key={option.value} value={option.value}>
+          <option key={option.value} value={option.value} disabled={parserBackendAvailable(option.value) === false}>
             {option.label}
           </option>
         ))}

@@ -30,6 +30,7 @@ import type {
   CleanRulesResponse,
   LLMCleanPreviewRequest,
   LLMCleanPreviewResponse,
+  PipelineCapabilitiesResponse,
   RetrievePreviewRequest,
   RetrievePreviewResponse,
   PromptPreviewRequest,
@@ -272,6 +273,11 @@ export const documentApi = {
 // ==================== 解析/治理流水线 API ====================
 
 export const pipelineApi = {
+  async getCapabilities(): Promise<PipelineCapabilitiesResponse> {
+    const { data } = await apiClient.get('/pipeline/capabilities')
+    return data
+  },
+
   async getCleanRules(): Promise<CleanRulesResponse> {
     const { data } = await apiClient.get('/pipeline/clean-rules')
     return data

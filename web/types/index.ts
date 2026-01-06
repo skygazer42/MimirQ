@@ -22,8 +22,16 @@ export interface Document {
   current_stage?: string
   error_message?: string
   metadata?: Record<string, any>
+  governance?: GovernanceInfo
   chunks?: DocumentChunk[]
   dataset_id?: string
+}
+
+export interface GovernanceInfo {
+  enabled: boolean
+  documents: number
+  changed_documents: number
+  rules_applied: number
 }
 
 export interface DocumentStatus {
@@ -122,6 +130,7 @@ export interface ManualChunk {
 export interface ChunkPreviewParams {
   chunk_size: number
   chunk_overlap: number
+  unit?: 'chars' | 'tokens'
 }
 
 export interface ChunkPreviewItem {
@@ -204,6 +213,27 @@ export interface LLMCleanPreviewResponse {
   ab_experiment_key?: string
   ab_variant?: string
   warnings?: string[]
+}
+
+// ==================== 流水线能力（可用性）相关类型 ====================
+
+export interface ParserBackendInfo {
+  name: string
+  available: boolean
+  notes?: string | null
+}
+
+export interface ChunkStrategyInfo {
+  name: string
+  available: boolean
+  notes?: string | null
+}
+
+export interface PipelineCapabilitiesResponse {
+  default_parser_backend: string
+  default_chunk_strategy: string
+  pdf_backends: ParserBackendInfo[]
+  chunk_strategies: ChunkStrategyInfo[]
 }
 
 // ==================== 数据集相关类型 ====================

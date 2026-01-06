@@ -4,6 +4,7 @@ import "./globals.css"
 import { ParserBackendProvider } from "@/contexts/parser-backend-context"
 import { ChunkStrategyProvider } from "@/contexts/chunk-strategy-context"
 import { PipelineOptionsProvider } from "@/contexts/pipeline-options-context"
+import { PipelineCapabilitiesProvider } from "@/contexts/pipeline-capabilities-context"
 import { ThemeProvider } from "@/components/theme-provider"
 import { SonnerToaster } from "@/components/sonner-toaster"
 
@@ -32,11 +33,13 @@ export default function RootLayout({
           disableTransitionOnChange
         >
           <SonnerToaster />
-          <ParserBackendProvider>
-            <ChunkStrategyProvider>
-              <PipelineOptionsProvider>{children}</PipelineOptionsProvider>
-            </ChunkStrategyProvider>
-          </ParserBackendProvider>
+          <PipelineCapabilitiesProvider>
+            <ParserBackendProvider>
+              <ChunkStrategyProvider>
+                <PipelineOptionsProvider>{children}</PipelineOptionsProvider>
+              </ChunkStrategyProvider>
+            </ParserBackendProvider>
+          </PipelineCapabilitiesProvider>
         </ThemeProvider>
       </body>
     </html>

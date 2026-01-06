@@ -1456,7 +1456,11 @@ async def preview_chunking(
             file_size=file_size,
             total_chunks=len(chunks),
             total_characters=len(full_text),
-            params=ChunkPreviewParams(chunk_size=chunk_size, chunk_overlap=chunk_overlap),
+            params=ChunkPreviewParams(
+                chunk_size=chunk_size,
+                chunk_overlap=chunk_overlap,
+                unit="tokens" if resolved_chunk_strategy == "langchain_token" else "chars",
+            ),
             chunks=chunk_items,
             original_text=full_text if len(full_text) <= 100000 else None,  # 超过 100KB 不返回原文
             parser_backend=resolved_backend,

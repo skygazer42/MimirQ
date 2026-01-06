@@ -40,12 +40,12 @@ class LangChainRecursiveChunker(BaseChunker):
         for doc in documents:
             docs = self.splitter.create_documents(
                 texts=[doc.page_content],
-                metadatas=[dict(doc.metadata)]
+                metadatas=[dict(doc.metadata or {})]
             )
             offset = 0
             for chunk in docs:
                 start_index = chunk.metadata.pop("start_index", None)
-                metadata = dict(doc.metadata)
+                metadata = dict(doc.metadata or {})
                 metadata.update(chunk.metadata or {})
                 if start_index is not None:
                     metadata["start_char"] = start_index

@@ -29,6 +29,7 @@ from app.services.pipeline_config import (
     resolve_pipeline_options,
 )
 from app.rag.preprocessing.processor import governance_processor, GovernanceStats
+from app.rag.preprocessing.normalization import normalize_text
 from app.rag.kg.pipeline import extract_events
 from app.parsing.routing import route_pdf_backend
 from app.rag.core.logging import get_logger
@@ -217,6 +218,30 @@ class GovernanceStage:
         return GovernanceResult(items=cleaned, stats=stats)
 
 
+class NormalizeStage:
+    """
+    Apply conservative normalization before governance/chunking.
+
+    Unlike governance cleaning, this stage is always safe to run:
+    - Normalizes line endings and Unicode whitespace artifacts
+    - Removes zero-width/control characters and soft hyphens
+    - Repairs common PDF ligatures
+    """
+
+    def run(self, *, items: List[Document]) -> List[Document]:
+        if not items:
+            return items
+        out: List[Document] = []
+        for doc in items:
+            raw = doc.page_content or ""
+            normalized = normalize_text(raw, normalize_line_endings=True, remove_control_chars=True)
+            meta = dict(doc.metadata or {})
+            meta["text_normalized"] = True
+            meta["text_normalized_changed"] = bool(normalized != raw)
+            out.append(Document(page_content=normalized, metadata=meta, id=getattr(doc, "id", None)))
+        return out
+
+
 class ChunkingStage:
     def run(
         self,
@@ -253,13 +278,15 @@ class ChunkAssetStage:
     ) -> ChunkAssetResult:
         img_ids: List[str] = []
         for idx, chunk in enumerate(chunks):
-            chunk.metadata["document_id"] = str(document_id)
-            chunk.metadata["chunk_index"] = idx
-            chunk.metadata["parser_backend"] = resolved_backend
-            chunk.metadata["chunk_strategy"] = resolved_chunk_strategy
+            meta = dict(chunk.metadata or {})
+            meta["document_id"] = str(document_id)
+            meta["chunk_index"] = idx
+            meta["parser_backend"] = resolved_backend
+            meta["chunk_strategy"] = resolved_chunk_strategy
+            chunk.metadata = meta
 
             img_id = self._svc._extract_and_upload_image_to_minio(
-                chunk.metadata,
+                meta,
                 tenant_id=str(tenant_id),
                 dataset_id=dataset_id,
                 document_id=str(document_id),
@@ -268,8 +295,9 @@ class ChunkAssetStage:
             if not img_id:
                 img_id = self._svc._extract_img_id_from_content(chunk.page_content)
             if img_id:
-                chunk.metadata["img_id"] = img_id
-                normalize_image_metadata(chunk.metadata)
+                meta["img_id"] = img_id
+                normalize_image_metadata(meta)
+                chunk.metadata = meta
                 img_ids.append(img_id)
         return ChunkAssetResult(chunks=chunks, img_ids=img_ids)
 
@@ -289,10 +317,11 @@ class IndexStage:
         records: List[IndexRecord] = []
         for chunk in chunks:
             meta = dict(chunk.metadata or {})
+            content = normalize_text(chunk.page_content or "", normalize_line_endings=True, remove_control_chars=True)
             records.append(
                 IndexRecord(
                     kind=IndexKind.CHUNK,
-                    content=chunk.page_content,
+                    content=content,
                     metadata=meta,
                     document_id=document_id,
                     page_number=meta.get("page") or meta.get("page_number"),
@@ -398,6 +427,7 @@ class DocumentProcessorService:
 
             parsing_stage = ParsingStage(self)
             inline_asset_stage = InlineAssetStage(self)
+            normalize_stage = NormalizeStage()
             governance_stage = GovernanceStage()
             chunking_stage = ChunkingStage()
             chunk_asset_stage = ChunkAssetStage(self)
@@ -453,16 +483,18 @@ class DocumentProcessorService:
             # Governance：对 documents 或 ragflow chunks 做统一清洗
             governance_stats: Optional[GovernanceStats] = None
             if parsed.chunks is not None:
+                parsed_chunks = normalize_stage.run(items=parsed.chunks)
                 gov = governance_stage.run(
-                    items=parsed.chunks,
+                    items=parsed_chunks,
                     enabled=bool(pipeline_effective.governance_enabled),
                     kwargs=governance_kwargs,
                 )
                 chunks = gov.items
                 governance_stats = gov.stats
             else:
+                parsed_documents = normalize_stage.run(items=parsed_documents or [])
                 gov = governance_stage.run(
-                    items=parsed_documents or [],
+                    items=parsed_documents,
                     enabled=bool(pipeline_effective.governance_enabled),
                     kwargs=governance_kwargs,
                 )
@@ -934,6 +966,10 @@ class DocumentProcessorService:
 
         if not found:
             return markdown_text, [], start_index
+
+        max_inline_images = max(0, int(getattr(settings, "MAX_INLINE_IMAGES", 0) or 0))
+        if max_inline_images and len(found) > max_inline_images:
+            found = found[:max_inline_images]
 
         new_ids: List[str] = []
         idx = int(start_index or 0)

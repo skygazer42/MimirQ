@@ -19,6 +19,7 @@ import {
   getChunkStrategyOption,
   ChunkStrategyOption,
 } from '@/lib/chunk-strategies'
+import { usePipelineCapabilities } from '@/contexts/pipeline-capabilities-context'
 
 // 图标映射
 const ICON_MAP: Record<ChunkStrategyOption['icon'], any> = {
@@ -52,6 +53,7 @@ interface ChunkStrategyDropdownProps {
 export function ChunkStrategyDropdown({ value, onChange, className }: ChunkStrategyDropdownProps) {
   const [isOpen, setIsOpen] = useState(false)
   const dropdownRef = useRef<HTMLDivElement>(null)
+  const { chunkStrategyAvailable } = usePipelineCapabilities()
 
   const selectedOption = getChunkStrategyOption(value)
   const SelectedIcon = ICON_MAP[selectedOption.icon]
@@ -114,7 +116,7 @@ export function ChunkStrategyDropdown({ value, onChange, className }: ChunkStrat
               const Icon = ICON_MAP[option.icon]
               const color = COLOR_MAP[option.icon]
               const isSelected = option.value === value
-              const isDisabled = !!option.disabled
+              const isDisabled = !!option.disabled || chunkStrategyAvailable(option.value) === false
 
               return (
                 <button

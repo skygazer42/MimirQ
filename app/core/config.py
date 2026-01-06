@@ -107,6 +107,10 @@ class Settings(BaseSettings):
     ZIP_MAX_FILES: int = 2000
     ZIP_MAX_TOTAL_UNCOMPRESSED_BYTES: int = 500_000_000
     ZIP_MAX_SINGLE_UNCOMPRESSED_BYTES: int = 100_000_000
+    ZIP_MAX_IMAGES: int = 300
+    # Inline/local image upload safety limits (Markdown/HTML image refs -> MinIO).
+    MAX_INLINE_IMAGE_BYTES: int = 10_000_000
+    MAX_INLINE_IMAGES: int = 200
     # Keep this aligned with parser_factory supported non-PDF formats.
     ALLOWED_EXTENSIONS: str = ".pdf,.txt,.md,.doc,.docx,.xls,.xlsx,.csv,.html,.json"
 
@@ -175,6 +179,10 @@ class Settings(BaseSettings):
     RAG_CONTEXT_MAX_CHARS_PER_CHUNK: int = 1500
     RAG_CONTEXT_MAX_TOTAL_CHARS: int = 12_000
     RAG_CONTEXT_MAX_KG_CHARS: int = 3_000
+    # Optional token-based guards (0 disables). When enabled, takes precedence over char guards.
+    RAG_CONTEXT_MAX_TOKENS_PER_CHUNK: int = 0
+    RAG_CONTEXT_MAX_TOTAL_TOKENS: int = 0
+    RAG_CONTEXT_MAX_KG_TOKENS: int = 0
     # Optional: include adjacent chunks around top hits to improve continuity (0 disables).
     RAG_CONTEXT_NEIGHBOR_WINDOW: int = 0
     # Max number of neighbor chunks to add in total (0 disables the cap).

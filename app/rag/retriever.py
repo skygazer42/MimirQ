@@ -30,6 +30,7 @@ from app.rag.reranker.factory import get_reranker
 from app.rag.reranker.types import RerankCandidate
 from app.rag.core.logging import get_logger
 from app.rag.preprocessing.stopwords import STOPWORDS
+from app.rag.preprocessing.tokenization import tokenize_for_bm25
 
 
 logger = get_logger("rag.retriever")
@@ -67,8 +68,24 @@ class HybridRetriever(BaseRetriever):
 
     _bm25_retrievers: Dict[str, BM25Retriever] = PrivateAttr(default_factory=dict)
     _bm25_docs: Dict[str, List[Document]] = PrivateAttr(default_factory=dict)
+    _bm25_doc_ids: Dict[str, set[str]] = PrivateAttr(default_factory=dict)
     _chunk_id_lookup: Dict[str, Dict[str, str]] = PrivateAttr(default_factory=dict)
     _bm25_build_locks: Dict[str, threading.Lock] = PrivateAttr(default_factory=dict)
+
+    def _refresh_bm25_doc_ids(self, tenant_key: str, docs: List[Document] | None) -> None:
+        if not docs:
+            self._bm25_doc_ids.pop(tenant_key, None)
+            return
+        doc_ids: set[str] = set()
+        for d in docs:
+            meta = d.metadata or {}
+            doc_id = meta.get("document_id")
+            if doc_id is None:
+                continue
+            s = str(doc_id).strip()
+            if s:
+                doc_ids.add(s)
+        self._bm25_doc_ids[tenant_key] = doc_ids
 
     def _tenant_key(self, tenant_id: Optional[UUID]) -> str:
         return str(tenant_id or settings.DEFAULT_TENANT_ID)
@@ -102,13 +119,39 @@ class HybridRetriever(BaseRetriever):
             return False
 
         tenant_key = self._tenant_key(tenant_uuid)
-        if self._bm25_retrievers.get(tenant_key) is not None and self._bm25_docs.get(tenant_key) is not None:
-            return True
+        existing_retriever = self._bm25_retrievers.get(tenant_key)
+        existing_docs = self._bm25_docs.get(tenant_key)
+        if existing_retriever is not None and existing_docs is not None:
+            # If a request scopes to specific documents, ensure those docs are covered by the current cache.
+            # Lazy-built indices may have been created from a subset (e.g. first query after restart).
+            if document_ids:
+                indexed = self._bm25_doc_ids.get(tenant_key)
+                if indexed is None:
+                    self._refresh_bm25_doc_ids(tenant_key, existing_docs)
+                    indexed = self._bm25_doc_ids.get(tenant_key) or set()
+                requested = {str(did) for did in document_ids if did is not None}
+                missing = requested - set(indexed or set())
+                if not missing:
+                    return True
+            else:
+                return True
 
         lock = self._get_bm25_build_lock(tenant_key)
         with lock:
-            if self._bm25_retrievers.get(tenant_key) is not None and self._bm25_docs.get(tenant_key) is not None:
-                return True
+            existing_retriever = self._bm25_retrievers.get(tenant_key)
+            existing_docs = self._bm25_docs.get(tenant_key)
+            if existing_retriever is not None and existing_docs is not None:
+                if document_ids:
+                    indexed = self._bm25_doc_ids.get(tenant_key)
+                    if indexed is None:
+                        self._refresh_bm25_doc_ids(tenant_key, existing_docs)
+                        indexed = self._bm25_doc_ids.get(tenant_key) or set()
+                    requested = {str(did) for did in document_ids if did is not None}
+                    missing = requested - set(indexed or set())
+                    if not missing:
+                        return True
+                else:
+                    return True
 
             full_tenant = bool(getattr(settings, "BM25_LAZY_BUILD_FULL_TENANT", False))
             if not document_ids and not full_tenant:
@@ -117,6 +160,80 @@ class HybridRetriever(BaseRetriever):
             max_chunks = max(0, int(getattr(settings, "BM25_LAZY_BUILD_MAX_CHUNKS", 0) or 0))
             db = SessionLocal()
             try:
+                # If we already have an index and are missing requested docs, try to extend it.
+                if existing_retriever is not None and existing_docs is not None and document_ids:
+                    indexed = self._bm25_doc_ids.get(tenant_key)
+                    if indexed is None:
+                        self._refresh_bm25_doc_ids(tenant_key, existing_docs)
+                        indexed = self._bm25_doc_ids.get(tenant_key) or set()
+                    requested = {str(did) for did in document_ids if did is not None}
+                    missing = requested - set(indexed or set())
+
+                    if missing:
+                        existing_count = len(existing_docs)
+                        if max_chunks and existing_count >= max_chunks:
+                            # Memory cap reached: rebuild a scoped index for the requested documents.
+                            q = (
+                                db.query(DocumentChunk)
+                                .join(DBDocument)
+                                .filter(DBDocument.status == "completed")
+                                .filter(DocumentChunk.tenant_id == tenant_uuid)
+                                .filter(DocumentChunk.document_id.in_(document_ids))
+                                .order_by(DocumentChunk.document_id.asc(), DocumentChunk.chunk_index.asc())
+                            )
+                            if max_chunks:
+                                q = q.limit(max_chunks)
+                            chunks = q.all()
+                            if not chunks:
+                                return True
+                            self.build_bm25_index(chunks, tenant_id=tenant_uuid)
+                            logger.info(
+                                "BM25 lazy-built (scoped rebuild) %s chunks for tenant %s missing_docs=%s cap=%s",
+                                len(chunks),
+                                tenant_key,
+                                len(missing),
+                                max_chunks,
+                            )
+                            return True
+
+                        q = (
+                            db.query(DocumentChunk)
+                            .join(DBDocument)
+                            .filter(DBDocument.status == "completed")
+                            .filter(DocumentChunk.tenant_id == tenant_uuid)
+                            .filter(DocumentChunk.document_id.in_(list(missing)))
+                            .order_by(DocumentChunk.document_id.asc(), DocumentChunk.chunk_index.asc())
+                        )
+                        if max_chunks:
+                            remaining = max(0, int(max_chunks) - int(existing_count))
+                            if remaining <= 0:
+                                return True
+                            q = q.limit(remaining)
+                        chunks = q.all()
+                        if not chunks:
+                            return True
+                        bm25_docs: List[Document] = []
+                        for chunk in chunks:
+                            meta = dict(chunk.doc_metadata or {})
+                            meta.setdefault("tenant_id", str(chunk.tenant_id))
+                            meta.setdefault("document_id", str(chunk.document_id))
+                            meta.setdefault("chunk_index", chunk.chunk_index)
+                            meta.setdefault("chunk_id", str(chunk.id))
+                            meta.setdefault("source", meta.get("source", "unknown"))
+                            meta.setdefault("page", chunk.page_number or meta.get("page"))
+                            meta.setdefault("image_id", meta.get("image_id"))
+                            meta.setdefault("image_url", meta.get("image_url"))
+                            bm25_docs.append(Document(page_content=chunk.content, id=str(chunk.id), metadata=meta))
+                        self.upsert_bm25_documents(bm25_docs, tenant_id=tenant_uuid)
+                        logger.info(
+                            "BM25 lazy-extended %s chunks for tenant %s (missing_docs=%s)",
+                            len(bm25_docs),
+                            tenant_key,
+                            len(missing),
+                        )
+                        return True
+
+                # Cold start: build an initial index (full tenant or scoped document_ids).
                 q = (
                     db.query(DocumentChunk)
                     .join(DBDocument)
@@ -150,23 +267,8 @@ class HybridRetriever(BaseRetriever):
 
     @staticmethod
     def _bm25_tokenize(text: str) -> List[str]:
-        """Tokenize text for BM25 (jieba + stopwords + simple length guards)."""
-        raw = (text or "").strip()
-        if not raw:
-            return []
-        tokens: List[str] = []
-        for token in jieba.cut_for_search(raw):
-            tok = str(token).strip()
-            if not tok:
-                continue
-            norm = tok.casefold() if tok.isascii() else tok
-            if norm in STOPWORDS:
-                continue
-            # Skip single-character tokens (too noisy for BM25).
-            if len(norm) < 2:
-                continue
-            tokens.append(norm)
-        return tokens
+        """Tokenize text for BM25 (shared)."""
+        return tokenize_for_bm25(text)
 
     def build_bm25_index(self, chunks: List[DocumentChunk], tenant_id: Optional[UUID] = None):
         """构建/重建 BM25 索引。"""
@@ -195,6 +297,7 @@ class HybridRetriever(BaseRetriever):
         )
         self._bm25_retrievers[tenant_key] = retriever
         self._bm25_docs[tenant_key] = docs
+        self._refresh_bm25_doc_ids(tenant_key, docs)
         lookup: Dict[str, str] = {}
         for d in docs:
             meta = d.metadata or {}
@@ -230,6 +333,7 @@ class HybridRetriever(BaseRetriever):
         )
         self._bm25_retrievers[tenant_key] = retriever
         self._bm25_docs[tenant_key] = merged_docs
+        self._refresh_bm25_doc_ids(tenant_key, merged_docs)
         lookup: Dict[str, str] = {}
         for d in merged_docs:
             meta = d.metadata or {}
@@ -256,11 +360,13 @@ class HybridRetriever(BaseRetriever):
         if retriever is None:
             self._bm25_retrievers.pop(tenant_key, None)
             self._bm25_docs.pop(tenant_key, None)
+            self._bm25_doc_ids.pop(tenant_key, None)
             self._chunk_id_lookup.pop(tenant_key, None)
             logger.info("BM25 index cleared for tenant %s", tenant_key)
             return
         self._bm25_retrievers[tenant_key] = retriever
         self._bm25_docs[tenant_key] = filtered
+        self._refresh_bm25_doc_ids(tenant_key, filtered)
         lookup: Dict[str, str] = {}
         for d in filtered:
             meta = d.metadata or {}
@@ -1114,12 +1220,21 @@ class HybridRetriever(BaseRetriever):
                     merged_data["chunk_id"] = b_data.get("chunk_id")
                 data = merged_data
 
+            has_v = key in vector_norm
+            has_b = key in bm25_norm
+            if has_v and has_b:
+                fused_score = alpha * float(v_score) + (1 - alpha) * float(b_score)
+            elif has_v:
+                fused_score = float(v_score)
+            else:
+                fused_score = float(b_score)
+
             merged[key] = {
                 **data,
                 "vector_score": float(v_score),
                 "bm25_score": float(b_score),
                 "fusion_strategy": "linear",
-                "score": alpha * float(v_score) + (1 - alpha) * float(b_score),
+                "score": fused_score,
             }
 
         return sorted(merged.values(), key=lambda x: float(x.get("score", 0.0) or 0.0), reverse=True)
