@@ -9,10 +9,36 @@ const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 
 export class GraphService {
+  static getMockGraph(): GraphData {
+    const nodes: GraphNode[] = [
+      { id: '1', label: 'Artificial Intelligence', group: 1, val: 20 },
+      { id: '2', label: 'Machine Learning', group: 1, val: 15 },
+      { id: '3', label: 'Deep Learning', group: 1, val: 10 },
+      { id: '4', label: 'NLP', group: 2, val: 12 },
+      { id: '5', label: 'Computer Vision', group: 3, val: 12 },
+      { id: '6', label: 'Reinforcement Learning', group: 1, val: 10 },
+    ]
+
+    const links: GraphLink[] = [
+      { source: '1', target: '2', label: 'includes' },
+      { source: '2', target: '3', label: 'includes' },
+      { source: '1', target: '4', label: 'application' },
+      { source: '1', target: '5', label: 'application' },
+      { source: '2', target: '6', label: 'includes' },
+    ]
+
+    return JSON.parse(JSON.stringify({ nodes, links }))
+  }
+
   /**
    * Fetch the initial graph data (e.g., top entities or root nodes)
    */
-  static async fetchInitialGraph(): Promise<GraphData> {
+  static async fetchInitialGraph(options: { preferMock?: boolean } = {}): Promise<GraphData> {
+    if (options.preferMock) {
+      await delay(200)
+      return GraphService.getMockGraph()
+    }
+
     // Try KG live graph first; fallback to mock data (so the page remains usable when KG is disabled).
     try {
       const res = await fetch(`${API_V1_BASE_URL}/kg/graph`, {
@@ -34,27 +60,7 @@ export class GraphService {
     }
 
     await delay(200) // keep a tiny delay for UI consistency
-
-    // Mock Data: Core Concepts
-    const nodes: GraphNode[] = [
-      { id: '1', label: 'Artificial Intelligence', group: 1, val: 20 },
-      { id: '2', label: 'Machine Learning', group: 1, val: 15 },
-      { id: '3', label: 'Deep Learning', group: 1, val: 10 },
-      { id: '4', label: 'NLP', group: 2, val: 12 },
-      { id: '5', label: 'Computer Vision', group: 3, val: 12 },
-      { id: '6', label: 'Reinforcement Learning', group: 1, val: 10 },
-    ]
-
-    const links: GraphLink[] = [
-      { source: '1', target: '2', label: 'includes' },
-      { source: '2', target: '3', label: 'includes' },
-      { source: '1', target: '4', label: 'application' },
-      { source: '1', target: '5', label: 'application' },
-      { source: '2', target: '6', label: 'includes' },
-    ]
-
-    // Return a deep copy to avoid mutation issues in React Strict Mode / ForceGraph
-    return JSON.parse(JSON.stringify({ nodes, links }))
+    return GraphService.getMockGraph()
   }
 
   /**

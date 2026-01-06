@@ -115,15 +115,15 @@ export default function GraphPage() {
   }, [deferredSearchTerm, searchMatches, isPathMode, isConnectMode, isExplainMode])
 
   // Initialize with real (mock) data from service
-  const loadInitialData = async () => {
+  const loadInitialData = async (source: 'live' | 'mock' = 'live') => {
     setIsLoading(true)
     try {
       console.log('Loading initial data...')
-      const data = await GraphService.fetchInitialGraph()
+      const data = await GraphService.fetchInitialGraph({ preferMock: source === 'mock' })
       console.log('Data fetched:', data)
       console.log('Setting graph data...')
       setGraphData(data)
-      setFileName('Knowledge Base (Live)')
+      setFileName(source === 'mock' ? '示例数据' : 'Knowledge Base (Live)')
       setIsDetailOpen(false)
       setSelectedNode(null)
       resetPathMode()
@@ -561,7 +561,7 @@ export default function GraphPage() {
 
             <div className="h-6 w-px bg-gray-200 mx-1 hidden sm:block"></div>
 
-            <Button variant="ghost" size="sm" onClick={loadInitialData} disabled={isLoading} className="text-gray-600 hover:text-indigo-600 hover:bg-indigo-50">
+            <Button variant="ghost" size="sm" onClick={() => loadInitialData('live')} disabled={isLoading} className="text-gray-600 hover:text-indigo-600 hover:bg-indigo-50">
               <RefreshCw className={cn("w-4 h-4 mr-2", isLoading && "animate-spin")} />
               {isLoading ? '加载中...' : '刷新'}
             </Button>
@@ -616,7 +616,7 @@ export default function GraphPage() {
                 <br/>支持实时数据加载、搜索与深度分析。
               </p>
               <div className="flex gap-4">
-                 <Button size="lg" variant="outline" onClick={loadInitialData} disabled={isLoading} className="border-gray-200 hover:bg-gray-50 hover:text-gray-900">
+                 <Button size="lg" variant="outline" onClick={() => loadInitialData('mock')} disabled={isLoading} className="border-gray-200 hover:bg-gray-50 hover:text-gray-900">
                    {isLoading ? '加载中...' : '加载示例数据'}
                  </Button>
                  <Button 
