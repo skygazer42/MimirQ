@@ -200,6 +200,12 @@ MimirQ/
 
 ## 🚀 快速开始
 
+### 🔐 认证与登录
+
+- 开发默认使用 `AUTH_MODE=header`：前端会带 `X-User-ID`（默认 `demo`），可不登录直接使用。
+- 若启用账号体系，请将 `AUTH_MODE=jwt` 并配置 `SECRET_KEY`，然后访问前端 `/auth` 登录/注册。
+- 可通过 `NEXT_PUBLIC_USER_ID` / `NEXT_PUBLIC_TENANT_ID` 设置开发环境默认用户/租户。
+
 ### 前置要求
 
 | 工具 | 版本要求 | 说明 |

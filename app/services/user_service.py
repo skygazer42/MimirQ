@@ -26,14 +26,19 @@ class UserService:
 
     @staticmethod
     def get_by_id(db: Session, user_id: str) -> User | None:
-        return db.query(User).filter(User.id == user_id).first()
+        try:
+            user_uuid = UUID(str(user_id))
+        except Exception:
+            return None
+        return db.query(User).filter(User.id == user_uuid).first()
 
     @staticmethod
     def authenticate(db: Session, identifier: str, password: str) -> User:
         ident = (identifier or "").strip()
+        ident_lower = ident.lower()
         user = (
             db.query(User)
-            .filter((User.email == ident) | (User.username == ident))
+            .filter((User.email == ident_lower) | (User.username == ident))
             .first()
         )
         if not user or not verify_password(password, user.password_hash):
