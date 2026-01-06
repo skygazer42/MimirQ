@@ -1,0 +1,115 @@
+"""
+User service: register, authenticate, and tenant membership bootstrap.
+"""
+from __future__ import annotations
+
+from datetime import datetime, timezone
+from uuid import UUID
+
+from fastapi import HTTPException, status
+from sqlalchemy.orm import Session
+
+from app.core.config import settings
+from app.core.security import hash_password, verify_password
+from app.models.tenant import Tenant, TenantMember
+from app.models.user import User
+
+
+class UserService:
+    @staticmethod
+    def get_by_email(db: Session, email: str) -> User | None:
+        return db.query(User).filter(User.email == email).first()
+
+    @staticmethod
+    def get_by_username(db: Session, username: str) -> User | None:
+        return db.query(User).filter(User.username == username).first()
+
+    @staticmethod
+    def get_by_id(db: Session, user_id: str) -> User | None:
+        return db.query(User).filter(User.id == user_id).first()
+
+    @staticmethod
+    def authenticate(db: Session, identifier: str, password: str) -> User:
+        ident = (identifier or "").strip()
+        user = (
+            db.query(User)
+            .filter((User.email == ident) | (User.username == ident))
+            .first()
+        )
+        if not user or not verify_password(password, user.password_hash):
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
+        if not user.is_active:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="User disabled")
+        return user
+
+    @staticmethod
+    def create_user(db: Session, *, email: str, username: str, password: str) -> User:
+        normalized_email = (email or "").strip().lower()
+        normalized_username = (username or "").strip()
+
+        if not normalized_email or not normalized_username:
+            raise HTTPException(status_code=400, detail="Email and username are required")
+
+        min_len = int(getattr(settings, "PASSWORD_MIN_LENGTH", 8))
+        if len(password or "") < min_len:
+            raise HTTPException(status_code=400, detail=f"Password must be at least {min_len} characters")
+
+        if UserService.get_by_email(db, normalized_email):
+            raise HTTPException(status_code=400, detail="Email already registered")
+        if UserService.get_by_username(db, normalized_username):
+            raise HTTPException(status_code=400, detail="Username already registered")
+
+        user = User(
+            email=normalized_email,
+            username=normalized_username,
+            password_hash=hash_password(password),
+            is_active=True,
+        )
+        db.add(user)
+        db.flush()
+
+        UserService.ensure_default_membership(db, user_id=str(user.id))
+
+        db.commit()
+        db.refresh(user)
+        return user
+
+    @staticmethod
+    def ensure_default_membership(db: Session, *, user_id: str) -> None:
+        raw_tenant = str(getattr(settings, "DEFAULT_TENANT_ID", "") or "").strip()
+        if not raw_tenant:
+            return
+        try:
+            tenant_id = UUID(raw_tenant)
+        except Exception:
+            return
+
+        tenant = db.query(Tenant).filter(Tenant.id == tenant_id).first()
+        if not tenant:
+            tenant = Tenant(
+                id=tenant_id,
+                name=f"tenant-{tenant_id}",
+                status="active",
+                plan="basic",
+            )
+            db.add(tenant)
+
+        member = db.query(TenantMember).filter(
+            TenantMember.tenant_id == tenant_id,
+            TenantMember.user_id == user_id,
+        ).first()
+        if not member:
+            db.add(
+                TenantMember(
+                    tenant_id=tenant_id,
+                    user_id=user_id,
+                    role="owner",
+                    is_current=True,
+                )
+            )
+
+    @staticmethod
+    def mark_login(db: Session, user: User) -> None:
+        user.last_login_at = datetime.now(timezone.utc)
+        db.add(user)
+        db.commit()
