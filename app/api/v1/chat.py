@@ -163,7 +163,6 @@ async def stream_chat(
                 raise HTTPException(status_code=400, detail="No accessible documents for chat retrieval")
         # 更新会话中的文档列表为当前允许的集合
         conversation.document_ids = allowed_doc_ids
-        db.commit()
     else:
         # 创建新对话
         if request.document_ids:
@@ -179,8 +178,7 @@ async def stream_chat(
             document_ids=allowed_doc_ids
         )
         db.add(conversation)
-        db.commit()
-        db.refresh(conversation)
+        db.flush()
         conversation_id = conversation.id
 
     # 2. 保存用户消息
@@ -191,7 +189,6 @@ async def stream_chat(
         content=request.message
     )
     db.add(user_message)
-    db.commit()
 
     # 可选：长期记忆召回（基于 BM25 的对话消息检索）
     if request.enable_long_term_memory and settings.LONG_TERM_MEMORY_ENABLED and conversation_id:

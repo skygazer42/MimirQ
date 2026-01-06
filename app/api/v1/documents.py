@@ -7,7 +7,7 @@ import json
 import re
 import shutil
 from fastapi import APIRouter, Depends, UploadFile, File, HTTPException, BackgroundTasks, Form, Body
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 from typing import List, Optional
 from uuid import UUID
 from pathlib import Path
@@ -689,10 +689,13 @@ async def get_document(
     获取文档详情
     """
     DatasetService.ensure_member(db, tenant_id, account_id)
-    document = db.query(DBDocument).filter(
+    query = db.query(DBDocument).filter(
         DBDocument.id == document_id,
         DBDocument.tenant_id == tenant_id
-    ).first()
+    )
+    if include_chunks:
+        query = query.options(selectinload(DBDocument.chunks))
+    document = query.first()
 
     if not document:
         raise HTTPException(status_code=404, detail="Document not found")
@@ -704,7 +707,6 @@ async def get_document(
 
     # 如果需要包含切片，访问一次关系以确保加载
     if include_chunks:
-        _ = document.chunks
         # Expose a non-relationship attribute for Pydantic to serialize without triggering
         # accidental lazy-loading when include_chunks=false.
         setattr(document, "chunks_loaded", document.chunks)
