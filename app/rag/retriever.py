@@ -20,6 +20,7 @@ from langchain_core.retrievers import BaseRetriever
 from langchain_community.retrievers.bm25 import BM25Retriever
 from pydantic import PrivateAttr, ConfigDict
 from sqlalchemy import tuple_
+from sqlalchemy.orm import Session
 
 from app.storage.vector.factory import get_vector_store
 from app.models.document import DocumentChunk, Document as DBDocument
@@ -174,22 +175,52 @@ class HybridRetriever(BaseRetriever):
                         if max_chunks and existing_count >= max_chunks:
                             # Memory cap reached: rebuild a scoped index for the requested documents.
                             q = (
-                                db.query(DocumentChunk)
+                                db.query(
+                                    DocumentChunk.id,
+                                    DocumentChunk.content,
+                                    DocumentChunk.doc_metadata,
+                                    DocumentChunk.tenant_id,
+                                    DocumentChunk.document_id,
+                                    DocumentChunk.chunk_index,
+                                    DocumentChunk.page_number,
+                                )
                                 .join(DBDocument)
                                 .filter(DBDocument.status == "completed")
                                 .filter(DocumentChunk.tenant_id == tenant_uuid)
                                 .filter(DocumentChunk.document_id.in_(document_ids))
                                 .order_by(DocumentChunk.document_id.asc(), DocumentChunk.chunk_index.asc())
+                                .enable_eagerloads(False)
+                                .execution_options(stream_results=True)
                             )
                             if max_chunks:
                                 q = q.limit(max_chunks)
-                            chunks = q.all()
-                            if not chunks:
+                            docs: List[Document] = []
+                            for (
+                                chunk_id,
+                                content,
+                                doc_metadata,
+                                tenant_uuid_row,
+                                document_uuid_row,
+                                chunk_index,
+                                page_number,
+                            ) in q.yield_per(2000):
+                                meta = dict(doc_metadata or {})
+                                meta.setdefault("tenant_id", str(tenant_uuid_row))
+                                meta.setdefault("document_id", str(document_uuid_row))
+                                meta.setdefault("chunk_index", int(chunk_index) if chunk_index is not None else None)
+                                meta.setdefault("chunk_id", str(chunk_id))
+                                meta.setdefault("source", meta.get("source", "unknown"))
+                                if page_number is not None and not meta.get("page"):
+                                    meta["page"] = page_number
+                                meta.setdefault("image_id", meta.get("image_id"))
+                                meta.setdefault("image_url", meta.get("image_url"))
+                                docs.append(Document(page_content=content or "", id=str(chunk_id), metadata=meta))
+                            if not docs:
                                 return True
-                            self.build_bm25_index(chunks, tenant_id=tenant_uuid)
+                            self._build_bm25_index_from_documents(docs, tenant_id=tenant_uuid)
                             logger.info(
                                 "BM25 lazy-built (scoped rebuild) %s chunks for tenant %s missing_docs=%s cap=%s",
-                                len(chunks),
+                                len(docs),
                                 tenant_key,
                                 len(missing),
                                 max_chunks,
@@ -197,33 +228,51 @@ class HybridRetriever(BaseRetriever):
                             return True
 
                         q = (
-                            db.query(DocumentChunk)
+                            db.query(
+                                DocumentChunk.id,
+                                DocumentChunk.content,
+                                DocumentChunk.doc_metadata,
+                                DocumentChunk.tenant_id,
+                                DocumentChunk.document_id,
+                                DocumentChunk.chunk_index,
+                                DocumentChunk.page_number,
+                            )
                             .join(DBDocument)
                             .filter(DBDocument.status == "completed")
                             .filter(DocumentChunk.tenant_id == tenant_uuid)
                             .filter(DocumentChunk.document_id.in_(list(missing)))
                             .order_by(DocumentChunk.document_id.asc(), DocumentChunk.chunk_index.asc())
+                            .enable_eagerloads(False)
+                            .execution_options(stream_results=True)
                         )
                         if max_chunks:
                             remaining = max(0, int(max_chunks) - int(existing_count))
                             if remaining <= 0:
                                 return True
                             q = q.limit(remaining)
-                        chunks = q.all()
-                        if not chunks:
-                            return True
                         bm25_docs: List[Document] = []
-                        for chunk in chunks:
-                            meta = dict(chunk.doc_metadata or {})
-                            meta.setdefault("tenant_id", str(chunk.tenant_id))
-                            meta.setdefault("document_id", str(chunk.document_id))
-                            meta.setdefault("chunk_index", chunk.chunk_index)
-                            meta.setdefault("chunk_id", str(chunk.id))
+                        for (
+                            chunk_id,
+                            content,
+                            doc_metadata,
+                            tenant_uuid_row,
+                            document_uuid_row,
+                            chunk_index,
+                            page_number,
+                        ) in q.yield_per(2000):
+                            meta = dict(doc_metadata or {})
+                            meta.setdefault("tenant_id", str(tenant_uuid_row))
+                            meta.setdefault("document_id", str(document_uuid_row))
+                            meta.setdefault("chunk_index", int(chunk_index) if chunk_index is not None else None)
+                            meta.setdefault("chunk_id", str(chunk_id))
                             meta.setdefault("source", meta.get("source", "unknown"))
-                            meta.setdefault("page", chunk.page_number or meta.get("page"))
+                            if page_number is not None and not meta.get("page"):
+                                meta["page"] = page_number
                             meta.setdefault("image_id", meta.get("image_id"))
                             meta.setdefault("image_url", meta.get("image_url"))
-                            bm25_docs.append(Document(page_content=chunk.content, id=str(chunk.id), metadata=meta))
+                            bm25_docs.append(Document(page_content=content or "", id=str(chunk_id), metadata=meta))
+                        if not bm25_docs:
+                            return True
                         self.upsert_bm25_documents(bm25_docs, tenant_id=tenant_uuid)
                         logger.info(
                             "BM25 lazy-extended %s chunks for tenant %s (missing_docs=%s)",
@@ -235,23 +284,53 @@ class HybridRetriever(BaseRetriever):
 
                 # Cold start: build an initial index (full tenant or scoped document_ids).
                 q = (
-                    db.query(DocumentChunk)
+                    db.query(
+                        DocumentChunk.id,
+                        DocumentChunk.content,
+                        DocumentChunk.doc_metadata,
+                        DocumentChunk.tenant_id,
+                        DocumentChunk.document_id,
+                        DocumentChunk.chunk_index,
+                        DocumentChunk.page_number,
+                    )
                     .join(DBDocument)
                     .filter(DBDocument.status == "completed")
                     .filter(DocumentChunk.tenant_id == tenant_uuid)
+                    .enable_eagerloads(False)
+                    .execution_options(stream_results=True)
                 )
                 if document_ids:
                     q = q.filter(DocumentChunk.document_id.in_(document_ids))
                 q = q.order_by(DocumentChunk.document_id.asc(), DocumentChunk.chunk_index.asc())
                 if max_chunks:
                     q = q.limit(max_chunks)
-                chunks = q.all()
-                if not chunks:
+                docs: List[Document] = []
+                for (
+                    chunk_id,
+                    content,
+                    doc_metadata,
+                    tenant_uuid_row,
+                    document_uuid_row,
+                    chunk_index,
+                    page_number,
+                ) in q.yield_per(2000):
+                    meta = dict(doc_metadata or {})
+                    meta.setdefault("tenant_id", str(tenant_uuid_row))
+                    meta.setdefault("document_id", str(document_uuid_row))
+                    meta.setdefault("chunk_index", int(chunk_index) if chunk_index is not None else None)
+                    meta.setdefault("chunk_id", str(chunk_id))
+                    meta.setdefault("source", meta.get("source", "unknown"))
+                    if page_number is not None and not meta.get("page"):
+                        meta["page"] = page_number
+                    meta.setdefault("image_id", meta.get("image_id"))
+                    meta.setdefault("image_url", meta.get("image_url"))
+                    docs.append(Document(page_content=content or "", id=str(chunk_id), metadata=meta))
+                if not docs:
                     return False
-                self.build_bm25_index(chunks, tenant_id=tenant_uuid)
+                self._build_bm25_index_from_documents(docs, tenant_id=tenant_uuid)
                 logger.info(
                     "BM25 lazy-built %s chunks for tenant %s (doc_ids=%s)",
-                    len(chunks),
+                    len(docs),
                     tenant_key,
                     len(document_ids) if document_ids else 0,
                 )
@@ -289,12 +368,14 @@ class HybridRetriever(BaseRetriever):
             meta.setdefault("image_url", meta.get("image_url"))
 
             docs.append(Document(page_content=chunk.content, id=str(chunk.id), metadata=meta))
+        self._build_bm25_index_from_documents(docs, tenant_id=tenant_id)
 
-        retriever = BM25Retriever.from_documents(
-            docs,
-            preprocess_func=self._bm25_tokenize,
-            k=10,
-        )
+    def _build_bm25_index_from_documents(self, docs: List[Document], *, tenant_id: Optional[UUID] = None) -> None:
+        """从 LangChain Document 列表构建 BM25（避免依赖 ORM 对象）。"""
+        if not docs:
+            return
+        tenant_key = self._tenant_key(tenant_id)
+        retriever = BM25Retriever.from_documents(docs, preprocess_func=self._bm25_tokenize, k=10)
         self._bm25_retrievers[tenant_key] = retriever
         self._bm25_docs[tenant_key] = docs
         self._refresh_bm25_doc_ids(tenant_key, docs)
@@ -308,6 +389,66 @@ class HybridRetriever(BaseRetriever):
             lookup[f"{doc_id}:{chunk_index}"] = str(d.id)
         self._chunk_id_lookup[tenant_key] = lookup
         logger.info("BM25 index built with %s chunks for tenant %s", len(docs), tenant_key)
+
+    def build_bm25_index_from_db(
+        self,
+        db: Session,
+        *,
+        tenant_id: UUID,
+        document_ids: Optional[List[UUID]] = None,
+        max_chunks: int = 0,
+        batch_size: int = 2000,
+    ) -> int:
+        """
+        从 DB 流式构建 BM25，避免 `.all()` 拉取巨大 ORM 列表导致的内存峰值。
+        仍会在内存持有 BM25 的 docs 语料（BM25 本身需要），但避免 ORM 对象开销。
+        """
+        q = (
+            db.query(
+                DocumentChunk.id,
+                DocumentChunk.content,
+                DocumentChunk.doc_metadata,
+                DocumentChunk.tenant_id,
+                DocumentChunk.document_id,
+                DocumentChunk.chunk_index,
+                DocumentChunk.page_number,
+            )
+            .join(DBDocument)
+            .filter(DBDocument.status == "completed")
+            .filter(DocumentChunk.tenant_id == tenant_id)
+            .order_by(DocumentChunk.document_id.asc(), DocumentChunk.chunk_index.asc())
+            .enable_eagerloads(False)
+            .execution_options(stream_results=True)
+        )
+        if document_ids:
+            q = q.filter(DocumentChunk.document_id.in_(document_ids))
+        if max_chunks and int(max_chunks) > 0:
+            q = q.limit(int(max_chunks))
+
+        docs: List[Document] = []
+        for (
+            chunk_id,
+            content,
+            doc_metadata,
+            tenant_uuid,
+            document_uuid,
+            chunk_index,
+            page_number,
+        ) in q.yield_per(int(batch_size)):
+            meta = dict(doc_metadata or {})
+            meta.setdefault("tenant_id", str(tenant_uuid))
+            meta.setdefault("document_id", str(document_uuid))
+            meta.setdefault("chunk_index", int(chunk_index) if chunk_index is not None else None)
+            meta.setdefault("chunk_id", str(chunk_id))
+            meta.setdefault("source", meta.get("source", "unknown"))
+            if page_number is not None and not meta.get("page"):
+                meta["page"] = page_number
+            meta.setdefault("image_id", meta.get("image_id"))
+            meta.setdefault("image_url", meta.get("image_url"))
+            docs.append(Document(page_content=content or "", id=str(chunk_id), metadata=meta))
+
+        self._build_bm25_index_from_documents(docs, tenant_id=tenant_id)
+        return len(docs)
 
     def upsert_bm25_documents(self, docs: List[Document], tenant_id: Optional[UUID] = None):
         """
