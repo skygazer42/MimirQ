@@ -3,7 +3,7 @@
  */
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { documentApi } from '@/lib/api-client'
 import type { Document } from '@/types'
 import { useParserBackendPreference } from '@/contexts/parser-backend-context'
@@ -14,6 +14,7 @@ export function useDocuments() {
   const [documents, setDocuments] = useState<Document[]>([])
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const pollTimersRef = useRef<Map<string, number>>(new Map())
   const { parserBackend } = useParserBackendPreference()
   const { chunkStrategy } = useChunkStrategyPreference()
   const { enabled: pipelineOverridesEnabled, options: pipelineOptions } = usePipelineOptions()
@@ -47,7 +48,14 @@ export function useDocuments() {
    */
   const pollDocumentStatus = useCallback(
     (documentId: string) => {
-      const interval = setInterval(async () => {
+      const existing = pollTimersRef.current.get(documentId)
+      if (existing) {
+        clearTimeout(existing)
+        pollTimersRef.current.delete(documentId)
+      }
+
+      const startedAt = Date.now()
+      const pollOnce = async () => {
         try {
           const status = await documentApi.getStatus(documentId)
 
@@ -68,22 +76,31 @@ export function useDocuments() {
 
           // 如果处理完成或失败，停止轮询
           if (status.status === 'completed' || status.status === 'failed') {
-            clearInterval(interval)
+            pollTimersRef.current.delete(documentId)
 
             // 重新加载完整的文档信息
             const fullDoc = await documentApi.get(documentId)
             setDocuments((prev) =>
               prev.map((doc) => (doc.id === documentId ? fullDoc : doc))
             )
+            return
           }
         } catch (err) {
           console.error('Poll status error:', err)
-          clearInterval(interval)
+          pollTimersRef.current.delete(documentId)
+          return
         }
-      }, 2000) // 每 2 秒轮询一次
 
-      // 30 秒后停止轮询
-      setTimeout(() => clearInterval(interval), 30000)
+        if (Date.now() - startedAt > 30000) {
+          pollTimersRef.current.delete(documentId)
+          return
+        }
+
+        const timeoutId = window.setTimeout(pollOnce, 2000)
+        pollTimersRef.current.set(documentId, timeoutId)
+      }
+
+      pollOnce()
     },
     []
   )
