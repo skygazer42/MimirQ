@@ -21,11 +21,14 @@ import {
   BarChart3,
   Wand2,
   ShieldCheck,
+  LogIn,
+  LogOut,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import { ModeToggle } from '@/components/mode-toggle'
 import { API_V1_BASE_URL } from '@/lib/env'
+import { useAuth } from '@/hooks/use-auth'
 
 // 导航菜单配置
 const menuItems = [
@@ -99,6 +102,7 @@ export function Navbar({
   const pathname = usePathname()
   const router = useRouter()
   const [backendOk, setBackendOk] = useState<boolean | null>(null)
+  const { user, isAuthenticated, isDevMode, logout } = useAuth()
   const closeSidebarOnMobile = useCallback(() => {
     if (typeof window === 'undefined') return
     try {
@@ -228,16 +232,41 @@ export function Navbar({
         {/* 底部信息 */}
         <div className="p-4 border-t border-slate-50 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/30">
           <div className="flex items-center gap-2">
-            <div className="flex-1 flex items-center gap-3 p-2 rounded-xl hover:bg-white dark:hover:bg-slate-800 hover:shadow-sm transition-all cursor-pointer border border-transparent hover:border-slate-100 dark:hover:border-slate-700">
+            <div className="flex-1 flex items-center gap-3 p-2 rounded-xl hover:bg-white dark:hover:bg-slate-800 hover:shadow-sm transition-all border border-transparent hover:border-slate-100 dark:hover:border-slate-700">
               <div className="w-9 h-9 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-full flex items-center justify-center text-white text-sm font-bold shadow-inner">
-                U
+                {(user?.username || user?.email || 'U').slice(0, 1).toUpperCase()}
               </div>
               <div className="flex-1 min-w-0">
-                <p className="text-sm font-semibold text-slate-700 dark:text-slate-200 truncate">用户</p>
-                <p className="text-xs text-slate-400 dark:text-slate-500 truncate">专业版</p>
+                <p className="text-sm font-semibold text-slate-700 dark:text-slate-200 truncate">
+                  {user?.username || user?.email || (isDevMode ? '开发模式' : '未登录')}
+                </p>
+                <p className="text-xs text-slate-400 dark:text-slate-500 truncate">
+                  {isAuthenticated ? user?.email || '已登录' : '无需登录可继续开发'}
+                </p>
               </div>
             </div>
-            <ModeToggle />
+            <div className="flex items-center gap-2">
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8 rounded-full"
+                onClick={() => {
+                  if (isAuthenticated) {
+                    logout()
+                    return
+                  }
+                  router.push('/auth')
+                }}
+                title={isAuthenticated ? '退出登录' : '登录 / 注册'}
+              >
+                {isAuthenticated ? (
+                  <LogOut className="h-4 w-4" />
+                ) : (
+                  <LogIn className="h-4 w-4" />
+                )}
+              </Button>
+              <ModeToggle />
+            </div>
           </div>
 
           <div className="mt-2 flex items-center gap-2 text-xs text-slate-400 dark:text-slate-500">
