@@ -24,7 +24,13 @@ import time
 
 from app.rag.core.citations import build_citations_from_docs
 from app.rag.core.conversation import format_history_text
-from app.rag.core.text import parse_json_from_text, extract_evidence_text, guess_retrieval_mode, normalize_retrieval_mode
+from app.rag.core.text import (
+    parse_json_from_text,
+    extract_evidence_text,
+    guess_retrieval_mode,
+    normalize_retrieval_mode,
+    should_rewrite_query,
+)
 from app.rag.retriever import hybrid_retriever
 from app.rag.engine import get_rag_engine
 from app.rag.checkpointer.factory import get_checkpointer
@@ -230,6 +236,7 @@ def _retrieve_node(state: RAGState) -> RAGState:
         settings.ENABLE_QUERY_REWRITE
         and history_text != "（无历史对话）"
         and len(question) <= settings.QUERY_REWRITE_MAX_CHARS
+        and should_rewrite_query(question)
     ):
         rewrite_llm = engine.models.get("fast") or engine.models.get("default")  # type: ignore[attr-defined]
         rewrite_model_used = getattr(rewrite_llm, "model_name", None) or getattr(rewrite_llm, "model", None)
@@ -418,9 +425,26 @@ def _retrieve_node(state: RAGState) -> RAGState:
     if hyde_used and hyde_text:
         retrieval_queries.append(("hyde", hyde_text))
 
+    # Deduplicate query variants (avoid redundant retrieval calls).
+    seen_queries: set[str] = set()
+    deduped_queries: List[tuple[str, str]] = []
+    for kind, q in retrieval_queries:
+        norm = " ".join((q or "").strip().split())
+        if not norm:
+            continue
+        key = norm.casefold() if norm.isascii() else norm
+        if key in seen_queries:
+            continue
+        seen_queries.add(key)
+        deduped_queries.append((kind, norm))
+    retrieval_queries = deduped_queries
+
     docs_by_query: List[List[Document]] = []
     retrieval_errors: List[str] = []
+    retrieval_per_query: List[Dict[str, Any]] = []
     start = time.time()
+    retrieval_parallelism = max(1, int(getattr(settings, "RETRIEVAL_QUERY_PARALLELISM", 1) or 1))
+    retrieval_plan: List[tuple[str, str, Any]] = []
     for kind, q in retrieval_queries:
         r = retriever
         if kind != "main":
@@ -434,12 +458,37 @@ def _retrieve_node(state: RAGState) -> RAGState:
                 )
             else:
                 r = retriever.model_copy(update={"enable_reranker": False})
+        retrieval_plan.append((kind, q, r))
+
+    def _invoke_with_timing(kind: str, q: str, r: Any) -> tuple[str, List[Document], str | None, float]:
+        t0 = time.time()
         try:
             docs_i = r.invoke(q)
+            docs_i = engine._annotate_docs_with_role(docs_i or [], kind)  # type: ignore[attr-defined]
+            return kind, (docs_i or []), None, time.time() - t0
         except Exception as exc:  # noqa: BLE001
-            retrieval_errors.append(f"{kind}:{str(exc)[:160]}")
-            docs_i = []
-        docs_by_query.append(docs_i or [])
+            return kind, [], str(exc)[:200], time.time() - t0
+
+    if retrieval_parallelism <= 1 or len(retrieval_plan) <= 1:
+        for kind, q, r in retrieval_plan:
+            kind, docs_i, err, elapsed_i = _invoke_with_timing(kind, q, r)
+            retrieval_per_query.append(
+                {"kind": kind, "query_chars": len(q or ""), "elapsed_sec": round(elapsed_i, 3), "ok": err is None}
+            )
+            if err:
+                retrieval_errors.append(f"{kind}:{err[:160]}")
+            docs_by_query.append(docs_i or [])
+    else:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=retrieval_parallelism) as pool:
+            futures = [pool.submit(_invoke_with_timing, kind, q, r) for kind, q, r in retrieval_plan]
+            for fut in futures:
+                kind, docs_i, err, elapsed_i = fut.result()
+                retrieval_per_query.append(
+                    {"kind": kind, "query_chars": len(q or ""), "elapsed_sec": round(elapsed_i, 3), "ok": err is None}
+                )
+                if err:
+                    retrieval_errors.append(f"{kind}:{err[:160]}")
+                docs_by_query.append(docs_i or [])
     retrieval_elapsed = time.time() - start
 
     if len(docs_by_query) <= 1:
@@ -461,6 +510,9 @@ def _retrieve_node(state: RAGState) -> RAGState:
     metrics["retrieval_mode"] = request_retrieval_mode
     metrics["retrieval_mode_requested"] = requested_retrieval_mode
     metrics["retrieval_mode_auto_routed"] = bool(retrieval_mode_routed)
+    metrics["retrieval_query_parallelism"] = retrieval_parallelism
+    metrics["retrieval_query_count"] = len(retrieval_plan)
+    metrics["retrieval_per_query"] = retrieval_per_query[:8]
     metrics["vector_backend"] = settings.VECTOR_BACKEND
     if retrieval_errors:
         metrics["retrieval_errors"] = retrieval_errors[:5]

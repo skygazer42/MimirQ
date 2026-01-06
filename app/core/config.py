@@ -151,6 +151,8 @@ class Settings(BaseSettings):
     CHUNK_MIN_CHARS: int = 30
     RETRIEVAL_TOP_K: int = 5
     SIMILARITY_THRESHOLD: float = 0.7
+    # Concurrent retrieval across query variants (multi-query / decompose / HyDE).
+    RETRIEVAL_QUERY_PARALLELISM: int = 1
     # MMR (Maximal Marginal Relevance) settings
     RETRIEVAL_MMR_LAMBDA: float = 0.7  # Balance relevance vs diversity (0=diversity, 1=relevance)
     RETRIEVAL_MMR_FETCH_K_MULTIPLIER: int = 4  # Fetch k*multiplier candidates for MMR selection
@@ -449,6 +451,10 @@ class Settings(BaseSettings):
         if self.RETRIEVAL_MMR_LAMBDA < 0 or self.RETRIEVAL_MMR_LAMBDA > 1:
             raise ValueError(
                 f"RETRIEVAL_MMR_LAMBDA ({self.RETRIEVAL_MMR_LAMBDA}) must be between 0 and 1"
+            )
+        if int(self.RETRIEVAL_QUERY_PARALLELISM or 0) < 1:
+            raise ValueError(
+                f"RETRIEVAL_QUERY_PARALLELISM ({self.RETRIEVAL_QUERY_PARALLELISM}) must be >= 1"
             )
 
         # Validate workflow mode
