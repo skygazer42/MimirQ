@@ -327,6 +327,7 @@ class Settings(BaseSettings):
     LONG_TERM_MEMORY_ENABLED: bool = False
     LONG_TERM_MEMORY_TOP_K: int = 3
     LONG_TERM_MEMORY_MIN_LEN: int = 20
+    LONG_TERM_MEMORY_MAX_MESSAGES: int = 200
     MEMORY_STORE_TYPE: str = "memory"  # memory | sqlite
     MEMORY_SQLITE_PATH: str = "./data/memory.db"
     # Short-term memory management

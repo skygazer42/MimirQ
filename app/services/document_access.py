@@ -22,7 +22,7 @@ def filter_allowed_document_ids(
         return []
 
     documents = (
-        db.query(DBDocument)
+        db.query(DBDocument.id, DBDocument.dataset_id)
         .filter(
             DBDocument.tenant_id == tenant_id,
             DBDocument.id.in_(doc_ids),
@@ -30,7 +30,7 @@ def filter_allowed_document_ids(
         .all()
     )
 
-    found_ids = {doc.id for doc in documents}
+    found_ids = {doc_id for doc_id, _ in documents}
     missing = set(doc_ids) - found_ids
     if missing:
         raise HTTPException(
@@ -38,15 +38,54 @@ def filter_allowed_document_ids(
             detail=f"Documents not found: {', '.join([str(m) for m in missing])}",
         )
 
+    dataset_ids = {dataset_id for _, dataset_id in documents if dataset_id}
+    dataset_map: dict[UUID, Dataset] = {}
+    allowed_dataset_ids: set[UUID] = set()
+    partial_dataset_ids: set[UUID] = set()
+
+    if dataset_ids:
+        datasets = (
+            db.query(Dataset)
+            .filter(Dataset.tenant_id == tenant_id, Dataset.id.in_(list(dataset_ids)))
+            .all()
+        )
+        dataset_map = {ds.id: ds for ds in datasets}
+
+        for ds in datasets:
+            if ds.owner_id == account_id:
+                allowed_dataset_ids.add(ds.id)
+                continue
+            if ds.permission == DatasetPermissionEnum.ALL_TEAM_MEMBERS:
+                allowed_dataset_ids.add(ds.id)
+                continue
+            if ds.permission == DatasetPermissionEnum.PARTIAL_MEMBERS:
+                partial_dataset_ids.add(ds.id)
+
+        if partial_dataset_ids:
+            rows = (
+                db.query(DatasetPermission.dataset_id)
+                .filter(
+                    DatasetPermission.tenant_id == tenant_id,
+                    DatasetPermission.account_id == account_id,
+                    DatasetPermission.dataset_id.in_(list(partial_dataset_ids)),
+                )
+                .all()
+            )
+            allowed_dataset_ids.update(row[0] for row in rows)
+
     allowed_ids: set[UUID] = set()
-    for doc in documents:
-        if doc.dataset_id:
-            ds = DatasetService.get_dataset(db, tenant_id, doc.dataset_id)
-            if DatasetService.check_dataset_permission(db, ds, account_id):
-                allowed_ids.add(doc.id)
+    for doc_id, dataset_id in documents:
+        if dataset_id:
+            ds = dataset_map.get(dataset_id)
+            if not ds:
+                continue
+            if ds.permission == DatasetPermissionEnum.ONLY_ME and ds.owner_id != account_id:
+                continue
+            if dataset_id in allowed_dataset_ids:
+                allowed_ids.add(doc_id)
         else:
             # legacy document without dataset binding: allow for now
-            allowed_ids.add(doc.id)
+            allowed_ids.add(doc_id)
 
     if not allowed_ids:
         raise HTTPException(status_code=403, detail="No accessible documents for this request")
@@ -70,7 +109,10 @@ def list_accessible_document_ids(
     It enforces dataset permissions without issuing 1 query per document.
     """
     DatasetService.ensure_member(db, tenant_id, account_id)
-    query = db.query(DBDocument).filter(DBDocument.tenant_id == tenant_id)
+    query = (
+        db.query(DBDocument.id, DBDocument.dataset_id, DBDocument.updated_at)
+        .filter(DBDocument.tenant_id == tenant_id)
+    )
     if status:
         query = query.filter(DBDocument.status == status)
 
@@ -83,9 +125,9 @@ def list_accessible_document_ids(
         return []
 
     # Documents without dataset binding are treated as legacy and allowed.
-    dataset_ids = {doc.dataset_id for doc in documents if doc.dataset_id}
+    dataset_ids = {dataset_id for _, dataset_id, _ in documents if dataset_id}
     if not dataset_ids:
-        return [doc.id for doc in documents]
+        return [doc_id for doc_id, _, _ in documents]
 
     datasets = (
         db.query(Dataset)
@@ -119,15 +161,15 @@ def list_accessible_document_ids(
         allowed_dataset_ids.update(row[0] for row in rows)
 
     accessible: List[UUID] = []
-    for doc in documents:
-        if not doc.dataset_id:
-            accessible.append(doc.id)
+    for doc_id, dataset_id, _ in documents:
+        if not dataset_id:
+            accessible.append(doc_id)
             continue
-        ds = dataset_map.get(doc.dataset_id)
+        ds = dataset_map.get(dataset_id)
         if not ds:
             continue
         if ds.permission == DatasetPermissionEnum.ONLY_ME and ds.owner_id != account_id:
             continue
-        if doc.dataset_id in allowed_dataset_ids:
-            accessible.append(doc.id)
+        if dataset_id in allowed_dataset_ids:
+            accessible.append(doc_id)
     return accessible
