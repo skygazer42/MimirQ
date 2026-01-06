@@ -4,7 +4,7 @@
  * 知识库管理页面
  * 优化版：卡片视图、视觉增强、交互优化、深色模式适配
  */
-import { useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import {
   Database,
   FileText,
@@ -75,18 +75,50 @@ export default function KnowledgePage() {
   const [searchError, setSearchError] = useState<string | null>(null)
   const [isSearching, setIsSearching] = useState(false)
 
-  // 计算统计数据
-  const totalDocs = documents.length
-  const completedDocs = documents.filter(d => d.status === 'completed').length
-  const processingDocs = documents.filter(d => d.status === 'processing' || d.status === 'pending').length
-  const failedDocs = documents.filter(d => d.status === 'failed').length
-  const totalChunks = documents.reduce((sum, d) => sum + (d.chunk_count || 0), 0)
-  const totalSize = documents.reduce((sum, d) => sum + (d.file_size || 0), 0)
-  
-  const showExtraCard = processingDocs > 0 || failedDocs > 0
+  const stats = useMemo(() => {
+    const totalDocs = documents.length
+    let completedDocs = 0
+    let processingDocs = 0
+    let failedDocs = 0
+    let totalChunks = 0
+    let totalSize = 0
+
+    for (const doc of documents) {
+      totalChunks += doc.chunk_count || 0
+      totalSize += doc.file_size || 0
+
+      if (doc.status === 'completed') {
+        completedDocs += 1
+      } else if (doc.status === 'failed') {
+        failedDocs += 1
+      } else if (doc.status === 'processing' || doc.status === 'pending') {
+        processingDocs += 1
+      }
+    }
+
+    return {
+      totalDocs,
+      completedDocs,
+      processingDocs,
+      failedDocs,
+      totalChunks,
+      totalSize,
+      showExtraCard: processingDocs > 0 || failedDocs > 0,
+    }
+  }, [documents])
+
+  const {
+    totalDocs,
+    completedDocs,
+    processingDocs,
+    failedDocs,
+    totalChunks,
+    totalSize,
+    showExtraCard,
+  } = stats
 
   // 处理文件上传
-  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileUpload = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files
     if (!files || files.length === 0) return
 
@@ -98,10 +130,10 @@ export default function KnowledgePage() {
       }
     }
     e.target.value = ''
-  }
+  }, [uploadDocument])
 
   // 检索测试
-  const handleSearch = async () => {
+  const handleSearch = useCallback(async () => {
     if (!searchQuery.trim()) return
 
     setIsSearching(true)
@@ -129,7 +161,7 @@ export default function KnowledgePage() {
     } finally {
       setIsSearching(false)
     }
-  }
+  }, [searchQuery])
 
   // 获取状态配置
   const getStatusConfig = (status: string) => {

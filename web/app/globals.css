@@ -25,6 +25,14 @@
     --ring: 222.2 84% 4.9%;
     --radius: 0.75rem;
   }
+
+  html {
+    color-scheme: light;
+  }
+
+  html.dark {
+    color-scheme: dark;
+  }
 }
 
 @layer base {
@@ -34,6 +42,12 @@
   body {
     @apply bg-background text-foreground antialiased;
     font-feature-settings: "rlig" 1, "calt" 1;
+    scrollbar-gutter: stable;
+  }
+
+  :focus-visible {
+    outline: 2px solid hsl(var(--ring));
+    outline-offset: 2px;
   }
 }
 
@@ -51,6 +65,10 @@
   @apply bg-slate-200 rounded-full hover:bg-slate-300 transition-colors;
 }
 
+.dark ::-webkit-scrollbar-thumb {
+  @apply bg-slate-700 hover:bg-slate-600;
+}
+
 /* 打字机效果的光标 */
 @keyframes blink {
   0%, 50% { opacity: 1; }
@@ -64,4 +82,13 @@
   background-color: currentColor;
   margin-left: 2px;
   animation: blink 1s infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }
