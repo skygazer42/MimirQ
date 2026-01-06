@@ -3,7 +3,7 @@
  */
 'use client'
 
-import { useState, useEffect, useRef, Suspense, useCallback } from 'react'
+import { useState, useEffect, useRef, Suspense, useCallback, useDeferredValue, useMemo } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import {
   MessageSquare,
@@ -31,6 +31,9 @@ export default function HistoryPage() {
   )
 }
 
+const DEFAULT_VISIBLE_MESSAGES = 80
+const LOAD_MORE_STEP = 40
+
 function HistoryPageLoading() {
   return (
     <div className="flex h-screen overflow-hidden bg-white dark:bg-slate-950">
@@ -54,8 +57,10 @@ function HistoryPageContent() {
   const [isLoadingMessages, setIsLoadingMessages] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
   const [showDeleteConfirm, setShowDeleteConfirm] = useState<string | null>(null)
+  const [visibleCount, setVisibleCount] = useState(DEFAULT_VISIBLE_MESSAGES)
 
   const messagesEndRef = useRef<HTMLDivElement>(null)
+  const deferredSearchQuery = useDeferredValue(searchQuery)
 
   // define handlers first to avoid ReferenceError
   const loadConversations = useCallback(async () => {
@@ -111,6 +116,10 @@ function HistoryPageContent() {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
 
+  useEffect(() => {
+    setVisibleCount(DEFAULT_VISIBLE_MESSAGES)
+  }, [selectedConversation?.id])
+
   const handleDeleteConversation = async (conversationId: string) => {
     try {
       await chatApi.deleteConversation(conversationId)
@@ -140,15 +149,27 @@ function HistoryPageContent() {
   }
 
   // 过滤对话
-  const filteredConversations = conversations.filter(
-    (c) =>
-      (c.title || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
-      (c.last_message || '').toLowerCase().includes(searchQuery.toLowerCase())
-  )
+  const filteredConversations = useMemo(() => {
+    const term = deferredSearchQuery.trim().toLowerCase()
+    if (!term) return conversations
+    return conversations.filter(
+      (c) =>
+        (c.title || '').toLowerCase().includes(term) ||
+        (c.last_message || '').toLowerCase().includes(term)
+    )
+  }, [conversations, deferredSearchQuery])
 
   // 按日期分组
-  const groupedConversations = groupConversationsByDate(filteredConversations)
+  const groupedConversations = useMemo(
+    () => groupConversationsByDate(filteredConversations),
+    [filteredConversations]
+  )
   const groupOrder = ['今天', '昨天', '最近7天', '最近30天', '更早']
+  const hiddenMessageCount = Math.max(0, messages.length - visibleCount)
+  const visibleMessages = useMemo(
+    () => messages.slice(-visibleCount),
+    [messages, visibleCount]
+  )
 
   return (
     <div className="flex h-screen overflow-hidden bg-white dark:bg-slate-950 transition-colors duration-300">
@@ -264,7 +285,21 @@ function HistoryPageContent() {
                   </div>
                 ) : (
                   <div className="max-w-3xl mx-auto space-y-10">
-                    {messages.map((message) => (
+                    {hiddenMessageCount > 0 && (
+                      <div className="flex justify-center">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() =>
+                            setVisibleCount((count) => Math.min(messages.length, count + LOAD_MORE_STEP))
+                          }
+                          className="rounded-full text-xs"
+                        >
+                          显示更早消息（{hiddenMessageCount}）
+                        </Button>
+                      </div>
+                    )}
+                    {visibleMessages.map((message) => (
                       <ChatMessageItem key={message.id} message={message} />
                     ))}
                     <div ref={messagesEndRef} className="h-4" />
