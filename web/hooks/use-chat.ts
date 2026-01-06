@@ -3,7 +3,7 @@
  */
 'use client'
 
-import { useCallback, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import type { Citation, Message, StreamEvent } from '@/types'
 import { getAuthHeaders } from '@/lib/auth-headers'
 import { API_TIMEOUT_MS, API_V1_BASE_URL } from '@/lib/env'
@@ -39,9 +39,24 @@ export function useChat({
   const [currentResponse, setCurrentResponse] = useState('')
   const [currentCitations, setCurrentCitations] = useState<Citation[]>([])
 
+  const messagesRef = useRef<Message[]>([])
   const abortControllerRef = useRef<AbortController | null>(null)
   const fullResponseRef = useRef<string>('')
   const rafIdRef = useRef<number | null>(null)
+
+  useEffect(() => {
+    messagesRef.current = messages
+  }, [messages])
+
+  useEffect(() => {
+    return () => {
+      abortControllerRef.current?.abort()
+      if (rafIdRef.current != null) {
+        window.cancelAnimationFrame(rafIdRef.current)
+        rafIdRef.current = null
+      }
+    }
+  }, [])
 
   const scheduleCurrentResponseUpdate = useCallback(() => {
     if (rafIdRef.current != null) return
@@ -131,7 +146,7 @@ export function useChat({
       }, API_TIMEOUT_MS)
 
       try {
-        const history = messages.slice(-10).map((m) => ({
+        const history = messagesRef.current.slice(-10).map((m) => ({
           role: m.role,
           content: m.content,
         }))
@@ -280,7 +295,6 @@ export function useChat({
       documentIds,
       enableLongTermMemory,
       isLoading,
-      messages,
       onConversationId,
       onError,
       promptTemplateId,
