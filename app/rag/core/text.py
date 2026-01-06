@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import json
 import re
-from typing import Any, Dict, Tuple
+from typing import Any, Dict, Tuple, Literal
 
 
 _JSON_FENCE_RE = re.compile(r"```(?:json)?\s*(.*?)\s*```", flags=re.IGNORECASE | re.DOTALL)
@@ -17,6 +17,10 @@ _AUTO_KEYWORD_HINT_RE = re.compile(
     r"(traceback|exception|stack\s*trace|error|http\s*\d{3}|0x[0-9a-f]{4,}|[a-z_][a-z0-9_]{2,}\(|\.\w{1,5}\b|/|\\\\|::)",
     flags=re.IGNORECASE,
 )
+_QUERY_REWRITE_TRIGGER_RE = re.compile(
+    r"(它们?|他(们)?|她(们)?|这个|这(段|部分|些)|那(个)?|上述|上面|前面|之前|刚才|上文|下文|这里|那里|继续|同上|同理)",
+    flags=re.IGNORECASE,
+)
 
 
 def estimate_tokens(text: str) -> int:
@@ -24,7 +28,34 @@ def estimate_tokens(text: str) -> int:
     return max(1, len(text) // 4)
 
 
-def parse_json_from_text(text: str) -> Tuple[Any | None, Dict[str, Any]]:
+def _extract_string_items_from_lines(text: str, *, max_items: int = 12) -> list[str]:
+    max_items = max(1, int(max_items or 0))
+    items: list[str] = []
+    seen: set[str] = set()
+    for raw_line in (text or "").splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+        # Strip common list prefixes: "- ", "* ", "1. ", "1) ", "• ".
+        line = re.sub(r"^[-*•]\s+", "", line)
+        line = re.sub(r"^\d+\s*[.)]\s+", "", line)
+        line = line.strip().strip('"').strip("'").strip()
+        if not line:
+            continue
+        if line in seen:
+            continue
+        seen.add(line)
+        items.append(line)
+        if len(items) >= max_items:
+            break
+    return items
+
+
+def parse_json_from_text(
+    text: str,
+    *,
+    expected: Literal["any", "array", "object"] = "any",
+) -> Tuple[Any | None, Dict[str, Any]]:
     """
     Best-effort JSON parser for LLM outputs.
 
@@ -60,10 +91,36 @@ def parse_json_from_text(text: str) -> Tuple[Any | None, Dict[str, Any]]:
             continue
         try:
             data = json.loads(candidate)
-            return data, {"ok": True, "method": method, "error": None}
+            if expected == "any":
+                return data, {"ok": True, "method": method, "error": None}
+            if expected == "object":
+                if isinstance(data, dict):
+                    return data, {"ok": True, "method": method, "error": None}
+                last_error = f"expected_object_got_{type(data).__name__}"
+                continue
+            if expected == "array":
+                if isinstance(data, list):
+                    return data, {"ok": True, "method": method, "error": None}
+                if isinstance(data, dict):
+                    # Common LLM wrapper formats: {"items":[...]} / {"queries":[...]}.
+                    for k in ("items", "queries", "data", "results"):
+                        v = data.get(k)
+                        if isinstance(v, list):
+                            return v, {"ok": True, "method": f"{method}:wrapped:{k}", "error": None}
+                    # Fall back: if there's exactly one list value, unwrap it.
+                    list_values = [v for v in data.values() if isinstance(v, list)]
+                    if len(list_values) == 1:
+                        return list_values[0], {"ok": True, "method": f"{method}:wrapped:single_list", "error": None}
+                last_error = f"expected_array_got_{type(data).__name__}"
+                continue
         except Exception as exc:  # noqa: BLE001
             last_error = str(exc)[:200]
             continue
+
+    if expected == "array":
+        items = _extract_string_items_from_lines(raw, max_items=12)
+        if items:
+            return items, {"ok": True, "method": "lines", "error": None}
 
     return None, {"ok": False, "method": None, "error": last_error or "invalid_json"}
 
@@ -181,6 +238,22 @@ def guess_retrieval_mode(query: str) -> str:
     return "hybrid"
 
 
+def should_rewrite_query(question: str, *, short_len: int = 12) -> bool:
+    """
+    Heuristic guard for Query Rewrite (reduce unnecessary LLM calls).
+
+    - Always rewrite very short follow-ups (likely coreference)
+    - Otherwise, rewrite only when we detect coreference-like triggers
+    """
+    q = (question or "").strip()
+    if not q:
+        return False
+    short_len = max(1, int(short_len or 0))
+    if len(q) <= short_len:
+        return True
+    return bool(_QUERY_REWRITE_TRIGGER_RE.search(q))
+
+
 _VALID_RETRIEVAL_MODES = {"hybrid", "vector", "keyword", "mmr", "auto"}
 _RETRIEVAL_MODE_ALIASES = {
     "fulltext": "keyword",
@@ -206,4 +279,3 @@ def normalize_retrieval_mode(mode: str | None) -> str:
     if mapped in _VALID_RETRIEVAL_MODES:
         return mapped
     return "hybrid"
-

@@ -20,7 +20,13 @@ from app.rag.core.conversation import format_history_text
 from app.rag.core.citations import build_citations_from_docs
 from app.rag.core.http import httpx_trust_env
 from app.rag.core.logging import get_logger
-from app.rag.core.text import parse_json_from_text, extract_evidence_text, guess_retrieval_mode, normalize_retrieval_mode
+from app.rag.core.text import (
+    parse_json_from_text,
+    extract_evidence_text,
+    guess_retrieval_mode,
+    normalize_retrieval_mode,
+    should_rewrite_query,
+)
 from app.rag.retriever import hybrid_retriever
 from app.services.metrics_logger import log_metrics
 from langchain_openai import ChatOpenAI
@@ -312,6 +318,7 @@ class RAGEngine:
         history: Optional[List[Dict[str, str]]] = None,
         conversation_id: Optional[UUID] = None,
         document_ids: Optional[List[UUID]] = None,
+        metadata_filter: Optional[Dict[str, Any]] = None,
         top_k: int = 5,
         score_threshold: float = 0.7,
         tenant_id: Optional[UUID] = None,
@@ -415,6 +422,7 @@ class RAGEngine:
                 settings.ENABLE_QUERY_REWRITE
                 and history_text != "（无历史对话）"
                 and len(question) <= settings.QUERY_REWRITE_MAX_CHARS
+                and should_rewrite_query(question)
             ):
                 rewrite_llm = self.models.get("fast") or llm
                 rewrite_model_used = getattr(rewrite_llm, "model_name", None) or getattr(rewrite_llm, "model", None)
@@ -487,7 +495,7 @@ class RAGEngine:
                     mq_start = time.time()
                     mq_raw = await mq_chain.ainvoke({"query": query_for_retrieval, "n": mq_n})
                     multi_query_elapsed = time.time() - mq_start
-                    mq_data, multi_query_parse_meta = parse_json_from_text(mq_raw)
+                    mq_data, multi_query_parse_meta = parse_json_from_text(mq_raw, expected="array")
 
                     if isinstance(mq_data, list):
                         seen: set[str] = set()
@@ -568,7 +576,7 @@ class RAGEngine:
                     dq_start = time.time()
                     dq_raw = await dq_chain.ainvoke({"query": query_for_retrieval, "n": dq_n})
                     decompose_elapsed = time.time() - dq_start
-                    dq_data, decompose_parse_meta = parse_json_from_text(dq_raw)
+                    dq_data, decompose_parse_meta = parse_json_from_text(dq_raw, expected="array")
 
                     if isinstance(dq_data, list):
                         seen: set[str] = set()
@@ -603,6 +611,7 @@ class RAGEngine:
                     "alpha": alpha_val,
                     "tenant_id": tenant_id,
                     "document_ids": document_ids,
+                    "metadata_filter": metadata_filter,
                     "retrieval_mode": mode_used,
                     "enable_weight_rerank": weight_rerank,
                     "vector_weight": vec_w,
@@ -999,7 +1008,7 @@ class RAGEngine:
             structured_data = None
             structured_parse_meta = {"ok": False, "method": None, "error": None}
             if structured_output:
-                structured_data, structured_parse_meta = parse_json_from_text(full_response)
+                structured_data, structured_parse_meta = parse_json_from_text(full_response, expected="object")
             answer_chars = len(full_response or "")
             answer_tokens = num_tokens_from_string(full_response or "")
             done_payload = {
