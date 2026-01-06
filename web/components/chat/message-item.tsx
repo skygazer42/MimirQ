@@ -73,7 +73,7 @@ const markdownComponents = {
       </code>
     )
   },
-} satisfies ReactMarkdown.Components
+}
 
 export const ChatMessageItem = memo(function ChatMessageItem({
   message,
