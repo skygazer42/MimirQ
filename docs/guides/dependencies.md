@@ -2,6 +2,11 @@
 
 MimirQ 支持两种 Embedding 模式，对应不同的依赖需求。
 
+本仓库提供三组依赖文件：
+- `requirements-minimal.txt`：默认 API 模式（推荐）
+- `requirements-local.txt`：本地 Embedding 追加依赖（在 minimal 基础上安装）
+- `requirements.txt`：全量依赖（包含更多可选解析/评测/开发组件）
+
 ---
 
 ## 🌐 API 模式（推荐，默认）

@@ -1,0 +1,66 @@
+# Minimal runtime dependencies (API-based LLM/Embeddings).
+#
+# Notes:
+# - This targets the default "API mode" (OpenAI-compatible LLM + embeddings).
+# - For local embeddings, install `requirements-local.txt` additionally.
+# - For optional parsers/evaluation toolchains, use `requirements.txt`.
+
+# FastAPI Core
+fastapi==0.128.0
+uvicorn[standard]==0.40.0
+python-multipart==0.0.21
+
+# gRPC (needed by pymilvus)
+grpcio==1.67.1
+
+# Database
+sqlalchemy==2.0.25
+asyncpg==0.31.0
+alembic==1.13.1
+psycopg2-binary==2.9.9
+
+# LangChain / LangGraph
+langchain==1.1.0
+langchain-core==1.1.0
+langchain-community==0.4.1
+langchain-openai==1.1.0
+langchain-anthropic==1.1.0
+langchain-text-splitters==1.0.0
+langgraph==1.0.5
+
+# Vector / Object storage
+pymilvus==2.4.10
+minio==7.2.10
+
+# Parsing (basic)
+PyMuPDF==1.24.14
+markdown==3.5.2
+markitdown==0.1.4
+pypdf==6.5.0
+pdfplumber==0.11.7
+chardet==5.2.0
+readability-lxml==0.8.1
+html-text==0.6.2
+
+# BM25 and Text Processing
+rank-bm25==0.2.2
+jieba==0.42.1
+
+# Utilities
+pydantic==2.10.5
+pydantic-settings==2.10.1
+python-dotenv==1.0.1
+requests==2.32.5
+aiofiles==23.2.1
+httpx[http2]==0.28.1
+tiktoken==0.7.0
+numpy==1.26.4
+
+# Authentication
+python-jose[cryptography]==3.3.0
+passlib[bcrypt]==1.7.4
+
+# Optional performance helpers (queue/cache)
+redis==4.6.0
+arq==0.26.0
+

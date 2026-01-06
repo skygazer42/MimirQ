@@ -208,6 +208,12 @@ MimirQ/
 | Node.js | 20+ | 前端开发 (可选) |
 | Python | 3.11+ | 后端开发 (可选) |
 
+### Python 依赖 (可选)
+
+- API 模式（推荐）：`pip install -r requirements-minimal.txt`
+- 本地 Embedding（可选）：`pip install -r requirements-local.txt`
+- 全量安装（含可选解析/评测）：`pip install -r requirements.txt`
+
 ### 一键部署 (Docker Compose)
 
 只需三步，即可快速启动：
@@ -241,6 +247,10 @@ vim .env
 
 ```bash
 # 启动后端 (PostgreSQL + Milvus + FastAPI)
+make up
+make ps
+
+# 或
 docker compose up -d --build
 
 # 检查服务状态
@@ -250,6 +260,11 @@ docker compose ps
 cd web
 pnpm install
 pnpm dev
+```
+
+启动后建议做一次快速校验：
+```bash
+make verify
 ```
 
 ### 访问服务

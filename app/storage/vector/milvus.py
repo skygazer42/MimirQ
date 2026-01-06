@@ -381,9 +381,14 @@ class MilvusAdapter:
                 else:
                     res = self._store.col.insert(insert_list, timeout=eff_timeout, **kwargs)
                     pks.extend([str(pk) for pk in res.primary_keys])
-            except MilvusException as e:
-                logger.error("Failed to write vectors batch: %s/%s", i, total_count)
-                raise e
+            except MilvusException:
+                logger.exception(
+                    "Failed to write vectors batch: %s/%s collection=%s",
+                    i,
+                    total_count,
+                    self.collection_name,
+                )
+                raise
 
         return pks
 
@@ -448,6 +453,7 @@ class MilvusAdapter:
 
 
 _milvus_adapter_cache: Dict[Tuple[str, str, str], MilvusAdapter] = {}
+_milvus_adapter_cache_lock = threading.Lock()
 
 
 def resolve_collection_name(preferred: str) -> str:
@@ -462,12 +468,13 @@ def get_milvus_adapter(
     text_field: str = "content",
 ) -> MilvusAdapter:
     key = (collection_name, vector_field, text_field)
-    cached = _milvus_adapter_cache.get(key)
-    if cached is not None:
-        return cached
-    adapter = MilvusAdapter(collection_name=collection_name, vector_field=vector_field, text_field=text_field)
-    _milvus_adapter_cache[key] = adapter
-    return adapter
+    with _milvus_adapter_cache_lock:
+        cached = _milvus_adapter_cache.get(key)
+        if cached is not None:
+            return cached
+        adapter = MilvusAdapter(collection_name=collection_name, vector_field=vector_field, text_field=text_field)
+        _milvus_adapter_cache[key] = adapter
+        return adapter
 
 
 # ========= 文档向量存储 (单例) ==========

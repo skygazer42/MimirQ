@@ -102,6 +102,12 @@ services:
     container_name: mimirq-backend
     ports:
       - "8000:8000"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8000/api/v1/health/ready"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+      start_period: 30s
     depends_on:
       postgres:
         condition: service_healthy
