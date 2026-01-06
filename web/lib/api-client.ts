@@ -49,6 +49,18 @@ import { getAuthHeaders } from '@/lib/auth-headers'
 import { API_TIMEOUT_MS, API_V1_BASE_URL } from '@/lib/env'
 import { appendPipelineOptionsToFormData } from '@/lib/form-data'
 
+function getOrCreateRequestId(headers: AxiosHeaders): string {
+  const existing = headers.get('X-Request-ID')
+  if (existing) return String(existing)
+
+  const requestId =
+    (globalThis.crypto as Crypto | undefined)?.randomUUID?.() ||
+    `${Date.now().toString(16)}-${Math.random().toString(16).slice(2)}`
+
+  headers.set('X-Request-ID', requestId)
+  return requestId
+}
+
 const apiClient = axios.create({
   baseURL: API_V1_BASE_URL,
   timeout: API_TIMEOUT_MS,
@@ -61,6 +73,7 @@ apiClient.interceptors.request.use((config) => {
   for (const [key, value] of Object.entries(authHeaders)) {
     headers.set(key, value)
   }
+  getOrCreateRequestId(headers)
   config.headers = headers
   return config
 })
@@ -73,28 +86,31 @@ apiClient.interceptors.response.use(
     if (error.response) {
       const status = error.response.status
       const detail = error.response.data?.detail || error.response.data?.message
+      const requestId = error.response.headers?.['x-request-id']
 
       switch (status) {
         case 401:
-          console.error('[API] 未授权，请检查登录状态')
+          console.error('[API] 未授权，请检查登录状态', requestId ? `(request_id=${requestId})` : '')
           break
         case 403:
-          console.error('[API] 无权限访问')
+          console.error('[API] 无权限访问', requestId ? `(request_id=${requestId})` : '')
           break
         case 404:
-          console.error('[API] 资源不存在')
+          console.error('[API] 资源不存在', requestId ? `(request_id=${requestId})` : '')
           break
         case 422:
-          console.error('[API] 请求参数错误:', detail)
+          console.error('[API] 请求参数错误:', detail, requestId ? `(request_id=${requestId})` : '')
           break
         case 500:
-          console.error('[API] 服务器错误:', detail)
+          console.error('[API] 服务器错误:', detail, requestId ? `(request_id=${requestId})` : '')
           break
         default:
-          console.error('[API] 请求失败:', detail || error.message)
+          console.error('[API] 请求失败:', detail || error.message, requestId ? `(request_id=${requestId})` : '')
       }
     } else if (error.request) {
-      console.error('[API] 网络错误，请检查后端服务是否启动')
+      const headers = AxiosHeaders.from(error.config?.headers)
+      const requestId = headers.get('X-Request-ID')
+      console.error('[API] 网络错误，请检查后端服务是否启动', requestId ? `(request_id=${requestId})` : '')
     }
 
     return Promise.reject(error)

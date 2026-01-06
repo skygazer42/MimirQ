@@ -50,6 +50,10 @@ Edit `.env` and set your LLM/Embedding keys (OpenAI‑compatible API is supporte
 ### 2) Start backend services
 
 ```bash
+make up
+make ps
+
+# or
 docker compose up -d --build
 docker compose ps
 ```
@@ -66,6 +70,12 @@ pnpm dev
 
 - Backend API docs: `http://localhost:8000/docs`
 - Frontend UI: `http://localhost:3000`
+
+## Python Dependencies (optional)
+
+- API mode (recommended): `pip install -r requirements-minimal.txt`
+- Local embeddings (optional): `pip install -r requirements-local.txt`
+- Full install (all optional parsers/evals): `pip install -r requirements.txt`
 
 ## Health Checks
 

@@ -25,6 +25,11 @@ LLM_API_KEY=sk-your-api-key-here
 # 如未创建 .env，可先从模板复制
 cp .env.example .env
 
+# 推荐：使用 Makefile 一键启动/查看状态
+make up
+make ps
+
+# 或直接使用 docker compose
 docker compose up -d --build
 docker compose ps
 
@@ -43,6 +48,11 @@ docker compose up -d postgres etcd minio milvus
 
 pip install -r requirements.txt
 python main.py
+```
+
+启动后建议做一次快速校验：
+```bash
+make verify
 ```
 
 ### 4. 访问应用

@@ -1,4 +1,4 @@
-.PHONY: help up down ps logs restart backend web test api-check verify parser-status
+.PHONY: help up down ps logs restart backend web test api-check typecheck verify parser-status clean
 
 help:
 	@echo "MimirQ dev commands (run from repo root):"
@@ -11,8 +11,10 @@ help:
 	@echo "  make web       - run web locally (pnpm dev)"
 	@echo "  make test      - run backend tests (pytest)"
 	@echo "  make api-check - verify web routes exist in backend"
-	@echo "  make verify    - api-check + web lint + backend compileall"
+	@echo "  make typecheck - run web TypeScript typecheck"
+	@echo "  make verify    - api-check + web lint/typecheck + backend compileall"
 	@echo "  make parser-status - print parser backend availability"
+	@echo "  make clean     - remove local caches"
 
 up:
 	docker compose up -d --build
@@ -44,7 +46,16 @@ parser-status:
 api-check:
 	node scripts/check-api-contract.mjs
 
+typecheck:
+	cd web && pnpm run typecheck
+
 verify:
 	@$(MAKE) api-check
 	cd web && pnpm run lint
+	cd web && pnpm run typecheck
 	PYTHONPYCACHEPREFIX=/tmp/mimirq-pycache python3 -m compileall -q app
+
+clean:
+	rm -rf .pytest_cache
+	find . -type d -name "__pycache__" -prune -exec rm -rf {} +
+	rm -rf web/.next web/.next_build
