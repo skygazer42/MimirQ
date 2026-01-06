@@ -40,6 +40,24 @@ export function useChat({
   const [currentCitations, setCurrentCitations] = useState<Citation[]>([])
 
   const abortControllerRef = useRef<AbortController | null>(null)
+  const fullResponseRef = useRef<string>('')
+  const rafIdRef = useRef<number | null>(null)
+
+  const scheduleCurrentResponseUpdate = useCallback(() => {
+    if (rafIdRef.current != null) return
+    rafIdRef.current = window.requestAnimationFrame(() => {
+      rafIdRef.current = null
+      setCurrentResponse(fullResponseRef.current)
+    })
+  }, [])
+
+  const flushCurrentResponseUpdate = useCallback(() => {
+    if (rafIdRef.current != null) {
+      window.cancelAnimationFrame(rafIdRef.current)
+      rafIdRef.current = null
+    }
+    setCurrentResponse(fullResponseRef.current)
+  }, [])
 
   const loadConversation = useCallback(
     async (id: string) => {
@@ -52,6 +70,7 @@ export function useChat({
       setIsLoading(true)
       setCurrentResponse('')
       setCurrentCitations([])
+      fullResponseRef.current = ''
 
       try {
         const result = await chatApi.getMessages(convId)
@@ -75,6 +94,7 @@ export function useChat({
     setMessages([])
     setCurrentResponse('')
     setCurrentCitations([])
+    fullResponseRef.current = ''
   }, [])
 
   /**
@@ -95,6 +115,11 @@ export function useChat({
       setIsLoading(true)
       setCurrentResponse('')
       setCurrentCitations([])
+      fullResponseRef.current = ''
+      if (rafIdRef.current != null) {
+        window.cancelAnimationFrame(rafIdRef.current)
+        rafIdRef.current = null
+      }
 
       abortControllerRef.current?.abort()
       abortControllerRef.current = new AbortController()
@@ -158,7 +183,6 @@ export function useChat({
 
         const decoder = new TextDecoder()
         const sse = createSseDataParser()
-        let fullResponse = ''
         let citations: Citation[] = []
 
         while (true) {
@@ -174,21 +198,22 @@ export function useChat({
                 citations = event.data
                 setCurrentCitations(citations)
               } else if (event.type === 'token') {
-                fullResponse += event.data.content
-                setCurrentResponse(fullResponse)
+                fullResponseRef.current += event.data.content
+                scheduleCurrentResponseUpdate()
               } else if (event.type === 'done') {
+                flushCurrentResponseUpdate()
                 const nextConversationId = (event?.data?.conversation_id || '').trim()
                 if (nextConversationId && nextConversationId !== (conversationId || '')) {
                   setConversationId(nextConversationId)
                   onConversationId?.(nextConversationId)
                 }
 
-                let assistantContent = fullResponse
+                let assistantContent = fullResponseRef.current
                 if (structuredOutput && event?.data?.structured_data != null) {
                   try {
                     assistantContent = `\`\`\`json\n${JSON.stringify(event.data.structured_data, null, 2)}\n\`\`\``
                   } catch {
-                    assistantContent = fullResponse
+                    assistantContent = fullResponseRef.current
                   }
                 }
 
@@ -203,6 +228,7 @@ export function useChat({
                 setMessages((prev) => [...prev, assistantMessage])
                 setCurrentResponse('')
                 setCurrentCitations([])
+                fullResponseRef.current = ''
               } else if (event.type === 'error') {
                 throw new Error(event.data?.message || 'Unknown error')
               }
@@ -220,13 +246,14 @@ export function useChat({
               citations = event.data
               setCurrentCitations(citations)
             } else if (event.type === 'token') {
-              fullResponse += event.data.content
-              setCurrentResponse(fullResponse)
+              fullResponseRef.current += event.data.content
+              scheduleCurrentResponseUpdate()
             }
           } catch {
             // ignore
           }
         }
+        flushCurrentResponseUpdate()
       } catch (err: any) {
         if (err?.name === 'AbortError') {
           if (didTimeout) {
@@ -240,6 +267,10 @@ export function useChat({
         }
       } finally {
         window.clearTimeout(timeoutId)
+        if (rafIdRef.current != null) {
+          window.cancelAnimationFrame(rafIdRef.current)
+          rafIdRef.current = null
+        }
         setIsLoading(false)
         abortControllerRef.current = null
       }
@@ -256,6 +287,8 @@ export function useChat({
       ragConfig,
       structuredOutput,
       structuredPreset,
+      flushCurrentResponseUpdate,
+      scheduleCurrentResponseUpdate,
     ]
   )
 
