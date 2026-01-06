@@ -5,8 +5,6 @@
 'use client'
 
 import { useState, useCallback, useMemo, useEffect } from 'react'
-import ReactMarkdown from 'react-markdown'
-import remarkGfm from 'remark-gfm'
 import {
   ShieldCheck,
   Sparkles,
@@ -56,6 +54,8 @@ import { DataAnnotator } from '@/components/data-governance/data-annotator'
 import { DataClassifier } from '@/components/data-governance/data-classifier'
 import { documentApi } from '@/lib/api-client'
 import { useParserBackendPreference } from '@/contexts/parser-backend-context'
+import { MarkdownRenderer } from '@/components/markdown/markdown-renderer'
+import { MarkdownToc } from '@/components/markdown/markdown-toc'
 
 // 工作流步骤
 const WORKFLOW_STEPS = [
@@ -829,7 +829,12 @@ export function DataGovernancePanel() {
 
                   {/* 预览内容 */}
                   <div className="flex-1 overflow-y-auto p-8 bg-gray-50/50 min-h-0">
-                    <div className="max-w-4xl mx-auto pb-8">
+                    <div
+                      className={cn(
+                        'mx-auto pb-8',
+                        viewMode !== 'edit' && previewFormat === 'rendered' ? 'max-w-6xl' : 'max-w-4xl'
+                      )}
+                    >
                       {viewMode === 'edit' ? (
                         <textarea
                           value={displayContent}
@@ -851,10 +856,15 @@ export function DataGovernancePanel() {
                           )}
                         >
                           {previewFormat === 'rendered' ? (
-                            <div className="prose prose-slate max-w-none prose-headings:text-gray-900 prose-p:text-gray-700 prose-a:text-sky-700 prose-code:text-pink-600 prose-code:bg-pink-50 prose-code:px-1 prose-code:py-0.5 prose-code:rounded prose-pre:bg-gray-900 prose-table:border-collapse prose-th:bg-gray-100 prose-th:border prose-th:border-gray-300 prose-th:p-2 prose-td:border prose-td:border-gray-300 prose-td:p-2">
-                              <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                                {displayContent || ''}
-                              </ReactMarkdown>
+                            <div className="flex gap-8">
+                              <div className="min-w-0 flex-1 prose prose-slate max-w-none prose-headings:text-gray-900 prose-p:text-gray-700 prose-a:text-sky-700 prose-code:text-pink-600 prose-code:bg-pink-50 prose-code:px-1 prose-code:py-0.5 prose-code:rounded prose-pre:bg-gray-900 prose-table:border-collapse prose-th:bg-gray-100 prose-th:border prose-th:border-gray-300 prose-th:p-2 prose-td:border prose-td:border-gray-300 prose-td:p-2">
+                                <MarkdownRenderer markdown={displayContent || ''} autoScrollToHash />
+                              </div>
+                              <aside className="hidden xl:block w-64 shrink-0">
+                                <div className="sticky top-6 max-h-[calc(100vh-220px)] overflow-y-auto rounded-xl border border-slate-200 bg-white/70 p-3">
+                                  <MarkdownToc markdown={displayContent || ''} />
+                                </div>
+                              </aside>
                             </div>
                           ) : (
                             <pre className={cn(
