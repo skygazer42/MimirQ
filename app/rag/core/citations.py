@@ -113,6 +113,15 @@ def build_citations_from_docs(
         rerank_score = meta.get("rerank_score")
         retrieval_score = meta.get("retrieval_score")
 
+        page_number = None
+        page_raw = meta.get("page")
+        try:
+            page_int = int(page_raw) if page_raw is not None else None
+            if page_int and page_int > 0:
+                page_number = page_int
+        except Exception:
+            page_number = None
+
         if retrieval_mode == "mmr":
             hit_type = "mmr"
         elif v_score_raw > b_score_raw:
@@ -134,10 +143,12 @@ def build_citations_from_docs(
             "document_name": meta.get("source", "Unknown"),
             "chunk_content": snippet or ((doc.page_content or "")[:200] + "..."),
             "matched_terms": matched_terms,
-            "page_number": meta.get("page"),
+            "page_number": page_number,
             "header_path": meta.get("header_path") or meta.get("header_context"),
             "chunk_strategy": meta.get("chunk_strategy"),
             "chunk_role": meta.get("chunk_role"),
+            "retrieval_role": meta.get("retrieval_role"),
+            "neighbor_of": meta.get("neighbor_of"),
             "relevance_score": round(float(meta.get("score", 0.0) or 0.0), 2),
             "vector_score": round(v_score_raw, 3),
             "bm25_score": round(b_score_raw, 3),

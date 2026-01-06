@@ -3,6 +3,7 @@ RAG 对话引擎
 """
 from __future__ import annotations
 
+import asyncio
 import os
 import threading
 from typing import AsyncGenerator, Dict, Any, List, Optional, Type
@@ -221,6 +222,44 @@ class RAGEngine:
             return str(cid)
         content = (doc.page_content or "").strip()
         return f"content:{hash(content)}"
+
+    @staticmethod
+    def _normalize_query_text(text: str) -> str:
+        return " ".join((text or "").strip().split())
+
+    @classmethod
+    def _dedup_retrieval_queries(cls, queries: List[tuple[str, str]]) -> List[tuple[str, str]]:
+        if not queries:
+            return []
+        seen: set[str] = set()
+        out: list[tuple[str, str]] = []
+        for kind, q in queries:
+            norm = cls._normalize_query_text(q)
+            if not norm:
+                continue
+            key = norm.casefold() if norm.isascii() else norm
+            if key in seen:
+                continue
+            seen.add(key)
+            out.append((kind, norm))
+        return out
+
+    @staticmethod
+    def _annotate_docs_with_role(docs: List[Document], role: str) -> List[Document]:
+        if not docs:
+            return []
+        out: List[Document] = []
+        for d in docs:
+            meta = dict(d.metadata or {})
+            meta.setdefault("retrieval_role", role)
+            out.append(
+                Document(
+                    page_content=d.page_content,
+                    metadata=meta,
+                    id=getattr(d, "id", None) or meta.get("chunk_id"),
+                )
+            )
+        return out
 
     @staticmethod
     def _merge_meta(dst: Dict[str, Any], src: Dict[str, Any]) -> Dict[str, Any]:
@@ -631,8 +670,12 @@ class RAGEngine:
             if hyde_used and hyde_text:
                 retrieval_queries.append(("hyde", hyde_text))
 
+            retrieval_queries = self._dedup_retrieval_queries(retrieval_queries)
+
             docs_by_query: List[List[Document]] = []
             t_retrieval_start = time.time()
+            retrieval_parallelism = max(1, int(getattr(settings, "RETRIEVAL_QUERY_PARALLELISM", 1) or 1))
+            retrieval_plan: List[tuple[str, str, Any]] = []
             for kind, q in retrieval_queries:
                 r = retriever
                 if kind != "main":
@@ -646,13 +689,54 @@ class RAGEngine:
                         )
                     else:
                         r = retriever.model_copy(update={"enable_reranker": False})
+                retrieval_plan.append((kind, q, r))
+
+            retrieval_errors: List[str] = []
+            retrieval_per_query: List[Dict[str, Any]] = []
+
+            async def _run_one(kind: str, q: str, r: Any) -> tuple[str, List[Document], str | None, float]:
+                t0 = time.time()
                 try:
-                    docs_i = r.invoke(q)
+                    docs_i = await asyncio.to_thread(r.invoke, q)
+                    return kind, (docs_i or []), None, time.time() - t0
                 except Exception as exc:  # noqa: BLE001
-                    if kind == "main":
-                        yield {"type": "error", "data": {"message": f"retrieval failed: {exc}"}}
-                    docs_i = []
-                docs_by_query.append(docs_i or [])
+                    return kind, [], str(exc)[:200], time.time() - t0
+
+            if retrieval_parallelism <= 1 or len(retrieval_plan) <= 1:
+                for kind, q, r in retrieval_plan:
+                    t0 = time.time()
+                    try:
+                        docs_i = r.invoke(q)
+                        err = None
+                    except Exception as exc:  # noqa: BLE001
+                        docs_i = []
+                        err = str(exc)[:200]
+                    elapsed_i = time.time() - t0
+                    retrieval_per_query.append(
+                        {"kind": kind, "query_chars": len(q or ""), "elapsed_sec": round(elapsed_i, 3), "ok": err is None}
+                    )
+                    if err:
+                        retrieval_errors.append(f"{kind}:{err[:160]}")
+                        if kind == "main":
+                            yield {"type": "error", "data": {"message": f"retrieval failed: {err}"}}
+                    docs_by_query.append(self._annotate_docs_with_role(docs_i or [], kind))
+            else:
+                sem = asyncio.Semaphore(retrieval_parallelism)
+
+                async def _guarded(kind: str, q: str, r: Any) -> tuple[str, List[Document], str | None, float]:
+                    async with sem:
+                        return await _run_one(kind, q, r)
+
+                results = await asyncio.gather(*[_guarded(kind, q, r) for kind, q, r in retrieval_plan])
+                for (kind, docs_i, err, elapsed_i), (_, q, _) in zip(results, retrieval_plan):
+                    retrieval_per_query.append(
+                        {"kind": kind, "query_chars": len(q or ""), "elapsed_sec": round(elapsed_i, 3), "ok": err is None}
+                    )
+                    if err:
+                        retrieval_errors.append(f"{kind}:{err[:160]}")
+                        if kind == "main":
+                            yield {"type": "error", "data": {"message": f"retrieval failed: {err}"}}
+                    docs_by_query.append(self._annotate_docs_with_role(docs_i or [], kind))
 
             retrieval_elapsed = time.time() - t_retrieval_start
             if len(docs_by_query) <= 1:
@@ -826,7 +910,21 @@ class RAGEngine:
                 for idx, doc in enumerate(docs, 1):
                     meta = doc.metadata or {}
                     source = meta.get("source", "Unknown")
-                    page = meta.get("page", "N/A")
+                    page_info = None
+                    page_raw = meta.get("page")
+                    try:
+                        page_int = int(page_raw) if page_raw is not None else None
+                        if page_int and page_int > 0:
+                            page_info = f"第{page_int}页"
+                    except Exception:
+                        page_info = None
+                    header = meta.get("header_path") or meta.get("header_context")
+                    retrieval_role = meta.get("retrieval_role")
+                    role_info = None
+                    if retrieval_role == "neighbor":
+                        role_info = "邻接"
+                    elif retrieval_role:
+                        role_info = str(retrieval_role)
                     raw_content = (doc.page_content or "").strip()
                     content = raw_content
                     if bool(settings.RAG_CONTEXT_EVIDENCE_ENABLED):
@@ -839,8 +937,15 @@ class RAGEngine:
                         )
                     elif max_per_chunk and len(content) > max_per_chunk:
                         content = content[:max_per_chunk] + "..."
+                    info_parts = [str(source)]
+                    if page_info:
+                        info_parts.append(page_info)
+                    if header:
+                        info_parts.append(str(header))
+                    if role_info:
+                        info_parts.append(str(role_info))
                     context_parts.append(
-                        f"[来源 {idx}: {source} - 第 {page} 页]\n{content}"
+                        f"[来源 {idx}: {' | '.join(info_parts)}]\n{content}"
                     )
                     if max_total:
                         total_chars += len(context_parts[-1])
@@ -903,6 +1008,10 @@ class RAGEngine:
                         "enable_reranker": rerank_on,
                         "reranker_provider": rerank_provider,
                         "reranker_top_n": rerank_top_n,
+                        "query_parallelism": retrieval_parallelism,
+                        "query_count": len(retrieval_plan),
+                        "per_query": retrieval_per_query[:8],
+                        "errors": retrieval_errors[:5],
                     },
                     "citations": citations[: min(len(citations), int(top_k or 5))],
                     "prompt": {
