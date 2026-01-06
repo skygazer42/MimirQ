@@ -4,6 +4,7 @@ import { cn } from '@/lib/utils'
 import { CHUNK_STRATEGY_OPTIONS, getChunkStrategyOption, getStrategiesByGroup } from '@/lib/chunk-strategies'
 import { useChunkStrategyPreference } from '@/contexts/chunk-strategy-context'
 import { Layers } from 'lucide-react'
+import { usePipelineCapabilities } from '@/contexts/pipeline-capabilities-context'
 
 interface ChunkStrategySelectProps {
   label?: string
@@ -21,6 +22,7 @@ export function ChunkStrategySelect({
   onChange,
 }: ChunkStrategySelectProps) {
   const { chunkStrategy, setChunkStrategy } = useChunkStrategyPreference()
+  const { chunkStrategyAvailable } = usePipelineCapabilities()
   
   // 支持受控和非受控模式
   const currentValue = value ?? chunkStrategy
@@ -60,21 +62,21 @@ export function ChunkStrategySelect({
       >
         <optgroup label="LangChain">
           {langchainStrategies.map((option) => (
-            <option key={option.value} value={option.value} disabled={option.disabled}>
+            <option key={option.value} value={option.value} disabled={!!option.disabled || chunkStrategyAvailable(option.value) === false}>
               {option.label}
             </option>
           ))}
         </optgroup>
         <optgroup label="LlamaIndex">
           {llamaIndexStrategies.map((option) => (
-            <option key={option.value} value={option.value} disabled={option.disabled}>
+            <option key={option.value} value={option.value} disabled={!!option.disabled || chunkStrategyAvailable(option.value) === false}>
               {option.label}
             </option>
           ))}
         </optgroup>
         <optgroup label="RAGFlow">
           {ragflowStrategies.map((option) => (
-            <option key={option.value} value={option.value} disabled={option.disabled}>
+            <option key={option.value} value={option.value} disabled={!!option.disabled || chunkStrategyAvailable(option.value) === false}>
               {option.label}
             </option>
           ))}

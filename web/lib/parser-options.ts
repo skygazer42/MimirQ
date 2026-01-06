@@ -2,7 +2,7 @@ export interface ParserBackendOption {
   value: string
   label: string
   description: string
-  icon: 'auto' | 'basic' | 'mineru' | 'deepdoc' | 'markitdown' | 'magicpdf'
+  icon: 'auto' | 'basic' | 'mineru' | 'deepdoc' | 'markitdown' | 'docling' | 'magicpdf'
   badge?: string
 }
 
@@ -19,6 +19,13 @@ export const PARSER_BACKEND_OPTIONS: ParserBackendOption[] = [
     label: '基础解析',
     description: 'PyMuPDF · 速度快、依赖少，适合纯文本 PDF',
     icon: 'basic',
+  },
+  {
+    value: 'docling',
+    label: 'Docling 结构化',
+    description: 'Docling · 结构感知解析，适合高质量 PDF（可提取结构/表格）',
+    icon: 'docling',
+    badge: '结构化',
   },
   {
     value: 'mineru',

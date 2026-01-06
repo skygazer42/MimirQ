@@ -205,6 +205,15 @@ class ZipImageProcessor:
                 }
             
             ZipImageProcessor._logger.info("[zip] images=%s", len(image_files))
+
+            max_images = max(0, int(getattr(settings, "ZIP_MAX_IMAGES", 0) or 0))
+            if max_images and len(image_files) > max_images:
+                ZipImageProcessor._logger.warning(
+                    "[zip] too many images in archive: %s > %s (extra images will be skipped)",
+                    len(image_files),
+                    max_images,
+                )
+                image_files = image_files[:max_images]
             
             # 4. 上传图片到 MinIO 并建立映射
             image_mapping = {}  # {原始相对路径: img_id}

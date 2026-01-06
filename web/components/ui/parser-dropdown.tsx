@@ -8,6 +8,7 @@ import { useState, useRef, useEffect } from 'react'
 import {
   Sparkles,
   FileText,
+  Cpu,
   Cloud,
   ScanLine,
   FileCode,
@@ -17,11 +18,13 @@ import {
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { PARSER_BACKEND_OPTIONS, getParserOption } from '@/lib/parser-options'
+import { usePipelineCapabilities } from '@/contexts/pipeline-capabilities-context'
 
 // 图标映射
 const ICON_MAP = {
   auto: Sparkles,
   basic: FileText,
+  docling: Cpu,
   mineru: Cloud,
   deepdoc: ScanLine,
   markitdown: FileCode,
@@ -32,6 +35,7 @@ const ICON_MAP = {
 const COLOR_MAP = {
   auto: { bg: 'bg-indigo-100', text: 'text-indigo-600' },
   basic: { bg: 'bg-gray-100', text: 'text-gray-600' },
+  docling: { bg: 'bg-teal-100', text: 'text-teal-700' },
   mineru: { bg: 'bg-blue-100', text: 'text-blue-600' },
   deepdoc: { bg: 'bg-orange-100', text: 'text-orange-600' },
   markitdown: { bg: 'bg-purple-100', text: 'text-purple-600' },
@@ -47,6 +51,7 @@ interface ParserDropdownProps {
 export function ParserDropdown({ value, onChange, className }: ParserDropdownProps) {
   const [isOpen, setIsOpen] = useState(false)
   const dropdownRef = useRef<HTMLDivElement>(null)
+  const { parserBackendAvailable } = usePipelineCapabilities()
 
   const selectedOption = getParserOption(value)
   const SelectedIcon = ICON_MAP[selectedOption.icon]
@@ -109,18 +114,22 @@ export function ParserDropdown({ value, onChange, className }: ParserDropdownPro
               const Icon = ICON_MAP[option.icon]
               const color = COLOR_MAP[option.icon]
               const isSelected = option.value === value
+              const isDisabled = parserBackendAvailable(option.value) === false
 
               return (
                 <button
                   key={option.value}
                   type="button"
+                  disabled={isDisabled}
                   onClick={() => {
+                    if (isDisabled) return
                     onChange(option.value)
                     setIsOpen(false)
                   }}
                   className={cn(
                     'w-full flex items-center gap-3 px-3 py-2.5 transition-colors',
-                    isSelected ? 'bg-indigo-50' : 'hover:bg-gray-50'
+                    isSelected ? 'bg-indigo-50' : 'hover:bg-gray-50',
+                    isDisabled && 'opacity-50 cursor-not-allowed hover:bg-transparent'
                   )}
                 >
                   <div className={cn('p-1.5 rounded-lg', color.bg)}>

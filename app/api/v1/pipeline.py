@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import shutil
 import uuid
 import zipfile
 from uuid import UUID
@@ -28,9 +29,15 @@ from app.api.schemas.pipeline import (
     KeywordExtractResponse,
     LLMCleanPreviewRequest,
     LLMCleanPreviewResponse,
+    PipelineCapabilitiesResponse,
+    ParserBackendInfo,
+    ChunkStrategyInfo,
 )
 from app.parsing.processors.parser_service import document_parser_service
+from app.parsing.backends import normalize_parser_backend
+from app.parsing.factory import ParserFactory
 from app.rag.chunking import hierarchical_chunk_markdown
+from app.rag.chunking import chunker_factory
 from app.parsing.utils.zip_processor import zip_image_processor
 from app.api.dependencies.auth import get_current_account_id
 from app.rag.preprocessing.cleaning import clean_markdown, RegexRule, build_repeated_line_signatures
@@ -43,6 +50,117 @@ from app.rag.llm.models import LLMMessage, LLMRole
 from app.api.utils.upload import save_upload_file
 
 router = APIRouter()
+
+def _check_python_import(module_name: str, *, attr: str | None = None) -> tuple[bool, str | None]:
+    try:
+        mod = __import__(module_name, fromlist=[attr] if attr else [])
+        if attr:
+            getattr(mod, attr)
+        return True, None
+    except Exception as exc:
+        return False, str(exc)[:200] or "import failed"
+
+
+@router.get("/capabilities", response_model=PipelineCapabilitiesResponse)
+async def get_pipeline_capabilities(
+    tenant_id: UUID = Depends(get_tenant_id),
+    account_id: str = Depends(get_current_account_id),
+    db: Session = Depends(get_db),
+):
+    """
+    返回当前部署可用的解析器/切块策略，用于前端动态禁用不可用选项。
+
+    注意：仅返回“可用性”信息，不包含任何敏感配置（如 API Key）。
+    """
+    DatasetService.ensure_member(db, tenant_id, account_id)
+
+    default_parser_backend = normalize_parser_backend(getattr(settings, "DEFAULT_PARSER_BACKEND", "auto") or "auto") or "auto"
+    default_chunk_strategy = (getattr(settings, "DEFAULT_CHUNK_STRATEGY", "langchain_recursive") or "langchain_recursive").strip().lower()
+
+    def magicpdf_available() -> tuple[bool, str | None]:
+        if not bool(getattr(settings, "MAGIC_PDF_ENABLED", False)):
+            return False, "MAGIC_PDF_ENABLED=false"
+        cli = (getattr(settings, "MAGIC_PDF_CLI", "") or "magic-pdf").strip() or "magic-pdf"
+        if not shutil.which(cli):
+            return False, f"MagicPDF CLI not found: {cli}"
+        return True, None
+
+    pdf_backends: list[ParserBackendInfo] = []
+    for name in sorted(ParserFactory.SUPPORTED_PDF_BACKENDS):
+        b = (name or "").strip().lower()
+        available = False
+        notes: str | None = None
+
+        if b == "auto":
+            available = True
+            notes = "Auto routes to the best enabled backend."
+        elif b == "basic":
+            available = True
+        elif b == "mineru":
+            available = bool(settings.MINERU_ENABLED and (settings.MINERU_API_TOKEN or settings.MINERU_LOCAL_SERVER_URL))
+            if not available:
+                notes = "Set MINERU_ENABLED=true and configure MINERU_API_TOKEN or MINERU_LOCAL_SERVER_URL."
+        elif b == "deepdoc":
+            available = bool(getattr(settings, "DEEPDOC_ENABLED", False))
+            if not available:
+                notes = "Set DEEPDOC_ENABLED=true."
+        elif b == "markitdown":
+            if not bool(getattr(settings, "MARKITDOWN_ENABLED", False)):
+                available = False
+                notes = "Set MARKITDOWN_ENABLED=true."
+            else:
+                ok, err = _check_python_import("markitdown", attr="MarkItDown")
+                available = ok
+                if not ok:
+                    notes = f"markitdown not installed: {err}"
+        elif b == "docling":
+            if not bool(getattr(settings, "DOCLING_ENABLED", False)):
+                available = False
+                notes = "Set DOCLING_ENABLED=true."
+            else:
+                ok, err = _check_python_import("docling.document_converter", attr="DocumentConverter")
+                available = ok
+                if not ok:
+                    notes = f"docling not installed: {err}"
+        elif b == "magicpdf":
+            available, notes = magicpdf_available()
+        else:  # pragma: no cover
+            available = False
+            notes = "Unknown backend"
+
+        pdf_backends.append(ParserBackendInfo(name=b, available=bool(available), notes=notes))
+
+    chunk_strategies: list[ChunkStrategyInfo] = []
+    # Expose all strategies known to the backend (frontends may choose a subset).
+    all_strats = set(chunker_factory.SUPPORTED_STRATEGIES.keys()) | set(chunker_factory.RAGFLOW_STRATEGIES)
+    for name in sorted(all_strats):
+        s = (name or "").strip().lower()
+        available = True
+        notes: str | None = None
+        if s.startswith("llama_index"):
+            if not bool(getattr(settings, "LLAMA_INDEX_ENABLED", False)):
+                available = False
+                notes = "Set LLAMA_INDEX_ENABLED=true."
+            else:
+                ok, err = _check_python_import("llama_index.core")
+                available = ok
+                if not ok:
+                    notes = f"llama-index-core not installed: {err}"
+        elif s in chunker_factory.RAGFLOW_STRATEGIES:
+            available = True
+            notes = "RAGFlow integrated pipeline (parse+chunk)."
+        elif s == "markdown":
+            available = True
+            notes = "Alias of markdown_header."
+
+        chunk_strategies.append(ChunkStrategyInfo(name=s, available=bool(available), notes=notes))
+
+    return PipelineCapabilitiesResponse(
+        default_parser_backend=default_parser_backend,
+        default_chunk_strategy=default_chunk_strategy,
+        pdf_backends=pdf_backends,
+        chunk_strategies=chunk_strategies,
+    )
 
 
 @router.post("/parse-preview", response_model=ParsePreviewResponse)

@@ -4,6 +4,8 @@ from dataclasses import dataclass
 import re
 from typing import Callable, Iterable, Optional, Sequence
 
+from app.rag.preprocessing.normalization import normalize_text
+
 
 @dataclass(frozen=True)
 class RegexRule:
@@ -19,18 +21,20 @@ class CleaningResult:
     changed: bool
 
 
-_CONTROL_CHARS_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f]")
-_ZERO_WIDTH_RE = re.compile(r"[\u200b\u200c\u200d\u2060\ufeff]")
 _TRAILING_SPACES_RE = re.compile(r"[ \t]+\n")
 _MANY_BLANK_LINES_RE = re.compile(r"\n{3,}")
 _MID_WS_RE = re.compile(r"(?<=\S)[ \t]{2,}(?=\S)")
 _ALNUM_CJK_RE = re.compile(r"[A-Za-z0-9\u4e00-\u9fff]")
 _UPPER_RUN_RE = re.compile(r"[A-Z]{3,}")
-_SOFT_HYPHEN_RE = re.compile("\u00ad")
-_TOC_HEADER_RE = re.compile(r"^\s*(?:table of contents|contents|\u76ee\u5f55)\s*$", re.IGNORECASE)
+_TOC_HEADER_RE = re.compile(r"^\s*(?:table of contents|contents|\u76ee\s*\u5f55)\s*$", re.IGNORECASE)
 _TOC_LINE_RE = re.compile(
     r"^\s*(?:\d+|[IVXLC]+|[\u4e00-\u9fff]+)[\.\-\u3001)]?\s+.+"
     r"(?:\.{2,}|\u00b7{2,}|\u2026{2,}|-{4,})\s*\d+\s*$"
+)
+_TOC_LINE_EN_RE = re.compile(
+    r"^\s*(?:chapter|section)\s+\d+\b.+"
+    r"(?:\.{2,}|\u00b7{2,}|\u2026{2,}|-{4,})\s*\d+\s*$",
+    re.IGNORECASE,
 )
 _CODE_FENCE_RE = re.compile(r"^\s*```")
 _HEADING_RE = re.compile(r"^\s*#{1,6}\s+")
@@ -42,15 +46,6 @@ _TRAILING_PAGE_NUM_RE = re.compile(r"\s+\d{1,4}\s*$")
 _TRAILING_PAGE_OF_RE = re.compile(r"\s+\d{1,4}\s*/\s*\d{1,4}\s*$")
 _TRAILING_PAGE_WORD_RE = re.compile(r"\s+(?:page|p\.?)\s*\d{1,4}\s*$", re.IGNORECASE)
 _LEADING_LINE_NUMBER_RE = re.compile(r"^(\s*)\d{1,4}\s+(?=\S)")
-_PDF_LIGATURES = {
-    "\ufb00": "ff",
-    "\ufb01": "fi",
-    "\ufb02": "fl",
-    "\ufb03": "ffi",
-    "\ufb04": "ffl",
-    "\ufb05": "ft",
-    "\ufb06": "st",
-}
 
 _PDF_BULLETS: tuple[str, ...] = (
     "\u2022",  # •
@@ -89,22 +84,11 @@ def clean_markdown(
     - More domain-specific transforms should be added as explicit RegexRule entries.
     """
     original = markdown
-    text = markdown
-
-    if normalize_line_endings:
-        text = text.replace("\r\n", "\n").replace("\r", "\n")
-
-    # Normalize some common Unicode whitespace artifacts from PDF/Office exporters.
-    text = text.replace("\u00a0", " ").replace("\u202f", " ").replace("\u3000", " ")
-    text = _ZERO_WIDTH_RE.sub("", text)
-    text = _SOFT_HYPHEN_RE.sub("", text)
-    # Normalize common PDF ligatures (ﬁ/ﬂ/ﬃ/ﬄ/…); keeps semantics while improving tokenization/search.
-    for src, dst in _PDF_LIGATURES.items():
-        if src in text:
-            text = text.replace(src, dst)
-
-    if remove_control_chars:
-        text = _CONTROL_CHARS_RE.sub("", text)
+    text = normalize_text(
+        markdown,
+        normalize_line_endings=bool(normalize_line_endings),
+        remove_control_chars=bool(remove_control_chars),
+    )
 
     applied = 0
     if rules:
@@ -254,7 +238,9 @@ def _filter_lines(
             if signature and signature in common_lines:
                 continue
 
-        if remove_toc_lines and (_TOC_HEADER_RE.match(stripped) or _TOC_LINE_RE.match(stripped)):
+        if remove_toc_lines and (
+            _TOC_HEADER_RE.match(stripped) or _TOC_LINE_RE.match(stripped) or _TOC_LINE_EN_RE.match(stripped)
+        ):
             continue
 
         if remove_noise_lines and _is_noise_line(stripped, noise_min_chars, noise_ratio_threshold):

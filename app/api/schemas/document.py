@@ -1,7 +1,7 @@
 """
 文档相关 Pydantic Schema
 """
-from pydantic import AliasChoices, BaseModel, Field
+from pydantic import AliasChoices, BaseModel, Field, model_validator
 from typing import Optional, List, Dict, Any
 from datetime import datetime
 from uuid import UUID
@@ -44,6 +44,13 @@ class DocumentChunkSchema(OrmModel):
     )
 
 
+class GovernanceInfo(BaseModel):
+    enabled: bool = False
+    documents: int = 0
+    changed_documents: int = 0
+    rules_applied: int = 0
+
+
 class DocumentDetail(OrmModel):
     """文档详情"""
     id: UUID
@@ -63,9 +70,24 @@ class DocumentDetail(OrmModel):
         default_factory=dict,
         validation_alias=AliasChoices("doc_metadata", "metadata"),
     )
+    governance: GovernanceInfo = Field(default_factory=GovernanceInfo)
     # Avoid accidental lazy-loading on list endpoints: only include chunks when
     # the API handler explicitly sets `chunks_loaded` on the ORM instance.
     chunks: Optional[List[DocumentChunkSchema]] = Field(default=None, validation_alias="chunks_loaded")
+
+    @model_validator(mode="after")
+    def _populate_governance(self) -> "DocumentDetail":
+        meta = self.metadata or {}
+        try:
+            self.governance = GovernanceInfo(
+                enabled=bool(meta.get("governance_enabled") or False),
+                documents=int(meta.get("governance_documents") or 0),
+                changed_documents=int(meta.get("governance_changed_documents") or 0),
+                rules_applied=int(meta.get("governance_rules_applied") or 0),
+            )
+        except Exception:
+            self.governance = GovernanceInfo()
+        return self
 
 
 class ParsedSegment(BaseModel):
@@ -126,6 +148,7 @@ class ChunkPreviewParams(BaseModel):
     """切块预览参数"""
     chunk_size: int = Field(default=1000, ge=100, le=4000, description="切块大小")
     chunk_overlap: int = Field(default=200, ge=0, le=1000, description="重叠大小")
+    unit: str = Field(default="chars", description="chunk_size/chunk_overlap unit: chars | tokens")
 
 
 class ChunkPreviewItem(BaseModel):

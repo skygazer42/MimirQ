@@ -16,7 +16,7 @@ import httpx
 import time
 
 from app.core.config import settings
-from app.core.token_utils import num_tokens_from_string
+from app.core.token_utils import num_tokens_from_string, truncate
 from app.rag.core.conversation import format_history_text
 from app.rag.core.citations import build_citations_from_docs
 from app.rag.core.http import httpx_trust_env
@@ -766,7 +766,14 @@ class RAGEngine:
             top_rel = 0.0
             if citations:
                 try:
-                    top_rel = max(float(c.get("relevance_score", 0.0) or 0.0) for c in citations)
+                    top_rel = max(
+                        float(
+                            c.get("retrieval_score")
+                            if c.get("retrieval_score") is not None
+                            else (c.get("relevance_score", 0.0) or 0.0)
+                        )
+                        for c in citations
+                    )
                 except Exception:
                     top_rel = 0.0
 
@@ -897,15 +904,21 @@ class RAGEngine:
                             summary = summary[:600] + "..."
                         parts.append(f"[事件 {idx}] {title}\n{summary}")
                     kg_context = "\n\n".join(parts)
-                    if settings.RAG_CONTEXT_MAX_KG_CHARS > 0 and len(kg_context) > settings.RAG_CONTEXT_MAX_KG_CHARS:
+                    max_kg_tokens = max(0, int(getattr(settings, "RAG_CONTEXT_MAX_KG_TOKENS", 0) or 0))
+                    if max_kg_tokens:
+                        kg_context = truncate(kg_context, max_kg_tokens)
+                    elif settings.RAG_CONTEXT_MAX_KG_CHARS > 0 and len(kg_context) > settings.RAG_CONTEXT_MAX_KG_CHARS:
                         kg_context = kg_context[: settings.RAG_CONTEXT_MAX_KG_CHARS] + "..."
 
             # Step 3: 构建上下文（文档切片 + 可选 KG 事件）
             chunk_context = ""
             if docs:
-                max_per_chunk = max(0, int(settings.RAG_CONTEXT_MAX_CHARS_PER_CHUNK or 0))
-                max_total = max(0, int(settings.RAG_CONTEXT_MAX_TOTAL_CHARS or 0))
+                max_per_chunk_chars = max(0, int(settings.RAG_CONTEXT_MAX_CHARS_PER_CHUNK or 0))
+                max_total_chars = max(0, int(settings.RAG_CONTEXT_MAX_TOTAL_CHARS or 0))
+                max_per_chunk_tokens = max(0, int(getattr(settings, "RAG_CONTEXT_MAX_TOKENS_PER_CHUNK", 0) or 0))
+                max_total_tokens = max(0, int(getattr(settings, "RAG_CONTEXT_MAX_TOTAL_TOKENS", 0) or 0))
                 total_chars = 0
+                total_tokens = 0
                 context_parts = []
                 for idx, doc in enumerate(docs, 1):
                     meta = doc.metadata or {}
@@ -931,12 +944,14 @@ class RAGEngine:
                         content = extract_evidence_text(
                             raw_content,
                             query_for_retrieval,
-                            max_chars=max_per_chunk,
+                            max_chars=(max_per_chunk_chars if not max_per_chunk_tokens else 0),
                             max_sentences=settings.RAG_CONTEXT_EVIDENCE_MAX_SENTENCES_PER_CHUNK,
                             min_sentence_chars=settings.RAG_CONTEXT_EVIDENCE_MIN_SENTENCE_CHARS,
                         )
-                    elif max_per_chunk and len(content) > max_per_chunk:
-                        content = content[:max_per_chunk] + "..."
+                    elif max_per_chunk_tokens:
+                        content = truncate(content, max_per_chunk_tokens)
+                    elif max_per_chunk_chars and len(content) > max_per_chunk_chars:
+                        content = content[:max_per_chunk_chars] + "..."
                     info_parts = [str(source)]
                     if page_info:
                         info_parts.append(page_info)
@@ -944,12 +959,19 @@ class RAGEngine:
                         info_parts.append(str(header))
                     if role_info:
                         info_parts.append(str(role_info))
-                    context_parts.append(
-                        f"[来源 {idx}: {' | '.join(info_parts)}]\n{content}"
-                    )
-                    if max_total:
-                        total_chars += len(context_parts[-1])
-                        if total_chars >= max_total:
+                    part = f"[来源 {idx}: {' | '.join(info_parts)}]\n{content}"
+                    if max_total_tokens:
+                        part_tokens = num_tokens_from_string(part)
+                        if context_parts and (total_tokens + part_tokens) > max_total_tokens:
+                            break
+                        context_parts.append(part)
+                        total_tokens += part_tokens
+                        continue
+
+                    context_parts.append(part)
+                    if max_total_chars:
+                        total_chars += len(part)
+                        if total_chars >= max_total_chars:
                             break
                 chunk_context = "\n\n".join(context_parts)
 
@@ -970,7 +992,9 @@ class RAGEngine:
                     "question": question,
                     "query_for_retrieval": query_for_retrieval,
                     "history_chars": len(history_text or ""),
+                    "history_tokens": num_tokens_from_string(history_text or ""),
                     "context_chars": len(context or ""),
+                    "context_tokens": num_tokens_from_string(context or ""),
                     "context_evidence": {
                         "enabled": bool(settings.RAG_CONTEXT_EVIDENCE_ENABLED),
                         "max_sentences_per_chunk": int(settings.RAG_CONTEXT_EVIDENCE_MAX_SENTENCES_PER_CHUNK or 0),
@@ -1149,7 +1173,13 @@ class RAGEngine:
                         "docs_returned": len(docs),
                         "distinct_documents": len({c.get("document_id") for c in citations if c.get("document_id")}),
                         "history_chars": len(history_text or ""),
+                        "history_tokens": num_tokens_from_string(history_text or ""),
                         "context_chars": len(context or ""),
+                        "context_tokens": num_tokens_from_string(context or ""),
+                        "context_limit_total_chars": int(settings.RAG_CONTEXT_MAX_TOTAL_CHARS or 0),
+                        "context_limit_total_tokens": int(getattr(settings, "RAG_CONTEXT_MAX_TOTAL_TOKENS", 0) or 0),
+                        "context_limit_per_chunk_chars": int(settings.RAG_CONTEXT_MAX_CHARS_PER_CHUNK or 0),
+                        "context_limit_per_chunk_tokens": int(getattr(settings, "RAG_CONTEXT_MAX_TOKENS_PER_CHUNK", 0) or 0),
                         "answer_chars": answer_chars,
                         "answer_tokens": answer_tokens,
                         "context_evidence_enabled": bool(settings.RAG_CONTEXT_EVIDENCE_ENABLED),

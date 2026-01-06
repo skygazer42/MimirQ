@@ -1,6 +1,7 @@
 'use client'
 
 import { createContext, useContext, useEffect, useState } from 'react'
+import { usePipelineCapabilities } from '@/contexts/pipeline-capabilities-context'
 
 const STORAGE_KEY = 'mimirq_parser_backend'
 
@@ -13,6 +14,7 @@ const ParserBackendContext = createContext<ParserBackendContextValue | null>(nul
 
 export function ParserBackendProvider({ children }: { children: React.ReactNode }) {
   const [parserBackend, setParserBackendState] = useState('auto')
+  const { capabilities, parserBackendAvailable } = usePipelineCapabilities()
 
   useEffect(() => {
     if (typeof window === 'undefined') return
@@ -30,11 +32,26 @@ export function ParserBackendProvider({ children }: { children: React.ReactNode 
     return () => window.removeEventListener('storage', handleStorage)
   }, [])
 
-  const setParserBackend = (value: string) => {
-    setParserBackendState(value)
+  const applyParserBackend = (value: string) => {
+    const raw = (value || '').toLowerCase().trim()
+    const normalized = raw.replace(/_/g, '-')
+    const next = (normalized === 'magic-pdf' ? 'magicpdf' : normalized) || 'auto'
+    setParserBackendState(next)
     if (typeof window !== 'undefined') {
-      window.localStorage.setItem(STORAGE_KEY, value)
+      window.localStorage.setItem(STORAGE_KEY, next)
     }
+  }
+
+  useEffect(() => {
+    if (!capabilities) return
+    const ok = parserBackendAvailable(parserBackend)
+    if (ok === false) {
+      applyParserBackend(capabilities.default_parser_backend || 'auto')
+    }
+  }, [capabilities, parserBackend, parserBackendAvailable])
+
+  const setParserBackend = (value: string) => {
+    applyParserBackend(value)
   }
 
   return (
