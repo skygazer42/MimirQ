@@ -208,7 +208,11 @@ export function ChatArea({
   return (
     <div className="flex-1 flex flex-col bg-slate-50/50 dark:bg-slate-950 h-screen relative transition-colors duration-300">
       {/* 消息列表 */}
-      <div className="flex-1 overflow-y-auto pt-24 px-4 pb-4 scroll-smooth">
+      <div
+        ref={scrollContainerRef}
+        onScroll={updateAutoScroll}
+        className="flex-1 overflow-y-auto pt-24 px-4 pb-4 scroll-smooth"
+      >
         <div className="max-w-3xl mx-auto space-y-8">
           {messages.length === 0 && !isLoading && (
             <WelcomeScreen />
