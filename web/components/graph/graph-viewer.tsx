@@ -10,6 +10,7 @@ const ForceGraph2DNoSSR = dynamic(
   () => import('./force-graph-2d-wrapper'),
   { ssr: false }
 )
+const isDev = process.env.NODE_ENV !== 'production'
 
 export interface GraphViewerRef {
   zoomIn: () => void
@@ -74,8 +75,8 @@ export const GraphViewer = forwardRef<GraphViewerRef, GraphViewerProps>(({
   // Debug: Log dimensions
   useEffect(() => {
     // Only log if dimensions change or on mount
-    if (mounted) {
-       console.log('[GraphViewer] Dimensions check:', { width, height })
+    if (mounted && isDev) {
+      console.log('[GraphViewer] Dimensions check:', { width, height })
     }
   }, [width, height, mounted])
 
@@ -86,15 +87,22 @@ export const GraphViewer = forwardRef<GraphViewerRef, GraphViewerProps>(({
   // Expose methods to parent
   useImperativeHandle(ref, () => ({
     zoomIn: () => {
-      console.log('[GraphViewer] zoomIn called. fgRef:', fgRef.current)
+      if (isDev) {
+        console.log('[GraphViewer] zoomIn called. fgRef:', fgRef.current)
+      }
       if (fgRef.current) {
-        // Inspect available methods
-        console.log('[GraphViewer] fgRef methods:', Object.keys(fgRef.current))
+        if (isDev) {
+          console.log('[GraphViewer] fgRef methods:', Object.keys(fgRef.current))
+        }
         const currentZoom = fgRef.current.zoom()
-        console.log('[GraphViewer] currentZoom:', currentZoom)
+        if (isDev) {
+          console.log('[GraphViewer] currentZoom:', currentZoom)
+        }
         fgRef.current.zoom(currentZoom * 1.2, 400)
       } else {
-        console.warn('[GraphViewer] fgRef.current is null/undefined')
+        if (isDev) {
+          console.warn('[GraphViewer] fgRef.current is null/undefined')
+        }
       }
     },
     zoomOut: () => {
@@ -122,19 +130,27 @@ export const GraphViewer = forwardRef<GraphViewerRef, GraphViewerProps>(({
   useEffect(() => {
     let attempts = 0
     const maxAttempts = 10
+    let timeoutId: number | null = null
     
     const tryZoom = () => {
       if (fgRef.current && sanitizedData.nodes.length > 0) {
-        console.log('[GraphViewer] Zooming to fit...')
+        if (isDev) {
+          console.log('[GraphViewer] Zooming to fit...')
+        }
         fgRef.current.zoomToFit(400, 20)
       } else if (attempts < maxAttempts) {
         attempts++
-        setTimeout(tryZoom, 200)
+        timeoutId = window.setTimeout(tryZoom, 200)
       }
     }
     
     // Initial delay to allow render
-    setTimeout(tryZoom, 300)
+    timeoutId = window.setTimeout(tryZoom, 300)
+    return () => {
+      if (timeoutId != null) {
+        clearTimeout(timeoutId)
+      }
+    }
   }, [sanitizedData])
 
   const handleNodeClick = useCallback((node: any) => {

@@ -79,6 +79,12 @@ export default function GraphPage() {
   const fileInputRef = useRef<HTMLInputElement>(null)
   const searchInputRef = useRef<HTMLInputElement>(null)
   const deferredSearchTerm = useDeferredValue(searchTerm)
+  const linksWithIds = useMemo(() => {
+    return graphData.links.map((link, index) => ({
+      ...link,
+      id: (link as any).id || `link-${index}`,
+    }))
+  }, [graphData.links])
 
   const searchMatches = useMemo(() => {
     if (isPathMode || isConnectMode || isExplainMode) return []
@@ -395,25 +401,23 @@ export default function GraphPage() {
     }
   }
 
-  const calculatePath = (start: any, end: any) => {
-    const linksWithIds = graphData.links.map((link, index) => ({
-      ...link,
-      id: (link as any).id || `link-${index}`
-    }))
-    
-    const result = findShortestPath(graphData.nodes, linksWithIds, start.id, end.id)
-    
-    if (result) {
-      setHighlightedNodeIds(new Set(result.nodeIds))
-      setHighlightedLinkIds(new Set(result.linkIds))
-      if (graphRef.current) {
-         graphRef.current.zoomToFit() 
+  const calculatePath = useCallback(
+    (start: any, end: any) => {
+      const result = findShortestPath(graphData.nodes, linksWithIds, start.id, end.id)
+
+      if (result) {
+        setHighlightedNodeIds(new Set(result.nodeIds))
+        setHighlightedLinkIds(new Set(result.linkIds))
+        if (graphRef.current) {
+          graphRef.current.zoomToFit()
+        }
+      } else {
+        toast.info('未找到连接这两个节点的路径')
+        setPathEndNode(null)
       }
-    } else {
-      toast.info('未找到连接这两个节点的路径')
-      setPathEndNode(null)
-    }
-  }
+    },
+    [graphData.nodes, linksWithIds]
+  )
 
   const resetPathMode = () => {
     setIsPathMode(false)

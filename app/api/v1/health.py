@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+import time
 
 from fastapi import APIRouter, Response
 
@@ -16,6 +17,16 @@ from app.storage.vector.milvus import milvus_store
 
 
 router = APIRouter()
+_READY_CACHE_TTL_SEC = 2.0
+_ready_cache: dict[str, object] = {"ts": 0.0, "payload": None, "status": 200}
+
+
+def _get_ready_cache():
+    now = time.monotonic()
+    payload = _ready_cache.get("payload")
+    if payload is not None and (now - float(_ready_cache.get("ts") or 0.0)) < _READY_CACHE_TTL_SEC:
+        return payload, int(_ready_cache.get("status") or 200)
+    return None, None
 
 
 @router.get("/health")
@@ -40,6 +51,11 @@ def ready(response: Response) -> dict:
     - Returns 200 when required deps are reachable
     - Returns 503 when one or more deps are down
     """
+    cached_payload, cached_status = _get_ready_cache()
+    if cached_payload is not None:
+        response.status_code = cached_status
+        return cached_payload
+
     from sqlalchemy import text
 
     ok = True
@@ -99,9 +115,13 @@ def ready(response: Response) -> dict:
     if not ok:
         response.status_code = 503
 
-    return {
+    payload = {
         "ok": ok,
         "database": db_status,
         "vector": vector_status,
         "redis": redis_status,
     }
+    _ready_cache["ts"] = time.monotonic()
+    _ready_cache["payload"] = payload
+    _ready_cache["status"] = response.status_code
+    return payload
