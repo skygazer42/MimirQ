@@ -67,9 +67,28 @@ export interface DocumentPipelineOptions {
 export interface Citation {
   document_id: string
   document_name: string
+  chunk_id?: string
   chunk_content: string
+  matched_terms?: string[]
   page_number?: number
+  header_path?: string
+  chunk_strategy?: string
+  chunk_role?: string
+  retrieval_role?: string
+  neighbor_of?: string
   relevance_score: number
+  vector_score?: number
+  bm25_score?: number
+  keyword_score?: number
+  rerank_score?: number
+  retrieval_score?: number
+  reranker_provider?: string
+  rerank_elapsed_sec?: number
+  rerank_model_used?: string
+  retrieval_mode?: string
+  vector_backend?: string
+  retrieval_elapsed_sec?: number
+  hit_type?: string
   has_image?: boolean
   img_id?: string
   img_url?: string
@@ -248,8 +267,9 @@ export interface ConversationDetail {
 }
 
 export interface StreamEvent {
-  type: 'citations' | 'token' | 'done' | 'error'
+  type: 'citations' | 'token' | 'done' | 'error' | 'route' | 'rewrite' | 'graph'
   data: any
+  request_id?: string
 }
 
 export interface ChatHistoryMessage {
@@ -283,6 +303,7 @@ export interface ChatRequest {
     reranker_provider?: string
     reranker_top_n?: number
     use_graph?: boolean
+    metadata_filter?: Record<string, any>
   }
 }
 

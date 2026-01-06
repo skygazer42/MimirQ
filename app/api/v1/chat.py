@@ -8,7 +8,7 @@ from datetime import datetime
 import json
 from typing import Optional, List
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
 from fastapi.encoders import jsonable_encoder
 from sqlalchemy import func
@@ -131,6 +131,7 @@ def _retrieve_long_term_messages(
 
 @router.post("/stream")
 async def stream_chat(
+    http_request: Request,
     request: ChatRequest,
     tenant_id: UUID = Depends(get_tenant_id),
     account_id: str = Depends(get_current_account_id),
@@ -215,7 +216,7 @@ async def stream_chat(
     async def event_stream():
         nonlocal citations_data, full_response
         doc_ids_to_use = allowed_doc_ids or []
-        request_id = uuid.uuid4()
+        request_id = getattr(http_request.state, "request_id", None) or uuid.uuid4().hex
         metrics_data = {}
         set_metrics_context(
             request_id=request_id,

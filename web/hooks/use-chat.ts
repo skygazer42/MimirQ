@@ -111,6 +111,11 @@ export function useChat({
           content: m.content,
         }))
 
+        const requestId =
+          typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+            ? crypto.randomUUID()
+            : `req-${Date.now()}-${Math.random().toString(16).slice(2)}`
+
         const effectiveRagConfig = {
           top_k: 5,
           score_threshold: 0.7,
@@ -123,6 +128,7 @@ export function useChat({
           headers: {
             'Content-Type': 'application/json',
             ...getAuthHeaders(),
+            'X-Request-ID': requestId,
           },
           body: JSON.stringify({
             conversation_id: conversationId,

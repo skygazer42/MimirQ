@@ -860,8 +860,14 @@ class HybridRetriever(BaseRetriever):
                 if len(tok) < 2:
                     continue
                 tok = tok.casefold()
+                if tok.isdigit():
+                    continue
+                if tok in STOPWORDS:
+                    continue
             else:
                 if len(tok) < 2:
+                    continue
+                if tok in STOPWORDS:
                     continue
             tokens.append(tok)
         return set(tokens)
@@ -1129,8 +1135,8 @@ class HybridRetriever(BaseRetriever):
         if not documents:
             return documents
 
-        query_tokens = list(jieba.cut_for_search(query))
-        doc_tokens_list = [list(jieba.cut_for_search(doc.get("content", ""))) for doc in documents]
+        query_tokens = self._bm25_tokenize(query)
+        doc_tokens_list = [self._bm25_tokenize(doc.get("content", "")) for doc in documents]
 
         all_tokens = set(tok for tokens in doc_tokens_list for tok in tokens)
         if not all_tokens:
@@ -1190,7 +1196,7 @@ class HybridRetriever(BaseRetriever):
         selected: List[Dict[str, Any]] = []
         candidates = list(documents)
         # 预先缓存 tokens，避免多次分词
-        tokens_map = {id(doc): set(jieba.cut_for_search(doc.get("content", ""))) for doc in candidates}
+        tokens_map = {id(doc): self._tokenize_for_similarity(doc.get("content", "")) for doc in candidates}
 
         def doc_similarity(doc_a: Dict[str, Any], doc_b: Dict[str, Any]) -> float:
             tokens_a = tokens_map.get(id(doc_a), set())
