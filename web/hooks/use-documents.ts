@@ -167,6 +167,15 @@ export function useDocuments() {
     loadDocuments()
   }, [loadDocuments])
 
+  useEffect(() => {
+    return () => {
+      for (const timerId of pollTimersRef.current.values()) {
+        clearTimeout(timerId)
+      }
+      pollTimersRef.current.clear()
+    }
+  }, [])
+
   return {
     documents,
     isLoading,
