@@ -69,21 +69,34 @@ def _retrieve_long_term_messages(
     简单的长期记忆召回：对历史消息做 BM25 检索，取最相关的若干条。
     仅用于追加到 history 以提供额外上下文，不修改存储。
     """
-    messages = db.query(Message).filter(
-        Message.conversation_id == conversation_id,
-        Message.tenant_id == tenant_id
-    ).order_by(Message.created_at.asc()).all()
+    max_messages = int(getattr(settings, "LONG_TERM_MEMORY_MAX_MESSAGES", 200) or 0)
+    query_builder = (
+        db.query(Message.content, Message.role, Message.created_at)
+        .filter(
+            Message.conversation_id == conversation_id,
+            Message.tenant_id == tenant_id,
+        )
+        .order_by(Message.created_at.desc())
+    )
+    if max_messages > 0:
+        query_builder = query_builder.limit(max_messages)
+
+    rows = query_builder.all()
+    if not rows:
+        return []
+
+    rows = list(reversed(rows))
 
     docs: List[Document] = []
-    for msg in messages:
-        if not msg.content or len(msg.content.strip()) < settings.LONG_TERM_MEMORY_MIN_LEN:
+    for content, role, created_at in rows:
+        if not content or len(content.strip()) < settings.LONG_TERM_MEMORY_MIN_LEN:
             continue
         docs.append(
             Document(
-                page_content=msg.content,
+                page_content=content,
                 metadata={
-                    "role": msg.role,
-                    "created_at": msg.created_at.isoformat()
+                    "role": role,
+                    "created_at": created_at.isoformat() if created_at else None,
                 }
             )
         )
