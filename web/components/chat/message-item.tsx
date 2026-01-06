@@ -13,6 +13,8 @@ import type { Citation, Message } from '@/types'
 import { cn } from '@/lib/utils'
 import { toAbsoluteBackendUrl } from '@/lib/env'
 
+const markdownPlugins = [remarkGfm]
+
 export const ChatMessageItem = memo(function ChatMessageItem({
   message,
   isStreaming = false,
@@ -62,7 +64,7 @@ export const ChatMessageItem = memo(function ChatMessageItem({
             </div>
           ) : (
             <ReactMarkdown
-              remarkPlugins={[remarkGfm]}
+              remarkPlugins={markdownPlugins}
               components={{
                 p: ({ children }) => <p className="mb-2 last:mb-0">{children}</p>,
                 ul: ({ children }) => (
@@ -93,6 +95,8 @@ export const ChatMessageItem = memo(function ChatMessageItem({
                       width={1200}
                       height={800}
                       unoptimized
+                      sizes="(max-width: 768px) 100vw, 768px"
+                      loading="lazy"
                       className="my-2 w-full h-auto max-h-96 object-contain rounded-lg border border-slate-200/70 dark:border-slate-700 bg-white dark:bg-slate-900"
                     />
                   )
@@ -134,9 +138,12 @@ export const ChatMessageItem = memo(function ChatMessageItem({
               参考来源
             </div>
             <div className="grid grid-cols-1 gap-2">
-              {message.citations.map((citation, idx) => (
-                <CitationCard key={idx} citation={citation} index={idx} />
-              ))}
+              {message.citations.map((citation, idx) => {
+                const citationKey = `${citation.document_id}-${citation.chunk_id || citation.page_number || idx}`
+                return (
+                  <CitationCard key={citationKey} citation={citation} index={idx} />
+                )
+              })}
             </div>
           </div>
         )}
@@ -188,6 +195,8 @@ const CitationCard = memo(function CitationCard({ citation, index }: { citation:
                   width={800}
                   height={600}
                   unoptimized
+                  sizes="(max-width: 768px) 100vw, 640px"
+                  loading="lazy"
                   className="w-full h-auto max-h-48 object-contain rounded-md border border-slate-200/70 dark:border-slate-700 bg-white dark:bg-slate-900"
                   onError={() => setHideImage(true)}
                 />
@@ -199,4 +208,3 @@ const CitationCard = memo(function CitationCard({ citation, index }: { citation:
     </div>
   )
 })
-

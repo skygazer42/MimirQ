@@ -3,7 +3,7 @@
  */
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import {
@@ -99,14 +99,14 @@ export function Navbar({
   const pathname = usePathname()
   const router = useRouter()
   const [backendOk, setBackendOk] = useState<boolean | null>(null)
-  const closeSidebarOnMobile = () => {
+  const closeSidebarOnMobile = useCallback(() => {
     if (typeof window === 'undefined') return
     try {
       if (window.matchMedia('(max-width: 768px)').matches) setSidebarOpen(false)
     } catch {
       // ignore
     }
-  }
+  }, [setSidebarOpen])
 
   // Dev UX: warm up route chunks in the background so first-click navigation feels snappier.
   useEffect(() => {
@@ -208,6 +208,7 @@ export function Navbar({
                     href={item.href}
                     prefetch
                     onClick={closeSidebarOnMobile}
+                    aria-current={isActive ? 'page' : undefined}
                     className={cn(
                       'flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-200 group',
                       isActive
@@ -259,6 +260,8 @@ export function Navbar({
       <Button
         variant="ghost"
         size="icon"
+        aria-label={isSidebarOpen ? '收起侧边栏' : '展开侧边栏'}
+        title={isSidebarOpen ? '收起侧边栏' : '展开侧边栏'}
         className={cn(
           'fixed top-1/2 -translate-y-1/2 z-50 rounded-full shadow-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-700 transition-all duration-300 ease-in-out',
           isSidebarOpen ? 'left-[260px]' : 'left-4'

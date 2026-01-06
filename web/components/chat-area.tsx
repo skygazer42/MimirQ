@@ -3,11 +3,10 @@
  */
 'use client'
 
-import { useState, useRef, useEffect, useCallback } from 'react'
-import { Send, Loader2, StopCircle, Sparkles, Database, Wand2 } from 'lucide-react'
+import { useState, useRef, useEffect, useCallback, useMemo } from 'react'
+import { Send, StopCircle, Sparkles, Database, Wand2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { useChat } from '@/hooks/use-chat'
-import { useDocuments } from '@/hooks/use-documents'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import { promptTemplateApi, PromptTemplate } from '@/lib/api-client'
@@ -52,10 +51,10 @@ export function ChatArea({
   const scrollContainerRef = useRef<HTMLDivElement>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
-  const fileInputRef = useRef<HTMLInputElement | null>(null)
   const prevInitialConversationIdRef = useRef<string | undefined>(initialConversationId)
   const autoScrollRef = useRef(true)
   const scrollRafRef = useRef<number | null>(null)
+  const ragSettingsId = 'rag-settings-panel'
 
   // Load prompt templates
   useEffect(() => {
@@ -94,8 +93,6 @@ export function ChatArea({
     },
   })
 
-  const { uploadDocument, loadDocuments } = useDocuments()
-
   // Sync URL conversation -> local state (History -> Chat)
   useEffect(() => {
     const prev = (prevInitialConversationIdRef.current || '').trim()
@@ -116,21 +113,6 @@ export function ChatArea({
       resetConversation()
     }
   }, [initialConversationId, conversationId, loadConversation, resetConversation])
-
-  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files
-    if (!files || files.length === 0) return
-
-    for (const file of Array.from(files)) {
-      try {
-        await uploadDocument(file)
-      } catch (error) {
-        console.error('Upload failed:', error)
-      }
-    }
-
-    e.target.value = ''
-  }
 
   const updateAutoScroll = useCallback(() => {
     const el = scrollContainerRef.current
@@ -182,21 +164,26 @@ export function ChatArea({
     setInputValue((prev) => (prev.trim() ? prev : p))
   }, [initialPrompt])
 
+  const selectedPromptTemplate = useMemo(
+    () => promptTemplates.find((template) => template.id === promptTemplateId),
+    [promptTemplates, promptTemplateId]
+  )
+
   // 发送消息
-  const handleSend = () => {
+  const handleSend = useCallback(() => {
     if (!inputValue.trim() || isLoading) return
 
     sendMessage(inputValue)
     setInputValue('')
-  }
+  }, [inputValue, isLoading, sendMessage])
 
   // 按键处理
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+  const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
       handleSend()
     }
-  }
+  }, [handleSend])
 
   return (
     <div className="flex-1 flex flex-col bg-slate-50/50 dark:bg-slate-950 h-screen relative transition-colors duration-300">
@@ -205,6 +192,9 @@ export function ChatArea({
         ref={scrollContainerRef}
         onScroll={updateAutoScroll}
         className="flex-1 overflow-y-auto pt-24 px-4 pb-4 scroll-smooth"
+        role="log"
+        aria-live="polite"
+        aria-busy={isLoading}
       >
         <div className="max-w-3xl mx-auto space-y-8">
           {messages.length === 0 && !isLoading && (
@@ -263,7 +253,7 @@ export function ChatArea({
               </Select>
               {promptTemplateId && (
                 <span className="text-xs text-slate-500">
-                  {promptTemplates.find(t => t.id === promptTemplateId)?.description}
+                  {selectedPromptTemplate?.description}
                 </span>
               )}
             </div>
@@ -276,6 +266,8 @@ export function ChatArea({
               variant="ghost"
               className="h-8 px-2 text-xs text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-100"
               onClick={() => setShowRagSettings((v) => !v)}
+              aria-expanded={showRagSettings}
+              aria-controls={ragSettingsId}
             >
               <Database className="w-4 h-4 mr-2" />
               RAG 设置
@@ -283,7 +275,10 @@ export function ChatArea({
           </div>
 
           {showRagSettings && (
-            <div className="px-2 flex flex-wrap items-center gap-3 text-xs text-slate-600 dark:text-slate-300">
+            <div
+              id={ragSettingsId}
+              className="px-2 flex flex-wrap items-center gap-3 text-xs text-slate-600 dark:text-slate-300"
+            >
               <div className="flex items-center gap-2">
                 <span className="text-slate-400">检索</span>
                 <Select
@@ -390,6 +385,9 @@ export function ChatArea({
               onChange={(e) => setInputValue(e.target.value)}
               onKeyDown={handleKeyDown}
               placeholder="问点什么... (Shift + Enter 换行)"
+              autoFocus
+              aria-label="聊天输入框"
+              enterKeyHint="send"
               className="w-full px-6 py-4 pr-24 resize-none outline-none rounded-3xl max-h-48 bg-transparent text-slate-700 dark:text-slate-200 placeholder:text-slate-400 font-medium"
               rows={1}
             />
@@ -400,6 +398,8 @@ export function ChatArea({
                   size="icon"
                   variant="ghost"
                   onClick={stopGeneration}
+                  title="停止生成"
+                  aria-label="停止生成"
                   className="rounded-full hover:bg-red-50 dark:hover:bg-red-900/20 text-red-500 transition-colors h-10 w-10 animate-pulse"
                 >
                   <StopCircle className="h-5 w-5" />
@@ -409,6 +409,8 @@ export function ChatArea({
                   size="icon"
                   onClick={handleSend}
                   disabled={!inputValue.trim()}
+                  title="发送消息"
+                  aria-label="发送消息"
                   className={cn(
                     "rounded-full h-10 w-10 transition-all duration-300 flex items-center justify-center",
                     inputValue.trim() 
