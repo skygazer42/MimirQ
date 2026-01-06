@@ -53,10 +53,13 @@ export function ChatArea({
   const [structuredOutput, setStructuredOutput] = useState(false)
   const [structuredPreset, setStructuredPreset] = useState<string>('')
   const [enableLongTermMemory, setEnableLongTermMemory] = useState(false)
+  const scrollContainerRef = useRef<HTMLDivElement>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
   const prevInitialConversationIdRef = useRef<string | undefined>(initialConversationId)
+  const autoScrollRef = useRef(true)
+  const scrollRafRef = useRef<number | null>(null)
 
   // Load prompt templates
   useEffect(() => {
@@ -133,10 +136,43 @@ export function ChatArea({
     e.target.value = ''
   }
 
-  // 自动滚动到底部
+  const updateAutoScroll = () => {
+    const el = scrollContainerRef.current
+    if (!el) return
+    const distanceToBottom = el.scrollHeight - el.scrollTop - el.clientHeight
+    autoScrollRef.current = distanceToBottom < 160
+  }
+
+  const scheduleScrollToBottom = (behavior: ScrollBehavior) => {
+    if (!autoScrollRef.current) return
+    if (scrollRafRef.current != null) return
+    scrollRafRef.current = window.requestAnimationFrame(() => {
+      scrollRafRef.current = null
+      messagesEndRef.current?.scrollIntoView({ behavior })
+    })
+  }
+
+  // 自动滚动：仅在用户停留在底部附近时触发，并做 rAF 节流，避免流式输出时抖动/卡顿。
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [messages, currentResponse])
+    scheduleScrollToBottom('smooth')
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [messages.length])
+
+  useEffect(() => {
+    scheduleScrollToBottom('auto')
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentResponse])
+
+  useEffect(() => {
+    updateAutoScroll()
+    return () => {
+      if (scrollRafRef.current != null) {
+        window.cancelAnimationFrame(scrollRafRef.current)
+        scrollRafRef.current = null
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   // 自动调整输入框高度
   useEffect(() => {
