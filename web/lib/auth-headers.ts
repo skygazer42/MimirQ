@@ -9,6 +9,13 @@
 export function getAuthHeaders(): Record<string, string> {
   const headers: Record<string, string> = {}
 
+  if (typeof window !== 'undefined') {
+    const token = window.localStorage.getItem('mimirq_access_token')
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`
+    }
+  }
+
   const envUserId = process.env.NEXT_PUBLIC_USER_ID
   const envTenantId = process.env.NEXT_PUBLIC_TENANT_ID
 
@@ -20,11 +27,12 @@ export function getAuthHeaders(): Record<string, string> {
     tenantId = window.localStorage.getItem('mimirq_tenant_id') || tenantId
   }
 
-  headers['X-User-ID'] = userId || 'demo'
+  if (!headers['Authorization']) {
+    headers['X-User-ID'] = userId || 'demo'
+  }
   if (tenantId) {
     headers['X-Tenant-ID'] = tenantId
   }
 
   return headers
 }
-

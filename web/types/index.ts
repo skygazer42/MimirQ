@@ -368,6 +368,39 @@ export interface MessageFeedbackListResponse {
   items: MessageFeedback[]
 }
 
+// ==================== Auth ====================
+
+export interface UserProfile {
+  id: string
+  email: string
+  username: string
+  is_active: boolean
+  created_at: string
+  last_login_at?: string | null
+}
+
+export interface AuthToken {
+  access_token: string
+  token_type: string
+  expires_in: number
+}
+
+export interface AuthResponse {
+  user: UserProfile
+  token: AuthToken
+}
+
+export interface RegisterRequest {
+  email: string
+  username: string
+  password: string
+}
+
+export interface LoginRequest {
+  identifier: string
+  password: string
+}
+
 // ==================== KG 相关类型 ====================
 
 export interface KGExtractResponse {
