@@ -5,7 +5,7 @@
  * 功能：上传 .graphml 文件并进行可视化展示
  * 优化：主流视觉设计、交互侧边栏、玻璃拟态控件、搜索与高级筛选、后端集成、路径分析、布局切换、图编辑、RAG可解释性、3D可视化
  */
-import { useState, useRef, useEffect, useCallback } from 'react'
+import { useState, useRef, useEffect, useCallback, useDeferredValue, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
 import { Navbar } from '@/components/navbar'
@@ -78,6 +78,35 @@ export default function GraphPage() {
   const graphRef = useRef<GraphViewerRef>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const searchInputRef = useRef<HTMLInputElement>(null)
+  const deferredSearchTerm = useDeferredValue(searchTerm)
+
+  const searchMatches = useMemo(() => {
+    if (isPathMode || isConnectMode || isExplainMode) return []
+    const term = deferredSearchTerm.trim().toLowerCase()
+    if (!term) return []
+
+    return graphData.nodes.filter((node) => {
+      const label = (node.label || '').toLowerCase()
+      const id = (node.id || '').toLowerCase()
+      return label.includes(term) || id.includes(term)
+    })
+  }, [deferredSearchTerm, graphData.nodes, isPathMode, isConnectMode, isExplainMode])
+
+  useEffect(() => {
+    if (isPathMode || isConnectMode || isExplainMode) return
+    const term = deferredSearchTerm.trim()
+    if (!term) {
+      setHighlightedNodeIds(new Set())
+      return
+    }
+
+    const nextIds = new Set(searchMatches.map((node) => node.id))
+    setHighlightedNodeIds(nextIds)
+
+    if (searchMatches.length > 0 && graphRef.current) {
+      graphRef.current.focusNode(searchMatches[0].id)
+    }
+  }, [deferredSearchTerm, searchMatches, isPathMode, isConnectMode, isExplainMode])
 
   // Initialize with real (mock) data from service
   const loadInitialData = async () => {
@@ -426,28 +455,9 @@ export default function GraphPage() {
     }
   }
 
-  const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const term = e.target.value
-    setSearchTerm(term)
-    
-    if (isPathMode || isConnectMode || isExplainMode) return 
-
-    if (!term.trim()) {
-      setHighlightedNodeIds(new Set())
-      return
-    }
-
-    const matches = graphData.nodes.filter(n => 
-      (n.label && n.label.toLowerCase().includes(term.toLowerCase())) ||
-      (n.id && n.id.toLowerCase().includes(term.toLowerCase()))
-    )
-
-    setHighlightedNodeIds(new Set(matches.map(n => n.id)))
-    
-    if (matches.length > 0 && graphRef.current) {
-      graphRef.current.focusNode(matches[0].id)
-    }
-  }
+  const handleSearchChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    setSearchTerm(e.target.value)
+  }, [])
 
   const handleChatWithNode = () => {
     if (!selectedNode?.label) return
