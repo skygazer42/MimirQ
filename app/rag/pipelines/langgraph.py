@@ -73,6 +73,7 @@ class RAGState(TypedDict, total=False):
     enable_reranker: bool
     reranker_provider: Optional[str]
     reranker_top_n: int
+    metadata_filter: Optional[Dict[str, Any]]
     format_instructions: str
     structured_output: bool
     structured_preset: Optional[str]
@@ -124,8 +125,9 @@ def _retrieve_cache_key(state: Dict[str, Any]) -> str:
         "enable_reranker": bool(state.get("enable_reranker")),
         "reranker_provider": str(state.get("reranker_provider") or ""),
         "reranker_top_n": int(state.get("reranker_top_n") or 0),
+        "metadata_filter": state.get("metadata_filter") or None,
     }
-    return json.dumps(key_obj, ensure_ascii=False, sort_keys=True)
+    return json.dumps(key_obj, ensure_ascii=False, sort_keys=True, default=str)
 
 
 _RAG_RETRIEVE_CACHE_POLICY = (
@@ -276,6 +278,7 @@ def _retrieve_node(state: RAGState) -> RAGState:
             "reranker_top_n": state.get("reranker_top_n", settings.RERANKER_TOP_N),
             "tenant_id": state.get("tenant_id"),
             "document_ids": state.get("document_ids"),
+            "metadata_filter": state.get("metadata_filter"),
         }
     )
     # Query Expansion（Multi-Query / HyDE，可选）
@@ -299,7 +302,7 @@ def _retrieve_node(state: RAGState) -> RAGState:
             mq_start = time.time()
             mq_raw = mq_chain.invoke({"query": query_for_retrieval, "n": mq_n})
             multi_query_elapsed = time.time() - mq_start
-            mq_data, multi_query_parse_meta = parse_json_from_text(mq_raw)
+            mq_data, multi_query_parse_meta = parse_json_from_text(mq_raw, expected="array")
 
             if isinstance(mq_data, list):
                 seen: set[str] = set()
@@ -380,7 +383,7 @@ def _retrieve_node(state: RAGState) -> RAGState:
             dq_start = time.time()
             dq_raw = dq_chain.invoke({"query": query_for_retrieval, "n": dq_n})
             decompose_elapsed = time.time() - dq_start
-            dq_data, decompose_parse_meta = parse_json_from_text(dq_raw)
+            dq_data, decompose_parse_meta = parse_json_from_text(dq_raw, expected="array")
 
             if isinstance(dq_data, list):
                 seen: set[str] = set()
@@ -1014,6 +1017,7 @@ def build_rag_state(
     enable_reranker: bool = settings.ENABLE_RERANKER,
     reranker_provider: Optional[str] = settings.RERANKER_PROVIDER,
     reranker_top_n: int = settings.RERANKER_TOP_N,
+    metadata_filter: Optional[Dict[str, Any]] = None,
     structured_output: bool = False,
     structured_preset: Optional[str] = None,
     prompt_template_id: Optional[UUID] = None,
@@ -1076,6 +1080,7 @@ def build_rag_state(
         "enable_reranker": enable_reranker,
         "reranker_provider": reranker_provider,
         "reranker_top_n": reranker_top_n,
+        "metadata_filter": metadata_filter,
         "format_instructions": format_instructions,
         "structured_output": bool(structured_output),
         "structured_preset": structured_preset,
@@ -1105,6 +1110,7 @@ def run_rag_graph(
     enable_reranker: bool = settings.ENABLE_RERANKER,
     reranker_provider: Optional[str] = settings.RERANKER_PROVIDER,
     reranker_top_n: int = settings.RERANKER_TOP_N,
+    metadata_filter: Optional[Dict[str, Any]] = None,
     structured_output: bool = False,
     structured_preset: Optional[str] = None,
     prompt_template_id: Optional[UUID] = None,
@@ -1166,6 +1172,7 @@ def run_rag_graph(
         "enable_reranker": enable_reranker,
         "reranker_provider": reranker_provider,
         "reranker_top_n": reranker_top_n,
+        "metadata_filter": metadata_filter,
         "format_instructions": format_instructions,
         "structured_output": bool(structured_output),
         "structured_preset": structured_preset,

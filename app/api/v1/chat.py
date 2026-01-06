@@ -253,6 +253,7 @@ async def stream_chat(
                     enable_reranker=request.rag_config.enable_reranker,
                     reranker_provider=request.rag_config.reranker_provider,
                     reranker_top_n=request.rag_config.reranker_top_n,
+                    metadata_filter=request.rag_config.metadata_filter,
                     structured_output=request.structured_output,
                     structured_preset=request.structured_preset,
                     prompt_template_id=request.prompt_template_id,
@@ -323,7 +324,7 @@ async def stream_chat(
                 structured_data = None
                 structured_parse_meta = {"ok": False, "method": None, "error": None}
                 if request.structured_output:
-                    structured_data, structured_parse_meta = parse_json_from_text(full_response)
+                    structured_data, structured_parse_meta = parse_json_from_text(full_response, expected="object")
                     metrics_data["structured_parse_ok"] = bool(structured_parse_meta.get("ok"))
                     metrics_data["structured_parse_method"] = structured_parse_meta.get("method")
                     metrics_data["structured_parse_error"] = structured_parse_meta.get("error")
@@ -399,6 +400,7 @@ async def stream_chat(
                 history=[m.model_dump() for m in request.history] + long_term_messages,
                 conversation_id=conversation_id,
                 document_ids=doc_ids_to_use,
+                metadata_filter=request.rag_config.metadata_filter,
                 top_k=request.rag_config.top_k,
                 score_threshold=request.rag_config.score_threshold,
                 tenant_id=tenant_id,
