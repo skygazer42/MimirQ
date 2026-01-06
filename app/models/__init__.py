@@ -8,6 +8,7 @@ from app.rag.kg.models import KgEntity, KgSourceEvent, KgEventEntity
 from app.models.dataset import Dataset, DatasetPermission, DatasetPermissionEnum
 from app.models.evaluation import RagasEvaluationRun, RagasEvaluationItem
 from app.models.prompt_template import PromptTemplate
+from app.models.user import User
 
 __all__ = [
     "Document",
@@ -25,4 +26,5 @@ __all__ = [
     "RagasEvaluationRun",
     "RagasEvaluationItem",
     "PromptTemplate",
+    "User",
 ]

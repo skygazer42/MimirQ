@@ -45,6 +45,8 @@ import app.rag.kg.models  # noqa: F401
 import app.models.evaluation  # noqa: F401
 # Ensure feedback models are registered for metadata creation
 import app.models.feedback  # noqa: F401
+# Ensure user models are registered for metadata creation
+import app.models.user  # noqa: F401
 
 logger = logging.getLogger("mimirq")
 
