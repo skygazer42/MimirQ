@@ -4,6 +4,7 @@
 'use client'
 
 import { memo, useState } from 'react'
+import type { ReactNode } from 'react'
 import Image from 'next/image'
 import { Database, Sparkles } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
@@ -15,15 +16,15 @@ import { toAbsoluteBackendUrl } from '@/lib/env'
 
 const markdownPlugins = [remarkGfm]
 const markdownComponents = {
-  p: ({ children }: { children?: React.ReactNode }) => <p className="mb-2 last:mb-0">{children}</p>,
-  ul: ({ children }: { children?: React.ReactNode }) => (
+  p: ({ children }: { children?: ReactNode }) => <p className="mb-2 last:mb-0">{children}</p>,
+  ul: ({ children }: { children?: ReactNode }) => (
     <ul className="list-disc pl-4 mb-2 space-y-1 marker:text-slate-400">{children}</ul>
   ),
-  ol: ({ children }: { children?: React.ReactNode }) => (
+  ol: ({ children }: { children?: ReactNode }) => (
     <ol className="list-decimal pl-4 mb-2 space-y-1 marker:text-slate-400">{children}</ol>
   ),
-  li: ({ children }: { children?: React.ReactNode }) => <li className="mb-0.5">{children}</li>,
-  a: ({ href, children }: { href?: string; children?: React.ReactNode }) => (
+  li: ({ children }: { children?: ReactNode }) => <li className="mb-0.5">{children}</li>,
+  a: ({ href, children }: { href?: string; children?: ReactNode }) => (
     <a
       href={href}
       target="_blank"
@@ -55,7 +56,7 @@ const markdownComponents = {
       {children}
     </blockquote>
   ),
-  code: ({ className, children, ...props }: { className?: string; children?: React.ReactNode }) => {
+  code: ({ className, children, ...props }: { className?: string; children?: ReactNode }) => {
     const match = /language-(\w+)/.exec(className || '')
     return match ? (
       <code className={className} {...props}>

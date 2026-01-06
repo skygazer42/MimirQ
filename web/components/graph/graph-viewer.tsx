@@ -11,6 +11,8 @@ const ForceGraph2DNoSSR = dynamic(
   { ssr: false }
 )
 const isDev = process.env.NODE_ENV !== 'production'
+const LARGE_GRAPH_NODE_THRESHOLD = 600
+const LARGE_GRAPH_LINK_THRESHOLD = 1200
 
 export interface GraphViewerRef {
   zoomIn: () => void
@@ -71,6 +73,18 @@ export const GraphViewer = forwardRef<GraphViewerRef, GraphViewerProps>(({
       }))
     }
   }, [data])
+  const isLargeGraph = useMemo(
+    () =>
+      sanitizedData.nodes.length > LARGE_GRAPH_NODE_THRESHOLD ||
+      sanitizedData.links.length > LARGE_GRAPH_LINK_THRESHOLD,
+    [sanitizedData.links.length, sanitizedData.nodes.length]
+  )
+  const allowEdgeLabels = showEdgeLabels && !isLargeGraph
+  const edgeLabelScale = isLargeGraph ? 2.5 : 2
+  const nodeRelSize = isLargeGraph ? 4 : 6
+  const arrowLength = isLargeGraph ? 0 : 3.5
+  const cooldownTicks = isLargeGraph ? 50 : 100
+  const cooldownTime = isLargeGraph ? 4000 : 8000
 
   // Debug: Log dimensions
   useEffect(() => {
@@ -82,6 +96,27 @@ export const GraphViewer = forwardRef<GraphViewerRef, GraphViewerProps>(({
 
   useEffect(() => {
     setMounted(true)
+  }, [])
+
+  useEffect(() => {
+    if (typeof document === 'undefined') return
+
+    const handleVisibility = () => {
+      const isHidden = document.visibilityState === 'hidden'
+      const graph = fgRef.current
+      if (!graph) return
+      if (isHidden) {
+        graph.pauseAnimation?.()
+      } else {
+        graph.resumeAnimation?.()
+      }
+    }
+
+    handleVisibility()
+    document.addEventListener('visibilitychange', handleVisibility)
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibility)
+    }
   }, [])
 
   // Expose methods to parent
@@ -215,7 +250,7 @@ export const GraphViewer = forwardRef<GraphViewerRef, GraphViewerProps>(({
           backgroundColor="rgba(0,0,0,0)"
           nodeLabel="label"
           nodeColor={getNodeColor}
-          nodeRelSize={6}
+          nodeRelSize={nodeRelSize}
           // Layout Config
           dagMode={getDagMode()}
           dagLevelDistance={50}
@@ -244,9 +279,10 @@ export const GraphViewer = forwardRef<GraphViewerRef, GraphViewerProps>(({
              if (highlightedNodeIds.size > 0) return 1
              return 1.5
           }}
-          linkDirectionalArrowLength={3.5}
+          linkDirectionalArrowLength={arrowLength}
           linkDirectionalArrowRelPos={1}
-          cooldownTicks={100}
+          cooldownTicks={cooldownTicks}
+          cooldownTime={cooldownTime}
           onNodeClick={handleNodeClick}
           onBackgroundClick={onBackgroundClick}
           onNodeDragEnd={(node: any) => {
@@ -266,7 +302,8 @@ export const GraphViewer = forwardRef<GraphViewerRef, GraphViewerProps>(({
             // Draw Node Circle
             const color = getNodeColor(node)
             ctx.beginPath();
-            const radius = isHighlighted ? 7 : 5
+            const baseRadius = isLargeGraph ? 4 : 5
+            const radius = isHighlighted ? baseRadius + 2 : baseRadius
             ctx.arc(node.x || 0, node.y || 0, radius, 0, 2 * Math.PI, false);
             ctx.fillStyle = color;
             ctx.fill();
@@ -293,7 +330,8 @@ export const GraphViewer = forwardRef<GraphViewerRef, GraphViewerProps>(({
             }
 
             // Draw Label
-            const shouldShowLabel = isHighlighted || globalScale > 1.5 || (!isDimmed && globalScale > 1.2)
+            const shouldShowLabel =
+              isHighlighted || (!isLargeGraph && (globalScale > 1.5 || (!isDimmed && globalScale > 1.2)))
             
             if (shouldShowLabel) {
               ctx.font = `${isHighlighted ? 'bold ' : ''}${fontSize}px Sans-Serif`;
@@ -322,8 +360,8 @@ export const GraphViewer = forwardRef<GraphViewerRef, GraphViewerProps>(({
             const linkId = link.id || (link.index !== undefined ? `link-${link.index}` : null)
             const isPathLink = highlightedLinkIds.size > 0 && linkId && highlightedLinkIds.has(linkId)
 
-            if (!showEdgeLabels && !isPathLink) return
-            if (globalScale < 2 && !isPathLink) return
+            if (!allowEdgeLabels && !isPathLink) return
+            if (globalScale < edgeLabelScale && !isPathLink) return
 
             const label = link.label
             if (!label) return
