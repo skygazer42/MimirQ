@@ -47,8 +47,8 @@ import { ParserDropdown } from '@/components/ui/parser-dropdown'
 import { PipelineOptionsPanel } from '@/components/pipeline-options-panel'
 import { useParsedFiles } from '@/hooks/use-parsed-files'
 import { cn } from '@/lib/utils'
-import ReactMarkdown from 'react-markdown'
-import remarkGfm from 'remark-gfm'
+import { MarkdownRenderer } from '@/components/markdown/markdown-renderer'
+import { MarkdownToc } from '@/components/markdown/markdown-toc'
 
 // 分隔符配置
 const SEPARATORS = ['\\n\\n', '\\n', '。', '！', '？', '.', '!', '?']
@@ -181,6 +181,7 @@ export function ChunkPreview({ onConfirm, onClose }: ChunkPreviewProps) {
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [submitSuccess, setSubmitSuccess] = useState(false)
   const previewRequestIdRef = useRef(0)
+  const highlightRef = useRef<HTMLElement | null>(null)
 
   // 选中的块索引（用于高亮联动）
   const [hoveredChunkIndex, setHoveredChunkIndex] = useState<number | null>(null)
@@ -201,6 +202,14 @@ export function ChunkPreview({ onConfirm, onClose }: ChunkPreviewProps) {
   const hideChunkSizeControl = isSentenceStrategy || isRagflowStrategy
   // 分层切块也不显示普通的 overlap，因为它依赖层级定义
   const showOverlapControl = !isSentenceStrategy && !isRagflowStrategy && !isHierarchicalStrategy && strategyForUi !== 'separator'
+
+  useEffect(() => {
+    if (hoveredChunkIndex === null) return
+    if (originalPreviewMode !== 'raw') return
+    const el = highlightRef.current
+    if (!el) return
+    el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+  }, [hoveredChunkIndex, originalPreviewMode])
 
   useEffect(() => {
     if (typeof pipelineOptions.chunk_size === 'number' && pipelineOptions.chunk_size !== chunkSize) {
@@ -882,20 +891,30 @@ export function ChunkPreview({ onConfirm, onClose }: ChunkPreviewProps) {
               {previewData ? (
                 previewData.original_text ? (
                   originalPreviewMode === 'rendered' ? (
-                    <div className="max-w-3xl mx-auto">
-                      <div className="prose prose-slate max-w-none prose-headings:text-gray-900 prose-p:text-gray-700 prose-a:text-sky-700 prose-code:text-pink-600 prose-code:bg-pink-50 prose-code:px-1 prose-code:py-0.5 prose-code:rounded prose-pre:bg-gray-900">
-                        <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                          {previewData.original_text}
-                        </ReactMarkdown>
+                    <div className="mx-auto w-full max-w-6xl flex gap-8">
+                      <div className="min-w-0 flex-1">
+                        <div className="prose prose-slate max-w-none prose-headings:text-gray-900 prose-p:text-gray-700 prose-a:text-sky-700 prose-code:text-pink-600 prose-code:bg-pink-50 prose-code:px-1 prose-code:py-0.5 prose-code:rounded prose-pre:bg-gray-900">
+                          <MarkdownRenderer markdown={previewData.original_text} autoScrollToHash />
+                        </div>
+                        <p className="mt-4 text-[11px] text-gray-400">
+                          渲染模式支持目录跳转；切片定位请切换到“源码”模式
+                        </p>
                       </div>
-                      <p className="mt-4 text-[11px] text-gray-400">渲染模式不支持切片悬停高亮定位</p>
+                      <aside className="hidden xl:block w-64 shrink-0">
+                        <div className="sticky top-6 max-h-[calc(100vh-220px)] overflow-y-auto rounded-xl border border-gray-200 bg-white p-3">
+                          <MarkdownToc markdown={previewData.original_text} />
+                        </div>
+                      </aside>
                     </div>
                   ) : (
                     <div className="font-mono text-sm leading-relaxed text-gray-600 whitespace-pre-wrap max-w-3xl mx-auto">
                       {hoveredChunkIndex !== null && getHighlightedText ? (
                         <>
                           <span className="opacity-40">{getHighlightedText.before}</span>
-                          <mark className="bg-yellow-200 text-gray-900 rounded px-0.5 py-0.5 mx-0.5 shadow-sm font-medium">
+                          <mark
+                            ref={highlightRef}
+                            className="bg-yellow-200 text-gray-900 rounded px-0.5 py-0.5 mx-0.5 shadow-sm font-medium"
+                          >
                             {getHighlightedText.highlighted}
                           </mark>
                           <span className="opacity-40">{getHighlightedText.after}</span>

@@ -1,8 +1,6 @@
 'use client'
 
 import { useState, useCallback, useRef } from 'react'
-import ReactMarkdown from 'react-markdown'
-import remarkGfm from 'remark-gfm'
 import { useRouter } from 'next/navigation'
 import {
   Upload,
@@ -36,6 +34,8 @@ import { getParserLabel } from '@/lib/parser-options'
 import { StatCard, StatsGrid } from '@/components/ui/stats-card'
 import { FileQueueItem, FileQueueItemData, FileStatus } from '@/components/ui/file-queue-item'
 import { ParserDropdown } from '@/components/ui/parser-dropdown'
+import { MarkdownRenderer } from '@/components/markdown/markdown-renderer'
+import { MarkdownToc } from '@/components/markdown/markdown-toc'
 
 // 解析后的文件（扩展版）
 interface ParsedFile extends FileQueueItemData {
@@ -671,10 +671,15 @@ export default function ParsingPage() {
                         />
                       ) : previewMode === 'rendered' ? (
                         // 预览模式
-                        <div className="prose prose-slate max-w-none prose-headings:text-gray-900 prose-p:text-gray-700 prose-a:text-indigo-600 prose-code:text-pink-600 prose-code:bg-pink-50 prose-code:px-1 prose-code:py-0.5 prose-code:rounded prose-pre:bg-gray-900 prose-table:border-collapse prose-th:bg-gray-100 prose-th:border prose-th:border-gray-300 prose-th:p-2 prose-td:border prose-td:border-gray-300 prose-td:p-2">
-                          <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                            {activeFile.markdownContent}
-                          </ReactMarkdown>
+                        <div className="flex gap-8">
+                          <div className="min-w-0 flex-1 prose prose-slate max-w-none prose-headings:text-gray-900 prose-p:text-gray-700 prose-a:text-indigo-600 prose-code:text-pink-600 prose-code:bg-pink-50 prose-code:px-1 prose-code:py-0.5 prose-code:rounded prose-pre:bg-gray-900 prose-table:border-collapse prose-th:bg-gray-100 prose-th:border prose-th:border-gray-300 prose-th:p-2 prose-td:border prose-td:border-gray-300 prose-td:p-2">
+                            <MarkdownRenderer markdown={activeFile.markdownContent} autoScrollToHash />
+                          </div>
+                          <aside className="hidden xl:block w-64 shrink-0">
+                            <div className="sticky top-6 max-h-[calc(100vh-220px)] overflow-y-auto rounded-xl border border-slate-200 bg-white/70 p-3">
+                              <MarkdownToc markdown={activeFile.markdownContent} />
+                            </div>
+                          </aside>
                         </div>
                       ) : (
                         // 源码模式
