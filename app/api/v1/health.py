@@ -19,6 +19,7 @@ from app.storage.vector.milvus import milvus_store
 router = APIRouter()
 _READY_CACHE_TTL_SEC = 2.0
 _ready_cache: dict[str, object] = {"ts": 0.0, "payload": None, "status": 200}
+_redis_client = None
 
 
 def _get_ready_cache():
@@ -27,6 +28,20 @@ def _get_ready_cache():
     if payload is not None and (now - float(_ready_cache.get("ts") or 0.0)) < _READY_CACHE_TTL_SEC:
         return payload, int(_ready_cache.get("status") or 200)
     return None, None
+
+
+def _get_redis_client():
+    global _redis_client
+    if _redis_client is None:
+        import redis
+
+        _redis_client = redis.Redis.from_url(
+            settings.REDIS_URL,
+            socket_timeout=1,
+            socket_connect_timeout=1,
+            decode_responses=True,
+        )
+    return _redis_client
 
 
 @router.get("/health")
@@ -95,17 +110,12 @@ def ready(response: Response) -> dict:
     }
     if redis_enabled:
         try:
-            import redis
-
-            r = redis.Redis.from_url(
-                settings.REDIS_URL,
-                socket_timeout=1,
-                socket_connect_timeout=1,
-                decode_responses=True,
-            )
-            r.ping()
+            client = _get_redis_client()
+            client.ping()
             redis_status["status"] = "connected"
         except Exception as exc:  # noqa: BLE001
+            global _redis_client
+            _redis_client = None
             redis_status["status"] = "disconnected"
             redis_status["error"] = str(exc)[:200]
             # Redis is only required when the task queue is enabled.
