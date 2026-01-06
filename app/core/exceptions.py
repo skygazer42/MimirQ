@@ -11,11 +11,17 @@ from starlette.status import (
     HTTP_401_UNAUTHORIZED,
     HTTP_403_FORBIDDEN,
     HTTP_404_NOT_FOUND,
-    HTTP_422_UNPROCESSABLE_ENTITY,
     HTTP_429_TOO_MANY_REQUESTS,
     HTTP_500_INTERNAL_SERVER_ERROR,
     HTTP_503_SERVICE_UNAVAILABLE,
 )
+
+# Starlette deprecated `HTTP_422_UNPROCESSABLE_ENTITY` in favor of
+# `HTTP_422_UNPROCESSABLE_CONTENT` (keep a backward-compatible fallback).
+try:
+    from starlette.status import HTTP_422_UNPROCESSABLE_CONTENT
+except ImportError:  # pragma: no cover
+    from starlette.status import HTTP_422_UNPROCESSABLE_ENTITY as HTTP_422_UNPROCESSABLE_CONTENT
 
 logger = logging.getLogger(__name__)
 
@@ -65,7 +71,7 @@ class ValidationError(MimirQException):
         super().__init__(
             message=message,
             error_code="VALIDATION_ERROR",
-            status_code=HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=HTTP_422_UNPROCESSABLE_CONTENT,
             detail=merged_detail or None,
         )
 
@@ -153,7 +159,7 @@ class DocumentProcessingError(MimirQException):
         super().__init__(
             message=message,
             error_code="DOCUMENT_PROCESSING_ERROR",
-            status_code=HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=HTTP_422_UNPROCESSABLE_CONTENT,
             detail=detail or None,
         )
 
@@ -275,4 +281,3 @@ def register_exception_handlers(app: FastAPI) -> None:
     app.add_exception_handler(MimirQException, mimirq_exception_handler)
     app.add_exception_handler(HTTPException, http_exception_handler)
     app.add_exception_handler(Exception, unhandled_exception_handler)
-
