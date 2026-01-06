@@ -66,10 +66,10 @@
 
 ```bash
 # 1. 停止服务
-docker-compose down
+docker compose down
 
 # 2. 备份 PostgreSQL 数据库
-docker-compose up -d postgres
+docker compose up -d postgres
 docker exec mimirq-postgres pg_dump -U postgres mimirq > backup.sql
 
 # 3. 清空文档表（保留用户数据）
@@ -78,7 +78,7 @@ docker exec mimirq-postgres pg_dump -U postgres mimirq > backup.sql
 # DELETE FROM documents;
 
 # 4. 启动新的 Milvus 服务
-docker-compose up -d
+docker compose up -d
 
 # 5. 重新上传所有文档
 # 文档会自动使用 Milvus 存储
@@ -215,7 +215,7 @@ MinIO → 向量数据（对象存储）
 
 ### 问题 1: Milvus 启动失败
 
-**症状**: `docker-compose logs milvus` 显示错误
+**症状**: `docker compose logs milvus` 显示错误
 
 **解决**:
 
@@ -224,8 +224,8 @@ MinIO → 向量数据（对象存储）
 netstat -tulnp | grep 19530
 
 # 清理旧数据重启
-docker-compose down -v
-docker-compose up -d
+docker compose down -v
+docker compose up -d
 ```
 
 ### 问题 2: 连接超时
@@ -239,7 +239,7 @@ docker-compose up -d
 curl http://localhost:9091/healthz
 
 # 等待 Milvus 完全启动（约 60 秒）
-docker-compose logs -f milvus
+docker compose logs -f milvus
 ```
 
 ### 问题 3: 检索结果为空

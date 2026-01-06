@@ -86,7 +86,7 @@ A2: Docker 的优点包括：1. 轻量级...
 **场景 2: 追问**
 ```
 Q1: 如何部署 Milvus？
-A1: 使用 docker-compose up -d...
+A1: 使用 docker compose up -d...
 
 Q2: 还有其他方式吗？  ✅ 理解是在问部署方式
 A2: 还可以使用 Kubernetes Helm Chart 部署...
@@ -334,7 +334,7 @@ for msg in history[-5:]:  # 改为 -3 或 -10
 
 **检查日志**:
 ```bash
-docker-compose logs backend | grep "BM25"
+docker compose logs backend | grep "BM25"
 
 # 应该看到:
 ✅ BM25 index loaded with 12345 chunks
@@ -343,7 +343,7 @@ docker-compose logs backend | grep "BM25"
 **解决方案**:
 ```bash
 # 重启服务触发重建
-docker-compose restart backend
+docker compose restart backend
 ```
 
 ### Q2: 历史对话太长导致超时？

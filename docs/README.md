@@ -4,6 +4,7 @@
 
 ## 快速上手
 - [quickstart.md](./quickstart.md)：5 分钟完成环境准备、服务启动与基础校验。
+- [deployment/docker_compose.md](./deployment/docker_compose.md)：Docker Compose 的开发/生产模式与常见排错。
 
 ## 使用指南
 - [guides/langchain_agent_migration.md](./guides/langchain_agent_migration.md)：当前纯 LangChain RAG 架构说明与迁移记录。

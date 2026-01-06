@@ -33,10 +33,11 @@ make ps
 docker compose up -d --build
 docker compose ps
 
-# (可选) 启动前端
-cd web
-pnpm install
-pnpm dev
+# (可选) 启动前端（两种方式二选一）
+# 1) Docker（生产构建；推荐用于“一键部署”）
+make up-web
+# 2) 本地开发（热更新更快）
+# cd web && pnpm install && pnpm dev
 ```
 
 可选：本地启动后端（Python），依赖服务仍用 Docker：
@@ -164,7 +165,7 @@ self.llm = ChatAnthropic(
 
 **解决**:
 - 等待 2-5 分钟
-- 查看后端日志: `docker-compose logs -f backend`
+- 查看后端日志: `docker compose logs -f backend`
 - 查看 Milvus 状态: `curl http://localhost:9091/healthz`
 
 ### Q2: AI 回答"没有找到相关资料"？
@@ -184,13 +185,13 @@ self.llm = ChatAnthropic(
 **检查**:
 ```bash
 # 查看服务状态
-docker-compose ps
+docker compose ps
 
 # 查看错误日志
-docker-compose logs
+docker compose logs
 
 # 重启服务
-docker-compose restart
+docker compose restart
 ```
 
 ### Q4: 前端无法连接后端？
@@ -233,7 +234,7 @@ index_params = {
 }
 ```
 
-**详细指南**: [MILVUS_GUIDE.md](./MILVUS_GUIDE.md)
+**详细指南**: [guides/milvus_guide.md](./guides/milvus_guide.md)
 
 ### 3. 文档解析升级
 
@@ -263,7 +264,7 @@ mineru:
 遇到问题？
 
 1. 查看 [README.md](./README.md) 完整文档
-2. 查看后端日志: `docker-compose logs -f backend`
+2. 查看后端日志: `docker compose logs -f backend`
 3. 访问 API 文档: http://localhost:8000/docs
 4. 提交 Issue: [GitHub Issues](https://github.com/your-repo/issues)
 

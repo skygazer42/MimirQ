@@ -1,10 +1,45 @@
 version: '3.8'
 
+x-backend-build: &backend_build
+  context: .
+  dockerfile: Dockerfile
+  args:
+    # Default to minimal deps for smaller/faster Docker builds.
+    # Override if you need heavy optional parsers/local embeddings:
+    #   BACKEND_REQUIREMENTS_FILE=requirements.txt
+    REQUIREMENTS_FILE: ${BACKEND_REQUIREMENTS_FILE:-requirements-minimal.txt}
+
+x-backend-env: &backend_env
+  PYTHONDONTWRITEBYTECODE: 1
+  # Force container-to-container endpoints (do not depend on host-local `.env` defaults like localhost).
+  DATABASE_URL: ${DATABASE_URL_DOCKER:-postgresql://postgres:postgres@postgres:5432/mimirq}
+  MILVUS_HOST: ${MILVUS_HOST_DOCKER:-milvus}
+  MILVUS_PORT: ${MILVUS_PORT_DOCKER:-19530}
+  # Persisted data dirs (mounted as volumes; avoid coupling to /app code mounts).
+  UPLOAD_DIR: ${UPLOAD_DIR_DOCKER:-/data/uploads}
+  # MinIO for images
+  MINIO_ENABLED: ${MINIO_ENABLED_DOCKER:-true}
+  MINIO_ENDPOINT: ${MINIO_ENDPOINT_DOCKER:-minio:9000}
+  MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY_DOCKER:-minioadmin}
+  MINIO_SECRET_KEY: ${MINIO_SECRET_KEY_DOCKER:-minioadmin}
+  MINIO_BUCKET_NAME: ${MINIO_BUCKET_NAME_DOCKER:-mimirq}
+  MINIO_USE_SSL: ${MINIO_USE_SSL_DOCKER:-false}
+  # MinerU 本地 ZIP 模式（如未使用可留空）
+  MINERU_LOCAL_SERVER_URL: ${MINERU_LOCAL_SERVER_URL_DOCKER:-}
+  MINERU_VL_SERVER: ${MINERU_VL_SERVER_DOCKER:-}
+  # CORS (frontend)
+  CORS_ORIGINS: ${CORS_ORIGINS_DOCKER:-http://localhost:3000,http://localhost:3001}
+  # Task queue
+  TASK_QUEUE_ENABLED: ${TASK_QUEUE_ENABLED_DOCKER:-true}
+  REDIS_URL: ${REDIS_URL_DOCKER:-redis://redis:6379/0}
+  TASK_QUEUE_NAME: ${TASK_QUEUE_NAME_DOCKER:-mimirq}
+  TASK_WORKER_MAX_JOBS: ${TASK_WORKER_MAX_JOBS_DOCKER:-10}
+
 services:
   # Redis（任务队列/缓存/幂等锁）
   redis:
     image: redis:7
-    container_name: mimirq-redis
+    restart: unless-stopped
     ports:
       - "6379:6379"
     healthcheck:
@@ -16,7 +51,7 @@ services:
   # PostgreSQL 数据库
   postgres:
     image: postgres:15
-    container_name: mimirq-postgres
+    restart: unless-stopped
     environment:
       POSTGRES_DB: mimirq
       POSTGRES_USER: postgres
@@ -33,8 +68,8 @@ services:
 
   # Milvus Etcd (元数据存储)
   etcd:
-    container_name: milvus-etcd
     image: quay.io/coreos/etcd:v3.5.5
+    restart: unless-stopped
     environment:
       - ETCD_AUTO_COMPACTION_MODE=revision
       - ETCD_AUTO_COMPACTION_RETENTION=1000
@@ -52,11 +87,14 @@ services:
 
   # Milvus MinIO (对象存储)
   minio:
-    container_name: milvus-minio
     image: minio/minio:RELEASE.2023-03-20T20-16-18Z
+    restart: unless-stopped
     environment:
-      MINIO_ACCESS_KEY: minioadmin
-      MINIO_SECRET_KEY: minioadmin
+      # Modern env names (also keep the old ones for compatibility with older images).
+      MINIO_ROOT_USER: ${MINIO_ACCESS_KEY_DOCKER:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY_DOCKER:-minioadmin}
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY_DOCKER:-minioadmin}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY_DOCKER:-minioadmin}
     ports:
       - "9001:9001"
       - "9000:9000"
@@ -71,8 +109,8 @@ services:
 
   # Milvus 向量数据库
   milvus:
-    container_name: milvus-standalone
     image: milvusdb/milvus:v2.3.5
+    restart: unless-stopped
     command: ["milvus", "run", "standalone"]
     security_opt:
       - seccomp:unconfined
@@ -91,15 +129,15 @@ services:
       - "19530:19530"
       - "9091:9091"
     depends_on:
-      - etcd
-      - minio
+      etcd:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
 
   # FastAPI 后端
   backend:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    container_name: mimirq-backend
+    build: *backend_build
+    restart: unless-stopped
     ports:
       - "8000:8000"
     healthcheck:
@@ -115,38 +153,17 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+    env_file:
+      - .env
     environment:
-      - PYTHONDONTWRITEBYTECODE=1
-      - DATABASE_URL=postgresql://postgres:postgres@postgres:5432/mimirq
-      - MILVUS_HOST=milvus
-      - MILVUS_PORT=19530
-      # MinIO for images
-      - MINIO_ENABLED=true
-      - MINIO_ENDPOINT=minio:9000
-      - MINIO_ACCESS_KEY=minioadmin
-      - MINIO_SECRET_KEY=minioadmin
-      - MINIO_BUCKET_NAME=mimirq
-      - MINIO_USE_SSL=false
-      # MinerU 本地 ZIP 模式（如未使用可留空）
-      - MINERU_LOCAL_SERVER_URL=
-      - MINERU_VL_SERVER=
-      - CORS_ORIGINS=http://localhost:3000,http://localhost:3001
-      # Task queue
-      - TASK_QUEUE_ENABLED=true
-      - REDIS_URL=redis://redis:6379/0
-      - TASK_QUEUE_NAME=mimirq
-      - TASK_WORKER_MAX_JOBS=10
+      <<: *backend_env
     volumes:
-      - .:/app
-      - upload_data:/app/uploads
-    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+      - upload_data:/data/uploads
 
   # Arq worker（后台处理文档解析/索引）
   worker:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    container_name: mimirq-worker
+    build: *backend_build
+    restart: unless-stopped
     depends_on:
       redis:
         condition: service_healthy
@@ -154,25 +171,31 @@ services:
         condition: service_healthy
       milvus:
         condition: service_healthy
+    env_file:
+      - .env
     environment:
-      - PYTHONDONTWRITEBYTECODE=1
-      - DATABASE_URL=postgresql://postgres:postgres@postgres:5432/mimirq
-      - MILVUS_HOST=milvus
-      - MILVUS_PORT=19530
-      - MINIO_ENABLED=true
-      - MINIO_ENDPOINT=minio:9000
-      - MINIO_ACCESS_KEY=minioadmin
-      - MINIO_SECRET_KEY=minioadmin
-      - MINIO_BUCKET_NAME=mimirq
-      - MINIO_USE_SSL=false
-      - TASK_QUEUE_ENABLED=true
-      - REDIS_URL=redis://redis:6379/0
-      - TASK_QUEUE_NAME=mimirq
-      - TASK_WORKER_MAX_JOBS=10
+      <<: *backend_env
     volumes:
-      - .:/app
-      - upload_data:/app/uploads
+      - upload_data:/data/uploads
     command: arq app.tasks.worker.WorkerSettings
+
+  # Next.js 前端（生产构建）
+  web:
+    profiles: ["web"]
+    build:
+      context: ./web
+      dockerfile: Dockerfile.prod
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000}
+        NEXT_PUBLIC_API_TIMEOUT_MS: ${NEXT_PUBLIC_API_TIMEOUT_MS:-60000}
+        NEXT_PUBLIC_USER_ID: ${NEXT_PUBLIC_USER_ID:-demo}
+        NEXT_PUBLIC_TENANT_ID: ${NEXT_PUBLIC_TENANT_ID:-00000000-0000-0000-0000-000000000000}
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    depends_on:
+      backend:
+        condition: service_healthy
 
 volumes:
   postgres_data:

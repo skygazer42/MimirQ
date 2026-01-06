@@ -61,9 +61,11 @@ docker compose ps
 ### 3) Start frontend (optional)
 
 ```bash
-cd web
-pnpm install
-pnpm dev
+# Option A) Docker (production build)
+make up-web
+
+# Option B) Local dev
+# cd web && pnpm install && pnpm dev
 ```
 
 ### 4) Open

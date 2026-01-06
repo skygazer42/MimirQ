@@ -181,6 +181,7 @@ MimirQ/
 │   ├── services/        # 业务逻辑 (RAG/Milvus/LangChain)
 │   └── deepdoc/         # 深度文档解析模块
 ├── docker-compose.yml   # 一键部署 (含依赖服务)
+├── docker-compose.override.yml # 开发覆盖（热更新/源码挂载）
 ├── Makefile             # 常用命令
 ├── Dockerfile           # 后端构建文件
 ├── requirements.txt     # 后端依赖
@@ -256,10 +257,11 @@ docker compose up -d --build
 # 检查服务状态
 docker compose ps
 
-# (可选) 启动前端
-cd web
-pnpm install
-pnpm dev
+# (可选) 启动前端（两种方式二选一）
+# 1) Docker（生产构建；适合“一键部署”）
+make up-web
+# 2) 本地开发（热更新更快）
+# cd web && pnpm install && pnpm dev
 ```
 
 启动后建议做一次快速校验：
@@ -381,6 +383,7 @@ pnpm build
 ### 核心文档
 
 - [快速入门](./docs/quickstart.md) - 本地开发、Docker Compose、环境检查
+- [Docker Compose 部署](./docs/deployment/docker_compose.md) - 开发/生产模式、web profile、常见排错
 - [Milvus 向量数据库指南](./docs/guides/milvus_guide.md) - 索引类型、性能调优、GPU 加速
 - [RAG 优化指南](./docs/guides/rag_optimization.md) - 对话历史、混合检索、Rerank
 - [LangChain RAG 架构文档](./docs/guides/langchain_agent_migration.md) - Retriever/Runnable 链路
@@ -465,7 +468,16 @@ docs = retriever.invoke(query)
 ### Docker Compose (推荐)
 
 ```bash
-docker compose up -d --build
+# 开发模式：默认加载 docker-compose.override.yml（后端热更新）
+make up
+
+# 生产模式：仅使用 docker-compose.yml（无热更新/无源码挂载）
+make up-prod
+
+# 启动前端（可选，profile=web）
+make up-web
+# 或生产模式 + 前端：
+make up-prod-web
 ```
 
 ### Kubernetes

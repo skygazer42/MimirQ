@@ -1,8 +1,11 @@
-.PHONY: help up down ps logs restart backend web test api-check typecheck verify parser-status clean
+.PHONY: help up up-web up-prod up-prod-web down ps logs restart backend web test api-check typecheck verify parser-status clean
 
 help:
 	@echo "MimirQ dev commands (run from repo root):"
 	@echo "  make up        - docker compose up (build + detach)"
+	@echo "  make up-web    - docker compose up + frontend (profile web)"
+	@echo "  make up-prod   - docker compose up (no override file)"
+	@echo "  make up-prod-web - docker compose up + frontend (no override file)"
 	@echo "  make down      - docker compose down"
 	@echo "  make ps        - docker compose ps"
 	@echo "  make logs      - docker compose logs -f"
@@ -18,6 +21,15 @@ help:
 
 up:
 	docker compose up -d --build
+
+up-web:
+	docker compose --profile web up -d --build
+
+up-prod:
+	docker compose -f docker-compose.yml up -d --build
+
+up-prod-web:
+	docker compose -f docker-compose.yml --profile web up -d --build
 
 down:
 	docker compose down
