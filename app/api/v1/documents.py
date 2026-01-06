@@ -1534,7 +1534,7 @@ async def apply_batch_upload_urls(
         raise HTTPException(status_code=403, detail="No permission to apply upload URLs")
 
     try:
-        result = mineru_service.apply_batch_upload_urls(
+        result = await mineru_service.aapply_batch_upload_urls(
             files=[f.model_dump() for f in request.files]
         )
 
@@ -1568,7 +1568,7 @@ async def get_batch_task_status(
     """
     DatasetService.ensure_member(db, tenant_id, account_id)
     try:
-        status = mineru_service.get_task_status(batch_id)
+        status = await mineru_service.aget_task_status(batch_id)
 
         # 转换为标准化格式
         return BatchTaskStatus(
