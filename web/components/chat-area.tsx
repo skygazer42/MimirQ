@@ -20,6 +20,8 @@ import {
 } from '@/components/ui/select'
 
 const SELECT_DEFAULT_VALUE = '__mimirq_default__'
+const DEFAULT_VISIBLE_MESSAGES = 80
+const LOAD_MORE_STEP = 40
 
 export function ChatArea({
   initialConversationId,
@@ -48,6 +50,7 @@ export function ChatArea({
   const [structuredOutput, setStructuredOutput] = useState(false)
   const [structuredPreset, setStructuredPreset] = useState<string>('')
   const [enableLongTermMemory, setEnableLongTermMemory] = useState(false)
+  const [visibleCount, setVisibleCount] = useState(DEFAULT_VISIBLE_MESSAGES)
   const scrollContainerRef = useRef<HTMLDivElement>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
@@ -114,6 +117,10 @@ export function ChatArea({
     }
   }, [initialConversationId, conversationId, loadConversation, resetConversation])
 
+  useEffect(() => {
+    setVisibleCount(DEFAULT_VISIBLE_MESSAGES)
+  }, [conversationId])
+
   const updateAutoScroll = useCallback(() => {
     const el = scrollContainerRef.current
     if (!el) return
@@ -169,6 +176,12 @@ export function ChatArea({
     [promptTemplates, promptTemplateId]
   )
 
+  const hiddenCount = Math.max(0, messages.length - visibleCount)
+  const visibleMessages = useMemo(
+    () => messages.slice(-visibleCount),
+    [messages, visibleCount]
+  )
+
   // 发送消息
   const handleSend = useCallback(() => {
     if (!inputValue.trim() || isLoading) return
@@ -201,7 +214,20 @@ export function ChatArea({
             <WelcomeScreen />
           )}
 
-          {messages.map((message) => (
+          {hiddenCount > 0 && (
+            <div className="flex justify-center">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setVisibleCount((count) => Math.min(messages.length, count + LOAD_MORE_STEP))}
+                className="rounded-full text-xs"
+              >
+                显示更早消息（{hiddenCount}）
+              </Button>
+            </div>
+          )}
+
+          {visibleMessages.map((message) => (
             <ChatMessageItem key={message.id} message={message} />
           ))}
 
