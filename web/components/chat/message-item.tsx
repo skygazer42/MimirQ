@@ -14,6 +14,66 @@ import { cn } from '@/lib/utils'
 import { toAbsoluteBackendUrl } from '@/lib/env'
 
 const markdownPlugins = [remarkGfm]
+const markdownComponents = {
+  p: ({ children }: { children?: React.ReactNode }) => <p className="mb-2 last:mb-0">{children}</p>,
+  ul: ({ children }: { children?: React.ReactNode }) => (
+    <ul className="list-disc pl-4 mb-2 space-y-1 marker:text-slate-400">{children}</ul>
+  ),
+  ol: ({ children }: { children?: React.ReactNode }) => (
+    <ol className="list-decimal pl-4 mb-2 space-y-1 marker:text-slate-400">{children}</ol>
+  ),
+  li: ({ children }: { children?: React.ReactNode }) => <li className="mb-0.5">{children}</li>,
+  a: ({ href, children }: { href?: string; children?: React.ReactNode }) => (
+    <a
+      href={href}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="text-indigo-600 dark:text-indigo-400 font-medium hover:underline decoration-indigo-300 underline-offset-2"
+    >
+      {children}
+    </a>
+  ),
+  img: ({ src, alt }: { src?: string; alt?: string }) => {
+    const raw = typeof src === 'string' ? src : ''
+    const resolved = raw ? (raw.startsWith('http') ? raw : toAbsoluteBackendUrl(raw)) : ''
+    if (!resolved) return null
+    return (
+      <Image
+        src={resolved}
+        alt={alt || 'image'}
+        width={1200}
+        height={800}
+        unoptimized
+        sizes="(max-width: 768px) 100vw, 768px"
+        loading="lazy"
+        className="my-2 w-full h-auto max-h-96 object-contain rounded-lg border border-slate-200/70 dark:border-slate-700 bg-white dark:bg-slate-900"
+      />
+    )
+  },
+  blockquote: ({ children }: { children?: React.ReactNode }) => (
+    <blockquote className="border-l-4 border-indigo-200 dark:border-indigo-800 pl-4 italic text-slate-500 dark:text-slate-400 my-2 bg-slate-50 dark:bg-slate-800/50 py-2 rounded-r-lg">
+      {children}
+    </blockquote>
+  ),
+  code: ({ className, children, ...props }: { className?: string; children?: React.ReactNode }) => {
+    const match = /language-(\w+)/.exec(className || '')
+    return match ? (
+      <code className={className} {...props}>
+        {children}
+      </code>
+    ) : (
+      <code
+        className={cn(
+          'bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded-md text-sm text-pink-500 dark:text-pink-400 font-mono',
+          className
+        )}
+        {...props}
+      >
+        {children}
+      </code>
+    )
+  },
+} satisfies ReactMarkdown.Components
 
 export const ChatMessageItem = memo(function ChatMessageItem({
   message,
