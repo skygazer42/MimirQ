@@ -113,6 +113,9 @@ def build_citations_from_docs(
         rerank_score = meta.get("rerank_score")
         retrieval_score = meta.get("retrieval_score")
 
+        retrieval_role = meta.get("retrieval_role") or None
+        neighbor_of = meta.get("neighbor_of") or None
+
         page_number = None
         page_raw = meta.get("page")
         try:
@@ -147,8 +150,8 @@ def build_citations_from_docs(
             "header_path": meta.get("header_path") or meta.get("header_context"),
             "chunk_strategy": meta.get("chunk_strategy"),
             "chunk_role": meta.get("chunk_role"),
-            "retrieval_role": meta.get("retrieval_role"),
-            "neighbor_of": meta.get("neighbor_of"),
+            "retrieval_role": retrieval_role,
+            "neighbor_of": neighbor_of,
             "relevance_score": round(float(meta.get("score", 0.0) or 0.0), 2),
             "vector_score": round(v_score_raw, 3),
             "bm25_score": round(b_score_raw, 3),
