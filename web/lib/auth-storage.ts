@@ -31,9 +31,16 @@ export function setAuthSession(params: { token: AuthToken; user: UserProfile }) 
   window.localStorage.setItem(TOKEN_EXPIRES_AT_KEY, String(expiresAt))
 }
 
+export function setStoredUser(user: UserProfile) {
+  if (typeof window === 'undefined') return
+  window.localStorage.setItem(USER_KEY, JSON.stringify(user))
+  window.localStorage.setItem(USER_ID_KEY, user.id)
+}
+
 export function clearAuthSession() {
   if (typeof window === 'undefined') return
   window.localStorage.removeItem(ACCESS_TOKEN_KEY)
   window.localStorage.removeItem(USER_KEY)
+  window.localStorage.removeItem(USER_ID_KEY)
   window.localStorage.removeItem(TOKEN_EXPIRES_AT_KEY)
 }
