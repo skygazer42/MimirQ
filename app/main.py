@@ -135,32 +135,31 @@ async def lifespan(app: FastAPI):
                     max_chunks,
                 )
             else:
-                # Single query to get all chunks with completed documents (avoids N+1)
-                all_chunks = (
-                    db.query(DocumentChunk)
+                # Stream tenant ids and build per-tenant BM25 to avoid a single `.all()` over huge corpora.
+                tenant_ids: list = []
+                tenant_q = (
+                    db.query(DocumentChunk.tenant_id)
                     .join(DBDocument)
                     .filter(DBDocument.status == "completed")
-                    .all()
+                    .distinct()
+                    .execution_options(stream_results=True)
+                    .enable_eagerloads(False)
                 )
+                for row in tenant_q.yield_per(2000):
+                    if row and row[0]:
+                        tenant_ids.append(row[0])
 
-                if all_chunks:
-                    # Group chunks by tenant_id in Python
-                    from collections import defaultdict
-
-                    chunks_by_tenant: dict = defaultdict(list)
-                    for chunk in all_chunks:
-                        chunks_by_tenant[chunk.tenant_id].append(chunk)
-
-                    for tid, chunks in chunks_by_tenant.items():
-                        hybrid_retriever.build_bm25_index(chunks, tenant_id=tid)
-
+                if not tenant_ids:
+                    logger.warning("No documents found, BM25 index will be built on first upload")
+                else:
+                    built_total = 0
+                    for tid in tenant_ids:
+                        built_total += hybrid_retriever.build_bm25_index_from_db(db, tenant_id=tid, batch_size=2000)
                     logger.info(
                         "BM25 index loaded with %s chunks across %s tenants",
-                        len(all_chunks),
-                        len(chunks_by_tenant),
+                        built_total,
+                        len(tenant_ids),
                     )
-                else:
-                    logger.warning("No documents found, BM25 index will be built on first upload")
         finally:
             db.close()
 

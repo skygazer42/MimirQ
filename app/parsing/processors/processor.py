@@ -34,6 +34,7 @@ from app.rag.kg.pipeline import extract_events
 from app.parsing.routing import route_pdf_backend
 from app.rag.core.logging import get_logger
 from app.rag.core.metadata import normalize_image_metadata
+from app.services.metrics_logger import log_metrics, metrics_span, set_metrics_context
 
 
 logger = get_logger("parsing.document_processor")
@@ -405,6 +406,9 @@ class DocumentProcessorService:
             # 提前获取 dataset_id（MinerU 本地 ZIP / MinIO 路径依赖）
             dataset_id = str(db_document.dataset_id) if db_document.dataset_id else str(tenant_id)
 
+            # Bind metrics context for this coroutine/task (best-effort; used only when ENABLE_METRICS_LOG=true).
+            set_metrics_context(tenant_id=tenant_id, document_id=document_id, dataset_id=dataset_id)
+
             # 记录本次处理过程中关联到该文档的所有 img_id（用于删除清理等）
             document_img_ids: set[str] = set()
             artifact_dirs: set[str] = set()
@@ -433,16 +437,21 @@ class DocumentProcessorService:
             chunk_asset_stage = ChunkAssetStage(self)
             index_stage = IndexStage()
 
-            parsed = await parsing_stage.run(
-                db=db,
-                db_document=db_document,
-                file_path=file_path,
-                document_id=document_id,
-                tenant_id=tenant_id,
-                dataset_id=dataset_id,
-                parser_backend=parser_backend,
-                chunk_strategy=chunk_strategy,
-            )
+            with metrics_span(
+                "ingest.parse",
+                parser_backend_requested=parser_backend,
+                chunk_strategy_requested=chunk_strategy,
+            ):
+                parsed = await parsing_stage.run(
+                    db=db,
+                    db_document=db_document,
+                    file_path=file_path,
+                    document_id=document_id,
+                    tenant_id=tenant_id,
+                    dataset_id=dataset_id,
+                    parser_backend=parser_backend,
+                    chunk_strategy=chunk_strategy,
+                )
 
             resolved_backend = parsed.resolved_backend
             resolved_chunk_strategy = parsed.resolved_chunk_strategy
@@ -462,14 +471,15 @@ class DocumentProcessorService:
 
             # Inline image assets（仅非 ragflow 分支：documents -> documents）
             if parsed.documents:
-                inline_result = inline_asset_stage.run(
-                    documents=parsed.documents,
-                    tenant_id=tenant_id,
-                    dataset_id=dataset_id,
-                    document_id=document_id,
-                    origin_path=file_path,
-                    start_index=0,
-                )
+                with metrics_span("ingest.inline_assets"):
+                    inline_result = inline_asset_stage.run(
+                        documents=parsed.documents,
+                        tenant_id=tenant_id,
+                        dataset_id=dataset_id,
+                        document_id=document_id,
+                        origin_path=file_path,
+                        start_index=0,
+                    )
                 parsed_documents = inline_result.documents
                 for iid in inline_result.uploaded_img_ids:
                     if isinstance(iid, str) and iid.strip():
@@ -483,31 +493,41 @@ class DocumentProcessorService:
             # Governance：对 documents 或 ragflow chunks 做统一清洗
             governance_stats: Optional[GovernanceStats] = None
             if parsed.chunks is not None:
-                parsed_chunks = normalize_stage.run(items=parsed.chunks)
-                gov = governance_stage.run(
-                    items=parsed_chunks,
-                    enabled=bool(pipeline_effective.governance_enabled),
-                    kwargs=governance_kwargs,
-                )
+                with metrics_span("ingest.normalize"):
+                    parsed_chunks = normalize_stage.run(items=parsed.chunks)
+                with metrics_span("ingest.governance", enabled=bool(pipeline_effective.governance_enabled)):
+                    gov = governance_stage.run(
+                        items=parsed_chunks,
+                        enabled=bool(pipeline_effective.governance_enabled),
+                        kwargs=governance_kwargs,
+                    )
                 chunks = gov.items
                 governance_stats = gov.stats
             else:
-                parsed_documents = normalize_stage.run(items=parsed_documents or [])
-                gov = governance_stage.run(
-                    items=parsed_documents,
-                    enabled=bool(pipeline_effective.governance_enabled),
-                    kwargs=governance_kwargs,
-                )
+                with metrics_span("ingest.normalize"):
+                    parsed_documents = normalize_stage.run(items=parsed_documents or [])
+                with metrics_span("ingest.governance", enabled=bool(pipeline_effective.governance_enabled)):
+                    gov = governance_stage.run(
+                        items=parsed_documents,
+                        enabled=bool(pipeline_effective.governance_enabled),
+                        kwargs=governance_kwargs,
+                    )
                 parsed_documents = gov.items
                 governance_stats = gov.stats
 
                 await self._update_status(db, tenant_id, document_id, "processing", 33, "chunking")
-                chunked = chunking_stage.run(
-                    documents=parsed_documents,
+                with metrics_span(
+                    "ingest.chunking",
                     chunk_strategy=resolved_chunk_strategy,
                     chunk_size=int(pipeline_effective.chunk_size),
                     chunk_overlap=int(pipeline_effective.chunk_overlap),
-                )
+                ):
+                    chunked = chunking_stage.run(
+                        documents=parsed_documents,
+                        chunk_strategy=resolved_chunk_strategy,
+                        chunk_size=int(pipeline_effective.chunk_size),
+                        chunk_overlap=int(pipeline_effective.chunk_overlap),
+                    )
                 chunks = chunked.chunks
 
             # Drop extremely short chunks to reduce retrieval noise (keep image-bearing chunks).
@@ -532,14 +552,15 @@ class DocumentProcessorService:
                 self._record_governance_metadata(db, tenant_id, document_id, governance_stats)
 
             # Chunk-level assets & metadata（图片上传/绑定）
-            chunk_asset = chunk_asset_stage.run(
-                chunks=chunks,
-                tenant_id=tenant_id,
-                dataset_id=dataset_id,
-                document_id=document_id,
-                resolved_backend=resolved_backend,
-                resolved_chunk_strategy=resolved_chunk_strategy,
-            )
+            with metrics_span("ingest.chunk_assets"):
+                chunk_asset = chunk_asset_stage.run(
+                    chunks=chunks,
+                    tenant_id=tenant_id,
+                    dataset_id=dataset_id,
+                    document_id=document_id,
+                    resolved_backend=resolved_backend,
+                    resolved_chunk_strategy=resolved_chunk_strategy,
+                )
             chunks = chunk_asset.chunks
             for iid in chunk_asset.img_ids:
                 if isinstance(iid, str) and iid.strip():
@@ -550,16 +571,29 @@ class DocumentProcessorService:
 
             await self._update_status(db, tenant_id, document_id, "processing", 66, "embedding")
 
-            indexed = index_stage.run(
-                db=db,
-                tenant_id=tenant_id,
-                document_id=document_id,
-                file_path=file_path,
-                chunks=chunks,
-                options=index_options,
-            )
+            with metrics_span(
+                "ingest.index",
+                chunk_count=len(chunks),
+                chunk_vector_enabled=bool(getattr(index_options, "chunk_vector_enabled", True)),
+                bm25_index_enabled=bool(getattr(index_options, "bm25_index_enabled", True)),
+            ):
+                indexed = index_stage.run(
+                    db=db,
+                    tenant_id=tenant_id,
+                    document_id=document_id,
+                    file_path=file_path,
+                    chunks=chunks,
+                    options=index_options,
+                )
             chunk_ids = indexed.chunk_ids
             total_chars = indexed.total_characters
+            log_metrics(
+                {
+                    "event": "ingest.index.result",
+                    "chunk_count": len(chunks),
+                    "total_characters": total_chars,
+                }
+            )
 
             await self._update_status(
                 db,
@@ -577,6 +611,16 @@ class DocumentProcessorService:
                 len(chunks),
                 resolved_backend,
                 resolved_chunk_strategy,
+            )
+            log_metrics(
+                {
+                    "event": "ingest.completed",
+                    "chunk_count": len(chunks),
+                    "total_characters": total_chars,
+                    "parser_backend": resolved_backend,
+                    "chunk_strategy": resolved_chunk_strategy,
+                    "img_count": len(document_img_ids),
+                }
             )
 
             # Step 7: 如启用则运行 KG 抽取（事件/实体）
@@ -601,6 +645,12 @@ class DocumentProcessorService:
                             db.commit()
                             db.refresh(db_document)
                         logger.info("KG extraction enqueued for document %s (task_id=%s)", document_id, kg_task_id)
+                        log_metrics(
+                            {
+                                "event": "ingest.kg.enqueued",
+                                "kg_task_id": kg_task_id,
+                            }
+                        )
                     except Exception as exc:  # noqa: BLE001
                         # 队列异常不应影响文档主流程
                         logger.warning("Failed to enqueue KG extraction: %s", str(exc)[:200])
@@ -623,6 +673,7 @@ class DocumentProcessorService:
                         prompt_ab_experiment_key=(getattr(settings, "KG_EXTRACT_PROMPT_AB_EXPERIMENT_KEY", "") or "").strip() or None,
                     )
                     logger.info("KG extracted %s events for document %s", len(events), document_id)
+                    log_metrics({"event": "ingest.kg.completed", "event_count": len(events)})
 
             return {
                 "status": "success",
@@ -635,6 +686,7 @@ class DocumentProcessorService:
         except Exception as e:
             # 错误处理
             logger.exception("Error processing document %s: %s", document_id, e)
+            log_metrics({"event": "ingest.failed", "success": False, "error": str(e)[:200]})
             await self._update_status(
                 db,
                 tenant_id,
@@ -690,16 +742,19 @@ class DocumentProcessorService:
                 except Exception as exc:  # noqa: BLE001
                     logger.warning("Failed to enqueue rebuild indexes (fallback to inline): %s", str(exc)[:200])
 
-            all_chunks = db.query(DocumentChunk).join(DBDocument).filter(
-                DBDocument.status == 'completed',
-                DocumentChunk.tenant_id == tenant_id
-            ).all()
-
-            if all_chunks:
-                logger.info("Rebuilding BM25 index with %s chunks for tenant %s", len(all_chunks), tenant_id)
-                Indexer(db).rebuild_tenant(tenant_id=tenant_id, kinds=[IndexKind.CHUNK])
-            else:
+            any_chunk = (
+                db.query(DocumentChunk.id)
+                .join(DBDocument)
+                .filter(DBDocument.status == "completed", DocumentChunk.tenant_id == tenant_id)
+                .limit(1)
+                .first()
+            )
+            if not any_chunk:
                 logger.warning("No chunks found for BM25 index")
+                return
+
+            logger.info("Rebuilding BM25 index for tenant %s", tenant_id)
+            Indexer(db).rebuild_tenant(tenant_id=tenant_id, kinds=[IndexKind.CHUNK])
 
         except Exception as e:
             logger.warning("Failed to rebuild BM25 index: %s", e)
@@ -721,8 +776,16 @@ class DocumentProcessorService:
                 except Exception as exc:  # noqa: BLE001
                     logger.warning("Failed to enqueue rebuild indexes (fallback to inline): %s", str(exc)[:200])
 
-            tenant_rows = db.query(DocumentChunk.tenant_id).distinct().all()
-            tenant_ids = [row[0] for row in tenant_rows if row and row[0]]
+            tenant_ids: List[UUID] = []
+            q = (
+                db.query(DocumentChunk.tenant_id)
+                .distinct()
+                .execution_options(stream_results=True)
+                .enable_eagerloads(False)
+            )
+            for row in q.yield_per(2000):
+                if row and row[0]:
+                    tenant_ids.append(row[0])
             if not tenant_ids:
                 logger.warning("No chunks found for BM25 index")
                 return

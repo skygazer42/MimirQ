@@ -31,6 +31,7 @@ from app.rag.retriever import hybrid_retriever
 from app.storage.vector.factory import get_vector_store
 from app.storage.vector.milvus import get_milvus_adapter, resolve_collection_name
 from app.rag.core.metadata import normalize_image_metadata
+from app.services.metrics_logger import log_metrics
 
 logger = logging.getLogger("indexer")
 
@@ -508,22 +509,16 @@ class Indexer:
     ) -> None:
         if not bool(getattr(settings, "BM25_INDEX_ENABLED", True)):
             return
-
-        query = (
-            self._db.query(DocumentChunk)
-            .join(DBDocument)
-            .filter(DBDocument.status == "completed")
-            .filter(DocumentChunk.tenant_id == tenant_id)
+        count = hybrid_retriever.build_bm25_index_from_db(
+            self._db,
+            tenant_id=tenant_id,
+            document_ids=document_ids,
+            max_chunks=0,
+            batch_size=2000,
         )
-        if document_ids:
-            query = query.filter(DocumentChunk.document_id.in_(document_ids))
-
-        chunks = query.all()
-        if not chunks:
+        if not count:
             logger.warning("No chunks found for BM25 index")
             return
-
-        hybrid_retriever.build_bm25_index(chunks, tenant_id=tenant_id)
 
     def rebuild_event_indexes(
         self,
@@ -627,6 +622,18 @@ class Indexer:
                     except Exception as exc:  # noqa: BLE001
                         last_exc = exc
                         if attempt < max_retries:
+                            log_metrics(
+                                {
+                                    "event": "ingest.vector_write.retry",
+                                    "tenant_id": str(tenant_id),
+                                    "document_id": str(document_id),
+                                    "attempt": attempt + 1,
+                                    "max_retries": max_retries + 1,
+                                    "batch_size": len(batch),
+                                    "backoff_sec": round(float(backoff), 3),
+                                    "error": str(exc)[:200],
+                                }
+                            )
                             logger.warning(
                                 "Vector write failed (attempt %s/%s), retrying in %.2fs: %s",
                                 attempt + 1,
