@@ -23,8 +23,10 @@ export class GraphService {
       })
       if (res.ok) {
         const data = (await res.json()) as GraphData
-        if (data?.nodes && data?.links) {
-          return JSON.parse(JSON.stringify(data))
+        const nodes = Array.isArray(data?.nodes) ? data.nodes : []
+        const links = Array.isArray(data?.links) ? data.links : []
+        if (nodes.length > 0) {
+          return JSON.parse(JSON.stringify({ nodes, links }))
         }
       }
     } catch {
