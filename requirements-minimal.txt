@@ -49,6 +49,7 @@ jieba==0.42.1
 # Utilities
 pydantic==2.10.5
 pydantic-settings==2.10.1
+email-validator==2.2.0
 python-dotenv==1.0.1
 requests==2.32.5
 aiofiles==23.2.1
@@ -63,4 +64,3 @@ passlib[bcrypt]==1.7.4
 # Optional performance helpers (queue/cache)
 redis==4.6.0
 arq==0.26.0
-

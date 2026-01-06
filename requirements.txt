@@ -88,6 +88,7 @@ passlib[bcrypt]==1.7.4
 # LangChain 1.x
 pydantic==2.10.5
 pydantic-settings==2.10.1
+email-validator==2.2.0
 backports.tarfile==1.2.0
 strenum==0.4.15
 python-dotenv==1.0.1
