@@ -3,7 +3,7 @@
  */
 'use client'
 
-import { useState, useRef, useEffect, useCallback } from 'react'
+import { useState, useRef, useEffect, useCallback, memo } from 'react'
 import Image from 'next/image'
 import { Send, Loader2, StopCircle, Sparkles, Database, Wand2 } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
@@ -461,7 +461,7 @@ function WelcomeScreen() {
 }
 
 // 消息项组件
-function MessageItem({
+const MessageItem = memo(function MessageItem({
   message,
   isStreaming = false,
 }: {
@@ -505,6 +505,11 @@ function MessageItem({
              <div className="whitespace-pre-wrap font-normal">
                {message.content}
              </div>
+          ) : isStreaming ? (
+            <div className="whitespace-pre-wrap font-normal">
+              {message.content}
+              <span className="inline-block w-2 animate-pulse">▍</span>
+            </div>
           ) : (
             <ReactMarkdown 
               remarkPlugins={[remarkGfm]}
@@ -548,7 +553,7 @@ function MessageItem({
                 }
               }}
             >
-              {message.content + (isStreaming ? '▍' : '')}
+              {message.content}
             </ReactMarkdown>
           )}
         </div>
@@ -570,10 +575,10 @@ function MessageItem({
       </div>
     </div>
   )
-}
+})
 
 // 引用卡片
-function CitationCard({
+const CitationCard = memo(function CitationCard({
   citation,
   index,
 }: {
@@ -633,4 +638,4 @@ function CitationCard({
       </div>
     </div>
   )
-}
+})
