@@ -86,8 +86,18 @@ def apply_runtime_migrations(engine) -> None:
             'ON document_chunks (tenant_id, document_id);',
             'CREATE INDEX IF NOT EXISTS ix_document_chunks_tenant_document_chunk_index '
             'ON document_chunks (tenant_id, document_id, chunk_index);',
+            # Document browsing: tenant/dataset timelines and status filters
+            'CREATE INDEX IF NOT EXISTS ix_documents_tenant_created_at '
+            'ON documents (tenant_id, created_at);',
+            'CREATE INDEX IF NOT EXISTS ix_documents_tenant_dataset_created_at '
+            'ON documents (tenant_id, dataset_id, created_at);',
+            'CREATE INDEX IF NOT EXISTS ix_documents_tenant_dataset_status '
+            'ON documents (tenant_id, dataset_id, status);',
             'CREATE INDEX IF NOT EXISTS ix_documents_tenant_status '
             'ON documents (tenant_id, status);',
+            # Chunk timelines / maintenance jobs (rebuild/cleanup)
+            'CREATE INDEX IF NOT EXISTS ix_document_chunks_tenant_created_at '
+            'ON document_chunks (tenant_id, created_at);',
             'ALTER TABLE prompt_templates ADD COLUMN IF NOT EXISTS version INTEGER DEFAULT 1;',
             'ALTER TABLE prompt_templates ADD COLUMN IF NOT EXISTS parent_id UUID;',
             'ALTER TABLE prompt_templates ADD COLUMN IF NOT EXISTS ab_experiment_key VARCHAR(100);',
