@@ -163,6 +163,12 @@ def _build_context(docs: List[Document], *, query: str | None = None) -> str:
         except Exception:
             page_info = None
         header = meta.get("header_path") or meta.get("header_context")
+        retrieval_role = meta.get("retrieval_role")
+        role_info = None
+        if retrieval_role == "neighbor":
+            role_info = "邻接"
+        elif retrieval_role:
+            role_info = str(retrieval_role)
         raw_content = (doc.page_content or "").strip()
         content = raw_content
         if bool(settings.RAG_CONTEXT_EVIDENCE_ENABLED) and query:
@@ -180,6 +186,8 @@ def _build_context(docs: List[Document], *, query: str | None = None) -> str:
             info_parts.append(page_info)
         if header:
             info_parts.append(str(header))
+        if role_info:
+            info_parts.append(str(role_info))
         part = f"[来源 {idx}: {' | '.join(info_parts)}]\n{content}"
         if max_total and parts and (total_chars + len(part)) > max_total:
             break
