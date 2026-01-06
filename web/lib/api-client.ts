@@ -45,6 +45,10 @@ import type {
   RegressionRunCreate,
   RegressionRunList,
   RegressionRunDetail,
+  AuthResponse,
+  LoginRequest,
+  RegisterRequest,
+  UserProfile,
 } from '@/types'
 import { getAuthHeaders } from '@/lib/auth-headers'
 import { API_TIMEOUT_MS, API_V1_BASE_URL } from '@/lib/env'
@@ -266,6 +270,23 @@ export const documentApi = {
    */
   async getBatchTaskStatus(batchId: string): Promise<BatchTaskStatus> {
     const { data } = await apiClient.get(`/documents/batch-upload/status/${batchId}`)
+    return data
+  },
+}
+
+// ==================== Auth API ====================
+
+export const authApi = {
+  async register(payload: RegisterRequest): Promise<AuthResponse> {
+    const { data } = await apiClient.post('/auth/register', payload)
+    return data
+  },
+  async login(payload: LoginRequest): Promise<AuthResponse> {
+    const { data } = await apiClient.post('/auth/login', payload)
+    return data
+  },
+  async me(): Promise<UserProfile> {
+    const { data } = await apiClient.get('/auth/me')
     return data
   },
 }
