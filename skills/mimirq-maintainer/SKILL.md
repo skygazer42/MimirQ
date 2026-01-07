@@ -1,6 +1,6 @@
 ---
 name: mimirq-maintainer
-description: Maintain and optimize the MimirQ repo (FastAPI backend + Next.js web): update settings/.env docs, add or modify API routes, regenerate OpenAPI TypeScript types, manage Alembic migrations, and run standard checks (tests, lint, audits). Use when working inside this repository on backend/frontend changes, CI, dependency updates, or observability hardening (logging/Prometheus/Sentry/OpenTelemetry).
+description: "Maintain and optimize the MimirQ repo (FastAPI backend + Next.js web): update settings/.env docs, add or modify API routes, regenerate OpenAPI TypeScript types, manage Alembic migrations, and run standard checks (tests, lint, audits). Use when working inside this repository on backend/frontend changes, CI, dependency updates, or observability hardening (logging/Prometheus/Sentry/OpenTelemetry)."
 ---
 
 # MimirQ Maintainer
