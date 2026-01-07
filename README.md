@@ -183,8 +183,6 @@ MimirQ/
 ├── docker/              # Docker 部署文件
 │   ├── .env.example
 │   ├── docker-compose.yml
-│   ├── docker-compose.dev.yml
-│   ├── docker-compose.prod.yml
 │   ├── docker-compose.infra.yml
 │   ├── Dockerfile
 │   └── start_backend.sh
@@ -488,19 +486,18 @@ docs = retriever.invoke(query)
 ### Docker Compose (推荐)
 
 ```bash
-# 默认栈（docker/docker-compose.yml）
+# 进入 docker 目录（类似 Dify）
+cd docker
+cp .env.example .env
+docker compose up -d --build
+docker compose --profile web up -d --build   # 可选：前端
+
+# 或在仓库根目录用 Makefile（等价）
 make up
-
-# 开发热更新（docker/docker-compose.dev.yml）
-make up-dev
-
-# 生产栈（docker/docker-compose.prod.yml）
-make up-prod
-
-# 启动前端（可选，profile=web）
 make up-web
-# 或生产模式 + 前端：
-make up-prod-web
+
+# 仅启动基础设施（给本地跑后端/调试用）
+make infra-up
 ```
 
 ### Kubernetes
