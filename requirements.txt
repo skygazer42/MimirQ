@@ -118,3 +118,6 @@ llama-index-core==0.11.14
 # Task Queue / Redis (用于 ingest 吞吐优化：任务队列、幂等锁、缓存)
 redis==4.6.0
 arq==0.26.0
+# Dev / test tooling
+pip-audit==2.7.3
+ruff==0.9.1
