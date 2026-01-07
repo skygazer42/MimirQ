@@ -107,6 +107,13 @@ class Settings(BaseSettings):
     SENTRY_DSN: str = ""
     SENTRY_TRACES_SAMPLE_RATE: float = 0.0
 
+    # OpenTelemetry tracing (optional)
+    OTEL_ENABLED: bool = False
+    OTEL_SERVICE_NAME: str = "mimirq"
+    OTEL_EXPORTER_OTLP_ENDPOINT: str = ""
+    OTEL_EXPORTER_OTLP_HEADERS: str = ""
+    OTEL_EXPORTER_OTLP_TIMEOUT_SEC: int = 10
+
     EMBEDDING_PROVIDER: str = "openai_compatible"
     EMBEDDING_MODEL: str = "text-embedding-3-small"
     EMBEDDING_API_KEY: str = ""
