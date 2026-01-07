@@ -3,12 +3,17 @@ from __future__ import annotations
 import argparse
 import json
 from pathlib import Path
+import sys
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Export FastAPI OpenAPI spec to a JSON file.")
     parser.add_argument("--out", default="openapi.json", help="Output path (default: openapi.json)")
     args = parser.parse_args()
+
+    # Ensure repo root is importable when executed as a script (sys.path[0] == scripts/).
+    repo_root = Path(__file__).resolve().parents[1]
+    sys.path.insert(0, str(repo_root))
 
     # Import here to avoid side effects during argument parsing.
     from app.main import app
