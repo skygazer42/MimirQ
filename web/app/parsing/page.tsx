@@ -27,6 +27,7 @@ import {
 import { Navbar } from '@/components/navbar'
 import { Button } from '@/components/ui/button'
 import { documentApi } from '@/lib/api-client'
+import { formatApiError } from '@/lib/api-errors'
 import { formatFileSize, cn } from '@/lib/utils'
 import { useParsedFiles } from '@/store/use-parsed-files-store'
 import { useParserBackendPreference } from '@/contexts/parser-backend-context'
@@ -213,18 +214,14 @@ export default function ParsingPage() {
       })
     } catch (err: any) {
       clearInterval(progressInterval)
+      const errorMessage = formatApiError(err, '解析失败')
       setFiles((prev) =>
         prev.map((f) =>
           f.id === fileId
             ? {
                 ...f,
                 status: 'error' as FileStatus,
-                error:
-                  err.response?.data?.detail ||
-                  err.response?.data?.message ||
-                  (typeof err.response?.data === 'string' ? err.response.data : undefined) ||
-                  err.message ||
-                  '解析失败',
+                error: errorMessage,
                 progress: 0,
               }
             : f

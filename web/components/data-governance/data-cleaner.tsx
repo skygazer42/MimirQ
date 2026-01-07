@@ -13,6 +13,7 @@ import {
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import { pipelineApi, promptTemplateApi, PromptTemplate } from '@/lib/api-client'
+import { formatApiError } from '@/lib/api-errors'
 import type { CleanPreviewRequest, LLMCleanPreviewRequest } from '@/types'
 import {
   Select,
@@ -100,13 +101,13 @@ export function DataCleaner({ content, cleanedContent = '', onClean }: DataClean
             setBackendError(llmRes.warnings.join('；'))
           }
         } catch (err: any) {
-          setBackendError(err?.response?.data?.detail || err?.message || 'LLM 清洗失败，已保留规则清洗结果')
+          setBackendError(formatApiError(err, 'LLM 清洗失败，已保留规则清洗结果'))
         }
       }
 
       onClean(next)
     } catch (err: any) {
-      setBackendError(err?.response?.data?.detail || err?.message || '后端清洗失败')
+      setBackendError(formatApiError(err, '后端清洗失败'))
     } finally {
       setIsApplying(false)
     }

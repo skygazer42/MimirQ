@@ -1,5 +1,3 @@
-version: '3.8'
-
 x-backend-build: &backend_build
   context: .
   dockerfile: Dockerfile

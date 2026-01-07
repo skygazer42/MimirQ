@@ -44,6 +44,7 @@ import {
 } from '@/components/ui/dialog'
 import { useDocuments } from '@/hooks/use-documents'
 import { formatFileSize, formatDate, cn } from '@/lib/utils'
+import { formatApiError } from '@/lib/api-errors'
 import { StatCard, StatsGrid } from '@/components/ui/stats-card'
 import { DocumentDetailDialog } from '@/components/document-detail-dialog'
 import { getParserLabel } from '@/lib/parser-options'
@@ -157,7 +158,7 @@ export default function KnowledgePage() {
       setSearchMetrics(res.metrics || null)
     } catch (error: any) {
       console.error('Search failed:', error)
-      setSearchError(error?.response?.data?.detail || error?.message || '检索失败，请检查后端服务状态')
+      setSearchError(formatApiError(error, '检索失败，请检查后端服务状态'))
     } finally {
       setIsSearching(false)
     }

@@ -16,6 +16,7 @@ import { Button } from '@/components/ui/button'
 import { ProviderIcon } from '@/components/provider-icon'
 import { cn } from '@/lib/utils'
 import { settingsApi } from '@/lib/api-client'
+import { formatApiError } from '@/lib/api-errors'
 import type { ModelProvider, ProviderConfig } from '@/types/models'
 
 interface ModelConfigDialogProps {
@@ -135,7 +136,7 @@ export function ModelConfigDialog({
       })
       setTestResult({ success: !!result.success, message: result.message })
     } catch (e: any) {
-      setTestResult({ success: false, message: e?.response?.data?.detail || e?.message || '测试失败' })
+      setTestResult({ success: false, message: formatApiError(e, '测试失败') })
     } finally {
       setIsTesting(false)
     }

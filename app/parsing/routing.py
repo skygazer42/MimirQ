@@ -19,7 +19,7 @@ def choose_pdf_backend(quality: Optional[Dict], requested: Optional[str]) -> str
     Choose a PDF parser backend based on quality scoring and user request.
 
     Rules:
-    - requested is set and not "auto" -> honor requested.
+    - requested is set and not "auto" -> honor requested (even if not configured; validation happens later).
     - score >= 0.8 and not scanned -> prefer MarkItDown/basic.
     - scanned or score <= 0.5 -> prefer MinerU/DeepDoc, fallback MarkItDown/basic.
     - mid range -> prefer DeepDoc/MinerU, fallback MarkItDown/basic.
@@ -36,28 +36,9 @@ def choose_pdf_backend(quality: Optional[Dict], requested: Optional[str]) -> str
         cli = (getattr(settings, "MAGIC_PDF_CLI", "") or "magic-pdf").strip() or "magic-pdf"
         return bool(shutil.which(cli))
 
-    def _backend_available(backend: str) -> bool:
-        b = (backend or "").strip().lower()
-        if b in ("basic",):
-            return True
-        if b == "markitdown":
-            return bool(getattr(settings, "MARKITDOWN_ENABLED", False))
-        if b == "deepdoc":
-            return bool(getattr(settings, "DEEPDOC_ENABLED", False))
-        if b == "docling":
-            return bool(getattr(settings, "DOCLING_ENABLED", False))
-        if b == "magicpdf":
-            return _magicpdf_available()
-        if b == "mineru":
-            return bool(settings.MINERU_ENABLED and (settings.MINERU_API_TOKEN or settings.MINERU_LOCAL_SERVER_URL))
-        return False
-
     requested_norm = normalize_parser_backend(requested)
     if requested_norm and requested_norm != "auto":
-        # If a user explicitly requests a backend, honor it only when it's actually available,
-        # otherwise fall back to "auto" routing to avoid hard failures in preview/ingest.
-        if _backend_available(requested_norm):
-            return requested_norm
+        return requested_norm
 
     if score >= 0.8 and not is_scanned:
         if getattr(settings, "DOCLING_ENABLED", False):

@@ -13,6 +13,7 @@ import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
 import { datasetApi } from '@/lib/api-client'
+import { formatApiError } from '@/lib/api-errors'
 import { cn } from '@/lib/utils'
 import type { Dataset, PermissionEnum } from '@/types'
 
@@ -75,7 +76,7 @@ export default function DatasetsPage() {
       setTotal(Number(res.total || 0))
     } catch (e: any) {
       console.error('Failed to load datasets', e)
-      toast.error(e?.response?.data?.detail || e?.message || '加载数据集失败')
+      toast.error(formatApiError(e, '加载数据集失败'))
     } finally {
       setIsLoading(false)
     }
@@ -110,7 +111,7 @@ export default function DatasetsPage() {
       await load()
     } catch (e: any) {
       console.error('Failed to create dataset', e)
-      toast.error(e?.response?.data?.detail || e?.message || '创建失败')
+      toast.error(formatApiError(e, '创建失败'))
     }
   }
 
@@ -137,7 +138,7 @@ export default function DatasetsPage() {
       await load()
     } catch (e: any) {
       console.error('Failed to update dataset', e)
-      toast.error(e?.response?.data?.detail || e?.message || '更新失败')
+      toast.error(formatApiError(e, '更新失败'))
     }
   }
 
@@ -151,7 +152,7 @@ export default function DatasetsPage() {
       setTotal((prev) => Math.max(0, prev - 1))
     } catch (e: any) {
       console.error('Failed to delete dataset', e)
-      toast.error(e?.response?.data?.detail || e?.message || '删除失败')
+      toast.error(formatApiError(e, '删除失败'))
     }
   }
 

@@ -50,6 +50,7 @@ import type {
   RegisterRequest,
   UserProfile,
 } from '@/types'
+import { extractBackendMessage, extractBackendRequestId, withRequestId } from '@/lib/api-errors'
 import { getAuthHeaders } from '@/lib/auth-headers'
 import { API_TIMEOUT_MS, API_V1_BASE_URL } from '@/lib/env'
 import { appendPipelineOptionsToFormData } from '@/lib/form-data'
@@ -90,8 +91,10 @@ apiClient.interceptors.response.use(
     // 统一错误处理
     if (error.response) {
       const status = error.response.status
-      const detail = error.response.data?.detail || error.response.data?.message
-      const requestId = error.response.headers?.['x-request-id']
+      const data = error.response.data
+      const detail = extractBackendMessage(data) || error.message
+      const headerRequestId = error.response.headers?.['x-request-id']
+      const requestId = extractBackendRequestId(data) || (headerRequestId ? String(headerRequestId) : undefined)
 
       switch (status) {
         case 401:
@@ -106,6 +109,12 @@ apiClient.interceptors.response.use(
         case 422:
           console.error('[API] 请求参数错误:', detail, requestId ? `(request_id=${requestId})` : '')
           break
+        case 429: {
+          const retryAfter = error.response.headers?.['retry-after']
+          const extra = retryAfter ? `(retry_after=${String(retryAfter)}s)` : ''
+          console.error('[API] 请求过于频繁，请稍后重试', extra, requestId ? `(request_id=${requestId})` : '')
+          break
+        }
         case 500:
           console.error('[API] 服务器错误:', detail, requestId ? `(request_id=${requestId})` : '')
           break
@@ -639,6 +648,35 @@ export interface TestLLMRequest {
 export interface TestLLMResponse {
   success: boolean
   message: string
+}
+
+export interface BackendMeta {
+  name: string
+  api_version: string
+  time: string
+  build?: {
+    sha?: string | null
+    time?: string | null
+  }
+  features?: {
+    auth_mode?: string
+    vector_backend?: string
+    task_queue_enabled?: boolean
+    embedding_cache_enabled?: boolean
+    minio_enabled?: boolean
+    use_langgraph_pipeline?: boolean
+  }
+  runtime?: {
+    python?: string
+    platform?: string
+  }
+}
+
+export const metaApi = {
+  async get(): Promise<BackendMeta> {
+    const { data } = await apiClient.get('/meta')
+    return data
+  },
 }
 
 export const settingsApi = {

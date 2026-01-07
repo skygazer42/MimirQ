@@ -5,6 +5,7 @@ import { toast } from 'sonner'
 import { RefreshCw, Save } from 'lucide-react'
 
 import { settingsApi, type KGConfig, type PromptTemplate } from '@/lib/api-client'
+import { formatApiError } from '@/lib/api-errors'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
@@ -49,7 +50,7 @@ export function KgExtractPromptSettings({ templates }: { templates: PromptTempla
         setDraft(next)
       } catch (err) {
         console.error(err)
-        toast.error('加载 KG 配置失败')
+        toast.error(formatApiError(err, '加载 KG 配置失败'))
       } finally {
         if (!cancelled) setLoading(false)
       }
@@ -74,7 +75,7 @@ export function KgExtractPromptSettings({ templates }: { templates: PromptTempla
       setOriginal(next.kg || DEFAULT_KG_CONFIG)
       setDraft(next.kg || DEFAULT_KG_CONFIG)
     } catch (err: any) {
-      toast.error(err?.response?.data?.detail || err?.message || '保存失败')
+      toast.error(formatApiError(err, '保存失败'))
     } finally {
       setSaving(false)
     }

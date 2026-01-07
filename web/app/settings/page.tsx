@@ -18,8 +18,10 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import {
   settingsApi,
+  metaApi,
   type SystemSettings,
   type SystemStatus,
+  type BackendMeta,
   type FeatureFlags,
   type MagicPDFConfig,
   type ObservabilityConfig,
@@ -27,6 +29,7 @@ import {
   type LangGraphConfig,
 } from '@/lib/api-client'
 import { cn } from '@/lib/utils'
+import { extractBackendMessage, withRequestId } from '@/lib/api-errors'
 import { ParserDropdown } from '@/components/ui/parser-dropdown'
 import { ChunkStrategyDropdown } from '@/components/ui/chunk-strategy-dropdown'
 import { PipelineOptionsPanel } from '@/components/pipeline-options-panel'
@@ -141,6 +144,7 @@ export default function SettingsPage() {
   // 系统配置状态
   const [settings, setSettings] = useState<SystemSettings | null>(null)
   const [status, setStatus] = useState<SystemStatus | null>(null)
+  const [backendMeta, setBackendMeta] = useState<BackendMeta | null>(null)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [saveMessage, setSaveMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
@@ -157,12 +161,14 @@ export default function SettingsPage() {
   const loadSettings = async () => {
     setLoading(true)
     try {
-      const [settingsData, statusData] = await Promise.all([
+      const [settingsData, statusData, metaData] = await Promise.all([
         settingsApi.get(),
         settingsApi.getStatus().catch(() => null),
+        metaApi.get().catch(() => null),
       ])
       setSettings(settingsData)
       setStatus(statusData)
+      setBackendMeta(metaData)
       setEditedSettings({})
     } catch (error) {
       console.error('Failed to load settings:', error)
@@ -182,7 +188,10 @@ export default function SettingsPage() {
       setSaveMessage({ type: 'success', text: result.message })
       await loadSettings()
     } catch (error: any) {
-      setSaveMessage({ type: 'error', text: error.response?.data?.detail || '保存失败' })
+      const data = error?.response?.data
+      const requestId = error?.response?.headers?.['x-request-id'] || data?.request_id
+      const msg = extractBackendMessage(data) || error?.message || '保存失败'
+      setSaveMessage({ type: 'error', text: withRequestId(msg, requestId) })
     } finally {
       setSaving(false)
       setTimeout(() => setSaveMessage(null), 5000)
@@ -265,7 +274,10 @@ export default function SettingsPage() {
         setSaveMessage({ type: 'success', text: result.message })
         await loadSettings()
       } catch (error: any) {
-        setSaveMessage({ type: 'error', text: error.response?.data?.detail || '保存失败' })
+        const data = error?.response?.data
+        const requestId = error?.response?.headers?.['x-request-id'] || data?.request_id
+        const msg = extractBackendMessage(data) || error?.message || '保存失败'
+        setSaveMessage({ type: 'error', text: withRequestId(msg, requestId) })
       } finally {
         setSaving(false)
       }
@@ -554,6 +566,34 @@ export default function SettingsPage() {
                       message={status.embedding.model}
                     />
                   </div>
+
+                  {backendMeta && (
+                    <div className="mt-6 bg-white border border-gray-100 rounded-2xl p-5 shadow-sm">
+                      <div className="text-sm font-medium text-gray-700 mb-3">Backend</div>
+                      <div className="text-xs text-gray-600 space-y-2">
+                        <div>
+                          API: {backendMeta.name} ({backendMeta.api_version})
+                          {backendMeta.build?.sha ? ` @ ${backendMeta.build.sha.slice(0, 7)}` : ''}
+                        </div>
+                        {backendMeta.features && (
+                          <div className="flex flex-wrap gap-2">
+                            <span className="px-2 py-0.5 rounded-full border border-gray-200 bg-gray-50">
+                              auth={backendMeta.features.auth_mode || '-'}
+                            </span>
+                            <span className="px-2 py-0.5 rounded-full border border-gray-200 bg-gray-50">
+                              vector={backendMeta.features.vector_backend || '-'}
+                            </span>
+                            {typeof backendMeta.features.task_queue_enabled === 'boolean' && (
+                              <span className="px-2 py-0.5 rounded-full border border-gray-200 bg-gray-50">
+                                queue={backendMeta.features.task_queue_enabled ? 'on' : 'off'}
+                              </span>
+                            )}
+                          </div>
+                        )}
+                        {backendMeta.runtime?.python && <div>Runtime: Python {backendMeta.runtime.python}</div>}
+                      </div>
+                    </div>
+                  )}
 
                   {status.parsers && (
                     <div className="mt-6 bg-white border border-gray-100 rounded-2xl p-5 shadow-sm">

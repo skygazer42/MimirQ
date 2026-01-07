@@ -3,6 +3,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react'
 import type { PipelineCapabilitiesResponse } from '@/types'
 import { pipelineApi } from '@/lib/api-client'
+import { formatApiError } from '@/lib/api-errors'
 
 type PipelineCapabilitiesContextValue = {
   capabilities: PipelineCapabilitiesResponse | null
@@ -38,8 +39,7 @@ export function PipelineCapabilitiesProvider({ children }: { children: React.Rea
       setCapabilities(data)
       setError(null)
     } catch (err: any) {
-      const detail = err?.response?.data?.detail || err?.message || 'Failed to load pipeline capabilities'
-      setError(String(detail))
+      setError(formatApiError(err, 'Failed to load pipeline capabilities'))
     } finally {
       setLoading(false)
     }
