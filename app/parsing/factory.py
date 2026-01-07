@@ -4,7 +4,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import List, Optional, Tuple
+from typing import TYPE_CHECKING, List, Optional, Tuple
 
 from langchain_core.documents import Document
 
@@ -17,6 +17,13 @@ from app.rag.core.logging import get_logger
 
 logger = get_logger("parsing.factory")
 
+if TYPE_CHECKING:
+    from app.parsing.parsers.deepdoc_parser import DeepDocParser
+    from app.parsing.parsers.docling_parser import DoclingParser
+    from app.parsing.parsers.magic_pdf_parser import MagicPDFParser
+    from app.parsing.parsers.markitdown_parser import MarkItDownParser
+    from app.parsing.parsers.mineru_parser import MinerUParser
+
 
 class ParserFactory:
     """根据文件类型选择合适的解析器"""
@@ -26,11 +33,11 @@ class ParserFactory:
 
     def __init__(self):
         self._basic_pdf_parser = PDFParser()
-        self._mineru_parser: Optional["MinerUParser"] = None
-        self._deepdoc_parser: Optional["DeepDocParser"] = None
-        self._markitdown_parser: Optional["MarkItDownParser"] = None
-        self._docling_parser: Optional["DoclingParser"] = None
-        self._magicpdf_parser: Optional["MagicPDFParser"] = None
+        self._mineru_parser: Optional[MinerUParser] = None
+        self._deepdoc_parser: Optional[DeepDocParser] = None
+        self._markitdown_parser: Optional[MarkItDownParser] = None
+        self._docling_parser: Optional[DoclingParser] = None
+        self._magicpdf_parser: Optional[MagicPDFParser] = None
 
         logger.info("[pdf] PyMuPDF parser ready (basic)")
         if settings.MINERU_ENABLED and (settings.MINERU_API_TOKEN or settings.MINERU_LOCAL_SERVER_URL):

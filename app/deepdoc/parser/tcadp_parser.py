@@ -401,7 +401,7 @@ class TCADPParser(RAGFlowPdfParser):
                 raise RuntimeError("[TCADP] No parsing result download link obtained")
 
             if callback:
-                callback(0.6, f"[TCADP] Parsing result download link obtained")
+                callback(0.6, "[TCADP] Parsing result download link obtained")
 
             if output_dir:
                 out_dir = Path(output_dir)
