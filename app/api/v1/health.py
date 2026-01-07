@@ -18,14 +18,30 @@ from app.storage.vector.milvus import milvus_store
 
 router = APIRouter()
 _READY_CACHE_TTL_SEC = 2.0
-_ready_cache: dict[str, object] = {"ts": 0.0, "payload": None, "status": 200}
+_ready_cache: dict[str, object] = {"ts": 0.0, "payload": None, "status": 200, "key": None}
 _redis_client = None
 
 
-def _get_ready_cache():
+def _ready_cache_key() -> tuple[object, ...]:
+    return (
+        (getattr(settings, "VECTOR_BACKEND", "milvus") or "milvus").lower(),
+        bool(getattr(settings, "TASK_QUEUE_ENABLED", False)),
+        bool(getattr(settings, "EMBEDDING_CACHE_ENABLED", False)),
+        # Include endpoints so the cache doesn't hide hot-reloaded settings changes.
+        str(getattr(settings, "REDIS_URL", "") or ""),
+        str(getattr(settings, "MILVUS_HOST", "") or ""),
+        int(getattr(settings, "MILVUS_PORT", 0) or 0),
+    )
+
+
+def _get_ready_cache(cache_key: tuple[object, ...]):
     now = time.monotonic()
     payload = _ready_cache.get("payload")
-    if payload is not None and (now - float(_ready_cache.get("ts") or 0.0)) < _READY_CACHE_TTL_SEC:
+    if (
+        payload is not None
+        and _ready_cache.get("key") == cache_key
+        and (now - float(_ready_cache.get("ts") or 0.0)) < _READY_CACHE_TTL_SEC
+    ):
         return payload, int(_ready_cache.get("status") or 200)
     return None, None
 
@@ -66,7 +82,8 @@ def ready(response: Response) -> dict:
     - Returns 200 when required deps are reachable
     - Returns 503 when one or more deps are down
     """
-    cached_payload, cached_status = _get_ready_cache()
+    cache_key = _ready_cache_key()
+    cached_payload, cached_status = _get_ready_cache(cache_key)
     if cached_payload is not None:
         response.status_code = cached_status
         return cached_payload
@@ -134,4 +151,5 @@ def ready(response: Response) -> dict:
     _ready_cache["ts"] = time.monotonic()
     _ready_cache["payload"] = payload
     _ready_cache["status"] = response.status_code
+    _ready_cache["key"] = cache_key
     return payload
