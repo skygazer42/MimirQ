@@ -49,7 +49,7 @@ cd ..
 cp web/.env.local.example web/.env.local
 ```
 
-Edit `docker/.env` and set your LLM/Embedding keys (OpenAI‑compatible API is supported).
+Edit `docker/.env` and set your LLM/Embedding keys (OpenAI-compatible API is supported).
 
 ### 2) Start backend services
 
@@ -62,9 +62,7 @@ cd docker && docker compose up -d --build
 cd docker && docker compose ps
 
 # production (recommended)
-# see: docs/deploy.md
-# make up-prod
-# make up-prod-web
+# edit docker/.env: ENV=production, AUTH_MODE=jwt, SECRET_KEY (>=32), POSTGRES_PASSWORD, then run the same `make up`
 ```
 
 ### 3) Start frontend (optional)
