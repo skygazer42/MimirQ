@@ -34,7 +34,8 @@
     "remark-gfm": "^4.0.0",
     "sonner": "^2.0.7",
     "tailwind-merge": "^2.2.1",
-    "tailwindcss-animate": "^1.0.7"
+    "tailwindcss-animate": "^1.0.7",
+    "zustand": "^5.0.9"
   },
   "devDependencies": {
     "@tailwindcss/typography": "^0.5.10",
