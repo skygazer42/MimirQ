@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
-// This script lives under script/. Repo root is one level up.
+// This script lives under scripts/. Repo root is one level up.
 const ROOT = path.resolve(__dirname, '..')
 
 function readText(relPath) {
