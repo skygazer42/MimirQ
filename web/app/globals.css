@@ -54,16 +54,16 @@
 /* 自定义滚动条样式 */
 * {
   scrollbar-width: thin;
-  scrollbar-color: theme('colors.slate.200') transparent;
+  scrollbar-color: theme('colors.slate.400') transparent;
 }
 
 .dark * {
-  scrollbar-color: theme('colors.slate.700') transparent;
+  scrollbar-color: theme('colors.slate.600') transparent;
 }
 
 ::-webkit-scrollbar {
-  width: 5px;
-  height: 5px;
+  width: 8px;
+  height: 8px;
 }
 
 ::-webkit-scrollbar-track {
@@ -71,11 +71,11 @@
 }
 
 ::-webkit-scrollbar-thumb {
-  @apply bg-slate-200 rounded-full hover:bg-slate-300 transition-colors;
+  @apply bg-slate-300 rounded-full hover:bg-slate-400 transition-colors;
 }
 
 .dark ::-webkit-scrollbar-thumb {
-  @apply bg-slate-700 hover:bg-slate-600;
+  @apply bg-slate-600 hover:bg-slate-500;
 }
 
 /* 打字机效果的光标 */
