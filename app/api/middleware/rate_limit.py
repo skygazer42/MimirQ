@@ -96,18 +96,143 @@ class RateLimiter:
         return self.check(key)
 
 
-_default_limiter: Optional[RateLimiter] = None
+_REDIS_TOKEN_BUCKET_LUA = r"""
+local key = KEYS[1]
+local capacity = tonumber(ARGV[1])
+local refill_rate = tonumber(ARGV[2])
+local now = tonumber(ARGV[3])
+local requested = tonumber(ARGV[4])
+local ttl = tonumber(ARGV[5])
+
+local values = redis.call("HMGET", key, "tokens", "ts")
+local tokens = tonumber(values[1])
+local ts = tonumber(values[2])
+
+if not tokens then tokens = capacity end
+if not ts then ts = now end
+
+local delta = now - ts
+if delta < 0 then delta = 0 end
+
+tokens = math.min(capacity, tokens + delta * refill_rate)
+
+local allowed = 0
+local wait = 0
+if refill_rate <= 0 then
+  allowed = 1
+else
+  if tokens >= requested then
+    tokens = tokens - requested
+    allowed = 1
+  else
+    local needed = requested - tokens
+    wait = needed / refill_rate
+  end
+end
+
+redis.call("HMSET", key, "tokens", tokens, "ts", now)
+redis.call("EXPIRE", key, ttl)
+return {allowed, wait}
+"""
 
 
-def get_default_limiter() -> RateLimiter:
+class RedisRateLimiter:
+    """
+    Redis-backed token bucket limiter (distributed across processes/instances).
+
+    Fail-open: when Redis is unavailable, allow requests to avoid turning an outage
+    into a full API downtime.
+    """
+
+    def __init__(
+        self,
+        *,
+        redis_url: str,
+        namespace: str,
+        requests_per_second: float = 10.0,
+        burst_size: Optional[int] = None,
+        key_prefix: str = "rl",
+        key_ttl_sec: int = 600,
+    ) -> None:
+        self.redis_url = str(redis_url or "").strip()
+        self.namespace = str(namespace or "default").strip() or "default"
+        self.requests_per_second = float(requests_per_second)
+        self.burst_size = int(burst_size or int(self.requests_per_second * 2))
+        self.key_prefix = str(key_prefix or "rl").strip() or "rl"
+        self.key_ttl_sec = max(10, int(key_ttl_sec or 0) or 600)
+        self._client = None
+        self._last_error_ts = 0.0
+
+    def _get_client(self):
+        if self._client is None:
+            import redis
+
+            self._client = redis.Redis.from_url(
+                self.redis_url,
+                socket_timeout=1,
+                socket_connect_timeout=1,
+                decode_responses=True,
+            )
+        return self._client
+
+    def _redis_key(self, key: str) -> str:
+        return f"{self.key_prefix}:{self.namespace}:{key}"
+
+    def check(self, key: str) -> Tuple[bool, float]:
+        if not self.redis_url:
+            return True, 0.0
+
+        now = time.time()
+        redis_key = self._redis_key(key)
+        try:
+            client = self._get_client()
+            allowed_raw, wait_raw = client.eval(
+                _REDIS_TOKEN_BUCKET_LUA,
+                1,
+                redis_key,
+                float(self.burst_size),
+                float(self.requests_per_second),
+                float(now),
+                1.0,
+                float(self.key_ttl_sec),
+            )
+            allowed = int(allowed_raw) == 1
+            wait_time = float(wait_raw or 0.0)
+            return (True, 0.0) if allowed else (False, max(0.0, wait_time))
+        except Exception as exc:  # noqa: BLE001
+            self._client = None
+            # Avoid log spam during outages.
+            if now - self._last_error_ts > 60:
+                self._last_error_ts = now
+                logger.warning("Redis rate limiter error (fail-open): %s", str(exc)[:200])
+            return True, 0.0
+
+    async def acheck(self, key: str) -> Tuple[bool, float]:
+        return self.check(key)
+
+
+_default_limiter: Optional[RateLimiter | RedisRateLimiter] = None
+
+
+def get_default_limiter() -> RateLimiter | RedisRateLimiter:
     global _default_limiter
     if _default_limiter is None:
         from app.core.config import settings
 
-        _default_limiter = RateLimiter(
-            requests_per_second=getattr(settings, "RATE_LIMIT_REQUESTS_PER_SECOND", 10.0),
-            burst_size=getattr(settings, "RATE_LIMIT_BURST_SIZE", 20),
-        )
+        if bool(getattr(settings, "RATE_LIMIT_REDIS_ENABLED", False)) and bool(getattr(settings, "REDIS_URL", "")):
+            _default_limiter = RedisRateLimiter(
+                redis_url=str(getattr(settings, "REDIS_URL", "") or ""),
+                namespace="default",
+                requests_per_second=getattr(settings, "RATE_LIMIT_REQUESTS_PER_SECOND", 10.0),
+                burst_size=getattr(settings, "RATE_LIMIT_BURST_SIZE", 20),
+                key_prefix=str(getattr(settings, "RATE_LIMIT_REDIS_PREFIX", "rl") or "rl"),
+                key_ttl_sec=int(getattr(settings, "RATE_LIMIT_REDIS_KEY_TTL_SEC", 600) or 600),
+            )
+        else:
+            _default_limiter = RateLimiter(
+                requests_per_second=getattr(settings, "RATE_LIMIT_REQUESTS_PER_SECOND", 10.0),
+                burst_size=getattr(settings, "RATE_LIMIT_BURST_SIZE", 20),
+            )
     return _default_limiter
 
 
@@ -154,16 +279,40 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         exclude_paths: Optional[list] = None,
     ) -> None:
         super().__init__(app)
-        self.limiter = RateLimiter(
-            requests_per_second=requests_per_second,
-            burst_size=burst_size,
-        )
-        self.chat_limiter: Optional[RateLimiter] = None
-        if chat_requests_per_second is not None:
-            self.chat_limiter = RateLimiter(
-                requests_per_second=float(chat_requests_per_second),
-                burst_size=chat_burst_size,
+        from app.core.config import settings
+
+        use_redis = bool(getattr(settings, "RATE_LIMIT_REDIS_ENABLED", False)) and bool(getattr(settings, "REDIS_URL", ""))
+        if use_redis:
+            self.limiter = RedisRateLimiter(
+                redis_url=str(getattr(settings, "REDIS_URL", "") or ""),
+                namespace="default",
+                requests_per_second=requests_per_second,
+                burst_size=burst_size,
+                key_prefix=str(getattr(settings, "RATE_LIMIT_REDIS_PREFIX", "rl") or "rl"),
+                key_ttl_sec=int(getattr(settings, "RATE_LIMIT_REDIS_KEY_TTL_SEC", 600) or 600),
             )
+        else:
+            self.limiter = RateLimiter(
+                requests_per_second=requests_per_second,
+                burst_size=burst_size,
+            )
+
+        self.chat_limiter: Optional[RateLimiter | RedisRateLimiter] = None
+        if chat_requests_per_second is not None:
+            if use_redis:
+                self.chat_limiter = RedisRateLimiter(
+                    redis_url=str(getattr(settings, "REDIS_URL", "") or ""),
+                    namespace="chat",
+                    requests_per_second=float(chat_requests_per_second),
+                    burst_size=chat_burst_size,
+                    key_prefix=str(getattr(settings, "RATE_LIMIT_REDIS_PREFIX", "rl") or "rl"),
+                    key_ttl_sec=int(getattr(settings, "RATE_LIMIT_REDIS_KEY_TTL_SEC", 600) or 600),
+                )
+            else:
+                self.chat_limiter = RateLimiter(
+                    requests_per_second=float(chat_requests_per_second),
+                    burst_size=chat_burst_size,
+                )
         self.chat_prefixes = tuple(chat_prefixes or [])
         self.exclude_paths = set(exclude_paths or ["/health", "/", "/docs", "/openapi.json", "/redoc"])
 
@@ -195,7 +344,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
 
 async def rate_limit_dependency(
     request: Request,
-    limiter: Optional[RateLimiter] = None,
+    limiter: Optional[RateLimiter | RedisRateLimiter] = None,
 ) -> None:
     if limiter is None:
         limiter = get_default_limiter()
