@@ -258,10 +258,10 @@ make up
 make ps
 
 # 或
-docker compose up -d --build
+docker compose -f docker-compose.yml up -d --build
 
 # 检查服务状态
-docker compose ps
+docker compose -f docker-compose.yml ps
 
 # (可选) 启动前端（两种方式二选一）
 # 1) Docker（生产构建；适合“一键部署”）
@@ -273,6 +273,18 @@ make up-web
 启动后建议做一次快速校验：
 ```bash
 make verify
+```
+
+开发热更新（源码挂载 + reload）：
+```bash
+make up-dev
+make up-dev-web
+```
+
+生产部署（推荐）见 `docs/deploy.md`：
+```bash
+make up-prod
+make up-prod-web
 ```
 
 ### 访问服务

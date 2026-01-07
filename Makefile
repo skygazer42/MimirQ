@@ -1,16 +1,22 @@
-.PHONY: help up up-web up-prod up-prod-web down ps logs restart backend web test api-check typecheck lint-py audit-py audit-web audit openapi-export openapi-types openapi-check db-upgrade db-revision verify parser-status clean
+.PHONY: help up up-web up-dev up-dev-web up-prod up-prod-web down ps logs restart backend web test api-check typecheck lint-py audit-py audit-web audit openapi-export openapi-types openapi-check db-upgrade db-revision verify parser-status clean
 
 PY := python3
 ifeq ($(OS),Windows_NT)
 PY := python
 endif
 
+COMPOSE := docker compose -f docker-compose.yml
+COMPOSE_DEV := docker compose -f docker-compose.yml -f docker-compose.override.yml
+COMPOSE_PROD := docker compose -f docker-compose.prod.yml
+
 help:
 	@echo "MimirQ dev commands (run from repo root):"
 	@echo "  make up        - docker compose up (build + detach)"
 	@echo "  make up-web    - docker compose up + frontend (profile web)"
-	@echo "  make up-prod   - docker compose up (no override file)"
-	@echo "  make up-prod-web - docker compose up + frontend (no override file)"
+	@echo "  make up-dev    - docker compose up (dev override + reload)"
+	@echo "  make up-dev-web - docker compose up (dev override + web profile)"
+	@echo "  make up-prod   - docker compose up (production stack)"
+	@echo "  make up-prod-web - docker compose up (production + web profile)"
 	@echo "  make down      - docker compose down"
 	@echo "  make ps        - docker compose ps"
 	@echo "  make logs      - docker compose logs -f"
@@ -34,28 +40,34 @@ help:
 	@echo "  make clean     - remove local caches"
 
 up:
-	docker compose up -d --build
+	$(COMPOSE) up -d --build
 
 up-web:
-	docker compose --profile web up -d --build
+	$(COMPOSE) --profile web up -d --build
+
+up-dev:
+	$(COMPOSE_DEV) up -d --build
+
+up-dev-web:
+	$(COMPOSE_DEV) --profile web up -d --build
 
 up-prod:
-	docker compose -f docker-compose.yml up -d --build
+	$(COMPOSE_PROD) up -d --build
 
 up-prod-web:
-	docker compose -f docker-compose.yml --profile web up -d --build
+	$(COMPOSE_PROD) --profile web up -d --build
 
 down:
-	docker compose down
+	$(COMPOSE) down
 
 ps:
-	docker compose ps
+	$(COMPOSE) ps
 
 logs:
-	docker compose logs -f --tail=200
+	$(COMPOSE) logs -f --tail=200
 
 restart:
-	docker compose restart backend
+	$(COMPOSE) restart backend
 
 backend:
 	uvicorn app.main:app --reload --host 0.0.0.0 --port 8000

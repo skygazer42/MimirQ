@@ -1,0 +1,24 @@
+# Development overrides (auto-loaded by `docker compose` when present).
+#
+# This file is intended for local development:
+# - mount source code into the backend/worker containers
+# - enable uvicorn reload
+#
+# For production, use `docker-compose.prod.yml` (and avoid this override).
+
+services:
+  backend:
+    environment:
+      ENV: dev
+      LOG_FORMAT: plain
+    volumes:
+      - ./:/app
+    command: uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+
+  worker:
+    environment:
+      ENV: dev
+      LOG_FORMAT: plain
+    volumes:
+      - ./:/app
+

@@ -30,14 +30,24 @@ make up
 make ps
 
 # 或直接使用 docker compose
-docker compose up -d --build
-docker compose ps
+docker compose -f docker-compose.yml up -d --build
+docker compose -f docker-compose.yml ps
 
 # (可选) 启动前端（两种方式二选一）
 # 1) Docker（生产构建；推荐用于“一键部署”）
 make up-web
 # 2) 本地开发（热更新更快）
 # cd web && pnpm install && pnpm dev
+```
+
+### 生产部署（推荐）
+
+生产栈使用 `docker-compose.prod.yml`（默认不暴露 Postgres/Milvus/Redis 端口）：
+
+```bash
+cp .env.prod.example .env
+make up-prod
+make up-prod-web   # 可选：启用前端（profile=web）
 ```
 
 可选：本地启动后端（Python），依赖服务仍用 Docker：
@@ -48,7 +58,7 @@ cp .env.example .env
 # scripts\\bootstrap_env.ps1
 
 # 只启动依赖（Postgres / Milvus / MinIO）
-docker compose up -d postgres etcd minio milvus redis
+docker compose -f docker-compose.yml up -d postgres etcd minio milvus redis
 
 pip install -r requirements-minimal.txt
 # （可选）本地 Embedding（体积很大）：
@@ -192,7 +202,7 @@ self.llm = ChatAnthropic(
 **检查**:
 ```bash
 # 查看服务状态
-docker compose ps
+docker compose -f docker-compose.yml ps
 
 # 查看错误日志
 docker compose logs
