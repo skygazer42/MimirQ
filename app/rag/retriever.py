@@ -158,6 +158,58 @@ class HybridRetriever(BaseRetriever):
             if not document_ids and not full_tenant:
                 return False
 
+            def _maybe_call(q, method_name: str, *args, **kwargs):
+                fn = getattr(q, method_name, None)
+                if not callable(fn):
+                    return q
+                try:
+                    return fn(*args, **kwargs)
+                except TypeError:
+                    return q
+
+            def _iter_rows(q, batch_size: int = 2000):
+                fn = getattr(q, "yield_per", None)
+                if callable(fn):
+                    try:
+                        return fn(batch_size)
+                    except TypeError:
+                        pass
+                all_fn = getattr(q, "all", None)
+                if callable(all_fn):
+                    return all_fn()
+                return []
+
+            def _unpack_chunk_row(row):
+                try:
+                    (
+                        chunk_id,
+                        content,
+                        doc_metadata,
+                        tenant_uuid_row,
+                        document_uuid_row,
+                        chunk_index,
+                        page_number,
+                    ) = row
+                    return (
+                        chunk_id,
+                        content,
+                        doc_metadata,
+                        tenant_uuid_row,
+                        document_uuid_row,
+                        chunk_index,
+                        page_number,
+                    )
+                except Exception:
+                    return (
+                        getattr(row, "id", None),
+                        getattr(row, "content", None),
+                        getattr(row, "doc_metadata", None),
+                        getattr(row, "tenant_id", None),
+                        getattr(row, "document_id", None),
+                        getattr(row, "chunk_index", None),
+                        getattr(row, "page_number", None),
+                    )
+
             max_chunks = max(0, int(getattr(settings, "BM25_LAZY_BUILD_MAX_CHUNKS", 0) or 0))
             db = SessionLocal()
             try:
@@ -189,21 +241,22 @@ class HybridRetriever(BaseRetriever):
                                 .filter(DocumentChunk.tenant_id == tenant_uuid)
                                 .filter(DocumentChunk.document_id.in_(document_ids))
                                 .order_by(DocumentChunk.document_id.asc(), DocumentChunk.chunk_index.asc())
-                                .enable_eagerloads(False)
-                                .execution_options(stream_results=True)
                             )
+                            q = _maybe_call(q, "enable_eagerloads", False)
+                            q = _maybe_call(q, "execution_options", stream_results=True)
                             if max_chunks:
                                 q = q.limit(max_chunks)
                             docs: List[Document] = []
-                            for (
-                                chunk_id,
-                                content,
-                                doc_metadata,
-                                tenant_uuid_row,
-                                document_uuid_row,
-                                chunk_index,
-                                page_number,
-                            ) in q.yield_per(2000):
+                            for row in _iter_rows(q, 2000):
+                                (
+                                    chunk_id,
+                                    content,
+                                    doc_metadata,
+                                    tenant_uuid_row,
+                                    document_uuid_row,
+                                    chunk_index,
+                                    page_number,
+                                ) = _unpack_chunk_row(row)
                                 meta = dict(doc_metadata or {})
                                 meta.setdefault("tenant_id", str(tenant_uuid_row))
                                 meta.setdefault("document_id", str(document_uuid_row))
@@ -242,24 +295,25 @@ class HybridRetriever(BaseRetriever):
                             .filter(DocumentChunk.tenant_id == tenant_uuid)
                             .filter(DocumentChunk.document_id.in_(list(missing)))
                             .order_by(DocumentChunk.document_id.asc(), DocumentChunk.chunk_index.asc())
-                            .enable_eagerloads(False)
-                            .execution_options(stream_results=True)
                         )
+                        q = _maybe_call(q, "enable_eagerloads", False)
+                        q = _maybe_call(q, "execution_options", stream_results=True)
                         if max_chunks:
                             remaining = max(0, int(max_chunks) - int(existing_count))
                             if remaining <= 0:
                                 return True
                             q = q.limit(remaining)
                         bm25_docs: List[Document] = []
-                        for (
-                            chunk_id,
-                            content,
-                            doc_metadata,
-                            tenant_uuid_row,
-                            document_uuid_row,
-                            chunk_index,
-                            page_number,
-                        ) in q.yield_per(2000):
+                        for row in _iter_rows(q, 2000):
+                            (
+                                chunk_id,
+                                content,
+                                doc_metadata,
+                                tenant_uuid_row,
+                                document_uuid_row,
+                                chunk_index,
+                                page_number,
+                            ) = _unpack_chunk_row(row)
                             meta = dict(doc_metadata or {})
                             meta.setdefault("tenant_id", str(tenant_uuid_row))
                             meta.setdefault("document_id", str(document_uuid_row))
@@ -296,24 +350,25 @@ class HybridRetriever(BaseRetriever):
                     .join(DBDocument)
                     .filter(DBDocument.status == "completed")
                     .filter(DocumentChunk.tenant_id == tenant_uuid)
-                    .enable_eagerloads(False)
-                    .execution_options(stream_results=True)
                 )
+                q = _maybe_call(q, "enable_eagerloads", False)
+                q = _maybe_call(q, "execution_options", stream_results=True)
                 if document_ids:
                     q = q.filter(DocumentChunk.document_id.in_(document_ids))
                 q = q.order_by(DocumentChunk.document_id.asc(), DocumentChunk.chunk_index.asc())
                 if max_chunks:
                     q = q.limit(max_chunks)
                 docs: List[Document] = []
-                for (
-                    chunk_id,
-                    content,
-                    doc_metadata,
-                    tenant_uuid_row,
-                    document_uuid_row,
-                    chunk_index,
-                    page_number,
-                ) in q.yield_per(2000):
+                for row in _iter_rows(q, 2000):
+                    (
+                        chunk_id,
+                        content,
+                        doc_metadata,
+                        tenant_uuid_row,
+                        document_uuid_row,
+                        chunk_index,
+                        page_number,
+                    ) = _unpack_chunk_row(row)
                     meta = dict(doc_metadata or {})
                     meta.setdefault("tenant_id", str(tenant_uuid_row))
                     meta.setdefault("document_id", str(document_uuid_row))

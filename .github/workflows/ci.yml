@@ -1,0 +1,70 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test-and-verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: |
+            requirements-minimal.txt
+            requirements-local.txt
+            requirements.txt
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: pnpm
+          cache-dependency-path: web/pnpm-lock.yaml
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: "9"
+          run_install: false
+
+      - name: Install Python deps (minimal + tests)
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements-minimal.txt
+          python -m pip install pytest==7.4.4 pytest-asyncio==0.23.8
+
+      - name: Install web deps
+        working-directory: web
+        run: pnpm install --frozen-lockfile
+
+      - name: Backend tests
+        run: make test
+
+      - name: Repo verify
+        run: make verify
+
+  docker-build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build backend image
+        run: docker build -t mimirq-backend .
+
+      - name: Build web image
+        run: docker build -t mimirq-web -f web/Dockerfile.prod web
