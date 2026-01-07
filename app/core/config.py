@@ -103,6 +103,10 @@ class Settings(BaseSettings):
     # Prometheus metrics
     PROMETHEUS_ENABLED: bool = False
 
+    # Error monitoring
+    SENTRY_DSN: str = ""
+    SENTRY_TRACES_SAMPLE_RATE: float = 0.0
+
     EMBEDDING_PROVIDER: str = "openai_compatible"
     EMBEDDING_MODEL: str = "text-embedding-3-small"
     EMBEDDING_API_KEY: str = ""

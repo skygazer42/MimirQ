@@ -57,6 +57,7 @@ httpx[http2]==0.28.1
 tiktoken==0.7.0
 numpy==1.26.4
 prometheus-client==0.23.1
+sentry-sdk==2.48.0
 
 # Authentication
 python-jose[cryptography]==3.5.0

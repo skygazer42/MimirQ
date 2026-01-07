@@ -95,6 +95,7 @@ python-dotenv==1.0.1
 requests==2.32.5
 aiofiles==23.2.1
 prometheus-client==0.23.1
+sentry-sdk==2.48.0
 
 # Development
 pytest==7.4.4
