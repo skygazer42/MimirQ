@@ -1,7 +1,22 @@
 'use client'
 
+import dynamic from 'next/dynamic'
 import { Navbar } from '@/components/navbar'
-import { ChunkPreview } from '@/components/chunk-preview'
+
+const ChunkPreview = dynamic(
+  () => import('@/components/chunk-preview').then((mod) => mod.ChunkPreview),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="flex-1 flex items-center justify-center bg-gray-50">
+        <div className="flex items-center gap-3 text-slate-500 font-medium">
+          <div className="h-6 w-6 animate-spin rounded-full border-2 border-slate-200 border-t-blue-600" />
+          <span>正在加载预览组件...</span>
+        </div>
+      </div>
+    ),
+  }
+)
 
 export default function ChunkPreviewPage() {
   return (
