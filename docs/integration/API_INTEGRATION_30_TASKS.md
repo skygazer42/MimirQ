@@ -38,7 +38,7 @@
 25. ✅ 补充 schema 可变默认值清理（`Field(default_factory=...)`），避免跨请求污染
 
 26. ✅ 运行 `make api-check`：确认前端调用的路由在后端均存在
-27. ✅ 运行 `cd web && pnpm run lint`：确认前端无 lint 错误
+27. ✅ 运行 `cd web; pnpm run lint`：确认前端无 lint 错误
 28. ✅ 运行 `python3 -m compileall app`：确认后端语法可编译
 
 29. ✅ 全仓检查并清零前端 TODO（数据治理保存链路已落地）

@@ -263,16 +263,18 @@ make up
 make ps
 
 # 或
-cd docker && docker compose up -d --build
+cd docker
+docker compose up -d --build
 
 # 检查服务状态
-cd docker && docker compose ps
+docker compose ps
+cd ..
 
 # (可选) 启动前端（两种方式二选一）
 # 1) Docker（生产构建；适合“一键部署”）
 make up-web
 # 2) 本地开发（热更新更快）
-# cd web && pnpm install && pnpm dev
+# cd web; pnpm install; pnpm dev
 ```
 
 启动后建议做一次快速校验：
@@ -280,16 +282,23 @@ make up-web
 make verify
 ```
 
-开发热更新（源码挂载 + reload）：
+本地开发（推荐，热更新）：
 ```bash
-make up-dev
-make up-dev-web
+# 只启动依赖（暴露端口，便于调试）
+make infra-up
+
+# 本地跑后端（自动 reload）
+make backend
+
+# (可选) 本地跑前端
+make web
 ```
 
 生产部署（推荐）见 `docs/deploy.md`：
 ```bash
-make up-prod
-make up-prod-web
+# 编辑 docker/.env：ENV=production、AUTH_MODE=jwt、SECRET_KEY、POSTGRES_PASSWORD
+make up
+make up-web   # 可选：前端
 ```
 
 ### 访问服务
@@ -369,8 +378,10 @@ source venv/bin/activate  # Windows: venv\Scripts\activate
 # 安装依赖（完整 / 精简二选一）
 pip install -r requirements.txt
 
-# 启动 PostgreSQL + Milvus (Docker)
-docker compose up -d postgres etcd minio milvus
+# 启动依赖（Docker）
+cd docker
+docker compose -f docker-compose.infra.yml up -d postgres etcd minio milvus redis
+cd ..
 
 # 启动后端服务
 uvicorn app.main:app --reload --host 0.0.0.0 --port 8000

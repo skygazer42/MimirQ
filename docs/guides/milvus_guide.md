@@ -51,12 +51,14 @@ Milvus 采用云原生架构，包含 3 个组件：
 ### 1. 启动服务
 
 ```bash
+cd docker
 docker compose up -d
 ```
 
 等待 Milvus 启动完成（约 1-2 分钟）：
 
 ```bash
+cd docker
 # 查看 Milvus 状态
 docker compose logs -f milvus
 
@@ -266,6 +268,7 @@ curl http://localhost:9091/healthz
 ### 2. 查看日志
 
 ```bash
+cd docker
 # Milvus 日志
 docker compose logs -f milvus
 
@@ -296,6 +299,7 @@ netstat -tulnp | grep 19530
 **查看详细日志**：
 
 ```bash
+cd docker
 docker compose logs milvus
 ```
 

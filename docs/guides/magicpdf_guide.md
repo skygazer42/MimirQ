@@ -9,7 +9,7 @@ MimirQ 支持将 **MagicPDF（PyPI: `magic-pdf`）** 作为可选 PDF 高级解�
 1. 安装 `magic-pdf`（示例）
 
 ```bash
-pip install -r requirements-magicpdf.txt
+pip install magic-pdf
 ```
 
 2. 配置后端环境变量（`.env`）

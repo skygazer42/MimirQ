@@ -2,7 +2,7 @@
 
 ## 1) 本地一键启动（默认）
 
-适用于本机体验/联调，依赖服务会映射端口到宿主机（Postgres/Milvus/Redis/MinIO）。
+适用于本机体验/联调：默认暴露后端 `8000`（以及可选前端 `3000`），基础设施端口不对外暴露（更安全）。
 
 ```bash
 cd docker
@@ -13,16 +13,24 @@ docker compose --profile web up -d --build   # 可选：前端 UI（profile=web�
 
 ## 2) 本地开发（热更新 / 源码挂载）
 
-仓库包含 `docker/docker-compose.dev.yml`（dev override）。推荐显式启动：
+推荐：本地跑后端代码，依赖用 infra compose（暴露 Postgres/Milvus/Redis/MinIO 端口，便于调试）：
 
 ```bash
-make up-dev
-make up-dev-web
+cd docker
+cp .env.example .env
+docker compose -f docker-compose.infra.yml up -d
+```
+
+然后在仓库根目录运行后端：
+
+```bash
+pip install -r requirements.txt
+python main.py
 ```
 
 ## 3) 生产部署（推荐）
 
-生产栈使用 `docker/docker-compose.prod.yml`，默认不暴露基础设施端口（更安全），并启用 `ENV=production` 触发后端配置校验：
+生产部署直接使用 `docker/docker-compose.yml`，并启用 `ENV=production` 触发后端配置校验：
 
 - 强制 `AUTH_MODE=jwt`
 - 必须设置 `SECRET_KEY`（至少 32 字符）
@@ -44,8 +52,8 @@ cp .env.example .env
 
 ```bash
 cd docker
-docker compose -f docker-compose.prod.yml up -d --build
-docker compose -f docker-compose.prod.yml --profile web up -d --build   # 可选：带前端 UI（profile=web）
+docker compose up -d --build
+docker compose --profile web up -d --build   # 可选：带前端 UI（profile=web）
 ```
 
 Windows PowerShell 也可使用：
@@ -53,17 +61,17 @@ Windows PowerShell 也可使用：
 ```powershell
 Set-Location docker
 Copy-Item .env.example .env -ErrorAction SilentlyContinue
-docker compose -f docker-compose.prod.yml up -d --build
-docker compose -f docker-compose.prod.yml --profile web up -d --build  # 可选：带前端（profile=web）
+docker compose up -d --build
+docker compose --profile web up -d --build  # 可选：带前端（profile=web）
 ```
 
 ### 3.3 常用运维命令
 
 ```bash
 cd docker
-docker compose -f docker-compose.prod.yml ps
-docker compose -f docker-compose.prod.yml logs -f --tail=200 backend
-docker compose -f docker-compose.prod.yml logs -f --tail=200 worker
+docker compose ps
+docker compose logs -f --tail=200 backend
+docker compose logs -f --tail=200 worker
 ```
 
 ## 4) 端口与访问

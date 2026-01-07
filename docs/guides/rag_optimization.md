@@ -268,7 +268,7 @@ reranked_results = reranker.rank(query, candidate_docs)
 pip install -r requirements.txt
 
 # 启动服务
-docker compose up -d
+make up
 ```
 
 ### 2. 验证功能
