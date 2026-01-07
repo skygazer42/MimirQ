@@ -9,9 +9,9 @@ I/O 并发性能基准测试脚本
 - 向量索引
 
 使用方法:
-    python tools/benchmark_io_concurrency.py --test all
-    python tools/benchmark_io_concurrency.py --test batch_upload
-    python tools/benchmark_io_concurrency.py --test embedding
+    python script/benchmark_io_concurrency.py --test all
+    python script/benchmark_io_concurrency.py --test batch_upload
+    python script/benchmark_io_concurrency.py --test embedding
 """
 import argparse
 import asyncio

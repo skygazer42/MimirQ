@@ -186,7 +186,7 @@ MimirQ/
 ├── Dockerfile           # 后端构建文件
 ├── docker/              # Docker 启动脚本
 ├── requirements.txt     # 后端依赖
-├── tools/               # 工具脚本
+├── script/              # 工具脚本
 ├── tests/               # 后端测试
 ├── web/                 # Next.js 前端界面
 │   ├── app/             # 页面路由
