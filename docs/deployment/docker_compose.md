@@ -2,9 +2,10 @@
 
 本项目提供两套 Compose 配置，兼顾本地开发与生产部署：
 
-- `docker-compose.yml`：默认栈（本地可直接用；无源码挂载；后端不启用 `--reload`）
-- `docker-compose.override.yml`：开发覆盖（源码挂载 + `--reload`）
-- `docker-compose.prod.yml`：生产栈（不暴露基础设施端口；`ENV=production` + `AUTH_MODE=jwt`）
+- `docker/docker-compose.yml`：默认栈（本地可直接用；无源码挂载；后端不启用 `--reload`）
+- `docker/docker-compose.dev.yml`：开发覆盖（源码挂载 + `--reload`）
+- `docker/docker-compose.prod.yml`：生产栈（不暴露基础设施端口；`ENV=production` + `AUTH_MODE=jwt`）
+- `docker/docker-compose.infra.yml`：仅基础设施（可选）
 
 另外，前端服务 `web` 使用 `profiles: ["web"]`，默认不启动；需要时显式启用即可。
 
@@ -13,11 +14,13 @@
 ## 1) 环境准备
 
 ```bash
+cd docker
 cp .env.example .env
+cd ..
 cp web/.env.local.example web/.env.local
 ```
 
-编辑 `.env`，至少配置：
+编辑 `docker/.env`，至少配置：
 
 - `LLM_API_KEY`（以及可选的 `LLM_API_BASE/LLM_MODEL`）
 - 若启用生产 JWT：`AUTH_MODE=jwt` + `SECRET_KEY`（长度 >= 32）
@@ -52,7 +55,7 @@ make up-web
 
 ## 3) 生产模式（推荐）
 
-生产栈使用 `docker-compose.prod.yml`（并强制启用 JWT 校验）：
+生产栈使用 `docker/docker-compose.prod.yml`（并强制启用 JWT 校验）：
 
 ```bash
 make up-prod
@@ -84,7 +87,7 @@ make down
 重置所有数据（谨慎）：
 
 ```bash
-docker compose down -v
+cd docker && docker compose down -v
 ```
 
 ---

@@ -6,7 +6,7 @@
 
 1. [ ] 准备 MinIO（本地或集群）并确认可访问（endpoint/AK/SK）。
 2. [ ] 在后端 `.env` 配置 `MINIO_ENABLED=true` + `MINIO_ENDPOINT/MINIO_*`。
-3. [ ] 若用 `docker-compose.yml`，把后端服务环境变量补齐 `MINIO_ENDPOINT=minio:9000` 等。
+3. [ ] 若用 `docker/docker-compose.yml`，把后端服务环境变量补齐 `MINIO_ENDPOINT=minio:9000` 等。
 4. [x] 修复/增强 DeepDoc 解析适配：输出“文本 Document + 图片 Document”。
 5. [x] DeepDoc 图片 Document 的 metadata 统一为 `doc_type_kwd=image` + `image=<PIL.Image>`（供后续上传）。
 6. [x] 在切块阶段将 `metadata["image"]` 上传到 MinIO，并写回 `metadata["img_id"]`。

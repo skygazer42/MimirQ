@@ -10,7 +10,7 @@ cd MimirQ
 
 ### 2. 配置模型 API Key
 
-初始化并编辑 `.env` 文件，填入你的模型配置（OpenAI-compatible）：
+初始化并编辑 `docker/.env` 文件，填入你的模型配置（OpenAI-compatible）：
 
 ```env
 LLM_API_KEY=sk-your-api-key-here
@@ -22,16 +22,18 @@ LLM_API_KEY=sk-your-api-key-here
 ### 3. 启动服务
 
 ```bash
-# 如未创建 .env，可先从模板复制
+# 如未创建 docker/.env，可先从模板复制
+cd docker
 cp .env.example .env
+cd ..
 
 # 推荐：使用 Makefile 一键启动/查看状态
 make up
 make ps
 
 # 或直接使用 docker compose
-docker compose -f docker-compose.yml up -d --build
-docker compose -f docker-compose.yml ps
+cd docker && docker compose up -d --build
+cd docker && docker compose ps
 
 # (可选) 启动前端（两种方式二选一）
 # 1) Docker（生产构建；推荐用于“一键部署”）
@@ -42,22 +44,23 @@ make up-web
 
 ### 生产部署（推荐）
 
-生产栈使用 `docker-compose.prod.yml`（默认不暴露 Postgres/Milvus/Redis 端口）：
+生产栈使用 `docker/docker-compose.prod.yml`（默认不暴露 Postgres/Milvus/Redis 端口）：
 
 ```bash
+cd docker
 cp .env.example .env
-make up-prod
-make up-prod-web   # 可选：启用前端（profile=web）
+docker compose -f docker-compose.prod.yml up -d --build
+docker compose -f docker-compose.prod.yml --profile web up -d --build   # 可选：启用前端（profile=web）
 ```
 
 可选：本地启动后端（Python），依赖服务仍用 Docker：
 ```bash
-cp .env.example .env
+cp docker/.env.example docker/.env
 
 # Windows PowerShell 也可以用 `Copy-Item` 快速复制 env 模板：
 
 # 只启动依赖（Postgres / Milvus / MinIO）
-docker compose -f docker-compose.yml up -d postgres etcd minio milvus redis
+docker compose -f docker/docker-compose.yml up -d postgres etcd minio milvus redis
 
 pip install -r requirements.txt
 python main.py
@@ -197,13 +200,13 @@ self.llm = ChatAnthropic(
 **检查**:
 ```bash
 # 查看服务状态
-docker compose -f docker-compose.yml ps
+cd docker && docker compose ps
 
 # 查看错误日志
-docker compose logs
+cd docker && docker compose logs
 
 # 重启服务
-docker compose restart
+cd docker && docker compose restart
 ```
 
 ### Q4: 前端无法连接后端？

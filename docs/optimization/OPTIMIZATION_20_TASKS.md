@@ -4,14 +4,14 @@
 
 ## 已完成清单（20/20）
 
-1. ✅ 增加后端一键启动的 `docker-compose.yml`（`docker-compose.yml`）
+1. ✅ 增加后端一键启动的 `docker/docker-compose.yml`（`docker/docker-compose.yml`）
 2. ✅ 增加后端 `Makefile`，统一常用命令（`Makefile`）
 3. ✅ 增加/修正 `.dockerignore`（根目录 + 前后端），减少构建上下文、加速镜像构建（`.dockerignore`、`.dockerignore`、`web/.dockerignore`）
 4. ✅ 修正 `.gitignore`，确保 `.dockerignore` 被纳入版本控制（`.gitignore`）
 5. ✅ 更新根目录 `README.md`：统一 `docker compose` 用法、补充访问地址与启动说明（`README.md`）
 
 6. ✅ 后端默认鉴权模式改为 `AUTH_MODE=header`，与前端 `X-User-ID/X-Tenant-ID` 默认行为一致（`app/core/config.py`）
-7. ✅ 更新后端 `.env.example`：默认 `AUTH_MODE=header`，补充 `SECRET_KEY` 说明（`.env.example`）
+7. ✅ 更新后端 `docker/.env.example`：默认 `AUTH_MODE=header`，补充 `SECRET_KEY` 说明（`docker/.env.example`）
 
 8. ✅ BM25 启动期建索引改为可选，并增加上限保护，避免大数据量冷启动卡死（`app/main.py`）
 9. ✅ 增加 BM25 启动期建索引配置项（开关 + 最大 chunks），便于按环境调优（`app/core/config.py`）
