@@ -383,6 +383,10 @@ class Settings(BaseSettings):
     RATE_LIMIT_BURST_SIZE: int = 20
     RATE_LIMIT_CHAT_RPS: float = 2.0  # Stricter limit for chat endpoints
     RATE_LIMIT_CHAT_BURST: int = 5
+    # Optional: Redis-backed distributed limiter (recommended for multi-process deployments).
+    RATE_LIMIT_REDIS_ENABLED: bool = False
+    RATE_LIMIT_REDIS_PREFIX: str = "rl"
+    RATE_LIMIT_REDIS_KEY_TTL_SEC: int = 600
 
     # MCP (Model Context Protocol) configuration
     MCP_ENABLED: bool = False
