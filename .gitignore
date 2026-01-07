@@ -46,6 +46,7 @@ uploads/
 chroma_db/
 web/.next/
 web/.next_build/
+web/openapi.json
 *.sqlite
 *.db
 *.tsbuildinfo

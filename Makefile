@@ -1,4 +1,4 @@
-.PHONY: help up up-web up-prod up-prod-web down ps logs restart backend web test api-check typecheck lint-py audit-py audit-web audit db-upgrade db-revision verify parser-status clean
+.PHONY: help up up-web up-prod up-prod-web down ps logs restart backend web test api-check typecheck lint-py audit-py audit-web audit openapi-export openapi-types openapi-check db-upgrade db-revision verify parser-status clean
 
 help:
 	@echo "MimirQ dev commands (run from repo root):"
@@ -19,6 +19,9 @@ help:
 	@echo "  make audit-py  - audit Python deps (pip-audit)"
 	@echo "  make audit-web - audit web deps (pnpm audit)"
 	@echo "  make audit     - run both audits"
+	@echo "  make openapi-export - write web/openapi.json"
+	@echo "  make openapi-types  - generate web/types/openapi.ts"
+	@echo "  make openapi-check  - ensure openapi types up-to-date"
 	@echo "  make db-upgrade - run Alembic migrations"
 	@echo "  make db-revision - create Alembic revision (m=msg)"
 	@echo "  make verify    - api-check + web lint/typecheck + backend compileall"
@@ -79,6 +82,17 @@ audit-web:
 audit:
 	@$(MAKE) audit-py
 	@$(MAKE) audit-web
+
+openapi-export:
+	python3 scripts/export_openapi.py --out web/openapi.json
+
+openapi-types:
+	@$(MAKE) openapi-export
+	cd web && pnpm run gen:api-types
+
+openapi-check:
+	@$(MAKE) openapi-types
+	git diff --exit-code -- web/types/openapi.ts
 
 db-upgrade:
 	alembic upgrade head
