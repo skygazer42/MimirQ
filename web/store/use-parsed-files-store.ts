@@ -72,7 +72,7 @@ export const useParsedFiles = create<ParsedFilesState>()(
     }),
     {
       name: 'mimirq_parsed_files',
-      storage: createJSONStorage(() => (typeof window !== 'undefined' ? localStorage : undefined)),
+      storage: createJSONStorage(() => localStorage),
       onRehydrateStorage: () => (state) => {
         state?.setLoaded(true)
       },
