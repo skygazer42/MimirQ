@@ -1,6 +1,6 @@
 x-backend-build: &backend_build
-  context: .
-  dockerfile: Dockerfile
+  context: ..
+  dockerfile: docker/Dockerfile
   args:
     # Optional build metadata (exposed via /api/v1/meta)
     MIMIRQ_BUILD_SHA: ${MIMIRQ_BUILD_SHA:-}
@@ -180,7 +180,7 @@ services:
   web:
     profiles: ["web"]
     build:
-      context: ./web
+      context: ../web
       dockerfile: Dockerfile.prod
       args:
         NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000}

@@ -30,7 +30,7 @@
 
 ## 20 个任务（计划 + 执行）
 
-1. [x] 统一并补齐本地联调环境变量（前端 `.env.local.example`、后端 `.env.example`）
+1. [x] 统一并补齐本地联调环境变量（前端 `web/.env.local.example`、后端 `docker/.env.example`）
 2. [x] 新增后端健康检查接口（`GET /api/v1/health`）
 3. [x] 前端增加后端连通性指示（health ping + UI）
 4. [x] SSE 错误事件补齐 `request_id`（前后端便于关联日志）

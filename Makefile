@@ -5,9 +5,9 @@ ifeq ($(OS),Windows_NT)
 PY := python
 endif
 
-COMPOSE := docker compose -f docker-compose.yml
-COMPOSE_DEV := docker compose -f docker-compose.yml -f docker-compose.override.yml
-COMPOSE_PROD := docker compose -f docker-compose.prod.yml
+COMPOSE := docker compose -f docker/docker-compose.yml
+COMPOSE_DEV := docker compose -f docker/docker-compose.yml -f docker/docker-compose.dev.yml
+COMPOSE_PROD := docker compose -f docker/docker-compose.prod.yml
 
 help:
 	@echo "MimirQ dev commands (run from repo root):"

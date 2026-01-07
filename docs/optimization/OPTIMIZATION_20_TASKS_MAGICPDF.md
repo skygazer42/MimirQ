@@ -6,7 +6,7 @@
 
 1. ✅ 增加解析器后端别名归一化（`magic-pdf/magic_pdf → magicpdf` 等）（`app/parsing/backends.py`）
 2. ✅ 后端配置新增 MagicPDF 相关参数（开关/CLI/方法/语言/超时/产物保留）（`app/core/config.py`）
-3. ✅ 更新后端 `.env.example`：补充 MagicPDF 配置项与说明（`.env.example`）
+3. ✅ 更新后端 `docker/.env.example`：补充 MagicPDF 配置项与说明（`docker/.env.example`）
 4. ✅ 新增 MagicPDF 解析器适配层：通过 `magic-pdf` CLI 产出 Markdown（`app/parsing/parsers/magic_pdf_parser.py`）
 5. ✅ ParserFactory 接入 `magicpdf` 后端并支持选择/自动回退（`app/parsing/factory.py`）
 6. ✅ PDF 分流策略纳入 MagicPDF：在扫描件/低质量场景可作为自动选择候选（`app/parsing/routing.py`）

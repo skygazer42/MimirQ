@@ -41,11 +41,11 @@
 
 2. **配置文件**
    - ✅ `app/config.py` (Milvus 配置)
-   - ✅ `.env.example` (环境变量模板)
+   - ✅ `docker/.env.example` (环境变量模板)
    - ✅ `requirements.txt` (添加 pymilvus)
 
 3. **Docker 部署**
-   - ✅ `docker-compose.yml` (添加 Milvus、Etcd、MinIO)
+   - ✅ `docker/docker-compose.yml` (添加 Milvus、Etcd、MinIO)
    - ✅ 启动脚本更新
 
 4. **文档**

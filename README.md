@@ -180,11 +180,15 @@ MimirQ/
 │   ├── models/          # 数据模型 (Pydantic/SQLModel)
 │   ├── services/        # 业务逻辑 (RAG/Milvus/LangChain)
 │   └── deepdoc/         # 深度文档解析模块
-├── docker-compose.yml   # 一键部署 (含依赖服务)
-├── docker-compose.override.yml # 开发覆盖（热更新/源码挂载）
+├── docker/              # Docker 部署文件
+│   ├── .env.example
+│   ├── docker-compose.yml
+│   ├── docker-compose.dev.yml
+│   ├── docker-compose.prod.yml
+│   ├── docker-compose.infra.yml
+│   ├── Dockerfile
+│   └── start_backend.sh
 ├── Makefile             # 常用命令
-├── Dockerfile           # 后端构建文件
-├── docker/              # Docker 启动脚本
 ├── requirements.txt     # 后端依赖
 ├── scripts/             # 工具脚本
 ├── tests/               # 后端测试
@@ -231,18 +235,22 @@ MimirQ/
 git clone https://github.com/yourusername/MimirQ.git
 cd MimirQ
 
-# 配置环境变量 (使用默认模板)
+# 配置环境变量（Docker Compose 使用 docker/.env）
+cd docker
 cp .env.example .env
+cd ..
+
+# (可选) 前端本地开发 env
 cp web/.env.local.example web/.env.local
 ```
 
 **2. 配置模型密钥 (可选)**
 
-编辑 `.env` 文件，填入您的 API Key：
+编辑 `docker/.env` 文件，填入您的 API Key：
 
 ```bash
 # 推荐使用 vim 或 nano 编辑
-vim .env
+vim docker/.env
 
 # 关键配置项:
 # LLM_API_KEY=sk-xxxx
@@ -257,10 +265,10 @@ make up
 make ps
 
 # 或
-docker compose -f docker-compose.yml up -d --build
+cd docker && docker compose up -d --build
 
 # 检查服务状态
-docker compose -f docker-compose.yml ps
+cd docker && docker compose ps
 
 # (可选) 启动前端（两种方式二选一）
 # 1) Docker（生产构建；适合“一键部署”）
@@ -480,10 +488,13 @@ docs = retriever.invoke(query)
 ### Docker Compose (推荐)
 
 ```bash
-# 开发模式：默认加载 docker-compose.override.yml（后端热更新）
+# 默认栈（docker/docker-compose.yml）
 make up
 
-# 生产模式：仅使用 docker-compose.yml（无热更新/无源码挂载）
+# 开发热更新（docker/docker-compose.dev.yml）
+make up-dev
+
+# 生产栈（docker/docker-compose.prod.yml）
 make up-prod
 
 # 启动前端（可选，profile=web）
