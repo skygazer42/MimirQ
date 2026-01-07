@@ -317,7 +317,7 @@ docker compose logs milvus
 
 ### Q4: 如何迁移 ChromaDB 数据到 Milvus？
 
-**迁移脚本** (`scripts/migrate_chroma_to_milvus.py`):
+**迁移脚本**（示例，仓库未内置）:
 
 ```python
 # TODO: 如需迁移，请联系技术支持

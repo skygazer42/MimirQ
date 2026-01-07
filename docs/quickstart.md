@@ -54,8 +54,7 @@ make up-prod-web   # 可选：启用前端（profile=web）
 ```bash
 cp .env.example .env
 
-# Windows PowerShell 也可以用脚本一键初始化：
-# scripts\\bootstrap_env.ps1
+# Windows PowerShell 也可以用 `Copy-Item` 快速复制 env 模板：
 
 # 只启动依赖（Postgres / Milvus / MinIO）
 docker compose -f docker-compose.yml up -d postgres etcd minio milvus redis
@@ -67,8 +66,6 @@ python main.py
 启动后建议做一次快速校验：
 ```bash
 make verify
-# Windows PowerShell:
-# scripts\\run_verify.ps1
 ```
 
 ### 4. 访问应用

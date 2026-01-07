@@ -61,4 +61,4 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=40s --retries=3 \
   CMD curl -fsS http://localhost:8000/api/v1/health/ready || exit 1
 
 # 启动命令
-CMD ["sh", "scripts/docker_start_backend.sh"]
+CMD ["sh", "docker/start_backend.sh"]

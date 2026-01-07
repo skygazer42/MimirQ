@@ -49,8 +49,9 @@ make up-prod-web   # 可选：带前端 UI（profile=web）
 Windows PowerShell 也可使用：
 
 ```powershell
-scripts\\up_prod.ps1
-scripts\\up_prod.ps1 -Web
+Copy-Item .env.example .env -ErrorAction SilentlyContinue
+docker compose -f docker-compose.prod.yml up -d --build
+docker compose -f docker-compose.prod.yml --profile web up -d --build  # 可选：带前端（profile=web）
 ```
 
 ### 3.3 常用运维命令

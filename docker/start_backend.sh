@@ -29,4 +29,3 @@ fi
 
 echo "[backend] starting: uvicorn ${APP_MODULE} ${ARGS}"
 exec uvicorn "${APP_MODULE}" ${ARGS}
-

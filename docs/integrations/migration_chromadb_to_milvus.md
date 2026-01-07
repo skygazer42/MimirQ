@@ -87,7 +87,7 @@ docker compose up -d
 ### 方式 2: 编程迁移
 
 ```python
-# scripts/migrate_chroma_to_milvus.py
+# migrate_chroma_to_milvus.py (example)
 from pymilvus import connections, Collection
 import chromadb
 
