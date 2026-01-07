@@ -80,9 +80,7 @@ make up-web
 
 ## Python Dependencies (optional)
 
-- API mode (recommended): `pip install -r requirements-minimal.txt`
-- Local embeddings (optional): `pip install -r requirements-local.txt`
-- Full install (all optional parsers/evals): `pip install -r requirements.txt`
+- Unified deps: `pip install -r requirements.txt`
 
 ## Health Checks
 

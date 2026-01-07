@@ -1,9 +1,0 @@
-# Development / CI dependencies
-#
-# CI installs this file so tooling (ruff/pytest) is available alongside runtime deps.
-
--r requirements-minimal.txt
-
-# Optional local embeddings (huge):
-# -r requirements-local.txt
-

@@ -217,9 +217,7 @@ MimirQ/
 
 ### Python 依赖 (可选)
 
-- API 模式（推荐）：`pip install -r requirements-minimal.txt`
-- 本地 Embedding（可选）：`pip install -r requirements-local.txt`
-- 全量安装（含可选解析/评测）：`pip install -r requirements.txt`
+- 统一依赖：`pip install -r requirements.txt`
 
 ### 一键部署 (Docker Compose)
 
@@ -363,11 +361,6 @@ source venv/bin/activate  # Windows: venv\Scripts\activate
 
 # 安装依赖（完整 / 精简二选一）
 pip install -r requirements.txt
-# 或（仅核心能力，安装更快）：
-# pip install -r requirements-minimal.txt
-#
-# （可选）本地 Embedding 模式额外依赖：
-# pip install -r requirements-local.txt
 
 # 启动 PostgreSQL + Milvus (Docker)
 docker compose up -d postgres etcd minio milvus

@@ -91,7 +91,7 @@ lint-py:
 	$(PY) -m ruff check app tests scripts main.py
 
 audit-py:
-	pip-audit -r requirements-minimal.txt --no-deps --disable-pip
+	pip-audit -r requirements.txt --no-deps --disable-pip
 
 audit-web:
 	cd web && pnpm audit --prod --audit-level high --ignore-registry-errors

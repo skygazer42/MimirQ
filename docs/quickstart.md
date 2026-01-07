@@ -45,7 +45,7 @@ make up-web
 生产栈使用 `docker-compose.prod.yml`（默认不暴露 Postgres/Milvus/Redis 端口）：
 
 ```bash
-cp .env.prod.example .env
+cp .env.example .env
 make up-prod
 make up-prod-web   # 可选：启用前端（profile=web）
 ```
@@ -60,9 +60,7 @@ cp .env.example .env
 # 只启动依赖（Postgres / Milvus / MinIO）
 docker compose -f docker-compose.yml up -d postgres etcd minio milvus redis
 
-pip install -r requirements-minimal.txt
-# （可选）本地 Embedding（体积很大）：
-# pip install -r requirements-local.txt
+pip install -r requirements.txt
 python main.py
 ```
 

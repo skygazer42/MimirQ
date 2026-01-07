@@ -2,8 +2,9 @@
 
 本项目提供两套 Compose 配置，兼顾本地开发与生产部署：
 
-- `docker-compose.yml`：生产友好（无源码挂载；后端不启用 `--reload`）
-- `docker-compose.override.yml`：开发覆盖（默认会被 `docker compose up` 自动加载；开启后端热更新并挂载源码）
+- `docker-compose.yml`：默认栈（本地可直接用；无源码挂载；后端不启用 `--reload`）
+- `docker-compose.override.yml`：开发覆盖（源码挂载 + `--reload`）
+- `docker-compose.prod.yml`：生产栈（不暴露基础设施端口；`ENV=production` + `AUTH_MODE=jwt`）
 
 另外，前端服务 `web` 使用 `profiles: ["web"]`，默认不启动；需要时显式启用即可。
 
@@ -25,10 +26,18 @@ cp web/.env.local.example web/.env.local
 
 ## 2) 开发模式（默认）
 
-开发模式会自动加载 `docker-compose.override.yml`：
+默认使用基础栈（不含源码挂载）：
 
 ```bash
 make up
+make ps
+make logs
+```
+
+如需源码挂载 + 热更新：
+
+```bash
+make up-dev
 make ps
 make logs
 ```
@@ -41,9 +50,9 @@ make up-web
 
 ---
 
-## 3) 生产模式（仅使用 base compose）
+## 3) 生产模式（推荐）
 
-生产模式不会加载 `docker-compose.override.yml`（避免源码挂载/热更新）：
+生产栈使用 `docker-compose.prod.yml`（并强制启用 JWT 校验）：
 
 ```bash
 make up-prod
@@ -58,25 +67,7 @@ make up-prod-web
 
 ---
 
-## 4) 依赖集合（镜像体积/构建速度）
-
-后端 Docker 构建默认安装 `requirements-minimal.txt`（更小更快）。
-
-如需 MagicPDF / Docling / 本地 Embedding 等重依赖，可在 `.env` 中设置：
-
-```bash
-BACKEND_REQUIREMENTS_FILE=requirements.txt
-```
-
-然后重新构建：
-
-```bash
-docker compose build --no-cache backend worker
-```
-
----
-
-## 5) 数据卷与清理
+## 4) 数据卷与清理
 
 关键卷：
 
@@ -98,7 +89,7 @@ docker compose down -v
 
 ---
 
-## 6) 常见排错
+## 5) 常见排错
 
 - 查看配置合并结果：`docker compose config`
 - 查看后端日志：`docker compose logs -f backend`

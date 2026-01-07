@@ -3,9 +3,7 @@
 MimirQ 支持两种 Embedding 模式，对应不同的依赖需求。
 
 本仓库提供三组依赖文件：
-- `requirements-minimal.txt`：默认 API 模式（推荐）
-- `requirements-local.txt`：本地 Embedding 追加依赖（在 minimal 基础上安装）
-- `requirements.txt`：全量依赖（包含更多可选解析/评测/开发组件）
+- `requirements.txt`：统一依赖（包含 API 模式 / 本地 Embedding / 开发工具）
 
 ---
 
@@ -21,11 +19,7 @@ MimirQ 支持两种 Embedding 模式，对应不同的依赖需求。
 
 **安装**：
 ```bash
-# 推荐：精简依赖（安装更快，覆盖默认核心能力）
-pip install -r requirements-minimal.txt
-
-# 或：完整依赖（包含更多可选解析/评测组件与开发依赖）
-# pip install -r requirements.txt
+pip install -r requirements.txt
 ```
 
 **配置**：
@@ -57,11 +51,7 @@ EMBEDDING_API_BASE=https://api.openai.com/v1
 
 **安装**：
 ```bash
-# 先安装基础依赖（推荐精简）
-pip install -r requirements-minimal.txt
-
-# 再安装本地模型依赖
-pip install -r requirements-local.txt
+pip install -r requirements.txt
 ```
 
 **配置**：
@@ -102,18 +92,13 @@ EMBEDDING_API_KEY=your-api-key
 
 ### 从 API 模式切换到本地模式
 
-1. 安装本地依赖：
-```bash
-pip install -r requirements-local.txt
-```
-
-2. 修改 `.env`：
+1. 修改 `.env`：
 ```bash
 EMBEDDING_PROVIDER=local
 EMBEDDING_MODEL=BAAI/bge-large-zh-v1.5
 ```
 
-3. 重启服务
+2. 重启服务
 
 ---
 
@@ -144,17 +129,7 @@ EMBEDDING_PROVIDER=local
 
 ### Q1: 为什么要分离依赖？
 
-**A**: `torch` 和 `sentence-transformers` 非常大（2-3GB），对于使用 API 的用户来说是不必要的负担。分离后可以：
-- 减少 Docker 镜像大小
-- 加快安装速度
-- 降低资源占用
-
-### Q2: 不小心安装了 requirements-local.txt 怎么办？
-
-**A**: 没关系，只要配置 `EMBEDDING_PROVIDER=openai_compatible`，这些库就不会被使用。如果想卸载：
-```bash
-pip uninstall torch sentence-transformers -y
-```
+**A**: 为了减少文件数量与部署复杂度，本仓库已合并为单一 `requirements.txt`。如需减小体积，可在自建镜像/环境中自行裁剪 `torch` 等重依赖。
 
 ### Q3: 本地模式支持 GPU 吗？
 
