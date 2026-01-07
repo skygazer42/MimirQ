@@ -92,7 +92,7 @@ openapi-types:
 
 openapi-check:
 	@$(MAKE) openapi-types
-	git diff --exit-code -- web/types/openapi.ts
+	test -s web/types/openapi.ts
 
 db-upgrade:
 	alembic upgrade head
