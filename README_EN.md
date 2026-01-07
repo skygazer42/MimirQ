@@ -54,8 +54,13 @@ make up
 make ps
 
 # or
-docker compose up -d --build
-docker compose ps
+docker compose -f docker-compose.yml up -d --build
+docker compose -f docker-compose.yml ps
+
+# production (recommended)
+# see: docs/deploy.md
+# make up-prod
+# make up-prod-web
 ```
 
 ### 3) Start frontend (optional)

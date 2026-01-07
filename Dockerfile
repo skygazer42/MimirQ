@@ -35,7 +35,16 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
-ENV PATH="/opt/venv/bin:$PATH"
+ARG MIMIRQ_BUILD_SHA=""
+ARG MIMIRQ_BUILD_TIME=""
+
+ENV PATH="/opt/venv/bin:$PATH" \
+    # Optional build metadata (exposed via /api/v1/meta)
+    MIMIRQ_BUILD_SHA="${MIMIRQ_BUILD_SHA}" \
+    MIMIRQ_BUILD_TIME="${MIMIRQ_BUILD_TIME}" \
+    # Uvicorn defaults (override via env)
+    UVICORN_WORKERS=1 \
+    UVICORN_LOG_LEVEL=info
 
 COPY --from=builder /opt/venv /opt/venv
 
@@ -52,5 +61,9 @@ USER appuser
 # 暴露端口
 EXPOSE 8000
 
+# Image-level healthcheck (compose may override)
+HEALTHCHECK --interval=30s --timeout=5s --start-period=40s --retries=3 \
+  CMD curl -fsS http://localhost:8000/api/v1/health/ready || exit 1
+
 # 启动命令
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["sh", "scripts/docker_start_backend.sh"]

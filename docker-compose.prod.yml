@@ -3,8 +3,6 @@ x-backend-build: &backend_build
   dockerfile: Dockerfile
   args:
     # Default to minimal deps for smaller/faster Docker builds.
-    # Override if you need heavy optional parsers/local embeddings:
-    #   BACKEND_REQUIREMENTS_FILE=requirements.txt
     REQUIREMENTS_FILE: ${BACKEND_REQUIREMENTS_FILE:-requirements-minimal.txt}
     # Optional build metadata (exposed via /api/v1/meta)
     MIMIRQ_BUILD_SHA: ${MIMIRQ_BUILD_SHA:-}
@@ -12,62 +10,54 @@ x-backend-build: &backend_build
 
 x-backend-env: &backend_env
   PYTHONDONTWRITEBYTECODE: 1
-  # Force container-to-container endpoints (do not depend on host-local `.env` defaults like localhost).
-  DATABASE_URL: ${DATABASE_URL_DOCKER:-postgresql://postgres:postgres@postgres:5432/mimirq}
-  MILVUS_HOST: ${MILVUS_HOST_DOCKER:-milvus}
-  MILVUS_PORT: ${MILVUS_PORT_DOCKER:-19530}
-  # Persisted data dirs (mounted as volumes; avoid coupling to /app code mounts).
-  UPLOAD_DIR: ${UPLOAD_DIR_DOCKER:-/data/uploads}
-  # MinIO for images
-  MINIO_ENABLED: ${MINIO_ENABLED_DOCKER:-true}
+  # Enable production guards in app config (AUTH_MODE, SECRET_KEY, MinIO creds, etc).
+  ENV: production
+  AUTH_MODE: jwt
+  # Docker service endpoints
+  DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-mimirq}
+  MILVUS_HOST: milvus
+  MILVUS_PORT: 19530
+  UPLOAD_DIR: /data/uploads
+  # Task queue (recommended in production)
+  TASK_QUEUE_ENABLED: true
+  REDIS_URL: redis://redis:6379/0
+  # Object storage for extracted images (optional; set APP_MINIO_ENABLED=true and configure keys)
+  MINIO_ENABLED: ${APP_MINIO_ENABLED:-false}
   MINIO_ENDPOINT: ${MINIO_ENDPOINT_DOCKER:-minio:9000}
-  MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY_DOCKER:-minioadmin}
-  MINIO_SECRET_KEY: ${MINIO_SECRET_KEY_DOCKER:-minioadmin}
+  MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:-}
+  MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:-}
   MINIO_BUCKET_NAME: ${MINIO_BUCKET_NAME_DOCKER:-mimirq}
   MINIO_USE_SSL: ${MINIO_USE_SSL_DOCKER:-false}
-  # MinerU 本地 ZIP 模式（如未使用可留空）
-  MINERU_LOCAL_SERVER_URL: ${MINERU_LOCAL_SERVER_URL_DOCKER:-}
-  MINERU_VL_SERVER: ${MINERU_VL_SERVER_DOCKER:-}
-  # CORS (frontend)
-  CORS_ORIGINS: ${CORS_ORIGINS_DOCKER:-http://localhost:3000,http://localhost:3001}
-  # Task queue
-  TASK_QUEUE_ENABLED: ${TASK_QUEUE_ENABLED_DOCKER:-true}
-  REDIS_URL: ${REDIS_URL_DOCKER:-redis://redis:6379/0}
-  TASK_QUEUE_NAME: ${TASK_QUEUE_NAME_DOCKER:-mimirq}
-  TASK_WORKER_MAX_JOBS: ${TASK_WORKER_MAX_JOBS_DOCKER:-10}
+  # Backend runtime knobs
+  UVICORN_WORKERS: ${BACKEND_WORKERS:-2}
+  LOG_LEVEL: ${LOG_LEVEL:-INFO}
+  LOG_FORMAT: ${LOG_FORMAT:-json}
 
 services:
-  # Redis（任务队列/缓存/幂等锁）
   redis:
     image: redis:7
     restart: unless-stopped
-    ports:
-      - "6379:6379"
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s
       timeout: 5s
       retries: 10
 
-  # PostgreSQL 数据库
   postgres:
     image: postgres:15
     restart: unless-stopped
     environment:
-      POSTGRES_DB: mimirq
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
-    ports:
-      - "5432:5432"
+      POSTGRES_DB: ${POSTGRES_DB:-mimirq}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER"]
       interval: 10s
       timeout: 5s
-      retries: 5
+      retries: 10
 
-  # Milvus Etcd (元数据存储)
   etcd:
     image: quay.io/coreos/etcd:v3.5.5
     restart: unless-stopped
@@ -86,19 +76,15 @@ services:
       timeout: 20s
       retries: 3
 
-  # Milvus MinIO (对象存储)
+  # Required for Milvus (internal only in production)
   minio:
     image: minio/minio:RELEASE.2023-03-20T20-16-18Z
     restart: unless-stopped
     environment:
-      # Modern env names (also keep the old ones for compatibility with older images).
-      MINIO_ROOT_USER: ${MINIO_ACCESS_KEY_DOCKER:-minioadmin}
-      MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY_DOCKER:-minioadmin}
-      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY_DOCKER:-minioadmin}
-      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY_DOCKER:-minioadmin}
-    ports:
-      - "9001:9001"
-      - "9000:9000"
+      MINIO_ROOT_USER: ${MINIO_ACCESS_KEY_DOCKER:?set MINIO_ACCESS_KEY_DOCKER}
+      MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY_DOCKER:?set MINIO_SECRET_KEY_DOCKER}
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY_DOCKER:?set MINIO_ACCESS_KEY_DOCKER}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY_DOCKER:?set MINIO_SECRET_KEY_DOCKER}
     volumes:
       - minio_data:/minio_data
     command: minio server /minio_data --console-address ":9001"
@@ -108,7 +94,6 @@ services:
       timeout: 20s
       retries: 3
 
-  # Milvus 向量数据库
   milvus:
     image: milvusdb/milvus:v2.3.5
     restart: unless-stopped
@@ -126,27 +111,25 @@ services:
       start_period: 90s
       timeout: 20s
       retries: 3
-    ports:
-      - "19530:19530"
-      - "9091:9091"
     depends_on:
       etcd:
         condition: service_healthy
       minio:
         condition: service_healthy
 
-  # FastAPI 后端
   backend:
     build: *backend_build
     restart: unless-stopped
+    init: true
+    stop_grace_period: 30s
     ports:
-      - "8000:8000"
+      - "${BACKEND_PORT:-8000}:8000"
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://localhost:8000/api/v1/health/ready"]
       interval: 10s
       timeout: 3s
-      retries: 10
-      start_period: 30s
+      retries: 15
+      start_period: 40s
     depends_on:
       postgres:
         condition: service_healthy
@@ -158,13 +141,16 @@ services:
       - .env
     environment:
       <<: *backend_env
+      # Secrets (required for JWT auth in production)
+      SECRET_KEY: ${SECRET_KEY:?set SECRET_KEY (min 32 chars)}
     volumes:
       - upload_data:/data/uploads
 
-  # Arq worker（后台处理文档解析/索引）
   worker:
     build: *backend_build
     restart: unless-stopped
+    init: true
+    stop_grace_period: 30s
     depends_on:
       redis:
         condition: service_healthy
@@ -176,11 +162,11 @@ services:
       - .env
     environment:
       <<: *backend_env
+      SECRET_KEY: ${SECRET_KEY:?set SECRET_KEY (min 32 chars)}
     volumes:
       - upload_data:/data/uploads
     command: arq app.tasks.worker.WorkerSettings
 
-  # Next.js 前端（生产构建）
   web:
     profiles: ["web"]
     build:
@@ -194,8 +180,10 @@ services:
         MIMIRQ_BUILD_SHA: ${MIMIRQ_BUILD_SHA:-}
         MIMIRQ_BUILD_TIME: ${MIMIRQ_BUILD_TIME:-}
     restart: unless-stopped
+    init: true
+    stop_grace_period: 20s
     ports:
-      - "3000:3000"
+      - "${WEB_PORT:-3000}:3000"
     depends_on:
       backend:
         condition: service_healthy
@@ -206,3 +194,4 @@ volumes:
   minio_data:
   milvus_data:
   upload_data:
+

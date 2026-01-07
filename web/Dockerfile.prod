@@ -14,6 +14,8 @@ ARG NEXT_PUBLIC_API_URL=http://localhost:8000
 ARG NEXT_PUBLIC_API_TIMEOUT_MS=60000
 ARG NEXT_PUBLIC_USER_ID=demo
 ARG NEXT_PUBLIC_TENANT_ID=00000000-0000-0000-0000-000000000000
+ARG MIMIRQ_BUILD_SHA=""
+ARG MIMIRQ_BUILD_TIME=""
 ENV NODE_ENV=production
 ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
 ENV NEXT_PUBLIC_API_TIMEOUT_MS=$NEXT_PUBLIC_API_TIMEOUT_MS
@@ -28,16 +30,25 @@ ARG NEXT_PUBLIC_API_URL=http://localhost:8000
 ARG NEXT_PUBLIC_API_TIMEOUT_MS=60000
 ARG NEXT_PUBLIC_USER_ID=demo
 ARG NEXT_PUBLIC_TENANT_ID=00000000-0000-0000-0000-000000000000
+ARG MIMIRQ_BUILD_SHA=""
+ARG MIMIRQ_BUILD_TIME=""
 ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
 ENV NEXT_PUBLIC_API_TIMEOUT_MS=$NEXT_PUBLIC_API_TIMEOUT_MS
 ENV NEXT_PUBLIC_USER_ID=$NEXT_PUBLIC_USER_ID
 ENV NEXT_PUBLIC_TENANT_ID=$NEXT_PUBLIC_TENANT_ID
+ENV MIMIRQ_BUILD_SHA=$MIMIRQ_BUILD_SHA
+ENV MIMIRQ_BUILD_TIME=$MIMIRQ_BUILD_TIME
 
-COPY --from=builder /app/package.json ./package.json
-COPY --from=builder /app/next.config.mjs ./next.config.mjs
-COPY --from=builder /app/public ./public
-COPY --from=builder /app/.next_build ./.next_build
-COPY --from=builder /app/node_modules ./node_modules
+COPY --from=builder --chown=node:node /app/package.json ./package.json
+COPY --from=builder --chown=node:node /app/next.config.mjs ./next.config.mjs
+COPY --from=builder --chown=node:node /app/public ./public
+COPY --from=builder --chown=node:node /app/.next_build ./.next_build
+COPY --from=builder --chown=node:node /app/node_modules ./node_modules
 
 EXPOSE 3000
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
+  CMD wget -qO- http://localhost:3000/ > /dev/null || exit 1
+
+USER node
 CMD ["pnpm", "start"]
