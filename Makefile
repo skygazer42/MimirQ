@@ -79,16 +79,16 @@ test:
 	$(PY) -m pytest -q
 
 parser-status:
-	$(PY) scripts/check_parsers.py
+	$(PY) tools/check_parsers.py
 
 api-check:
-	node scripts/check-api-contract.mjs
+	node tools/check-api-contract.mjs
 
 typecheck:
 	cd web && pnpm run typecheck
 
 lint-py:
-	$(PY) -m ruff check app tests scripts main.py
+	$(PY) -m ruff check app tests tools main.py
 
 audit-py:
 	pip-audit -r requirements.txt --no-deps --disable-pip
@@ -101,7 +101,7 @@ audit:
 	@$(MAKE) audit-web
 
 openapi-export:
-	$(PY) scripts/export_openapi.py --out web/openapi.json
+	$(PY) tools/export_openapi.py --out web/openapi.json
 
 openapi-types:
 	@$(MAKE) openapi-export

@@ -30,7 +30,7 @@
 19. ✅ 补齐数据治理→切块预览的数据传递：新增 `useParsedFiles.updateParsedFile()`
 20. ✅ 数据治理“保存并继续”：将清洗后的 markdown 回写到共享存储，并 toast 提示
 
-21. ✅ 增加自动化“接口契约存在性”校验脚本：`scripts/check-api-contract.mjs`
+21. ✅ 增加自动化“接口契约存在性”校验脚本：`tools/check-api-contract.mjs`
 22. ✅ Makefile 增加 `make api-check`（运行接口契约校验）
 23. ✅ Makefile 增加 `make verify`（api-check + frontend lint + backend compileall）
 
@@ -50,4 +50,4 @@
 - 后端 KG 增量接口：`app/rag/kg/api/routes.py`
 - 前端 KG 接入：`web/services/graph-service.ts`
 - 数据治理保存链路：`web/hooks/use-parsed-files.ts`、`web/components/data-governance-panel.tsx`
-- 自动化校验：`scripts/check-api-contract.mjs`、`Makefile`
+- 自动化校验：`tools/check-api-contract.mjs`、`Makefile`

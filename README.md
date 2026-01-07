@@ -184,8 +184,9 @@ MimirQ/
 ├── docker-compose.override.yml # 开发覆盖（热更新/源码挂载）
 ├── Makefile             # 常用命令
 ├── Dockerfile           # 后端构建文件
+├── docker/              # Docker 启动脚本
 ├── requirements.txt     # 后端依赖
-├── scripts/             # 工具脚本
+├── tools/               # 工具脚本
 ├── tests/               # 后端测试
 ├── web/                 # Next.js 前端界面
 │   ├── app/             # 页面路由

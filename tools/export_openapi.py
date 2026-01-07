@@ -11,7 +11,7 @@ def main() -> int:
     parser.add_argument("--out", default="openapi.json", help="Output path (default: openapi.json)")
     args = parser.parse_args()
 
-    # Ensure repo root is importable when executed as a script (sys.path[0] == scripts/).
+    # Ensure repo root is importable when executed as a script (sys.path[0] == tools/).
     repo_root = Path(__file__).resolve().parents[1]
     sys.path.insert(0, str(repo_root))
 

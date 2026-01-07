@@ -183,7 +183,7 @@ class HTTPClientPool:
 
 ### 7. 性能测试和基准对比 ✅
 
-**文件**: `scripts/benchmark_io_concurrency.py` (新文件)
+**文件**: `tools/benchmark_io_concurrency.py` (新文件)
 
 **功能**:
 - Embedding 并发 vs 串行性能对比
@@ -194,13 +194,13 @@ class HTTPClientPool:
 **使用方法**:
 ```bash
 # 运行所有测试
-python scripts/benchmark_io_concurrency.py --test all
+python tools/benchmark_io_concurrency.py --test all
 
 # 仅测试 Embedding
-python scripts/benchmark_io_concurrency.py --test embedding
+python tools/benchmark_io_concurrency.py --test embedding
 
 # 仅测试图片上传
-python scripts/benchmark_io_concurrency.py --test image_upload
+python tools/benchmark_io_concurrency.py --test image_upload
 ```
 
 ---
@@ -339,7 +339,7 @@ response = await pool.get(
 ### 运行基准测试
 
 ```bash
-python scripts/benchmark_io_concurrency.py --test all
+python tools/benchmark_io_concurrency.py --test all
 ```
 
 ### 预期输出示例
