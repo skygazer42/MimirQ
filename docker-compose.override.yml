@@ -1,0 +1,27 @@
+services:
+  backend:
+    environment:
+      UVICORN_RELOAD: "true"
+      UVICORN_LOG_LEVEL: debug
+    volumes:
+      - ./app:/app/app
+      - ./main.py:/app/main.py
+
+  worker:
+    volumes:
+      - ./app:/app/app
+      - ./main.py:/app/main.py
+
+  web:
+    build:
+      context: ./web
+      dockerfile: Dockerfile
+    volumes:
+      - ./web:/app
+      - /app/node_modules
+    environment:
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000}
+      NEXT_PUBLIC_API_TIMEOUT_MS: ${NEXT_PUBLIC_API_TIMEOUT_MS:-60000}
+      NEXT_PUBLIC_USER_ID: ${NEXT_PUBLIC_USER_ID:-demo}
+      NEXT_PUBLIC_TENANT_ID: ${NEXT_PUBLIC_TENANT_ID:-00000000-0000-0000-0000-000000000000}
+
