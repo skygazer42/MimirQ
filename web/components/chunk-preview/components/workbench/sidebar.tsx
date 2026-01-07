@@ -1,0 +1,237 @@
+/**
+ * Sidebar - 左侧配置栏
+ */
+'use client'
+
+import { useState } from 'react'
+import {
+  Settings,
+  Folder,
+  Upload,
+  FileIcon,
+  Trash2,
+  Check,
+  AlertCircle,
+  Sparkles,
+  BarChart3,
+  Loader2,
+} from 'lucide-react'
+import { Button } from '@/components/ui/button'
+import { cn } from '@/lib/utils'
+import { useChunkPreview } from '../../context'
+import { ChunkStrategyDropdown } from '@/components/ui/chunk-strategy-dropdown'
+import { PipelineOptionsPanel } from '@/components/pipeline-options-panel'
+import { getChunkStrategyOption, getChunkStrategyLabel } from '@/lib/chunk-strategies'
+
+export function Sidebar() {
+  const {
+    fileList,
+    currentFileIndex,
+    currentFile,
+    previewData,
+    isLoading,
+    chunkSize,
+    chunkOverlap,
+    chunkStrategy,
+    processedStatus,
+    setCurrentFileIndex,
+    removeFile,
+    addFiles,
+    updateSettings,
+    runPreview,
+  } = useChunkPreview()
+
+  const chunkStrategyOption = getChunkStrategyOption(chunkStrategy)
+  const resolvedChunkStrategy = previewData?.chunk_strategy || chunkStrategy
+  const strategyForUi = resolvedChunkStrategy
+  const isTokenStrategy = strategyForUi === 'langchain_token'
+  const isSentenceStrategy = strategyForUi === 'llama_index'
+  const isHierarchicalStrategy = strategyForUi === 'llama_index_hierarchical'
+  const isRagflowStrategy = strategyForUi.startsWith('ragflow_')
+
+  const hideChunkSizeControl = isSentenceStrategy || isRagflowStrategy
+  const showOverlapControl =
+    !isSentenceStrategy && !isRagflowStrategy && !isHierarchicalStrategy && strategyForUi !== 'separator'
+
+  function formatFileSize(bytes: number) {
+    if (bytes < 1024) return `${bytes} B`
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+    return `${(bytes / 1024 / 1024).toFixed(1)} MB`
+  }
+
+  return (
+    <aside className="w-80 bg-gray-50/50 border-r border-gray-200 flex flex-col flex-shrink-0 z-10">
+      <div className="p-6 flex-1 overflow-y-auto">
+        {/* 文件列表 */}
+        <div className="mb-8 pb-8 border-b border-gray-200">
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-2">
+              <Folder className="w-4 h-4 text-gray-500" />
+              <h2 className="text-xs font-bold text-gray-900 uppercase tracking-wider">文件列表 ({fileList.length})</h2>
+            </div>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => document.getElementById('add-file-input')?.click()}
+              className="h-6 w-6 p-0"
+            >
+              <Upload className="w-3.5 h-3.5 text-gray-500" />
+            </Button>
+            <input
+              id="add-file-input"
+              type="file"
+              accept=".pdf,.txt,.md,.doc,.docx,.xls,.xlsx,.csv,.html,.json"
+              multiple
+              className="hidden"
+              onChange={(e) => {
+                const files = e.target.files ? Array.from(e.target.files) : []
+                if (files.length > 0) addFiles(files)
+                e.target.value = ''
+              }}
+            />
+          </div>
+
+          <div className="space-y-2 max-h-[200px] overflow-y-auto custom-scrollbar pr-1">
+            {fileList.map((f, idx) => (
+              <div
+                key={f.id}
+                onClick={() => setCurrentFileIndex(idx)}
+                className={cn(
+                  'group flex items-center justify-between p-2 rounded-lg text-xs cursor-pointer transition-colors border',
+                  idx === currentFileIndex
+                    ? 'bg-white border-blue-200 shadow-sm ring-1 ring-blue-100'
+                    : 'bg-transparent border-transparent hover:bg-gray-100 hover:border-gray-200'
+                )}
+              >
+                <div className="flex items-center gap-2 min-w-0 flex-1">
+                  <FileIcon
+                    className={cn('w-3.5 h-3.5 flex-shrink-0', idx === currentFileIndex ? 'text-blue-600' : 'text-gray-400')}
+                  />
+                  <span className={cn('truncate font-medium', idx === currentFileIndex ? 'text-gray-900' : 'text-gray-600')}>
+                    {f.displayName}
+                  </span>
+                </div>
+
+                <div className="flex items-center gap-1 flex-shrink-0">
+                  {f.originalFileType && (
+                    <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-gray-100 text-gray-500">
+                      {String(f.originalFileType).toUpperCase()}
+                    </span>
+                  )}
+                  {processedStatus[f.id] === 'success' && <Check className="w-3.5 h-3.5 text-green-500" />}
+                  {processedStatus[f.id] === 'error' && <AlertCircle className="w-3.5 h-3.5 text-red-500" />}
+
+                  <div
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      removeFile(idx)
+                    }}
+                    className="opacity-0 group-hover:opacity-100 p-1 hover:bg-red-50 hover:text-red-600 rounded transition-all"
+                  >
+                    <Trash2 className="w-3 h-3" />
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2 mb-6">
+          <Settings className="w-4 h-4 text-gray-500" />
+          <h2 className="text-xs font-bold text-gray-900 uppercase tracking-wider">配置参数</h2>
+        </div>
+
+        <div className="space-y-8">
+          {/* 策略选择 */}
+          <div className="space-y-2">
+            <label className="text-xs font-medium text-gray-500">切块策略</label>
+            <ChunkStrategyDropdown value={chunkStrategy} onChange={(value) => updateSettings({ strategy: value })} />
+            <p className="text-[10px] text-gray-400 leading-relaxed mt-1.5">{chunkStrategyOption.description}</p>
+          </div>
+
+          {/* Slider Controls */}
+          {!hideChunkSizeControl && (
+            <div className="space-y-4">
+              <div className="flex justify-between items-center">
+                <label className="text-xs font-medium text-gray-600">{isTokenStrategy ? 'Token 上限' : '块大小 (Chars)'}</label>
+                <span className="text-xs font-mono font-medium text-blue-600 bg-blue-50 px-2 py-0.5 rounded">{chunkSize}</span>
+              </div>
+              <input
+                type="range"
+                min={isTokenStrategy ? 50 : 100}
+                max={isTokenStrategy ? 2000 : 4000}
+                step={isTokenStrategy ? 50 : 100}
+                value={chunkSize}
+                onChange={(e) => updateSettings({ chunkSize: Number(e.target.value) })}
+                className="w-full h-1.5 bg-gray-200 rounded-full appearance-none cursor-pointer accent-blue-600 hover:accent-blue-700 transition-colors"
+              />
+              <div className="flex justify-between text-[10px] text-gray-400 font-mono">
+                <span>{isTokenStrategy ? 50 : 100}</span>
+                <span>{isTokenStrategy ? 2000 : 4000}</span>
+              </div>
+            </div>
+          )}
+
+          {showOverlapControl && (
+            <div className="space-y-4">
+              <div className="flex justify-between items-center">
+                <label className="text-xs font-medium text-gray-600">{isTokenStrategy ? 'Token 重叠' : '重叠 (Chars)'}</label>
+                <span className="text-xs font-mono font-medium text-blue-600 bg-blue-50 px-2 py-0.5 rounded">{chunkOverlap}</span>
+              </div>
+              <input
+                type="range"
+                min={0}
+                max={Math.min(isTokenStrategy ? 500 : 1000, chunkSize - (isTokenStrategy ? 50 : 100))}
+                step={isTokenStrategy ? 25 : 50}
+                value={chunkOverlap}
+                onChange={(e) => updateSettings({ chunkOverlap: Number(e.target.value) })}
+                className="w-full h-1.5 bg-gray-200 rounded-full appearance-none cursor-pointer accent-blue-600 hover:accent-blue-700 transition-colors"
+              />
+            </div>
+          )}
+
+          <div className="space-y-2">
+            <label className="text-xs font-medium text-gray-500">入库管线</label>
+            <PipelineOptionsPanel compact />
+          </div>
+
+          <Button
+            onClick={runPreview}
+            disabled={isLoading}
+            className="w-full bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-700 hover:to-blue-700 text-white h-11 rounded-xl shadow-md shadow-blue-200/50 transition-all hover:scale-[1.02] active:scale-[0.98] border border-transparent"
+          >
+            {isLoading ? (
+              <Loader2 className="w-4 h-4 animate-spin mr-2" />
+            ) : (
+              <Sparkles className="w-4 h-4 mr-2" />
+            )}
+            {isLoading ? '正在智能切分...' : '生成切片预览'}
+          </Button>
+        </div>
+
+        {/* 统计指标 */}
+        {previewData && (
+          <div className="mt-8 pt-8 border-t border-gray-200">
+            <div className="flex items-center gap-2 mb-4">
+              <BarChart3 className="w-4 h-4 text-gray-500" />
+              <h2 className="text-xs font-bold text-gray-900 uppercase tracking-wider">分析结果</h2>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div className="bg-white p-3 rounded-xl border border-gray-100 shadow-sm">
+                <div className="text-[10px] text-gray-400 uppercase tracking-wider font-medium">切片数量</div>
+                <div className="text-xl font-bold text-gray-900 mt-1">{previewData.total_chunks}</div>
+              </div>
+              <div className="bg-white p-3 rounded-xl border border-gray-100 shadow-sm">
+                <div className="text-[10px] text-gray-400 uppercase tracking-wider font-medium">平均长度</div>
+                <div className="text-xl font-bold text-gray-900 mt-1">
+                  {Math.round(previewData.total_characters / previewData.total_chunks)}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    </aside>
+  )
+}
