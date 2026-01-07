@@ -4,7 +4,7 @@
 'use client'
 
 import { Layers, MousePointer2, Loader2, AlertCircle } from 'lucide-react'
-import { useChunkPreview } from '../../../context'
+import { useChunkPreview } from '@/components/chunk-preview/context'
 import { ChunkCard } from '../../chunk-card'
 import type { ChunkPreviewItem } from '@/types'
 

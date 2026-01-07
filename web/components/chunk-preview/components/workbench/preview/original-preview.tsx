@@ -7,7 +7,7 @@ import { useState, useEffect, useRef, useMemo } from 'react'
 import { FileText, Loader2, AlertCircle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
-import { useChunkPreview } from '../../../context'
+import { useChunkPreview } from '@/components/chunk-preview/context'
 import { MarkdownRenderer } from '@/components/markdown/markdown-renderer'
 import { MarkdownToc } from '@/components/markdown/markdown-toc'
 

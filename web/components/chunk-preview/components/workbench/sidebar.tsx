@@ -18,7 +18,7 @@ import {
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
-import { useChunkPreview } from '../../context'
+import { useChunkPreview } from '@/components/chunk-preview/context'
 import { ChunkStrategyDropdown } from '@/components/ui/chunk-strategy-dropdown'
 import { PipelineOptionsPanel } from '@/components/pipeline-options-panel'
 import { getChunkStrategyOption, getChunkStrategyLabel } from '@/lib/chunk-strategies'
