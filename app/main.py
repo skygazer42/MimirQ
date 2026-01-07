@@ -27,6 +27,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 
 from app.core.config import settings
+from app.core.logging_config import configure_logging
 from app.core.database import Base, SessionLocal, engine
 from app.core.exceptions import register_exception_handlers
 from app.core.migrations import apply_runtime_migrations
@@ -49,6 +50,12 @@ import app.models.feedback  # noqa: F401
 import app.models.user  # noqa: F401
 
 logger = logging.getLogger("mimirq")
+
+# Optional JSON logging (LOG_FORMAT=json).
+configure_logging(
+    log_level=str(getattr(settings, "LOG_LEVEL", "INFO") or "INFO"),
+    log_format=str(getattr(settings, "LOG_FORMAT", "plain") or "plain"),
+)
 
 
 # 生命周期管理
@@ -216,6 +223,25 @@ if bool(getattr(settings, "GZIP_ENABLED", True)):
         GZipMiddleware,
         minimum_size=int(getattr(settings, "GZIP_MIN_SIZE", 1000)),
         compresslevel=int(getattr(settings, "GZIP_COMPRESS_LEVEL", 5)),
+    )
+
+# Prometheus metrics (optional).
+if bool(getattr(settings, "PROMETHEUS_ENABLED", False)):
+    from app.core.metrics import PrometheusMiddleware
+    from app.api.v1.metrics import router as metrics_router
+
+    app.include_router(metrics_router, tags=["Metrics"])
+    app.add_middleware(
+        PrometheusMiddleware,
+        exclude_paths=[
+            "/metrics",
+            "/health",
+            "/api/v1/health",
+            "/api/v1/health/ready",
+            "/docs",
+            "/openapi.json",
+            "/redoc",
+        ],
     )
 
 # Request-id middleware (outermost; propagates X-Request-ID for tracing).

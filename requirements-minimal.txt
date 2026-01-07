@@ -56,6 +56,7 @@ aiofiles==23.2.1
 httpx[http2]==0.28.1
 tiktoken==0.7.0
 numpy==1.26.4
+prometheus-client==0.23.1
 
 # Authentication
 python-jose[cryptography]==3.5.0
