@@ -27,6 +27,7 @@ from app.rag.chunking.strategies import (
     JSONChunker,
     CodeChunker,
     SmartCodeChunker,
+    AutoChunker,
 )
 
 
@@ -35,6 +36,7 @@ class ChunkerFactory:
     Factory for creating chunking strategy instances.
 
     Supported strategies:
+    - auto: Content-aware strategy selection
     - langchain_recursive: RecursiveCharacterTextSplitter (default)
     - langchain_token: TokenTextSplitter (by token count)
     - parent_child: Two-level parent-child chunking
@@ -56,6 +58,7 @@ class ChunkerFactory:
     """
 
     SUPPORTED_STRATEGIES = {
+        "auto": AutoChunker,
         "langchain_recursive": LangChainRecursiveChunker,
         "langchain_token": LangChainTokenChunker,
         "semantic_sentence": SemanticSentenceChunker,
@@ -93,9 +96,6 @@ class ChunkerFactory:
             ValueError: If strategy is not supported.
         """
         normalized = (strategy or settings.DEFAULT_CHUNK_STRATEGY).lower()
-
-        if normalized == "auto":
-            normalized = settings.DEFAULT_CHUNK_STRATEGY
 
         if normalized in self.RAGFLOW_STRATEGIES:
             return normalized

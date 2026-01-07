@@ -16,4 +16,7 @@
 - [integrations/mineru_integration.md](./integrations/mineru_integration.md)：MinerU 在线解析的配置与使用。
 - [integrations/migration_chromadb_to_milvus.md](./integrations/migration_chromadb_to_milvus.md)：从 ChromaDB 迁移到 Milvus 的原因与步骤。
 
+## 优化清单
+- [optimization/OPTIMIZATION_20_TASKS_DOC_PARSING_CHUNKING_CLEANING.md](./optimization/OPTIMIZATION_20_TASKS_DOC_PARSING_CHUNKING_CLEANING.md)：文档解析/清洗/切块 20 项深度优化。
+
 > 若新增文档，请将其放入上面合适的子目录，如需新增分类可在 `docs/` 下创建新的文件夹。

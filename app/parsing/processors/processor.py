@@ -95,10 +95,11 @@ class ParsingStage:
         parser_backend: Optional[str],
         chunk_strategy: Optional[str],
     ) -> ParseResult:
-        use_ragflow = (chunk_strategy or "").lower() in self._svc.RAGFLOW_STRATEGIES
-        if use_ragflow:
+        # IMPORTANT: resolve strategy first so defaults (e.g. DEFAULT_CHUNK_STRATEGY)
+        # are honored consistently (including ragflow_* strategies).
+        resolved_chunk_strategy = chunker_factory.resolve_strategy(chunk_strategy)
+        if resolved_chunk_strategy in self._svc.RAGFLOW_STRATEGIES:
             resolved_backend = "ragflow"
-            resolved_chunk_strategy = (chunk_strategy or "ragflow_naive").lower()
             self._svc._record_processing_metadata(
                 db,
                 tenant_id,
@@ -138,7 +139,6 @@ class ParsingStage:
             dataset_id=dataset_id,
             document_id=str(document_id),
         )
-        resolved_chunk_strategy = chunker_factory.resolve_strategy(chunk_strategy)
         self._svc._record_processing_metadata(
             db,
             tenant_id,
@@ -566,6 +566,22 @@ class DocumentProcessorService:
                 if isinstance(iid, str) and iid.strip():
                     document_img_ids.add(iid)
 
+            # If using auto chunking, persist the per-document selection stats for debugging/tuning.
+            if resolved_chunk_strategy == "auto" and chunks:
+                selected_counts: dict[str, int] = {}
+                for c in chunks:
+                    meta = c.metadata or {}
+                    selected = meta.get("chunk_strategy_selected")
+                    if isinstance(selected, str) and selected.strip():
+                        selected_counts[selected] = selected_counts.get(selected, 0) + 1
+                if selected_counts:
+                    self._record_auto_chunking_metadata(
+                        db,
+                        tenant_id=tenant_id,
+                        document_id=document_id,
+                        selected_counts=selected_counts,
+                    )
+
             # 将所有图片 img_id 记录到 document.metadata（用于删除清理等）
             self._record_document_image_ids(db, tenant_id=tenant_id, document_id=document_id, img_ids=document_img_ids)
 
@@ -913,6 +929,30 @@ class DocumentProcessorService:
         metadata["governance_changed_documents"] = int(stats.changed)
         metadata["governance_rules_applied"] = int(stats.applied_rules)
 
+        db_doc.doc_metadata = metadata
+        db.commit()
+        db.refresh(db_doc)
+
+    def _record_auto_chunking_metadata(
+        self,
+        db: Session,
+        *,
+        tenant_id: UUID,
+        document_id: UUID,
+        selected_counts: dict[str, int],
+    ) -> None:
+        """Persist auto-chunk selection stats on the document metadata."""
+        db_doc = (
+            db.query(DBDocument)
+            .filter(DBDocument.id == document_id, DBDocument.tenant_id == tenant_id)
+            .first()
+        )
+        if not db_doc:
+            return
+        metadata = dict(db_doc.doc_metadata or {})
+        metadata["auto_chunking"] = {
+            "selected_counts": {str(k): int(v) for k, v in sorted(selected_counts.items())},
+        }
         db_doc.doc_metadata = metadata
         db.commit()
         db.refresh(db_doc)

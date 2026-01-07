@@ -271,8 +271,9 @@ class BaseAdvancedParser(ABC):
 
         # 转换为 LangChain Document 格式
         base_metadata = {
-            "source": str(file_path),
+            "source": str(file_path.name),
             "filename": file_path.name,
+            "file_type": file_path.suffix.lstrip(".").lower(),
             "parser": self._get_parser_name(),
         }
 
@@ -329,8 +330,9 @@ class BaseAdvancedParser(ABC):
             
             # 转换为 LangChain Document 格式
             base_metadata = {
-                "source": str(file_path),
+                "source": str(file_path.name),
                 "filename": file_path.name,
+                "file_type": file_path.suffix.lstrip(".").lower(),
                 "parser": self._get_parser_name(),
             }
 

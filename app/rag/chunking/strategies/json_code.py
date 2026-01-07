@@ -387,23 +387,39 @@ class CodeChunker(BaseChunker):
                 separators=separators,
             )
 
-            # Split the document
-            chunks = splitter.split_documents([doc])
+            # Split the document and compute stable positions for citations/highlighting.
+            split_texts = splitter.split_text(text)
+            search_pos = 0
+            for split_text in split_texts:
+                if not (split_text or "").strip():
+                    continue
 
-            # Post-process chunks
-            for chunk_idx, chunk in enumerate(chunks):
-                chunk.metadata.update({
+                start_idx = text.find(split_text, max(0, int(search_pos)))
+                if start_idx < 0:
+                    probe = (split_text or "").strip()
+                    if probe:
+                        probe = probe[: min(120, len(probe))]
+                        start_idx = text.find(probe, max(0, int(search_pos)))
+                if start_idx < 0:
+                    start_idx = max(0, min(int(search_pos), len(text)))
+                end_idx = min(len(text), start_idx + len(split_text))
+
+                metadata = {
+                    **original_metadata,
                     "chunk_strategy": "code",
                     "language": language,
                     "chunk_index": len(all_chunks),
-                })
+                    "start_char": start_idx,
+                    "end_char": end_idx,
+                }
 
                 # Extract function/class context
-                context = self._extract_code_context(chunk.page_content, language)
+                context = self._extract_code_context(split_text, language)
                 if context:
-                    chunk.metadata["code_context"] = context
+                    metadata["code_context"] = context
 
-                all_chunks.append(chunk)
+                all_chunks.append(Document(page_content=split_text, metadata=metadata))
+                search_pos = max(end_idx - self.chunk_overlap, start_idx + 1)
 
         return all_chunks
 
@@ -531,8 +547,15 @@ class SmartCodeChunker(BaseChunker):
 
             # Try to split Python into logical units
             units = self._split_python_units(text)
+            search_pos = 0
 
             for unit_idx, (unit_text, unit_type, unit_name) in enumerate(units):
+                unit_start = text.find(unit_text, max(0, int(search_pos)))
+                if unit_start < 0:
+                    unit_start = max(0, min(int(search_pos), len(text)))
+                unit_end = min(len(text), unit_start + len(unit_text))
+                search_pos = max(unit_end, unit_start + 1)
+
                 if len(unit_text) <= self.chunk_size:
                     # Unit fits in one chunk
                     all_chunks.append(Document(
@@ -544,6 +567,8 @@ class SmartCodeChunker(BaseChunker):
                             "chunk_index": len(all_chunks),
                             "code_unit_type": unit_type,
                             "code_unit_name": unit_name,
+                            "start_char": unit_start,
+                            "end_char": unit_end,
                         },
                     ))
                 else:
@@ -552,10 +577,19 @@ class SmartCodeChunker(BaseChunker):
                         Document(page_content=unit_text, metadata=original_metadata)
                     ])
                     for sub in sub_chunks:
-                        sub.metadata["code_unit_type"] = unit_type
-                        sub.metadata["code_unit_name"] = unit_name
-                        sub.metadata["chunk_index"] = len(all_chunks)
-                        all_chunks.append(sub)
+                        meta = dict(sub.metadata or {})
+                        rel_start = meta.get("start_char")
+                        rel_end = meta.get("end_char")
+                        if isinstance(rel_start, int):
+                            meta["start_char"] = unit_start + rel_start
+                        if isinstance(rel_end, int):
+                            meta["end_char"] = unit_start + rel_end
+                        meta["chunk_strategy"] = "smart_code"
+                        meta["language"] = "python"
+                        meta["code_unit_type"] = unit_type
+                        meta["code_unit_name"] = unit_name
+                        meta["chunk_index"] = len(all_chunks)
+                        all_chunks.append(Document(page_content=sub.page_content, metadata=meta))
 
         return all_chunks
 

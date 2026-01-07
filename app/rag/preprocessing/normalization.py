@@ -12,8 +12,10 @@ from __future__ import annotations
 import re
 
 
-CONTROL_CHARS_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f]")
-ZERO_WIDTH_RE = re.compile(r"[\u200b\u200c\u200d\u2060\ufeff]")
+CONTROL_CHARS_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
+ZERO_WIDTH_RE = re.compile(
+    r"[\u200b\u200c\u200d\u2060\ufeff\u200e\u200f\u202a-\u202e\u2066-\u2069]"
+)
 SOFT_HYPHEN_RE = re.compile("\u00ad")
 
 PDF_LIGATURES = {
@@ -45,9 +47,19 @@ def normalize_text(
 
     if normalize_line_endings:
         out = out.replace("\r\n", "\n").replace("\r", "\n")
+        # Unicode newlines occasionally appear in scraped HTML / PDF OCR outputs.
+        out = out.replace("\u2028", "\n").replace("\u2029", "\n").replace("\u0085", "\n")
 
     # Normalize common Unicode whitespace artifacts from PDF/Office exporters.
-    out = out.replace("\u00a0", " ").replace("\u202f", " ").replace("\u3000", " ")
+    out = (
+        out.replace("\u00a0", " ")
+        .replace("\u202f", " ")
+        .replace("\u3000", " ")
+        .replace("\u2007", " ")
+        .replace("\u2009", " ")
+        .replace("\u200a", " ")
+        .replace("\u205f", " ")
+    )
     out = ZERO_WIDTH_RE.sub("", out)
     out = SOFT_HYPHEN_RE.sub("", out)
 
@@ -66,4 +78,3 @@ def normalize_query(text: str) -> str:
     """Normalize query text for retrieval (strip + collapse whitespace)."""
     norm = normalize_text(text, normalize_line_endings=True, remove_control_chars=True)
     return " ".join((norm or "").strip().split())
-

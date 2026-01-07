@@ -137,6 +137,9 @@ async def get_pipeline_capabilities(
         s = (name or "").strip().lower()
         available = True
         notes: str | None = None
+        if s == "auto":
+            available = True
+            notes = "Auto-selects a chunker per document (markdown/json/plain text)."
         if s.startswith("llama_index"):
             if not bool(getattr(settings, "LLAMA_INDEX_ENABLED", False)):
                 available = False

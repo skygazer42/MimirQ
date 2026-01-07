@@ -41,10 +41,13 @@ _HEADING_RE = re.compile(r"^\s*#{1,6}\s+")
 _LIST_RE = re.compile(r"^\s*(?:[-*+]|(?:\d{1,3}[.)]))\s+")
 _BLOCKQUOTE_RE = re.compile(r"^\s*>")
 _TABLE_ROW_RE = re.compile(r"^\s*\|.*\|\s*$")
+_INDENTED_CODE_RE = re.compile(r"^(?:\t| {4,})\S")
 _SENT_END_RE = re.compile(r"[.!?\u3002\uff01\uff1f\uff1b;:\uff1a]\s*$")
 _TRAILING_PAGE_NUM_RE = re.compile(r"\s+\d{1,4}\s*$")
 _TRAILING_PAGE_OF_RE = re.compile(r"\s+\d{1,4}\s*/\s*\d{1,4}\s*$")
 _TRAILING_PAGE_WORD_RE = re.compile(r"\s+(?:page|p\.?)\s*\d{1,4}\s*$", re.IGNORECASE)
+_TRAILING_PAGE_CN_RE = re.compile(r"\s*第?\s*\d{1,4}\s*页\s*$")
+_TRAILING_PAGE_CN_OF_RE = re.compile(r"\s*第?\s*\d{1,4}\s*页\s*/\s*共?\s*\d{1,4}\s*页\s*$")
 _LEADING_LINE_NUMBER_RE = re.compile(r"^(\s*)\d{1,4}\s+(?=\S)")
 
 _PDF_BULLETS: tuple[str, ...] = (
@@ -203,6 +206,8 @@ def _normalize_line_signature(line: str) -> str:
     text = _TRAILING_PAGE_OF_RE.sub("", text)
     text = _TRAILING_PAGE_WORD_RE.sub("", text)
     text = _TRAILING_PAGE_NUM_RE.sub("", text)
+    text = _TRAILING_PAGE_CN_OF_RE.sub("", text)
+    text = _TRAILING_PAGE_CN_RE.sub("", text)
     return text.strip().casefold()
 
 
@@ -473,6 +478,7 @@ def _is_structural_line(line: str) -> bool:
         or _LIST_RE.match(line)
         or _BLOCKQUOTE_RE.match(line)
         or _TABLE_ROW_RE.match(line)
+        or _INDENTED_CODE_RE.match(line)
     )
 
 

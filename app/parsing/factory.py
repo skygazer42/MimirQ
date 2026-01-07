@@ -159,17 +159,84 @@ class ParserFactory:
             raise ValueError(f"Unsupported file type: {file_ext}")
 
         # Some parsers (e.g., MinerU local ZIP mode) need dataset/document ids.
-        if backend in {"mineru", "magicpdf"}:
-            documents = parser.parse(file_path, dataset_id=dataset_id, document_id=document_id)
-        else:
-            documents = parser.parse(file_path)
+        try:
+            if backend in {"mineru", "magicpdf"}:
+                documents = parser.parse(file_path, dataset_id=dataset_id, document_id=document_id)
+            else:
+                documents = parser.parse(file_path)
+        except Exception as exc:
+            fallback_docs, fallback_backend = self._fallback_parse(
+                file_path=file_path,
+                file_ext=file_ext,
+                requested_backend=backend,
+                error=exc,
+            )
+            if fallback_docs is None:
+                raise
+            documents = fallback_docs
+            backend = fallback_backend
 
         for doc in documents:
-            meta = doc.metadata or {}
-            meta.setdefault("parser_backend", backend)
-            meta.setdefault("source", str(file_path.name))
+            meta = dict(doc.metadata or {})
+            # Normalize common metadata keys so downstream indexing/retrieval is consistent.
+            meta["parser_backend"] = backend
+            # Security + UX: avoid leaking server filesystem paths; keep filename only.
+            meta["source"] = str(file_path.name)
+            meta.setdefault("filename", file_path.name)
+            meta.setdefault("file_type", file_ext.lstrip("."))
             doc.metadata = meta
         return documents, backend
+
+    def _fallback_parse(
+        self,
+        *,
+        file_path: Path,
+        file_ext: str,
+        requested_backend: str,
+        error: Exception,
+    ) -> tuple[Optional[List[Document]], str]:
+        """
+        Best-effort fallback for brittle converter backends.
+
+        We only fall back when we can produce a reasonable text representation
+        without introducing new heavy dependencies.
+        """
+        backend = (requested_backend or "").strip().lower()
+        file_ext = (file_ext or "").strip().lower()
+
+        # MarkItDown is a great general converter, but some inputs may fail.
+        if backend == "markitdown":
+            logger.warning(
+                "[parse] MarkItDown failed for %s (%s): %s",
+                str(file_path.name),
+                file_ext,
+                str(error)[:200],
+            )
+            try:
+                if file_ext == ".html":
+                    from app.parsing.parsers.html_parser import HtmlParser
+
+                    return HtmlParser().parse(file_path), "html"
+                if file_ext == ".csv":
+                    from app.parsing.parsers.csv_parser import CsvParser
+
+                    return CsvParser().parse(file_path), "csv"
+                if file_ext == ".json":
+                    from app.parsing.parsers.json_parser import JsonParser
+
+                    return JsonParser().parse(file_path), "json"
+                if file_ext == ".pdf":
+                    # Last-resort fallback: basic text extraction via PyMuPDF.
+                    return self._basic_pdf_parser.parse(file_path), "basic"
+            except Exception as fallback_exc:
+                logger.warning(
+                    "[parse] Fallback parser also failed for %s: %s",
+                    str(file_path.name),
+                    str(fallback_exc)[:200],
+                )
+                return None, backend
+
+        return None, backend
 
     def _get_pdf_parser(self, backend: str):
         if backend == "basic":

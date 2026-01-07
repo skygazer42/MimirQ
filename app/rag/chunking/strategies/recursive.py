@@ -33,6 +33,7 @@ class LangChainRecursiveChunker(BaseChunker):
             chunk_overlap=chunk_overlap,
             separators=self.separators,
             length_function=len,
+            add_start_index=True,
         )
 
     def split_documents(self, documents: List[Document]) -> List[Document]:
