@@ -1,0 +1,12 @@
+[tool.ruff]
+target-version = "py311"
+line-length = 120
+
+[tool.ruff.lint]
+# Start small: enforce only a tiny set of high-signal rules, then expand.
+select = [
+  "E9",    # Syntax errors
+  "F541",  # f-string without placeholders
+  "F821",  # Undefined name
+]
+

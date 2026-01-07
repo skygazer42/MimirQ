@@ -276,7 +276,7 @@ def compare_results(baseline: BenchmarkResults, optimized: BenchmarkResults):
     speedup = baseline_stats["mean"] / optimized_stats["mean"]
     
     print(f"\n{'='*60}")
-    print(f"📈 性能对比")
+    print("📈 性能对比")
     print(f"{'='*60}")
     print(f"  优化前平均: {baseline_stats['mean']:.2f}s")
     print(f"  优化后平均: {optimized_stats['mean']:.2f}s")
@@ -385,4 +385,3 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
-

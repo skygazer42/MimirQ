@@ -1,0 +1,7 @@
+-r requirements-minimal.txt
+
+# Dev / test tooling
+pytest==7.4.4
+pytest-asyncio==0.23.8
+ruff==0.9.1
+
