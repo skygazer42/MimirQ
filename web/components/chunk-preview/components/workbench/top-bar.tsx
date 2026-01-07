@@ -14,7 +14,7 @@ import {
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
-import { useChunkPreview } from '../../../context'
+import { useChunkPreview } from '@/components/chunk-preview/context'
 
 function formatFileSize(bytes: number) {
   if (bytes < 1024) return `${bytes} B`
