@@ -28,6 +28,7 @@ from contextlib import asynccontextmanager
 
 from app.core.config import settings
 from app.core.logging_config import configure_logging
+from app.core.sentry import init_sentry
 from app.core.database import Base, SessionLocal, engine
 from app.core.exceptions import register_exception_handlers
 from app.core.migrations import apply_runtime_migrations
@@ -56,6 +57,9 @@ configure_logging(
     log_level=str(getattr(settings, "LOG_LEVEL", "INFO") or "INFO"),
     log_format=str(getattr(settings, "LOG_FORMAT", "plain") or "plain"),
 )
+
+# Optional error monitoring (SENTRY_DSN).
+init_sentry()
 
 
 # 生命周期管理
