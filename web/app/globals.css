@@ -52,6 +52,15 @@
 }
 
 /* 自定义滚动条样式 */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: theme('colors.slate.200') transparent;
+}
+
+.dark * {
+  scrollbar-color: theme('colors.slate.700') transparent;
+}
+
 ::-webkit-scrollbar {
   width: 5px;
   height: 5px;
