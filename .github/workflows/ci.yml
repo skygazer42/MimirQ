@@ -43,8 +43,7 @@ jobs:
       - name: Install Python deps (minimal + tests)
         run: |
           python -m pip install --upgrade pip
-          python -m pip install -r requirements-minimal.txt
-          python -m pip install pytest==7.4.4 pytest-asyncio==0.23.8
+          python -m pip install -r requirements-dev.txt
 
       - name: Install web deps
         working-directory: web

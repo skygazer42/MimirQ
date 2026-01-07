@@ -1,4 +1,4 @@
-.PHONY: help up up-web up-prod up-prod-web down ps logs restart backend web test api-check typecheck verify parser-status clean
+.PHONY: help up up-web up-prod up-prod-web down ps logs restart backend web test api-check typecheck lint-py verify parser-status clean
 
 help:
 	@echo "MimirQ dev commands (run from repo root):"
@@ -15,6 +15,7 @@ help:
 	@echo "  make test      - run backend tests (pytest)"
 	@echo "  make api-check - verify web routes exist in backend"
 	@echo "  make typecheck - run web TypeScript typecheck"
+	@echo "  make lint-py   - run Python lint (ruff)"
 	@echo "  make verify    - api-check + web lint/typecheck + backend compileall"
 	@echo "  make parser-status - print parser backend availability"
 	@echo "  make clean     - remove local caches"
@@ -61,7 +62,11 @@ api-check:
 typecheck:
 	cd web && pnpm run typecheck
 
+lint-py:
+	python3 -m ruff check app tests scripts main.py
+
 verify:
+	@$(MAKE) lint-py
 	@$(MAKE) api-check
 	cd web && pnpm run lint
 	cd web && pnpm run typecheck
