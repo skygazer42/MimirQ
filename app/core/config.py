@@ -96,6 +96,13 @@ class Settings(BaseSettings):
     HTTP_CLIENT_RETRY_BACKOFF_FACTOR: float = 2.0
     HTTP_CLIENT_RETRY_JITTER_SEC: float = 0.2
 
+    # Logging
+    LOG_LEVEL: str = "INFO"
+    LOG_FORMAT: Literal["plain", "json"] = "plain"
+
+    # Prometheus metrics
+    PROMETHEUS_ENABLED: bool = False
+
     EMBEDDING_PROVIDER: str = "openai_compatible"
     EMBEDDING_MODEL: str = "text-embedding-3-small"
     EMBEDDING_API_KEY: str = ""
