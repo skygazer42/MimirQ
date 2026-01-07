@@ -65,12 +65,15 @@
 **步骤**:
 
 ```bash
+# 在 docker 目录执行
+cd docker
+
 # 1. 停止服务
 docker compose down
 
 # 2. 备份 PostgreSQL 数据库
 docker compose up -d postgres
-docker exec mimirq-postgres pg_dump -U postgres mimirq > backup.sql
+docker compose exec -T postgres pg_dump -U postgres mimirq > backup.sql
 
 # 3. 清空文档表（保留用户数据）
 # 在 PostgreSQL 中执行：
@@ -215,7 +218,7 @@ MinIO → 向量数据（对象存储）
 
 ### 问题 1: Milvus 启动失败
 
-**症状**: `docker compose logs milvus` 显示错误
+**症状**: 在 `docker/` 目录执行 `docker compose logs milvus` 显示错误
 
 **解决**:
 
@@ -224,6 +227,7 @@ MinIO → 向量数据（对象存储）
 netstat -tulnp | grep 19530
 
 # 清理旧数据重启
+cd docker
 docker compose down -v
 docker compose up -d
 ```
@@ -234,11 +238,12 @@ docker compose up -d
 
 **解决**:
 
-```python
+```bash
 # 检查 Milvus 健康状态
 curl http://localhost:9091/healthz
 
 # 等待 Milvus 完全启动（约 60 秒）
+cd docker
 docker compose logs -f milvus
 ```
 

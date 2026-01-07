@@ -4,7 +4,7 @@
 
 ## 快速启动
 
-- Docker（推荐）：先启动后端 `docker compose up -d --build`，再启动前端 `cd web; pnpm install; pnpm dev`
+- Docker（推荐）：先启动后端 `cd docker; cp .env.example .env; docker compose up -d --build`（或 `make up`），再启动前端 `cd web; cp .env.local.example .env.local; pnpm install; pnpm dev`
   - 后端：`http://localhost:8000/docs`
   - 前端：`http://localhost:3000`
 - 本地开发（不推荐混用 Conda/系统 Python 时请注意环境一致性）
@@ -13,12 +13,12 @@
 
 ## 最小联调流程（建议照这个走一遍）
 
-1. 启动后端：`docker compose up -d --build`
+1. 启动后端：`make up`（或 `cd docker; cp .env.example .env; docker compose up -d --build`）
 2. 启动前端：`cd web; pnpm dev`
-2. 打开前端：`http://localhost:3000`，观察左下角 `Backend：OK`
-3. 上传文档：进入「知识库」页上传 PDF/TXT/MD，等待状态变为 `completed`
-4. 聊天验证：回到「对话」页提问，确认能看到 citations（包含页码/相似度/图片）
-5. 历史续聊：进入「问答历史」页，选中会话 -> 点「继续对话」，确认能回到 `/?conversation=...` 并加载历史消息
+3. 打开前端：`http://localhost:3000`，观察左下角 `Backend：OK`
+4. 上传文档：进入「知识库」页上传 PDF/TXT/MD，等待状态变为 `completed`
+5. 聊天验证：回到「对话」页提问，确认能看到 citations（包含页码/相似度/图片）
+6. 历史续聊：进入「问答历史」页，选中会话 -> 点「继续对话」，确认能回到 `/?conversation=...` 并加载历史消息
 
 ## 常见问题速查
 

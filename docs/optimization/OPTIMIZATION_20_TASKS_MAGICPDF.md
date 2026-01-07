@@ -22,6 +22,6 @@
 16. ✅ Settings 状态接口补齐解析器可用性输出（含 magicpdf CLI 检测）（`app/api/v1/settings.py`）
 17. ✅ 增加 `scripts/check_parsers.py`：快速查看解析器可用性（`scripts/check_parsers.py`）
 18. ✅ Makefile 优化：统一使用 `python3`，新增 `make parser-status`（`Makefile`）
-19. ✅ 文档补齐：MagicPDF 指南 + 可选依赖清单，并在根 README 链接（`docs/guides/magicpdf_guide.md`、`requirements-magicpdf.txt`、`README.md`）
+19. ✅ 文档补齐：MagicPDF 指南，并在根 README 链接（`docs/guides/magicpdf_guide.md`、`README.md`）
 20. ✅ 增加单测：覆盖 MagicPDF 归一化/路由/工厂解析后端选择（`tests/test_parsing_routing.py`、`tests/test_parser_backend_normalization.py`、`tests/test_parser_factory_magicpdf.py`）
 

@@ -58,8 +58,10 @@ make up
 make ps
 
 # or
-cd docker && docker compose up -d --build
-cd docker && docker compose ps
+cd docker
+docker compose up -d --build
+docker compose ps
+cd ..
 
 # production (recommended)
 # edit docker/.env: ENV=production, AUTH_MODE=jwt, SECRET_KEY (>=32), POSTGRES_PASSWORD, then run the same `make up`
@@ -72,7 +74,7 @@ cd docker && docker compose ps
 make up-web
 
 # Option B) Local dev
-# cd web && pnpm install && pnpm dev
+# cd web; pnpm install; pnpm dev
 ```
 
 ### 4) Open

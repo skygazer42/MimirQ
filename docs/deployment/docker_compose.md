@@ -1,11 +1,9 @@
 # Docker Compose 部署指南
 
-本项目提供两套 Compose 配置，兼顾本地开发与生产部署：
+本项目提供两套 Compose 配置：
 
-- `docker/docker-compose.yml`：默认栈（本地可直接用；无源码挂载；后端不启用 `--reload`）
-- `docker/docker-compose.dev.yml`：开发覆盖（源码挂载 + `--reload`）
-- `docker/docker-compose.prod.yml`：生产栈（不暴露基础设施端口；`ENV=production` + `AUTH_MODE=jwt`）
-- `docker/docker-compose.infra.yml`：仅基础设施（可选）
+- `docker/docker-compose.yml`：主栈（backend/worker + Postgres/Milvus/Redis/MinIO；默认不暴露基础设施端口）
+- `docker/docker-compose.infra.yml`：仅基础设施（暴露端口，便于本地后端调试）
 
 另外，前端服务 `web` 使用 `profiles: ["web"]`，默认不启动；需要时显式启用即可。
 
@@ -29,7 +27,7 @@ cp web/.env.local.example web/.env.local
 
 ## 2) 开发模式（默认）
 
-默认使用基础栈（不含源码挂载）：
+使用主栈（不含源码挂载）：
 
 ```bash
 make up
@@ -37,12 +35,13 @@ make ps
 make logs
 ```
 
-如需源码挂载 + 热更新：
+如需本地开发后端（推荐）：只启动基础设施，然后本地运行后端：
 
 ```bash
-make up-dev
-make ps
-make logs
+make infra-up
+
+pip install -r requirements.txt
+python main.py
 ```
 
 启动前端（可选）：
@@ -55,17 +54,21 @@ make up-web
 
 ## 3) 生产模式（推荐）
 
-生产栈使用 `docker/docker-compose.prod.yml`（并强制启用 JWT 校验）：
+生产部署仍使用 `docker/docker-compose.yml`，建议在 `docker/.env` 中设置：
+- `ENV=production`
+- `AUTH_MODE=jwt`
+- `SECRET_KEY`（长度 >= 32）
+- `POSTGRES_PASSWORD`
 
 ```bash
-make up-prod
+make up
 make ps
 ```
 
 生产模式 + 前端（可选）：
 
 ```bash
-make up-prod-web
+make up-web
 ```
 
 ---
@@ -87,7 +90,8 @@ make down
 重置所有数据（谨慎）：
 
 ```bash
-cd docker && docker compose down -v
+cd docker
+docker compose down -v
 ```
 
 ---
