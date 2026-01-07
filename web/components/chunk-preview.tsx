@@ -45,7 +45,7 @@ import { getChunkStrategyLabel, getChunkStrategyOption } from '@/lib/chunk-strat
 import { ChunkStrategyDropdown } from '@/components/ui/chunk-strategy-dropdown'
 import { ParserDropdown } from '@/components/ui/parser-dropdown'
 import { PipelineOptionsPanel } from '@/components/pipeline-options-panel'
-import { useParsedFiles } from '@/hooks/use-parsed-files'
+import { useParsedFiles } from '@/store/use-parsed-files-store'
 import { cn } from '@/lib/utils'
 import { MarkdownRenderer } from '@/components/markdown/markdown-renderer'
 import { MarkdownToc } from '@/components/markdown/markdown-toc'
