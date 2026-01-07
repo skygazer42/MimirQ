@@ -11,7 +11,7 @@ import {
   FileUp,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { useChunkPreview } from '../context'
+import { useChunkPreview } from '@/components/chunk-preview/context'
 
 export function EmptyState() {
   const { isDragging, handleDragOver, handleDragLeave, handleDrop, addFiles, useExample } = useChunkPreview()
