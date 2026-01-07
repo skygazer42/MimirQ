@@ -78,7 +78,7 @@ export function OriginalPreview() {
                     <MarkdownRenderer markdown={previewData.original_text} autoScrollToHash />
                   </div>
                   <p className="mt-4 text-[11px] text-gray-400">
-                    渲染模式支持目录跳转；切片定位请切换到"源码"模式
+                    渲染模式支持目录跳转；切片定位请切换到“源码”模式
                   </p>
                 </div>
                 <aside className="hidden xl:block w-64 shrink-0">

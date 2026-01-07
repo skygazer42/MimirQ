@@ -8,6 +8,7 @@ from app.api.v1 import (
     datasets,
     documents,
     health,
+    meta,
     settings,
     evaluations,
     prompt_templates,
@@ -20,6 +21,7 @@ from app.rag.kg.api import routes as kg
 router = APIRouter()
 
 router.include_router(health.router, tags=["Health"])
+router.include_router(meta.router, tags=["Meta"])
 router.include_router(auth.router, prefix="/auth", tags=["Auth"])
 router.include_router(documents.router, prefix="/documents", tags=["Documents"])
 router.include_router(chat.router, prefix="/chat", tags=["Chat"])

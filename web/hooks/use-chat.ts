@@ -6,6 +6,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { Citation, Message, StreamEvent } from '@/types'
 import { getAuthHeaders } from '@/lib/auth-headers'
+import { extractBackendMessage, withRequestId } from '@/lib/api-errors'
 import { API_TIMEOUT_MS, API_V1_BASE_URL } from '@/lib/env'
 import { chatApi } from '@/lib/api-client'
 import { createSseDataParser } from '@/lib/sse'
@@ -93,8 +94,10 @@ export function useChat({
         setMessages(result.messages || [])
         onConversationId?.(convId)
       } catch (err: any) {
-        const msg = err?.response?.data?.detail || err?.message || 'Failed to load conversation'
-        onError?.(msg)
+        const data = err?.response?.data
+        const requestId = err?.response?.headers?.['x-request-id'] || data?.request_id
+        const msg = extractBackendMessage(data) || err?.message || 'Failed to load conversation'
+        onError?.(withRequestId(msg, requestId))
       } finally {
         setIsLoading(false)
       }
@@ -188,7 +191,16 @@ export function useChat({
         window.clearTimeout(timeoutId)
 
         if (!response.ok) {
-          throw new Error(`HTTP error: ${response.status}`)
+          let requestId = response.headers.get('X-Request-ID') || undefined
+          let msg = `HTTP error: ${response.status}`
+          try {
+            const data = await response.json()
+            requestId = (typeof data?.request_id === 'string' ? data.request_id : requestId) || requestId
+            msg = extractBackendMessage(data) || msg
+          } catch {
+            // ignore
+          }
+          throw new Error(withRequestId(msg, requestId))
         }
 
         const reader = response.body?.getReader()
@@ -245,7 +257,8 @@ export function useChat({
                 setCurrentCitations([])
                 fullResponseRef.current = ''
               } else if (event.type === 'error') {
-                throw new Error(event.data?.message || 'Unknown error')
+                const msg = event.data?.message || 'Unknown error'
+                throw new Error(withRequestId(msg, event.request_id))
               }
             } catch (e) {
               console.error('Failed to parse SSE event:', e)

@@ -44,16 +44,23 @@ make up-web
 ```bash
 cp .env.example .env
 
-# 只启动依赖（Postgres / Milvus / MinIO）
-docker compose up -d postgres etcd minio milvus
+# Windows PowerShell 也可以用脚本一键初始化：
+# scripts\\bootstrap_env.ps1
 
-pip install -r requirements.txt
+# 只启动依赖（Postgres / Milvus / MinIO）
+docker compose up -d postgres etcd minio milvus redis
+
+pip install -r requirements-minimal.txt
+# （可选）本地 Embedding（体积很大）：
+# pip install -r requirements-local.txt
 python main.py
 ```
 
 启动后建议做一次快速校验：
 ```bash
 make verify
+# Windows PowerShell:
+# scripts\\run_verify.ps1
 ```
 
 ### 4. 访问应用

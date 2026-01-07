@@ -59,3 +59,4 @@ description: "Maintain and optimize the MimirQ repo (FastAPI backend + Next.js w
 
 - `references/repo.md`: key commands and paths
 - `scripts/run_verify.sh`: one-shot verify runner
+- `scripts/run_verify.ps1`: Windows verify runner

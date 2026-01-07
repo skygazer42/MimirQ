@@ -5,6 +5,7 @@ import logging
 import traceback
 from typing import Any, Dict, Optional
 from fastapi import FastAPI, HTTPException, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from starlette.status import (
@@ -259,6 +260,20 @@ async def http_exception_handler(request: Request, exc: HTTPException) -> JSONRe
     )
 
 
+async def request_validation_exception_handler(request: Request, exc: RequestValidationError) -> JSONResponse:
+    request_id = get_request_id(request)
+    # FastAPI default 422 payload is a list under "detail"; keep it available for callers.
+    return JSONResponse(
+        status_code=HTTP_422_UNPROCESSABLE_CONTENT,
+        content=ErrorResponse(
+            error="VALIDATION_ERROR",
+            message="Validation error",
+            detail={"errors": exc.errors()},
+            request_id=request_id,
+        ).model_dump(exclude_none=True),
+    )
+
+
 async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONResponse:
     request_id = get_request_id(request)
     logger.error(
@@ -280,4 +295,5 @@ async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONR
 def register_exception_handlers(app: FastAPI) -> None:
     app.add_exception_handler(MimirQException, mimirq_exception_handler)
     app.add_exception_handler(HTTPException, http_exception_handler)
+    app.add_exception_handler(RequestValidationError, request_validation_exception_handler)
     app.add_exception_handler(Exception, unhandled_exception_handler)

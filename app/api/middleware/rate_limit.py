@@ -246,16 +246,24 @@ def get_client_key(request: Request) -> str:
 
     tenant_id = (request.headers.get("X-Tenant-ID") or "").strip()
 
-    # Prefer explicit user id header (AUTH_MODE=header) then JWT subject when available.
-    user_id = getattr(request.state, "user_id", None) or (request.headers.get("X-User-ID") or "").strip()
-    if not user_id:
+    from app.core.config import settings
+
+    # Prefer a trusted user id:
+    # - AUTH_MODE=jwt: JWT subject (ignore X-User-ID to avoid spoofing rate-limit keys)
+    # - AUTH_MODE=header: X-User-ID (dev-only)
+    user_id = str(getattr(request.state, "user_id", "") or "").strip()
+
+    mode = (getattr(settings, "AUTH_MODE", "jwt") or "jwt").lower()
+    if not user_id and mode == "header":
+        user_id = (request.headers.get("X-User-ID") or "").strip()
+
+    if not user_id and mode != "header":
         auth = (request.headers.get("Authorization") or "").strip()
         if auth.lower().startswith("bearer "):
             token = auth[7:].strip()
             if token:
                 try:
                     from jose import jwt
-                    from app.core.config import settings
 
                     payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
                     user_id = (payload.get("sub") or "").strip()

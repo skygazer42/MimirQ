@@ -6,6 +6,7 @@
 
 import { createContext, useContext, useState, useCallback, useRef, useEffect, ReactNode } from 'react'
 import { documentApi } from '@/lib/api-client'
+import { formatApiError } from '@/lib/api-errors'
 import { useParserBackendPreference } from '@/contexts/parser-backend-context'
 import { useChunkStrategyPreference } from '@/contexts/chunk-strategy-context'
 import { usePipelineOptions } from '@/contexts/pipeline-options-context'
@@ -179,7 +180,7 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: ChunkPrev
   )
 
   // Actions: 使用示例
-  const useExample = useCallback(() => {
+  const loadExample = useCallback(() => {
     const blob = new Blob([EXAMPLE_TEXT], { type: 'text/plain' })
     const exampleFile = new File([blob], 'rag-introduction.md', { type: 'text/markdown' })
     setFileList([
@@ -217,7 +218,7 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: ChunkPrev
       setPreviewData(data)
     } catch (err: any) {
       if (previewRequestIdRef.current !== requestId) return
-      setError(err.response?.data?.detail || err.response?.data?.message || err.message || '预览失败')
+      setError(formatApiError(err, '预览失败'))
     } finally {
       if (previewRequestIdRef.current === requestId) {
         setIsLoading(false)
@@ -282,7 +283,7 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: ChunkPrev
       setProcessedStatus((prev) => ({ ...prev, [currentFileItem?.id || file.name]: 'success' }))
       onConfirm?.({ chunk_size: chunkSize, chunk_overlap: chunkOverlap })
     } catch (err: any) {
-      setError(err.response?.data?.detail || err.response?.data?.message || err.message || '入库失败')
+      setError(formatApiError(err, '入库失败'))
       setProcessedStatus((prev) => ({ ...prev, [currentFileItem?.id || file.name]: 'error' }))
     } finally {
       setIsSubmitting(false)
@@ -359,7 +360,7 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: ChunkPrev
     submitChunks,
     updateSettings,
     reset,
-    useExample,
+    loadExample,
     handleDragOver,
     handleDragLeave,
     handleDrop,

@@ -1,0 +1,9 @@
+# Optional local embedding dependencies.
+# Install AFTER requirements-minimal.txt when EMBEDDING_PROVIDER=local.
+
+--extra-index-url https://download.pytorch.org/whl/cpu
+
+torch==2.4.1
+torchvision==0.19.1
+sentence-transformers==5.1.2
+

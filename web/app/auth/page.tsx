@@ -9,6 +9,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { authApi } from '@/lib/api-client'
 import { setAuthSession } from '@/lib/auth-storage'
+import { formatApiError } from '@/lib/api-errors'
 
 type Mode = 'login' | 'register'
 
@@ -41,7 +42,7 @@ export default function AuthPage() {
       setAuthSession({ token: response.token, user: response.user })
       router.push('/')
     } catch (err: any) {
-      setError(err?.response?.data?.detail || err?.message || '请求失败，请重试')
+      setError(formatApiError(err, '请求失败，请重试'))
     } finally {
       setIsSubmitting(false)
     }

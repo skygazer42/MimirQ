@@ -42,6 +42,7 @@ from app.storage.object.minio import minio_service
 from app.core.http_client import close_http_client_pool
 from app.tasks.queue import init_queue, close_queue, is_queue_initialized
 from app.api.middleware.request_id import RequestIDMiddleware
+from app.api.middleware.process_time import ProcessTimeMiddleware
 # Ensure KG models are registered for metadata creation
 import app.rag.kg.models  # noqa: F401
 # Ensure evaluation models are registered for metadata creation
@@ -213,6 +214,7 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["*"],
+    expose_headers=parse_csv(getattr(settings, "CORS_EXPOSE_HEADERS", "X-Request-ID")),
 )
 
 # Rate Limiting 中间件
@@ -256,6 +258,9 @@ if bool(getattr(settings, "PROMETHEUS_ENABLED", False)):
             "/redoc",
         ],
     )
+
+# Process-time header (useful for debugging and quick perf checks).
+app.add_middleware(ProcessTimeMiddleware)
 
 # Request-id middleware (outermost; propagates X-Request-ID for tracing).
 app.add_middleware(RequestIDMiddleware)

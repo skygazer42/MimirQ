@@ -1,5 +1,10 @@
 .PHONY: help up up-web up-prod up-prod-web down ps logs restart backend web test api-check typecheck lint-py audit-py audit-web audit openapi-export openapi-types openapi-check db-upgrade db-revision verify parser-status clean
 
+PY := python3
+ifeq ($(OS),Windows_NT)
+PY := python
+endif
+
 help:
 	@echo "MimirQ dev commands (run from repo root):"
 	@echo "  make up        - docker compose up (build + detach)"
@@ -59,10 +64,10 @@ web:
 	cd web && pnpm dev
 
 test:
-	python3 -m pytest -q
+	$(PY) -m pytest -q
 
 parser-status:
-	python3 scripts/check_parsers.py
+	$(PY) scripts/check_parsers.py
 
 api-check:
 	node scripts/check-api-contract.mjs
@@ -71,7 +76,7 @@ typecheck:
 	cd web && pnpm run typecheck
 
 lint-py:
-	python3 -m ruff check app tests scripts main.py
+	$(PY) -m ruff check app tests scripts main.py
 
 audit-py:
 	pip-audit -r requirements-minimal.txt --no-deps --disable-pip
@@ -84,7 +89,7 @@ audit:
 	@$(MAKE) audit-web
 
 openapi-export:
-	python3 scripts/export_openapi.py --out web/openapi.json
+	$(PY) scripts/export_openapi.py --out web/openapi.json
 
 openapi-types:
 	@$(MAKE) openapi-export
@@ -105,7 +110,7 @@ verify:
 	@$(MAKE) api-check
 	cd web && pnpm run lint
 	cd web && pnpm run typecheck
-	PYTHONPYCACHEPREFIX=/tmp/mimirq-pycache python3 -m compileall -q app
+	PYTHONPYCACHEPREFIX=/tmp/mimirq-pycache $(PY) -m compileall -q app
 
 clean:
 	rm -rf .pytest_cache

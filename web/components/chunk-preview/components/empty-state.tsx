@@ -14,7 +14,7 @@ import { cn } from '@/lib/utils'
 import { useChunkPreview } from '@/components/chunk-preview/context'
 
 export function EmptyState() {
-  const { isDragging, handleDragOver, handleDragLeave, handleDrop, addFiles, useExample } = useChunkPreview()
+  const { isDragging, handleDragOver, handleDragLeave, handleDrop, addFiles, loadExample } = useChunkPreview()
 
   return (
     <div className="relative min-h-full w-full bg-[#FAFAFA] text-slate-900 font-sans flex flex-col items-center justify-center p-6 overflow-hidden selection:bg-indigo-100 selection:text-indigo-900">
@@ -100,7 +100,7 @@ export function EmptyState() {
           <div
             onClick={(e) => {
               e.stopPropagation()
-              useExample()
+              loadExample()
             }}
             className="group bg-white p-5 rounded-2xl border border-slate-100 shadow-sm hover:shadow-md hover:border-indigo-100 cursor-pointer transition-all duration-200 flex flex-col items-start gap-3"
           >

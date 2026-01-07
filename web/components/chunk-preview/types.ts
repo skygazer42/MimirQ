@@ -63,7 +63,7 @@ export interface ChunkPreviewActions {
   // 数据操作
   runPreview: () => Promise<void>
   submitChunks: () => Promise<void>
-  useExample: () => void
+  loadExample: () => void
   reset: () => void
 
   // 配置操作

@@ -158,6 +158,9 @@ class Settings(BaseSettings):
     PASSWORD_MIN_LENGTH: int = 8
 
     CORS_ORIGINS: str = "http://localhost:3000,http://localhost:3001"
+    # Allow browsers to read diagnostic headers from cross-origin responses.
+    # NOTE: This does not affect which headers the backend sends, only what the browser exposes to JS.
+    CORS_EXPOSE_HEADERS: str = "X-Request-ID,X-Process-Time-Ms,Retry-After"
 
     HOST: str = "0.0.0.0"
     PORT: int = 8000
