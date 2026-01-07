@@ -21,9 +21,8 @@ function Ensure-Copy([string]$Source, [string]$Dest) {
 
 Push-Location $repoRoot
 try {
-  Ensure-Copy '.env.prod.example' '.env'
-  Write-Host "[env] production template applied"
+  Ensure-Copy '.env.example' '.env'
+  Write-Host "[env] template applied"
 } finally {
   Pop-Location
 }
-

@@ -2,10 +2,6 @@ x-backend-build: &backend_build
   context: .
   dockerfile: Dockerfile
   args:
-    # Default to minimal deps for smaller/faster Docker builds.
-    # Override if you need heavy optional parsers/local embeddings:
-    #   BACKEND_REQUIREMENTS_FILE=requirements.txt
-    REQUIREMENTS_FILE: ${BACKEND_REQUIREMENTS_FILE:-requirements-minimal.txt}
     # Optional build metadata (exposed via /api/v1/meta)
     MIMIRQ_BUILD_SHA: ${MIMIRQ_BUILD_SHA:-}
     MIMIRQ_BUILD_TIME: ${MIMIRQ_BUILD_TIME:-}

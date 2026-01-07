@@ -10,20 +10,15 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 FROM base AS builder
 
-# Allow selecting a smaller dependency set for Docker builds.
-# - requirements-minimal.txt: default (API-based LLM/Embeddings; smaller image)
-# - requirements.txt: full (includes heavy optional parsers/local embeddings)
-ARG REQUIREMENTS_FILE=requirements-minimal.txt
-
 # 复制依赖文件
-COPY requirements*.txt /tmp/
+COPY requirements.txt /tmp/requirements.txt
 
 # 安装系统依赖 + Python 依赖（builder stage）
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     && python -m venv /opt/venv \
     && /opt/venv/bin/pip install --upgrade pip \
-    && /opt/venv/bin/pip install -r "/tmp/${REQUIREMENTS_FILE}" \
+    && /opt/venv/bin/pip install -r "/tmp/requirements.txt" \
     && apt-get purge -y --auto-remove build-essential \
     && rm -rf /var/lib/apt/lists/*
 

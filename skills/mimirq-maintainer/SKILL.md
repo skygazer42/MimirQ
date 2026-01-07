@@ -44,7 +44,7 @@ description: "Maintain and optimize the MimirQ repo (FastAPI backend + Next.js w
 
 ### Update Dependencies
 
-1. Prefer updating `requirements-minimal.txt` first; mirror into `requirements.txt` if needed
+1. Update `requirements.txt`
 2. Run `make audit-py` (and `make audit` when touching web deps too)
 3. Run `make test` and `make verify`
 

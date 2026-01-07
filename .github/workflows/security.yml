@@ -44,21 +44,14 @@ jobs:
           python-version: "3.11"
           cache: pip
           cache-dependency-path: |
-            requirements-minimal.txt
-            requirements-local.txt
             requirements.txt
-            requirements-dev.txt
 
       - name: Install pip-audit
         run: |
           python -m pip install --upgrade pip
           python -m pip install pip-audit==2.7.3
 
-      - name: Audit Python direct requirements (minimal)
-        run: pip-audit -r requirements-minimal.txt --no-deps --disable-pip
-
-      - name: Audit Python direct requirements (full, advisory)
-        continue-on-error: true
+      - name: Audit Python direct requirements
         run: pip-audit -r requirements.txt --no-deps --disable-pip
 
       - name: Setup Node

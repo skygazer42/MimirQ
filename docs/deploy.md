@@ -31,7 +31,7 @@ make up-dev-web
 ### 3.1 准备环境变量
 
 ```bash
-cp .env.prod.example .env
+cp .env.example .env
 ```
 
 然后编辑 `.env`，至少配置：
@@ -67,4 +67,3 @@ docker compose -f docker-compose.prod.yml logs -f --tail=200 worker
 - 前端：`http://localhost:3000`（需启用 `web` profile）
 
 生产栈默认仅暴露 `8000/3000`（可通过 `BACKEND_PORT` / `WEB_PORT` 调整映射）。
-

@@ -4,8 +4,8 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 if [[ ! -f .env ]]; then
-  cp .env.prod.example .env
-  echo "[env] created: .env (from .env.prod.example)"
+  cp .env.example .env
+  echo "[env] created: .env (from .env.example)"
 else
   echo "[env] exists: .env"
 fi
@@ -17,4 +17,3 @@ else
 fi
 
 docker compose -f docker-compose.prod.yml ps
-
