@@ -32,6 +32,7 @@ from app.rag.chunking.strategies.json_code import (
     CodeChunker,
     SmartCodeChunker,
 )
+from app.rag.chunking.strategies.auto import AutoChunker
 
 __all__ = [
     "LangChainRecursiveChunker",
@@ -47,4 +48,5 @@ __all__ = [
     "JSONChunker",
     "CodeChunker",
     "SmartCodeChunker",
+    "AutoChunker",
 ]
