@@ -47,6 +47,7 @@ chroma_db/
 web/.next/
 web/.next_build/
 web/openapi.json
+web/types/openapi.ts
 *.sqlite
 *.db
 *.tsbuildinfo
