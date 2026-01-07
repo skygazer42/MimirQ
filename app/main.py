@@ -28,6 +28,7 @@ from contextlib import asynccontextmanager
 
 from app.core.config import settings
 from app.core.logging_config import configure_logging
+from app.core.otel import init_otel, instrument_fastapi, instrument_httpx, shutdown_otel
 from app.core.sentry import init_sentry
 from app.core.database import Base, SessionLocal, engine
 from app.core.exceptions import register_exception_handlers
@@ -60,6 +61,10 @@ configure_logging(
 
 # Optional error monitoring (SENTRY_DSN).
 init_sentry()
+
+# Optional OpenTelemetry tracing (OTEL_ENABLED).
+if init_otel():
+    instrument_httpx()
 
 
 # 生命周期管理
@@ -187,6 +192,7 @@ async def lifespan(app: FastAPI):
 
     # 关闭任务队列连接（可选）
     await close_queue()
+    shutdown_otel()
 
 
 # 创建 FastAPI 应用
@@ -196,6 +202,9 @@ app = FastAPI(
     version="1.0.0",
     lifespan=lifespan
 )
+
+# Optional FastAPI instrumentation (OTEL_ENABLED).
+instrument_fastapi(app)
 
 # CORS 配置
 app.add_middleware(
