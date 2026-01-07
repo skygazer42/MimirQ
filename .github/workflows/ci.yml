@@ -49,6 +49,9 @@ jobs:
         working-directory: web
         run: pnpm install --frozen-lockfile
 
+      - name: OpenAPI types check
+        run: make openapi-check
+
       - name: Backend tests
         run: make test
 
