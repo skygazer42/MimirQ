@@ -1,7 +1,7 @@
 """
-路径管理模块
+Path management module.
 
-统一管理项目中的路径定义，避免重复计算。
+Centralizes project path definitions to avoid repeated computation.
 """
 
 import os
@@ -10,71 +10,71 @@ from typing import Optional
 
 
 # =============================================================================
-# 项目根目录
+# Project root
 # =============================================================================
 
 def _find_project_root() -> Path:
     """
-    查找项目根目录
+    Find project root.
 
-    从当前文件向上查找，直到找到包含 app 目录的目录。
+    Walk upward from this file until a directory containing app/ is found.
 
     Returns:
-        项目根目录路径
+        Project root path.
     """
     current = Path(__file__).resolve()
     # app/core/paths.py -> app/core -> app -> repo root
     return current.parents[2]
 
 
-# 项目根目录 (repo root)
+# Project root (repo root)
 PROJECT_ROOT: Path = _find_project_root()
 
-# 应用目录 (app/)
+# App directory (app/)
 APP_DIR: Path = PROJECT_ROOT / "app"
 
 
 # =============================================================================
-# 资源目录
+# Resource directories
 # =============================================================================
 
-# 模型目录
+# Models directory
 MODELS_DIR: Path = PROJECT_ROOT / "resources" / "models"
 
-# 上传文件目录
+# Upload directory
 UPLOAD_DIR: Path = PROJECT_ROOT / "uploads"
 
-# 临时文件目录
+# Temp directory
 TEMP_DIR: Path = PROJECT_ROOT / "temp"
 
-# 日志目录
+# Logs directory
 LOG_DIR: Path = PROJECT_ROOT / "logs"
 
 
 # =============================================================================
-# 配置文件路径
+# Config file paths
 # =============================================================================
 
-# .env 文件
+# .env file
 ENV_FILE: Path = PROJECT_ROOT / ".env"
 
-# alembic 配置
+# Alembic config
 ALEMBIC_INI: Path = PROJECT_ROOT / "alembic.ini"
 
 
 # =============================================================================
-# 路径工具函数
+# Path utilities
 # =============================================================================
 
 def ensure_dir(path: Path) -> Path:
     """
-    确保目录存在，不存在则创建
+    Ensure directory exists, create if needed.
 
     Args:
-        path: 目录路径
+        path: Directory path.
 
     Returns:
-        目录路径
+        Directory path.
     """
     path.mkdir(parents=True, exist_ok=True)
     return path
@@ -82,14 +82,14 @@ def ensure_dir(path: Path) -> Path:
 
 def get_upload_path(filename: str, tenant_id: Optional[str] = None) -> Path:
     """
-    获取上传文件的存储路径
+    Get storage path for uploaded file.
 
     Args:
-        filename: 文件名
-        tenant_id: 租户 ID（可选）
+        filename: File name.
+        tenant_id: Tenant ID (optional).
 
     Returns:
-        完整文件路径
+        Full file path.
     """
     if tenant_id:
         upload_dir = UPLOAD_DIR / tenant_id
@@ -102,13 +102,13 @@ def get_upload_path(filename: str, tenant_id: Optional[str] = None) -> Path:
 
 def get_temp_path(filename: str) -> Path:
     """
-    获取临时文件路径
+    Get temp file path.
 
     Args:
-        filename: 文件名
+        filename: File name.
 
     Returns:
-        完整文件路径
+        Full file path.
     """
     ensure_dir(TEMP_DIR)
     return TEMP_DIR / filename
@@ -116,28 +116,28 @@ def get_temp_path(filename: str) -> Path:
 
 def get_model_path(model_name: str) -> Path:
     """
-    获取模型文件路径
+    Get model file path.
 
     Args:
-        model_name: 模型名称
+        model_name: Model name.
 
     Returns:
-        模型目录路径
+        Model directory path.
     """
     return MODELS_DIR / model_name
 
 
 def resolve_path(path: str) -> Path:
     """
-    解析路径，支持相对路径和绝对路径
+    Resolve a path (relative or absolute).
 
-    相对路径基于项目根目录解析。
+    Relative paths are resolved from project root.
 
     Args:
-        path: 路径字符串
+        path: Path string.
 
     Returns:
-        解析后的 Path 对象
+        Resolved Path object.
     """
     p = Path(path)
     if p.is_absolute():
@@ -147,13 +147,13 @@ def resolve_path(path: str) -> Path:
 
 def get_relative_path(path: Path) -> str:
     """
-    获取相对于项目根目录的路径
+    Get path relative to project root.
 
     Args:
-        path: 绝对路径
+        path: Absolute path.
 
     Returns:
-        相对路径字符串
+        Relative path string.
     """
     try:
         return str(path.relative_to(PROJECT_ROOT))
@@ -162,19 +162,19 @@ def get_relative_path(path: Path) -> str:
 
 
 # =============================================================================
-# 环境变量覆盖
+# Environment overrides
 # =============================================================================
 
 def _get_path_from_env(env_key: str, default: Path) -> Path:
     """
-    从环境变量获取路径，支持覆盖默认值
+    Get path from environment variable, overriding default if set.
 
     Args:
-        env_key: 环境变量名
-        default: 默认路径
+        env_key: Environment variable name.
+        default: Default path.
 
     Returns:
-        路径
+        Path.
     """
     value = os.getenv(env_key)
     if value:
@@ -182,7 +182,7 @@ def _get_path_from_env(env_key: str, default: Path) -> Path:
     return default
 
 
-# 允许通过环境变量覆盖的路径
+# Paths that can be overridden via environment variables
 MODELS_DIR = _get_path_from_env("MODEL_BASE_DIR", MODELS_DIR)
 UPLOAD_DIR = _get_path_from_env("UPLOAD_DIR", UPLOAD_DIR)
 TEMP_DIR = _get_path_from_env("TEMP_DIR", TEMP_DIR)
@@ -190,17 +190,17 @@ LOG_DIR = _get_path_from_env("LOG_DIR", LOG_DIR)
 
 
 __all__ = [
-    # 目录常量
+    # Directory constants
     "PROJECT_ROOT",
     "APP_DIR",
     "MODELS_DIR",
     "UPLOAD_DIR",
     "TEMP_DIR",
     "LOG_DIR",
-    # 配置文件
+    # Config files
     "ENV_FILE",
     "ALEMBIC_INI",
-    # 工具函数
+    # Utilities
     "ensure_dir",
     "get_upload_path",
     "get_temp_path",
