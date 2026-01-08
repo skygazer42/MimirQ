@@ -1,9 +1,9 @@
 """
-后台任务系统（队列 + Redis）
+Background task system (queue + Redis).
 
-当前用于 ingest 吞吐优化：
-- 文档上传后：入队处理（解析/切块/embedding/索引）
-- Redis：任务幂等锁、缓存、状态（可选）
+Used for ingest throughput optimizations:
+- After document upload: enqueue processing (parsing/chunking/embeddings/indexing)
+- Redis: idempotency locks, cache, status (optional)
 """
 
 from app.tasks.queue import enqueue_document_processing, get_queue, init_queue, close_queue
@@ -14,5 +14,4 @@ __all__ = [
     "init_queue",
     "close_queue",
 ]
-
 

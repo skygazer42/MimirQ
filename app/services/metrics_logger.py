@@ -1,9 +1,9 @@
 """
-JSONL 指标日志记录器
-功能特性：
-- 非阻塞：在后台线程中写入（有界队列；过载时丢弃）
-- 数据增强：添加时间戳/主机/PID/线程 + 上下文变量（request_id/tenant_id/...）当可用时
-- 安全性：当 `settings.PII_REDACTION_ENABLED` 开启时，尽力而为的 PII 脱敏
+JSONL metrics logger.
+Features:
+- Non-blocking: write in a background thread (bounded queue; drop on overload)
+- Enrichment: add timestamps/host/PID/thread + context fields (request_id/tenant_id/...) when available
+- Safety: best-effort PII redaction when `settings.PII_REDACTION_ENABLED` is enabled
 """
 
 from __future__ import annotations

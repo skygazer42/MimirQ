@@ -1,7 +1,7 @@
 """
-阿里云 DashScope Reranker
+Alibaba Cloud DashScope reranker.
 
-支持阿里云 DashScope 的 reranker API。
+Supports the DashScope reranker API.
 """
 from __future__ import annotations
 
@@ -11,7 +11,7 @@ from app.rag.reranker.base import APIReranker
 
 
 class DashScopeReranker(APIReranker):
-    """阿里云 DashScope Reranker"""
+    """Alibaba Cloud DashScope reranker."""
 
     def _build_payload(
         self,

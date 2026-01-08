@@ -1,8 +1,8 @@
 """
-用户反馈（评测闭环）相关数据模型。
+User feedback models (evaluation loop).
 
-用于记录用户对某条 assistant 消息的评分、原因、期望答案等信息，
-以便后续做质量分析、回归集构建、A/B 对比与模型迭代。
+Records ratings, reasons, and expected answers for assistant messages to support
+quality analysis, regression sets, A/B comparisons, and model iteration.
 """
 
  
@@ -15,11 +15,11 @@ from app.core.database import Base
 
 
 class MessageFeedback(Base):
-    """对某条 assistant 消息的反馈记录（tenant 隔离）。"""
+    """Feedback record for an assistant message (tenant isolated)."""
 
     __tablename__ = "message_feedback"
     __table_args__ = (
-        # 同一用户对同一条消息只保留一条（重复提交走更新逻辑）
+        # Keep one feedback per user/message (duplicate submits update).
         UniqueConstraint("tenant_id", "message_id", "account_id", name="uq_message_feedback_once"),
     )
 
@@ -35,7 +35,7 @@ class MessageFeedback(Base):
 
     account_id = Column(String(255), nullable=False, index=True)
 
-    # 评分：建议 1~5（越高越好）
+    # Rating: 1-5 recommended (higher is better).
     rating = Column(Integer, nullable=False)
     reason = Column(Text, nullable=True)
     tags = Column(JSONB, default=list)
@@ -44,4 +44,3 @@ class MessageFeedback(Base):
 
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
-

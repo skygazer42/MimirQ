@@ -1,7 +1,7 @@
 """
-服务层基类
+Service layer base class.
 
-提供常用的数据库 CRUD 操作，减少服务层代码重复。
+Provides common CRUD operations to reduce service duplication.
 """
 
 from typing import Generic, List, Optional, Type, TypeVar
@@ -13,21 +13,21 @@ from sqlalchemy.orm import Session
 from app.models.tenant import TenantMember
 
 
-# 泛型类型变量
+# Generic type variable.
 ModelType = TypeVar("ModelType")
 
 
-# 允许编辑的角色
+# Roles allowed to edit.
 EDIT_ROLES = {"owner", "admin", "editor", "dataset_operator"}
 
 
 class BaseService(Generic[ModelType]):
     """
-    服务层基类
+    Service base class.
 
-    提供常用的 CRUD 操作和权限检查方法。
+    Provides common CRUD operations and permission checks.
 
-    使用示例:
+    Example:
         class DocumentService(BaseService[Document]):
             model = Document
 
@@ -36,7 +36,7 @@ class BaseService(Generic[ModelType]):
                 return db.query(cls.model).filter(cls.model.dataset_id == dataset_id).all()
     """
 
-    model: Type[ModelType] = None  # 子类必须设置
+    model: Type[ModelType] = None  # Subclasses must set.
 
     @classmethod
     def get_by_id(
@@ -46,15 +46,15 @@ class BaseService(Generic[ModelType]):
         raise_404: bool = True
     ) -> Optional[ModelType]:
         """
-        根据 ID 获取资源
+        Get resource by ID.
 
         Args:
-            db: 数据库会话
-            id: 资源 ID
-            raise_404: 未找到时是否抛出 404 异常
+            db: Database session.
+            id: Resource ID.
+            raise_404: Whether to raise 404 when not found.
 
         Returns:
-            资源对象或 None
+            Resource or None.
         """
         resource = db.query(cls.model).filter(cls.model.id == id).first()
         if not resource and raise_404:
@@ -73,16 +73,16 @@ class BaseService(Generic[ModelType]):
         raise_404: bool = True
     ) -> Optional[ModelType]:
         """
-        根据租户 ID 和资源 ID 获取资源
+        Get resource by tenant ID and resource ID.
 
         Args:
-            db: 数据库会话
-            tenant_id: 租户 ID
-            id: 资源 ID
-            raise_404: 未找到时是否抛出 404 异常
+            db: Database session.
+            tenant_id: Tenant ID.
+            id: Resource ID.
+            raise_404: Whether to raise 404 when not found.
 
         Returns:
-            资源对象或 None
+            Resource or None.
         """
         resource = db.query(cls.model).filter(
             cls.model.id == id,
@@ -105,17 +105,17 @@ class BaseService(Generic[ModelType]):
         **filters
     ) -> List[ModelType]:
         """
-        获取租户下的资源列表
+        List resources under a tenant.
 
         Args:
-            db: 数据库会话
-            tenant_id: 租户 ID
-            skip: 跳过条数
-            limit: 返回条数
-            **filters: 额外过滤条件
+            db: Database session.
+            tenant_id: Tenant ID.
+            skip: Items to skip.
+            limit: Items to return.
+            **filters: Extra filters.
 
         Returns:
-            资源列表
+            Resource list.
         """
         query = db.query(cls.model).filter(cls.model.tenant_id == tenant_id)
         for key, value in filters.items():
@@ -131,15 +131,15 @@ class BaseService(Generic[ModelType]):
         **filters
     ) -> int:
         """
-        获取租户下的资源总数
+        Get total resource count under a tenant.
 
         Args:
-            db: 数据库会话
-            tenant_id: 租户 ID
-            **filters: 额外过滤条件
+            db: Database session.
+            tenant_id: Tenant ID.
+            **filters: Extra filters.
 
         Returns:
-            资源总数
+            Total count.
         """
         query = db.query(cls.model).filter(cls.model.tenant_id == tenant_id)
         for key, value in filters.items():
@@ -154,14 +154,14 @@ class BaseService(Generic[ModelType]):
         **kwargs
     ) -> ModelType:
         """
-        创建资源
+        Create resource.
 
         Args:
-            db: 数据库会话
-            **kwargs: 资源属性
+            db: Database session.
+            **kwargs: Resource attributes.
 
         Returns:
-            创建的资源
+            Created resource.
         """
         resource = cls.model(**kwargs)
         db.add(resource)
@@ -177,15 +177,15 @@ class BaseService(Generic[ModelType]):
         **kwargs
     ) -> ModelType:
         """
-        更新资源
+        Update resource.
 
         Args:
-            db: 数据库会话
-            resource: 资源对象
-            **kwargs: 要更新的属性
+            db: Database session.
+            resource: Resource object.
+            **kwargs: Attributes to update.
 
         Returns:
-            更新后的资源
+            Updated resource.
         """
         for key, value in kwargs.items():
             if value is not None and hasattr(resource, key):
@@ -201,11 +201,11 @@ class BaseService(Generic[ModelType]):
         resource: ModelType
     ) -> None:
         """
-        删除资源
+        Delete resource.
 
         Args:
-            db: 数据库会话
-            resource: 资源对象
+            db: Database session.
+            resource: Resource object.
         """
         db.delete(resource)
         db.commit()
@@ -218,18 +218,18 @@ class BaseService(Generic[ModelType]):
         account_id: str
     ) -> TenantMember:
         """
-        确保用户是租户成员
+        Ensure user is a tenant member.
 
         Args:
-            db: 数据库会话
-            tenant_id: 租户 ID
-            account_id: 用户 ID
+            db: Database session.
+            tenant_id: Tenant ID.
+            account_id: User ID.
 
         Returns:
-            成员记录
+            Member record.
 
         Raises:
-            HTTPException: 403 Forbidden
+            HTTPException: 403 Forbidden.
         """
         member = db.query(TenantMember).filter(
             TenantMember.tenant_id == tenant_id,
@@ -245,13 +245,13 @@ class BaseService(Generic[ModelType]):
     @classmethod
     def assert_edit_role(cls, member: TenantMember) -> None:
         """
-        确保用户有编辑权限
+        Ensure user has edit permissions.
 
         Args:
-            member: 成员记录
+            member: Member record.
 
         Raises:
-            HTTPException: 403 Forbidden
+            HTTPException: 403 Forbidden.
         """
         role = (member.role or "").lower()
         if role not in EDIT_ROLES:

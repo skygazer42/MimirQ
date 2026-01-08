@@ -1,7 +1,7 @@
 """
-流水线配置服务
+Pipeline configuration service.
 
-提供流水线配置的解析、构建和解析功能。
+Provides parsing, building, and resolution for pipeline configuration.
 """
 from __future__ import annotations
 
@@ -216,7 +216,7 @@ def resolve_pipeline_options(options: PipelineOptions) -> PipelineEffective:
 
 
 def build_indexing_options(effective: PipelineEffective) -> IndexingOptions:
-    """从有效配置构建索引选项"""
+    """Build indexing options from the effective configuration."""
     return IndexingOptions(
         chunk_vector_enabled=effective.chunk_vector_enabled,
         bm25_index_enabled=effective.bm25_index_enabled,

@@ -1,7 +1,8 @@
 """
-RapidOCR 服务 - 用于 PDF 质量评估和扫描件识别
+RapidOCR service for PDF quality evaluation and scan detection.
 
-轻量封装 RapidOCR (PP-OCRv4)，仅用于前几页的采样检测。
+Lightweight wrapper around RapidOCR (PP-OCRv4), used only for sampling
+the first few pages.
 """
 from __future__ import annotations
 
@@ -19,14 +20,14 @@ logger = get_logger("parsing.quality.ocr")
 
 
 class RapidOCRService:
-    """RapidOCR 服务（延迟加载）"""
+    """RapidOCR service (lazy init)."""
 
     def __init__(self, det_box_thresh: float = 0.3):
         self._ocr: Optional[Any] = None
         self.det_box_thresh = det_box_thresh
 
     def _load_model(self):
-        """延迟加载 OCR 模型"""
+        """Lazy-load OCR model."""
         if self._ocr is not None:
             return
 
@@ -51,12 +52,12 @@ class RapidOCRService:
         zoom_y: float = 2.0
     ) -> Tuple[str, int]:
         """
-        对 PDF 前几页做 OCR，返回识别文本和总字符数。
+        Run OCR on the first few PDF pages and return text + total chars.
 
         Args:
-            pdf_path: PDF 文件路径
-            max_pages: 最多处理的页数
-            zoom_x/zoom_y: 渲染缩放比例（提高清晰度）
+            pdf_path: PDF file path.
+            max_pages: Max pages to process.
+            zoom_x/zoom_y: Render scale (increase clarity).
 
         Returns:
             (ocr_text, char_count)
@@ -73,12 +74,12 @@ class RapidOCRService:
                 for page_num in range(pages_to_process):
                     page = pdf_doc[page_num]
 
-                    # 转为图像
+                    # Convert to image.
                     mat = fitz.Matrix(zoom_x, zoom_y)
                     pix = page.get_pixmap(matrix=mat, alpha=False)
                     img_pil = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
 
-                    # OCR 识别
+                    # OCR recognition.
                     text = self._ocr_image(img_pil)
                     all_text.append(text)
                     total_chars += len(text)
@@ -91,12 +92,12 @@ class RapidOCRService:
             return "", 0
 
     def _ocr_image(self, image: Image.Image) -> str:
-        """对单张图像做 OCR"""
+        """Run OCR on a single image."""
         if self._ocr is None:
             return ""
 
         try:
-            # 保存到临时文件（RapidOCR 需要文件路径）
+            # Save to temp file (RapidOCR requires a file path).
             with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp:
                 tmp_path = Path(tmp.name)
                 image.save(tmp_path)
@@ -107,7 +108,7 @@ class RapidOCRService:
                     return "\n".join([line[1] for line in result])
                 return ""
             finally:
-                # 清理临时文件
+                # Clean up temp file.
                 if tmp_path.exists():
                     tmp_path.unlink()
 
@@ -116,5 +117,5 @@ class RapidOCRService:
             return ""
 
 
-# 全局实例（延迟初始化）
+# Global instance (lazy init).
 rapid_ocr_service = RapidOCRService()

@@ -1,12 +1,12 @@
 """
-PDF 质量评分工具：用于决定解析分流
+PDF quality scorer to decide parsing routing.
 
-评分维度（前 3 页抽样）：
-- 文本提取质量（50%）：文本量、可读性、OCR 噪声
-- 格式一致性（30%）：字体、行距、段落结构
-- 表格完整性（20%）：表格识别率、对齐度
+Scoring dimensions (sample first 3 pages):
+- Text extraction quality (50%): volume, readability, OCR noise
+- Format consistency (30%): fonts, line spacing, paragraph structure
+- Table integrity (20%): detection rate, alignment
 
-综合得分 0-1，越高越干净；低分倾向走 OCR/结构化流程。
+Final score 0-1; higher is cleaner. Low scores prefer OCR/structured flow.
 """
 from __future__ import annotations
 
@@ -30,27 +30,27 @@ def score_pdf_quality(
     use_ocr_validation: bool = False
 ) -> Dict[str, float]:
     """
-    对 PDF 做轻量评分（前 sample_pages 页抽样）。
-    
-    评分维度：
-    - 文本提取质量（50%）：文本量、可读性、OCR噪声、扫描件检测
-    - 格式一致性（30%）：字体多样性、行距离散度、段落结构
-    - 表格完整性（20%）：表格识别率、对齐度
-    
-    返回字段：
-    - score: 综合得分 0-1，越高越干净
-    - text_quality_score: 文本提取质量分（0-1）
-    - format_consistency_score: 格式一致性分（0-1）
-    - table_quality_score: 表格完整性分（0-1）
-    - is_scanned: 是否扫描件
-    - page_count: 总页数
-    
-    经验阈值：score >= 0.8 → 干净可复制；<= 0.5 → 疑似扫描/手写
-    
+    Lightweight scoring for a PDF (sample first sample_pages).
+
+    Dimensions:
+    - Text quality (50%): volume, readability, OCR noise, scan detection
+    - Format consistency (30%): font diversity, line spacing variance, structure
+    - Table integrity (20%): detection rate, alignment
+
+    Returns:
+    - score: final score 0-1 (higher = cleaner)
+    - text_quality_score: text quality score (0-1)
+    - format_consistency_score: format consistency score (0-1)
+    - table_quality_score: table integrity score (0-1)
+    - is_scanned: whether scanned
+    - page_count: total pages
+
+    Heuristic: score >= 0.8 => clean; <= 0.5 => likely scanned/handwritten.
+
     Args:
-        file_path: PDF 文件路径
-        sample_pages: 抽样页数（默认 3）
-        use_ocr_validation: 是否启用 RapidOCR 验证
+        file_path: PDF path.
+        sample_pages: Number of sampled pages (default 3).
+        use_ocr_validation: Whether to enable RapidOCR validation.
     """
     page_count = 0
     text_quality_score = 0.0
@@ -64,25 +64,25 @@ def score_pdf_quality(
             sampled_pages = max(1, min(sample_pages, page_count))
             pages_data = pdf.pages[:sampled_pages]
 
-            # 维度1：文本提取质量（50%）
+            # Dimension 1: text extraction quality (50%).
             text_quality_score, is_scanned = _score_text_quality(
                 pages_data, file_path, use_ocr_validation
             )
 
-            # 维度2：格式一致性（30%）
+            # Dimension 2: format consistency (30%).
             format_consistency_score = _score_format_consistency(pages_data)
 
-            # 维度3：表格完整性（20%）
+            # Dimension 3: table integrity (20%).
             table_quality_score = _score_table_quality(pages_data)
 
     except Exception as e:
         logger.warning("PDF quality scoring failed: %s", e)
-        # 失败时返回低分
+        # Return low scores on failure.
         text_quality_score = 0.0
         format_consistency_score = 0.0
         table_quality_score = 0.0
 
-    # 加权求和：文本50% + 格式30% + 表格20%
+    # Weighted sum: text 50% + format 30% + table 20%.
     final_score = (
         0.50 * text_quality_score +
         0.30 * format_consistency_score +
@@ -106,8 +106,8 @@ def _score_text_quality(
     use_ocr_validation: bool
 ) -> Tuple[float, bool]:
     """
-    评估文本提取质量（0-1）。
-    指标：文本密度、噪声比、可读性、扫描件检测。
+    Evaluate text extraction quality (0-1).
+    Metrics: text density, noise ratio, readability, scan detection.
     """
     total_text_chars = 0
     total_expected_chars = 0
@@ -118,25 +118,25 @@ def _score_text_quality(
         text = page.extract_text() or ""
         total_text_chars += len(text)
         
-        # 噪声估计：不可见字符 + 连续异常符号
+        # Noise estimate: non-printable chars + repeated symbols.
         noise_chars += len(re.findall(r"[^\x20-\x7E\u4e00-\u9fff]", text))
         noise_chars += len(re.findall(r"[#@]{4,}|[.,]{6,}|_{10,}", text))
         
-        # 预期字符数（粗估）：按页面尺寸
-        total_expected_chars += 2400  # 假设每页约2400字符（80字/行 × 30行）
+        # Expected char count (rough): by page size.
+        total_expected_chars += 2400  # Assume ~2400 chars per page (80x30).
 
-    # 文本密度
+    # Text density.
     text_density = total_text_chars / max(1, total_expected_chars)
-    text_density = min(1.0, text_density)  # 截断到1
+    text_density = min(1.0, text_density)  # Cap at 1.
     
-    # 噪声比
+    # Noise ratio.
     noise_ratio = noise_chars / max(1, total_text_chars)
     clean_ratio = max(0.0, 1.0 - noise_ratio)
     
-    # 基础得分：密度70% + 清洁度30%
+    # Base score: density 70% + cleanliness 30%.
     score = 0.70 * text_density + 0.30 * clean_ratio
 
-    # OCR 验证：文本少时触发
+    # OCR validation: trigger when text is sparse.
     if use_ocr_validation and (text_density < 0.3 or total_text_chars < 200 * len(pages)):
         try:
             logger.info("RapidOCR validation enabled for scanned detection")
@@ -148,18 +148,18 @@ def _score_text_quality(
             ocr_gain = (ocr_chars - total_text_chars) / max(1, total_text_chars)
             
             if ocr_gain > 0.5:
-                # OCR增益>50% → 扫描件
+                # OCR gain >50% => scanned.
                 is_scanned = True
                 score *= 0.4
                 logger.info("Detected scanned PDF (ocr_gain=%.2f)", ocr_gain)
             elif ocr_gain > 0.1:
-                # OCR增益>10% → 部分扫描
+                # OCR gain >10% => partial scan.
                 score *= 0.7
                 logger.info("Detected mixed/partial scan (ocr_gain=%.2f)", ocr_gain)
         except Exception as e:
             logger.warning("RapidOCR validation failed: %s", e)
 
-    # 文本极少 → 按扫描件处理
+    # Very low text => treat as scanned.
     if total_text_chars < 500 and len(pages) >= 2:
         is_scanned = True
         score *= 0.5
@@ -169,8 +169,8 @@ def _score_text_quality(
 
 def _score_format_consistency(pages: List) -> float:
     """
-    评估格式一致性（0-1）。
-    指标：字体多样性、行距离散度、段落结构规律性。
+    Evaluate format consistency (0-1).
+    Metrics: font diversity, line spacing variance, paragraph structure.
     """
     font_sizes = []
     line_heights = []
@@ -178,37 +178,37 @@ def _score_format_consistency(pages: List) -> float:
     
     for page in pages:
         try:
-            # 提取字符元数据
+            # Extract character metadata.
             chars = page.chars or []
             if chars:
-                # 字体大小
+                # Font sizes.
                 font_sizes.extend([c.get("size", 0) for c in chars if c.get("size")])
                 
-                # 行高（按y坐标聚合）
+                # Line heights (group by y).
                 y_coords = sorted(set(c.get("top", 0) for c in chars))
                 if len(y_coords) > 1:
                     heights = [y_coords[i+1] - y_coords[i] for i in range(len(y_coords)-1)]
                     line_heights.extend(heights)
             
-            # 段落计数（按空行分割）
+            # Paragraph count (split by blank lines).
             text = page.extract_text() or ""
             paragraph_count += len(re.findall(r"\n\n+", text)) + 1
         except Exception:
             pass
 
     if not font_sizes:
-        # 无法提取字体信息 → 默认中等分
+        # No font info => default to mid score.
         return 0.5
 
-    # 字体大小一致性（标准差越小越好）
+    # Font size consistency (lower std is better).
     import statistics
     try:
         font_std = statistics.stdev(font_sizes) if len(font_sizes) > 1 else 0
-        font_consistency = max(0.0, 1.0 - min(1.0, font_std / 10.0))  # 归一化
+        font_consistency = max(0.0, 1.0 - min(1.0, font_std / 10.0))  # Normalize.
     except Exception:
         font_consistency = 0.5
 
-    # 行高一致性
+    # Line height consistency.
     try:
         if line_heights:
             line_std = statistics.stdev(line_heights) if len(line_heights) > 1 else 0
@@ -218,19 +218,19 @@ def _score_format_consistency(pages: List) -> float:
     except Exception:
         line_consistency = 0.5
 
-    # 段落结构（有段落分隔 → 更规范）
+    # Paragraph structure (separators => more regular).
     para_per_page = paragraph_count / max(1, len(pages))
-    para_score = min(1.0, para_per_page / 5.0)  # 假设每页5段为理想
+    para_score = min(1.0, para_per_page / 5.0)  # Assume 5 paragraphs/page ideal.
 
-    # 综合：字体40% + 行高40% + 段落20%
+    # Composite: font 40% + line height 40% + paragraph 20%.
     score = 0.40 * font_consistency + 0.40 * line_consistency + 0.20 * para_score
     return max(0.0, min(1.0, score))
 
 
 def _score_table_quality(pages: List) -> float:
     """
-    评估表格完整性（0-1）。
-    指标：表格识别率、单元格对齐度。
+    Evaluate table integrity (0-1).
+    Metrics: detection rate, cell alignment.
     """
     total_tables = 0
     well_formed_tables = 0
@@ -241,20 +241,20 @@ def _score_table_quality(pages: List) -> float:
             total_tables += len(tables)
             
             for table in tables:
-                # 表格行列数
+                # Table rows/cols.
                 rows = len(table.rows) if hasattr(table, "rows") and table.rows else 0
                 cells = table.cells if hasattr(table, "cells") and table.cells else []
                 
-                # 判断是否"完整"：至少2行2列，且单元格数合理
+                # Consider "complete": at least 2x2 and reasonable cell count.
                 if rows >= 2 and len(cells) >= 4:
                     well_formed_tables += 1
         except Exception:
             pass
 
     if total_tables == 0:
-        # 无表格 → 默认满分（不扣分）
+        # No tables => full score.
         return 1.0
 
-    # 完整表格占比
+    # Proportion of well-formed tables.
     table_ratio = well_formed_tables / max(1, total_tables)
     return max(0.0, min(1.0, table_ratio))

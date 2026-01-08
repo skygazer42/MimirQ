@@ -1,7 +1,7 @@
 """
-ZIP 图片处理器 - 从 ZIP 包中提取图片并上传到 MinIO
+ZIP image processor - extract images from ZIP and upload to MinIO.
 
-用于处理 MinerU/DeepDoc 等解析器返回的 Markdown + images 压缩包。
+Used for Markdown + images archives returned by MinerU/DeepDoc parsers.
 """
 from __future__ import annotations
 
@@ -19,7 +19,7 @@ from app.storage.object.minio import minio_service
 
 
 class ZipImageProcessor:
-    """处理 ZIP 包中的 Markdown 和图片"""
+    """Process Markdown and images inside a ZIP archive."""
 
     _logger = get_logger("parsing.zip_processor")
 
@@ -134,31 +134,31 @@ class ZipImageProcessor:
         tenant_id: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
-        处理包含 Markdown 和图片的 ZIP 文件。
-        
-        流程：
-        1. 解压 ZIP 到临时目录
-        2. 查找 Markdown 文件
-        3. 提取所有图片并上传到 MinIO
-        4. 替换 Markdown 中的图片引用为 MinIO URL
-        5. 返回处理后的 Markdown 和图片映射
-        
+        Process a ZIP containing Markdown + images.
+
+        Flow:
+        1. Extract ZIP to a temp directory
+        2. Find Markdown file
+        3. Extract images and upload to MinIO
+        4. Replace image refs in Markdown with MinIO URLs
+        5. Return processed Markdown and image mapping
+
         Args:
-            zip_path: ZIP 文件路径
-            tenant_id: 租户 ID
-            dataset_id: 知识库 ID
-            document_id: 文档 ID
-        
+            zip_path: ZIP file path.
+            tenant_id: Tenant ID.
+            dataset_id: Dataset ID.
+            document_id: Document ID.
+
         Returns:
             {
-                "markdown": "处理后的 Markdown 内容",
+                "markdown": "processed Markdown content",
                 "images": [{"img_id": "...", "original_path": "...", "url": "..."}],
-                "image_count": 数量
+                "image_count": count
             }
         """
         temp_dir = None
         try:
-            # 1. 创建临时目录并解压
+            # 1. Create temp directory and extract.
             temp_dir = tempfile.mkdtemp(prefix="zip_extract_")
             temp_path = Path(temp_dir)
             
@@ -167,7 +167,7 @@ class ZipImageProcessor:
 
             ZipImageProcessor._logger.info("[zip] extracted to %s", temp_path)
             
-            # 2. 查找 Markdown 文件
+            # 2. Find Markdown file.
             markdown_files = list(temp_path.rglob("*.md"))
             if not markdown_files:
                 ZipImageProcessor._logger.warning("[zip] no markdown found in archive")
@@ -177,14 +177,14 @@ class ZipImageProcessor:
                     "image_count": 0
                 }
             
-            # 使用第一个找到的 Markdown 文件
+            # Use the first Markdown file found.
             md_file = ZipImageProcessor._choose_markdown_file(markdown_files)
             markdown_content = md_file.read_text(encoding="utf-8", errors="ignore")
             
             ZipImageProcessor._logger.info("[zip] markdown=%s", md_file)
             
-            # 3. 查找所有图片文件
-            # 统一转换为 JPEG 上传（节省存储，简化图片访问），因此仅处理常见栅格图片格式。
+            # 3. Find all image files.
+            # Convert to JPEG for upload (save storage, simplify access).
             image_extensions = {'.png', '.jpg', '.jpeg', '.gif', '.bmp', '.webp'}
             image_files: list[Path] = []
             for path in temp_path.rglob("*"):
@@ -215,12 +215,12 @@ class ZipImageProcessor:
                 )
                 image_files = image_files[:max_images]
             
-            # 4. 上传图片到 MinIO 并建立映射
-            image_mapping = {}  # {原始相对路径: img_id}
+            # 4. Upload images to MinIO and build mapping.
+            image_mapping = {}  # {original relative path: img_id}
             uploaded_images = []
             
             for idx, img_file in enumerate(image_files):
-                # 计算相对路径：尽量匹配 Markdown 的引用习惯（根目录/Markdown 同目录/文件名）。
+                # Compute relative paths to match Markdown reference habits.
                 rel_keys: list[str] = []
 
                 try:
@@ -241,7 +241,7 @@ class ZipImageProcessor:
                 if img_file.name not in rel_keys:
                     rel_keys.append(img_file.name)
                 
-                # 上传到 MinIO
+                # Upload to MinIO.
                 if settings.MINIO_ENABLED:
                     try:
                         from PIL import Image as PILImage
@@ -267,7 +267,7 @@ class ZipImageProcessor:
                             extension="jpg",
                         )
                         
-                        # 获取访问 URL
+                        # Build access URL.
                         url = f"/api/v1/documents/image-url/{img_id}"
                         
                         for key in rel_keys:
@@ -285,7 +285,7 @@ class ZipImageProcessor:
                     except Exception as e:
                         ZipImageProcessor._logger.warning("[zip] failed uploading image %s: %s", img_file, e)
             
-            # 5. 替换 Markdown 中的图片引用
+            # 5. Replace image refs in Markdown.
             if image_mapping:
                 markdown_content = ZipImageProcessor._replace_image_refs(
                     markdown_content,
@@ -300,7 +300,7 @@ class ZipImageProcessor:
             }
             
         finally:
-            # 清理临时目录
+            # Clean up temp directory.
             if temp_dir and Path(temp_dir).exists():
                 shutil.rmtree(temp_dir, ignore_errors=True)
 
@@ -310,14 +310,14 @@ class ZipImageProcessor:
         image_mapping: Dict[str, Dict[str, str]]
     ) -> str:
         """
-        替换 Markdown 中的图片引用。
-        
-        支持的格式：
+        Replace image references in Markdown.
+
+        Supported formats:
         - ![alt](path/to/image.png)
         - ![](./images/pic.jpg)
         - <img src="path/to/image.png">
         """
-        # 替换 Markdown 语法：![alt](path)
+        # Replace Markdown syntax: ![alt](path)
         def replace_md_image(match):
             alt_text = match.group(1)
             raw = match.group(2)
@@ -336,7 +336,7 @@ class ZipImageProcessor:
             markdown
         )
         
-        # 替换 HTML img 标签：<img src="path">
+        # Replace HTML img tag: <img src="path">
         def replace_html_image(match):
             raw = match.group(1)
             normalized_path = ZipImageProcessor._normalize_ref_path(raw)
@@ -357,5 +357,5 @@ class ZipImageProcessor:
         return markdown
 
 
-# 全局实例
+# Global instance
 zip_image_processor = ZipImageProcessor()

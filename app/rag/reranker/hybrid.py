@@ -1,12 +1,12 @@
 """
-Hybrid Reranker（混合重排器）
+Hybrid reranker.
 
-融合向量相似度和关键词匹配的混合重排策略。
+Combines vector similarity and keyword matching for reranking.
 
-实现：
-- 向量检索：基于语义相似度
-- 关键词检索：基于 TF-IDF
-- 加权融合：可配置权重组合两种分数
+Implementation:
+- Vector retrieval: semantic similarity
+- Keyword retrieval: TF-IDF
+- Weighted fusion: configurable weights for both scores
 """
 from __future__ import annotations
 
@@ -51,7 +51,7 @@ class Weights(BaseModel):
 
 
 class WeightedReranker(DocumentReranker):
-    """加权重排器：融合向量相似度和关键词匹配"""
+    """Weighted reranker combining vector similarity and keyword matching."""
 
     def __init__(
         self,
@@ -60,12 +60,12 @@ class WeightedReranker(DocumentReranker):
         embedding_fn: Callable[[str], list[float]] | None = None,
     ):
         """
-        初始化加权重排器
+        Initialize the weighted reranker.
 
         Args:
-            tenant_id: 租户标识
-            weights: 向量和关键词权重配置
-            embedding_fn: 可选的 embedding 生成函数
+            tenant_id: tenant identifier
+            weights: vector and keyword weight configuration
+            embedding_fn: optional embedding function
         """
         self.tenant_id = tenant_id
         self.weights = weights
@@ -79,8 +79,8 @@ class WeightedReranker(DocumentReranker):
         top_n: int | None = None,
         user: str | None = None,
     ) -> list[Document]:
-        """运行加权重排"""
-        # 去重
+        """Run weighted reranking."""
+        # Deduplicate.
         unique_documents: list[Document] = []
         doc_ids: set[str] = set()
         for document in documents:
@@ -98,11 +98,11 @@ class WeightedReranker(DocumentReranker):
 
         documents = unique_documents
 
-        # 计算分数
+        # Compute scores.
         query_scores = self._calculate_keyword_score(query, documents)
         query_vector_scores = self._calculate_cosine(query, documents, self.weights.vector_setting)
 
-        # 融合分数
+        # Fuse scores.
         rerank_documents = []
         for document, query_score, query_vector_score in zip(documents, query_scores, query_vector_scores):
             score = (
@@ -119,7 +119,7 @@ class WeightedReranker(DocumentReranker):
         return rerank_documents[:top_n] if top_n else rerank_documents
 
     def _calculate_keyword_score(self, query: str, documents: list[Document]) -> list[float]:
-        """计算基于 TF-IDF 的关键词相似度分数"""
+        """Compute keyword similarity scores using TF-IDF."""
         from app.rag.preprocessing.keyword import JiebaKeywordTableHandler
 
         keyword_table_handler = JiebaKeywordTableHandler()
@@ -188,14 +188,14 @@ class WeightedReranker(DocumentReranker):
     def _calculate_cosine(
         self, query: str, documents: list[Document], vector_setting: VectorSetting
     ) -> list[float]:
-        """使用 embeddings 计算余弦相似度分数"""
+        """Compute cosine similarity scores using embeddings."""
         query_vector_scores = []
 
-        # 获取 query 向量
+        # Get the query vector.
         if self.embedding_fn:
             query_vector = self.embedding_fn(query)
         else:
-            # 如果没有 embedding 函数，返回现有分数
+            # If no embedding function is provided, return existing scores.
             for document in documents:
                 if document.metadata and "score" in document.metadata:
                     query_vector_scores.append(document.metadata["score"])

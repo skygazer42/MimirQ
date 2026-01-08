@@ -1,9 +1,9 @@
 """
-MinerU 文档解析服务
-支持两种模式：
-1. MinerU 在线 API：https://mineru.net（返回 Markdown URL）
-2. MinerU 本地服务：返回 ZIP 包（Markdown + images）
-两种模式都支持高级 PDF 解析（表格、图片、公式等）
+MinerU document parsing service.
+Supports two modes:
+1. MinerU online API: https://mineru.net (returns Markdown URL)
+2. MinerU local service: returns ZIP (Markdown + images)
+Both modes support advanced PDF parsing (tables, images, formulas, etc.)
 """
 import asyncio
 import time
@@ -21,14 +21,14 @@ logger = get_logger("services.mineru")
 
 
 class MinerUService:
-    """MinerU 在线解析服务"""
+    """MinerU parsing service."""
 
     def __init__(self):
         self.api_base = settings.MINERU_API_BASE
         self.api_token = settings.MINERU_API_TOKEN
         self.model_version = settings.MINERU_MODEL_VERSION
         self.local_server_url = (getattr(settings, "MINERU_LOCAL_SERVER_URL", "") or "").strip() or None
-        # MinerU 本地服务不需要 API Token；在线 API 需要。
+        # Local MinerU does not require API token; online API does.
         self.enabled = bool(settings.MINERU_ENABLED) and (bool(self.api_token) or bool(self.local_server_url))
 
         if not self.enabled:
@@ -38,7 +38,7 @@ class MinerUService:
             )
 
     def _get_headers(self) -> Dict[str, str]:
-        """获取请求头"""
+        """Get request headers."""
         return {
             "Content-Type": "application/json",
             "Authorization": f"Bearer {self.api_token}",
@@ -55,9 +55,9 @@ class MinerUService:
         **kwargs: Any,
     ) -> Dict[str, Any]:
         """
-        发送 HTTP 请求并解析 JSON（异步，带重试）。
+        Send an HTTP request and parse JSON (async with retries).
 
-        NOTE: 统一复用全局 HTTPClientPool，避免在 async 路径里使用 requests 阻塞事件循环。
+        NOTE: Reuse the global HTTPClientPool to avoid blocking the event loop.
         """
         pool = get_http_client_pool()
         resp = await pool.request_with_retry(method, url, headers=headers, timeout=timeout, **kwargs)
@@ -71,7 +71,7 @@ class MinerUService:
                 pass
 
     async def aapply_upload_url(self, filename: str, data_id: str) -> Dict[str, Any]:
-        """申请单个文件上传 URL（异步）。"""
+        """Request a single file upload URL (async)."""
         if not self.enabled:
             raise Exception("MinerU is not enabled. Please configure MINERU_API_TOKEN.")
 
@@ -87,11 +87,11 @@ class MinerUService:
 
     def apply_upload_url(self, filename: str, data_id: str) -> Dict[str, Any]:
         """
-        申请单个文件上传 URL
+        Request a single file upload URL.
 
         Args:
-            filename: 文件名
-            data_id: 自定义数据 ID（用于标识文件）
+            filename: File name.
+            data_id: Custom data ID (identifier).
 
         Returns:
             {
@@ -121,7 +121,7 @@ class MinerUService:
         raise Exception(f"Apply upload URL failed: {result.get('msg', 'Unknown error')}")
 
     async def aapply_batch_upload_urls(self, files: List[Dict[str, str]]) -> Dict[str, Any]:
-        """批量申请文件上传 URL（异步）。"""
+        """Request batch upload URLs (async)."""
         if not self.enabled:
             raise Exception("MinerU is not enabled. Please configure MINERU_API_TOKEN.")
         if len(files) > 200:
@@ -140,11 +140,11 @@ class MinerUService:
         files: List[Dict[str, str]]
     ) -> Dict[str, Any]:
         """
-        批量申请文件上传 URL
+        Request batch upload URLs.
 
         Args:
-            files: 文件列表，格式: [{"name": "file1.pdf", "data_id": "id1"}, ...]
-                   最多 200 个文件
+            files: File list, format: [{"name": "file1.pdf", "data_id": "id1"}, ...]
+                   Up to 200 files.
 
         Returns:
             {
@@ -177,18 +177,18 @@ class MinerUService:
 
     async def aupload_file(self, file_path: Path, upload_url: str) -> bool:
         """
-        上传文件到 MinerU
+        Upload file to MinerU.
 
         Args:
-            file_path: 本地文件路径
-            upload_url: 申请到的上传 URL
+            file_path: Local file path.
+            upload_url: Issued upload URL.
 
         Returns:
-            上传是否成功
+            Whether upload succeeded.
         """
         pool = get_http_client_pool()
         try:
-            # 注意：MinerU 上传不需要设置 Content-Type
+            # MinerU upload does not require Content-Type.
             with open(file_path, "rb") as f:
                 resp = await pool.put(upload_url, content=f, timeout=300.0)
                 ok = int(getattr(resp, "status_code", 0) or 0) == 200
@@ -214,7 +214,7 @@ class MinerUService:
             return False
 
     async def aget_task_status(self, batch_id: str) -> Dict[str, Any]:
-        """查询解析任务状态（异步）。"""
+        """Query parsing task status (async)."""
         if not self.enabled:
             raise Exception("MinerU is not enabled.")
 
@@ -226,13 +226,13 @@ class MinerUService:
 
     def get_task_status(self, batch_id: str) -> Dict[str, Any]:
         """
-        查询解析任务状态
+        Query parsing task status.
 
         Args:
-            batch_id: 批次 ID
+            batch_id: Batch ID.
 
         Returns:
-            任务状态信息
+            Task status info.
         """
         import requests  # local import to avoid blocking deps in async paths
 
@@ -262,15 +262,15 @@ class MinerUService:
         jitter: float = 0.2,
     ) -> Dict[str, Any]:
         """
-        等待解析任务完成
+        Wait for parsing task completion.
 
         Args:
-            batch_id: 批次 ID
-            timeout: 超时时间（秒）
-            poll_interval: 轮询间隔（秒）
+            batch_id: Batch ID.
+            timeout: Timeout (seconds).
+            poll_interval: Poll interval (seconds).
 
         Returns:
-            完成后的任务状态
+            Final task status.
         """
         start_time = time.monotonic()
         current_interval = max(1, int(poll_interval))
@@ -318,7 +318,7 @@ class MinerUService:
             time.sleep(poll_interval)
 
     async def adownload_result(self, result_url: str) -> str:
-        """下载解析结果（Markdown 格式，异步）。"""
+        """Download parse result (Markdown, async)."""
         pool = get_http_client_pool()
         resp = await pool.get(result_url, timeout=60.0)
         try:
@@ -331,13 +331,13 @@ class MinerUService:
 
     def download_result(self, result_url: str) -> str:
         """
-        下载解析结果（Markdown 格式）
+        Download parse result (Markdown).
 
         Args:
-            result_url: 结果下载 URL
+            result_url: Result download URL.
 
         Returns:
-            Markdown 内容
+            Markdown content.
         """
         import requests  # local import to avoid blocking deps in async paths
 
@@ -350,7 +350,7 @@ class MinerUService:
 
     async def aparse_file(self, file_path: Path, data_id: Optional[str] = None) -> List[Document]:
         """
-        完整的文件解析流程（上传 → 等待 → 下载结果），异步版本。
+        End-to-end parsing flow (upload → wait → download result), async version.
         """
         if not self.enabled:
             raise Exception("MinerU is not enabled. Please configure MINERU_API_TOKEN.")
@@ -399,11 +399,12 @@ class MinerUService:
         params: Optional[Dict[str, Any]] = None,
     ) -> List[Document]:
         """
-        使用本地 MinerU 服务解析文件（返回 ZIP 包含 Markdown + images），异步版本。
+        Parse with local MinerU (returns ZIP with Markdown + images), async version.
 
-        - 上传 multipart 文件到本地 MinerU
-        - 下载 ZIP bytes
-        - 将 ZIP 写入临时文件，然后在 to_thread 中做 ZIP->Markdown+图片提取+MinIO 上传
+        - Upload multipart file to local MinerU
+        - Download ZIP bytes
+        - Write ZIP to temp file, then in to_thread:
+          ZIP -> Markdown + image extraction + MinIO upload
         """
         if not self.local_server_url:
             raise Exception(
@@ -453,7 +454,7 @@ class MinerUService:
                     pass
 
             if ("zip" not in content_type.lower()) and ("application/octet-stream" not in content_type.lower()):
-                raise Exception(f"MinerU 返回非预期格式: {content_type}")
+                raise Exception(f"MinerU returned unexpected content type: {content_type}")
 
             with tempfile.NamedTemporaryFile(suffix=".zip", delete=False) as tmp_zip:
                 tmp_zip.write(body)
@@ -486,7 +487,7 @@ class MinerUService:
             return [Document(page_content=markdown_content, metadata=metadata)]
         except Exception as e:  # noqa: BLE001
             logger.error("MinerU local parsing failed (async): %s", str(e)[:200])
-            raise Exception(f"MinerU 本地解析失败: {str(e)}") from e
+            raise Exception(f"MinerU local parsing failed: {str(e)}") from e
         finally:
             if tmp_zip_path and tmp_zip_path.exists():
                 try:
@@ -500,19 +501,19 @@ class MinerUService:
         data_id: Optional[str] = None
     ) -> List[Document]:
         """
-        完整的文件解析流程（上传 → 等待 → 下载结果）
+        End-to-end parsing flow (upload → wait → download result).
 
         Args:
-            file_path: 本地文件路径
-            data_id: 自定义数据 ID（可选）
+            file_path: Local file path.
+            data_id: Custom data ID (optional).
 
         Returns:
-            解析后的 LangChain Document 列表
+            Parsed LangChain Document list.
         """
         if not self.enabled:
             raise Exception("MinerU is not enabled. Please configure MINERU_API_TOKEN.")
 
-        # 1. 申请上传 URL
+        # 1. Request upload URL.
         data_id = data_id or str(file_path.stem)
         logger.info("Applying upload URL for %s...", file_path.name)
         upload_info = self.apply_upload_url(file_path.name, data_id)
@@ -520,7 +521,7 @@ class MinerUService:
         batch_id = upload_info["batch_id"]
         upload_url = upload_info["upload_url"]
 
-        # 2. 上传文件
+        # 2. Upload file.
         logger.info("Uploading %s...", file_path.name)
         success = self.upload_file(file_path, upload_url)
         if not success:
@@ -528,11 +529,11 @@ class MinerUService:
 
         logger.info("Upload complete. Batch ID: %s", batch_id)
 
-        # 3. 等待解析完成
+        # 3. Wait for parsing completion.
         logger.info("Waiting for parsing completion...")
         result = self.wait_for_completion(batch_id, timeout=600, poll_interval=5)
 
-        # 4. 下载解析结果
+        # 4. Download parse result.
         result_url = result.get("result_url")
         if not result_url:
             raise Exception("No result URL in response")
@@ -540,7 +541,7 @@ class MinerUService:
         logger.info("Downloading result...")
         markdown_content = self.download_result(result_url)
 
-        # 5. 转换为 LangChain Document
+        # 5. Convert to LangChain Document.
         metadata = {
             "source": file_path.name,
             "file_type": "pdf",
@@ -562,16 +563,16 @@ class MinerUService:
         params: Optional[Dict[str, Any]] = None
     ) -> List[Document]:
         """
-        使用本地 MinerU 服务解析文件（返回 ZIP 包含 Markdown + images）。
-        
+        Parse with local MinerU (returns ZIP with Markdown + images).
+
         Args:
-            file_path: 本地文件路径
-            dataset_id: 知识库 ID
-            document_id: 文档 ID  
-            params: 解析参数
-        
+            file_path: Local file path.
+            dataset_id: Dataset ID.
+            document_id: Document ID.
+            params: Parse params.
+
         Returns:
-            解析后的 LangChain Document 列表（图片已上传到 MinIO）
+            Parsed LangChain Documents (images uploaded to MinIO).
         """
         if not self.local_server_url:
             raise Exception(
@@ -582,7 +583,7 @@ class MinerUService:
         parse_endpoint = f"{self.local_server_url}/file_parse"
         params = params or {}
         
-        # 构建请求参数
+        # Build request parameters.
         data = {
             "lang_list": params.get("lang_list", ["ch"]),
             "backend": params.get("backend", "vlm-http-client"),
@@ -592,7 +593,7 @@ class MinerUService:
             "return_images": True,
         }
         
-        # vlm-http-client 后端需要 server_url
+        # vlm-http-client backend requires server_url.
         if data["backend"] == "vlm-http-client":
             mineru_vl_server = getattr(settings, 'MINERU_VL_SERVER', None)
             if mineru_vl_server:
@@ -601,34 +602,34 @@ class MinerUService:
         logger.info("MinerU local parsing started: %s", file_path.name)
         
         try:
-            # 发送文件
+            # Send file.
             with open(file_path, "rb") as f:
                 files = {"files": (file_path.name, f, "application/octet-stream")}
-                # NOTE: 本地 ZIP 解析路径目前仅在同步调用方中使用；如需在 async 环境调用，
-                # 请在上层用 asyncio.to_thread 包裹，或后续补齐 async 版本以避免阻塞。
+                # NOTE: Local ZIP parsing path is currently sync-only; for async,
+                # wrap with asyncio.to_thread or add an async version to avoid blocking.
                 import requests  # local import to avoid global dependency in async paths
 
                 response = requests.post(parse_endpoint, files=files, data=data, timeout=300)
             
             response.raise_for_status()
             
-            # 检查响应是否为 ZIP
+            # Check response is ZIP.
             content_type = response.headers.get('Content-Type', '')
             if 'zip' not in content_type.lower() and 'application/octet-stream' not in content_type.lower():
-                # 尝试解析为 JSON 错误
+                # Try parsing JSON error.
                 try:
                     error_data = response.json()
-                    raise Exception(f"MinerU 解析失败: {error_data}")
+                    raise Exception(f"MinerU parsing failed: {error_data}")
                 except (ValueError, TypeError) as json_err:
-                    raise Exception(f"MinerU 返回非预期格式: {content_type}") from json_err
+                    raise Exception(f"MinerU returned unexpected content type: {content_type}") from json_err
             
-            # 保存 ZIP 到临时文件
+            # Save ZIP to temp file.
             with tempfile.NamedTemporaryFile(suffix=".zip", delete=False) as tmp_zip:
                 tmp_zip.write(response.content)
                 tmp_zip_path = Path(tmp_zip.name)
             
             try:
-                # 处理 ZIP：提取图片并上传到 MinIO
+                # Process ZIP: extract images and upload to MinIO.
                 result = zip_image_processor.process_zip_with_images(
                     zip_path=tmp_zip_path,
                     dataset_id=dataset_id,
@@ -644,7 +645,7 @@ class MinerUService:
                     len(images),
                 )
                 
-                # 构建 metadata
+                # Build metadata.
                 metadata = {
                     "source": file_path.name,
                     "file_type": file_path.suffix.lstrip('.'),
@@ -656,14 +657,14 @@ class MinerUService:
                 return [Document(page_content=markdown_content, metadata=metadata)]
                 
             finally:
-                # 清理临时 ZIP 文件
+                # Clean up temp ZIP file.
                 if tmp_zip_path.exists():
                     tmp_zip_path.unlink()
         
         except Exception as e:
             logger.error("MinerU local parsing failed: %s", e)
-            raise Exception(f"MinerU 本地解析失败: {str(e)}")
+            raise Exception(f"MinerU local parsing failed: {str(e)}")
 
 
-# 全局实例
+# Global instance
 mineru_service = MinerUService()

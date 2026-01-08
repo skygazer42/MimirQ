@@ -1,7 +1,7 @@
 """
-Parent-Child Reranker
+Parent-child reranker.
 
-对检索结果进行父子关系分组重排，每个父节点只保留最佳的子节点。
+Groups results by parent/child relationships and keeps the best child per parent.
 """
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ from app.rag.reranker.base import DocumentReranker
 
 
 class ParentChildReranker(DocumentReranker):
-    """父子关系重排器：按 parent_id 分组，保留每组中得分最高的子节点"""
+    """Parent-child reranker: group by parent_id and keep the top child per group."""
 
     def run(
         self,
@@ -21,10 +21,10 @@ class ParentChildReranker(DocumentReranker):
         user: str | None = None,
     ) -> list[Document]:
         """
-        运行父子关系重排
-        
-        根据 metadata 中的 parent_id/parent_node_id 分组，
-        每组中选择得分最高的子节点作为代表。
+        Run parent-child reranking.
+
+        Group by parent_id/parent_node_id in metadata and select the highest-scoring
+        child as the representative for each group.
         """
         if not documents:
             return []
@@ -37,7 +37,7 @@ class ParentChildReranker(DocumentReranker):
             score = float(meta.get("score", 0.0) or 0.0)
             scores[id(doc)] = score
             
-            # 确定分组 ID
+            # Determine the group ID.
             group_id = meta.get("parent_id") or meta.get("parent_node_id")
             if not group_id:
                 doc_id = meta.get("document_id")
@@ -48,7 +48,7 @@ class ParentChildReranker(DocumentReranker):
                     group_id = f"self:{id(doc)}"
             groups.setdefault(str(group_id), []).append(doc)
 
-        # 每组选择最佳代表
+        # Pick the best representative per group.
         ranked: list[tuple[Document, float]] = []
         for _, items in groups.items():
             children = [d for d in items if (d.metadata or {}).get("chunk_role") == "child"]
@@ -58,10 +58,10 @@ class ParentChildReranker(DocumentReranker):
                 rep = max(items, key=lambda d: scores.get(id(d), 0.0))
             ranked.append((rep, scores.get(id(rep), 0.0)))
 
-        # 按分数降序排序
+        # Sort by score descending.
         ranked.sort(key=lambda x: x[1], reverse=True)
 
-        # 应用阈值和 top_n
+        # Apply threshold and top_n.
         output: list[Document] = []
         for doc, score in ranked:
             if score_threshold is not None and score < score_threshold:
@@ -71,5 +71,4 @@ class ParentChildReranker(DocumentReranker):
                 break
 
         return output
-
 

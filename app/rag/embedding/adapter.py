@@ -42,7 +42,7 @@ def _invalidate_redis_client() -> None:
 
 
 def _embed_cache_key(text: str) -> str:
-    # 绑定模型与版本（当前使用 provider/model；未来如有显式版本，可追加）
+    # Bind model and version (currently provider/model; append explicit version if available).
     model_key = f"{settings.EMBEDDING_PROVIDER}/{settings.EMBEDDING_MODEL}"
     digest = hashlib.sha256(text.encode("utf-8", "ignore")).hexdigest()
     prefix = getattr(settings, "EMBEDDING_CACHE_PREFIX", "emb")
@@ -141,7 +141,7 @@ class LangChainEmbeddingsAdapter:
                             else:
                                 pipe.set(keys[idx], payload)
                         except Exception:  # noqa: BLE001
-                            # 缓存失败不影响主流程
+                            # Cache failures do not affect main flow.
                             pass
                     try:
                         pipe.execute()

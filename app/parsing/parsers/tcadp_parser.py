@@ -1,13 +1,12 @@
 """
-腾讯云 ADP 文档解析器（业务层封装）
-封装 deepdoc/parser/tcadp_parser.py 的底层实现，
-提供 LangChain Document 格式的输出。
+Tencent Cloud ADP document parser (service-layer wrapper).
+Wraps deepdoc/parser/tcadp_parser.py and outputs LangChain Documents.
 
-支持：
-- PDF 文档解析
-- 表格识别
-- 公式识别
-- 多种输出格式
+Supports:
+- PDF parsing
+- Table recognition
+- Formula recognition
+- Multiple output formats
 """
 
 from pathlib import Path
@@ -17,7 +16,7 @@ from .base_parser import BaseAdvancedParser
 
 class TCADPParser(BaseAdvancedParser):
     """
-    将 sections/tables 转换为 LangChain Document 格式。
+    Convert sections/tables into LangChain Documents.
     """
 
     SUPPORTED_EXTENSIONS = {".pdf", ".docx", ".xlsx", ".csv"}
@@ -31,14 +30,14 @@ class TCADPParser(BaseAdvancedParser):
         markdown_image_response_type: str = "1",
     ):
         """
-        初始化腾讯云 ADP 解析器。
+        Initialize Tencent Cloud ADP parser.
 
         Args:
-            secret_id: 腾讯云 SecretId
-            secret_key: 腾讯云 SecretKey
-            region: 区域 (默认 ap-guangzhou)
-            table_result_type: 表格输出类型
-            markdown_image_response_type: 图片响应类型
+            secret_id: Tencent Cloud SecretId.
+            secret_key: Tencent Cloud SecretKey.
+            region: Region (default ap-guangzhou).
+            table_result_type: Table output type.
+            markdown_image_response_type: Image response type.
         """
         self.secret_id = secret_id or getattr(settings, "TCADP_SECRET_ID", "")
         self.secret_key = secret_key or getattr(settings, "TCADP_SECRET_KEY", "")
@@ -86,7 +85,7 @@ class TCADPParser(BaseAdvancedParser):
         callback: Callable[[float, str], None],
         **kwargs
     ) -> Tuple[List, List]:
-        # 确定文件类型
+        # Determine file type.
         suffix = file_path.suffix.lower()
         file_type_map = {
             ".pdf": "PDF",

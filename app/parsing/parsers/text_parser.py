@@ -1,5 +1,5 @@
 """
-文本 / Markdown 解析器
+Text / Markdown parsers.
 """
 from pathlib import Path
 from typing import List
@@ -9,10 +9,10 @@ from app.parsing.utils.text import read_text_file
 
 
 class TextParser:
-    """纯文本解析器"""
+    """Plain text parser."""
     def parse(self, file_path: Path) -> List[Document]:
         """
-        解析纯文本文件为 Document 列表。
+        Parse a plain text file into Document list.
         """
         decoded = read_text_file(file_path)
         content = decoded.text
@@ -29,17 +29,17 @@ class TextParser:
 
 
 class MarkdownParser:
-    """Markdown 解析器"""
+    """Markdown parser."""
 
     def parse(self, file_path: Path) -> List[Document]:
         """
-        解析 Markdown 文件为 Document 列表。
-        默认保留原始 Markdown 文本，更适合 RAG。
+        Parse a Markdown file into Document list.
+        Preserves raw Markdown text (better for RAG).
         """
         decoded = read_text_file(file_path)
         md_content = decoded.text
 
-        # 如果将来需要转成纯文本，可以启用下面几行：
+        # If you need plain text later, enable the lines below:
         # html = markdown.markdown(md_content)
         # text = BeautifulSoup(html, "html.parser").get_text()
 

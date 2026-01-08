@@ -1,5 +1,5 @@
 """
-高级解析器基类
+Advanced parser base class.
 """
 
 from __future__ import annotations
@@ -15,22 +15,22 @@ from langchain_core.documents import Document
 
 class BaseAdvancedParser(ABC):
     """
-    高级解析器抽象基类
+    Advanced parser abstract base class.
 
-    提供以下公共功能：
-    - 延迟加载底层解析器
-    - 文件验证
-    - sections/tables 转换为 LangChain Document
-    - 异步包装
+    Provides:
+    - Lazy loading of the underlying parser
+    - File validation
+    - Convert sections/tables to LangChain Document
+    - Async wrapper
 
-    子类需要实现：
-    - _create_parser(): 创建底层解析器实例
-    - _get_parser_name(): 返回解析器名称（用于日志和元数据）
-    - _check_parser_installation(): 检查解析器是否可用
-    - _call_parse_method(): 调用底层解析器的解析方法
+    Subclasses must implement:
+    - _create_parser(): create underlying parser instance
+    - _get_parser_name(): return parser name (for logs/metadata)
+    - _check_parser_installation(): check parser availability
+    - _call_parse_method(): call underlying parse method
     """
 
-    # 子类可覆盖，设为 None 表示不检查扩展名
+    # Subclasses can override; None means no extension check.
     SUPPORTED_EXTENSIONS: Optional[Set[str]] = None
 
     def __init__(self):
@@ -38,7 +38,7 @@ class BaseAdvancedParser(ABC):
         self._logger = logging.getLogger(f"parsing.{self._get_parser_name()}_parser")
 
     def _get_parser(self):
-        """延迟加载底层解析器"""
+        """Lazy-load the underlying parser."""
         if self._parser is not None:
             return self._parser
         self._parser = self._create_parser()
@@ -47,33 +47,33 @@ class BaseAdvancedParser(ABC):
     @abstractmethod
     def _create_parser(self) -> Any:
         """
-        创建底层解析器实例
+        Create underlying parser instance.
 
         Returns:
-            底层解析器实例
+            Parser instance.
         """
         pass
 
     @abstractmethod
     def _get_parser_name(self) -> str:
         """
-        返回解析器名称（用于日志和元数据）
+        Return parser name (for logs and metadata).
 
         Returns:
-            解析器名称，如 "mineru", "docling", "tcadp"
+            Parser name, e.g. "mineru", "docling", "tcadp".
         """
         pass
 
     @abstractmethod
     def _check_parser_installation(self, parser: Any) -> Tuple[bool, str]:
         """
-        检查解析器是否可用
+        Check parser availability.
 
         Args:
-            parser: 底层解析器实例
+            parser: Underlying parser instance.
 
         Returns:
-            (是否可用, 原因/错误信息)
+            (is_available, reason/error message)
         """
         pass
 
@@ -87,14 +87,14 @@ class BaseAdvancedParser(ABC):
         **kwargs
     ) -> Tuple[List, List]:
         """
-        调用底层解析器的解析方法
+        Call the underlying parser's parse method.
 
         Args:
-            parser: 底层解析器实例
-            file_path: 文件路径
-            binary: 文件二进制内容
-            callback: 进度回调函数
-            **kwargs: 额外参数
+            parser: Underlying parser instance.
+            file_path: File path.
+            binary: File bytes.
+            callback: Progress callback.
+            **kwargs: Extra args.
 
         Returns:
             (sections, tables)
@@ -102,7 +102,7 @@ class BaseAdvancedParser(ABC):
         pass
 
     def check_installation(self) -> bool:
-        """检查解析器是否可用"""
+        """Check whether parser is available."""
         parser = self._get_parser()
         ok, reason = self._check_parser_installation(parser)
         if not ok:
@@ -111,14 +111,14 @@ class BaseAdvancedParser(ABC):
 
     def _validate_file(self, file_path: Path) -> None:
         """
-        验证文件路径和扩展名
+        Validate file path and extension.
 
         Args:
-            file_path: 文件路径
+            file_path: File path.
 
         Raises:
-            FileNotFoundError: 文件不存在
-            ValueError: 不支持的文件类型
+            FileNotFoundError: File not found.
+            ValueError: Unsupported file type.
         """
         if not file_path.exists():
             raise FileNotFoundError(f"File not found: {file_path}")
@@ -131,7 +131,7 @@ class BaseAdvancedParser(ABC):
                 )
 
     def _create_callback(self) -> Callable[[float, str], None]:
-        """创建进度回调函数"""
+        """Create a progress callback."""
         parser_name = self._get_parser_name().upper()
         def callback(progress: float, msg: str):
             self._logger.info(f"[{parser_name}] {progress:.0%} - {msg}")
@@ -143,14 +143,14 @@ class BaseAdvancedParser(ABC):
         base_metadata: dict
     ) -> List[Document]:
         """
-        将 sections 转换为 Document 列表
+        Convert sections to a list of Documents.
 
         Args:
-            sections: 底层解析器返回的 sections
-            base_metadata: 基础元数据
+            sections: Sections returned by underlying parser.
+            base_metadata: Base metadata.
 
         Returns:
-            Document 列表
+            List of Documents.
         """
         if not sections:
             return []
@@ -178,14 +178,14 @@ class BaseAdvancedParser(ABC):
         base_metadata: dict
     ) -> List[Document]:
         """
-        将 tables 转换为 Document 列表
+        Convert tables to a list of Documents.
 
         Args:
-            tables: 底层解析器返回的 tables
-            base_metadata: 基础元数据
+            tables: Tables returned by underlying parser.
+            base_metadata: Base metadata.
 
         Returns:
-            Document 列表
+            List of Documents.
         """
         if not tables:
             return []
@@ -208,18 +208,18 @@ class BaseAdvancedParser(ABC):
 
     def _extract_table_content(self, table: Any) -> str:
         """
-        从表格数据中提取内容
+        Extract content from table data.
 
         Args:
-            table: 表格数据（可能是多种格式）
+            table: Table data (may be in different formats).
 
         Returns:
-            表格内容字符串
+            Table content string.
         """
         if isinstance(table, tuple) and len(table) >= 1:
             table_data = table[0]
             if isinstance(table_data, tuple) and len(table_data) >= 2:
-                # (image, html) 格式
+                # (image, html) format
                 html_content = table_data[1]
                 if isinstance(html_content, str):
                     return html_content
@@ -236,30 +236,30 @@ class BaseAdvancedParser(ABC):
         **kwargs
     ) -> List[Document]:
         """
-        解析文档
+        Parse document.
 
         Args:
-            file_path: 文档文件路径
-            **kwargs: 额外参数
+            file_path: Document file path.
+            **kwargs: Extra args.
 
         Returns:
-            LangChain Document 列表
+            List of LangChain Documents.
         """
         file_path = Path(file_path)
         self._validate_file(file_path)
 
         parser = self._get_parser()
 
-        # 检查安装
+        # Check installation.
         ok, reason = self._check_parser_installation(parser)
         if not ok:
             raise RuntimeError(f"{self._get_parser_name()} not available: {reason}")
 
-        # 读取文件
+        # Read file.
         with open(file_path, "rb") as f:
             binary = f.read()
 
-        # 调用底层解析器
+        # Call underlying parser.
         callback = self._create_callback()
         sections, tables = self._call_parse_method(
             parser=parser,
@@ -269,7 +269,7 @@ class BaseAdvancedParser(ABC):
             **kwargs
         )
 
-        # 转换为 LangChain Document 格式
+        # Convert to LangChain Document format.
         base_metadata = {
             "source": str(file_path.name),
             "filename": file_path.name,
@@ -292,14 +292,14 @@ class BaseAdvancedParser(ABC):
         **kwargs,
     ) -> List[Document]:
         """
-        异步解析文档（使用 aiofiles 进行异步文件读取）
-        
+        Parse document asynchronously (aiofiles for async file IO).
+
         Args:
-            file_path: 文档文件路径
-            **kwargs: 额外参数
-        
+            file_path: Document file path.
+            **kwargs: Extra args.
+
         Returns:
-            LangChain Document 列表
+            List of LangChain Documents.
         """
         import aiofiles
         
@@ -308,16 +308,16 @@ class BaseAdvancedParser(ABC):
 
         parser = self._get_parser()
 
-        # 检查安装
+        # Check installation.
         ok, reason = self._check_parser_installation(parser)
         if not ok:
             raise RuntimeError(f"{self._get_parser_name()} not available: {reason}")
 
-        # 异步读取文件
+        # Read file asynchronously.
         async with aiofiles.open(file_path, "rb") as f:
             binary = await f.read()
 
-        # 在线程池中调用底层解析器（解析器本身可能是同步的）
+        # Call underlying parser in a thread pool (parser may be sync).
         def _parse_in_thread():
             callback = self._create_callback()
             sections, tables = self._call_parse_method(
@@ -328,7 +328,7 @@ class BaseAdvancedParser(ABC):
                 **kwargs
             )
             
-            # 转换为 LangChain Document 格式
+            # Convert to LangChain Document format.
             base_metadata = {
                 "source": str(file_path.name),
                 "filename": file_path.name,

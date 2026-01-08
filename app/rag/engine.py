@@ -40,7 +40,7 @@ class RAGEngine:
     """RAG 对话引擎"""
 
     def __init__(self) -> None:
-        # LLM 配置
+        # LLM config.
         trust_env = httpx_trust_env(logger=logger)
         self.http_client = httpx.Client(trust_env=trust_env)
         self.http_async_client = httpx.AsyncClient(trust_env=trust_env)
@@ -55,7 +55,7 @@ class RAGEngine:
             if settings.LLM_MODEL_HEAVY:
                 self.models["heavy"] = self._build_llm(ChatOpenAI, settings.LLM_MODEL_HEAVY or default_model_name)
 
-        # Prompt 模板（支持对话历史）
+        # Prompt templates (support chat history).
         self.prompt_template = ChatPromptTemplate.from_template(
             """你是一个专业的知识库助手。请基于以下参考资料和对话历史回答用户问题。
 
@@ -82,7 +82,7 @@ class RAGEngine:
 【回答】"""
         )
 
-        # 结构化输出预设格式（可扩展）
+        # Structured output presets (extensible).
         self.structured_presets: Dict[str, str] = {
             "faq": (
                 "仅输出 JSON，结构："
@@ -104,7 +104,7 @@ class RAGEngine:
             ),
         }
 
-        # Query Rewrite：将追问改写为“可检索”的独立问题（可选开启）
+        # Query Rewrite: rewrite follow-ups into standalone retrievable queries (optional).
         self.rewrite_prompt = ChatPromptTemplate.from_template(
             """你是一个知识库检索助手。请把“当前问题”改写成一个独立、明确、适合检索的查询句。
 要求：
@@ -122,7 +122,7 @@ class RAGEngine:
         )
 
 
-        # Multi-Query：生成多个表述/角度的检索查询（可选开启）
+        # Multi-Query: generate multiple query variants (optional).
         self.multi_query_prompt = ChatPromptTemplate.from_template(
             """你是一个知识库检索 Query 扩展器。请基于以下“检索查询”生成 {n} 条不同表述/角度的检索查询，用于提升召回。
 要求：
@@ -137,7 +137,7 @@ class RAGEngine:
 【JSON 数组】"""
         )
 
-        # HyDE：生成“假想的参考资料片段”用于向量检索增强（可选开启）
+        # HyDE: generate hypothetical passages for vector retrieval (optional).
         self.hyde_prompt = ChatPromptTemplate.from_template(
             """你是一个知识库检索助手。请针对以下“问题”写一段“假想的参考资料片段”，用来帮助向量检索召回相关内容。
 要求：
@@ -151,7 +151,7 @@ class RAGEngine:
 【假想片段】"""
         )
 
-        # Query Decomposition：将复杂问题拆成多个子问题分别检索（可选开启）
+        # Query Decomposition: split complex questions into sub-queries (optional).
         self.decompose_prompt = ChatPromptTemplate.from_template(
             """你是一个知识库检索问题拆解器。请把下面的“检索查询”拆解成最多 {n} 个子问题，用于分别检索并融合召回。
 要求：
@@ -446,7 +446,7 @@ class RAGEngine:
                     },
                 }
 
-            # 对话历史（用于 prompt + 可选 Query Rewrite）
+            # Chat history (for prompt + optional query rewrite).
             history_text = format_history_text(history, window=settings.CHAT_HISTORY_WINDOW)
 
             t_all_start = time.time()
@@ -455,7 +455,7 @@ class RAGEngine:
             rewrite_used = False
             rewrite_model_used = None
 
-            # Step 0: Query Rewrite（可选）
+            # Step 0: Query Rewrite (optional).
             if (
                 settings.ENABLE_QUERY_REWRITE
                 and history_text != "（无历史对话）"
@@ -512,7 +512,7 @@ class RAGEngine:
             rerank_provider = reranker_provider or settings.RERANKER_PROVIDER or "llm"
             rerank_top_n = int(reranker_top_n or settings.RERANKER_TOP_N or 20)
 
-            # Step 0.5: Query Expansion（Multi-Query / HyDE，可选）
+            # Step 0.5: Query Expansion (Multi-Query / HyDE, optional).
             multi_query_elapsed = 0.0
             multi_query_used = False
             multi_query_model_used = None
@@ -641,7 +641,7 @@ class RAGEngine:
 
             decompose_used = bool(sub_questions)
 
-            # Step 1: 混合检索（LangChain Retriever）
+            # Step 1: Hybrid retrieval (LangChain Retriever).
             retriever = hybrid_retriever.model_copy(
                 update={
                     "k": top_k,
@@ -744,7 +744,7 @@ class RAGEngine:
                 docs = self.fuse_docs_rrf(docs_by_query, rrf_k=settings.RETRIEVAL_RRF_K, meta_prefix="query_expansion")
             docs = docs[: max(0, int(top_k or 0))] if docs else []
 
-            # 构建引用信息
+            # Build citation info.
             citations: List[Dict[str, Any]] = build_citations_from_docs(
                 docs,
                 retrieval_elapsed_sec=retrieval_elapsed,
@@ -752,13 +752,13 @@ class RAGEngine:
                 query=query_for_retrieval,
             )
 
-            # 发送引用信息
+            # Send citation info.
             yield {
                 "type": "citations",
                 "data": citations
             }
 
-            # Step 1.5: 无召回/低证据拒答（可选）
+            # Step 1.5: No-retrieval/low-evidence refusal (optional).
             abstain_enabled = bool(settings.RAG_ABSTAIN_ENABLED)
             abstain_triggered = False
             abstain_reason: str | None = None
@@ -818,7 +818,7 @@ class RAGEngine:
                     structured_parse_meta = {"ok": True, "method": "abstain", "error": None}
                     full_response = json.dumps(payload, ensure_ascii=False)
 
-                # 让前端/DB 有内容可保存
+                # Ensure frontend/DB has content to persist.
                 yield {"type": "token", "data": {"content": full_response}}
 
                 t_total = time.time() - t_all_start
@@ -885,7 +885,7 @@ class RAGEngine:
                 )
                 return
 
-            # Step 2: 额外召回 KG 事件（可选）
+            # Step 2: Additional KG event recall (optional).
             kg_context = ""
             if settings.KG_ENABLED and settings.KG_CHAT_ENABLED and tenant_id and document_ids:
                 kg_result = await kg_search(
@@ -909,7 +909,7 @@ class RAGEngine:
                     elif settings.RAG_CONTEXT_MAX_KG_CHARS > 0 and len(kg_context) > settings.RAG_CONTEXT_MAX_KG_CHARS:
                         kg_context = kg_context[: settings.RAG_CONTEXT_MAX_KG_CHARS] + "..."
 
-            # Step 3: 构建上下文（文档切片 + 可选 KG 事件）
+            # Step 3: Build context (document chunks + optional KG events).
             chunk_context = ""
             if docs:
                 max_per_chunk_chars = max(0, int(settings.RAG_CONTEXT_MAX_CHARS_PER_CHUNK or 0))
@@ -1051,7 +1051,7 @@ class RAGEngine:
                 }
             )
 
-            # Step 4: 流式生成回答
+            # Step 4: Stream answer generation.
             full_response = ""
             gen_start = time.time()
             pii_on = False
@@ -1105,7 +1105,7 @@ class RAGEngine:
                     full_response += emit_safe
                     yield {"type": "token", "data": {"content": emit_safe}}
 
-            # Step 4.5: 将引用图片以内嵌 Markdown 的形式追加到正文（仅非结构化输出，可配置）
+            # Step 4.5: Append cited images as inline Markdown (non-structured output only).
             if (
                 not structured_output
                 and citations
@@ -1134,7 +1134,7 @@ class RAGEngine:
                     full_response += images_md_safe
                     yield {"type": "token", "data": {"content": images_md_safe}}
 
-            # Step 5: 发送完成信号
+            # Step 5: Send completion signal.
             generation_elapsed = time.time() - gen_start
             t_total = time.time() - t_all_start
             structured_data = None
@@ -1233,7 +1233,7 @@ class RAGEngine:
             }
             yield done_payload
 
-            # 日志落地（可选）
+            # Persist logs (optional).
             log_metrics(
                 {
                     "event": "rag_done",
@@ -1249,7 +1249,7 @@ class RAGEngine:
             )
 
         except Exception as e:
-            # 错误处理
+            # Error handling.
             log_metrics(
                 {
                     "event": "rag_error",
