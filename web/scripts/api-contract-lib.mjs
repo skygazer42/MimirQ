@@ -4,8 +4,8 @@ import { fileURLToPath } from 'node:url'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
-// This script lives under scripts/. Repo root is one level up.
-const ROOT = path.resolve(__dirname, '..')
+// This script lives under web/scripts/. Repo root is two levels up.
+const ROOT = path.resolve(__dirname, '../..')
 
 export function readText(relPath) {
   return fs.readFileSync(path.join(ROOT, relPath), 'utf8')
@@ -172,4 +172,3 @@ export function parseFrontendRoutes({ files } = {}) {
   }
   return Array.from(uniq.values())
 }
-
