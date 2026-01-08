@@ -21,6 +21,7 @@ import {
   BarChart3,
   Wand2,
   ShieldCheck,
+  User,
   LogIn,
   LogOut,
 } from 'lucide-react'
@@ -188,7 +189,7 @@ export function Navbar({
         {/* 新对话按钮 */}
         <div className="p-4 pb-2">
           <Button
-            className="w-full justify-start gap-2 bg-primary hover:bg-primary/90 text-primary-foreground shadow-sm h-10 rounded-xl transition-all"
+            className="w-full justify-start gap-2 bg-gradient-to-r from-primary to-primary/90 hover:from-primary/90 hover:to-primary text-primary-foreground shadow-md hover:shadow-lg hover:shadow-primary/20 h-11 rounded-2xl transition-all duration-300 hover:-translate-y-0.5 active:translate-y-0"
             onClick={() => {
               router.push('/')
               closeSidebarOnMobile()
@@ -231,26 +232,32 @@ export function Navbar({
         </div>
 
         {/* 底部信息 */}
-        <div className="p-4 border-t border-slate-50 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/30">
+        <div className="p-4 border-t border-slate-100 dark:border-slate-800 bg-slate-50/30 dark:bg-slate-900/20">
           <div className="flex items-center gap-2">
-            <div className="flex-1 flex items-center gap-3 p-2 rounded-xl hover:bg-white dark:hover:bg-slate-800 hover:shadow-sm transition-all border border-transparent hover:border-slate-100 dark:hover:border-slate-700">
-              <div className="w-9 h-9 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-full flex items-center justify-center text-white text-sm font-bold shadow-inner">
-                {(user?.username || user?.email || 'U').slice(0, 1).toUpperCase()}
+            <div className="flex-1 flex items-center gap-3 p-2 rounded-xl hover:bg-white dark:hover:bg-slate-800/80 hover:shadow-md hover:shadow-slate-200/50 dark:hover:shadow-none transition-all duration-300 border border-transparent hover:border-slate-200 dark:hover:border-slate-700 group cursor-pointer">
+              <div className="relative w-10 h-10 flex-shrink-0">
+                <div className="absolute inset-0 bg-gradient-to-tr from-slate-100 to-slate-50 dark:from-slate-800 dark:to-slate-700 rounded-xl border border-slate-200 dark:border-slate-600 shadow-sm group-hover:border-primary/30 transition-colors" />
+                <div className="absolute inset-0 flex items-center justify-center text-slate-500 dark:text-slate-400 group-hover:text-primary transition-colors">
+                  <User className="h-5 w-5" />
+                </div>
+                {isAuthenticated && (
+                  <div className="absolute -right-0.5 -bottom-0.5 w-3 h-3 bg-green-500 border-2 border-white dark:border-slate-900 rounded-full" />
+                )}
               </div>
               <div className="flex-1 min-w-0">
-                <p className="text-sm font-semibold text-slate-700 dark:text-slate-200 truncate">
+                <p className="text-sm font-semibold text-slate-700 dark:text-slate-200 truncate group-hover:text-primary transition-colors">
                   {user?.username || user?.email || (isDevMode ? '开发模式' : '未登录')}
                 </p>
-                <p className="text-xs text-slate-400 dark:text-slate-500 truncate">
-                  {isAuthenticated ? user?.email || '已登录' : '无需登录可继续开发'}
+                <p className="text-[11px] text-slate-400 dark:text-slate-500 truncate leading-tight mt-0.5">
+                  {isAuthenticated ? user?.email || '在线' : '本地开发环境'}
                 </p>
               </div>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex flex-col gap-1">
               <Button
                 variant="ghost"
                 size="icon"
-                className="h-8 w-8 rounded-full"
+                className="h-8 w-8 rounded-lg hover:bg-white dark:hover:bg-slate-800 hover:text-red-500 transition-colors"
                 onClick={() => {
                   if (isAuthenticated) {
                     logout()

@@ -1,6 +1,6 @@
 """
-知识库管理 API
-支持知识库的创建、查询、更新、删除，以及权限管理。
+Dataset management API.
+Supports dataset creation, query, update, deletion, and permission management.
 """
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session

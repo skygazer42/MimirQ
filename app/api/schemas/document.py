@@ -21,8 +21,8 @@ class DocumentPipelineOptions(BaseModel):
     governance_noise_ratio_threshold: Optional[float] = Field(default=None, ge=0.0, le=1.0, description="noise ratio threshold")
     governance_common_lines_min_docs: Optional[int] = Field(default=None, ge=2, le=50, description="common line min docs")
     governance_common_lines_min_ratio: Optional[float] = Field(default=None, ge=0.0, le=1.0, description="common line ratio")
-    chunk_size: Optional[int] = Field(default=None, ge=100, le=4000, description="切块大小")
-    chunk_overlap: Optional[int] = Field(default=None, ge=0, le=1000, description="重叠大小")
+    chunk_size: Optional[int] = Field(default=None, ge=100, le=4000, description="Chunk size")
+    chunk_overlap: Optional[int] = Field(default=None, ge=0, le=1000, description="Overlap size")
     chunk_vector_enabled: Optional[bool] = None
     bm25_index_enabled: Optional[bool] = None
     kg_enabled: Optional[bool] = None
@@ -146,8 +146,8 @@ class DocumentStatus(OrmModel):
 
 class ChunkPreviewParams(BaseModel):
     """Chunk preview parameters."""
-    chunk_size: int = Field(default=1000, ge=100, le=4000, description="切块大小")
-    chunk_overlap: int = Field(default=200, ge=0, le=1000, description="重叠大小")
+    chunk_size: int = Field(default=1000, ge=100, le=4000, description="Chunk size")
+    chunk_overlap: int = Field(default=200, ge=0, le=1000, description="Overlap size")
     unit: str = Field(default="chars", description="chunk_size/chunk_overlap unit: chars | tokens")
 
 
@@ -181,52 +181,52 @@ class ChunkPreviewResponse(BaseModel):
 
 class BatchFileInfo(BaseModel):
     """Batch upload file info."""
-    name: str = Field(..., description="文件名")
-    data_id: str = Field(..., description="自定义数据 ID，用于标识文件")
+    name: str = Field(..., description="Filename")
+    data_id: str = Field(..., description="Custom data ID for file identification")
 
 
 class BatchUploadRequest(BaseModel):
     """Batch request for upload URLs."""
-    files: List[BatchFileInfo] = Field(..., max_length=200, description="文件列表，最多 200 个")
+    files: List[BatchFileInfo] = Field(..., max_length=200, description="File list, max 200 files")
 
 
 class BatchUploadResponse(BaseModel):
     """Batch response for upload URLs."""
-    batch_id: str = Field(..., description="批次 ID")
-    file_urls: List[str] = Field(..., description="上传 URL 列表")
-    files: List[BatchFileInfo] = Field(..., description="文件信息列表")
+    batch_id: str = Field(..., description="Batch ID")
+    file_urls: List[str] = Field(..., description="Upload URL list")
+    files: List[BatchFileInfo] = Field(..., description="File info list")
     message: str = Field(default="Upload URLs generated. Please upload files within 24 hours.")
 
 
 class BatchTaskStatus(BaseModel):
-    """批量任务状态"""
+    """Batch task status."""
     batch_id: str
-    status: str = Field(..., description="任务状态: pending, processing, completed, failed")
+    status: str = Field(..., description="Task status: pending, processing, completed, failed")
     total_files: int
     completed_files: int
     failed_files: int
-    progress: int = Field(..., ge=0, le=100, description="进度百分比")
+    progress: int = Field(..., ge=0, le=100, description="Progress percentage")
     result_url: Optional[str] = None
     error: Optional[str] = None
 
 
-# ============ 批量文件上传（单次多文件）相关 Schema ============
+# ============ Batch file upload (multiple files per request) schemas ============
 
 class DocumentBatchUploadSuccess(BaseModel):
-    """批量上传成功的单个文件结果（轻量返回）。"""
+    """Single file result for successful batch upload (lightweight response)."""
     document_id: UUID
     filename: str
     status: str
 
 
 class DocumentBatchUploadFailure(BaseModel):
-    """批量上传失败的单个文件结果。"""
+    """Single file result for failed batch upload."""
     filename: str
     error: str
 
 
 class DocumentBatchUploadResponse(BaseModel):
-    """批量上传接口响应。"""
+    """Batch upload endpoint response."""
     total: int
     successful_count: int
     failed_count: int

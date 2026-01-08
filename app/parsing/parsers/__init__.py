@@ -1,8 +1,8 @@
 """
-文档解析器业务层封装
+Document parser business layer wrapper
 
-提供 LangChain Document 格式输出的解析器集合。
-底层调用 deepdoc/parser/ 的实现。
+Provides parser collection with LangChain Document format output.
+Underlying calls to deepdoc/parser/ implementations.
 """
 
 from .base_parser import BaseAdvancedParser

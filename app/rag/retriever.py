@@ -1,6 +1,6 @@
 """
-混合检索器：向量检索 + BM25 + 可选 MMR 多样性重排。
-参考示例仓库的 RAG_Agent，将检索模式和重排策略做成可配置化。
+Hybrid Retriever: Vector retrieval + BM25 + optional MMR diversity reranking.
+Reference: RAG_Agent example repository. Retrieval modes and reranking strategies are configurable.
 """
 from __future__ import annotations
 
@@ -38,7 +38,7 @@ logger = get_logger("rag.retriever")
 
 
 class HybridRetriever(BaseRetriever):
-    """混合检索器：向量 + 关键词 BM25，可选 MMR 重排。"""
+    """Hybrid Retriever: Vector + Keyword BM25, optional MMR reranking."""
 
     k: int = 5
     score_threshold: float = settings.SIMILARITY_THRESHOLD
@@ -405,7 +405,7 @@ class HybridRetriever(BaseRetriever):
         return tokenize_for_bm25(text)
 
     def build_bm25_index(self, chunks: List[DocumentChunk], tenant_id: Optional[UUID] = None):
-        """构建/重建 BM25 索引。"""
+        """Build/rebuild BM25 index."""
         if not chunks:
             return
 
@@ -425,7 +425,7 @@ class HybridRetriever(BaseRetriever):
         self._build_bm25_index_from_documents(docs, tenant_id=tenant_id)
 
     def _build_bm25_index_from_documents(self, docs: List[Document], *, tenant_id: Optional[UUID] = None) -> None:
-        """从 LangChain Document 列表构建 BM25（避免依赖 ORM 对象）。"""
+        """Build BM25 from LangChain Document list (avoids dependency on ORM objects)."""
         if not docs:
             return
         tenant_key = self._tenant_key(tenant_id)
@@ -454,8 +454,8 @@ class HybridRetriever(BaseRetriever):
         batch_size: int = 2000,
     ) -> int:
         """
-        从 DB 流式构建 BM25，避免 `.all()` 拉取巨大 ORM 列表导致的内存峰值。
-        仍会在内存持有 BM25 的 docs 语料（BM25 本身需要），但避免 ORM 对象开销。
+        Build BM25 from DB with streaming to avoid memory spikes from large ORM list via `.all()`.
+        Still holds BM25 docs in memory (BM25 itself requires this), but avoids ORM object overhead.
         """
         q = (
             db.query(
@@ -506,9 +506,9 @@ class HybridRetriever(BaseRetriever):
 
     def upsert_bm25_documents(self, docs: List[Document], tenant_id: Optional[UUID] = None):
         """
-        增量更新 BM25 索引（避免每次从 DB 全量扫描）。
-        注意：BM25Retriever 本身不可增量训练，这里用“在内存合并后重建”代替，
-        但仍显著减少 DB 查询开销，适合知识库大规模场景。
+        Incrementally update BM25 index (avoids full DB scan each time).
+        Note: BM25Retriever itself doesn't support incremental training, so we merge in-memory and rebuild.
+        This still significantly reduces DB query overhead, suitable for large-scale knowledge bases.
         """
         if not docs:
             return
@@ -541,7 +541,7 @@ class HybridRetriever(BaseRetriever):
         logger.info("BM25 index updated to %s chunks for tenant %s", len(merged_docs), tenant_key)
 
     def remove_document_from_bm25_index(self, document_id: UUID, tenant_id: Optional[UUID] = None):
-        """从 BM25 索引移除指定文档的所有切片。"""
+        """Remove all chunks of a specified document from the BM25 index."""
         tenant_key = self._tenant_key(tenant_id)
         existing = self._bm25_docs.get(tenant_key) or []
         if not existing:
@@ -581,7 +581,7 @@ class HybridRetriever(BaseRetriever):
         tenant_id: Optional[UUID] = None,
         metadata_filter: Optional[Dict[str, Any]] = None,
     ) -> List[Dict[str, Any]]:
-        """BM25 关键词检索（内部使用，返回带分数的 dict）。"""
+        """BM25 keyword retrieval (internal use, returns dicts with scores)."""
         tenant_key = self._tenant_key(tenant_id)
         retriever = self._bm25_retrievers.get(tenant_key)
         docs = self._bm25_docs.get(tenant_key)
@@ -646,7 +646,7 @@ class HybridRetriever(BaseRetriever):
         mmr_fetch_k_multiplier: int = 4,
         metadata_filter: Optional[Dict[str, Any]] = None,
     ) -> List[Dict[str, Any]]:
-        """混合检索：向量检索 + BM25，可选重排。"""
+        """Hybrid search: vector retrieval + BM25, optional reranking."""
         retrieval_mode = (retrieval_mode or "hybrid").lower()
 
         want_vector = retrieval_mode in ("hybrid", "vector", "mmr")
@@ -657,7 +657,7 @@ class HybridRetriever(BaseRetriever):
         if retrieval_mode == "mmr":
             fetch_k = top_k * max(1, mmr_fetch_k_multiplier)
 
-        # 1) 向量检索
+        # 1) Vector retrieval
         vector_results: List[Dict[str, Any]] = []
         if want_vector:
             vector_store = get_vector_store()
@@ -678,7 +678,7 @@ class HybridRetriever(BaseRetriever):
                 logger.warning("Vector search failed: %s", exc)
                 vector_results = []
 
-        # 2) BM25 检索
+        # 2) BM25 retrieval
         bm25_results: List[Dict[str, Any]] = []
         if want_bm25:
             bm25_results = self._search_bm25(
@@ -715,7 +715,7 @@ class HybridRetriever(BaseRetriever):
                 logger.warning("Vector search failed: %s", exc)
                 vector_results = []
 
-        # 尝试补全向量检索结果的 chunk_id（用于 citations / RAGAS contexts）
+        # Try to fill in chunk_id for vector retrieval results (for citations / RAGAS contexts)
         if vector_results:
             if metadata_filter and self.metadata_filter_enabled:
                 vector_results = [
@@ -744,7 +744,7 @@ class HybridRetriever(BaseRetriever):
                 meta["chunk_id"] = mapped
                 r["metadata"] = meta
 
-        # 3) 分数归一 + 线性合并
+        # 3) Score normalization + linear merge
         merged_results = self._merge_results(
             vector_results,
             bm25_results,
@@ -755,7 +755,7 @@ class HybridRetriever(BaseRetriever):
 
         merged_results = self._deduplicate_results(merged_results)
 
-        # 4) 重排策略
+        # 4) Reranking strategy
         if retrieval_mode == "mmr" and merged_results:
             merged_results = self._mmr_rerank(merged_results, query=query, top_k=top_k, lambda_mult=mmr_lambda)
         elif enable_weight_rerank and merged_results:
@@ -766,7 +766,7 @@ class HybridRetriever(BaseRetriever):
                 keyword_weight=keyword_weight,
             )
 
-        # 5) 可选：LLM Reranker 精排（在最终截断前执行）
+        # 5) Optional: LLM Reranker refinement (executed before final truncation)
         if merged_results and bool(self.enable_reranker):
             provider = (self.reranker_provider or settings.RERANKER_PROVIDER or "llm").lower()
             if provider not in ("none", "off", "false", "0"):
@@ -814,7 +814,7 @@ class HybridRetriever(BaseRetriever):
                             new_doc["rerank_model_used"] = result.model_used
                             ordered.append(new_doc)
 
-                        # 追加未被 reranker 返回的候选（保持原顺序）
+                        # Append candidates not returned by reranker (maintain original order)
                         for doc in merged_results[:candidates_n]:
                             rid = self._result_key(doc)
                             if rid in used:
@@ -841,10 +841,10 @@ class HybridRetriever(BaseRetriever):
 
     def _enrich_results_with_db_metadata(self, results: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """
-        向量库返回的 metadata 可能是“裁剪版”（例如不含 img_id）。
-        这里用 chunk_id / (document_id, chunk_index) 回查 DB，补全关键字段：
-        - img_id：用于 MinIO 图片展示
-        - page/source：用于上下文标注（尽量与 DB 保持一致）
+        Vector store may return "trimmed" metadata (e.g., without img_id).
+        Use chunk_id / (document_id, chunk_index) to look up DB and fill in key fields:
+        - img_id: For MinIO image display
+        - page/source: For context annotation (keeping consistent with DB)
         """
         if not results:
             return results
@@ -854,7 +854,7 @@ class HybridRetriever(BaseRetriever):
             tenant_filter = self.tenant_id
 
             chunk_ids: List[UUID] = []
-            # 先收集已有 chunk_id（优先用它回查）
+            # First collect existing chunk_ids (prefer using these for lookup)
             for r in results:
                 cid = r.get("chunk_id")
                 if not cid:
@@ -931,7 +931,7 @@ class HybridRetriever(BaseRetriever):
                     meta["chunk_id"] = cid_str
                     chunks_by_id[cid_str] = ck
 
-                    # 合并 DB metadata（只补空缺字段，避免覆盖向量侧的 score 等）
+                    # Merge DB metadata (only fill empty fields, avoid overwriting vector-side score etc.)
                     stored_meta = dict(ck.doc_metadata or {})
                     if stored_meta.get("img_id") and not meta.get("img_id"):
                         meta["img_id"] = stored_meta.get("img_id")
@@ -1441,7 +1441,7 @@ class HybridRetriever(BaseRetriever):
         vector_weight: float = 0.6,
         keyword_weight: float = 0.4,
     ) -> List[Dict[str, Any]]:
-        """向量得分 + 关键词 TF-IDF cosine 线性加权。"""
+        """Vector score + keyword TF-IDF cosine linear weighting."""
         if not documents:
             return documents
 
@@ -1495,9 +1495,9 @@ class HybridRetriever(BaseRetriever):
         lambda_mult: float = 0.7,
     ) -> List[Dict[str, Any]]:
         """
-        简易 MMR（最大边际相关性）重排：
-        max λ*sim(query, doc) - (1-λ)*max sim(doc, selected)
-        使用词袋 Jaccard 近似，轻量且无额外依赖。
+        Simple MMR (Maximal Marginal Relevance) reranking:
+        max lambda*sim(query, doc) - (1-lambda)*max sim(doc, selected)
+        Uses bag-of-words Jaccard approximation, lightweight with no extra dependencies.
         """
         if not documents:
             return documents
@@ -1505,7 +1505,7 @@ class HybridRetriever(BaseRetriever):
         lambda_mult = max(min(lambda_mult, 1.0), 0.0)
         selected: List[Dict[str, Any]] = []
         candidates = list(documents)
-        # 预先缓存 tokens，避免多次分词
+        # Pre-cache tokens to avoid multiple tokenizations
         tokens_map = {id(doc): self._tokenize_for_similarity(doc.get("content", "")) for doc in candidates}
 
         def doc_similarity(doc_a: Dict[str, Any], doc_b: Dict[str, Any]) -> float:
@@ -1540,5 +1540,5 @@ class HybridRetriever(BaseRetriever):
         return selected
 
 
-# 全局实例
+# Global instance
 hybrid_retriever = HybridRetriever()

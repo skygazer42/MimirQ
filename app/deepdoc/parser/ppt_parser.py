@@ -85,12 +85,12 @@ class RAGFlowPptParser:
 if __name__ == "__main__":
     parser = RAGFlowPptParser()
     ppt_path = "../data/love.pptx"
-    # 3. 指定提取的页码范围
+    # 3. Specify page range for extraction
     from_page = 0
     to_page = 5
-    # 4. 调用解析器提取文本
+    # 4. Call parser to extract text
     results = parser(ppt_path, from_page, to_page)
-    # 5. 打印结果（每页一个段落）
+    # 5. Print results (one paragraph per page)
     for i, page_text in enumerate(results, start=from_page):
-        print(f"\n--- 第 {i + 1} 页 ---\n")
+        print(f"\n--- Page {i + 1} ---\n")
         print(page_text)

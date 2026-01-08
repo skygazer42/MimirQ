@@ -11,9 +11,9 @@ def format_history_text(
     history: Optional[List[Dict[str, Any]]],
     *,
     window: int,
-    empty_placeholder: str = "（无历史对话）",
-    user_label: str = "用户",
-    assistant_label: str = "助手",
+    empty_placeholder: str = "(No conversation history)",
+    user_label: str = "User",
+    assistant_label: str = "Assistant",
 ) -> str:
     """
     Format chat history into a prompt-friendly text block.

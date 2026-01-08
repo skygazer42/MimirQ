@@ -347,14 +347,14 @@ async def llm_clean_preview(
         )
 
     system_prompt = (
-        "你是一个“Markdown 数据治理清洗器”。\n"
-        "目标：清理解析/复制导致的噪声与格式问题，但不要改变语义，不要编造或补充内容。\n"
-        "要求：\n"
-        "1) 保留标题/列表/表格/代码块结构；不要修改代码块内容。\n"
-        "2) 移除明显页眉页脚/页码/目录引导/重复短行/控制字符/零宽字符。\n"
-        "3) 规范化空白：合并多余空行、去除行尾空格，必要时合并“软换行”。\n"
-        "4) 不要翻译、不做改写；仅做清洗/规范化。\n"
-        "输出：严格返回 JSON，字段包含 markdown/changes/warnings。\n"
+        "You are a 'Markdown data governance cleaner'.\n"
+        "Goal: Clean up noise and formatting issues from parsing/copying, but do not change semantics or fabricate content.\n"
+        "Requirements:\n"
+        "1) Preserve heading/list/table/code block structure; do not modify code block content.\n"
+        "2) Remove obvious headers/footers/page numbers/TOC markers/repeated short lines/control characters/zero-width characters.\n"
+        "3) Normalize whitespace: merge excess blank lines, remove trailing spaces, merge 'soft line breaks' when necessary.\n"
+        "4) Do not translate or rewrite; only clean and normalize.\n"
+        "Output: Return strict JSON with fields: markdown/changes/warnings.\n"
     )
     selected_prompt_template_id: str | None = None
     selected_prompt_template_key: str | None = None
@@ -421,7 +421,7 @@ async def llm_clean_preview(
             raw = resp.get("raw")
             if isinstance(raw, str) and raw.strip():
                 cleaned = raw.strip()
-                warnings.append("LLM 未按 JSON schema 返回，已回退使用 raw 文本。")
+                warnings.append("LLM did not return JSON schema; falling back to raw text.")
 
         warn_val = resp.get("warnings")
         if isinstance(warn_val, list):
@@ -429,7 +429,7 @@ async def llm_clean_preview(
 
     if not cleaned.strip():
         cleaned = markdown
-        warnings.append("LLM 返回为空，已回退原文。")
+        warnings.append("LLM returned empty; falling back to original text.")
 
     return LLMCleanPreviewResponse(
         markdown=cleaned,
@@ -477,14 +477,14 @@ async def upload_zip_with_images(
     if not settings.MINIO_ENABLED:
         raise HTTPException(
             status_code=503,
-            detail="MinIO 未启用，无法处理图片上传。请设置 MINIO_ENABLED=true"
+            detail="MinIO is disabled; cannot process image uploads. Set MINIO_ENABLED=true"
         )
-    
+
     # Validate file type.
     if not file.filename.endswith('.zip'):
         raise HTTPException(
             status_code=400,
-            detail="仅支持 ZIP 格式文件"
+            detail="Only ZIP format files are supported"
         )
 
     try:
@@ -526,12 +526,12 @@ async def upload_zip_with_images(
     except (ValueError, zipfile.BadZipFile) as e:
         raise HTTPException(
             status_code=400,
-            detail=f"ZIP 格式/内容不合法: {str(e)}",
+            detail=f"Invalid ZIP format/content: {str(e)}",
         )
     except Exception as e:
         raise HTTPException(
             status_code=500,
-            detail=f"ZIP 处理失败: {str(e)}"
+            detail=f"ZIP processing failed: {str(e)}"
         )
     finally:
         # Clean up temporary files.

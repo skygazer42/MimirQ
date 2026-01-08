@@ -141,28 +141,28 @@ class RAGFlowDocxParser:
 
 
 if __name__ == "__main__":
-    # 1. 引入所需模块
+    # 1. Import required modules
     import sys
 
-    # 2. 初始化解析器
+    # 2. Initialize the parser
     parser = RAGFlowDocxParser()
-    # 3. 提供 docx 文件路径
+    # 3. Provide docx file path
     docx_path = "/data/Langagent/deepdoc/data/exmaple.docx"
     if len(sys.argv) > 1:
         docx_path = sys.argv[1]
 
-    # 4. 调用解析器
+    # 4. Call the parser
     paragraphs, tables = parser(docx_path)
 
-    # 5. 打印段落内容
-    print("=== 文本段落 ===")
+    # 5. Print paragraph content
+    print("=== Text Paragraphs ===")
     for i, (text, style) in enumerate(paragraphs):
         if text.strip():
-            print(f"[段落 {i + 1} - 样式: {style}]: {text}")
+            print(f"[Paragraph {i + 1} - Style: {style}]: {text}")
 
-    # 6. 打印表格内容
-    print("\n=== 表格内容 ===")
+    # 6. Print table content
+    print("\n=== Table Content ===")
     for i, table_lines in enumerate(tables):
-        print(f"\n[表格 {i + 1}]")
+        print(f"\n[Table {i + 1}]")
         for line in table_lines:
             print(line)

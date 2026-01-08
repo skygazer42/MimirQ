@@ -1,7 +1,7 @@
 """
-Schema 基础模型
+Schema base models.
 
-提供所有 API Schema 的公共基类，消除重复的 Config 定义。
+Provides common base classes for all API schemas, eliminating duplicate Config definitions.
 """
 
 from datetime import datetime
@@ -11,19 +11,19 @@ from pydantic import BaseModel, ConfigDict
 
 class OrmModel(BaseModel):
     """
-    ORM 模型基类
+    ORM model base class.
 
-    所有需要从数据库模型转换的 Schema 都应继承此类。
-    自动启用 from_attributes 配置。
+    All schemas that need to convert from database models should inherit this class.
+    Automatically enables from_attributes configuration.
     """
     model_config = ConfigDict(from_attributes=True)
 
 
 class TimestampMixin(BaseModel):
     """
-    时间戳 Mixin
+    Timestamp mixin.
 
-    提供 created_at 和 updated_at 字段。
+    Provides created_at and updated_at fields.
     """
     created_at: datetime
     updated_at: Optional[datetime] = None
@@ -31,9 +31,9 @@ class TimestampMixin(BaseModel):
 
 class OrmTimestampModel(OrmModel):
     """
-    带时间戳的 ORM 模型基类
+    ORM model base class with timestamps.
 
-    结合 OrmModel 和 TimestampMixin 功能。
+    Combines OrmModel and TimestampMixin functionality.
     """
     created_at: datetime
     updated_at: Optional[datetime] = None

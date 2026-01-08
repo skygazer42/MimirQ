@@ -13,12 +13,12 @@ from pydantic import BaseModel, Field
 from .base import OrmModel
 
 class RagasRegressionCaseCreateRequest(BaseModel):
-    question: str = Field(..., min_length=1, description="问题（回归用例的 user_input）")
-    dataset_id: Optional[UUID] = Field(default=None, description="知识库/数据集 ID（可选）")
-    document_ids: List[UUID] = Field(default_factory=list, description="限制文档范围（可选，优先于 dataset_id）")
-    expected_answer: Optional[str] = Field(default=None, description="期望答案（可选，用于人工对比/监督）")
-    tags: List[str] = Field(default_factory=list, description="标签（可选）")
-    extra: Dict[str, Any] = Field(default_factory=dict, description="扩展字段（可选）")
+    question: str = Field(..., min_length=1, description="Question (user_input for regression case)")
+    dataset_id: Optional[UUID] = Field(default=None, description="Dataset ID (optional)")
+    document_ids: List[UUID] = Field(default_factory=list, description="Document scope (optional, takes priority over dataset_id)")
+    expected_answer: Optional[str] = Field(default=None, description="Expected answer (optional, for manual comparison/supervision)")
+    tags: List[str] = Field(default_factory=list, description="Tags (optional)")
+    extra: Dict[str, Any] = Field(default_factory=dict, description="Extension fields (optional)")
 
 
 class RagasRegressionCaseOut(OrmModel):
@@ -41,14 +41,14 @@ class RagasRegressionCaseList(BaseModel):
 
 
 class RagasRegressionRunCreateRequest(BaseModel):
-    case_ids: List[UUID] = Field(default_factory=list, description="要运行的 case id 列表（为空则按过滤条件选择）")
-    dataset_id: Optional[UUID] = Field(default=None, description="仅运行某个 dataset 下的用例（可选）")
+    case_ids: List[UUID] = Field(default_factory=list, description="Case IDs to run (if empty, select by filter criteria)")
+    dataset_id: Optional[UUID] = Field(default=None, description="Only run cases under this dataset (optional)")
     metrics: List[str] = Field(
         default_factory=lambda: ["faithfulness", "response_relevancy"],
-        description="RAGAS 指标列表",
+        description="RAGAS metrics list",
     )
-    skip_empty_contexts: bool = Field(default=True, description="跳过无 contexts 的用例（默认 true）")
-    max_cases: int = Field(default=50, ge=1, le=500, description="最多跑多少条用例（默认 50）")
+    skip_empty_contexts: bool = Field(default=True, description="Skip cases without contexts (default: true)")
+    max_cases: int = Field(default=50, ge=1, le=500, description="Max cases to run (default: 50)")
 
     # Retrieval config (aligned with chat.rag_config for comparisons).
     top_k: int = Field(default=5, ge=1, le=50)
@@ -59,9 +59,9 @@ class RagasRegressionRunCreateRequest(BaseModel):
     vector_weight: float = Field(default=0.6, ge=0.0, le=1.0)
     keyword_weight: float = Field(default=0.4, ge=0.0, le=1.0)
     mmr_lambda: float = Field(default=0.7, ge=0.0, le=1.0)
-    enable_reranker: bool = Field(default=False, description="是否启用 LLM reranker 精排")
-    reranker_provider: str = Field(default="llm", description="reranker provider: llm | pc | none")
-    reranker_top_n: int = Field(default=20, ge=1, le=200, description="精排候选数量（越大越慢）")
+    enable_reranker: bool = Field(default=False, description="Enable LLM reranker for re-ranking")
+    reranker_provider: str = Field(default="llm", description="Reranker provider: llm | pc | none")
+    reranker_top_n: int = Field(default=20, ge=1, le=200, description="Rerank candidate count (higher is slower)")
 
     # PromptTemplate selection (optional; for version/A-B comparison).
     prompt_template_id: Optional[UUID] = None

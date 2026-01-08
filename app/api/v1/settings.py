@@ -682,11 +682,11 @@ async def update_settings(
 
         return {
             "success": True,
-            "message": "配置已保存，部分设置需要重启后端服务才能生效",
+            "message": "Configuration saved. Some settings require backend restart to take effect.",
             "updated_keys": updated_keys
         }
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"保存配置失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to save configuration: {str(e)}")
 
 
 @router.get("/status")
@@ -768,7 +768,7 @@ async def get_system_status(
         db.execute(text("SELECT 1"))
         db.close()
         status["database"]["connected"] = True
-        status["database"]["message"] = "已连接"
+        status["database"]["message"] = "connected"
     except Exception as e:
         status["database"]["message"] = str(e)[:100]
 
@@ -783,7 +783,7 @@ async def get_system_status(
         )
         connections.disconnect("status_check")
         status["milvus"]["connected"] = True
-        status["milvus"]["message"] = "已连接"
+        status["milvus"]["message"] = "connected"
     except Exception as e:
         status["milvus"]["message"] = str(e)[:100]
 

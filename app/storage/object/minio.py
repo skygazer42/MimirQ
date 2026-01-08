@@ -133,7 +133,7 @@ class MinIOService:
         except Exception as e:  # noqa: BLE001
             logger.error("MinIO upload failed: %s", e)
             self._log_metric("upload", False, time.perf_counter() - t0, object_name, error=str(e))
-            raise RuntimeError(f"MinIO 图片上传失败: {e}") from e
+            raise RuntimeError(f"MinIO image upload failed: {e}") from e
 
     async def upload_image_async(
         self,
@@ -282,7 +282,7 @@ class MinIOService:
         except Exception as e:
             logger.error("MinIO presign URL failed: %s", e)
             self._log_metric("presign", False, time.perf_counter() - t0, locals().get("object_name", ""), error=str(e))
-            raise RuntimeError(f"MinIO 获取图片 URL 失败: {e}") from e
+            raise RuntimeError(f"MinIO get image URL failed: {e}") from e
 
     def delete_image(self, img_id: str, extension: str = "jpg"):
         """

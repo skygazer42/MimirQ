@@ -28,9 +28,9 @@ from io import BytesIO
 from timeit import default_timer as timer
 
 import numpy as np
-import pdfplumber  # 提取PDF页面信息与文字字符、坐标、目录等
-import trio  # 异步并发（多页异步 OCR）。
-import xgboost as xgb  # 段落合并预测模型。
+import pdfplumber  # Extract PDF page info, text characters, coordinates, TOC, etc.
+import trio  # Async concurrency (multi-page async OCR).
+import xgboost as xgb  # Paragraph merge prediction model.
 from PIL import Image
 from huggingface_hub import snapshot_download
 from pypdf import PdfReader as pdf2_read
@@ -39,7 +39,7 @@ from ..src.model import rag_tokenizer
 from ..vision import OCR, LayoutRecognizer, TableStructureRecognizer
 from ..vision.recognizer import Recognizer
 
-LIGHTEN = int(os.getenv("LIGHTEN", "0"))  # 结果是 0
+LIGHTEN = int(os.getenv("LIGHTEN", "0"))  # Result is 0
 PARALLEL_DEVICES = 0  # cuda torch
 
 LOCK_KEY_pdfplumber = "global_shared_lock_pdfplumber"
@@ -164,28 +164,28 @@ class RAGFlowPdfParser:
         For Windows:
         Good luck
         ^_-
-         把 PDF 按页拆分，提取文本框、表格、图像等结构。
+         Split PDF by pages, extract text boxes, tables, images and other structures.
         """
 
         self.ocr = OCR()
-        self.parallel_limiter = None  # 初始化并发限制
+        self.parallel_limiter = None  # Initialize concurrency limiter
 
         if hasattr(self, "model_speciess"):
-            self.layouter = LayoutRecognizer("layout." + self.model_speciess)  # 使用指定模型初始化版面识别器
+            self.layouter = LayoutRecognizer("layout." + self.model_speciess)  # Initialize layout recognizer with specified model
         else:
-            self.layouter = LayoutRecognizer("layout")  # 使用默认模型初始化版面识别器
-        self.tbl_det = TableStructureRecognizer()  # 初始化表格结构识别器
+            self.layouter = LayoutRecognizer("layout")  # Initialize layout recognizer with default model
+        self.tbl_det = TableStructureRecognizer()  # Initialize table structure recognizer
 
-        self.updown_cnt_mdl = xgb.Booster()  # 初始化xgboost模型用于判断段落是否拼接
+        self.updown_cnt_mdl = xgb.Booster()  # Initialize xgboost model for paragraph concatenation prediction
         if not LIGHTEN:
             try:
                 import torch
                 if torch.cuda.is_available():
-                    self.updown_cnt_mdl.set_param({"device": "cuda"})  # 如果支持 CUDA，则使用 GPU 加速
+                    self.updown_cnt_mdl.set_param({"device": "cuda"})  # Use GPU acceleration if CUDA is available
             except Exception:
                 logging.exception("RAGFlowPdfParser __init__")
         try:
-            # 尝试加载本地模型，如果失败则从 HuggingFace 拉取模型快照
+            # Try to load local model; if failed, download model snapshot from HuggingFace
             model_dir = get_default_resource_dir()
             self.updown_cnt_mdl.load_model(os.path.join(
                 model_dir, "updown_concat_xgb.model"))
@@ -196,29 +196,29 @@ class RAGFlowPdfParser:
                 local_dir_use_symlinks=False)
             self.updown_cnt_mdl.load_model(os.path.join(
                 model_dir, "updown_concat_xgb.model"))
-        # 设置页面起始编号
+        # Set page starting number
         self.page_from = 0
 
-    # 计算字符的宽度（右边 - 左边）/ 文本长度
+    # Calculate character width (right - left) / text length
     def __char_width(self, c):
         return (c["x1"] - c["x0"]) // max(len(c["text"]), 1)
 
-    # 计算字符框的高度
+    # Calculate character box height
     def __height(self, c):
         return c["bottom"] - c["top"]
 
-    # 计算两个框在x方向的最小距离（可能重叠）
+    # Calculate minimum distance between two boxes in x direction (may overlap)
     def _x_dis(self, a, b):
         return min(abs(a["x1"] - b["x0"]), abs(a["x0"] - b["x1"]),
                    abs(a["x0"] + a["x1"] - b["x0"] - b["x1"]) / 2)
 
-    # 计算两个框在y方向上的中心点差值
+    # Calculate center point difference between two boxes in y direction
     def _y_dis(
             self, a, b):
         return (
                 b["top"] + b["bottom"] - a["top"] - a["bottom"]) / 2
 
-    # 判断文本是否符合项目编号等特征（如“第x章”、“1.”、“1.1.” 等）
+    # Check if text matches item numbering patterns (e.g., "Chapter X", "1.", "1.1.", etc.)
     def _match_proj(self, b):
         proj_patt = [
             r"第[零一二三四五六七八九十百]+章",
@@ -295,11 +295,11 @@ class RAGFlowPdfParser:
 
     @staticmethod
     def sort_X_by_page(arr, threashold):
-        # 按页面编号、x坐标、y坐标进行排序
+        # Sort by page number, x coordinate, y coordinate
         arr = sorted(arr, key=lambda r: (r["page_number"], r["x0"], r["top"]))
         for i in range(len(arr) - 1):
             for j in range(i, -1, -1):
-                # 如果当前项与前一项的x坐标差距小于阈值，且当前项的 top 小（在更上方），并且在同一页，则交换位置
+                # If x coordinate difference is less than threshold, current item's top is smaller (higher position), and on same page, swap positions
                 if abs(arr[j + 1]["x0"] - arr[j]["x0"]) < threashold \
                         and arr[j + 1]["top"] < arr[j]["top"] \
                         and arr[j + 1]["page_number"] == arr[j]["page_number"]:
@@ -309,80 +309,80 @@ class RAGFlowPdfParser:
         return arr
 
     def _has_color(self, o):
-        # 判断该文本对象是否具有颜色（主要用于判断灰度文本是否为有效文本）
+        # Check if text object has color (mainly for determining if grayscale text is valid)
         if o.get("ncs", "") == "DeviceGray":
-            # 如果描边颜色和填充颜色都是白色（1 表示白色）
+            # If both stroke color and fill color are white (1 means white)
             if o["stroking_color"] and o["stroking_color"][0] == 1 and o["non_stroking_color"] and \
                     o["non_stroking_color"][0] == 1:
-                # 如果文本是无效占位符字符，例如 [a-zT_[]()-]
+                # If text is invalid placeholder characters, e.g., [a-zT_[]()-]
                 if re.match(r"[a-zT_\[\]\(\)-]+", o.get("text", "")):
                     return False
         return True
 
     def _table_transformer_job(self, ZM):
-        # 表格结构识别处理流程
+        # Table structure recognition processing flow
         logging.debug("Table processing...")
-        imgs, pos = [], []  # 存储裁剪后的图像和对应坐标
-        tbcnt = [0]  # 每页表格数量的累计统计
-        MARGIN = 10  # 表格图像周围边距
-        self.tb_cpns = []  # 最终识别出的表格组件
-        assert len(self.page_layout) == len(self.page_images)  # 布局页数与图片页数一致
-        for p, tbls in enumerate(self.page_layout):  # # 遍历每页布局信息
-            tbls = [f for f in tbls if f["type"] == "table"]  # 仅保留表格布局
+        imgs, pos = [], []  # Store cropped images and corresponding coordinates
+        tbcnt = [0]  # Cumulative count of tables per page
+        MARGIN = 10  # Margin around table images
+        self.tb_cpns = []  # Final recognized table components
+        assert len(self.page_layout) == len(self.page_images)  # Layout pages must match image pages
+        for p, tbls in enumerate(self.page_layout):  # Iterate through each page's layout info
+            tbls = [f for f in tbls if f["type"] == "table"]  # Keep only table layouts
             tbcnt.append(len(tbls))
             if not tbls:
                 continue
             for tb in tbls:
-                # 根据边距裁剪图像区域并转换为像素级坐标
+                # Crop image region based on margin and convert to pixel coordinates
                 left, top, right, bott = tb["x0"] - MARGIN, tb["top"] - MARGIN, \
                                          tb["x1"] + MARGIN, tb["bottom"] + MARGIN
                 left *= ZM
                 top *= ZM
                 right *= ZM
                 bott *= ZM
-                pos.append((left, top))  # 保存位置偏移（用于后续还原）
-                imgs.append(self.page_images[p].crop((left, top, right, bott)))  # 裁剪图像
+                pos.append((left, top))  # Save position offset (for later restoration)
+                imgs.append(self.page_images[p].crop((left, top, right, bott)))  # Crop image
 
-        assert len(self.page_images) == len(tbcnt) - 1  # 检查页数是否一致
+        assert len(self.page_images) == len(tbcnt) - 1  # Check page count consistency
         if not imgs:
             return
         recos = self.tbl_det(imgs)
         tbcnt = np.cumsum(tbcnt)
-        # 遍历每页识别结果
+        # Iterate through recognition results for each page
         for i in range(len(tbcnt) - 1):
             pg = []
             for j, tb_items in enumerate(
                     recos[tbcnt[i]: tbcnt[i + 1]]):  # for table
-                poss = pos[tbcnt[i]: tbcnt[i + 1]]  # 当前页所有表格位置
-                for it in tb_items:  # 遍历当前表格组件
-                    # 将局部坐标映射回整页坐标
+                poss = pos[tbcnt[i]: tbcnt[i + 1]]  # All table positions for current page
+                for it in tb_items:  # Iterate through current table components
+                    # Map local coordinates back to full page coordinates
                     it["x0"] = (it["x0"] + poss[j][0])
                     it["x1"] = (it["x1"] + poss[j][0])
                     it["top"] = (it["top"] + poss[j][1])
                     it["bottom"] = (it["bottom"] + poss[j][1])
                     for n in ["x0", "x1", "top", "bottom"]:
-                        it[n] /= ZM  # 恢复为标准坐标
+                        it[n] /= ZM  # Restore to standard coordinates
                     it["top"] += self.page_cum_height[i]
                     it["bottom"] += self.page_cum_height[i]
-                    it["pn"] = i  # 所属页编号
-                    it["layoutno"] = j  # 表格编号
+                    it["pn"] = i  # Page number
+                    it["layoutno"] = j  # Table number
                     pg.append(it)
-            self.tb_cpns.extend(pg)  # 将当前页的所有表格组件加入总列表
+            self.tb_cpns.extend(pg)  # Add all table components from current page to total list
 
         def gather(kwd, fzy=10, ption=0.6):
-            # 辅助函数：提取表头、行、列等标签组件
+            # Helper function: extract header, row, column label components
             eles = Recognizer.sort_Y_firstly(
                 [r for r in self.tb_cpns if re.match(kwd, r["label"])], fzy)
             eles = Recognizer.layouts_cleanup(self.boxes, eles, 5, ption)
             return Recognizer.sort_Y_firstly(eles, 0)
 
-        #  # 提取表头、行、合并单元格、列信息
+        # Extract header, row, merged cell, column info
         headers = gather(r".*header$")
         rows = gather(r".* (row|header)")
         spans = gather(r".*spanning")
         clmns = sorted([r for r in self.tb_cpns if re.match(
             r"table column$", r["label"])], key=lambda x: (x["pn"], x["layoutno"], x["x0"]))
-        # 匹配表格行
+        # Match table rows
         clmns = Recognizer.layouts_cleanup(self.boxes, clmns, 5, 0.5)
         for b in self.boxes:
             if b.get("layout_type", "") != "table":
@@ -392,7 +392,7 @@ class RAGFlowPdfParser:
                 b["R"] = ii
                 b["R_top"] = rows[ii]["top"]
                 b["R_bott"] = rows[ii]["bottom"]
-            # 匹配表头
+            # Match header
             ii = Recognizer.find_overlapped_with_threashold(
                 b, headers, thr=0.3)
             if ii is not None:
@@ -401,13 +401,13 @@ class RAGFlowPdfParser:
                 b["H_left"] = headers[ii]["x0"]
                 b["H_right"] = headers[ii]["x1"]
                 b["H"] = ii
-            # 匹配列
+            # Match column
             ii = Recognizer.find_horizontally_tightest_fit(b, clmns)
             if ii is not None:
                 b["C"] = ii
                 b["C_left"] = clmns[ii]["x0"]
                 b["C_right"] = clmns[ii]["x1"]
-            # 匹配跨列单元格（合并单元格）
+            # Match spanning cell (merged cell)
             ii = Recognizer.find_overlapped_with_threashold(b, spans, thr=0.3)
             if ii is not None:
                 b["H_top"] = spans[ii]["top"]
@@ -417,23 +417,23 @@ class RAGFlowPdfParser:
                 b["SP"] = ii
 
     def __ocr(self, pagenum, img, chars, ZM=3, device_id: int | None = None):
-        # 开始计时
+        # Start timing
         start = timer()
-        # 使用OCR模块检测图像中的文字框（检测阶段）
+        # Use OCR module to detect text boxes in the image (detection phase)
         bxs = self.ocr.detect(np.array(img), device_id)
 
         logging.info(f"__ocr detecting boxes of a image cost ({timer() - start}s)")
 
         start = timer()
-        # 如果没有检测到任何框，直接返回空列表
+        # If no boxes detected, return empty list
         if not bxs:
             self.boxes.append([])
             return
 
-        # 提取检测框的位置和初始文本
+        # Extract detection box positions and initial text
         bxs = [(line[0], line[1][0]) for line in bxs]
 
-        # 将框转换为标准格式，按 Y 方向排序
+        # Convert boxes to standard format, sort by Y direction
         bxs = Recognizer.sort_Y_firstly([
             {
                 "x0": b[0][0] / ZM,
@@ -447,7 +447,7 @@ class RAGFlowPdfParser:
             for b, t in bxs if b[0][0] <= b[1][0] and b[0][1] <= b[-1][1]
         ], self.mean_height[-1] / 3)
 
-        # 合并每个字符到其对应框中
+        # Merge each character into its corresponding box
         for c in Recognizer.sort_Y_firstly(chars, self.mean_height[pagenum - 1] // 4):
             ii = Recognizer.find_overlapped(c, bxs)
             if ii is None:
@@ -458,7 +458,7 @@ class RAGFlowPdfParser:
             if abs(ch - bh) / max(ch, bh) >= 0.7 and c["text"] != ' ':
                 self.lefted_chars.append(c)
                 continue
-            # 合并空格
+            # Merge spaces
             if c["text"] == " " and bxs[ii]["text"]:
                 if re.match(r"[0-9a-zA-Zа-яА-Я,.?;:!%%]", bxs[ii]["text"][-1]):
                     bxs[ii]["text"] += " "
@@ -468,21 +468,21 @@ class RAGFlowPdfParser:
         logging.info(f"__ocr sorting {len(chars)} chars cost {timer() - start}s")
         start = timer()
 
-        # 收集需要进行文本识别的框（目前还没有识别出文字）
+        # Collect boxes that need text recognition (no text recognized yet)
         boxes_to_reg = []
         img_np = np.array(img)
         for b in bxs:
             if not b["text"]:
-                # 裁剪框中图像，用于后续文本识别
+                # Crop image from box for subsequent text recognition
                 left, right, top, bott = b["x0"] * ZM, b["x1"] * ZM, b["top"] * ZM, b["bottom"] * ZM
                 b["box_image"] = self.ocr.get_rotate_crop_image(
                     img_np,
                     np.array([[left, top], [right, top], [right, bott], [left, bott]], dtype=np.float32)
                 )
                 boxes_to_reg.append(b)
-            del b["txt"]  # 删除临时文本字段
+            del b["txt"]  # Delete temporary text field
 
-        # 批量文本识别
+        # Batch text recognition
         texts = self.ocr.recognize_batch([b["box_image"] for b in boxes_to_reg], device_id)
 
         for i in range(len(boxes_to_reg)):
@@ -491,22 +491,22 @@ class RAGFlowPdfParser:
 
         logging.info(f"__ocr recognize {len(bxs)} boxes cost {timer() - start}s")
 
-        # 移除识别后仍然为空的框
+        # Remove boxes that are still empty after recognition
         bxs = [b for b in bxs if b["text"]]
 
-        # 如果未设置平均高度，则设置为当前页面中框的中位高度
+        # If mean height not set, set to median height of boxes on current page
         if self.mean_height[-1] == 0:
             self.mean_height[-1] = np.median([b["bottom"] - b["top"] for b in bxs])
 
-        # 将本页的框加入总框集合
+        # Add current page's boxes to total box collection
         self.boxes.append(bxs)
 
     def _layouts_rec(self, ZM, drop=True):
-        # 布局识别：识别每个框的布局类型（文本、图像、表格等）
+        # Layout recognition: identify layout type (text, image, table, etc.) for each box
         assert len(self.page_images) == len(self.boxes)
         self.boxes, self.page_layout = self.layouter(
             self.page_images, self.boxes, ZM, drop=drop)
-        # 累加高度偏移：将每页的框 y 坐标统一到全局坐标中
+        # Cumulative height offset: unify box y coordinates to global coordinates
         for i in range(len(self.boxes)):
             self.boxes[i]["top"] += \
                 self.page_cum_height[self.boxes[i]["page_number"] - 1]
@@ -514,7 +514,7 @@ class RAGFlowPdfParser:
                 self.page_cum_height[self.boxes[i]["page_number"] - 1]
 
     def _text_merge(self):
-        # 合并同一行的文本框（横向合并）
+        # Merge text boxes in the same row (horizontal merge)
         bxs = self.boxes
 
         def end_with(b, txt):
@@ -531,12 +531,12 @@ class RAGFlowPdfParser:
         while i < len(bxs) - 1:
             b = bxs[i]
             b_ = bxs[i + 1]
-            # 忽略不同 layout 或表格类的框
+            # Ignore boxes with different layouts or table-type boxes
             if b.get("layoutno", "0") != b_.get("layoutno", "1") or b.get("layout_type", "") in ["table", "figure",
                                                                                                  "equation"]:
                 i += 1
                 continue
-                # 如果Y方向高度差距很小，认为是同一行的框，进行合并
+                # If Y direction height difference is small, consider as same row boxes, merge
             if abs(self._y_dis(b, b_)
                    ) < self.mean_height[bxs[i]["page_number"] - 1] / 3:
                 # merge
@@ -571,7 +571,7 @@ class RAGFlowPdfParser:
             i += 1
         self.boxes = bxs
 
-    # 纵向简单合并文本块：将上下文本块合并成段落
+    # Simple vertical merge of text blocks: merge upper and lower text blocks into paragraphs
     def _naive_vertical_merge(self):
         bxs = Recognizer.sort_Y_firstly(
             self.boxes, np.median(
@@ -580,7 +580,7 @@ class RAGFlowPdfParser:
         while i + 1 < len(bxs):
             b = bxs[i]
             b_ = bxs[i + 1]
-            # 删除页码行等无用信息（页码一般独占一行）
+            # Remove page number rows and other useless info (page numbers typically occupy a single row)
             if b["page_number"] < b_["page_number"] and re.match(
                     r"[0-9  •一—-]+$", b["text"]):
                 bxs.pop(i)
@@ -625,7 +625,7 @@ class RAGFlowPdfParser:
         self.boxes = bxs
 
     def _concat_downward(self, concat_between_pages=True):
-        # 为每个框统计其所在行的其他框数量（作为特征）
+        # Count number of other boxes in the same row for each box (as a feature)
         for i in range(len(self.boxes)):
             mh = self.mean_height[self.boxes[i]["page_number"] - 1]
             self.boxes[i]["in_row"] = 0
@@ -641,7 +641,7 @@ class RAGFlowPdfParser:
                     break
                 j += 1
 
-        # 进行跨行合并（深度优先合并）
+        # Perform cross-row merging (depth-first merge)
         boxes = deepcopy(self.boxes)
         blocks = []
         while boxes:
@@ -706,7 +706,7 @@ class RAGFlowPdfParser:
             if chunks:
                 blocks.append(chunks)
 
-        # 对每个块中的文本框进行实际合并
+        # Actually merge text boxes within each block
         boxes = []
         for b in blocks:
             if len(b) == 1:
@@ -734,13 +734,13 @@ class RAGFlowPdfParser:
         self.boxes = Recognizer.sort_Y_firstly(boxes, 0)
 
     def _filter_forpages(self):
-        # 移除“目录”等无关页面的内容框
+        # Remove content boxes from irrelevant pages like "Table of Contents"
         if not self.boxes:
             return
         findit = False
         i = 0
         while i < len(self.boxes):
-            # 匹配可能是目录、致谢等字段
+            # Match possible table of contents, acknowledgments and other fields
             if not re.match(r"(contents|目录|目次|table of contents|致谢|acknowledge)$",
                             re.sub(r"( | |\u3000)+", "", self.boxes[i]["text"].lower())):
                 i += 1
@@ -771,7 +771,7 @@ class RAGFlowPdfParser:
                 break
         if findit:
             return
-        # 如果未找到目录，通过检测“··”等异常格式进行页码排除
+        # If table of contents not found, exclude page numbers by detecting abnormal formats like "··"
         page_dirty = [0] * len(self.page_images)
         for b in self.boxes:
             if re.search(r"(··|··|··)", b["text"]):
@@ -787,7 +787,7 @@ class RAGFlowPdfParser:
             i += 1
 
     def _merge_with_same_bullet(self):
-        # 合并以相同项目符号开头的相邻框
+        # Merge adjacent boxes starting with the same bullet point
         i = 0
         while i + 1 < len(self.boxes):
             b = self.boxes[i]
@@ -798,7 +798,7 @@ class RAGFlowPdfParser:
             if not b_["text"].strip():
                 self.boxes.pop(i + 1)
                 continue
-            # 将当前框的内容合并到下一个框
+            # Merge current box content into next box
             if b["text"].strip()[0] != b_["text"].strip()[0] \
                     or b["text"].strip()[0].lower() in set("qwertyuopasdfghjklzxcvbnm") \
                     or rag_tokenizer.is_chinese(b["text"].strip()[0]) \
@@ -824,13 +824,13 @@ class RAGFlowPdfParser:
                 continue
             lout_no = str(self.boxes[i]["page_number"]) + \
                       "-" + str(self.boxes[i]["layoutno"])
-            # 如果是标题或图注类区域，则标记不合并
+            # If it's a caption or figure caption region, mark as no merge
             if TableStructureRecognizer.is_caption(self.boxes[i]) or self.boxes[i]["layout_type"] in ["table caption",
                                                                                                       "title",
                                                                                                       "figure caption",
                                                                                                       "reference"]:
                 nomerge_lout_no.append(lst_lout_no)
-            # 是表格区域则加入 tables 字典
+            # If it's a table region, add to tables dictionary
             if self.boxes[i]["layout_type"] == "table":
                 if re.match(r"(数据|资料|图表)*来源[:： ]", self.boxes[i]["text"]):
                     self.boxes.pop(i)
@@ -853,7 +853,7 @@ class RAGFlowPdfParser:
                 continue
             i += 1
 
-        # 合并跨页的表格
+        # Merge tables across pages
         nomerge_lout_no = set(nomerge_lout_no)
         tbls = sorted([(k, bxs) for k, bxs in tables.items()],
                       key=lambda x: (x[1][0]["top"], x[1][0]["x0"]))
@@ -863,10 +863,10 @@ class RAGFlowPdfParser:
             k0, bxs0 = tbls[i - 1]
             k, bxs = tbls[i]
             i -= 1
-            # 若不允许合并该 layout，跳过
+            # Skip if not allowed to merge this layout
             if k0 in nomerge_lout_no:
                 continue
-            # 同页、跨页距离太大、跨页跨度 >1 的不合并
+            # Don't merge: same page, cross-page distance too large, cross-page span > 1
             if bxs[0]["page_number"] == bxs0[0]["page_number"]:
                 continue
             if bxs[0]["page_number"] - bxs0[0]["page_number"] > 1:
@@ -874,14 +874,14 @@ class RAGFlowPdfParser:
             mh = self.mean_height[bxs[0]["page_number"] - 1]
             if self._y_dis(bxs0[-1], bxs[0]) > mh * 23:
                 continue
-            # 合并表格区域
+            # Merge table regions
             tables[k0].extend(tables[k])
             del tables[k]
 
         def x_overlapped(a, b):
             return not any([a["x1"] < b["x0"], a["x0"] > b["x1"]])
 
-        # 处理图注（caption）归属表格或图像
+        # Handle caption attribution to table or image
         i = 0
         while i < len(self.boxes):
             c = self.boxes[i]
@@ -1032,10 +1032,10 @@ class RAGFlowPdfParser:
     def proj_match(self, line):
         if len(line) <= 2:
             return
-        # 如果整行文本只包含数字、空格、标点等，认为不符合结构标题，返回 False
+        # If the entire line contains only numbers, spaces, punctuation, etc., consider it not a structured heading, return False
         if re.match(r"[0-9 ().,%%+/-]+$", line):
             return False
-        # 定义一组正则表达式及其对应的标号，用于识别结构化标题格式
+        # Define a set of regex patterns and their corresponding labels for recognizing structured heading formats
         for p, j in [
             (r"第[零一二三四五六七八九十百]+章", 1),
             (r"第[零一二三四五六七八九十百]+[条节]", 2),
@@ -1159,13 +1159,13 @@ class RAGFlowPdfParser:
     def __images__(self, fnm, zoomin=3, page_from=0,
                    page_to=299, callback=None):
         """
-        将 PDF 文件读取成图像；
-        并获取每页图像的字符、OCR 结果、页眉页脚结构；
-        最终用于后续的版面分析、表格识别与文字合并。
-        使用 pdfplumber 提取每页图像和字符；
-        检测是否为英文文档（通过字符分析）；
-        异步调用 __ocr 执行 OCR 识别；
-        统计平均字符宽高，累积每页图像高度，方便跨页处理。
+        Read PDF file into images;
+        Extract characters, OCR results, header/footer structure for each page image;
+        Used for subsequent layout analysis, table recognition and text merging.
+        Use pdfplumber to extract page images and characters;
+        Detect whether document is English (through character analysis);
+        Asynchronously call __ocr to perform OCR recognition;
+        Calculate average character width/height, accumulate page image heights for cross-page processing.
         """
         self.lefted_chars = []
         self.mean_height = []
@@ -1294,16 +1294,16 @@ class RAGFlowPdfParser:
         if len(self.boxes) == 0 and zoomin < 9:
             self.__images__(fnm, zoomin * 3, page_from, page_to, callback)
 
-    # 入口函数，负责从 PDF 中提取所有结构化内容。
+    # Entry function, responsible for extracting all structured content from PDF.
 
     def __call__(self, fnm, need_image=True, zoomin=3, return_html=False):
         """
-        调用 __images__ 加载图像并执行 OCR；
-        _layouts_rec() 获取页面的 layout 结构；
-        _table_transformer_job() 抽取表格组件；
-        _text_merge() 和 _concat_downward() 合并行文；
-        _filter_forpages() 去除目录等无效页面；
-        _extract_table_figure() 抽取最终的表格 / 图像信息。
+        Call __images__ to load images and perform OCR;
+        _layouts_rec() to get page layout structure;
+        _table_transformer_job() to extract table components;
+        _text_merge() and _concat_downward() to merge body text;
+        _filter_forpages() to remove invalid pages like table of contents;
+        _extract_table_figure() to extract final table/image information.
         """
         self.__images__(fnm, zoomin)
         self._layouts_rec(zoomin)
@@ -1319,7 +1319,7 @@ class RAGFlowPdfParser:
         return re.sub(r"@@[\t0-9.-]+?##", "", txt)
 
     def crop(self, text, ZM=3, need_position=False):
-        # 根据文本中的 @@...## 标签从图像中裁剪出对应区域；
+        # Crop corresponding regions from images based on @@...## tags in text
         imgs = []
         poss = []
         for tag in re.findall(r"@@[0-9-]+\t[0-9.\t]+##", text):
@@ -1416,7 +1416,7 @@ class RAGFlowPdfParser:
         return poss
 
 
-# 主要用于快速抽取 PDF 中的纯文本内容。
+# Primarily used for quickly extracting plain text content from PDF.
 class PlainParser:
     def __call__(self, filename, from_page=0, to_page=100000, **kwargs):
         self.outlines = []
@@ -1453,7 +1453,7 @@ class PlainParser:
         raise NotImplementedError
 
 
-# 用 视觉语言模型（如 GPT-4V、BLIP-2、Qwen-VL 等） 直接对 PDF 页面的图像内容进行分析，提取出文档信息，而不是传统的字符级、表格结构、OCR 等做法。
+# Uses Vision Language Model (e.g., GPT-4V, BLIP-2, Qwen-VL, etc.) to directly analyze PDF page image content and extract document info, rather than traditional character-level, table structure, OCR approaches.
 class VisionParser(RAGFlowPdfParser):
     def __init__(self, vision_model, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -1488,7 +1488,7 @@ class VisionParser(RAGFlowPdfParser):
             pdf_page_num = idx  # 0-based
             if pdf_page_num < start_page or pdf_page_num >= end_page:
                 continue
-            # 用视觉模型对图像进行描述或结构化理解
+            # Use vision model to describe or structurally understand the image
             docs = picture_vision_llm_chunk(
                 binary=img_binary,
                 vision_model=self.vision_model,
@@ -1507,13 +1507,13 @@ if __name__ == "__main__":
 
     text_blocks, tables_and_figures = parser(pdf_path)
 
-    # 合并所有文本块为一个段落
+    # Merge all text blocks into a single paragraph
     full_text = "".join(parser.remove_tag(t) for t in text_blocks)
 
-    print("📄 全部文本内容：")
+    print("📄 All text content:")
     print(full_text)
 
-    # print(f"\n📊 表格或图像数量：{len(tables_and_figures)}")
+    # print(f"\n📊 Number of tables or images: {len(tables_and_figures)}")
     # output_dir = "output_images"
     # os.makedirs(output_dir, exist_ok=True)
     # for idx, (img, _) in enumerate(tables_and_figures):

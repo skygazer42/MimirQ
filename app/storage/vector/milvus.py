@@ -1,9 +1,9 @@
 """
-Milvus 向量库服务
+Milvus vector store service
 
-提供两种使用模式：
-1. 单例模式 - 用于文档向量存储（固定 collection）
-2. 多实例模式 - 用于 KG 实体/事件（可自定义 collection）
+Provides two usage modes:
+1. Singleton mode - Used for document vector storage (fixed collection)
+2. Multi-instance mode - Used for KG entities/events (customizable collection)
 """
 from __future__ import annotations
 
@@ -274,19 +274,19 @@ class MilvusAdapter:
         **kwargs: Any,
     ) -> List[str]:
         """
-        批量写入向量（支持直接写入预计算 embeddings，避免重复 embedding）。
+        Batch write vectors (supports directly writing pre-computed embeddings to avoid duplicate embedding).
 
         Args:
             items: [{"id": str, "content": str, "metadata": dict}]
-            embeddings: 可选，预计算向量（List[List[float]]），与 items 一一对应。
-                - 为 None 时：由 LangChain Embeddings 根据 content 自动生成
-                - 不为 None 时：直接写入 Milvus（insert/upsert）
-            batch_size: 写入 batch size
+            embeddings: Optional, pre-computed vectors (List[List[float]]), corresponding to items.
+                - When None: LangChain Embeddings auto-generates based on content
+                - When not None: directly writes to Milvus (insert/upsert)
+            batch_size: write batch size
             timeout: Milvus timeout
-            upsert: True 使用 Milvus upsert；False 使用 insert
+            upsert: True uses Milvus upsert; False uses insert
 
         Returns:
-            向量 ID 列表
+            List of vector IDs
         """
         if not items:
             return []
@@ -393,7 +393,7 @@ class MilvusAdapter:
         return pks
 
     def delete(self, ids: List[str]) -> None:
-        """删除指定 ID 的向量。"""
+        """Delete vectors with specified IDs."""
         if not ids:
             return
         self._ensure_store()
@@ -408,15 +408,15 @@ class MilvusAdapter:
         metadata_filter: Optional[Dict[str, Any]] = None,
     ) -> List[Dict[str, Any]]:
         """
-        向量相似度搜索。
+        Vector similarity search.
 
         Args:
-            query_vector: 查询向量
-            top_k: 返回结果数量
-            expr: 过滤表达式
+            query_vector: Query vector
+            top_k: Number of results to return
+            expr: Filter expression
 
         Returns:
-            搜索结果列表
+            List of search results
         """
         self._ensure_store()
         assert self._store is not None

@@ -1,7 +1,7 @@
 """
-数据库配置和会话管理模块
+Database configuration and session management module
 
-提供数据库连接、会话工厂和依赖注入功能。
+Provides database connection, session factory, and dependency injection.
 """
 from sqlalchemy import create_engine
 from sqlalchemy.engine.url import make_url

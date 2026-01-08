@@ -145,9 +145,9 @@ _RAG_RETRIEVE_CACHE_POLICY = (
 
 
 def _build_context(docs: List[Document], *, query: str | None = None) -> str:
-    """格式化检索到的文档上下文。"""
+    """Format retrieved document context."""
     if not docs:
-        return "没有找到相关的参考资料。"
+        return "No relevant reference materials found."
     parts = []
     max_per_chunk_chars = max(0, int(settings.RAG_CONTEXT_MAX_CHARS_PER_CHUNK or 0))
     max_total_chars = max(0, int(settings.RAG_CONTEXT_MAX_TOTAL_CHARS or 0))
@@ -163,14 +163,14 @@ def _build_context(docs: List[Document], *, query: str | None = None) -> str:
         try:
             page_int = int(page_raw) if page_raw is not None else None
             if page_int and page_int > 0:
-                page_info = f"第{page_int}页"
+                page_info = f"Page {page_int}"
         except Exception:
             page_info = None
         header = meta.get("header_path") or meta.get("header_context")
         retrieval_role = meta.get("retrieval_role")
         role_info = None
         if retrieval_role == "neighbor":
-            role_info = "邻接"
+            role_info = "neighbor"
         elif retrieval_role:
             role_info = str(retrieval_role)
         raw_content = (doc.page_content or "").strip()
@@ -194,7 +194,7 @@ def _build_context(docs: List[Document], *, query: str | None = None) -> str:
             info_parts.append(str(header))
         if role_info:
             info_parts.append(str(role_info))
-        part = f"[来源 {idx}: {' | '.join(info_parts)}]\n{content}"
+        part = f"[Source {idx}: {' | '.join(info_parts)}]\n{content}"
         if max_total_tokens:
             part_tokens = num_tokens_from_string(part)
             if parts and (total_tokens + part_tokens) > max_total_tokens:
@@ -212,12 +212,12 @@ def _build_context(docs: List[Document], *, query: str | None = None) -> str:
 
 
 def _build_history_text(history: Optional[List[Dict[str, str]]]) -> str:
-    """压缩历史为可读文本，仅保留窗口。"""
+    """Compress history to readable text, keep only within window."""
     return format_history_text(history, window=settings.CHAT_HISTORY_WINDOW)
 
 
 def _run_with_retry(node_name: str, func, state: RAGState) -> RAGState:
-    """节点级重试 + 超时（秒）。"""
+    """Node-level retry + timeout (seconds)."""
     timeout = max(settings.RAG_GRAPH_TIMEOUT_SEC, 0) or None
     metrics = dict(state.get("metrics") or {})
     attempts = int(metrics.get(f"{node_name}_attempts", 0) or 0) + 1
@@ -255,7 +255,7 @@ def _retrieve_node(state: RAGState) -> RAGState:
 
     if (
         settings.ENABLE_QUERY_REWRITE
-        and history_text != "（无历史对话）"
+        and history_text != "(No conversation history)"
         and len(question) <= settings.QUERY_REWRITE_MAX_CHARS
         and should_rewrite_query(question)
     ):
@@ -309,7 +309,7 @@ def _retrieve_node(state: RAGState) -> RAGState:
             "metadata_filter": state.get("metadata_filter"),
         }
     )
-    # Query Expansion（Multi-Query / HyDE，可选）
+    # Query Expansion (Multi-Query / HyDE, optional)
     multi_query_elapsed = 0.0
     multi_query_used = False
     multi_query_model_used = None

@@ -191,19 +191,19 @@ if __name__ == "__main__":
     filepath = "/data/Langagent/deepdoc/data/random_data.csv"
     parser = RAGFlowExcelParser()
 
-    # 先把文件内容读进来（bytes）
+    # Read file content first (bytes)
     with open(filepath, "rb") as f:
         file_bytes = f.read()
 
-    # 解析文本内容
+    # Parse text content
     lines = parser(file_bytes)
-    print("📄 表格内容：")
+    print("📄 Table content:")
     for line in lines:
         print(line)
 
-    # # HTML 格式（适合前端预览）
-    # print("\n📊 HTML 分片（适合前端预览）:")
+    # # HTML format (suitable for frontend preview)
+    # print("\n📊 HTML chunks (suitable for frontend preview):")
     # html_chunks = parser.html(file_bytes)
     # for idx, chunk in enumerate(html_chunks):
-    #     print(f"\n--- 第 {idx + 1} 块 ---")
+    #     print(f"\n--- Chunk {idx + 1} ---")
     #     print(chunk)

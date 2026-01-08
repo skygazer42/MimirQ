@@ -1,5 +1,5 @@
 """
-文档解析器工厂
+Document parser factory
 """
 from __future__ import annotations
 
@@ -27,7 +27,7 @@ if TYPE_CHECKING:
 
 
 class ParserFactory:
-    """根据文件类型选择合适的解析器"""
+    """Select appropriate parser based on file type"""
 
     SUPPORTED_PDF_BACKENDS = {"auto", "basic", "mineru", "deepdoc", "markitdown", "docling", "magicpdf"}
     SUPPORTED_NON_PDF_MARKITDOWN = {".doc", ".docx", ".xls", ".xlsx", ".csv", ".html", ".json"}
@@ -66,7 +66,7 @@ class ParserFactory:
 
     def resolve_backend(self, file_ext: str, parser_backend: Optional[str]) -> str:
         """
-        根据文件类型和用户选择，解析出将要使用的实际解析器。
+        Resolve the actual parser to use based on file type and user selection.
         """
         normalized = normalize_parser_backend(parser_backend or settings.DEFAULT_PARSER_BACKEND or "auto") or "auto"
         file_ext = file_ext.lower()
@@ -143,7 +143,7 @@ class ParserFactory:
         document_id: Optional[str] = None,
     ) -> Tuple[List[Document], str]:
         """
-        根据文件类型自动选择解析器并返回 Document 列表以及实际使用的解析器名称
+        Automatically select parser based on file type and return Document list and actual parser name
         """
         file_ext = file_path.suffix.lower()
         backend = self.resolve_backend(file_ext, parser_backend)
