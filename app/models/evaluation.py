@@ -1,7 +1,7 @@
 """
-RAGAS 评测运行数据模型（支持多租户隔离）
+RAGAS evaluation run data models (multi-tenant).
 
-定义评测任务、评测结果和回归测试相关的数据库模型。
+Defines database models for evaluation tasks, results, and regression tests.
 """
 
 import uuid
@@ -70,7 +70,7 @@ class RagasEvaluationItem(Base):
 
 
 class RagasRegressionCase(Base):
-    """RAGAS 回归用例（固定问题集合）。"""
+    """RAGAS regression cases (fixed question set)."""
 
     __tablename__ = "ragas_regression_cases"
 
@@ -78,7 +78,7 @@ class RagasRegressionCase(Base):
     tenant_id = Column(UUID(as_uuid=True), nullable=False, index=True)
     dataset_id = Column(UUID(as_uuid=True), nullable=True, index=True)
 
-    # 限制检索范围（优先于 dataset_id）：存 UUID 字符串数组，避免 ARRAY 在跨库/迁移中变复杂
+    # Restrict retrieval scope (over dataset_id): store UUID strings to avoid ARRAY complexity.
     document_ids = Column(JSONB, default=list)  # list[str]
 
     question = Column(Text, nullable=False)
@@ -92,7 +92,7 @@ class RagasRegressionCase(Base):
 
 
 class RagasRegressionRun(Base):
-    """RAGAS 回归运行记录（落表用于对比版本/A-B/策略）。"""
+    """RAGAS regression run record (for version/A-B/strategy comparisons)."""
 
     __tablename__ = "ragas_regression_runs"
 
@@ -112,7 +112,7 @@ class RagasRegressionRun(Base):
 
 
 class RagasRegressionItem(Base):
-    """回归运行的单条结果（对应一个 case）。"""
+    """Regression run item (per case)."""
 
     __tablename__ = "ragas_regression_items"
 

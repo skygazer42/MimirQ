@@ -1,7 +1,7 @@
 """
-多租户隔离数据模型
+Multi-tenant data models.
 
-定义租户、租户成员等数据表结构，实现多租户数据隔离。
+Defines tenant and member tables for tenant isolation.
 """
 from datetime import datetime
 import uuid
@@ -13,7 +13,7 @@ from app.core.database import Base
 
 
 class Tenant(Base):
-    """租户表"""
+    """Tenant table."""
     __tablename__ = "tenants"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
@@ -25,12 +25,12 @@ class Tenant(Base):
 
 
 class TenantMember(Base):
-    """租户成员（简单占位，无用户体系时可按需扩展）"""
+    """Tenant member (placeholder; extend when user system exists)."""
     __tablename__ = "tenant_members"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     tenant_id = Column(UUID(as_uuid=True), nullable=False, index=True)
-    # 这里没有用户体系，预留 user_id / external_id 作为占位
+    # No user system yet; reserve user_id/external_id as placeholders.
     user_id = Column(String(255), nullable=True)
     role = Column(String(32), default="owner")
     is_current = Column(Boolean, default=False)
