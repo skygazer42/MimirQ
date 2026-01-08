@@ -19,6 +19,11 @@ warnings.filterwarnings(
     message=r"Using default SECRET_KEY\. Change this in production!",
     category=UserWarning,
 )
+warnings.filterwarnings(
+    "ignore",
+    message=r"Using default MinIO credentials\. Change in production!",
+    category=UserWarning,
+)
 
 import logging
 from pathlib import Path

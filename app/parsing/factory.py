@@ -148,19 +148,19 @@ class ParserFactory:
         file_ext = file_path.suffix.lower()
         backend = self.resolve_backend(file_ext, parser_backend)
 
-        if file_ext == ".pdf":
-            parser = self._get_pdf_parser(backend)
-        elif file_ext == ".txt":
-            parser = self.parsers[".txt"]
-        elif file_ext == ".md":
-            parser = self.parsers[".md"]
-        elif file_ext in self.SUPPORTED_NON_PDF_MARKITDOWN:
-            parser = self._get_markitdown_parser()
-        else:
-            raise ValueError(f"Unsupported file type: {file_ext}")
-
-        # Some parsers (e.g., MinerU local ZIP mode) need dataset/document ids.
         try:
+            if file_ext == ".pdf":
+                parser = self._get_pdf_parser(backend)
+            elif file_ext == ".txt":
+                parser = self.parsers[".txt"]
+            elif file_ext == ".md":
+                parser = self.parsers[".md"]
+            elif file_ext in self.SUPPORTED_NON_PDF_MARKITDOWN:
+                parser = self._get_markitdown_parser()
+            else:
+                raise ValueError(f"Unsupported file type: {file_ext}")
+
+            # Some parsers (e.g., MinerU local ZIP mode) need dataset/document ids.
             if backend in {"mineru", "magicpdf"}:
                 documents = parser.parse(file_path, dataset_id=dataset_id, document_id=document_id)
             else:
@@ -205,6 +205,24 @@ class ParserFactory:
         backend = (requested_backend or "").strip().lower()
         file_ext = (file_ext or "").strip().lower()
 
+        # PDF advanced backends (may fail to import due to binary deps); fall back to basic PyMuPDF.
+        if file_ext == ".pdf" and backend in {"docling", "deepdoc", "mineru", "magicpdf"}:
+            logger.warning(
+                "[parse] PDF backend '%s' failed for %s: %s; falling back to 'basic'",
+                backend,
+                str(file_path.name),
+                str(error)[:200],
+            )
+            try:
+                return self._get_pdf_parser("basic").parse(file_path), "basic"
+            except Exception as fallback_exc:
+                logger.warning(
+                    "[parse] PDF basic fallback also failed for %s: %s",
+                    str(file_path.name),
+                    str(fallback_exc)[:200],
+                )
+                return None, backend
+
         # MarkItDown is a great general converter, but some inputs may fail.
         if backend == "markitdown":
             logger.warning(
@@ -214,6 +232,14 @@ class ParserFactory:
                 str(error)[:200],
             )
             try:
+                if file_ext == ".docx":
+                    from app.parsing.parsers.docx_parser import DocxParser
+
+                    return DocxParser().parse(file_path), "docx"
+                if file_ext in {".xlsx", ".xls"}:
+                    from app.parsing.parsers.excel_parser import ExcelParser
+
+                    return ExcelParser().parse(file_path), "excel"
                 if file_ext == ".html":
                     from app.parsing.parsers.html_parser import HtmlParser
 
