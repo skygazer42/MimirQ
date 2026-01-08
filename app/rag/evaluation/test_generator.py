@@ -27,61 +27,61 @@ from app.services.document_access import filter_allowed_document_ids
 
 class GeneratedQuestion(BaseModel):
     """Generated question."""
-    question: str = Field(description="问题内容")
-    expected_answer: Optional[str] = Field(default=None, description="期望答案（可选）")
-    context: Optional[str] = Field(default=None, description="问题来源上下文")
-    metadata: Dict[str, Any] = Field(default_factory=dict, description="额外元数据")
+    question: str = Field(description="Question content")
+    expected_answer: Optional[str] = Field(default=None, description="Expected answer (optional)")
+    context: Optional[str] = Field(default=None, description="Question source context")
+    metadata: Dict[str, Any] = Field(default_factory=dict, description="Additional metadata")
 
 
 # Prompt template for generating questions.
-GENERATE_QUESTIONS_FROM_TEXT_PROMPT = """你是一个专业的测试问题生成专家。请基于以下文本内容生成高质量的测试问题。
+GENERATE_QUESTIONS_FROM_TEXT_PROMPT = """You are an expert test question generator. Please generate high-quality test questions based on the following text content.
 
-文本内容：
+Text content:
 {text}
 
-要求：
-1. 生成 {num_questions} 个问题
-2. 问题类型包括：{question_types}
-   - factual（事实型）：询问文本中的具体信息
-   - reasoning（推理型）：需要理解和推理才能回答
-   - comparison（对比型）：比较文本中的不同概念或事物
-3. 问题应该清晰、具体，可以从文本中找到答案
-4. 每个问题都应该有参考答案
+Requirements:
+1. Generate {num_questions} questions
+2. Question types include: {question_types}
+   - factual: Ask about specific information in the text
+   - reasoning: Requires understanding and reasoning to answer
+   - comparison: Compare different concepts or things in the text
+3. Questions should be clear, specific, and answerable from the text
+4. Each question should have a reference answer
 
-请以 JSON 格式返回，格式如下：
+Please return in JSON format as follows:
 {{
   "questions": [
     {{
-      "question": "问题内容",
-      "expected_answer": "参考答案",
-      "question_type": "问题类型"
+      "question": "Question content",
+      "expected_answer": "Reference answer",
+      "question_type": "Question type"
     }}
   ]
 }}
 """
 
-EXTRACT_QUESTIONS_FROM_CONVERSATION_PROMPT = """你是一个专业的问答提炼专家。请从以下对话记录中提炼和改进用户的问题。
+EXTRACT_QUESTIONS_FROM_CONVERSATION_PROMPT = """You are an expert Q&A extractor. Please extract and refine user questions from the following conversation history.
 
-对话记录：
+Conversation history:
 {conversations}
 
-要求：
-1. 提炼 {num_questions} 个高质量问题
-2. 优先选择：
-   - 清晰明确的问题
-   - 有实际价值的问题
-   - 覆盖不同主题的问题
-3. 对提取的问题进行适当改写，使其更加规范和通用
-4. 去重，避免提取相似的问题
-5. 如果助手的回答质量高，可以将其作为参考答案
+Requirements:
+1. Extract {num_questions} high-quality questions
+2. Prioritize:
+   - Clear and specific questions
+   - Questions with practical value
+   - Questions covering different topics
+3. Appropriately rewrite extracted questions to make them more standardized and general
+4. Deduplicate and avoid extracting similar questions
+5. If the assistant's answer is high quality, use it as the reference answer
 
-请以 JSON 格式返回，格式如下：
+Please return in JSON format as follows:
 {{
   "questions": [
     {{
-      "question": "提炼后的问题",
-      "expected_answer": "参考答案（如果有）",
-      "original_question": "原始问题"
+      "question": "Refined question",
+      "expected_answer": "Reference answer (if available)",
+      "original_question": "Original question"
     }}
   ]
 }}
@@ -294,7 +294,7 @@ def generate_questions_from_documents(
                         }
                     ))
         except Exception as e:
-            print(f"生成问题失败: {e}")
+            print(f"Failed to generate questions: {e}")
             continue
         
         if len(all_questions) >= num_questions:
@@ -390,7 +390,7 @@ def generate_questions_from_conversations(
     
     # Prepare conversation text.
     conversation_text = "\n\n".join([
-        f"用户: {user}\n助手: {assistant}"
+        f"User: {user}\nAssistant: {assistant}"
         for user, assistant, _ in high_quality_turns
     ])
     
@@ -440,5 +440,5 @@ def generate_questions_from_conversations(
         return questions[:num_questions]
     
     except Exception as e:
-        print(f"从对话生成问题失败: {e}")
+        print(f"Failed to generate questions from conversation: {e}")
         return []

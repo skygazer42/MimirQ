@@ -37,7 +37,7 @@ except Exception:  # pragma: no cover
 from nltk import word_tokenize
 from nltk.stem import PorterStemmer, WordNetLemmatizer
 
-# 优先使用随包分发的 NLTK 数据，避免运行时下载
+# Prefer using NLTK data distributed with the package to avoid runtime downloads
 _NLTK_DATA_DIR = Path(__file__).resolve().parents[2] / "resources" / "nltk_data"
 if str(_NLTK_DATA_DIR) not in nltk.data.path:
     nltk.data.path.insert(0, str(_NLTK_DATA_DIR))

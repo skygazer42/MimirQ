@@ -1,9 +1,9 @@
 """
-FastAPI 依赖注入模块
+FastAPI dependency injection module
 
-提供请求级别的依赖注入辅助函数，包括：
-- 用户认证
-- 租户识别
+Provides request-level dependency injection helper functions including:
+- User authentication
+- Tenant identification
 """
 
 from app.api.dependencies.auth import get_current_account_id
