@@ -9,6 +9,8 @@
 
 ## 一键跑通（Docker 后端）
 
+0) 准备 `docker/.env`（可从 `docker/.env.example` 复制并按需修改）
+
 1) 启动后端（含依赖）
 
 ```bash
@@ -54,4 +56,3 @@ Docker Compose 默认包含 `mock-openai` 服务（OpenAI 兼容的本地 mock�
 - 冒烟不依赖外部网络与真实 Key
 
 如需对接真实模型服务，请在 `docker/.env` 中配置 `LLM_API_BASE/LLM_API_KEY`（以及 `EMBEDDING_*`）为你的真实提供方。
-
