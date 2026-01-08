@@ -137,3 +137,27 @@ class StreamEvent(BaseModel):
     """流式事件"""
     type: str  # citations | token | done | error
     data: Any
+
+
+class CheckpointItem(BaseModel):
+    checkpoint_id: Optional[str] = None
+    checkpoint_ns: str = ""
+    created_at: Optional[datetime] = None
+    next: Any = None
+    metadata: Optional[Dict[str, Any]] = None
+    values: Optional[Dict[str, Any]] = None
+
+
+class CheckpointListResponse(BaseModel):
+    thread_id: str
+    items: List[CheckpointItem] = Field(default_factory=list)
+
+
+class CheckpointDetailResponse(BaseModel):
+    thread_id: str
+    checkpoint_id: Optional[str] = None
+    checkpoint_ns: str = ""
+    created_at: Optional[datetime] = None
+    next: Any = None
+    metadata: Optional[Dict[str, Any]] = None
+    values: Optional[Dict[str, Any]] = None

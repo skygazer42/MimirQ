@@ -27,7 +27,7 @@ import {
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import { ModeToggle } from '@/components/mode-toggle'
-import { API_V1_BASE_URL } from '@/lib/env'
+import { healthApi } from '@/lib/api-client'
 import { useAuth } from '@/hooks/use-auth'
 
 // 导航菜单配置
@@ -147,9 +147,10 @@ export function Navbar({
     let alive = true
     const ping = async () => {
       try {
-        const res = await fetch(`${API_V1_BASE_URL}/health`, { method: 'GET' })
         if (!alive) return
-        setBackendOk(res.ok)
+        await healthApi.health()
+        if (!alive) return
+        setBackendOk(true)
       } catch {
         if (!alive) return
         setBackendOk(false)

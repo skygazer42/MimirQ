@@ -6,7 +6,7 @@ import hashlib
 import json
 import re
 import shutil
-from fastapi import APIRouter, Depends, UploadFile, File, HTTPException, BackgroundTasks, Form, Body
+from fastapi import APIRouter, Depends, UploadFile, File, HTTPException, BackgroundTasks, Form
 from sqlalchemy.orm import Session, selectinload
 from typing import List, Optional
 from uuid import UUID
@@ -28,7 +28,8 @@ from app.api.schemas.document import (
     ChunkPreviewResponse,
     BatchUploadRequest,
     BatchUploadResponse,
-    BatchTaskStatus
+    BatchTaskStatus,
+    DocumentBatchUploadResponse,
 )
 from app.parsing.processors.processor import document_processor
 from app.parsing.factory import parser_factory
@@ -51,7 +52,7 @@ from fastapi.responses import FileResponse, RedirectResponse
 from app.api.dependencies.tenant import get_tenant_id
 from app.api.dependencies.auth import get_current_account_id
 from app.rag.kg.pipeline import extract_events
-from sqlalchemy import or_, false, and_
+from sqlalchemy import or_, and_
 from app.rag.core.logging import get_logger
 from app.rag.preprocessing.processor import governance_processor
 from app.api.utils.upload import save_upload_file
@@ -350,7 +351,7 @@ async def upload_document(
     return db_document
 
 
-@router.post("/upload-batch", status_code=201)
+@router.post("/upload-batch", response_model=DocumentBatchUploadResponse, status_code=201)
 async def upload_documents_batch(
     background_tasks: BackgroundTasks,
     files: List[UploadFile] = File(...),

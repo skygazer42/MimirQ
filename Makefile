@@ -94,6 +94,7 @@ parser-status:
 
 api-check:
 	node scripts/check-api-contract.mjs
+	node scripts/check-api-coverage.mjs
 
 typecheck:
 	cd web && pnpm run typecheck

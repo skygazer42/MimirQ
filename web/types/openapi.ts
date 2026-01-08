@@ -47,6 +47,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/meta": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Meta
+         * @description Small, safe-to-expose metadata endpoint for UI diagnostics.
+         */
+        get: operations["get_meta_api_v1_meta_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/auth/register": {
         parameters: {
             query?: never;
@@ -1829,6 +1849,51 @@ export interface components {
             prompt_ab_experiment_key?: string | null;
             rag_config?: components["schemas"]["ChatRAGConfig"];
         };
+        /** CheckpointDetailResponse */
+        CheckpointDetailResponse: {
+            /** Thread Id */
+            thread_id: string;
+            /** Checkpoint Id */
+            checkpoint_id?: string | null;
+            /**
+             * Checkpoint Ns
+             * @default
+             */
+            checkpoint_ns: string;
+            /** Created At */
+            created_at?: string | null;
+            /** Next */
+            next?: unknown;
+            /** Metadata */
+            metadata?: Record<string, never> | null;
+            /** Values */
+            values?: Record<string, never> | null;
+        };
+        /** CheckpointItem */
+        CheckpointItem: {
+            /** Checkpoint Id */
+            checkpoint_id?: string | null;
+            /**
+             * Checkpoint Ns
+             * @default
+             */
+            checkpoint_ns: string;
+            /** Created At */
+            created_at?: string | null;
+            /** Next */
+            next?: unknown;
+            /** Metadata */
+            metadata?: Record<string, never> | null;
+            /** Values */
+            values?: Record<string, never> | null;
+        };
+        /** CheckpointListResponse */
+        CheckpointListResponse: {
+            /** Thread Id */
+            thread_id: string;
+            /** Items */
+            items?: components["schemas"]["CheckpointItem"][];
+        };
         /** ChunkItem */
         ChunkItem: {
             /** Id */
@@ -2192,6 +2257,47 @@ export interface components {
             permission?: components["schemas"]["DatasetPermissionEnum"] | null;
             /** Partial Member List */
             partial_member_list?: string[] | null;
+        };
+        /**
+         * DocumentBatchUploadFailure
+         * @description 批量上传失败的单个文件结果。
+         */
+        DocumentBatchUploadFailure: {
+            /** Filename */
+            filename: string;
+            /** Error */
+            error: string;
+        };
+        /**
+         * DocumentBatchUploadResponse
+         * @description 批量上传接口响应。
+         */
+        DocumentBatchUploadResponse: {
+            /** Total */
+            total: number;
+            /** Successful Count */
+            successful_count: number;
+            /** Failed Count */
+            failed_count: number;
+            /** Successful */
+            successful?: components["schemas"]["DocumentBatchUploadSuccess"][];
+            /** Failed */
+            failed?: components["schemas"]["DocumentBatchUploadFailure"][];
+        };
+        /**
+         * DocumentBatchUploadSuccess
+         * @description 批量上传成功的单个文件结果（轻量返回）。
+         */
+        DocumentBatchUploadSuccess: {
+            /**
+             * Document Id
+             * Format: uuid
+             */
+            document_id: string;
+            /** Filename */
+            filename: string;
+            /** Status */
+            status: string;
         };
         /**
          * DocumentChunkSchema
@@ -4064,6 +4170,28 @@ export interface components {
             /** Error Type */
             type: string;
         };
+        /** ZipImageInfo */
+        ZipImageInfo: {
+            /** Img Id */
+            img_id: string;
+            /** Original Path */
+            original_path: string;
+            /** Url */
+            url: string;
+        };
+        /** ZipWithImagesResponse */
+        ZipWithImagesResponse: {
+            /** Markdown */
+            markdown: string;
+            /** Images */
+            images?: components["schemas"]["ZipImageInfo"][];
+            /** Image Count */
+            image_count: number;
+            /** Dataset Id */
+            dataset_id: string;
+            /** Document Id */
+            document_id: string;
+        };
         /**
          * ChunkPreviewResponse
          * @description 切块预览响应
@@ -4119,6 +4247,26 @@ export interface operations {
         };
     };
     ready_api_v1_health_ready_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": Record<string, never>;
+                };
+            };
+        };
+    };
+    get_meta_api_v1_meta_get: {
         parameters: {
             query?: never;
             header?: never;
@@ -4296,7 +4444,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["DocumentBatchUploadResponse"];
                 };
             };
             /** @description Validation Error */
@@ -4879,7 +5027,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["CheckpointListResponse"];
                 };
             };
             /** @description Validation Error */
@@ -4950,7 +5098,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["CheckpointDetailResponse"];
                 };
             };
             /** @description Validation Error */
@@ -6523,7 +6671,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["ZipWithImagesResponse"];
                 };
             };
             /** @description Validation Error */

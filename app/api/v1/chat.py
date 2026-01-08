@@ -18,7 +18,6 @@ from langchain_community.retrievers.bm25 import BM25Retriever
 
 from app.core.database import get_db
 from app.models.chat import Conversation, Message
-from app.models.document import Document as DBDocument
 from app.services.dataset_service import DatasetService
 from app.api.schemas.chat import (
     ChatRequest,
@@ -26,6 +25,8 @@ from app.api.schemas.chat import (
     ConversationSchema,
     ConversationDetail,
     ConversationList,
+    CheckpointListResponse,
+    CheckpointDetailResponse,
 )
 from app.services.document_access import filter_allowed_document_ids, list_accessible_document_ids
 from app.rag.engine import get_rag_engine
@@ -611,7 +612,7 @@ def _checkpoint_values_to_json(values: dict | None) -> dict:
     return jsonable_encoder(data)
 
 
-@router.get("/conversations/{conversation_id}/checkpoints")
+@router.get("/conversations/{conversation_id}/checkpoints", response_model=CheckpointListResponse)
 async def list_conversation_checkpoints(
     conversation_id: UUID,
     limit: int = Query(default=20, ge=1, le=200),
@@ -658,7 +659,7 @@ async def list_conversation_checkpoints(
     return {"thread_id": thread_id, "items": items}
 
 
-@router.get("/conversations/{conversation_id}/checkpoints/{checkpoint_id}")
+@router.get("/conversations/{conversation_id}/checkpoints/{checkpoint_id}", response_model=CheckpointDetailResponse)
 async def get_conversation_checkpoint(
     conversation_id: UUID,
     checkpoint_id: str,

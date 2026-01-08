@@ -11,6 +11,7 @@ import type {
   ManualChunk,
   DocumentPipelineOptions,
   ChunkPreviewResponse,
+  DocumentBatchUploadResponse,
   Dataset,
   DatasetCreate,
   DatasetUpdate,
@@ -19,6 +20,8 @@ import type {
   MessageFeedbackCreate,
   MessageFeedbackListResponse,
   KGExtractResponse,
+  KGGraphNode,
+  KGGraphResponse,
   KGSearchRequest,
   KGSearchResponse,
   BatchUploadRequest,
@@ -28,9 +31,18 @@ import type {
   CleanPreviewRequest,
   CleanPreviewResponse,
   CleanRulesResponse,
+  CheckpointDetailResponse,
+  CheckpointListResponse,
+  HealthResponse,
+  KeywordExtractRequest,
+  KeywordExtractResponse,
   LLMCleanPreviewRequest,
   LLMCleanPreviewResponse,
   PipelineCapabilitiesResponse,
+  PipelineChunkPreviewRequest,
+  PipelineChunkPreviewResponse,
+  PipelineParsePreviewResponse,
+  ReadyResponse,
   RetrievePreviewRequest,
   RetrievePreviewResponse,
   PromptPreviewRequest,
@@ -49,6 +61,7 @@ import type {
   LoginRequest,
   RegisterRequest,
   UserProfile,
+  ZipWithImagesResponse,
 } from '@/types'
 import { extractBackendMessage, extractBackendRequestId, withRequestId } from '@/lib/api-errors'
 import { getAuthHeaders } from '@/lib/auth-headers'
@@ -131,6 +144,19 @@ apiClient.interceptors.response.use(
   }
 )
 
+// ==================== Health API ====================
+
+export const healthApi = {
+  async health(): Promise<HealthResponse> {
+    const { data } = await apiClient.get('/health')
+    return data
+  },
+  async ready(): Promise<ReadyResponse> {
+    const { data } = await apiClient.get('/health/ready')
+    return data
+  },
+}
+
 // ==================== 文档管理 API ====================
 
 export const documentApi = {
@@ -152,6 +178,37 @@ export const documentApi = {
 
     const { data } = await apiClient.post('/documents/upload', formData)
 
+    return data
+  },
+
+  /**
+   * 批量上传文档（一次请求多文件）
+   */
+  async uploadBatch(
+    files: File[],
+    options: {
+      parser_backend?: string
+      chunk_strategy?: string
+      dataset_id?: string
+      pipeline?: DocumentPipelineOptions
+      max_concurrent?: number
+    } = {}
+  ): Promise<DocumentBatchUploadResponse> {
+    const formData = new FormData()
+    for (const file of files) {
+      formData.append('files', file)
+    }
+    formData.append('parser_backend', options.parser_backend || 'auto')
+    formData.append('chunk_strategy', options.chunk_strategy || 'langchain_recursive')
+    if (options.dataset_id) {
+      formData.append('dataset_id', options.dataset_id)
+    }
+    if (typeof options.max_concurrent === 'number') {
+      formData.append('max_concurrent', String(options.max_concurrent))
+    }
+    appendPipelineOptionsToFormData(formData, options.pipeline)
+
+    const { data } = await apiClient.post('/documents/upload-batch', formData)
     return data
   },
 
@@ -281,6 +338,22 @@ export const documentApi = {
     const { data } = await apiClient.get(`/documents/batch-upload/status/${batchId}`)
     return data
   },
+
+  /**
+   * 获取本地图片（uploads/{tenant}/images/{image_id}.png）
+   */
+  async fetchImage(imageId: string): Promise<Blob> {
+    const { data } = await apiClient.get(`/documents/image/${imageId}`, { responseType: 'blob' })
+    return data as Blob
+  },
+
+  /**
+   * 获取图片（MinIO 预签名 URL 302 跳转后资源）
+   */
+  async fetchImageByImgId(imgId: string): Promise<Blob> {
+    const { data } = await apiClient.get(`/documents/image-url/${encodeURIComponent(imgId)}`, { responseType: 'blob' })
+    return data as Blob
+  },
 }
 
 // ==================== Auth API ====================
@@ -308,6 +381,26 @@ export const pipelineApi = {
     return data
   },
 
+  async parsePreview(file: File, parserBackend = 'auto'): Promise<PipelineParsePreviewResponse> {
+    const formData = new FormData()
+    formData.append('file', file)
+    if (parserBackend) {
+      formData.append('parser_backend', parserBackend)
+    }
+    const { data } = await apiClient.post('/pipeline/parse-preview', formData)
+    return data
+  },
+
+  async chunkPreview(params: PipelineChunkPreviewRequest): Promise<PipelineChunkPreviewResponse> {
+    const { data } = await apiClient.post('/pipeline/chunk-preview', params)
+    return data
+  },
+
+  async extractKeywords(params: KeywordExtractRequest): Promise<KeywordExtractResponse> {
+    const { data } = await apiClient.post('/pipeline/extract-keywords', params)
+    return data
+  },
+
   async getCleanRules(): Promise<CleanRulesResponse> {
     const { data } = await apiClient.get('/pipeline/clean-rules')
     return data
@@ -320,6 +413,17 @@ export const pipelineApi = {
 
   async llmCleanPreview(params: LLMCleanPreviewRequest): Promise<LLMCleanPreviewResponse> {
     const { data } = await apiClient.post('/pipeline/llm-clean-preview', params)
+    return data
+  },
+
+  async uploadZipWithImages(params: { file: File; dataset_id: string; document_id?: string }): Promise<ZipWithImagesResponse> {
+    const formData = new FormData()
+    formData.append('file', params.file)
+    formData.append('dataset_id', params.dataset_id)
+    if (params.document_id) {
+      formData.append('document_id', params.document_id)
+    }
+    const { data } = await apiClient.post('/pipeline/upload-zip-with-images', formData)
     return data
   },
 }
@@ -425,21 +529,20 @@ export const chatApi = {
   },
 
   /**
-   * 流式对话（返回 EventSource URL）
-   */
-  getStreamUrl(): string {
-    return `${API_V1_BASE_URL}/chat/stream`
-  },
-
-  /**
    * 发送流式聊天请求
    */
   async streamChat(request: ChatRequest, onEvent: (event: MessageEvent) => void, onError?: (error: Error) => void): Promise<void> {
-    const response = await fetch(this.getStreamUrl(), {
+    const requestId =
+      typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+        ? crypto.randomUUID()
+        : `req-${Date.now()}-${Math.random().toString(16).slice(2)}`
+
+    const response = await fetch(`${API_V1_BASE_URL}/chat/stream`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         ...getAuthHeaders(),
+        'X-Request-ID': requestId,
       },
       body: JSON.stringify(request),
     })
@@ -476,6 +579,27 @@ export const chatApi = {
         }
       }
     }
+  },
+
+  async listCheckpoints(
+    conversationId: string,
+    params?: { limit?: number; before?: string; include_values?: boolean }
+  ): Promise<CheckpointListResponse> {
+    const { data } = await apiClient.get(`/chat/conversations/${conversationId}/checkpoints`, { params })
+    return data
+  },
+
+  async getCheckpoint(
+    conversationId: string,
+    checkpointId: string,
+    params?: { include_values?: boolean }
+  ): Promise<CheckpointDetailResponse> {
+    const { data } = await apiClient.get(`/chat/conversations/${conversationId}/checkpoints/${checkpointId}`, { params })
+    return data
+  },
+
+  async deleteCheckpoints(conversationId: string): Promise<void> {
+    await apiClient.delete(`/chat/conversations/${conversationId}/checkpoints`)
   },
 }
 
@@ -519,6 +643,37 @@ export const kgApi = {
    */
   async search(params: KGSearchRequest): Promise<KGSearchResponse> {
     const { data } = await apiClient.post('/kg/search', params)
+    return data
+  },
+
+  async getGraph(params?: {
+    document_ids?: string[]
+    max_events?: number
+    max_entities?: number
+    max_links?: number
+  }): Promise<KGGraphResponse> {
+    const { data } = await apiClient.get('/kg/graph', { params })
+    return data
+  },
+
+  async expandGraph(params: {
+    node_id: string
+    document_ids?: string[]
+    max_events?: number
+    max_entities?: number
+    max_links?: number
+  }): Promise<KGGraphResponse> {
+    const { data } = await apiClient.get('/kg/graph/expand', { params })
+    return data
+  },
+
+  async searchGraphNodes(params: {
+    q: string
+    kind?: string
+    limit?: number
+    document_ids?: string[]
+  }): Promise<KGGraphNode[]> {
+    const { data } = await apiClient.get('/kg/graph/search', { params })
     return data
   },
 }
@@ -841,6 +996,7 @@ export const evaluationApi = {
 export interface PromptTemplate {
   id: string
   tenant_id: string
+  template_key?: string | null
   name: string
   description?: string
   content: string
@@ -850,6 +1006,11 @@ export interface PromptTemplate {
   category?: string
   tags: string[]
   usage_count: number
+  version?: number
+  parent_id?: string | null
+  ab_experiment_key?: string | null
+  ab_variant?: string | null
+  ab_weight?: number
   created_at: string
   updated_at: string
 }
@@ -872,6 +1033,20 @@ export interface PromptTemplateUpdate {
   category?: string
   tags?: string[]
   is_active?: boolean
+}
+
+export interface PromptTemplateNewVersion {
+  name?: string
+  description?: string
+  content?: string
+  variables?: string[]
+  category?: string
+  tags?: string[]
+  is_active?: boolean
+  deactivate_previous?: boolean
+  ab_experiment_key?: string
+  ab_variant?: string
+  ab_weight?: number
 }
 
 export const promptTemplateApi = {
@@ -924,6 +1099,11 @@ export const promptTemplateApi = {
    */
   async duplicate(templateId: string): Promise<PromptTemplate> {
     const { data } = await apiClient.post(`/prompt-templates/${templateId}/duplicate`)
+    return data
+  },
+
+  async createVersion(templateId: string, params: PromptTemplateNewVersion): Promise<PromptTemplate> {
+    const { data } = await apiClient.post(`/prompt-templates/${templateId}/versions`, params)
     return data
   },
 }
