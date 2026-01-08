@@ -505,7 +505,7 @@ class TableStructureRecognizer(Recognizer):
                 from_ = " in "
             else:
                 from_ = " from "
-            row_txt = [t + f"\t——{from_}"{cap}"" for t in row_txt]
+            row_txt = [t + f"\t——{from_}{cap}" for t in row_txt]
         return row_txt
 
     @staticmethod

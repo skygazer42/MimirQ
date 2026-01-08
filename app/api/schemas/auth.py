@@ -22,12 +22,13 @@ class UserPublic(OrmModel):
 class RegisterRequest(BaseModel):
     email: EmailStr
     username: str = Field(min_length=3, max_length=64)
-    password: str = Field(min_length=8, max_length=128)
+    # bcrypt only supports up to 72 bytes for passwords.
+    password: str = Field(min_length=8, max_length=72)
 
 
 class LoginRequest(BaseModel):
     identifier: str
-    password: str = Field(min_length=1, max_length=128)
+    password: str = Field(min_length=1, max_length=72)
 
 
 class TokenResponse(BaseModel):

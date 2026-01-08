@@ -135,16 +135,16 @@ def _calculate_text_diversity_scores(texts: List[str]) -> List[float]:
 def _sample_diverse_chunks(
     chunks: List[DocumentChunk],
     num_samples: int,
-    max_chars: int = 2000
-    ) -> List[DocumentChunk]:
-        """
+    max_chars: int = 2000,
+) -> List[DocumentChunk]:
+    """
     Sample chunks to ensure diversity.
 
     Strategy:
     1. Filter out short chunks
     2. Compute diversity scores
     3. Combine randomness with diversity
-        """
+    """
     if not chunks:
         return []
     
