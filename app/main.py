@@ -1,5 +1,5 @@
 """
-FastAPI 主应用入口
+FastAPI main entry point.
 """
 import warnings
 
@@ -68,11 +68,11 @@ if init_otel():
     instrument_httpx()
 
 
-# 生命周期管理
+# Lifespan management
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """应用启动和关闭时的操作"""
-    # 启动时：创建数据库表
+    """Operations on app startup and shutdown."""
+    # Startup: create database tables.
     logger.info("Starting MimirQ backend...")
 
     # Ensure local directories exist (uploads/logs/vector persistence).
@@ -121,13 +121,13 @@ async def lifespan(app: FastAPI):
     apply_runtime_migrations(engine)
     logger.info("Database initialized")
 
-    # 初始化任务队列（可选）
+    # Initialize task queue (optional).
     try:
         await init_queue()
     except Exception as exc:  # noqa: BLE001
         logger.warning("Failed to init task queue: %s", str(exc)[:200])
 
-    # 初始化 BM25 索引（可选：大规模部署建议依赖 lazy-build）
+    # Initialize BM25 index (optional; large deployments can rely on lazy-build).
     if not bool(getattr(settings, "BM25_INDEX_ENABLED", True)):
         logger.info("BM25 indexing disabled; skipping startup build")
     elif not bool(getattr(settings, "BM25_STARTUP_BUILD_ENABLED", False)):
@@ -184,19 +184,19 @@ async def lifespan(app: FastAPI):
 
     yield
 
-    # 关闭时的清理操作
+    # Shutdown cleanup.
     logger.info("Shutting down MimirQ backend...")
     
-    # 关闭 HTTP 客户端连接池
+    # Close HTTP client pool.
     await close_http_client_pool()
     logger.info("HTTP client pool closed")
 
-    # 关闭任务队列连接（可选）
+    # Close task queue connection (optional).
     await close_queue()
     shutdown_otel()
 
 
-# 创建 FastAPI 应用
+# Create FastAPI app
 app = FastAPI(
     title="MimirQ - Knowledge Base RAG System",
     description="知识库管理与 RAG 对话系统",
@@ -207,7 +207,7 @@ app = FastAPI(
 # Optional FastAPI instrumentation (OTEL_ENABLED).
 instrument_fastapi(app)
 
-# CORS 配置
+# CORS config
 app.add_middleware(
     CORSMiddleware,
     allow_origins=parse_csv(settings.CORS_ORIGINS),
@@ -217,7 +217,7 @@ app.add_middleware(
     expose_headers=parse_csv(getattr(settings, "CORS_EXPOSE_HEADERS", "X-Request-ID")),
 )
 
-# Rate Limiting 中间件
+# Rate limiting middleware
 if settings.RATE_LIMIT_ENABLED:
     from app.api.middleware.rate_limit import RateLimitMiddleware
 
@@ -265,16 +265,16 @@ app.add_middleware(ProcessTimeMiddleware)
 # Request-id middleware (outermost; propagates X-Request-ID for tracing).
 app.add_middleware(RequestIDMiddleware)
 
-# 注册路由
+# Register routes
 app.include_router(api_v1_router, prefix="/api/v1")
 
-# 注册异常处理器
+# Register exception handlers
 register_exception_handlers(app)
 
 
 @app.get("/")
 async def root():
-    """根路径"""
+    """Root path."""
     return {
         "message": "Welcome to MimirQ API",
         "version": "1.0.0",
@@ -284,7 +284,7 @@ async def root():
 
 @app.get("/health")
 async def health_check():
-    """健康检查"""
+    """Health check."""
     from sqlalchemy import text
 
     db_status = {"status": "disconnected"}

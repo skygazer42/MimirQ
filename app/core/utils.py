@@ -1,7 +1,7 @@
 """
-核心工具函数
+Core utility functions.
 
-提供常用的数据转换和验证工具函数。
+Provides common data conversion and validation helpers.
 """
 
 import os
@@ -17,21 +17,21 @@ T = TypeVar("T", bound=BaseModel)
 
 
 # =============================================================================
-# UUID 转换
+# UUID conversion
 # =============================================================================
 
 def to_uuid(value: Any) -> UUID:
     """
-    安全地将值转换为 UUID
+    Safely convert a value to UUID.
 
     Args:
-        value: 要转换的值（UUID、字符串或其他）
+        value: Value to convert (UUID, string, or other).
 
     Returns:
-        UUID 对象
+        UUID object.
 
     Raises:
-        ValueError: 如果无法转换为 UUID
+        ValueError: If conversion fails.
 
     Example:
         >>> to_uuid("123e4567-e89b-12d3-a456-426614174000")
@@ -46,13 +46,13 @@ def to_uuid(value: Any) -> UUID:
 
 def to_uuid_or_none(value: Any) -> Optional[UUID]:
     """
-    安全地将值转换为 UUID，失败返回 None
+    Safely convert to UUID, return None on failure.
 
     Args:
-        value: 要转换的值
+        value: Value to convert.
 
     Returns:
-        UUID 对象或 None
+        UUID object or None.
     """
     if value is None:
         return None
@@ -64,30 +64,30 @@ def to_uuid_or_none(value: Any) -> Optional[UUID]:
 
 def uuid_list(values: List[Any]) -> List[UUID]:
     """
-    将列表中的值转换为 UUID 列表
+    Convert list values to a list of UUIDs.
 
     Args:
-        values: 值列表
+        values: List of values.
 
     Returns:
-        UUID 列表
+        List of UUIDs.
     """
     return [to_uuid(v) for v in values]
 
 
 # =============================================================================
-# Pydantic 模型转换
+# Pydantic model conversion
 # =============================================================================
 
 def models_to_dicts(models: List[T]) -> List[Dict[str, Any]]:
     """
-    将 Pydantic 模型列表转换为字典列表
+    Convert a list of Pydantic models to a list of dicts.
 
     Args:
-        models: Pydantic 模型列表
+        models: List of Pydantic models.
 
     Returns:
-        字典列表
+        List of dicts.
 
     Example:
         >>> messages = [MessageSchema(...), MessageSchema(...)]
@@ -99,30 +99,30 @@ def models_to_dicts(models: List[T]) -> List[Dict[str, Any]]:
 
 def model_to_dict(model: T, **kwargs) -> Dict[str, Any]:
     """
-    将 Pydantic 模型转换为字典
+    Convert a Pydantic model to dict.
 
     Args:
-        model: Pydantic 模型
-        **kwargs: 传递给 model_dump 的参数
+        model: Pydantic model.
+        **kwargs: Arguments passed to model_dump.
 
     Returns:
-        字典
+        Dict output.
     """
     return model.model_dump(**kwargs)
 
 
 # =============================================================================
-# 代理配置
+# Proxy configuration
 # =============================================================================
 
 def get_proxy_url() -> Optional[str]:
     """
-    获取代理 URL
+    Get proxy URL.
 
-    按优先级检查代理环境变量，返回第一个找到的值。
+    Checks proxy env vars by priority and returns the first match.
 
     Returns:
-        代理 URL 或 None
+        Proxy URL or None.
 
     Example:
         >>> os.environ["HTTPS_PROXY"] = "http://proxy:8080"
@@ -138,29 +138,29 @@ def get_proxy_url() -> Optional[str]:
 
 def has_proxy_configured() -> bool:
     """
-    检查是否配置了代理
+    Check whether a proxy is configured.
 
     Returns:
-        是否配置了代理
+        Whether a proxy is configured.
     """
     return get_proxy_url() is not None
 
 
 # =============================================================================
-# 字符串工具
+# String utilities
 # =============================================================================
 
 def truncate_string(s: str, max_length: int, suffix: str = "...") -> str:
     """
-    截断字符串到指定长度
+    Truncate a string to a maximum length.
 
     Args:
-        s: 原始字符串
-        max_length: 最大长度
-        suffix: 截断后添加的后缀
+        s: Original string.
+        max_length: Maximum length.
+        suffix: Suffix appended after truncation.
 
     Returns:
-        截断后的字符串
+        Truncated string.
     """
     if len(s) <= max_length:
         return s
@@ -169,14 +169,14 @@ def truncate_string(s: str, max_length: int, suffix: str = "...") -> str:
 
 def safe_str(value: Any, default: str = "") -> str:
     """
-    安全地将值转换为字符串
+    Safely convert a value to string.
 
     Args:
-        value: 要转换的值
-        default: 如果值为 None 时返回的默认值
+        value: Value to convert.
+        default: Default if value is None.
 
     Returns:
-        字符串
+        String value.
     """
     if value is None:
         return default
@@ -184,7 +184,7 @@ def safe_str(value: Any, default: str = "") -> str:
 
 
 # =============================================================================
-# 配置工具
+# Config utilities
 # =============================================================================
 
 def parse_csv(value: Optional[str]) -> List[str]:
@@ -207,14 +207,14 @@ def parse_csv(value: Optional[str]) -> List[str]:
 
 def get_env_bool(key: str, default: bool = False) -> bool:
     """
-    获取布尔类型环境变量
+    Get a boolean env var.
 
     Args:
-        key: 环境变量名
-        default: 默认值
+        key: Environment variable name.
+        default: Default value.
 
     Returns:
-        布尔值
+        Boolean value.
 
     Example:
         >>> os.environ["DEBUG"] = "true"
@@ -231,14 +231,14 @@ def get_env_bool(key: str, default: bool = False) -> bool:
 
 def get_env_int(key: str, default: int = 0) -> int:
     """
-    获取整数类型环境变量
+    Get an integer env var.
 
     Args:
-        key: 环境变量名
-        default: 默认值
+        key: Environment variable name.
+        default: Default value.
 
     Returns:
-        整数值
+        Integer value.
     """
     value = os.getenv(key)
     if value is None:
@@ -251,14 +251,14 @@ def get_env_int(key: str, default: int = 0) -> int:
 
 def get_env_float(key: str, default: float = 0.0) -> float:
     """
-    获取浮点数类型环境变量
+    Get a float env var.
 
     Args:
-        key: 环境变量名
-        default: 默认值
+        key: Environment variable name.
+        default: Default value.
 
     Returns:
-        浮点数值
+        Float value.
     """
     value = os.getenv(key)
     if value is None:
@@ -270,19 +270,19 @@ def get_env_float(key: str, default: float = 0.0) -> float:
 
 
 # =============================================================================
-# 列表工具
+# List utilities
 # =============================================================================
 
 def chunk_list(lst: List[T], chunk_size: int) -> List[List[T]]:
     """
-    将列表分割成固定大小的块
+    Split a list into fixed-size chunks.
 
     Args:
-        lst: 原始列表
-        chunk_size: 每块大小
+        lst: Original list.
+        chunk_size: Chunk size.
 
     Returns:
-        分块后的列表
+        Chunked list.
 
     Example:
         >>> chunk_list([1, 2, 3, 4, 5], 2)
@@ -293,13 +293,13 @@ def chunk_list(lst: List[T], chunk_size: int) -> List[List[T]]:
 
 def flatten_list(nested: List[List[T]]) -> List[T]:
     """
-    展平嵌套列表
+    Flatten a nested list.
 
     Args:
-        nested: 嵌套列表
+        nested: Nested list.
 
     Returns:
-        展平后的列表
+        Flattened list.
 
     Example:
         >>> flatten_list([[1, 2], [3, 4], [5]])
