@@ -236,6 +236,75 @@ export interface PipelineCapabilitiesResponse {
   chunk_strategies: ChunkStrategyInfo[]
 }
 
+// ==================== 流水线预览/工具相关类型 ====================
+
+export interface PipelineParseImageInfo {
+  id: string
+  url: string
+  filename: string
+}
+
+export interface PipelinePDFQualityScore {
+  score: number
+  text_quality_score: number
+  format_consistency_score: number
+  table_quality_score: number
+  is_scanned: boolean
+  page_count: number
+}
+
+export interface PipelineParsePreviewResponse {
+  backend: string
+  pdf_quality?: PipelinePDFQualityScore | null
+  markdown: string
+  images: PipelineParseImageInfo[]
+}
+
+export interface PipelineChunkItem {
+  id: string
+  level: string
+  index: number
+  text: string
+  start: number
+  end: number
+  tokens_est: number
+  parent_id?: string | null
+}
+
+export interface PipelineChunkPreviewRequest {
+  markdown: string
+}
+
+export interface PipelineChunkPreviewResponse {
+  paragraphs: PipelineChunkItem[]
+  sentences: PipelineChunkItem[]
+}
+
+export interface KeywordExtractRequest {
+  text: string
+  provider?: string
+  top_k?: number
+}
+
+export interface KeywordExtractResponse {
+  provider: string
+  keywords: string[]
+}
+
+export interface ZipImageInfo {
+  img_id: string
+  original_path: string
+  url: string
+}
+
+export interface ZipWithImagesResponse {
+  markdown: string
+  images: ZipImageInfo[]
+  image_count: number
+  dataset_id: string
+  document_id: string
+}
+
 // ==================== 数据集相关类型 ====================
 
 export interface Dataset {
@@ -337,6 +406,30 @@ export interface ChatRequest {
   }
 }
 
+export interface CheckpointItem {
+  checkpoint_id?: string | null
+  checkpoint_ns?: string
+  created_at?: string | null
+  next?: any
+  metadata?: Record<string, any> | null
+  values?: Record<string, any> | null
+}
+
+export interface CheckpointListResponse {
+  thread_id: string
+  items: CheckpointItem[]
+}
+
+export interface CheckpointDetailResponse {
+  thread_id: string
+  checkpoint_id?: string | null
+  checkpoint_ns?: string
+  created_at?: string | null
+  next?: any
+  metadata?: Record<string, any> | null
+  values?: Record<string, any> | null
+}
+
 // ==================== 反馈相关类型 ====================
 
 export interface MessageFeedback {
@@ -401,6 +494,21 @@ export interface LoginRequest {
   password: string
 }
 
+// ==================== Health ====================
+
+export interface HealthResponse {
+  ok: boolean
+  time: string
+  vector_backend?: string
+  use_langgraph_pipeline?: boolean
+}
+
+export interface ReadyResponse {
+  ok: boolean
+  time: string
+  deps?: Record<string, any>
+}
+
 // ==================== KG 相关类型 ====================
 
 export interface KGExtractResponse {
@@ -419,6 +527,28 @@ export interface KGSearchRequest {
 export interface KGSearchResponse {
   result: Record<string, any>
   query: string
+}
+
+export interface KGGraphNode {
+  id: string
+  label: string
+  group?: number
+  val?: number
+  meta?: Record<string, any>
+}
+
+export interface KGGraphLink {
+  source: string
+  target: string
+  label?: string
+  weight?: number
+  meta?: Record<string, any>
+}
+
+export interface KGGraphResponse {
+  nodes: KGGraphNode[]
+  links: KGGraphLink[]
+  stats?: Record<string, any>
 }
 
 // ==================== RAG 调试相关类型 ====================
@@ -488,6 +618,25 @@ export interface BatchTaskStatus {
   progress: number
   result_url?: string
   error?: string
+}
+
+export interface DocumentBatchUploadSuccess {
+  document_id: string
+  filename: string
+  status: string
+}
+
+export interface DocumentBatchUploadFailure {
+  filename: string
+  error: string
+}
+
+export interface DocumentBatchUploadResponse {
+  total: number
+  successful_count: number
+  failed_count: number
+  successful: DocumentBatchUploadSuccess[]
+  failed: DocumentBatchUploadFailure[]
 }
 
 // ==================== RAGAS 回归测试相关类型 ====================

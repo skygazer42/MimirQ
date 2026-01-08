@@ -3,7 +3,7 @@
 定义文档解析、分块等流水线操作的数据模型。
 """
 
-from typing import List, Optional, Dict, Any
+from typing import List, Optional
 from uuid import UUID
 from pydantic import BaseModel, Field
 
@@ -143,3 +143,17 @@ class PipelineCapabilitiesResponse(BaseModel):
     default_chunk_strategy: str
     pdf_backends: List[ParserBackendInfo] = Field(default_factory=list)
     chunk_strategies: List[ChunkStrategyInfo] = Field(default_factory=list)
+
+
+class ZipImageInfo(BaseModel):
+    img_id: str
+    original_path: str
+    url: str
+
+
+class ZipWithImagesResponse(BaseModel):
+    markdown: str
+    images: List[ZipImageInfo] = Field(default_factory=list)
+    image_count: int
+    dataset_id: str
+    document_id: str

@@ -32,6 +32,7 @@ from app.api.schemas.pipeline import (
     PipelineCapabilitiesResponse,
     ParserBackendInfo,
     ChunkStrategyInfo,
+    ZipWithImagesResponse,
 )
 from app.parsing.processors.parser_service import document_parser_service
 from app.parsing.backends import normalize_parser_backend
@@ -44,7 +45,6 @@ from app.rag.preprocessing.cleaning import clean_markdown, RegexRule, build_repe
 from app.rag.preprocessing.rules import DEFAULT_MARKDOWN_RULES
 from app.services.dataset_service import DatasetService
 from app.services.prompt_resolver import resolve_prompt_template
-from app.rag.kg.utils import ConfigError
 from app.rag.llm.factory import create_llm_client
 from app.rag.llm.models import LLMMessage, LLMRole
 from app.api.utils.upload import save_upload_file
@@ -438,7 +438,7 @@ async def llm_clean_preview(
 
 
 
-@router.post("/upload-zip-with-images")
+@router.post("/upload-zip-with-images", response_model=ZipWithImagesResponse)
 async def upload_zip_with_images(
     file: UploadFile = File(...),
     dataset_id: str = Form(...),

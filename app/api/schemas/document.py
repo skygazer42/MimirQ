@@ -208,3 +208,27 @@ class BatchTaskStatus(BaseModel):
     progress: int = Field(..., ge=0, le=100, description="进度百分比")
     result_url: Optional[str] = None
     error: Optional[str] = None
+
+
+# ============ 批量文件上传（单次多文件）相关 Schema ============
+
+class DocumentBatchUploadSuccess(BaseModel):
+    """批量上传成功的单个文件结果（轻量返回）。"""
+    document_id: UUID
+    filename: str
+    status: str
+
+
+class DocumentBatchUploadFailure(BaseModel):
+    """批量上传失败的单个文件结果。"""
+    filename: str
+    error: str
+
+
+class DocumentBatchUploadResponse(BaseModel):
+    """批量上传接口响应。"""
+    total: int
+    successful_count: int
+    failed_count: int
+    successful: List[DocumentBatchUploadSuccess] = Field(default_factory=list)
+    failed: List[DocumentBatchUploadFailure] = Field(default_factory=list)

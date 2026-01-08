@@ -1,6 +1,5 @@
 import { GraphData, GraphNode, GraphLink } from '@/lib/graph-parser'
-import { API_V1_BASE_URL } from '@/lib/env'
-import { getAuthHeaders } from '@/lib/auth-headers'
+import { kgApi } from '@/lib/api-client'
 
 // Mock delay to simulate network request
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms))
@@ -41,19 +40,11 @@ export class GraphService {
 
     // Try KG live graph first; fallback to mock data (so the page remains usable when KG is disabled).
     try {
-      const res = await fetch(`${API_V1_BASE_URL}/kg/graph`, {
-        method: 'GET',
-        headers: {
-          ...getAuthHeaders(),
-        },
-      })
-      if (res.ok) {
-        const data = (await res.json()) as GraphData
-        const nodes = Array.isArray(data?.nodes) ? data.nodes : []
-        const links = Array.isArray(data?.links) ? data.links : []
-        if (nodes.length > 0) {
-          return JSON.parse(JSON.stringify({ nodes, links }))
-        }
+      const data = await kgApi.getGraph()
+      const nodes = Array.isArray(data?.nodes) ? data.nodes : []
+      const links = Array.isArray(data?.links) ? data.links : []
+      if (nodes.length > 0) {
+        return JSON.parse(JSON.stringify({ nodes, links }))
       }
     } catch {
       // ignore and fallback
@@ -70,20 +61,14 @@ export class GraphService {
     // Prefer backend KG expansion for UUID-like nodes; otherwise fallback to mock expansion
     if (UUID_RE.test(String(nodeId || '').trim())) {
       try {
-        const res = await fetch(
-          `${API_V1_BASE_URL}/kg/graph/expand?node_id=${encodeURIComponent(nodeId)}&max_events=50&max_entities=400&max_links=5000`,
-          {
-            method: 'GET',
-            headers: {
-              ...getAuthHeaders(),
-            },
-          }
-        )
-        if (res.ok) {
-          const data = (await res.json()) as GraphData
-          if (data?.nodes && data?.links) {
-            return JSON.parse(JSON.stringify(data))
-          }
+        const data = await kgApi.expandGraph({
+          node_id: nodeId,
+          max_events: 50,
+          max_entities: 400,
+          max_links: 5000,
+        })
+        if (data?.nodes && data?.links) {
+          return JSON.parse(JSON.stringify({ nodes: data.nodes, links: data.links }))
         }
       } catch {
         // ignore and fallback
@@ -127,18 +112,8 @@ export class GraphService {
     if (!q) return []
 
     try {
-      const res = await fetch(
-        `${API_V1_BASE_URL}/kg/graph/search?q=${encodeURIComponent(q)}&kind=all&limit=20`,
-        {
-          method: 'GET',
-          headers: {
-            ...getAuthHeaders(),
-          },
-        }
-      )
-      if (!res.ok) return []
-      const nodes = (await res.json()) as GraphNode[]
-      return Array.isArray(nodes) ? nodes : []
+      const nodes = await kgApi.searchGraphNodes({ q, kind: 'all', limit: 20 })
+      return Array.isArray(nodes) ? (nodes as GraphNode[]) : []
     } catch {
       return []
     }
