@@ -14,11 +14,10 @@ make api-check
 
 `make api-check` 会执行两类校验：
 
-1. `scripts/check-api-contract.mjs`：前端代码里出现的 API 调用，必须在后端存在对应路由（防止“前端调了不存在的接口”）。
-2. `scripts/check-api-coverage.mjs`：后端 `app/api/v1/*`（含 KG）里的路由，必须在 `web/lib/api-client.ts` 出现对应调用（防止“后端新增接口但前端没有入口”）。
+1. `web/scripts/check-api-contract.mjs`：前端代码里出现的 API 调用，必须在后端存在对应路由（防止“前端调了不存在的接口”）。
+2. `web/scripts/check-api-coverage.mjs`：后端 `app/api/v1/*`（含 KG）里的路由，必须在 `web/lib/api-client.ts` 出现对应调用（防止“后端新增接口但前端没有入口”）。
 
 ## 开发约定（新增/修改接口时）
 
 - 后端：为接口补齐 `response_model`（以及必要的请求 schema），确保 `web/openapi.json` 能产出稳定类型。
 - 前端：在 `web/lib/api-client.ts` 增加/更新对应方法，并让页面/Hook 优先走该方法。
-
