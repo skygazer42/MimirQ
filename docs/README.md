@@ -17,6 +17,7 @@
 - [integrations/migration_chromadb_to_milvus.md](./integrations/migration_chromadb_to_milvus.md)：从 ChromaDB 迁移到 Milvus 的原因与步骤。
 - [integration/FE_BE_DEBUG.md](./integration/FE_BE_DEBUG.md)：前后端联调排障清单（从“能跑”到“可用 + 可排障”）。
 - [integration/API_CONTRACT.md](./integration/API_CONTRACT.md)：前后端接口契约检查（保证接口一一对应）。
+- [integration/API_SMOKE.md](./integration/API_SMOKE.md)：全接口冒烟（OpenAPI 全量覆盖 + 调用验证）。
 
 ## 优化清单
 - [optimization/OPTIMIZATION_20_TASKS_DOC_PARSING_CHUNKING_CLEANING.md](./optimization/OPTIMIZATION_20_TASKS_DOC_PARSING_CHUNKING_CLEANING.md)：文档解析/清洗/切块 20 项深度优化。

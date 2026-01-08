@@ -176,6 +176,9 @@ services:
   worker:
     build: *backend_build
     restart: unless-stopped
+    # Worker uses the same image as backend, but does not expose HTTP; disable image healthcheck.
+    healthcheck:
+      disable: true
     depends_on:
       redis:
         condition: service_healthy
