@@ -5,7 +5,6 @@
 仅在 PostgreSQL 上运行。失败会被忽略以避免阻塞启动。
 """
 
-from __future__ import annotations
 
 from uuid import UUID
 

@@ -4,7 +4,6 @@ Semantic sentence-based chunking strategy.
 Splits text at sentence boundaries, then aggregates
 sentences into chunks of the target size.
 """
-from __future__ import annotations
 
 import re
 from typing import List

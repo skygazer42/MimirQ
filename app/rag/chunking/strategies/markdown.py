@@ -5,7 +5,6 @@ Splits markdown documents by header hierarchy while preserving
 header context in chunk metadata.
 """
 
-from __future__ import annotations
 
 import logging
 import re

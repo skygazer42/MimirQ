@@ -7,7 +7,6 @@ its CLI entrypoint (`magic-pdf`) so the backend can treat it as a pluggable
 parser backend.
 """
 
-from __future__ import annotations
 
 import os
 import re

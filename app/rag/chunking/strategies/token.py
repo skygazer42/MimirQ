@@ -3,7 +3,6 @@ LangChain TokenTextSplitter wrapper.
 
 Splits text by token count using tiktoken encoding.
 """
-from __future__ import annotations
 
 from typing import List
 

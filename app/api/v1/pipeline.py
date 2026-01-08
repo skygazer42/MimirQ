@@ -3,7 +3,6 @@ Lightweight parsing and hierarchical chunk preview APIs:
 - /pipeline/parse-preview: route parsing by file type (MarkItDown/DeepDoc/MinerU/Basic), return Markdown + image refs
 - /pipeline/chunk-preview: hierarchical Markdown chunking (paragraph/sentence) with highlight offsets
 """
-from __future__ import annotations
 
 from pathlib import Path
 import shutil

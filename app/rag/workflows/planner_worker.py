@@ -7,7 +7,6 @@ A planner breaks down complex tasks, workers execute subtasks.
 Pattern: Plan -> [Worker1, Worker2, ...] -> Synthesize -> Result
 """
 
-from __future__ import annotations
 
 import asyncio
 import logging

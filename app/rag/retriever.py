@@ -2,7 +2,6 @@
 Hybrid Retriever: Vector retrieval + BM25 + optional MMR diversity reranking.
 Reference: RAG_Agent example repository. Retrieval modes and reranking strategies are configurable.
 """
-from __future__ import annotations
 
 from typing import List, Dict, Any, Optional
 from uuid import UUID

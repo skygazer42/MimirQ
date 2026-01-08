@@ -6,7 +6,6 @@ structured citation payload returned by both streaming and non-streaming RAG
 pipelines.
 """
 
-from __future__ import annotations
 
 import re
 from typing import Any, Dict, List

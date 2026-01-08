@@ -7,7 +7,6 @@ and optimized until quality threshold is met.
 Pattern: Generate -> Evaluate -> (Score < threshold) -> Optimize -> Evaluate -> ... -> Result
 """
 
-from __future__ import annotations
 
 import logging
 from typing import Any, Callable, Dict, List, Optional, Awaitable

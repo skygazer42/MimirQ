@@ -4,7 +4,6 @@ Knowledge Graph (KG) module.
 Provides entity and event storage, retrieval, and search capabilities
 for knowledge graph operations.
 """
-from __future__ import annotations
 
 from typing import Any
 

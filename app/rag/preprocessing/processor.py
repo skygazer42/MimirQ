@@ -1,7 +1,6 @@
 """
 Markdown governance processor shared by parsing and indexing pipelines.
 """
-from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Iterable, List, Optional, Sequence

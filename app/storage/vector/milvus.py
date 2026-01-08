@@ -5,7 +5,6 @@ Provides two usage modes:
 1. Singleton mode - Used for document vector storage (fixed collection)
 2. Multi-instance mode - Used for KG entities/events (customizable collection)
 """
-from __future__ import annotations
 
 import logging
 import threading

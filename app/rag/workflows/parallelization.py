@@ -7,7 +7,6 @@ Useful for fan-out operations like multi-query retrieval.
 Pattern: Split -> [Task1, Task2, ...] (parallel) -> Aggregate -> Result
 """
 
-from __future__ import annotations
 
 import asyncio
 import logging

@@ -3,7 +3,6 @@ Reranker factory functions.
 
 Provide a unified reranker creation interface.
 """
-from __future__ import annotations
 
 from typing import Any
 import hashlib

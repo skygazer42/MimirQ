@@ -13,7 +13,6 @@ Key components:
 Note: text chunking has moved to app.rag.chunking.
 """
 
-from __future__ import annotations
 
 from typing import Any
 

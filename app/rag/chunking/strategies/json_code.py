@@ -4,7 +4,6 @@ JSON and Code Text Splitters
 Provides specialized splitters for JSON data and programming code.
 """
 
-from __future__ import annotations
 
 import json
 import logging

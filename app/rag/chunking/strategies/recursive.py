@@ -3,7 +3,6 @@ LangChain RecursiveCharacterTextSplitter wrapper.
 
 Preserves start/end character positions for highlighting.
 """
-from __future__ import annotations
 
 from typing import List
 

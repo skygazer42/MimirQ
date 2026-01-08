@@ -7,7 +7,6 @@ This module is the canonical home for the non-streaming LangGraph-based runner.
 Refactored to use LangGraph 1.0+ Functional API with @entrypoint and @task decorators.
 """
 
-from __future__ import annotations
 
 from dataclasses import dataclass
 import logging

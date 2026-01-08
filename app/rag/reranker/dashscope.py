@@ -3,7 +3,6 @@ Alibaba Cloud DashScope reranker.
 
 Supports the DashScope reranker API.
 """
-from __future__ import annotations
 
 from typing import Any
 

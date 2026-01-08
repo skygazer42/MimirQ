@@ -11,7 +11,6 @@ Features:
 - Cross-session memory retrieval
 """
 
-from __future__ import annotations
 
 import json
 import logging

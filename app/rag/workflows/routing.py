@@ -7,7 +7,6 @@ Routes queries to specialized handlers.
 Pattern: Classify -> Route -> Handler -> Result
 """
 
-from __future__ import annotations
 
 import logging
 from typing import Any, Callable, Dict, List, Optional, Awaitable

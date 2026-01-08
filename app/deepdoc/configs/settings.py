@@ -6,7 +6,6 @@ backwards-compatible aliases so the vendored parsers keep working in this
 repo without relying on extra sys.path tweaks.
 """
 
-from __future__ import annotations
 
 import os
 from pathlib import Path

@@ -4,7 +4,6 @@ Optional OpenTelemetry tracing initialization.
 Enabled when OTEL_ENABLED=true.
 """
 
-from __future__ import annotations
 
 import logging
 

@@ -7,7 +7,6 @@ Alternates between thinking about the problem and taking actions.
 Pattern: Think -> Act -> Observe -> Think -> ... -> Answer
 """
 
-from __future__ import annotations
 
 import asyncio
 import logging

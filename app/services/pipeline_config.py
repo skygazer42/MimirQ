@@ -3,7 +3,6 @@ Pipeline configuration service.
 
 Provides parsing, building, and resolution for pipeline configuration.
 """
-from __future__ import annotations
 
 from typing import Any, Dict, Optional
 

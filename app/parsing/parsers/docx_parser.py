@@ -5,8 +5,6 @@ Used as a best-effort fallback when MarkItDown is unavailable or fails.
 Relies on python-docx (pure Python) to extract paragraphs and tables.
 """
 
-from __future__ import annotations
-
 from pathlib import Path
 from typing import List
 
@@ -21,10 +19,7 @@ class DocxParser:
     """Parse DOCX into a chunk-friendly plain text representation."""
 
     def parse(self, file_path: Path) -> List[Document]:
-        try:
-            from docx import Document as DocxDocument  # type: ignore
-        except ImportError as exc:  # pragma: no cover
-            raise RuntimeError("python-docx is not installed; cannot parse .docx") from exc
+        from docx import Document as DocxDocument  # type: ignore
 
         doc = DocxDocument(str(file_path))
 

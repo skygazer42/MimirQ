@@ -9,7 +9,6 @@ Reference implementation of `@before_agent` / `@after_agent`:
 This middleware is disabled by default (settings.AGENT_LOG_ENABLED).
 """
 
-from __future__ import annotations
 
 import logging
 import time

@@ -7,7 +7,6 @@ LangGraph 工作流的时间旅行调试模块
 - 使用修改后的状态分叉执行
 """
 
-from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field

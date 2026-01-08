@@ -6,7 +6,6 @@ It extracts the main readable content (best-effort) and converts it into plain t
 that works well with downstream governance + chunking.
 """
 
-from __future__ import annotations
 
 from pathlib import Path
 from typing import List, Optional

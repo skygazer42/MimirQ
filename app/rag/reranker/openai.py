@@ -3,7 +3,6 @@ OpenAI-style reranker.
 
 Supports OpenAI, SiliconFlow, VLLM, and compatible APIs.
 """
-from __future__ import annotations
 
 from typing import Any
 

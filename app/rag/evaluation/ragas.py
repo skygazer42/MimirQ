@@ -5,7 +5,6 @@ RAGAS evaluation service.
 - Runs in FastAPI BackgroundTasks (sync function).
 """
 
-from __future__ import annotations
 
 import math
 from datetime import datetime

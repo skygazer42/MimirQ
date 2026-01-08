@@ -19,10 +19,7 @@ from starlette.status import (
 
 # Starlette deprecated `HTTP_422_UNPROCESSABLE_ENTITY` in favor of
 # `HTTP_422_UNPROCESSABLE_CONTENT` (keep a backward-compatible fallback).
-try:
-    from starlette.status import HTTP_422_UNPROCESSABLE_CONTENT
-except ImportError:  # pragma: no cover
-    from starlette.status import HTTP_422_UNPROCESSABLE_ENTITY as HTTP_422_UNPROCESSABLE_CONTENT
+from starlette.status import HTTP_422_UNPROCESSABLE_CONTENT
 
 logger = logging.getLogger(__name__)
 

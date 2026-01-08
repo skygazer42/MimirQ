@@ -8,7 +8,6 @@ Provides dynamic prompt injection capabilities:
 - User preference injection
 """
 
-from __future__ import annotations
 
 import logging
 from datetime import datetime

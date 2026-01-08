@@ -10,7 +10,6 @@ Main components:
 Note: Hybrid retrieval has been moved to app.rag.retriever module.
 """
 
-from __future__ import annotations
 
 from typing import Any
 

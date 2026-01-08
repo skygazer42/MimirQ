@@ -5,7 +5,6 @@ We centralize proxy environment handling here to avoid duplicating logic across
 engine / rerankers / embedding clients.
 """
 
-from __future__ import annotations
 
 import os
 from typing import Iterable, Optional

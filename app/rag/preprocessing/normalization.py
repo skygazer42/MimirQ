@@ -7,7 +7,6 @@ This module provides conservative, semantics-preserving normalization used by:
 - Retrieval/query handling (optional)
 """
 
-from __future__ import annotations
 
 import re
 

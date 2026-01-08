@@ -11,7 +11,6 @@ Implements lightweight detection/redaction for common sensitive patterns:
 This middleware is disabled by default (see settings.PII_REDACTION_ENABLED).
 """
 
-from __future__ import annotations
 
 import logging
 import re

@@ -7,7 +7,6 @@ becomes the next step's input.
 Pattern: Step1 -> Step2 -> Step3 -> ... -> Result
 """
 
-from __future__ import annotations
 
 import logging
 from typing import Any, Callable, Dict, List, Optional, Awaitable

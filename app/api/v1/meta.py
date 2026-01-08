@@ -2,7 +2,6 @@
 Backend metadata endpoints for frontend/dev tooling.
 """
 
-from __future__ import annotations
 
 import os
 import platform

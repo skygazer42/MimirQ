@@ -5,7 +5,6 @@ Provides intelligent model routing based on query complexity,
 token count, and other factors.
 """
 
-from __future__ import annotations
 
 import logging
 import re

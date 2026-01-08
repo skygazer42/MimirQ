@@ -5,7 +5,6 @@ This is a scaffold for future LangGraph-based long-term memory. When disabled,
 the graph runs without a store (default).
 """
 
-from __future__ import annotations
 
 import logging
 

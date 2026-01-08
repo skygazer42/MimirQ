@@ -1,7 +1,6 @@
 """
 User service: register, authenticate, and tenant membership bootstrap.
 """
-from __future__ import annotations
 
 from datetime import datetime, timezone
 from uuid import UUID

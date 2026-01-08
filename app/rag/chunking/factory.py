@@ -7,7 +7,6 @@ Usage:
     chunker = chunker_factory.get_chunker("langchain_recursive", chunk_size=1000, chunk_overlap=200)
     chunks = chunker.split_documents(documents)
 """
-from __future__ import annotations
 
 from typing import Optional
 

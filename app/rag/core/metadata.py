@@ -6,7 +6,6 @@
 - 避免业务逻辑分散在多个模块里各自“补丁式处理”
 """
 
-from __future__ import annotations
 
 from typing import Any, Dict
 

@@ -6,7 +6,6 @@ when MarkItDown is unavailable or fails. We preserve CSV structure as
 key-value rows, which works well for downstream chunking and retrieval.
 """
 
-from __future__ import annotations
 
 import csv
 import io

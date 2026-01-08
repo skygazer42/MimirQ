@@ -6,7 +6,6 @@ Notes:
 - Idempotent locks/cache are TODO; this provides a minimal runnable skeleton.
 """
 
-from __future__ import annotations
 
 import time
 from pathlib import Path

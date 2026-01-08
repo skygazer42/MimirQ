@@ -2,7 +2,6 @@
 Text splitter implementations.
 Integrated from third_party/dify/splitter/text_splitter.py
 """
-from __future__ import annotations
 
 import copy
 import logging
@@ -138,19 +137,13 @@ class TextSplitter(BaseDocumentTransformer, ABC):
     @classmethod
     def from_huggingface_tokenizer(cls, tokenizer: Any, **kwargs: Any) -> "TextSplitter":
         """Text splitter that uses HuggingFace tokenizer to count length."""
-        try:
-            from transformers import PreTrainedTokenizerBase
+        from transformers import PreTrainedTokenizerBase
 
-            if not isinstance(tokenizer, PreTrainedTokenizerBase):
-                raise ValueError("Tokenizer received was not an instance of PreTrainedTokenizerBase")
+        if not isinstance(tokenizer, PreTrainedTokenizerBase):
+            raise ValueError("Tokenizer received was not an instance of PreTrainedTokenizerBase")
 
-            def _huggingface_tokenizer_length(text: str) -> int:
-                return len(tokenizer.encode(text))
-
-        except ImportError:
-            raise ValueError(
-                "Could not import transformers python package. Please install it with `pip install transformers`."
-            )
+        def _huggingface_tokenizer_length(text: str) -> int:
+            return len(tokenizer.encode(text))
         return cls(length_function=lambda x: [_huggingface_tokenizer_length(text) for text in x], **kwargs)
 
     def transform_documents(self, documents: Sequence[Document], **kwargs: Any) -> Sequence[Document]:
@@ -199,14 +192,7 @@ class TokenTextSplitter(TextSplitter):
     ):
         """Create a new TokenTextSplitter."""
         super().__init__(**kwargs)
-        try:
-            import tiktoken
-        except ImportError:
-            raise ImportError(
-                "Could not import tiktoken python package. "
-                "This is needed in order to for TokenTextSplitter. "
-                "Please install it with `pip install tiktoken`."
-            )
+        import tiktoken
 
         if model_name is not None:
             enc = tiktoken.encoding_for_model(model_name)

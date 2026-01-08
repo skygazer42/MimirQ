@@ -5,7 +5,6 @@ Defines the abstract base class for all workflow patterns
 and the WorkflowMode enumeration.
 """
 
-from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from enum import Enum

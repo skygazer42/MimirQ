@@ -3,7 +3,6 @@ LlamaIndex-based chunking strategies.
 
 提供基于 LlamaIndex 的智能切分策略。
 """
-from __future__ import annotations
 
 from typing import List
 
@@ -26,13 +25,7 @@ class LlamaIndexChunker(BaseChunker):
                 "LlamaIndexChunker is disabled. Set LLAMA_INDEX_ENABLED=true in your .env file."
             )
         
-        try:
-            from llama_index.core.node_parser import SentenceSplitter
-        except ImportError as e:
-            raise RuntimeError(
-                "llama-index-core is not installed. "
-                "Install it with: pip install llama-index-core"
-            ) from e
+        from llama_index.core.node_parser import SentenceSplitter
         
         self.chunk_size = chunk_size
         self.chunk_overlap = chunk_overlap
@@ -42,10 +35,7 @@ class LlamaIndexChunker(BaseChunker):
         )
 
     def split_documents(self, documents: List[Document]) -> List[Document]:
-        try:
-            from llama_index.core import Document as LlamaDocument
-        except ImportError as e:
-            raise RuntimeError("llama-index-core is required") from e
+        from llama_index.core import Document as LlamaDocument
         
         chunks: List[Document] = []
         for doc in documents:
@@ -78,13 +68,7 @@ class LlamaIndexHierarchicalChunker(BaseChunker):
                 "LlamaIndexHierarchicalChunker is disabled. Set LLAMA_INDEX_ENABLED=true in your .env file."
             )
         
-        try:
-            from llama_index.core.node_parser import HierarchicalNodeParser
-        except ImportError as e:
-            raise RuntimeError(
-                "llama-index-core is not installed. "
-                "Install it with: pip install llama-index-core"
-            ) from e
+        from llama_index.core.node_parser import HierarchicalNodeParser
         
         self.chunk_size = chunk_size
         self.chunk_overlap = chunk_overlap
@@ -97,11 +81,8 @@ class LlamaIndexHierarchicalChunker(BaseChunker):
         )
 
     def split_documents(self, documents: List[Document]) -> List[Document]:
-        try:
-            from llama_index.core import Document as LlamaDocument
-            from llama_index.core.schema import NodeRelationship
-        except ImportError as e:
-            raise RuntimeError("llama-index-core is required") from e
+        from llama_index.core import Document as LlamaDocument
+        from llama_index.core.schema import NodeRelationship
         
         chunks: List[Document] = []
         for doc in documents:

@@ -7,7 +7,6 @@ Two-level chunking:
 
 Returns chunk data with positions for frontend highlighting.
 """
-from __future__ import annotations
 
 import re
 import uuid

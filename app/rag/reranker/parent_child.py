@@ -3,7 +3,6 @@ Parent-child reranker.
 
 Groups results by parent/child relationships and keeps the best child per parent.
 """
-from __future__ import annotations
 
 from app.models.chunk import Document
 from app.rag.reranker.base import DocumentReranker

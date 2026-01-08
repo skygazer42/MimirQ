@@ -6,7 +6,6 @@ Notes:
 - To avoid triggering ORM/Settings initialization at import time, ORM models are not directly imported at runtime
 """
 
-from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import Enum

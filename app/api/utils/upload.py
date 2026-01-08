@@ -7,7 +7,6 @@ Centralizes:
 - best-effort cleanup on failure
 """
 
-from __future__ import annotations
 
 import contextlib
 from pathlib import Path

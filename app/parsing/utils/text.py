@@ -9,7 +9,6 @@ small, dependency-light decoder that:
 - Decodes with replacement to avoid hard failures
 """
 
-from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path

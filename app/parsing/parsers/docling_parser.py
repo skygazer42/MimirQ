@@ -11,7 +11,6 @@ Supports:
 - Multiple formats (PDF, DOCX, PPTX, HTML, etc.)
 """
 
-from __future__ import annotations
 
 from pathlib import Path
 from typing import Any, Callable, List, Optional, Tuple
