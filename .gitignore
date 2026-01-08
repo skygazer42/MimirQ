@@ -56,3 +56,5 @@ web/types/openapi.ts
 *.tsbuildinfo
 
 # Docker
+docker/.env
+docker/.env.*
