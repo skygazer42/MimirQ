@@ -1,4 +1,4 @@
-.PHONY: help up up-web up-dev up-dev-web up-prod up-prod-web infra-up infra-ps infra-down down ps logs restart backend web test api-check typecheck lint-py audit-py audit-web audit openapi-export openapi-types openapi-check db-upgrade db-revision verify parser-status clean
+.PHONY: help up up-web up-dev up-dev-web up-prod up-prod-web infra-up infra-ps infra-down down ps logs restart backend web test api-check api-smoke typecheck lint-py audit-py audit-web audit openapi-export openapi-types openapi-check db-upgrade db-revision verify parser-status clean
 
 PY := python3
 ifeq ($(OS),Windows_NT)
@@ -27,6 +27,7 @@ help:
 	@echo "  make web       - run web locally (pnpm dev)"
 	@echo "  make test      - run backend tests (pytest)"
 	@echo "  make api-check - verify web routes exist in backend"
+	@echo "  make api-smoke - smoke-test all OpenAPI endpoints (docker backend)"
 	@echo "  make typecheck - run web TypeScript typecheck"
 	@echo "  make lint-py   - run Python lint (ruff)"
 	@echo "  make audit-py  - audit Python deps (pip-audit)"
@@ -95,6 +96,9 @@ parser-status:
 api-check:
 	node web/scripts/check-api-contract.mjs
 	node web/scripts/check-api-coverage.mjs
+
+api-smoke:
+	$(COMPOSE) exec -T backend python scripts/api_smoke.py --base-url http://localhost:8000 --skip-llm-test --skip-mineru
 
 typecheck:
 	cd web && pnpm run typecheck
