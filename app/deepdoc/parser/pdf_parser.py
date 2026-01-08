@@ -229,25 +229,25 @@ class RAGFlowPdfParser:
             r"[0-9]+(、|\.[　 ]|）|\.[^0-9./a-zA-Z_%><-]{4,})",
             r"[0-9]+\.[0-9.]+(、|\.[ 　])",
             r"[⚫•➢①② ]",
-        ]  # 如果文本匹配任一模式，则返回 True
+        ]  # Returns True if text matches any pattern
         return any([re.match(p, b["text"]) for p in proj_patt])
 
-    # 构造上下两个文本块之间的特征，用于判断是否应合并
+    # Build features between two text blocks to determine if they should be merged
     def _updown_concat_features(self, up, down):
         w = max(self.__char_width(up), self.__char_width(down))
         h = max(self.__height(up), self.__height(down))
         y_dis = self._y_dis(up, down)
         LEN = 6
-        # 截取上下文本的部分内容并进行分词
+        # Extract partial content from upper and lower texts and tokenize
         tks_down = rag_tokenizer.tokenize(down["text"][:LEN]).split()
         tks_up = rag_tokenizer.tokenize(up["text"][-LEN:]).split()
-        # 构造一个中间拼接文本再分词（考虑连接符号）
+        # Construct a concatenated text in the middle and tokenize (considering connectors)
         tks_all = up["text"][-LEN:].strip() \
                   + (" " if re.match(r"[a-zA-Z0-9]+",
                                      up["text"][-1] + down["text"][0]) else "") \
                   + down["text"][:LEN].strip()
         tks_all = rag_tokenizer.tokenize(tks_all).split()
-        # 构建特征向量：包括位置信息、文本特征、是否匹配模式、是否属于相同行等
+        # Build feature vector: includes position info, text features, pattern matching, same row status, etc.
         fea = [
             up.get("R", -1) == down.get("R", -1),
             y_dis / h,
@@ -1519,4 +1519,4 @@ if __name__ == "__main__":
     # for idx, (img, _) in enumerate(tables_and_figures):
     #     img_path = os.path.join(output_dir, f"table_or_fig_{idx + 1}.png")
     #     img.save(img_path)
-    #     print(f"✅ 已保存图像：{img_path}")
+    #     print(f"✅ Image saved: {img_path}")

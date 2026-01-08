@@ -88,8 +88,8 @@ class LlamaIndexHierarchicalChunker(BaseChunker):
         
         self.chunk_size = chunk_size
         self.chunk_overlap = chunk_overlap
-        
-        # 创建三层结构：大块、中块、小块
+
+        # Create three-level structure: large chunks, medium chunks, small chunks
         chunk_sizes = [chunk_size * 4, chunk_size * 2, chunk_size]
         
         self.parser = HierarchicalNodeParser.from_defaults(
@@ -117,13 +117,13 @@ class LlamaIndexHierarchicalChunker(BaseChunker):
                 if end_idx is not None:
                     metadata["end_char"] = int(end_idx)
                 metadata["chunk_strategy"] = "llama_index_hierarchical"
-                
-                # 获取层级信息
+
+                # Get hierarchy information
                 level = metadata.get("level")
                 if level is not None:
                     metadata["chunk_level"] = level
-                
-                # 获取父节点关系
+
+                # Get parent node relationship
                 try:
                     parent_rel = getattr(node, "relationships", {}).get(NodeRelationship.PARENT)
                     if parent_rel and getattr(parent_rel, "node_id", None):

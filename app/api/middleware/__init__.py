@@ -1,8 +1,8 @@
 """
-API 中间件模块
+API middleware module
 
-提供 API 层的中间件功能：
-- 请求限流
+Provides API layer middleware functionality:
+- Request rate limiting
 """
 
 from app.api.middleware.rate_limit import (

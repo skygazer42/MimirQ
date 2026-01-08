@@ -156,7 +156,7 @@ def _parse_uuid_list(raw_list: Any) -> List[UUID]:
 
 
 def _json_safe(value: Any) -> Any:
-    """将 UUID 等类型转换为可写入 JSONB 的结构。"""
+    """Convert UUID and other types to JSON-serializable structure for JSONB storage."""
     if isinstance(value, UUID):
         return str(value)
     if isinstance(value, dict):
@@ -174,10 +174,10 @@ def _resolve_case_document_ids(
     case: RagasRegressionCase,
 ) -> List[UUID]:
     """
-    回归 case 的检索范围解析：
-    1) case.document_ids（优先）
-    2) case.dataset_id -> dataset 下所有已完成文档
-    3) fallback：当前账号在 tenant 下可访问的最近一批文档（limit=200）
+    Resolve retrieval scope for regression case:
+    1) case.document_ids (priority)
+    2) case.dataset_id -> all completed documents in dataset
+    3) fallback: most recent batch of documents accessible to account in tenant (limit=200)
     """
     raw_doc_ids = _parse_uuid_list(case.document_ids or [])
     if raw_doc_ids:

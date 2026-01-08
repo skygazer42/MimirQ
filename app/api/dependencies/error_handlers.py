@@ -1,7 +1,7 @@
 """
-通用 API 错误处理工具
+Common API error handling utilities
 
-提供常用的资源验证和错误处理函数，消除 API 路由中的重复代码。
+Provides commonly used resource validation and error handling functions to eliminate duplicate code in API routes.
 """
 
 from typing import Any, Type, TypeVar
@@ -20,16 +20,16 @@ def get_or_404(
     **filters
 ) -> T:
     """
-    获取资源或抛出 404 错误
+    Get resource or raise 404 error
 
     Args:
-        db: 数据库会话
-        model: SQLAlchemy 模型类
-        resource_name: 资源名称（用于错误消息），默认使用模型类名
-        **filters: 查询过滤条件
+        db: Database session
+        model: SQLAlchemy model class
+        resource_name: Resource name (for error message), defaults to model class name
+        **filters: Query filter conditions
 
     Returns:
-        查询到的资源
+        The queried resource
 
     Raises:
         HTTPException: 404 Not Found
@@ -49,11 +49,11 @@ def check_exists_or_404(
     resource_name: str = "Resource"
 ) -> None:
     """
-    检查资源是否存在，不存在则抛出 404
+    Check if resource exists, raise 404 if not
 
     Args:
-        resource: 要检查的资源
-        resource_name: 资源名称
+        resource: Resource to check
+        resource_name: Resource name
 
     Raises:
         HTTPException: 404 Not Found
@@ -67,11 +67,11 @@ def check_permission_or_403(
     message: str = "Permission denied"
 ) -> None:
     """
-    检查权限，无权限则抛出 403
+    Check permission, raise 403 if not authorized
 
     Args:
-        condition: 权限条件（True 表示有权限）
-        message: 错误消息
+        condition: Permission condition (True means authorized)
+        message: Error message
 
     Raises:
         HTTPException: 403 Forbidden
@@ -88,17 +88,17 @@ def check_member_or_403(
     message: str = "Not a tenant member"
 ) -> Any:
     """
-    检查用户是否是租户成员
+    Check if user is a tenant member
 
     Args:
-        db: 数据库会话
-        tenant_member_model: TenantMember 模型类
-        tenant_id: 租户 ID
-        user_id: 用户 ID
-        message: 错误消息
+        db: Database session
+        tenant_member_model: TenantMember model class
+        tenant_id: Tenant ID
+        user_id: User ID
+        message: Error message
 
     Returns:
-        成员记录
+        Member record
 
     Raises:
         HTTPException: 403 Forbidden
@@ -117,11 +117,11 @@ def validate_or_400(
     message: str = "Invalid request"
 ) -> None:
     """
-    验证条件，不满足则抛出 400
+    Validate condition, raise 400 if not satisfied
 
     Args:
-        condition: 验证条件（True 表示通过）
-        message: 错误消息
+        condition: Validation condition (True means passed)
+        message: Error message
 
     Raises:
         HTTPException: 400 Bad Request
