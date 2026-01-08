@@ -1,4 +1,4 @@
-import { parseBackendRoutes, parseFrontendRoutes } from '../web/scripts/api-contract-lib.mjs'
+import { parseBackendRoutes, parseFrontendRoutes } from './api-contract-lib.mjs'
 
 const FRONTEND_CONTRACT_FILES = ['web/lib/api-client.ts']
 

@@ -1,4 +1,4 @@
-import { parseBackendRoutes, parseFrontendRoutes } from '../web/scripts/api-contract-lib.mjs'
+import { parseBackendRoutes, parseFrontendRoutes } from './api-contract-lib.mjs'
 
 function main() {
   const backend = parseBackendRoutes()

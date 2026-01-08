@@ -93,8 +93,8 @@ parser-status:
 	$(PY) scripts/check_parsers.py
 
 api-check:
-	node scripts/check-api-contract.mjs
-	node scripts/check-api-coverage.mjs
+	node web/scripts/check-api-contract.mjs
+	node web/scripts/check-api-coverage.mjs
 
 typecheck:
 	cd web && pnpm run typecheck
