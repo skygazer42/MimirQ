@@ -12,6 +12,7 @@ from app.rag.kg.schemas import KGExtractResponse, KGSearchRequest, KGSearchRespo
 from app.services.document_access import filter_allowed_document_ids, list_accessible_document_ids
 from app.services.dataset_service import DatasetService
 from app.rag.kg.pipeline import extract_events, kg_search
+from app.rag.core.errors import ConfigError
 
 router = APIRouter()
 
@@ -611,7 +612,7 @@ async def run_kg_extraction_for_document(
     eff_prompt_template_key = (prompt_template_key or "").strip() or (getattr(settings, "KG_EXTRACT_PROMPT_TEMPLATE_KEY", "") or "").strip() or None
     eff_prompt_ab_experiment_key = (prompt_ab_experiment_key or "").strip() or (getattr(settings, "KG_EXTRACT_PROMPT_AB_EXPERIMENT_KEY", "") or "").strip() or None
 
-    # async=true：入队执行 KG 抽取（默认仍同步执行，保持兼容）
+    # If async=true, enqueue KG extraction (default remains synchronous for compatibility).
     if bool(async_mode):
         if not bool(getattr(settings, "TASK_QUEUE_ENABLED", False)):
             raise HTTPException(status_code=400, detail="Task queue is disabled (TASK_QUEUE_ENABLED=false)")
@@ -642,15 +643,20 @@ async def run_kg_extraction_for_document(
         except Exception as exc:  # noqa: BLE001
             raise HTTPException(status_code=503, detail=f"Failed to enqueue KG extraction: {str(exc)[:200]}") from exc
 
-    events = await extract_events(
-        [c.id for c in chunks],
-        tenant_id=tenant_id,
-        chunks=chunks,
-        prompt_template_id=eff_prompt_template_id,
-        prompt_template_key=eff_prompt_template_key,
-        prompt_ab_experiment_key=eff_prompt_ab_experiment_key,
-        ab_user_key=account_id,
-    )
+    try:
+        events = await extract_events(
+            [c.id for c in chunks],
+            tenant_id=tenant_id,
+            chunks=chunks,
+            prompt_template_id=eff_prompt_template_id,
+            prompt_template_key=eff_prompt_template_key,
+            prompt_ab_experiment_key=eff_prompt_ab_experiment_key,
+            ab_user_key=account_id,
+        )
+    except ConfigError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=502, detail=f"KG extraction failed: {str(exc)[:200]}") from exc
 
     return KGExtractResponse(
         document_id=document_id,

@@ -1,5 +1,5 @@
 """
-文档处理服务 - 核心处理流程
+Document processing service - core processing flow.
 """
 from dataclasses import dataclass
 from pathlib import Path
@@ -348,12 +348,12 @@ class IndexStage:
 
 
 class DocumentProcessorService:
-    """文档处理服务"""
+    """Document processing service."""
 
     def __init__(self):
         pass
 
-    #  预设策略（直接解析+切块）
+    # Preset strategies (parse + chunk directly).
     RAGFLOW_STRATEGIES = {"ragflow_naive", "ragflow_book", "ragflow_laws", "ragflow_email"}
 
     async def process_document(
@@ -366,22 +366,22 @@ class DocumentProcessorService:
         db: Optional[Session] = None,
     ) -> Dict[str, Any]:
         """
-        完整的文档处理流程
+        Full document processing flow.
 
-        流程：
-        1. 解析文档
-        2. 文本切片
-        3. 生成 Embeddings
-        4. 存入向量库
-        5. 保存到数据库
+        Steps:
+        1. Parse document
+        2. Split text
+        3. Generate embeddings
+        4. Persist to vector store
+        5. Persist to database
 
         Args:
-            file_path: 文件路径
-            document_id: 文档 ID
-            db: 数据库会话
+            file_path: Path to the file
+            document_id: Document ID
+            db: Database session
 
         Returns:
-            处理结果
+            Processing result
         """
         owns_db = False
         if db is None:
@@ -398,18 +398,18 @@ class DocumentProcessorService:
                 logger.warning("Document not found for processing: tenant=%s document=%s", tenant_id, document_id)
                 return {"status": "skipped", "reason": "document_not_found"}
 
-            # Step 1: 更新状态为 processing
+            # Step 1: update status to processing.
             await self._update_status(
                 db, tenant_id, document_id, "processing", 0, "parsing"
             )
 
-            # 提前获取 dataset_id（MinerU 本地 ZIP / MinIO 路径依赖）
+            # Resolve dataset_id early (MinerU ZIP / MinIO paths depend on it).
             dataset_id = str(db_document.dataset_id) if db_document.dataset_id else str(tenant_id)
 
             # Bind metrics context for this coroutine/task (best-effort; used only when ENABLE_METRICS_LOG=true).
             set_metrics_context(tenant_id=tenant_id, document_id=document_id, dataset_id=dataset_id)
 
-            # 记录本次处理过程中关联到该文档的所有 img_id（用于删除清理等）
+            # Track all img_id values linked to this document (used for cleanup).
             document_img_ids: set[str] = set()
             artifact_dirs: set[str] = set()
 
@@ -456,7 +456,7 @@ class DocumentProcessorService:
             resolved_backend = parsed.resolved_backend
             resolved_chunk_strategy = parsed.resolved_chunk_strategy
 
-            # 收集解析器已上传的图片（例如 MinerU 本地 ZIP 模式会返回 images 列表）
+            # Collect images uploaded by the parser (e.g., MinerU ZIP mode returns images).
             if parsed.documents:
                 for doc in parsed.documents:
                     images = (doc.metadata or {}).get("images")
@@ -469,7 +469,7 @@ class DocumentProcessorService:
                     if isinstance(artifact_dir, str) and artifact_dir.strip():
                         artifact_dirs.add(artifact_dir.strip())
 
-            # Inline image assets（仅非 ragflow 分支：documents -> documents）
+            # Inline image assets (non-ragflow path: documents -> documents).
             if parsed.documents:
                 with metrics_span("ingest.inline_assets"):
                     inline_result = inline_asset_stage.run(
@@ -490,7 +490,7 @@ class DocumentProcessorService:
             # Best-effort cleanup for parser artifact directories (e.g., MagicPDF output).
             self._cleanup_parser_artifacts(artifact_dirs, tenant_id=tenant_id)
 
-            # Governance：对 documents 或 ragflow chunks 做统一清洗
+            # Governance: normalize/clean documents or ragflow chunks.
             governance_stats: Optional[GovernanceStats] = None
             if parsed.chunks is not None:
                 with metrics_span("ingest.normalize"):
@@ -551,7 +551,7 @@ class DocumentProcessorService:
             if governance_stats is not None:
                 self._record_governance_metadata(db, tenant_id, document_id, governance_stats)
 
-            # Chunk-level assets & metadata（图片上传/绑定）
+            # Chunk-level assets & metadata (image upload/binding).
             with metrics_span("ingest.chunk_assets"):
                 chunk_asset = chunk_asset_stage.run(
                     chunks=chunks,
@@ -582,7 +582,7 @@ class DocumentProcessorService:
                         selected_counts=selected_counts,
                     )
 
-            # 将所有图片 img_id 记录到 document.metadata（用于删除清理等）
+            # Persist all image img_id values to document.metadata (for cleanup).
             self._record_document_image_ids(db, tenant_id=tenant_id, document_id=document_id, img_ids=document_img_ids)
 
             await self._update_status(db, tenant_id, document_id, "processing", 66, "embedding")
@@ -639,9 +639,9 @@ class DocumentProcessorService:
                 }
             )
 
-            # Step 7: 如启用则运行 KG 抽取（事件/实体）
+            # Step 7: run KG extraction (events/entities) when enabled.
             if pipeline_effective.kg_enabled:
-                # 队列开启时：把 KG 抽取迁到 worker，提升 ingest 吞吐与稳定性
+                # When queue is enabled, move KG extraction to the worker for better ingest throughput.
                 if bool(getattr(settings, "TASK_QUEUE_ENABLED", False)):
                     try:
                         from app.tasks.queue import enqueue_kg_extraction
@@ -668,7 +668,7 @@ class DocumentProcessorService:
                             }
                         )
                     except Exception as exc:  # noqa: BLE001
-                        # 队列异常不应影响文档主流程
+                        # Queue errors should not affect the main document flow.
                         logger.warning("Failed to enqueue KG extraction: %s", str(exc)[:200])
                 else:
                     logger.info("Running KG extraction on document chunks...")
@@ -679,17 +679,20 @@ class DocumentProcessorService:
                             prompt_template_id = UUID(raw_tid)
                         except Exception:
                             logger.warning("Invalid KG_EXTRACT_PROMPT_TEMPLATE_ID: %s", raw_tid[:50])
-                    events = await extract_events(
-                        chunk_ids,
-                        tenant_id=tenant_id,
-                        chunks=indexed.db_chunks,
-                        index_options=index_options,
-                        prompt_template_id=prompt_template_id,
-                        prompt_template_key=(getattr(settings, "KG_EXTRACT_PROMPT_TEMPLATE_KEY", "") or "").strip() or None,
-                        prompt_ab_experiment_key=(getattr(settings, "KG_EXTRACT_PROMPT_AB_EXPERIMENT_KEY", "") or "").strip() or None,
-                    )
-                    logger.info("KG extracted %s events for document %s", len(events), document_id)
-                    log_metrics({"event": "ingest.kg.completed", "event_count": len(events)})
+                    try:
+                        events = await extract_events(
+                            chunk_ids,
+                            tenant_id=tenant_id,
+                            chunks=indexed.db_chunks,
+                            index_options=index_options,
+                            prompt_template_id=prompt_template_id,
+                            prompt_template_key=(getattr(settings, "KG_EXTRACT_PROMPT_TEMPLATE_KEY", "") or "").strip() or None,
+                            prompt_ab_experiment_key=(getattr(settings, "KG_EXTRACT_PROMPT_AB_EXPERIMENT_KEY", "") or "").strip() or None,
+                        )
+                        logger.info("KG extracted %s events for document %s", len(events), document_id)
+                        log_metrics({"event": "ingest.kg.completed", "event_count": len(events)})
+                    except Exception as exc:  # noqa: BLE001
+                        logger.warning("KG extraction failed for document %s: %s", document_id, str(exc)[:200])
 
             return {
                 "status": "success",
@@ -700,7 +703,7 @@ class DocumentProcessorService:
             }
 
         except Exception as e:
-            # 错误处理
+            # Error handling.
             logger.exception("Error processing document %s: %s", document_id, e)
             log_metrics({"event": "ingest.failed", "success": False, "error": str(e)[:200]})
             await self._update_status(
@@ -727,7 +730,7 @@ class DocumentProcessorService:
         stage: str,
         **kwargs
     ):
-        """更新文档处理状态"""
+        """Update document processing status."""
         db_doc = db.query(DBDocument).filter(
             DBDocument.id == document_id,
             DBDocument.tenant_id == tenant_id,
@@ -745,7 +748,7 @@ class DocumentProcessorService:
             db.refresh(db_doc)
 
     async def _rebuild_bm25_index_for_tenant(self, db: Session, tenant_id: UUID):
-        """重建指定租户的 BM25 索引"""
+        """Rebuild BM25 index for a specific tenant."""
         try:
             if bool(getattr(settings, "TASK_QUEUE_ENABLED", False)):
                 try:
@@ -818,7 +821,7 @@ class DocumentProcessorService:
         parser_backend: str,
         chunk_strategy: str
     ):
-        """确保文档元数据里记录了最终选用的解析器。"""
+        """Ensure document metadata records the final parser selection."""
         db_doc = db.query(DBDocument).filter(
             DBDocument.id == document_id,
             DBDocument.tenant_id == tenant_id,
@@ -836,7 +839,7 @@ class DocumentProcessorService:
         db_doc.doc_metadata = metadata
         db.commit()
         db.refresh(db_doc)
-        # 不抛出异常，避免影响文档处理流程
+        # Avoid raising errors to keep the document flow intact.
 
     def _cleanup_parser_artifacts(self, artifact_dirs: set[str], *, tenant_id: UUID) -> None:
         if not artifact_dirs:
@@ -959,11 +962,11 @@ class DocumentProcessorService:
 
     def _record_document_image_ids(self, db: Session, tenant_id: UUID, document_id: UUID, img_ids: set[str]):
         """
-        将文档关联的所有 img_id 记录到 documents.metadata 中，便于后续删除清理。
+        Store all img_id values for a document in documents.metadata for cleanup.
 
-        说明：
-        - 这里存的是“文档级”聚合列表（去重），不影响每个 chunk 的 img_id。
-        - 仅当 MinIO 启用时才写入，避免误导。
+        Notes:
+        - This is a document-level aggregated list (deduped); it does not affect per-chunk img_id.
+        - Only written when MinIO is enabled to avoid misleading metadata.
         """
         if not settings.MINIO_ENABLED:
             return
@@ -998,13 +1001,12 @@ class DocumentProcessorService:
 
     def _extract_img_id_from_content(self, content: str) -> Optional[str]:
         """
-        从 chunk 文本内容中提取第一个 image-url/{img_id}，用于将“已替换成 URL 的图片”
-        反向绑定到 chunk metadata（例如 ZIP 模式/MarkItDown data URI 替换后的文本）。
+        Extract the first image-url/{img_id} from chunk content to backfill chunk metadata.
         """
         if not isinstance(content, str) or not content:
             return None
 
-        # 支持：
+        # Supported patterns:
         # - ![](/api/v1/documents/image-url/{img_id})
         # - <img src="/api/v1/documents/image-url/{img_id}">
         # - http://host/api/v1/documents/image-url/{img_id}
@@ -1026,18 +1028,18 @@ class DocumentProcessorService:
         origin_path: Optional[Path] = None,
     ) -> tuple[str, List[str], int]:
         """
-        将 Markdown/HTML 中的图片引用上传到 MinIO，并替换为 /image-url/{img_id}。
+        Upload image references in Markdown/HTML to MinIO and rewrite to /image-url/{img_id}.
 
-        支持：
-        - data URI：data:image/...
-        - 本地/相对路径：![alt](images/foo.png) 或 <img src="images/foo.png">
-          路径解析：相对 `origin_path.parent`；若为绝对路径直接使用。
-        - 已是 http/https 或已指向 /api/v1/documents/image-url/... 的跳过。
+        Supported:
+        - data URI: data:image/...
+        - local/relative paths: ![alt](images/foo.png) or <img src="images/foo.png">
+          path resolution is relative to `origin_path.parent` (absolute paths are used as-is).
+        - skip http/https URLs or already rewritten /api/v1/documents/image-url/... refs.
 
-        返回：
-        - 处理后的 markdown_text
-        - 本次新增上传的 img_id 列表
-        - 更新后的 asset 序号（用于生成稳定 chunk_key：asset{n}）
+        Returns:
+        - rewritten markdown_text
+        - list of newly uploaded img_id values
+        - updated asset index (for stable chunk_key: asset{n})
         """
         if not settings.MINIO_ENABLED:
             return markdown_text, [], start_index
@@ -1047,7 +1049,7 @@ class DocumentProcessorService:
         if "data:image" not in lowered and "![" not in lowered and "<img" not in lowered:
             return markdown_text, [], start_index
 
-        # 仅处理 markdown 图片与 html img，匹配 src 内容
+        # Only process Markdown images and HTML img tags, matching src content.
         md_pat = re.compile(
             r"!\[[^\]]*\]\(\s*(?:<)?([^)\s>]+)(?:>)?(?:\s+['\"][^'\"]*['\"])?\s*\)",
             flags=re.IGNORECASE,
@@ -1087,7 +1089,7 @@ class DocumentProcessorService:
         max_image_bytes = max(1_000_000, max_image_bytes)
 
         for ref in found:
-            # 已是远程或已替换过
+            # Already remote or already rewritten.
             if ref.lower().startswith(("http://", "https://")):
                 continue
             if "/api/v1/documents/image-url/" in ref:
@@ -1105,7 +1107,7 @@ class DocumentProcessorService:
                         continue
                     binary = base64.b64decode(b64_part)
                 else:
-                    # 本地/相对路径
+                    # Local/relative path.
                     path_obj = Path(ref)
                     if not path_obj.is_absolute():
                         if not base_dir_resolved:
@@ -1131,7 +1133,7 @@ class DocumentProcessorService:
                 if len(binary) > max_image_bytes:
                     continue
 
-                # 统一转 JPEG
+                # Convert to JPEG.
                 img = None
                 converted = None
                 try:
@@ -1180,7 +1182,7 @@ class DocumentProcessorService:
                 continue
 
         if replacements:
-            # 单次扫描替换：仅替换图片语法中的 src/ref，避免对全文做 N 次 replace（O(N*M)）
+            # Single-pass replacement to avoid N full-text replaces (O(N*M)).
             def _md_repl(m: re.Match) -> str:
                 raw = m.group(1) or ""
                 key = raw.strip()
@@ -1204,8 +1206,8 @@ class DocumentProcessorService:
 
     def _ragflow_chunk_file(self, file_path: Path, strategy: str):
         """
-        调用 ragflow 预设（naive/book/laws/email）直接完成解析+切块，
-        返回 LangChain Document 列表。
+        Use ragflow presets (naive/book/laws/email) to parse and chunk directly.
+        Returns a list of LangChain Documents.
         """
         from langchain_core.documents import Document
 
@@ -1232,31 +1234,31 @@ class DocumentProcessorService:
         chunk_index: int,
     ) -> Optional[str]:
         """
-        检测 chunk metadata 中的图片数据，上传到 MinIO，返回 img_id。
-        图片上传后，原始图片数据会从 metadata 中删除以节省内存。
-        
-        img_id 格式："{tenant_id}:{dataset_id}:{document_id}:{chunk_index}"
-        
-        识别的字段：image (PIL.Image/bytes) / image_base64 / img_base64 / img / image_data
+        Detect image data in chunk metadata, upload to MinIO, and return img_id.
+        After upload, original image data is removed from metadata to save memory.
+
+        img_id format: "{tenant_id}:{dataset_id}:{document_id}:{chunk_index}"
+
+        Recognized fields: image (PIL.Image/bytes) / image_base64 / img_base64 / img / image_data
         """
-        # 如果已有 img_id，直接返回
+        # If img_id already exists, return it.
         if isinstance(metadata.get("img_id"), str) and metadata.get("img_id").strip():
             return metadata.get("img_id")
 
-        # MinIO 未启用时，确保清理不可序列化字段
+        # If MinIO is disabled, ensure non-serializable fields are removed.
         if not settings.MINIO_ENABLED:
             if "image" in metadata:
                 metadata.pop("image", None)
             return None
 
-        # 查找图片数据
+        # Find image data.
         possible_keys = ["image_base64", "image", "img_base64", "img", "image_data"]
         found_key = None
         raw_image = None
         b64_data = None
 
-        # ragflow 输出可能直接在 metadata["image"] 放 PIL.Image/bytes，
-        # 只为真正的图片块（doc_type_kwd == "image"）上传，避免为每个文本块存截图。
+        # ragflow may place PIL.Image/bytes in metadata["image"].
+        # Only upload for real image chunks (doc_type_kwd == "image").
         val = metadata.get("image")
         if val is not None:
             doc_type = str(metadata.get("doc_type_kwd") or "").lower()
@@ -1264,7 +1266,7 @@ class DocumentProcessorService:
                 raw_image = val
                 found_key = "image"
             else:
-                # 非图片块：清理掉 image 字段，避免 JSON 序列化失败
+                # Non-image chunk: drop image field to avoid JSON serialization failure.
                 metadata.pop("image", None)
 
         if raw_image is None:
@@ -1278,13 +1280,13 @@ class DocumentProcessorService:
         if raw_image is None and not b64_data:
             return None
 
-        # 处理 data URI 格式
+        # Handle data URI format.
         if isinstance(b64_data, str) and b64_data.startswith("data:"):
             parts = b64_data.split(",", 1)
             if len(parts) == 2:
                 b64_data = parts[1]
 
-        # 统一转换为 JPEG bytes（节省存储，简化读取）
+        # Convert to JPEG bytes (save storage, simplify reading).
         try:
             if raw_image is not None:
                 if isinstance(raw_image, bytes):
@@ -1303,7 +1305,7 @@ class DocumentProcessorService:
             image_bytes = out.getvalue()
         except Exception as e:
             logger.warning("Image conversion failed (skip upload): %s", e)
-            # 无论成功与否，都要清理 image 字段，避免入库失败
+            # Always drop the image field to avoid persistence failures.
             if found_key == "image":
                 metadata.pop("image", None)
             return None
@@ -1314,7 +1316,7 @@ class DocumentProcessorService:
                 except Exception:
                     pass
 
-        # 上传到 MinIO
+        # Upload to MinIO.
         try:
             img_id = minio_service.upload_image(
                 image_data=image_bytes,
@@ -1325,11 +1327,11 @@ class DocumentProcessorService:
                 extension="jpg",
             )
             
-            # 上传成功后，删除内存中的原始图片数据（节省资源）
+            # After upload, delete in-memory image data to save resources.
             if found_key:
                 del metadata[found_key]
             
-            # 清理其他可能的图片字段
+            # Clean up other possible image fields.
             for key in possible_keys:
                 if key in metadata and key != found_key:
                     del metadata[key]
@@ -1343,8 +1345,8 @@ class DocumentProcessorService:
 
     def _extract_and_save_image(self, metadata: Dict[str, Any], tenant_id: UUID) -> Optional[str]:
         """
-        备用方法：检测 chunk metadata 中的图片并保存到本地磁盘。
-        当 MinIO 未启用时使用。
+        Fallback: detect image data in chunk metadata and save to local disk.
+        Used when MinIO is disabled.
         """
         if isinstance(metadata.get("img_id"), str) and metadata.get("img_id").strip():
             return metadata.get("img_id")
@@ -1380,5 +1382,5 @@ class DocumentProcessorService:
         return image_id
 
 
-# 全局实例
+# Global instance.
 document_processor = DocumentProcessorService()

@@ -1,6 +1,6 @@
 """
-全局异步 HTTP 客户端池
-提供统一的 httpx AsyncClient 配置，用于所有外部 API 调用
+Global async HTTP client pool.
+Provides a unified httpx AsyncClient config for external API calls.
 """
 import asyncio
 import contextlib
@@ -21,18 +21,18 @@ except ImportError:
 
 
 class HTTPClientPool:
-    """全局 HTTP 客户端池，支持连接复用和并发控制"""
+    """Global HTTP client pool with connection reuse and concurrency control."""
     
     def __init__(self):
         self._client: Optional[httpx.AsyncClient] = None
         self._lock = asyncio.Lock()
     
     async def get_client(self) -> httpx.AsyncClient:
-        """获取全局异步 HTTP 客户端（懒加载）"""
+        """Get the global async HTTP client (lazy init)."""
         if self._client is None:
             async with self._lock:
                 if self._client is None:
-                    # 配置连接池和超时
+                    # Configure connection pool and timeouts.
                     limits = httpx.Limits(
                         max_connections=int(getattr(settings, "HTTP_CLIENT_MAX_CONNECTIONS", 100)),
                         max_keepalive_connections=int(
@@ -68,7 +68,7 @@ class HTTPClientPool:
         return self._client
     
     async def close(self):
-        """关闭客户端连接池"""
+        """Close the client pool."""
         async with self._lock:
             client = self._client
             self._client = None
@@ -93,21 +93,21 @@ class HTTPClientPool:
         **kwargs: Any,
     ) -> httpx.Response:
         """
-        发送 HTTP 请求，支持自动重试
-        
+        Send an HTTP request with automatic retries.
+
         Args:
-            method: HTTP 方法 (GET, POST, etc.)
-            url: 请求 URL
-            max_retries: 最大重试次数
-            retry_delay: 初始重试延迟（秒）
-            backoff_factor: 退避因子（每次重试延迟乘以此因子）
-            **kwargs: httpx.request 的其他参数
-        
+            method: HTTP method (GET, POST, etc.).
+            url: Request URL.
+            max_retries: Max retry attempts.
+            retry_delay: Initial retry delay (seconds).
+            backoff_factor: Backoff factor (multiplies delay each retry).
+            **kwargs: Additional httpx.request args.
+
         Returns:
-            HTTP 响应
-        
+            HTTP response.
+
         Raises:
-            httpx.HTTPError: 请求失败
+            httpx.HTTPError: Request failure.
         """
         client = await self.get_client()
         last_exception = None
@@ -146,7 +146,7 @@ class HTTPClientPool:
                     logger.error("Request failed after %s attempts: %s", max_retries + 1, str(e)[:200])
             
             except httpx.HTTPStatusError as e:
-                # 对于 5xx/429 错误重试，其他 4xx 错误直接抛出
+                # Retry on 5xx/429; raise other 4xx errors.
                 status = int(getattr(e.response, "status_code", 0) or 0)
                 retryable = status >= 500 or status == 429
                 if retryable and attempt < max_retries:
@@ -178,36 +178,36 @@ class HTTPClientPool:
                         await e.response.aclose()
                     raise
         
-        # 所有重试都失败了
+        # All retries failed.
         if last_exception:
             raise last_exception
         
-        # 不应该到达这里
+        # Should not reach here.
         raise RuntimeError("Unexpected error in request_with_retry")
     
     async def get(self, url: str, **kwargs) -> httpx.Response:
-        """GET 请求（带重试）"""
+        """GET request (with retry)."""
         return await self.request_with_retry("GET", url, **kwargs)
     
     async def post(self, url: str, **kwargs) -> httpx.Response:
-        """POST 请求（带重试）"""
+        """POST request (with retry)."""
         return await self.request_with_retry("POST", url, **kwargs)
     
     async def put(self, url: str, **kwargs) -> httpx.Response:
-        """PUT 请求（带重试）"""
+        """PUT request (with retry)."""
         return await self.request_with_retry("PUT", url, **kwargs)
     
     async def delete(self, url: str, **kwargs) -> httpx.Response:
-        """DELETE 请求（带重试）"""
+        """DELETE request (with retry)."""
         return await self.request_with_retry("DELETE", url, **kwargs)
 
 
-# 全局单例
+# Global singleton.
 _http_client_pool: Optional[HTTPClientPool] = None
 
 
 def get_http_client_pool() -> HTTPClientPool:
-    """获取全局 HTTP 客户端池实例"""
+    """Get the global HTTP client pool instance."""
     global _http_client_pool
     if _http_client_pool is None:
         _http_client_pool = HTTPClientPool()
@@ -215,7 +215,7 @@ def get_http_client_pool() -> HTTPClientPool:
 
 
 async def close_http_client_pool():
-    """关闭全局 HTTP 客户端池"""
+    """Close the global HTTP client pool."""
     global _http_client_pool
     if _http_client_pool is not None:
         await _http_client_pool.close()

@@ -1,7 +1,7 @@
 """
-RAGAS 评测相关 Schema
+RAGAS evaluation schemas.
 
-定义评测任务和评测结果的数据模型。
+Defines data models for evaluation tasks and results.
 """
 
 from datetime import datetime
@@ -66,11 +66,11 @@ class RagasRunList(BaseModel):
     items: List[RagasRunSchema]
 
 
-# ==================== 测试问题生成 Schema ====================
+# ==================== Test question generation schemas ====================
 
 
 class TestGenFromDocsRequest(BaseModel):
-    """从文档生成测试问题的请求"""
+    """Request to generate test questions from documents."""
     
     dataset_id: Optional[UUID] = Field(default=None, description="知识库 ID（可选）")
     document_ids: List[UUID] = Field(default_factory=list, description="文档 ID 列表（优先于 dataset_id）")
@@ -83,7 +83,7 @@ class TestGenFromDocsRequest(BaseModel):
 
 
 class TestGenFromConversationsRequest(BaseModel):
-    """从对话历史生成测试问题的请求"""
+    """Request to generate test questions from conversation history."""
     
     conversation_ids: List[UUID] = Field(..., min_length=1, description="对话 ID 列表")
     num_questions: int = Field(default=10, ge=1, le=50, description="生成问题数量")
@@ -92,7 +92,7 @@ class TestGenFromConversationsRequest(BaseModel):
 
 
 class GeneratedQuestion(BaseModel):
-    """生成的问题"""
+    """Generated question."""
     
     question: str = Field(..., description="问题内容")
     expected_answer: Optional[str] = Field(default=None, description="期望答案")
@@ -103,7 +103,7 @@ class GeneratedQuestion(BaseModel):
 
 
 class TestGenResponse(BaseModel):
-    """测试问题生成响应"""
+    """Test question generation response."""
     
     status: str = Field(..., description="状态：completed 或 failed")
     generated_questions: List[GeneratedQuestion] = Field(default_factory=list, description="生成的问题列表")

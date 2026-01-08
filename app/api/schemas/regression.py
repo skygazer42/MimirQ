@@ -1,8 +1,8 @@
 """
-RAGAS 回归集（Regression Suite）相关 Schema。
+RAGAS regression suite schemas.
 
-目标：把"固定的一组问题"沉淀为可复用回归用例，支持在不同 prompt/模型/检索策略下重复跑评测，
-并将结果落表，形成持续迭代闭环。
+Goal: turn a fixed question set into reusable regression cases, run evaluations
+across prompts/models/retrieval strategies, and persist results for iteration.
 """
 
 from datetime import datetime
@@ -50,7 +50,7 @@ class RagasRegressionRunCreateRequest(BaseModel):
     skip_empty_contexts: bool = Field(default=True, description="跳过无 contexts 的用例（默认 true）")
     max_cases: int = Field(default=50, ge=1, le=500, description="最多跑多少条用例（默认 50）")
 
-    # 检索配置（与 chat.rag_config 对齐，便于对比）
+    # Retrieval config (aligned with chat.rag_config for comparisons).
     top_k: int = Field(default=5, ge=1, le=50)
     score_threshold: float = Field(default=0.7, ge=0.0, le=1.0)
     retrieval_mode: str = Field(default="hybrid", description="hybrid | vector | keyword | mmr")
@@ -63,7 +63,7 @@ class RagasRegressionRunCreateRequest(BaseModel):
     reranker_provider: str = Field(default="llm", description="reranker provider: llm | pc | none")
     reranker_top_n: int = Field(default=20, ge=1, le=200, description="精排候选数量（越大越慢）")
 
-    # PromptTemplate 选择（可选：用于版本/A-B 对比）
+    # PromptTemplate selection (optional; for version/A-B comparison).
     prompt_template_id: Optional[UUID] = None
     prompt_template_key: Optional[str] = None
     prompt_ab_experiment_key: Optional[str] = None

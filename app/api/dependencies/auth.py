@@ -1,7 +1,7 @@
 """
-用户认证依赖
+Authentication dependency.
 
-从请求头中解析用户身份信息。
+Parses user identity from request headers.
 """
 
 import logging
@@ -44,7 +44,7 @@ def get_current_account_id(
             token,
             settings.SECRET_KEY,
             algorithms=[settings.ALGORITHM],
-            options={"verify_exp": True}  # 显式启用过期检查
+            options={"verify_exp": True}  # Explicitly enable expiration checks.
         )
     except ExpiredSignatureError:
         logger.warning("Expired token attempted for access")

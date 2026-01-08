@@ -1,7 +1,7 @@
 """
-轻量解析与分层切块预览 API：
-- /pipeline/parse-preview: 按文件类型分流解析（MarkItDown/DeepDoc/MinerU/Basic），返回 Markdown 与图片引用
-- /pipeline/chunk-preview: 对 Markdown 做分层切块（段落/句子），返回可高亮的起止位置
+Lightweight parsing and hierarchical chunk preview APIs:
+- /pipeline/parse-preview: route parsing by file type (MarkItDown/DeepDoc/MinerU/Basic), return Markdown + image refs
+- /pipeline/chunk-preview: hierarchical Markdown chunking (paragraph/sentence) with highlight offsets
 """
 from __future__ import annotations
 
@@ -45,6 +45,7 @@ from app.rag.preprocessing.cleaning import clean_markdown, RegexRule, build_repe
 from app.rag.preprocessing.rules import DEFAULT_MARKDOWN_RULES
 from app.services.dataset_service import DatasetService
 from app.services.prompt_resolver import resolve_prompt_template
+from app.rag.core.errors import ConfigError
 from app.rag.llm.factory import create_llm_client
 from app.rag.llm.models import LLMMessage, LLMRole
 from app.api.utils.upload import save_upload_file
@@ -68,9 +69,9 @@ async def get_pipeline_capabilities(
     db: Session = Depends(get_db),
 ):
     """
-    返回当前部署可用的解析器/切块策略，用于前端动态禁用不可用选项。
+    Return available parsers and chunking strategies for the frontend.
 
-    注意：仅返回“可用性”信息，不包含任何敏感配置（如 API Key）。
+    Note: only availability info is returned (no sensitive config like API keys).
     """
     DatasetService.ensure_member(db, tenant_id, account_id)
 
@@ -175,7 +176,7 @@ async def parse_preview(
     db: Session = Depends(get_db),
 ):
     """
-    解析文件为 Markdown 预览，不入库；提取内嵌图片到 uploads/{tenant}/images。
+    Parse a file into a Markdown preview without persisting it; extract inline images to uploads/{tenant}/images.
     """
     DatasetService.ensure_member(db, tenant_id, account_id)
 
@@ -186,7 +187,7 @@ async def parse_preview(
             detail=f"Unsupported file type. Allowed: {settings.allowed_extensions_list}",
         )
 
-    # 保存到临时路径
+    # Save to a temporary path.
     preview_dir = Path(settings.UPLOAD_DIR) / str(tenant_id) / "preview"
     preview_dir.mkdir(parents=True, exist_ok=True)
     temp_path = preview_dir / f"{uuid.uuid4()}{file_ext}"
@@ -215,7 +216,7 @@ async def chunk_preview(
     db: Session = Depends(get_db),
 ):
     """
-    对 Markdown 文本进行分层切块（段落/句子），返回可用于高亮的起止位置。
+    Perform hierarchical chunking for Markdown text and return highlight offsets.
     """
     DatasetService.ensure_member(db, tenant_id, account_id)
     chunks = hierarchical_chunk_markdown(body.markdown)
@@ -230,7 +231,7 @@ async def clean_preview(
     db: Session = Depends(get_db),
 ):
     """
-    对 Markdown 做“数据治理”清洗预览（不入库），用于人工调整前/后对比。
+    Preview governance-style cleaning for Markdown (no persistence) to compare before/after.
     """
     DatasetService.ensure_member(db, tenant_id, account_id)
     if body.rules:
@@ -278,7 +279,7 @@ async def list_clean_rules(
     db: Session = Depends(get_db),
 ):
     """
-    返回默认“数据治理”规则列表，供前端做默认勾选/编辑。
+    Return default governance rules for UI selection/editing.
     """
     DatasetService.ensure_member(db, tenant_id, account_id)
     return CleanRulesResponse(
@@ -294,14 +295,14 @@ async def extract_keywords(
     db: Session = Depends(get_db),
 ):
     """
-    提取关键词（用于治理/标注/分类等）。
+    Extract keywords (for governance/annotation/classification).
 
-    支持：
-    - provider=auto（优先 HanLP，不可用则回退 jieba）
-    - provider=jieba / jieba_tfidf（默认）
+    Supported providers:
+    - provider=auto (prefer HanLP, fallback to jieba)
+    - provider=jieba / jieba_tfidf (default)
     - provider=jieba_textrank
-    - provider=hanlp（可选依赖：需安装 `hanlp`，并可用 `HANLP_TOKENIZER_MODEL` 指定 tokenizer 模型）
-    - provider=simple（轻量正则分词 + 词频）
+    - provider=hanlp (optional dependency; requires `hanlp` and `HANLP_TOKENIZER_MODEL`)
+    - provider=simple (lightweight regex tokenization + term frequency)
     """
     DatasetService.ensure_member(db, tenant_id, account_id)
     from app.rag.preprocessing.keyword import (
@@ -330,11 +331,11 @@ async def llm_clean_preview(
     db: Session = Depends(get_db),
 ):
     """
-    使用大模型对 Markdown 做“数据治理”清洗预览（不入库）。
+    Use an LLM to preview governance-style cleaning for Markdown (no persistence).
 
-    说明：
-    - 该接口会调用 LLM（需要正确配置 `LLM_API_KEY/LLM_API_BASE/LLM_MODEL`）。
-    - 支持通过 PromptTemplate 指定清洗策略：`prompt_template_id` / `template_key` / `ab_experiment_key`。
+    Notes:
+    - This endpoint calls an LLM (requires `LLM_API_KEY/LLM_API_BASE/LLM_MODEL`).
+    - PromptTemplate can override the cleaning strategy via `prompt_template_id` / `template_key` / `ab_experiment_key`.
     """
     DatasetService.ensure_member(db, tenant_id, account_id)
 
@@ -387,23 +388,28 @@ async def llm_clean_preview(
     if body.temperature is not None:
         model_config["temperature"] = body.temperature
 
-    llm = await create_llm_client(scenario="governance_cleaning", model_config=model_config or None)
-    resp = await llm.chat_with_schema(
-        [
-            LLMMessage(role=LLMRole.SYSTEM, content=system_prompt),
-            LLMMessage(
-                role=LLMRole.HUMAN,
-                content=f"输入 Markdown：\n```markdown\n{markdown}\n```",
-            ),
-        ],
-        response_schema={
-            "markdown": "string",
-            "changes": ["string"],
-            "warnings": ["string"],
-        },
-        temperature=body.temperature,
-        max_tokens=body.max_tokens,
-    )
+    try:
+        llm = await create_llm_client(scenario="governance_cleaning", model_config=model_config or None)
+        resp = await llm.chat_with_schema(
+            [
+                LLMMessage(role=LLMRole.SYSTEM, content=system_prompt),
+                LLMMessage(
+                    role=LLMRole.HUMAN,
+                    content=f"输入 Markdown：\n```markdown\n{markdown}\n```",
+                ),
+            ],
+            response_schema={
+                "markdown": "string",
+                "changes": ["string"],
+                "warnings": ["string"],
+            },
+            temperature=body.temperature,
+            max_tokens=body.max_tokens,
+        )
+    except ConfigError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=502, detail=f"LLM request failed: {str(exc)[:200]}") from exc
 
     warnings: list[str] = []
     cleaned = ""
@@ -448,24 +454,24 @@ async def upload_zip_with_images(
     db: Session = Depends(get_db),
 ):
     """
-    上传包含 Markdown + images 的 ZIP 文件。
-    
-    自动处理：
-    1. 解压 ZIP
-    2. 提取所有图片并上传到 MinIO
-    3. 替换 Markdown 中的图片引用为 MinIO URL
-    4. 返回处理后的 Markdown 和图片列表
-    
+    Upload a ZIP that contains Markdown + images.
+
+    Auto processing:
+    1. Unzip the archive
+    2. Upload all images to MinIO
+    3. Replace Markdown image refs with MinIO URLs
+    4. Return the rewritten Markdown and image list
+
     Args:
-        file: ZIP 文件（包含 Markdown 和图片）
-        dataset_id: 知识库 ID（用于 MinIO 路径）
-        document_id: 文档 ID（可选，默认使用文件名）
-    
+        file: ZIP file (Markdown + images)
+        dataset_id: Dataset ID (used for MinIO paths)
+        document_id: Optional document ID (defaults to file name)
+
     Returns:
         {
-            "markdown": "处理后的 Markdown",
+            "markdown": "rewritten Markdown",
             "images": [{"img_id": "...", "url": "...", "original_path": "..."}],
-            "image_count": 数量
+            "image_count": count
         }
     """
     if not settings.MINIO_ENABLED:
@@ -474,7 +480,7 @@ async def upload_zip_with_images(
             detail="MinIO 未启用，无法处理图片上传。请设置 MINIO_ENABLED=true"
         )
     
-    # 检查文件类型
+    # Validate file type.
     if not file.filename.endswith('.zip'):
         raise HTTPException(
             status_code=400,
@@ -488,17 +494,17 @@ async def upload_zip_with_images(
     dataset = DatasetService.get_dataset(db, tenant_id, dataset_uuid)
     DatasetService.assert_dataset_writable(db, dataset, account_id)
     
-    # 保存到临时文件
+    # Save to a temporary file.
     temp_dir = Path(settings.UPLOAD_DIR) / str(tenant_id) / "temp_zip"
     temp_dir.mkdir(parents=True, exist_ok=True)
     
     temp_zip_path = temp_dir / f"{uuid.uuid4()}.zip"
     
     try:
-        # 写入临时文件（流式，限制大小）
+        # Write to a temporary file (streamed, size-limited).
         await save_upload_file(file, temp_zip_path, max_bytes=settings.MAX_FILE_SIZE)
         
-        # 处理 ZIP：提取图片并上传到 MinIO
+        # Process ZIP: extract images and upload to MinIO.
         doc_id = document_id or file.filename.rsplit('.', 1)[0]
         result = zip_image_processor.process_zip_with_images(
             zip_path=temp_zip_path,
@@ -528,7 +534,7 @@ async def upload_zip_with_images(
             detail=f"ZIP 处理失败: {str(e)}"
         )
     finally:
-        # 清理临时文件
+        # Clean up temporary files.
         try:
             if temp_zip_path.exists():
                 temp_zip_path.unlink()
