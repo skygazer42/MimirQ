@@ -29,11 +29,24 @@ def main() -> None:
 
     from app.core.config import settings
 
+    reload_dirs = [
+        str(project_root / "app"),
+        str(project_root / "scripts"),
+    ]
+    reload_excludes = [
+        "web/node_modules",
+        "web/.next",
+        "web/.next_build",
+        "uploads",
+    ]
+
     uvicorn.run(
         "app.main:app",
         host=settings.HOST,
         port=settings.PORT,
         reload=True,
+        reload_dirs=reload_dirs,
+        reload_excludes=reload_excludes,
     )
 
 
