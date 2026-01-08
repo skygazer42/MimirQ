@@ -395,7 +395,7 @@ async def llm_clean_preview(
                 LLMMessage(role=LLMRole.SYSTEM, content=system_prompt),
                 LLMMessage(
                     role=LLMRole.HUMAN,
-                    content=f"输入 Markdown：\n```markdown\n{markdown}\n```",
+                    content=f"Input Markdown:\n```markdown\n{markdown}\n```",
                 ),
             ],
             response_schema={

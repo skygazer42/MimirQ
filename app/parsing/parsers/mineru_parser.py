@@ -1,14 +1,14 @@
 """
-MinerU PDF 解析器（业务层封装）
+MinerU PDF parser (business layer wrapper)
 
-封装 deepdoc/parser/mineru_parser.py 的底层实现，
-提供 LangChain Document 格式的输出。
+Wraps the underlying implementation in deepdoc/parser/mineru_parser.py,
+providing LangChain Document format output.
 
-支持：
-- 表格识别和提取
-- 图片识别和描述
-- 公式识别
-- 复杂版面分析
+Supports:
+- Table recognition and extraction
+- Image recognition and description
+- Formula recognition
+- Complex layout analysis
 """
 import os
 from pathlib import Path
@@ -21,10 +21,10 @@ from .base_parser import BaseAdvancedParser
 
 class MinerUParser(BaseAdvancedParser):
     """
-    MinerU 高级 PDF 解析器（业务层封装）
+    MinerU advanced PDF parser (business layer wrapper)
 
-    调用 deepdoc/parser/mineru_parser.py 底层实现，
-    将 sections/tables 转换为 LangChain Document 格式。
+    Calls the underlying implementation in deepdoc/parser/mineru_parser.py,
+    converting sections/tables to LangChain Document format.
     """
 
     def __init__(self):

@@ -1,9 +1,9 @@
 """
-索引/入库链路的内部类型定义（非 API Schema）
+Internal type definitions for indexing/ingestion pipeline (not API Schema)
 
-说明：
-- 这里的 dataclass/Enum 被 services/rag/parsing 等内部模块使用
-- 为避免 import 时触发 ORM/Settings 初始化，运行时不直接 import ORM 模型
+Notes:
+- These dataclasses/Enums are used by internal modules like services/rag/parsing
+- To avoid triggering ORM/Settings initialization at import time, ORM models are not directly imported at runtime
 """
 
 from __future__ import annotations

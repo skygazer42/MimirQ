@@ -1,9 +1,9 @@
 """
-文档流水线（pipeline）内部配置类型（非 API Schema）
+Internal configuration types for document pipeline (not API Schema)
 
-说明：
-- PipelineOptions/PipelineEffective 是服务层解析 doc_metadata 与 settings 时使用的内部结构
-- 不应放在 app/api/schemas（避免 API schema 层被内部配置污染）
+Notes:
+- PipelineOptions/PipelineEffective are internal structures used by service layer when parsing doc_metadata and settings
+- Should not be placed in app/api/schemas (avoid polluting API schema layer with internal config)
 """
 
 from __future__ import annotations
