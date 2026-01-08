@@ -1402,7 +1402,7 @@ class HybridRetriever(BaseRetriever):
             if not data:
                 continue
 
-            # 合并两路 metadata（例如 img_id 可能只存在于 BM25/DB metadata）
+            # Merge metadata from both channels (e.g., img_id may only exist in BM25/DB metadata)
             if v_data and b_data:
                 merged_meta = dict(v_data.get("metadata") or {})
                 b_meta = b_data.get("metadata") or {}

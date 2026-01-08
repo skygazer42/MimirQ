@@ -614,7 +614,7 @@ def _generate_node(state: RAGState) -> RAGState:
         engine = get_rag_engine()
         llm, route, reason = engine._select_llm(state["question"], state.get("history"))  # type: ignore[attr-defined]
 
-        abstain_message = "根据现有资料无法回答该问题。你可以补充上传相关文档，或缩小问题范围后再问。"
+        abstain_message = "Unable to answer this question based on available materials. Please upload additional relevant documents or narrow the question scope before asking again."
         answer = abstain_message
         if bool(state.get("structured_output")):
             preset_key = (state.get("structured_preset") or "").lower()
@@ -716,7 +716,7 @@ def _generate_node(state: RAGState) -> RAGState:
     if pii_on and redact_text:
         answer = redact_text(str(answer))
 
-    # 将引用图片以内嵌 Markdown 的形式追加到正文（仅非结构化输出，可配置）
+    # Append cited images as inline Markdown to the answer (non-structured output only, configurable)
     if not bool(state.get("structured_output")) and bool(settings.SHOW_IMAGE_IN_ANSWER) and settings.IMAGE_APPEND_MAX > 0:
         citations = state.get("citations") or []
         image_urls: List[str] = []
@@ -732,9 +732,9 @@ def _generate_node(state: RAGState) -> RAGState:
             if len(image_urls) >= settings.IMAGE_APPEND_MAX:
                 break
         if image_urls:
-            parts = ["\n\n---\n\n### 相关图片\n"]
+            parts = ["\n\n---\n\n### Related Images\n"]
             for i, url in enumerate(image_urls, 1):
-                parts.append(f"![引用图片 {i}]({url})")
+                parts.append(f"![Referenced Image {i}]({url})")
             answer = (answer or "") + "\n\n".join(parts) + "\n"
 
     metrics = dict(state.get("metrics") or {})
@@ -789,7 +789,7 @@ _functional_checkpointer = None
 
 
 def _get_checkpointer():
-    """获取或创建全局 checkpointer 实例。"""
+    """Get or create global checkpointer instance."""
     global _functional_checkpointer
     if _functional_checkpointer is None:
         _functional_checkpointer = get_checkpointer()
@@ -799,9 +799,9 @@ def _get_checkpointer():
 @task(retry_policy=_RAG_TASK_RETRY_POLICY, cache_policy=_RAG_RETRIEVE_CACHE_POLICY)
 def retrieve_task(state: Dict[str, Any]) -> Dict[str, Any]:
     """
-    检索任务 - 使用 Functional API @task 装饰器。
+    Retrieval task - using Functional API @task decorator.
 
-    支持重试和超时机制，与原有 _retrieve_node 逻辑一致。
+    Supports retry and timeout mechanisms, consistent with original _retrieve_node logic.
     """
     writer = None
     if bool(getattr(settings, "STREAM_WRITER_ENABLED", True)):
@@ -877,9 +877,9 @@ def retrieve_task(state: Dict[str, Any]) -> Dict[str, Any]:
 @task(retry_policy=_RAG_TASK_RETRY_POLICY)
 def generate_task(state: Dict[str, Any]) -> Dict[str, Any]:
     """
-    生成任务 - 使用 Functional API @task 装饰器。
+    Generation task - using Functional API @task decorator.
 
-    支持重试和超时机制，与原有 _generate_node 逻辑一致。
+    Supports retry and timeout mechanisms, consistent with original _generate_node logic.
     """
     writer = None
     if bool(getattr(settings, "STREAM_WRITER_ENABLED", True)):
@@ -952,11 +952,11 @@ def generate_task(state: Dict[str, Any]) -> Dict[str, Any]:
 @entrypoint(checkpointer=_get_checkpointer(), store=get_langgraph_store(), context_schema=RAGRuntimeContext)
 def rag_workflow(state: Dict[str, Any], runtime: Runtime[RAGRuntimeContext]) -> Dict[str, Any]:
     """
-    RAG 工作流入口点 - 使用 Functional API @entrypoint 装饰器。
+    RAG workflow entrypoint - using Functional API @entrypoint decorator.
 
-    执行检索 -> 生成的流程，支持检查点持久化。
+    Executes retrieve -> generate flow with checkpoint persistence support.
     """
-    # 执行检索任务
+    # Execute retrieval task
     metrics = dict(state.get("metrics") or {})
     if runtime and getattr(runtime, "context", None):
         ctx = runtime.context
@@ -975,7 +975,7 @@ def rag_workflow(state: Dict[str, Any], runtime: Runtime[RAGRuntimeContext]) -> 
 
     state = retrieve_task(state).result()
 
-    # 执行生成任务
+    # Execute generation task
     state = generate_task(state).result()
 
     return state
@@ -989,15 +989,15 @@ def run_rag_workflow_functional(
     context: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """
-    使用 Functional API 执行 RAG 工作流。
+    Execute RAG workflow using Functional API.
 
     Args:
-        state: RAG 状态字典
-        thread_id: 可选的线程 ID，用于会话持久化
-        stream_mode: 流式模式 ("updates", "values", None)
+        state: RAG state dictionary
+        thread_id: Optional thread ID for session persistence
+        stream_mode: Streaming mode ("updates", "values", None)
 
     Returns:
-        执行结果状态
+        Execution result state
     """
     recursion_limit = max(1, int(getattr(settings, "LANGGRAPH_RECURSION_LIMIT", 25) or 25))
     config: Dict[str, Any] = {
@@ -1006,18 +1006,18 @@ def run_rag_workflow_functional(
     }
 
     if stream_mode:
-        # 流式执行
+        # Streaming execution
         result = None
         for step in rag_workflow.stream(state, config=config, stream_mode=stream_mode, context=context):
             result = step
         return result or state
     else:
-        # 同步执行
+        # Synchronous execution
         return rag_workflow.invoke(state, config=config, context=context)
 
 
 def build_rag_graph() -> Any:
-    """构建一个最小 RAG 流程图：检索 -> 生成 -> 结束。"""
+    """Build a minimal RAG flow graph: retrieve -> generate -> end."""
     if bool(getattr(settings, "LANGGRAPH_USE_SUBGRAPHS", False)):
         return build_rag_graph_subgraphs()
 
@@ -1125,9 +1125,9 @@ def build_rag_state(
         format_instructions = engine.structured_presets.get(
             preset_key,
             (
-                "请仅返回 JSON，结构 "
+                "Please return JSON only, structure: "
                 '{"answer": "string", "citations": [{"document_id": "...", "chunk_id": "...", "page_number": null, "relevance_score": 0.0}]}'
-                " 不要输出多余文本。"
+                " Do not output extra text."
             ),
         )
 
@@ -1209,7 +1209,7 @@ def run_rag_graph(
     ab_user_key: Optional[str] = None,
     db: Optional[Any] = None,
 ) -> Dict[str, Any]:
-    """执行 LangGraph RAG 流程，返回 answer/citations/模型信息。"""
+    """Execute LangGraph RAG flow, return answer/citations/model info."""
     engine = get_rag_engine()
     preset_key = (structured_preset or "").lower()
     format_instructions = ""
@@ -1217,9 +1217,9 @@ def run_rag_graph(
         format_instructions = engine.structured_presets.get(
             preset_key,
             (
-                "请仅返回 JSON，结构: "
+                "Please return JSON only, structure: "
                 '{"answer": "string", "citations": [{"document_id": "...", "chunk_id": "...", "page_number": null, "relevance_score": 0.0}]}'
-                " 不要输出多余文本。"
+                " Do not output extra text."
             ),
         )
 
@@ -1273,7 +1273,7 @@ def run_rag_graph(
         "prompt_ab_variant": selected_prompt_ab_variant,
     }
 
-    # 使用 Functional API (LangGraph 1.0+)
+    # Use Functional API (LangGraph 1.0+)
     use_functional_api = bool(getattr(settings, "LANGGRAPH_USE_FUNCTIONAL_API", True))
 
     if use_functional_api:
@@ -1311,10 +1311,10 @@ def stream_rag_graph(
     **kwargs,
 ):
     """
-    流式执行 RAG 工作流，支持 LangGraph 1.0+ Functional API。
+    Stream RAG workflow execution, supports LangGraph 1.0+ Functional API.
 
     Yields:
-        Dict[str, Any]: 每个步骤的状态更新
+        Dict[str, Any]: State updates for each step
     """
     state = {
         "question": question,
