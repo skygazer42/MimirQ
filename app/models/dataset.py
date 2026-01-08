@@ -1,7 +1,7 @@
 """
-知识库数据模型和权限管理
+Knowledge base data models and permission management.
 
-定义知识库、权限关系等数据表结构。
+Defines dataset tables and permission relationships.
 """
 import enum
 import uuid

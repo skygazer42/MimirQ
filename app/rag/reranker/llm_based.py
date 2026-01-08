@@ -1,14 +1,14 @@
 """
-LLM-Based Reranker（基于大模型的精排器）
+LLM-based reranker.
 
-用于对检索到的候选切片做"精排"，提升答案引用的相关性。
+Reranks retrieved candidates to improve reference relevance.
 
-实现策略：
-- 输入 query + candidates（截断后的 text）
-- 让 LLM 输出严格 JSON：[{ "id": "...", "score": 0~1 }, ...]，按相关度降序
-- 解析失败则回退到原顺序
+Strategy:
+- Input query + candidates (truncated text)
+- Ask the LLM to output strict JSON: [{"id": "...", "score": 0~1}, ...], sorted by relevance
+- Fall back to original order if parsing fails
 
-注意：此模块是 reranker 的一种实现，不要与 app.rag.llm（LLM客户端）混淆。
+Note: this module is a reranker implementation; do not confuse it with app.rag.llm (LLM client).
 """
 
 from __future__ import annotations
@@ -28,7 +28,7 @@ from app.rag.reranker.base import DocumentReranker
 
 @dataclass
 class LLMRerankResult:
-    """LLM 重排结果"""
+    """LLM rerank result."""
     ordered_ids: list[str]
     score_map: dict[str, float]
     elapsed_sec: float
@@ -37,8 +37,8 @@ class LLMRerankResult:
 
 def _build_http_clients() -> tuple[httpx.Client, httpx.AsyncClient]:
     """
-    复用与 RAG 引擎一致的 proxy 处理逻辑：
-    - 如果检测到 SOCKS 代理，禁用 trust_env 避免 httpx 兼容问题。
+    Reuse the same proxy handling as the RAG engine:
+    - If a SOCKS proxy is detected, disable trust_env to avoid httpx issues.
     """
     trust_env = httpx_trust_env()
     return httpx.Client(trust_env=trust_env, timeout=settings.LLM_TIMEOUT), httpx.AsyncClient(
@@ -47,7 +47,7 @@ def _build_http_clients() -> tuple[httpx.Client, httpx.AsyncClient]:
 
 
 def _extract_json_array(text: str) -> str | None:
-    """从 LLM 输出中尽量提取 JSON 数组部分。"""
+    """Best-effort extract the JSON array portion from LLM output."""
     if not text:
         return None
     start = text.find("[")
@@ -58,7 +58,7 @@ def _extract_json_array(text: str) -> str | None:
 
 
 class LLMReranker(DocumentReranker):
-    """LLM 精排器（基于大模型的文档重排）"""
+    """LLM reranker (document-level reranking via LLM)."""
 
     def __init__(self) -> None:
         from langchain_openai import ChatOpenAI
@@ -100,7 +100,7 @@ candidates(JSON): {candidates}
 
 
     def _candidate_id(self, document: Document, fallback_idx: int) -> str:
-        """从 Document 中提取候选 ID"""
+        """Extract a candidate ID from a Document."""
         meta = document.metadata or {}
         for key in ("candidate_id", "doc_id", "chunk_id"):
             value = meta.get(key)
@@ -121,17 +121,17 @@ candidates(JSON): {candidates}
         user: str | None = None,
     ) -> list[Document]:
         """
-        运行 LLM 重排
-        
+        Run LLM reranking.
+
         Args:
-            query: 查询文本
-            documents: 文档列表
-            score_threshold: 分数阈值
-            top_n: 返回前 N 个结果
-            user: 用户标识（未使用）
-            
+            query: query text
+            documents: document list
+            score_threshold: score threshold
+            top_n: return top N results
+            user: user identifier (unused)
+
         Returns:
-            重排后的文档列表
+            reranked document list
         """
         if not documents:
             return []
@@ -172,7 +172,7 @@ candidates(JSON): {candidates}
             if top_n and len(ordered) >= top_n:
                 return ordered
 
-        # 添加未重排的文档
+        # Append documents that were not reranked.
         for idx, doc in enumerate(documents):
             cid = self._candidate_id(doc, idx)
             if cid in used:
@@ -189,14 +189,14 @@ candidates(JSON): {candidates}
 
     def rerank_raw(self, query: str, candidates: list[dict[str, Any]]) -> LLMRerankResult:
         """
-        直接调用 LLM 进行重排（原始接口）
-        
+        Call the LLM directly for reranking (raw interface).
+
         Args:
-            query: 查询文本
-            candidates: 候选列表 [{id, text, ...}]
-            
+            query: query text
+            candidates: candidate list [{id, text, ...}]
+
         Returns:
-            LLMRerankResult: 包含排序后的 ID 列表和分数映射
+            LLMRerankResult with ordered IDs and score map
         """
         payload = []
         max_chars = int(settings.RERANKER_MAX_CHARS or 800)
@@ -248,7 +248,7 @@ _llm_reranker: LLMReranker | None = None
 
 
 def get_llm_reranker() -> LLMReranker:
-    """获取 LLM Reranker 单例"""
+    """Get the LLM reranker singleton."""
     global _llm_reranker
     if _llm_reranker is None:
         _llm_reranker = LLMReranker()

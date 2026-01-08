@@ -179,7 +179,7 @@ def _build_milvus_metadata_expr(metadata_filter: Optional[Dict[str, Any]]) -> Op
     return expr
 
 
-# ========= Embedding 初始化 ==========
+# ========= Embedding initialization ==========
 
 def _init_embedding_model():
     """Initialize embedding model using app.rag.embedding module."""
@@ -202,7 +202,7 @@ def _init_embedding_model():
 
 
 def _get_milvus_connection_args() -> Dict[str, Any]:
-    """获取 Milvus 连接配置."""
+    """Get Milvus connection configuration."""
     return {
         "host": settings.MILVUS_HOST,
         "port": str(settings.MILVUS_PORT),
@@ -212,22 +212,22 @@ def _get_milvus_connection_args() -> Dict[str, Any]:
 
 
 def _get_milvus_index_params() -> Dict[str, Any]:
-    """获取 Milvus 索引配置."""
+    """Get Milvus index configuration."""
     return MilvusConfig.get_index_params()
 
 
 def _get_milvus_search_params() -> Dict[str, Any]:
-    """获取 Milvus 搜索配置."""
+    """Get Milvus search configuration."""
     return MilvusConfig.get_search_params()
 
 
-# ========= 通用 Milvus 适配器 ==========
+# ========= Generic Milvus adapter ==========
 
 class MilvusAdapter:
     """
-    通用 Milvus 适配器，支持自定义 collection。
+    Generic Milvus adapter that supports custom collections.
 
-    用于 KG 实体/事件向量存储，支持多 collection。
+    Used for KG entity/event vector storage with multiple collections.
     """
 
     def __init__(
@@ -477,13 +477,13 @@ def get_milvus_adapter(
         return adapter
 
 
-# ========= 文档向量存储 (单例) ==========
+# ========= Document vector store (singleton) ==========
 
 class MilvusVectorStore:
     """
-    Milvus 向量存储服务（文档向量专用，单例模式）。
+    Milvus vector store service (document vectors, singleton).
 
-    用于知识库文档的向量存储，使用固定的 collection 名称。
+    Used for knowledge base document vectors with a fixed collection name.
     """
 
     _instance: Optional["MilvusVectorStore"] = None
@@ -532,7 +532,7 @@ class MilvusVectorStore:
         document_ids: Optional[List[UUID]] = None,
         tenant_id: Optional[UUID] = None,
     ) -> Optional[str]:
-        """构建 Milvus 过滤表达式。"""
+        """Build a Milvus filter expression."""
         expr_parts: List[str] = []
         if tenant_id:
             expr_parts.append(f'tenant_id == "{str(tenant_id)}"')
@@ -547,7 +547,7 @@ class MilvusVectorStore:
         document_id: UUID,
         tenant_id: UUID,
     ) -> List[str]:
-        """添加文档 chunks 到 Milvus（返回向量 id 列表）"""
+        """Add document chunks to Milvus (returns vector id list)."""
         self._ensure_store()
         assert self._store is not None
 
@@ -597,7 +597,7 @@ class MilvusVectorStore:
         tenant_id: Optional[UUID] = None,
         metadata_filter: Optional[Dict[str, Any]] = None,
     ) -> List[Dict[str, Any]]:
-        """向量相似度检索（使用文本查询）"""
+        """Vector similarity search (text query)."""
         self._ensure_store()
         assert self._store is not None
 
@@ -647,7 +647,7 @@ class MilvusVectorStore:
         return formatted
 
     def delete_by_document_id(self, document_id: UUID, tenant_id: Optional[UUID] = None) -> None:
-        """删除指定文档的所有向量"""
+        """Delete all vectors for a given document."""
         self._ensure_store()
         assert self._store is not None
 
@@ -660,7 +660,7 @@ class MilvusVectorStore:
                 pass
 
     def get_collection_count(self) -> int:
-        """获取向量库中的文档数量"""
+        """Return document count in the vector collection."""
         self._ensure_store()
         assert self._store is not None
         try:
@@ -669,7 +669,7 @@ class MilvusVectorStore:
             return 0
 
 
-# ========= 全局实例 ==========
+# ========= Global instances ==========
 
-# 文档向量存储（单例）
+# Document vector store (singleton)
 milvus_store = MilvusVectorStore()

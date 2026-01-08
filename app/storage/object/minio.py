@@ -1,5 +1,5 @@
 """
-MinIO 对象存储服务 - 用于存储文档解析中提取的图片
+MinIO object storage service for images extracted during document parsing.
 """
 import asyncio
 import io
@@ -16,7 +16,7 @@ logger = get_logger("storage.minio")
 
 
 class MinIOService:
-    """MinIO 对象存储服务"""
+    """MinIO object storage service."""
 
     def __init__(self):
         self._client: Optional[Any] = None
@@ -25,7 +25,7 @@ class MinIOService:
         self._metrics_path = Path(settings.MINIO_METRICS_LOG_PATH)
 
     def _get_client(self):
-        """延迟初始化 MinIO 客户端"""
+        """Lazily initialize the MinIO client."""
         if not bool(getattr(settings, "MINIO_ENABLED", False)):
             raise RuntimeError("MinIO is disabled (MINIO_ENABLED=false)")
 
@@ -47,7 +47,7 @@ class MinIOService:
         return self._client
 
     def _ensure_bucket(self):
-        """确保 bucket 存在，不存在则创建"""
+        """Ensure the bucket exists; create it if missing."""
         client = self._client
         if client is None:
             return
@@ -83,18 +83,18 @@ class MinIOService:
         extension: str = "jpg",
     ) -> str:
         """
-        上传图片到 MinIO，返回 img_id。
-        
+        Upload an image to MinIO and return the img_id.
+
         Args:
-            image_data: 图片二进制数据或文件对象
-            tenant_id: 租户 ID
-            dataset_id: 知识库 ID
-            document_id: 文档 ID
-            chunk_key: 块标识（通常为 chunk_index）
-            extension: 文件扩展名（默认 jpg）
-        
+            image_data: image bytes or a file-like object
+            tenant_id: tenant ID
+            dataset_id: dataset ID
+            document_id: document ID
+            chunk_key: chunk identifier (usually chunk_index)
+            extension: file extension (default: jpg)
+
         Returns:
-            img_id: 格式 "{tenant_id}:{dataset_id}:{document_id}:{chunk_key}"
+            img_id: format "{tenant_id}:{dataset_id}:{document_id}:{chunk_key}"
         """
         t0 = time.perf_counter()
         img_id = f"{tenant_id}:{dataset_id}:{document_id}:{chunk_key}"
@@ -103,18 +103,18 @@ class MinIOService:
         try:
             client = self._get_client()
 
-            # 转换为字节流
+            # Convert to a byte stream.
             if isinstance(image_data, bytes):
                 data_stream = io.BytesIO(image_data)
                 data_length = len(image_data)
             else:
-                # 假设是文件对象
+                # Assume a file-like object.
                 data_stream = image_data
-                data_stream.seek(0, 2)  # 移到末尾
+                data_stream.seek(0, 2)  # Seek to end.
                 data_length = data_stream.tell()
-                data_stream.seek(0)  # 重置到开头
+                data_stream.seek(0)  # Reset to start.
 
-            # 上传到 MinIO
+            # Upload to MinIO.
             content_type = f"image/{extension}"
             if extension.lower() in {"jpg", "jpeg"}:
                 content_type = "image/jpeg"
@@ -145,18 +145,18 @@ class MinIOService:
         extension: str = "jpg",
     ) -> str:
         """
-        异步上传图片到 MinIO（在线程池中执行同步操作）
-        
+        Upload an image to MinIO asynchronously (run sync work in a thread pool).
+
         Args:
-            image_data: 图片二进制数据或文件对象
-            tenant_id: 租户 ID
-            dataset_id: 知识库 ID
-            document_id: 文档 ID
-            chunk_key: 块标识（通常为 chunk_index）
-            extension: 文件扩展名（默认 jpg）
-        
+            image_data: image bytes or a file-like object
+            tenant_id: tenant ID
+            dataset_id: dataset ID
+            document_id: document ID
+            chunk_key: chunk identifier (usually chunk_index)
+            extension: file extension (default: jpg)
+
         Returns:
-            img_id: 格式 "{tenant_id}:{dataset_id}:{document_id}:{chunk_key}"
+            img_id: format "{tenant_id}:{dataset_id}:{document_id}:{chunk_key}"
         """
         return await asyncio.to_thread(
             self.upload_image,
@@ -174,24 +174,24 @@ class MinIOService:
         max_concurrent: int = 10
     ) -> List[Dict[str, Any]]:
         """
-        批量并发上传图片到 MinIO
-        
+        Upload images to MinIO concurrently in batches.
+
         Args:
-            images: 图片列表，每个元素为字典，包含：
-                - image_data: 图片二进制数据
-                - tenant_id: 租户 ID
-                - dataset_id: 知识库 ID
-                - document_id: 文档 ID
-                - chunk_key: 块标识
-                - extension: 文件扩展名（可选，默认 jpg）
-            max_concurrent: 最大并发上传数，默认10
-        
+            images: list of dicts, each containing:
+                - image_data: image bytes
+                - tenant_id: tenant ID
+                - dataset_id: dataset ID
+                - document_id: document ID
+                - chunk_key: chunk identifier
+                - extension: file extension (optional, default: jpg)
+            max_concurrent: max concurrent uploads (default: 10)
+
         Returns:
-            上传结果列表，每个元素为字典：
-                - success: 是否成功
-                - img_id: 图片 ID（成功时）
-                - error: 错误信息（失败时）
-                - chunk_key: 原始 chunk_key
+            list of results, each containing:
+                - success: whether the upload succeeded
+                - img_id: image ID (on success)
+                - error: error message (on failure)
+                - chunk_key: original chunk_key
         """
         if not images:
             return []
@@ -226,7 +226,7 @@ class MinIOService:
         tasks = [upload_single(img) for img in images]
         results = await asyncio.gather(*tasks, return_exceptions=True)
         
-        # 处理异常
+        # Process exceptions.
         processed_results = []
         for i, result in enumerate(results):
             if isinstance(result, Exception):
@@ -249,14 +249,14 @@ class MinIOService:
 
     def get_image_url(self, img_id: str, extension: str = "jpg") -> str:
         """
-        获取图片访问 URL（预签名 URL，有效期 7 天）。
-        
+        Get an image access URL (presigned, valid for 7 days).
+
         Args:
-            img_id: 格式 "{tenant_id}:{dataset_id}:{document_id}:{chunk_key}"
-            extension: 文件扩展名
-        
+            img_id: format "{tenant_id}:{dataset_id}:{document_id}:{chunk_key}"
+            extension: file extension
+
         Returns:
-            预签名 URL
+            presigned URL
         """
         t0 = time.perf_counter()
         try:
@@ -269,12 +269,12 @@ class MinIOService:
                 object_name = f"images/{dataset_id}/{chunk_id}.{extension}"
 
             client = self._get_client()
-            # 预签名 URL 不会检查对象是否存在，这里先做一次存在性校验，避免前端拿到“死链接”。
+            # Presigned URLs do not check object existence; validate to avoid dead links.
             client.stat_object(bucket_name=self._bucket_name, object_name=object_name)
             url = client.presigned_get_object(
                 bucket_name=self._bucket_name,
                 object_name=object_name,
-                expires=7 * 24 * 3600,  # 7 天有效期
+                expires=7 * 24 * 3600,  # 7-day expiry
             )
             self._log_metric("presign", True, time.perf_counter() - t0, object_name)
             return url
@@ -286,11 +286,11 @@ class MinIOService:
 
     def delete_image(self, img_id: str, extension: str = "jpg"):
         """
-        删除图片。
-        
+        Delete an image.
+
         Args:
-            img_id: 格式 "{tenant_id}:{dataset_id}:{document_id}:{chunk_key}"
-            extension: 文件扩展名
+            img_id: format "{tenant_id}:{dataset_id}:{document_id}:{chunk_key}"
+            extension: file extension
         """
         t0 = time.perf_counter()
         try:
@@ -315,11 +315,11 @@ class MinIOService:
 
     def delete_dataset_images(self, tenant_id: str, dataset_id: str):
         """
-        删除整个知识库的所有图片。
-        
+        Delete all images for a dataset.
+
         Args:
-            tenant_id: 租户 ID
-            dataset_id: 知识库 ID
+            tenant_id: tenant ID
+            dataset_id: dataset ID
         """
         t0 = time.perf_counter()
         try:
@@ -346,7 +346,7 @@ class MinIOService:
             self._log_metric("delete_dataset", False, time.perf_counter() - t0, prefix, error=str(e))
 
     def _log_metric(self, op: str, success: bool, elapsed: float, object_name: str, error: Optional[str] = None):
-        """简单的 JSON 行日志，便于外部采集/监控。"""
+        """Simple JSONL metrics log for external collection/monitoring."""
         try:
             self._metrics_path.parent.mkdir(parents=True, exist_ok=True)
             record = {
@@ -362,9 +362,9 @@ class MinIOService:
             with self._metrics_path.open("a", encoding="utf-8") as f:
                 f.write(json.dumps(record, ensure_ascii=False) + "\n")
         except Exception:
-            # 监控不应影响主流程
+            # Monitoring should not affect the main flow.
             pass
 
 
-# 全局实例
+# Global instance
 minio_service = MinIOService()

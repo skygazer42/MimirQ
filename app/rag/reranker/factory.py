@@ -1,7 +1,7 @@
 """
-Reranker 工厂函数
+Reranker factory functions.
 
-提供统一的 reranker 创建接口。
+Provide a unified reranker creation interface.
 """
 from __future__ import annotations
 
@@ -29,24 +29,24 @@ def get_reranker(
     **kwargs: Any,
 ) -> BaseReranker:
     """
-    获取 Reranker 实例（统一工厂函数）
+    Get a reranker instance (unified factory).
 
     Args:
-        provider: 提供商类型
-            - 'openai': OpenAI 风格 API
-            - 'dashscope'/'aliyun': 阿里云 DashScope
-            - 'llm': 基于大模型的精排
-            - 'weighted': 加权融合重排
-            - 'parent_child'/'pc': 父子关系重排
-            - 'kg_pagerank': 知识图谱 PageRank 重排
-            - 'kg_rrf': 知识图谱 RRF 重排
-        model_name: 模型名称（API reranker 需要）
-        api_key: API Key（API reranker 需要）
-        base_url: API Base URL（API reranker 需要）
-        **kwargs: 其他参数
+        provider: provider type
+            - 'openai': OpenAI-style API
+            - 'dashscope'/'aliyun': Alibaba Cloud DashScope
+            - 'llm': LLM-based reranking
+            - 'weighted': weighted hybrid reranking
+            - 'parent_child'/'pc': parent-child reranking
+            - 'kg_pagerank': knowledge graph PageRank reranking
+            - 'kg_rrf': knowledge graph RRF reranking
+        model_name: model name (required for API rerankers)
+        api_key: API key (required for API rerankers)
+        base_url: API base URL (required for API rerankers)
+        **kwargs: other parameters
 
     Returns:
-        BaseReranker 实例
+        BaseReranker instance
     """
     
 
@@ -134,7 +134,7 @@ def get_reranker(
         strategy = RerankStrategy.PAGERANK if provider == "kg_pagerank" else RerankStrategy.RRF
         return KGReranker(strategy)
     
-    # 默认使用 OpenAI 风格 API
+    # Default to OpenAI-style API.
     else:
         from app.rag.reranker.openai import OpenAIReranker
         
@@ -160,12 +160,12 @@ def get_reranker(
             return inst
 
 
-# 向后兼容：旧的工厂函数（保留一段时间）
+# Backward compatibility: legacy factory function (kept for a while).
 def get_rag_reranker(provider: str | None = None) -> BaseReranker:
     """
-    获取 RAG Reranker（旧接口，已废弃）
-    
-    请使用 get_reranker() 替代。
+    Get the RAG reranker (legacy interface, deprecated).
+
+    Use get_reranker() instead.
     """
     import warnings
     warnings.warn(
@@ -179,4 +179,3 @@ def get_rag_reranker(provider: str | None = None) -> BaseReranker:
         return get_reranker("parent_child")
     else:
         return get_reranker("llm")
-

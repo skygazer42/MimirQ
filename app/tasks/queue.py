@@ -1,8 +1,8 @@
 """
-API 侧队列操作：初始化队列连接、enqueue 文档处理任务。
+API-side queue operations: init queue connection and enqueue document jobs.
 
-保持 API 兼容：
-- 若 TASK_QUEUE_ENABLED=false，则上层仍可使用 BackgroundTasks 走原有路径。
+API compatibility:
+- If TASK_QUEUE_ENABLED=false, callers can still use BackgroundTasks.
 """
 
 from __future__ import annotations
@@ -16,7 +16,7 @@ from app.rag.core.logging import get_logger
 
 logger = get_logger("tasks.queue")
 
-# arq 是可选依赖：当 TASK_QUEUE_ENABLED=false 时，不应要求安装 arq
+# arq is optional: when TASK_QUEUE_ENABLED=false, do not require arq.
 _queue: Optional[Any] = None
 _queue_lock = asyncio.Lock()
 
@@ -27,14 +27,14 @@ def is_queue_initialized() -> bool:
 
 
 def _redis_settings():
-    # arq 的 RedisSettings 支持传入完整 DSN
+    # arq RedisSettings supports full DSN.
     from arq.connections import RedisSettings
 
     return RedisSettings.from_dsn(settings.REDIS_URL)
 
 
 async def init_queue() -> None:
-    """在应用启动时初始化队列连接（可选）。"""
+    """Initialize queue connection on startup (optional)."""
     global _queue
     if not bool(getattr(settings, "TASK_QUEUE_ENABLED", False)):
         return
@@ -50,7 +50,7 @@ async def init_queue() -> None:
 
 
 async def close_queue() -> None:
-    """在应用关闭时关闭队列连接。"""
+    """Close queue connection on shutdown."""
     global _queue
     if _queue is None:
         return
@@ -63,7 +63,7 @@ async def close_queue() -> None:
 
 
 async def get_queue() -> Optional[Any]:
-    """获取队列连接（懒加载）。"""
+    """Get queue connection (lazy init)."""
     if not bool(getattr(settings, "TASK_QUEUE_ENABLED", False)):
         return None
     if _queue is None:
@@ -79,19 +79,19 @@ async def enqueue_document_processing(
     job_id: Optional[str] = None,
 ) -> Optional[str]:
     """
-    入队“文档处理”任务。
+    Enqueue a document processing job.
 
     Returns:
-        - task_id/job_id（队列开启时）
-        - None（队列未开启）
+        - task_id/job_id (queue enabled)
+        - None (queue disabled)
     """
     q = await get_queue()
     if q is None:
         return None
 
     queue_name = getattr(settings, "TASK_QUEUE_NAME", "mimirq")
-    # Arq 的 job_id 可用于去重（同一个 job_id 会覆盖/拒绝取决于 arq 行为版本），
-    # 我们仍会在任务执行侧做 Redis 锁保证幂等。
+    # Arq job_id can dedupe (behavior depends on arq version); we still enforce
+    # idempotency with Redis locks on the worker side.
     job = await q.enqueue_job(
         "process_document_job",
         str(tenant_id),
@@ -111,7 +111,7 @@ async def enqueue_kg_extraction(
     requested_by: str,
     job_id: Optional[str] = None,
 ) -> Optional[str]:
-    """入队 KG 抽取任务（队列未开启则返回 None）。"""
+    """Enqueue KG extraction job (returns None if queue disabled)."""
     q = await get_queue()
     if q is None:
         return None
@@ -134,7 +134,7 @@ async def enqueue_rebuild_indexes(
     requested_by: str,
     job_id: Optional[str] = None,
 ) -> Optional[str]:
-    """入队“重建索引（BM25/向量等）”任务（队列未开启则返回 None）。"""
+    """Enqueue index rebuild job (returns None if queue disabled)."""
     q = await get_queue()
     if q is None:
         return None
@@ -148,4 +148,3 @@ async def enqueue_rebuild_indexes(
         _job_try=1,
     )
     return getattr(job, "job_id", None) or job_id
-

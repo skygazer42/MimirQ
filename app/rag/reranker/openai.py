@@ -1,7 +1,7 @@
 """
-OpenAI 风格 Reranker
+OpenAI-style reranker.
 
-支持 OpenAI、SiliconFlow、VLLM 等兼容 API。
+Supports OpenAI, SiliconFlow, VLLM, and compatible APIs.
 """
 from __future__ import annotations
 
@@ -11,7 +11,7 @@ from app.rag.reranker.base import APIReranker
 
 
 class OpenAIReranker(APIReranker):
-    """OpenAI 风格 API Reranker"""
+    """OpenAI-style API reranker."""
 
     def _build_payload(
         self,

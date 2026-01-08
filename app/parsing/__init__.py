@@ -1,16 +1,16 @@
 """
-文档解析模块
+Document parsing module.
 
-提供文档解析、质量评估等功能。
+Provides document parsing and quality evaluation.
 
-主要组件：
-- quality: PDF 质量评估和 OCR 验证
-- parsers: 各类文档解析器（PDF、Word、Markdown等）
-- processors: 解析流程编排
-- utils: 工具函数
-- 文本清洗：统一由 app.rag.preprocessing 负责（解析后、切块前）
+Key components:
+- quality: PDF quality evaluation and OCR validation
+- parsers: document parsers (PDF, Word, Markdown, and more)
+- processors: parsing workflow orchestration
+- utils: helper utilities
+- text cleaning: handled by app.rag.preprocessing (post-parse, pre-chunking)
 
-注意：文本切块功能已移至 app.rag.chunking 模块。
+Note: text chunking has moved to app.rag.chunking.
 """
 
 from __future__ import annotations
@@ -53,7 +53,6 @@ def __getattr__(name: str) -> Any:
 
         return zip_image_processor
     raise AttributeError(f"module 'app.parsing' has no attribute {name!r}")
-
 
 
 

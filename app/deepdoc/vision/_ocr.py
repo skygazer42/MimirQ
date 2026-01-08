@@ -2,7 +2,7 @@ import logging
 import os
 import uuid
 
-# 第三方库
+# Third-party libraries
 import fitz  # PyMuPDF
 import numpy as np
 from PIL import Image
@@ -14,23 +14,23 @@ from ..configs.settings import DATA_PARSER_DATA, MODEL_OCR_PATH
 
 # from argparse import ArgumentParser
 
-# ======  绝对路径 ======
+# ====== Absolute paths ======
 
-# 全局数据池
+# Global data pool
 GLOBAL_DATA_POOL = {}
 
 
 def get_global_state(identifier):
     """
-    从全局数据池中获取对应标识符的状态信息
+    Fetch state information for the identifier from the global data pool.
     """
     return GLOBAL_DATA_POOL.get(identifier, {})
 
 
 def pdf_contains_text(pdf_path: str) -> bool:
     """
-    检测 PDF 是否包含可复制文本。
-    超过 50% 的页面有文字就返回 True。
+    Detect whether a PDF contains selectable text.
+    Returns True if more than 50% of pages contain text.
     """
     doc = fitz.open(pdf_path)
     try:
@@ -53,17 +53,17 @@ def pdf_contains_text(pdf_path: str) -> bool:
 
 def _extract_text_pdf(pdf_file_path: str) -> str:
     """
-    如果 PDF 可以直接读取文字，则使用 langchain 的 PyPDFLoader 提取文本。
+    If the PDF is text-readable, use PyPDFLoader to extract text.
     """
     loader = PyPDFLoader(pdf_file_path)
     documents = loader.load()
-    # 将每个页面的文本拼接后返回
+    # Concatenate page text and return.
     return "\n\n".join(doc.page_content for doc in documents)
 
 
 def _plain_text_loader(file_path: str) -> str:
     """
-    从普通文本文件中读取并返回其内容。
+    Read and return contents from a plain text file.
     """
     with open(file_path, "r", encoding="utf-8") as f:
         return f.read()
@@ -71,32 +71,33 @@ def _plain_text_loader(file_path: str) -> str:
 
 class OCRHandler2:
     """
-    使用 RapidOCR 对 PDF 或图像执行 OCR 的主要处理类。
+    Main handler that runs OCR on PDFs or images using RapidOCR.
     """
 
     def __init__(self, det_threshold=0.3):
         """
-        初始化 OCR 对象，只保存阈值。真正的 OCR 加载在第一次使用时完成。
+        Initialize the OCR handler and store the threshold.
+        The actual OCR engine loads on first use.
         """
         self._ocr_core = None
         self._threshold = det_threshold
 
     def _download_onnx_if_needed(self, engine_path: str):
         """
-        若本地不存在 det/rec ONNX 文件，则从 Hugging Face SWHL/RapidOCR 自动下载。
-        采用 subfolder="PP-OCRv4" 避免多余目录。
+        Download det/rec ONNX models from Hugging Face if they are missing locally.
+        Use subfolder="PP-OCRv4" to avoid extra directories.
         """
         logging.info("本地模型文件不存在，开始从 Hugging Face 下载...")
 
-        # 下载检测模型 det
+        # Download detection model (det)
         det_local_path = hf_hub_download(
             repo_id="SWHL/RapidOCR",
-            subfolder="PP-OCRv4",  # 仓库子目录
+            subfolder="PP-OCRv4",  # Repository subfolder
             filename="ch_PP-OCRv4_det_infer.onnx",
             local_dir=engine_path,
         )
 
-        # 下载识别模型 rec
+        # Download recognition model (rec)
         rec_local_path = hf_hub_download(
             repo_id="SWHL/RapidOCR",
             subfolder="PP-OCRv4",
@@ -108,22 +109,22 @@ class OCRHandler2:
 
     def _lazy_load_ocr_engine(self):
         """
-        延迟加载 OCR 模型，仅在第一次需要时执行，后续直接复用。
+        Lazily load the OCR engine on first use.
         """
         logging.info("正在初始化 OCR 引擎（首次调用）。")
 
-        # 设置绝对路径，存放到 (MODEL_BASE)/SWHL/RapidOCR/PP-OCRv4
+        # Set absolute path to store under (MODEL_BASE)/SWHL/RapidOCR/PP-OCRv4.
         engine_path = os.path.join(MODEL_OCR_PATH, "PP-OCRv4")
         os.makedirs(engine_path, exist_ok=True)
 
         det_path = os.path.join(engine_path, "ch_PP-OCRv4_det_infer.onnx")
         rec_path = os.path.join(engine_path, "ch_PP-OCRv4_rec_infer.onnx")
 
-        # 如果本地不存在这两个文件，则执行下载
+        # Download if the local files are missing.
         if not os.path.exists(det_path) or not os.path.exists(rec_path):
             self._download_onnx_if_needed(engine_path)
 
-        # 再次检查下载结果
+        # Re-check download results.
         if not os.path.exists(det_path) or not os.path.exists(rec_path):
             raise FileNotFoundError(
                 f"模型文件缺失，无法找到:\n{det_path}\n{rec_path}\n"
@@ -139,9 +140,10 @@ class OCRHandler2:
 
     def single_image_ocr(self, input_data):
         """
-        对单张图像执行 OCR。
-        :param input_data: 图像文件路径、PIL.Image 或 numpy.ndarray
-        :return: 识别到的纯文本
+        Run OCR on a single image.
+
+        :param input_data: image path, PIL.Image, or numpy.ndarray
+        :return: recognized plain text
         """
         if self._ocr_core is None:
             self._lazy_load_ocr_engine()
@@ -171,17 +173,17 @@ class OCRHandler2:
 
     def pdf_ocr_pipeline(self, pdf_path: str) -> str:
         """
-        对 PDF文件执行 OCR。若想先检查可选文字，可加上 pdf_contains_text 判断。
+        Run OCR on a PDF file. Optionally check for selectable text via pdf_contains_text.
         """
         if not os.path.exists(pdf_path):
             raise FileNotFoundError(f"指定的 PDF 文件不存在: {pdf_path}")
 
-        # 1,先检查是否有可选文字
+        # 1) Check whether selectable text exists.
         if pdf_contains_text(pdf_path):
             logging.info("PDF 有可选文字，直接读取（langchain）。")
             return _extract_text_pdf(pdf_path)
 
-        # 2.逐页转换图像再 OCR
+        # 2) Convert pages to images and OCR.
         pdf_filename = os.path.splitext(os.path.basename(pdf_path))[0]
         storage_dir = os.path.join(DATA_PARSER_DATA, 'pdf2txt', pdf_filename)
         os.makedirs(storage_dir, exist_ok=True)
@@ -196,8 +198,8 @@ class OCRHandler2:
 
     def _pdf_2_imgs(self, pdf_file: str, out_dir: str):
         """
-        将 PDF 的每一页转换为 PNG 并返回这些图像的路径列表。
-        如果已转换过，则直接读取缓存文件。
+        Convert each PDF page to PNG and return the image paths.
+        If already converted, read cached files.
         """
         img_dir = os.path.join(out_dir, 'page_imgs')
         results = []
@@ -225,7 +227,7 @@ class OCRHandler2:
 
     def _img_to_temp_file(self, img_data) -> str:
         """
-        将 PIL.Image 或 numpy.ndarray 存成临时文件，并返回其路径。
+        Save a PIL.Image or numpy.ndarray to a temp file and return its path.
         """
         temp_dir = os.path.join(os.getcwd(), 'temp_imgs')
         os.makedirs(temp_dir, exist_ok=True)

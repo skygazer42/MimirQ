@@ -1,7 +1,7 @@
 """
-RAG 系统的切片和文档模型
+RAG chunk and document models.
 
-定义文档切片相关的数据模型和接口。
+Defines data models and interfaces for document chunks.
 """
 from abc import ABC, abstractmethod
 from collections.abc import Sequence

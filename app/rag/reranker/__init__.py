@@ -1,20 +1,20 @@
 """
-Reranker 模块
+Reranker module.
 
-统一的 Reranker 架构：
-- BaseReranker: 顶层抽象基类
-- APIReranker: HTTP API 调用型 reranker
-- DocumentReranker: 文档级别 reranker
+Unified reranker architecture:
+- BaseReranker: top-level abstract base class
+- APIReranker: HTTP API-based reranker
+- DocumentReranker: document-level reranker
 
 API Rerankers:
-- OpenAIReranker: OpenAI 风格 API
-- DashScopeReranker: 阿里云 DashScope
+- OpenAIReranker: OpenAI-style API
+- DashScopeReranker: Alibaba Cloud DashScope
 
 Document Rerankers:
-- WeightedReranker: 混合重排（向量+关键词）[hybrid.py]
-- ParentChildReranker: 父子关系重排
-- LLMReranker: 基于大模型的精排 [llm_based.py]
-- KGReranker: 知识图谱重排
+- WeightedReranker: hybrid reranking (vector + keyword) [hybrid.py]
+- ParentChildReranker: parent/child reranking
+- LLMReranker: LLM-based reranking [llm_based.py]
+- KGReranker: knowledge graph reranking
 """
 from app.rag.reranker.base import BaseReranker, APIReranker, DocumentReranker
 from app.rag.reranker.openai import OpenAIReranker
@@ -27,7 +27,7 @@ from app.rag.reranker.factory import get_reranker, get_rag_reranker
 from app.rag.reranker.llm_based import LLMReranker, LLMRerankResult, get_llm_reranker
 
 __all__ = [
-    # 基类
+    # Base classes
     "BaseReranker",
     "APIReranker",
     "DocumentReranker",
@@ -45,7 +45,7 @@ __all__ = [
     "KGReranker",
     "get_kg_reranker",
     
-    # 类型
+    # Types
     "RerankCandidate",
     "RerankResult",
     "LLMRerankResult",
@@ -54,12 +54,12 @@ __all__ = [
     "KeywordSetting",
     "RerankMode",
     
-    # 工厂函数
+    # Factory functions
     "get_reranker",
-    "get_rag_reranker",  # 已废弃，保留向后兼容
+    "get_rag_reranker",  # Deprecated; kept for backward compatibility.
     "get_llm_reranker",
 ]
 
 
-# 向后兼容：保留旧的模块级工厂函数（在 factory.py 中已定义）
-# 这样旧代码仍然可以使用 from app.rag.reranker import get_reranker
+# Backward compatibility: keep old module-level factory functions (defined in factory.py).
+# This lets legacy code keep using `from app.rag.reranker import get_reranker`.

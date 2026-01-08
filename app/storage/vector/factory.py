@@ -1,6 +1,7 @@
 """
-Vector store 路由器：支持多后端占位，当前实现 Milvus，其他后端留作扩展。
-在配置 VECTOR_BACKEND 切换，确保知识库检索路径集中管理。
+Vector store router: supports multiple backends.
+Milvus is implemented today; other backends are placeholders for extension.
+Switch via VECTOR_BACKEND to keep the retrieval path centralized.
 """
 from typing import List, Dict, Any, Optional, Tuple, TYPE_CHECKING
 from uuid import UUID
@@ -62,7 +63,7 @@ def _match_metadata_filter(meta: Dict[str, Any], filter_spec: Dict[str, Any]) ->
 
 
 class BaseVectorStore:
-    """统一接口定义，便于未来扩展 FAISS/Chroma/Memory。"""
+    """Unified interface for future FAISS/Chroma/Memory extensions."""
 
     def add_documents(self, docs: List[Dict[str, Any]], document_id: UUID, tenant_id: UUID):
         raise NotImplementedError
@@ -83,7 +84,7 @@ class BaseVectorStore:
 
 
 class MilvusVectorStore(BaseVectorStore):
-    """Milvus 后端封装。"""
+    """Milvus backend wrapper."""
 
     def add_documents(self, docs: List[Dict[str, Any]], document_id: UUID, tenant_id: UUID):
         return milvus_store.add_documents(docs, document_id, tenant_id)
@@ -111,7 +112,7 @@ class MilvusVectorStore(BaseVectorStore):
 
 
 class StubVectorStore(BaseVectorStore):
-    """占位实现，便于未来接入其他后端。"""
+    """Placeholder implementation for future backends."""
 
     def add_documents(self, docs: List[Dict[str, Any]], document_id: UUID, tenant_id: UUID):
         raise RuntimeError("Vector backend not implemented")
@@ -133,8 +134,8 @@ class StubVectorStore(BaseVectorStore):
 
 class MemoryVectorStore(BaseVectorStore):
     """
-    轻量内存向量库：便于本地测试或无 Milvus 场景。
-    使用 OpenAI 兼容 Embeddings（需配置 EMBEDDING_API_KEY/LLM_API_KEY）。
+    Lightweight in-memory vector store for local testing or no-Milvus scenarios.
+    Uses OpenAI-compatible embeddings (requires EMBEDDING_API_KEY/LLM_API_KEY).
     """
 
     def __init__(self):
@@ -164,7 +165,7 @@ class MemoryVectorStore(BaseVectorStore):
                 meta["chunk_id"] = str(meta.get("chunk_id"))
             meta.setdefault("content", doc.get("content", ""))
             self.storage.append((vec, meta))
-        # 内存场景不返回真实向量 ID，用占位
+        # In-memory mode uses placeholder IDs instead of real vector IDs.
         ids: List[str] = []
         for i, d in enumerate(docs):
             meta = dict(d.get("metadata") or {})
@@ -227,7 +228,7 @@ class MemoryVectorStore(BaseVectorStore):
 
 class FAISSVectorStore(BaseVectorStore):
     """
-    FAISS 后端：适合单机/本地开发。支持可选持久化到路径。
+    FAISS backend for single-node/local development with optional persistence.
     """
 
     def __init__(self):
@@ -254,7 +255,7 @@ class FAISSVectorStore(BaseVectorStore):
     def _get_store(self, tenant_id: Optional[UUID]) -> Tuple[str, Optional[Any]]:
         key = str(tenant_id or settings.DEFAULT_TENANT_ID)
         store = self.store_by_tenant.get(key)
-        # 若存在持久化路径且内存中未加载，则尝试加载
+        # If a persistence path exists and memory isn't loaded, try loading it.
         if store is None and self.persist_path and os.path.isdir(self.persist_path):
             if not self.allow_dangerous_deserialization:
                 if not self._warned_dangerous_deserialization:
@@ -304,7 +305,7 @@ class FAISSVectorStore(BaseVectorStore):
             store.add_texts(texts=texts, metadatas=metadatas, ids=ids)
 
         self.store_by_tenant[key] = store
-        # 持久化（每次全量保存）
+        # Persist (full save each time).
         if self.persist_path:
             os.makedirs(self.persist_path, exist_ok=True)
             store.save_local(self.persist_path, index_name=key)
@@ -365,14 +366,14 @@ class FAISSVectorStore(BaseVectorStore):
             except Exception:
                 pass
 
-        # 持久化（覆盖保存）
+        # Persist (overwrite save).
         if self.persist_path:
             os.makedirs(self.persist_path, exist_ok=True)
             store.save_local(self.persist_path, index_name=key)
 
 
 class ChromaVectorStore(BaseVectorStore):
-    """Chroma 后端，持久化到本地路径。"""
+    """Chroma backend persisted to a local path."""
 
     def __init__(self):
         api_key = settings.EMBEDDING_API_KEY or settings.LLM_API_KEY or ""
@@ -464,7 +465,7 @@ class ChromaVectorStore(BaseVectorStore):
         _, store = self._get_store(tenant_id)
         target = str(document_id)
         try:
-            # LangChain Chroma 没有稳定的 where delete API，这里使用底层 collection
+            # LangChain Chroma lacks a stable where delete API; use the underlying collection.
             store._collection.delete(where={"document_id": target})  # type: ignore[attr-defined]
             store.persist()
         except Exception:
@@ -476,8 +477,8 @@ _VECTOR_STORE_SINGLETONS: Dict[str, BaseVectorStore] = {}
 
 def get_vector_store() -> BaseVectorStore:
     """
-    返回当前配置的向量库后端（单例）。
-    说明：memory/faiss 这类后端需要在进程内保留状态；用单例避免每次调用丢失数据。
+    Return the configured vector store backend (singleton).
+    Note: memory/faiss backends keep state in-process; singleton avoids losing data on each call.
     """
     backend = (settings.VECTOR_BACKEND or "milvus").lower()
     cached = _VECTOR_STORE_SINGLETONS.get(backend)

@@ -1,9 +1,11 @@
 """
-PromptTemplate 选择器：支持
-- 指定 prompt_template_id
-- A/B 实验（按 ab_experiment_key + 权重）做稳定分流
-该模块用于 chat/RAG 引擎侧在运行时决定“到底用哪个模板”，并把结果写入 message_metadata，
-以便评测闭环（对比版本/A-B、关联用户反馈、回归集等）。
+PromptTemplate resolver that supports:
+- explicit prompt_template_id selection
+- A/B experiments with stable routing via ab_experiment_key + weights
+
+Used by the chat/RAG engine to decide which template to use at runtime and
+persist the choice into message_metadata for evaluation loops (A/B comparisons,
+user feedback correlation, regression datasets, and more).
 """
 
 from __future__ import annotations
@@ -18,7 +20,7 @@ from app.models.prompt_template import PromptTemplate
 
 
 def _stable_unit_interval(seed: str) -> float:
-    """将 seed 映射到 [0, 1) 的稳定伪随机数（用于 A/B 分流）。"""
+    """Map a seed to a stable pseudo-random number in [0, 1) for A/B routing."""
     raw = hashlib.sha256(seed.encode("utf-8")).digest()
     num = int.from_bytes(raw[:8], "big", signed=False)
     return (num % 1_000_000) / 1_000_000.0
@@ -34,12 +36,12 @@ def resolve_prompt_template(
     ab_user_key: Optional[str] = None,
 ) -> Optional[PromptTemplate]:
     """
-    解析出最终要使用的 PromptTemplate（返回 ORM 对象）。
+    Resolve the final PromptTemplate to use (returns ORM object).
 
-    优先级：
+    Priority:
     1) prompt_template_id
-    2) template_key（取 is_active 且 version 最大）
-    3) ab_experiment_key（取 is_active 变体集合，按 ab_weight 稳定分流）
+    2) template_key (is_active with highest version)
+    3) ab_experiment_key (active variants, stable routing by ab_weight)
     """
     if prompt_template_id:
         return (
@@ -97,4 +99,3 @@ def resolve_prompt_template(
         return variants[-1]
 
     return None
-

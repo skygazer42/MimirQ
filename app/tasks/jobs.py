@@ -1,9 +1,9 @@
 """
-队列任务实现（worker 执行侧）。
+Queue job implementations (worker side).
 
-注意：
-- 任务执行必须二次校验 tenant/document 归属，避免多租户越权。
-- 任务幂等锁/缓存将在后续 todo 中完善；这里先提供最小可运行骨架。
+Notes:
+- Jobs must re-validate tenant/document ownership to avoid cross-tenant access.
+- Idempotent locks/cache are TODO; this provides a minimal runnable skeleton.
 """
 
 from __future__ import annotations
@@ -31,8 +31,8 @@ def _get_retry_exc():
 
 async def _tenant_acquire(redis, *, tenant_id: str, kind: str, limit: int, ttl_sec: int = 120):  # noqa: ANN001
     """
-    简易 per-tenant 并发限制（Redis 计数信号量）。
-    - INCR 后若 > limit，则回滚 DECR 并触发延迟重试。
+    Simple per-tenant concurrency limit (Redis counting semaphore).
+    - If INCR > limit, roll back with DECR and trigger a delayed retry.
     """
     if redis is None or limit <= 0:
         return None
@@ -44,8 +44,8 @@ async def _tenant_acquire(redis, *, tenant_id: str, kind: str, limit: int, ttl_s
             await redis.decr(key)
             Retry = _get_retry_exc()
             if Retry:
-                raise Retry(defer=2)  # 2s 后重试（arq 会继续递增 try）
-            # 无 Retry 时直接返回 None（不阻塞）
+                raise Retry(defer=2)  # Retry after 2s (arq increments try).
+            # Return None if Retry is unavailable (non-blocking).
             return None
         return key
     except Exception as exc:  # noqa: BLE001
@@ -71,12 +71,12 @@ async def ping_job(ctx) -> dict:  # noqa: ANN001
 
 async def process_document_job(ctx, tenant_id: str, document_id: str, requested_by: str) -> dict:  # noqa: ANN001
     """
-    文档处理任务：解析→切块→索引。
+    Document processing job: parse -> chunk -> index.
 
     Args:
         tenant_id: tenant UUID string
         document_id: document UUID string
-        requested_by: account_id（仅用于审计/日志）
+        requested_by: account_id (for audit/logging only)
     """
     t0 = time.perf_counter()
     tid = UUID(tenant_id)
@@ -88,22 +88,22 @@ async def process_document_job(ctx, tenant_id: str, document_id: str, requested_
     lock_val = None
     sem_key = None
     try:
-        # 任务执行必须二次校验 tenant/document 归属
+        # Re-validate tenant/document ownership.
         doc = (
             db.query(DBDocument)
             .filter(DBDocument.id == did, DBDocument.tenant_id == tid)
             .first()
         )
         if not doc:
-            # 任务可视为完成（目标资源不存在）
+            # Task can be considered complete (target missing).
             return {"ok": False, "reason": "document_not_found", "tenant_id": tenant_id, "document_id": document_id}
 
         pipeline_hash = (doc.doc_metadata or {}).get("pipeline_hash") or "unknown"
         lock_key = f"lock:doc:{tenant_id}:{document_id}:{pipeline_hash}"
 
-        # 幂等锁：避免同一文档+同一pipeline被重复并发处理
-        # - 使用 Redis SET NX EX
-        # - lock 超时略大于 job_timeout，防止 worker 崩溃导致永久锁
+        # Idempotent lock: avoid duplicate concurrent processing per doc+pipeline.
+        # - Use Redis SET NX EX
+        # - TTL slightly above job_timeout to avoid permanent lock on worker crash
         try:
             redis = ctx.get("redis") if isinstance(ctx, dict) else None
         except Exception:  # noqa: BLE001
@@ -112,7 +112,7 @@ async def process_document_job(ctx, tenant_id: str, document_id: str, requested_
         lock_val = f"{requested_by}:{int(time.time())}"
         lock_ttl = 60 * 40  # 40 min
         if redis is not None:
-            # per-tenant 并发限制（doc）
+            # Per-tenant concurrency limit (doc).
             sem_key = await _tenant_acquire(
                 redis,
                 tenant_id=tenant_id,
@@ -135,7 +135,7 @@ async def process_document_job(ctx, tenant_id: str, document_id: str, requested_
                     "pipeline_hash": pipeline_hash,
                 }
 
-        # 二次校验通过：执行文档处理
+        # Validation passed: execute document processing.
         parser_backend = (doc.doc_metadata or {}).get("parser_backend")
         chunk_strategy = (doc.doc_metadata or {}).get("chunk_strategy")
         file_path = Path(doc.file_path)
@@ -173,7 +173,7 @@ async def process_document_job(ctx, tenant_id: str, document_id: str, requested_
 
 async def extract_kg_job(ctx, tenant_id: str, document_id: str, requested_by: str) -> dict:  # noqa: ANN001
     """
-    KG 抽取任务：从已完成的 chunks 中抽取 events/entities 并写入索引。
+    KG extraction job: extract events/entities from completed chunks and index them.
     """
     from app.models.document import DocumentChunk
     from app.rag.kg.pipeline import extract_events
@@ -206,7 +206,7 @@ async def extract_kg_job(ctx, tenant_id: str, document_id: str, requested_by: st
         if not doc:
             return {"ok": False, "reason": "document_not_found", "tenant_id": tenant_id, "document_id": document_id}
         if (doc.status or "").lower() != "completed":
-            # 未完成则稍后重试（通常是 ingest 还在跑）
+            # If not completed, retry later (ingest likely still running).
             Retry = _get_retry_exc()
             if Retry:
                 raise Retry(defer=5)
@@ -242,7 +242,7 @@ async def extract_kg_job(ctx, tenant_id: str, document_id: str, requested_by: st
 
 async def rebuild_indexes_job(ctx, tenant_id: str, requested_by: str) -> dict:  # noqa: ANN001
     """
-    重建索引任务（当前用于 BM25 重建；后续可扩展向量/其他）。
+    Rebuild indexes job (currently BM25; can extend to vectors/others).
     """
     from app.services.indexer import Indexer
     from app.types.indexing import IndexKind
@@ -274,5 +274,3 @@ async def rebuild_indexes_job(ctx, tenant_id: str, requested_by: str) -> dict:  
         if redis is not None:
             await _tenant_release(redis, sem_key)
         db.close()
-
-

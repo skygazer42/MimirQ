@@ -1,6 +1,6 @@
 """
-MimirQ 后端应用
+MimirQ backend application.
 
-知识库管理与 RAG 对话系统的核心后端服务。
+Core backend service for knowledge base management and RAG chat.
 """
 __version__ = "1.0.0"

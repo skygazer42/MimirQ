@@ -1,10 +1,10 @@
 """
-Reranker 基类
+Reranker base classes.
 
-统一的 Reranker 架构：
-- BaseReranker: 顶层抽象基类，定义统一的 rerank() 接口
-- APIReranker: 用于 HTTP API 调用的 reranker（如 OpenAI, DashScope）
-- DocumentReranker: 用于文档级别重排的 reranker（如 Weight, ParentChild, LLM）
+Unified reranker architecture:
+- BaseReranker: top-level abstract base class defining the rerank() interface
+- APIReranker: HTTP API reranker (e.g., OpenAI, DashScope)
+- DocumentReranker: document-level reranker (e.g., Weight, ParentChild, LLM)
 """
 from __future__ import annotations
 
@@ -27,7 +27,7 @@ from app.services.metrics_logger import log_metrics
 
 logger = get_logger("rag.reranker")
 
-# HTTP 状态码：可重试的错误
+# HTTP status codes: retryable errors
 RETRYABLE_HTTP_CODES = frozenset({408, 429, 500, 502, 503, 504})
 
 
@@ -85,16 +85,16 @@ class _ScoreCache:
 
 
 def sigmoid(x: float) -> float:
-    """Sigmoid 归一化函数"""
+    """Sigmoid normalization function."""
     return 1 / (1 + np.exp(-x))
 
 
 class BaseReranker(ABC):
     """
-    Reranker 顶层抽象基类
-    
-    所有 reranker 的统一接口，定义 rerank() 方法。
-    子类可以选择实现同步或异步版本。
+    Top-level abstract base class for rerankers.
+
+    Defines the common rerank() interface. Subclasses can implement sync
+    or async variants.
     """
 
     @abstractmethod
@@ -105,15 +105,15 @@ class BaseReranker(ABC):
         **kwargs: Any,
     ) -> RerankResult:
         """
-        同步重排接口
-        
+        Synchronous rerank interface.
+
         Args:
-            query: 查询文本
-            candidates: 候选列表
-            **kwargs: 其他参数（如 top_n, score_threshold）
-            
+            query: query text
+            candidates: candidate list
+            **kwargs: other parameters (e.g., top_n, score_threshold)
+
         Returns:
-            RerankResult: 重排结果
+            RerankResult: rerank result
         """
         raise NotImplementedError
 
@@ -124,22 +124,22 @@ class BaseReranker(ABC):
         **kwargs: Any,
     ) -> RerankResult:
         """
-        异步重排接口（可选）
-        
-        默认实现：在独立线程中运行同步 rerank()
-        子类可以覆盖提供真正的异步实现。
+        Asynchronous rerank interface (optional).
+
+        Default: run synchronous rerank() in a separate thread. Subclasses can
+        override to provide a true async implementation.
         """
         return await asyncio.to_thread(lambda: self.rerank(query, candidates, **kwargs))
 
 
 class APIReranker(BaseReranker):
     """
-    HTTP API 调用型 Reranker 抽象基类
-    
-    用于调用远程 reranker API（如 OpenAI, DashScope, SiliconFlow 等）。
-    子类需要实现：
-    - _build_payload(): 构建请求体
-    - _extract_results(): 解析响应结果
+    Abstract HTTP API reranker base class.
+
+    Used for remote reranker APIs (e.g., OpenAI, DashScope, SiliconFlow).
+    Subclasses must implement:
+    - _build_payload(): build request payload
+    - _extract_results(): parse response results
     """
 
     def __init__(
@@ -235,7 +235,7 @@ class APIReranker(BaseReranker):
                 self._cb_open_until = now + float(reset_sec)
 
     async def _ensure_session(self) -> None:
-        """确保 aiohttp session 可用"""
+        """Ensure the aiohttp session is available."""
         if self.session is None or self.session.closed:
             self.session = aiohttp.ClientSession(
                 headers=self.headers,
@@ -249,12 +249,12 @@ class APIReranker(BaseReranker):
         documents: list[str],
         max_length: int,
     ) -> dict[str, Any]:
-        """构建请求体，子类实现"""
+        """Build the request payload (implemented by subclasses)."""
         raise NotImplementedError
 
     @abstractmethod
     def _extract_results(self, result: dict[str, Any]) -> list[dict[str, Any]]:
-        """解析响应结果，子类实现"""
+        """Parse response results (implemented by subclasses)."""
         raise NotImplementedError
 
     async def acompute_score(
@@ -266,17 +266,17 @@ class APIReranker(BaseReranker):
         normalize: bool = True,
     ) -> list[float]:
         """
-        异步计算重排分数
+        Compute rerank scores asynchronously.
 
         Args:
-            query: 查询文本
-            documents: 文档列表
-            batch_size: 批次大小
-            max_length: 最大长度
-            normalize: 是否归一化分数
+            query: query text
+            documents: document list
+            batch_size: batch size
+            max_length: max length
+            normalize: whether to normalize scores
 
         Returns:
-            分数列表，与 documents 顺序对应
+            scores aligned with the documents list
         """
         if not documents:
             return []
@@ -336,7 +336,7 @@ class APIReranker(BaseReranker):
         documents: list[str],
         max_length: int,
     ) -> list[float]:
-        """单批次重排"""
+        """Rerank a single batch."""
         if not documents:
             return []
 
@@ -375,12 +375,12 @@ class APIReranker(BaseReranker):
         normalize: bool = True,
     ) -> list[float]:
         """
-        同步计算重排分数（线程安全、可在事件循环中调用）。
+        Compute rerank scores synchronously (thread-safe, event-loop friendly).
 
-        说明：
-        - 服务端主链路是 async，但检索流程内部是同步调用（`retriever.invoke()`）。
-        - 这里必须避免 `asyncio.run()` / `aiohttp.ClientSession` 与 running loop 的冲突。
-        - 使用 httpx 做同步 HTTP 请求，保证在 async 环境下也不会直接抛错。
+        Notes:
+        - The server main path is async, but retrieval uses sync calls (`retriever.invoke()`).
+        - Avoid conflicts between `asyncio.run()` / `aiohttp.ClientSession` and a running loop.
+        - Use httpx for sync HTTP calls to stay safe under async execution.
         """
         if not documents:
             return []
@@ -478,9 +478,9 @@ class APIReranker(BaseReranker):
         **kwargs: Any,
     ) -> RerankResult:
         """
-        同步重排接口（实现 BaseReranker）
-        
-        将候选转换为文档列表，调用 API 计算分数。
+        Synchronous rerank implementation (BaseReranker).
+
+        Converts candidates to documents and calls the API to compute scores.
         """
         if not candidates:
             return RerankResult(ordered_ids=[], score_map={})
@@ -693,15 +693,15 @@ class APIReranker(BaseReranker):
         top_n: int | None = None,
     ) -> list[dict[str, Any]]:
         """
-        异步重排候选文档（旧版接口，保持向后兼容）
+        Asynchronously rerank candidates (legacy interface for backward compatibility).
 
         Args:
-            query: 查询文本
-            candidates: 候选文档列表，每个包含 id, text, metadata
-            top_n: 返回 top N 结果
+            query: query text
+            candidates: candidate documents (id, text, metadata)
+            top_n: return top N results
 
         Returns:
-            重排后的候选列表，按分数降序
+            reranked candidates sorted by score
         """
         if not candidates:
             return []
@@ -723,7 +723,7 @@ class APIReranker(BaseReranker):
         return results
 
     async def aclose(self) -> None:
-        """关闭 session"""
+        """Close the session."""
         if self.session and not self.session.closed:
             await self.session.close()
 
@@ -743,10 +743,10 @@ class APIReranker(BaseReranker):
 
 class DocumentReranker(BaseReranker):
     """
-    文档级别 Reranker 抽象基类
-    
-    用于对文档列表进行重排（如权重融合、父子关系、LLM 精排等）。
-    子类需要实现 run() 方法。
+    Abstract document-level reranker base class.
+
+    Reranks document lists (weight fusion, parent/child, LLM rerank, etc.).
+    Subclasses must implement run().
     """
 
     @abstractmethod
@@ -759,17 +759,17 @@ class DocumentReranker(BaseReranker):
         user: str | None = None,
     ) -> list[Any]:
         """
-        运行重排模型，返回按相关性排序的文档列表
-        
+        Run the reranker and return documents sorted by relevance.
+
         Args:
-            query: 查询文本
-            documents: 文档列表（通常是 Document 对象）
-            score_threshold: 分数阈值
-            top_n: 返回前 N 个结果
-            user: 用户标识（可选）
-            
+            query: query text
+            documents: document list (usually Document objects)
+            score_threshold: score threshold
+            top_n: return top N results
+            user: user identifier (optional)
+
         Returns:
-            重排后的文档列表
+            reranked document list
         """
         raise NotImplementedError
 
@@ -780,16 +780,16 @@ class DocumentReranker(BaseReranker):
         **kwargs: Any,
     ) -> RerankResult:
         """
-        同步重排接口（实现 BaseReranker）
-        
-        将 RerankCandidate 转换为 Document 对象，调用 run() 方法。
+        Synchronous rerank implementation (BaseReranker).
+
+        Converts RerankCandidate to Document and calls run().
         """
         from app.models.chunk import Document as ChunkDocument
         
         if not candidates:
             return RerankResult(ordered_ids=[], score_map={})
         
-        # 转换为 Document 对象
+        # Convert to Document objects.
         docs: list[ChunkDocument] = []
         for c in candidates:
             meta = dict(c.metadata or {})
@@ -802,12 +802,12 @@ class DocumentReranker(BaseReranker):
                 )
             )
         
-        # 调用 run 方法
+        # Call run().
         top_n = kwargs.get("top_n")
         score_threshold = kwargs.get("score_threshold")
         reranked = self.run(query, docs, score_threshold=score_threshold, top_n=top_n)
         
-        # 提取结果
+        # Extract results.
         ordered_ids: list[str] = []
         score_map: dict[str, float] = {}
         for doc in reranked:

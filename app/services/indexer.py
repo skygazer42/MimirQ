@@ -1,7 +1,7 @@
 """
-索引服务实现
+Indexing service implementation.
 
-提供文档分块和事件索引的统一服务接口。
+Provides a unified interface for document chunk and event indexing.
 """
 import asyncio
 import logging
@@ -277,18 +277,18 @@ class Indexer:
         options: Optional[IndexingOptions] = None,
     ) -> PersistChunksResult:
         """
-        异步并发索引文档分块（并发执行向量存储、PostgreSQL、BM25）
-        
+        Concurrently index document chunks (vector store, PostgreSQL, BM25).
+
         Args:
-            document_id: 文档 ID
-            tenant_id: 租户 ID
-            chunks: 分块列表
-            default_source: 默认来源
-            commit: 是否提交数据库事务
-            options: 索引选项
-        
+            document_id: Document ID.
+            tenant_id: Tenant ID.
+            chunks: Chunk list.
+            default_source: Default source.
+            commit: Whether to commit DB transaction.
+            options: Indexing options.
+
         Returns:
-            持久化结果
+            Persistence result.
         """
         total_characters = sum(len(c.content or "") for c in chunks)
         normalized_chunks: List[ChunkInput] = []
@@ -314,12 +314,12 @@ class Indexer:
             )
             vector_docs.append({"content": c.content, "metadata": meta})
         
-        # 并发执行：向量索引 + PostgreSQL 持久化
+        # Run in parallel: vector indexing + PostgreSQL persistence.
         enable_vectors = self._resolve_chunk_vector_enabled(options)
         enable_bm25 = self._resolve_bm25_enabled(options)
         
         async def index_vectors_async():
-            """异步索引向量"""
+            """Async vector indexing."""
             return await asyncio.to_thread(
                 self._index_chunk_vectors,
                 vector_docs,
@@ -329,25 +329,25 @@ class Indexer:
             )
         
         async def persist_chunks_async():
-            """异步持久化到 PostgreSQL"""
+            """Persist to PostgreSQL asynchronously."""
             return await asyncio.to_thread(
                 self._persist_document_chunks,
                 document_id=document_id,
                 tenant_id=tenant_id,
                 chunks=normalized_chunks,
-                vector_ids=[],  # 稍后更新
+                vector_ids=[],  # Set later.
                 chunk_ids=chunk_ids,
                 commit=commit,
             )
         
-        # 并发执行向量索引和数据库写入
+        # Run vector indexing and DB persistence concurrently.
         vector_ids, db_chunks = await asyncio.gather(
             index_vectors_async(),
             persist_chunks_async(),
             return_exceptions=True
         )
         
-        # 处理异常
+        # Handle exceptions.
         if isinstance(vector_ids, Exception):
             logger.error(f"Vector indexing failed: {vector_ids}")
             vector_ids = []
@@ -356,9 +356,9 @@ class Indexer:
             logger.error(f"DB persistence failed: {db_chunks}")
             raise db_chunks
         
-        # BM25 索引更新（独立执行，不阻塞主流程）
+        # BM25 index update (independent, non-blocking).
         async def update_bm25_async():
-            """异步更新 BM25 索引"""
+            """Async BM25 update."""
             try:
                 await asyncio.to_thread(
                     self._update_bm25_for_chunks,
@@ -371,7 +371,7 @@ class Indexer:
             except Exception as exc:
                 logger.warning("Failed to update BM25 index incrementally: %s", exc)
         
-        # 启动 BM25 更新任务（不等待）
+        # Start BM25 update task (fire-and-forget).
         asyncio.create_task(update_bm25_async())
 
         return PersistChunksResult(

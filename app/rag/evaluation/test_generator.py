@@ -1,7 +1,7 @@
 """
-测试问题生成器
+Test question generator.
 
-从文档或对话历史中生成测试问题，用于 RAGAS 回归测试。
+Generates test questions from documents or conversation history for RAGAS regression.
 """
 
 from __future__ import annotations
@@ -26,14 +26,14 @@ from app.services.document_access import filter_allowed_document_ids
 
 
 class GeneratedQuestion(BaseModel):
-    """生成的问题"""
+    """Generated question."""
     question: str = Field(description="问题内容")
     expected_answer: Optional[str] = Field(default=None, description="期望答案（可选）")
     context: Optional[str] = Field(default=None, description="问题来源上下文")
     metadata: Dict[str, Any] = Field(default_factory=dict, description="额外元数据")
 
 
-# 生成问题的提示词模板
+# Prompt template for generating questions.
 GENERATE_QUESTIONS_FROM_TEXT_PROMPT = """你是一个专业的测试问题生成专家。请基于以下文本内容生成高质量的测试问题。
 
 文本内容：
@@ -90,18 +90,18 @@ EXTRACT_QUESTIONS_FROM_CONVERSATION_PROMPT = """你是一个专业的问答提�
 
 def _calculate_text_diversity_scores(texts: List[str]) -> List[float]:
     """
-    计算文本的多样性分数（基于 TF-IDF 思想的简化版本）
-    
-    返回每个文本的多样性分数，分数越高表示包含更多独特词汇
+    Calculate text diversity scores (simplified TF-IDF).
+
+    Higher scores indicate more unique vocabulary.
     """
     if not texts:
         return []
     
-    # 简单分词（按空格和标点）
+    # Simple tokenization (by spaces and punctuation).
     def tokenize(text: str) -> List[str]:
         return [w.lower() for w in re.findall(r'\w+', text) if len(w) > 1]
     
-    # 统计词频
+    # Count token frequency.
     all_tokens = []
     text_tokens = []
     for text in texts:
@@ -109,19 +109,19 @@ def _calculate_text_diversity_scores(texts: List[str]) -> List[float]:
         text_tokens.append(tokens)
         all_tokens.extend(tokens)
     
-    # 计算文档频率
+    # Compute document frequency.
     doc_freq = Counter()
     for tokens in text_tokens:
         doc_freq.update(set(tokens))
 
-    # 计算每个文本的多样性分数
+    # Compute diversity score for each text.
     scores = []
     for tokens in text_tokens:
         if not tokens:
             scores.append(0.0)
             continue
         
-        # 分数 = 独特词汇的平均 IDF
+        # Score = average IDF of unique tokens.
         token_counts = Counter(tokens)
         score = sum(
             (1.0 / doc_freq[token]) * count
@@ -136,42 +136,42 @@ def _sample_diverse_chunks(
     chunks: List[DocumentChunk],
     num_samples: int,
     max_chars: int = 2000
-) -> List[DocumentChunk]:
-    """
-    从文档切片中采样，确保多样性
-    
-    策略：
-    1. 过滤掉太短的切片
-    2. 计算多样性分数
-    3. 结合随机性和多样性选择
-    """
+    ) -> List[DocumentChunk]:
+        """
+    Sample chunks to ensure diversity.
+
+    Strategy:
+    1. Filter out short chunks
+    2. Compute diversity scores
+    3. Combine randomness with diversity
+        """
     if not chunks:
         return []
     
-    # 过滤太短的切片（少于 50 字符）
+    # Filter out very short chunks (< 50 chars).
     valid_chunks = [c for c in chunks if len(c.content.strip()) >= 50]
     
     if len(valid_chunks) <= num_samples:
         return valid_chunks
     
-    # 截断过长的内容以加速计算
+    # Truncate long content to speed up computation.
     chunk_texts = [c.content[:max_chars] for c in valid_chunks]
     
-    # 计算多样性分数
+    # Compute diversity scores.
     diversity_scores = _calculate_text_diversity_scores(chunk_texts)
     
-    # 归一化分数到 [0, 1]
+    # Normalize scores to [0, 1].
     max_score = max(diversity_scores) if diversity_scores else 1.0
     if max_score > 0:
         diversity_scores = [s / max_score for s in diversity_scores]
     
-    # 结合随机性：70% 多样性权重，30% 随机权重
+    # Combine randomness: 70% diversity, 30% random.
     combined_scores = [
         0.7 * div + 0.3 * random.random()
         for div in diversity_scores
     ]
     
-    # 选择得分最高的切片
+    # Select top-scoring chunks.
     indexed_scores = list(enumerate(combined_scores))
     indexed_scores.sort(key=lambda x: x[1], reverse=True)
     
@@ -189,24 +189,24 @@ def generate_questions_from_documents(
     question_types: Optional[List[str]] = None,
 ) -> List[GeneratedQuestion]:
     """
-    从文档中生成测试问题
-    
+    Generate test questions from documents.
+
     Args:
-        db: 数据库会话
-        tenant_id: 租户 ID
-        account_id: 账户 ID
-        dataset_id: 知识库 ID（可选）
-        document_ids: 文档 ID 列表（可选，优先于 dataset_id）
-        num_questions: 生成问题数量
-        question_types: 问题类型列表
-    
+        db: Database session.
+        tenant_id: Tenant ID.
+        account_id: Account ID.
+        dataset_id: Dataset ID (optional).
+        document_ids: Document IDs (optional, preferred over dataset_id).
+        num_questions: Number of questions to generate.
+        question_types: Question type list.
+
     Returns:
-        生成的问题列表
+        Generated question list.
     """
     if question_types is None:
         question_types = ["factual", "reasoning", "comparison"]
     
-    # 权限检查和文档过滤
+    # Permission checks and document filtering.
     if document_ids:
         allowed_doc_ids = filter_allowed_document_ids(
             db, tenant_id, account_id, document_ids
@@ -221,14 +221,14 @@ def generate_questions_from_documents(
         )
         allowed_doc_ids = [doc.id for doc in query.all()]
     else:
-        # 获取所有可访问文档
+        # Fetch all accessible documents.
         from app.services.document_access import list_accessible_document_ids
         allowed_doc_ids = list_accessible_document_ids(db, tenant_id, account_id)
     
     if not allowed_doc_ids:
         return []
     
-    # 查询文档切片
+    # Query document chunks.
     chunks = (
         db.query(DocumentChunk)
         .filter(
@@ -241,11 +241,11 @@ def generate_questions_from_documents(
     if not chunks:
         return []
     
-    # 采样切片（每 3-4 个问题需要一个切片）
+    # Sample chunks (one chunk per 3-4 questions).
     num_chunks_needed = max(3, (num_questions + 2) // 3)
     sampled_chunks = _sample_diverse_chunks(chunks, num_chunks_needed)
     
-    # 准备 LLM
+    # Prepare LLM.
     proxy_url = get_proxy_url()
     http_client_kwargs = {}
     if proxy_url:
@@ -268,14 +268,14 @@ def generate_questions_from_documents(
     
     chain = prompt | llm | parser
     
-    # 为每个切片生成问题
+    # Generate questions for each chunk.
     all_questions: List[GeneratedQuestion] = []
     questions_per_chunk = max(1, num_questions // len(sampled_chunks))
     
     for chunk in sampled_chunks:
         try:
             result = chain.invoke({
-                "text": chunk.content[:2000],  # 限制长度
+                "text": chunk.content[:2000],  # Limit length.
                 "num_questions": questions_per_chunk,
                 "question_types": ", ".join(question_types)
             })
@@ -312,20 +312,20 @@ def generate_questions_from_conversations(
     quality_threshold: float = 0.7,
 ) -> List[GeneratedQuestion]:
     """
-    从对话历史中生成测试问题
-    
+    Generate test questions from conversation history.
+
     Args:
-        db: 数据库会话
-        tenant_id: 租户 ID
-        account_id: 账户 ID
-        conversation_ids: 对话 ID 列表
-        num_questions: 生成问题数量
-        quality_threshold: 质量阈值（0-1）
-    
+        db: Database session.
+        tenant_id: Tenant ID.
+        account_id: Account ID.
+        conversation_ids: Conversation ID list.
+        num_questions: Number of questions to generate.
+        quality_threshold: Quality threshold (0-1).
+
     Returns:
-        生成的问题列表
+        Generated question list.
     """
-    # 查询对话和消息
+    # Query conversations and messages.
     conversations = (
         db.query(Conversation)
         .filter(
@@ -338,7 +338,7 @@ def generate_questions_from_conversations(
     if not conversations:
         return []
     
-    # 收集高质量的用户问题
+    # Collect high-quality user questions.
     high_quality_turns: List[Tuple[str, str, UUID]] = []
     
     for conv in conversations:
@@ -352,24 +352,24 @@ def generate_questions_from_conversations(
             .all()
         )
         
-        # 配对用户-助手消息
+        # Pair user-assistant messages.
         pending_user = None
         for msg in messages:
             if msg.role == "user":
                 pending_user = msg
             elif msg.role == "assistant" and pending_user:
-                # 质量评分：基于消息长度和引用数量
+                # Quality score based on message length and citation count.
                 user_len = len(pending_user.content.strip())
                 assistant_len = len(msg.content.strip())
                 num_citations = len(msg.citations) if msg.citations else 0
                 
-                # 简单评分规则
+                # Simple scoring rules.
                 quality_score = 0.0
-                if user_len >= 10:  # 问题足够长
+                if user_len >= 10:  # Question long enough.
                     quality_score += 0.3
-                if assistant_len >= 50:  # 回答足够详细
+                if assistant_len >= 50:  # Answer detailed enough.
                     quality_score += 0.3
-                if num_citations > 0:  # 有引用
+                if num_citations > 0:  # Has citations.
                     quality_score += 0.4
                 
                 if quality_score >= quality_threshold:
@@ -384,17 +384,17 @@ def generate_questions_from_conversations(
     if not high_quality_turns:
         return []
     
-    # 如果高质量对话很多，随机采样
+    # If many high-quality conversations, sample randomly.
     if len(high_quality_turns) > num_questions * 2:
         high_quality_turns = random.sample(high_quality_turns, num_questions * 2)
     
-    # 准备对话文本
+    # Prepare conversation text.
     conversation_text = "\n\n".join([
         f"用户: {user}\n助手: {assistant}"
         for user, assistant, _ in high_quality_turns
     ])
     
-    # 准备 LLM
+    # Prepare LLM.
     proxy_url = get_proxy_url()
     http_client_kwargs = {}
     if proxy_url:
@@ -419,7 +419,7 @@ def generate_questions_from_conversations(
     
     try:
         result = chain.invoke({
-            "conversations": conversation_text[:8000],  # 限制长度
+            "conversations": conversation_text[:8000],  # Limit length.
             "num_questions": num_questions
         })
         

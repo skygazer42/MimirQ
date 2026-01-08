@@ -1,7 +1,7 @@
 """
-统一文档解析入口：
-- 按文件类型分流（office → MarkItDown；PDF → 评分后选择 MarkItDown / DeepDoc / MinerU / basic）
-- 提取 Markdown、图片落盘并返回预览
+Unified document parsing entry point:
+- Route by file type (office -> MarkItDown; PDF -> score then choose MarkItDown/DeepDoc/MinerU/basic)
+- Extract Markdown, save images to disk, and return preview
 """
 from pathlib import Path
 from typing import Dict, List, Optional
@@ -28,13 +28,13 @@ class DocumentParserService:
         parser_backend: Optional[str] = None,
     ) -> Dict:
         """
-        解析文件，返回 Markdown 与图片清单，不入库。
+        Parse file and return Markdown plus image list (no persistence).
         """
         file_ext = file_path.suffix.lower()
         is_pdf = file_ext == ".pdf"
         pdf_quality = None
 
-        # PDF 评分并选择解析器
+        # Score PDF and choose parser.
         if is_pdf:
             parser_backend, pdf_quality = route_pdf_backend(
                 file_path,
@@ -43,7 +43,7 @@ class DocumentParserService:
                 use_ocr_validation=settings.RAPIDOCR_ENABLED,
             )
         else:
-            # 非 PDF 强制走 MarkItDown（office/表格），或文本解析
+            # Non-PDF: force MarkItDown (office/spreadsheets) or text parser.
             parser_backend = parser_backend or "markitdown"
 
         documents, resolved_backend = parser_factory.parse(file_path, parser_backend=parser_backend)
@@ -51,7 +51,7 @@ class DocumentParserService:
 
         images = self._extract_and_save_inline_images(markdown_text, tenant_id)
         if images:
-            # 将 data URI 替换为本地引用
+            # Replace data URIs with local references.
             for img in images:
                 markdown_text = markdown_text.replace(img["original"], img["markdown_ref"])
 
@@ -78,7 +78,7 @@ class DocumentParserService:
 
     def _extract_and_save_inline_images(self, markdown_text: str, tenant_id: UUID) -> List[Dict]:
         """
-        查找 data URI 图片，落盘到 uploads/{tenant_id}/images，并返回映射信息。
+        Find data URI images, save to uploads/{tenant_id}/images, and return mapping info.
         """
         images_dir = Path(settings.UPLOAD_DIR) / str(tenant_id) / "images"
         images_dir.mkdir(parents=True, exist_ok=True)
