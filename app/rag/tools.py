@@ -14,21 +14,21 @@ current_tenant_id: ContextVar[Optional[UUID]] = ContextVar("tenant_id", default=
 
 
 class RetrievalInput(BaseModel):
-    """检索工具输入参数"""
-    query: str = Field(description="用户的查询问题或关键词")
+    """Retrieval tool input parameters"""
+    query: str = Field(description="User query or keywords")
     top_k: int = Field(
         default=5,
-        description="返回的相关文档片段数量",
+        description="Number of relevant document chunks to return",
         ge=1,
         le=20
     )
     document_ids: Optional[List[str]] = Field(
         default=None,
-        description="限定搜索的文档ID列表（可选）"
+        description="List of document IDs to limit search scope (optional)"
     )
     tenant_id: Optional[str] = Field(
         default=None,
-        description="租户 ID（可选）"
+        description="Tenant ID (optional)"
     )
 
 
@@ -39,7 +39,7 @@ def search_knowledge_base(
     tenant_id: Optional[str] = None
 ) -> str:
     """
-    在知识库中搜索相关文档片段。
+    Search for relevant document chunks in the knowledge base.
     """
     try:
         doc_uuids = None
@@ -60,7 +60,7 @@ def search_knowledge_base(
         docs = retriever.invoke(query)
 
         if not docs:
-            return "未找到相关文档。知识库中可能没有与此查询相关的内容。"
+            return "No relevant documents found. The knowledge base may not contain content related to this query."
 
         formatted_results = []
         for idx, doc in enumerate(docs, 1):
@@ -71,10 +71,10 @@ def search_knowledge_base(
             score = meta.get("score", 0.0)
 
             formatted_results.append(
-                f"[文档 {idx}] {source} - 第{page}页(相关度 {score:.2f})\n{content}"
+                f"[Document {idx}] {source} - Page {page} (relevance {score:.2f})\n{content}"
             )
 
         return "\n\n".join(formatted_results)
 
     except Exception as e:
-        return f"搜索过程中发生错误: {str(e)}"
+        return f"Error occurred during search: {str(e)}"
