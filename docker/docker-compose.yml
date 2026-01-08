@@ -35,6 +35,27 @@ x-backend-env: &backend_env
   TASK_WORKER_MAX_JOBS: ${TASK_WORKER_MAX_JOBS_DOCKER:-10}
 
 services:
+  # Local OpenAI-compatible mock (LLM + embeddings) for deterministic smoke tests.
+  mock-openai:
+    image: python:3.11-slim
+    restart: unless-stopped
+    command: ["python", "-u", "/app/scripts/mock_openai_server.py", "--host", "0.0.0.0", "--port", "8001"]
+    volumes:
+      - ..:/app:ro
+    ports:
+      - "8001:8001"
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://localhost:8001/health').read()",
+        ]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
   # Redis（任务队列/缓存/幂等锁）
   redis:
     image: redis:7
@@ -142,6 +163,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      mock-openai:
+        condition: service_healthy
     env_file:
       - .env
     environment:
@@ -159,6 +182,8 @@ services:
       postgres:
         condition: service_healthy
       milvus:
+        condition: service_healthy
+      mock-openai:
         condition: service_healthy
     env_file:
       - .env
