@@ -1,6 +1,6 @@
 """
-Settings API - 系统配置管理
-支持读取和更新 .env 配置
+Settings API - system configuration management.
+Supports reading and updating .env configuration.
 """
 from __future__ import annotations
 
@@ -22,7 +22,7 @@ from app.services.dataset_service import DatasetService
 
 router = APIRouter()
 
-# .env 文件路径
+# .env file path.
 ENV_FILE = Path(__file__).parent.parent.parent.parent / ".env"
 
 _SETTINGS_ADMIN_ROLES = {"owner", "admin"}
@@ -75,7 +75,7 @@ def _validate_public_base_url(base_url: str) -> None:
 
 
 class FeatureFlags(BaseModel):
-    """功能开关"""
+    """Feature flags."""
     kg_enabled: bool = False
     deepdoc_enabled: bool = False
     markitdown_enabled: bool = False
@@ -85,7 +85,7 @@ class FeatureFlags(BaseModel):
 
 
 class KGConfig(BaseModel):
-    """KG 相关配置"""
+    """KG-related config."""
     chat_enabled: bool = False
     extract_prompt_template_id: str = ""
     extract_prompt_template_key: str = ""
@@ -93,7 +93,7 @@ class KGConfig(BaseModel):
 
 
 class LLMConfig(BaseModel):
-    """LLM 配置"""
+    """LLM config."""
     api_key: str = ""
     api_base: str = "https://api.openai.com/v1"
     model: str = "gpt-4o-mini"
@@ -103,7 +103,7 @@ class LLMConfig(BaseModel):
 
 
 class EmbeddingConfig(BaseModel):
-    """Embedding 配置"""
+    """Embedding config."""
     provider: str = "openai_compatible"
     model: str = "text-embedding-3-small"
     api_key: str = ""
@@ -111,7 +111,7 @@ class EmbeddingConfig(BaseModel):
 
 
 class MilvusConfig(BaseModel):
-    """Milvus 配置"""
+    """Milvus config."""
     host: str = "localhost"
     port: int = 19530
     user: str = ""
@@ -120,7 +120,7 @@ class MilvusConfig(BaseModel):
 
 
 class RAGConfig(BaseModel):
-    """RAG 参数配置"""
+    """RAG parameter config."""
     chunk_size: int = 1000
     chunk_overlap: int = 200
     retrieval_top_k: int = 5
@@ -130,7 +130,7 @@ class RAGConfig(BaseModel):
 
 
 class ObservabilityConfig(BaseModel):
-    """观测/调试相关配置"""
+    """Observability/debug config."""
     tool_call_log_enabled: bool = False
     tool_call_log_include_preview: bool = False
     tool_call_log_max_preview_chars: int = 500
@@ -141,26 +141,26 @@ class ObservabilityConfig(BaseModel):
 
 
 class SafetyConfig(BaseModel):
-    """安全/隐私相关配置"""
+    """Security/privacy config."""
     pii_redaction_enabled: bool = False
     pii_redaction_mask: str = "[REDACTED]"
     pii_stream_holdback_chars: int = 128
 
 
 class LangGraphConfig(BaseModel):
-    """LangGraph 运行方式配置"""
+    """LangGraph execution mode config."""
     use_subgraphs: bool = False
 
 
 class MinerUConfig(BaseModel):
-    """MinerU 配置"""
+    """MinerU config."""
     api_token: str = ""
     api_base: str = "https://mineru.net/api/v4"
     model_version: str = "vlm"
 
 
 class MagicPDFConfig(BaseModel):
-    """MagicPDF (magic-pdf) 配置"""
+    """MagicPDF (magic-pdf) config."""
     cli: str = "magic-pdf"
     method: str = "auto"  # auto | ocr | txt
     lang: str = ""
@@ -170,7 +170,7 @@ class MagicPDFConfig(BaseModel):
 
 
 class SystemSettings(BaseModel):
-    """完整系统配置"""
+    """Full system config."""
     feature_flags: FeatureFlags
     kg: KGConfig
     llm: LLMConfig
@@ -185,7 +185,7 @@ class SystemSettings(BaseModel):
 
 
 class UpdateSettingsRequest(BaseModel):
-    """更新配置请求"""
+    """Update config request."""
     feature_flags: Optional[FeatureFlags] = None
     kg: Optional[KGConfig] = None
     llm: Optional[LLMConfig] = None
@@ -362,7 +362,7 @@ def _apply_runtime_settings(env_vars: Dict[str, str], updated_keys: list[str]) -
 
 
 def read_env_file() -> Dict[str, str]:
-    """读取 .env 文件"""
+    """Read .env file."""
     env_vars = {}
     if ENV_FILE.exists():
         with open(ENV_FILE, 'r', encoding='utf-8') as f:
@@ -375,11 +375,11 @@ def read_env_file() -> Dict[str, str]:
 
 
 def write_env_file(env_vars: Dict[str, str]):
-    """写入 .env 文件，保留注释和格式"""
+    """Write .env file, preserving comments and formatting."""
     lines = []
     existing_keys = set()
 
-    # 读取现有文件保留注释
+    # Read existing file and preserve comments.
     if ENV_FILE.exists():
         with open(ENV_FILE, 'r', encoding='utf-8') as f:
             for line in f:
@@ -394,7 +394,7 @@ def write_env_file(env_vars: Dict[str, str]):
                     else:
                         lines.append(line.rstrip('\n'))
 
-    # 添加新的键值对
+    # Add new key-value pairs.
     for key, value in env_vars.items():
         if key not in existing_keys:
             lines.append(f"{key}={value}")
@@ -404,7 +404,7 @@ def write_env_file(env_vars: Dict[str, str]):
 
 
 def mask_secret(value: str) -> str:
-    """隐藏敏感信息"""
+    """Mask sensitive info."""
     if not value or len(value) < 8:
         return "***" if value else ""
     return value[:4] + "***" + value[-4:]
@@ -416,7 +416,7 @@ async def get_settings(
     account_id: str = Depends(get_current_account_id),
     db: Session = Depends(get_db),
 ):
-    """获取当前系统配置"""
+    """Get current system config."""
     _ensure_settings_readable(db, tenant_id, account_id)
     return SystemSettings(
         feature_flags=FeatureFlags(
@@ -501,13 +501,13 @@ async def update_settings(
     account_id: str = Depends(get_current_account_id),
     db: Session = Depends(get_db),
 ):
-    """更新系统配置（写入 .env 文件）"""
+    """Update system config (write .env file)."""
     _ensure_settings_writable(db, tenant_id, account_id)
     try:
         env_vars = read_env_file()
         updated_keys = []
 
-        # 更新功能开关
+        # Update feature flags.
         if request.feature_flags:
             ff = request.feature_flags
             env_vars["KG_ENABLED"] = str(ff.kg_enabled).lower()
@@ -527,7 +527,7 @@ async def update_settings(
                 ]
             )
 
-        # 更新 KG 配置
+        # Update KG config.
         if request.kg:
             kg = request.kg
             env_vars["KG_CHAT_ENABLED"] = str(bool(kg.chat_enabled)).lower()
@@ -554,10 +554,10 @@ async def update_settings(
                 ]
             )
 
-        # 更新 LLM 配置
+        # Update LLM config.
         if request.llm:
             llm = request.llm
-            # 只有非掩码值才更新
+            # Only update non-masked values.
             if llm.api_key and "***" not in llm.api_key:
                 env_vars["LLM_API_KEY"] = _sanitize_env_value("LLM_API_KEY", llm.api_key)
                 updated_keys.append("LLM_API_KEY")
@@ -568,7 +568,7 @@ async def update_settings(
             env_vars["LLM_MAX_RETRIES"] = str(llm.max_retries)
             updated_keys.extend(["LLM_API_BASE", "LLM_MODEL", "LLM_TEMPERATURE", "LLM_TIMEOUT", "LLM_MAX_RETRIES"])
 
-        # 更新 Embedding 配置
+        # Update embedding config.
         if request.embedding:
             emb = request.embedding
             env_vars["EMBEDDING_PROVIDER"] = _sanitize_env_value("EMBEDDING_PROVIDER", emb.provider)
@@ -579,7 +579,7 @@ async def update_settings(
             env_vars["EMBEDDING_API_BASE"] = _sanitize_env_value("EMBEDDING_API_BASE", emb.api_base)
             updated_keys.extend(["EMBEDDING_PROVIDER", "EMBEDDING_MODEL", "EMBEDDING_API_BASE"])
 
-        # 更新 Milvus 配置
+        # Update Milvus config.
         if request.milvus:
             mv = request.milvus
             env_vars["MILVUS_HOST"] = _sanitize_env_value("MILVUS_HOST", mv.host)
@@ -591,7 +591,7 @@ async def update_settings(
             env_vars["MILVUS_COLLECTION_NAME"] = _sanitize_env_value("MILVUS_COLLECTION_NAME", mv.collection_name)
             updated_keys.extend(["MILVUS_HOST", "MILVUS_PORT", "MILVUS_USER", "MILVUS_COLLECTION_NAME"])
 
-        # 更新 RAG 配置
+        # Update RAG config.
         if request.rag:
             rag = request.rag
             env_vars["CHUNK_SIZE"] = str(rag.chunk_size)
@@ -602,7 +602,7 @@ async def update_settings(
             env_vars["DEFAULT_CHUNK_STRATEGY"] = _sanitize_env_value("DEFAULT_CHUNK_STRATEGY", rag.default_chunk_strategy)
             updated_keys.extend(["CHUNK_SIZE", "CHUNK_OVERLAP", "RETRIEVAL_TOP_K", "SIMILARITY_THRESHOLD", "DEFAULT_PARSER_BACKEND", "DEFAULT_CHUNK_STRATEGY"])
 
-        # 更新 MinerU 配置
+        # Update MinerU config.
         if request.mineru:
             mn = request.mineru
             if mn.api_token and "***" not in mn.api_token:
@@ -631,7 +631,7 @@ async def update_settings(
                 ]
             )
 
-        # 更新观测/调试配置
+        # Update observability/debug config.
         if request.observability:
             ob = request.observability
             env_vars["TOOL_CALL_LOG_ENABLED"] = str(ob.tool_call_log_enabled).lower()
@@ -651,7 +651,7 @@ async def update_settings(
                 ]
             )
 
-        # 更新安全/隐私配置
+        # Update security/privacy config.
         if request.safety:
             sf = request.safety
             env_vars["PII_REDACTION_ENABLED"] = str(sf.pii_redaction_enabled).lower()
@@ -659,7 +659,7 @@ async def update_settings(
             env_vars["PII_STREAM_HOLDBACK_CHARS"] = str(int(sf.pii_stream_holdback_chars or 0))
             updated_keys.extend(["PII_REDACTION_ENABLED", "PII_REDACTION_MASK", "PII_STREAM_HOLDBACK_CHARS"])
 
-        # 更新 LangGraph 配置
+        # Update LangGraph config.
         if request.langgraph:
             lg = request.langgraph
             env_vars["LANGGRAPH_USE_SUBGRAPHS"] = str(lg.use_subgraphs).lower()
@@ -695,7 +695,7 @@ async def get_system_status(
     account_id: str = Depends(get_current_account_id),
     db: Session = Depends(get_db),
 ):
-    """获取系统状态"""
+    """Get system status."""
     _ensure_settings_readable(db, tenant_id, account_id)
     from sqlalchemy import text
     from app.core.database import SessionLocal
@@ -762,7 +762,7 @@ async def get_system_status(
 
     status["parsers"] = parsers
 
-    # 检查数据库连接
+    # Check database connection.
     try:
         db = SessionLocal()
         db.execute(text("SELECT 1"))
@@ -772,7 +772,7 @@ async def get_system_status(
     except Exception as e:
         status["database"]["message"] = str(e)[:100]
 
-    # 检查 Milvus 连接
+    # Check Milvus connection.
     try:
         connections.connect(
             alias="status_check",
@@ -806,7 +806,7 @@ async def test_llm_connection(
     account_id: str = Depends(get_current_account_id),
     db: Session = Depends(get_db),
 ):
-    """测试 LLM 连接（不写入配置）"""
+    """Test LLM connection (no config write)."""
     _ensure_settings_writable(db, tenant_id, account_id)
     from langchain_openai import ChatOpenAI
     from langchain_core.messages import HumanMessage

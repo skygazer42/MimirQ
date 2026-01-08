@@ -36,6 +36,7 @@ class OpenAIChatClient(BaseLLMClient):
             raise ConfigError("LLM configuration missing api_key or model")
 
         http_client = httpx.Client(trust_env=trust_env, timeout=timeout)
+        http_async_client = httpx.AsyncClient(trust_env=trust_env, timeout=timeout)
         self._client = ChatOpenAI(
             model=model_name,
             api_key=api_key,
@@ -45,6 +46,7 @@ class OpenAIChatClient(BaseLLMClient):
             timeout=timeout,
             max_retries=max_retries,
             http_client=http_client,
+            http_async_client=http_async_client,
         )
 
     def _convert_messages(self, messages: list[LLMMessage]):

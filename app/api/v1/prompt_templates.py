@@ -73,7 +73,7 @@ async def create_prompt_template(
     DatasetService.ensure_member(db, tenant_id, account_id)
 
     template_key = request.template_key or _derive_template_key(request.name)
-    # 若同一 key 已存在版本，则默认递增版本号（便于平滑启用“版本化”能力）
+    # If the key already has versions, increment by default for smooth versioning.
     max_version = (
         db.query(func.max(PromptTemplate.version))
         .filter(PromptTemplate.tenant_id == tenant_id, PromptTemplate.template_key == template_key)
@@ -219,7 +219,7 @@ async def create_prompt_template_version(
     account_id: str = Depends(get_current_account_id),
     db: Session = Depends(get_db),
 ) -> PromptTemplate:
-    """基于某个模板创建新版本（默认禁用旧版本）。"""
+    """Create a new version from a template (deactivate old version by default)."""
     DatasetService.ensure_member(db, tenant_id, account_id)
 
     current = (
@@ -241,7 +241,7 @@ async def create_prompt_template_version(
     next_version = int(max_version or 0) + 1
 
     if request.deactivate_previous:
-        # 同一 key 的旧版本默认不再参与选择，避免“多活版本”带来的不可控差异
+        # Deactivate older versions for the same key to avoid multi-active drift.
         db.query(PromptTemplate).filter(
             PromptTemplate.tenant_id == tenant_id,
             PromptTemplate.template_key == template_key,

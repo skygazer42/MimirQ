@@ -1,5 +1,5 @@
 """
-文档相关 Pydantic Schema
+Document-related Pydantic schemas.
 """
 from pydantic import AliasChoices, BaseModel, Field, model_validator
 from typing import Optional, List, Dict, Any
@@ -31,7 +31,7 @@ class DocumentPipelineOptions(BaseModel):
 
 
 class DocumentChunkSchema(OrmModel):
-    """文档块"""
+    """Document chunk."""
     id: UUID
     content: str
     page_number: Optional[int] = None
@@ -52,7 +52,7 @@ class GovernanceInfo(BaseModel):
 
 
 class DocumentDetail(OrmModel):
-    """文档详情"""
+    """Document detail."""
     id: UUID
     filename: str
     file_type: str
@@ -91,7 +91,7 @@ class DocumentDetail(OrmModel):
 
 
 class ParsedSegment(BaseModel):
-    """文档解析预览片段"""
+    """Document parse preview segment."""
     index: int
     content: str
     page_number: Optional[int] = None
@@ -99,7 +99,7 @@ class ParsedSegment(BaseModel):
 
 
 class DocumentParsePreview(BaseModel):
-    """文档解析预览结果"""
+    """Document parse preview result."""
     filename: str
     file_type: str
     file_size: int
@@ -108,7 +108,7 @@ class DocumentParsePreview(BaseModel):
 
 
 class ManualChunkCreate(BaseModel):
-    """手动切片创建请求中的单个片段"""
+    """Single chunk entry in a manual chunking request."""
     content: str
     page_number: Optional[int] = None
     start_char: Optional[int] = None
@@ -117,7 +117,7 @@ class ManualChunkCreate(BaseModel):
 
 
 class ManualDocumentCreate(BaseModel):
-    """基于手动切片创建文档的请求"""
+    """Request to create a document from manual chunks."""
     dataset_id: Optional[UUID] = None
     filename: str
     file_type: str
@@ -128,13 +128,13 @@ class ManualDocumentCreate(BaseModel):
 
 
 class DocumentList(BaseModel):
-    """文档列表"""
+    """Document list."""
     total: int
     items: List[DocumentDetail]
 
 
 class DocumentStatus(OrmModel):
-    """文档处理状态"""
+    """Document processing status."""
     id: UUID
     status: str
     processing_progress: int
@@ -142,28 +142,28 @@ class DocumentStatus(OrmModel):
     error_message: Optional[str] = None
 
 
-# ============ 切块预览相关 Schema ============
+# ============ Chunk preview schemas ============
 
 class ChunkPreviewParams(BaseModel):
-    """切块预览参数"""
+    """Chunk preview parameters."""
     chunk_size: int = Field(default=1000, ge=100, le=4000, description="切块大小")
     chunk_overlap: int = Field(default=200, ge=0, le=1000, description="重叠大小")
     unit: str = Field(default="chars", description="chunk_size/chunk_overlap unit: chars | tokens")
 
 
 class ChunkPreviewItem(BaseModel):
-    """切块预览单项"""
+    """Chunk preview item."""
     index: int
     content: str
     length: int
-    start_index: int  # 在原文中的起始位置
-    end_index: int    # 在原文中的结束位置
+    start_index: int  # Start position in original text.
+    end_index: int    # End position in original text.
     page_number: Optional[int] = None
     metadata: Dict[str, Any] = Field(default_factory=dict)
 
 
 class ChunkPreviewResponse(BaseModel):
-    """切块预览响应"""
+    """Chunk preview response."""
     filename: str
     file_type: str
     file_size: int
@@ -171,27 +171,27 @@ class ChunkPreviewResponse(BaseModel):
     total_characters: int
     params: ChunkPreviewParams
     chunks: List[ChunkPreviewItem]
-    # 原文内容，用于前端高亮显示
+    # Original text for frontend highlighting.
     original_text: Optional[str] = None
     parser_backend: str
     chunk_strategy: str
 
 
-# ============ 批量上传相关 Schema ============
+# ============ Batch upload schemas ============
 
 class BatchFileInfo(BaseModel):
-    """批量上传文件信息"""
+    """Batch upload file info."""
     name: str = Field(..., description="文件名")
     data_id: str = Field(..., description="自定义数据 ID，用于标识文件")
 
 
 class BatchUploadRequest(BaseModel):
-    """批量申请上传 URL 请求"""
+    """Batch request for upload URLs."""
     files: List[BatchFileInfo] = Field(..., max_length=200, description="文件列表，最多 200 个")
 
 
 class BatchUploadResponse(BaseModel):
-    """批量申请上传 URL 响应"""
+    """Batch response for upload URLs."""
     batch_id: str = Field(..., description="批次 ID")
     file_urls: List[str] = Field(..., description="上传 URL 列表")
     files: List[BatchFileInfo] = Field(..., description="文件信息列表")

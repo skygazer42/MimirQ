@@ -1,61 +1,61 @@
 """
-全局常量定义
+Global constants.
 
-集中管理项目中的魔法字符串和硬编码值，提高可维护性。
+Centralize magic strings and hardcoded values for maintainability.
 """
 
 from typing import FrozenSet
 
 
 # =============================================================================
-# 超时常量 (秒)
+# Timeout constants (seconds)
 # =============================================================================
 
 class Timeouts:
-    """HTTP 和操作超时常量"""
+    """HTTP and operation timeout constants."""
 
-    # API 请求超时
+    # API request timeouts.
     API_DEFAULT = 60          # embedding providers, LLM API calls
-    API_SHORT = 30            # 快速 API 请求
-    API_UPLOAD = 300          # 文件上传
-    API_LONG_RUNNING = 600    # 长时间运行的任务
+    API_SHORT = 30            # Fast API requests
+    API_UPLOAD = 300          # File uploads
+    API_LONG_RUNNING = 600    # Long-running tasks
 
-    # 文档解析超时
-    PARSE_DEFAULT = 1800      # 文档解析 (30分钟)
-    PARSE_VALIDATION = 5      # 健康检查/验证
+    # Document parsing timeouts.
+    PARSE_DEFAULT = 1800      # Document parsing (30 minutes)
+    PARSE_VALIDATION = 5      # Health checks/validation
 
-    # 流式操作超时
-    STREAM_DEFAULT = 5.0      # 流式写入
-    STREAM_SHORT = 1.0        # 短流式操作
+    # Streaming operation timeouts.
+    STREAM_DEFAULT = 5.0      # Streaming writes
+    STREAM_SHORT = 1.0        # Short streaming operations
 
-    # 线程/进程超时
-    THREAD_JOIN = 2.0         # 线程 join 超时
+    # Thread/process timeouts.
+    THREAD_JOIN = 2.0         # Thread join timeout
 
 
 # =============================================================================
-# 文件类型常量
+# File type constants
 # =============================================================================
 
 class FileTypes:
-    """支持的文件类型"""
+    """Supported file types."""
 
-    # 文档类型
+    # Document types
     PDF = ".pdf"
     TXT = ".txt"
     MD = ".md"
     DOC = ".doc"
     DOCX = ".docx"
 
-    # 表格类型
+    # Spreadsheet types
     XLS = ".xls"
     XLSX = ".xlsx"
     CSV = ".csv"
 
-    # Web 类型
+    # Web types
     HTML = ".html"
     JSON = ".json"
 
-    # 支持的扩展名集合
+    # Supported extension sets
     DOCUMENT_EXTENSIONS: FrozenSet[str] = frozenset({
         ".pdf", ".txt", ".md", ".doc", ".docx"
     })
@@ -73,18 +73,18 @@ class FileTypes:
         ".xls", ".xlsx", ".csv", ".html", ".json"
     })
 
-    # MarkItDown 特殊支持
+    # MarkItDown special support
     MARKITDOWN_EXTENSIONS: FrozenSet[str] = frozenset({
         ".doc", ".docx", ".xls", ".xlsx", ".csv", ".html", ".json"
     })
 
 
 # =============================================================================
-# 文档处理状态
+# Document processing status
 # =============================================================================
 
 class DocumentStatus:
-    """文档处理状态常量"""
+    """Document processing status constants."""
 
     PENDING = "pending"
     PROCESSING = "processing"
@@ -92,38 +92,38 @@ class DocumentStatus:
     FAILED = "failed"
     CANCELLED = "cancelled"
 
-    # 可终止状态
+    # Terminal states
     TERMINAL_STATES: FrozenSet[str] = frozenset({
         "completed", "failed", "cancelled"
     })
 
-    # 活跃状态
+    # Active states
     ACTIVE_STATES: FrozenSet[str] = frozenset({
         "pending", "processing"
     })
 
 
 # =============================================================================
-# Milvus 向量数据库配置
+# Milvus vector database config
 # =============================================================================
 
 class MilvusConfig:
-    """Milvus 配置常量"""
+    """Milvus config constants."""
 
-    # 索引参数
+    # Index params
     METRIC_TYPE = "COSINE"
     INDEX_TYPE = "IVF_FLAT"
     NLIST = 1024
 
-    # 搜索参数
+    # Search params
     NPROBE = 10
 
-    # 默认 collection 名称
+    # Default collection name
     DEFAULT_COLLECTION = "mimirq_chunks"
 
     @classmethod
     def get_index_params(cls) -> dict:
-        """获取索引参数"""
+        """Get index params."""
         return {
             "metric_type": cls.METRIC_TYPE,
             "index_type": cls.INDEX_TYPE,
@@ -132,7 +132,7 @@ class MilvusConfig:
 
     @classmethod
     def get_search_params(cls) -> dict:
-        """获取搜索参数"""
+        """Get search params."""
         return {
             "metric_type": cls.METRIC_TYPE,
             "params": {"nprobe": cls.NPROBE},
@@ -140,11 +140,11 @@ class MilvusConfig:
 
 
 # =============================================================================
-# Embedding 提供商
+# Embedding providers
 # =============================================================================
 
 class EmbeddingProviders:
-    """Embedding 提供商常量"""
+    """Embedding provider constants."""
 
     OPENAI = "openai"
     OPENAI_COMPATIBLE = "openai_compatible"
@@ -156,7 +156,7 @@ class EmbeddingProviders:
         "openai", "openai_compatible", "local", "dashscope", "ollama"
     })
 
-    # 提供商映射 (别名 -> 标准名称)
+    # Provider map (alias -> canonical name)
     PROVIDER_MAP = {
         "openai": "openai_compatible",
         "openai_compatible": "openai_compatible",
@@ -167,11 +167,11 @@ class EmbeddingProviders:
 
 
 # =============================================================================
-# PDF 解析后端
+# PDF parsing backends
 # =============================================================================
 
 class PDFBackends:
-    """PDF 解析后端常量"""
+    """PDF parsing backend constants."""
 
     AUTO = "auto"
     BASIC = "basic"
@@ -187,11 +187,11 @@ class PDFBackends:
 
 
 # =============================================================================
-# 检索模式
+# Retrieval modes
 # =============================================================================
 
 class RetrievalModes:
-    """检索模式常量"""
+    """Retrieval mode constants."""
 
     VECTOR = "vector"
     KEYWORD = "keyword"
@@ -205,11 +205,11 @@ class RetrievalModes:
 
 
 # =============================================================================
-# 用户角色
+# User roles
 # =============================================================================
 
 class UserRoles:
-    """用户角色常量"""
+    """User role constants."""
 
     OWNER = "owner"
     ADMIN = "admin"
@@ -217,23 +217,23 @@ class UserRoles:
     DATASET_OPERATOR = "dataset_operator"
     VIEWER = "viewer"
 
-    # 可编辑角色
+    # Editable roles
     EDIT_ROLES: FrozenSet[str] = frozenset({
         "owner", "admin", "editor", "dataset_operator"
     })
 
-    # 管理员角色
+    # Admin roles
     ADMIN_ROLES: FrozenSet[str] = frozenset({
         "owner", "admin"
     })
 
 
 # =============================================================================
-# 代理环境变量
+# Proxy environment variables
 # =============================================================================
 
 class ProxyEnvKeys:
-    """代理相关环境变量"""
+    """Proxy-related environment variables."""
 
     KEYS = (
         "OPENAI_PROXY",
@@ -247,11 +247,11 @@ class ProxyEnvKeys:
 
 
 # =============================================================================
-# 分块参数限制
+# Chunk parameter limits
 # =============================================================================
 
 class ChunkLimits:
-    """分块参数限制"""
+    """Chunk parameter limits."""
 
     SIZE_MIN = 100
     SIZE_MAX = 4000
@@ -263,11 +263,11 @@ class ChunkLimits:
 
 
 # =============================================================================
-# API 分页限制
+# API pagination limits
 # =============================================================================
 
 class PaginationLimits:
-    """分页参数限制"""
+    """Pagination parameter limits."""
 
     DEFAULT_SKIP = 0
     DEFAULT_LIMIT = 50

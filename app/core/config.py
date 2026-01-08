@@ -1,11 +1,11 @@
 """
-应用配置管理模块
+Application configuration module.
 
-提供集中式配置管理，包含以下功能：
-- 安全设置（SECRET_KEY、凭证等）
-- LLM/Embedding 提供商配置
-- RAG 流水线参数
-- 存储后端配置
+Centralized settings management including:
+- Security settings (SECRET_KEY, credentials, etc.)
+- LLM/Embedding provider config
+- RAG pipeline parameters
+- Storage backend config
 """
 from typing import Literal, Optional
 import os
@@ -44,23 +44,24 @@ class Settings(BaseSettings):
     MINIO_USE_SSL: bool = False
     MINIO_METRICS_LOG_PATH: str = "./logs/minio_metrics.jsonl"
 
-    # Task Queue / Redis (ingest 吞吐优化)
-    # - 任务队列默认关闭：不影响现有 API 兼容性；开启后由 worker 异步处理文档解析/索引。
+    # Task Queue / Redis (ingest throughput optimization)
+    # - Task queue is off by default: keeps API compatibility; when enabled,
+    #   workers handle document parsing/indexing asynchronously.
     TASK_QUEUE_ENABLED: bool = False
     REDIS_URL: str = "redis://localhost:6379/0"
     # Arq queue name
     TASK_QUEUE_NAME: str = "mimirq"
-    # Worker 并发（Arq 的 max_jobs）
+    # Worker concurrency (Arq max_jobs).
     TASK_WORKER_MAX_JOBS: int = 10
-    # 任务执行超时（秒）
+    # Task execution timeout (seconds).
     TASK_JOB_TIMEOUT_SEC: int = 60 * 30
-    # 默认重试次数（网络/外部 API 抖动场景）
+    # Default retry count (network/external API jitter).
     TASK_JOB_MAX_TRIES: int = 3
-    # per-tenant 并发限制：避免单租户占满 worker（0 表示不限制）
+    # Per-tenant concurrency limit to avoid one tenant exhausting workers (0 = unlimited).
     TASK_TENANT_MAX_CONCURRENCY_DOC: int = 2
     TASK_TENANT_MAX_CONCURRENCY_KG: int = 1
 
-    # Embedding 缓存（Redis，提升 ingest 吞吐；best-effort）
+    # Embedding cache (Redis, improves ingest throughput; best-effort).
     EMBEDDING_CACHE_ENABLED: bool = True
     EMBEDDING_CACHE_TTL_SEC: int = 7 * 24 * 3600
     EMBEDDING_CACHE_PREFIX: str = "emb"
@@ -291,7 +292,7 @@ class Settings(BaseSettings):
     GOVERNANCE_NOISE_RATIO_THRESHOLD: float = 0.2
     GOVERNANCE_COMMON_LINES_MIN_DOCS: int = 3
     GOVERNANCE_COMMON_LINES_MIN_RATIO: float = 0.35
-    # Reranker（可选：使用 LLM 对候选切片重排，提高命中质量）
+    # Reranker (optional: use LLM to rerank candidates for better quality).
     ENABLE_RERANKER: bool = False
     RERANKER_PROVIDER: str = "llm"  # llm | pc | none
     RERANKER_MODEL: Optional[str] = None
@@ -299,8 +300,8 @@ class Settings(BaseSettings):
     # falls back to LLM_API_KEY/LLM_API_BASE when empty.
     RERANKER_API_KEY: str = ""
     RERANKER_API_BASE: str = ""
-    RERANKER_TOP_N: int = 20  # 重排候选数量（越大越慢）
-    RERANKER_MAX_CHARS: int = 800  # 每条候选截断长度
+    RERANKER_TOP_N: int = 20  # Rerank candidate count (higher = slower).
+    RERANKER_MAX_CHARS: int = 800  # Max chars per candidate.
     RERANKER_TEMPERATURE: float = 0.0
     # API Reranker engineering knobs (batch/concurrency/rate-limit/circuit/cache)
     RERANKER_API_TIMEOUT_SEC: float = 30.0
@@ -346,6 +347,8 @@ class Settings(BaseSettings):
     KG_EXTRACT_PROMPT_TEMPLATE_KEY: str = ""
     KG_EXTRACT_PROMPT_AB_EXPERIMENT_KEY: str = ""
     CHAT_HISTORY_WINDOW: int = 5
+    # Allow chat even when no accessible documents exist (dev-friendly).
+    CHAT_ALLOW_EMPTY_DOCUMENTS: bool = True
     LONG_TERM_MEMORY_ENABLED: bool = False
     LONG_TERM_MEMORY_TOP_K: int = 3
     LONG_TERM_MEMORY_MIN_LEN: int = 20
@@ -379,9 +382,9 @@ class Settings(BaseSettings):
     LANGGRAPH_STORE_ENABLED: bool = False
     LANGGRAPH_STORE_BACKEND: str = "memory"  # memory | postgres (future)
 
-    # 图片展示策略
-    SHOW_IMAGE_IN_ANSWER: bool = True  # 控制回答正文是否附带图片段
-    IMAGE_APPEND_MAX: int = 3          # 回答正文最多附带图片数
+    # Image display strategy.
+    SHOW_IMAGE_IN_ANSWER: bool = True  # Include image segments in the answer body.
+    IMAGE_APPEND_MAX: int = 3          # Max images appended to the answer.
 
     # Multi-tenant defaults
     DEFAULT_TENANT_ID: str = "00000000-0000-0000-0000-000000000000"

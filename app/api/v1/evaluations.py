@@ -1,7 +1,8 @@
 """
-RAGAS 评测 API
+RAGAS evaluation API.
 
-提供 RAG 系统评测相关的接口，包括评测任务创建、查询和结果展示。
+Provides evaluation endpoints for the RAG system, including task creation,
+querying, and results.
 """
 
 from uuid import UUID
@@ -170,7 +171,7 @@ async def create_ragas_regression_case(
     account_id: str = Depends(get_current_account_id),
     db: Session = Depends(get_db),
 ):
-    """创建一条回归用例（问题 + 可选知识库范围）。"""
+    """Create a regression case (question + optional dataset scope)."""
     DatasetService.ensure_member(db, tenant_id, account_id)
 
     row = RagasRegressionCase(
@@ -198,7 +199,7 @@ async def list_ragas_regression_cases(
     account_id: str = Depends(get_current_account_id),
     db: Session = Depends(get_db),
 ):
-    """列出回归用例（tenant 隔离，可按 dataset_id 过滤）。"""
+    """List regression cases (tenant isolated, filterable by dataset_id)."""
     DatasetService.ensure_member(db, tenant_id, account_id)
 
     query = db.query(RagasRegressionCase).filter(RagasRegressionCase.tenant_id == tenant_id)
@@ -222,7 +223,7 @@ async def delete_ragas_regression_case(
     account_id: str = Depends(get_current_account_id),
     db: Session = Depends(get_db),
 ):
-    """删除一条回归用例。"""
+    """Delete a regression case."""
     DatasetService.ensure_member(db, tenant_id, account_id)
 
     row = (
@@ -246,7 +247,7 @@ async def create_ragas_regression_run(
     account_id: str = Depends(get_current_account_id),
     db: Session = Depends(get_db),
 ):
-    """创建一次回归评测运行，并在后台执行。"""
+    """Create a regression evaluation run and execute it in background."""
     DatasetService.ensure_member(db, tenant_id, account_id)
 
     run = RagasRegressionRun(
@@ -320,7 +321,7 @@ async def list_ragas_regression_runs(
     account_id: str = Depends(get_current_account_id),
     db: Session = Depends(get_db),
 ):
-    """列出回归运行记录。"""
+    """List regression runs."""
     DatasetService.ensure_member(db, tenant_id, account_id)
 
     query = db.query(RagasRegressionRun).filter(RagasRegressionRun.tenant_id == tenant_id)
@@ -343,7 +344,7 @@ async def get_ragas_regression_run(
     account_id: str = Depends(get_current_account_id),
     db: Session = Depends(get_db),
 ):
-    """获取某次回归运行详情（可选返回 items 与 contexts）。"""
+    """Get a regression run detail (optional items and contexts)."""
     DatasetService.ensure_member(db, tenant_id, account_id)
 
     run = (
@@ -378,11 +379,11 @@ async def generate_test_cases_from_documents(
     account_id: str = Depends(get_current_account_id),
     db: Session = Depends(get_db),
 ):
-    """从文档生成测试问题"""
+    """Generate test questions from documents."""
     DatasetService.ensure_member(db, tenant_id, account_id)
 
     try:
-        # 生成问题
+        # Generate questions.
         questions = generate_questions_from_documents(
             db=db,
             tenant_id=tenant_id,
@@ -393,7 +394,7 @@ async def generate_test_cases_from_documents(
             question_types=request.question_types,
         )
 
-        # 转换为响应格式
+        # Convert to response format.
         generated_questions = [
             GeneratedQuestion(
                 question=q.question,
@@ -406,7 +407,7 @@ async def generate_test_cases_from_documents(
             for q in questions
         ]
 
-        # 如果需要自动保存为用例
+        # Auto-save as cases when requested.
         saved_case_ids = []
         if request.auto_save_as_cases:
             for q in questions:
@@ -449,11 +450,11 @@ async def generate_test_cases_from_conversations(
     account_id: str = Depends(get_current_account_id),
     db: Session = Depends(get_db),
 ):
-    """从对话历史生成测试问题"""
+    """Generate test questions from conversation history."""
     DatasetService.ensure_member(db, tenant_id, account_id)
 
     try:
-        # 生成问题
+        # Generate questions.
         questions = generate_questions_from_conversations(
             db=db,
             tenant_id=tenant_id,
@@ -463,7 +464,7 @@ async def generate_test_cases_from_conversations(
             quality_threshold=request.quality_threshold,
         )
 
-        # 转换为响应格式
+        # Convert to response format.
         generated_questions = [
             GeneratedQuestion(
                 question=q.question,
@@ -476,7 +477,7 @@ async def generate_test_cases_from_conversations(
             for q in questions
         ]
 
-        # 如果需要自动保存为用例
+        # Auto-save as cases when requested.
         saved_case_ids = []
         if request.auto_save_as_cases:
             for q in questions:

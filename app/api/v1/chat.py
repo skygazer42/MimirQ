@@ -1,5 +1,5 @@
 """
-对话 API
+Chat API.
 """
 import logging
 from uuid import UUID
@@ -67,8 +67,8 @@ def _retrieve_long_term_messages(
     top_k: int = 3
 ) -> List[dict]:
     """
-    简单的长期记忆召回：对历史消息做 BM25 检索，取最相关的若干条。
-    仅用于追加到 history 以提供额外上下文，不修改存储。
+    Simple long-term memory recall using BM25 over past messages.
+    Used to enrich history context only; it does not modify storage.
     """
     max_messages = int(getattr(settings, "LONG_TERM_MEMORY_MAX_MESSAGES", 200) or 0)
     query_builder = (
@@ -134,7 +134,7 @@ async def stream_chat(
     db: Session = Depends(get_db)
 ):
     """
-    流式对话接口 - 核心功能
+    Streaming chat endpoint (core flow).
     """
 
     conversation_id = request.conversation_id
@@ -142,11 +142,12 @@ async def stream_chat(
     full_response = ""
     allowed_doc_ids: list[UUID] = []
     long_term_messages: list[dict] = []
+    allow_empty_docs = bool(getattr(settings, "CHAT_ALLOW_EMPTY_DOCUMENTS", True))
 
-    # 确认租户成员
+    # Ensure tenant membership.
     DatasetService.ensure_member(db, tenant_id, account_id)
 
-    # 1. 获取或创建对话
+    # 1. Load or create a conversation.
     if conversation_id:
         conversation = db.query(Conversation).filter(
             Conversation.id == conversation_id,
@@ -158,19 +159,19 @@ async def stream_chat(
         if target_doc_ids:
             allowed_doc_ids = filter_allowed_document_ids(db, tenant_id, account_id, target_doc_ids)
         else:
-            # 默认：使用当前用户可访问的文档（避免前端未传 document_ids 时直接报错）
+            # Default to accessible documents to avoid hard errors when document_ids are omitted.
             allowed_doc_ids = list_accessible_document_ids(db, tenant_id, account_id, status="completed")
-            if not allowed_doc_ids:
+            if not allowed_doc_ids and not allow_empty_docs:
                 raise HTTPException(status_code=400, detail="No accessible documents for chat retrieval")
-        # 更新会话中的文档列表为当前允许的集合
+        # Update the conversation's document list with the allowed set.
         conversation.document_ids = allowed_doc_ids
     else:
-        # 创建新对话
+        # Create a new conversation.
         if request.document_ids:
             allowed_doc_ids = filter_allowed_document_ids(db, tenant_id, account_id, request.document_ids)
         else:
             allowed_doc_ids = list_accessible_document_ids(db, tenant_id, account_id, status="completed")
-        if not allowed_doc_ids:
+        if not allowed_doc_ids and not allow_empty_docs:
             raise HTTPException(status_code=400, detail="No accessible documents for chat retrieval")
         conversation = Conversation(
             id=uuid.uuid4(),
@@ -182,7 +183,7 @@ async def stream_chat(
         db.flush()
         conversation_id = conversation.id
 
-    # 2. 保存用户消息
+    # 2. Persist the user message.
     user_message = Message(
         tenant_id=tenant_id,
         conversation_id=conversation_id,
@@ -191,7 +192,7 @@ async def stream_chat(
     )
     db.add(user_message)
 
-    # 可选：长期记忆召回（基于 BM25 的对话消息检索）
+    # Optional: long-term memory recall (BM25 over conversation messages).
     if request.enable_long_term_memory and settings.LONG_TERM_MEMORY_ENABLED and conversation_id:
         long_term_messages = _retrieve_long_term_messages(
             db=db,
@@ -201,11 +202,11 @@ async def stream_chat(
             top_k=settings.LONG_TERM_MEMORY_TOP_K
         )
 
-    # 更新对话消息计数
+    # Update the conversation message count.
     conversation.message_count = (conversation.message_count or 0) + 1
     db.commit()
 
-    # 3. 流式响应函数
+    # 3. Streaming response generator.
     async def event_stream():
         nonlocal citations_data, full_response
         doc_ids_to_use = allowed_doc_ids or []
@@ -218,7 +219,7 @@ async def stream_chat(
             account_id=account_id,
         )
 
-        # LangGraph 路径：流式输出阶段事件（custom）+ 状态快照（values）
+        # LangGraph path: stream stage events (custom) + state snapshots (values).
         if request.rag_config.use_graph:
             try:
                 from app.rag.pipelines.langgraph import build_rag_state, rag_workflow
@@ -387,7 +388,7 @@ async def stream_chat(
                 return
 
         try:
-            # 使用 LangChain Agent
+            # Use the LangChain engine.
             engine = get_rag_engine()
             async for event in engine.stream_chat(
                 question=request.message,
@@ -416,21 +417,21 @@ async def stream_chat(
                 db=db,
                 request_id=str(request_id),
             ):
-                # 记录引用信息
+                # Capture citations.
                 if event['type'] == 'citations':
                     citations_data = event['data']
                 if event['type'] == 'done':
                     metrics_data = event['data'].get("metrics", {})
 
-                # 累积完整回复
+                # Accumulate full response.
                 if event['type'] == 'token':
                     full_response += event['data']['content']
 
-                # SSE 输出
+                # Stream SSE events.
                 event["request_id"] = str(request_id)
                 yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
 
-            # 4. 保存助手回复到数据库
+            # 4. Persist assistant response.
             assistant_message = Message(
                 tenant_id=tenant_id,
                 conversation_id=conversation_id,
@@ -442,7 +443,7 @@ async def stream_chat(
             )
             db.add(assistant_message)
 
-            # 更新对话
+            # Update conversation metadata.
             conversation.message_count += 1
             conversation.updated_at = datetime.utcnow()
             db.commit()
@@ -478,13 +479,14 @@ async def create_conversation(
     account_id: str = Depends(get_current_account_id),
     db: Session = Depends(get_db)
 ):
-    """创建新对话"""
+    """Create a new conversation."""
     DatasetService.ensure_member(db, tenant_id, account_id)
+    allow_empty_docs = bool(getattr(settings, "CHAT_ALLOW_EMPTY_DOCUMENTS", True))
     if request.document_ids:
         allowed_doc_ids = filter_allowed_document_ids(db, tenant_id, account_id, request.document_ids)
     else:
         allowed_doc_ids = list_accessible_document_ids(db, tenant_id, account_id, status="completed")
-    if not allowed_doc_ids:
+    if not allowed_doc_ids and not allow_empty_docs:
         raise HTTPException(status_code=400, detail="No accessible documents for conversation")
     conversation = Conversation(
         tenant_id=tenant_id,
@@ -507,7 +509,7 @@ async def list_conversations(
     account_id: str = Depends(get_current_account_id),
     db: Session = Depends(get_db)
 ):
-    """获取对话列表"""
+    """List conversations."""
     DatasetService.ensure_member(db, tenant_id, account_id)
     query = db.query(Conversation).filter(Conversation.tenant_id == tenant_id)
     total = query.count()
@@ -583,7 +585,7 @@ async def get_conversation_messages(
     account_id: str = Depends(get_current_account_id),
     db: Session = Depends(get_db)
 ):
-    """获取对话历史"""
+    """Fetch conversation history."""
     DatasetService.ensure_member(db, tenant_id, account_id)
     conversation = db.query(Conversation).filter(
         Conversation.id == conversation_id,
@@ -622,7 +624,7 @@ async def list_conversation_checkpoints(
     account_id: str = Depends(get_current_account_id),
     db: Session = Depends(get_db),
 ):
-    """列出该会话的 LangGraph checkpoints（用于 time-travel/debug）。"""
+    """List LangGraph checkpoints for this conversation (time-travel/debug)."""
     DatasetService.ensure_member(db, tenant_id, account_id)
     conversation = db.query(Conversation).filter(
         Conversation.id == conversation_id,
@@ -668,7 +670,7 @@ async def get_conversation_checkpoint(
     account_id: str = Depends(get_current_account_id),
     db: Session = Depends(get_db),
 ):
-    """获取指定 checkpoint 的快照（默认不返回 docs 字段）。"""
+    """Get a checkpoint snapshot (docs are excluded by default)."""
     DatasetService.ensure_member(db, tenant_id, account_id)
     conversation = db.query(Conversation).filter(
         Conversation.id == conversation_id,
@@ -684,7 +686,7 @@ async def get_conversation_checkpoint(
     thread_id = str(conversation_id)
     config = {"configurable": {"thread_id": thread_id, "checkpoint_ns": "", "checkpoint_id": checkpoint_id}}
     snap = graph.get_state(config)
-    if not snap:
+    if not snap or getattr(snap, "created_at", None) is None:
         raise HTTPException(status_code=404, detail="Checkpoint not found")
 
     cfg = (snap.config or {}).get("configurable") or {}
@@ -708,7 +710,7 @@ async def delete_conversation_checkpoints(
     account_id: str = Depends(get_current_account_id),
     db: Session = Depends(get_db),
 ):
-    """清除该会话的 checkpoints（仅影响 LangGraph 内部状态，不删除消息/对话）。"""
+    """Clear checkpoints for this conversation (does not delete messages or the conversation)."""
     DatasetService.ensure_member(db, tenant_id, account_id)
     conversation = db.query(Conversation).filter(
         Conversation.id == conversation_id,
@@ -732,7 +734,7 @@ async def delete_conversation(
     account_id: str = Depends(get_current_account_id),
     db: Session = Depends(get_db)
 ):
-    """删除对话"""
+    """Delete a conversation."""
     DatasetService.ensure_member(db, tenant_id, account_id)
     conversation = db.query(Conversation).filter(
         Conversation.id == conversation_id,

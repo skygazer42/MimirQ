@@ -1,5 +1,5 @@
 """
-文档管理 API
+Document management API.
 """
 import asyncio
 import hashlib
@@ -63,21 +63,21 @@ logger = get_logger("api.documents")
 
 router = APIRouter()
 
-# 文件名安全字符：字母、数字、中文、日文、韩文、空格、点、下划线、连字符
+# Safe filename characters: letters, digits, CJK, spaces, dots, underscores, hyphens.
 SAFE_FILENAME_PATTERN = re.compile(r'^[a-zA-Z0-9\u4e00-\u9fff\u3040-\u30ff\uac00-\ud7af._\-\s]+$')
 
 def _compute_pipeline_hash(doc_metadata: dict) -> str:
     """
-    基于 doc_metadata 中与处理流程相关的字段，生成稳定的 pipeline_hash。
-    用途：任务幂等、锁 key、job_id 去重（同文档不同配置不会互相阻塞）。
+    Generate a stable pipeline_hash based on processing-related doc_metadata fields.
+    Use cases: task idempotency, lock keys, job_id dedupe (configs do not block each other).
     """
     relevant = {
-        # parser/chunk策略
+        # Parser/chunk strategy.
         "parser_backend": doc_metadata.get("parser_backend"),
         "parser_backend_requested": doc_metadata.get("parser_backend_requested"),
         "chunk_strategy": doc_metadata.get("chunk_strategy"),
         "chunk_strategy_requested": doc_metadata.get("chunk_strategy_requested"),
-        # pipeline options（已是相对稳定的结构）
+        # Pipeline options (stable structure).
         "pipeline": doc_metadata.get("pipeline") or {},
     }
     raw = json.dumps(relevant, sort_keys=True, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
@@ -85,7 +85,7 @@ def _compute_pipeline_hash(doc_metadata: dict) -> str:
 
 
 def _validate_filename(filename: str) -> None:
-    """验证文件名安全性"""
+    """Validate filename safety."""
     if not filename:
         raise HTTPException(status_code=400, detail="Filename is required")
     if len(filename) > 255:
@@ -175,7 +175,7 @@ def _resolve_writable_dataset(
         except HTTPException:
             continue
 
-    # 验证用户是否有权限创建数据集
+    # Validate user permission to create a dataset.
     role = (getattr(member, 'role', None) or "").lower()
     if role not in EDIT_ROLES:
         raise HTTPException(
@@ -189,7 +189,7 @@ def _resolve_writable_dataset(
         tenant_id=tenant_id,
         name="默认知识库",
         description="自动创建（未指定 dataset_id）",
-        permission=DatasetPermissionEnum.ONLY_ME,  # 限制权限，避免权限提升
+        permission=DatasetPermissionEnum.ONLY_ME,  # Restrict permission to avoid privilege escalation.
         owner_id=account_id,
         partial_members=[],
     )
@@ -224,19 +224,19 @@ async def upload_document(
     db: Session = Depends(get_db)
 ):
     """
-    上传文档
+    Upload a document.
 
-    流程：
-    1. 验证文件类型和大小
-    2. 保存文件到本地
-    3. 创建数据库记录
-    4. 后台异步处理文档（解析、切片、向量化）
+    Flow:
+    1. Validate file type and size
+    2. Save file locally
+    3. Create database record
+    4. Process document asynchronously (parse, chunk, embed)
     """
 
-    # 0. 验证文件名安全性
+    # 0. Validate filename safety.
     _validate_filename(file.filename)
 
-    # 1. 验证文件类型
+    # 1. Validate file type.
     file_ext = Path(file.filename).suffix.lower()
     if file_ext not in settings.allowed_extensions_list:
         raise HTTPException(
@@ -279,14 +279,14 @@ async def upload_document(
         _validate_chunk_params(pipeline_effective.chunk_size, pipeline_effective.chunk_overlap)
     pipeline_metadata = build_pipeline_metadata(pipeline_options)
 
-    # 权限检查
+    # Permission check.
     dataset = _resolve_writable_dataset(db, tenant_id, account_id, dataset_id)
 
-    # 3. 保存文件
+    # 3. Save file.
     upload_dir = Path(settings.UPLOAD_DIR) / str(tenant_id)
     upload_dir.mkdir(parents=True, exist_ok=True)
 
-    # 生成唯一文件名
+    # Generate unique filename.
     file_id = uuid.uuid4()
     file_path = upload_dir / f"{file_id}{file_ext}"
 
@@ -295,7 +295,7 @@ async def upload_document(
     except HTTPException:
         raise
 
-    # 4. 创建数据库记录
+    # 4. Create database record.
     doc_metadata = {
         "parser_backend": resolved_parser_backend,
         "parser_backend_requested": (parser_backend or "").lower(),
@@ -324,7 +324,7 @@ async def upload_document(
     db.commit()
     db.refresh(db_document)
 
-    # 5. 后台处理文档：优先入队（保持 API 兼容；未启用队列则回退 BackgroundTasks）
+    # 5. Process document in background: enqueue if available (fallback to BackgroundTasks).
     job_id = f"doc:{tenant_id}:{file_id}:{pipeline_hash}"
     task_id = await enqueue_document_processing(
         tenant_id=tenant_id,
@@ -381,20 +381,20 @@ async def upload_documents_batch(
     max_concurrent: int = Form(default=5)
 ):
     """
-    批量上传文档（并发优化版）
-    
-    支持同时上传多个文档，使用并发处理以提升性能。
-    
+    Batch upload documents (concurrency-optimized).
+
+    Supports uploading multiple documents concurrently to improve performance.
+
     Args:
-        files: 文档文件列表
-        max_concurrent: 最大并发处理数，默认5
-        其他参数同单文件上传接口
-    
+        files: Document file list.
+        max_concurrent: Max concurrent processing, default 5.
+        Other params match the single-file upload endpoint.
+
     Returns:
         {
-            "total": 总文件数,
-            "successful": 成功上传的文档列表,
-            "failed": 失败的文件列表（包含错误信息）
+            "total": total files,
+            "successful": list of successful documents,
+            "failed": list of failed files (with errors)
         }
     """
     if not files:
@@ -403,18 +403,18 @@ async def upload_documents_batch(
     if len(files) > 50:
         raise HTTPException(status_code=400, detail="Too many files. Maximum 50 files per batch.")
     
-    # 控制并发数
-    max_concurrent = min(max_concurrent, 10)  # 最多10个并发
+    # Cap concurrency.
+    max_concurrent = min(max_concurrent, 10)  # Max 10 concurrent.
     semaphore = asyncio.Semaphore(max_concurrent)
     
     async def process_single_file(file: UploadFile) -> dict:
-        """处理单个文件的上传"""
+        """Handle upload for a single file."""
         async with semaphore:
             try:
-                # 验证文件名
+                # Validate filename.
                 _validate_filename(file.filename)
                 
-                # 验证文件类型
+                # Validate file type.
                 file_ext = Path(file.filename).suffix.lower()
                 if file_ext not in settings.allowed_extensions_list:
                     return {
@@ -423,7 +423,7 @@ async def upload_documents_batch(
                         "error": f"Unsupported file type: {file_ext}"
                     }
                 
-                # 解析器验证
+                # Parser validation.
                 requested_parser_backend = (parser_backend or "").strip().lower()
                 if file_ext == ".pdf" and requested_parser_backend in {"", "auto"}:
                     resolved_parser_backend = "auto"
@@ -455,8 +455,8 @@ async def upload_documents_batch(
                     _validate_chunk_params(pipeline_effective.chunk_size, pipeline_effective.chunk_overlap)
                 pipeline_metadata = build_pipeline_metadata(pipeline_options)
                 
-                # 权限检查（在 semaphore 外部已完成）
-                # 保存文件
+                # Permission check (already done outside semaphore).
+                # Save file.
                 upload_dir = Path(settings.UPLOAD_DIR) / str(tenant_id)
                 upload_dir.mkdir(parents=True, exist_ok=True)
                 
@@ -465,7 +465,7 @@ async def upload_documents_batch(
                 
                 file_size = await save_upload_file(file, file_path, max_bytes=settings.MAX_FILE_SIZE)
                 
-                # 创建数据库记录
+                # Create database record.
                 doc_metadata = {
                     "parser_backend": resolved_parser_backend,
                     "parser_backend_requested": (parser_backend or "").lower(),
@@ -494,7 +494,7 @@ async def upload_documents_batch(
                 db.commit()
                 db.refresh(db_document)
                 
-                # 后台处理文档：优先入队（保持 API 兼容；未启用队列则回退 BackgroundTasks）
+                # Process document in background: enqueue if available (fallback to BackgroundTasks).
                 job_id = f"doc:{tenant_id}:{file_id}:{pipeline_hash}"
                 task_id = await enqueue_document_processing(
                     tenant_id=tenant_id,
@@ -533,14 +533,14 @@ async def upload_documents_batch(
                     "error": str(e)
                 }
     
-    # 权限检查（一次性完成）
+    # Permission check (done once).
     dataset = _resolve_writable_dataset(db, tenant_id, account_id, dataset_id)
     
-    # 并发处理所有文件
+    # Process all files concurrently.
     tasks = [process_single_file(file) for file in files]
     results = await asyncio.gather(*tasks, return_exceptions=True)
     
-    # 处理异常结果
+    # Handle error results.
     processed_results = []
     for result in results:
         if isinstance(result, Exception):
@@ -588,7 +588,7 @@ async def list_documents(
     db: Session = Depends(get_db)
 ):
     """
-    获取文档列表
+    List documents.
     """
     DatasetService.ensure_member(db, tenant_id, account_id)
 
@@ -600,9 +600,9 @@ async def list_documents(
         query = query.filter(DBDocument.dataset_id == dataset_id)
     else:
         # No dataset_id: return all documents the user can read within the tenant.
-        # 优化：使用数据库级别的过滤，避免 N+1 查询
+        # Optimization: use database filtering to avoid N+1 queries.
 
-        # 子查询：获取 PARTIAL_MEMBERS 权限中用户有权访问的数据集 ID
+        # Subquery: dataset IDs accessible via PARTIAL_MEMBERS permission.
         partial_member_subq = (
             db.query(DatasetPermission.dataset_id)
             .filter(
@@ -612,20 +612,20 @@ async def list_documents(
             .subquery()
         )
 
-        # 构建允许访问的数据集过滤条件
+        # Build allowed dataset filters.
         allowed_dataset_filter = or_(
-            # 用户是所有者
+            # User is owner.
             Dataset.owner_id == account_id,
-            # ALL_TEAM_MEMBERS 权限
+            # ALL_TEAM_MEMBERS permission.
             Dataset.permission == DatasetPermissionEnum.ALL_TEAM_MEMBERS,
-            # PARTIAL_MEMBERS 权限且用户在列表中
+            # PARTIAL_MEMBERS permission and user in list.
             and_(
                 Dataset.permission == DatasetPermissionEnum.PARTIAL_MEMBERS,
                 Dataset.id.in_(partial_member_subq)
             )
         )
 
-        # 获取允许访问的数据集 ID
+        # Fetch accessible dataset IDs.
         allowed_dataset_ids_subq = (
             db.query(Dataset.id)
             .filter(
@@ -642,14 +642,14 @@ async def list_documents(
             )
         )
 
-    # 状态过滤
+    # Status filter.
     if status and status != 'all':
         query = query.filter(DBDocument.status == status)
 
-    # 总数
+    # Total count.
     total = query.count()
 
-    # 分页
+    # Pagination.
     documents = query.order_by(DBDocument.created_at.desc()).offset(skip).limit(limit).all()
 
     return {
@@ -667,7 +667,7 @@ async def get_document(
     db: Session = Depends(get_db)
 ):
     """
-    获取文档详情
+    Get document detail.
     """
     DatasetService.ensure_member(db, tenant_id, account_id)
     query = db.query(DBDocument).filter(
@@ -681,12 +681,12 @@ async def get_document(
     if not document:
         raise HTTPException(status_code=404, detail="Document not found")
 
-    # 权限检查
+    # Permission check.
     if document.dataset_id:
         ds = DatasetService.get_dataset(db, tenant_id, document.dataset_id)
         DatasetService.assert_dataset_readable(db, ds, account_id)
 
-    # 如果需要包含切片，访问一次关系以确保加载
+    # If chunks are needed, touch the relationship to ensure load.
     if include_chunks:
         # Expose a non-relationship attribute for Pydantic to serialize without triggering
         # accidental lazy-loading when include_chunks=false.
@@ -703,7 +703,7 @@ async def get_document_status(
     db: Session = Depends(get_db)
 ):
     """
-    获取文档处理状态（用于轮询）
+    Get document processing status (for polling).
     """
     DatasetService.ensure_member(db, tenant_id, account_id)
     document = db.query(DBDocument).filter(
@@ -735,7 +735,7 @@ async def delete_document(
     db: Session = Depends(get_db)
 ):
     """
-    删除文档
+    Delete document.
     """
     DatasetService.ensure_member(db, tenant_id, account_id)
     document = db.query(DBDocument).filter(
@@ -750,11 +750,11 @@ async def delete_document(
         ds = DatasetService.get_dataset(db, tenant_id, document.dataset_id)
         DatasetService.assert_dataset_writable(db, ds, account_id)
 
-    # 1. 删除 MinIO 中的图片（如果启用）
+    # 1. Delete images in MinIO (if enabled).
     if settings.MINIO_ENABLED:
         img_ids: set[str] = set()
 
-        # 优先使用文档级聚合列表（避免遗漏 ZIP/内嵌图片等"非 chunk_index"资源）
+        # Prefer document-level aggregated list (avoid missing ZIP/embedded images, etc.).
         doc_meta = document.doc_metadata or {}
         doc_img_ids = doc_meta.get("img_ids")
         if isinstance(doc_img_ids, list):
@@ -762,7 +762,7 @@ async def delete_document(
                 if isinstance(v, str) and v.strip():
                     img_ids.add(v)
 
-        # 兼容：逐 chunk 删除（老数据可能没有 documents.metadata.img_ids）
+        # Compatibility: delete per chunk (older data may lack documents.metadata.img_ids).
         chunks = (
             db.query(DocumentChunk)
             .filter(DocumentChunk.document_id == document_id, DocumentChunk.tenant_id == tenant_id)
@@ -779,10 +779,10 @@ async def delete_document(
             except Exception as e:
                 logger.warning("Failed to delete image %s from object storage: %s", img_id, e)
 
-    # 2. 删除向量库中的向量（按后端切换）
+    # 2. Delete vectors from vector store (backend-dependent).
     Indexer(db).delete_all(tenant_id=tenant_id, document_id=document_id, commit=False)
 
-    # 3. 删除本地文件
+    # 3. Delete local file.
     try:
         file_path = Path(document.file_path)
         if file_path.exists():
@@ -790,11 +790,11 @@ async def delete_document(
     except Exception as e:
         logger.warning("Failed to delete file: %s", e)
 
-    # 4. 删除数据库记录（级联删除 chunks）
+    # 4. Delete DB record (cascade chunks).
     db.delete(document)
     db.commit()
 
-    # 5. 移除 BM25 索引中的切片（内存索引）
+    # 5. Remove chunks from BM25 index (in-memory).
     return None
 
 
@@ -806,12 +806,12 @@ async def get_image(
     db: Session = Depends(get_db),
 ):
     """
-    根据 image_id 返回保存的图片。
-    标准位置：{UPLOAD_DIR}/images/{image_id}.png
+    Return stored image by image_id.
+    Standard path: {UPLOAD_DIR}/images/{image_id}.png
     """
     DatasetService.ensure_member(db, tenant_id, account_id)
     images_dir = Path(settings.UPLOAD_DIR) / str(tenant_id) / "images"
-    # 防止路径穿越：仅允许 UUID / 32位十六进制（内部生成的 image_id）
+    # Prevent path traversal: only allow UUID / 32-hex (internal image_id).
     try:
         safe_id = uuid.UUID(image_id).hex
     except Exception:
@@ -820,11 +820,11 @@ async def get_image(
     images_dir_resolved = images_dir.resolve(strict=False)
     file_path = (images_dir / f"{safe_id}.png").resolve(strict=False)
 
-    # 安全检查：确保 file_path 在 images_dir 目录下（防止路径穿越）
+    # Safety check: ensure file_path stays under images_dir (prevent path traversal).
     if not str(file_path).startswith(str(images_dir_resolved) + "/"):
         raise HTTPException(status_code=404, detail="Image not found")
 
-    # 检查文件是否存在且为普通文件
+    # Check file exists and is a regular file.
     if not file_path.exists() or not file_path.is_file():
         raise HTTPException(status_code=404, detail="Image not found")
     return FileResponse(file_path, media_type="image/png")
@@ -838,8 +838,8 @@ async def get_image_url(
     db: Session = Depends(get_db),
 ):
     """
-    根据 img_id（格式：{tenant_id}:{dataset_id}:{document_id}:{chunk_index}）获取 MinIO 预签名 URL。
-    返回 302 重定向到图片 URL。
+    Get MinIO presigned URL by img_id ({tenant_id}:{dataset_id}:{document_id}:{chunk_index}).
+    Returns a 302 redirect to the image URL.
     """
     if not settings.MINIO_ENABLED:
         raise HTTPException(
@@ -849,7 +849,7 @@ async def get_image_url(
 
     DatasetService.ensure_member(db, tenant_id, account_id)
 
-    # 基础访问控制：确保 img_id 前缀租户与请求租户一致（兼容老格式 dataset-chunk 不做限制）
+    # Basic access control: ensure img_id tenant prefix matches request tenant (legacy dataset-chunk exempt).
     def _tenant_from_img_id(val: str) -> Optional[str]:
         if ":" in val:
             parts = val.split(":", 1)
@@ -860,7 +860,7 @@ async def get_image_url(
     if tenant_in_img and tenant_in_img != str(tenant_id):
         raise HTTPException(status_code=403, detail="Image access denied for this tenant")
 
-    # 权限校验：尽可能根据 img_id 解析出 dataset/document，做 dataset 级权限控制
+    # Permission check: parse dataset/document from img_id when possible for dataset-level control.
     if ":" in img_id:
         try:
             _tenant_part, dataset_part, document_part, _chunk_key = img_id.split(":", 3)
@@ -893,7 +893,7 @@ async def get_image_url(
 
     try:
         url = minio_service.get_image_url(img_id, extension="jpg")
-        # 直接重定向到 MinIO 预签名 URL
+        # Redirect to MinIO presigned URL.
         return RedirectResponse(url=url, status_code=302)
     except Exception as e:
         raise HTTPException(
@@ -922,13 +922,13 @@ async def preview_document(
     db: Session = Depends(get_db),
 ):
     """
-    文档解析预览接口
+    Document parse preview endpoint.
 
-    仅解析文档并返回结构化片段，不创建文档记录或入库。
-    适用于前端根据解析结果自定义切片。
+    Only parses the document and returns structured segments; does not create
+    a document record or persist data. Useful for frontend custom chunking.
     """
     DatasetService.ensure_member(db, tenant_id, account_id)
-    # 验证文件类型
+    # Validate file type.
     file_ext = Path(file.filename).suffix.lower()
     if file_ext not in settings.allowed_extensions_list:
         raise HTTPException(
@@ -936,7 +936,7 @@ async def preview_document(
             detail=f"Unsupported file type. Allowed: {settings.allowed_extensions_list}"
         )
 
-    # 将文件保存到临时路径进行解析
+    # Save file to a temp path for parsing.
     upload_dir = Path(settings.UPLOAD_DIR) / str(tenant_id) / "preview"
     upload_dir.mkdir(parents=True, exist_ok=True)
 
@@ -1055,23 +1055,23 @@ async def create_document_with_manual_chunks(
     db: Session = Depends(get_db)
 ):
     """
-    基于前端自定义切片创建文档
+    Create a document from frontend custom chunks.
 
-    流程：
-    1. 创建文档记录（状态为 processing）
-    2. 使用传入的 chunks 生成 Embeddings 并存入 Milvus
-    3. 将 chunks 写入 PostgreSQL
-    4. 重建 BM25 索引
-    5. 更新文档状态为 completed
+    Flow:
+    1. Create document record (status=processing)
+    2. Generate embeddings from chunks and store in Milvus
+    3. Write chunks to PostgreSQL
+    4. Rebuild BM25 index
+    5. Update document status to completed
     """
-    # 权限检查
+    # Permission check.
     dataset = _resolve_writable_dataset(db, tenant_id, account_id, request.dataset_id)
 
-    # 基本校验
+    # Basic validation.
     if not request.chunks:
         raise HTTPException(status_code=400, detail="Chunks cannot be empty")
 
-    # 校验文件类型
+    # Validate file type.
     file_type_with_dot = f".{request.file_type.lower()}"
     if file_type_with_dot not in settings.allowed_extensions_list:
         raise HTTPException(
@@ -1079,7 +1079,7 @@ async def create_document_with_manual_chunks(
             detail=f"Unsupported file type: {request.file_type}"
         )
 
-    # 创建文档记录
+    # Create document record.
     document_id = uuid.uuid4()
     pipeline_options = _to_pipeline_options(pipeline=request.pipeline)
     pipeline_effective = resolve_pipeline_options(pipeline_options)
@@ -1097,7 +1097,7 @@ async def create_document_with_manual_chunks(
         filename=request.filename,
         file_type=request.file_type.lower(),
         file_size=request.file_size,
-        # 手动切片的文档没有真实文件路径，使用占位符
+        # Manual-chunk documents have no real file path; use a placeholder.
         file_path=f"manual://{document_id}",
         status='processing',
         processing_progress=0,
@@ -1106,7 +1106,7 @@ async def create_document_with_manual_chunks(
     )
 
     db.add(db_document)
-    db.flush()  # 仅 flush，不 commit，便于后续回滚
+    db.flush()  # Flush only (no commit) to allow rollback.
 
     try:
         records: List[IndexRecord] = []
@@ -1145,7 +1145,7 @@ async def create_document_with_manual_chunks(
         if not persist_result.db_chunks:
             raise RuntimeError("Database chunks were not persisted")
 
-        # 更新文档统计信息和状态
+        # Update document stats and status.
         db_document.chunk_count = len(request.chunks)
         db_document.total_characters = persist_result.total_characters
         db_document.status = 'completed'
@@ -1174,7 +1174,7 @@ async def create_document_with_manual_chunks(
                     ab_user_key=account_id,
                 )
             except Exception as exc:
-                # KG 抽取是可选增强，失败不影响主流程（避免“已入库但标记 failed”）。
+                # KG extraction is optional; failures do not block the main flow.
                 logger.warning("KG extraction failed for document %s: %s", document_id, str(exc)[:200])
 
         return db_document
@@ -1217,21 +1217,21 @@ async def preview_chunking(
     db: Session = Depends(get_db),
 ):
     """
-    切块预览接口
+    Chunk preview endpoint.
 
-    上传文件并使用指定参数进行切块预览，不存入数据库。
-    返回切块结果及每个块在原文中的位置，用于前端高亮展示。
+    Upload a file and preview chunking with the given parameters (no DB writes).
+    Returns chunk results with positions for frontend highlighting.
 
     Args:
-        file: 上传的文件
-        chunk_size: 切块大小 (100-4000)
-        chunk_overlap: 重叠大小 (0-1000)
+        file: Uploaded file.
+        chunk_size: Chunk size (100-4000).
+        chunk_overlap: Overlap size (0-1000).
 
     Returns:
-        切块预览结果，包含每个块的内容和位置信息
+        Chunk preview result including content and position info.
     """
     DatasetService.ensure_member(db, tenant_id, account_id)
-    # 参数校验
+    # Parameter validation.
     if chunk_size < 100 or chunk_size > 4000:
         raise HTTPException(status_code=400, detail="chunk_size must be between 100 and 4000")
     if chunk_overlap < 0 or chunk_overlap > 1000:
@@ -1239,7 +1239,7 @@ async def preview_chunking(
     if chunk_overlap >= chunk_size:
         raise HTTPException(status_code=400, detail="chunk_overlap must be less than chunk_size")
 
-    # 验证文件类型
+    # Validate file type.
     file_ext = Path(file.filename).suffix.lower()
     if file_ext not in settings.allowed_extensions_list:
         raise HTTPException(
@@ -1247,7 +1247,7 @@ async def preview_chunking(
             detail=f"Unsupported file type. Allowed: {settings.allowed_extensions_list}"
         )
 
-    # 保存到临时路径
+    # Save to a temp path.
     upload_dir = Path(settings.UPLOAD_DIR) / str(tenant_id) / "preview"
     upload_dir.mkdir(parents=True, exist_ok=True)
     temp_path = upload_dir / f"{uuid.uuid4()}{file_ext}"
@@ -1289,7 +1289,7 @@ async def preview_chunking(
             "common_lines_min_ratio": pipeline_effective.governance_common_lines_min_ratio,
         }
 
-        # ragflow 预设走独立分支（自解析 + 切块）
+        # Ragflow preset uses a separate branch (self-parse + chunk).
         if resolved_chunk_strategy in chunker_factory.RAGFLOW_STRATEGIES:
             from app.parsing.processors.processor import document_processor
             chunks = await asyncio.to_thread(
@@ -1298,14 +1298,14 @@ async def preview_chunking(
                 resolved_chunk_strategy
             )
             resolved_backend = "ragflow"
-            documents = []  # ragflow 已自处理
+            documents = []  # Ragflow already handled.
             if pipeline_effective.governance_enabled:
                 chunks, _stats = governance_processor.clean_documents(
                     chunks,
                     **governance_kwargs,
                 )
         else:
-            # 解析文档
+            # Parse document.
             if file_ext == ".pdf":
                 requested = (parser_backend or "").strip().lower()
                 if not requested or requested == "auto":
@@ -1354,8 +1354,8 @@ async def preview_chunking(
             if dropped:
                 logger.info("Chunk preview dropped %s short chunks (<%s chars)", dropped, min_chars)
 
-        # 合并原文：非 ragflow 分支用解析后的 pages；ragflow 预设分支用 chunks 拼接，
-        # 以保证 original_text 与 chunks 一致，便于前端高亮定位。
+        # Merge original text: use parsed pages for non-ragflow, chunks for ragflow,
+        # to keep original_text aligned with chunks for frontend highlighting.
         page_texts = []
         current_pos = 0
         ragflow_chunk_start_map: dict[int, int] = {}
@@ -1375,8 +1375,8 @@ async def preview_chunking(
             full_text = "\n".join([p['text'] for p in page_texts]) if page_texts else ""
             page_start_map = {item['page']: item['start'] for item in page_texts} if page_texts else {}
         else:
-            # ragflow 预设：documents 为空，只能从 chunks 构造“可定位”的原文。
-            # 注意：这不是严格意义上的原始文档全文，但能确保前端定位稳定。
+            # Ragflow preset: documents is empty; build "locatable" text from chunks.
+            # Note: not a strict original full text, but keeps highlighting stable.
             parts: list[str] = []
             for idx, chunk in enumerate(chunks):
                 text = chunk.page_content or ""
@@ -1387,7 +1387,7 @@ async def preview_chunking(
             full_text = "\n\n".join(parts) if parts else ""
             page_start_map = {}
 
-        # 构建响应
+        # Build response.
         chunk_items: List[ChunkPreviewItem] = []
         for idx, chunk in enumerate(chunks):
             meta = chunk.metadata or {}
@@ -1429,7 +1429,7 @@ async def preview_chunking(
                 unit="tokens" if resolved_chunk_strategy == "langchain_token" else "chars",
             ),
             chunks=chunk_items,
-            original_text=full_text if len(full_text) <= 100000 else None,  # 超过 100KB 不返回原文
+            original_text=full_text if len(full_text) <= 100000 else None,  # Skip original text > 100 KB.
             parser_backend=resolved_backend,
             chunk_strategy=resolved_chunk_strategy
         )
@@ -1446,7 +1446,7 @@ async def preview_chunking(
             pass
 
 
-# ==================== MinerU 批量上传 API ====================
+# ==================== MinerU batch upload API ====================
 
 @router.post("/batch-upload/apply-urls", response_model=BatchUploadResponse)
 async def apply_batch_upload_urls(
@@ -1456,23 +1456,23 @@ async def apply_batch_upload_urls(
     db: Session = Depends(get_db),
 ):
     """
-    批量申请文件上传 URL（MinerU 在线解析）
+    Batch request file upload URLs (MinerU online parsing).
 
-    适用于本地文件批量上传解析的场景。
+    Use case: batch upload local files for parsing.
 
-    使用流程：
-    1. 调用此接口申请上传 URL（最多 200 个文件）
-    2. 使用返回的 URL 上传文件（PUT 请求，无需设置 Content-Type）
-    3. 上传完成后，系统自动提交解析任务
-    4. 使用 batch_id 查询解析状态
+    Flow:
+    1. Call this endpoint to request upload URLs (up to 200 files)
+    2. Upload files to returned URLs (PUT; no Content-Type needed)
+    3. After upload, the system submits parsing tasks automatically
+    4. Query status using batch_id
 
-    注意事项：
-    - 上传链接有效期为 24 小时
-    - 上传文件时无需设置 Content-Type 请求头
-    - 文件上传完成后无需手动提交任务，系统会自动扫描并处理
+    Notes:
+    - Upload links are valid for 24 hours
+    - No Content-Type header required for uploads
+    - No manual submit needed; the system scans and processes automatically
 
     Example:
-        # Step 1: 申请上传 URL
+        # Step 1: request upload URLs
         response = requests.post("http://localhost:8000/api/v1/documents/batch-upload/apply-urls", headers={
             "X-User-ID": "demo",
         }, json={
@@ -1482,7 +1482,7 @@ async def apply_batch_upload_urls(
             ]
         })
 
-        # Step 2: 上传文件
+        # Step 2: upload files
         batch_id = response.json()["batch_id"]
         urls = response.json()["file_urls"]
 
@@ -1490,7 +1490,7 @@ async def apply_batch_upload_urls(
             with open(f"file{i+1}.pdf", "rb") as f:
                 requests.put(url, data=f)
 
-        # Step 3: 查询状态
+        # Step 3: query status
         requests.get(f"http://localhost:8000/api/v1/documents/batch-upload/status/{batch_id}", headers={
             "X-User-ID": "demo",
         })
@@ -1525,19 +1525,19 @@ async def get_batch_task_status(
     db: Session = Depends(get_db),
 ):
     """
-    查询批量解析任务状态
+    Query batch parsing task status.
 
     Args:
-        batch_id: 批次 ID（从申请上传 URL 接口获得）
+        batch_id: Batch ID (from apply upload URLs).
 
     Returns:
-        任务状态信息，包括进度、完成数量等
+        Task status info, including progress and completion counts.
     """
     DatasetService.ensure_member(db, tenant_id, account_id)
     try:
         status = await mineru_service.aget_task_status(batch_id)
 
-        # 转换为标准化格式
+        # Normalize to a standard format.
         return BatchTaskStatus(
             batch_id=batch_id,
             status=status.get("status", "pending"),

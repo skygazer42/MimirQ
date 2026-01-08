@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
 """
-I/O 并发性能基准测试脚本
+I/O concurrency benchmark script.
 
-用于测试和对比优化前后的性能指标：
-- 批量文档上传
-- 图片上传
-- Embedding 生成
-- 向量索引
+Used to test and compare performance before/after optimizations:
+- Batch document upload
+- Image upload
+- Embedding generation
+- Vector indexing
 
-使用方法:
+Usage:
     python scripts/benchmark_io_concurrency.py --test all
     python scripts/benchmark_io_concurrency.py --test batch_upload
     python scripts/benchmark_io_concurrency.py --test embedding
@@ -21,7 +21,7 @@ from pathlib import Path
 from typing import List, Dict, Any
 import statistics
 
-# 添加项目根目录到 Python 路径
+# Add project root to Python path.
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from app.rag.embedding.base import BaseEmbeddingModel
@@ -30,18 +30,18 @@ from app.core.config import settings
 
 
 class BenchmarkResults:
-    """基准测试结果"""
+    """Benchmark results."""
     
     def __init__(self, name: str):
         self.name = name
         self.times: List[float] = []
     
     def add_time(self, elapsed: float):
-        """添加一次测试时间"""
+        """Add a single run time."""
         self.times.append(elapsed)
     
     def get_stats(self) -> Dict[str, Any]:
-        """获取统计信息"""
+        """Get summary stats."""
         if not self.times:
             return {"error": "No data"}
         
@@ -56,7 +56,7 @@ class BenchmarkResults:
         }
     
     def print_stats(self):
-        """打印统计信息"""
+        """Print summary stats."""
         stats = self.get_stats()
         if "error" in stats:
             print(f"❌ {self.name}: {stats['error']}")
@@ -81,18 +81,18 @@ async def benchmark_embedding_concurrent(
     runs: int = 3
 ) -> BenchmarkResults:
     """
-    测试 Embedding 并发生成性能
-    
+    Benchmark concurrent embedding generation performance.
+
     Args:
-        model: Embedding 模型
-        num_texts: 文本数量
-        batch_size: 批次大小
-        max_concurrent: 最大并发数
-        runs: 测试运行次数
+        model: Embedding model.
+        num_texts: Number of texts.
+        batch_size: Batch size.
+        max_concurrent: Max concurrency.
+        runs: Number of runs.
     """
     print(f"\n🚀 测试 Embedding 并发生成 (texts={num_texts}, batch={batch_size}, concurrent={max_concurrent})")
     
-    # 生成测试数据
+    # Generate test data.
     texts = [f"This is test document number {i} for embedding benchmark." for i in range(num_texts)]
     
     results = BenchmarkResults(f"Embedding 并发 (concurrent={max_concurrent})")
@@ -123,17 +123,17 @@ async def benchmark_embedding_serial(
     runs: int = 3
 ) -> BenchmarkResults:
     """
-    测试 Embedding 串行生成性能（对比基准）
-    
+    Benchmark serial embedding generation performance (baseline).
+
     Args:
-        model: Embedding 模型
-        num_texts: 文本数量
-        batch_size: 批次大小
-        runs: 测试运行次数
+        model: Embedding model.
+        num_texts: Number of texts.
+        batch_size: Batch size.
+        runs: Number of runs.
     """
     print(f"\n🐌 测试 Embedding 串行生成 (texts={num_texts}, batch={batch_size})")
     
-    # 生成测试数据
+    # Generate test data.
     texts = [f"This is test document number {i} for embedding benchmark." for i in range(num_texts)]
     
     results = BenchmarkResults("Embedding 串行")
@@ -164,19 +164,19 @@ async def benchmark_image_upload_concurrent(
     runs: int = 3
 ) -> BenchmarkResults:
     """
-    测试图片并发上传性能
-    
+    Benchmark concurrent image upload performance.
+
     Args:
-        num_images: 图片数量
-        max_concurrent: 最大并发数
-        runs: 测试运行次数
+        num_images: Number of images.
+        max_concurrent: Max concurrency.
+        runs: Number of runs.
     """
     print(f"\n🚀 测试图片并发上传 (images={num_images}, concurrent={max_concurrent})")
     
     from app.storage.object.minio import minio_service
     import uuid
     
-    # 生成测试图片数据（模拟 1KB 图片）
+    # Generate test image data (simulate 1KB images).
     test_image_data = b"x" * 1024
     
     results = BenchmarkResults(f"图片上传并发 (concurrent={max_concurrent})")
@@ -184,7 +184,7 @@ async def benchmark_image_upload_concurrent(
     for run in range(runs):
         print(f"  运行 {run + 1}/{runs}...", end=" ", flush=True)
         
-        # 准备图片数据
+        # Prepare image payloads.
         images = [
             {
                 "image_data": test_image_data,
@@ -219,18 +219,18 @@ async def benchmark_image_upload_serial(
     runs: int = 3
 ) -> BenchmarkResults:
     """
-    测试图片串行上传性能（对比基准）
-    
+    Benchmark serial image upload performance (baseline).
+
     Args:
-        num_images: 图片数量
-        runs: 测试运行次数
+        num_images: Number of images.
+        runs: Number of runs.
     """
     print(f"\n🐌 测试图片串行上传 (images={num_images})")
     
     from app.storage.object.minio import minio_service
     import uuid
     
-    # 生成测试图片数据（模拟 1KB 图片）
+    # Generate test image data (simulate 1KB images).
     test_image_data = b"x" * 1024
     
     results = BenchmarkResults("图片上传串行")
@@ -264,7 +264,7 @@ async def benchmark_image_upload_serial(
 
 
 def compare_results(baseline: BenchmarkResults, optimized: BenchmarkResults):
-    """对比优化前后的结果"""
+    """Compare pre- and post-optimization results."""
     baseline_stats = baseline.get_stats()
     optimized_stats = optimized.get_stats()
     
@@ -290,13 +290,13 @@ def compare_results(baseline: BenchmarkResults, optimized: BenchmarkResults):
 
 
 async def run_embedding_benchmark():
-    """运行 Embedding 基准测试"""
+    """Run embedding benchmarks."""
     print("\n" + "="*60)
     print("🧪 Embedding 并发性能测试")
     print("="*60)
     
     try:
-        # 尝试使用配置的 embedding 模型
+        # Try configured embedding model.
         model_id = f"{settings.EMBEDDING_PROVIDER}/{settings.EMBEDDING_MODEL}"
         model = select_embedding_model(model_id)
         print(f"使用模型: {model_id}")
@@ -305,7 +305,7 @@ async def run_embedding_benchmark():
         print("跳过 Embedding 测试")
         return
     
-    # 串行基准
+    # Serial baseline.
     serial_results = await benchmark_embedding_serial(
         model,
         num_texts=100,  # 减少数量以加快测试
@@ -314,7 +314,7 @@ async def run_embedding_benchmark():
     )
     serial_results.print_stats()
     
-    # 并发优化
+    # Concurrent run.
     concurrent_results = await benchmark_embedding_concurrent(
         model,
         num_texts=100,
@@ -324,12 +324,12 @@ async def run_embedding_benchmark():
     )
     concurrent_results.print_stats()
     
-    # 对比
+    # Compare.
     compare_results(serial_results, concurrent_results)
 
 
 async def run_image_upload_benchmark():
-    """运行图片上传基准测试"""
+    """Run image upload benchmarks."""
     print("\n" + "="*60)
     print("🧪 图片上传并发性能测试")
     print("="*60)
@@ -338,14 +338,14 @@ async def run_image_upload_benchmark():
         print("⚠️  MinIO 未启用，跳过图片上传测试")
         return
     
-    # 串行基准
+    # Serial baseline.
     serial_results = await benchmark_image_upload_serial(
         num_images=10,  # 减少数量以加快测试
         runs=2
     )
     serial_results.print_stats()
     
-    # 并发优化
+    # Concurrent run.
     concurrent_results = await benchmark_image_upload_concurrent(
         num_images=10,
         max_concurrent=5,
@@ -353,12 +353,12 @@ async def run_image_upload_benchmark():
     )
     concurrent_results.print_stats()
     
-    # 对比
+    # Compare.
     compare_results(serial_results, concurrent_results)
 
 
 async def main():
-    """主函数"""
+    """Main entry point."""
     parser = argparse.ArgumentParser(description="I/O 并发性能基准测试")
     parser.add_argument(
         "--test",

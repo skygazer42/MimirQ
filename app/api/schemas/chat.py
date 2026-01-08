@@ -1,5 +1,5 @@
 """
-对话相关 Pydantic Schema
+Chat-related Pydantic schemas.
 """
 from pydantic import BaseModel, Field, ConfigDict, field_validator
 from typing import Optional, List, Dict, Any
@@ -10,7 +10,7 @@ from app.rag.core.text import normalize_retrieval_mode
 from .base import OrmModel
 
 class Citation(BaseModel):
-    """引用信息"""
+    """Citation information."""
     document_id: UUID
     document_name: str
     chunk_id: UUID
@@ -35,14 +35,14 @@ class Citation(BaseModel):
     vector_backend: Optional[str] = None
     retrieval_elapsed_sec: Optional[float] = None
     hit_type: Optional[str] = None  # vector | keyword | mmr | hybrid
-    # 图片相关字段
+    # Image-related fields.
     has_image: bool = Field(default=False, description="该引用是否包含图片")
     img_id: Optional[str] = Field(default=None, description="图片 ID（MinIO 格式：{tenant_id}:{dataset_id}:{document_id}:{chunk_index}）")
     img_url: Optional[str] = Field(default=None, description="图片访问 URL")
 
 
 class MessageSchema(OrmModel):
-    """消息"""
+    """Message."""
     id: UUID
     role: str  # user | assistant
     content: str
@@ -52,13 +52,13 @@ class MessageSchema(OrmModel):
 
 
 class ConversationCreate(BaseModel):
-    """创建对话"""
+    """Create conversation."""
     title: Optional[str] = None
     document_ids: List[UUID] = Field(default_factory=list)
 
 
 class ConversationSchema(OrmModel):
-    """对话会话"""
+    """Conversation session."""
     id: UUID
     title: Optional[str] = None
     last_message: Optional[str] = None
@@ -68,25 +68,25 @@ class ConversationSchema(OrmModel):
 
 
 class ConversationDetail(BaseModel):
-    """对话详情"""
+    """Conversation detail."""
     conversation_id: UUID
     messages: List[MessageSchema]
 
 
 class ConversationList(BaseModel):
-    """对话列表"""
+    """Conversation list."""
     total: int
     items: List[ConversationSchema]
 
 
 class HistoryMessage(BaseModel):
-    """历史消息"""
+    """History message."""
     role: str  # user | assistant
     content: str
 
 
 class ChatRAGConfig(BaseModel):
-    """Chat 接口专用的 RAG 参数。"""
+    """RAG parameters specific to the chat endpoint."""
 
     top_k: int = Field(default=5, ge=1, le=100)
     score_threshold: float = Field(default=0.7, ge=0.0, le=1.0)
@@ -118,23 +118,23 @@ class ChatRAGConfig(BaseModel):
         return normalize_retrieval_mode(str(v) if v is not None else None)
 
 class ChatRequest(BaseModel):
-    """聊天请求"""
+    """Chat request."""
     conversation_id: Optional[UUID] = None
     message: str
-    history: List[HistoryMessage] = Field(default_factory=list)  # 对话历史
+    history: List[HistoryMessage] = Field(default_factory=list)  # Conversation history.
     document_ids: List[UUID] = Field(default_factory=list)
     stream: bool = True
-    structured_output: bool = False  # 是否要求结构化(JSON)输出
+    structured_output: bool = False  # Require structured (JSON) output.
     structured_preset: Optional[str] = None  # faq | summary | action_items | custom
-    enable_long_term_memory: bool = False  # 是否启用长期记忆召回
-    prompt_template_id: Optional[UUID] = None  # 自定义提示词模板 ID
-    prompt_template_key: Optional[str] = None  # 按 key 选择最新版本（可选）
-    prompt_ab_experiment_key: Optional[str] = None  # A/B 实验 key（可选，按用户稳定分流）
+    enable_long_term_memory: bool = False  # Enable long-term memory retrieval.
+    prompt_template_id: Optional[UUID] = None  # Custom prompt template ID.
+    prompt_template_key: Optional[str] = None  # Select latest version by key (optional).
+    prompt_ab_experiment_key: Optional[str] = None  # A/B experiment key (optional, stable per-user split).
     rag_config: ChatRAGConfig = Field(default_factory=ChatRAGConfig)
 
 
 class StreamEvent(BaseModel):
-    """流式事件"""
+    """Stream event."""
     type: str  # citations | token | done | error
     data: Any
 
