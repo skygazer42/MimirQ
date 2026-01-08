@@ -81,7 +81,7 @@ restart:
 	$(COMPOSE) restart backend
 
 backend:
-	uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+	uvicorn app.main:app --reload --host 0.0.0.0 --port 8000 --reload-dir app --reload-dir scripts --reload-exclude web/node_modules --reload-exclude web/.next --reload-exclude web/.next_build --reload-exclude uploads
 
 web:
 	cd web && pnpm dev
