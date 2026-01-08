@@ -14,7 +14,7 @@ def _get_encoder():
         try:
             import tiktoken
             _encoder = tiktoken.get_encoding("cl100k_base")
-        except ImportError:
+        except Exception:
             _encoder = False  # Mark as unavailable
     return _encoder
 
