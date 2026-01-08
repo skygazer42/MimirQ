@@ -64,10 +64,15 @@ class UserService:
         if UserService.get_by_username(db, normalized_username):
             raise HTTPException(status_code=400, detail="Username already registered")
 
+        try:
+            password_hash = hash_password(password)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
         user = User(
             email=normalized_email,
             username=normalized_username,
-            password_hash=hash_password(password),
+            password_hash=password_hash,
             is_active=True,
         )
         db.add(user)
