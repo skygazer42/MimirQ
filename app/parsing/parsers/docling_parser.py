@@ -1,14 +1,14 @@
 """
-Docling 文档解析器（业务层封装）
+Docling document parser (business layer wrapper)
 
-封装 deepdoc/parser/docling_parser.py 的底层实现，
-提供 LangChain Document 格式的输出。
+Wraps the underlying implementation in deepdoc/parser/docling_parser.py,
+providing LangChain Document format output.
 
-支持：
-- 结构感知 PDF 解析
-- 表格结构化提取
-- 图片提取
-- 多格式支持 (PDF, DOCX, PPTX, HTML 等)
+Supports:
+- Structure-aware PDF parsing
+- Table structure extraction
+- Image extraction
+- Multiple formats (PDF, DOCX, PPTX, HTML, etc.)
 """
 
 from __future__ import annotations
@@ -28,10 +28,10 @@ DOCLING_TABLE_MODE = getattr(settings, "DOCLING_TABLE_MODE", "markdown")
 
 class DoclingParser(BaseAdvancedParser):
     """
-    Docling 文档解析器（业务层封装）
+    Docling document parser (business layer wrapper)
 
-    调用 deepdoc/parser/docling_parser.py 底层实现，
-    将 sections/tables 转换为 LangChain Document 格式。
+    Calls the underlying implementation in deepdoc/parser/docling_parser.py,
+    converting sections/tables to LangChain Document format.
     """
 
     SUPPORTED_EXTENSIONS = {".pdf", ".docx", ".pptx", ".html", ".md", ".asciidoc"}
@@ -44,13 +44,13 @@ class DoclingParser(BaseAdvancedParser):
         max_pages: Optional[int] = None,
     ):
         """
-        初始化 Docling 解析器。
+        Initialize Docling parser.
 
         Args:
-            ocr_enabled: 启用 OCR 识别扫描文档
-            table_mode: 表格输出格式 (markdown, html, plain)
-            extract_images: 提取图片
-            max_pages: 最大处理页数 (None = 全部)
+            ocr_enabled: Enable OCR for scanned documents
+            table_mode: Table output format (markdown, html, plain)
+            extract_images: Extract images
+            max_pages: Maximum pages to process (None = all)
         """
         self.ocr_enabled = ocr_enabled
         self.table_mode = table_mode

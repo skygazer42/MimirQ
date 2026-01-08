@@ -82,14 +82,14 @@ class LLMReranker(DocumentReranker):
         )
 
         self._prompt = ChatPromptTemplate.from_template(
-            """你是一个"检索结果精排器"。给定 query 和候选文段 candidates，请输出严格 JSON 数组：
+            """You are a "retrieval result reranker". Given query and candidate passages, output strict JSON array:
 [{"id": "...", "score": 0.0}]
 
-要求：
-1) score 取 0~1，越大越相关；
-2) 按 score 从高到低排序；
-3) 只输出 JSON，不要输出任何解释、Markdown、代码块；
-4) id 必须来自输入 candidates（不要新增/编造 id）。
+Requirements:
+1) score ranges 0~1, higher means more relevant;
+2) sort by score from high to low;
+3) only output JSON, no explanations, Markdown, or code blocks;
+4) id must come from input candidates (do not add/fabricate id).
 
 query: {query}
 

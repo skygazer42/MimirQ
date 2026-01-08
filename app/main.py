@@ -199,7 +199,7 @@ async def lifespan(app: FastAPI):
 # Create FastAPI app
 app = FastAPI(
     title="MimirQ - Knowledge Base RAG System",
-    description="知识库管理与 RAG 对话系统",
+    description="Knowledge Base Management and RAG Conversation System",
     version="1.0.0",
     lifespan=lifespan
 )

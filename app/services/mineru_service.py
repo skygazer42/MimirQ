@@ -408,7 +408,7 @@ class MinerUService:
         """
         if not self.local_server_url:
             raise Exception(
-                "MinerU 本地服务未配置。请设置 MINERU_LOCAL_SERVER_URL，例如：http://localhost:30001"
+                "MinerU local service not configured. Please set MINERU_LOCAL_SERVER_URL, e.g., http://localhost:30001"
             )
 
         parse_endpoint = f"{self.local_server_url}/file_parse"
@@ -576,8 +576,8 @@ class MinerUService:
         """
         if not self.local_server_url:
             raise Exception(
-                "MinerU 本地服务未配置。请设置 MINERU_LOCAL_SERVER_URL，"
-                "例如：http://localhost:30001"
+                "MinerU local service not configured. Please set MINERU_LOCAL_SERVER_URL, "
+                "e.g., http://localhost:30001"
             )
         
         parse_endpoint = f"{self.local_server_url}/file_parse"

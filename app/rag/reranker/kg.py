@@ -10,8 +10,8 @@ from app.rag.reranker.types import RerankCandidate, RerankResult
 
 
 class KGReranker(BaseReranker):
-    """知识图谱重排器：基于图算法（PageRank/RRF）的重排"""
-    
+    """Knowledge Graph Reranker: reranking based on graph algorithms (PageRank/RRF)"""
+
     def __init__(self, strategy: RerankStrategy):
         self.strategy = strategy
         self._rrf = RerankRRFSearcher()
@@ -24,9 +24,9 @@ class KGReranker(BaseReranker):
         **kwargs: Any,
     ) -> RerankResult:
         """
-        同步重排接口（KG Reranker 仅支持异步）
-        
-        注意：KG Reranker 是异步的，请使用 arerank_kg() 方法。
+        Synchronous rerank interface (KG Reranker only supports async)
+
+        Note: KG Reranker is asynchronous, please use the arerank_kg() method.
         """
         raise NotImplementedError(
             "KGReranker only supports async operations. "

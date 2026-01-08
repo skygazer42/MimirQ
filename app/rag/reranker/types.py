@@ -1,5 +1,5 @@
 """
-Reranker 类型定义
+Reranker type definitions
 """
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ from typing import Any, Protocol, Sequence
 
 @dataclass(frozen=True)
 class RerankCandidate:
-    """重排候选项"""
+    """Rerank candidate item"""
     id: str
     text: str
     metadata: dict[str, Any] = field(default_factory=dict)
@@ -17,7 +17,7 @@ class RerankCandidate:
 
 @dataclass
 class RerankResult:
-    """重排结果"""
+    """Rerank result"""
     ordered_ids: list[str]
     score_map: dict[str, float]
     items: list[dict[str, Any]] = field(default_factory=list)
@@ -29,7 +29,7 @@ class RerankResult:
 
 
 class SyncReranker(Protocol):
-    """同步 Reranker 协议"""
+    """Synchronous Reranker protocol"""
     def rerank(
         self,
         query: str,
@@ -40,7 +40,7 @@ class SyncReranker(Protocol):
 
 
 class AsyncReranker(Protocol):
-    """异步 Reranker 协议"""
+    """Asynchronous Reranker protocol"""
     async def rerank(
         self,
         query: str,
