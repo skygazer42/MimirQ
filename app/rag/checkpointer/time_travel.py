@@ -12,12 +12,10 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any, Dict, Iterator, List, Optional, Sequence, Union
+from typing import Any, Dict, List, Optional, Union
 
 from langgraph.graph.state import CompiledStateGraph
-from langgraph.checkpoint.base import BaseCheckpointSaver
 
-from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 

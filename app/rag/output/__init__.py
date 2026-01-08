@@ -18,14 +18,10 @@ from __future__ import annotations
 
 import json
 import logging
-from abc import ABC, abstractmethod
-from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Dict, List, Optional, Type, Union
 
 from pydantic import BaseModel, Field
-
-from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 

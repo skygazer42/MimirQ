@@ -10,6 +10,9 @@
     "start": "next start",
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
+    "api-check": "node scripts/check-api-contract.mjs && node scripts/check-api-coverage.mjs",
+    "openapi:export": "python3 ../scripts/export_openapi.py --out openapi.json",
+    "openapi-types": "pnpm run openapi:export && pnpm run gen:api-types",
     "gen:api-types": "openapi-typescript ./openapi.json -o types/openapi.ts"
   },
   "dependencies": {

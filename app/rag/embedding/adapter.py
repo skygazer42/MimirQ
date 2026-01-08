@@ -6,7 +6,7 @@ for use with LangChain vector stores (Milvus, FAISS, Chroma, etc.).
 """
 from __future__ import annotations
 
-from typing import List, Optional, Dict, Any, Tuple
+from typing import List, Optional, Tuple
 import hashlib
 import json
 

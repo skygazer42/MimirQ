@@ -23,8 +23,7 @@ import logging
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any, AsyncIterator, Callable, Dict, List, Optional, Union
-from uuid import uuid4
+from typing import Any, AsyncIterator, Callable, Dict, List, Optional
 
 from app.core.config import settings
 

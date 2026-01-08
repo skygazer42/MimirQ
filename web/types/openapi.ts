@@ -1738,6 +1738,13 @@ export interface components {
             /** Document Id */
             document_id?: string | null;
         };
+        /** BuildMeta */
+        BuildMeta: {
+            /** Sha */
+            sha?: string | null;
+            /** Time */
+            time?: string | null;
+        };
         /**
          * ChatRAGConfig
          * @description Chat 接口专用的 RAG 参数。
@@ -2203,6 +2210,13 @@ export interface components {
              */
             updated_at: string;
         };
+        /** DatabaseStatus */
+        DatabaseStatus: {
+            /** Status */
+            status: string;
+            /** Error */
+            error?: string | null;
+        };
         /** DatasetCreate */
         DatasetCreate: {
             /** Name */
@@ -2537,6 +2551,42 @@ export interface components {
             magicpdf_enabled: boolean;
         };
         /**
+         * FeatureFlags
+         * @description 功能开关
+         */
+        "FeatureFlags-Input": {
+            /**
+             * Kg Enabled
+             * @default false
+             */
+            kg_enabled: boolean;
+            /**
+             * Deepdoc Enabled
+             * @default false
+             */
+            deepdoc_enabled: boolean;
+            /**
+             * Markitdown Enabled
+             * @default false
+             */
+            markitdown_enabled: boolean;
+            /**
+             * Llama Index Enabled
+             * @default false
+             */
+            llama_index_enabled: boolean;
+            /**
+             * Mineru Enabled
+             * @default false
+             */
+            mineru_enabled: boolean;
+            /**
+             * Magicpdf Enabled
+             * @default false
+             */
+            magicpdf_enabled: boolean;
+        };
+        /**
          * GeneratedQuestion
          * @description 生成的问题
          */
@@ -2599,6 +2649,17 @@ export interface components {
         HTTPValidationError: {
             /** Detail */
             detail?: components["schemas"]["ValidationError"][];
+        };
+        /** HealthResponse */
+        HealthResponse: {
+            /** Ok */
+            ok: boolean;
+            /** Time */
+            time: string;
+            /** Vector Backend */
+            vector_backend?: string | null;
+            /** Use Langgraph Pipeline */
+            use_langgraph_pipeline?: boolean | null;
         };
         /**
          * HistoryMessage
@@ -3051,6 +3112,18 @@ export interface components {
              * Format: date-time
              */
             created_at: string;
+        };
+        /** MetaResponse */
+        MetaResponse: {
+            /** Name */
+            name: string;
+            /** Api Version */
+            api_version: string;
+            /** Time */
+            time: string;
+            build: components["schemas"]["BuildMeta"];
+            features: components["schemas"]["app__api__schemas__meta__FeatureFlags"];
+            runtime: components["schemas"]["RuntimeMeta"];
         };
         /**
          * MilvusConfig
@@ -3909,6 +3982,30 @@ export interface components {
             /** Finished At */
             finished_at?: string | null;
         };
+        /** ReadyResponse */
+        ReadyResponse: {
+            /** Ok */
+            ok: boolean;
+            database: components["schemas"]["DatabaseStatus"];
+            vector: components["schemas"]["VectorStatus"];
+            redis: components["schemas"]["RedisStatus"];
+        };
+        /** RedisStatus */
+        RedisStatus: {
+            /** Status */
+            status: string;
+            /** Enabled */
+            enabled: boolean;
+            /** Required */
+            required: boolean;
+            /**
+             * Embedding Cache Enabled
+             * @default false
+             */
+            embedding_cache_enabled: boolean;
+            /** Error */
+            error?: string | null;
+        };
         /** RegexRuleModel */
         RegexRuleModel: {
             /** Pattern */
@@ -3954,6 +4051,13 @@ export interface components {
             citations: Record<string, never>[];
             /** Metrics */
             metrics?: Record<string, never>;
+        };
+        /** RuntimeMeta */
+        RuntimeMeta: {
+            /** Python */
+            python: string;
+            /** Platform */
+            platform: string;
         };
         /**
          * SafetyConfig
@@ -4125,7 +4229,7 @@ export interface components {
          * @description 更新配置请求
          */
         UpdateSettingsRequest: {
-            feature_flags?: components["schemas"]["FeatureFlags"] | null;
+            feature_flags?: components["schemas"]["FeatureFlags-Input"] | null;
             kg?: components["schemas"]["KGConfig"] | null;
             llm?: components["schemas"]["LLMConfig"] | null;
             embedding?: components["schemas"]["EmbeddingConfig"] | null;
@@ -4169,6 +4273,15 @@ export interface components {
             msg: string;
             /** Error Type */
             type: string;
+        };
+        /** VectorStatus */
+        VectorStatus: {
+            /** Backend */
+            backend: string;
+            /** Status */
+            status: string;
+            /** Error */
+            error?: string | null;
         };
         /** ZipImageInfo */
         ZipImageInfo: {
@@ -4217,6 +4330,21 @@ export interface components {
             /** Chunk Strategy */
             chunk_strategy: string;
         };
+        /** FeatureFlags */
+        app__api__schemas__meta__FeatureFlags: {
+            /** Auth Mode */
+            auth_mode: string;
+            /** Vector Backend */
+            vector_backend: string;
+            /** Task Queue Enabled */
+            task_queue_enabled: boolean;
+            /** Embedding Cache Enabled */
+            embedding_cache_enabled: boolean;
+            /** Minio Enabled */
+            minio_enabled: boolean;
+            /** Use Langgraph Pipeline */
+            use_langgraph_pipeline: boolean;
+        };
     };
     responses: never;
     parameters: never;
@@ -4241,7 +4369,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": Record<string, never>;
+                    "application/json": components["schemas"]["HealthResponse"];
                 };
             };
         };
@@ -4261,7 +4389,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": Record<string, never>;
+                    "application/json": components["schemas"]["ReadyResponse"];
                 };
             };
         };
@@ -4281,7 +4409,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": Record<string, never>;
+                    "application/json": components["schemas"]["MetaResponse"];
                 };
             };
         };

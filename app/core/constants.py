@@ -4,7 +4,7 @@
 集中管理项目中的魔法字符串和硬编码值，提高可维护性。
 """
 
-from typing import FrozenSet, Set
+from typing import FrozenSet
 
 
 # =============================================================================

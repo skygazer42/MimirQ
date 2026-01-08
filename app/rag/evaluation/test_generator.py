@@ -113,9 +113,7 @@ def _calculate_text_diversity_scores(texts: List[str]) -> List[float]:
     doc_freq = Counter()
     for tokens in text_tokens:
         doc_freq.update(set(tokens))
-    
-    total_docs = len(texts)
-    
+
     # 计算每个文本的多样性分数
     scores = []
     for tokens in text_tokens:
@@ -444,4 +442,3 @@ def generate_questions_from_conversations(
     except Exception as e:
         print(f"从对话生成问题失败: {e}")
         return []
-

@@ -4,7 +4,7 @@
 提供常用的数据库 CRUD 操作，减少服务层代码重复。
 """
 
-from typing import Any, Dict, Generic, List, Optional, Type, TypeVar
+from typing import Generic, List, Optional, Type, TypeVar
 from uuid import UUID
 
 from fastapi import HTTPException, status

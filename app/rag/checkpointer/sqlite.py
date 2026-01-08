@@ -9,7 +9,7 @@ import re
 import sqlite3
 import threading
 from pathlib import Path
-from typing import Any, AsyncIterator, Dict, Iterator, Optional, Sequence
+from typing import Any, AsyncIterator, Iterator, Optional, Sequence
 
 from langchain_core.runnables import RunnableConfig
 from langgraph.checkpoint.base import (

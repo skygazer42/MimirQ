@@ -20,14 +20,12 @@ import logging
 import math
 import re
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional
 
 from app.core.config import settings
 from app.rag.tools.mcp_client import (
-    MCPTool,
     MCPToolRegistry,
     ToolParameter,
-    ToolResult,
     get_mcp_registry,
 )
 
@@ -111,9 +109,6 @@ async def get_document_content(
         Document content
     """
     try:
-        from app.storage.vector.factory import get_vector_store
-
-        store = get_vector_store()
         # This is a placeholder - actual implementation depends on storage
         return {
             "document_id": document_id,

@@ -181,8 +181,6 @@ Your response:"""
 
     async def _act(self, workflow_state: Dict[str, Any], action: str, action_input: str) -> str:
         """Execute an action using a tool (with tool-call middlewares)."""
-        tool = self._tools.get(action)
-
         chain = ToolMiddlewareChain()
         tool_state: Dict[str, Any] = {
             "tool_name": action,

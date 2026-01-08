@@ -5,12 +5,11 @@ Reranker 工厂函数
 """
 from __future__ import annotations
 
-from typing import Any, Callable
+from typing import Any
 import hashlib
 import threading
 
 from app.rag.reranker.base import BaseReranker
-from app.rag.reranker.types import RerankCandidate
 from app.core.config import settings
 
 _api_reranker_lock = threading.Lock()
@@ -112,7 +111,7 @@ def get_reranker(
         return ParentChildReranker()
     
     elif provider == "weighted":
-        from app.rag.reranker.hybrid import WeightedReranker, Weights
+        from app.rag.reranker.hybrid import WeightedReranker
         
         weights = kwargs.get("weights")
         if not weights:

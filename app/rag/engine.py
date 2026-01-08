@@ -4,7 +4,6 @@ RAG 对话引擎
 from __future__ import annotations
 
 import asyncio
-import os
 import threading
 from typing import AsyncGenerator, Dict, Any, List, Optional, Type
 from uuid import UUID

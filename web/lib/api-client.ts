@@ -63,6 +63,7 @@ import type {
   UserProfile,
   ZipWithImagesResponse,
 } from '@/types'
+import type { MetaResponse } from '@/types/backend'
 import { extractBackendMessage, extractBackendRequestId, withRequestId } from '@/lib/api-errors'
 import { getAuthHeaders } from '@/lib/auth-headers'
 import { API_TIMEOUT_MS, API_V1_BASE_URL } from '@/lib/env'
@@ -805,27 +806,7 @@ export interface TestLLMResponse {
   message: string
 }
 
-export interface BackendMeta {
-  name: string
-  api_version: string
-  time: string
-  build?: {
-    sha?: string | null
-    time?: string | null
-  }
-  features?: {
-    auth_mode?: string
-    vector_backend?: string
-    task_queue_enabled?: boolean
-    embedding_cache_enabled?: boolean
-    minio_enabled?: boolean
-    use_langgraph_pipeline?: boolean
-  }
-  runtime?: {
-    python?: string
-    platform?: string
-  }
-}
+export type BackendMeta = MetaResponse
 
 export const metaApi = {
   async get(): Promise<BackendMeta> {

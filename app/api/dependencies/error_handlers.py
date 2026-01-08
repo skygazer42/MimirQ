@@ -4,11 +4,10 @@
 提供常用的资源验证和错误处理函数，消除 API 路由中的重复代码。
 """
 
-from typing import Any, Optional, Type, TypeVar
+from typing import Any, Type, TypeVar
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
-from app.core.exceptions import NotFoundError, AuthorizationError
 
 
 T = TypeVar("T")

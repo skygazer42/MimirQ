@@ -11,6 +11,7 @@ from datetime import datetime, timezone
 from fastapi import APIRouter
 
 from app.core.config import settings
+from app.api.schemas.meta import MetaResponse
 
 router = APIRouter()
 
@@ -31,7 +32,7 @@ def _get_build_time() -> str | None:
     return value or None
 
 
-@router.get("/meta")
+@router.get("/meta", response_model=MetaResponse)
 def get_meta() -> dict:
     """
     Small, safe-to-expose metadata endpoint for UI diagnostics.
@@ -57,4 +58,3 @@ def get_meta() -> dict:
             "platform": platform.platform(),
         },
     }
-

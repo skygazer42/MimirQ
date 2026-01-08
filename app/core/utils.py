@@ -5,7 +5,7 @@
 """
 
 import os
-from typing import Any, Dict, List, Optional, TypeVar, Union
+from typing import Any, Dict, List, Optional, TypeVar
 from uuid import UUID
 
 from pydantic import BaseModel

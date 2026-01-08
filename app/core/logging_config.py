@@ -13,7 +13,7 @@ import logging
 import sys
 from contextvars import ContextVar
 from datetime import datetime, timezone
-from typing import Any, Dict, Optional
+from typing import Any, Dict
 
 _request_id: ContextVar[str] = ContextVar("request_id", default="")
 _tenant_id: ContextVar[str] = ContextVar("tenant_id", default="")

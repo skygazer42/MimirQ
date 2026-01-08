@@ -15,7 +15,6 @@ from sqlalchemy.orm import Session
 
 from app.types.indexing import (
     ChunkInput,
-    EventEntityInput,
     EventInput,
     IndexBatchResult,
     IndexKind,
@@ -26,7 +25,7 @@ from app.types.indexing import (
 )
 from app.core.config import settings
 from app.rag.kg.models import KgEntity, KgEventEntity, KgSourceEvent
-from app.models.document import Document as DBDocument, DocumentChunk
+from app.models.document import DocumentChunk
 from app.rag.retriever import hybrid_retriever
 from app.storage.vector.factory import get_vector_store
 from app.storage.vector.milvus import get_milvus_adapter, resolve_collection_name
