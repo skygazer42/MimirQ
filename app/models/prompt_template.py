@@ -1,7 +1,7 @@
 """
-可自定义 RAG 提示词模板的数据模型
+Customizable RAG prompt template data model
 
-定义提示词模板的数据表结构，支持版本管理和 A/B 测试。
+Defines prompt template table structure, supports version management and A/B testing.
 """
 import uuid
 

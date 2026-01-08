@@ -1,5 +1,5 @@
 """
-RAG 对话引擎
+RAG Conversation Engine
 """
 from __future__ import annotations
 
@@ -37,7 +37,7 @@ logger = get_logger("rag.engine")
 
 
 class RAGEngine:
-    """RAG 对话引擎"""
+    """RAG Conversation Engine"""
 
     def __init__(self) -> None:
         # LLM config.
@@ -57,113 +57,113 @@ class RAGEngine:
 
         # Prompt templates (support chat history).
         self.prompt_template = ChatPromptTemplate.from_template(
-            """你是一个专业的知识库助手。请基于以下参考资料和对话历史回答用户问题。
+            """You are a professional knowledge base assistant. Please answer the user's question based on the following reference materials and conversation history.
 
-【参考资料】
+[Reference Materials]
 {context}
 
-【对话历史】
+[Conversation History]
 {history}
 
-【当前问题】
+[Current Question]
 {question}
 
-【回答要求】
-1. 仅基于参考资料回答，不要编造信息
-2. 如果参考资料中没有相关信息，请明确告知用户"根据现有资料无法回答该问题"
-3. 结合对话历史理解上下文，处理代词（如"它"、“这个”）和追问
-4. 回答要准确、简洁、专业
-5. 引用资料时可以提及来源文件名
-6. 如指定输出格式，请严格遵守
+[Response Requirements]
+1. Only answer based on the reference materials, do not fabricate information
+2. If the reference materials do not contain relevant information, clearly inform the user "Unable to answer this question based on the available materials"
+3. Consider conversation history to understand context, handle pronouns (such as "it", "this") and follow-up questions
+4. Answers should be accurate, concise, and professional
+5. When citing materials, you may mention the source file name
+6. If a specific output format is specified, please strictly follow it
 
-【输出格式说明】
+[Output Format Instructions]
 {format_instructions}
 
-【回答】"""
+[Answer]"""
         )
 
         # Structured output presets (extensible).
         self.structured_presets: Dict[str, str] = {
             "faq": (
-                "仅输出 JSON，结构："
+                "Output JSON only, structure: "
                 '{"answer": "string", "citations": [{"document_id": "...", "chunk_id": "..."}],'
                 '"qa_pairs": [{"question": "string", "answer": "string"}]}'
-                " 不要输出多余文本。"
+                " No extra text."
             ),
             "summary": (
-                "仅输出 JSON，结构："
+                "Output JSON only, structure: "
                 '{"answer": "string", "citations": [{"document_id": "...", "chunk_id": "..."}],'
-                '"bullets": ["要点1", "要点2"], "summary": "简洁摘要"}'
-                " 不要输出多余文本。"
+                '"bullets": ["point 1", "point 2"], "summary": "concise summary"}'
+                " No extra text."
             ),
             "action_items": (
-                "仅输出 JSON，结构："
+                "Output JSON only, structure: "
                 '{"answer": "string", "citations": [{"document_id": "...", "chunk_id": "..."}],'
-                '"actions": [{"item": "动作", "owner": "负责人", "due": "时间"}]}'
-                " 不要输出多余文本。"
+                '"actions": [{"item": "action", "owner": "responsible person", "due": "deadline"}]}'
+                " No extra text."
             ),
         }
 
         # Query Rewrite: rewrite follow-ups into standalone retrievable queries (optional).
         self.rewrite_prompt = ChatPromptTemplate.from_template(
-            """你是一个知识库检索助手。请把“当前问题”改写成一个独立、明确、适合检索的查询句。
-要求：
-1) 结合历史对话补全指代（如“它/这个/上面提到的”）
-2) 保留关键实体、时间、范围、约束条件
-3) 只输出改写后的查询句，不要输出解释
+            """You are a knowledge base retrieval assistant. Please rewrite the "Current Question" into a standalone, clear, retrieval-friendly query.
+Requirements:
+1) Resolve pronouns by incorporating conversation history (e.g., "it/this/mentioned above")
+2) Retain key entities, time references, scope, and constraints
+3) Only output the rewritten query, no explanations
 
-【历史对话】
+[Conversation History]
 {history}
 
-【当前问题】
+[Current Question]
 {question}
 
-【改写后的检索查询】"""
+[Rewritten Retrieval Query]"""
         )
 
 
         # Multi-Query: generate multiple query variants (optional).
         self.multi_query_prompt = ChatPromptTemplate.from_template(
-            """你是一个知识库检索 Query 扩展器。请基于以下“检索查询”生成 {n} 条不同表述/角度的检索查询，用于提升召回。
-要求：
-1) 仅输出 JSON 数组（array），元素都是字符串
-2) 不要输出解释、不要 Markdown、不要多余字段
-3) 每条尽量简短，保留关键实体/时间/限定条件
-4) 避免与原查询完全重复
+            """You are a knowledge base query expander. Based on the following "Retrieval Query", generate {n} different query variants with alternative phrasings/angles to improve recall.
+Requirements:
+1) Only output a JSON array (array), elements are all strings
+2) No explanations, no Markdown, no extra fields
+3) Keep each query concise, retain key entities/time/constraints
+4) Avoid completely duplicating the original query
 
-【检索查询】
+[Retrieval Query]
 {query}
 
-【JSON 数组】"""
+[JSON Array]"""
         )
 
         # HyDE: generate hypothetical passages for vector retrieval (optional).
         self.hyde_prompt = ChatPromptTemplate.from_template(
-            """你是一个知识库检索助手。请针对以下“问题”写一段“假想的参考资料片段”，用来帮助向量检索召回相关内容。
-要求：
-1) 只输出纯文本，不要 Markdown，不要标题/编号
-2) 尽量包含可能出现的关键词、术语、实体、步骤、同义表达
-3) 不要出现“无法回答/不知道”等否定句
+            """You are a knowledge base retrieval assistant. For the following "Question", write a "hypothetical reference passage" to help vector retrieval recall relevant content.
+Requirements:
+1) Only output plain text, no Markdown, no titles/numbers
+2) Try to include possible keywords, terms, entities, steps, and synonyms
+3) Do not include negative statements like "unable to answer/don't know"
 
-【问题】
+[Question]
 {query}
 
-【假想片段】"""
+[Hypothetical Passage]"""
         )
 
         # Query Decomposition: split complex questions into sub-queries (optional).
         self.decompose_prompt = ChatPromptTemplate.from_template(
-            """你是一个知识库检索问题拆解器。请把下面的“检索查询”拆解成最多 {n} 个子问题，用于分别检索并融合召回。
-要求：
-1) 仅输出 JSON 数组（array），元素都是字符串
-2) 不要输出解释、不要 Markdown、不要多余字段
-3) 子问题尽量覆盖不同方面/约束条件，避免重复
-4) 每个子问题都应当是可检索、可独立理解的一句话
+            """You are a knowledge base query decomposer. Break down the following "Retrieval Query" into at most {n} sub-questions for separate retrieval and result fusion.
+Requirements:
+1) Only output a JSON array (array), elements are all strings
+2) No explanations, no Markdown, no extra fields
+3) Sub-questions should cover different aspects/constraints, avoid duplication
+4) Each sub-question should be retrievable and independently understandable
 
-【检索查询】
+[Retrieval Query]
 {query}
 
-【JSON 数组】"""
+[JSON Array]"""
         )
 
 
@@ -183,8 +183,8 @@ class RAGEngine:
 
     def _score_question_complexity(self, question: str, history: Optional[List[Dict[str, str]]]) -> float:
         """
-        粗粒度复杂度评分：长度 + 历史长度 * 权重。
-        简单且无依赖，便于保持现有接口兼容。
+        Coarse-grained complexity scoring: length + history length * weight.
+        Simple and dependency-free, maintains existing interface compatibility.
         """
         history = history or []
         history_len = sum(len(msg.get("content", "")) for msg in history if isinstance(msg, dict))
@@ -192,8 +192,8 @@ class RAGEngine:
 
     def _select_llm(self, question: str, history: Optional[List[Dict[str, str]]]) -> tuple[Any, str, str]:
         """
-        动态模型路由：借鉴 agent/middleware 的动态选模模式。
-        返回: (llm实例, 路由标识, 原因)
+        Dynamic model routing: inspired by agent/middleware dynamic model selection pattern.
+        Returns: (llm instance, route identifier, reason)
         """
         if not settings.ENABLE_DYNAMIC_MODEL_ROUTING:
             return self.models["default"], "default", "routing disabled"
@@ -379,17 +379,17 @@ class RAGEngine:
         db: Optional[Any] = None,
     ) -> AsyncGenerator[Dict[str, Any], None]:
         """
-        流式对话接口
+        Streaming chat interface
 
         Args:
-            question: 用户问题
-            conversation_id: 对话 ID
-            document_ids: 限定文档范围
-            top_k: 检索 Top-K
-            score_threshold: 相似度阈值
+            question: User question
+            conversation_id: Conversation ID
+            document_ids: Restrict document scope
+            top_k: Retrieval Top-K
+            score_threshold: Similarity threshold
 
         Yields:
-            流式事件: {"type": "citations|token|done|error", "data": ...}
+            Streaming events: {"type": "citations|token|done|error", "data": ...}
         """
         try:
             llm, model_route, routing_reason = self._select_llm(question, history)
@@ -427,9 +427,9 @@ class RAGEngine:
                 format_instructions = self.structured_presets.get(
                     preset_key,
                     (
-                        "请仅返回 JSON，结构: "
+                        "Please return JSON only, structure: "
                         '{"answer": "string", "citations": [{"document_id": "...", "chunk_id": "...", "page_number": null, "relevance_score": 0.0}]} '
-                        "不要输出多余文本。"
+                        "No extra text."
                     ),
                 )
 
@@ -458,7 +458,7 @@ class RAGEngine:
             # Step 0: Query Rewrite (optional).
             if (
                 settings.ENABLE_QUERY_REWRITE
-                and history_text != "（无历史对话）"
+                and history_text != "(No conversation history)"
                 and len(question) <= settings.QUERY_REWRITE_MAX_CHARS
                 and should_rewrite_query(question)
             ):
@@ -788,7 +788,7 @@ class RAGEngine:
                     abstain_reason = "top_relevance_lt_min"
 
             if abstain_triggered:
-                abstain_message = '根据现有资料无法回答该问题。你可以补充上传相关文档，或缩小问题范围后再问。'
+                abstain_message = 'Unable to answer this question based on available materials. You can upload additional relevant documents or narrow down your question and try again.'
 
                 structured_data = None
                 structured_parse_meta = {"ok": False, "method": None, "error": None}
@@ -901,7 +901,7 @@ class RAGEngine:
                         summary = (ev.get("summary") or "").strip()
                         if len(summary) > 600:
                             summary = summary[:600] + "..."
-                        parts.append(f"[事件 {idx}] {title}\n{summary}")
+                        parts.append(f"[Event {idx}] {title}\n{summary}")
                     kg_context = "\n\n".join(parts)
                     max_kg_tokens = max(0, int(getattr(settings, "RAG_CONTEXT_MAX_KG_TOKENS", 0) or 0))
                     if max_kg_tokens:
@@ -927,14 +927,14 @@ class RAGEngine:
                     try:
                         page_int = int(page_raw) if page_raw is not None else None
                         if page_int and page_int > 0:
-                            page_info = f"第{page_int}页"
+                            page_info = f"Page {page_int}"
                     except Exception:
                         page_info = None
                     header = meta.get("header_path") or meta.get("header_context")
                     retrieval_role = meta.get("retrieval_role")
                     role_info = None
                     if retrieval_role == "neighbor":
-                        role_info = "邻接"
+                        role_info = "neighbor"
                     elif retrieval_role:
                         role_info = str(retrieval_role)
                     raw_content = (doc.page_content or "").strip()
@@ -958,7 +958,7 @@ class RAGEngine:
                         info_parts.append(str(header))
                     if role_info:
                         info_parts.append(str(role_info))
-                    part = f"[来源 {idx}: {' | '.join(info_parts)}]\n{content}"
+                    part = f"[Source {idx}: {' | '.join(info_parts)}]\n{content}"
                     if max_total_tokens:
                         part_tokens = num_tokens_from_string(part)
                         if context_parts and (total_tokens + part_tokens) > max_total_tokens:
@@ -976,10 +976,10 @@ class RAGEngine:
 
             context_sections = []
             if kg_context:
-                context_sections.append(f"【KG 事件检索】\n{kg_context}")
+                context_sections.append(f"[KG Event Retrieval]\n{kg_context}")
             if chunk_context:
-                context_sections.append(f"【文档切片检索】\n{chunk_context}")
-            context = "\n\n".join(context_sections) if context_sections else "没有找到相关的参考资料。"
+                context_sections.append(f"[Document Chunk Retrieval]\n{chunk_context}")
+            context = "\n\n".join(context_sections) if context_sections else "No relevant reference materials found."
 
             # Optional trace log for debugging/regression replay (guarded by ENABLE_METRICS_LOG).
             log_metrics(
@@ -1126,9 +1126,9 @@ class RAGEngine:
                         break
 
                 if image_urls:
-                    images_md_parts = ["\n\n---\n\n### 相关图片\n"]
+                    images_md_parts = ["\n\n---\n\n### Related Images\n"]
                     for i, url in enumerate(image_urls, 1):
-                        images_md_parts.append(f"![引用图片 {i}]({url})")
+                        images_md_parts.append(f"![Cited Image {i}]({url})")
                     images_md = "\n\n".join(images_md_parts) + "\n"
                     images_md_safe = redact_text(images_md) if pii_on and redact_text else images_md
                     full_response += images_md_safe

@@ -1,9 +1,9 @@
 """
-PDF 解析分流（自动选择）工具。
+PDF parsing router (auto-selection) utility.
 
-统一复用在：
-- 预览解析（parse-preview）
-- 入库解析（documents/upload 后台处理）
+Unified usage in:
+- Preview parsing (parse-preview)
+- Database parsing (documents/upload background processing)
 """
 from __future__ import annotations
 

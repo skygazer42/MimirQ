@@ -1,9 +1,9 @@
 """
-兼容模块：索引相关内部类型（已迁移）
+Compatibility module: Indexing-related internal types (migrated)
 
-说明：
-- 这些类型属于内部服务编排用，不应放在 API schema 层
-- 为兼容旧引用，保留该模块并转发到 `app.types.indexing`
+Notes:
+- These types are for internal service orchestration, not for API schema layer
+- Kept for backward compatibility, forwarding to `app.types.indexing`
 """
 
 from app.types.indexing import (  # noqa: F401

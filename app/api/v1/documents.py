@@ -187,8 +187,8 @@ def _resolve_writable_dataset(
     return DatasetService.create_dataset(
         db=db,
         tenant_id=tenant_id,
-        name="默认知识库",
-        description="自动创建（未指定 dataset_id）",
+        name="Default Dataset",
+        description="Auto-created (no dataset_id specified)",
         permission=DatasetPermissionEnum.ONLY_ME,  # Restrict permission to avoid privilege escalation.
         owner_id=account_id,
         partial_members=[],
@@ -844,7 +844,7 @@ async def get_image_url(
     if not settings.MINIO_ENABLED:
         raise HTTPException(
             status_code=503,
-            detail="MinIO 未启用，无法获取图片 URL"
+            detail="MinIO is disabled; cannot retrieve image URL"
         )
 
     DatasetService.ensure_member(db, tenant_id, account_id)
@@ -898,7 +898,7 @@ async def get_image_url(
     except Exception as e:
         raise HTTPException(
             status_code=404,
-            detail=f"图片不存在或获取失败: {str(e)}"
+            detail=f"Image not found or retrieval failed: {str(e)}"
         )
 
 

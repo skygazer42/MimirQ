@@ -1,5 +1,5 @@
 """
-数据库模型包
+Database models package
 """
 from app.models.document import Document, DocumentChunk
 from app.models.chat import Conversation, Message

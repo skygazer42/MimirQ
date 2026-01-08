@@ -412,7 +412,7 @@ class TableStructureRecognizer(Recognizer):
         headers = {}
         hdrset = set()
         lst_hdr = []
-        de = "的" if not is_english else " for "
+        de = " of " if is_english else "的"
         for r in sorted(list(hdr_rowno)):
             headers[r] = ["" for _ in range(clmno)]
             for i in range(clmno):
@@ -504,8 +504,8 @@ class TableStructureRecognizer(Recognizer):
             if is_english:
                 from_ = " in "
             else:
-                from_ = "来自"
-            row_txt = [t + f"\t——{from_}“{cap}”" for t in row_txt]
+                from_ = " from "
+            row_txt = [t + f"\t——{from_}"{cap}"" for t in row_txt]
         return row_txt
 
     @staticmethod

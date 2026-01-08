@@ -1,9 +1,9 @@
 """
-RAG 调试/预览 API。
+RAG debug/preview API.
 
-用于联调时快速验证：
-- 检索参数（top_k/threshold/mode/weight）
-- 访问控制（tenant + account + document_ids）
+For debugging and validating:
+- Retrieval parameters (top_k/threshold/mode/weight)
+- Access control (tenant + account + document_ids)
 """
 
 from __future__ import annotations
@@ -46,7 +46,7 @@ async def retrieve_preview(
     account_id: str = Depends(get_current_account_id),
     db: Session = Depends(get_db),
 ):
-    """仅执行检索（不生成回答），用于调参/排查召回质量。"""
+    """Execute retrieval only (no answer generation); for parameter tuning and retrieval quality debugging."""
     DatasetService.ensure_member(db, tenant_id, account_id)
 
     if body.document_ids:
@@ -126,7 +126,7 @@ async def prompt_preview(
     account_id: str = Depends(get_current_account_id),
     db: Session = Depends(get_db),
 ):
-    """执行检索并返回最终 prompt（不调用 LLM），用于排查 prompt/上下文拼装问题。"""
+    """Execute retrieval and return final prompt (no LLM call); for debugging prompt/context assembly."""
     DatasetService.ensure_member(db, tenant_id, account_id)
 
     if body.document_ids:

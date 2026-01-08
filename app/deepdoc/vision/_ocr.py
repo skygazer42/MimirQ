@@ -87,7 +87,7 @@ class OCRHandler2:
         Download det/rec ONNX models from Hugging Face if they are missing locally.
         Use subfolder="PP-OCRv4" to avoid extra directories.
         """
-        logging.info("本地模型文件不存在，开始从 Hugging Face 下载...")
+        logging.info("Local model files do not exist, starting download from Hugging Face...")
 
         # Download detection model (det)
         det_local_path = hf_hub_download(
@@ -105,13 +105,13 @@ class OCRHandler2:
             local_dir=engine_path,
         )
 
-        logging.info("模型文件已下载:\n%s\n%s", det_local_path, rec_local_path)
+        logging.info("Model files downloaded:\n%s\n%s", det_local_path, rec_local_path)
 
     def _lazy_load_ocr_engine(self):
         """
         Lazily load the OCR engine on first use.
         """
-        logging.info("正在初始化 OCR 引擎（首次调用）。")
+        logging.info("Initializing OCR engine (first call).")
 
         # Set absolute path to store under (MODEL_BASE)/SWHL/RapidOCR/PP-OCRv4.
         engine_path = os.path.join(MODEL_OCR_PATH, "PP-OCRv4")
@@ -127,8 +127,8 @@ class OCRHandler2:
         # Re-check download results.
         if not os.path.exists(det_path) or not os.path.exists(rec_path):
             raise FileNotFoundError(
-                f"模型文件缺失，无法找到:\n{det_path}\n{rec_path}\n"
-                "请检查自动下载或手动放置模型文件。"
+                f"Model files missing, cannot find:\n{det_path}\n{rec_path}\n"
+                "Please check automatic download or manually place model files."
             )
 
         self._ocr_core = RapidOCR(
@@ -136,7 +136,7 @@ class OCRHandler2:
             det_model_path=det_path,
             rec_model_path=rec_path
         )
-        logging.info(f"OCR 引擎加载完毕，当前阈值: {self._threshold}")
+        logging.info(f"OCR engine loaded, current threshold: {self._threshold}")
 
     def single_image_ocr(self, input_data):
         """
@@ -161,11 +161,11 @@ class OCRHandler2:
                 text_output = "\n".join([seg[1] for seg in results])
             else:
                 text_output = ""
-                logging.warning("OCR 引擎未检测到任何文本。")
+                logging.warning("OCR engine did not detect any text.")
             return text_output
 
         except Exception as ex:
-            logging.error(f"OCR 识别失败: {str(ex)}")
+            logging.error(f"OCR recognition failed: {str(ex)}")
             raise
         finally:
             if tmp_file_path and os.path.exists(tmp_file_path):
@@ -176,11 +176,11 @@ class OCRHandler2:
         Run OCR on a PDF file. Optionally check for selectable text via pdf_contains_text.
         """
         if not os.path.exists(pdf_path):
-            raise FileNotFoundError(f"指定的 PDF 文件不存在: {pdf_path}")
+            raise FileNotFoundError(f"Specified PDF file does not exist: {pdf_path}")
 
         # 1) Check whether selectable text exists.
         if pdf_contains_text(pdf_path):
-            logging.info("PDF 有可选文字，直接读取（langchain）。")
+            logging.info("PDF has selectable text, reading directly (langchain).")
             return _extract_text_pdf(pdf_path)
 
         # 2) Convert pages to images and OCR.
@@ -240,7 +240,7 @@ class OCRHandler2:
         elif isinstance(img_data, np.ndarray):
             Image.fromarray(img_data).save(save_path)
         else:
-            raise TypeError("不支持的图像类型：请提供路径、PIL.Image 或 numpy.ndarray。")
+            raise TypeError("Unsupported image type: please provide path, PIL.Image, or numpy.ndarray.")
 
         return save_path
 
@@ -250,5 +250,5 @@ if __name__ == "__main__":
     pdf_file = r"/data/Langagent/resources/data/example/test1.pdf"
     ocr_handler = OCRHandler2(det_threshold=0.3)
     recognized_text = ocr_handler.pdf_ocr_pipeline(pdf_file)
-    print("=== OCR 结果如下 ===")
+    print("=== OCR Results ===")
     print(recognized_text)

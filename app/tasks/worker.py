@@ -1,7 +1,7 @@
 """
-Arq worker 配置入口。
+Arq worker configuration entry.
 
-启动方式（容器/本地）：
+Start method (container/local):
   arq app.tasks.worker.WorkerSettings
 """
 

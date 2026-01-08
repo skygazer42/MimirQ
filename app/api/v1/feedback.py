@@ -1,8 +1,8 @@
 """
-用户反馈 API（评测闭环）。
-当前先提供最小闭环能力：
-- 对某条 assistant 消息提交评分/原因/期望答案
-- 列表查询（按 tenant 隔离）
+User feedback API (evaluation loop).
+Currently provides minimal loop capability:
+- Submit rating/reason/expected answer for assistant messages
+- List queries (isolated by tenant)
 """
 
 from __future__ import annotations
@@ -30,7 +30,7 @@ async def upsert_message_feedback(
     account_id: str = Depends(get_current_account_id),
     db: Session = Depends(get_db),
 ):
-    """对一条 assistant 消息提交反馈（幂等：重复提交将更新）。"""
+    """Submit feedback for an assistant message (idempotent: resubmit will update)."""
     DatasetService.ensure_member(db, tenant_id, account_id)
 
     msg = (
@@ -91,7 +91,7 @@ async def list_message_feedback(
     account_id: str = Depends(get_current_account_id),
     db: Session = Depends(get_db),
 ):
-    """查询反馈列表（默认返回当前 tenant 下全部）。"""
+    """Query feedback list (returns all items in current tenant by default)."""
     DatasetService.ensure_member(db, tenant_id, account_id)
 
     query = db.query(MessageFeedback).filter(MessageFeedback.tenant_id == tenant_id)

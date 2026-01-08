@@ -1,5 +1,5 @@
 """
-MimirQ API 统一异常处理模块
+MimirQ API unified exception handling module
 """
 import logging
 import traceback

@@ -1,7 +1,7 @@
 """
-用户账户模型
+User account models
 
-用于登录/注册的基础用户表。
+Basic user table for login/registration.
 """
 import uuid
 from sqlalchemy import Column, String, Boolean, DateTime

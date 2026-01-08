@@ -1,13 +1,13 @@
 """
-存储模块
+Storage module
 
-提供向量存储、对象存储功能。
+Provides vector storage and object storage functionality.
 
-主要组件：
-- vector: 向量数据库（Milvus、FAISS、Chroma）
-- object: 对象存储（MinIO）
+Main components:
+- vector: Vector databases (Milvus, FAISS, Chroma)
+- object: Object storage (MinIO)
 
-注意：混合检索已移至 app.rag.retriever 模块。
+Note: Hybrid retrieval has been moved to app.rag.retriever module.
 """
 
 from __future__ import annotations

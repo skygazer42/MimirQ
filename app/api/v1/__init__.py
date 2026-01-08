@@ -1,5 +1,5 @@
 """
-API v1 路由
+API v1 routes.
 """
 from fastapi import APIRouter
 from app.api.v1 import (

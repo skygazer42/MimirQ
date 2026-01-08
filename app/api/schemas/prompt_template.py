@@ -1,6 +1,6 @@
 """
-提示词模板相关 Schema
-定义提示词模板的创建、更新、查询等接口的数据模型。
+Prompt template schemas.
+Defines data models for prompt template creation, update, and query endpoints.
 """
 from datetime import datetime
 from typing import List, Optional
@@ -17,7 +17,7 @@ class PromptTemplateBase(BaseModel):
     template_key: Optional[str] = Field(
         default=None,
         max_length=100,
-        description="模板稳定标识（用于版本化/分组），例如：kb_assistant",
+        description="Stable template identifier (for versioning/grouping), e.g.: kb_assistant",
         example="kb_assistant",
     )
     name: str = Field(
@@ -59,16 +59,16 @@ class PromptTemplateBase(BaseModel):
     version: Optional[int] = Field(
         default=1,
         ge=1,
-        description="版本号（同一 template_key 内递增）",
+        description="Version number (increments within same template_key)",
     )
-    parent_id: Optional[UUID] = Field(default=None, description="父版本模板 ID（可选）")
+    parent_id: Optional[UUID] = Field(default=None, description="Parent version template ID (optional)")
     ab_experiment_key: Optional[str] = Field(
         default=None,
         max_length=100,
-        description="A/B 实验标识（可选），例如：exp_2025w50",
+        description="A/B experiment identifier (optional), e.g.: exp_2025w50",
     )
-    ab_variant: Optional[str] = Field(default=None, max_length=50, description="A/B 变体标识（可选），例如 A/B")
-    ab_weight: Optional[float] = Field(default=1.0, ge=0.0, description="A/B 流量权重（可选，默认 1.0）")
+    ab_variant: Optional[str] = Field(default=None, max_length=50, description="A/B variant identifier (optional), e.g.: A/B")
+    ab_weight: Optional[float] = Field(default=1.0, ge=0.0, description="A/B traffic weight (optional, default 1.0)")
 
 
 class PromptTemplateCreate(PromptTemplateBase):
@@ -96,7 +96,7 @@ class PromptTemplateUpdate(BaseModel):
 
 
 class PromptTemplateNewVersion(BaseModel):
-    """创建新版本（基于旧模板复制，支持覆盖字段）。"""
+    """Create a new version (copy from old template, supports field overrides)."""
 
     name: Optional[str] = Field(None, max_length=200)
     description: Optional[str] = None
@@ -105,7 +105,7 @@ class PromptTemplateNewVersion(BaseModel):
     category: Optional[str] = Field(None, max_length=100)
     tags: Optional[List[str]] = None
     is_active: bool = True
-    deactivate_previous: bool = Field(default=True, description="是否自动禁用旧版本（默认 true）")
+    deactivate_previous: bool = Field(default=True, description="Auto-deactivate previous version (default: true)")
 
     ab_experiment_key: Optional[str] = Field(None, max_length=100)
     ab_variant: Optional[str] = Field(None, max_length=50)

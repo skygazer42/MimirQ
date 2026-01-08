@@ -1,21 +1,21 @@
 """
-RAG 引擎模块
+RAG Engine Module
 
-提供检索增强生成（RAG）核心功能。
+Provides core Retrieval-Augmented Generation (RAG) functionality.
 
-主要组件：
-- chunking: 文档切块（factory, hierarchical, legacy）
-- embedding: 向量嵌入模型
-- reranker: 重排器（LLM、OpenAI、DashScope、权重融合）
-- retriever: 混合检索器（向量 + BM25）
-- llm: LLM 抽象层
-- kg: 知识图谱（实体/事件抽取、图谱搜索）
-- engine: 核心 RAG 引擎
-- graph: LangGraph 编排
-- agent: Agent 工具
-- tools: RAG 工具函数
+Main components:
+- chunking: Document chunking (factory, hierarchical, legacy)
+- embedding: Vector embedding models
+- reranker: Rerankers (LLM, OpenAI, DashScope, weighted fusion)
+- retriever: Hybrid retriever (vector + BM25)
+- llm: LLM abstraction layer
+- kg: Knowledge graph (entity/event extraction, graph search)
+- engine: Core RAG engine
+- graph: LangGraph orchestration
+- agent: Agent tools
+- tools: RAG utility functions
 
-注意: 为避免循环导入，部分子模块需要直接导入：
+Note: To avoid circular imports, some submodules need to be imported directly:
 - from app.rag.engine import get_rag_engine
 - from app.rag.retriever import hybrid_retriever
 - from app.rag.chunking import chunker_factory

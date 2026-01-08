@@ -29,7 +29,7 @@ router = APIRouter(tags=["prompt-templates"])
 
 
 def _derive_template_key(name: str) -> str:
-    """从名称派生一个稳定 key（尽量避免空 key）。"""
+    """Derive a stable key from name (avoid empty keys)."""
     raw = (name or "").strip().lower()
     if not raw:
         return "template"
