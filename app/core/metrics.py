@@ -7,7 +7,7 @@ Designed to be optional: metrics are enabled only when PROMETHEUS_ENABLED=true.
 from __future__ import annotations
 
 import time
-from typing import Callable, Iterable, Optional
+from typing import Iterable, Optional
 
 from prometheus_client import CONTENT_TYPE_LATEST, Counter, Gauge, Histogram, generate_latest
 

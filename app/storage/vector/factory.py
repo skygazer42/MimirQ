@@ -18,8 +18,7 @@ from app.rag.core.filters import match_metadata_filter
 logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
-    from langchain_community.vectorstores import FAISS as _LCFAISS
-    from langchain_community.vectorstores import Chroma as _LCChroma
+    pass
 
 _FAISS_CLS = None
 _CHROMA_CLS = None

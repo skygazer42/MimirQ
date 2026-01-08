@@ -12,7 +12,6 @@ from app.rag.embedding.utils import logger
 from app.rag.embedding.base import BaseEmbeddingModel
 from app.rag.embedding.config import (
     DEFAULT_EMBED_MODELS,
-    EmbedModelInfo,
     get_model_info,
     get_supported_model_ids,
 )

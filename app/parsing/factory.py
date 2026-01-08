@@ -3,12 +3,12 @@
 """
 from __future__ import annotations
 
+import threading
 from pathlib import Path
-from typing import TYPE_CHECKING, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any, List, Optional, Tuple
 
 from langchain_core.documents import Document
 
-from app.parsing.parsers.pdf_parser import PDFParser
 from app.parsing.parsers.text_parser import TextParser, MarkdownParser
 from app.parsing.backends import normalize_parser_backend
 from app.core.config import settings
@@ -23,6 +23,7 @@ if TYPE_CHECKING:
     from app.parsing.parsers.magic_pdf_parser import MagicPDFParser
     from app.parsing.parsers.markitdown_parser import MarkItDownParser
     from app.parsing.parsers.mineru_parser import MinerUParser
+    from app.parsing.parsers.pdf_parser import PDFParser
 
 
 class ParserFactory:
@@ -32,24 +33,24 @@ class ParserFactory:
     SUPPORTED_NON_PDF_MARKITDOWN = {".doc", ".docx", ".xls", ".xlsx", ".csv", ".html", ".json"}
 
     def __init__(self):
-        self._basic_pdf_parser = PDFParser()
+        self._basic_pdf_parser: Optional[PDFParser] = None
         self._mineru_parser: Optional[MinerUParser] = None
         self._deepdoc_parser: Optional[DeepDocParser] = None
         self._markitdown_parser: Optional[MarkItDownParser] = None
         self._docling_parser: Optional[DoclingParser] = None
         self._magicpdf_parser: Optional[MagicPDFParser] = None
 
-        logger.info("[pdf] PyMuPDF parser ready (basic)")
+        logger.debug("[pdf] Basic PyMuPDF parser available (lazy)")
         if settings.MINERU_ENABLED and (settings.MINERU_API_TOKEN or settings.MINERU_LOCAL_SERVER_URL):
-            logger.info("[pdf] MinerU parser available (requires selection)")
+            logger.debug("[pdf] MinerU parser available (requires selection)")
         if settings.DEEPDOC_ENABLED:
-            logger.info("[pdf] DeepDoc parser available (requires selection)")
+            logger.debug("[pdf] DeepDoc parser available (requires selection)")
         if settings.MARKITDOWN_ENABLED:
-            logger.info("[pdf] MarkItDown parser available (requires selection)")
+            logger.debug("[pdf] MarkItDown parser available (requires selection)")
         if getattr(settings, "DOCLING_ENABLED", False):
-            logger.info("[pdf] Docling parser available (requires selection)")
+            logger.debug("[pdf] Docling parser available (requires selection)")
         if getattr(settings, "MAGIC_PDF_ENABLED", False):
-            logger.info("[pdf] MagicPDF parser available (requires selection)")
+            logger.debug("[pdf] MagicPDF parser available (requires selection)")
 
         self.parsers = {
             ".txt": TextParser(),
@@ -227,7 +228,7 @@ class ParserFactory:
                     return JsonParser().parse(file_path), "json"
                 if file_ext == ".pdf":
                     # Last-resort fallback: basic text extraction via PyMuPDF.
-                    return self._basic_pdf_parser.parse(file_path), "basic"
+                    return self._get_pdf_parser("basic").parse(file_path), "basic"
             except Exception as fallback_exc:
                 logger.warning(
                     "[parse] Fallback parser also failed for %s: %s",
@@ -240,6 +241,11 @@ class ParserFactory:
 
     def _get_pdf_parser(self, backend: str):
         if backend == "basic":
+            if self._basic_pdf_parser is None:
+                from app.parsing.parsers.pdf_parser import PDFParser
+
+                logger.debug("[pdf] Initializing PyMuPDF parser (basic)")
+                self._basic_pdf_parser = PDFParser()
             return self._basic_pdf_parser
 
         if backend == "mineru":
@@ -294,5 +300,29 @@ class ParserFactory:
         return self._markitdown_parser
 
 
-# 全局实例
-parser_factory = ParserFactory()
+_PARSER_FACTORY: Optional[ParserFactory] = None
+_PARSER_FACTORY_LOCK = threading.Lock()
+
+
+def get_parser_factory() -> ParserFactory:
+    """
+    Return the global parser factory instance (lazy init).
+
+    This avoids importing heavy PDF deps (PyMuPDF) and emitting availability logs
+    during module import (e.g. when exporting OpenAPI).
+    """
+    global _PARSER_FACTORY
+    if _PARSER_FACTORY is None:
+        with _PARSER_FACTORY_LOCK:
+            if _PARSER_FACTORY is None:
+                _PARSER_FACTORY = ParserFactory()
+    return _PARSER_FACTORY
+
+
+class _ParserFactoryProxy:
+    def __getattr__(self, name: str) -> Any:  # pragma: no cover
+        return getattr(get_parser_factory(), name)
+
+
+# Keep the historical import surface: `from app.parsing.factory import parser_factory`.
+parser_factory = _ParserFactoryProxy()

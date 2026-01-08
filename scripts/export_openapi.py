@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 from pathlib import Path
 import sys
 
@@ -14,6 +15,9 @@ def main() -> int:
     # Ensure repo root is importable when executed as a script (sys.path[0] == scripts/).
     repo_root = Path(__file__).resolve().parents[1]
     sys.path.insert(0, str(repo_root))
+
+    # Hint the app to avoid heavyweight side effects during OpenAPI export.
+    os.environ.setdefault("MIMIRQ_OPENAPI_EXPORT", "1")
 
     # Import here to avoid side effects during argument parsing.
     from app.main import app

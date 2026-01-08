@@ -10,7 +10,7 @@ from huggingface_hub import hf_hub_download
 from langchain_community.document_loaders import PyPDFLoader
 from rapidocr_onnxruntime import RapidOCR
 from tqdm import tqdm
-from ..configs.settings import *  # noqa: F401,F403
+from ..configs.settings import DATA_PARSER_DATA, MODEL_OCR_PATH
 
 # from argparse import ArgumentParser
 

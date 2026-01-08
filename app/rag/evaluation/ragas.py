@@ -8,7 +8,6 @@ RAGAS evaluation service.
 from __future__ import annotations
 
 import math
-import os
 from datetime import datetime
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 from uuid import UUID

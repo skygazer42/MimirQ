@@ -4,7 +4,6 @@
 定义提示词模板的数据表结构，支持版本管理和 A/B 测试。
 """
 import uuid
-from typing import List
 
 from sqlalchemy import Boolean, Column, DateTime, Float, Index, Integer, String, Text
 from sqlalchemy.dialects.postgresql import JSONB, UUID

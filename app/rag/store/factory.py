@@ -8,7 +8,6 @@ the graph runs without a store (default).
 from __future__ import annotations
 
 import logging
-from typing import Optional
 
 from app.core.config import settings
 

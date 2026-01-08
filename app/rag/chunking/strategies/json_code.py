@@ -9,7 +9,7 @@ from __future__ import annotations
 import json
 import logging
 import re
-from typing import Any, Dict, List, Optional, Set
+from typing import Any, Dict, List, Optional
 
 from langchain_core.documents import Document
 from langchain_text_splitters import RecursiveCharacterTextSplitter
@@ -601,7 +601,6 @@ class SmartCodeChunker(BaseChunker):
         current_unit = []
         current_type = "module"
         current_name = "<module>"
-        current_indent = 0
 
         for line in lines:
             # Check for class/function definition
@@ -624,8 +623,6 @@ class SmartCodeChunker(BaseChunker):
                 else:
                     current_type = "function"
                     current_name = func_match.group(1)
-
-                current_indent = len(line) - len(line.lstrip())
 
             current_unit.append(line)
 

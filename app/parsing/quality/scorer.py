@@ -11,7 +11,7 @@ PDF 质量评分工具：用于决定解析分流
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Dict, Optional, List, Tuple
+from typing import Dict, List, Tuple
 
 import re
 

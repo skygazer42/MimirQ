@@ -14,6 +14,7 @@ from fastapi import APIRouter, Response
 from app.core.config import settings
 from app.core.database import SessionLocal
 from app.storage.vector.milvus import milvus_store
+from app.api.schemas.health import HealthResponse, ReadyResponse
 
 
 router = APIRouter()
@@ -60,7 +61,7 @@ def _get_redis_client():
     return _redis_client
 
 
-@router.get("/health")
+@router.get("/health", response_model=HealthResponse)
 def health() -> dict:
     """
     Lightweight health check for web/dev tooling.
@@ -74,7 +75,7 @@ def health() -> dict:
     }
 
 
-@router.get("/health/ready")
+@router.get("/health/ready", response_model=ReadyResponse)
 def ready(response: Response) -> dict:
     """
     Readiness probe for orchestration (k8s, compose, etc).

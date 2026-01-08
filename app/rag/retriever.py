@@ -409,7 +409,6 @@ class HybridRetriever(BaseRetriever):
         if not chunks:
             return
 
-        tenant_key = self._tenant_key(tenant_id)
         docs: List[Document] = []
         for chunk in chunks:
             meta = dict(chunk.doc_metadata or {})

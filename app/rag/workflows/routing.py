@@ -10,7 +10,7 @@ Pattern: Classify -> Route -> Handler -> Result
 from __future__ import annotations
 
 import logging
-from typing import Any, Callable, Dict, List, Optional, Awaitable, Tuple
+from typing import Any, Callable, Dict, List, Optional, Awaitable
 
 from app.rag.workflows.base import (
     BaseWorkflow,

@@ -496,18 +496,9 @@ export interface LoginRequest {
 
 // ==================== Health ====================
 
-export interface HealthResponse {
-  ok: boolean
-  time: string
-  vector_backend?: string
-  use_langgraph_pipeline?: boolean
-}
-
-export interface ReadyResponse {
-  ok: boolean
-  time: string
-  deps?: Record<string, any>
-}
+export type HealthResponse = import('./backend').HealthResponse
+export type ReadyResponse = import('./backend').ReadyResponse
+export type MetaResponse = import('./backend').MetaResponse
 
 // ==================== KG 相关类型 ====================
 

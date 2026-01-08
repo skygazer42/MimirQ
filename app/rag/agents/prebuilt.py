@@ -6,7 +6,7 @@ Prebuilt Agent Integration for LangGraph.
 import logging
 from typing import Any, Callable, Dict, List, Optional, Sequence, Union
 from langchain_core.language_models import BaseChatModel
-from langchain_core.messages import BaseMessage, HumanMessage, SystemMessage
+from langchain_core.messages import HumanMessage
 from langchain_core.tools import BaseTool
 from langgraph.graph.state import CompiledStateGraph
 from langgraph.prebuilt import create_react_agent, ToolNode

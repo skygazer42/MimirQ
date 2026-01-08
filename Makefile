@@ -121,7 +121,9 @@ openapi-types:
 
 openapi-check:
 	@$(MAKE) openapi-types
+	test -s web/openapi.json
 	test -s web/types/openapi.ts
+	git diff --quiet --exit-code -- web/openapi.json web/types/openapi.ts || (echo "[openapi-check] FAIL: OpenAPI artifacts differ. Run 'make openapi-types' and commit changes." && exit 1)
 
 db-upgrade:
 	alembic upgrade head
