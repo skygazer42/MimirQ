@@ -10,7 +10,6 @@ Available strategies:
 - ragflow_laws: Legal document format
 - ragflow_email: Email format
 """
-from __future__ import annotations
 
 from pathlib import Path
 from typing import Callable, List, Literal, Optional, Any

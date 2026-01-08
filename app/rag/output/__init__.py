@@ -14,7 +14,6 @@ Usage:
     result = await get_structured_output(llm, query, context, mode=OutputMode.FAQ)
 """
 
-from __future__ import annotations
 
 import json
 import logging

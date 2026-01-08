@@ -1,4 +1,3 @@
-from __future__ import annotations
 
 from app.rag.preprocessing.cleaning import RegexRule
 

@@ -6,7 +6,6 @@ These are used across:
 - Long-term memory retrieval (BM25 over chat history)
 """
 
-from __future__ import annotations
 
 from typing import List
 

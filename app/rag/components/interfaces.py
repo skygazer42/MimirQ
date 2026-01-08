@@ -5,7 +5,6 @@ These are intentionally dependency-light so different pipeline implementations
 can share a common schema without importing heavy runtime modules.
 """
 
-from __future__ import annotations
 
 from typing import Any, Dict, List, Literal, Optional, Protocol, TypedDict
 

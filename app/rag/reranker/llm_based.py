@@ -11,7 +11,6 @@ Strategy:
 Note: this module is a reranker implementation; do not confuse it with app.rag.llm (LLM client).
 """
 
-from __future__ import annotations
 
 import json
 import time

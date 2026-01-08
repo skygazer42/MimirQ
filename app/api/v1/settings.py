@@ -2,7 +2,6 @@
 Settings API - system configuration management.
 Supports reading and updating .env configuration.
 """
-from __future__ import annotations
 
 import ipaddress
 from pathlib import Path

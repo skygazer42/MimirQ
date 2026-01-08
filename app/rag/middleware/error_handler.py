@@ -4,7 +4,6 @@ Error Handler Middleware
 Provides error handling, retry, and fallback mechanisms for LLM calls.
 """
 
-from __future__ import annotations
 
 import asyncio
 import logging

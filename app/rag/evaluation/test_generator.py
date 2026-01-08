@@ -4,7 +4,6 @@ Test question generator.
 Generates test questions from documents or conversation history for RAGAS regression.
 """
 
-from __future__ import annotations
 
 import random
 import re

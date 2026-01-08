@@ -5,7 +5,6 @@ Unified usage in:
 - Preview parsing (parse-preview)
 - Database parsing (documents/upload background processing)
 """
-from __future__ import annotations
 
 from pathlib import Path
 from typing import Dict, Optional, Tuple

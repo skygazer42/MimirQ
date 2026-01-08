@@ -6,7 +6,6 @@ Unified reranker architecture:
 - APIReranker: HTTP API reranker (e.g., OpenAI, DashScope)
 - DocumentReranker: document-level reranker (e.g., Weight, ParentChild, LLM)
 """
-from __future__ import annotations
 
 import asyncio
 from abc import ABC, abstractmethod

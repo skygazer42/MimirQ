@@ -3,7 +3,6 @@ ZIP image processor - extract images from ZIP and upload to MinIO.
 
 Used for Markdown + images archives returned by MinerU/DeepDoc parsers.
 """
-from __future__ import annotations
 
 import io
 import re

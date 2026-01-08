@@ -5,7 +5,6 @@ Used as a best-effort fallback when MarkItDown is unavailable or fails.
 Supports .xlsx via openpyxl; .xls requires optional engines and may fail.
 """
 
-from __future__ import annotations
 
 import io
 from pathlib import Path
@@ -48,10 +47,7 @@ class ExcelParser:
         return self._parse_via_pandas(file_path)
 
     def _parse_xlsx(self, file_path: Path) -> List[Document]:
-        try:
-            from openpyxl import load_workbook  # type: ignore
-        except ImportError as exc:  # pragma: no cover
-            raise RuntimeError("openpyxl is not installed; cannot parse .xlsx") from exc
+        from openpyxl import load_workbook  # type: ignore
 
         wb = load_workbook(filename=str(file_path), read_only=True, data_only=True)
         sheet_names = list(getattr(wb, "sheetnames", []) or [])
@@ -89,10 +85,7 @@ class ExcelParser:
         return [Document(page_content=out.getvalue(), metadata=metadata)]
 
     def _parse_via_pandas(self, file_path: Path) -> List[Document]:
-        try:
-            import pandas as pd  # type: ignore
-        except ImportError as exc:  # pragma: no cover
-            raise RuntimeError("pandas is not installed; cannot parse Excel") from exc
+        import pandas as pd  # type: ignore
 
         # Read a small preview; pandas will select an engine based on extension.
         try:

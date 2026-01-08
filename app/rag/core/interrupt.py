@@ -21,7 +21,6 @@ Usage:
         return Command(goto="finish")
 """
 
-from __future__ import annotations
 
 import asyncio
 import logging

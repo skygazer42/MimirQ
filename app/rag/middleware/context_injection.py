@@ -15,7 +15,6 @@ Usage:
     state = await middleware.before_model(state)
 """
 
-from __future__ import annotations
 
 import logging
 from abc import ABC, abstractmethod

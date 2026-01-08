@@ -8,7 +8,6 @@ Implementation:
 - Keyword retrieval: TF-IDF
 - Weighted fusion: configurable weights for both scores
 """
-from __future__ import annotations
 
 import math
 from collections import Counter

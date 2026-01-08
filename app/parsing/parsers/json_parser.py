@@ -6,7 +6,6 @@ basic structural metadata. This is useful as a fallback when MarkItDown is not
 available or fails.
 """
 
-from __future__ import annotations
 
 import json
 from pathlib import Path

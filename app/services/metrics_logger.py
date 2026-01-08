@@ -6,7 +6,6 @@ Features:
 - Safety: best-effort PII redaction when `settings.PII_REDACTION_ENABLED` is enabled
 """
 
-from __future__ import annotations
 
 import atexit
 import contextlib

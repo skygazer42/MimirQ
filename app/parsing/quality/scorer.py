@@ -8,7 +8,6 @@ Scoring dimensions (sample first 3 pages):
 
 Final score 0-1; higher is cleaner. Low scores prefer OCR/structured flow.
 """
-from __future__ import annotations
 
 from pathlib import Path
 from typing import Dict, List, Tuple

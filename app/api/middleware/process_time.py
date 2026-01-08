@@ -5,7 +5,6 @@ Adds a lightweight timing header to responses for debugging/perf checks:
 - X-Process-Time-Ms
 """
 
-from __future__ import annotations
 
 from time import perf_counter
 from typing import Callable

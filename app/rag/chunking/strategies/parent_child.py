@@ -7,7 +7,6 @@ Creates a two-level hierarchy:
 
 Child chunks maintain reference to parent via parent_id.
 """
-from __future__ import annotations
 
 import uuid
 from typing import List

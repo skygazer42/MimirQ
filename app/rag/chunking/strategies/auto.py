@@ -5,7 +5,6 @@ Selects an appropriate chunker per-document based on metadata + lightweight
 content heuristics.
 """
 
-from __future__ import annotations
 
 import json
 import re

@@ -12,12 +12,7 @@ from app.rag.core.logging import get_logger
 
 logger = get_logger("http_client")
 
-try:
-    import h2  # noqa: F401
-
-    _HTTP2_AVAILABLE = True
-except ImportError:
-    _HTTP2_AVAILABLE = False
+import h2
 
 
 class HTTPClientPool:
@@ -49,9 +44,7 @@ class HTTPClientPool:
                     )
 
                     http2_enabled = bool(getattr(settings, "HTTP_CLIENT_HTTP2_ENABLED", True))
-                    http2 = bool(http2_enabled and _HTTP2_AVAILABLE)
-                    if http2_enabled and not http2:
-                        logger.info("HTTP/2 disabled: missing dependency 'h2' (install httpx[http2] to enable)")
+                    http2 = bool(http2_enabled)
                     
                     self._client = httpx.AsyncClient(
                         limits=limits,

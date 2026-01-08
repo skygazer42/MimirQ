@@ -9,7 +9,6 @@ Supported providers:
 - `simple`: lightweight regex-based fallback
 """
 
-from __future__ import annotations
 
 import importlib.util
 import os
@@ -61,12 +60,7 @@ def get_keyword_extractor(provider: str | None = None) -> object:
     elif key in {"simple"}:
         extractor = SimpleKeywordExtractor()
     elif key == "hanlp":
-        try:
-            extractor = HanLPKeywordExtractor()
-        except ImportError as exc:
-            raise KeywordProviderUnavailable(
-                "HanLP provider is not available. Install `hanlp` and configure HANLP_TOKENIZER_MODEL if needed."
-            ) from exc
+        extractor = HanLPKeywordExtractor()
     elif key == "auto":
         if importlib.util.find_spec("hanlp") is not None:
             try:

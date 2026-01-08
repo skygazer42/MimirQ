@@ -6,7 +6,6 @@ This module:
 - Optionally configures JSON logging when LOG_FORMAT=json
 """
 
-from __future__ import annotations
 
 import json
 import logging

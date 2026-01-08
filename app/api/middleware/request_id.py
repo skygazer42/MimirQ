@@ -6,7 +6,6 @@ Adds a stable request id to:
 - response header (default: X-Request-ID)
 """
 
-from __future__ import annotations
 
 import re
 import uuid

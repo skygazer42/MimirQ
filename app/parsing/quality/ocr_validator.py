@@ -4,7 +4,6 @@ RapidOCR service for PDF quality evaluation and scan detection.
 Lightweight wrapper around RapidOCR (PP-OCRv4), used only for sampling
 the first few pages.
 """
-from __future__ import annotations
 
 import tempfile
 from pathlib import Path

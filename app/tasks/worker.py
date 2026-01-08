@@ -5,7 +5,6 @@ Start method (container/local):
   arq app.tasks.worker.WorkerSettings
 """
 
-from __future__ import annotations
 
 from arq.connections import RedisSettings
 

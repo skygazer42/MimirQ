@@ -4,7 +4,6 @@ Health check endpoints.
 Provides system health status check interfaces for frontend and developer tools monitoring.
 """
 
-from __future__ import annotations
 
 from datetime import datetime, timezone
 import time

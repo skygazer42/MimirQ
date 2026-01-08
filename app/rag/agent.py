@@ -9,7 +9,6 @@ This module is kept for backwards compatibility; it simply forwards calls to
 `RAGEngine`.
 """
 
-from __future__ import annotations
 
 import threading
 from typing import AsyncGenerator, Dict, Any, List, Optional

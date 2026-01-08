@@ -3,7 +3,6 @@ Custom separator-based chunking strategy.
 
 Similar to Dify's separator-based chunking with preset options.
 """
-from __future__ import annotations
 
 import re
 from typing import List, Optional

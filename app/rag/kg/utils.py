@@ -9,7 +9,6 @@ the canonical definitions live in `app.rag.core`.
 This file remains as a compatibility layer for existing imports.
 """
 
-from __future__ import annotations
 
 from app.rag.core import (
     AIError,

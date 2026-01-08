@@ -12,7 +12,6 @@ Additional optional phases:
 - before_agent / after_agent: Agent/workflow lifecycle hooks
 """
 
-from __future__ import annotations
 
 import asyncio
 import logging

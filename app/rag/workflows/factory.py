@@ -4,7 +4,6 @@ Workflow factory for creating workflow instances.
 Provides factory functions and configuration-based workflow selection.
 """
 
-from __future__ import annotations
 
 import logging
 from typing import Any, Dict, Optional

@@ -2,7 +2,6 @@
 Fixed text splitter implementations.
 Integrated from third_party/dify/splitter/fixed_text_splitter.py
 """
-from __future__ import annotations
 
 import re
 from collections.abc import Collection, Set

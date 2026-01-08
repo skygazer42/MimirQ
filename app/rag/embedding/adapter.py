@@ -4,7 +4,6 @@ LangChain-compatible embeddings adapter.
 Adapts app.rag.embedding models to LangChain's Embeddings interface
 for use with LangChain vector stores (Milvus, FAISS, Chroma, etc.).
 """
-from __future__ import annotations
 
 from typing import List, Optional, Tuple
 import hashlib

@@ -8,7 +8,6 @@ persist the choice into message_metadata for evaluation loops (A/B comparisons,
 user feedback correlation, regression datasets, and more).
 """
 
-from __future__ import annotations
 
 import hashlib
 from typing import Optional

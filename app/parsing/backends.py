@@ -5,7 +5,6 @@ We accept a few common aliases from UI / env / user input and map them to the
 canonical backend names used internally.
 """
 
-from __future__ import annotations
 
 from typing import Optional
 
