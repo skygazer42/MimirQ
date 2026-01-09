@@ -129,13 +129,13 @@ export interface paths {
         put?: never;
         /**
          * Upload Document
-         * @description 上传文档
+         * @description Upload a document.
          *
-         *     流程：
-         *     1. 验证文件类型和大小
-         *     2. 保存文件到本地
-         *     3. 创建数据库记录
-         *     4. 后台异步处理文档（解析、切片、向量化）
+         *     Flow:
+         *     1. Validate file type and size
+         *     2. Save file locally
+         *     3. Create database record
+         *     4. Process document asynchronously (parse, chunk, embed)
          */
         post: operations["upload_document_api_v1_documents_upload_post"];
         delete?: never;
@@ -155,20 +155,20 @@ export interface paths {
         put?: never;
         /**
          * Upload Documents Batch
-         * @description 批量上传文档（并发优化版）
+         * @description Batch upload documents (concurrency-optimized).
          *
-         *     支持同时上传多个文档，使用并发处理以提升性能。
+         *     Supports uploading multiple documents concurrently to improve performance.
          *
          *     Args:
-         *         files: 文档文件列表
-         *         max_concurrent: 最大并发处理数，默认5
-         *         其他参数同单文件上传接口
+         *         files: Document file list.
+         *         max_concurrent: Max concurrent processing, default 5.
+         *         Other params match the single-file upload endpoint.
          *
          *     Returns:
          *         {
-         *             "total": 总文件数,
-         *             "successful": 成功上传的文档列表,
-         *             "failed": 失败的文件列表（包含错误信息）
+         *             "total": total files,
+         *             "successful": list of successful documents,
+         *             "failed": list of failed files (with errors)
          *         }
          */
         post: operations["upload_documents_batch_api_v1_documents_upload_batch_post"];
@@ -187,7 +187,7 @@ export interface paths {
         };
         /**
          * List Documents
-         * @description 获取文档列表
+         * @description List documents.
          */
         get: operations["list_documents_api_v1_documents__get"];
         put?: never;
@@ -207,14 +207,14 @@ export interface paths {
         };
         /**
          * Get Document
-         * @description 获取文档详情
+         * @description Get document detail.
          */
         get: operations["get_document_api_v1_documents__document_id__get"];
         put?: never;
         post?: never;
         /**
          * Delete Document
-         * @description 删除文档
+         * @description Delete document.
          */
         delete: operations["delete_document_api_v1_documents__document_id__delete"];
         options?: never;
@@ -231,7 +231,7 @@ export interface paths {
         };
         /**
          * Get Document Status
-         * @description 获取文档处理状态（用于轮询）
+         * @description Get document processing status (for polling).
          */
         get: operations["get_document_status_api_v1_documents__document_id__status_get"];
         put?: never;
@@ -251,8 +251,8 @@ export interface paths {
         };
         /**
          * Get Image
-         * @description 根据 image_id 返回保存的图片。
-         *     标准位置：{UPLOAD_DIR}/images/{image_id}.png
+         * @description Return stored image by image_id.
+         *     Standard path: {UPLOAD_DIR}/images/{image_id}.png
          */
         get: operations["get_image_api_v1_documents_image__image_id__get"];
         put?: never;
@@ -272,8 +272,8 @@ export interface paths {
         };
         /**
          * Get Image Url
-         * @description 根据 img_id（格式：{tenant_id}:{dataset_id}:{document_id}:{chunk_index}）获取 MinIO 预签名 URL。
-         *     返回 302 重定向到图片 URL。
+         * @description Get MinIO presigned URL by img_id ({tenant_id}:{dataset_id}:{document_id}:{chunk_index}).
+         *     Returns a 302 redirect to the image URL.
          */
         get: operations["get_image_url_api_v1_documents_image_url__img_id__get"];
         put?: never;
@@ -295,10 +295,10 @@ export interface paths {
         put?: never;
         /**
          * Preview Document
-         * @description 文档解析预览接口
+         * @description Document parse preview endpoint.
          *
-         *     仅解析文档并返回结构化片段，不创建文档记录或入库。
-         *     适用于前端根据解析结果自定义切片。
+         *     Only parses the document and returns structured segments; does not create
+         *     a document record or persist data. Useful for frontend custom chunking.
          */
         post: operations["preview_document_api_v1_documents_preview_post"];
         delete?: never;
@@ -318,14 +318,14 @@ export interface paths {
         put?: never;
         /**
          * Create Document With Manual Chunks
-         * @description 基于前端自定义切片创建文档
+         * @description Create a document from frontend custom chunks.
          *
-         *     流程：
-         *     1. 创建文档记录（状态为 processing）
-         *     2. 使用传入的 chunks 生成 Embeddings 并存入 Milvus
-         *     3. 将 chunks 写入 PostgreSQL
-         *     4. 重建 BM25 索引
-         *     5. 更新文档状态为 completed
+         *     Flow:
+         *     1. Create document record (status=processing)
+         *     2. Generate embeddings from chunks and store in Milvus
+         *     3. Write chunks to PostgreSQL
+         *     4. Rebuild BM25 index
+         *     5. Update document status to completed
          */
         post: operations["create_document_with_manual_chunks_api_v1_documents_manual_post"];
         delete?: never;
@@ -345,18 +345,18 @@ export interface paths {
         put?: never;
         /**
          * Preview Chunking
-         * @description 切块预览接口
+         * @description Chunk preview endpoint.
          *
-         *     上传文件并使用指定参数进行切块预览，不存入数据库。
-         *     返回切块结果及每个块在原文中的位置，用于前端高亮展示。
+         *     Upload a file and preview chunking with the given parameters (no DB writes).
+         *     Returns chunk results with positions for frontend highlighting.
          *
          *     Args:
-         *         file: 上传的文件
-         *         chunk_size: 切块大小 (100-4000)
-         *         chunk_overlap: 重叠大小 (0-1000)
+         *         file: Uploaded file.
+         *         chunk_size: Chunk size (100-4000).
+         *         chunk_overlap: Overlap size (0-1000).
          *
          *     Returns:
-         *         切块预览结果，包含每个块的内容和位置信息
+         *         Chunk preview result including content and position info.
          */
         post: operations["preview_chunking_api_v1_documents_chunk_preview_post"];
         delete?: never;
@@ -376,23 +376,23 @@ export interface paths {
         put?: never;
         /**
          * Apply Batch Upload Urls
-         * @description 批量申请文件上传 URL（MinerU 在线解析）
+         * @description Batch request file upload URLs (MinerU online parsing).
          *
-         *     适用于本地文件批量上传解析的场景。
+         *     Use case: batch upload local files for parsing.
          *
-         *     使用流程：
-         *     1. 调用此接口申请上传 URL（最多 200 个文件）
-         *     2. 使用返回的 URL 上传文件（PUT 请求，无需设置 Content-Type）
-         *     3. 上传完成后，系统自动提交解析任务
-         *     4. 使用 batch_id 查询解析状态
+         *     Flow:
+         *     1. Call this endpoint to request upload URLs (up to 200 files)
+         *     2. Upload files to returned URLs (PUT; no Content-Type needed)
+         *     3. After upload, the system submits parsing tasks automatically
+         *     4. Query status using batch_id
          *
-         *     注意事项：
-         *     - 上传链接有效期为 24 小时
-         *     - 上传文件时无需设置 Content-Type 请求头
-         *     - 文件上传完成后无需手动提交任务，系统会自动扫描并处理
+         *     Notes:
+         *     - Upload links are valid for 24 hours
+         *     - No Content-Type header required for uploads
+         *     - No manual submit needed; the system scans and processes automatically
          *
          *     Example:
-         *         # Step 1: 申请上传 URL
+         *         # Step 1: request upload URLs
          *         response = requests.post("http://localhost:8000/api/v1/documents/batch-upload/apply-urls", headers={
          *             "X-User-ID": "demo",
          *         }, json={
@@ -402,7 +402,7 @@ export interface paths {
          *             ]
          *         })
          *
-         *         # Step 2: 上传文件
+         *         # Step 2: upload files
          *         batch_id = response.json()["batch_id"]
          *         urls = response.json()["file_urls"]
          *
@@ -410,7 +410,7 @@ export interface paths {
          *             with open(f"file{i+1}.pdf", "rb") as f:
          *                 requests.put(url, data=f)
          *
-         *         # Step 3: 查询状态
+         *         # Step 3: query status
          *         requests.get(f"http://localhost:8000/api/v1/documents/batch-upload/status/{batch_id}", headers={
          *             "X-User-ID": "demo",
          *         })
@@ -431,13 +431,13 @@ export interface paths {
         };
         /**
          * Get Batch Task Status
-         * @description 查询批量解析任务状态
+         * @description Query batch parsing task status.
          *
          *     Args:
-         *         batch_id: 批次 ID（从申请上传 URL 接口获得）
+         *         batch_id: Batch ID (from apply upload URLs).
          *
          *     Returns:
-         *         任务状态信息，包括进度、完成数量等
+         *         Task status info, including progress and completion counts.
          */
         get: operations["get_batch_task_status_api_v1_documents_batch_upload_status__batch_id__get"];
         put?: never;
@@ -459,7 +459,7 @@ export interface paths {
         put?: never;
         /**
          * Stream Chat
-         * @description 流式对话接口 - 核心功能
+         * @description Streaming chat endpoint (core flow).
          */
         post: operations["stream_chat_api_v1_chat_stream_post"];
         delete?: never;
@@ -477,13 +477,13 @@ export interface paths {
         };
         /**
          * List Conversations
-         * @description 获取对话列表
+         * @description List conversations.
          */
         get: operations["list_conversations_api_v1_chat_conversations_get"];
         put?: never;
         /**
          * Create Conversation
-         * @description 创建新对话
+         * @description Create a new conversation.
          */
         post: operations["create_conversation_api_v1_chat_conversations_post"];
         delete?: never;
@@ -501,7 +501,7 @@ export interface paths {
         };
         /**
          * Get Conversation Messages
-         * @description 获取对话历史
+         * @description Fetch conversation history.
          */
         get: operations["get_conversation_messages_api_v1_chat_conversations__conversation_id__messages_get"];
         put?: never;
@@ -521,14 +521,14 @@ export interface paths {
         };
         /**
          * List Conversation Checkpoints
-         * @description 列出该会话的 LangGraph checkpoints（用于 time-travel/debug）。
+         * @description List LangGraph checkpoints for this conversation (time-travel/debug).
          */
         get: operations["list_conversation_checkpoints_api_v1_chat_conversations__conversation_id__checkpoints_get"];
         put?: never;
         post?: never;
         /**
          * Delete Conversation Checkpoints
-         * @description 清除该会话的 checkpoints（仅影响 LangGraph 内部状态，不删除消息/对话）。
+         * @description Clear checkpoints for this conversation (does not delete messages or the conversation).
          */
         delete: operations["delete_conversation_checkpoints_api_v1_chat_conversations__conversation_id__checkpoints_delete"];
         options?: never;
@@ -545,7 +545,7 @@ export interface paths {
         };
         /**
          * Get Conversation Checkpoint
-         * @description 获取指定 checkpoint 的快照（默认不返回 docs 字段）。
+         * @description Get a checkpoint snapshot (docs are excluded by default).
          */
         get: operations["get_conversation_checkpoint_api_v1_chat_conversations__conversation_id__checkpoints__checkpoint_id__get"];
         put?: never;
@@ -568,7 +568,7 @@ export interface paths {
         post?: never;
         /**
          * Delete Conversation
-         * @description 删除对话
+         * @description Delete a conversation.
          */
         delete: operations["delete_conversation_api_v1_chat_conversations__conversation_id__delete"];
         options?: never;
@@ -730,12 +730,12 @@ export interface paths {
         };
         /**
          * Get Settings
-         * @description 获取当前系统配置
+         * @description Get current system config.
          */
         get: operations["get_settings_api_v1_settings_get"];
         /**
          * Update Settings
-         * @description 更新系统配置（写入 .env 文件）
+         * @description Update system config (write .env file).
          */
         put: operations["update_settings_api_v1_settings_put"];
         post?: never;
@@ -754,7 +754,7 @@ export interface paths {
         };
         /**
          * Get System Status
-         * @description 获取系统状态
+         * @description Get system status.
          */
         get: operations["get_system_status_api_v1_settings_status_get"];
         put?: never;
@@ -776,7 +776,7 @@ export interface paths {
         put?: never;
         /**
          * Test Llm Connection
-         * @description 测试 LLM 连接（不写入配置）
+         * @description Test LLM connection (no config write).
          */
         post: operations["test_llm_connection_api_v1_settings_llm_test_post"];
         delete?: never;
@@ -838,13 +838,13 @@ export interface paths {
         };
         /**
          * List Ragas Regression Cases
-         * @description 列出回归用例（tenant 隔离，可按 dataset_id 过滤）。
+         * @description List regression cases (tenant isolated, filterable by dataset_id).
          */
         get: operations["list_ragas_regression_cases_api_v1_evaluations_ragas_regression_cases_get"];
         put?: never;
         /**
          * Create Ragas Regression Case
-         * @description 创建一条回归用例（问题 + 可选知识库范围）。
+         * @description Create a regression case (question + optional dataset scope).
          */
         post: operations["create_ragas_regression_case_api_v1_evaluations_ragas_regression_cases_post"];
         delete?: never;
@@ -865,7 +865,7 @@ export interface paths {
         post?: never;
         /**
          * Delete Ragas Regression Case
-         * @description 删除一条回归用例。
+         * @description Delete a regression case.
          */
         delete: operations["delete_ragas_regression_case_api_v1_evaluations_ragas_regression_cases__case_id__delete"];
         options?: never;
@@ -882,13 +882,13 @@ export interface paths {
         };
         /**
          * List Ragas Regression Runs
-         * @description 列出回归运行记录。
+         * @description List regression runs.
          */
         get: operations["list_ragas_regression_runs_api_v1_evaluations_ragas_regression_runs_get"];
         put?: never;
         /**
          * Create Ragas Regression Run
-         * @description 创建一次回归评测运行，并在后台执行。
+         * @description Create a regression evaluation run and execute it in background.
          */
         post: operations["create_ragas_regression_run_api_v1_evaluations_ragas_regression_runs_post"];
         delete?: never;
@@ -906,7 +906,7 @@ export interface paths {
         };
         /**
          * Get Ragas Regression Run
-         * @description 获取某次回归运行详情（可选返回 items 与 contexts）。
+         * @description Get a regression run detail (optional items and contexts).
          */
         get: operations["get_ragas_regression_run_api_v1_evaluations_ragas_regression_runs__run_id__get"];
         put?: never;
@@ -928,7 +928,7 @@ export interface paths {
         put?: never;
         /**
          * Generate Test Cases From Documents
-         * @description 从文档生成测试问题
+         * @description Generate test questions from documents.
          */
         post: operations["generate_test_cases_from_documents_api_v1_evaluations_ragas_test_gen_from_documents_post"];
         delete?: never;
@@ -948,7 +948,7 @@ export interface paths {
         put?: never;
         /**
          * Generate Test Cases From Conversations
-         * @description 从对话历史生成测试问题
+         * @description Generate test questions from conversation history.
          */
         post: operations["generate_test_cases_from_conversations_api_v1_evaluations_ragas_test_gen_from_conversations_post"];
         delete?: never;
@@ -1100,7 +1100,7 @@ export interface paths {
         put?: never;
         /**
          * Create Prompt Template Version
-         * @description 基于某个模板创建新版本（默认禁用旧版本）。
+         * @description Create a new version from a template (deactivate old version by default).
          */
         post: operations["create_prompt_template_version_api_v1_prompt_templates__template_id__versions_post"];
         delete?: never;
@@ -1154,13 +1154,13 @@ export interface paths {
         };
         /**
          * List Message Feedback
-         * @description 查询反馈列表（默认返回当前 tenant 下全部）。
+         * @description Query feedback list (returns all items in current tenant by default).
          */
         get: operations["list_message_feedback_api_v1_feedback_messages_get"];
         put?: never;
         /**
          * Upsert Message Feedback
-         * @description 对一条 assistant 消息提交反馈（幂等：重复提交将更新）。
+         * @description Submit feedback for an assistant message (idempotent: resubmit will update).
          */
         post: operations["upsert_message_feedback_api_v1_feedback_messages_post"];
         delete?: never;
@@ -1178,9 +1178,9 @@ export interface paths {
         };
         /**
          * Get Pipeline Capabilities
-         * @description 返回当前部署可用的解析器/切块策略，用于前端动态禁用不可用选项。
+         * @description Return available parsers and chunking strategies for the frontend.
          *
-         *     注意：仅返回“可用性”信息，不包含任何敏感配置（如 API Key）。
+         *     Note: only availability info is returned (no sensitive config like API keys).
          */
         get: operations["get_pipeline_capabilities_api_v1_pipeline_capabilities_get"];
         put?: never;
@@ -1202,7 +1202,7 @@ export interface paths {
         put?: never;
         /**
          * Parse Preview
-         * @description 解析文件为 Markdown 预览，不入库；提取内嵌图片到 uploads/{tenant}/images。
+         * @description Parse a file into a Markdown preview without persisting it; extract inline images to uploads/{tenant}/images.
          */
         post: operations["parse_preview_api_v1_pipeline_parse_preview_post"];
         delete?: never;
@@ -1222,7 +1222,7 @@ export interface paths {
         put?: never;
         /**
          * Chunk Preview
-         * @description 对 Markdown 文本进行分层切块（段落/句子），返回可用于高亮的起止位置。
+         * @description Perform hierarchical chunking for Markdown text and return highlight offsets.
          */
         post: operations["chunk_preview_api_v1_pipeline_chunk_preview_post"];
         delete?: never;
@@ -1242,7 +1242,7 @@ export interface paths {
         put?: never;
         /**
          * Clean Preview
-         * @description 对 Markdown 做“数据治理”清洗预览（不入库），用于人工调整前/后对比。
+         * @description Preview governance-style cleaning for Markdown (no persistence) to compare before/after.
          */
         post: operations["clean_preview_api_v1_pipeline_clean_preview_post"];
         delete?: never;
@@ -1260,7 +1260,7 @@ export interface paths {
         };
         /**
          * List Clean Rules
-         * @description 返回默认“数据治理”规则列表，供前端做默认勾选/编辑。
+         * @description Return default governance rules for UI selection/editing.
          */
         get: operations["list_clean_rules_api_v1_pipeline_clean_rules_get"];
         put?: never;
@@ -1282,14 +1282,14 @@ export interface paths {
         put?: never;
         /**
          * Extract Keywords
-         * @description 提取关键词（用于治理/标注/分类等）。
+         * @description Extract keywords (for governance/annotation/classification).
          *
-         *     支持：
-         *     - provider=auto（优先 HanLP，不可用则回退 jieba）
-         *     - provider=jieba / jieba_tfidf（默认）
+         *     Supported providers:
+         *     - provider=auto (prefer HanLP, fallback to jieba)
+         *     - provider=jieba / jieba_tfidf (default)
          *     - provider=jieba_textrank
-         *     - provider=hanlp（可选依赖：需安装 `hanlp`，并可用 `HANLP_TOKENIZER_MODEL` 指定 tokenizer 模型）
-         *     - provider=simple（轻量正则分词 + 词频）
+         *     - provider=hanlp (optional dependency; requires `hanlp` and `HANLP_TOKENIZER_MODEL`)
+         *     - provider=simple (lightweight regex tokenization + term frequency)
          */
         post: operations["extract_keywords_api_v1_pipeline_extract_keywords_post"];
         delete?: never;
@@ -1309,11 +1309,11 @@ export interface paths {
         put?: never;
         /**
          * Llm Clean Preview
-         * @description 使用大模型对 Markdown 做“数据治理”清洗预览（不入库）。
+         * @description Use an LLM to preview governance-style cleaning for Markdown (no persistence).
          *
-         *     说明：
-         *     - 该接口会调用 LLM（需要正确配置 `LLM_API_KEY/LLM_API_BASE/LLM_MODEL`）。
-         *     - 支持通过 PromptTemplate 指定清洗策略：`prompt_template_id` / `template_key` / `ab_experiment_key`。
+         *     Notes:
+         *     - This endpoint calls an LLM (requires `LLM_API_KEY/LLM_API_BASE/LLM_MODEL`).
+         *     - PromptTemplate can override the cleaning strategy via `prompt_template_id` / `template_key` / `ab_experiment_key`.
          */
         post: operations["llm_clean_preview_api_v1_pipeline_llm_clean_preview_post"];
         delete?: never;
@@ -1333,24 +1333,24 @@ export interface paths {
         put?: never;
         /**
          * Upload Zip With Images
-         * @description 上传包含 Markdown + images 的 ZIP 文件。
+         * @description Upload a ZIP that contains Markdown + images.
          *
-         *     自动处理：
-         *     1. 解压 ZIP
-         *     2. 提取所有图片并上传到 MinIO
-         *     3. 替换 Markdown 中的图片引用为 MinIO URL
-         *     4. 返回处理后的 Markdown 和图片列表
+         *     Auto processing:
+         *     1. Unzip the archive
+         *     2. Upload all images to MinIO
+         *     3. Replace Markdown image refs with MinIO URLs
+         *     4. Return the rewritten Markdown and image list
          *
          *     Args:
-         *         file: ZIP 文件（包含 Markdown 和图片）
-         *         dataset_id: 知识库 ID（用于 MinIO 路径）
-         *         document_id: 文档 ID（可选，默认使用文件名）
+         *         file: ZIP file (Markdown + images)
+         *         dataset_id: Dataset ID (used for MinIO paths)
+         *         document_id: Optional document ID (defaults to file name)
          *
          *     Returns:
          *         {
-         *             "markdown": "处理后的 Markdown",
+         *             "markdown": "rewritten Markdown",
          *             "images": [{"img_id": "...", "url": "...", "original_path": "..."}],
-         *             "image_count": 数量
+         *             "image_count": count
          *         }
          */
         post: operations["upload_zip_with_images_api_v1_pipeline_upload_zip_with_images_post"];
@@ -1371,7 +1371,7 @@ export interface paths {
         put?: never;
         /**
          * Retrieve Preview
-         * @description 仅执行检索（不生成回答），用于调参/排查召回质量。
+         * @description Execute retrieval only (no answer generation); for parameter tuning and retrieval quality debugging.
          */
         post: operations["retrieve_preview_api_v1_rag_retrieve_preview_post"];
         delete?: never;
@@ -1391,7 +1391,7 @@ export interface paths {
         put?: never;
         /**
          * Prompt Preview
-         * @description 执行检索并返回最终 prompt（不调用 LLM），用于排查 prompt/上下文拼装问题。
+         * @description Execute retrieval and return final prompt (no LLM call); for debugging prompt/context assembly.
          */
         post: operations["prompt_preview_api_v1_rag_prompt_preview_post"];
         delete?: never;
@@ -1409,7 +1409,7 @@ export interface paths {
         };
         /**
          * Root
-         * @description 根路径
+         * @description Root path.
          */
         get: operations["root__get"];
         put?: never;
@@ -1429,7 +1429,7 @@ export interface paths {
         };
         /**
          * Health Check
-         * @description 健康检查
+         * @description Health check.
          */
         get: operations["health_check_health_get"];
         put?: never;
@@ -1451,30 +1451,30 @@ export interface components {
         };
         /**
          * BatchFileInfo
-         * @description 批量上传文件信息
+         * @description Batch upload file info.
          */
         BatchFileInfo: {
             /**
              * Name
-             * @description 文件名
+             * @description Filename
              */
             name: string;
             /**
              * Data Id
-             * @description 自定义数据 ID，用于标识文件
+             * @description Custom data ID for file identification
              */
             data_id: string;
         };
         /**
          * BatchTaskStatus
-         * @description 批量任务状态
+         * @description Batch task status.
          */
         BatchTaskStatus: {
             /** Batch Id */
             batch_id: string;
             /**
              * Status
-             * @description 任务状态: pending, processing, completed, failed
+             * @description Task status: pending, processing, completed, failed
              */
             status: string;
             /** Total Files */
@@ -1485,7 +1485,7 @@ export interface components {
             failed_files: number;
             /**
              * Progress
-             * @description 进度百分比
+             * @description Progress percentage
              */
             progress: number;
             /** Result Url */
@@ -1495,33 +1495,33 @@ export interface components {
         };
         /**
          * BatchUploadRequest
-         * @description 批量申请上传 URL 请求
+         * @description Batch request for upload URLs.
          */
         BatchUploadRequest: {
             /**
              * Files
-             * @description 文件列表，最多 200 个
+             * @description File list, max 200 files
              */
             files: components["schemas"]["BatchFileInfo"][];
         };
         /**
          * BatchUploadResponse
-         * @description 批量申请上传 URL 响应
+         * @description Batch response for upload URLs.
          */
         BatchUploadResponse: {
             /**
              * Batch Id
-             * @description 批次 ID
+             * @description Batch ID
              */
             batch_id: string;
             /**
              * File Urls
-             * @description 上传 URL 列表
+             * @description Upload URL list
              */
             file_urls: string[];
             /**
              * Files
-             * @description 文件信息列表
+             * @description File info list
              */
             files: components["schemas"]["BatchFileInfo"][];
             /**
@@ -1747,7 +1747,7 @@ export interface components {
         };
         /**
          * ChatRAGConfig
-         * @description Chat 接口专用的 RAG 参数。
+         * @description RAG parameters specific to the chat endpoint.
          */
         ChatRAGConfig: {
             /**
@@ -1820,7 +1820,7 @@ export interface components {
         };
         /**
          * ChatRequest
-         * @description 聊天请求
+         * @description Chat request.
          */
         ChatRequest: {
             /** Conversation Id */
@@ -1922,7 +1922,7 @@ export interface components {
         };
         /**
          * ChunkPreviewItem
-         * @description 切块预览单项
+         * @description Chunk preview item.
          */
         ChunkPreviewItem: {
             /** Index */
@@ -1942,18 +1942,18 @@ export interface components {
         };
         /**
          * ChunkPreviewParams
-         * @description 切块预览参数
+         * @description Chunk preview parameters.
          */
         ChunkPreviewParams: {
             /**
              * Chunk Size
-             * @description 切块大小
+             * @description Chunk size
              * @default 1000
              */
             chunk_size: number;
             /**
              * Chunk Overlap
-             * @description 重叠大小
+             * @description Overlap size
              * @default 200
              */
             chunk_overlap: number;
@@ -1969,12 +1969,30 @@ export interface components {
             /** Markdown */
             markdown: string;
         };
-        /** ChunkPreviewResponse */
+        /**
+         * ChunkPreviewResponse
+         * @description Chunk preview response.
+         */
         ChunkPreviewResponse: {
-            /** Paragraphs */
-            paragraphs: components["schemas"]["ChunkItem"][];
-            /** Sentences */
-            sentences: components["schemas"]["ChunkItem"][];
+            /** Filename */
+            filename: string;
+            /** File Type */
+            file_type: string;
+            /** File Size */
+            file_size: number;
+            /** Total Chunks */
+            total_chunks: number;
+            /** Total Characters */
+            total_characters: number;
+            params: components["schemas"]["ChunkPreviewParams"];
+            /** Chunks */
+            chunks: components["schemas"]["ChunkPreviewItem"][];
+            /** Original Text */
+            original_text?: string | null;
+            /** Parser Backend */
+            parser_backend: string;
+            /** Chunk Strategy */
+            chunk_strategy: string;
         };
         /** ChunkStrategyInfo */
         ChunkStrategyInfo: {
@@ -1987,7 +2005,7 @@ export interface components {
         };
         /**
          * Citation
-         * @description 引用信息
+         * @description Citation information.
          */
         Citation: {
             /**
@@ -2049,18 +2067,18 @@ export interface components {
             hit_type?: string | null;
             /**
              * Has Image
-             * @description 该引用是否包含图片
+             * @description Whether this citation contains an image
              * @default false
              */
             has_image: boolean;
             /**
              * Img Id
-             * @description 图片 ID（MinIO 格式：{tenant_id}:{dataset_id}:{document_id}:{chunk_index}）
+             * @description Image ID (MinIO format: {tenant_id}:{dataset_id}:{document_id}:{chunk_index})
              */
             img_id?: string | null;
             /**
              * Img Url
-             * @description 图片访问 URL
+             * @description Image access URL
              */
             img_url?: string | null;
         };
@@ -2152,7 +2170,7 @@ export interface components {
         };
         /**
          * ConversationCreate
-         * @description 创建对话
+         * @description Create conversation.
          */
         ConversationCreate: {
             /** Title */
@@ -2162,7 +2180,7 @@ export interface components {
         };
         /**
          * ConversationDetail
-         * @description 对话详情
+         * @description Conversation detail.
          */
         ConversationDetail: {
             /**
@@ -2175,7 +2193,7 @@ export interface components {
         };
         /**
          * ConversationList
-         * @description 对话列表
+         * @description Conversation list.
          */
         ConversationList: {
             /** Total */
@@ -2185,7 +2203,7 @@ export interface components {
         };
         /**
          * ConversationSchema
-         * @description 对话会话
+         * @description Conversation session.
          */
         ConversationSchema: {
             /**
@@ -2274,7 +2292,7 @@ export interface components {
         };
         /**
          * DocumentBatchUploadFailure
-         * @description 批量上传失败的单个文件结果。
+         * @description Single file result for failed batch upload.
          */
         DocumentBatchUploadFailure: {
             /** Filename */
@@ -2284,7 +2302,7 @@ export interface components {
         };
         /**
          * DocumentBatchUploadResponse
-         * @description 批量上传接口响应。
+         * @description Batch upload endpoint response.
          */
         DocumentBatchUploadResponse: {
             /** Total */
@@ -2300,7 +2318,7 @@ export interface components {
         };
         /**
          * DocumentBatchUploadSuccess
-         * @description 批量上传成功的单个文件结果（轻量返回）。
+         * @description Single file result for successful batch upload (lightweight response).
          */
         DocumentBatchUploadSuccess: {
             /**
@@ -2315,7 +2333,7 @@ export interface components {
         };
         /**
          * DocumentChunkSchema
-         * @description 文档块
+         * @description Document chunk.
          */
         DocumentChunkSchema: {
             /**
@@ -2338,7 +2356,7 @@ export interface components {
         };
         /**
          * DocumentDetail
-         * @description 文档详情
+         * @description Document detail.
          */
         DocumentDetail: {
             /**
@@ -2384,7 +2402,7 @@ export interface components {
         };
         /**
          * DocumentList
-         * @description 文档列表
+         * @description Document list.
          */
         DocumentList: {
             /** Total */
@@ -2394,7 +2412,7 @@ export interface components {
         };
         /**
          * DocumentParsePreview
-         * @description 文档解析预览结果
+         * @description Document parse preview result.
          */
         DocumentParsePreview: {
             /** Filename */
@@ -2450,12 +2468,12 @@ export interface components {
             governance_common_lines_min_ratio?: number | null;
             /**
              * Chunk Size
-             * @description 切块大小
+             * @description Chunk size
              */
             chunk_size?: number | null;
             /**
              * Chunk Overlap
-             * @description 重叠大小
+             * @description Overlap size
              */
             chunk_overlap?: number | null;
             /** Chunk Vector Enabled */
@@ -2471,7 +2489,7 @@ export interface components {
         };
         /**
          * DocumentStatus
-         * @description 文档处理状态
+         * @description Document processing status.
          */
         DocumentStatus: {
             /**
@@ -2490,7 +2508,7 @@ export interface components {
         };
         /**
          * EmbeddingConfig
-         * @description Embedding 配置
+         * @description Embedding config.
          */
         EmbeddingConfig: {
             /**
@@ -2516,7 +2534,7 @@ export interface components {
         };
         /**
          * FeatureFlags
-         * @description 功能开关
+         * @description Feature flags.
          */
         FeatureFlags: {
             /**
@@ -2551,74 +2569,38 @@ export interface components {
             magicpdf_enabled: boolean;
         };
         /**
-         * FeatureFlags
-         * @description 功能开关
-         */
-        "FeatureFlags-Input": {
-            /**
-             * Kg Enabled
-             * @default false
-             */
-            kg_enabled: boolean;
-            /**
-             * Deepdoc Enabled
-             * @default false
-             */
-            deepdoc_enabled: boolean;
-            /**
-             * Markitdown Enabled
-             * @default false
-             */
-            markitdown_enabled: boolean;
-            /**
-             * Llama Index Enabled
-             * @default false
-             */
-            llama_index_enabled: boolean;
-            /**
-             * Mineru Enabled
-             * @default false
-             */
-            mineru_enabled: boolean;
-            /**
-             * Magicpdf Enabled
-             * @default false
-             */
-            magicpdf_enabled: boolean;
-        };
-        /**
          * GeneratedQuestion
-         * @description 生成的问题
+         * @description Generated question.
          */
         GeneratedQuestion: {
             /**
              * Question
-             * @description 问题内容
+             * @description Question content
              */
             question: string;
             /**
              * Expected Answer
-             * @description 期望答案
+             * @description Expected answer
              */
             expected_answer?: string | null;
             /**
              * Context
-             * @description 问题来源上下文
+             * @description Question source context
              */
             context?: string | null;
             /**
              * Source Type
-             * @description 来源类型：document 或 conversation
+             * @description Source type: document or conversation
              */
             source_type: string;
             /**
              * Source Id
-             * @description 来源 ID
+             * @description Source ID
              */
             source_id: string;
             /**
              * Metadata
-             * @description 额外元数据
+             * @description Additional metadata
              */
             metadata?: Record<string, never>;
         };
@@ -2663,7 +2645,7 @@ export interface components {
         };
         /**
          * HistoryMessage
-         * @description 历史消息
+         * @description History message.
          */
         HistoryMessage: {
             /** Role */
@@ -2682,7 +2664,7 @@ export interface components {
         };
         /**
          * KGConfig
-         * @description KG 相关配置
+         * @description KG-related config.
          */
         KGConfig: {
             /**
@@ -2874,7 +2856,7 @@ export interface components {
         };
         /**
          * LLMConfig
-         * @description LLM 配置
+         * @description LLM config.
          */
         LLMConfig: {
             /**
@@ -2910,7 +2892,7 @@ export interface components {
         };
         /**
          * LangGraphConfig
-         * @description LangGraph 运行方式配置
+         * @description LangGraph execution mode config.
          */
         LangGraphConfig: {
             /**
@@ -2928,7 +2910,7 @@ export interface components {
         };
         /**
          * MagicPDFConfig
-         * @description MagicPDF (magic-pdf) 配置
+         * @description MagicPDF (magic-pdf) config.
          */
         MagicPDFConfig: {
             /**
@@ -2964,7 +2946,7 @@ export interface components {
         };
         /**
          * ManualChunkCreate
-         * @description 手动切片创建请求中的单个片段
+         * @description Single chunk entry in a manual chunking request.
          */
         ManualChunkCreate: {
             /** Content */
@@ -2980,7 +2962,7 @@ export interface components {
         };
         /**
          * ManualDocumentCreate
-         * @description 基于手动切片创建文档的请求
+         * @description Request to create a document from manual chunks.
          */
         ManualDocumentCreate: {
             /** Dataset Id */
@@ -2999,38 +2981,38 @@ export interface components {
         };
         /**
          * MessageFeedbackCreateRequest
-         * @description 提交/更新一条消息反馈（按 tenant + message_id + account_id 幂等）。
+         * @description Submit/update message feedback (idempotent by tenant + message_id + account_id).
          */
         MessageFeedbackCreateRequest: {
             /**
              * Message Id
              * Format: uuid
-             * @description assistant 消息 ID
+             * @description Assistant message ID
              */
             message_id: string;
             /**
              * Rating
-             * @description 评分（1~5，越高越好）
+             * @description Rating (1-5, higher is better)
              */
             rating: number;
             /**
              * Reason
-             * @description 原因/说明（可选）
+             * @description Reason/explanation (optional)
              */
             reason?: string | null;
             /**
              * Tags
-             * @description 标签（可选）
+             * @description Tags (optional)
              */
             tags?: string[];
             /**
              * Expected Answer
-             * @description 期望答案（可选，用于监督与回归）
+             * @description Expected answer (optional, for supervision and regression)
              */
             expected_answer?: string | null;
             /**
              * Extra
-             * @description 扩展字段（可选）
+             * @description Extension fields (optional)
              */
             extra?: Record<string, never>;
         };
@@ -3088,7 +3070,7 @@ export interface components {
         };
         /**
          * MessageSchema
-         * @description 消息
+         * @description Message.
          */
         MessageSchema: {
             /**
@@ -3113,6 +3095,21 @@ export interface components {
              */
             created_at: string;
         };
+        /** MetaFeatureFlags */
+        MetaFeatureFlags: {
+            /** Auth Mode */
+            auth_mode: string;
+            /** Vector Backend */
+            vector_backend: string;
+            /** Task Queue Enabled */
+            task_queue_enabled: boolean;
+            /** Embedding Cache Enabled */
+            embedding_cache_enabled: boolean;
+            /** Minio Enabled */
+            minio_enabled: boolean;
+            /** Use Langgraph Pipeline */
+            use_langgraph_pipeline: boolean;
+        };
         /** MetaResponse */
         MetaResponse: {
             /** Name */
@@ -3122,12 +3119,12 @@ export interface components {
             /** Time */
             time: string;
             build: components["schemas"]["BuildMeta"];
-            features: components["schemas"]["app__api__schemas__meta__FeatureFlags"];
+            features: components["schemas"]["MetaFeatureFlags"];
             runtime: components["schemas"]["RuntimeMeta"];
         };
         /**
          * MilvusConfig
-         * @description Milvus 配置
+         * @description Milvus config.
          */
         MilvusConfig: {
             /**
@@ -3158,7 +3155,7 @@ export interface components {
         };
         /**
          * MinerUConfig
-         * @description MinerU 配置
+         * @description MinerU config.
          */
         MinerUConfig: {
             /**
@@ -3179,7 +3176,7 @@ export interface components {
         };
         /**
          * ObservabilityConfig
-         * @description 观测/调试相关配置
+         * @description Observability/debug config.
          */
         ObservabilityConfig: {
             /**
@@ -3215,42 +3212,42 @@ export interface components {
         };
         /**
          * PDFQualityScore
-         * @description PDF 质量评分（前 3 页抽样）。
+         * @description PDF quality score (sampled from first 3 pages).
          *
-         *     评分维度：
-         *     - text_quality_score（50%）：文本提取质量
-         *     - format_consistency_score（30%）：格式一致性
-         *     - table_quality_score（20%）：表格完整性
+         *     Scoring dimensions:
+         *     - text_quality_score (50%): Text extraction quality
+         *     - format_consistency_score (30%): Format consistency
+         *     - table_quality_score (20%): Table completeness
          */
         PDFQualityScore: {
             /**
              * Score
-             * @description 综合得分 0-1，越高越干净
+             * @description Overall score 0-1, higher is cleaner
              */
             score: number;
             /**
              * Text Quality Score
-             * @description 文本提取质量（0-1）
+             * @description Text extraction quality (0-1)
              */
             text_quality_score: number;
             /**
              * Format Consistency Score
-             * @description 格式一致性（0-1）
+             * @description Format consistency (0-1)
              */
             format_consistency_score: number;
             /**
              * Table Quality Score
-             * @description 表格完整性（0-1）
+             * @description Table completeness (0-1)
              */
             table_quality_score: number;
             /**
              * Is Scanned
-             * @description 是否为扫描件
+             * @description Whether it is a scanned document
              */
             is_scanned: boolean;
             /**
              * Page Count
-             * @description 总页数
+             * @description Total page count
              */
             page_count: number;
         };
@@ -3266,7 +3263,7 @@ export interface components {
         };
         /**
          * ParsedSegment
-         * @description 文档解析预览片段
+         * @description Document parse preview segment.
          */
         ParsedSegment: {
             /** Index */
@@ -3351,7 +3348,7 @@ export interface components {
         PromptTemplateCreate: {
             /**
              * Template Key
-             * @description 模板稳定标识（用于版本化/分组），例如：kb_assistant
+             * @description Stable template identifier (for versioning/grouping), e.g.: kb_assistant
              * @example kb_assistant
              */
             template_key?: string | null;
@@ -3409,28 +3406,28 @@ export interface components {
             is_active: boolean;
             /**
              * Version
-             * @description 版本号（同一 template_key 内递增）
+             * @description Version number (increments within same template_key)
              * @default 1
              */
             version: number | null;
             /**
              * Parent Id
-             * @description 父版本模板 ID（可选）
+             * @description Parent version template ID (optional)
              */
             parent_id?: string | null;
             /**
              * Ab Experiment Key
-             * @description A/B 实验标识（可选），例如：exp_2025w50
+             * @description A/B experiment identifier (optional), e.g.: exp_2025w50
              */
             ab_experiment_key?: string | null;
             /**
              * Ab Variant
-             * @description A/B 变体标识（可选），例如 A/B
+             * @description A/B variant identifier (optional), e.g.: A/B
              */
             ab_variant?: string | null;
             /**
              * Ab Weight
-             * @description A/B 流量权重（可选，默认 1.0）
+             * @description A/B traffic weight (optional, default 1.0)
              * @default 1
              */
             ab_weight: number | null;
@@ -3453,7 +3450,7 @@ export interface components {
         };
         /**
          * PromptTemplateNewVersion
-         * @description 创建新版本（基于旧模板复制，支持覆盖字段）。
+         * @description Create a new version (copy from old template, supports field overrides).
          */
         PromptTemplateNewVersion: {
             /** Name */
@@ -3475,7 +3472,7 @@ export interface components {
             is_active: boolean;
             /**
              * Deactivate Previous
-             * @description 是否自动禁用旧版本（默认 true）
+             * @description Auto-deactivate previous version (default: true)
              * @default true
              */
             deactivate_previous: boolean;
@@ -3579,7 +3576,7 @@ export interface components {
         };
         /**
          * RAGConfig
-         * @description RAG 参数配置
+         * @description RAG parameter config.
          */
         RAGConfig: {
             /**
@@ -3654,32 +3651,32 @@ export interface components {
         RagasRegressionCaseCreateRequest: {
             /**
              * Question
-             * @description 问题（回归用例的 user_input）
+             * @description Question (user_input for regression case)
              */
             question: string;
             /**
              * Dataset Id
-             * @description 知识库/数据集 ID（可选）
+             * @description Dataset ID (optional)
              */
             dataset_id?: string | null;
             /**
              * Document Ids
-             * @description 限制文档范围（可选，优先于 dataset_id）
+             * @description Document scope (optional, takes priority over dataset_id)
              */
             document_ids?: string[];
             /**
              * Expected Answer
-             * @description 期望答案（可选，用于人工对比/监督）
+             * @description Expected answer (optional, for manual comparison/supervision)
              */
             expected_answer?: string | null;
             /**
              * Tags
-             * @description 标签（可选）
+             * @description Tags (optional)
              */
             tags?: string[];
             /**
              * Extra
-             * @description 扩展字段（可选）
+             * @description Extension fields (optional)
              */
             extra?: Record<string, never>;
         };
@@ -3764,28 +3761,28 @@ export interface components {
         RagasRegressionRunCreateRequest: {
             /**
              * Case Ids
-             * @description 要运行的 case id 列表（为空则按过滤条件选择）
+             * @description Case IDs to run (if empty, select by filter criteria)
              */
             case_ids?: string[];
             /**
              * Dataset Id
-             * @description 仅运行某个 dataset 下的用例（可选）
+             * @description Only run cases under this dataset (optional)
              */
             dataset_id?: string | null;
             /**
              * Metrics
-             * @description RAGAS 指标列表
+             * @description RAGAS metrics list
              */
             metrics?: string[];
             /**
              * Skip Empty Contexts
-             * @description 跳过无 contexts 的用例（默认 true）
+             * @description Skip cases without contexts (default: true)
              * @default true
              */
             skip_empty_contexts: boolean;
             /**
              * Max Cases
-             * @description 最多跑多少条用例（默认 50）
+             * @description Max cases to run (default: 50)
              * @default 50
              */
             max_cases: number;
@@ -3832,19 +3829,19 @@ export interface components {
             mmr_lambda: number;
             /**
              * Enable Reranker
-             * @description 是否启用 LLM reranker 精排
+             * @description Enable LLM reranker for re-ranking
              * @default false
              */
             enable_reranker: boolean;
             /**
              * Reranker Provider
-             * @description reranker provider: llm | pc | none
+             * @description Reranker provider: llm | pc | none
              * @default llm
              */
             reranker_provider: string;
             /**
              * Reranker Top N
-             * @description 精排候选数量（越大越慢）
+             * @description Rerank candidate count (higher is slower)
              * @default 20
              */
             reranker_top_n: number;
@@ -3910,29 +3907,29 @@ export interface components {
             /**
              * Conversation Id
              * Format: uuid
-             * @description 要评测的对话 ID
+             * @description Conversation ID to evaluate
              */
             conversation_id: string;
             /**
              * Metrics
-             * @description 评测指标列表（默认: faithfulness, response_relevancy）
+             * @description Evaluation metrics list (default: faithfulness, response_relevancy)
              */
             metrics?: string[];
             /**
              * Max Turns
-             * @description 最多评测最近 N 轮问答
+             * @description Max recent N turns to evaluate
              * @default 20
              */
             max_turns: number;
             /**
              * Skip Empty Contexts
-             * @description 跳过没有引用/上下文的轮次
+             * @description Skip turns without citations/contexts
              * @default true
              */
             skip_empty_contexts: boolean;
             /**
              * Include Contexts In Response
-             * @description 在明细中返回 contexts（可能较大）
+             * @description Include contexts in detail response (may be large)
              * @default false
              */
             include_contexts_in_response: boolean;
@@ -4061,7 +4058,7 @@ export interface components {
         };
         /**
          * SafetyConfig
-         * @description 安全/隐私相关配置
+         * @description Security/privacy config.
          */
         SafetyConfig: {
             /**
@@ -4082,7 +4079,7 @@ export interface components {
         };
         /**
          * SystemSettings
-         * @description 完整系统配置
+         * @description Full system config.
          */
         SystemSettings: {
             feature_flags: components["schemas"]["FeatureFlags"];
@@ -4099,89 +4096,89 @@ export interface components {
         };
         /**
          * TestGenFromConversationsRequest
-         * @description 从对话历史生成测试问题的请求
+         * @description Request to generate test questions from conversation history.
          */
         TestGenFromConversationsRequest: {
             /**
              * Conversation Ids
-             * @description 对话 ID 列表
+             * @description Conversation ID list
              */
             conversation_ids: string[];
             /**
              * Num Questions
-             * @description 生成问题数量
+             * @description Number of questions to generate
              * @default 10
              */
             num_questions: number;
             /**
              * Quality Threshold
-             * @description 质量阈值
+             * @description Quality threshold
              * @default 0.7
              */
             quality_threshold: number;
             /**
              * Auto Save As Cases
-             * @description 自动保存为回归测试用例
+             * @description Auto-save as regression test cases
              * @default true
              */
             auto_save_as_cases: boolean;
         };
         /**
          * TestGenFromDocsRequest
-         * @description 从文档生成测试问题的请求
+         * @description Request to generate test questions from documents.
          */
         TestGenFromDocsRequest: {
             /**
              * Dataset Id
-             * @description 知识库 ID（可选）
+             * @description Dataset ID (optional)
              */
             dataset_id?: string | null;
             /**
              * Document Ids
-             * @description 文档 ID 列表（优先于 dataset_id）
+             * @description Document ID list (takes priority over dataset_id)
              */
             document_ids?: string[];
             /**
              * Num Questions
-             * @description 生成问题数量
+             * @description Number of questions to generate
              * @default 10
              */
             num_questions: number;
             /**
              * Question Types
-             * @description 问题类型：factual（事实型）、reasoning（推理型）、comparison（对比型）
+             * @description Question types: factual, reasoning, comparison
              */
             question_types?: string[];
             /**
              * Auto Save As Cases
-             * @description 自动保存为回归测试用例
+             * @description Auto-save as regression test cases
              * @default true
              */
             auto_save_as_cases: boolean;
         };
         /**
          * TestGenResponse
-         * @description 测试问题生成响应
+         * @description Test question generation response.
          */
         TestGenResponse: {
             /**
              * Status
-             * @description 状态：completed 或 failed
+             * @description Status: completed or failed
              */
             status: string;
             /**
              * Generated Questions
-             * @description 生成的问题列表
+             * @description Generated questions list
              */
             generated_questions?: components["schemas"]["GeneratedQuestion"][];
             /**
              * Saved Case Ids
-             * @description 已保存为用例的 ID 列表
+             * @description IDs of saved cases
              */
             saved_case_ids?: string[];
             /**
              * Error Message
-             * @description 错误信息（如果失败）
+             * @description Error message (if failed)
              */
             error_message?: string | null;
         };
@@ -4226,10 +4223,10 @@ export interface components {
         };
         /**
          * UpdateSettingsRequest
-         * @description 更新配置请求
+         * @description Update config request.
          */
         UpdateSettingsRequest: {
-            feature_flags?: components["schemas"]["FeatureFlags-Input"] | null;
+            feature_flags?: components["schemas"]["FeatureFlags"] | null;
             kg?: components["schemas"]["KGConfig"] | null;
             llm?: components["schemas"]["LLMConfig"] | null;
             embedding?: components["schemas"]["EmbeddingConfig"] | null;
@@ -4305,45 +4302,12 @@ export interface components {
             /** Document Id */
             document_id: string;
         };
-        /**
-         * ChunkPreviewResponse
-         * @description 切块预览响应
-         */
-        app__api__schemas__document__ChunkPreviewResponse: {
-            /** Filename */
-            filename: string;
-            /** File Type */
-            file_type: string;
-            /** File Size */
-            file_size: number;
-            /** Total Chunks */
-            total_chunks: number;
-            /** Total Characters */
-            total_characters: number;
-            params: components["schemas"]["ChunkPreviewParams"];
-            /** Chunks */
-            chunks: components["schemas"]["ChunkPreviewItem"][];
-            /** Original Text */
-            original_text?: string | null;
-            /** Parser Backend */
-            parser_backend: string;
-            /** Chunk Strategy */
-            chunk_strategy: string;
-        };
-        /** FeatureFlags */
-        app__api__schemas__meta__FeatureFlags: {
-            /** Auth Mode */
-            auth_mode: string;
-            /** Vector Backend */
-            vector_backend: string;
-            /** Task Queue Enabled */
-            task_queue_enabled: boolean;
-            /** Embedding Cache Enabled */
-            embedding_cache_enabled: boolean;
-            /** Minio Enabled */
-            minio_enabled: boolean;
-            /** Use Langgraph Pipeline */
-            use_langgraph_pipeline: boolean;
+        /** ChunkPreviewResponse */
+        app__api__schemas__pipeline__ChunkPreviewResponse: {
+            /** Paragraphs */
+            paragraphs: components["schemas"]["ChunkItem"][];
+            /** Sentences */
+            sentences: components["schemas"]["ChunkItem"][];
         };
     };
     responses: never;
@@ -4899,7 +4863,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["app__api__schemas__document__ChunkPreviewResponse"];
+                    "application/json": components["schemas"]["ChunkPreviewResponse"];
                 };
             };
             /** @description Validation Error */
@@ -6618,7 +6582,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ChunkPreviewResponse"];
+                    "application/json": components["schemas"]["app__api__schemas__pipeline__ChunkPreviewResponse"];
                 };
             };
             /** @description Validation Error */
