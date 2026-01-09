@@ -41,7 +41,7 @@ class RapidOCRService:
                 "or set RAPIDOCR_ENABLED=false."
             ) from e
         except Exception as e:
-            raise RuntimeError(f"RapidOCR 模型加载失败: {e}") from e
+            raise RuntimeError(f"Failed to load RapidOCR model: {e}") from e
 
     def ocr_pdf_pages(
         self,
