@@ -1,7 +1,8 @@
 """
-Token 工具模块
-提供基于 tiktoken 的 token 计数和截断功能。
-支持 cl100k_base 编码（GPT-4、GPT-3.5-turbo 等）。
+Token utility module.
+
+Provides token counting and truncation functionality based on tiktoken.
+Supports cl100k_base encoding (GPT-4, GPT-3.5-turbo, etc.).
 """
 from typing import Any
 _encoder = None

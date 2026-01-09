@@ -1,8 +1,8 @@
 """
-基于 SQLite 的 LangGraph 检查点保存器
+SQLite-based LangGraph checkpointer.
 
-这是 `langgraph-checkpoint-sqlite` 的轻量级替代方案，适用于本地/开发环境，
-并与 LangGraph 的 `BaseCheckpointSaver` 接口兼容。
+A lightweight alternative to `langgraph-checkpoint-sqlite`, suitable for local/development environments,
+and compatible with LangGraph's `BaseCheckpointSaver` interface.
 """
 
 import re
