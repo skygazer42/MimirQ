@@ -1,7 +1,8 @@
 from __future__ import annotations
 
+import httpx
+import pytest
 from fastapi import FastAPI, Query
-from fastapi.testclient import TestClient
 
 from app.api.middleware.request_id import RequestIDMiddleware
 from app.core.exceptions import register_exception_handlers
@@ -19,9 +20,11 @@ def _make_app() -> FastAPI:
     return app
 
 
-def test_request_validation_error_has_request_id_and_errors():
-    client = TestClient(_make_app())
-    res = client.get("/items", params={"limit": "nope"})
+@pytest.mark.asyncio
+async def test_request_validation_error_has_request_id_and_errors():
+    transport = httpx.ASGITransport(app=_make_app())
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        res = await client.get("/items", params={"limit": "nope"})
 
     assert res.status_code == 422
     assert res.headers.get("X-Request-ID")
@@ -30,4 +33,3 @@ def test_request_validation_error_has_request_id_and_errors():
     assert payload.get("error") == "VALIDATION_ERROR"
     assert payload.get("request_id") == res.headers["X-Request-ID"]
     assert isinstance(payload.get("detail", {}).get("errors"), list)
-
