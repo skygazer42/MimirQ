@@ -1,10 +1,10 @@
 """
-LangGraph 工作流的时间旅行调试模块
+Time travel debugging module for LangGraph workflows.
 
-提供以下功能：
-- 列出检查点历史记录
-- 从特定检查点重放执行
-- 使用修改后的状态分叉执行
+Provides the following capabilities:
+- List checkpoint history
+- Replay execution from a specific checkpoint
+- Fork execution with modified state
 """
 
 

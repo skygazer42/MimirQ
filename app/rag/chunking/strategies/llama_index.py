@@ -1,7 +1,7 @@
 """
 LlamaIndex-based chunking strategies.
 
-提供基于 LlamaIndex 的智能切分策略。
+Provides intelligent chunking strategies based on LlamaIndex.
 """
 
 from typing import List
@@ -15,8 +15,8 @@ from app.core.config import settings
 class LlamaIndexChunker(BaseChunker):
     """
     LlamaIndex SentenceSplitter-based chunking.
-    
-    基于句子边界的智能切分，保持语义完整性。
+
+    Intelligent chunking based on sentence boundaries, maintaining semantic integrity.
     """
 
     def __init__(self, chunk_size: int, chunk_overlap: int):
@@ -59,7 +59,7 @@ class LlamaIndexHierarchicalChunker(BaseChunker):
     """
     LlamaIndex HierarchicalNodeParser-based chunking.
 
-    创建多层级切片，具有父子关系。
+    Creates multi-level chunks with parent-child relationships.
     """
 
     def __init__(self, chunk_size: int, chunk_overlap: int):
