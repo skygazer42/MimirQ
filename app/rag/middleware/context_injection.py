@@ -105,11 +105,11 @@ class TimeContextProvider(BaseContextProvider):
 
         now = datetime.now()
         time_info = now.strftime("%Y-%m-%d %H:%M:%S")
-        weekday = ["周一", "周二", "周三", "周四", "周五", "周六", "周日"][now.weekday()]
+        weekday = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"][now.weekday()]
 
         return [
             ContextItem(
-                content=f"当前时间: {time_info} ({weekday})",
+                content=f"Current time: {time_info} ({weekday})",
                 source="system",
                 priority=100,
                 category="time",
@@ -121,11 +121,11 @@ class StyleGuideProvider(BaseContextProvider):
     """Provides response style guidelines."""
 
     STYLE_GUIDES = {
-        "professional": "请使用专业、正式的语言风格回答。避免口语化表达，使用规范的书面语。",
-        "casual": "请使用友好、轻松的语言风格回答。可以适当使用口语化表达，保持亲和力。",
-        "technical": "请使用技术性、精确的语言回答。包含必要的技术细节和专业术语。",
-        "concise": "请简洁明了地回答。避免冗余信息，直接给出核心答案。",
-        "detailed": "请详细、全面地回答。包含背景信息、示例和相关细节。",
+        "professional": "Please respond in a professional, formal language style. Avoid colloquial expressions and use standard written language.",
+        "casual": "Please respond in a friendly, relaxed language style. Feel free to use conversational expressions and maintain approachability.",
+        "technical": "Please respond with technical precision. Include necessary technical details and professional terminology.",
+        "concise": "Please respond concisely and clearly. Avoid redundant information and provide the core answer directly.",
+        "detailed": "Please respond in detail and comprehensively. Include background information, examples, and relevant details.",
     }
 
     @property
@@ -193,7 +193,7 @@ class FileContentProvider(BaseContextProvider):
                 content = await self._read_file(file_path)
                 if content:
                     items.append(ContextItem(
-                        content=f"[文件: {file_path}]\n{content}",
+                        content=f"[File: {file_path}]\n{content}",
                         source=file_path,
                         priority=50,
                         category="file",
@@ -255,13 +255,13 @@ class UserPreferencesProvider(BaseContextProvider):
         # Format preferences
         pref_lines = []
         if preferences.get("language"):
-            pref_lines.append(f"用户语言偏好: {preferences['language']}")
+            pref_lines.append(f"User language preference: {preferences['language']}")
         if preferences.get("expertise_level"):
-            pref_lines.append(f"用户专业水平: {preferences['expertise_level']}")
+            pref_lines.append(f"User expertise level: {preferences['expertise_level']}")
         if preferences.get("industry"):
-            pref_lines.append(f"用户所在行业: {preferences['industry']}")
+            pref_lines.append(f"User industry: {preferences['industry']}")
         if preferences.get("custom_instructions"):
-            pref_lines.append(f"用户自定义指令: {preferences['custom_instructions']}")
+            pref_lines.append(f"User custom instructions: {preferences['custom_instructions']}")
 
         if not pref_lines:
             return []
@@ -333,7 +333,7 @@ class RAGContextProvider(BaseContextProvider):
                 source_info += f", p.{page}"
             source_info += "]"
 
-            formatted_chunks.append(f"--- 文档片段 {i} {source_info} ---\n{content}")
+            formatted_chunks.append(f"--- Document chunk {i} {source_info} ---\n{content}")
             total_chars += len(content)
 
         if not formatted_chunks:
@@ -379,7 +379,7 @@ class KnowledgeGraphProvider(BaseContextProvider):
 
         return [
             ContextItem(
-                content=f"--- 知识图谱上下文 ---\n{kg_context}",
+                content=f"--- Knowledge graph context ---\n{kg_context}",
                 source="knowledge_graph",
                 priority=20,
                 category="kg",

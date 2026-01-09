@@ -1,9 +1,9 @@
 """
-元数据规范化工具
+Metadata normalization utilities.
 
-目标：
-- 在不同解析器/切块器输出的 metadata 之间做兼容归一
-- 避免业务逻辑分散在多个模块里各自“补丁式处理”
+Goals:
+- Normalize metadata across different parser/chunker outputs for compatibility
+- Avoid scattered business logic with "patch-style handling" across multiple modules
 """
 
 
@@ -12,13 +12,13 @@ from typing import Any, Dict
 
 def normalize_image_metadata(meta: Dict[str, Any]) -> Dict[str, Any]:
     """
-    归一化图片相关字段：
+    Normalize image-related fields:
     - img_id / image_id
     - img_url / image_url
 
-    约定：
-    - 保留原字段（不强制删除），仅补齐缺失的标准字段
-    - 标准字段优先级：image_* 优先，其次 img_*
+    Conventions:
+    - Preserve original fields (no forced deletion), only fill in missing standard fields
+    - Standard field priority: image_* takes precedence, followed by img_*
     """
     if not isinstance(meta, dict):
         return {}
