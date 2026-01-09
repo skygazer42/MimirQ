@@ -1,7 +1,7 @@
 """
-检查点保存器工厂模块
+Checkpoint saver factory module.
 
-提供基于配置的检查点保存器选择功能。
+Provides configuration-based checkpoint saver selection.
 """
 
 import logging

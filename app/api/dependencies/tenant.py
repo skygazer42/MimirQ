@@ -1,7 +1,7 @@
 """
-租户识别依赖
+Tenant identification dependency.
 
-从请求头中解析租户 ID，支持默认值回退。
+Parses tenant ID from request headers with default value fallback.
 """
 
 from uuid import UUID
@@ -11,7 +11,7 @@ from app.core.config import settings
 
 def get_tenant_id(x_tenant_id: str | None = Header(default=None)) -> UUID:
     """
-    从请求头获取租户 ID，若未提供则使用默认值。
+    Get tenant ID from request header, using default value if not provided.
     """
     raw = x_tenant_id
     if not raw:
