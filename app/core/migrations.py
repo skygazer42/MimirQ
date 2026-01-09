@@ -1,8 +1,11 @@
 """
-数据库模式迁移模块
-在启动时使用 `Base.metadata.create_all()`，该方法不会修改现有表。
-为了在不立即使用 Alembic 的情况下保持部署顺畅，我们应用一组安全的 `ALTER TABLE ... IF NOT EXISTS` 操作。
-仅在 PostgreSQL 上运行。失败会被忽略以避免阻塞启动。
+Database schema migration module.
+
+Uses `Base.metadata.create_all()` at startup, which does not modify existing tables.
+To maintain smooth deployments without immediately using Alembic, we apply a set of
+safe `ALTER TABLE ... IF NOT EXISTS` operations.
+
+Only runs on PostgreSQL. Failures are ignored to avoid blocking startup.
 """
 
 

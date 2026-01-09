@@ -564,12 +564,12 @@ class ContextInjectionMiddleware:
         for i in range(len(new_messages) - 1, -1, -1):
             msg = new_messages[i]
             if hasattr(msg, "type") and msg.type == "human":
-                new_content = f"{context}\n\n用户问题: {msg.content}"
+                new_content = f"{context}\n\nUser question: {msg.content}"
                 msg_dict = {"type": "human", "content": new_content}
                 new_messages[i] = msg_dict
                 break
             elif isinstance(msg, dict) and msg.get("role") == "user":
-                msg["content"] = f"{context}\n\n用户问题: {msg['content']}"
+                msg["content"] = f"{context}\n\nUser question: {msg['content']}"
                 break
 
         state["messages"] = new_messages
