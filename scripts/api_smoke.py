@@ -176,7 +176,6 @@ def parse_json(resp: httpx.Response | None) -> dict[str, Any]:
 
 
 def create_zip_with_image(tmp_dir: Path) -> Path:
-    import io
     import zipfile
 
     png_bytes = (
@@ -326,7 +325,7 @@ def main() -> int:
             ("files", ("batch2.txt", b"batch-two", "text/plain")),
         ]
         data_batch = {"dataset_id": ds_id} if ds_id else {}
-        batch_resp = runner.call(
+        runner.call(
             "POST",
             "/api/v1/documents/upload-batch",
             "/api/v1/documents/upload-batch",
@@ -334,8 +333,6 @@ def main() -> int:
             files=files_batch,
             data=data_batch,
         )
-        batch_data = parse_json(batch_resp)
-        batch_docs = [item.get("document_id") for item in batch_data.get("successful", []) if item.get("document_id")]
 
         runner.call("GET", "/api/v1/documents/", "/api/v1/documents/?limit=5", expected=[200])
 

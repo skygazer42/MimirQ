@@ -1340,8 +1340,9 @@ async def preview_chunking(
         min_chars = max(0, int(getattr(settings, "CHUNK_MIN_CHARS", 0) or 0))
         if min_chars > 0 and chunks:
             before = len(chunks)
+            original_chunks = chunks
             filtered = []
-            for c in chunks:
+            for c in original_chunks:
                 content = (c.page_content or "").strip()
                 if len(content) >= min_chars:
                     filtered.append(c)
@@ -1349,9 +1350,22 @@ async def preview_chunking(
                 meta = c.metadata or {}
                 if meta.get("img_id") or meta.get("image_id") or meta.get("image_url"):
                     filtered.append(c)
+            kept_short_fallback = False
+            if not filtered and original_chunks:
+                # Keep the longest chunk so preview stays consistent with ingestion.
+                longest = max(original_chunks, key=lambda d: len((d.page_content or "").strip()))
+                filtered = [longest]
+                kept_short_fallback = True
             chunks = filtered
             dropped = before - len(chunks)
-            if dropped:
+            if kept_short_fallback:
+                kept_len = len((chunks[0].page_content or "").strip()) if chunks else 0
+                logger.info(
+                    "Chunk preview kept 1 short chunk (%s chars) because all chunks were shorter than %s chars",
+                    kept_len,
+                    min_chars,
+                )
+            elif dropped:
                 logger.info("Chunk preview dropped %s short chunks (<%s chars)", dropped, min_chars)
 
         # Merge original text: use parsed pages for non-ragflow, chunks for ragflow,

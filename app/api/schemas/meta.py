@@ -12,7 +12,7 @@ class BuildMeta(BaseModel):
     time: Optional[str] = None
 
 
-class FeatureFlags(BaseModel):
+class MetaFeatureFlags(BaseModel):
     auth_mode: str
     vector_backend: str
     task_queue_enabled: bool
@@ -31,5 +31,5 @@ class MetaResponse(BaseModel):
     api_version: str
     time: str
     build: BuildMeta
-    features: FeatureFlags
+    features: MetaFeatureFlags
     runtime: RuntimeMeta

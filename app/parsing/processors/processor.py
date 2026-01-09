@@ -534,8 +534,9 @@ class DocumentProcessorService:
             min_chars = max(0, int(getattr(settings, "CHUNK_MIN_CHARS", 0) or 0))
             if min_chars > 0 and chunks:
                 before = len(chunks)
+                original_chunks = chunks
                 filtered = []
-                for c in chunks:
+                for c in original_chunks:
                     content = (c.page_content or "").strip()
                     if len(content) >= min_chars:
                         filtered.append(c)
@@ -543,13 +544,54 @@ class DocumentProcessorService:
                     meta = c.metadata or {}
                     if meta.get("img_id") or meta.get("image_id") or meta.get("image_url"):
                         filtered.append(c)
+                kept_short_fallback = False
+                if not filtered and original_chunks:
+                    # Avoid indexing an empty document: keep the longest chunk even if it's short.
+                    longest = max(original_chunks, key=lambda d: len((d.page_content or "").strip()))
+                    filtered = [longest]
+                    kept_short_fallback = True
                 chunks = filtered
                 dropped = before - len(chunks)
-                if dropped:
+                if kept_short_fallback:
+                    kept_len = len((chunks[0].page_content or "").strip()) if chunks else 0
+                    logger.info(
+                        "All chunks shorter than %s chars; kept 1 (%s chars) and dropped %s for document %s",
+                        min_chars,
+                        kept_len,
+                        dropped,
+                        document_id,
+                    )
+                elif dropped:
                     logger.info("Dropped %s short chunks (<%s chars) for document %s", dropped, min_chars, document_id)
 
             if governance_stats is not None:
                 self._record_governance_metadata(db, tenant_id, document_id, governance_stats)
+
+            if not chunks:
+                msg = (
+                    "No chunks produced for document (empty or filtered by CHUNK_MIN_CHARS). "
+                    "Consider lowering CHUNK_MIN_CHARS or checking the parser output."
+                )
+                logger.warning("%s document_id=%s", msg, document_id)
+                await self._update_status(
+                    db,
+                    tenant_id,
+                    document_id,
+                    "failed",
+                    0,
+                    "failed",
+                    chunk_count=0,
+                    total_characters=0,
+                    error_message=msg,
+                )
+                return {
+                    "status": "failed",
+                    "reason": "no_chunks",
+                    "chunk_count": 0,
+                    "total_characters": 0,
+                    "parser_backend": resolved_backend,
+                    "chunk_strategy": resolved_chunk_strategy,
+                }
 
             # Chunk-level assets & metadata (image upload/binding).
             with metrics_span("ingest.chunk_assets"):
