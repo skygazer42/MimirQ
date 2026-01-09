@@ -359,17 +359,17 @@ async def run_image_upload_benchmark():
 
 async def main():
     """Main entry point."""
-    parser = argparse.ArgumentParser(description="I/O 并发性能基准测试")
+    parser = argparse.ArgumentParser(description="I/O Concurrency Performance Benchmark")
     parser.add_argument(
         "--test",
         choices=["all", "embedding", "image_upload"],
         default="all",
-        help="选择要运行的测试"
+        help="Select test to run"
     )
     args = parser.parse_args()
-    
+
     print("\n" + "="*60)
-    print("🚀 MimirQ I/O 并发性能基准测试")
+    print("🚀 MimirQ I/O Concurrency Performance Benchmark")
     print("="*60)
     
     if args.test in ["all", "embedding"]:
@@ -379,7 +379,7 @@ async def main():
         await run_image_upload_benchmark()
     
     print("\n" + "="*60)
-    print("✅ 基准测试完成")
+    print("✅ Benchmark completed")
     print("="*60)
 
 
