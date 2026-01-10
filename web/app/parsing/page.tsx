@@ -433,8 +433,8 @@ export default function ParsingPage() {
 
   // 批量解析
   const parseAllPending = async () => {
-    const pendingFiles = visibleQueueFiles.filter((f) => f.status === 'pending')
-    for (const file of pendingFiles) {
+    const targets = visibleQueueFiles.filter((f) => f.status === 'pending' || f.status === 'error')
+    for (const file of targets) {
       await parseFile(file.id)
     }
   }
@@ -517,6 +517,7 @@ export default function ParsingPage() {
   const pendingCount = visibleQueueFiles.filter((f) => f.status === 'pending').length
   const parsingCount = visibleQueueFiles.filter((f) => f.status === 'parsing').length
   const parsedCount = visibleQueueFiles.filter((f) => f.status === 'parsed').length
+  const parseableCount = visibleQueueFiles.filter((f) => f.status === 'pending' || f.status === 'error').length
   const parseAllLabel = activeFolderId && activeFolderId !== ROOT_FOLDER_ID ? '解析当前目录' : '全部解析'
   const queueCountLabel =
     visibleQueueFiles.length === files.length ? `${files.length}` : `${visibleQueueFiles.length}/${files.length}`
@@ -612,7 +613,7 @@ export default function ParsingPage() {
                 <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
                   文件队列 ({queueCountLabel})
                 </h3>
-                {pendingCount > 1 && (
+                {parseableCount > 0 && (
                   <Button
                     variant="ghost"
                     size="sm"
@@ -620,7 +621,7 @@ export default function ParsingPage() {
                     className="h-7 text-xs gap-1"
                   >
                     <Zap className="w-3 h-3" />
-                    {parseAllLabel}
+                    一键解析
                   </Button>
                 )}
               </div>
@@ -634,7 +635,7 @@ export default function ParsingPage() {
               ) : visibleQueueFiles.length === 0 ? (
                 <div className="text-center py-8 text-gray-400">
                   <p className="text-sm">该目录暂无文件</p>
-                  <p className="text-xs mt-1">可使用目录右侧“上传”按钮</p>
+                  <p className="text-xs mt-1">可使用目录右侧“上传”按钮，或切到根目录查看全部</p>
                 </div>
               ) : (
                 <div className="space-y-2">
