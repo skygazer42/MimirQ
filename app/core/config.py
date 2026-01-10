@@ -145,6 +145,16 @@ class Settings(BaseSettings):
     MINERU_LOCAL_SERVER_URL: str = ""
     MINERU_VL_SERVER: str = ""
 
+    # DeepSeek OCR (SiliconFlow)
+    DEEPSEEK_OCR_ENABLED: bool = False
+    SILICONFLOW_API_KEY: str = ""
+    SILICONFLOW_API_BASE: str = "https://api.siliconflow.cn/v1"
+    DEEPSEEK_OCR_MODEL: str = "deepseek-ai/DeepSeek-OCR"
+    DEEPSEEK_OCR_TIMEOUT_SEC: int = 120
+    DEEPSEEK_OCR_MAX_TOKENS: int = 4096
+    DEEPSEEK_OCR_TEMPERATURE: float = 0.1
+    DEEPSEEK_OCR_PDF_DPI: int = 200
+
     # PDF quality OCR validation (used by parse-preview scoring)
     RAPIDOCR_ENABLED: bool = False
 

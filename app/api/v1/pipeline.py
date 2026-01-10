@@ -104,6 +104,14 @@ async def get_pipeline_capabilities(
             available = bool(getattr(settings, "DEEPDOC_ENABLED", False))
             if not available:
                 notes = "Set DEEPDOC_ENABLED=true."
+        elif b == "deepseek_ocr":
+            enabled = bool(getattr(settings, "DEEPSEEK_OCR_ENABLED", False))
+            api_key = bool((getattr(settings, "SILICONFLOW_API_KEY", "") or "").strip())
+            available = bool(enabled and api_key)
+            if not enabled:
+                notes = "Set DEEPSEEK_OCR_ENABLED=true."
+            elif not api_key:
+                notes = "Configure SILICONFLOW_API_KEY."
         elif b == "markitdown":
             if not bool(getattr(settings, "MARKITDOWN_ENABLED", False)):
                 available = False

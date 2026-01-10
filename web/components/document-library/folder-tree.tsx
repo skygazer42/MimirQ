@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { ChevronDown, ChevronRight, FileText, Folder, FolderOpen, MoreHorizontal, Pencil, Plus, Trash2, Upload } from 'lucide-react'
+import { ArrowRightLeft, ChevronDown, ChevronRight, FileText, Folder, FolderOpen, MoreHorizontal, Pencil, Plus, Trash2, Upload } from 'lucide-react'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
@@ -19,12 +19,14 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { FolderNode, ROOT_FOLDER_ID, useParsedFiles } from '@/store/use-parsed-files-store'
 
 type FolderDialogState =
   | { open: false }
   | { open: true; mode: 'create'; parentId: string }
   | { open: true; mode: 'rename'; folderId: string }
+  | { open: true; mode: 'move'; folderId: string }
 
 export function DocumentFolderTree({
   className,
@@ -47,10 +49,12 @@ export function DocumentFolderTree({
     createFolder,
     renameFolder,
     deleteFolder,
+    moveFolder,
   } = useParsedFiles()
 
   const [dialog, setDialog] = useState<FolderDialogState>({ open: false })
   const [folderName, setFolderName] = useState('')
+  const [moveParentId, setMoveParentId] = useState(ROOT_FOLDER_ID)
   const [expandedFileFolderIds, setExpandedFileFolderIds] = useState<Set<string>>(() => new Set([ROOT_FOLDER_ID]))
 
   const displayFiles = useMemo(() => {
@@ -122,6 +126,27 @@ export function DocumentFolderTree({
     return map
   }, [folders])
 
+  const folderPathById = useMemo(() => {
+    const byId = new Map(folders.map((f) => [f.id, f]))
+    const cache = new Map<string, string>()
+
+    const getPath = (folderId: string): string => {
+      if (!folderId || folderId === ROOT_FOLDER_ID) return '根目录'
+      const cached = cache.get(folderId)
+      if (cached) return cached
+      const node = byId.get(folderId)
+      if (!node) return '根目录'
+      const parentPath = node.parentId && node.parentId !== ROOT_FOLDER_ID ? getPath(node.parentId) : '根目录'
+      const path = `${parentPath} / ${node.name}`
+      cache.set(folderId, path)
+      return path
+    }
+
+    const result: Record<string, string> = { [ROOT_FOLDER_ID]: '根目录' }
+    for (const f of folders) result[f.id] = getPath(f.id)
+    return result
+  }, [folders])
+
   const openCreate = useCallback((parentId: string) => {
     setFolderName('')
     setDialog({ open: true, mode: 'create', parentId })
@@ -130,6 +155,11 @@ export function DocumentFolderTree({
   const openRename = useCallback((folder: FolderNode) => {
     setFolderName(folder.name)
     setDialog({ open: true, mode: 'rename', folderId: folder.id })
+  }, [])
+
+  const openMove = useCallback((folder: FolderNode) => {
+    setMoveParentId(folder.parentId || ROOT_FOLDER_ID)
+    setDialog({ open: true, mode: 'move', folderId: folder.id })
   }, [])
 
   const closeDialog = useCallback(() => setDialog({ open: false }), [])
@@ -153,6 +183,13 @@ export function DocumentFolderTree({
     }
   }, [folderName, dialog, createFolder, renameFolder, setActiveFolderId, closeDialog])
 
+  const handleMoveSubmit = useCallback(() => {
+    if (!(dialog.open && dialog.mode === 'move')) return
+    moveFolder(dialog.folderId, moveParentId || ROOT_FOLDER_ID)
+    toast.success('文件夹已移动')
+    closeDialog()
+  }, [dialog, moveFolder, moveParentId, closeDialog])
+
   const handleDelete = useCallback(
     (folderId: string) => {
       const ok = window.confirm('确认删除该文件夹及其子文件夹？文件将移动到根目录。')
@@ -162,6 +199,34 @@ export function DocumentFolderTree({
     },
     [deleteFolder]
   )
+
+  const moveTargetOptions = useMemo(() => {
+    if (!(dialog.open && dialog.mode === 'move')) return []
+
+    const movingFolderId = dialog.folderId
+    const blocked = new Set<string>([movingFolderId])
+    const stack = [movingFolderId]
+    while (stack.length > 0) {
+      const current = stack.pop()
+      if (!current) continue
+      const children = childrenByParentId.get(current) || []
+      for (const child of children) {
+        if (blocked.has(child.id)) continue
+        blocked.add(child.id)
+        stack.push(child.id)
+      }
+    }
+
+    const options = [
+      { id: ROOT_FOLDER_ID, label: '根目录' },
+      ...folders
+        .filter((f) => !blocked.has(f.id))
+        .map((f) => ({ id: f.id, label: folderPathById[f.id] || `根目录 / ${f.name}` })),
+    ]
+
+    options.sort((a, b) => a.label.localeCompare(b.label))
+    return options
+  }, [dialog, folders, childrenByParentId, folderPathById])
 
   const renderFolder = useCallback(
     (folder: FolderNode, depth: number) => {
@@ -268,6 +333,10 @@ export function DocumentFolderTree({
                   <Plus className="w-4 h-4 mr-2" />
                   新建子文件夹
                 </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => openMove(folder)}>
+                  <ArrowRightLeft className="w-4 h-4 mr-2" />
+                  移动到…
+                </DropdownMenuItem>
                 <DropdownMenuItem onClick={() => openRename(folder)}>
                   <Pencil className="w-4 h-4 mr-2" />
                   重命名
@@ -319,6 +388,7 @@ export function DocumentFolderTree({
       expandedFileFolderIds,
       handleDelete,
       openCreate,
+      openMove,
       openRename,
       onRequestUpload,
       onSelectFile,
@@ -452,32 +522,68 @@ export function DocumentFolderTree({
       >
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>{dialog.open && dialog.mode === 'rename' ? '重命名文件夹' : '新建文件夹'}</DialogTitle>
+            <DialogTitle>
+              {dialog.open && dialog.mode === 'rename'
+                ? '重命名文件夹'
+                : dialog.open && dialog.mode === 'move'
+                  ? '移动文件夹'
+                  : '新建文件夹'}
+            </DialogTitle>
           </DialogHeader>
 
-          <div className="space-y-2">
-            <Input
-              value={folderName}
-              onChange={(e) => setFolderName(e.target.value)}
-              placeholder="输入文件夹名称"
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') {
-                  e.preventDefault()
-                  handleSubmit()
-                }
-              }}
-              autoFocus
-            />
-            <div className="text-xs text-gray-500">支持多级目录：在任意文件夹下创建子文件夹。</div>
-          </div>
+          {dialog.open && dialog.mode === 'move' ? (
+            <div className="space-y-3">
+              <div className="text-sm text-gray-700">
+                将 <span className="font-medium">{folders.find((f) => f.id === dialog.folderId)?.name || '文件夹'}</span> 移动到：
+              </div>
+              <Select value={moveParentId || ROOT_FOLDER_ID} onValueChange={setMoveParentId}>
+                <SelectTrigger>
+                  <SelectValue placeholder="选择目标目录" />
+                </SelectTrigger>
+                <SelectContent>
+                  {moveTargetOptions.map((opt) => (
+                    <SelectItem key={opt.id} value={opt.id}>
+                      {opt.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <div className="text-xs text-gray-500">不支持移动到自身或子目录。</div>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              <Input
+                value={folderName}
+                onChange={(e) => setFolderName(e.target.value)}
+                placeholder="输入文件夹名称"
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault()
+                    handleSubmit()
+                  }
+                }}
+                autoFocus
+              />
+              <div className="text-xs text-gray-500">支持多级目录：在任意文件夹下创建子文件夹。</div>
+            </div>
+          )}
 
           <DialogFooter>
             <Button variant="outline" onClick={closeDialog}>
               取消
             </Button>
-            <Button onClick={handleSubmit} disabled={!folderName.trim()}>
-              确定
-            </Button>
+            {dialog.open && dialog.mode === 'move' ? (
+              <Button
+                onClick={handleMoveSubmit}
+                disabled={moveTargetOptions.length === 0 || !moveParentId || moveParentId === dialog.folderId}
+              >
+                移动
+              </Button>
+            ) : (
+              <Button onClick={handleSubmit} disabled={!folderName.trim()}>
+                确定
+              </Button>
+            )}
           </DialogFooter>
         </DialogContent>
       </Dialog>

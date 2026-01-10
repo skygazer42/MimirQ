@@ -16,6 +16,9 @@ _BACKEND_ALIASES: dict[str, str] = {
     # MagicPDF (PyPI: magic-pdf, module: magic_pdf, CLI: magic-pdf)
     "magic-pdf": "magicpdf",
     "magicpdf": "magicpdf",
+    # DeepSeek OCR (SiliconFlow)
+    "deepseek-ocr": "deepseek_ocr",
+    "deepseekocr": "deepseek_ocr",
 }
 
 

@@ -38,6 +38,7 @@ interface ParsedFilesState {
   createFolder: (name: string, parentId?: string) => string
   renameFolder: (id: string, name: string) => void
   deleteFolder: (id: string) => void
+  moveFolder: (id: string, parentId: string) => void
   setActiveFolderId: (id: string) => void
 
   // Internal
@@ -130,6 +131,26 @@ export const useParsedFiles = create<ParsedFilesState>()(
             file.folderId && idsToDelete.includes(file.folderId) ? { ...file, folderId: ROOT_FOLDER_ID } : file
           ),
           activeFolderId: idsToDelete.includes(state.activeFolderId) ? ROOT_FOLDER_ID : state.activeFolderId,
+        }))
+      },
+
+      moveFolder: (id, parentId) => {
+        if (id === ROOT_FOLDER_ID) return
+
+        const folders = get().folders
+        const byId = new Map(folders.map((f) => [f.id, f]))
+        const normalizedParentId =
+          parentId && parentId !== id && (parentId === ROOT_FOLDER_ID || byId.has(parentId)) ? parentId : ROOT_FOLDER_ID
+
+        // Prevent cycles: cannot move a folder into itself or its descendants
+        let current = normalizedParentId
+        while (current && current !== ROOT_FOLDER_ID) {
+          if (current === id) return
+          current = byId.get(current)?.parentId || ROOT_FOLDER_ID
+        }
+
+        set((state) => ({
+          folders: state.folders.map((f) => (f.id === id ? { ...f, parentId: normalizedParentId } : f)),
         }))
       },
 

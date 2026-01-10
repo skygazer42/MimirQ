@@ -2,7 +2,7 @@ export interface ParserBackendOption {
   value: string
   label: string
   description: string
-  icon: 'auto' | 'basic' | 'mineru' | 'deepdoc' | 'markitdown' | 'docling' | 'magicpdf'
+  icon: 'auto' | 'basic' | 'mineru' | 'deepdoc' | 'deepseekocr' | 'markitdown' | 'docling' | 'magicpdf'
   badge?: string
 }
 
@@ -41,6 +41,13 @@ export const PARSER_BACKEND_OPTIONS: ParserBackendOption[] = [
     badge: 'OCR',
   },
   {
+    value: 'deepseek_ocr',
+    label: 'DeepSeek OCR',
+    description: 'SiliconFlow DeepSeek-OCR · OCR 转 Markdown，适合扫描件 PDF',
+    icon: 'deepseekocr',
+    badge: 'OCR',
+  },
+  {
     value: 'markitdown',
     label: 'MarkItDown',
     description: '微软 MarkItDown，多种格式转 Markdown',
@@ -59,6 +66,7 @@ function normalizeParserValue(value?: string) {
   const raw = (value || '').toLowerCase().trim()
   const normalized = raw.replace(/_/g, '-')
   if (normalized === 'magic-pdf') return 'magicpdf'
+  if (normalized === 'deepseek-ocr') return 'deepseek_ocr'
   return normalized
 }
 

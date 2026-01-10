@@ -11,6 +11,7 @@ import {
   Cpu,
   Cloud,
   ScanLine,
+  ScanText,
   FileCode,
   Wand2,
   ChevronDown,
@@ -27,6 +28,7 @@ const ICON_MAP = {
   docling: Cpu,
   mineru: Cloud,
   deepdoc: ScanLine,
+  deepseekocr: ScanText,
   markitdown: FileCode,
   magicpdf: Wand2,
 }
@@ -38,6 +40,7 @@ const COLOR_MAP = {
   docling: { bg: 'bg-teal-100', text: 'text-teal-700' },
   mineru: { bg: 'bg-blue-100', text: 'text-blue-600' },
   deepdoc: { bg: 'bg-orange-100', text: 'text-orange-600' },
+  deepseekocr: { bg: 'bg-rose-100', text: 'text-rose-700' },
   markitdown: { bg: 'bg-purple-100', text: 'text-purple-600' },
   magicpdf: { bg: 'bg-fuchsia-100', text: 'text-fuchsia-700' },
 }
