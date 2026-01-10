@@ -154,6 +154,7 @@ class ParserFactory:
         parser_backend: Optional[str] = None,
         dataset_id: Optional[str] = None,
         document_id: Optional[str] = None,
+        tenant_id: Optional[str] = None,
     ) -> Tuple[List[Document], str]:
         """
         Automatically select parser based on file type and return Document list and actual parser name
@@ -175,7 +176,12 @@ class ParserFactory:
 
             # Some parsers (e.g., MinerU local ZIP mode) need dataset/document ids.
             if backend in {"mineru", "magicpdf"}:
-                documents = parser.parse(file_path, dataset_id=dataset_id, document_id=document_id)
+                documents = parser.parse(
+                    file_path,
+                    dataset_id=dataset_id,
+                    document_id=document_id,
+                    tenant_id=tenant_id,
+                )
             else:
                 documents = parser.parse(file_path)
         except Exception as exc:

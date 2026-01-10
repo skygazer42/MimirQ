@@ -807,7 +807,7 @@ async def get_image(
 ):
     """
     Return stored image by image_id.
-    Standard path: {UPLOAD_DIR}/images/{image_id}.png
+    Standard path: {UPLOAD_DIR}/{tenant_id}/images/{image_id}(.png|.jpg|.jpeg|.webp|.gif|.bmp)
     """
     DatasetService.ensure_member(db, tenant_id, account_id)
     images_dir = Path(settings.UPLOAD_DIR) / str(tenant_id) / "images"
@@ -818,16 +818,27 @@ async def get_image(
         raise HTTPException(status_code=404, detail="Image not found")
 
     images_dir_resolved = images_dir.resolve(strict=False)
-    file_path = (images_dir / f"{safe_id}.png").resolve(strict=False)
 
-    # Safety check: ensure file_path stays under images_dir (prevent path traversal).
-    if not str(file_path).startswith(str(images_dir_resolved) + "/"):
-        raise HTTPException(status_code=404, detail="Image not found")
+    candidates: list[tuple[str, str]] = [
+        (".png", "image/png"),
+        (".jpg", "image/jpeg"),
+        (".jpeg", "image/jpeg"),
+        (".webp", "image/webp"),
+        (".gif", "image/gif"),
+        (".bmp", "image/bmp"),
+    ]
 
-    # Check file exists and is a regular file.
-    if not file_path.exists() or not file_path.is_file():
-        raise HTTPException(status_code=404, detail="Image not found")
-    return FileResponse(file_path, media_type="image/png")
+    for ext, media_type in candidates:
+        file_path = (images_dir / f"{safe_id}{ext}").resolve(strict=False)
+        # Safety check: ensure file_path stays under images_dir (prevent path traversal).
+        try:
+            file_path.relative_to(images_dir_resolved)
+        except Exception:
+            continue
+        if file_path.exists() and file_path.is_file():
+            return FileResponse(file_path, media_type=media_type)
+
+    raise HTTPException(status_code=404, detail="Image not found")
 
 
 @router.get("/image-url/{img_id}")
@@ -963,6 +974,7 @@ async def preview_document(
         documents, resolved_backend = parser_factory.parse(
             temp_path,
             parser_backend=effective_parser_backend,
+            tenant_id=str(tenant_id),
         )
         for doc in documents:
             artifact_dir = (doc.metadata or {}).get("artifact_dir")
@@ -1322,6 +1334,7 @@ async def preview_chunking(
             documents, resolved_backend = parser_factory.parse(
                 temp_path,
                 parser_backend=effective_parser_backend,
+                tenant_id=str(tenant_id),
             )
             if pipeline_effective.governance_enabled:
                 documents, _stats = governance_processor.clean_documents(

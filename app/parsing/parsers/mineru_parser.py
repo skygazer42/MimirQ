@@ -88,6 +88,7 @@ class MinerUParser(BaseAdvancedParser):
 
         dataset_id = kwargs.get("dataset_id")
         document_id = kwargs.get("document_id")
+        tenant_id = kwargs.get("tenant_id")
 
         # 1) Prefer local ZIP mode (best for images) when ids are available.
         if getattr(settings, "MINERU_LOCAL_SERVER_URL", "") and dataset_id and document_id:
@@ -96,6 +97,7 @@ class MinerUParser(BaseAdvancedParser):
                     file_path=file_path,
                     dataset_id=str(dataset_id),
                     document_id=str(document_id),
+                    tenant_id=str(tenant_id) if tenant_id else None,
                 )
             except Exception:
                 # Best-effort: fall back to DeepDoc adapter below.
@@ -104,7 +106,13 @@ class MinerUParser(BaseAdvancedParser):
         # 2) If we don't have a local API server configured, fall back to online MinerU API when possible.
         if not self._api and getattr(settings, "MINERU_API_TOKEN", ""):
             data_id = str(document_id) if document_id else file_path.stem
-            return mineru_service.parse_file(file_path=file_path, data_id=data_id)
+            return mineru_service.parse_file(
+                file_path=file_path,
+                data_id=data_id,
+                tenant_id=str(tenant_id) if tenant_id else None,
+                dataset_id=str(dataset_id) if dataset_id else None,
+                document_id=str(document_id) if document_id else None,
+            )
 
         # 3) Default: DeepDoc adapter (local MinerU API server).
         return super().parse(file_path, **kwargs)
