@@ -218,67 +218,73 @@ export function useChat({
 
           const chunkText = decoder.decode(value, { stream: true })
           for (const jsonStr of sse.feed(chunkText)) {
+            let event: StreamEvent
             try {
-              const event: StreamEvent = JSON.parse(jsonStr)
-
-              if (event.type === 'citations') {
-                citations = event.data
-                setCurrentCitations(citations)
-              } else if (event.type === 'token') {
-                fullResponseRef.current += event.data.content
-                scheduleCurrentResponseUpdate()
-              } else if (event.type === 'done') {
-                flushCurrentResponseUpdate()
-                const nextConversationId = (event?.data?.conversation_id || '').trim()
-                if (nextConversationId && nextConversationId !== (conversationId || '')) {
-                  setConversationId(nextConversationId)
-                  onConversationId?.(nextConversationId)
-                }
-
-                let assistantContent = fullResponseRef.current
-                if (structuredOutput && event?.data?.structured_data != null) {
-                  try {
-                    assistantContent = `\`\`\`json\n${JSON.stringify(event.data.structured_data, null, 2)}\n\`\`\``
-                  } catch {
-                    assistantContent = fullResponseRef.current
-                  }
-                }
-
-                const assistantMessage: Message = {
-                  id: Date.now().toString(),
-                  role: 'assistant',
-                  content: assistantContent,
-                  citations,
-                  created_at: new Date().toISOString(),
-                }
-
-                setMessages((prev) => [...prev, assistantMessage])
-                setCurrentResponse('')
-                setCurrentCitations([])
-                fullResponseRef.current = ''
-              } else if (event.type === 'error') {
-                const msg = event.data?.message || 'Unknown error'
-                throw new Error(withRequestId(msg, event.request_id))
-              }
+              event = JSON.parse(jsonStr)
             } catch (e) {
               console.error('Failed to parse SSE event:', e)
+              continue
             }
-          }
-        }
 
-        // Flush any remaining decoder output (best-effort).
-        for (const jsonStr of sse.feed(decoder.decode())) {
-          try {
-            const event: StreamEvent = JSON.parse(jsonStr)
             if (event.type === 'citations') {
               citations = event.data
               setCurrentCitations(citations)
             } else if (event.type === 'token') {
               fullResponseRef.current += event.data.content
               scheduleCurrentResponseUpdate()
+            } else if (event.type === 'done') {
+              flushCurrentResponseUpdate()
+              const nextConversationId = (event?.data?.conversation_id || '').trim()
+              if (nextConversationId && nextConversationId !== (conversationId || '')) {
+                setConversationId(nextConversationId)
+                onConversationId?.(nextConversationId)
+              }
+
+              let assistantContent = fullResponseRef.current
+              if (structuredOutput && event?.data?.structured_data != null) {
+                try {
+                  assistantContent = `\`\`\`json\n${JSON.stringify(event.data.structured_data, null, 2)}\n\`\`\``
+                } catch {
+                  assistantContent = fullResponseRef.current
+                }
+              }
+
+              const assistantMessage: Message = {
+                id: Date.now().toString(),
+                role: 'assistant',
+                content: assistantContent,
+                citations,
+                created_at: new Date().toISOString(),
+              }
+
+              setMessages((prev) => [...prev, assistantMessage])
+              setCurrentResponse('')
+              setCurrentCitations([])
+              fullResponseRef.current = ''
+            } else if (event.type === 'error') {
+              const msg = event.data?.message || 'Unknown error'
+              throw new Error(withRequestId(msg, event.request_id))
             }
+          }
+        }
+
+        // Flush any remaining decoder output (best-effort).
+        for (const jsonStr of sse.feed(decoder.decode())) {
+          let event: StreamEvent
+          try {
+            event = JSON.parse(jsonStr)
           } catch {
-            // ignore
+            continue
+          }
+          if (event.type === 'citations') {
+            citations = event.data
+            setCurrentCitations(citations)
+          } else if (event.type === 'token') {
+            fullResponseRef.current += event.data.content
+            scheduleCurrentResponseUpdate()
+          } else if (event.type === 'error') {
+            const msg = event.data?.message || 'Unknown error'
+            throw new Error(withRequestId(msg, event.request_id))
           }
         }
         flushCurrentResponseUpdate()
