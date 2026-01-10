@@ -2,6 +2,8 @@
 Chat API.
 """
 import logging
+import os
+import re
 from uuid import UUID
 import uuid
 from datetime import datetime
@@ -41,6 +43,17 @@ from app.rag.preprocessing.tokenization import tokenize_for_bm25
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+
+def _format_stream_error_message(exc: Exception) -> str:
+    raw = str(exc) or exc.__class__.__name__
+    raw = " ".join(raw.split())
+    raw = re.sub(r"sk-[A-Za-z0-9]{8,}", "sk-***", raw)
+    raw = re.sub(r"(?i)bearer\\s+[A-Za-z0-9\\-_.]{8,}", "Bearer ***", raw)
+    status_code = getattr(exc, "status_code", None)
+    if status_code and isinstance(status_code, int):
+        raw = f"HTTP {status_code}: {raw}"
+    return raw.strip()
 
 
 def _ensure_conversation_access(
@@ -450,10 +463,15 @@ async def stream_chat(
 
         except Exception as e:
             logger.error("Chat stream error: %s", str(e)[:200])
+            is_production = os.getenv("ENV", "").lower() in ("prod", "production")
+            detail = _format_stream_error_message(e)
+            message = "An error occurred during chat processing"
+            if not is_production and detail:
+                message = f"{message}: {detail[:200]}"
             error_event = {
                 "type": "error",
                 "data": {
-                    "message": "An error occurred during chat processing",
+                    "message": message,
                     "conversation_id": str(conversation_id) if conversation_id else None,
                     "error_id": str(request_id),
                 },
