@@ -159,7 +159,7 @@ export const ChatMessageItem = memo(function ChatMessageItem({
           title={copied ? 'Copied' : 'Copy'}
           className={cn(
             'absolute bottom-2 right-2 z-10 rounded-md p-1.5 transition',
-            'opacity-100 sm:opacity-0 sm:group-hover:opacity-100 sm:pointer-events-none sm:group-hover:pointer-events-auto',
+            'opacity-70 hover:opacity-100 group-hover:opacity-100',
             'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/60 focus-visible:ring-offset-2 focus-visible:ring-offset-transparent',
             isUser
               ? 'text-white/70 hover:text-white hover:bg-white/10'
