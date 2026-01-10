@@ -1,7 +1,7 @@
 'use client'
 
-import { useCallback, useMemo, useState } from 'react'
-import { FileText, Folder, FolderOpen, MoreHorizontal, Pencil, Plus, Trash2, Upload } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { ChevronDown, ChevronRight, FileText, Folder, FolderOpen, MoreHorizontal, Pencil, Plus, Trash2, Upload } from 'lucide-react'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
@@ -36,7 +36,7 @@ export function DocumentFolderTree({
   className?: string
   onRequestUpload?: (folderId: string) => void
   fileItems?: Array<{ id: string; name: string; folderId?: string; sourcePath?: string }>
-  showFiles?: 'none' | 'active' | 'all'
+  showFiles?: 'none' | 'active' | 'all' | 'expanded'
   onSelectFile?: (fileId: string) => void
 }) {
   const {
@@ -51,6 +51,7 @@ export function DocumentFolderTree({
 
   const [dialog, setDialog] = useState<FolderDialogState>({ open: false })
   const [folderName, setFolderName] = useState('')
+  const [expandedFileFolderIds, setExpandedFileFolderIds] = useState<Set<string>>(() => new Set([ROOT_FOLDER_ID]))
 
   const displayFiles = useMemo(() => {
     if (fileItems) return fileItems
@@ -84,6 +85,27 @@ export function DocumentFolderTree({
     }
     return map
   }, [displayFiles])
+
+  useEffect(() => {
+    if (showFiles !== 'expanded') return
+    const id = activeFolderId || ROOT_FOLDER_ID
+    setExpandedFileFolderIds((prev) => {
+      if (prev.has(id)) return prev
+      const next = new Set(prev)
+      next.add(id)
+      return next
+    })
+  }, [showFiles, activeFolderId])
+
+  const toggleFileList = useCallback((folderId: string) => {
+    const id = folderId || ROOT_FOLDER_ID
+    setExpandedFileFolderIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }, [])
 
   const childrenByParentId = useMemo(() => {
     const map = new Map<string, FolderNode[]>()
@@ -146,7 +168,10 @@ export function DocumentFolderTree({
       const isActive = activeFolderId === folder.id
       const count = directCountByFolderId[folder.id] || 0
       const children = childrenByParentId.get(folder.id) || []
-      const showFileNodes = showFiles === 'all' || (showFiles === 'active' && isActive)
+      const showFileNodes =
+        showFiles === 'all'
+        || (showFiles === 'active' && isActive)
+        || (showFiles === 'expanded' && expandedFileFolderIds.has(folder.id))
       const directFiles = showFileNodes ? directFilesByFolderId.get(folder.id) || [] : []
 
       return (
@@ -158,9 +183,36 @@ export function DocumentFolderTree({
             )}
             style={{ paddingLeft: 8 + depth * 14 }}
           >
+            {showFiles === 'expanded' && count > 0 && (
+              <button
+                type="button"
+                className="w-5 h-5 flex items-center justify-center rounded hover:bg-white/60 text-gray-500"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  toggleFileList(folder.id)
+                }}
+                aria-label={expandedFileFolderIds.has(folder.id) ? 'Collapse files' : 'Expand files'}
+              >
+                {expandedFileFolderIds.has(folder.id) ? (
+                  <ChevronDown className="w-4 h-4" />
+                ) : (
+                  <ChevronRight className="w-4 h-4" />
+                )}
+              </button>
+            )}
             <button
               className="flex-1 min-w-0 flex items-center gap-2 text-left"
-              onClick={() => setActiveFolderId(folder.id)}
+              onClick={() => {
+                setActiveFolderId(folder.id)
+                if (showFiles === 'expanded') {
+                  setExpandedFileFolderIds((prev) => {
+                    if (prev.has(folder.id)) return prev
+                    const next = new Set(prev)
+                    next.add(folder.id)
+                    return next
+                  })
+                }
+              }}
               type="button"
               title={folder.name}
             >
@@ -264,6 +316,7 @@ export function DocumentFolderTree({
       childrenByParentId,
       directCountByFolderId,
       directFilesByFolderId,
+      expandedFileFolderIds,
       handleDelete,
       openCreate,
       openRename,
@@ -271,14 +324,18 @@ export function DocumentFolderTree({
       onSelectFile,
       showFiles,
       setActiveFolderId,
+      toggleFileList,
     ]
   )
 
   const rootCount = displayFiles.length
   const rootChildren = childrenByParentId.get(ROOT_FOLDER_ID) || []
-  const rootDirectFiles = (showFiles === 'all' || (showFiles === 'active' && activeFolderId === ROOT_FOLDER_ID))
+  const rootDirectFiles = (showFiles === 'all'
+    || (showFiles === 'active' && activeFolderId === ROOT_FOLDER_ID)
+    || (showFiles === 'expanded' && expandedFileFolderIds.has(ROOT_FOLDER_ID)))
     ? directFilesByFolderId.get(ROOT_FOLDER_ID) || []
     : []
+  const rootDirectCount = directCountByFolderId[ROOT_FOLDER_ID] || 0
 
   return (
     <div className={cn('flex flex-col', className)}>
@@ -305,9 +362,36 @@ export function DocumentFolderTree({
           )}
           style={{ paddingLeft: 8 }}
         >
+          {showFiles === 'expanded' && rootDirectCount > 0 && (
+            <button
+              type="button"
+              className="w-5 h-5 flex items-center justify-center rounded hover:bg-white/60 text-gray-500"
+              onClick={(e) => {
+                e.stopPropagation()
+                toggleFileList(ROOT_FOLDER_ID)
+              }}
+              aria-label={expandedFileFolderIds.has(ROOT_FOLDER_ID) ? 'Collapse files' : 'Expand files'}
+            >
+              {expandedFileFolderIds.has(ROOT_FOLDER_ID) ? (
+                <ChevronDown className="w-4 h-4" />
+              ) : (
+                <ChevronRight className="w-4 h-4" />
+              )}
+            </button>
+          )}
           <button
             className="flex-1 min-w-0 flex items-center gap-2 text-left"
-            onClick={() => setActiveFolderId(ROOT_FOLDER_ID)}
+            onClick={() => {
+              setActiveFolderId(ROOT_FOLDER_ID)
+              if (showFiles === 'expanded') {
+                setExpandedFileFolderIds((prev) => {
+                  if (prev.has(ROOT_FOLDER_ID)) return prev
+                  const next = new Set(prev)
+                  next.add(ROOT_FOLDER_ID)
+                  return next
+                })
+              }
+            }}
             type="button"
           >
             {activeFolderId === ROOT_FOLDER_ID ? (

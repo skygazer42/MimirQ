@@ -568,7 +568,7 @@ export default function ParsingPage() {
                     folderId: f.folderId,
                     sourcePath: f.sourcePath,
                   }))}
-                  showFiles="active"
+                  showFiles="expanded"
                   onSelectFile={(fileId) => setActiveFileId(fileId)}
                 />
               </div>
