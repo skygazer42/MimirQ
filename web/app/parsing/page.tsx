@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useCallback, useMemo, useRef } from 'react'
+import { useState, useCallback, useEffect, useMemo, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import {
   Upload,
@@ -58,6 +58,7 @@ const ZIP_ALLOWED_EXTENSIONS = new Set([
 interface ParsedFile extends FileQueueItemData {
   file: File
   folderId: string
+  sourcePath?: string
   markdownContent: string | null
   parserBackend: string
   parserLabel: string
@@ -80,6 +81,7 @@ export default function ParsingPage() {
   const [isDragging, setIsDragging] = useState(false)
   const [copied, setCopied] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const uploadTargetFolderIdRef = useRef<string | null>(null)
 
   // 预览模式 & 编辑模式
   const [previewMode, setPreviewMode] = useState<'raw' | 'rendered'>('rendered')
@@ -90,35 +92,52 @@ export default function ParsingPage() {
   const { parserBackend, setParserBackend } = useParserBackendPreference()
 
   // 共享存储
-  const { addParsedFile, activeFolderId, folders, createFolder } = useParsedFiles()
+  const { addParsedFile, activeFolderId, folders, createFolder, setActiveFolderId } = useParsedFiles()
 
   // 获取当前选中的文件
   const activeFile = files.find((f) => f.id === activeFileId) || null
 
-  const activeFolderPathLabel = useMemo(() => {
-    if (!activeFolderId || activeFolderId === ROOT_FOLDER_ID) return '根目录'
-
+  const folderPathById = useMemo(() => {
     const byId = new Map(folders.map((f) => [f.id, f]))
-    const parts: string[] = []
+    const cache = new Map<string, string>()
 
-    let current = byId.get(activeFolderId)
-    while (current) {
-      parts.unshift(current.name)
-      if (!current.parentId || current.parentId === ROOT_FOLDER_ID) break
-      current = byId.get(current.parentId)
+    const getPath = (folderId: string): string => {
+      if (!folderId || folderId === ROOT_FOLDER_ID) return '根目录'
+      const cached = cache.get(folderId)
+      if (cached) return cached
+      const node = byId.get(folderId)
+      if (!node) return '根目录'
+      const parentPath = node.parentId && node.parentId !== ROOT_FOLDER_ID ? getPath(node.parentId) : '根目录'
+      const path = `${parentPath} / ${node.name}`
+      cache.set(folderId, path)
+      return path
     }
 
-    return ['根目录', ...parts].join(' / ')
-  }, [activeFolderId, folders])
+    const result: Record<string, string> = { [ROOT_FOLDER_ID]: '根目录' }
+    for (const f of folders) result[f.id] = getPath(f.id)
+    return result
+  }, [folders])
+
+  const activeFolderPathLabel = folderPathById[activeFolderId || ROOT_FOLDER_ID] || '根目录'
+
+  const requestUploadToFolder = useCallback(
+    (folderId: string) => {
+      const targetId = folderId || ROOT_FOLDER_ID
+      uploadTargetFolderIdRef.current = targetId
+      setActiveFolderId(targetId)
+      fileInputRef.current?.click()
+    },
+    [setActiveFolderId]
+  )
 
   // 生成唯一 ID
   const generateId = () => Math.random().toString(36).substring(2, 15)
 
   // 添加文件（支持 .zip 批量解压）
   const addFiles = useCallback(
-    async (incomingFiles: File[]) => {
+    async (incomingFiles: File[], baseFolderIdOverride?: string) => {
       const defaultLabel = getParserLabel(parserBackend)
-      const baseFolderId = activeFolderId || ROOT_FOLDER_ID
+      const baseFolderId = baseFolderIdOverride || activeFolderId || ROOT_FOLDER_ID
 
       const folderIdByKey = new Map<string, string>()
       for (const f of folders) {
@@ -144,11 +163,16 @@ export default function ParsingPage() {
 
       const queued: ParsedFile[] = []
       let skipped = 0
+      let added = 0
 
       for (const file of incomingFiles) {
         if (isZipFile(file)) {
+          let extractedCount = 0
+          let addedInZip = 0
+          let skippedInZip = 0
           try {
             const extracted = await extractZipFiles(file)
+            extractedCount = extracted.length
             for (const item of extracted) {
               const path = item.path
               const parts = path.split('/').filter(Boolean)
@@ -158,6 +182,7 @@ export default function ParsingPage() {
               const ext = filename.split('.').pop()?.toLowerCase() || ''
               if (!ZIP_ALLOWED_EXTENSIONS.has(ext)) {
                 skipped += 1
+                skippedInZip += 1
                 continue
               }
 
@@ -170,7 +195,8 @@ export default function ParsingPage() {
                 id: generateId(),
                 file: item.file,
                 folderId,
-                name: path,
+                name: item.file.name,
+                sourcePath: path,
                 size: item.file.size,
                 status: 'pending' as FileStatus,
                 markdownContent: null,
@@ -178,11 +204,33 @@ export default function ParsingPage() {
                 parserBackend,
                 parserLabel: defaultLabel,
               })
+              added += 1
+              addedInZip += 1
             }
           } catch (e) {
             console.error('Failed to extract zip:', e)
             toast.error(`ZIP 解压失败：${file.name}`)
           }
+
+          if (addedInZip === 0) {
+            toast.warning(
+              extractedCount === 0
+                ? `ZIP 中未找到文件：${file.name}`
+                : `ZIP 中没有可解析文件：${file.name}`
+            )
+          } else {
+            toast.success(
+              skippedInZip > 0
+                ? `已从 ZIP 添加 ${addedInZip} 个文件（跳过 ${skippedInZip} 个）`
+                : `已从 ZIP 添加 ${addedInZip} 个文件`
+            )
+          }
+          continue
+        }
+
+        const ext = file.name.split('.').pop()?.toLowerCase() || ''
+        if (!ZIP_ALLOWED_EXTENSIONS.has(ext)) {
+          skipped += 1
           continue
         }
 
@@ -198,20 +246,59 @@ export default function ParsingPage() {
           parserBackend,
           parserLabel: defaultLabel,
         })
+        added += 1
       }
 
       if (queued.length === 0) {
-        if (skipped > 0) toast.message(`已跳过 ${skipped} 个不支持的文件`)
+        if (skipped > 0) toast.warning(`已跳过 ${skipped} 个不支持的文件`)
         return
       }
 
       setFiles((prev) => [...prev, ...queued])
       setActiveFileId((prev) => prev ?? queued[0].id)
 
-      if (skipped > 0) toast.message(`已跳过 ${skipped} 个不支持的文件`)
+      if (added > 0) toast.success(`已加入队列：${added} 个文件`)
+      if (skipped > 0) toast.warning(`已跳过 ${skipped} 个不支持的文件`)
     },
     [parserBackend, activeFolderId, folders, createFolder]
   )
+
+  const visibleQueueFiles = useMemo(() => {
+    if (!activeFolderId || activeFolderId === ROOT_FOLDER_ID) return files
+
+    const childrenByParentId = new Map<string, string[]>()
+    for (const folder of folders) {
+      const parentId = folder.parentId || ROOT_FOLDER_ID
+      const list = childrenByParentId.get(parentId) || []
+      list.push(folder.id)
+      childrenByParentId.set(parentId, list)
+    }
+
+    const allowedFolderIds = new Set<string>()
+    const stack = [activeFolderId]
+    while (stack.length > 0) {
+      const current = stack.pop()
+      if (!current) continue
+      if (allowedFolderIds.has(current)) continue
+      allowedFolderIds.add(current)
+      const children = childrenByParentId.get(current) || []
+      for (const childId of children) stack.push(childId)
+    }
+
+    return files.filter((f) => allowedFolderIds.has(f.folderId || ROOT_FOLDER_ID))
+  }, [files, activeFolderId, folders])
+
+  useEffect(() => {
+    if (visibleQueueFiles.length === 0) {
+      setActiveFileId(null)
+      return
+    }
+
+    const stillVisible = activeFileId && visibleQueueFiles.some((f) => f.id === activeFileId)
+    if (!stillVisible) {
+      setActiveFileId(visibleQueueFiles[0].id)
+    }
+  }, [visibleQueueFiles, activeFileId])
 
   // 拖放处理
   const handleDragOver = useCallback((e: React.DragEvent) => {
@@ -227,14 +314,17 @@ export default function ParsingPage() {
   const handleDrop = useCallback(async (e: React.DragEvent) => {
     e.preventDefault()
     setIsDragging(false)
+    uploadTargetFolderIdRef.current = null
     const droppedFiles = Array.from(e.dataTransfer.files)
     await addFiles(droppedFiles)
   }, [addFiles])
 
   const handleFileSelect = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const targetFolderId = uploadTargetFolderIdRef.current
+    uploadTargetFolderIdRef.current = null
     const selectedFiles = e.target.files ? Array.from(e.target.files) : []
     if (selectedFiles.length > 0) {
-      await addFiles(selectedFiles)
+      await addFiles(selectedFiles, targetFolderId || undefined)
     }
     e.target.value = ''
   }, [addFiles])
@@ -343,7 +433,7 @@ export default function ParsingPage() {
 
   // 批量解析
   const parseAllPending = async () => {
-    const pendingFiles = files.filter((f) => f.status === 'pending')
+    const pendingFiles = visibleQueueFiles.filter((f) => f.status === 'pending')
     for (const file of pendingFiles) {
       await parseFile(file.id)
     }
@@ -424,9 +514,12 @@ export default function ParsingPage() {
   }
 
   // 计算统计数据
-  const pendingCount = files.filter((f) => f.status === 'pending').length
-  const parsingCount = files.filter((f) => f.status === 'parsing').length
-  const parsedCount = files.filter((f) => f.status === 'parsed').length
+  const pendingCount = visibleQueueFiles.filter((f) => f.status === 'pending').length
+  const parsingCount = visibleQueueFiles.filter((f) => f.status === 'parsing').length
+  const parsedCount = visibleQueueFiles.filter((f) => f.status === 'parsed').length
+  const parseAllLabel = activeFolderId && activeFolderId !== ROOT_FOLDER_ID ? '解析当前目录' : '全部解析'
+  const queueCountLabel =
+    visibleQueueFiles.length === files.length ? `${files.length}` : `${visibleQueueFiles.length}/${files.length}`
 
   return (
     <div className="flex h-screen overflow-hidden bg-gray-50">
@@ -467,7 +560,7 @@ export default function ParsingPage() {
             {/* 文档库目录 */}
             <div className="p-4 border-b">
               <div className="max-h-56 overflow-y-auto pr-1">
-                <DocumentFolderTree />
+                <DocumentFolderTree onRequestUpload={requestUploadToFolder} />
               </div>
               <div className="mt-2 text-xs text-gray-500">当前目录：{activeFolderPathLabel}</div>
             </div>
@@ -484,7 +577,10 @@ export default function ParsingPage() {
                 onDragOver={handleDragOver}
                 onDragLeave={handleDragLeave}
                 onDrop={handleDrop}
-                onClick={() => fileInputRef.current?.click()}
+                onClick={() => {
+                  uploadTargetFolderIdRef.current = null
+                  fileInputRef.current?.click()
+                }}
               >
                   <input
                     ref={fileInputRef}
@@ -496,7 +592,7 @@ export default function ParsingPage() {
                   />
                 <Upload className="w-7 h-7 mx-auto mb-2 text-gray-400" />
                 <p className="text-sm font-medium text-gray-700">拖放或点击上传</p>
-                <p className="text-xs text-gray-400 mt-1">PDF, Word, Excel, TXT, MD</p>
+                <p className="text-xs text-gray-400 mt-1">PDF, Word, Excel, TXT, MD, ZIP</p>
               </div>
             </div>
 
@@ -504,7 +600,7 @@ export default function ParsingPage() {
             <div className="flex-1 overflow-y-auto p-4">
               <div className="flex items-center justify-between mb-3">
                 <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
-                  文件队列 ({files.length})
+                  文件队列 ({queueCountLabel})
                 </h3>
                 {pendingCount > 1 && (
                   <Button
@@ -514,7 +610,7 @@ export default function ParsingPage() {
                     className="h-7 text-xs gap-1"
                   >
                     <Zap className="w-3 h-3" />
-                    全部解析
+                    {parseAllLabel}
                   </Button>
                 )}
               </div>
@@ -525,12 +621,20 @@ export default function ParsingPage() {
                   <p className="text-sm">暂无文件</p>
                   <p className="text-xs mt-1">上传文件开始解析</p>
                 </div>
+              ) : visibleQueueFiles.length === 0 ? (
+                <div className="text-center py-8 text-gray-400">
+                  <p className="text-sm">该目录暂无文件</p>
+                  <p className="text-xs mt-1">可使用目录右侧“上传”按钮</p>
+                </div>
               ) : (
                 <div className="space-y-2">
-                  {files.map((file) => (
+                  {visibleQueueFiles.map((file) => (
                     <FileQueueItem
                       key={file.id}
-                      file={file}
+                      file={{
+                        ...file,
+                        folderPathLabel: folderPathById[file.folderId] || '根目录',
+                      }}
                       isActive={activeFileId === file.id}
                       onClick={() => setActiveFileId(file.id)}
                       onRemove={() => removeFile(file.id)}
@@ -542,7 +646,7 @@ export default function ParsingPage() {
             </div>
 
             {/* 底部统计 */}
-            {files.length > 0 && (
+            {visibleQueueFiles.length > 0 && (
               <div className="p-4 border-t bg-gray-50">
                 <div className="flex items-center justify-around text-xs text-gray-500">
                   <span className="flex items-center gap-1">

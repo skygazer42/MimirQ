@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useMemo, useState } from 'react'
-import { Folder, FolderOpen, MoreHorizontal, Pencil, Plus, Trash2 } from 'lucide-react'
+import { Folder, FolderOpen, MoreHorizontal, Pencil, Plus, Trash2, Upload } from 'lucide-react'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
@@ -26,7 +26,13 @@ type FolderDialogState =
   | { open: true; mode: 'create'; parentId: string }
   | { open: true; mode: 'rename'; folderId: string }
 
-export function DocumentFolderTree({ className }: { className?: string }) {
+export function DocumentFolderTree({
+  className,
+  onRequestUpload,
+}: {
+  className?: string
+  onRequestUpload?: (folderId: string) => void
+}) {
   const {
     files,
     folders,
@@ -135,6 +141,22 @@ export function DocumentFolderTree({ className }: { className?: string }) {
               <span className="ml-auto text-xs text-gray-400">{count}</span>
             </button>
 
+            {onRequestUpload && (
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-7 w-7 opacity-0 group-hover:opacity-100"
+                aria-label="Upload to folder"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  setActiveFolderId(folder.id)
+                  onRequestUpload(folder.id)
+                }}
+              >
+                <Upload className="w-4 h-4" />
+              </Button>
+            )}
+
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button
@@ -147,6 +169,17 @@ export function DocumentFolderTree({ className }: { className?: string }) {
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
+                {onRequestUpload && (
+                  <DropdownMenuItem
+                    onClick={() => {
+                      setActiveFolderId(folder.id)
+                      onRequestUpload(folder.id)
+                    }}
+                  >
+                    <Upload className="w-4 h-4 mr-2" />
+                    上传到此目录
+                  </DropdownMenuItem>
+                )}
                 <DropdownMenuItem onClick={() => openCreate(folder.id)}>
                   <Plus className="w-4 h-4 mr-2" />
                   新建子文件夹
@@ -170,7 +203,16 @@ export function DocumentFolderTree({ className }: { className?: string }) {
         </div>
       )
     },
-    [activeFolderId, childrenByParentId, directCountByFolderId, handleDelete, openCreate, openRename, setActiveFolderId]
+    [
+      activeFolderId,
+      childrenByParentId,
+      directCountByFolderId,
+      handleDelete,
+      openCreate,
+      openRename,
+      onRequestUpload,
+      setActiveFolderId,
+    ]
   )
 
   const rootCount = files.length
@@ -214,6 +256,22 @@ export function DocumentFolderTree({ className }: { className?: string }) {
             <span className="text-sm truncate">根目录</span>
             <span className="ml-auto text-xs text-gray-400">{rootCount}</span>
           </button>
+
+          {onRequestUpload && (
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7 opacity-0 group-hover:opacity-100"
+              aria-label="Upload to root folder"
+              onClick={(e) => {
+                e.stopPropagation()
+                setActiveFolderId(ROOT_FOLDER_ID)
+                onRequestUpload(ROOT_FOLDER_ID)
+              }}
+            >
+              <Upload className="w-4 h-4" />
+            </Button>
+          )}
         </div>
 
         {rootChildren.map((folder) => renderFolder(folder, 1))}

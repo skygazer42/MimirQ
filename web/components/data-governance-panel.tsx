@@ -241,11 +241,16 @@ export function DataGovernancePanel() {
 
       const expanded: Array<{ file: File; folderId: string }> = []
       let skipped = 0
+      let added = 0
 
       for (const file of incomingFiles) {
         if (isZipFile(file)) {
+          let extractedCount = 0
+          let addedInZip = 0
+          let skippedInZip = 0
           try {
             const extracted = await extractZipFiles(file)
+            extractedCount = extracted.length
             for (const item of extracted) {
               const parts = item.path.split('/').filter(Boolean)
               const filename = parts.pop()
@@ -254,6 +259,7 @@ export function DataGovernancePanel() {
               const ext = filename.split('.').pop()?.toLowerCase() || ''
               if (!ZIP_ALLOWED_EXTENSIONS.has(ext)) {
                 skipped += 1
+                skippedInZip += 1
                 continue
               }
 
@@ -263,15 +269,38 @@ export function DataGovernancePanel() {
               }
 
               expanded.push({ file: item.file, folderId })
+              added += 1
+              addedInZip += 1
             }
           } catch (e) {
             console.error('Failed to extract zip:', e)
             toast.error(`ZIP 解压失败：${file.name}`)
           }
+
+          if (addedInZip === 0) {
+            toast.warning(
+              extractedCount === 0
+                ? `ZIP 中未找到文件：${file.name}`
+                : `ZIP 中没有可解析文件：${file.name}`
+            )
+          } else {
+            toast.success(
+              skippedInZip > 0
+                ? `已从 ZIP 添加 ${addedInZip} 个文件（跳过 ${skippedInZip} 个）`
+                : `已从 ZIP 添加 ${addedInZip} 个文件`
+            )
+          }
+          continue
+        }
+
+        const ext = file.name.split('.').pop()?.toLowerCase() || ''
+        if (!ZIP_ALLOWED_EXTENSIONS.has(ext)) {
+          skipped += 1
           continue
         }
 
         expanded.push({ file, folderId: baseFolderId })
+        added += 1
       }
 
       for (const { file, folderId } of expanded) {
@@ -295,7 +324,8 @@ export function DataGovernancePanel() {
         setSelectedFileId((prev) => prev ?? newId)
       }
 
-      if (skipped > 0) toast.message(`已跳过 ${skipped} 个不支持的文件`)
+      if (added > 0) toast.success(`已解析并加入：${added} 个文件`)
+      if (skipped > 0) toast.warning(`已跳过 ${skipped} 个不支持的文件`)
     } catch (error) {
       console.error('Failed to parse file:', error)
       toast.error('解析失败，请稍后重试')
@@ -536,15 +566,23 @@ export function DataGovernancePanel() {
             <p className="text-gray-500 mb-8 max-w-md mx-auto text-lg">
               {uploading 
                 ? 'AI 正在分析文档结构并提取内容，请稍候...' 
-                : '拖放文件到此处，或点击下方按钮选择文件。支持 PDF, Word, Markdown 等格式。'
+                : '拖放文件到此处，或点击下方按钮选择文件。支持 PDF, Word, Excel, TXT, MD, ZIP。'
               }
             </p>
+
+            <div className="max-w-md mx-auto mb-8 text-left">
+              <div className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">文档库目录</div>
+              <div className="bg-gray-50 border border-gray-200 rounded-2xl p-3 max-h-56 overflow-y-auto">
+                <DocumentFolderTree />
+              </div>
+            </div>
             
             <div className="flex justify-center gap-4">
               <div className="relative">
                 <input
                   type="file"
                   multiple
+                  accept=".pdf,.txt,.md,.doc,.docx,.xls,.xlsx,.csv,.html,.json,.zip"
                   className="hidden"
                   id="file-upload"
                   onChange={handleFileSelect}
