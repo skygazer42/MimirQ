@@ -285,6 +285,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         chat_burst_size: Optional[int] = None,
         chat_prefixes: Optional[list[str]] = None,
         exclude_paths: Optional[list] = None,
+        exclude_prefixes: Optional[list[str]] = None,
     ) -> None:
         super().__init__(app)
         from app.core.config import settings
@@ -322,10 +323,46 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
                     burst_size=chat_burst_size,
                 )
         self.chat_prefixes = tuple(chat_prefixes or [])
-        self.exclude_paths = set(exclude_paths or ["/health", "/", "/docs", "/openapi.json", "/redoc"])
+
+        # Exclude high-fanout "asset-like" endpoints from rate limiting, otherwise the browser
+        # may trip the limiter when rendering many images at once (e.g., DeepDoc/Docling previews).
+        default_exclude_paths = [
+            "/health",
+            "/api/v1/health",
+            "/api/v1/health/ready",
+            "/",
+            "/docs",
+            "/openapi.json",
+            "/redoc",
+        ]
+        default_exclude_prefixes = [
+            "/api/v1/documents/image/",
+            "/api/v1/documents/image-url/",
+        ]
+
+        self.exclude_paths = set(default_exclude_paths)
+        if exclude_paths:
+            self.exclude_paths |= set(exclude_paths)
+
+        prefixes = list(default_exclude_prefixes)
+        if exclude_prefixes:
+            prefixes.extend(list(exclude_prefixes))
+        # Normalize + dedupe while keeping stable order.
+        seen: set[str] = set()
+        ordered: list[str] = []
+        for p in prefixes:
+            val = str(p or "").strip()
+            if not val:
+                continue
+            if val in seen:
+                continue
+            seen.add(val)
+            ordered.append(val)
+        self.exclude_prefixes = tuple(ordered)
 
     async def dispatch(self, request: Request, call_next: Callable) -> Response:
-        if request.url.path in self.exclude_paths:
+        path = request.url.path
+        if path in self.exclude_paths or (self.exclude_prefixes and any(path.startswith(p) for p in self.exclude_prefixes)):
             return await call_next(request)
 
         key = get_client_key(request)
