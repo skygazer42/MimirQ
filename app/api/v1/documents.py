@@ -65,6 +65,9 @@ router = APIRouter()
 
 # Safe filename characters: letters, digits, CJK, spaces, dots, underscores, hyphens.
 SAFE_FILENAME_PATTERN = re.compile(r'^[a-zA-Z0-9\u4e00-\u9fff\u3040-\u30ff\uac00-\ud7af._\-\s]+$')
+UUID_PATTERN = r"(?:[0-9a-fA-F]{32}|[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})"
+PREVIEW_IMAGE_REF_RE = re.compile(rf"(?:https?://[^\s)\"']+)?/api/v1/documents/image/({UUID_PATTERN})")
+MINIO_IMAGE_REF_RE = re.compile(r"(?:https?://[^\s)\"']+)?/api/v1/documents/image-url/([^\s)\"']+)")
 
 def _compute_pipeline_hash(doc_metadata: dict) -> str:
     """
@@ -145,6 +148,185 @@ def _validate_chunk_params(chunk_size: int, chunk_overlap: int) -> None:
             status_code=400,
             detail="chunk_overlap must be less than chunk_size",
         )
+
+
+def _rewrite_preview_images_to_minio(
+    text: str,
+    *,
+    tenant_id: str,
+    dataset_id: str,
+    document_id: str,
+    images_dir: Path,
+    local_id_to_img_id: dict[str, str],
+    digest_to_img_id: dict[str, str],
+    start_index: int = 0,
+) -> tuple[str, List[str], int]:
+    """
+    Convert preview-time local image refs (/api/v1/documents/image/{uuid}) into
+    persisted MinIO refs (/api/v1/documents/image-url/{img_id}) and upload images.
+
+    Returns:
+    - rewritten text
+    - ordered list of img_id values referenced by this text (unique)
+    - next asset index
+    """
+    if not settings.MINIO_ENABLED:
+        return text, [], start_index
+    if not isinstance(text, str) or not text:
+        return text, [], start_index
+
+    # Already MinIO-backed.
+    existing: list[str] = []
+    for m in MINIO_IMAGE_REF_RE.finditer(text):
+        val = (m.group(1) or "").strip()
+        if val and val not in existing:
+            existing.append(val)
+    if existing:
+        return text, existing, start_index
+
+    if "/api/v1/documents/image/" not in text:
+        return text, [], start_index
+
+    matches = list(PREVIEW_IMAGE_REF_RE.finditer(text))
+    if not matches:
+        return text, [], start_index
+
+    max_inline_images = max(0, int(getattr(settings, "MAX_INLINE_IMAGES", 0) or 0))
+    if max_inline_images and len(matches) > max_inline_images:
+        matches = matches[:max_inline_images]
+
+    image_exts = [".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp"]
+    max_bytes = int(getattr(settings, "MAX_INLINE_IMAGE_BYTES", 10_000_000) or 10_000_000)
+    max_bytes = max(1_000_000, max_bytes)
+
+    referenced_img_ids: list[str] = []
+    seen_local_ids: set[str] = set()
+
+    for m in matches:
+        raw_id = m.group(1)
+        if not raw_id:
+            continue
+        try:
+            local_id = uuid.UUID(raw_id).hex
+        except Exception:
+            continue
+
+        if local_id in seen_local_ids:
+            continue
+        seen_local_ids.add(local_id)
+
+        img_id = local_id_to_img_id.get(local_id)
+        if not img_id:
+            # Find local file.
+            img_path: Optional[Path] = None
+            for ext in image_exts:
+                candidate = images_dir / f"{local_id}{ext}"
+                if candidate.exists() and candidate.is_file():
+                    img_path = candidate
+                    break
+            if img_path is None:
+                try:
+                    for candidate in images_dir.glob(f"{local_id}.*"):
+                        if candidate.suffix.lower() in image_exts and candidate.exists() and candidate.is_file():
+                            img_path = candidate
+                            break
+                except Exception:
+                    img_path = None
+
+            if img_path is None:
+                continue
+
+            try:
+                if img_path.stat().st_size > max_bytes:
+                    continue
+            except Exception:
+                continue
+
+            try:
+                raw = img_path.read_bytes()
+            except Exception:
+                continue
+            if not raw or len(raw) > max_bytes:
+                continue
+
+            # Convert to JPEG (image-url endpoint assumes ".jpg").
+            try:
+                from io import BytesIO
+                from PIL import Image as PILImage  # type: ignore
+            except Exception:
+                logger.warning("Pillow not available; skipping preview image upload to MinIO")
+                continue
+
+            img = None
+            converted = None
+            try:
+                img = PILImage.open(BytesIO(raw))
+                if img.mode in ("RGBA", "P"):
+                    converted = img.convert("RGB")
+                    out_img = converted
+                else:
+                    out_img = img
+                out = BytesIO()
+                out_img.save(out, format="JPEG", quality=85, optimize=True)
+                image_bytes = out.getvalue()
+            except Exception as e:
+                logger.warning("Failed converting preview image %s to JPEG: %s", local_id, str(e)[:200])
+                continue
+            finally:
+                if converted is not None:
+                    try:
+                        converted.close()
+                    except Exception:
+                        pass
+                if img is not None:
+                    try:
+                        img.close()
+                    except Exception:
+                        pass
+
+            digest = hashlib.sha256(image_bytes).hexdigest()
+            img_id = digest_to_img_id.get(digest)
+            if not img_id:
+                chunk_key = f"asset{start_index}"
+                start_index += 1
+                try:
+                    img_id = minio_service.upload_image(
+                        image_data=image_bytes,
+                        tenant_id=tenant_id,
+                        dataset_id=dataset_id,
+                        document_id=document_id,
+                        chunk_key=chunk_key,
+                        extension="jpg",
+                    )
+                except Exception as e:
+                    logger.warning("Preview image upload to MinIO failed (skipped): %s", str(e)[:200])
+                    continue
+                digest_to_img_id[digest] = img_id
+
+            local_id_to_img_id[local_id] = img_id
+
+        if img_id and img_id not in referenced_img_ids:
+            referenced_img_ids.append(img_id)
+
+    if not referenced_img_ids:
+        return text, [], start_index
+
+    # Rewrite refs in a single pass.
+    def _repl(match: re.Match) -> str:
+        raw_id = match.group(1)
+        if not raw_id:
+            return match.group(0)
+        try:
+            local_id = uuid.UUID(raw_id).hex
+        except Exception:
+            return match.group(0)
+        img_id = local_id_to_img_id.get(local_id)
+        if not img_id:
+            return match.group(0)
+        return f"/api/v1/documents/image-url/{img_id}"
+
+    text = PREVIEW_IMAGE_REF_RE.sub(_repl, text)
+    return text, referenced_img_ids, start_index
 
 
 def _resolve_writable_dataset(
@@ -1121,8 +1303,16 @@ async def create_document_with_manual_chunks(
     db.flush()  # Flush only (no commit) to allow rollback.
 
     try:
+        # Best-effort: migrate preview-time local images to MinIO so retrieval can cite them.
+        images_dir = Path(settings.UPLOAD_DIR) / str(tenant_id) / "images"
+        local_id_to_img_id: dict[str, str] = {}
+        digest_to_img_id: dict[str, str] = {}
+        asset_index = 0
+        document_img_ids: set[str] = set()
+
         records: List[IndexRecord] = []
         for idx, chunk in enumerate(request.chunks):
+            content = chunk.content or ""
             metadata = {
                 "source": request.filename,
                 "file_type": request.file_type.lower(),
@@ -1131,10 +1321,36 @@ async def create_document_with_manual_chunks(
                 "chunk_index": idx,
                 **(chunk.metadata or {}),
             }
+
+            if settings.MINIO_ENABLED:
+                # If the chunk already references MinIO images, backfill img_id for citations.
+                if not (metadata.get("img_id") or metadata.get("image_id")):
+                    m = MINIO_IMAGE_REF_RE.search(content)
+                    if m:
+                        maybe_id = (m.group(1) or "").strip()
+                        if maybe_id:
+                            metadata["img_id"] = maybe_id
+
+                content, img_ids, asset_index = _rewrite_preview_images_to_minio(
+                    content,
+                    tenant_id=str(tenant_id),
+                    dataset_id=str(dataset.id),
+                    document_id=str(document_id),
+                    images_dir=images_dir,
+                    local_id_to_img_id=local_id_to_img_id,
+                    digest_to_img_id=digest_to_img_id,
+                    start_index=asset_index,
+                )
+                if img_ids:
+                    document_img_ids.update(img_ids)
+                    metadata.setdefault("img_id", img_ids[0])
+                    metadata.setdefault("img_ids", img_ids)
+                    metadata.setdefault("image_count", len(img_ids))
+
             records.append(
                 IndexRecord(
                     kind=IndexKind.CHUNK,
-                    content=chunk.content or "",
+                    content=content,
                     metadata=metadata,
                     document_id=document_id,
                     page_number=chunk.page_number,
@@ -1142,6 +1358,18 @@ async def create_document_with_manual_chunks(
                     end_char=chunk.end_char,
                 )
             )
+
+        if settings.MINIO_ENABLED and document_img_ids:
+            # Store a document-level image list for cleanup and compatibility.
+            meta = dict(db_document.doc_metadata or {})
+            existing = meta.get("img_ids")
+            merged: set[str] = set()
+            if isinstance(existing, list):
+                merged |= {v for v in existing if isinstance(v, str) and v.strip()}
+            merged |= {v for v in document_img_ids if isinstance(v, str) and v.strip()}
+            meta["img_ids"] = sorted(merged)
+            meta["image_count"] = len(merged)
+            db_document.doc_metadata = meta
 
         persist_result = Indexer(db).upsert(
             tenant_id=tenant_id,
@@ -1361,7 +1589,14 @@ async def preview_chunking(
                     filtered.append(c)
                     continue
                 meta = c.metadata or {}
-                if meta.get("img_id") or meta.get("image_id") or meta.get("image_url"):
+                if (
+                    meta.get("img_id")
+                    or meta.get("image_id")
+                    or meta.get("image_url")
+                    or PREVIEW_IMAGE_REF_RE.search(content)
+                    or MINIO_IMAGE_REF_RE.search(content)
+                    or ("data:image" in content.lower())
+                ):
                     filtered.append(c)
             kept_short_fallback = False
             if not filtered and original_chunks:
