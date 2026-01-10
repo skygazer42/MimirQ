@@ -560,7 +560,17 @@ export default function ParsingPage() {
             {/* 文档库目录 */}
             <div className="p-4 border-b">
               <div className="max-h-56 overflow-y-auto pr-1">
-                <DocumentFolderTree onRequestUpload={requestUploadToFolder} />
+                <DocumentFolderTree
+                  onRequestUpload={requestUploadToFolder}
+                  fileItems={files.map((f) => ({
+                    id: f.id,
+                    name: f.name,
+                    folderId: f.folderId,
+                    sourcePath: f.sourcePath,
+                  }))}
+                  showFiles="active"
+                  onSelectFile={(fileId) => setActiveFileId(fileId)}
+                />
               </div>
               <div className="mt-2 text-xs text-gray-500">当前目录：{activeFolderPathLabel}</div>
             </div>

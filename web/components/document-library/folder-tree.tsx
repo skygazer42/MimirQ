@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useMemo, useState } from 'react'
-import { Folder, FolderOpen, MoreHorizontal, Pencil, Plus, Trash2, Upload } from 'lucide-react'
+import { FileText, Folder, FolderOpen, MoreHorizontal, Pencil, Plus, Trash2, Upload } from 'lucide-react'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
@@ -29,12 +29,18 @@ type FolderDialogState =
 export function DocumentFolderTree({
   className,
   onRequestUpload,
+  fileItems,
+  showFiles = 'none',
+  onSelectFile,
 }: {
   className?: string
   onRequestUpload?: (folderId: string) => void
+  fileItems?: Array<{ id: string; name: string; folderId?: string; sourcePath?: string }>
+  showFiles?: 'none' | 'active' | 'all'
+  onSelectFile?: (fileId: string) => void
 }) {
   const {
-    files,
+    files: libraryFiles,
     folders,
     activeFolderId,
     setActiveFolderId,
@@ -46,14 +52,38 @@ export function DocumentFolderTree({
   const [dialog, setDialog] = useState<FolderDialogState>({ open: false })
   const [folderName, setFolderName] = useState('')
 
+  const displayFiles = useMemo(() => {
+    if (fileItems) return fileItems
+    return libraryFiles.map((f) => ({
+      id: f.id,
+      name: f.filename,
+      folderId: f.folderId,
+    }))
+  }, [fileItems, libraryFiles])
+
   const directCountByFolderId = useMemo(() => {
     const counts: Record<string, number> = {}
-    for (const file of files) {
+    for (const file of displayFiles) {
       const folderId = file.folderId || ROOT_FOLDER_ID
       counts[folderId] = (counts[folderId] || 0) + 1
     }
     return counts
-  }, [files])
+  }, [displayFiles])
+
+  const directFilesByFolderId = useMemo(() => {
+    const map = new Map<string, Array<{ id: string; name: string; folderId?: string; sourcePath?: string }>>()
+    for (const file of displayFiles) {
+      const folderId = file.folderId || ROOT_FOLDER_ID
+      const list = map.get(folderId) || []
+      list.push(file)
+      map.set(folderId, list)
+    }
+    for (const [folderId, list] of map.entries()) {
+      list.sort((a, b) => a.name.localeCompare(b.name))
+      map.set(folderId, list)
+    }
+    return map
+  }, [displayFiles])
 
   const childrenByParentId = useMemo(() => {
     const map = new Map<string, FolderNode[]>()
@@ -116,6 +146,8 @@ export function DocumentFolderTree({
       const isActive = activeFolderId === folder.id
       const count = directCountByFolderId[folder.id] || 0
       const children = childrenByParentId.get(folder.id) || []
+      const showFileNodes = showFiles === 'all' || (showFiles === 'active' && isActive)
+      const directFiles = showFileNodes ? directFilesByFolderId.get(folder.id) || [] : []
 
       return (
         <div key={folder.id}>
@@ -199,6 +231,30 @@ export function DocumentFolderTree({
             </DropdownMenu>
           </div>
 
+          {directFiles.length > 0 && (
+            <div className="space-y-0.5">
+              {directFiles.map((f) => (
+                <button
+                  key={f.id}
+                  type="button"
+                  className={cn(
+                    'w-full flex items-center gap-2 rounded-lg py-1.5 pr-2 text-left text-gray-600 hover:bg-gray-50',
+                    'text-sm'
+                  )}
+                  style={{ paddingLeft: 8 + (depth + 1) * 14 }}
+                  title={f.sourcePath ? `${f.name} · ${f.sourcePath}` : f.name}
+                  onClick={() => {
+                    setActiveFolderId(folder.id)
+                    onSelectFile?.(f.id)
+                  }}
+                >
+                  <FileText className="w-4 h-4 text-gray-400 flex-shrink-0" />
+                  <span className="truncate">{f.name}</span>
+                </button>
+              ))}
+            </div>
+          )}
+
           {children.length > 0 && <div>{children.map((c) => renderFolder(c, depth + 1))}</div>}
         </div>
       )
@@ -207,16 +263,22 @@ export function DocumentFolderTree({
       activeFolderId,
       childrenByParentId,
       directCountByFolderId,
+      directFilesByFolderId,
       handleDelete,
       openCreate,
       openRename,
       onRequestUpload,
+      onSelectFile,
+      showFiles,
       setActiveFolderId,
     ]
   )
 
-  const rootCount = files.length
+  const rootCount = displayFiles.length
   const rootChildren = childrenByParentId.get(ROOT_FOLDER_ID) || []
+  const rootDirectFiles = (showFiles === 'all' || (showFiles === 'active' && activeFolderId === ROOT_FOLDER_ID))
+    ? directFilesByFolderId.get(ROOT_FOLDER_ID) || []
+    : []
 
   return (
     <div className={cn('flex flex-col', className)}>
@@ -273,6 +335,27 @@ export function DocumentFolderTree({
             </Button>
           )}
         </div>
+
+        {rootDirectFiles.length > 0 && (
+          <div className="space-y-0.5">
+            {rootDirectFiles.map((f) => (
+              <button
+                key={f.id}
+                type="button"
+                className="w-full flex items-center gap-2 rounded-lg py-1.5 pr-2 text-left text-gray-600 hover:bg-gray-50 text-sm"
+                style={{ paddingLeft: 8 + 14 }}
+                title={f.sourcePath ? `${f.name} · ${f.sourcePath}` : f.name}
+                onClick={() => {
+                  setActiveFolderId(ROOT_FOLDER_ID)
+                  onSelectFile?.(f.id)
+                }}
+              >
+                <FileText className="w-4 h-4 text-gray-400 flex-shrink-0" />
+                <span className="truncate">{f.name}</span>
+              </button>
+            ))}
+          </div>
+        )}
 
         {rootChildren.map((folder) => renderFolder(folder, 1))}
       </div>
