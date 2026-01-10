@@ -10,6 +10,7 @@ Centralized settings management including:
 from typing import Literal, Optional
 import os
 import warnings
+from pathlib import Path
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from pydantic import AliasChoices, Field, model_validator
@@ -427,7 +428,8 @@ class Settings(BaseSettings):
     LANGSMITH_TRACING_ENABLED: bool = False
 
     model_config = SettingsConfigDict(
-        env_file=".env",
+        # Load `.env` from repo root (stable even when running with a different CWD).
+        env_file=str(Path(__file__).resolve().parents[2] / ".env"),
         case_sensitive=True,
         extra="ignore",
     )

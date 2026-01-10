@@ -1,13 +1,15 @@
 """
 MinerU document parsing service.
 Supports two modes:
-1. MinerU online API: https://mineru.net (returns Markdown URL)
+1. MinerU online API: https://mineru.net (returns ZIP with Markdown)
 2. MinerU local service: returns ZIP (Markdown + images)
 Both modes support advanced PDF parsing (tables, images, formulas, etc.)
 """
 import asyncio
+import io
 import time
 import tempfile
+import zipfile
 from pathlib import Path
 from typing import List, Dict, Any, Optional
 
@@ -295,18 +297,24 @@ class MinerUService:
             return False
 
     async def aget_task_status(self, batch_id: str) -> Dict[str, Any]:
-        """Query parsing task status (async)."""
+        """
+        Query batch parsing task status (async).
+
+        MinerU online API returns per-file states via:
+        `GET /extract-results/batch/{batch_id}`
+        """
         self._ensure_online_enabled()
 
-        url = f"{self.api_base}/extract/task/{batch_id}"
+        url = f"{self.api_base}/extract-results/batch/{batch_id}"
         result = await self._arequest_json("GET", url, headers=self._get_headers(), timeout=30.0)
         if result.get("code") == 0:
-            return result["data"]
-        raise Exception(f"Get task status failed: {result.get('msg', 'Unknown error')}")
+            data = result.get("data") or {}
+            return self._normalize_batch_status(data)
+        raise Exception(f"Get batch results failed: {result.get('msg', 'Unknown error')}")
 
     def get_task_status(self, batch_id: str) -> Dict[str, Any]:
         """
-        Query parsing task status.
+        Query batch parsing task status.
 
         Args:
             batch_id: Batch ID.
@@ -318,7 +326,7 @@ class MinerUService:
 
         self._ensure_online_enabled()
 
-        url = f"{self.api_base}/extract/task/{batch_id}"
+        url = f"{self.api_base}/extract-results/batch/{batch_id}"
 
         try:
             response = requests.get(url, headers=self._get_headers(), timeout=30)
@@ -335,12 +343,139 @@ class MinerUService:
             raise Exception(f"Network error when getting task status: {str(e)}") from e
 
         if result.get("code") == 0:
-            return result["data"]
-        raise Exception(f"Get task status failed: {result.get('msg', 'Unknown error')}")
+            data = result.get("data") or {}
+            return self._normalize_batch_status(data)
+        raise Exception(f"Get batch results failed: {result.get('msg', 'Unknown error')}")
+
+    @staticmethod
+    def _normalize_batch_status(batch_data: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Normalize MinerU batch results response into our API-friendly schema.
+
+        MinerU response example:
+        {
+          "batch_id": "...",
+          "extract_result": [
+            {"data_id":"...", "file_name":"...", "state":"waiting-file|running|done|failed", "err_msg":"", ...}
+          ]
+        }
+        """
+        extract_result = batch_data.get("extract_result") or []
+        if not isinstance(extract_result, list):
+            extract_result = []
+
+        total_files = len(extract_result)
+        completed_files = 0
+        failed_files = 0
+        running_files = 0
+        first_error: Optional[str] = None
+
+        for item in extract_result:
+            if not isinstance(item, dict):
+                continue
+            state = str(item.get("state") or "").lower()
+            if state == "done":
+                completed_files += 1
+            elif state == "failed":
+                failed_files += 1
+                if not first_error:
+                    err = (item.get("err_msg") or "").strip()
+                    if err:
+                        first_error = err
+            elif state == "running":
+                running_files += 1
+
+        if total_files <= 0:
+            status = "pending"
+            progress = 0
+        elif completed_files + failed_files >= total_files:
+            status = "failed" if failed_files > 0 else "completed"
+            progress = 100
+        elif running_files > 0:
+            status = "processing"
+            progress = int(((completed_files + failed_files) / float(total_files)) * 100)
+        else:
+            # e.g. all waiting-file
+            status = "pending"
+            progress = int(((completed_files + failed_files) / float(total_files)) * 100)
+
+        return {
+            "status": status,
+            "total_files": total_files,
+            "completed_files": completed_files,
+            "failed_files": failed_files,
+            "progress": max(0, min(100, int(progress))),
+            "result_url": None,
+            "error": first_error,
+        }
+
+    @staticmethod
+    def _pick_extract_item(
+        extract_result: List[Dict[str, Any]],
+        *,
+        data_id: Optional[str] = None,
+        filename: Optional[str] = None,
+    ) -> Optional[Dict[str, Any]]:
+        if not extract_result:
+            return None
+
+        if data_id:
+            for item in extract_result:
+                if not isinstance(item, dict):
+                    continue
+                if str(item.get("data_id") or "") == str(data_id):
+                    return item
+
+        if filename:
+            for item in extract_result:
+                if not isinstance(item, dict):
+                    continue
+                if str(item.get("file_name") or "") == str(filename):
+                    return item
+
+        if len(extract_result) == 1 and isinstance(extract_result[0], dict):
+            return extract_result[0]
+        return None
+
+    async def aget_batch_results(self, batch_id: str) -> Dict[str, Any]:
+        """Fetch raw MinerU batch results (async)."""
+        self._ensure_online_enabled()
+        url = f"{self.api_base}/extract-results/batch/{batch_id}"
+        result = await self._arequest_json("GET", url, headers=self._get_headers(), timeout=30.0)
+        if result.get("code") == 0:
+            return result.get("data") or {}
+        raise Exception(f"Get batch results failed: {result.get('msg', 'Unknown error')}")
+
+    def get_batch_results(self, batch_id: str) -> Dict[str, Any]:
+        """Fetch raw MinerU batch results (sync)."""
+        import requests  # local import to avoid blocking deps in async paths
+
+        self._ensure_online_enabled()
+        url = f"{self.api_base}/extract-results/batch/{batch_id}"
+        try:
+            response = requests.get(url, headers=self._get_headers(), timeout=30)
+            response.raise_for_status()
+            result = response.json()
+        except requests.exceptions.HTTPError as e:
+            status = int(getattr(getattr(e, "response", None), "status_code", 0) or 0)
+            if status in {401, 403}:
+                raise Exception(self._format_auth_error(status)) from e
+            raise Exception(
+                f"MinerU API request failed (HTTP {status}) when getting batch results: {str(e)[:200]}"
+            ) from e
+        except requests.exceptions.RequestException as e:
+            raise Exception(f"Network error when getting batch results: {str(e)}") from e
+
+        if result.get("code") == 0:
+            return result.get("data") or {}
+        raise Exception(f"Get batch results failed: {result.get('msg', 'Unknown error')}")
 
     async def await_for_completion(
         self,
         batch_id: str,
+        *,
+        data_id: Optional[str] = None,
+        filename: Optional[str] = None,
         timeout: int = 600,
         poll_interval: int = 5,
         max_interval: int = 30,
@@ -348,15 +483,17 @@ class MinerUService:
         jitter: float = 0.2,
     ) -> Dict[str, Any]:
         """
-        Wait for parsing task completion.
+        Wait for parsing completion for a single file in a batch.
 
         Args:
             batch_id: Batch ID.
+            data_id: The file's `data_id` used when applying upload URL (recommended).
+            filename: Fallback selector when `data_id` is unavailable.
             timeout: Timeout (seconds).
             poll_interval: Poll interval (seconds).
 
         Returns:
-            Final task status.
+            The matched extract_result item.
         """
         start_time = time.monotonic()
         current_interval = max(1, int(poll_interval))
@@ -365,15 +502,21 @@ class MinerUService:
             if time.monotonic() - start_time > timeout:
                 raise TimeoutError(f"Task {batch_id} timeout after {timeout} seconds")
 
-            status = await self.aget_task_status(batch_id)
-            task_status = status.get("status")
+            batch = await self.aget_batch_results(batch_id)
+            extract_result = batch.get("extract_result") or []
+            if not isinstance(extract_result, list):
+                extract_result = []
 
-            logger.info("Task %s status: %s", batch_id, task_status)
+            item = self._pick_extract_item(extract_result, data_id=data_id, filename=filename)
+            state = str((item or {}).get("state") or "").lower()
 
-            if task_status == "completed":
-                return status
-            elif task_status == "failed":
-                raise Exception(f"Task {batch_id} failed: {status.get('error', 'Unknown error')}")
+            logger.info("Task %s state=%s (data_id=%s)", batch_id, state or "unknown", data_id or "")
+
+            if state == "done":
+                return item or {}
+            if state == "failed":
+                err = (item or {}).get("err_msg") or "Unknown error"
+                raise Exception(f"Task {batch_id} failed: {err}")
 
             # Exponential backoff with jitter (best-effort)
             sleep_for = float(current_interval)
@@ -384,22 +527,36 @@ class MinerUService:
             await asyncio.sleep(sleep_for)
             current_interval = min(int(max_interval), int(current_interval * float(backoff_factor)))
 
-    def wait_for_completion(self, batch_id: str, timeout: int = 600, poll_interval: int = 5) -> Dict[str, Any]:
+    def wait_for_completion(
+        self,
+        batch_id: str,
+        *,
+        data_id: Optional[str] = None,
+        filename: Optional[str] = None,
+        timeout: int = 600,
+        poll_interval: int = 5,
+    ) -> Dict[str, Any]:
         start_time = time.time()
 
         while True:
             if time.time() - start_time > timeout:
                 raise TimeoutError(f"Task {batch_id} timeout after {timeout} seconds")
 
-            status = self.get_task_status(batch_id)
-            task_status = status.get("status")
+            batch = self.get_batch_results(batch_id)
+            extract_result = batch.get("extract_result") or []
+            if not isinstance(extract_result, list):
+                extract_result = []
 
-            logger.info("Task %s status: %s", batch_id, task_status)
+            item = self._pick_extract_item(extract_result, data_id=data_id, filename=filename)
+            state = str((item or {}).get("state") or "").lower()
 
-            if task_status == "completed":
-                return status
-            if task_status == "failed":
-                raise Exception(f"Task {batch_id} failed: {status.get('error', 'Unknown error')}")
+            logger.info("Task %s state=%s (data_id=%s)", batch_id, state or "unknown", data_id or "")
+
+            if state == "done":
+                return item or {}
+            if state == "failed":
+                err = (item or {}).get("err_msg") or "Unknown error"
+                raise Exception(f"Task {batch_id} failed: {err}")
 
             time.sleep(poll_interval)
 
@@ -434,6 +591,88 @@ class MinerUService:
         except requests.exceptions.RequestException as e:
             raise Exception(f"Download result failed: {str(e)}") from e
 
+    async def adownload_result_zip(self, zip_url: str) -> bytes:
+        """Download parse result ZIP bytes (async)."""
+        pool = get_http_client_pool()
+        resp = await pool.get(zip_url, timeout=300.0)
+        try:
+            return bytes(resp.content)
+        finally:
+            try:
+                await resp.aclose()
+            except Exception:
+                pass
+
+    def download_result_zip(self, zip_url: str) -> bytes:
+        """Download parse result ZIP bytes (sync)."""
+        import requests  # local import to avoid blocking deps in async paths
+
+        try:
+            response = requests.get(zip_url, timeout=300)
+            response.raise_for_status()
+            return bytes(response.content)
+        except requests.exceptions.RequestException as e:
+            raise Exception(f"Download result ZIP failed: {str(e)}") from e
+
+    @staticmethod
+    def _extract_markdown_from_zip_bytes(zip_bytes: bytes) -> str:
+        """
+        Extract markdown text from a MinerU result ZIP (prefers `full.md`).
+        """
+        max_files = int(getattr(settings, "ZIP_MAX_FILES", 2000))
+        max_total = int(getattr(settings, "ZIP_MAX_TOTAL_UNCOMPRESSED_BYTES", 500_000_000))
+        max_single = int(getattr(settings, "ZIP_MAX_SINGLE_UNCOMPRESSED_BYTES", 100_000_000))
+
+        with zipfile.ZipFile(io.BytesIO(zip_bytes), "r") as zf:
+            infos = zf.infolist()
+            if len(infos) > max_files:
+                raise ValueError(f"ZIP contains too many files: {len(infos)} > {max_files}")
+
+            total_bytes = 0
+            for info in infos:
+                total_bytes += int(getattr(info, "file_size", 0) or 0)
+                if info.file_size and info.file_size > max_single:
+                    raise ValueError(f"ZIP entry too large: {info.filename} ({info.file_size} bytes)")
+            if total_bytes > max_total:
+                raise ValueError(f"ZIP uncompressed size too large: {total_bytes} > {max_total}")
+
+            md_infos: list[zipfile.ZipInfo] = []
+            for info in infos:
+                if info.is_dir():
+                    continue
+                name = (info.filename or "").replace("\\", "/")
+                parts = [p.lower() for p in name.split("/") if p]
+                if "__macosx" in parts:
+                    continue
+                if name.lower().endswith(".md"):
+                    md_infos.append(info)
+
+            if not md_infos:
+                return ""
+
+            chosen: Optional[zipfile.ZipInfo] = None
+            preferred = ["full.md", "output.md", "result.md", "index.md", "readme.md"]
+            for pref in preferred:
+                for info in md_infos:
+                    base = (info.filename or "").replace("\\", "/").split("/")[-1].lower()
+                    if base == pref:
+                        chosen = info
+                        break
+                if chosen is not None:
+                    break
+
+            if chosen is None:
+                def sort_key(i: zipfile.ZipInfo) -> tuple[int, int]:
+                    depth = len([p for p in (i.filename or "").replace("\\", "/").split("/") if p])
+                    return (depth, -int(getattr(i, "file_size", 0) or 0))
+
+                md_infos.sort(key=sort_key)
+                chosen = md_infos[0]
+
+            with zf.open(chosen, "r") as f:
+                raw = f.read()
+            return raw.decode("utf-8", errors="ignore").strip()
+
     async def aparse_file(self, file_path: Path, data_id: Optional[str] = None) -> List[Document]:
         """
         End-to-end parsing flow (upload → wait → download result), async version.
@@ -455,14 +694,21 @@ class MinerUService:
 
         logger.info("Upload complete. Batch ID: %s", batch_id)
         logger.info("Waiting for parsing completion...")
-        result = await self.await_for_completion(batch_id, timeout=600, poll_interval=5)
+        item = await self.await_for_completion(
+            batch_id,
+            data_id=data_id,
+            filename=file_path.name,
+            timeout=600,
+            poll_interval=5,
+        )
 
-        result_url = result.get("result_url")
-        if not result_url:
-            raise Exception("No result URL in response")
+        zip_url = (item or {}).get("full_zip_url") or (item or {}).get("zip_url")
+        if not zip_url:
+            raise Exception("No result ZIP URL in response")
 
-        logger.info("Downloading result...")
-        markdown_content = await self.adownload_result(result_url)
+        logger.info("Downloading result ZIP...")
+        zip_bytes = await self.adownload_result_zip(str(zip_url))
+        markdown_content = self._extract_markdown_from_zip_bytes(zip_bytes)
 
         metadata = {
             "source": file_path.name,
@@ -616,15 +862,22 @@ class MinerUService:
 
         # 3. Wait for parsing completion.
         logger.info("Waiting for parsing completion...")
-        result = self.wait_for_completion(batch_id, timeout=600, poll_interval=5)
+        item = self.wait_for_completion(
+            batch_id,
+            data_id=data_id,
+            filename=file_path.name,
+            timeout=600,
+            poll_interval=5,
+        )
 
         # 4. Download parse result.
-        result_url = result.get("result_url")
-        if not result_url:
-            raise Exception("No result URL in response")
+        zip_url = (item or {}).get("full_zip_url") or (item or {}).get("zip_url")
+        if not zip_url:
+            raise Exception("No result ZIP URL in response")
 
-        logger.info("Downloading result...")
-        markdown_content = self.download_result(result_url)
+        logger.info("Downloading result ZIP...")
+        zip_bytes = self.download_result_zip(str(zip_url))
+        markdown_content = self._extract_markdown_from_zip_bytes(zip_bytes)
 
         # 5. Convert to LangChain Document.
         metadata = {

@@ -294,7 +294,7 @@ export function DocumentFolderTree({
               <Button
                 variant="ghost"
                 size="icon"
-                className="h-7 w-7 opacity-0 group-hover:opacity-100"
+                className={cn('h-7 w-7', isActive ? 'opacity-100' : 'opacity-0 group-hover:opacity-100')}
                 aria-label="Upload to folder"
                 onClick={(e) => {
                   e.stopPropagation()
@@ -311,7 +311,7 @@ export function DocumentFolderTree({
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="h-7 w-7 opacity-0 group-hover:opacity-100"
+                  className={cn('h-7 w-7', isActive ? 'opacity-100' : 'opacity-0 group-hover:opacity-100')}
                   aria-label="Folder actions"
                 >
                   <MoreHorizontal className="w-4 h-4" />
@@ -477,7 +477,7 @@ export function DocumentFolderTree({
             <Button
               variant="ghost"
               size="icon"
-              className="h-7 w-7 opacity-0 group-hover:opacity-100"
+              className={cn('h-7 w-7', activeFolderId === ROOT_FOLDER_ID ? 'opacity-100' : 'opacity-0 group-hover:opacity-100')}
               aria-label="Upload to root folder"
               onClick={(e) => {
                 e.stopPropagation()
