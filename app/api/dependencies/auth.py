@@ -7,7 +7,6 @@ Parses user identity from request headers.
 import logging
 from fastapi import Header, HTTPException
 from jose import jwt, ExpiredSignatureError, JWTError
-
 from app.core.config import settings
 
 logger = logging.getLogger(__name__)
