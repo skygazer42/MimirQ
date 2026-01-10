@@ -46,7 +46,11 @@ class DocumentParserService:
             # Non-PDF: force MarkItDown (office/spreadsheets) or text parser.
             parser_backend = parser_backend or "markitdown"
 
-        documents, resolved_backend = parser_factory.parse(file_path, parser_backend=parser_backend)
+        documents, resolved_backend = parser_factory.parse(
+            file_path,
+            parser_backend=parser_backend,
+            tenant_id=str(tenant_id),
+        )
         markdown_text = self._merge_documents(documents)
 
         images = self._extract_and_save_inline_images(markdown_text, tenant_id)
@@ -90,7 +94,19 @@ class DocumentParserService:
         for m in matches:
             data_uri = m.group(1)
             img_id = uuid.uuid4().hex
-            filename = f"{img_id}.png"
+            ext = "png"
+            try:
+                mm = re.match(r"^data:image/([a-zA-Z0-9.+-]+);base64,", data_uri)
+                if mm:
+                    fmt = (mm.group(1) or "").strip().lower()
+                    if fmt in {"jpg", "jpeg"}:
+                        ext = "jpg"
+                    elif fmt in {"png", "webp", "gif", "bmp"}:
+                        ext = fmt
+            except Exception:
+                ext = "png"
+
+            filename = f"{img_id}.{ext}"
             file_path = images_dir / filename
 
             try:
@@ -100,13 +116,14 @@ class DocumentParserService:
             except Exception:
                 continue
 
-            markdown_ref = f"![image]({file_path.name})"
+            url = f"/api/v1/documents/image/{img_id}"
+            markdown_ref = f"![image]({url})"
             saved.append(
                 {
                     "id": img_id,
                     "filename": filename,
                     "path": str(file_path),
-                    "url": f"/api/v1/documents/image/{img_id}",
+                    "url": url,
                     "original": data_uri,
                     "markdown_ref": markdown_ref,
                 }

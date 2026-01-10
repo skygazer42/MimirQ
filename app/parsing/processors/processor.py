@@ -138,6 +138,7 @@ class ParsingStage:
             parser_backend=effective_parser_backend,
             dataset_id=dataset_id,
             document_id=str(document_id),
+            tenant_id=str(tenant_id),
         )
         self._svc._record_processing_metadata(
             db,

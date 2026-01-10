@@ -7,8 +7,10 @@ Both modes support advanced PDF parsing (tables, images, formulas, etc.)
 """
 import asyncio
 import io
+import re
 import time
 import tempfile
+import uuid
 import zipfile
 from pathlib import Path
 from typing import List, Dict, Any, Optional
@@ -673,7 +675,155 @@ class MinerUService:
                 raw = f.read()
             return raw.decode("utf-8", errors="ignore").strip()
 
-    async def aparse_file(self, file_path: Path, data_id: Optional[str] = None) -> List[Document]:
+    def _extract_preview_images_from_zip_bytes(
+        self,
+        *,
+        zip_bytes: bytes,
+        markdown: str,
+        tenant_id: str,
+    ) -> tuple[str, List[Dict[str, str]]]:
+        """
+        MinerU online API returns images inside the result ZIP (e.g. "images/xxx.jpg")
+        while Markdown references them with relative paths. For preview endpoints (no
+        persisted document id), extract referenced images to:
+          uploads/{tenant_id}/images/{uuid}.{ext}
+        and rewrite Markdown refs to:
+          /api/v1/documents/image/{uuid}
+        """
+        if not tenant_id or not isinstance(markdown, str) or not markdown:
+            return markdown, []
+
+        lowered = markdown.lower()
+        if "![" not in lowered and "<img" not in lowered:
+            return markdown, []
+
+        images_dir = Path(settings.UPLOAD_DIR) / str(tenant_id) / "images"
+        images_dir.mkdir(parents=True, exist_ok=True)
+
+        # Find image refs in Markdown/HTML.
+        md_pat = re.compile(
+            r"!\[[^\]]*\]\(\s*(?:<)?([^)\s>]+)(?:>)?(?:\s+['\"][^'\"]*['\"])?\s*\)",
+            flags=re.IGNORECASE,
+        )
+        html_pat = re.compile(r"<img[^>]+src=[\"']([^\"']+)[\"']", flags=re.IGNORECASE)
+
+        refs: List[str] = []
+        seen: set[str] = set()
+        for pat in (md_pat, html_pat):
+            for m in pat.finditer(markdown):
+                ref = m.group(1)
+                if not isinstance(ref, str):
+                    continue
+                ref = ref.strip()
+                if not ref or ref in seen:
+                    continue
+                seen.add(ref)
+                refs.append(ref)
+
+        if not refs:
+            return markdown, []
+
+        max_images = max(0, int(getattr(settings, "ZIP_MAX_IMAGES", 0) or 0))
+        if max_images and len(refs) > max_images:
+            refs = refs[:max_images]
+
+        # Index ZIP members by common lookup keys.
+        image_exts = {".png", ".jpg", ".jpeg", ".webp", ".bmp", ".gif"}
+        member_by_key: Dict[str, str] = {}
+        try:
+            zf = zipfile.ZipFile(io.BytesIO(zip_bytes), "r")
+        except Exception:
+            return markdown, []
+
+        try:
+            for info in zf.infolist():
+                if info.is_dir():
+                    continue
+                name = (info.filename or "").replace("\\", "/").lstrip("/")
+                if not name:
+                    continue
+                parts_lower = [p.lower() for p in name.split("/") if p]
+                if "__macosx" in parts_lower:
+                    continue
+                ext = Path(name).suffix.lower()
+                if ext not in image_exts:
+                    continue
+                member_by_key[name] = name
+                base = Path(name).name
+                member_by_key[base] = name
+
+            # Extract referenced images and build replacement mapping.
+            max_bytes = int(getattr(settings, "MAX_INLINE_IMAGE_BYTES", 10_000_000) or 10_000_000)
+            max_bytes = max(1_000_000, max_bytes)
+
+            extracted: List[Dict[str, str]] = []
+            mapping: Dict[str, Dict[str, str]] = {}
+            cached_id_by_norm: Dict[str, str] = {}
+
+            for ref in refs:
+                # Skip remote URLs and already-rewritten refs.
+                if ref.lower().startswith(("http://", "https://")):
+                    continue
+                if "/api/v1/documents/image/" in ref or "/api/v1/documents/image-url/" in ref:
+                    continue
+
+                norm = zip_image_processor._normalize_ref_path(ref)
+                if not norm:
+                    continue
+
+                member = member_by_key.get(norm)
+                if not member and not norm.startswith("images/"):
+                    member = member_by_key.get(f"images/{norm}")
+                if not member:
+                    continue
+
+                img_id = cached_id_by_norm.get(norm)
+                if not img_id:
+                    try:
+                        binary = zf.read(member)
+                    except Exception:
+                        continue
+                    if not binary or len(binary) > max_bytes:
+                        continue
+
+                    ext = Path(member).suffix.lower()
+                    if ext not in image_exts:
+                        ext = ".png"
+                    img_id = uuid.uuid4().hex
+                    out_path = images_dir / f"{img_id}{ext}"
+                    try:
+                        out_path.write_bytes(binary)
+                    except Exception:
+                        continue
+
+                    cached_id_by_norm[norm] = img_id
+                    extracted.append({"id": img_id, "filename": out_path.name, "url": f"/api/v1/documents/image/{img_id}"})
+
+                url = f"/api/v1/documents/image/{img_id}"
+                keys = {norm, Path(norm).name}
+                for key in keys:
+                    if key:
+                        mapping[key] = {"url": url}
+
+            if mapping:
+                markdown = zip_image_processor._replace_image_refs(markdown, mapping)
+
+            return markdown, extracted
+        finally:
+            try:
+                zf.close()
+            except Exception:
+                pass
+
+    async def aparse_file(
+        self,
+        file_path: Path,
+        data_id: Optional[str] = None,
+        *,
+        tenant_id: Optional[str] = None,
+        dataset_id: Optional[str] = None,
+        document_id: Optional[str] = None,
+    ) -> List[Document]:
         """
         End-to-end parsing flow (upload → wait → download result), async version.
         """
@@ -708,7 +858,38 @@ class MinerUService:
 
         logger.info("Downloading result ZIP...")
         zip_bytes = await self.adownload_result_zip(str(zip_url))
-        markdown_content = self._extract_markdown_from_zip_bytes(zip_bytes)
+
+        images_meta: list[dict] = []
+        if dataset_id and document_id and settings.MINIO_ENABLED:
+            tmp_zip_path: Optional[Path] = None
+            try:
+                with tempfile.NamedTemporaryFile(suffix=".zip", delete=False) as tmp_zip:
+                    tmp_zip.write(zip_bytes)
+                    tmp_zip_path = Path(tmp_zip.name)
+
+                result = await asyncio.to_thread(
+                    zip_image_processor.process_zip_with_images,
+                    zip_path=tmp_zip_path,
+                    tenant_id=str(tenant_id) if tenant_id else None,
+                    dataset_id=str(dataset_id),
+                    document_id=str(document_id),
+                )
+                markdown_content = result.get("markdown", "") or ""
+                images_meta = result.get("images") or []
+            finally:
+                if tmp_zip_path and tmp_zip_path.exists():
+                    try:
+                        tmp_zip_path.unlink()
+                    except Exception:
+                        pass
+        else:
+            markdown_content = self._extract_markdown_from_zip_bytes(zip_bytes)
+            if tenant_id:
+                markdown_content, _preview_images = self._extract_preview_images_from_zip_bytes(
+                    zip_bytes=zip_bytes,
+                    markdown=markdown_content,
+                    tenant_id=str(tenant_id),
+                )
 
         metadata = {
             "source": file_path.name,
@@ -718,6 +899,9 @@ class MinerUService:
             "data_id": data_id,
             "model_version": self.model_version,
         }
+        if images_meta:
+            metadata["images"] = images_meta
+            metadata["image_count"] = len(images_meta)
         logger.info("Parse complete. Content length: %s chars", len(markdown_content))
         return [Document(page_content=markdown_content, metadata=metadata)]
 
@@ -727,6 +911,7 @@ class MinerUService:
         file_path: Path,
         dataset_id: str,
         document_id: str,
+        tenant_id: Optional[str] = None,
         params: Optional[Dict[str, Any]] = None,
     ) -> List[Document]:
         """
@@ -796,6 +981,7 @@ class MinerUService:
             result = await asyncio.to_thread(
                 zip_image_processor.process_zip_with_images,
                 zip_path=tmp_zip_path,
+                tenant_id=str(tenant_id) if tenant_id else None,
                 dataset_id=dataset_id,
                 document_id=document_id,
             )
@@ -830,7 +1016,11 @@ class MinerUService:
     def parse_file(
         self,
         file_path: Path,
-        data_id: Optional[str] = None
+        data_id: Optional[str] = None,
+        *,
+        tenant_id: Optional[str] = None,
+        dataset_id: Optional[str] = None,
+        document_id: Optional[str] = None,
     ) -> List[Document]:
         """
         End-to-end parsing flow (upload → wait → download result).
@@ -877,7 +1067,37 @@ class MinerUService:
 
         logger.info("Downloading result ZIP...")
         zip_bytes = self.download_result_zip(str(zip_url))
-        markdown_content = self._extract_markdown_from_zip_bytes(zip_bytes)
+
+        images_meta: list[dict] = []
+        if dataset_id and document_id and settings.MINIO_ENABLED:
+            tmp_zip_path: Optional[Path] = None
+            try:
+                with tempfile.NamedTemporaryFile(suffix=".zip", delete=False) as tmp_zip:
+                    tmp_zip.write(zip_bytes)
+                    tmp_zip_path = Path(tmp_zip.name)
+
+                result = zip_image_processor.process_zip_with_images(
+                    zip_path=tmp_zip_path,
+                    tenant_id=str(tenant_id) if tenant_id else None,
+                    dataset_id=str(dataset_id),
+                    document_id=str(document_id),
+                )
+                markdown_content = result.get("markdown", "") or ""
+                images_meta = result.get("images") or []
+            finally:
+                if tmp_zip_path and tmp_zip_path.exists():
+                    try:
+                        tmp_zip_path.unlink()
+                    except Exception:
+                        pass
+        else:
+            markdown_content = self._extract_markdown_from_zip_bytes(zip_bytes)
+            if tenant_id:
+                markdown_content, _preview_images = self._extract_preview_images_from_zip_bytes(
+                    zip_bytes=zip_bytes,
+                    markdown=markdown_content,
+                    tenant_id=str(tenant_id),
+                )
 
         # 5. Convert to LangChain Document.
         metadata = {
@@ -888,6 +1108,9 @@ class MinerUService:
             "data_id": data_id,
             "model_version": self.model_version,
         }
+        if images_meta:
+            metadata["images"] = images_meta
+            metadata["image_count"] = len(images_meta)
 
         logger.info("Parse complete. Content length: %s chars", len(markdown_content))
 
@@ -898,6 +1121,7 @@ class MinerUService:
         file_path: Path,
         dataset_id: str,
         document_id: str,
+        tenant_id: Optional[str] = None,
         params: Optional[Dict[str, Any]] = None
     ) -> List[Document]:
         """
@@ -971,6 +1195,7 @@ class MinerUService:
                 # Process ZIP: extract images and upload to MinIO.
                 result = zip_image_processor.process_zip_with_images(
                     zip_path=tmp_zip_path,
+                    tenant_id=str(tenant_id) if tenant_id else None,
                     dataset_id=dataset_id,
                     document_id=document_id
                 )
