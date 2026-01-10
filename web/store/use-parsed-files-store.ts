@@ -1,6 +1,15 @@
 import { create } from 'zustand'
 import { persist, createJSONStorage } from 'zustand/middleware'
 
+export const ROOT_FOLDER_ID = 'root'
+
+export interface FolderNode {
+  id: string
+  name: string
+  parentId: string
+  createdAt: string
+}
+
 export interface ParsedFileData {
   id: string
   filename: string
@@ -10,10 +19,13 @@ export interface ParsedFileData {
   originalMarkdownContent?: string
   parsedAt: string
   parser: string
+  folderId?: string
 }
 
 interface ParsedFilesState {
   files: ParsedFileData[]
+  folders: FolderNode[]
+  activeFolderId: string
   isLoaded: boolean
 
   // Actions
@@ -23,22 +35,35 @@ interface ParsedFilesState {
   updateParsedFile: (id: string, updates: Partial<Omit<ParsedFileData, 'id'>>) => void
   clearAll: () => void
 
+  createFolder: (name: string, parentId?: string) => string
+  renameFolder: (id: string, name: string) => void
+  deleteFolder: (id: string) => void
+  setActiveFolderId: (id: string) => void
+
   // Internal
   setLoaded: (loaded: boolean) => void
 }
+
+const makeId = () =>
+  typeof crypto !== 'undefined' && 'randomUUID' in crypto && typeof crypto.randomUUID === 'function'
+    ? crypto.randomUUID()
+    : Math.random().toString(36).substring(2, 15)
 
 export const useParsedFiles = create<ParsedFilesState>()(
   persist(
     (set, get) => ({
       files: [],
+      folders: [],
+      activeFolderId: ROOT_FOLDER_ID,
       isLoaded: false,
 
       addParsedFile: (file) => {
         const newFile: ParsedFileData = {
           ...file,
           originalMarkdownContent: file.originalMarkdownContent ?? file.markdownContent,
-          id: Math.random().toString(36).substring(2, 15),
+          id: makeId(),
           parsedAt: new Date().toISOString(),
+          folderId: file.folderId || ROOT_FOLDER_ID,
         }
 
         set((state) => ({ files: [...state.files, newFile] }))
@@ -65,7 +90,51 @@ export const useParsedFiles = create<ParsedFilesState>()(
       },
 
       clearAll: () => {
-        set({ files: [] })
+        set({ files: [], folders: [], activeFolderId: ROOT_FOLDER_ID })
+      },
+
+      createFolder: (name, parentId) => {
+        const trimmed = name.trim()
+        const newFolder: FolderNode = {
+          id: makeId(),
+          name: trimmed || '新建文件夹',
+          parentId: parentId || get().activeFolderId || ROOT_FOLDER_ID,
+          createdAt: new Date().toISOString(),
+        }
+        set((state) => ({ folders: [...state.folders, newFolder] }))
+        return newFolder.id
+      },
+
+      renameFolder: (id, name) => {
+        if (id === ROOT_FOLDER_ID) return
+        const trimmed = name.trim()
+        if (!trimmed) return
+        set((state) => ({
+          folders: state.folders.map((f) => (f.id === id ? { ...f, name: trimmed } : f)),
+        }))
+      },
+
+      deleteFolder: (id) => {
+        if (id === ROOT_FOLDER_ID) return
+
+        const collectDescendants = (folderId: string, all: FolderNode[]): string[] => {
+          const children = all.filter((f) => f.parentId === folderId).map((f) => f.id)
+          return children.flatMap((childId) => [childId, ...collectDescendants(childId, all)])
+        }
+
+        const folders = get().folders
+        const idsToDelete = [id, ...collectDescendants(id, folders)]
+        set((state) => ({
+          folders: state.folders.filter((f) => !idsToDelete.includes(f.id)),
+          files: state.files.map((file) =>
+            file.folderId && idsToDelete.includes(file.folderId) ? { ...file, folderId: ROOT_FOLDER_ID } : file
+          ),
+          activeFolderId: idsToDelete.includes(state.activeFolderId) ? ROOT_FOLDER_ID : state.activeFolderId,
+        }))
+      },
+
+      setActiveFolderId: (id) => {
+        set({ activeFolderId: id || ROOT_FOLDER_ID })
       },
 
       setLoaded: (loaded) => set({ isLoaded: loaded }),
@@ -89,14 +158,53 @@ export const useParsedFiles = create<ParsedFilesState>()(
                 ...f,
                 markdownContent,
                 originalMarkdownContent,
+                folderId: typeof f.folderId === 'string' && f.folderId ? f.folderId : ROOT_FOLDER_ID,
               } as ParsedFileData
             })
            return {
              files: migrated,
+             folders: [],
+             activeFolderId: ROOT_FOLDER_ID,
              isLoaded: true
            } as any
         }
-        return persistedState as ParsedFilesState
+
+        const normalized = persistedState && typeof persistedState === 'object' ? persistedState : {}
+        const normalizedFiles = Array.isArray(normalized.files)
+          ? normalized.files
+              .filter((f: any) => f && typeof f === 'object')
+              .map((f: any) => {
+                const markdownContent = typeof f.markdownContent === 'string' ? f.markdownContent : ''
+                const originalMarkdownContent =
+                  typeof f.originalMarkdownContent === 'string' ? f.originalMarkdownContent : markdownContent
+                return {
+                  ...f,
+                  markdownContent,
+                  originalMarkdownContent,
+                  folderId: typeof f.folderId === 'string' && f.folderId ? f.folderId : ROOT_FOLDER_ID,
+                } as ParsedFileData
+              })
+          : []
+
+        const normalizedFolders = Array.isArray(normalized.folders)
+          ? normalized.folders
+              .filter((f: any) => f && typeof f === 'object')
+              .filter((f: any) => typeof f.id === 'string' && typeof f.name === 'string' && typeof f.parentId === 'string')
+              .map((f: any) => ({
+                id: f.id,
+                name: f.name,
+                parentId: f.parentId || ROOT_FOLDER_ID,
+                createdAt: typeof f.createdAt === 'string' ? f.createdAt : new Date().toISOString(),
+              }))
+          : []
+
+        return {
+          ...normalized,
+          files: normalizedFiles,
+          folders: normalizedFolders,
+          activeFolderId: typeof normalized.activeFolderId === 'string' && normalized.activeFolderId ? normalized.activeFolderId : ROOT_FOLDER_ID,
+          isLoaded: true,
+        } as any
       }
     }
   )

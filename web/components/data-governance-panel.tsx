@@ -46,7 +46,7 @@ import {
 import { Button } from '@/components/ui/button'
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
-import { useParsedFiles } from '@/store/use-parsed-files-store'
+import { ROOT_FOLDER_ID, useParsedFiles } from '@/store/use-parsed-files-store'
 import { cn } from '@/lib/utils'
 import { QualityChecker } from '@/components/data-governance/quality-checker'
 import { DataCleaner } from '@/components/data-governance/data-cleaner'
@@ -56,6 +56,8 @@ import { documentApi } from '@/lib/api-client'
 import { useParserBackendPreference } from '@/contexts/parser-backend-context'
 import { MarkdownRenderer } from '@/components/markdown/markdown-renderer'
 import { MarkdownToc } from '@/components/markdown/markdown-toc'
+import { DocumentFolderTree } from '@/components/document-library/folder-tree'
+import { extractZipFiles, isZipFile } from '@/lib/zip'
 
 // 工作流步骤
 const WORKFLOW_STEPS = [
@@ -74,6 +76,19 @@ const GOVERNANCE_TABS = [
 ] as const
 
 type GovernanceTab = typeof GOVERNANCE_TABS[number]['id']
+
+const ZIP_ALLOWED_EXTENSIONS = new Set([
+  'pdf',
+  'txt',
+  'md',
+  'doc',
+  'docx',
+  'xls',
+  'xlsx',
+  'csv',
+  'html',
+  'json',
+])
 
 // 文件治理状态
 interface FileGovernanceState {
@@ -102,7 +117,7 @@ interface FileGovernanceState {
 
 export function DataGovernancePanel() {
   const router = useRouter()
-  const { files, isLoaded, clearAll, addParsedFile, updateParsedFile } = useParsedFiles()
+  const { files, folders: libraryFolders, activeFolderId, createFolder, isLoaded, clearAll, addParsedFile, updateParsedFile } = useParsedFiles()
   const { parserBackend } = useParserBackendPreference()
 
   // UI 状态
@@ -120,6 +135,31 @@ export function DataGovernancePanel() {
   // 选中的文件
   const selectedFile = files.find((f) => f.id === selectedFileId) || null
   const governanceState = selectedFileId ? governanceStates[selectedFileId] : null
+
+  const visibleFiles = useMemo(() => {
+    if (!activeFolderId || activeFolderId === ROOT_FOLDER_ID) return files
+
+    const childrenByParentId = new Map<string, string[]>()
+    for (const folder of libraryFolders) {
+      const parentId = folder.parentId || ROOT_FOLDER_ID
+      const list = childrenByParentId.get(parentId) || []
+      list.push(folder.id)
+      childrenByParentId.set(parentId, list)
+    }
+
+    const allowedFolderIds = new Set<string>()
+    const stack = [activeFolderId]
+    while (stack.length > 0) {
+      const current = stack.pop()
+      if (!current) continue
+      if (allowedFolderIds.has(current)) continue
+      allowedFolderIds.add(current)
+      const children = childrenByParentId.get(current) || []
+      for (const childId of children) stack.push(childId)
+    }
+
+    return files.filter((f) => allowedFolderIds.has(f.folderId || ROOT_FOLDER_ID))
+  }, [files, activeFolderId, libraryFolders])
 
   // 初始化文件治理状态
   const initializeGovernanceState = useCallback((file: { id: string; markdownContent: string; originalMarkdownContent?: string }) => {
@@ -146,11 +186,19 @@ export function DataGovernancePanel() {
 
   // 初始化：自动选择第一个文件
   useEffect(() => {
-    if (isLoaded && files.length > 0 && !selectedFileId) {
-      setSelectedFileId(files[0].id)
-      initializeGovernanceState(files[0])
+    if (!isLoaded) return
+
+    if (visibleFiles.length === 0) {
+      setSelectedFileId(null)
+      return
     }
-  }, [isLoaded, files, selectedFileId, initializeGovernanceState])
+
+    const stillVisible = selectedFileId && visibleFiles.some((f) => f.id === selectedFileId)
+    if (!stillVisible) {
+      setSelectedFileId(visibleFiles[0].id)
+      initializeGovernanceState(visibleFiles[0])
+    }
+  }, [isLoaded, visibleFiles, selectedFileId, initializeGovernanceState])
 
   // 拖放处理
   const handleDragOver = useCallback((e: React.DragEvent) => {
@@ -163,36 +211,98 @@ export function DataGovernancePanel() {
     setIsDragging(false)
   }, [])
 
-  // 上传并解析逻辑
-  const handleUploadAndParse = useCallback(async (files: File[]) => {
+  // 上传并解析逻辑（支持 .zip 批量解压）
+  const handleUploadAndParse = useCallback(async (incomingFiles: File[]) => {
     setUploading(true)
     try {
-      for (const file of files) {
+      const baseFolderId = activeFolderId || ROOT_FOLDER_ID
+
+      const folderIdByKey = new Map<string, string>()
+      for (const f of libraryFolders) {
+        folderIdByKey.set(`${f.parentId || ROOT_FOLDER_ID}::${f.name}`, f.id)
+      }
+
+      const getOrCreateFolder = (parentId: string, name: string) => {
+        const trimmed = name.trim()
+        const key = `${parentId}::${trimmed}`
+        const cached = folderIdByKey.get(key)
+        if (cached) return cached
+
+        const existing = libraryFolders.find((f) => (f.parentId || ROOT_FOLDER_ID) === parentId && f.name === trimmed)
+        if (existing) {
+          folderIdByKey.set(key, existing.id)
+          return existing.id
+        }
+
+        const newId = createFolder(trimmed, parentId)
+        folderIdByKey.set(key, newId)
+        return newId
+      }
+
+      const expanded: Array<{ file: File; folderId: string }> = []
+      let skipped = 0
+
+      for (const file of incomingFiles) {
+        if (isZipFile(file)) {
+          try {
+            const extracted = await extractZipFiles(file)
+            for (const item of extracted) {
+              const parts = item.path.split('/').filter(Boolean)
+              const filename = parts.pop()
+              if (!filename) continue
+
+              const ext = filename.split('.').pop()?.toLowerCase() || ''
+              if (!ZIP_ALLOWED_EXTENSIONS.has(ext)) {
+                skipped += 1
+                continue
+              }
+
+              let folderId = baseFolderId
+              for (const segment of parts) {
+                folderId = getOrCreateFolder(folderId, segment)
+              }
+
+              expanded.push({ file: item.file, folderId })
+            }
+          } catch (e) {
+            console.error('Failed to extract zip:', e)
+            toast.error(`ZIP 解压失败：${file.name}`)
+          }
+          continue
+        }
+
+        expanded.push({ file, folderId: baseFolderId })
+      }
+
+      for (const { file, folderId } of expanded) {
         // 使用 preview 接口快速获取 Markdown
         const data = await documentApi.preview(file, parserBackend)
-        
+
         // 拼接 segments 获取全文
-        const markdownContent = data.segments.map(s => s.content).join('\n\n')
-        
+        const markdownContent = data.segments.map((s) => s.content).join('\n\n')
+
         const newId = addParsedFile({
           filename: file.name,
           fileType: file.name.split('.').pop()?.toLowerCase() || '',
           fileSize: file.size,
-          markdownContent: markdownContent,
+          markdownContent,
           parser: data.parser_backend,
+          folderId,
         })
 
         // 如果是第一个文件，自动选中
         initializeGovernanceState({ id: newId, markdownContent })
         setSelectedFileId((prev) => prev ?? newId)
       }
+
+      if (skipped > 0) toast.message(`已跳过 ${skipped} 个不支持的文件`)
     } catch (error) {
       console.error('Failed to parse file:', error)
-      // 可以添加 toast 提示错误
+      toast.error('解析失败，请稍后重试')
     } finally {
       setUploading(false)
     }
-  }, [addParsedFile, initializeGovernanceState, parserBackend])
+  }, [addParsedFile, initializeGovernanceState, parserBackend, activeFolderId, libraryFolders, createFolder])
 
   const handleDrop = useCallback(async (e: React.DragEvent) => {
     e.preventDefault()
@@ -619,8 +729,14 @@ export function DataGovernancePanel() {
         {/* 左侧文件列表 */}
         <aside className="w-72 bg-gray-50 border-r border-gray-200 flex flex-col flex-shrink-0">
           <div className="p-4 border-b border-gray-200">
+            <div className="max-h-56 overflow-y-auto pr-1">
+              <DocumentFolderTree />
+            </div>
+          </div>
+
+          <div className="p-4 border-b border-gray-200">
             <h3 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-3">
-              待治理文件 ({files.length})
+              待治理文件 ({visibleFiles.length})
             </h3>
             <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
@@ -633,7 +749,10 @@ export function DataGovernancePanel() {
           </div>
 
           <div className="flex-1 overflow-y-auto p-3 space-y-2">
-            {files.map((file) => {
+            {visibleFiles.length === 0 ? (
+              <div className="text-sm text-gray-400 text-center py-8">该目录暂无文件</div>
+            ) : (
+              visibleFiles.map((file) => {
               const state = governanceStates[file.id]
               const hasIssue = state?.issues.some((i) => i.type === 'error')
               const score = state?.qualityScore || 0
@@ -684,7 +803,8 @@ export function DataGovernancePanel() {
                   </div>
                 </button>
               )
-            })}
+              })
+            )}
           </div>
         </aside>
 
