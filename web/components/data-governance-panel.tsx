@@ -117,7 +117,7 @@ interface FileGovernanceState {
 
 export function DataGovernancePanel() {
   const router = useRouter()
-  const { files, folders: libraryFolders, activeFolderId, createFolder, isLoaded, clearAll, addParsedFile, updateParsedFile } = useParsedFiles()
+  const { files, folders: libraryFolders, activeFolderId, createFolder, isLoaded, clearAll, addParsedFile, updateParsedFile, removeFile } = useParsedFiles()
   const { parserBackend } = useParserBackendPreference()
 
   // UI 状态
@@ -183,6 +183,29 @@ export function DataGovernancePanel() {
       }
     })
   }, [])
+
+  const handleDeleteFile = useCallback(
+    (fileId: string) => {
+      const target = files.find((f) => f.id === fileId)
+      if (!target) return
+
+      const ok = window.confirm(`删除文件 “${target.filename}” ？`)
+      if (!ok) return
+
+      removeFile(fileId)
+      setGovernanceStates((prev) => {
+        if (!prev[fileId]) return prev
+        const next = { ...prev }
+        delete next[fileId]
+        return next
+      })
+      if (selectedFileId === fileId) {
+        setSelectedFileId(null)
+      }
+      toast.success('已删除文件')
+    },
+    [files, removeFile, selectedFileId]
+  )
 
   // 初始化：自动选择第一个文件
   useEffect(() => {
@@ -796,9 +819,17 @@ export function DataGovernancePanel() {
               const score = state?.qualityScore || 0
 
               return (
-                <button
+                <div
                   key={file.id}
                   onClick={() => handleSelectFile(file.id)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault()
+                      handleSelectFile(file.id)
+                    }
+                  }}
+                  role="button"
+                  tabIndex={0}
                   className={cn(
                     "w-full text-left p-3 rounded-xl border transition-all",
                     selectedFileId === file.id
@@ -833,13 +864,28 @@ export function DataGovernancePanel() {
                         )}
                       </div>
                     </div>
-                    {hasIssue ? (
-                      <AlertCircle className="w-4 h-4 text-red-500 flex-shrink-0" />
-                    ) : score >= 80 ? (
-                      <CheckCircle className="w-4 h-4 text-green-500 flex-shrink-0" />
-                    ) : null}
+                    <div className="flex items-center gap-1 flex-shrink-0">
+                      {hasIssue ? (
+                        <AlertCircle className="w-4 h-4 text-red-500 flex-shrink-0" />
+                      ) : score >= 80 ? (
+                        <CheckCircle className="w-4 h-4 text-green-500 flex-shrink-0" />
+                      ) : null}
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.preventDefault()
+                          e.stopPropagation()
+                          handleDeleteFile(file.id)
+                        }}
+                        className="p-1 rounded-md text-gray-400 hover:text-red-600 hover:bg-red-50"
+                        title="删除"
+                        aria-label={`删除 ${file.filename}`}
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
                   </div>
-                </button>
+                </div>
               )
               })
             )}
