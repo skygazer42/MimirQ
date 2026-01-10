@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useCallback, useRef } from 'react'
+import { useState, useCallback, useMemo, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import {
   Upload,
@@ -29,7 +29,7 @@ import { Button } from '@/components/ui/button'
 import { documentApi } from '@/lib/api-client'
 import { formatApiError } from '@/lib/api-errors'
 import { formatFileSize, cn } from '@/lib/utils'
-import { useParsedFiles } from '@/store/use-parsed-files-store'
+import { ROOT_FOLDER_ID, useParsedFiles } from '@/store/use-parsed-files-store'
 import { useParserBackendPreference } from '@/contexts/parser-backend-context'
 import { getParserLabel } from '@/lib/parser-options'
 import { StatCard, StatsGrid } from '@/components/ui/stats-card'
@@ -37,10 +37,27 @@ import { FileQueueItem, FileQueueItemData, FileStatus } from '@/components/ui/fi
 import { ParserDropdown } from '@/components/ui/parser-dropdown'
 import { MarkdownRenderer } from '@/components/markdown/markdown-renderer'
 import { MarkdownToc } from '@/components/markdown/markdown-toc'
+import { DocumentFolderTree } from '@/components/document-library/folder-tree'
+import { extractZipFiles, isZipFile } from '@/lib/zip'
+import { toast } from 'sonner'
+
+const ZIP_ALLOWED_EXTENSIONS = new Set([
+  'pdf',
+  'txt',
+  'md',
+  'doc',
+  'docx',
+  'xls',
+  'xlsx',
+  'csv',
+  'html',
+  'json',
+])
 
 // 解析后的文件（扩展版）
 interface ParsedFile extends FileQueueItemData {
   file: File
+  folderId: string
   markdownContent: string | null
   parserBackend: string
   parserLabel: string
@@ -73,35 +90,128 @@ export default function ParsingPage() {
   const { parserBackend, setParserBackend } = useParserBackendPreference()
 
   // 共享存储
-  const { addParsedFile } = useParsedFiles()
+  const { addParsedFile, activeFolderId, folders, createFolder } = useParsedFiles()
 
   // 获取当前选中的文件
   const activeFile = files.find((f) => f.id === activeFileId) || null
 
+  const activeFolderPathLabel = useMemo(() => {
+    if (!activeFolderId || activeFolderId === ROOT_FOLDER_ID) return '根目录'
+
+    const byId = new Map(folders.map((f) => [f.id, f]))
+    const parts: string[] = []
+
+    let current = byId.get(activeFolderId)
+    while (current) {
+      parts.unshift(current.name)
+      if (!current.parentId || current.parentId === ROOT_FOLDER_ID) break
+      current = byId.get(current.parentId)
+    }
+
+    return ['根目录', ...parts].join(' / ')
+  }, [activeFolderId, folders])
+
   // 生成唯一 ID
   const generateId = () => Math.random().toString(36).substring(2, 15)
 
-  // 添加文件
-  const addFiles = useCallback((newFiles: File[]) => {
-    const defaultLabel = getParserLabel(parserBackend)
-    const parsedFiles: ParsedFile[] = newFiles.map((file) => ({
-      id: generateId(),
-      file,
-      name: file.name,
-      size: file.size,
-      status: 'pending' as FileStatus,
-      markdownContent: null,
-      error: undefined,
-      parserBackend,
-      parserLabel: defaultLabel,
-    }))
+  // 添加文件（支持 .zip 批量解压）
+  const addFiles = useCallback(
+    async (incomingFiles: File[]) => {
+      const defaultLabel = getParserLabel(parserBackend)
+      const baseFolderId = activeFolderId || ROOT_FOLDER_ID
 
-    setFiles((prev) => [...prev, ...parsedFiles])
+      const folderIdByKey = new Map<string, string>()
+      for (const f of folders) {
+        folderIdByKey.set(`${f.parentId || ROOT_FOLDER_ID}::${f.name}`, f.id)
+      }
 
-    if (parsedFiles.length > 0) {
-      setActiveFileId(parsedFiles[0].id)
-    }
-  }, [parserBackend])
+      const getOrCreateFolder = (parentId: string, name: string) => {
+        const trimmed = name.trim()
+        const key = `${parentId}::${trimmed}`
+        const cached = folderIdByKey.get(key)
+        if (cached) return cached
+
+        const existing = folders.find((f) => (f.parentId || ROOT_FOLDER_ID) === parentId && f.name === trimmed)
+        if (existing) {
+          folderIdByKey.set(key, existing.id)
+          return existing.id
+        }
+
+        const newId = createFolder(trimmed, parentId)
+        folderIdByKey.set(key, newId)
+        return newId
+      }
+
+      const queued: ParsedFile[] = []
+      let skipped = 0
+
+      for (const file of incomingFiles) {
+        if (isZipFile(file)) {
+          try {
+            const extracted = await extractZipFiles(file)
+            for (const item of extracted) {
+              const path = item.path
+              const parts = path.split('/').filter(Boolean)
+              const filename = parts.pop()
+              if (!filename) continue
+
+              const ext = filename.split('.').pop()?.toLowerCase() || ''
+              if (!ZIP_ALLOWED_EXTENSIONS.has(ext)) {
+                skipped += 1
+                continue
+              }
+
+              let folderId = baseFolderId
+              for (const segment of parts) {
+                folderId = getOrCreateFolder(folderId, segment)
+              }
+
+              queued.push({
+                id: generateId(),
+                file: item.file,
+                folderId,
+                name: path,
+                size: item.file.size,
+                status: 'pending' as FileStatus,
+                markdownContent: null,
+                error: undefined,
+                parserBackend,
+                parserLabel: defaultLabel,
+              })
+            }
+          } catch (e) {
+            console.error('Failed to extract zip:', e)
+            toast.error(`ZIP 解压失败：${file.name}`)
+          }
+          continue
+        }
+
+        queued.push({
+          id: generateId(),
+          file,
+          folderId: baseFolderId,
+          name: file.name,
+          size: file.size,
+          status: 'pending' as FileStatus,
+          markdownContent: null,
+          error: undefined,
+          parserBackend,
+          parserLabel: defaultLabel,
+        })
+      }
+
+      if (queued.length === 0) {
+        if (skipped > 0) toast.message(`已跳过 ${skipped} 个不支持的文件`)
+        return
+      }
+
+      setFiles((prev) => [...prev, ...queued])
+      setActiveFileId((prev) => prev ?? queued[0].id)
+
+      if (skipped > 0) toast.message(`已跳过 ${skipped} 个不支持的文件`)
+    },
+    [parserBackend, activeFolderId, folders, createFolder]
+  )
 
   // 拖放处理
   const handleDragOver = useCallback((e: React.DragEvent) => {
@@ -114,17 +224,17 @@ export default function ParsingPage() {
     setIsDragging(false)
   }, [])
 
-  const handleDrop = useCallback((e: React.DragEvent) => {
+  const handleDrop = useCallback(async (e: React.DragEvent) => {
     e.preventDefault()
     setIsDragging(false)
     const droppedFiles = Array.from(e.dataTransfer.files)
-    addFiles(droppedFiles)
+    await addFiles(droppedFiles)
   }, [addFiles])
 
-  const handleFileSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileSelect = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFiles = e.target.files ? Array.from(e.target.files) : []
     if (selectedFiles.length > 0) {
-      addFiles(selectedFiles)
+      await addFiles(selectedFiles)
     }
     e.target.value = ''
   }, [addFiles])
@@ -211,6 +321,7 @@ export default function ParsingPage() {
         fileSize: file.file.size,
         markdownContent,
         parser: resolvedLabel,
+        folderId: file.folderId,
       })
     } catch (err: any) {
       clearInterval(progressInterval)
@@ -306,6 +417,7 @@ export default function ParsingPage() {
       fileSize: activeFile.file.size,
       markdownContent: activeFile.markdownContent,
       parser: activeFile.parserLabel,
+      folderId: activeFile.folderId,
     })
 
     router.push('/data-governance')
@@ -352,6 +464,14 @@ export default function ParsingPage() {
               />
             </div>
 
+            {/* 文档库目录 */}
+            <div className="p-4 border-b">
+              <div className="max-h-56 overflow-y-auto pr-1">
+                <DocumentFolderTree />
+              </div>
+              <div className="mt-2 text-xs text-gray-500">当前目录：{activeFolderPathLabel}</div>
+            </div>
+
             {/* 上传区域 */}
             <div className="p-4 border-b">
               <div
@@ -370,7 +490,7 @@ export default function ParsingPage() {
                     ref={fileInputRef}
                     type="file"
                     multiple
-                    accept=".pdf,.txt,.md,.doc,.docx,.xls,.xlsx,.csv,.html,.json"
+                    accept=".pdf,.txt,.md,.doc,.docx,.xls,.xlsx,.csv,.html,.json,.zip"
                     className="hidden"
                     onChange={handleFileSelect}
                   />

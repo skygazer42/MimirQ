@@ -3,10 +3,10 @@
  */
 'use client'
 
-import { memo, useState } from 'react'
+import { memo, useEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import Image from 'next/image'
-import { Database, Sparkles } from 'lucide-react'
+import { Check, Copy, Database, Sparkles } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 
@@ -84,6 +84,52 @@ export const ChatMessageItem = memo(function ChatMessageItem({
   isStreaming?: boolean
 }) {
   const isUser = message.role === 'user'
+  const [copied, setCopied] = useState(false)
+  const copyTimerRef = useRef<number | null>(null)
+
+  useEffect(() => {
+    return () => {
+      if (copyTimerRef.current != null) {
+        window.clearTimeout(copyTimerRef.current)
+      }
+    }
+  }, [])
+
+  const handleCopy = async () => {
+    const text = (message.content || '').trimEnd()
+    if (!text) return
+
+    let ok = false
+    try {
+      await navigator.clipboard.writeText(text)
+      ok = true
+    } catch {
+      try {
+        const textarea = document.createElement('textarea')
+        textarea.value = text
+        textarea.setAttribute('readonly', '')
+        textarea.style.position = 'fixed'
+        textarea.style.left = '0'
+        textarea.style.top = '0'
+        textarea.style.opacity = '0'
+        document.body.appendChild(textarea)
+        textarea.focus()
+        textarea.select()
+        ok = document.execCommand('copy')
+        document.body.removeChild(textarea)
+      } catch {
+        ok = false
+      }
+    }
+
+    if (!ok) return
+
+    setCopied(true)
+    if (copyTimerRef.current != null) {
+      window.clearTimeout(copyTimerRef.current)
+    }
+    copyTimerRef.current = window.setTimeout(() => setCopied(false), 1200)
+  }
 
   return (
     <div
@@ -104,8 +150,29 @@ export const ChatMessageItem = memo(function ChatMessageItem({
           isUser
             ? 'bg-slate-900 dark:bg-indigo-600 text-white rounded-2xl rounded-tr-sm shadow-md'
             : 'bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200 border border-slate-100 dark:border-slate-800 rounded-2xl rounded-tl-sm'
-        )}
+          )}
       >
+        <button
+          type="button"
+          onClick={handleCopy}
+          aria-label={copied ? 'Copied' : 'Copy message'}
+          title={copied ? 'Copied' : 'Copy'}
+          className={cn(
+            'absolute bottom-2 right-2 z-10 rounded-md p-1.5 transition',
+            'opacity-100 sm:opacity-0 sm:group-hover:opacity-100 sm:pointer-events-none sm:group-hover:pointer-events-auto',
+            'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/60 focus-visible:ring-offset-2 focus-visible:ring-offset-transparent',
+            isUser
+              ? 'text-white/70 hover:text-white hover:bg-white/10'
+              : 'text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-100 hover:bg-slate-100/70 dark:hover:bg-slate-800/70'
+          )}
+        >
+          {copied ? (
+            <Check className="h-4 w-4" />
+          ) : (
+            <Copy className="h-4 w-4" />
+          )}
+        </button>
+
         <div
           className={cn(
             'prose max-w-none break-words leading-relaxed dark:prose-invert',
