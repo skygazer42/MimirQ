@@ -519,8 +519,7 @@ export default function ParsingPage() {
   const parsedCount = visibleQueueFiles.filter((f) => f.status === 'parsed').length
   const parseableCount = visibleQueueFiles.filter((f) => f.status === 'pending' || f.status === 'error').length
   const parseAllLabel = activeFolderId && activeFolderId !== ROOT_FOLDER_ID ? '解析当前目录' : '全部解析'
-  const queueCountLabel =
-    visibleQueueFiles.length === files.length ? `${files.length}` : `${visibleQueueFiles.length}/${files.length}`
+  const queueCountLabel = `${visibleQueueFiles.length}`
 
   return (
     <div className="flex h-screen overflow-hidden bg-gray-50">
