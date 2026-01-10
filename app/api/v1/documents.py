@@ -70,6 +70,97 @@ UUID_PATTERN = r"(?:[0-9a-fA-F]{32}|[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}
 PREVIEW_IMAGE_REF_RE = re.compile(rf"(?:https?://[^\s)\"']+)?/api/v1/documents/image/({UUID_PATTERN})")
 MINIO_IMAGE_REF_RE = re.compile(r"(?:https?://[^\s)\"']+)?/api/v1/documents/image-url/([^\s)\"']+)")
 
+def _materialize_extracted_images_for_preview(documents: list, *, tenant_id: UUID) -> list:
+    """
+    Convert in-memory image objects (e.g., DeepDoc PIL.Image in metadata["image"])
+    into preview-time Markdown refs that the frontend can render.
+
+    Why:
+    - FastAPI cannot JSON-serialize PIL.Image objects in segment metadata.
+    - DeepDoc returns images as separate "image" Documents via metadata["image"].
+
+    Strategy:
+    - For doc_type_kwd == "image", save the image to uploads/{tenant}/images/{uuid}.jpg
+      and replace the segment content with a Markdown image link.
+    - Always remove non-serializable "image" objects from metadata.
+
+    Note:
+    - We intentionally do NOT set metadata["img_id"] here, because manual ingestion
+      uses `metadata.setdefault("img_id", ...)` after rewriting preview images to MinIO.
+    """
+    if not documents:
+        return documents
+
+    images_dir = Path(settings.UPLOAD_DIR) / str(tenant_id) / "images"
+    images_dir.mkdir(parents=True, exist_ok=True)
+
+    try:
+        from io import BytesIO
+        from PIL import Image as PILImage  # type: ignore
+    except Exception:
+        # If pillow is unavailable, just drop the image objects to avoid 500s.
+        for doc in documents:
+            meta = getattr(doc, "metadata", None) or {}
+            if isinstance(meta, dict) and "image" in meta:
+                meta.pop("image", None)
+                doc.metadata = meta
+        return documents
+
+    for doc in documents:
+        meta = getattr(doc, "metadata", None) or {}
+        if not isinstance(meta, dict):
+            continue
+
+        image_obj = meta.get("image")
+        if image_obj is None:
+            continue
+
+        doc_type = str(meta.get("doc_type_kwd") or "").lower()
+        if doc_type != "image":
+            meta.pop("image", None)
+            doc.metadata = meta
+            continue
+
+        preview_id = uuid.uuid4().hex
+        out_path = images_dir / f"{preview_id}.jpg"
+        url = f"/api/v1/documents/image/{preview_id}"
+
+        try:
+            if isinstance(image_obj, (bytes, bytearray)):
+                img = PILImage.open(BytesIO(bytes(image_obj)))
+            else:
+                img = image_obj
+            try:
+                if getattr(img, "mode", None) != "RGB":
+                    img = img.convert("RGB")
+            except Exception:
+                pass
+
+            img.save(out_path, format="JPEG", quality=85, optimize=True)
+        except Exception as e:
+            logger.warning("Failed to persist preview image: %s", str(e)[:200])
+        finally:
+            # Always remove the raw image object from metadata to keep JSON-serializable.
+            meta.pop("image", None)
+            doc.metadata = meta
+            try:
+                if image_obj is not None and not isinstance(image_obj, (bytes, bytearray)) and hasattr(image_obj, "close"):
+                    image_obj.close()
+            except Exception:
+                pass
+
+        # Update content with an image reference.
+        caption = (getattr(doc, "page_content", "") or "").strip()
+        img_md = f"![image]({url})"
+        doc.page_content = f"{img_md}\n\n{caption}" if caption else img_md
+
+        # Optional, non-conflicting preview metadata.
+        meta["preview_image_id"] = preview_id
+        meta["preview_image_url"] = url
+        doc.metadata = meta
+
+    return documents
+
 def _compute_pipeline_hash(doc_metadata: dict) -> str:
     """
     Generate a stable pipeline_hash based on processing-related doc_metadata fields.
@@ -1209,6 +1300,9 @@ async def preview_document(
             parser_backend=effective_parser_backend,
             tenant_id=str(tenant_id),
         )
+        # DeepDoc/Docling may return extracted images as in-memory objects in metadata.
+        # Persist them as preview-time files and convert to Markdown refs so the frontend can render.
+        documents = _materialize_extracted_images_for_preview(documents, tenant_id=tenant_id)
         for doc in documents:
             artifact_dir = (doc.metadata or {}).get("artifact_dir")
             if isinstance(artifact_dir, str) and artifact_dir.strip():
@@ -1615,6 +1709,9 @@ async def preview_chunking(
                 parser_backend=effective_parser_backend,
                 tenant_id=str(tenant_id),
             )
+            # Ensure extracted image objects (e.g., DeepDoc PIL.Image) are JSON-serializable for preview.
+            # Also converts them into Markdown image refs that the frontend can render.
+            documents = _materialize_extracted_images_for_preview(documents, tenant_id=tenant_id)
             if pipeline_effective.governance_enabled:
                 documents, _stats = governance_processor.clean_documents(
                     documents,
