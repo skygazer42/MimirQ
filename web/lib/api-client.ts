@@ -66,7 +66,7 @@ import type {
 import type { MetaResponse } from '@/types/backend'
 import { extractBackendMessage, extractBackendRequestId, withRequestId } from '@/lib/api-errors'
 import { getAuthHeaders } from '@/lib/auth-headers'
-import { API_TIMEOUT_MS, API_V1_BASE_URL } from '@/lib/env'
+import { API_LONG_TIMEOUT_MS, API_TIMEOUT_MS, API_V1_BASE_URL } from '@/lib/env'
 import { appendPipelineOptionsToFormData } from '@/lib/form-data'
 
 function getOrCreateRequestId(headers: AxiosHeaders): string {
@@ -271,7 +271,9 @@ export const documentApi = {
     formData.append('parser_backend', parserBackend)
     appendPipelineOptionsToFormData(formData, pipeline)
 
-    const { data } = await apiClient.post('/documents/preview', formData)
+    const { data } = await apiClient.post('/documents/preview', formData, {
+      timeout: API_LONG_TIMEOUT_MS,
+    })
 
     return data
   },
@@ -315,6 +317,7 @@ export const documentApi = {
     const effectiveChunkOverlap = params.chunk_overlap ?? params.pipeline?.chunk_overlap ?? 200
 
     const { data } = await apiClient.post('/documents/chunk-preview', formData, {
+      timeout: API_LONG_TIMEOUT_MS,
       params: {
         chunk_size: effectiveChunkSize,
         chunk_overlap: effectiveChunkOverlap,
@@ -388,7 +391,9 @@ export const pipelineApi = {
     if (parserBackend) {
       formData.append('parser_backend', parserBackend)
     }
-    const { data } = await apiClient.post('/pipeline/parse-preview', formData)
+    const { data } = await apiClient.post('/pipeline/parse-preview', formData, {
+      timeout: API_LONG_TIMEOUT_MS,
+    })
     return data
   },
 
@@ -424,7 +429,9 @@ export const pipelineApi = {
     if (params.document_id) {
       formData.append('document_id', params.document_id)
     }
-    const { data } = await apiClient.post('/pipeline/upload-zip-with-images', formData)
+    const { data } = await apiClient.post('/pipeline/upload-zip-with-images', formData, {
+      timeout: API_LONG_TIMEOUT_MS,
+    })
     return data
   },
 }
