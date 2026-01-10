@@ -159,6 +159,13 @@ export function MarkdownRenderer({
               />
             )
           },
+          table: ({ node, className, children, ...props }) => (
+            <div className="my-4 overflow-x-auto">
+              <table className={cn('w-full', className)} {...props}>
+                {children}
+              </table>
+            </div>
+          ),
         }}
       >
         {text}
