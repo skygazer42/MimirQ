@@ -123,7 +123,7 @@ export function DataGovernancePanel() {
   // UI 状态
   const [activeTab, setActiveTab] = useState<GovernanceTab>('quality')
   const [selectedFileId, setSelectedFileId] = useState<string | null>(null)
-  const [viewMode, setViewMode] = useState<'edit' | 'preview' | 'original'>('edit')
+  const [viewMode, setViewMode] = useState<'edit' | 'preview' | 'original'>('preview')
   const [previewFormat, setPreviewFormat] = useState<'rendered' | 'markdown'>('rendered')
   const [isProcessing, setIsProcessing] = useState(false)
   const [isDragging, setIsDragging] = useState(false)
@@ -385,7 +385,6 @@ export function DataGovernancePanel() {
     const file = files.find((f) => f.id === fileId)
     if (file) {
       setSelectedFileId(fileId)
-      setViewMode('edit')
       initializeGovernanceState(file)
     }
   }, [files, initializeGovernanceState])
