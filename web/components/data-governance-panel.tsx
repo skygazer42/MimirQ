@@ -817,6 +817,20 @@ export function DataGovernancePanel() {
               const state = governanceStates[file.id]
               const hasIssue = state?.issues.some((i) => i.type === 'error')
               const score = state?.qualityScore || 0
+              const processedAt = (() => {
+                const raw = file.parsedAt
+                if (!raw) return ''
+                const date = new Date(raw)
+                if (Number.isNaN(date.getTime())) return ''
+                return date.toLocaleString('zh-CN', {
+                  year: 'numeric',
+                  month: 'numeric',
+                  day: 'numeric',
+                  hour: '2-digit',
+                  minute: '2-digit',
+                  hour12: false,
+                })
+              })()
 
               return (
                 <div
@@ -845,22 +859,32 @@ export function DataGovernancePanel() {
                       )}>
                         {file.filename}
                       </div>
-                      <div className="flex items-center gap-2 mt-1">
-                        <span className="text-xs text-gray-400">
-                          {file.fileType.toUpperCase()}
-                        </span>
-                        {score > 0 && (
-                          <span className={cn(
-                            "text-xs px-1.5 py-0.5 rounded font-medium",
-                            score >= 80 ? "bg-green-100 text-green-700" :
-                            score >= 60 ? "bg-yellow-100 text-yellow-700" :
-                            "bg-red-100 text-red-700"
-                          )}>
-                            {score}分
+                      <div className="flex items-center justify-between gap-2 mt-1">
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs text-gray-400">
+                            {file.fileType.toUpperCase()}
                           </span>
-                        )}
-                        {state?.isModified && (
-                          <span className="text-xs text-purple-600">● 已修改</span>
+                          {score > 0 && (
+                            <span className={cn(
+                              "text-xs px-1.5 py-0.5 rounded font-medium",
+                              score >= 80 ? "bg-green-100 text-green-700" :
+                              score >= 60 ? "bg-yellow-100 text-yellow-700" :
+                              "bg-red-100 text-red-700"
+                            )}>
+                              {score}分
+                            </span>
+                          )}
+                          {state?.isModified && (
+                            <span className="text-xs text-purple-600">● 已修改</span>
+                          )}
+                        </div>
+                        {processedAt && (
+                          <span
+                            className="text-[10px] text-gray-400 whitespace-nowrap"
+                            title={`处理时间：${processedAt}`}
+                          >
+                            {processedAt}
+                          </span>
                         )}
                       </div>
                     </div>
