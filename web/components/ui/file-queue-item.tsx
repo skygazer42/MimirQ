@@ -41,6 +41,8 @@ export interface FileQueueItemData {
   error?: string
   duration?: number
   pageCount?: number
+  folderPathLabel?: string
+  sourcePath?: string
 }
 
 interface FileQueueItemProps {
@@ -164,6 +166,16 @@ export function FileQueueItem({
               </button>
             )}
           </div>
+
+          {(file.folderPathLabel || file.sourcePath) && (
+            <p
+              className="mt-0.5 text-xs text-gray-400 truncate"
+              title={[file.folderPathLabel, file.sourcePath].filter(Boolean).join(' · ')}
+            >
+              {file.folderPathLabel ? `目录：${file.folderPathLabel}` : ''}
+              {file.sourcePath ? ` · ZIP：${file.sourcePath}` : ''}
+            </p>
+          )}
 
           <div className="flex items-center gap-2 mt-0.5 text-xs text-gray-400">
             <span>{formatFileSize(file.size)}</span>
