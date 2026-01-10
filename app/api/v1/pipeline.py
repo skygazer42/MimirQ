@@ -5,7 +5,6 @@ Lightweight parsing and hierarchical chunk preview APIs:
 """
 
 from pathlib import Path
-import shutil
 import uuid
 import zipfile
 from uuid import UUID
@@ -39,6 +38,7 @@ from app.parsing.factory import ParserFactory
 from app.rag.chunking import hierarchical_chunk_markdown
 from app.rag.chunking import chunker_factory
 from app.parsing.utils.zip_processor import zip_image_processor
+from app.parsing.utils.cli import resolve_cli_command
 from app.api.dependencies.auth import get_current_account_id
 from app.rag.preprocessing.cleaning import clean_markdown, RegexRule, build_repeated_line_signatures
 from app.rag.preprocessing.rules import DEFAULT_MARKDOWN_RULES
@@ -81,8 +81,8 @@ async def get_pipeline_capabilities(
         if not bool(getattr(settings, "MAGIC_PDF_ENABLED", False)):
             return False, "MAGIC_PDF_ENABLED=false"
         cli = (getattr(settings, "MAGIC_PDF_CLI", "") or "magic-pdf").strip() or "magic-pdf"
-        if not shutil.which(cli):
-            return False, f"MagicPDF CLI not found: {cli}"
+        if not resolve_cli_command(cli):
+            return False, f"MagicPDF CLI not found: {cli} (try activating the env or set MAGIC_PDF_CLI to full path)"
         return True, None
 
     pdf_backends: list[ParserBackendInfo] = []

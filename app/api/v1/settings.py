@@ -79,6 +79,7 @@ class FeatureFlags(BaseModel):
     """Feature flags."""
     kg_enabled: bool = False
     deepdoc_enabled: bool = False
+    docling_enabled: bool = False
     markitdown_enabled: bool = False
     llama_index_enabled: bool = False
     mineru_enabled: bool = False
@@ -233,6 +234,8 @@ def _apply_runtime_settings(env_vars: Dict[str, str], updated_keys: list[str]) -
         settings.KG_CHAT_ENABLED = _parse_bool(env_vars["KG_CHAT_ENABLED"])
     if "DEEPDOC_ENABLED" in updated_keys and "DEEPDOC_ENABLED" in env_vars:
         settings.DEEPDOC_ENABLED = _parse_bool(env_vars["DEEPDOC_ENABLED"])
+    if "DOCLING_ENABLED" in updated_keys and "DOCLING_ENABLED" in env_vars:
+        settings.DOCLING_ENABLED = _parse_bool(env_vars["DOCLING_ENABLED"])
     if "MARKITDOWN_ENABLED" in updated_keys and "MARKITDOWN_ENABLED" in env_vars:
         settings.MARKITDOWN_ENABLED = _parse_bool(env_vars["MARKITDOWN_ENABLED"])
     if "LLAMA_INDEX_ENABLED" in updated_keys and "LLAMA_INDEX_ENABLED" in env_vars:
@@ -423,6 +426,7 @@ async def get_settings(
         feature_flags=FeatureFlags(
             kg_enabled=settings.KG_ENABLED,
             deepdoc_enabled=settings.DEEPDOC_ENABLED,
+            docling_enabled=bool(getattr(settings, "DOCLING_ENABLED", False)),
             markitdown_enabled=settings.MARKITDOWN_ENABLED,
             llama_index_enabled=settings.LLAMA_INDEX_ENABLED,
             mineru_enabled=settings.MINERU_ENABLED,
@@ -513,6 +517,7 @@ async def update_settings(
             ff = request.feature_flags
             env_vars["KG_ENABLED"] = str(ff.kg_enabled).lower()
             env_vars["DEEPDOC_ENABLED"] = str(ff.deepdoc_enabled).lower()
+            env_vars["DOCLING_ENABLED"] = str(getattr(ff, "docling_enabled", False)).lower()
             env_vars["MARKITDOWN_ENABLED"] = str(ff.markitdown_enabled).lower()
             env_vars["LLAMA_INDEX_ENABLED"] = str(ff.llama_index_enabled).lower()
             env_vars["MINERU_ENABLED"] = str(ff.mineru_enabled).lower()
@@ -521,6 +526,7 @@ async def update_settings(
                 [
                     "KG_ENABLED",
                     "DEEPDOC_ENABLED",
+                    "DOCLING_ENABLED",
                     "MARKITDOWN_ENABLED",
                     "LLAMA_INDEX_ENABLED",
                     "MINERU_ENABLED",
@@ -715,7 +721,7 @@ async def get_system_status(
         except Exception as exc:
             return False, str(exc)[:120]
 
-    import shutil
+    from app.parsing.utils.cli import resolve_cli_command
 
     parsers: dict[str, dict] = {
         "basic": {"enabled": True, "available": True, "message": "built-in"},
@@ -776,7 +782,7 @@ async def get_system_status(
 
     magicpdf_enabled = bool(getattr(settings, "MAGIC_PDF_ENABLED", False))
     magicpdf_cli = (getattr(settings, "MAGIC_PDF_CLI", "") or "magic-pdf").strip() or "magic-pdf"
-    magicpdf_cli_ok = bool(shutil.which(magicpdf_cli))
+    magicpdf_cli_ok = bool(resolve_cli_command(magicpdf_cli))
     parsers["magicpdf"] = {
         "enabled": magicpdf_enabled,
         "available": bool(magicpdf_enabled and magicpdf_cli_ok),

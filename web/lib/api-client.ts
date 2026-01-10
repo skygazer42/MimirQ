@@ -684,6 +684,7 @@ export const kgApi = {
 export interface FeatureFlags {
   kg_enabled: boolean
   deepdoc_enabled: boolean
+  docling_enabled: boolean
   markitdown_enabled: boolean
   llama_index_enabled: boolean
   mineru_enabled: boolean

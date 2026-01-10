@@ -11,6 +11,7 @@ from typing import Dict, Optional, Tuple
 
 from app.core.config import settings
 from app.parsing.backends import normalize_parser_backend
+from app.parsing.utils.cli import resolve_cli_command
 
 
 def choose_pdf_backend(quality: Optional[Dict], requested: Optional[str]) -> str:
@@ -30,10 +31,8 @@ def choose_pdf_backend(quality: Optional[Dict], requested: Optional[str]) -> str
     def _magicpdf_available() -> bool:
         if not bool(getattr(settings, "MAGIC_PDF_ENABLED", False)):
             return False
-        import shutil
-
         cli = (getattr(settings, "MAGIC_PDF_CLI", "") or "magic-pdf").strip() or "magic-pdf"
-        return bool(shutil.which(cli))
+        return bool(resolve_cli_command(cli))
 
     requested_norm = normalize_parser_backend(requested)
     if requested_norm and requested_norm != "auto":
