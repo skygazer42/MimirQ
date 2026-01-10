@@ -543,7 +543,11 @@ class DocumentProcessorService:
                         filtered.append(c)
                         continue
                     meta = c.metadata or {}
-                    if meta.get("img_id") or meta.get("image_id") or meta.get("image_url"):
+                    doc_type = str(meta.get("doc_type_kwd") or "").lower()
+                    # Keep image/table chunks even if caption is short: they carry important assets.
+                    if doc_type in {"image", "table"} or meta.get("image") is not None:
+                        filtered.append(c)
+                    elif meta.get("img_id") or meta.get("image_id") or meta.get("image_url"):
                         filtered.append(c)
                 kept_short_fallback = False
                 if not filtered and original_chunks:
