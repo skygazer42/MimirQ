@@ -17,9 +17,12 @@ from starlette.status import (
     HTTP_503_SERVICE_UNAVAILABLE,
 )
 
-# Starlette deprecated `HTTP_422_UNPROCESSABLE_ENTITY` in favor of
-# `HTTP_422_UNPROCESSABLE_CONTENT` (keep a backward-compatible fallback).
-from starlette.status import HTTP_422_UNPROCESSABLE_CONTENT
+# Starlette exposes `HTTP_422_UNPROCESSABLE_ENTITY` (422). Some codebases refer to
+# a non-standard `HTTP_422_UNPROCESSABLE_CONTENT` name; keep a compatibility alias.
+try:
+    from starlette.status import HTTP_422_UNPROCESSABLE_CONTENT  # type: ignore
+except ImportError:  # pragma: no cover
+    from starlette.status import HTTP_422_UNPROCESSABLE_ENTITY as HTTP_422_UNPROCESSABLE_CONTENT
 
 logger = logging.getLogger(__name__)
 

@@ -1,4 +1,5 @@
 import os
+import uvicorn
 import warnings
 from pathlib import Path
 
@@ -7,8 +8,6 @@ def main() -> None:
     # Ensure relative paths (like `.env` and `./uploads`) resolve from repo root.
     project_root = Path(__file__).resolve().parent
     os.chdir(project_root)
-
-    import uvicorn
 
     # Avoid noisy dev-only warning when running with AUTH_MODE=header.
     warnings.filterwarnings(
