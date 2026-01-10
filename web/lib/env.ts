@@ -8,6 +8,11 @@ const rawTimeout = (process.env.NEXT_PUBLIC_API_TIMEOUT_MS || '').trim()
 const parsedTimeout = rawTimeout ? Number(rawTimeout) : NaN
 export const API_TIMEOUT_MS = Number.isFinite(parsedTimeout) ? parsedTimeout : 60_000
 
+// Some endpoints (document parsing / chunk preview) can take much longer than chat/CRUD calls.
+const rawLongTimeout = (process.env.NEXT_PUBLIC_API_LONG_TIMEOUT_MS || '').trim()
+const parsedLongTimeout = rawLongTimeout ? Number(rawLongTimeout) : NaN
+export const API_LONG_TIMEOUT_MS = Number.isFinite(parsedLongTimeout) ? parsedLongTimeout : 10 * 60_000
+
 export function toAbsoluteBackendUrl(path: string): string {
   if (!path) return API_BASE_URL
   if (/^https?:\/\//i.test(path)) return path
