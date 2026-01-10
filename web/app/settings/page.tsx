@@ -73,6 +73,14 @@ const FEATURE_FLAGS_CONFIG = [
     dependencies: [],
   },
   {
+    key: 'docling_enabled' as keyof FeatureFlags,
+    name: 'Docling 结构化解析',
+    description: '启用 Docling 解析，对版面/表格结构抽取更友好（自动选择时生效）',
+    icon: FileSearch,
+    color: 'cyan',
+    dependencies: [],
+  },
+  {
     key: 'markitdown_enabled' as keyof FeatureFlags,
     name: 'MarkItDown 文档解析',
     description: '启用多格式转 Markdown（Office/表格/PDF），自动选择与解析工作台会使用',

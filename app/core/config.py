@@ -9,6 +9,7 @@ Centralized settings management including:
 """
 from typing import Literal, Optional
 import os
+import sys
 import warnings
 from pathlib import Path
 
@@ -427,9 +428,13 @@ class Settings(BaseSettings):
     LANGSMITH_ENDPOINT: str = "https://api.smith.langchain.com"
     LANGSMITH_TRACING_ENABLED: bool = False
 
+    _env_file = Path(__file__).resolve().parents[2] / ".env"
     model_config = SettingsConfigDict(
         # Load `.env` from repo root (stable even when running with a different CWD).
-        env_file=str(Path(__file__).resolve().parents[2] / ".env"),
+        #
+        # Note: unit tests should not be influenced by a developer's local `.env`,
+        # so we disable dotenv loading when running under pytest.
+        env_file=None if "pytest" in sys.modules else str(_env_file),
         case_sensitive=True,
         extra="ignore",
     )

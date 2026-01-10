@@ -18,6 +18,7 @@ from typing import List, Optional
 from langchain_core.documents import Document
 
 from app.core.config import settings
+from app.parsing.utils.cli import resolve_cli_command
 from app.rag.core.logging import get_logger
 
 
@@ -29,13 +30,13 @@ class MagicPDFParser:
         self._cli = (getattr(settings, "MAGIC_PDF_CLI", "") or "magic-pdf").strip() or "magic-pdf"
 
     def _ensure_cli(self) -> str:
-        resolved = shutil.which(self._cli) if self._cli else None
+        resolved = resolve_cli_command(self._cli) if self._cli else None
         if resolved:
-            return resolved
+            return str(resolved)
         raise RuntimeError(
             f"MagicPDF CLI not found: {self._cli!r}. "
-            "Install `magic-pdf` and ensure `magic-pdf` is on PATH, "
-            "or set MAGIC_PDF_CLI to the full path."
+            "Install `magic-pdf` and ensure `magic-pdf` is on PATH (or run the backend with the same conda/venv), "
+            "or set MAGIC_PDF_CLI to the full path of the executable."
         )
 
     def _build_artifact_root(self, file_path: Path, document_id: Optional[str]) -> Path:
