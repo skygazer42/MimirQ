@@ -10,9 +10,12 @@ import time
 import tempfile
 from pathlib import Path
 from typing import List, Dict, Any, Optional
+
+import httpx
 from langchain_core.documents import Document
 from app.core.config import settings
 from app.core.http_client import get_http_client_pool
+from app.core.jwt_inspect import format_unix_ts_utc, try_get_jwt_exp
 from app.parsing.utils.zip_processor import zip_image_processor
 from app.rag.core.logging import get_logger
 
@@ -24,21 +27,81 @@ class MinerUService:
     """MinerU parsing service."""
 
     def __init__(self):
-        self.api_base = settings.MINERU_API_BASE
-        self.api_token = settings.MINERU_API_TOKEN
-        self.model_version = settings.MINERU_MODEL_VERSION
-        self.local_server_url = (getattr(settings, "MINERU_LOCAL_SERVER_URL", "") or "").strip() or None
-        # Local MinerU does not require API token; online API does.
-        self.enabled = bool(settings.MINERU_ENABLED) and (bool(self.api_token) or bool(self.local_server_url))
+        self.api_base = ""
+        self.api_token = ""
+        self.model_version = "vlm"
+        self.local_server_url: Optional[str] = None
+        self.enabled = False
 
-        if not self.enabled:
+        # Best-effort JWT expiry diagnostics (MinerU online API token may expire).
+        self._token_exp: Optional[int] = None
+        self._warned_token_expired = False
+
+        self._refresh_config(log_disabled_warning=True)
+
+    def _refresh_config(self, *, log_disabled_warning: bool = False) -> None:
+        """
+        Sync runtime config from `settings`.
+
+        - Local MinerU does not require API token; online API does.
+        - If the token looks like a JWT and is expired, treat online mode as disabled
+          (best-effort) to avoid repeated 401 failures.
+        """
+        self.api_base = (getattr(settings, "MINERU_API_BASE", "") or "").strip().rstrip("/") or "https://mineru.net/api/v4"
+        self.api_token = (getattr(settings, "MINERU_API_TOKEN", "") or "").strip()
+        self.model_version = (getattr(settings, "MINERU_MODEL_VERSION", "") or "").strip() or "vlm"
+
+        local_url = (getattr(settings, "MINERU_LOCAL_SERVER_URL", "") or "").strip()
+        self.local_server_url = local_url.rstrip("/") if local_url else None
+
+        self._token_exp = try_get_jwt_exp(self.api_token) if self.api_token else None
+        now = int(time.time())
+        token_valid = bool(self.api_token) and (self._token_exp is None or int(self._token_exp) > now)
+
+        self.enabled = bool(getattr(settings, "MINERU_ENABLED", False)) and (token_valid or bool(self.local_server_url))
+
+        if (
+            bool(getattr(settings, "MINERU_ENABLED", False))
+            and self.api_token
+            and self._token_exp is not None
+            and int(self._token_exp) <= now
+            and not self._warned_token_expired
+        ):
+            logger.warning(
+                "MINERU_API_TOKEN appears expired (exp=%s). Refresh token to use MinerU online API.",
+                format_unix_ts_utc(int(self._token_exp)),
+            )
+            self._warned_token_expired = True
+
+        if log_disabled_warning and not self.enabled:
             logger.warning(
                 "MinerU is disabled. Set MINERU_ENABLED=True and configure "
                 "MINERU_API_TOKEN (online) or MINERU_LOCAL_SERVER_URL (local) to enable."
             )
 
+    def _format_auth_error(self, status_code: int) -> str:
+        exp = self._token_exp
+        if exp is not None:
+            now = int(time.time())
+            if int(exp) <= now:
+                return f"MinerU API unauthorized (HTTP {status_code}): MINERU_API_TOKEN expired at {format_unix_ts_utc(int(exp))}"
+            return f"MinerU API unauthorized (HTTP {status_code}): invalid MINERU_API_TOKEN (exp={format_unix_ts_utc(int(exp))})"
+        return f"MinerU API unauthorized (HTTP {status_code}): invalid MINERU_API_TOKEN"
+
+    def _ensure_online_enabled(self) -> None:
+        self._refresh_config()
+        if not bool(getattr(settings, "MINERU_ENABLED", False)):
+            raise Exception("MinerU is disabled. Set MINERU_ENABLED=true to enable.")
+        if not self.api_token:
+            raise Exception("MinerU online API requires MINERU_API_TOKEN.")
+        if self._token_exp is not None and int(self._token_exp) <= int(time.time()):
+            raise Exception(
+                f"MINERU_API_TOKEN expired at {format_unix_ts_utc(int(self._token_exp))}. Please refresh token."
+            )
+
     def _get_headers(self) -> Dict[str, str]:
         """Get request headers."""
+        self._ensure_online_enabled()
         return {
             "Content-Type": "application/json",
             "Authorization": f"Bearer {self.api_token}",
@@ -60,7 +123,15 @@ class MinerUService:
         NOTE: Reuse the global HTTPClientPool to avoid blocking the event loop.
         """
         pool = get_http_client_pool()
-        resp = await pool.request_with_retry(method, url, headers=headers, timeout=timeout, **kwargs)
+        try:
+            resp = await pool.request_with_retry(method, url, headers=headers, timeout=timeout, **kwargs)
+        except httpx.HTTPStatusError as exc:
+            status = int(getattr(exc.response, "status_code", 0) or 0)
+            if status in {401, 403}:
+                raise Exception(self._format_auth_error(status)) from exc
+            raise Exception(f"MinerU API request failed (HTTP {status}): {str(exc)[:200]}") from exc
+        except httpx.HTTPError as exc:
+            raise Exception(f"MinerU API request failed: {str(exc)[:200]}") from exc
         try:
             return resp.json()
         finally:
@@ -72,8 +143,7 @@ class MinerUService:
 
     async def aapply_upload_url(self, filename: str, data_id: str) -> Dict[str, Any]:
         """Request a single file upload URL (async)."""
-        if not self.enabled:
-            raise Exception("MinerU is not enabled. Please configure MINERU_API_TOKEN.")
+        self._ensure_online_enabled()
 
         url = f"{self.api_base}/file-urls/batch"
         data = {"files": [{"name": filename, "data_id": data_id}], "model_version": self.model_version}
@@ -100,8 +170,7 @@ class MinerUService:
                 "data_id": "xxx"
             }
         """
-        if not self.enabled:
-            raise Exception("MinerU is not enabled. Please configure MINERU_API_TOKEN.")
+        self._ensure_online_enabled()
         import requests  # local import to avoid blocking deps in async paths
 
         url = f"{self.api_base}/file-urls/batch"
@@ -111,6 +180,13 @@ class MinerUService:
             response = requests.post(url, headers=self._get_headers(), json=data, timeout=30)
             response.raise_for_status()
             result = response.json()
+        except requests.exceptions.HTTPError as e:
+            status = int(getattr(getattr(e, "response", None), "status_code", 0) or 0)
+            if status in {401, 403}:
+                raise Exception(self._format_auth_error(status)) from e
+            raise Exception(
+                f"MinerU API request failed (HTTP {status}) when applying upload URL: {str(e)[:200]}"
+            ) from e
         except requests.exceptions.RequestException as e:
             raise Exception(f"Network error when applying upload URL: {str(e)}") from e
 
@@ -122,8 +198,7 @@ class MinerUService:
 
     async def aapply_batch_upload_urls(self, files: List[Dict[str, str]]) -> Dict[str, Any]:
         """Request batch upload URLs (async)."""
-        if not self.enabled:
-            raise Exception("MinerU is not enabled. Please configure MINERU_API_TOKEN.")
+        self._ensure_online_enabled()
         if len(files) > 200:
             raise ValueError("Maximum 200 files per batch")
 
@@ -155,8 +230,7 @@ class MinerUService:
         """
         import requests  # local import to avoid blocking deps in async paths
 
-        if not self.enabled:
-            raise Exception("MinerU is not enabled. Please configure MINERU_API_TOKEN.")
+        self._ensure_online_enabled()
 
         if len(files) > 200:
             raise ValueError("Maximum 200 files per batch")
@@ -168,6 +242,13 @@ class MinerUService:
             response = requests.post(url, headers=self._get_headers(), json=data, timeout=30)
             response.raise_for_status()
             result = response.json()
+        except requests.exceptions.HTTPError as e:
+            status = int(getattr(getattr(e, "response", None), "status_code", 0) or 0)
+            if status in {401, 403}:
+                raise Exception(self._format_auth_error(status)) from e
+            raise Exception(
+                f"MinerU API request failed (HTTP {status}) when applying batch upload URLs: {str(e)[:200]}"
+            ) from e
         except requests.exceptions.RequestException as e:
             raise Exception(f"Network error when applying batch upload URLs: {str(e)}") from e
 
@@ -215,8 +296,7 @@ class MinerUService:
 
     async def aget_task_status(self, batch_id: str) -> Dict[str, Any]:
         """Query parsing task status (async)."""
-        if not self.enabled:
-            raise Exception("MinerU is not enabled.")
+        self._ensure_online_enabled()
 
         url = f"{self.api_base}/extract/task/{batch_id}"
         result = await self._arequest_json("GET", url, headers=self._get_headers(), timeout=30.0)
@@ -236,8 +316,7 @@ class MinerUService:
         """
         import requests  # local import to avoid blocking deps in async paths
 
-        if not self.enabled:
-            raise Exception("MinerU is not enabled.")
+        self._ensure_online_enabled()
 
         url = f"{self.api_base}/extract/task/{batch_id}"
 
@@ -245,6 +324,13 @@ class MinerUService:
             response = requests.get(url, headers=self._get_headers(), timeout=30)
             response.raise_for_status()
             result = response.json()
+        except requests.exceptions.HTTPError as e:
+            status = int(getattr(getattr(e, "response", None), "status_code", 0) or 0)
+            if status in {401, 403}:
+                raise Exception(self._format_auth_error(status)) from e
+            raise Exception(
+                f"MinerU API request failed (HTTP {status}) when getting task status: {str(e)[:200]}"
+            ) from e
         except requests.exceptions.RequestException as e:
             raise Exception(f"Network error when getting task status: {str(e)}") from e
 
@@ -352,8 +438,7 @@ class MinerUService:
         """
         End-to-end parsing flow (upload → wait → download result), async version.
         """
-        if not self.enabled:
-            raise Exception("MinerU is not enabled. Please configure MINERU_API_TOKEN.")
+        self._ensure_online_enabled()
 
         file_path = Path(file_path)
         data_id = data_id or str(file_path.stem)
@@ -406,6 +491,7 @@ class MinerUService:
         - Write ZIP to temp file, then in to_thread:
           ZIP -> Markdown + image extraction + MinIO upload
         """
+        self._refresh_config()
         if not self.local_server_url:
             raise Exception(
                 "MinerU local service not configured. Please set MINERU_LOCAL_SERVER_URL, e.g., http://localhost:30001"
@@ -510,8 +596,7 @@ class MinerUService:
         Returns:
             Parsed LangChain Document list.
         """
-        if not self.enabled:
-            raise Exception("MinerU is not enabled. Please configure MINERU_API_TOKEN.")
+        self._ensure_online_enabled()
 
         # 1. Request upload URL.
         data_id = data_id or str(file_path.stem)
@@ -574,6 +659,7 @@ class MinerUService:
         Returns:
             Parsed LangChain Documents (images uploaded to MinIO).
         """
+        self._refresh_config()
         if not self.local_server_url:
             raise Exception(
                 "MinerU local service not configured. Please set MINERU_LOCAL_SERVER_URL, "

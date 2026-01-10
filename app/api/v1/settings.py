@@ -4,6 +4,7 @@ Supports reading and updating .env configuration.
 """
 
 import ipaddress
+import time
 from pathlib import Path
 from typing import Any, Dict, Optional
 from urllib.parse import urlparse
@@ -16,6 +17,7 @@ from sqlalchemy.orm import Session
 from app.api.dependencies.auth import get_current_account_id
 from app.api.dependencies.tenant import get_tenant_id
 from app.core.config import settings
+from app.core.jwt_inspect import format_unix_ts_utc, try_get_jwt_exp
 from app.core.database import get_db
 from app.services.dataset_service import DatasetService
 
@@ -733,6 +735,14 @@ async def get_system_status(
         "message": "available" if ok else msg,
     }
 
+    deepseek_enabled = bool(getattr(settings, "DEEPSEEK_OCR_ENABLED", False))
+    deepseek_key = bool((getattr(settings, "SILICONFLOW_API_KEY", "") or "").strip())
+    parsers["deepseek_ocr"] = {
+        "enabled": deepseek_enabled,
+        "available": bool(deepseek_enabled and deepseek_key),
+        "message": "configured" if (deepseek_enabled and deepseek_key) else ("disabled" if not deepseek_enabled else "missing api_key"),
+    }
+
     ok, msg = _check_import("docling")
     parsers["docling"] = {
         "enabled": bool(getattr(settings, "DOCLING_ENABLED", False)),
@@ -740,14 +750,28 @@ async def get_system_status(
         "message": "installed" if ok else msg,
     }
 
-    mineru_configured = bool(
-        getattr(settings, "MINERU_ENABLED", False)
-        and (getattr(settings, "MINERU_API_TOKEN", "") or getattr(settings, "MINERU_LOCAL_SERVER_URL", ""))
-    )
+    mineru_enabled = bool(getattr(settings, "MINERU_ENABLED", False))
+    mineru_local = bool((getattr(settings, "MINERU_LOCAL_SERVER_URL", "") or "").strip())
+    mineru_token = (getattr(settings, "MINERU_API_TOKEN", "") or "").strip()
+    mineru_exp = try_get_jwt_exp(mineru_token) if mineru_token else None
+    mineru_token_expired = bool(mineru_exp is not None and int(mineru_exp) <= int(time.time()))
+    mineru_available = bool(mineru_enabled and (mineru_local or (mineru_token and not mineru_token_expired)))
+
+    if not mineru_enabled:
+        mineru_message = "disabled"
+    elif mineru_local:
+        mineru_message = "configured (local)"
+    elif not mineru_token:
+        mineru_message = "missing api_token or local_server_url"
+    elif mineru_token_expired and mineru_exp is not None:
+        mineru_message = f"api_token expired at {format_unix_ts_utc(int(mineru_exp))}"
+    else:
+        mineru_message = "configured"
+
     parsers["mineru"] = {
-        "enabled": bool(getattr(settings, "MINERU_ENABLED", False)),
-        "available": mineru_configured,
-        "message": "configured" if mineru_configured else "missing api_token or local_server_url",
+        "enabled": mineru_enabled,
+        "available": mineru_available,
+        "message": mineru_message,
     }
 
     magicpdf_enabled = bool(getattr(settings, "MAGIC_PDF_ENABLED", False))

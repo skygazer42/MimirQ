@@ -18,6 +18,7 @@ logger = get_logger("parsing.factory")
 
 if TYPE_CHECKING:
     from app.parsing.parsers.deepdoc_parser import DeepDocParser
+    from app.parsing.parsers.deepseek_ocr_parser import DeepSeekOCRParser
     from app.parsing.parsers.docling_parser import DoclingParser
     from app.parsing.parsers.magic_pdf_parser import MagicPDFParser
     from app.parsing.parsers.markitdown_parser import MarkItDownParser
@@ -28,13 +29,14 @@ if TYPE_CHECKING:
 class ParserFactory:
     """Select appropriate parser based on file type"""
 
-    SUPPORTED_PDF_BACKENDS = {"auto", "basic", "mineru", "deepdoc", "markitdown", "docling", "magicpdf"}
+    SUPPORTED_PDF_BACKENDS = {"auto", "basic", "mineru", "deepdoc", "deepseek_ocr", "markitdown", "docling", "magicpdf"}
     SUPPORTED_NON_PDF_MARKITDOWN = {".doc", ".docx", ".xls", ".xlsx", ".csv", ".html", ".json"}
 
     def __init__(self):
         self._basic_pdf_parser: Optional[PDFParser] = None
         self._mineru_parser: Optional[MinerUParser] = None
         self._deepdoc_parser: Optional[DeepDocParser] = None
+        self._deepseek_ocr_parser: Optional[DeepSeekOCRParser] = None
         self._markitdown_parser: Optional[MarkItDownParser] = None
         self._docling_parser: Optional[DoclingParser] = None
         self._magicpdf_parser: Optional[MagicPDFParser] = None
@@ -44,6 +46,8 @@ class ParserFactory:
             logger.debug("[pdf] MinerU parser available (requires selection)")
         if settings.DEEPDOC_ENABLED:
             logger.debug("[pdf] DeepDoc parser available (requires selection)")
+        if bool(getattr(settings, "DEEPSEEK_OCR_ENABLED", False)) and bool(getattr(settings, "SILICONFLOW_API_KEY", "")):
+            logger.debug("[pdf] DeepSeek OCR parser available (requires selection)")
         if settings.MARKITDOWN_ENABLED:
             logger.debug("[pdf] MarkItDown parser available (requires selection)")
         if getattr(settings, "DOCLING_ENABLED", False):
@@ -112,6 +116,16 @@ class ParserFactory:
 
         if normalized == "deepdoc":
             return "deepdoc"
+
+        if normalized == "deepseek_ocr":
+            if not bool(getattr(settings, "DEEPSEEK_OCR_ENABLED", False)):
+                raise ValueError(
+                    "DeepSeek OCR parser is not enabled. "
+                    "Please set DEEPSEEK_OCR_ENABLED=True and configure SILICONFLOW_API_KEY."
+                )
+            if not bool((getattr(settings, "SILICONFLOW_API_KEY", "") or "").strip()):
+                raise ValueError("DeepSeek OCR parser requires SILICONFLOW_API_KEY.")
+            return "deepseek_ocr"
 
         if normalized == "markitdown":
             return "markitdown"
@@ -205,7 +219,7 @@ class ParserFactory:
         file_ext = (file_ext or "").strip().lower()
 
         # PDF advanced backends (may fail to import due to binary deps); fall back to basic PyMuPDF.
-        if file_ext == ".pdf" and backend in {"docling", "deepdoc", "mineru", "magicpdf"}:
+        if file_ext == ".pdf" and backend in {"docling", "deepdoc", "mineru", "magicpdf", "deepseek_ocr"}:
             logger.warning(
                 "[parse] PDF backend '%s' failed for %s: %s; falling back to 'basic'",
                 backend,
@@ -288,6 +302,14 @@ class ParserFactory:
                 logger.info("[pdf] Initializing DeepDoc parser (structure-aware)")
                 self._deepdoc_parser = DeepDocParser()
             return self._deepdoc_parser
+
+        if backend == "deepseek_ocr":
+            if self._deepseek_ocr_parser is None:
+                from app.parsing.parsers.deepseek_ocr_parser import DeepSeekOCRParser
+
+                logger.info("[pdf] Initializing DeepSeek OCR parser (SiliconFlow)")
+                self._deepseek_ocr_parser = DeepSeekOCRParser()
+            return self._deepseek_ocr_parser
 
         if backend == "markitdown":
             if self._markitdown_parser is None:
