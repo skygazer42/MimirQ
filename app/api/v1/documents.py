@@ -4,9 +4,10 @@ Document management API.
 import asyncio
 import hashlib
 import json
+import os
 import re
 import shutil
-from fastapi import APIRouter, Depends, UploadFile, File, HTTPException, BackgroundTasks, Form
+from fastapi import APIRouter, Depends, UploadFile, File, HTTPException, BackgroundTasks, Form, Request
 from sqlalchemy.orm import Session, selectinload
 from typing import List, Optional
 from uuid import UUID
@@ -983,15 +984,41 @@ async def delete_document(
 @router.get("/image/{image_id}")
 async def get_image(
     image_id: str,
+    request: Request,
     tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
     db: Session = Depends(get_db),
 ):
     """
     Return stored image by image_id.
     Standard path: {UPLOAD_DIR}/{tenant_id}/images/{image_id}(.png|.jpg|.jpeg|.webp|.gif|.bmp)
     """
-    DatasetService.ensure_member(db, tenant_id, account_id)
+    is_production = os.getenv("ENV", "").lower() in ("prod", "production")
+    auth_mode = (getattr(settings, "AUTH_MODE", "jwt") or "jwt").lower()
+    account_id: Optional[str] = None
+
+    if auth_mode == "header":
+        account_id = (request.headers.get("x-user-id") or "").strip() or None
+        if is_production and not account_id:
+            raise HTTPException(status_code=401, detail="X-User-ID header required")
+    else:
+        # For jwt mode, allow either Authorization header or `?token=` query param
+        # so <img src="..."> can work.
+        authorization = (request.headers.get("authorization") or "").strip()
+        token = (request.query_params.get("token") or request.query_params.get("access_token") or "").strip()
+        if not authorization and token:
+            authorization = token if token.lower().startswith("bearer ") else f"Bearer {token}"
+        if authorization:
+            try:
+                account_id = get_current_account_id(authorization=authorization, x_user_id=None)
+            except HTTPException:
+                account_id = None
+        if not account_id:
+            raise HTTPException(status_code=401, detail="Authentication required")
+
+    # Best-effort permission check: in local/dev header mode, image URLs are loaded
+    # by the browser without custom headers; allow anonymous image access there.
+    if account_id:
+        DatasetService.ensure_member(db, tenant_id, account_id)
     images_dir = Path(settings.UPLOAD_DIR) / str(tenant_id) / "images"
     # Prevent path traversal: only allow UUID / 32-hex (internal image_id).
     try:
@@ -1026,8 +1053,8 @@ async def get_image(
 @router.get("/image-url/{img_id}")
 async def get_image_url(
     img_id: str,
+    request: Request,
     tenant_id: UUID = Depends(get_tenant_id),
-    account_id: str = Depends(get_current_account_id),
     db: Session = Depends(get_db),
 ):
     """
@@ -1039,8 +1066,31 @@ async def get_image_url(
             status_code=503,
             detail="MinIO is disabled; cannot retrieve image URL"
         )
+    is_production = os.getenv("ENV", "").lower() in ("prod", "production")
+    auth_mode = (getattr(settings, "AUTH_MODE", "jwt") or "jwt").lower()
+    account_id: Optional[str] = None
 
-    DatasetService.ensure_member(db, tenant_id, account_id)
+    if auth_mode == "header":
+        account_id = (request.headers.get("x-user-id") or "").strip() or None
+        if is_production and not account_id:
+            raise HTTPException(status_code=401, detail="X-User-ID header required")
+    else:
+        authorization = (request.headers.get("authorization") or "").strip()
+        token = (request.query_params.get("token") or request.query_params.get("access_token") or "").strip()
+        if not authorization and token:
+            authorization = token if token.lower().startswith("bearer ") else f"Bearer {token}"
+        if authorization:
+            try:
+                account_id = get_current_account_id(authorization=authorization, x_user_id=None)
+            except HTTPException:
+                account_id = None
+        if not account_id:
+            raise HTTPException(status_code=401, detail="Authentication required")
+
+    # Best-effort permission check: in local/dev header mode, image URLs are loaded
+    # by the browser without custom headers; allow anonymous image access there.
+    if account_id:
+        DatasetService.ensure_member(db, tenant_id, account_id)
 
     # Basic access control: ensure img_id tenant prefix matches request tenant (legacy dataset-chunk exempt).
     def _tenant_from_img_id(val: str) -> Optional[str]:
@@ -1071,7 +1121,7 @@ async def get_image_url(
             raise HTTPException(status_code=404, detail="Image not found")
         if document.dataset_id and document.dataset_id != dataset_uuid:
             raise HTTPException(status_code=404, detail="Image not found")
-        if document.dataset_id:
+        if document.dataset_id and account_id:
             ds = DatasetService.get_dataset(db, tenant_id, document.dataset_id)
             DatasetService.assert_dataset_readable(db, ds, account_id)
     else:
@@ -1081,8 +1131,9 @@ async def get_image_url(
             dataset_uuid = UUID(dataset_part)
         except Exception:
             raise HTTPException(status_code=404, detail="Image not found")
-        ds = DatasetService.get_dataset(db, tenant_id, dataset_uuid)
-        DatasetService.assert_dataset_readable(db, ds, account_id)
+        if account_id:
+            ds = DatasetService.get_dataset(db, tenant_id, dataset_uuid)
+            DatasetService.assert_dataset_readable(db, ds, account_id)
 
     try:
         url = minio_service.get_image_url(img_id, extension="jpg")
