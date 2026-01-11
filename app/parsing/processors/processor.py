@@ -902,7 +902,7 @@ class DocumentProcessorService:
                 path = Path(raw).resolve(strict=False)
                 if not path.exists():
                     continue
-                if ".magicpdf" not in path.parts:
+                if not any(p in path.parts for p in {".magicpdf", ".deepseek_ocr"}):
                     continue
                 # Safety: only delete within this tenant's upload directory.
                 path.relative_to(tenant_root)

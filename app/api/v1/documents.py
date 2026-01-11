@@ -1592,7 +1592,7 @@ async def preview_document(
                     path = Path(raw).resolve(strict=False)
                     if not path.exists():
                         continue
-                    if ".magicpdf" not in path.parts:
+                    if not any(p in path.parts for p in {".magicpdf", ".deepseek_ocr"}):
                         continue
                     path.relative_to(tenant_root)
                 except Exception:
