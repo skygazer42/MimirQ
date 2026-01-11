@@ -8,6 +8,7 @@ parser backend.
 """
 
 
+import json
 import os
 import re
 import shutil
@@ -52,6 +53,49 @@ class MagicPDFParser:
             raise ValueError("MAGIC_PDF_METHOD must be one of: auto, ocr, txt")
         return method
 
+    def _ensure_tools_config(self, artifact_root: Path) -> Path:
+        """
+        MagicPDF requires a config JSON (defaults to `~/magic-pdf.json`) and will
+        crash early if it's missing.
+
+        We generate a minimal config per-run and point the subprocess at it via
+        the `MINERU_TOOLS_CONFIG_JSON` env var.
+        """
+        configured = (getattr(settings, "MINERU_TOOLS_CONFIG_JSON", "") or "").strip()
+        if not configured:
+            configured = (os.environ.get("MINERU_TOOLS_CONFIG_JSON") or "").strip()
+        if configured:
+            configured_path = Path(configured)
+            if not configured_path.is_absolute():
+                configured_path = Path.home() / configured_path
+            if configured_path.exists():
+                return configured_path
+            logger.warning("[magicpdf] MINERU_TOOLS_CONFIG_JSON is set but not found: %s", configured_path)
+
+        cfg_path = artifact_root / "magic-pdf.json"
+        if cfg_path.exists():
+            return cfg_path
+
+        models_dir = Path.home() / ".cache" / "magicpdf" / "models"
+        models_dir.mkdir(parents=True, exist_ok=True)
+
+        cfg = {
+            "bucket_info": {"[default]": ["", "", ""]},
+            "latex-delimiter-config": {
+                "display": {"left": "$$", "right": "$$"},
+                "inline": {"left": "$", "right": "$"},
+            },
+            "device-mode": "cpu",
+            "models-dir": str(models_dir),
+            # Prefer the lightweight YOLO layout model (weights live in the PDF-Extract-Kit pipeline).
+            "layout-config": {"model": "doclayout_yolo"},
+            # Disable formula recognition by default to avoid heavy Unimernet deps and
+            # version coupling issues with `transformers` generation APIs.
+            "formula-config": {"enable": False},
+        }
+        cfg_path.write_text(json.dumps(cfg, ensure_ascii=False, indent=2), encoding="utf-8")
+        return cfg_path
+
     def parse(
         self,
         file_path: Path,
@@ -71,6 +115,7 @@ class MagicPDFParser:
         timeout_sec = float(getattr(settings, "MAGIC_PDF_TIMEOUT_SEC", 600) or 600)
 
         artifact_root = self._build_artifact_root(file_path, document_id)
+        artifact_root = artifact_root.absolute()
         artifact_root.mkdir(parents=True, exist_ok=True)
 
         # Avoid spaces/unicode in the input filename (some parsers/tools are brittle).
@@ -94,6 +139,9 @@ class MagicPDFParser:
             cmd.extend(["--debug", "true"])
 
         logger.info("[magicpdf] parsing %s (method=%s)", file_path.name, method)
+        env = os.environ.copy()
+        env["MINERU_TOOLS_CONFIG_JSON"] = str(self._ensure_tools_config(artifact_root))
+        stdout_text = ""
         try:
             proc = subprocess.run(
                 cmd,
@@ -102,10 +150,11 @@ class MagicPDFParser:
                 stderr=subprocess.STDOUT,
                 text=True,
                 timeout=timeout_sec,
-                env=os.environ.copy(),
+                env=env,
             )
-            if proc.stdout:
-                logger.info("[magicpdf] %s", proc.stdout.strip()[:4000])
+            stdout_text = proc.stdout or ""
+            if stdout_text:
+                logger.info("[magicpdf] %s", stdout_text.strip()[:4000])
         except subprocess.TimeoutExpired as exc:
             raise RuntimeError(f"MagicPDF timed out after {timeout_sec:.0f}s") from exc
         except subprocess.CalledProcessError as exc:
@@ -119,6 +168,15 @@ class MagicPDFParser:
             if candidates:
                 md_path = candidates[0]
         if not md_path.exists():
+            out = stdout_text.strip()
+            if out:
+                # Keep the full CLI output for debugging. This is particularly helpful
+                # because the upstream CLI sometimes exits with code 0 on failures.
+                try:
+                    (artifact_root / "magic-pdf.log").write_text(stdout_text, encoding="utf-8", errors="ignore")
+                except Exception:
+                    pass
+                raise RuntimeError(f"MagicPDF did not produce a markdown output file. Output:\n{out[:4000]}")
             raise RuntimeError("MagicPDF did not produce a markdown output file")
 
         markdown_text = md_path.read_text(encoding="utf-8", errors="ignore")
