@@ -339,6 +339,10 @@ class Settings(BaseSettings):
     MAGIC_PDF_DEBUG: bool = False
     MAGIC_PDF_TIMEOUT_SEC: int = 600
     MAGIC_PDF_KEEP_ARTIFACTS: bool = False
+    # MagicPDF upstream config file path override (env var name used by magic-pdf).
+    # - When empty, the backend generates a minimal config per run.
+    # - If set to a relative path, magic-pdf resolves it under the OS user home directory.
+    MINERU_TOOLS_CONFIG_JSON: str = ""
     MARKITDOWN_USE_PLUGINS: bool = False
     MARKITDOWN_DOCINTEL_ENDPOINT: str = ""
     MARKITDOWN_DOCINTEL_KEY: str = ""
