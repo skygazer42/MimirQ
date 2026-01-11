@@ -12,7 +12,39 @@ import remarkGfm from 'remark-gfm'
 
 import type { Citation, Message } from '@/types'
 import { cn } from '@/lib/utils'
-import { toAbsoluteBackendUrl } from '@/lib/env'
+import { API_BASE_URL, toAbsoluteBackendUrl } from '@/lib/env'
+import { getAccessToken } from '@/lib/auth-storage'
+
+let BACKEND_ORIGIN = ''
+try {
+  BACKEND_ORIGIN = new URL(API_BASE_URL).origin
+} catch {
+  BACKEND_ORIGIN = ''
+}
+
+function maybeAttachImageAuthToken(url: string): string {
+  const token = getAccessToken()
+  if (!token) return url
+
+  let parsed: URL
+  try {
+    parsed = new URL(url, API_BASE_URL)
+  } catch {
+    return url
+  }
+
+  if (BACKEND_ORIGIN && parsed.origin !== BACKEND_ORIGIN) return url
+
+  const path = parsed.pathname || ''
+  const needsToken =
+    path.includes('/api/v1/documents/image/') || path.includes('/api/v1/documents/image-url/')
+  if (!needsToken) return url
+
+  if (!parsed.searchParams.has('token') && !parsed.searchParams.has('access_token')) {
+    parsed.searchParams.set('token', token)
+  }
+  return parsed.toString()
+}
 
 const markdownPlugins = [remarkGfm]
 const markdownComponents = {
@@ -36,11 +68,16 @@ const markdownComponents = {
   ),
   img: ({ src, alt }: { src?: string; alt?: string }) => {
     const raw = typeof src === 'string' ? src : ''
-    const resolved = raw ? (raw.startsWith('http') ? raw : toAbsoluteBackendUrl(raw)) : ''
+    const resolved = raw
+      ? /^https?:\/\//i.test(raw) || /^data:/i.test(raw) || /^blob:/i.test(raw)
+        ? raw
+        : toAbsoluteBackendUrl(raw)
+      : ''
     if (!resolved) return null
+    const finalSrc = maybeAttachImageAuthToken(resolved)
     return (
       <Image
-        src={resolved}
+        src={finalSrc}
         alt={alt || 'image'}
         width={1200}
         height={800}
@@ -229,11 +266,12 @@ export const ChatMessageItem = memo(function ChatMessageItem({
 
 const CitationCard = memo(function CitationCard({ citation, index }: { citation: Citation; index: number }) {
   const [hideImage, setHideImage] = useState(false)
-  const imgUrl = citation.img_url
-    ? citation.img_url.startsWith('http')
-      ? citation.img_url
-      : toAbsoluteBackendUrl(citation.img_url)
-    : null
+  const imgUrl = (() => {
+    if (!citation.img_url) return null
+    const raw = citation.img_url
+    const resolved = /^https?:\/\//i.test(raw) || /^data:/i.test(raw) || /^blob:/i.test(raw) ? raw : toAbsoluteBackendUrl(raw)
+    return maybeAttachImageAuthToken(resolved)
+  })()
 
   return (
     <div className="text-xs bg-slate-50 dark:bg-slate-800/50 hover:bg-white dark:hover:bg-slate-800 rounded-lg p-2.5 border border-slate-100 dark:border-slate-700 hover:border-indigo-200 dark:hover:border-indigo-700 transition-all cursor-pointer group shadow-sm hover:shadow-md">
