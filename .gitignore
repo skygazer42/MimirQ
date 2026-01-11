@@ -58,3 +58,4 @@ web/types/openapi.ts
 # Docker
 docker/.env
 docker/.env.*
+!docker/.env.example

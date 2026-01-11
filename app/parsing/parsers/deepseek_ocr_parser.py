@@ -214,6 +214,70 @@ class DeepSeekOCRParser:
 
         return written
 
+    def _persist_page_image_variants(self, *, pix: fitz.Pixmap, png_bytes: bytes, images_dir: Path) -> None:
+        """
+        Persist page-render images into `images_dir` using sha256-based filenames.
+
+        Why:
+        Some OCR models emit markdown refs like `images/<sha256>.jpg` based on the input
+        page image bytes (or a normalized JPEG variant). By materializing these files,
+        downstream preview/ingestion can resolve those refs without a custom `/images` route.
+        """
+        try:
+            images_dir.mkdir(parents=True, exist_ok=True)
+        except Exception:
+            return
+
+        try:
+            digest_png = hashlib.sha256(png_bytes).hexdigest()
+        except Exception:
+            return
+
+        # 1) Exact PNG bytes (input to the model).
+        png_path = images_dir / f"{digest_png}.png"
+        if not png_path.exists():
+            try:
+                png_path.write_bytes(png_bytes)
+            except Exception:
+                pass
+
+        # 2) A JPEG variant saved under both (a) the PNG digest (compat) and (b) the JPEG digest.
+        try:
+            jpg_bytes = pix.tobytes("jpg")
+        except Exception:
+            return
+
+        jpg_path_compat = images_dir / f"{digest_png}.jpg"
+        if not jpg_path_compat.exists():
+            try:
+                jpg_path_compat.write_bytes(jpg_bytes)
+            except Exception:
+                pass
+        jpeg_path_compat = images_dir / f"{digest_png}.jpeg"
+        if not jpeg_path_compat.exists():
+            try:
+                jpeg_path_compat.write_bytes(jpg_bytes)
+            except Exception:
+                pass
+
+        try:
+            digest_jpg = hashlib.sha256(jpg_bytes).hexdigest()
+        except Exception:
+            return
+
+        jpg_path = images_dir / f"{digest_jpg}.jpg"
+        if not jpg_path.exists():
+            try:
+                jpg_path.write_bytes(jpg_bytes)
+            except Exception:
+                pass
+        jpeg_path = images_dir / f"{digest_jpg}.jpeg"
+        if not jpeg_path.exists():
+            try:
+                jpeg_path.write_bytes(jpg_bytes)
+            except Exception:
+                pass
+
     def parse(
         self,
         file_path: Path,
@@ -257,6 +321,7 @@ class DeepSeekOCRParser:
             def submit_page(executor: ThreadPoolExecutor, idx: int, page_obj: fitz.Page) -> None:
                 pix = page_obj.get_pixmap(dpi=self._pdf_dpi)
                 img_bytes = pix.tobytes("png")
+                self._persist_page_image_variants(pix=pix, png_bytes=img_bytes, images_dir=images_dir)
                 logger.info("[deepseek_ocr] page %s/%s (%s)", idx, total_pages, file_path.name)
                 fut = executor.submit(self._call_api, img_bytes, mime_type="image/png")
                 inflight[fut] = idx
@@ -265,6 +330,7 @@ class DeepSeekOCRParser:
                 for idx, page in enumerate(doc, start=1):
                     pix = page.get_pixmap(dpi=self._pdf_dpi)
                     img_bytes = pix.tobytes("png")
+                    self._persist_page_image_variants(pix=pix, png_bytes=img_bytes, images_dir=images_dir)
                     logger.info("[deepseek_ocr] page %s/%s (%s)", idx, total_pages, file_path.name)
                     text = self._call_api(img_bytes, mime_type="image/png")
                     results[idx] = text or ""
