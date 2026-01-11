@@ -130,6 +130,14 @@ async def get_pipeline_capabilities(
                 available = ok
                 if not ok:
                     notes = f"docling not installed: {err}"
+        elif b == "bisheng_unstructured":
+            enabled = bool(getattr(settings, "BISHENG_UNSTRUCTURED_ENABLED", False))
+            api_url = bool((getattr(settings, "BISHENG_UNSTRUCTURED_API_URL", "") or "").strip())
+            available = bool(enabled and api_url)
+            if not enabled:
+                notes = "Set BISHENG_UNSTRUCTURED_ENABLED=true."
+            elif not api_url:
+                notes = "Configure BISHENG_UNSTRUCTURED_API_URL (e.g., http://localhost:10001/v1/etl4llm/predict)."
         elif b == "magicpdf":
             available, notes = magicpdf_available()
         else:  # pragma: no cover

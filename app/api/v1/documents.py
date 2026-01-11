@@ -1592,7 +1592,7 @@ async def preview_document(
                     path = Path(raw).resolve(strict=False)
                     if not path.exists():
                         continue
-                    if not any(p in path.parts for p in {".magicpdf", ".deepseek_ocr"}):
+                    if not any(p in path.parts for p in {".magicpdf", ".deepseek_ocr", ".bisheng_unstructured"}):
                         continue
                     path.relative_to(tenant_root)
                 except Exception:
@@ -1929,6 +1929,9 @@ async def preview_chunking(
             # Ensure extracted image objects (e.g., DeepDoc PIL.Image) are JSON-serializable for preview.
             # Also converts them into Markdown image refs that the frontend can render.
             documents = _materialize_extracted_images_for_preview(documents, tenant_id=tenant_id)
+            # Parsers like DeepSeek OCR / MagicPDF may emit relative image refs (e.g. images/foo.png).
+            # Materialize them into preview images so the frontend doesn't hit /images/... 404.
+            documents = _materialize_local_images_for_preview(documents, tenant_id=tenant_id)
             if pipeline_effective.governance_enabled:
                 documents, _stats = governance_processor.clean_documents(
                     documents,

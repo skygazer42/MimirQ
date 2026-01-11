@@ -5,6 +5,7 @@ Advanced parser base class.
 
 import asyncio
 import logging
+import re
 from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Any, Callable, List, Optional, Set, Tuple
@@ -154,14 +155,33 @@ class BaseAdvancedParser(ABC):
         if not sections:
             return []
 
-        text_parts = []
-        for section in sections:
+        pos_tag_re = re.compile(r"@@[0-9-]+\t[0-9.\t]+##")
+
+        def normalize_section(section: Any) -> str:
             if isinstance(section, tuple):
-                text = section[0] if section[0] else ""
-            else:
-                text = str(section)
-            if text.strip():
-                text_parts.append(text.strip())
+                head = section[0] if section else ""
+                text = str(head or "").strip()
+                if not text:
+                    return ""
+
+                # Preserve position tags from parsers like Docling/MinerU that return (text, tag)
+                # or (text, type, tag). The ragflow integrated pipeline relies on `@@...##` tags.
+                tag = ""
+                for item in reversed(section[1:]):
+                    if isinstance(item, str) and "@@" in item and "##" in item and pos_tag_re.search(item):
+                        tag = item.strip()
+                        break
+                if tag and tag not in text:
+                    text = f"{text}{tag}"
+                return text
+
+            return str(section or "").strip()
+
+        text_parts: list[str] = []
+        for section in sections:
+            text = normalize_section(section)
+            if text:
+                text_parts.append(text)
 
         if not text_parts:
             return []
@@ -202,6 +222,36 @@ class BaseAdvancedParser(ABC):
                         "table_index": i,
                     }
                 ))
+
+            # If the underlying parser provides a cropped image (e.g., Docling tables/figures),
+            # emit an additional image Document so downstream can upload it to MinIO and preview it.
+            try:
+                image_obj = None
+                positions = None
+                if isinstance(table, tuple) and len(table) >= 1:
+                    table_data = table[0]
+                    if isinstance(table_data, tuple) and len(table_data) >= 1:
+                        image_obj = table_data[0]
+                    if len(table) >= 2:
+                        positions = table[1]
+
+                if image_obj is not None:
+                    content = (table_content or "").strip() or "image"
+                    if len(content) > 900:
+                        content = content[:900].rstrip() + "..."
+                    meta = {
+                        **base_metadata,
+                        "doc_type_kwd": "image",
+                        "content_type": "image",
+                        "table_index": i,
+                        "image": image_obj,
+                    }
+                    if positions is not None:
+                        meta["positions"] = positions
+                    documents.append(Document(page_content=content, metadata=meta))
+            except Exception:
+                # Best-effort: never fail parsing due to table image handling.
+                pass
 
         return documents
 
