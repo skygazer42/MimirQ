@@ -156,6 +156,8 @@ class Settings(BaseSettings):
     DEEPSEEK_OCR_MAX_TOKENS: int = 4096
     DEEPSEEK_OCR_TEMPERATURE: float = 0.1
     DEEPSEEK_OCR_PDF_DPI: int = 200
+    # Page-level parallelism (1 = sequential). Higher values can reduce latency but may hit rate limits.
+    DEEPSEEK_OCR_CONCURRENCY: int = 1
 
     # PDF quality OCR validation (used by parse-preview scoring)
     RAPIDOCR_ENABLED: bool = False
