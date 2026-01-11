@@ -10,6 +10,7 @@ import { cn } from '@/lib/utils'
 import { useChunkPreview } from '@/components/chunk-preview/context'
 import { MarkdownRenderer } from '@/components/markdown/markdown-renderer'
 import { MarkdownToc } from '@/components/markdown/markdown-toc'
+import { extractMarkdownHeadings } from '@/lib/markdown'
 
 export function OriginalPreview() {
   const { previewData, hoveredChunkIndex, isLoading, error } = useChunkPreview()
@@ -34,6 +35,11 @@ export function OriginalPreview() {
       after: text.slice(safeEnd),
     }
   }, [previewData, hoveredChunkIndex])
+
+  const tocEnabled = useMemo(
+    () => extractMarkdownHeadings(previewData?.original_text || '', { maxDepth: 4 }).length > 0,
+    [previewData?.original_text]
+  )
 
   useEffect(() => {
     if (hoveredChunkIndex === null) return
@@ -81,11 +87,13 @@ export function OriginalPreview() {
                     渲染模式支持目录跳转；切片定位请切换到“源码”模式
                   </p>
                 </div>
-                <aside className="hidden xl:block w-64 shrink-0">
-                  <div className="sticky top-6 max-h-[calc(100vh-220px)] overflow-y-auto rounded-xl border border-gray-200 bg-white p-3">
-                    <MarkdownToc markdown={previewData.original_text} />
-                  </div>
-                </aside>
+                {tocEnabled && (
+                  <aside className="hidden xl:block w-64 shrink-0">
+                    <div className="sticky top-6 max-h-[calc(100vh-220px)] overflow-y-auto rounded-xl border border-gray-200 bg-white p-3">
+                      <MarkdownToc markdown={previewData.original_text} />
+                    </div>
+                  </aside>
+                )}
               </div>
             ) : (
               <div className="font-mono text-sm leading-relaxed text-gray-600 whitespace-pre-wrap max-w-3xl mx-auto">
