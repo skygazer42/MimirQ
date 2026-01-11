@@ -18,11 +18,14 @@ def test_normalize_parser_backend_deepseek_ocr_aliases():
     assert normalize_parser_backend("deepseekocr") == "deepseek_ocr"
 
 
-def test_normalize_parser_backend_bisheng_unstructured_aliases():
-    assert normalize_parser_backend("bisheng-unstructured") == "bisheng_unstructured"
-    assert normalize_parser_backend("bisheng_unstructured") == "bisheng_unstructured"
-    assert normalize_parser_backend("bishengunstructured") == "bisheng_unstructured"
-    assert normalize_parser_backend("bisheng") == "bisheng_unstructured"
+def test_normalize_parser_backend_etl4llm_aliases():
+    assert normalize_parser_backend("etl4llm") == "etl4llm"
+    assert normalize_parser_backend("etl-4llm") == "etl4llm"
+    # Backward-compatible aliases (deprecated)
+    assert normalize_parser_backend("bisheng-unstructured") == "etl4llm"
+    assert normalize_parser_backend("bisheng_unstructured") == "etl4llm"
+    assert normalize_parser_backend("bishengunstructured") == "etl4llm"
+    assert normalize_parser_backend("bisheng") == "etl4llm"
 
 
 def test_normalize_parser_backend_empty():

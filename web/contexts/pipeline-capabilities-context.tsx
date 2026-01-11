@@ -20,6 +20,10 @@ function normalizeParserBackendName(value?: string) {
   const raw = (value || '').toLowerCase().trim()
   const normalized = raw.replace(/_/g, '-')
   if (normalized === 'magic-pdf') return 'magicpdf'
+  if (normalized === 'etl-4llm') return 'etl4llm'
+  if (normalized === 'bisheng-unstructured') return 'etl4llm'
+  if (normalized === 'bishengunstructured') return 'etl4llm'
+  if (normalized === 'bisheng') return 'etl4llm'
   return normalized
 }
 

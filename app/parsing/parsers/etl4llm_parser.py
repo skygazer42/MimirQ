@@ -1,13 +1,12 @@
 """
-Bisheng-Unstructured parser (etl4llm API).
+ETL4LLM parser (layout/table/image-aware, via an etl4llm predict API).
 
-This backend calls a Bisheng-Unstructured service (layout/table/image-aware)
-and returns Markdown-ish text plus optional local image refs under an artifact
-directory so MimirQ can:
+This backend calls an etl4llm-compatible service and returns Markdown-ish text
+plus optional local image refs under an artifact directory so MimirQ can:
 - rewrite images for preview (/api/v1/documents/image/{uuid})
 - upload local images to MinIO during ingestion (/api/v1/documents/image-url/{img_id})
 
-Compatible endpoint example (from Bisheng docker-compose):
+Example endpoint:
   http://localhost:10001/v1/etl4llm/predict
 """
 
@@ -29,7 +28,7 @@ from app.core.config import settings
 from app.rag.core.logging import get_logger
 
 
-logger = get_logger("parsing.bisheng_unstructured")
+logger = get_logger("parsing.etl4llm")
 
 
 _HEADER_FOOTER_TYPES = {
@@ -42,36 +41,36 @@ _HEADER_FOOTER_TYPES = {
 }
 
 
-class BishengUnstructuredParser:
+class Etl4LlmParser:
     """
-    Bisheng-Unstructured parser via etl4llm predict API.
+    ETL4LLM parser via an etl4llm predict API.
 
     Config via env/.env:
-    - BISHENG_UNSTRUCTURED_ENABLED=true
-    - BISHENG_UNSTRUCTURED_API_URL=http://localhost:10001/v1/etl4llm/predict
+    - ETL4LLM_ENABLED=true
+    - ETL4LLM_API_URL=http://localhost:10001/v1/etl4llm/predict
     """
 
     def __init__(self) -> None:
-        self._enabled = bool(getattr(settings, "BISHENG_UNSTRUCTURED_ENABLED", False))
-        self._api_url = (getattr(settings, "BISHENG_UNSTRUCTURED_API_URL", "") or "").strip()
-        self._timeout_sec = float(getattr(settings, "BISHENG_UNSTRUCTURED_TIMEOUT_SEC", 120) or 120)
-        self._mode = (getattr(settings, "BISHENG_UNSTRUCTURED_MODE", "") or "partition").strip().lower()
-        self._force_ocr = bool(getattr(settings, "BISHENG_UNSTRUCTURED_FORCE_OCR", False))
-        self._enable_formula = bool(getattr(settings, "BISHENG_UNSTRUCTURED_ENABLE_FORMULA", True))
-        self._extract_images = bool(getattr(settings, "BISHENG_UNSTRUCTURED_EXTRACT_IMAGES", True))
-        self._filter_header_footer = bool(getattr(settings, "BISHENG_UNSTRUCTURED_FILTER_PAGE_HEADER_FOOTER", False))
+        self._enabled = bool(getattr(settings, "ETL4LLM_ENABLED", False))
+        self._api_url = (getattr(settings, "ETL4LLM_API_URL", "") or "").strip()
+        self._timeout_sec = float(getattr(settings, "ETL4LLM_TIMEOUT_SEC", 120) or 120)
+        self._mode = (getattr(settings, "ETL4LLM_MODE", "") or "partition").strip().lower()
+        self._force_ocr = bool(getattr(settings, "ETL4LLM_FORCE_OCR", False))
+        self._enable_formula = bool(getattr(settings, "ETL4LLM_ENABLE_FORMULA", True))
+        self._extract_images = bool(getattr(settings, "ETL4LLM_EXTRACT_IMAGES", True))
+        self._filter_header_footer = bool(getattr(settings, "ETL4LLM_FILTER_PAGE_HEADER_FOOTER", False))
 
         if not self._enabled:
-            raise RuntimeError("Bisheng-Unstructured is disabled (BISHENG_UNSTRUCTURED_ENABLED=false).")
+            raise RuntimeError("ETL4LLM is disabled (ETL4LLM_ENABLED=false).")
         if not self._api_url:
-            raise RuntimeError("Bisheng-Unstructured requires BISHENG_UNSTRUCTURED_API_URL.")
+            raise RuntimeError("ETL4LLM requires ETL4LLM_API_URL.")
 
         self._session = requests.Session()
 
     def _build_artifact_root(self, file_path: Path, document_id: Optional[str]) -> Path:
-        run_id = (document_id or file_path.stem or "bisheng_unstructured").strip()
-        run_id = re.sub(r"[^a-zA-Z0-9._-]+", "_", run_id)[:120] or "bisheng_unstructured"
-        return (file_path.parent / ".bisheng_unstructured" / run_id).absolute()
+        run_id = (document_id or file_path.stem or "etl4llm").strip()
+        run_id = re.sub(r"[^a-zA-Z0-9._-]+", "_", run_id)[:120] or "etl4llm"
+        return (file_path.parent / ".etl4llm" / run_id).absolute()
 
     def _call_api(self, *, file_path: Path) -> Dict[str, Any]:
         file_bytes = file_path.read_bytes()
@@ -93,10 +92,10 @@ class BishengUnstructuredParser:
 
         resp = self._session.post(self._api_url, json=payload, timeout=self._timeout_sec)
         if int(getattr(resp, "status_code", 0) or 0) != 200:
-            raise RuntimeError(f"Bisheng-Unstructured API error {resp.status_code}: {resp.text[:500]}")
+            raise RuntimeError(f"ETL4LLM API error {resp.status_code}: {resp.text[:500]}")
         data = resp.json()
         if int(data.get("status_code", 0) or 0) != 200:
-            raise RuntimeError(f"Bisheng-Unstructured returned status_code={data.get('status_code')}: {str(data)[:500]}")
+            raise RuntimeError(f"ETL4LLM returned status_code={data.get('status_code')}: {str(data)[:500]}")
         return data
 
     def _extract_partition_images(
@@ -282,10 +281,10 @@ class BishengUnstructuredParser:
         if not file_path.exists():
             raise FileNotFoundError(f"File not found: {file_path}")
         if file_path.suffix.lower() != ".pdf":
-            raise ValueError("Bisheng-Unstructured currently supports PDF only")
+            raise ValueError("ETL4LLM currently supports PDF only")
 
         start = time.time()
-        logger.info("[bisheng_unstructured] start %s", file_path.name)
+        logger.info("[etl4llm] start %s", file_path.name)
 
         artifact_root = self._build_artifact_root(file_path, document_id)
         images_dir = artifact_root / "images"
@@ -308,7 +307,7 @@ class BishengUnstructuredParser:
                     images_dir=images_dir,
                 )
             except Exception as exc:  # noqa: BLE001
-                logger.warning("[bisheng_unstructured] image extraction failed: %s", str(exc)[:200])
+                logger.warning("[etl4llm] image extraction failed: %s", str(exc)[:200])
 
             merged_text, merged_meta = self._merge_partitions(partitions=partitions, image_map=image_map)
         elif text.strip():
@@ -317,10 +316,10 @@ class BishengUnstructuredParser:
         metadata = {
             "source": file_path.name,
             "file_type": "pdf",
-            "parser_backend": "bisheng_unstructured",
-            "bisheng_mode": str(self._mode or ""),
-            "bisheng_partitions": int(len(partitions) if isinstance(partitions, list) else 0),
-            "bisheng_extracted_images": int(extracted_images),
+            "parser_backend": "etl4llm",
+            "etl4llm_mode": str(self._mode or ""),
+            "etl4llm_partitions": int(len(partitions) if isinstance(partitions, list) else 0),
+            "etl4llm_extracted_images": int(extracted_images),
             # Used by preview/ingestion to resolve relative image paths like "images/<id>.png".
             "asset_base_dir": str(artifact_root),
             # Used for best-effort cleanup after ingestion/preview.
@@ -329,5 +328,5 @@ class BishengUnstructuredParser:
         if isinstance(merged_meta, dict):
             metadata.update(merged_meta)
 
-        logger.info("[bisheng_unstructured] done %s in %.2fs", file_path.name, time.time() - start)
+        logger.info("[etl4llm] done %s in %.2fs", file_path.name, time.time() - start)
         return [Document(page_content=merged_text, metadata=metadata)]
