@@ -161,6 +161,220 @@ def _materialize_extracted_images_for_preview(documents: list, *, tenant_id: UUI
 
     return documents
 
+
+def _materialize_local_images_for_preview(documents: list, *, tenant_id: UUID) -> list:
+    """
+    Rewrite local/relative image references in Markdown/HTML into preview-time
+    `/api/v1/documents/image/{uuid}` URLs.
+
+    This is mainly for parsers like MagicPDF that output markdown such as:
+    - ![](images/xxx.png)
+    - <img src="images/xxx.png">
+
+    The referenced files live under metadata["asset_base_dir"]. We copy them into:
+    - uploads/{tenant_id}/images/{uuid}.(png|jpg|...)
+
+    so the frontend can load them via the existing `GET /api/v1/documents/image/{image_id}` API.
+    """
+    if not documents:
+        return documents
+
+    images_dir = Path(settings.UPLOAD_DIR) / str(tenant_id) / "images"
+    images_dir.mkdir(parents=True, exist_ok=True)
+
+    # Only process Markdown images and HTML img tags, matching src content.
+    md_pat = re.compile(
+        r"!\[[^\]]*\]\(\s*(?:<)?([^)\s>]+)(?:>)?(?:\s+['\"][^'\"]*['\"])?\s*\)",
+        flags=re.IGNORECASE,
+    )
+    html_pat = re.compile(r"<img[^>]+src=[\"']([^\"']+)[\"']", flags=re.IGNORECASE)
+
+    max_inline_images = max(0, int(getattr(settings, "MAX_INLINE_IMAGES", 0) or 0))
+    max_image_bytes = int(getattr(settings, "MAX_INLINE_IMAGE_BYTES", 10_000_000) or 10_000_000)
+    max_image_bytes = max(1_000_000, max_image_bytes)
+
+    supported_exts = {".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp"}
+
+    digest_cache: dict[str, tuple[str, str]] = {}
+    try:
+        from io import BytesIO
+        from PIL import Image as PILImage  # type: ignore
+
+        pillow_ok = True
+    except Exception:
+        BytesIO = None  # type: ignore
+        PILImage = None  # type: ignore
+        pillow_ok = False
+
+    from urllib.parse import unquote
+
+    for doc in documents:
+        content = getattr(doc, "page_content", "") or ""
+        if not isinstance(content, str) or not content:
+            continue
+
+        lowered = content.lower()
+        if "![" not in lowered and "<img" not in lowered:
+            continue
+
+        meta = getattr(doc, "metadata", None) or {}
+        if not isinstance(meta, dict):
+            continue
+        base_dir_raw = meta.get("asset_base_dir")
+        if not isinstance(base_dir_raw, str) or not base_dir_raw.strip():
+            continue
+
+        base_dir = Path(base_dir_raw.strip()).resolve(strict=False)
+        if not base_dir.exists() or not base_dir.is_dir():
+            continue
+        base_dir_resolved = base_dir.resolve(strict=False)
+
+        found: list[str] = []
+        seen: set[str] = set()
+        for pat in (md_pat, html_pat):
+            for m in pat.finditer(content):
+                ref = (m.group(1) or "").strip()
+                if not ref or ref in seen:
+                    continue
+                seen.add(ref)
+                found.append(ref)
+
+        if not found:
+            continue
+        if max_inline_images and len(found) > max_inline_images:
+            found = found[:max_inline_images]
+
+        replacements: dict[str, str] = {}
+
+        for ref in found:
+            ref_stripped = ref.strip()
+            if not ref_stripped:
+                continue
+
+            # Skip remote/already rewired refs.
+            ref_lower = ref_stripped.lower()
+            if ref_lower.startswith(("http://", "https://", "data:", "blob:")):
+                continue
+            if "/api/v1/documents/image-url/" in ref_lower or "/api/v1/documents/image/" in ref_lower:
+                continue
+
+            # Strip query/fragment and URL-decode (for files like "foo%20bar.png").
+            ref_path = ref_stripped.split("?", 1)[0].split("#", 1)[0].strip()
+            if not ref_path:
+                continue
+            try:
+                ref_path_decoded = unquote(ref_path)
+            except Exception:
+                ref_path_decoded = ref_path
+
+            candidate_rel = []
+            if ref_path_decoded.startswith("/") and not ref_path_decoded.startswith("/api/"):
+                candidate_rel.append(ref_path_decoded.lstrip("/"))
+            candidate_rel.append(ref_path_decoded)
+
+            resolved_path: Optional[Path] = None
+            for candidate in candidate_rel:
+                if not candidate:
+                    continue
+                try:
+                    path_obj = Path(candidate)
+                    if not path_obj.is_absolute():
+                        path_obj = (base_dir_resolved / path_obj).resolve(strict=False)
+                    else:
+                        path_obj = path_obj.resolve(strict=False)
+
+                    try:
+                        path_obj.relative_to(base_dir_resolved)
+                    except Exception:
+                        continue
+
+                    if path_obj.exists() and path_obj.is_file():
+                        resolved_path = path_obj
+                        break
+                except Exception:
+                    continue
+
+            if resolved_path is None:
+                continue
+
+            try:
+                if resolved_path.stat().st_size > max_image_bytes:
+                    continue
+            except Exception:
+                continue
+
+            ext = resolved_path.suffix.lower()
+            try:
+                raw_bytes = resolved_path.read_bytes()
+            except Exception:
+                continue
+            if not raw_bytes or len(raw_bytes) > max_image_bytes:
+                continue
+
+            out_ext = ext if ext in supported_exts else ".jpg"
+            image_bytes = raw_bytes
+
+            if out_ext == ".jpg" and ext not in supported_exts:
+                if not pillow_ok:
+                    continue
+                try:
+                    img = PILImage.open(BytesIO(raw_bytes))  # type: ignore[arg-type]
+                    try:
+                        if getattr(img, "mode", None) != "RGB":
+                            img = img.convert("RGB")
+                    except Exception:
+                        pass
+                    out = BytesIO()  # type: ignore[call-arg]
+                    img.save(out, format="JPEG", quality=85, optimize=True)
+                    image_bytes = out.getvalue()
+                except Exception as e:
+                    logger.warning("Failed converting preview local image to JPEG: %s", str(e)[:200])
+                    continue
+
+            digest = hashlib.sha256(image_bytes).hexdigest()
+            cached = digest_cache.get(digest)
+            if cached:
+                preview_id, cached_ext = cached
+                out_ext = cached_ext
+            else:
+                preview_id = uuid.uuid4().hex
+                out_path = images_dir / f"{preview_id}{out_ext}"
+                try:
+                    out_path.write_bytes(image_bytes)
+                except Exception as e:
+                    logger.warning("Failed to persist preview local image: %s", str(e)[:200])
+                    continue
+                digest_cache[digest] = (preview_id, out_ext)
+
+            url = f"/api/v1/documents/image/{preview_id}"
+            replacements[ref] = url
+
+        if not replacements:
+            continue
+
+        def _md_repl(m: re.Match) -> str:
+            raw = m.group(1) or ""
+            key = raw.strip()
+            new = replacements.get(key)
+            if not new:
+                return m.group(0)
+            return m.group(0).replace(raw, new, 1)
+
+        def _html_repl(m: re.Match) -> str:
+            raw = m.group(1) or ""
+            key = raw.strip()
+            new = replacements.get(key)
+            if not new:
+                return m.group(0)
+            return m.group(0).replace(raw, new, 1)
+
+        content = md_pat.sub(_md_repl, content)
+        content = html_pat.sub(_html_repl, content)
+        doc.page_content = content
+
+    return documents
+
+
 def _compute_pipeline_hash(doc_metadata: dict) -> str:
     """
     Generate a stable pipeline_hash based on processing-related doc_metadata fields.
@@ -1303,6 +1517,9 @@ async def preview_document(
         # DeepDoc/Docling may return extracted images as in-memory objects in metadata.
         # Persist them as preview-time files and convert to Markdown refs so the frontend can render.
         documents = _materialize_extracted_images_for_preview(documents, tenant_id=tenant_id)
+        # Parsers like MagicPDF may emit relative image refs (e.g. images/foo.png) that would
+        # otherwise be dead links once we cleanup artifacts. Materialize them into preview images.
+        documents = _materialize_local_images_for_preview(documents, tenant_id=tenant_id)
         for doc in documents:
             artifact_dir = (doc.metadata or {}).get("artifact_dir")
             if isinstance(artifact_dir, str) and artifact_dir.strip():

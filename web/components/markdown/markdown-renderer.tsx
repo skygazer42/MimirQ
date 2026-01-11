@@ -9,8 +9,9 @@ import rehypeSanitize, { defaultSchema } from 'rehype-sanitize'
 import type { Options as RehypeSanitizeOptions } from 'rehype-sanitize'
 
 import { cn } from '@/lib/utils'
-import { toAbsoluteBackendUrl } from '@/lib/env'
+import { API_BASE_URL, toAbsoluteBackendUrl } from '@/lib/env'
 import { extractMarkdownHeadings, flashElementId, scrollToElementId } from '@/lib/markdown'
+import { getAccessToken } from '@/lib/auth-storage'
 
 const FLASH_CLASS =
   'bg-indigo-50 dark:bg-indigo-900/20 ring-1 ring-indigo-200 dark:ring-indigo-700 rounded-md transition-colors'
@@ -43,6 +44,37 @@ const MARKDOWN_SANITIZE_SCHEMA: RehypeSanitizeOptions = {
     colgroup: [...((defaultSchema.attributes?.colgroup as string[] | undefined) || [])],
     col: [...((defaultSchema.attributes?.col as string[] | undefined) || []), 'span'],
   },
+}
+
+let BACKEND_ORIGIN = ''
+try {
+  BACKEND_ORIGIN = new URL(API_BASE_URL).origin
+} catch {
+  BACKEND_ORIGIN = ''
+}
+
+function maybeAttachImageAuthToken(url: string): string {
+  const token = getAccessToken()
+  if (!token) return url
+
+  let parsed: URL
+  try {
+    parsed = new URL(url, API_BASE_URL)
+  } catch {
+    return url
+  }
+
+  if (BACKEND_ORIGIN && parsed.origin !== BACKEND_ORIGIN) return url
+
+  const path = parsed.pathname || ''
+  const needsToken =
+    path.includes('/api/v1/documents/image/') || path.includes('/api/v1/documents/image-url/')
+  if (!needsToken) return url
+
+  if (!parsed.searchParams.has('token') && !parsed.searchParams.has('access_token')) {
+    parsed.searchParams.set('token', token)
+  }
+  return parsed.toString()
 }
 
 export function MarkdownRenderer({
@@ -177,14 +209,15 @@ export function MarkdownRenderer({
           img: ({ src, alt }) => {
             const raw = typeof src === 'string' ? src : ''
             const resolved = raw
-              ? raw.startsWith('http')
+              ? /^https?:\/\//i.test(raw) || /^data:/i.test(raw) || /^blob:/i.test(raw)
                 ? raw
                 : toAbsoluteBackendUrl(raw)
               : ''
             if (!resolved) return null
+            const finalSrc = maybeAttachImageAuthToken(resolved)
             return (
               <Image
-                src={resolved}
+                src={finalSrc}
                 alt={alt || 'image'}
                 width={1200}
                 height={800}
