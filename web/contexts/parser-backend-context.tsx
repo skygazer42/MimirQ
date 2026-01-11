@@ -35,7 +35,11 @@ export function ParserBackendProvider({ children }: { children: React.ReactNode 
   const applyParserBackend = (value: string) => {
     const raw = (value || '').toLowerCase().trim()
     const normalized = raw.replace(/_/g, '-')
-    const next = (normalized === 'magic-pdf' ? 'magicpdf' : normalized) || 'auto'
+    let next = normalized
+    if (next === 'magic-pdf') next = 'magicpdf'
+    if (next === 'etl-4llm') next = 'etl4llm'
+    if (next === 'bisheng-unstructured' || next === 'bishengunstructured' || next === 'bisheng') next = 'etl4llm'
+    next = next || 'auto'
     setParserBackendState(next)
     if (typeof window !== 'undefined') {
       window.localStorage.setItem(STORAGE_KEY, next)

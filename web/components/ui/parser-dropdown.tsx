@@ -120,7 +120,8 @@ export function ParserDropdown({ value, onChange, className }: ParserDropdownPro
               const Icon = ICON_MAP[option.icon]
               const color = COLOR_MAP[option.icon]
               const isSelected = option.value === value
-              const isDisabled = parserBackendAvailable(option.value) === false
+              const availability = parserBackendAvailable(option.value)
+              const isDisabled = option.value !== 'auto' && option.value !== 'basic' && availability !== true
 
               return (
                 <button
