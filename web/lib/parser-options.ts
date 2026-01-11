@@ -5,7 +5,7 @@ export interface ParserBackendOption {
   icon:
     | 'auto'
     | 'basic'
-    | 'bisheng'
+    | 'layout'
     | 'mineru'
     | 'deepdoc'
     | 'deepseekocr'
@@ -37,10 +37,10 @@ export const PARSER_BACKEND_OPTIONS: ParserBackendOption[] = [
     badge: '结构化',
   },
   {
-    value: 'bisheng_unstructured',
-    label: 'Bisheng 版面解析',
-    description: 'Bisheng-Unstructured · 版面/表格/图片感知（需自建 etl4llm 服务）',
-    icon: 'bisheng',
+    value: 'etl4llm',
+    label: 'ETL4LLM 版面解析',
+    description: 'etl4llm · 版面/表格/图片感知（需自建服务）',
+    icon: 'layout',
     badge: '版面',
   },
   {
@@ -83,9 +83,10 @@ function normalizeParserValue(value?: string) {
   const normalized = raw.replace(/_/g, '-')
   if (normalized === 'magic-pdf') return 'magicpdf'
   if (normalized === 'deepseek-ocr') return 'deepseek_ocr'
-  if (normalized === 'bisheng-unstructured') return 'bisheng_unstructured'
-  if (normalized === 'bishengunstructured') return 'bisheng_unstructured'
-  if (normalized === 'bisheng') return 'bisheng_unstructured'
+  if (normalized === 'etl-4llm') return 'etl4llm'
+  if (normalized === 'bisheng-unstructured') return 'etl4llm'
+  if (normalized === 'bishengunstructured') return 'etl4llm'
+  if (normalized === 'bisheng') return 'etl4llm'
   return normalized
 }
 

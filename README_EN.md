@@ -95,3 +95,11 @@ make up-web
 ## Docs
 
 See `docs/README.md` for docs and guides.
+
+## Acknowledgements
+
+This project is inspired by and references ideas from the following open source projects (no official affiliation):
+
+- [Dify](https://github.com/langgenius/dify)
+- [RAGFlow](https://github.com/infiniflow/ragflow)
+- [Bisheng](https://github.com/dataelement/bisheng)

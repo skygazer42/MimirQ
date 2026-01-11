@@ -21,9 +21,9 @@ def choose_pdf_backend(quality: Optional[Dict], requested: Optional[str]) -> str
     Rules:
     - requested is set and not "auto" -> honor requested (even if not configured; validation happens later).
     - score >= 0.8 and not scanned -> prefer Docling (structure) then MarkItDown/basic.
-    - scanned or score <= 0.5 -> prefer MinerU (if configured) / DeepSeek OCR / Bisheng-Unstructured / DeepDoc,
+    - scanned or score <= 0.5 -> prefer MinerU (if configured) / DeepSeek OCR / ETL4LLM / DeepDoc,
       fallback Docling/MagicPDF/MarkItDown/basic.
-    - mid range -> prefer Docling/DeepDoc/MinerU/Bisheng-Unstructured, fallback MagicPDF/MarkItDown/basic.
+    - mid range -> prefer Docling/DeepDoc/MinerU/ETL4LLM, fallback MagicPDF/MarkItDown/basic.
     """
     quality = quality or {}
     score = float(quality.get("score", 0.0) or 0.0)
@@ -39,8 +39,8 @@ def choose_pdf_backend(quality: Optional[Dict], requested: Optional[str]) -> str
     if requested_norm and requested_norm != "auto":
         return requested_norm
 
-    bisheng_ok = bool(getattr(settings, "BISHENG_UNSTRUCTURED_ENABLED", False)) and bool(
-        (getattr(settings, "BISHENG_UNSTRUCTURED_API_URL", "") or "").strip()
+    etl4llm_ok = bool(getattr(settings, "ETL4LLM_ENABLED", False)) and bool(
+        (getattr(settings, "ETL4LLM_API_URL", "") or "").strip()
     )
     deepseek_ocr_ok = bool(getattr(settings, "DEEPSEEK_OCR_ENABLED", False)) and bool(
         (getattr(settings, "SILICONFLOW_API_KEY", "") or "").strip()
@@ -49,8 +49,8 @@ def choose_pdf_backend(quality: Optional[Dict], requested: Optional[str]) -> str
     if score >= 0.8 and not is_scanned:
         if getattr(settings, "DOCLING_ENABLED", False):
             return "docling"
-        if bisheng_ok:
-            return "bisheng_unstructured"
+        if etl4llm_ok:
+            return "etl4llm"
         if settings.MARKITDOWN_ENABLED:
             return "markitdown"
         if settings.DEEPDOC_ENABLED:
@@ -62,8 +62,8 @@ def choose_pdf_backend(quality: Optional[Dict], requested: Optional[str]) -> str
             return "mineru"
         if deepseek_ocr_ok:
             return "deepseek_ocr"
-        if bisheng_ok:
-            return "bisheng_unstructured"
+        if etl4llm_ok:
+            return "etl4llm"
         if settings.DEEPDOC_ENABLED:
             return "deepdoc"
         if getattr(settings, "DOCLING_ENABLED", False):
@@ -76,8 +76,8 @@ def choose_pdf_backend(quality: Optional[Dict], requested: Optional[str]) -> str
 
     if getattr(settings, "DOCLING_ENABLED", False):
         return "docling"
-    if bisheng_ok:
-        return "bisheng_unstructured"
+    if etl4llm_ok:
+        return "etl4llm"
     if settings.DEEPDOC_ENABLED:
         return "deepdoc"
     if settings.MINERU_ENABLED and (settings.MINERU_API_TOKEN or settings.MINERU_LOCAL_SERVER_URL):

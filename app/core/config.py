@@ -159,19 +159,20 @@ class Settings(BaseSettings):
     # Page-level parallelism (1 = sequential). Higher values can reduce latency but may hit rate limits.
     DEEPSEEK_OCR_CONCURRENCY: int = 1
 
-    # Bisheng-Unstructured (layout/table/image parsing via etl4llm)
-    BISHENG_UNSTRUCTURED_ENABLED: bool = False
+    # ETL4LLM (layout/table/image parsing via etl4llm service)
+    # Backward-compatible env aliases (deprecated): BISHENG_UNSTRUCTURED_*
+    ETL4LLM_ENABLED: bool = Field(default=False, validation_alias=AliasChoices("ETL4LLM_ENABLED", "BISHENG_UNSTRUCTURED_ENABLED"))
     # Example: http://localhost:10001/v1/etl4llm/predict
-    BISHENG_UNSTRUCTURED_API_URL: str = ""
-    BISHENG_UNSTRUCTURED_TIMEOUT_SEC: int = 120
+    ETL4LLM_API_URL: str = Field(default="", validation_alias=AliasChoices("ETL4LLM_API_URL", "BISHENG_UNSTRUCTURED_API_URL"))
+    ETL4LLM_TIMEOUT_SEC: int = Field(default=120, validation_alias=AliasChoices("ETL4LLM_TIMEOUT_SEC", "BISHENG_UNSTRUCTURED_TIMEOUT_SEC"))
     # partition | text
-    BISHENG_UNSTRUCTURED_MODE: str = "partition"
-    BISHENG_UNSTRUCTURED_FORCE_OCR: bool = False
-    BISHENG_UNSTRUCTURED_ENABLE_FORMULA: bool = True
+    ETL4LLM_MODE: str = Field(default="partition", validation_alias=AliasChoices("ETL4LLM_MODE", "BISHENG_UNSTRUCTURED_MODE"))
+    ETL4LLM_FORCE_OCR: bool = Field(default=False, validation_alias=AliasChoices("ETL4LLM_FORCE_OCR", "BISHENG_UNSTRUCTURED_FORCE_OCR"))
+    ETL4LLM_ENABLE_FORMULA: bool = Field(default=True, validation_alias=AliasChoices("ETL4LLM_ENABLE_FORMULA", "BISHENG_UNSTRUCTURED_ENABLE_FORMULA"))
     # If partitions contain Image elements, crop them from PDF and emit `![](images/<id>.png)` refs.
-    BISHENG_UNSTRUCTURED_EXTRACT_IMAGES: bool = True
+    ETL4LLM_EXTRACT_IMAGES: bool = Field(default=True, validation_alias=AliasChoices("ETL4LLM_EXTRACT_IMAGES", "BISHENG_UNSTRUCTURED_EXTRACT_IMAGES"))
     # Best-effort: drop obvious header/footer partitions by type (if provided by the service).
-    BISHENG_UNSTRUCTURED_FILTER_PAGE_HEADER_FOOTER: bool = False
+    ETL4LLM_FILTER_PAGE_HEADER_FOOTER: bool = Field(default=False, validation_alias=AliasChoices("ETL4LLM_FILTER_PAGE_HEADER_FOOTER", "BISHENG_UNSTRUCTURED_FILTER_PAGE_HEADER_FOOTER"))
 
     # PDF quality OCR validation (used by parse-preview scoring)
     RAPIDOCR_ENABLED: bool = False

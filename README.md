@@ -647,7 +647,11 @@ MimirQ 基于以下优秀开源项目构建:
 - [Next.js](https://github.com/vercel/next.js) - React 全栈框架
 - [Shadcn/ui](https://ui.shadcn.com/) - 高质量 UI 组件
 
-特别感谢 [Dify](https://github.com/langgenius/dify) 提供的设计灵感。
+同时参考/借鉴了以下项目在 RAG 产品与数据处理方向的经验（本项目与其无官方关联）：
+
+- [Dify](https://github.com/langgenius/dify)
+- [RAGFlow](https://github.com/infiniflow/ragflow)
+- [Bisheng](https://github.com/dataelement/bisheng)
 
 ---
 

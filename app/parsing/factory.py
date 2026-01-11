@@ -19,7 +19,7 @@ logger = get_logger("parsing.factory")
 if TYPE_CHECKING:
     from app.parsing.parsers.deepdoc_parser import DeepDocParser
     from app.parsing.parsers.deepseek_ocr_parser import DeepSeekOCRParser
-    from app.parsing.parsers.bisheng_unstructured_parser import BishengUnstructuredParser
+    from app.parsing.parsers.etl4llm_parser import Etl4LlmParser
     from app.parsing.parsers.docling_parser import DoclingParser
     from app.parsing.parsers.magic_pdf_parser import MagicPDFParser
     from app.parsing.parsers.markitdown_parser import MarkItDownParser
@@ -36,7 +36,7 @@ class ParserFactory:
         "mineru",
         "deepdoc",
         "deepseek_ocr",
-        "bisheng_unstructured",
+        "etl4llm",
         "markitdown",
         "docling",
         "magicpdf",
@@ -48,7 +48,7 @@ class ParserFactory:
         self._mineru_parser: Optional[MinerUParser] = None
         self._deepdoc_parser: Optional[DeepDocParser] = None
         self._deepseek_ocr_parser: Optional[DeepSeekOCRParser] = None
-        self._bisheng_unstructured_parser: Optional[BishengUnstructuredParser] = None
+        self._etl4llm_parser: Optional[Etl4LlmParser] = None
         self._markitdown_parser: Optional[MarkItDownParser] = None
         self._docling_parser: Optional[DoclingParser] = None
         self._magicpdf_parser: Optional[MagicPDFParser] = None
@@ -60,10 +60,10 @@ class ParserFactory:
             logger.debug("[pdf] DeepDoc parser available (requires selection)")
         if bool(getattr(settings, "DEEPSEEK_OCR_ENABLED", False)) and bool(getattr(settings, "SILICONFLOW_API_KEY", "")):
             logger.debug("[pdf] DeepSeek OCR parser available (requires selection)")
-        if bool(getattr(settings, "BISHENG_UNSTRUCTURED_ENABLED", False)) and bool(
-            (getattr(settings, "BISHENG_UNSTRUCTURED_API_URL", "") or "").strip()
+        if bool(getattr(settings, "ETL4LLM_ENABLED", False)) and bool(
+            (getattr(settings, "ETL4LLM_API_URL", "") or "").strip()
         ):
-            logger.debug("[pdf] Bisheng-Unstructured parser available (requires selection)")
+            logger.debug("[pdf] ETL4LLM parser available (requires selection)")
         if settings.MARKITDOWN_ENABLED:
             logger.debug("[pdf] MarkItDown parser available (requires selection)")
         if getattr(settings, "DOCLING_ENABLED", False):
@@ -108,10 +108,10 @@ class ParserFactory:
         if normalized == "auto":
             if getattr(settings, "DOCLING_ENABLED", False):
                 return "docling"
-            if bool(getattr(settings, "BISHENG_UNSTRUCTURED_ENABLED", False)) and bool(
-                (getattr(settings, "BISHENG_UNSTRUCTURED_API_URL", "") or "").strip()
+            if bool(getattr(settings, "ETL4LLM_ENABLED", False)) and bool(
+                (getattr(settings, "ETL4LLM_API_URL", "") or "").strip()
             ):
-                return "bisheng_unstructured"
+                return "etl4llm"
             if settings.DEEPDOC_ENABLED:
                 return "deepdoc"
             if settings.MARKITDOWN_ENABLED:
@@ -147,15 +147,15 @@ class ParserFactory:
                 raise ValueError("DeepSeek OCR parser requires SILICONFLOW_API_KEY.")
             return "deepseek_ocr"
 
-        if normalized == "bisheng_unstructured":
-            if not bool(getattr(settings, "BISHENG_UNSTRUCTURED_ENABLED", False)):
+        if normalized == "etl4llm":
+            if not bool(getattr(settings, "ETL4LLM_ENABLED", False)):
                 raise ValueError(
-                    "Bisheng-Unstructured parser is not enabled. "
-                    "Please set BISHENG_UNSTRUCTURED_ENABLED=True and configure BISHENG_UNSTRUCTURED_API_URL."
+                    "ETL4LLM parser is not enabled. "
+                    "Please set ETL4LLM_ENABLED=True and configure ETL4LLM_API_URL."
                 )
-            if not bool((getattr(settings, "BISHENG_UNSTRUCTURED_API_URL", "") or "").strip()):
-                raise ValueError("Bisheng-Unstructured parser requires BISHENG_UNSTRUCTURED_API_URL.")
-            return "bisheng_unstructured"
+            if not bool((getattr(settings, "ETL4LLM_API_URL", "") or "").strip()):
+                raise ValueError("ETL4LLM parser requires ETL4LLM_API_URL.")
+            return "etl4llm"
 
         if normalized == "markitdown":
             return "markitdown"
@@ -205,7 +205,7 @@ class ParserFactory:
                 raise ValueError(f"Unsupported file type: {file_ext}")
 
             # Some parsers need dataset/document ids to produce stable artifacts.
-            if backend in {"mineru", "magicpdf", "deepseek_ocr", "bisheng_unstructured"}:
+            if backend in {"mineru", "magicpdf", "deepseek_ocr", "etl4llm"}:
                 documents = parser.parse(
                     file_path,
                     dataset_id=dataset_id,
@@ -254,8 +254,8 @@ class ParserFactory:
         backend = (requested_backend or "").strip().lower()
         file_ext = (file_ext or "").strip().lower()
 
-        # PDF advanced backends (may fail to import due to binary deps); fall back to basic PyMuPDF.
-        if file_ext == ".pdf" and backend in {"docling", "deepdoc", "mineru", "magicpdf", "deepseek_ocr"}:
+        # PDF advanced backends (may fail to import due to binary deps or external services); fall back to basic PyMuPDF.
+        if file_ext == ".pdf" and backend in {"docling", "deepdoc", "mineru", "magicpdf", "deepseek_ocr", "etl4llm"}:
             logger.warning(
                 "[parse] PDF backend '%s' failed for %s: %s; falling back to 'basic'",
                 backend,
@@ -347,13 +347,13 @@ class ParserFactory:
                 self._deepseek_ocr_parser = DeepSeekOCRParser()
             return self._deepseek_ocr_parser
 
-        if backend == "bisheng_unstructured":
-            if self._bisheng_unstructured_parser is None:
-                from app.parsing.parsers.bisheng_unstructured_parser import BishengUnstructuredParser
+        if backend == "etl4llm":
+            if self._etl4llm_parser is None:
+                from app.parsing.parsers.etl4llm_parser import Etl4LlmParser
 
-                logger.info("[pdf] Initializing Bisheng-Unstructured parser (etl4llm)")
-                self._bisheng_unstructured_parser = BishengUnstructuredParser()
-            return self._bisheng_unstructured_parser
+                logger.info("[pdf] Initializing ETL4LLM parser (layout-aware)")
+                self._etl4llm_parser = Etl4LlmParser()
+            return self._etl4llm_parser
 
         if backend == "markitdown":
             if self._markitdown_parser is None:
