@@ -368,7 +368,7 @@ class Settings(BaseSettings):
     DOCLING_ENABLED: bool = False
     DOCLING_OCR_ENABLED: bool = True
     DOCLING_TABLE_MODE: str = "markdown"  # markdown | html | plain
-    DOCLING_EXTRACT_IMAGES: bool = False
+    DOCLING_EXTRACT_IMAGES: bool = True
     # Knowledge Graph (KG) feature flags.
     # Canonical env names: KG_ENABLED / KG_CHAT_ENABLED
     KG_ENABLED: bool = False
