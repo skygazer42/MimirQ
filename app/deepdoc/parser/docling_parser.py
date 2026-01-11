@@ -73,10 +73,56 @@ class DoclingParser(RAGFlowPdfParser):
             self.page_images = [p.to_image(resolution=72 * zoomin, antialias=True).original for p in pages]
         except Exception as e:
             self.page_images = []
-            self.logger.exception(e)
+            self.logger.warning("[Docling] pdfplumber render failed; falling back to PyMuPDF: %s", str(e)[:200])
         finally:
             if pdf is not None:
                 pdf.close()
+
+        # Fallback: `pdfplumber.Page.to_image()` may require external render backends (e.g. Poppler),
+        # which is often missing in Windows/self-hosted environments. Use PyMuPDF to render page
+        # images so figure/table cropping can still work.
+        if self.page_images:
+            return
+
+        try:
+            import fitz  # PyMuPDF
+        except Exception:
+            return
+
+        doc = None
+        try:
+            if isinstance(fnm, (str, PathLike)):
+                doc = fitz.open(str(fnm))
+            else:
+                data = fnm
+                if isinstance(data, BytesIO):
+                    data = data.getvalue()
+                doc = fitz.open(stream=data, filetype="pdf")
+
+            total = int(doc.page_count or 0)
+            start = max(0, int(page_from or 0))
+            end = min(total, int(page_to or total))
+            mat = fitz.Matrix(float(zoomin or 1), float(zoomin or 1))
+
+            rendered: list[Image.Image] = []
+            for page_index in range(start, end):
+                try:
+                    page = doc.load_page(page_index)
+                    pix = page.get_pixmap(matrix=mat, alpha=False)
+                    rendered.append(Image.frombytes("RGB", (pix.width, pix.height), pix.samples))
+                except Exception:
+                    continue
+
+            self.page_images = rendered
+        except Exception as e:
+            self.page_images = []
+            self.logger.warning("[Docling] PyMuPDF render failed: %s", str(e)[:200])
+        finally:
+            if doc is not None:
+                try:
+                    doc.close()
+                except Exception:
+                    pass
 
     def _make_line_tag(self,bbox: _BBox) -> str:
         if bbox is None:
