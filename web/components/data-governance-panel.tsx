@@ -57,6 +57,7 @@ import { useParserBackendPreference } from '@/contexts/parser-backend-context'
 import { MarkdownRenderer } from '@/components/markdown/markdown-renderer'
 import { MarkdownToc } from '@/components/markdown/markdown-toc'
 import { DocumentFolderTree } from '@/components/document-library/folder-tree'
+import { extractMarkdownHeadings } from '@/lib/markdown'
 import { extractZipFiles, isZipFile } from '@/lib/zip'
 
 // 工作流步骤
@@ -379,6 +380,11 @@ export function DataGovernancePanel() {
     if (!governanceState) return ''
     return viewMode === 'original' ? governanceState.originalContent : governanceState.cleanedContent
   }, [governanceState, viewMode])
+
+  const tocEnabled = useMemo(
+    () => extractMarkdownHeadings(displayContent || '', { maxDepth: 4 }).length > 0,
+    [displayContent]
+  )
 
   // 文件选择
   const handleSelectFile = useCallback((fileId: string) => {
@@ -1087,11 +1093,13 @@ export function DataGovernancePanel() {
                               <div className="min-w-0 flex-1 overflow-x-auto prose prose-slate max-w-none prose-headings:text-gray-900 prose-p:text-gray-700 prose-a:text-sky-700 prose-code:text-pink-600 prose-code:bg-pink-50 prose-code:px-1 prose-code:py-0.5 prose-code:rounded prose-pre:bg-gray-900 prose-table:border-collapse prose-th:bg-gray-100 prose-th:border prose-th:border-gray-300 prose-th:p-2 prose-td:border prose-td:border-gray-300 prose-td:p-2">
                                 <MarkdownRenderer markdown={displayContent || ''} autoScrollToHash />
                               </div>
-                              <aside className="hidden xl:block w-72 shrink-0">
-                                <div className="sticky top-6 max-h-[calc(100vh-220px)] overflow-y-auto rounded-2xl border border-slate-100 bg-slate-50/50 p-5">
-                                  <MarkdownToc markdown={displayContent || ''} />
-                                </div>
-                              </aside>
+                              {tocEnabled && (
+                                <aside className="hidden xl:block w-72 shrink-0">
+                                  <div className="sticky top-6 max-h-[calc(100vh-220px)] overflow-y-auto rounded-2xl border border-slate-100 bg-slate-50/50 p-5">
+                                    <MarkdownToc markdown={displayContent || ''} />
+                                  </div>
+                                </aside>
+                              )}
                             </div>
                           ) : (
                             <pre className={cn(

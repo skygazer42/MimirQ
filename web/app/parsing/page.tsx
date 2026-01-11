@@ -37,6 +37,7 @@ import { FileQueueItem, FileQueueItemData, FileStatus } from '@/components/ui/fi
 import { ParserDropdown } from '@/components/ui/parser-dropdown'
 import { MarkdownRenderer } from '@/components/markdown/markdown-renderer'
 import { MarkdownToc } from '@/components/markdown/markdown-toc'
+import { extractMarkdownHeadings } from '@/lib/markdown'
 import { DocumentFolderTree } from '@/components/document-library/folder-tree'
 import { extractZipFiles, isZipFile } from '@/lib/zip'
 import { toast } from 'sonner'
@@ -96,6 +97,11 @@ export default function ParsingPage() {
 
   // 获取当前选中的文件
   const activeFile = files.find((f) => f.id === activeFileId) || null
+
+  const tocEnabled = useMemo(
+    () => extractMarkdownHeadings(activeFile?.markdownContent || '', { maxDepth: 4 }).length > 0,
+    [activeFile?.markdownContent]
+  )
 
   const folderPathById = useMemo(() => {
     const byId = new Map(folders.map((f) => [f.id, f]))
@@ -906,11 +912,13 @@ export default function ParsingPage() {
                           <div className="min-w-0 flex-1 prose prose-slate max-w-none prose-headings:text-gray-900 prose-p:text-gray-700 prose-a:text-indigo-600 prose-code:text-pink-600 prose-code:bg-pink-50 prose-code:px-1 prose-code:py-0.5 prose-code:rounded prose-pre:bg-gray-900 prose-table:border-collapse prose-th:bg-gray-100 prose-th:border prose-th:border-gray-300 prose-th:p-2 prose-td:border prose-td:border-gray-300 prose-td:p-2">
                             <MarkdownRenderer markdown={activeFile.markdownContent} autoScrollToHash />
                           </div>
-                          <aside className="hidden xl:block w-64 shrink-0">
-                            <div className="sticky top-6 max-h-[calc(100vh-220px)] overflow-y-auto rounded-xl border border-slate-200 bg-white/70 p-3">
-                              <MarkdownToc markdown={activeFile.markdownContent} />
-                            </div>
-                          </aside>
+                          {tocEnabled && (
+                            <aside className="hidden xl:block w-64 shrink-0">
+                              <div className="sticky top-6 max-h-[calc(100vh-220px)] overflow-y-auto rounded-xl border border-slate-200 bg-white/70 p-3">
+                                <MarkdownToc markdown={activeFile.markdownContent} />
+                              </div>
+                            </aside>
+                          )}
                         </div>
                       ) : (
                         // 源码模式
