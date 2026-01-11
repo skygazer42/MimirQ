@@ -174,8 +174,8 @@ class ParserFactory:
             else:
                 raise ValueError(f"Unsupported file type: {file_ext}")
 
-            # Some parsers (e.g., MinerU local ZIP mode) need dataset/document ids.
-            if backend in {"mineru", "magicpdf"}:
+            # Some parsers need dataset/document ids to produce stable artifacts.
+            if backend in {"mineru", "magicpdf", "deepseek_ocr"}:
                 documents = parser.parse(
                     file_path,
                     dataset_id=dataset_id,
