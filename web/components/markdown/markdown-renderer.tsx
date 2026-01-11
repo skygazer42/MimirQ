@@ -4,6 +4,9 @@ import { useEffect, useMemo, useRef } from 'react'
 import Image from 'next/image'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
+import rehypeRaw from 'rehype-raw'
+import rehypeSanitize, { defaultSchema } from 'rehype-sanitize'
+import type { Options as RehypeSanitizeOptions } from 'rehype-sanitize'
 
 import { cn } from '@/lib/utils'
 import { toAbsoluteBackendUrl } from '@/lib/env'
@@ -11,6 +14,36 @@ import { extractMarkdownHeadings, flashElementId, scrollToElementId } from '@/li
 
 const FLASH_CLASS =
   'bg-indigo-50 dark:bg-indigo-900/20 ring-1 ring-indigo-200 dark:ring-indigo-700 rounded-md transition-colors'
+
+const MARKDOWN_SANITIZE_SCHEMA: RehypeSanitizeOptions = {
+  ...defaultSchema,
+  tagNames: [
+    ...(defaultSchema.tagNames || []),
+    'table',
+    'thead',
+    'tbody',
+    'tfoot',
+    'tr',
+    'th',
+    'td',
+    'caption',
+    'colgroup',
+    'col',
+  ],
+  attributes: {
+    ...defaultSchema.attributes,
+    table: [...((defaultSchema.attributes?.table as string[] | undefined) || [])],
+    thead: [...((defaultSchema.attributes?.thead as string[] | undefined) || [])],
+    tbody: [...((defaultSchema.attributes?.tbody as string[] | undefined) || [])],
+    tfoot: [...((defaultSchema.attributes?.tfoot as string[] | undefined) || [])],
+    tr: [...((defaultSchema.attributes?.tr as string[] | undefined) || [])],
+    th: [...((defaultSchema.attributes?.th as string[] | undefined) || []), 'colspan', 'rowspan'],
+    td: [...((defaultSchema.attributes?.td as string[] | undefined) || []), 'colspan', 'rowspan'],
+    caption: [...((defaultSchema.attributes?.caption as string[] | undefined) || [])],
+    colgroup: [...((defaultSchema.attributes?.colgroup as string[] | undefined) || [])],
+    col: [...((defaultSchema.attributes?.col as string[] | undefined) || []), 'span'],
+  },
+}
 
 export function MarkdownRenderer({
   markdown,
@@ -98,6 +131,7 @@ export function MarkdownRenderer({
     <div className={className}>
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
+        rehypePlugins={[rehypeRaw, [rehypeSanitize, MARKDOWN_SANITIZE_SCHEMA]]}
         components={{
           h1: headingComponent(1),
           h2: headingComponent(2),
