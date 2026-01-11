@@ -10,7 +10,7 @@ import { ModelConfigDialog } from '@/components/model-config-dialog'
 import { MODEL_PROVIDERS } from '@/types/models'
 import type { ModelProvider, ProviderConfig, ProviderCategory } from '@/types/models'
 import {
-  Settings2, Database, Sliders, Lightbulb, Server, Cpu, Layers,
+  Settings2, Database, Sliders, Lightbulb, Server, Cpu, Layers, LayoutGrid,
   ToggleLeft, ToggleRight, Save, RefreshCw, CheckCircle2, XCircle,
   Zap, FileSearch, Sparkles, Network, CloudCog, AlertCircle, Eye, EyeOff, ScanLine, FileCode, Wand2,
 } from 'lucide-react'
@@ -23,6 +23,7 @@ import {
   type SystemStatus,
   type BackendMeta,
   type FeatureFlags,
+  type Etl4LlmConfig,
   type MagicPDFConfig,
   type ObservabilityConfig,
   type SafetyConfig,
@@ -35,6 +36,7 @@ import { ChunkStrategyDropdown } from '@/components/ui/chunk-strategy-dropdown'
 import { PipelineOptionsPanel } from '@/components/pipeline-options-panel'
 import { useParserBackendPreference } from '@/contexts/parser-backend-context'
 import { useChunkStrategyPreference } from '@/contexts/chunk-strategy-context'
+import { usePipelineCapabilities } from '@/contexts/pipeline-capabilities-context'
 
 const CATEGORY_INFO: Record<ProviderCategory, { title: string; description: string; icon: any }> = {
   model: {
@@ -79,6 +81,14 @@ const FEATURE_FLAGS_CONFIG = [
     icon: FileSearch,
     color: 'cyan',
     dependencies: [],
+  },
+  {
+    key: 'etl4llm_enabled' as keyof FeatureFlags,
+    name: 'ETL4LLM 版面解析',
+    description: '启用 ETL4LLM 版面/表格/图片解析（需自建服务，自动选择时生效）',
+    icon: LayoutGrid,
+    color: 'green',
+    dependencies: ['ETL4LLM API URL'],
   },
   {
     key: 'markitdown_enabled' as keyof FeatureFlags,
@@ -142,12 +152,23 @@ const DEFAULT_MAGICPDF: MagicPDFConfig = {
   keep_artifacts: false,
 }
 
+const DEFAULT_ETL4LLM: Etl4LlmConfig = {
+  api_url: '',
+  timeout_sec: 120,
+  mode: 'partition',
+  force_ocr: false,
+  enable_formula: true,
+  extract_images: true,
+  filter_page_header_footer: false,
+}
+
 export default function SettingsPage() {
   const [providers, setProviders] = useState<ModelProvider[]>(MODEL_PROVIDERS)
   const [selectedProvider, setSelectedProvider] = useState<ModelProvider | null>(null)
   const [dialogOpen, setDialogOpen] = useState(false)
   const { parserBackend, setParserBackend } = useParserBackendPreference()
   const { chunkStrategy, setChunkStrategy } = useChunkStrategyPreference()
+  const { refresh: refreshCapabilities } = usePipelineCapabilities()
 
   // 系统配置状态
   const [settings, setSettings] = useState<SystemSettings | null>(null)
@@ -195,6 +216,7 @@ export default function SettingsPage() {
       const result = await settingsApi.update(editedSettings)
       setSaveMessage({ type: 'success', text: result.message })
       await loadSettings()
+      refreshCapabilities().catch(() => null)
     } catch (error: any) {
       const data = error?.response?.data
       const requestId = error?.response?.headers?.['x-request-id'] || data?.request_id
@@ -243,6 +265,12 @@ export default function SettingsPage() {
     const current = (editedSettings.magicpdf || settings?.magicpdf || DEFAULT_MAGICPDF) as MagicPDFConfig
     const next = { ...current, ...patch }
     setEditedSettings((prev) => ({ ...prev, magicpdf: next }))
+  }
+
+  const updateEtl4Llm = (patch: Partial<Etl4LlmConfig>) => {
+    const current = (editedSettings.etl4llm || settings?.etl4llm || DEFAULT_ETL4LLM) as Etl4LlmConfig
+    const next = { ...current, ...patch }
+    setEditedSettings((prev) => ({ ...prev, etl4llm: next }))
   }
 
   // 检查是否有未保存的更改
@@ -476,6 +504,128 @@ export default function SettingsPage() {
                       </div>
                     )
                   })}
+                </div>
+              </section>
+
+              {/* ETL4LLM 配置 */}
+              <section>
+                <h2 className="text-lg font-semibold text-gray-900 mb-6 flex items-center gap-2">
+                  <LayoutGrid className="h-5 w-5 text-emerald-700" />
+                  ETL4LLM 配置
+                </h2>
+
+                <div className="bg-white border border-gray-100 rounded-2xl p-6 shadow-sm space-y-4">
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    <div className="space-y-2 lg:col-span-2">
+                      <label className="text-sm font-medium text-gray-700">API URL</label>
+                      <Input
+                        value={editedSettings.etl4llm?.api_url ?? settings?.etl4llm?.api_url ?? DEFAULT_ETL4LLM.api_url}
+                        onChange={(e) => updateEtl4Llm({ api_url: e.target.value })}
+                        placeholder="http://localhost:10001/v1/etl4llm/predict"
+                      />
+                      <div className="text-xs text-gray-500">
+                        启用后会写入 `ETL4LLM_API_URL`，并用于解析器 `etl4llm`。
+                      </div>
+                    </div>
+
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium text-gray-700">模式</label>
+                      <select
+                        value={editedSettings.etl4llm?.mode ?? settings?.etl4llm?.mode ?? DEFAULT_ETL4LLM.mode}
+                        onChange={(e) => updateEtl4Llm({ mode: e.target.value })}
+                        className="w-full px-3 py-2 rounded-lg border border-gray-200 bg-white text-sm"
+                      >
+                        <option value="partition">partition（版面/结构）</option>
+                        <option value="text">text（纯文本）</option>
+                      </select>
+                    </div>
+
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium text-gray-700">超时（秒）</label>
+                      <Input
+                        type="number"
+                        min={10}
+                        value={editedSettings.etl4llm?.timeout_sec ?? settings?.etl4llm?.timeout_sec ?? DEFAULT_ETL4LLM.timeout_sec}
+                        onChange={(e) => updateEtl4Llm({ timeout_sec: parseInt(e.target.value || '0', 10) || DEFAULT_ETL4LLM.timeout_sec })}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-between border-t border-gray-100 pt-4">
+                    <div>
+                      <div className="text-sm font-medium text-gray-700">强制 OCR</div>
+                      <div className="text-xs text-gray-500 mt-0.5">扫描件/图片型 PDF 建议开启</div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => updateEtl4Llm({ force_ocr: !(editedSettings.etl4llm?.force_ocr ?? settings?.etl4llm?.force_ocr ?? DEFAULT_ETL4LLM.force_ocr) })}
+                      className={cn(
+                        'px-3 py-1.5 rounded-full text-xs font-medium border',
+                        (editedSettings.etl4llm?.force_ocr ?? settings?.etl4llm?.force_ocr ?? DEFAULT_ETL4LLM.force_ocr)
+                          ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                          : 'bg-gray-50 text-gray-600 border-gray-200'
+                      )}
+                    >
+                      {(editedSettings.etl4llm?.force_ocr ?? settings?.etl4llm?.force_ocr ?? DEFAULT_ETL4LLM.force_ocr) ? '已开启' : '已关闭'}
+                    </button>
+                  </div>
+
+                  <div className="flex items-center justify-between border-t border-gray-100 pt-4">
+                    <div>
+                      <div className="text-sm font-medium text-gray-700">提取图片</div>
+                      <div className="text-xs text-gray-500 mt-0.5">输出图片引用用于预览/入库</div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => updateEtl4Llm({ extract_images: !(editedSettings.etl4llm?.extract_images ?? settings?.etl4llm?.extract_images ?? DEFAULT_ETL4LLM.extract_images) })}
+                      className={cn(
+                        'px-3 py-1.5 rounded-full text-xs font-medium border',
+                        (editedSettings.etl4llm?.extract_images ?? settings?.etl4llm?.extract_images ?? DEFAULT_ETL4LLM.extract_images)
+                          ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                          : 'bg-gray-50 text-gray-600 border-gray-200'
+                      )}
+                    >
+                      {(editedSettings.etl4llm?.extract_images ?? settings?.etl4llm?.extract_images ?? DEFAULT_ETL4LLM.extract_images) ? '已开启' : '已关闭'}
+                    </button>
+                  </div>
+
+                  <div className="flex items-center justify-between border-t border-gray-100 pt-4">
+                    <div>
+                      <div className="text-sm font-medium text-gray-700">公式识别</div>
+                      <div className="text-xs text-gray-500 mt-0.5">尽量保留公式/LaTeX 输出</div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => updateEtl4Llm({ enable_formula: !(editedSettings.etl4llm?.enable_formula ?? settings?.etl4llm?.enable_formula ?? DEFAULT_ETL4LLM.enable_formula) })}
+                      className={cn(
+                        'px-3 py-1.5 rounded-full text-xs font-medium border',
+                        (editedSettings.etl4llm?.enable_formula ?? settings?.etl4llm?.enable_formula ?? DEFAULT_ETL4LLM.enable_formula)
+                          ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                          : 'bg-gray-50 text-gray-600 border-gray-200'
+                      )}
+                    >
+                      {(editedSettings.etl4llm?.enable_formula ?? settings?.etl4llm?.enable_formula ?? DEFAULT_ETL4LLM.enable_formula) ? '已开启' : '已关闭'}
+                    </button>
+                  </div>
+
+                  <div className="flex items-center justify-between border-t border-gray-100 pt-4">
+                    <div>
+                      <div className="text-sm font-medium text-gray-700">过滤页眉页脚</div>
+                      <div className="text-xs text-gray-500 mt-0.5">减少检索噪音（若服务支持）</div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => updateEtl4Llm({ filter_page_header_footer: !(editedSettings.etl4llm?.filter_page_header_footer ?? settings?.etl4llm?.filter_page_header_footer ?? DEFAULT_ETL4LLM.filter_page_header_footer) })}
+                      className={cn(
+                        'px-3 py-1.5 rounded-full text-xs font-medium border',
+                        (editedSettings.etl4llm?.filter_page_header_footer ?? settings?.etl4llm?.filter_page_header_footer ?? DEFAULT_ETL4LLM.filter_page_header_footer)
+                          ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                          : 'bg-gray-50 text-gray-600 border-gray-200'
+                      )}
+                    >
+                      {(editedSettings.etl4llm?.filter_page_header_footer ?? settings?.etl4llm?.filter_page_header_footer ?? DEFAULT_ETL4LLM.filter_page_header_footer) ? '已开启' : '已关闭'}
+                    </button>
+                  </div>
                 </div>
               </section>
 

@@ -692,6 +692,7 @@ export interface FeatureFlags {
   kg_enabled: boolean
   deepdoc_enabled: boolean
   docling_enabled: boolean
+  etl4llm_enabled: boolean
   markitdown_enabled: boolean
   llama_index_enabled: boolean
   mineru_enabled: boolean
@@ -744,6 +745,16 @@ export interface MinerUConfig {
   model_version: string
 }
 
+export interface Etl4LlmConfig {
+  api_url: string
+  timeout_sec: number
+  mode: string
+  force_ocr: boolean
+  enable_formula: boolean
+  extract_images: boolean
+  filter_page_header_footer: boolean
+}
+
 export interface MagicPDFConfig {
   cli: string
   method: string
@@ -780,6 +791,7 @@ export interface SystemSettings {
   milvus: MilvusConfig
   rag: RAGConfig
   mineru: MinerUConfig
+  etl4llm: Etl4LlmConfig
   magicpdf: MagicPDFConfig
   observability: ObservabilityConfig
   safety: SafetyConfig
