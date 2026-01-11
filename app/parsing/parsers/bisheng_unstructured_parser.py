@@ -200,9 +200,11 @@ class BishengUnstructuredParser:
         """
         Merge partitions into a single markdown-ish string, preserving extra_data indices.
         """
+        text_elem_sep = "\n"
         parts: list[str] = []
-        last_type = ""
-        offset = 0
+        is_first = True
+        last_label = ""
+        prev_length = 0
         meta: dict[str, Any] = {"bboxes": [], "pages": [], "indexes": [], "types": []}
 
         for part in partitions:
@@ -211,35 +213,29 @@ class BishengUnstructuredParser:
             if self._filter_header_footer and label_l in _HEADER_FOOTER_TYPES:
                 continue
 
-            text = str(part.get("text") or "").strip()
+            text = str(part.get("text") or "")
             if label_l == "image":
                 element_id = str(part.get("element_id") or "").strip()
                 ref = image_map.get(element_id)
                 if ref:
                     text = f"![]({ref})"
-                elif text:
-                    # Keep whatever the service returned if we cannot materialize the crop.
-                    text = text
+                # If we can't materialize the crop, keep whatever the service returned.
+
+            if is_first:
+                parts.append(text + "\n" if label_l == "title" else text)
+                is_first = False
+            else:
+                if last_label.lower() == "title" and label_l == "title":
+                    parts.append("\n" + text)
+                elif label_l == "title":
+                    parts.append("\n\n" + text)
+                elif label_l == "table":
+                    parts.append("\n\n" + text)
                 else:
-                    continue
-            if not text:
-                continue
-
-            # Minimal spacing rules inspired by Bisheng:
-            # - Title/Table get extra blank line separation.
-            # - After a Table, separate with a blank line.
-            prefix = "\n"
-            if not parts:
-                prefix = ""
-            elif label_l == "title":
-                prefix = "\n\n"
-            elif label_l == "table":
-                prefix = "\n\n"
-            elif last_type.lower() == "table":
-                prefix = "\n\n"
-
-            chunk = f"{prefix}{text}"
-            parts.append(chunk)
+                    if last_label.lower() == "table":
+                        parts.append(text_elem_sep * 2 + text)
+                    else:
+                        parts.append(text_elem_sep + text)
 
             extra = ((part.get("metadata") or {}).get("extra_data") or {}) if isinstance(part.get("metadata"), dict) else {}
             bboxes = extra.get("bboxes") or []
@@ -263,16 +259,15 @@ class BishengUnstructuredParser:
                     if not (isinstance(item, (list, tuple)) and len(item) == 2):
                         continue
                     s, e = int(item[0]), int(item[1])
-                    shifted.append([s + offset + len(prefix), e + offset + len(prefix)])
+                    shifted.append([s + prev_length, e + prev_length])
                 meta["indexes"].extend(shifted)
             except Exception:
                 pass
 
-            offset += len(chunk)
-            last_type = label
+            prev_length += len(parts[-1])
+            last_label = label
 
-        merged = "".join(parts).strip()
-        return merged, meta
+        return "".join(parts), meta
 
     def parse(
         self,
@@ -336,4 +331,3 @@ class BishengUnstructuredParser:
 
         logger.info("[bisheng_unstructured] done %s in %.2fs", file_path.name, time.time() - start)
         return [Document(page_content=merged_text, metadata=metadata)]
-
