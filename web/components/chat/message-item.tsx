@@ -13,7 +13,7 @@ import remarkGfm from 'remark-gfm'
 import type { Citation, Message } from '@/types'
 import { cn } from '@/lib/utils'
 import { API_BASE_URL, toAbsoluteBackendUrl } from '@/lib/env'
-import { getAccessToken } from '@/lib/auth-storage'
+import { getAccessToken, getTenantId } from '@/lib/auth-storage'
 
 let BACKEND_ORIGIN = ''
 try {
@@ -24,7 +24,8 @@ try {
 
 function maybeAttachImageAuthToken(url: string): string {
   const token = getAccessToken()
-  if (!token) return url
+  const tenantId = getTenantId()
+  if (!token && !tenantId) return url
 
   let parsed: URL
   try {
@@ -40,8 +41,17 @@ function maybeAttachImageAuthToken(url: string): string {
     path.includes('/api/v1/documents/image/') || path.includes('/api/v1/documents/image-url/')
   if (!needsToken) return url
 
+  if (
+    tenantId &&
+    !parsed.searchParams.has('tenant_id') &&
+    !parsed.searchParams.has('x_tenant_id') &&
+    !parsed.searchParams.has('tenant')
+  ) {
+    parsed.searchParams.set('tenant_id', tenantId)
+  }
+
   if (!parsed.searchParams.has('token') && !parsed.searchParams.has('access_token')) {
-    parsed.searchParams.set('token', token)
+    if (token) parsed.searchParams.set('token', token)
   }
   return parsed.toString()
 }

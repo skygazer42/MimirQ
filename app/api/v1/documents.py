@@ -70,6 +70,49 @@ UUID_PATTERN = r"(?:[0-9a-fA-F]{32}|[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}
 PREVIEW_IMAGE_REF_RE = re.compile(rf"(?:https?://[^\s)\"']+)?/api/v1/documents/image/({UUID_PATTERN})")
 MINIO_IMAGE_REF_RE = re.compile(r"(?:https?://[^\s)\"']+)?/api/v1/documents/image-url/([^\s)\"']+)")
 
+def _parse_uuid(value: str) -> UUID:
+    try:
+        return UUID(str(value))
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid tenant id")
+
+
+def _get_tenant_id_from_request_if_provided(request: Request) -> Optional[UUID]:
+    """
+    Return tenant id from header/query if explicitly provided; otherwise None.
+
+    This is used for endpoints like `<img src>` where custom headers are not sent.
+    """
+    raw = (request.headers.get("x-tenant-id") or "").strip()
+    if raw:
+        return _parse_uuid(raw)
+
+    for key in ("tenant_id", "x_tenant_id", "tenant"):
+        raw = (request.query_params.get(key) or "").strip()
+        if raw:
+            return _parse_uuid(raw)
+
+    return None
+
+
+def _resolve_tenant_id_for_asset_request(request: Request) -> UUID:
+    """
+    Resolve tenant id for asset endpoints.
+
+    Priority:
+    1) X-Tenant-ID header
+    2) ?tenant_id=... query param (or aliases)
+    3) settings.DEFAULT_TENANT_ID in non-production
+    """
+    provided = _get_tenant_id_from_request_if_provided(request)
+    if provided is not None:
+        return provided
+
+    is_production = os.getenv("ENV", "").lower() in ("prod", "production")
+    if is_production:
+        raise HTTPException(status_code=400, detail="X-Tenant-ID header or tenant_id query param required")
+    return _parse_uuid(str(settings.DEFAULT_TENANT_ID))
+
 def _materialize_extracted_images_for_preview(documents: list, *, tenant_id: UUID) -> list:
     """
     Convert in-memory image objects (e.g., DeepDoc PIL.Image in metadata["image"])
@@ -1290,13 +1333,13 @@ async def delete_document(
 async def get_image(
     image_id: str,
     request: Request,
-    tenant_id: UUID = Depends(get_tenant_id),
     db: Session = Depends(get_db),
 ):
     """
     Return stored image by image_id.
     Standard path: {UPLOAD_DIR}/{tenant_id}/images/{image_id}(.png|.jpg|.jpeg|.webp|.gif|.bmp)
     """
+    tenant_id = _resolve_tenant_id_for_asset_request(request)
     is_production = os.getenv("ENV", "").lower() in ("prod", "production")
     auth_mode = (getattr(settings, "AUTH_MODE", "jwt") or "jwt").lower()
     account_id: Optional[str] = None
@@ -1359,7 +1402,6 @@ async def get_image(
 async def get_image_url(
     img_id: str,
     request: Request,
-    tenant_id: UUID = Depends(get_tenant_id),
     db: Session = Depends(get_db),
 ):
     """
@@ -1392,21 +1434,30 @@ async def get_image_url(
         if not account_id:
             raise HTTPException(status_code=401, detail="Authentication required")
 
+    # Resolve tenant_id even when the request is coming from <img src> (no custom headers).
+    requested_tenant = _get_tenant_id_from_request_if_provided(request)
+
+    def _tenant_from_img_id(val: str) -> Optional[UUID]:
+        if ":" not in val:
+            return None
+        raw_tenant = (val.split(":", 1)[0] or "").strip()
+        if not raw_tenant:
+            return None
+        try:
+            return UUID(raw_tenant)
+        except Exception:
+            return None
+
+    tenant_in_img = _tenant_from_img_id(img_id)
+    if tenant_in_img and requested_tenant and tenant_in_img != requested_tenant:
+        raise HTTPException(status_code=403, detail="Image access denied for this tenant")
+
+    tenant_id = tenant_in_img or requested_tenant or _resolve_tenant_id_for_asset_request(request)
+
     # Best-effort permission check: in local/dev header mode, image URLs are loaded
     # by the browser without custom headers; allow anonymous image access there.
     if account_id:
         DatasetService.ensure_member(db, tenant_id, account_id)
-
-    # Basic access control: ensure img_id tenant prefix matches request tenant (legacy dataset-chunk exempt).
-    def _tenant_from_img_id(val: str) -> Optional[str]:
-        if ":" in val:
-            parts = val.split(":", 1)
-            return parts[0]
-        return None
-
-    tenant_in_img = _tenant_from_img_id(img_id)
-    if tenant_in_img and tenant_in_img != str(tenant_id):
-        raise HTTPException(status_code=403, detail="Image access denied for this tenant")
 
     # Permission check: parse dataset/document from img_id when possible for dataset-level control.
     if ":" in img_id:

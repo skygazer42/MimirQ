@@ -3,11 +3,18 @@ import type { AuthToken, UserProfile } from '@/types'
 const ACCESS_TOKEN_KEY = 'mimirq_access_token'
 const USER_KEY = 'mimirq_user_profile'
 const USER_ID_KEY = 'mimirq_user_id'
+const TENANT_ID_KEY = 'mimirq_tenant_id'
 const TOKEN_EXPIRES_AT_KEY = 'mimirq_token_expires_at'
 
 export function getAccessToken(): string | null {
   if (typeof window === 'undefined') return null
   return window.localStorage.getItem(ACCESS_TOKEN_KEY)
+}
+
+export function getTenantId(): string | null {
+  const envTenantId = process.env.NEXT_PUBLIC_TENANT_ID
+  if (typeof window === 'undefined') return envTenantId || null
+  return window.localStorage.getItem(TENANT_ID_KEY) || envTenantId || null
 }
 
 export function getStoredUser(): UserProfile | null {

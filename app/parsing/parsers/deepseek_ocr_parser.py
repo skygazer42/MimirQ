@@ -15,6 +15,7 @@ import time
 from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 from pathlib import Path
 from typing import List, Optional
+from urllib.parse import unquote
 
 import fitz  # PyMuPDF
 import requests
@@ -31,6 +32,12 @@ _TAG_PATTERNS: tuple[re.Pattern[str], ...] = (
     re.compile(r"<\|ref\|>.*?<\|/ref\|>", re.DOTALL),
     re.compile(r"<\|det\|>.*?<\|/det\|>", re.DOTALL),
 )
+
+_MARKDOWN_IMAGE_REF_RE = re.compile(
+    r"!\[[^\]]*\]\(\s*(?:<)?([^)\s>]+)(?:>)?(?:\s+['\"][^'\"]*['\"])?\s*\)",
+    flags=re.IGNORECASE,
+)
+_HTML_IMAGE_REF_RE = re.compile(r"<img[^>]+src=[\"']([^\"']+)[\"']", flags=re.IGNORECASE)
 
 
 class DeepSeekOCRParser:
@@ -278,6 +285,112 @@ class DeepSeekOCRParser:
             except Exception:
                 pass
 
+    def _ensure_referenced_images_exist(
+        self,
+        *,
+        markdown_text: str,
+        images_dir: Path,
+        page_png_bytes: bytes,
+        page_pix: fitz.Pixmap,
+    ) -> None:
+        """
+        Best-effort: some OCR outputs reference `images/<hash>.jpg` but do not actually
+        provide those files. To avoid dead links in preview/ingestion, materialize
+        missing referenced files under the current artifact `images_dir`.
+
+        Strategy:
+        - Find Markdown `![]()` and HTML `<img src>` refs.
+        - For local refs like `images/<name>.(jpg|png|...)`, ensure the file exists.
+        - If missing, write the current page render as a placeholder image.
+        """
+        if not isinstance(markdown_text, str) or not markdown_text:
+            return
+
+        try:
+            images_dir.mkdir(parents=True, exist_ok=True)
+        except Exception:
+            return
+
+        images_dir_resolved = images_dir.resolve(strict=False)
+
+        max_images = max(0, int(getattr(settings, "MAX_INLINE_IMAGES", 0) or 0))
+        supported_exts = {".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp"}
+
+        found: list[str] = []
+        seen: set[str] = set()
+        for pat in (_MARKDOWN_IMAGE_REF_RE, _HTML_IMAGE_REF_RE):
+            for m in pat.finditer(markdown_text):
+                ref = (m.group(1) or "").strip()
+                if not ref or ref in seen:
+                    continue
+                seen.add(ref)
+                found.append(ref)
+
+        if not found:
+            return
+        if max_images and len(found) > max_images:
+            found = found[:max_images]
+
+        jpg_bytes: bytes | None = None
+
+        for ref in found:
+            ref_stripped = ref.strip()
+            if not ref_stripped:
+                continue
+
+            ref_lower = ref_stripped.lower()
+            if ref_lower.startswith(("http://", "https://", "data:", "blob:", "/api/")):
+                continue
+
+            ref_path = ref_stripped.split("?", 1)[0].split("#", 1)[0].strip()
+            if not ref_path:
+                continue
+            try:
+                ref_path = unquote(ref_path)
+            except Exception:
+                pass
+
+            rel = ref_path.lstrip("/")
+            if not rel.lower().startswith("images/"):
+                continue
+
+            leaf = rel[7:]  # strip "images/"
+            if not leaf or leaf.startswith(("/", "\\")):
+                continue
+
+            ext = Path(leaf).suffix.lower()
+            if ext and ext not in supported_exts:
+                continue
+
+            dest_path = (images_dir / leaf).resolve(strict=False)
+            try:
+                dest_path.relative_to(images_dir_resolved)
+            except Exception:
+                continue
+            if dest_path.exists():
+                continue
+
+            try:
+                dest_path.parent.mkdir(parents=True, exist_ok=True)
+            except Exception:
+                continue
+
+            # Use the current page render as a placeholder.
+            out_bytes = page_png_bytes
+            if ext in {".jpg", ".jpeg"}:
+                if jpg_bytes is None:
+                    try:
+                        jpg_bytes = page_pix.tobytes("jpg")
+                    except Exception:
+                        jpg_bytes = None
+                if jpg_bytes:
+                    out_bytes = jpg_bytes
+
+            try:
+                dest_path.write_bytes(out_bytes)
+            except Exception:
+                continue
+
     def parse(
         self,
         file_path: Path,
@@ -333,6 +446,15 @@ class DeepSeekOCRParser:
                     self._persist_page_image_variants(pix=pix, png_bytes=img_bytes, images_dir=images_dir)
                     logger.info("[deepseek_ocr] page %s/%s (%s)", idx, total_pages, file_path.name)
                     text = self._call_api(img_bytes, mime_type="image/png")
+                    try:
+                        self._ensure_referenced_images_exist(
+                            markdown_text=text or "",
+                            images_dir=images_dir,
+                            page_png_bytes=img_bytes,
+                            page_pix=pix,
+                        )
+                    except Exception:
+                        pass
                     results[idx] = text or ""
             else:
                 inflight: dict = {}

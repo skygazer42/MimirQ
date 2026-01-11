@@ -11,7 +11,7 @@ import type { Options as RehypeSanitizeOptions } from 'rehype-sanitize'
 import { cn } from '@/lib/utils'
 import { API_BASE_URL, toAbsoluteBackendUrl } from '@/lib/env'
 import { extractMarkdownHeadings, flashElementId, scrollToElementId } from '@/lib/markdown'
-import { getAccessToken } from '@/lib/auth-storage'
+import { getAccessToken, getTenantId } from '@/lib/auth-storage'
 
 const FLASH_CLASS =
   'bg-indigo-50 dark:bg-indigo-900/20 ring-1 ring-indigo-200 dark:ring-indigo-700 rounded-md transition-colors'
@@ -55,7 +55,8 @@ try {
 
 function maybeAttachImageAuthToken(url: string): string {
   const token = getAccessToken()
-  if (!token) return url
+  const tenantId = getTenantId()
+  if (!token && !tenantId) return url
 
   let parsed: URL
   try {
@@ -71,8 +72,17 @@ function maybeAttachImageAuthToken(url: string): string {
     path.includes('/api/v1/documents/image/') || path.includes('/api/v1/documents/image-url/')
   if (!needsToken) return url
 
+  if (
+    tenantId &&
+    !parsed.searchParams.has('tenant_id') &&
+    !parsed.searchParams.has('x_tenant_id') &&
+    !parsed.searchParams.has('tenant')
+  ) {
+    parsed.searchParams.set('tenant_id', tenantId)
+  }
+
   if (!parsed.searchParams.has('token') && !parsed.searchParams.has('access_token')) {
-    parsed.searchParams.set('token', token)
+    if (token) parsed.searchParams.set('token', token)
   }
   return parsed.toString()
 }
