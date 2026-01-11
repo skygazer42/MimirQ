@@ -80,6 +80,7 @@ class FeatureFlags(BaseModel):
     kg_enabled: bool = False
     deepdoc_enabled: bool = False
     docling_enabled: bool = False
+    etl4llm_enabled: bool = False
     markitdown_enabled: bool = False
     llama_index_enabled: bool = False
     mineru_enabled: bool = False
@@ -171,6 +172,17 @@ class MagicPDFConfig(BaseModel):
     keep_artifacts: bool = False
 
 
+class Etl4LlmConfig(BaseModel):
+    """ETL4LLM (layout/table/image parsing) config."""
+    api_url: str = ""
+    timeout_sec: int = 120
+    mode: str = "partition"  # partition | text
+    force_ocr: bool = False
+    enable_formula: bool = True
+    extract_images: bool = True
+    filter_page_header_footer: bool = False
+
+
 class SystemSettings(BaseModel):
     """Full system config."""
     feature_flags: FeatureFlags
@@ -180,6 +192,7 @@ class SystemSettings(BaseModel):
     milvus: MilvusConfig
     rag: RAGConfig
     mineru: MinerUConfig
+    etl4llm: Etl4LlmConfig
     magicpdf: MagicPDFConfig
     observability: ObservabilityConfig
     safety: SafetyConfig
@@ -195,6 +208,7 @@ class UpdateSettingsRequest(BaseModel):
     milvus: Optional[MilvusConfig] = None
     rag: Optional[RAGConfig] = None
     mineru: Optional[MinerUConfig] = None
+    etl4llm: Optional[Etl4LlmConfig] = None
     magicpdf: Optional[MagicPDFConfig] = None
     observability: Optional[ObservabilityConfig] = None
     safety: Optional[SafetyConfig] = None
@@ -236,6 +250,8 @@ def _apply_runtime_settings(env_vars: Dict[str, str], updated_keys: list[str]) -
         settings.DEEPDOC_ENABLED = _parse_bool(env_vars["DEEPDOC_ENABLED"])
     if "DOCLING_ENABLED" in updated_keys and "DOCLING_ENABLED" in env_vars:
         settings.DOCLING_ENABLED = _parse_bool(env_vars["DOCLING_ENABLED"])
+    if "ETL4LLM_ENABLED" in updated_keys and "ETL4LLM_ENABLED" in env_vars:
+        settings.ETL4LLM_ENABLED = _parse_bool(env_vars["ETL4LLM_ENABLED"])
     if "MARKITDOWN_ENABLED" in updated_keys and "MARKITDOWN_ENABLED" in env_vars:
         settings.MARKITDOWN_ENABLED = _parse_bool(env_vars["MARKITDOWN_ENABLED"])
     if "LLAMA_INDEX_ENABLED" in updated_keys and "LLAMA_INDEX_ENABLED" in env_vars:
@@ -313,6 +329,22 @@ def _apply_runtime_settings(env_vars: Dict[str, str], updated_keys: list[str]) -
         settings.MINERU_API_BASE = env_vars["MINERU_API_BASE"]
     if "MINERU_MODEL_VERSION" in updated_keys and "MINERU_MODEL_VERSION" in env_vars:
         settings.MINERU_MODEL_VERSION = env_vars["MINERU_MODEL_VERSION"]
+
+    # ETL4LLM
+    if "ETL4LLM_API_URL" in updated_keys and "ETL4LLM_API_URL" in env_vars:
+        settings.ETL4LLM_API_URL = env_vars["ETL4LLM_API_URL"]
+    if "ETL4LLM_TIMEOUT_SEC" in updated_keys and "ETL4LLM_TIMEOUT_SEC" in env_vars:
+        settings.ETL4LLM_TIMEOUT_SEC = _parse_int(env_vars["ETL4LLM_TIMEOUT_SEC"], default=settings.ETL4LLM_TIMEOUT_SEC)
+    if "ETL4LLM_MODE" in updated_keys and "ETL4LLM_MODE" in env_vars:
+        settings.ETL4LLM_MODE = env_vars["ETL4LLM_MODE"]
+    if "ETL4LLM_FORCE_OCR" in updated_keys and "ETL4LLM_FORCE_OCR" in env_vars:
+        settings.ETL4LLM_FORCE_OCR = _parse_bool(env_vars["ETL4LLM_FORCE_OCR"])
+    if "ETL4LLM_ENABLE_FORMULA" in updated_keys and "ETL4LLM_ENABLE_FORMULA" in env_vars:
+        settings.ETL4LLM_ENABLE_FORMULA = _parse_bool(env_vars["ETL4LLM_ENABLE_FORMULA"])
+    if "ETL4LLM_EXTRACT_IMAGES" in updated_keys and "ETL4LLM_EXTRACT_IMAGES" in env_vars:
+        settings.ETL4LLM_EXTRACT_IMAGES = _parse_bool(env_vars["ETL4LLM_EXTRACT_IMAGES"])
+    if "ETL4LLM_FILTER_PAGE_HEADER_FOOTER" in updated_keys and "ETL4LLM_FILTER_PAGE_HEADER_FOOTER" in env_vars:
+        settings.ETL4LLM_FILTER_PAGE_HEADER_FOOTER = _parse_bool(env_vars["ETL4LLM_FILTER_PAGE_HEADER_FOOTER"])
 
     # MagicPDF
     if "MAGIC_PDF_CLI" in updated_keys and "MAGIC_PDF_CLI" in env_vars:
@@ -427,6 +459,7 @@ async def get_settings(
             kg_enabled=settings.KG_ENABLED,
             deepdoc_enabled=settings.DEEPDOC_ENABLED,
             docling_enabled=bool(getattr(settings, "DOCLING_ENABLED", False)),
+            etl4llm_enabled=bool(getattr(settings, "ETL4LLM_ENABLED", False)),
             markitdown_enabled=settings.MARKITDOWN_ENABLED,
             llama_index_enabled=settings.LLAMA_INDEX_ENABLED,
             mineru_enabled=settings.MINERU_ENABLED,
@@ -471,6 +504,15 @@ async def get_settings(
             api_token=mask_secret(settings.MINERU_API_TOKEN),
             api_base=settings.MINERU_API_BASE,
             model_version=settings.MINERU_MODEL_VERSION,
+        ),
+        etl4llm=Etl4LlmConfig(
+            api_url=getattr(settings, "ETL4LLM_API_URL", "") or "",
+            timeout_sec=int(getattr(settings, "ETL4LLM_TIMEOUT_SEC", 120) or 120),
+            mode=str(getattr(settings, "ETL4LLM_MODE", "partition") or "partition"),
+            force_ocr=bool(getattr(settings, "ETL4LLM_FORCE_OCR", False)),
+            enable_formula=bool(getattr(settings, "ETL4LLM_ENABLE_FORMULA", True)),
+            extract_images=bool(getattr(settings, "ETL4LLM_EXTRACT_IMAGES", True)),
+            filter_page_header_footer=bool(getattr(settings, "ETL4LLM_FILTER_PAGE_HEADER_FOOTER", False)),
         ),
         magicpdf=MagicPDFConfig(
             cli=getattr(settings, "MAGIC_PDF_CLI", "magic-pdf") or "magic-pdf",
@@ -518,6 +560,7 @@ async def update_settings(
             env_vars["KG_ENABLED"] = str(ff.kg_enabled).lower()
             env_vars["DEEPDOC_ENABLED"] = str(ff.deepdoc_enabled).lower()
             env_vars["DOCLING_ENABLED"] = str(getattr(ff, "docling_enabled", False)).lower()
+            env_vars["ETL4LLM_ENABLED"] = str(getattr(ff, "etl4llm_enabled", False)).lower()
             env_vars["MARKITDOWN_ENABLED"] = str(ff.markitdown_enabled).lower()
             env_vars["LLAMA_INDEX_ENABLED"] = str(ff.llama_index_enabled).lower()
             env_vars["MINERU_ENABLED"] = str(ff.mineru_enabled).lower()
@@ -527,6 +570,7 @@ async def update_settings(
                     "KG_ENABLED",
                     "DEEPDOC_ENABLED",
                     "DOCLING_ENABLED",
+                    "ETL4LLM_ENABLED",
                     "MARKITDOWN_ENABLED",
                     "LLAMA_INDEX_ENABLED",
                     "MINERU_ENABLED",
@@ -618,6 +662,31 @@ async def update_settings(
             env_vars["MINERU_API_BASE"] = _sanitize_env_value("MINERU_API_BASE", mn.api_base)
             env_vars["MINERU_MODEL_VERSION"] = _sanitize_env_value("MINERU_MODEL_VERSION", mn.model_version)
             updated_keys.extend(["MINERU_API_BASE", "MINERU_MODEL_VERSION"])
+
+        # Update ETL4LLM config.
+        if request.etl4llm:
+            et = request.etl4llm
+            env_vars["ETL4LLM_API_URL"] = _sanitize_env_value("ETL4LLM_API_URL", et.api_url or "")
+            env_vars["ETL4LLM_TIMEOUT_SEC"] = str(int(et.timeout_sec or 0))
+            mode = (et.mode or "partition").strip().lower()
+            if mode not in {"partition", "text"}:
+                mode = "partition"
+            env_vars["ETL4LLM_MODE"] = _sanitize_env_value("ETL4LLM_MODE", mode)
+            env_vars["ETL4LLM_FORCE_OCR"] = str(bool(et.force_ocr)).lower()
+            env_vars["ETL4LLM_ENABLE_FORMULA"] = str(bool(et.enable_formula)).lower()
+            env_vars["ETL4LLM_EXTRACT_IMAGES"] = str(bool(et.extract_images)).lower()
+            env_vars["ETL4LLM_FILTER_PAGE_HEADER_FOOTER"] = str(bool(et.filter_page_header_footer)).lower()
+            updated_keys.extend(
+                [
+                    "ETL4LLM_API_URL",
+                    "ETL4LLM_TIMEOUT_SEC",
+                    "ETL4LLM_MODE",
+                    "ETL4LLM_FORCE_OCR",
+                    "ETL4LLM_ENABLE_FORMULA",
+                    "ETL4LLM_EXTRACT_IMAGES",
+                    "ETL4LLM_FILTER_PAGE_HEADER_FOOTER",
+                ]
+            )
 
         if request.magicpdf:
             mp = request.magicpdf
@@ -747,6 +816,14 @@ async def get_system_status(
         "enabled": deepseek_enabled,
         "available": bool(deepseek_enabled and deepseek_key),
         "message": "configured" if (deepseek_enabled and deepseek_key) else ("disabled" if not deepseek_enabled else "missing api_key"),
+    }
+
+    etl_enabled = bool(getattr(settings, "ETL4LLM_ENABLED", False))
+    etl_url = bool((getattr(settings, "ETL4LLM_API_URL", "") or "").strip())
+    parsers["etl4llm"] = {
+        "enabled": etl_enabled,
+        "available": bool(etl_enabled and etl_url),
+        "message": "configured" if (etl_enabled and etl_url) else ("disabled" if not etl_enabled else "missing api_url"),
     }
 
     ok, msg = _check_import("docling")

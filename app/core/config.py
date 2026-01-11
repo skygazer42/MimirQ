@@ -158,6 +158,13 @@ class Settings(BaseSettings):
     DEEPSEEK_OCR_PDF_DPI: int = 200
     # Page-level parallelism (1 = sequential). Higher values can reduce latency but may hit rate limits.
     DEEPSEEK_OCR_CONCURRENCY: int = 1
+    # Include a rendered page image per page in the Markdown output (so preview can show images
+    # even when the OCR model returns text-only markdown).
+    DEEPSEEK_OCR_INCLUDE_PAGE_IMAGES: bool = True
+    # 0 = unlimited.
+    DEEPSEEK_OCR_PAGE_IMAGE_MAX_PAGES: int = 0
+    # png | jpg (affects the inserted `images/page_XXXX.*` refs; both variants may still be written for compatibility)
+    DEEPSEEK_OCR_PAGE_IMAGE_FORMAT: str = "jpg"
 
     # ETL4LLM (layout/table/image parsing via etl4llm service)
     # Backward-compatible env aliases (deprecated): BISHENG_UNSTRUCTURED_*
@@ -173,6 +180,11 @@ class Settings(BaseSettings):
     ETL4LLM_EXTRACT_IMAGES: bool = Field(default=True, validation_alias=AliasChoices("ETL4LLM_EXTRACT_IMAGES", "BISHENG_UNSTRUCTURED_EXTRACT_IMAGES"))
     # Best-effort: drop obvious header/footer partitions by type (if provided by the service).
     ETL4LLM_FILTER_PAGE_HEADER_FOOTER: bool = Field(default=False, validation_alias=AliasChoices("ETL4LLM_FILTER_PAGE_HEADER_FOOTER", "BISHENG_UNSTRUCTURED_FILTER_PAGE_HEADER_FOOTER"))
+    # Fallback: when the service returns no image refs/crops, include page render images at the top.
+    ETL4LLM_INCLUDE_PAGE_IMAGES_IF_EMPTY: bool = True
+    ETL4LLM_PAGE_IMAGE_DPI: int = 150
+    # 0 = unlimited.
+    ETL4LLM_PAGE_IMAGE_MAX_PAGES: int = 20
 
     # PDF quality OCR validation (used by parse-preview scoring)
     RAPIDOCR_ENABLED: bool = False
@@ -369,6 +381,10 @@ class Settings(BaseSettings):
     DOCLING_OCR_ENABLED: bool = True
     DOCLING_TABLE_MODE: str = "markdown"  # markdown | html | plain
     DOCLING_EXTRACT_IMAGES: bool = True
+    # Fallback: when Docling yields no image segments, include rendered page images.
+    DOCLING_INCLUDE_PAGE_IMAGES_IF_EMPTY: bool = True
+    # 0 = unlimited.
+    DOCLING_PAGE_IMAGE_MAX_PAGES: int = 20
     # Knowledge Graph (KG) feature flags.
     # Canonical env names: KG_ENABLED / KG_CHAT_ENABLED
     KG_ENABLED: bool = False

@@ -328,5 +328,45 @@ class Etl4LlmParser:
         if isinstance(merged_meta, dict):
             metadata.update(merged_meta)
 
+        # Fallback: if the service does not return image partitions/refs, still include
+        # page renders so users can see images in preview (MinerU-like behavior).
+        try:
+            fallback_enabled = bool(getattr(settings, "ETL4LLM_INCLUDE_PAGE_IMAGES_IF_EMPTY", True))
+            has_any_images = int(extracted_images or 0) > 0
+            lowered = (merged_text or "").lower()
+            has_refs = ("![" in lowered) or ("<img" in lowered)
+            if fallback_enabled and self._extract_images and file_path.suffix.lower() == ".pdf" and (not has_any_images) and (not has_refs):
+                dpi = int(getattr(settings, "ETL4LLM_PAGE_IMAGE_DPI", 150) or 150)
+                max_pages = int(getattr(settings, "ETL4LLM_PAGE_IMAGE_MAX_PAGES", 20) or 20)
+                max_pages = max(0, max_pages)
+
+                page_refs: list[str] = []
+                pdf = fitz.open(str(file_path))
+                try:
+                    for page_idx, page in enumerate(pdf, start=1):
+                        if max_pages and page_idx > max_pages:
+                            break
+                        pix = page.get_pixmap(dpi=dpi)
+                        jpg_bytes = pix.tobytes("jpg")
+                        out_path = images_dir / f"page_{page_idx:04d}.jpg"
+                        if not out_path.exists():
+                            try:
+                                out_path.write_bytes(jpg_bytes)
+                            except Exception:
+                                continue
+                        page_refs.append(f"![page {page_idx}](images/{out_path.name})")
+                finally:
+                    try:
+                        pdf.close()
+                    except Exception:
+                        pass
+
+                if page_refs:
+                    gallery = "\n\n".join(page_refs).strip()
+                    merged_text = f"{gallery}\n\n{merged_text}".strip() if (merged_text or "").strip() else gallery
+                    metadata["etl4llm_page_images"] = len(page_refs)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("[etl4llm] page image fallback failed: %s", str(exc)[:200])
+
         logger.info("[etl4llm] done %s in %.2fs", file_path.name, time.time() - start)
         return [Document(page_content=merged_text, metadata=metadata)]
