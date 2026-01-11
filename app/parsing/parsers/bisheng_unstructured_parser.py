@@ -1,0 +1,339 @@
+"""
+Bisheng-Unstructured parser (etl4llm API).
+
+This backend calls a Bisheng-Unstructured service (layout/table/image-aware)
+and returns Markdown-ish text plus optional local image refs under an artifact
+directory so MimirQ can:
+- rewrite images for preview (/api/v1/documents/image/{uuid})
+- upload local images to MinIO during ingestion (/api/v1/documents/image-url/{img_id})
+
+Compatible endpoint example (from Bisheng docker-compose):
+  http://localhost:10001/v1/etl4llm/predict
+"""
+
+from __future__ import annotations
+
+import base64
+import hashlib
+import re
+import time
+from io import BytesIO
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Tuple
+
+import fitz  # PyMuPDF
+import requests
+from langchain_core.documents import Document
+
+from app.core.config import settings
+from app.rag.core.logging import get_logger
+
+
+logger = get_logger("parsing.bisheng_unstructured")
+
+
+_HEADER_FOOTER_TYPES = {
+    "header",
+    "footer",
+    "pageheader",
+    "pagefooter",
+    "page_header",
+    "page_footer",
+}
+
+
+class BishengUnstructuredParser:
+    """
+    Bisheng-Unstructured parser via etl4llm predict API.
+
+    Config via env/.env:
+    - BISHENG_UNSTRUCTURED_ENABLED=true
+    - BISHENG_UNSTRUCTURED_API_URL=http://localhost:10001/v1/etl4llm/predict
+    """
+
+    def __init__(self) -> None:
+        self._enabled = bool(getattr(settings, "BISHENG_UNSTRUCTURED_ENABLED", False))
+        self._api_url = (getattr(settings, "BISHENG_UNSTRUCTURED_API_URL", "") or "").strip()
+        self._timeout_sec = float(getattr(settings, "BISHENG_UNSTRUCTURED_TIMEOUT_SEC", 120) or 120)
+        self._mode = (getattr(settings, "BISHENG_UNSTRUCTURED_MODE", "") or "partition").strip().lower()
+        self._force_ocr = bool(getattr(settings, "BISHENG_UNSTRUCTURED_FORCE_OCR", False))
+        self._enable_formula = bool(getattr(settings, "BISHENG_UNSTRUCTURED_ENABLE_FORMULA", True))
+        self._extract_images = bool(getattr(settings, "BISHENG_UNSTRUCTURED_EXTRACT_IMAGES", True))
+        self._filter_header_footer = bool(getattr(settings, "BISHENG_UNSTRUCTURED_FILTER_PAGE_HEADER_FOOTER", False))
+
+        if not self._enabled:
+            raise RuntimeError("Bisheng-Unstructured is disabled (BISHENG_UNSTRUCTURED_ENABLED=false).")
+        if not self._api_url:
+            raise RuntimeError("Bisheng-Unstructured requires BISHENG_UNSTRUCTURED_API_URL.")
+
+        self._session = requests.Session()
+
+    def _build_artifact_root(self, file_path: Path, document_id: Optional[str]) -> Path:
+        run_id = (document_id or file_path.stem or "bisheng_unstructured").strip()
+        run_id = re.sub(r"[^a-zA-Z0-9._-]+", "_", run_id)[:120] or "bisheng_unstructured"
+        return (file_path.parent / ".bisheng_unstructured" / run_id).absolute()
+
+    def _call_api(self, *, file_path: Path) -> Dict[str, Any]:
+        file_bytes = file_path.read_bytes()
+        b64_data = base64.b64encode(file_bytes).decode("utf-8")
+
+        mode = self._mode or "partition"
+        if mode not in {"partition", "text"}:
+            mode = "partition"
+
+        payload: Dict[str, Any] = {
+            "filename": file_path.name,
+            "b64_data": [b64_data],
+            "mode": mode,
+        }
+        # Optional knobs (service-dependent).
+        payload["force_ocr"] = bool(self._force_ocr)
+        payload["enable_formula"] = bool(self._enable_formula)
+        payload["parameters"] = {"start": 0, "n": None}
+
+        resp = self._session.post(self._api_url, json=payload, timeout=self._timeout_sec)
+        if int(getattr(resp, "status_code", 0) or 0) != 200:
+            raise RuntimeError(f"Bisheng-Unstructured API error {resp.status_code}: {resp.text[:500]}")
+        data = resp.json()
+        if int(data.get("status_code", 0) or 0) != 200:
+            raise RuntimeError(f"Bisheng-Unstructured returned status_code={data.get('status_code')}: {str(data)[:500]}")
+        return data
+
+    def _extract_partition_images(
+        self,
+        *,
+        pdf_path: Path,
+        partitions: list[dict[str, Any]],
+        images_dir: Path,
+    ) -> Tuple[int, dict[str, str]]:
+        """
+        Crop image partitions from the source PDF into `images_dir`.
+
+        Returns (count, element_id->relative_path mapping).
+        """
+        if not self._extract_images:
+            return 0, {}
+
+        try:
+            from PIL import Image as PILImage  # type: ignore
+        except Exception:
+            return 0, {}
+
+        images_dir.mkdir(parents=True, exist_ok=True)
+
+        # Collect (page_idx, element_id, bbox) items.
+        items: list[tuple[int, str, list[int]]] = []
+        for part in partitions:
+            try:
+                if str(part.get("type") or "").strip().lower() != "image":
+                    continue
+                element_id = str(part.get("element_id") or "").strip()
+                extra = (part.get("metadata") or {}).get("extra_data") or {}
+                bboxes = extra.get("bboxes") or []
+                pages = extra.get("pages") or []
+                if not element_id:
+                    # Stable fallback id.
+                    element_id = hashlib.sha256(
+                        (str(pages[:1]) + str(bboxes[:1])).encode("utf-8", errors="ignore")
+                    ).hexdigest()[:32]
+                if not bboxes or not pages:
+                    continue
+                bbox = bboxes[0]
+                if not (isinstance(bbox, (list, tuple)) and len(bbox) == 4):
+                    continue
+                page_idx = int(pages[0])
+                bbox_int = [int(x) for x in bbox]
+                items.append((page_idx, element_id, bbox_int))
+            except Exception:
+                continue
+
+        if not items:
+            return 0, {}
+
+        pdf = fitz.open(str(pdf_path))
+        page_cache: dict[int, Any] = {}
+        mapping: dict[str, str] = {}
+        written = 0
+        try:
+            for page_idx, element_id, (x1, y1, x2, y2) in items:
+                if page_idx < 0 or page_idx >= len(pdf):
+                    continue
+                page_img = page_cache.get(page_idx)
+                if page_img is None:
+                    pix = pdf[page_idx].get_pixmap()
+                    page_img = PILImage.open(BytesIO(pix.tobytes("png"))).convert("RGB")
+                    page_cache[page_idx] = page_img
+
+                w, h = page_img.size
+                x1c = max(0, min(int(x1), w - 1))
+                y1c = max(0, min(int(y1), h - 1))
+                x2c = max(x1c + 1, min(int(x2), w))
+                y2c = max(y1c + 1, min(int(y2), h))
+
+                out_path = images_dir / f"{element_id}.png"
+                try:
+                    cropped = page_img.crop((x1c, y1c, x2c, y2c))
+                    cropped.save(out_path, format="PNG", optimize=True)
+                    cropped.close()
+                except Exception:
+                    continue
+
+                mapping[element_id] = f"images/{out_path.name}"
+                written += 1
+
+        finally:
+            for img in page_cache.values():
+                try:
+                    img.close()
+                except Exception:
+                    pass
+            pdf.close()
+
+        return written, mapping
+
+    def _merge_partitions(
+        self,
+        *,
+        partitions: list[dict[str, Any]],
+        image_map: dict[str, str],
+    ) -> tuple[str, dict[str, Any]]:
+        """
+        Merge partitions into a single markdown-ish string, preserving extra_data indices.
+        """
+        parts: list[str] = []
+        last_type = ""
+        offset = 0
+        meta: dict[str, Any] = {"bboxes": [], "pages": [], "indexes": [], "types": []}
+
+        for part in partitions:
+            label = str(part.get("type") or "").strip()
+            label_l = label.lower()
+            if self._filter_header_footer and label_l in _HEADER_FOOTER_TYPES:
+                continue
+
+            text = str(part.get("text") or "").strip()
+            if label_l == "image":
+                element_id = str(part.get("element_id") or "").strip()
+                ref = image_map.get(element_id)
+                if ref:
+                    text = f"![]({ref})"
+                elif text:
+                    # Keep whatever the service returned if we cannot materialize the crop.
+                    text = text
+                else:
+                    continue
+            if not text:
+                continue
+
+            # Minimal spacing rules inspired by Bisheng:
+            # - Title/Table get extra blank line separation.
+            # - After a Table, separate with a blank line.
+            prefix = "\n"
+            if not parts:
+                prefix = ""
+            elif label_l == "title":
+                prefix = "\n\n"
+            elif label_l == "table":
+                prefix = "\n\n"
+            elif last_type.lower() == "table":
+                prefix = "\n\n"
+
+            chunk = f"{prefix}{text}"
+            parts.append(chunk)
+
+            extra = ((part.get("metadata") or {}).get("extra_data") or {}) if isinstance(part.get("metadata"), dict) else {}
+            bboxes = extra.get("bboxes") or []
+            pages = extra.get("pages") or []
+            types = extra.get("types") or []
+            indexes = extra.get("indexes") or []
+
+            try:
+                meta["bboxes"].extend([list(map(int, b)) for b in bboxes if isinstance(b, (list, tuple)) and len(b) == 4])
+            except Exception:
+                pass
+            if isinstance(pages, list):
+                meta["pages"].extend(pages)
+            if isinstance(types, list):
+                meta["types"].extend(types)
+
+            # Indexes are relative to `text` in the partition; shift by accumulated length.
+            try:
+                shifted = []
+                for item in indexes:
+                    if not (isinstance(item, (list, tuple)) and len(item) == 2):
+                        continue
+                    s, e = int(item[0]), int(item[1])
+                    shifted.append([s + offset + len(prefix), e + offset + len(prefix)])
+                meta["indexes"].extend(shifted)
+            except Exception:
+                pass
+
+            offset += len(chunk)
+            last_type = label
+
+        merged = "".join(parts).strip()
+        return merged, meta
+
+    def parse(
+        self,
+        file_path: Path,
+        *,
+        dataset_id: Optional[str] = None,  # kept for interface parity
+        document_id: Optional[str] = None,
+        tenant_id: Optional[str] = None,  # kept for interface parity
+        **_kwargs,
+    ) -> List[Document]:
+        file_path = Path(file_path)
+        if not file_path.exists():
+            raise FileNotFoundError(f"File not found: {file_path}")
+        if file_path.suffix.lower() != ".pdf":
+            raise ValueError("Bisheng-Unstructured currently supports PDF only")
+
+        start = time.time()
+        logger.info("[bisheng_unstructured] start %s", file_path.name)
+
+        artifact_root = self._build_artifact_root(file_path, document_id)
+        images_dir = artifact_root / "images"
+        artifact_root.mkdir(parents=True, exist_ok=True)
+
+        data = self._call_api(file_path=file_path)
+        partitions = data.get("partitions") or []
+        text = str(data.get("text") or "")
+
+        extracted_images = 0
+        image_map: dict[str, str] = {}
+        merged_meta: dict[str, Any] = {"bboxes": [], "pages": [], "indexes": [], "types": []}
+        merged_text = ""
+
+        if isinstance(partitions, list) and partitions:
+            try:
+                extracted_images, image_map = self._extract_partition_images(
+                    pdf_path=file_path,
+                    partitions=partitions,
+                    images_dir=images_dir,
+                )
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("[bisheng_unstructured] image extraction failed: %s", str(exc)[:200])
+
+            merged_text, merged_meta = self._merge_partitions(partitions=partitions, image_map=image_map)
+        elif text.strip():
+            merged_text = text.strip()
+
+        metadata = {
+            "source": file_path.name,
+            "file_type": "pdf",
+            "parser_backend": "bisheng_unstructured",
+            "bisheng_mode": str(self._mode or ""),
+            "bisheng_partitions": int(len(partitions) if isinstance(partitions, list) else 0),
+            "bisheng_extracted_images": int(extracted_images),
+            # Used by preview/ingestion to resolve relative image paths like "images/<id>.png".
+            "asset_base_dir": str(artifact_root),
+            # Used for best-effort cleanup after ingestion/preview.
+            "artifact_dir": str(artifact_root),
+        }
+        if isinstance(merged_meta, dict):
+            metadata.update(merged_meta)
+
+        logger.info("[bisheng_unstructured] done %s in %.2fs", file_path.name, time.time() - start)
+        return [Document(page_content=merged_text, metadata=metadata)]
+

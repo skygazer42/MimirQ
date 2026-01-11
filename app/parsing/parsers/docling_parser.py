@@ -12,10 +12,16 @@ Supports:
 """
 
 
+import html as _html
+import re
+from html.parser import HTMLParser
 from pathlib import Path
 from typing import Any, Callable, List, Optional, Tuple
-from app.deepdoc.parser.docling_parser import DoclingParser as DeepDocDoclingParser
+
+from langchain_core.documents import Document
+
 from app.core.config import settings
+from app.deepdoc.parser.docling_parser import DoclingParser as DeepDocDoclingParser
 from .base_parser import BaseAdvancedParser
 
 
@@ -23,6 +29,94 @@ from .base_parser import BaseAdvancedParser
 DOCLING_ENABLED = getattr(settings, "DOCLING_ENABLED", False)
 DOCLING_OCR_ENABLED = getattr(settings, "DOCLING_OCR_ENABLED", True)
 DOCLING_TABLE_MODE = getattr(settings, "DOCLING_TABLE_MODE", "markdown")
+DOCLING_EXTRACT_IMAGES = getattr(settings, "DOCLING_EXTRACT_IMAGES", False)
+
+
+class _TableParser(HTMLParser):
+    def __init__(self) -> None:
+        super().__init__()
+        self._in_cell = False
+        self._in_row = False
+        self._cell_buf: list[str] = []
+        self.rows: list[list[str]] = []
+
+    def handle_starttag(self, tag: str, attrs) -> None:  # type: ignore[override]
+        t = (tag or "").lower()
+        if t == "tr":
+            self._in_row = True
+            self._cell_buf = []
+        elif t in {"td", "th"}:
+            self._in_cell = True
+            self._cell_buf.append("")
+
+    def handle_endtag(self, tag: str) -> None:  # type: ignore[override]
+        t = (tag or "").lower()
+        if t in {"td", "th"}:
+            self._in_cell = False
+        elif t == "tr":
+            if self._in_row and self._cell_buf:
+                self.rows.append([c.strip() for c in self._cell_buf])
+            self._in_row = False
+            self._cell_buf = []
+
+    def handle_data(self, data: str) -> None:  # type: ignore[override]
+        if not self._in_cell or not self._cell_buf:
+            return
+        text = re.sub(r"\s+", " ", data or "").strip()
+        if not text:
+            return
+        idx = len(self._cell_buf) - 1
+        self._cell_buf[idx] = (self._cell_buf[idx] + " " + text).strip()
+
+
+def _html_table_to_markdown(table_html: str) -> str:
+    parser = _TableParser()
+    parser.feed(table_html or "")
+    rows = parser.rows
+    if not rows:
+        # Fallback: strip tags.
+        return re.sub(r"<[^>]+>", " ", table_html or "").strip()
+
+    max_cols = max(len(r) for r in rows)
+    norm_rows = [r + [""] * (max_cols - len(r)) for r in rows]
+
+    def esc(cell: str) -> str:
+        cell = _html.unescape(cell or "")
+        cell = cell.replace("|", r"\|")
+        return re.sub(r"\s+", " ", cell).strip()
+
+    header = [esc(c) for c in norm_rows[0]]
+    body = [[esc(c) for c in r] for r in norm_rows[1:]]
+    sep = ["---"] * max_cols
+
+    out: list[str] = []
+    out.append("| " + " | ".join(header) + " |")
+    out.append("| " + " | ".join(sep) + " |")
+    for r in body:
+        out.append("| " + " | ".join(r) + " |")
+    return "\n".join(out).strip()
+
+
+def _convert_table_content(text: str, *, mode: str) -> str:
+    mode = (mode or "markdown").strip().lower()
+    if not text:
+        return ""
+    lowered = text.lower()
+    if "<table" not in lowered:
+        return text
+
+    if mode == "html":
+        return text
+    if mode == "plain":
+        stripped = re.sub(r"<[^>]+>", " ", text)
+        return re.sub(r"\s+", " ", _html.unescape(stripped)).strip()
+
+    # markdown: convert all tables found, join with blank lines.
+    tables = list(re.finditer(r"(?is)<table\\b.*?</table>", text))
+    if not tables:
+        return _html_table_to_markdown(text)
+    converted = [_html_table_to_markdown(m.group(0)) for m in tables if m.group(0)]
+    return "\n\n".join([c for c in converted if c.strip()]).strip() or text
 
 
 class DoclingParser(BaseAdvancedParser):
@@ -37,9 +131,9 @@ class DoclingParser(BaseAdvancedParser):
 
     def __init__(
         self,
-        ocr_enabled: bool = True,
-        table_mode: str = "markdown",
-        extract_images: bool = False,
+        ocr_enabled: Optional[bool] = None,
+        table_mode: Optional[str] = None,
+        extract_images: Optional[bool] = None,
         max_pages: Optional[int] = None,
     ):
         """
@@ -51,9 +145,9 @@ class DoclingParser(BaseAdvancedParser):
             extract_images: Extract images
             max_pages: Maximum pages to process (None = all)
         """
-        self.ocr_enabled = ocr_enabled
-        self.table_mode = table_mode
-        self.extract_images = extract_images
+        self.ocr_enabled = DOCLING_OCR_ENABLED if ocr_enabled is None else bool(ocr_enabled)
+        self.table_mode = (table_mode or DOCLING_TABLE_MODE or "markdown").strip().lower() or "markdown"
+        self.extract_images = DOCLING_EXTRACT_IMAGES if extract_images is None else bool(extract_images)
         self.max_pages = max_pages
         super().__init__()
 
@@ -83,3 +177,26 @@ class DoclingParser(BaseAdvancedParser):
             delete_output=True,
             **kwargs
         )
+
+    def parse(self, file_path: Path, **kwargs) -> List[Document]:
+        documents = super().parse(file_path, **kwargs)
+
+        processed: list[Document] = []
+        for doc in documents:
+            meta = dict(doc.metadata or {})
+
+            doc_type = str(meta.get("doc_type_kwd") or "").lower()
+            if not self.extract_images and doc_type == "image":
+                continue
+
+            content_type = str(meta.get("content_type") or "").lower()
+            if content_type == "table":
+                content = doc.page_content or ""
+                converted = _convert_table_content(content, mode=self.table_mode)
+                if converted != content:
+                    processed.append(Document(page_content=converted, metadata=meta, id=getattr(doc, "id", None)))
+                    continue
+
+            processed.append(Document(page_content=doc.page_content or "", metadata=meta, id=getattr(doc, "id", None)))
+
+        return processed

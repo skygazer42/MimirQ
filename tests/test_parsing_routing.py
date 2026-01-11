@@ -86,6 +86,59 @@ def test_choose_pdf_backend_honors_magicpdf_alias(monkeypatch: pytest.MonkeyPatc
     assert choose_pdf_backend(quality, "magic-pdf") == "magicpdf"
 
 
+def test_choose_pdf_backend_honors_bisheng_alias(monkeypatch: pytest.MonkeyPatch):
+    quality = {"score": 0.0, "is_scanned": True}
+    assert choose_pdf_backend(quality, "bisheng") == "bisheng_unstructured"
+
+
+def test_choose_pdf_backend_scanned_prefers_deepseek_ocr_when_enabled(monkeypatch: pytest.MonkeyPatch):
+    _set_flags(
+        monkeypatch,
+        MINERU_ENABLED=False,
+        MINERU_API_TOKEN="",
+        MINERU_LOCAL_SERVER_URL="",
+        DEEPDOC_ENABLED=True,
+        DEEPSEEK_OCR_ENABLED=True,
+        SILICONFLOW_API_KEY="k",
+    )
+    quality = {"score": 0.2, "is_scanned": True}
+    assert choose_pdf_backend(quality, None) == "deepseek_ocr"
+
+
+def test_choose_pdf_backend_high_quality_prefers_bisheng_when_docling_disabled(monkeypatch: pytest.MonkeyPatch):
+    _set_flags(
+        monkeypatch,
+        DOCLING_ENABLED=False,
+        BISHENG_UNSTRUCTURED_ENABLED=True,
+        BISHENG_UNSTRUCTURED_API_URL="http://localhost:10001/v1/etl4llm/predict",
+        MARKITDOWN_ENABLED=True,
+        DEEPDOC_ENABLED=False,
+        MINERU_ENABLED=False,
+        MINERU_API_TOKEN="",
+        MINERU_LOCAL_SERVER_URL="",
+    )
+    quality = {"score": 0.95, "is_scanned": False}
+    assert choose_pdf_backend(quality, None) == "bisheng_unstructured"
+
+
+def test_choose_pdf_backend_scanned_prefers_bisheng_when_enabled(monkeypatch: pytest.MonkeyPatch):
+    _set_flags(
+        monkeypatch,
+        MINERU_ENABLED=False,
+        MINERU_API_TOKEN="",
+        MINERU_LOCAL_SERVER_URL="",
+        DEEPSEEK_OCR_ENABLED=False,
+        SILICONFLOW_API_KEY="",
+        DEEPDOC_ENABLED=False,
+        DOCLING_ENABLED=False,
+        MAGIC_PDF_ENABLED=False,
+        BISHENG_UNSTRUCTURED_ENABLED=True,
+        BISHENG_UNSTRUCTURED_API_URL="http://localhost:10001/v1/etl4llm/predict",
+    )
+    quality = {"score": 0.2, "is_scanned": True}
+    assert choose_pdf_backend(quality, None) == "bisheng_unstructured"
+
+
 def test_choose_pdf_backend_scanned_prefers_magicpdf_when_available(monkeypatch: pytest.MonkeyPatch):
     import shutil
 

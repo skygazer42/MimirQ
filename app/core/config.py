@@ -159,6 +159,20 @@ class Settings(BaseSettings):
     # Page-level parallelism (1 = sequential). Higher values can reduce latency but may hit rate limits.
     DEEPSEEK_OCR_CONCURRENCY: int = 1
 
+    # Bisheng-Unstructured (layout/table/image parsing via etl4llm)
+    BISHENG_UNSTRUCTURED_ENABLED: bool = False
+    # Example: http://localhost:10001/v1/etl4llm/predict
+    BISHENG_UNSTRUCTURED_API_URL: str = ""
+    BISHENG_UNSTRUCTURED_TIMEOUT_SEC: int = 120
+    # partition | text
+    BISHENG_UNSTRUCTURED_MODE: str = "partition"
+    BISHENG_UNSTRUCTURED_FORCE_OCR: bool = False
+    BISHENG_UNSTRUCTURED_ENABLE_FORMULA: bool = True
+    # If partitions contain Image elements, crop them from PDF and emit `![](images/<id>.png)` refs.
+    BISHENG_UNSTRUCTURED_EXTRACT_IMAGES: bool = True
+    # Best-effort: drop obvious header/footer partitions by type (if provided by the service).
+    BISHENG_UNSTRUCTURED_FILTER_PAGE_HEADER_FOOTER: bool = False
+
     # PDF quality OCR validation (used by parse-preview scoring)
     RAPIDOCR_ENABLED: bool = False
 
@@ -353,6 +367,7 @@ class Settings(BaseSettings):
     DOCLING_ENABLED: bool = False
     DOCLING_OCR_ENABLED: bool = True
     DOCLING_TABLE_MODE: str = "markdown"  # markdown | html | plain
+    DOCLING_EXTRACT_IMAGES: bool = False
     # Knowledge Graph (KG) feature flags.
     # Canonical env names: KG_ENABLED / KG_CHAT_ENABLED
     KG_ENABLED: bool = False

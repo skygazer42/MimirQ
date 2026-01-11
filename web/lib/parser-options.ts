@@ -2,7 +2,16 @@ export interface ParserBackendOption {
   value: string
   label: string
   description: string
-  icon: 'auto' | 'basic' | 'mineru' | 'deepdoc' | 'deepseekocr' | 'markitdown' | 'docling' | 'magicpdf'
+  icon:
+    | 'auto'
+    | 'basic'
+    | 'bisheng'
+    | 'mineru'
+    | 'deepdoc'
+    | 'deepseekocr'
+    | 'markitdown'
+    | 'docling'
+    | 'magicpdf'
   badge?: string
 }
 
@@ -26,6 +35,13 @@ export const PARSER_BACKEND_OPTIONS: ParserBackendOption[] = [
     description: 'Docling · 结构感知解析，适合高质量 PDF（可提取结构/表格）',
     icon: 'docling',
     badge: '结构化',
+  },
+  {
+    value: 'bisheng_unstructured',
+    label: 'Bisheng 版面解析',
+    description: 'Bisheng-Unstructured · 版面/表格/图片感知（需自建 etl4llm 服务）',
+    icon: 'bisheng',
+    badge: '版面',
   },
   {
     value: 'mineru',
@@ -67,6 +83,9 @@ function normalizeParserValue(value?: string) {
   const normalized = raw.replace(/_/g, '-')
   if (normalized === 'magic-pdf') return 'magicpdf'
   if (normalized === 'deepseek-ocr') return 'deepseek_ocr'
+  if (normalized === 'bisheng-unstructured') return 'bisheng_unstructured'
+  if (normalized === 'bishengunstructured') return 'bisheng_unstructured'
+  if (normalized === 'bisheng') return 'bisheng_unstructured'
   return normalized
 }
 

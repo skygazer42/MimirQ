@@ -19,6 +19,10 @@ _BACKEND_ALIASES: dict[str, str] = {
     # DeepSeek OCR (SiliconFlow)
     "deepseek-ocr": "deepseek_ocr",
     "deepseekocr": "deepseek_ocr",
+    # Bisheng-Unstructured (etl4llm)
+    "bisheng-unstructured": "bisheng_unstructured",
+    "bishengunstructured": "bisheng_unstructured",
+    "bisheng": "bisheng_unstructured",
 }
 
 
