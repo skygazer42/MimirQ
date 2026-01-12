@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="./images/logo-wide.png" alt="MimirQ" width="600" />
+<img src="./images/logo.png" alt="MimirQ" width="600" />
 
 <p>
   <a href="https://github.com/skygazer42/MimirQ/wiki"><b>文档</b></a> ·

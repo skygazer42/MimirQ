@@ -81,6 +81,8 @@ class FeatureFlags(BaseModel):
     deepdoc_enabled: bool = False
     docling_enabled: bool = False
     etl4llm_enabled: bool = False
+    marker_enabled: bool = False
+    paddle_vl_enabled: bool = False
     markitdown_enabled: bool = False
     llama_index_enabled: bool = False
     mineru_enabled: bool = False
@@ -183,6 +185,18 @@ class Etl4LlmConfig(BaseModel):
     filter_page_header_footer: bool = False
 
 
+class MarkerConfig(BaseModel):
+    """Marker external PDF->Markdown service config."""
+    api_url: str = ""
+    timeout_sec: int = 600
+
+
+class PaddleVLConfig(BaseModel):
+    """PaddleOCR-VL external PDF->Markdown service config."""
+    api_url: str = ""
+    timeout_sec: int = 600
+
+
 class SystemSettings(BaseModel):
     """Full system config."""
     feature_flags: FeatureFlags
@@ -193,6 +207,8 @@ class SystemSettings(BaseModel):
     rag: RAGConfig
     mineru: MinerUConfig
     etl4llm: Etl4LlmConfig
+    marker: MarkerConfig
+    paddle_vl: PaddleVLConfig
     magicpdf: MagicPDFConfig
     observability: ObservabilityConfig
     safety: SafetyConfig
@@ -209,6 +225,8 @@ class UpdateSettingsRequest(BaseModel):
     rag: Optional[RAGConfig] = None
     mineru: Optional[MinerUConfig] = None
     etl4llm: Optional[Etl4LlmConfig] = None
+    marker: Optional[MarkerConfig] = None
+    paddle_vl: Optional[PaddleVLConfig] = None
     magicpdf: Optional[MagicPDFConfig] = None
     observability: Optional[ObservabilityConfig] = None
     safety: Optional[SafetyConfig] = None
