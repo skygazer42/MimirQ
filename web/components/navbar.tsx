@@ -24,6 +24,8 @@ import {
   User,
   LogIn,
   LogOut,
+  PanelLeftClose,
+  PanelLeftOpen,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
@@ -300,15 +302,15 @@ export function Navbar({
         aria-label={isSidebarOpen ? '收起侧边栏' : '展开侧边栏'}
         title={isSidebarOpen ? '收起侧边栏' : '展开侧边栏'}
         className={cn(
-          'fixed bottom-4 z-50 rounded-full shadow-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-700 transition-all duration-300 ease-in-out',
-          isSidebarOpen ? 'left-[260px]' : 'left-4'
+          'fixed bottom-4 z-50 h-10 w-10 rounded-xl shadow-sm bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-500 hover:text-primary transition-all duration-300 ease-in-out',
+          isSidebarOpen ? 'left-[260px] opacity-0 group-hover:opacity-100 hover:opacity-100' : 'left-4 opacity-100'
         )}
         onClick={() => setSidebarOpen(!isSidebarOpen)}
       >
         {isSidebarOpen ? (
-          <ChevronLeft className="h-4 w-4 text-slate-600 dark:text-slate-300" />
+          <PanelLeftClose className="h-5 w-5" />
         ) : (
-          <ChevronRight className="h-4 w-4 text-slate-600 dark:text-slate-300" />
+          <PanelLeftOpen className="h-5 w-5" />
         )}
       </Button>
     </>
