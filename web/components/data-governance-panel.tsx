@@ -833,134 +833,166 @@ export function DataGovernancePanel() {
         </div>
       </div>
 
-      <div className="flex-1 flex overflow-hidden min-h-0">
+      <div className="flex-1 flex overflow-hidden min-h-0 relative">
         {/* 左侧文件列表 */}
-        <aside className="w-72 bg-gray-50 border-r border-gray-200 flex flex-col flex-shrink-0">
-          <div className="p-4 border-b border-gray-200">
-            <div className="max-h-56 overflow-y-auto pr-1">
-              <DocumentFolderTree />
+        <aside
+          ref={sidebarRef}
+          className={cn(
+            "group/sidebar relative flex flex-col flex-shrink-0 bg-gray-50 border-r border-gray-200 transition-all duration-75 ease-in-out",
+            isSidebarCollapsed ? "w-0 border-r-0" : ""
+          )}
+          style={{ width: isSidebarCollapsed ? 0 : sidebarWidth }}
+        >
+          {/* 折叠/展开按钮 */}
+          <Button
+            variant="ghost"
+            size="icon"
+            className={cn(
+              "absolute -right-3 top-3 z-30 h-6 w-6 rounded-full border border-gray-200 bg-white shadow-sm hover:bg-gray-50 text-gray-400 hover:text-gray-600 transition-opacity opacity-0 group-hover/sidebar:opacity-100",
+              isSidebarCollapsed && "opacity-100 -right-8 translate-x-2"
+            )}
+            onClick={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
+            title={isSidebarCollapsed ? "展开侧边栏" : "收起侧边栏"}
+          >
+            {isSidebarCollapsed ? <ChevronRight className="w-3 h-3" /> : <ChevronLeft className="w-3 h-3" />}
+          </Button>
+
+          <div className={cn("flex-1 flex flex-col min-h-0 w-full overflow-hidden", isSidebarCollapsed && "invisible")}>
+            <div className="p-4 border-b border-gray-200">
+              <div className="max-h-56 overflow-y-auto pr-1">
+                <DocumentFolderTree />
+              </div>
             </div>
-          </div>
 
-          <div className="p-4 border-b border-gray-200">
-            <h3 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-3">
-              待治理文件 ({visibleFiles.length})
-            </h3>
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-              <input
-                type="text"
-                placeholder="搜索文件..."
-                className="w-full pl-9 pr-3 py-2 text-sm bg-white border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-transparent"
-              />
+            <div className="p-4 border-b border-gray-200">
+              <h3 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-3">
+                待治理文件 ({visibleFiles.length})
+              </h3>
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                <input
+                  type="text"
+                  placeholder="搜索文件..."
+                  className="w-full pl-9 pr-3 py-2 text-sm bg-white border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-transparent"
+                />
+              </div>
             </div>
-          </div>
 
-          <div className="flex-1 overflow-y-auto p-3 space-y-2">
-            {visibleFiles.length === 0 ? (
-              <div className="text-sm text-gray-400 text-center py-8">该目录暂无文件</div>
-            ) : (
-              visibleFiles.map((file) => {
-              const state = governanceStates[file.id]
-              const hasIssue = state?.issues.some((i) => i.type === 'error')
-              const score = state?.qualityScore || 0
-              const processedAt = (() => {
-                const raw = file.parsedAt
-                if (!raw) return ''
-                const date = new Date(raw)
-                if (Number.isNaN(date.getTime())) return ''
-                return date.toLocaleString('zh-CN', {
-                  year: 'numeric',
-                  month: 'numeric',
-                  day: 'numeric',
-                  hour: '2-digit',
-                  minute: '2-digit',
-                  hour12: false,
-                })
-              })()
+            <div className="flex-1 overflow-y-auto p-3 space-y-2">
+              {visibleFiles.length === 0 ? (
+                <div className="text-sm text-gray-400 text-center py-8">该目录暂无文件</div>
+              ) : (
+                visibleFiles.map((file) => {
+                const state = governanceStates[file.id]
+                const hasIssue = state?.issues.some((i) => i.type === 'error')
+                const score = state?.qualityScore || 0
+                const processedAt = (() => {
+                  const raw = file.parsedAt
+                  if (!raw) return ''
+                  const date = new Date(raw)
+                  if (Number.isNaN(date.getTime())) return ''
+                  return date.toLocaleString('zh-CN', {
+                    year: 'numeric',
+                    month: 'numeric',
+                    day: 'numeric',
+                    hour: '2-digit',
+                    minute: '2-digit',
+                    hour12: false,
+                  })
+                })()
 
-              return (
-                <div
-                  key={file.id}
-                  onClick={() => handleSelectFile(file.id)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' || e.key === ' ') {
-                      e.preventDefault()
-                      handleSelectFile(file.id)
-                    }
-                  }}
-                  role="button"
-                  tabIndex={0}
-                  className={cn(
-                    "w-full text-left p-3 rounded-xl border transition-all",
-                    selectedFileId === file.id
-                      ? "bg-white border-sky-300 shadow-sm ring-1 ring-sky-100"
-                      : "bg-transparent border-gray-200 hover:bg-white hover:border-gray-300"
-                  )}
-                >
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="flex-1 min-w-0">
-                      <div className={cn(
-                        "text-sm font-medium truncate",
-                        selectedFileId === file.id ? "text-gray-900" : "text-gray-600"
-                      )}>
-                        {file.filename}
-                      </div>
-                      <div className="flex items-center justify-between gap-2 mt-1">
-                        <div className="flex items-center gap-2">
-                          <span className="text-xs text-gray-400">
-                            {file.fileType.toUpperCase()}
-                          </span>
-                          {score > 0 && (
-                            <span className={cn(
-                              "text-xs px-1.5 py-0.5 rounded font-medium",
-                              score >= 80 ? "bg-green-100 text-green-700" :
-                              score >= 60 ? "bg-yellow-100 text-yellow-700" :
-                              "bg-red-100 text-red-700"
-                            )}>
-                              {score}分
+                return (
+                  <div
+                    key={file.id}
+                    onClick={() => handleSelectFile(file.id)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault()
+                        handleSelectFile(file.id)
+                      }
+                    }}
+                    role="button"
+                    tabIndex={0}
+                    className={cn(
+                      "w-full text-left p-3 rounded-xl border transition-all",
+                      selectedFileId === file.id
+                        ? "bg-white border-sky-300 shadow-sm ring-1 ring-sky-100"
+                        : "bg-transparent border-gray-200 hover:bg-white hover:border-gray-300"
+                    )}
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex-1 min-w-0">
+                        <div className={cn(
+                          "text-sm font-medium truncate",
+                          selectedFileId === file.id ? "text-gray-900" : "text-gray-600"
+                        )}>
+                          {file.filename}
+                        </div>
+                        <div className="flex items-center justify-between gap-2 mt-1">
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs text-gray-400">
+                              {file.fileType.toUpperCase()}
+                            </span>
+                            {score > 0 && (
+                              <span className={cn(
+                                "text-xs px-1.5 py-0.5 rounded font-medium",
+                                score >= 80 ? "bg-green-100 text-green-700" :
+                                score >= 60 ? "bg-yellow-100 text-yellow-700" :
+                                "bg-red-100 text-red-700"
+                              )}>
+                                {score}分
+                              </span>
+                            )}
+                            {state?.isModified && (
+                              <span className="text-xs text-purple-600">● 已修改</span>
+                            )}
+                          </div>
+                          {processedAt && (
+                            <span
+                              className="text-[10px] text-gray-400 whitespace-nowrap"
+                              title={`处理时间：${processedAt}`}
+                            >
+                              {processedAt}
                             </span>
                           )}
-                          {state?.isModified && (
-                            <span className="text-xs text-purple-600">● 已修改</span>
-                          )}
                         </div>
-                        {processedAt && (
-                          <span
-                            className="text-[10px] text-gray-400 whitespace-nowrap"
-                            title={`处理时间：${processedAt}`}
-                          >
-                            {processedAt}
-                          </span>
-                        )}
+                      </div>
+                      <div className="flex items-center gap-1 flex-shrink-0">
+                        {hasIssue ? (
+                          <AlertCircle className="w-4 h-4 text-red-500 flex-shrink-0" />
+                        ) : score >= 80 ? (
+                          <CheckCircle className="w-4 h-4 text-green-500 flex-shrink-0" />
+                        ) : null}
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.preventDefault()
+                            e.stopPropagation()
+                            handleDeleteFile(file.id)
+                          }}
+                          className="p-1 rounded-md text-gray-400 hover:text-red-600 hover:bg-red-50"
+                          title="删除"
+                          aria-label={`删除 ${file.filename}`}
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
                       </div>
                     </div>
-                    <div className="flex items-center gap-1 flex-shrink-0">
-                      {hasIssue ? (
-                        <AlertCircle className="w-4 h-4 text-red-500 flex-shrink-0" />
-                      ) : score >= 80 ? (
-                        <CheckCircle className="w-4 h-4 text-green-500 flex-shrink-0" />
-                      ) : null}
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.preventDefault()
-                          e.stopPropagation()
-                          handleDeleteFile(file.id)
-                        }}
-                        className="p-1 rounded-md text-gray-400 hover:text-red-600 hover:bg-red-50"
-                        title="删除"
-                        aria-label={`删除 ${file.filename}`}
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    </div>
                   </div>
-                </div>
-              )
-              })
-            )}
+                )
+                })
+              )}
+            </div>
           </div>
+          
+          {/* 拖拽手柄 */}
+          <div
+            className={cn(
+              "absolute right-0 top-0 w-1 h-full cursor-col-resize hover:bg-sky-400 active:bg-sky-600 z-20 transition-colors",
+              isResizing ? "bg-sky-600 w-1.5" : "bg-transparent"
+            )}
+            onMouseDown={startResizing}
+          />
         </aside>
 
         {/* 主内容区 */}
