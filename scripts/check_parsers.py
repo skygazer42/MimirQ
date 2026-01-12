@@ -37,6 +37,16 @@ def main() -> int:
         )
     )
 
+    marker_enabled = bool(getattr(settings, "MARKER_ENABLED", False))
+    marker_configured = bool((getattr(settings, "MARKER_API_URL", "") or "").strip())
+    rows.append(
+        (
+            "marker",
+            "on" if marker_enabled else "off",
+            "configured" if marker_enabled and marker_configured else ("missing MARKER_API_URL" if marker_enabled else "disabled"),
+        )
+    )
+
     ok, msg = _check_import("markitdown")
     rows.append(("markitdown", "on" if settings.MARKITDOWN_ENABLED else "off", "installed" if ok else msg))
 

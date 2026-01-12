@@ -56,7 +56,21 @@ make up-etl4llm
 然后在 `docker/.env` 里配置：
 ```env
 ETL4LLM_ENABLED=true
-ETL4LLM_API_URL=http://etl4llm:10001/v1/etl4llm/predict
+ETL4LLM_API_URL=http://mimirq-etl4llm:10001/v1/etl4llm/predict
+```
+
+### (可选) 启用 Marker（外部服务 PDF→Markdown）
+
+Marker 建议以独立容器/服务运行（重依赖不进入 MimirQ 主镜像），然后在解析时指定 `parser_backend=marker`。
+
+```bash
+make up-marker
+```
+
+然后在 `docker/.env` 里配置：
+```env
+MARKER_ENABLED=true
+MARKER_API_URL=http://mimirq-marker:2080/convert
 ```
 
 ### (可选) 启用 Pandoc/LibreOffice（Office/HTML 高质量转 Markdown）

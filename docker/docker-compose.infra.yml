@@ -107,8 +107,23 @@ services:
       timeout: 20s
       retries: 3
 
+  # Marker PDF -> Markdown parser service (optional; heavyweight).
+  # Enable with: `docker compose -f docker/docker-compose.infra.yml --profile marker up -d --build`
+  mimirq-marker:
+    profiles: ["marker"]
+    build:
+      context: ./marker
+    restart: unless-stopped
+    ports:
+      - "2080:2080"
+    environment:
+      TZ: Asia/Shanghai
+    volumes:
+      - marker_cache:/root/.cache
+
 volumes:
   postgres_data:
   etcd_data:
   minio_data:
   milvus_data:
+  marker_cache:
