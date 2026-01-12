@@ -1056,77 +1056,24 @@ export function DataGovernancePanel() {
 
               {/* 内容区 */}
               <div className="flex-1 flex overflow-hidden min-h-0 relative">
-                {/* 左侧治理面板 */}
-                <div 
-                  ref={panelRef}
-                  className={cn(
-                    "group/panel relative flex-shrink-0 border-r border-gray-200 bg-gray-50/50 flex flex-col transition-all duration-75 ease-in-out",
-                    isPanelCollapsed ? "w-0 border-r-0" : ""
-                  )}
-                  style={{ width: isPanelCollapsed ? 0 : panelWidth }}
-                >
-                  {/* 面板折叠按钮 */}
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className={cn(
-                      "absolute -right-3 top-3 z-30 h-6 w-6 rounded-full border border-gray-200 bg-white shadow-sm hover:bg-gray-50 text-gray-400 hover:text-gray-600 transition-opacity opacity-0 group-hover/panel:opacity-100",
-                      isPanelCollapsed && "opacity-100 -right-8 translate-x-2"
-                    )}
-                    onClick={() => setIsPanelCollapsed(!isPanelCollapsed)}
-                    title={isPanelCollapsed ? "展开面板" : "收起面板"}
-                  >
-                    {isPanelCollapsed ? <ChevronRight className="w-3 h-3" /> : <ChevronLeft className="w-3 h-3" />}
-                  </Button>
-
-                  <div className={cn("flex-1 overflow-y-auto w-full", isPanelCollapsed && "invisible")}>
-                    {activeTab === 'quality' && (
-                      <QualityChecker
-                        content={governanceState.originalContent}
-                        initialScore={governanceState.qualityScore}
-                        initialIssues={governanceState.issues}
-                        onComplete={handleQualityCheck}
-                      />
-                    )}
-                    {activeTab === 'clean' && (
-                      <DataCleaner
-                        content={governanceState.originalContent}
-                        cleanedContent={governanceState.cleanedContent}
-                        onClean={handleClean}
-                      />
-                    )}
-                    {activeTab === 'annotate' && (
-                      <DataAnnotator
-                        content={governanceState.cleanedContent}
-                        annotations={governanceState.annotations}
-                        onAnnotate={handleAnnotate}
-                      />
-                    )}
-                    {activeTab === 'classify' && (
-                      <DataClassifier
-                        content={governanceState.cleanedContent}
-                        initialCategory={governanceState.category}
-                        initialTags={governanceState.tags}
-                        onClassify={handleClassify}
-                      />
-                    )}
-                  </div>
-
-                  {/* 拖拽手柄 */}
-                  <div
-                    className={cn(
-                      "absolute right-0 top-0 w-1 h-full cursor-col-resize hover:bg-sky-400 active:bg-sky-600 z-20 transition-colors",
-                      isPanelResizing ? "bg-sky-600 w-1.5" : "bg-transparent"
-                    )}
-                    onMouseDown={startPanelResizing}
-                  />
-                </div>
-
-                {/* 右侧预览区 */}
-                <div className="flex-1 flex flex-col overflow-hidden bg-white min-h-0">
+                {/* 中间预览区 (主内容) */}
+                <div className="flex-1 flex flex-col overflow-hidden bg-white min-h-0 z-0">
                   {/* 预览工具栏 */}
                   <div className="flex-shrink-0 h-12 border-b border-gray-100 flex items-center justify-between px-4 bg-gray-50">
                     <div className="flex items-center gap-2">
+                      {/* 左侧侧边栏展开按钮 (当收起时显示) */}
+                      {isSidebarCollapsed && (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => setIsSidebarCollapsed(false)}
+                          className="h-8 w-8 mr-2 text-gray-500 hover:text-sky-600"
+                          title="展开文件列表"
+                        >
+                          <FolderTree className="w-4 h-4" />
+                        </Button>
+                      )}
+
                       <span className="text-xs font-medium text-gray-500">预览内容</span>
                       <span className={cn(
                         "text-xs px-2 py-0.5 rounded",
@@ -1185,6 +1132,19 @@ export function DataGovernancePanel() {
                         <Copy className="w-3.5 h-3.5" />
                         复制
                       </Button>
+                      
+                      {/* 右侧面板展开按钮 */}
+                      {isPanelCollapsed && (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => setIsPanelCollapsed(false)}
+                          className="h-8 w-8 ml-2 text-gray-500 hover:text-sky-600 border-l border-gray-200 rounded-none pl-3"
+                          title="展开治理工具"
+                        >
+                          <Wrench className="w-4 h-4" />
+                        </Button>
+                      )}
                     </div>
                   </div>
 
@@ -1241,6 +1201,71 @@ export function DataGovernancePanel() {
                       )}
                     </div>
                   </div>
+                </div>
+
+                {/* 右侧治理面板 (原左侧) */}
+                <div 
+                  ref={panelRef}
+                  className={cn(
+                    "group/panel relative flex-shrink-0 border-l border-gray-200 bg-gray-50/50 flex flex-col transition-all duration-75 ease-in-out z-10",
+                    isPanelCollapsed ? "w-0 border-l-0" : ""
+                  )}
+                  style={{ width: isPanelCollapsed ? 0 : panelWidth }}
+                >
+                  <div className="flex items-center justify-between px-4 py-2 border-b border-gray-200 bg-white">
+                     <span className="text-xs font-bold text-gray-500 uppercase">治理工具箱</span>
+                     <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-6 w-6 text-gray-400 hover:text-gray-600"
+                        onClick={() => setIsPanelCollapsed(true)}
+                        title="收起面板"
+                     >
+                       <ChevronRight className="w-4 h-4" />
+                     </Button>
+                  </div>
+
+                  <div className={cn("flex-1 overflow-y-auto w-full", isPanelCollapsed && "invisible")}>
+                    {activeTab === 'quality' && (
+                      <QualityChecker
+                        content={governanceState.originalContent}
+                        initialScore={governanceState.qualityScore}
+                        initialIssues={governanceState.issues}
+                        onComplete={handleQualityCheck}
+                      />
+                    )}
+                    {activeTab === 'clean' && (
+                      <DataCleaner
+                        content={governanceState.originalContent}
+                        cleanedContent={governanceState.cleanedContent}
+                        onClean={handleClean}
+                      />
+                    )}
+                    {activeTab === 'annotate' && (
+                      <DataAnnotator
+                        content={governanceState.cleanedContent}
+                        annotations={governanceState.annotations}
+                        onAnnotate={handleAnnotate}
+                      />
+                    )}
+                    {activeTab === 'classify' && (
+                      <DataClassifier
+                        content={governanceState.cleanedContent}
+                        initialCategory={governanceState.category}
+                        initialTags={governanceState.tags}
+                        onClassify={handleClassify}
+                      />
+                    )}
+                  </div>
+
+                  {/* 拖拽手柄 (左侧) */}
+                  <div
+                    className={cn(
+                      "absolute left-0 top-0 w-1 h-full cursor-col-resize hover:bg-sky-400 active:bg-sky-600 z-20 transition-colors",
+                      isPanelResizing ? "bg-sky-600 w-1.5" : "bg-transparent"
+                    )}
+                    onMouseDown={startPanelResizing}
+                  />
                 </div>
               </div>
             </>
