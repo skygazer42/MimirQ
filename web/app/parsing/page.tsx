@@ -64,6 +64,8 @@ interface ParseRun {
   parserLabel: string
   runs?: ParseRun[]
   activeRunId?: string
+  runs?: ParseRun[]
+  activeRunId?: string
   rawMarkdown: string
   cleanedMarkdown: string
   blocks: ParsingBlock[]
@@ -117,9 +119,21 @@ export default function ParsingPage() {
   // 获取当前选中的文件
   const activeFile = files.find((f) => f.id === activeFileId) || null
 
+  const activeRun = useMemo(() => {
+    if (!activeFile) return null
+    const runs = activeFile.runs || []
+    if (!runs.length) return null
+    const selected = runs.find((run) => run.id === activeFile.activeRunId)
+    return selected || runs[runs.length - 1]
+  }, [activeFile])
+
+  const activeMarkdown = activeRun?.cleanedMarkdown || activeFile?.markdownContent || ''
+  const activeBlocks = activeRun?.blocks || []
+  const isPdf = Boolean(activeFile?.file?.name?.toLowerCase().endsWith('.pdf'))
+
   const tocEnabled = useMemo(
-    () => extractMarkdownHeadings(activeFile?.markdownContent || '', { maxDepth: 4 }).length > 0,
-    [activeFile?.markdownContent]
+    () => extractMarkdownHeadings(activeMarkdown, { maxDepth: 4 }).length > 0,
+    [activeMarkdown]
   )
 
   const folderPathById = useMemo(() => {
@@ -364,6 +378,7 @@ export default function ParsingPage() {
   }
 
   // 解析文件
+  // ????
   const parseFile = async (fileId: string) => {
     const file = files.find((f) => f.id === fileId)
     if (!file) return
@@ -378,7 +393,7 @@ export default function ParsingPage() {
       )
     )
 
-    // 模拟进度更新
+    // ??????
     const progressInterval = setInterval(() => {
       setFiles((prev) =>
         prev.map((f) =>
@@ -390,18 +405,31 @@ export default function ParsingPage() {
     }, 300)
 
     try {
-      // 仅进行解析预览，不应用复杂的清洗和切块策略
+      // ?????????????????????
       const data = await documentApi.preview(file.file, parserBackend)
 
       clearInterval(progressInterval)
 
-      // 拼接 segments 获取全文
-      const markdownContent = data.segments.map(s => s.content).join('\n\n')
+      // ?? segments ????
+      const rawMarkdown = data.segments.map((s) => s.content).join('\n\n')
       const resolvedBackend = data.parser_backend || parserBackend
       const resolvedLabel = getParserLabel(resolvedBackend)
       const duration = ((Date.now() - startTime) / 1000).toFixed(1)
+      const parsed = extractBlocksFromMarkdown(rawMarkdown)
+      const markdownContent = parsed.cleanedMarkdown
+      const blocks = parsed.blocks
+      const runId = `${resolvedBackend}-${Date.now()}`
+      const run = {
+        id: runId,
+        parserBackend: resolvedBackend,
+        parserLabel: resolvedLabel,
+        rawMarkdown,
+        cleanedMarkdown: markdownContent,
+        blocks,
+        createdAt: Date.now(),
+      }
 
-      // 计算统计信息
+      // ??????
       const stats = {
         charCount: markdownContent.length,
         lineCount: markdownContent.split('\n').length,
@@ -409,6 +437,7 @@ export default function ParsingPage() {
           ? (markdownContent.match(/^\|/gm) || []).length / 2
           : 0,
         imageCount: (markdownContent.match(/!\[.*?\]\(.*?\)/g) || []).length,
+        blockCount: blocks.length,
       }
 
       setFiles((prev) =>
@@ -424,12 +453,18 @@ export default function ParsingPage() {
                 progress: 100,
                 duration: parseFloat(duration),
                 stats,
+                runs: [...(f.runs || []), run],
+                activeRunId: runId,
               }
             : f
         )
       )
 
-      // 保存到共享存储
+      setActiveBlockId(null)
+      setHoveredBlockId(null)
+      setRightPanelMode(blocks.length ? 'blocks' : 'markdown')
+
+      // ???????
       addParsedFile({
         filename: file.file.name,
         fileType: file.file.name.split('.').pop()?.toLowerCase() || '',
@@ -440,7 +475,7 @@ export default function ParsingPage() {
       })
     } catch (err: any) {
       clearInterval(progressInterval)
-      const errorMessage = formatApiError(err, '解析失败')
+      const errorMessage = formatApiError(err, '????')
       setFiles((prev) =>
         prev.map((f) =>
           f.id === fileId
@@ -456,7 +491,6 @@ export default function ParsingPage() {
     }
   }
 
-  // 批量解析
   const parseAllPending = async () => {
     const targets = visibleQueueFiles.filter((f) => f.status === 'pending' || f.status === 'error')
     for (const file of targets) {
@@ -464,18 +498,42 @@ export default function ParsingPage() {
     }
   }
 
+  const handleSelectRun = (runId: string) => {
+    if (!activeFile || !activeFile.runs?.length) return
+    const nextRun = activeFile.runs.find((run) => run.id === runId)
+    if (!nextRun) return
+
+    setFiles((prev) =>
+      prev.map((f) =>
+        f.id === activeFile.id
+          ? {
+              ...f,
+              activeRunId: runId,
+              markdownContent: nextRun.cleanedMarkdown,
+              parserBackend: nextRun.parserBackend,
+              parserLabel: nextRun.parserLabel,
+            }
+          : f
+      )
+    )
+
+    setActiveBlockId(null)
+    setHoveredBlockId(null)
+    setRightPanelMode(nextRun.blocks.length ? 'blocks' : 'markdown')
+  }
+
   // 复制 Markdown
   const copyMarkdown = async () => {
-    if (!activeFile?.markdownContent) return
-    await navigator.clipboard.writeText(activeFile.markdownContent)
+    if (!activeMarkdown) return
+    await navigator.clipboard.writeText(activeMarkdown)
     setCopied(true)
     setTimeout(() => setCopied(false), 2000)
   }
 
   // 下载 Markdown
   const downloadMarkdown = () => {
-    if (!activeFile?.markdownContent) return
-    const blob = new Blob([activeFile.markdownContent], { type: 'text/markdown' })
+    if (!activeMarkdown) return
+    const blob = new Blob([activeMarkdown], { type: 'text/markdown' })
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
@@ -486,8 +544,8 @@ export default function ParsingPage() {
 
   // 开始编辑
   const handleStartEdit = () => {
-    if (!activeFile?.markdownContent) return
-    setEditedContent(activeFile.markdownContent)
+    if (!activeMarkdown) return
+    setEditedContent(activeMarkdown)
     setIsEditing(true)
   }
 
@@ -508,29 +566,44 @@ export default function ParsingPage() {
           ? {
               ...f,
               markdownContent: editedContent,
+              runs: f.runs?.map((run) =>
+                run.id === activeRunId
+                  ? {
+                      ...run,
+                      cleanedMarkdown: editedContent,
+                      rawMarkdown: editedContent,
+                      blocks: [],
+                    }
+                  : run
+              ),
               stats: f.stats ? {
                 ...f.stats,
                 charCount: editedContent.length,
                 lineCount: editedContent.split('\n').length,
+                blockCount: 0,
               } : undefined,
             }
           : f
       )
     )
 
+    setRightPanelMode('markdown')
+    setActiveBlockId(null)
+    setHoveredBlockId(null)
+
     setIsEditing(false)
   }
 
   // 提交到数据治理
   const handleSubmitToGovernance = () => {
-    if (!activeFile?.markdownContent) return
+    if (!activeMarkdown) return
 
     // 使用当前内容（可能是编辑后的）提交到数据治理
     addParsedFile({
       filename: activeFile.file.name,
       fileType: activeFile.file.name.split('.').pop()?.toLowerCase() || '',
       fileSize: activeFile.file.size,
-      markdownContent: activeFile.markdownContent,
+      markdownContent: activeMarkdown,
       parser: activeFile.parserLabel,
       folderId: activeFile.folderId,
     })
@@ -766,6 +839,19 @@ export default function ParsingPage() {
                     <span className="text-xs text-gray-400 bg-gray-200 px-2 py-0.5 rounded">
                       {activeFile.parserLabel}
                     </span>
+                    {activeFile.runs && activeFile.runs.length > 1 && (
+                      <select
+                        value={activeRun?.id || ''}
+                        onChange={(e) => handleSelectRun(e.target.value)}
+                        className="text-xs border border-gray-200 rounded px-2 py-1 bg-white text-gray-600"
+                      >
+                        {activeFile.runs.map((run) => (
+                          <option key={run.id} value={run.id}>
+                            {run.parserLabel} ? {new Date(run.createdAt).toLocaleTimeString()}
+                          </option>
+                        ))}
+                      </select>
+                    )}
                     {isEditing && (
                       <span className="text-xs text-amber-600 bg-amber-100 px-2 py-0.5 rounded flex items-center gap-1">
                         <Edit3 className="w-3 h-3" />
@@ -801,33 +887,63 @@ export default function ParsingPage() {
                         ) : (
                           // 预览模式按钮
                           <>
-                            {/* 预览模式切换 */}
-                            <div className="flex items-center bg-gray-200 rounded-lg p-0.5 mr-2">
-                              <button
-                                onClick={() => setPreviewMode('rendered')}
-                                className={cn(
-                                  'px-3 py-1.5 text-xs rounded-md transition-all flex items-center gap-1',
-                                  previewMode === 'rendered'
-                                    ? 'bg-white text-gray-900 shadow-sm'
-                                    : 'text-gray-500 hover:text-gray-700'
-                                )}
-                              >
-                                <Eye className="w-3.5 h-3.5" />
-                                预览
-                              </button>
-                              <button
-                                onClick={() => setPreviewMode('raw')}
-                                className={cn(
-                                  'px-3 py-1.5 text-xs rounded-md transition-all flex items-center gap-1',
-                                  previewMode === 'raw'
-                                    ? 'bg-white text-gray-900 shadow-sm'
-                                    : 'text-gray-500 hover:text-gray-700'
-                                )}
-                              >
-                                <Code className="w-3.5 h-3.5" />
-                                源码
-                              </button>
-                            </div>
+                            {activeBlocks.length > 0 && (
+                              <div className="flex items-center bg-gray-200 rounded-lg p-0.5 mr-2">
+                                <button
+                                  onClick={() => setRightPanelMode('blocks')}
+                                  className={cn(
+                                    'px-3 py-1.5 text-xs rounded-md transition-all flex items-center gap-1',
+                                    rightPanelMode === 'blocks'
+                                      ? 'bg-white text-gray-900 shadow-sm'
+                                      : 'text-gray-500 hover:text-gray-700'
+                                  )}
+                                >
+                                  <FileStack className="w-3.5 h-3.5" />
+                                  版面
+                                </button>
+                                <button
+                                  onClick={() => setRightPanelMode('markdown')}
+                                  className={cn(
+                                    'px-3 py-1.5 text-xs rounded-md transition-all flex items-center gap-1',
+                                    rightPanelMode === 'markdown'
+                                      ? 'bg-white text-gray-900 shadow-sm'
+                                      : 'text-gray-500 hover:text-gray-700'
+                                  )}
+                                >
+                                  <FileText className="w-3.5 h-3.5" />
+                                  Markdown
+                                </button>
+                              </div>
+                            )}
+
+                            {rightPanelMode === 'markdown' && (
+                              <div className="flex items-center bg-gray-200 rounded-lg p-0.5 mr-2">
+                                <button
+                                  onClick={() => setPreviewMode('rendered')}
+                                  className={cn(
+                                    'px-3 py-1.5 text-xs rounded-md transition-all flex items-center gap-1',
+                                    previewMode === 'rendered'
+                                      ? 'bg-white text-gray-900 shadow-sm'
+                                      : 'text-gray-500 hover:text-gray-700'
+                                  )}
+                                >
+                                  <Eye className="w-3.5 h-3.5" />
+                                  预览
+                                </button>
+                                <button
+                                  onClick={() => setPreviewMode('raw')}
+                                  className={cn(
+                                    'px-3 py-1.5 text-xs rounded-md transition-all flex items-center gap-1',
+                                    previewMode === 'raw'
+                                      ? 'bg-white text-gray-900 shadow-sm'
+                                      : 'text-gray-500 hover:text-gray-700'
+                                  )}
+                                >
+                                  <Code className="w-3.5 h-3.5" />
+                                  源码
+                                </button>
+                              </div>
+                            )}
 
                             <Button
                               variant="outline"
@@ -914,43 +1030,94 @@ export default function ParsingPage() {
                     </div>
                   )}
 
-                  {activeFile.status === 'parsed' && activeFile.markdownContent && (
-                    <div className="p-6">
+                  {activeFile.status === 'parsed' && activeMarkdown && (
+                    <div className="h-full">
                       {isEditing ? (
-                        // 编辑模式
-                        <textarea
-                          value={editedContent}
-                          onChange={(e) => setEditedContent(e.target.value)}
-                          className="w-full min-h-[500px] p-4 font-mono text-sm leading-relaxed text-gray-700 whitespace-pre-wrap bg-amber-50 border border-amber-200 rounded-xl resize-none focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent"
-                          placeholder="在此编辑内容..."
-                          autoFocus
-                        />
-                      ) : previewMode === 'rendered' ? (
-                        // 预览模式
-                        <div className="flex gap-8">
-                          <div className="min-w-0 flex-1 prose prose-slate max-w-none prose-headings:text-gray-900 prose-p:text-gray-700 prose-a:text-indigo-600 prose-code:text-pink-600 prose-code:bg-pink-50 prose-code:px-1 prose-code:py-0.5 prose-code:rounded prose-pre:bg-gray-900 prose-table:border-collapse prose-th:bg-gray-100 prose-th:border prose-th:border-gray-300 prose-th:p-2 prose-td:border prose-td:border-gray-300 prose-td:p-2">
-                            <MarkdownRenderer markdown={activeFile.markdownContent} autoScrollToHash />
-                          </div>
-                          {tocEnabled && (
-                            <aside className="hidden xl:block w-64 shrink-0">
-                              <div className="sticky top-6 max-h-[calc(100vh-220px)] overflow-y-auto rounded-xl border border-slate-200 bg-white/70 p-3">
-                                <MarkdownToc markdown={activeFile.markdownContent} />
-                              </div>
-                            </aside>
-                          )}
+                        <div className="p-6">
+                          <textarea
+                            value={editedContent}
+                            onChange={(e) => setEditedContent(e.target.value)}
+                            className="w-full min-h-[500px] p-4 font-mono text-sm leading-relaxed text-gray-700 whitespace-pre-wrap bg-amber-50 border border-amber-200 rounded-xl resize-none focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent"
+                            placeholder="在此编辑内容..."
+                            autoFocus
+                          />
                         </div>
                       ) : (
-                        // 源码模式
-                        <pre className="font-mono text-sm leading-relaxed text-gray-700 whitespace-pre-wrap bg-gray-50 p-6 rounded-xl border">
-                          {activeFile.markdownContent}
-                        </pre>
+                        <div className="flex h-full min-h-[520px] flex-col lg:flex-row">
+                          {isPdf ? (
+                            <div className="w-full lg:w-1/2 border-b lg:border-b-0 lg:border-r border-gray-200 bg-gray-50">
+                              <PdfViewer
+                                file={activeFile.file}
+                                blocks={activeBlocks}
+                                activeBlockId={activeBlockId}
+                                hoveredBlockId={hoveredBlockId}
+                              />
+                            </div>
+                          ) : null}
+                          <div className={isPdf ? 'w-full lg:w-1/2' : 'w-full'}>
+                            {rightPanelMode === 'blocks' && activeBlocks.length > 0 ? (
+                              <div className="h-full overflow-y-auto p-6 space-y-4">
+                                {activeBlocks
+                                  .filter((block) => (block.text || '').trim().length > 0)
+                                  .map((block, idx) => {
+                                    const pageIndex = block.positions?.[0]?.pages?.[0]
+                                    const isActive = block.id === activeBlockId
+                                    return (
+                                      <button
+                                        key={block.id}
+                                        type="button"
+                                        onClick={() => setActiveBlockId(block.id)}
+                                        onMouseEnter={() => setHoveredBlockId(block.id)}
+                                        onMouseLeave={() => setHoveredBlockId(null)}
+                                        className={cn(
+                                          'w-full text-left rounded-xl border p-4 transition shadow-sm',
+                                          isActive
+                                            ? 'border-amber-400 bg-amber-50'
+                                            : 'border-gray-200 bg-white hover:border-sky-300'
+                                        )}
+                                      >
+                                        <div className="text-xs text-gray-400 mb-2">
+                                          块 {idx + 1}
+                                          {Number.isFinite(pageIndex) ? ` · 页 ${Number(pageIndex) + 1}` : ''}
+                                        </div>
+                                        <div className="prose prose-slate max-w-none prose-headings:text-gray-900 prose-p:text-gray-700 prose-a:text-indigo-600 prose-code:text-pink-600 prose-code:bg-pink-50 prose-code:px-1 prose-code:py-0.5 prose-code:rounded prose-pre:bg-gray-900 prose-table:border-collapse prose-th:bg-gray-100 prose-th:border prose-th:border-gray-300 prose-th:p-2 prose-td:border prose-td:border-gray-300 prose-td:p-2">
+                                          <MarkdownRenderer markdown={block.text} />
+                                        </div>
+                                      </button>
+                                    )
+                                  })}
+                              </div>
+                            ) : (
+                              <div className="h-full overflow-y-auto p-6">
+                                {previewMode === 'rendered' ? (
+                                  <div className="flex gap-8">
+                                    <div className="min-w-0 flex-1 prose prose-slate max-w-none prose-headings:text-gray-900 prose-p:text-gray-700 prose-a:text-indigo-600 prose-code:text-pink-600 prose-code:bg-pink-50 prose-code:px-1 prose-code:py-0.5 prose-code:rounded prose-pre:bg-gray-900 prose-table:border-collapse prose-th:bg-gray-100 prose-th:border prose-th:border-gray-300 prose-th:p-2 prose-td:border prose-td:border-gray-300 prose-td:p-2">
+                                      <MarkdownRenderer markdown={activeMarkdown} autoScrollToHash />
+                                    </div>
+                                    {tocEnabled && (
+                                      <aside className="hidden xl:block w-64 shrink-0">
+                                        <div className="sticky top-6 max-h-[calc(100vh-220px)] overflow-y-auto rounded-xl border border-slate-200 bg-white/70 p-3">
+                                          <MarkdownToc markdown={activeMarkdown} />
+                                        </div>
+                                      </aside>
+                                    )}
+                                  </div>
+                                ) : (
+                                  <pre className="font-mono text-sm leading-relaxed text-gray-700 whitespace-pre-wrap bg-gray-50 p-6 rounded-xl border">
+                                    {activeMarkdown}
+                                  </pre>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        </div>
                       )}
                     </div>
                   )}
                 </div>
 
                 {/* 底部操作栏 */}
-                {activeFile.status === 'parsed' && activeFile.markdownContent && (
+                {activeFile.status === 'parsed' && activeMarkdown && (
                   <div className="px-6 py-4 border-t bg-gradient-to-r from-gray-50 to-white">
                     <div className="flex items-center justify-between">
                       <div className="text-sm text-gray-500">
