@@ -185,6 +185,7 @@ class ParserFactory:
         dataset_id: Optional[str] = None,
         document_id: Optional[str] = None,
         tenant_id: Optional[str] = None,
+        pdf_quality: Optional[dict[str, Any]] = None,
     ) -> Tuple[List[Document], str]:
         """
         Automatically select parser based on file type and return Document list and actual parser name
@@ -211,6 +212,7 @@ class ParserFactory:
                     dataset_id=dataset_id,
                     document_id=document_id,
                     tenant_id=tenant_id,
+                    pdf_quality=pdf_quality,
                 )
             else:
                 documents = parser.parse(file_path)
