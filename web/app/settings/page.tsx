@@ -24,6 +24,8 @@ import {
   type BackendMeta,
   type FeatureFlags,
   type Etl4LlmConfig,
+  type MarkerConfig,
+  type PaddleVLConfig,
   type MagicPDFConfig,
   type ObservabilityConfig,
   type SafetyConfig,

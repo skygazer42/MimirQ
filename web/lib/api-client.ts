@@ -693,6 +693,8 @@ export interface FeatureFlags {
   deepdoc_enabled: boolean
   docling_enabled: boolean
   etl4llm_enabled: boolean
+  marker_enabled: boolean
+  paddle_vl_enabled: boolean
   markitdown_enabled: boolean
   llama_index_enabled: boolean
   mineru_enabled: boolean
@@ -755,6 +757,16 @@ export interface Etl4LlmConfig {
   filter_page_header_footer: boolean
 }
 
+export interface MarkerConfig {
+  api_url: string
+  timeout_sec: number
+}
+
+export interface PaddleVLConfig {
+  api_url: string
+  timeout_sec: number
+}
+
 export interface MagicPDFConfig {
   cli: string
   method: string
@@ -792,6 +804,8 @@ export interface SystemSettings {
   rag: RAGConfig
   mineru: MinerUConfig
   etl4llm: Etl4LlmConfig
+  marker: MarkerConfig
+  paddle_vl: PaddleVLConfig
   magicpdf: MagicPDFConfig
   observability: ObservabilityConfig
   safety: SafetyConfig
