@@ -520,16 +520,41 @@ class Settings(BaseSettings):
 
         # Security: Warn about default MinIO credentials
         if self.MINIO_ENABLED:
-            if not self.MINIO_ACCESS_KEY or not self.MINIO_SECRET_KEY:
-                raise ValueError("MINIO_ACCESS_KEY and MINIO_SECRET_KEY are required when MINIO_ENABLED=true")
+            access_key = (self.MINIO_ACCESS_KEY or "").strip()
+            secret_key = (self.MINIO_SECRET_KEY or "").strip()
+            missing_access_key = not access_key
+            missing_secret_key = not secret_key
+
+            used_default_minio_credentials = False
+            if missing_access_key or missing_secret_key:
+                if is_production:
+                    raise ValueError("MINIO_ACCESS_KEY and MINIO_SECRET_KEY are required when MINIO_ENABLED=true")
+                if missing_access_key and missing_secret_key:
+                    self.MINIO_ACCESS_KEY = "minioadmin"
+                    self.MINIO_SECRET_KEY = "minioadmin"
+                    used_default_minio_credentials = True
+                    warnings.warn(
+                        "MINIO_ACCESS_KEY/MINIO_SECRET_KEY are empty; defaulting to minioadmin for local/dev.",
+                        UserWarning,
+                        stacklevel=2,
+                    )
+                else:
+                    raise ValueError("MINIO_ACCESS_KEY and MINIO_SECRET_KEY must both be set when MINIO_ENABLED=true")
+            else:
+                if self.MINIO_ACCESS_KEY != access_key:
+                    self.MINIO_ACCESS_KEY = access_key
+                if self.MINIO_SECRET_KEY != secret_key:
+                    self.MINIO_SECRET_KEY = secret_key
+
             if self.MINIO_ACCESS_KEY == "minioadmin" or self.MINIO_SECRET_KEY == "minioadmin":
                 if is_production:
                     raise ValueError("Default MinIO credentials are not allowed in production when MINIO_ENABLED=true")
-                warnings.warn(
-                    "Using default MinIO credentials. Change in production!",
-                    UserWarning,
-                    stacklevel=2,
-                )
+                if not used_default_minio_credentials:
+                    warnings.warn(
+                        "Using default MinIO credentials. Change in production!",
+                        UserWarning,
+                        stacklevel=2,
+                    )
 
         if is_production and bool(getattr(self, "FAISS_ALLOW_DANGEROUS_DESERIALIZATION", False)):
             raise ValueError("FAISS_ALLOW_DANGEROUS_DESERIALIZATION is not allowed in production")
