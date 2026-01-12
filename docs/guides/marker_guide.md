@@ -11,7 +11,7 @@ MimirQ 支持将 **Marker** 作为可选 PDF 高级解析后端，通过 **独�
 ```bash
 MARKER_ENABLED=true
 # 填 Marker 服务的“转换接口完整 URL”（以你的服务为准，常见是 /convert）
-MARKER_API_URL=http://marker:2080/convert
+MARKER_API_URL=http://mimirq-marker:2080/convert
 MARKER_TIMEOUT_SEC=600
 ```
 
@@ -26,4 +26,3 @@ MARKER_TIMEOUT_SEC=600
 
 - 若 Marker 返回 ZIP（Markdown + images），后端会把产物解压到上传文件同级目录：`.marker/<document_id>/output/...`，并通过 `asset_base_dir` 支持后续图片处理。
 - 默认会在预览/入库流程结束后 best-effort 清理 `.marker` 目录；如需保留排查问题，可临时设置 `MAGIC_PDF_KEEP_ARTIFACTS=true`（全局开关）。
-

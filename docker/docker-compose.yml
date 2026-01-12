@@ -50,6 +50,21 @@ services:
       timeout: 20s
       retries: 3
 
+  # Marker PDF -> Markdown parser service (optional; heavyweight).
+  # Enable with: `docker compose --profile marker up -d --build`
+  # Then set `MARKER_ENABLED=true` and `MARKER_API_URL=http://mimirq-marker:2080/convert` in docker/.env.
+  mimirq-marker:
+    profiles: ["marker"]
+    build:
+      context: ./marker
+    restart: unless-stopped
+    ports:
+      - "2080:2080"
+    environment:
+      TZ: Asia/Shanghai
+    volumes:
+      - marker_cache:/root/.cache
+
   # Redis（任务队列/缓存/幂等锁）
   mimirq-redis:
     image: redis:7
@@ -193,3 +208,4 @@ volumes:
   minio_data:
   milvus_data:
   upload_data:
+  marker_cache:
