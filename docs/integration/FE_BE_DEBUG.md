@@ -50,3 +50,8 @@
 18. [x] 增加最小端到端验证脚本/步骤（上传文档 -> 聊天 -> 历史回放）
 19. [x] 后端/前端构建与类型检查（`python -m compileall`、`next build`）
 20. [x] 记录联调常见问题与排查路径（CORS、Header、MinIO、Milvus/Postgres）
+
+## Parsing Preview
+
+- `/parsing` supports PDF + Markdown layout sync when parsers emit `@@...##` position tags (e.g. MinerU/Docling).
+- Click a block on the right to highlight the corresponding PDF region on the left.
