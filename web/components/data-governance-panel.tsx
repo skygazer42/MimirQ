@@ -4,7 +4,7 @@
  */
 'use client'
 
-import { useState, useCallback, useMemo, useEffect } from 'react'
+import { useState, useCallback, useMemo, useEffect, useRef } from 'react'
 import {
   ShieldCheck,
   Sparkles,
@@ -132,6 +132,48 @@ export function DataGovernancePanel() {
 
   // 文件治理状态
   const [governanceStates, setGovernanceStates] = useState<Record<string, FileGovernanceState>>({})
+
+  // 侧边栏状态
+  const [sidebarWidth, setSidebarWidth] = useState(288)
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false)
+  const [isResizing, setIsResizing] = useState(false)
+  const sidebarRef = useRef<HTMLDivElement>(null)
+
+  const startResizing = useCallback((e: React.MouseEvent) => {
+    e.preventDefault()
+    setIsResizing(true)
+  }, [])
+
+  const stopResizing = useCallback(() => {
+    setIsResizing(false)
+  }, [])
+
+  const resize = useCallback(
+    (mouseMoveEvent: MouseEvent) => {
+      if (isResizing && sidebarRef.current) {
+        // 计算相对于视口的位置
+        const sidebarLeft = sidebarRef.current.getBoundingClientRect().left
+        const newWidth = mouseMoveEvent.clientX - sidebarLeft
+        
+        // 限制最小和最大宽度
+        if (newWidth > 150 && newWidth < 600) {
+          setSidebarWidth(newWidth)
+        }
+      }
+    },
+    [isResizing]
+  )
+
+  useEffect(() => {
+    if (isResizing) {
+      window.addEventListener('mousemove', resize)
+      window.addEventListener('mouseup', stopResizing)
+    }
+    return () => {
+      window.removeEventListener('mousemove', resize)
+      window.removeEventListener('mouseup', stopResizing)
+    }
+  }, [isResizing, resize, stopResizing])
 
   // 选中的文件
   const selectedFile = files.find((f) => f.id === selectedFileId) || null
