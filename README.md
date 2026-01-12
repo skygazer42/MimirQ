@@ -10,7 +10,12 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
-[![Docker Pulls](https://img.shields.io/docker/pulls/skygazer42/mimirq?color=blue)](https://hub.docker.com/r/skygazer42/mimirq)
+[![Next.js 14](https://img.shields.io/badge/Next.js-14-black)](https://nextjs.org/)
+[![FastAPI](https://img.shields.io/badge/FastAPI-0.109-009688.svg)](https://fastapi.tiangolo.com/)
+[![LangChain](https://img.shields.io/badge/LangChain-0.3-green)](https://langchain.com/)
+[![LangGraph](https://img.shields.io/badge/LangGraph-0.2-1C3C3C)](https://langchain-ai.github.io/langgraph/)
+[![Milvus](https://img.shields.io/badge/Milvus-2.3-00a1e0)](https://milvus.io/)
+
 [![GitHub stars](https://img.shields.io/github/stars/skygazer42/MimirQ?color=yellow)](https://github.com/skygazer42/MimirQ)
 [![GitHub issues](https://img.shields.io/github/issues/skygazer42/MimirQ)](https://github.com/skygazer42/MimirQ/issues)
 
