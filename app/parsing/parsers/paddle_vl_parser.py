@@ -1,0 +1,370 @@
+"""
+PaddleOCR-VL parser (external service).
+
+PaddleOCR-VL is an optional heavyweight OCR/layout pipeline. To avoid bloating
+the main backend image, we integrate it as an external HTTP service.
+
+Config via env/.env:
+- PADDLE_VL_ENABLED=true
+- PADDLE_VL_API_URL=http://localhost:9030/convert  (your service endpoint)
+"""
+
+from __future__ import annotations
+
+import json
+import re
+import shutil
+import zipfile
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Tuple
+
+import requests
+from langchain_core.documents import Document
+
+from app.core.config import settings
+from app.parsing.utils.zip_processor import ZipImageProcessor
+from app.rag.core.logging import get_logger
+
+
+logger = get_logger("parsing.paddle_vl")
+
+
+def _sanitize_run_id(value: str) -> str:
+    text = (value or "").strip()
+    text = re.sub(r"[^a-zA-Z0-9._-]+", "_", text)[:120] or "paddlevl"
+    return text
+
+
+class PaddleVLParser:
+    """
+    Call a PaddleOCR-VL-compatible HTTP API and return Markdown output.
+
+    The service is expected to accept multipart/form-data with field name "file"
+    and return either:
+    - ZIP (recommended): a folder structure with page_* directories and Markdown,
+      which will be normalized to a stable layout under `images/` + `result.md`.
+    - JSON: with "markdown"/"text"/"content" fields.
+    - text/*: markdown directly.
+    """
+
+    STANDARD_IMAGE_DIR = "images"
+    STANDARD_MARKDOWN_NAME = "result.md"
+    STANDARD_JSON_NAME = "result.json"
+
+    def __init__(self) -> None:
+        self._enabled = bool(getattr(settings, "PADDLE_VL_ENABLED", False))
+        self._api_url = (getattr(settings, "PADDLE_VL_API_URL", "") or "").strip()
+        self._timeout_sec = float(getattr(settings, "PADDLE_VL_TIMEOUT_SEC", 600) or 600)
+
+        if not self._enabled:
+            raise RuntimeError("PaddleOCR-VL is disabled (PADDLE_VL_ENABLED=false).")
+        if not self._api_url:
+            raise RuntimeError("PaddleOCR-VL requires PADDLE_VL_API_URL.")
+
+        self._session = requests.Session()
+
+    def _build_artifact_root(self, file_path: Path, document_id: Optional[str]) -> Path:
+        run_id = _sanitize_run_id(document_id or file_path.stem or "paddlevl")
+        return (file_path.parent / ".paddlevl" / run_id).absolute()
+
+    def _post_multipart(self, *, file_path: Path) -> requests.Response:
+        file_bytes = file_path.read_bytes()
+        files = {"file": (file_path.name, file_bytes, "application/pdf")}
+        data = {"output_format": "markdown"}
+        return self._session.post(self._api_url, files=files, data=data, timeout=self._timeout_sec)
+
+    @staticmethod
+    def _looks_like_zip(resp: requests.Response) -> bool:
+        ctype = str(resp.headers.get("content-type") or "").lower()
+        if "application/zip" in ctype or "application/x-zip" in ctype:
+            return True
+        body = getattr(resp, "content", b"") or b""
+        return len(body) >= 4 and body[:2] == b"PK"
+
+    @staticmethod
+    def _extract_markdown_from_json(data: Any) -> str:
+        if isinstance(data, dict):
+            for key in ("markdown", "md", "content", "text", "result"):
+                val = data.get(key)
+                if isinstance(val, str) and val.strip():
+                    return val
+        return ""
+
+    @staticmethod
+    def _pick_output_root(extract_root: Path) -> Path:
+        """
+        Some services zip a single top-level folder; normalize to the folder that
+        contains page_* dirs / markdown.
+        """
+        root = extract_root
+        try:
+            has_pages = bool(list(root.glob("page_*")))
+        except Exception:
+            has_pages = False
+
+        if has_pages:
+            return root
+
+        try:
+            children = [p for p in root.iterdir() if p.is_dir()]
+        except Exception:
+            children = []
+
+        if len(children) == 1:
+            return children[0]
+        return root
+
+    def _normalize_local_files(self, output_dir: Path) -> dict[str, Any]:
+        """
+        Normalize PaddleOCR-VL output directory layout.
+
+        - Move/rename all page images into `images/` with sequential names.
+        - Merge page JSON files into `result.json`, and inject img_path into image blocks.
+        - Copy/rename the main markdown into `result.md` and rewrite image refs.
+        """
+        logger.info("[paddle_vl] normalizing output: %s", str(output_dir))
+
+        standard_image_dir = output_dir / self.STANDARD_IMAGE_DIR
+        standard_image_dir.mkdir(exist_ok=True)
+
+        image_mapping: dict[int, dict[str, str]] = {}
+        image_counter = 1
+
+        page_dirs = sorted([p for p in output_dir.glob("page_*") if p.is_dir()])
+
+        for page_dir in page_dirs:
+            try:
+                page_num = int(page_dir.name.split("_", 1)[1])
+            except Exception:
+                logger.warning("[paddle_vl] invalid page directory: %s", page_dir.name)
+                continue
+
+            imgs_dir = page_dir / "imgs"
+            if not imgs_dir.exists():
+                continue
+
+            page_mapping: dict[str, str] = {}
+            for img_file in imgs_dir.iterdir():
+                if not img_file.is_file():
+                    continue
+                file_ext = img_file.suffix
+                new_name = f"image_{image_counter:03d}{file_ext}"
+                new_path = standard_image_dir / new_name
+                try:
+                    shutil.move(str(img_file), str(new_path))
+                except Exception as exc:
+                    logger.warning("[paddle_vl] failed to move image %s: %s", img_file.name, str(exc)[:200])
+                    continue
+                page_mapping[img_file.name] = new_name
+                image_counter += 1
+
+            image_mapping[page_num - 1] = page_mapping
+
+            try:
+                imgs_dir.rmdir()
+            except OSError:
+                pass
+
+        # 2) Merge JSONs and inject img_path.
+        all_pages_data: list[dict[str, Any]] = []
+        for page_dir in page_dirs:
+            json_files = list(page_dir.glob("*_res.json"))
+            if not json_files:
+                continue
+
+            json_file = json_files[0]
+            try:
+                page_data = json.loads(json_file.read_text(encoding="utf-8", errors="ignore") or "{}")
+                if not isinstance(page_data, dict):
+                    continue
+
+                page_idx = int(page_data.get("page_index", 0) or 0)
+                page_img_mapping = image_mapping.get(page_idx, {})
+
+                parsing_list = page_data.get("parsing_res_list")
+                if isinstance(parsing_list, list) and page_img_mapping:
+                    for block in parsing_list:
+                        if not isinstance(block, dict):
+                            continue
+                        if str(block.get("block_label") or "").strip().lower() != "image":
+                            continue
+                        bbox = block.get("block_bbox", [])
+                        if not (isinstance(bbox, list) and len(bbox) == 4):
+                            continue
+                        # PaddleOCR-VL image naming convention.
+                        candidates = [
+                            f"img_in_image_box_{bbox[0]}_{bbox[1]}_{bbox[2]}_{bbox[3]}.jpg",
+                            f"img_in_image_box_{bbox[0]}_{bbox[1]}_{bbox[2]}_{bbox[3]}.png",
+                            f"img_in_image_box_{bbox[0]}_{bbox[1]}_{bbox[2]}_{bbox[3]}.jpeg",
+                        ]
+                        new_img_name = None
+                        for name in candidates:
+                            if name in page_img_mapping:
+                                new_img_name = page_img_mapping[name]
+                                break
+                        if new_img_name:
+                            block["img_path"] = f"{self.STANDARD_IMAGE_DIR}/{new_img_name}"
+
+                all_pages_data.append(page_data)
+            except Exception as exc:
+                logger.warning("[paddle_vl] failed to process %s: %s", str(json_file.name), str(exc)[:200])
+                continue
+
+        standard_json: Optional[Path] = None
+        if all_pages_data:
+            standard_json = output_dir / self.STANDARD_JSON_NAME
+            combined = {
+                "pages": all_pages_data,
+                "total_pages": len(all_pages_data),
+                "format": "paddleocr-vl",
+            }
+            try:
+                standard_json.write_text(json.dumps(combined, ensure_ascii=False, indent=2), encoding="utf-8")
+            except Exception:
+                standard_json = None
+
+        # 3) Normalize Markdown and rewrite image refs.
+        md_files = list(output_dir.rglob("*.md"))
+        standard_md: Optional[Path] = None
+
+        if md_files:
+            main_md = ZipImageProcessor._choose_markdown_file(md_files)
+            standard_md = output_dir / self.STANDARD_MARKDOWN_NAME
+            try:
+                if main_md != standard_md:
+                    if main_md.parent != output_dir:
+                        shutil.copy2(main_md, standard_md)
+                    else:
+                        main_md.rename(standard_md)
+                    main_md = standard_md
+            except Exception:
+                # Best-effort: keep original.
+                standard_md = main_md
+
+            try:
+                content = main_md.read_text(encoding="utf-8", errors="ignore")
+                full_image_mapping: dict[str, str] = {}
+                for page_mapping in image_mapping.values():
+                    full_image_mapping.update(page_mapping)
+
+                md_img_pattern = r"!\[([^\]]*)\]\(([^)]+)\)"
+
+                def replace_md_path(match: re.Match) -> str:
+                    alt_text = match.group(1)
+                    img_path = match.group(2)
+                    img_filename = Path(img_path).name
+                    new_name = full_image_mapping.get(img_filename)
+                    if new_name:
+                        return f"![{alt_text}]({self.STANDARD_IMAGE_DIR}/{new_name})"
+                    return match.group(0)
+
+                html_img_pattern = r'<img\s+([^>]*\s+)?src="([^"]+)"([^>]*)>'
+
+                def replace_html_path(match: re.Match) -> str:
+                    before_src = match.group(1) or ""
+                    img_path = match.group(2)
+                    after_src = match.group(3) or ""
+                    img_filename = Path(img_path).name
+                    new_name = full_image_mapping.get(img_filename)
+                    if new_name:
+                        return f'<img {before_src}src="{self.STANDARD_IMAGE_DIR}/{new_name}"{after_src}>'
+                    return match.group(0)
+
+                new_content = re.sub(md_img_pattern, replace_md_path, content)
+                new_content = re.sub(html_img_pattern, replace_html_path, new_content)
+                if new_content != content:
+                    main_md.write_text(new_content, encoding="utf-8")
+            except Exception as exc:
+                logger.warning("[paddle_vl] failed to update markdown image refs: %s", str(exc)[:200])
+
+        return {
+            "markdown_file": standard_md,
+            "json_file": standard_json,
+            "image_dir": standard_image_dir,
+            "image_count": image_counter - 1,
+        }
+
+    def _handle_zip_response(self, *, resp: requests.Response, artifact_root: Path) -> Tuple[str, Optional[str]]:
+        artifact_root.mkdir(parents=True, exist_ok=True)
+
+        zip_path = artifact_root / "paddlevl_output.zip"
+        zip_path.write_bytes(resp.content or b"")
+
+        extract_root = artifact_root / "output"
+        extract_root.mkdir(parents=True, exist_ok=True)
+
+        with zipfile.ZipFile(zip_path, "r") as zip_ref:
+            ZipImageProcessor._safe_extract(zip_ref, extract_root)
+
+        output_root = self._pick_output_root(extract_root)
+        try:
+            self._normalize_local_files(output_root)
+        except Exception as exc:
+            logger.warning("[paddle_vl] normalize failed: %s", str(exc)[:200])
+
+        md_path = output_root / self.STANDARD_MARKDOWN_NAME
+        if md_path.exists():
+            return md_path.read_text(encoding="utf-8", errors="ignore"), str(output_root)
+
+        md_files = list(output_root.rglob("*.md"))
+        if md_files:
+            picked = ZipImageProcessor._choose_markdown_file(md_files)
+            return picked.read_text(encoding="utf-8", errors="ignore"), str(picked.parent)
+
+        return "", str(output_root)
+
+    def parse(
+        self,
+        file_path: Path,
+        *,
+        dataset_id: Optional[str] = None,  # kept for interface parity
+        document_id: Optional[str] = None,
+        tenant_id: Optional[str] = None,  # noqa: ARG002 - reserved for future use
+        pdf_quality: Optional[dict[str, Any]] = None,  # noqa: ARG002 - reserved for future use
+        **_kwargs,
+    ) -> List[Document]:
+        file_path = Path(file_path)
+        if not file_path.exists():
+            raise FileNotFoundError(f"File not found: {file_path}")
+
+        artifact_root = self._build_artifact_root(file_path, document_id)
+
+        logger.info("[paddle_vl] parsing %s", file_path.name)
+        resp = self._post_multipart(file_path=file_path)
+        if int(getattr(resp, "status_code", 0) or 0) != 200:
+            raise RuntimeError(f"PaddleOCR-VL API error {resp.status_code}: {(resp.text or '')[:500]}")
+
+        markdown_text = ""
+        asset_base_dir: Optional[str] = None
+
+        if self._looks_like_zip(resp):
+            markdown_text, asset_base_dir = self._handle_zip_response(resp=resp, artifact_root=artifact_root)
+        else:
+            ctype = str(resp.headers.get("content-type") or "").lower()
+            if "application/json" in ctype:
+                try:
+                    data = resp.json()
+                except Exception:
+                    data = json.loads((resp.text or "").strip() or "{}")
+                markdown_text = self._extract_markdown_from_json(data)
+            else:
+                markdown_text = resp.text or ""
+
+        # If object storage is disabled, strip image references to avoid dead links after artifact cleanup.
+        if not settings.MINIO_ENABLED and markdown_text:
+            markdown_text = re.sub(r"!\[[^\]]*\]\(\s*[^)\s]+?\s*\)\s*", "", markdown_text)
+            markdown_text = re.sub(r"<img[^>]*?>", "", markdown_text, flags=re.IGNORECASE)
+
+        metadata: Dict[str, Any] = {
+            "source": str(file_path.name),
+            "file_type": "pdf",
+            "parser_backend": "paddle_vl",
+            "artifact_dir": str(artifact_root),
+        }
+        if asset_base_dir:
+            metadata["asset_base_dir"] = asset_base_dir
+        if dataset_id:
+            metadata["dataset_id"] = str(dataset_id)
+
+        return [Document(page_content=markdown_text, metadata=metadata)]
+
