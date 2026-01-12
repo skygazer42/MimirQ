@@ -1152,21 +1152,40 @@ export function DataGovernancePanel() {
                   <div className="flex-1 overflow-y-auto p-8 bg-gray-50/50 min-h-0">
                     <div
                       className={cn(
-                        'mx-auto pb-8',
-                        viewMode !== 'edit' && previewFormat === 'rendered' ? 'max-w-6xl' : 'max-w-4xl'
+                        'mx-auto pb-8 h-full',
+                        viewMode === 'edit' ? 'max-w-[98%]' : (previewFormat === 'rendered' ? 'max-w-6xl' : 'max-w-4xl')
                       )}
                     >
                       {viewMode === 'edit' ? (
-                        <textarea
-                          value={displayContent}
-                          onChange={(e) => handleManualEdit(e.target.value)}
-                          placeholder="在这里直接编辑内容..."
-                          spellCheck={false}
-                          className={cn(
-                            "w-full min-h-[800px] p-10 rounded-2xl shadow-md border resize-none focus:outline-none focus:ring-2 focus:ring-sky-500/20 transition-all font-sans text-base leading-7 tracking-tight text-slate-800",
-                            "bg-white border-slate-200"
-                          )}
-                        />
+                        <div className="grid grid-cols-2 gap-6 h-full">
+                          {/* 左侧：实时预览 */}
+                          <div className="flex flex-col h-full bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+                            <div className="px-4 py-2.5 bg-slate-50/80 border-b border-slate-200 text-xs font-semibold text-slate-500 uppercase tracking-wider flex items-center justify-between">
+                              <span>实时预览</span>
+                              <span className="bg-sky-100 text-sky-700 px-1.5 py-0.5 rounded text-[10px]">Rendered</span>
+                            </div>
+                            <div className="flex-1 overflow-y-auto p-6 custom-scrollbar bg-white">
+                              <div className="prose prose-slate max-w-none prose-headings:text-gray-900 prose-p:text-gray-700 prose-a:text-sky-700 prose-code:text-pink-600 prose-code:bg-pink-50 prose-code:px-1 prose-code:py-0.5 prose-code:rounded prose-pre:bg-gray-900 prose-table:border-collapse prose-th:bg-gray-100 prose-th:border prose-th:border-gray-300 prose-th:p-2 prose-td:border prose-td:border-gray-300 prose-td:p-2">
+                                <MarkdownRenderer markdown={displayContent || ''} />
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* 右侧：源码编辑 */}
+                          <div className="flex flex-col h-full bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden ring-1 ring-transparent focus-within:ring-sky-500/30 focus-within:border-sky-400 transition-all">
+                            <div className="px-4 py-2.5 bg-slate-50/80 border-b border-slate-200 text-xs font-semibold text-slate-500 uppercase tracking-wider flex items-center justify-between">
+                              <span>源码编辑</span>
+                              <span className="bg-slate-200 text-slate-700 px-1.5 py-0.5 rounded text-[10px]">Markdown</span>
+                            </div>
+                            <textarea
+                              value={displayContent}
+                              onChange={(e) => handleManualEdit(e.target.value)}
+                              placeholder="在这里直接编辑 Markdown 源码..."
+                              spellCheck={false}
+                              className="flex-1 w-full p-6 resize-none outline-none font-mono text-sm leading-relaxed text-slate-800 bg-white selection:bg-sky-100"
+                            />
+                          </div>
+                        </div>
                       ) : (
                         <div
                           className={cn(
