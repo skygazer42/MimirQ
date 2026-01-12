@@ -48,11 +48,9 @@ make api-check
 - 前端调用的路由都在后端存在（防止“前端调了不存在的接口”）
 - 后端暴露的路由都在前端 API Client 有入口（防止“后端新增接口但前端没对接”）
 
-## 关于 LLM/Embedding 的可重复性
+## 关于 LLM/Embedding
 
-Docker Compose 默认包含 `mock-openai` 服务（OpenAI 兼容的本地 mock），用于让：
+当前默认栈不再包含本地 `mock-openai`。要跑通涉及 Chat / RAG / Embedding 的接口，请在 `docker/.env` 中配置可用的：
 
-- Chat / RAG / Embedding 相关接口在本地也能稳定跑通
-- 冒烟不依赖外部网络与真实 Key
-
-如需对接真实模型服务，请在 `docker/.env` 中配置 `LLM_API_BASE/LLM_API_KEY`（以及 `EMBEDDING_*`）为你的真实提供方。
+- `LLM_API_BASE` / `LLM_API_KEY`
+- 以及必要时的 `EMBEDDING_*`
