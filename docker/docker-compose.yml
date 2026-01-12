@@ -212,26 +212,6 @@ services:
       - upload_data:/data/uploads
     command: arq app.tasks.worker.WorkerSettings
 
-  # Next.js 前端（生产构建）
-  web:
-    profiles: ["web"]
-    build:
-      context: ../web
-      dockerfile: Dockerfile.prod
-      args:
-        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000}
-        NEXT_PUBLIC_API_TIMEOUT_MS: ${NEXT_PUBLIC_API_TIMEOUT_MS:-60000}
-        NEXT_PUBLIC_USER_ID: ${NEXT_PUBLIC_USER_ID:-demo}
-        NEXT_PUBLIC_TENANT_ID: ${NEXT_PUBLIC_TENANT_ID:-00000000-0000-0000-0000-000000000000}
-        MIMIRQ_BUILD_SHA: ${MIMIRQ_BUILD_SHA:-}
-        MIMIRQ_BUILD_TIME: ${MIMIRQ_BUILD_TIME:-}
-    restart: unless-stopped
-    ports:
-      - "${WEB_PORT:-3000}:3000"
-    depends_on:
-      backend:
-        condition: service_healthy
-
 volumes:
   postgres_data:
   etcd_data:
