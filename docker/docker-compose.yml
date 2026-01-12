@@ -56,6 +56,21 @@ services:
       timeout: 3s
       retries: 20
 
+  # ETL4LLM (Bisheng Unstructured) parser service (optional).
+  # Enable with: `docker compose --profile etl4llm up -d`
+  # Then set `ETL4LLM_ENABLED=true` and `ETL4LLM_API_URL=http://etl4llm:10001/v1/etl4llm/predict` in docker/.env.
+  etl4llm:
+    profiles: ["etl4llm"]
+    image: dataelement/bisheng-unstructured:v0.0.3.14
+    restart: unless-stopped
+    environment:
+      TZ: Asia/Shanghai
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:10001/health"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+
   # Redis（任务队列/缓存/幂等锁）
   redis:
     image: redis:7

@@ -44,6 +44,21 @@ make up-web
 # cd web; pnpm install; pnpm dev
 ```
 
+### (可选) 启用 ETL4LLM（Bisheng Unstructured）版面解析
+
+MimirQ 已内置 `etl4llm` 解析器（并兼容 `bisheng` / `bisheng-unstructured` 别名），你只需要把服务跑起来并配置好 API URL：
+
+```bash
+# 启动 etl4llm 服务（Docker profile）
+make up-etl4llm
+```
+
+然后在 `docker/.env` 里配置：
+```env
+ETL4LLM_ENABLED=true
+ETL4LLM_API_URL=http://etl4llm:10001/v1/etl4llm/predict
+```
+
 ### 生产部署（推荐）
 
 生产部署使用 `docker/docker-compose.yml`（默认不暴露 Postgres/Milvus/Redis/MinIO 端口）：

@@ -91,6 +91,22 @@ services:
       minio:
         condition: service_healthy
 
+  # ETL4LLM (Bisheng Unstructured) parser service (optional).
+  # Enable with: `docker compose -f docker/docker-compose.infra.yml --profile etl4llm up -d`
+  etl4llm:
+    profiles: ["etl4llm"]
+    image: dataelement/bisheng-unstructured:v0.0.3.14
+    restart: unless-stopped
+    ports:
+      - "10001:10001"
+    environment:
+      TZ: Asia/Shanghai
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:10001/health"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+
 volumes:
   postgres_data:
   etcd_data:
