@@ -47,6 +47,18 @@ def main() -> int:
         )
     )
 
+    paddlevl_enabled = bool(getattr(settings, "PADDLE_VL_ENABLED", False))
+    paddlevl_configured = bool((getattr(settings, "PADDLE_VL_API_URL", "") or "").strip())
+    rows.append(
+        (
+            "paddle_vl",
+            "on" if paddlevl_enabled else "off",
+            "configured"
+            if paddlevl_enabled and paddlevl_configured
+            else ("missing PADDLE_VL_API_URL" if paddlevl_enabled else "disabled"),
+        )
+    )
+
     ok, msg = _check_import("markitdown")
     rows.append(("markitdown", "on" if settings.MARKITDOWN_ENABLED else "off", "installed" if ok else msg))
 

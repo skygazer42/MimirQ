@@ -65,6 +65,32 @@ services:
     volumes:
       - marker_cache:/root/.cache
 
+  # PaddleOCR-VL parser service (optional; heavyweight).
+  # Enable with: `docker compose --profile paddlevl up -d --build`
+  # Then set `PADDLE_VL_ENABLED=true` and `PADDLE_VL_API_URL=http://mimirq-paddlevl:9030/convert` in docker/.env.
+  mimirq-paddlevl:
+    profiles: ["paddlevl"]
+    build:
+      context: ./paddlevl
+    restart: unless-stopped
+    ports:
+      - "9030:9030"
+    environment:
+      TZ: Asia/Shanghai
+    volumes:
+      - paddlevl_cache:/root/.paddleocr
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://localhost:9030/health').read()",
+        ]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+
   # Redis（任务队列/缓存/幂等锁）
   mimirq-redis:
     image: redis:7
@@ -209,3 +235,4 @@ volumes:
   milvus_data:
   upload_data:
   marker_cache:
+  paddlevl_cache:

@@ -73,6 +73,20 @@ MARKER_ENABLED=true
 MARKER_API_URL=http://mimirq-marker:2080/convert
 ```
 
+### (可选) 启用 PaddleOCR-VL（外部 OCR/版面解析）
+
+PaddleOCR-VL 建议以独立容器/服务运行（重依赖不进入 MimirQ 主镜像），然后在解析时指定 `parser_backend=paddle_vl`。
+
+```bash
+make up-paddlevl
+```
+
+然后在 `docker/.env` 里配置：
+```env
+PADDLE_VL_ENABLED=true
+PADDLE_VL_API_URL=http://mimirq-paddlevl:9030/convert
+```
+
 ### (可选) 启用 Pandoc/LibreOffice（Office/HTML 高质量转 Markdown）
 
 适用于：`doc/docx/ppt/pptx/xls/xlsx/html/htm`（图片/表格保真更好）。

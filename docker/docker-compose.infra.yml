@@ -121,9 +121,35 @@ services:
     volumes:
       - marker_cache:/root/.cache
 
+  # PaddleOCR-VL parser service (optional; heavyweight).
+  # Enable with: `docker compose -f docker/docker-compose.infra.yml --profile paddlevl up -d --build`
+  mimirq-paddlevl:
+    profiles: ["paddlevl"]
+    build:
+      context: ./paddlevl
+    restart: unless-stopped
+    ports:
+      - "9030:9030"
+    environment:
+      TZ: Asia/Shanghai
+    volumes:
+      - paddlevl_cache:/root/.paddleocr
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://localhost:9030/health').read()",
+        ]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+
 volumes:
   postgres_data:
   etcd_data:
   minio_data:
   milvus_data:
   marker_cache:
+  paddlevl_cache:
