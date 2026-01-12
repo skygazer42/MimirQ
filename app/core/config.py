@@ -192,6 +192,12 @@ class Settings(BaseSettings):
     MARKER_API_URL: str = ""
     MARKER_TIMEOUT_SEC: int = 600
 
+    # PaddleOCR-VL (PDF -> Markdown external service; optional)
+    PADDLE_VL_ENABLED: bool = False
+    # Full endpoint URL, e.g. http://localhost:9030/convert (depends on your PaddleOCR-VL service).
+    PADDLE_VL_API_URL: str = ""
+    PADDLE_VL_TIMEOUT_SEC: int = 600
+
     # PDF quality OCR validation (used by parse-preview scoring)
     RAPIDOCR_ENABLED: bool = False
 

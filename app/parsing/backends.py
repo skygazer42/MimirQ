@@ -28,6 +28,10 @@ _BACKEND_ALIASES: dict[str, str] = {
     # Marker (PDF -> Markdown external service)
     "marker": "marker",
     "marker-pdf": "marker",
+    # PaddleOCR-VL (PDF -> Markdown external service)
+    "paddle-vl": "paddle_vl",
+    "paddleocr-vl": "paddle_vl",
+    "paddleocrvl": "paddle_vl",
     # Backward-compatible aliases (deprecated)
     "bisheng-unstructured": "etl4llm",
     "bishengunstructured": "etl4llm",

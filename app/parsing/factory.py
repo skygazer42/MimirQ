@@ -20,6 +20,7 @@ if TYPE_CHECKING:
     from app.parsing.parsers.deepdoc_parser import DeepDocParser
     from app.parsing.parsers.deepseek_ocr_parser import DeepSeekOCRParser
     from app.parsing.parsers.etl4llm_parser import Etl4LlmParser
+    from app.parsing.parsers.paddle_vl_parser import PaddleVLParser
     from app.parsing.parsers.docling_parser import DoclingParser
     from app.parsing.parsers.marker_parser import MarkerParser
     from app.parsing.parsers.magic_pdf_parser import MagicPDFParser
@@ -36,6 +37,7 @@ class ParserFactory:
         "auto",
         "basic",
         "marker",
+        "paddle_vl",
         "mineru",
         "deepdoc",
         "deepseek_ocr",
@@ -50,6 +52,7 @@ class ParserFactory:
     def __init__(self):
         self._basic_pdf_parser: Optional[PDFParser] = None
         self._marker_parser: Optional[MarkerParser] = None
+        self._paddle_vl_parser: Optional[PaddleVLParser] = None
         self._mineru_parser: Optional[MinerUParser] = None
         self._deepdoc_parser: Optional[DeepDocParser] = None
         self._deepseek_ocr_parser: Optional[DeepSeekOCRParser] = None
@@ -62,6 +65,8 @@ class ParserFactory:
         logger.debug("[pdf] Basic PyMuPDF parser available (lazy)")
         if bool(getattr(settings, "MARKER_ENABLED", False)) and bool((getattr(settings, "MARKER_API_URL", "") or "").strip()):
             logger.debug("[pdf] Marker parser available (requires selection)")
+        if bool(getattr(settings, "PADDLE_VL_ENABLED", False)) and bool((getattr(settings, "PADDLE_VL_API_URL", "") or "").strip()):
+            logger.debug("[pdf] PaddleOCR-VL parser available (requires selection)")
         if settings.MINERU_ENABLED and (settings.MINERU_API_TOKEN or settings.MINERU_LOCAL_SERVER_URL):
             logger.debug("[pdf] MinerU parser available (requires selection)")
         if settings.DEEPDOC_ENABLED:
@@ -182,6 +187,16 @@ class ParserFactory:
                 raise ValueError("Marker parser requires MARKER_API_URL.")
             return "marker"
 
+        if normalized == "paddle_vl":
+            if not bool(getattr(settings, "PADDLE_VL_ENABLED", False)):
+                raise ValueError(
+                    "PaddleOCR-VL parser is not enabled. "
+                    "Please set PADDLE_VL_ENABLED=True and configure PADDLE_VL_API_URL."
+                )
+            if not bool((getattr(settings, "PADDLE_VL_API_URL", "") or "").strip()):
+                raise ValueError("PaddleOCR-VL parser requires PADDLE_VL_API_URL.")
+            return "paddle_vl"
+
         if normalized == "mineru":
             if not (settings.MINERU_ENABLED and (settings.MINERU_API_TOKEN or settings.MINERU_LOCAL_SERVER_URL)):
                 raise ValueError(
@@ -288,7 +303,7 @@ class ParserFactory:
                 raise ValueError(f"Unsupported file type: {file_ext}")
 
             # Some parsers need dataset/document ids to produce stable artifacts.
-            if backend in {"marker", "mineru", "magicpdf", "deepseek_ocr", "etl4llm", "pandoc"}:
+            if backend in {"marker", "paddle_vl", "mineru", "magicpdf", "deepseek_ocr", "etl4llm", "pandoc"}:
                 documents = parser.parse(
                     file_path,
                     dataset_id=dataset_id,
@@ -339,7 +354,7 @@ class ParserFactory:
         file_ext = (file_ext or "").strip().lower()
 
         # PDF advanced backends (may fail to import due to binary deps or external services); fall back to basic PyMuPDF.
-        if file_ext == ".pdf" and backend in {"docling", "deepdoc", "marker", "mineru", "magicpdf", "deepseek_ocr", "etl4llm"}:
+        if file_ext == ".pdf" and backend in {"docling", "deepdoc", "marker", "paddle_vl", "mineru", "magicpdf", "deepseek_ocr", "etl4llm"}:
             logger.warning(
                 "[parse] PDF backend '%s' failed for %s: %s; falling back to 'basic'",
                 backend,
@@ -453,6 +468,14 @@ class ParserFactory:
                 logger.info("[pdf] Initializing Marker parser (external service)")
                 self._marker_parser = MarkerParser()
             return self._marker_parser
+
+        if backend == "paddle_vl":
+            if self._paddle_vl_parser is None:
+                from app.parsing.parsers.paddle_vl_parser import PaddleVLParser
+
+                logger.info("[pdf] Initializing PaddleOCR-VL parser (external service)")
+                self._paddle_vl_parser = PaddleVLParser()
+            return self._paddle_vl_parser
 
         if backend == "mineru":
             if self._mineru_parser is None:
