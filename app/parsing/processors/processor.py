@@ -117,6 +117,7 @@ class ParsingStage:
         logger.info("Parsing document: %s", file_path)
         effective_parser_backend = parser_backend
         file_ext = file_path.suffix.lower()
+        pdf_quality = None
         if file_ext == ".pdf":
             requested = (parser_backend or "").strip().lower()
             if not requested or requested == "auto":
@@ -139,6 +140,7 @@ class ParsingStage:
             dataset_id=dataset_id,
             document_id=str(document_id),
             tenant_id=str(tenant_id),
+            pdf_quality=pdf_quality,
         )
         self._svc._record_processing_metadata(
             db,

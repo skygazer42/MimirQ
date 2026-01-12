@@ -72,7 +72,14 @@ class Etl4LlmParser:
         run_id = re.sub(r"[^a-zA-Z0-9._-]+", "_", run_id)[:120] or "etl4llm"
         return (file_path.parent / ".etl4llm" / run_id).absolute()
 
-    def _call_api(self, *, file_path: Path) -> Dict[str, Any]:
+    def _resolve_force_ocr(self, pdf_quality: Any) -> bool:
+        if bool(self._force_ocr):
+            return True
+        if isinstance(pdf_quality, dict):
+            return bool(pdf_quality.get("is_scanned", False))
+        return False
+
+    def _call_api(self, *, file_path: Path, force_ocr: bool) -> Dict[str, Any]:
         file_bytes = file_path.read_bytes()
         b64_data = base64.b64encode(file_bytes).decode("utf-8")
 
@@ -86,7 +93,7 @@ class Etl4LlmParser:
             "mode": mode,
         }
         # Optional knobs (service-dependent).
-        payload["force_ocr"] = bool(self._force_ocr)
+        payload["force_ocr"] = bool(force_ocr)
         payload["enable_formula"] = bool(self._enable_formula)
         payload["parameters"] = {"start": 0, "n": None}
 
@@ -284,13 +291,14 @@ class Etl4LlmParser:
             raise ValueError("ETL4LLM currently supports PDF only")
 
         start = time.time()
-        logger.info("[etl4llm] start %s", file_path.name)
+        force_ocr = self._resolve_force_ocr(_kwargs.get("pdf_quality"))
+        logger.info("[etl4llm] start %s (force_ocr=%s)", file_path.name, bool(force_ocr))
 
         artifact_root = self._build_artifact_root(file_path, document_id)
         images_dir = artifact_root / "images"
         artifact_root.mkdir(parents=True, exist_ok=True)
 
-        data = self._call_api(file_path=file_path)
+        data = self._call_api(file_path=file_path, force_ocr=force_ocr)
         partitions = data.get("partitions") or []
         text = str(data.get("text") or "")
 
@@ -318,6 +326,7 @@ class Etl4LlmParser:
             "file_type": "pdf",
             "parser_backend": "etl4llm",
             "etl4llm_mode": str(self._mode or ""),
+            "etl4llm_force_ocr": bool(force_ocr),
             "etl4llm_partitions": int(len(partitions) if isinstance(partitions, list) else 0),
             "etl4llm_extracted_images": int(extracted_images),
             # Used by preview/ingestion to resolve relative image paths like "images/<id>.png".

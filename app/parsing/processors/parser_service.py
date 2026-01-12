@@ -266,6 +266,7 @@ class DocumentParserService:
             file_path,
             parser_backend=parser_backend,
             tenant_id=str(tenant_id),
+            pdf_quality=pdf_quality,
         )
         local_images = self._materialize_local_images_for_preview(documents, tenant_id)
         markdown_text = self._merge_documents(documents)

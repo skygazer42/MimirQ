@@ -1546,10 +1546,11 @@ async def preview_document(
     try:
         file_size = await save_upload_file(file, temp_path, max_bytes=settings.MAX_FILE_SIZE)
 
+        pdf_quality = None
         if file_ext == ".pdf":
             requested = (parser_backend or "").strip().lower()
             if not requested or requested == "auto":
-                effective_parser_backend, _pdf_quality = route_pdf_backend(
+                effective_parser_backend, pdf_quality = route_pdf_backend(
                     temp_path,
                     requested,
                     sample_pages=3,
@@ -1564,6 +1565,7 @@ async def preview_document(
             temp_path,
             parser_backend=effective_parser_backend,
             tenant_id=str(tenant_id),
+            pdf_quality=pdf_quality,
         )
         # DeepDoc/Docling may return extracted images as in-memory objects in metadata.
         # Persist them as preview-time files and convert to Markdown refs so the frontend can render.
@@ -1959,10 +1961,11 @@ async def preview_chunking(
                 )
         else:
             # Parse document.
+            pdf_quality = None
             if file_ext == ".pdf":
                 requested = (parser_backend or "").strip().lower()
                 if not requested or requested == "auto":
-                    effective_parser_backend, _pdf_quality = route_pdf_backend(
+                    effective_parser_backend, pdf_quality = route_pdf_backend(
                         temp_path,
                         requested,
                         sample_pages=3,
@@ -1976,6 +1979,7 @@ async def preview_chunking(
                 temp_path,
                 parser_backend=effective_parser_backend,
                 tenant_id=str(tenant_id),
+                pdf_quality=pdf_quality,
             )
             # Ensure extracted image objects (e.g., DeepDoc PIL.Image) are JSON-serializable for preview.
             # Also converts them into Markdown image refs that the frontend can render.
