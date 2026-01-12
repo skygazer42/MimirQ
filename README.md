@@ -60,14 +60,6 @@ docker compose up -d
 **6. 企业级架构**
 Milvus 十亿级向量检索、PostgreSQL 持久化、OpenAI 兼容接口、Docker 一键部署。
 
-## 使用方式
-
-- **Self-hosting**
-  使用 [快速开始](#快速开始) 指南在本地部署，详细配置参考 [文档](./docs/quickstart.md)。
-
-- **企业版**
-  如需企业级功能支持，请 [联系我们](mailto:support@mimirq.com)。
-
 ## 高级配置
 
 如需自定义配置，请参考 [.env.example](docker/.env.example) 中的注释修改 `.env` 文件。完整环境变量说明见 [配置文档](./docs/guides/dependencies.md)。
