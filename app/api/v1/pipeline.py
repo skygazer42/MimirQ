@@ -138,6 +138,22 @@ async def get_pipeline_capabilities(
                 notes = "Set ETL4LLM_ENABLED=true."
             elif not api_url:
                 notes = "Configure ETL4LLM_API_URL (e.g., http://localhost:10001/v1/etl4llm/predict)."
+        elif b == "marker":
+            enabled = bool(getattr(settings, "MARKER_ENABLED", False))
+            api_url = bool((getattr(settings, "MARKER_API_URL", "") or "").strip())
+            available = bool(enabled and api_url)
+            if not enabled:
+                notes = "Set MARKER_ENABLED=true."
+            elif not api_url:
+                notes = "Configure MARKER_API_URL (e.g., http://localhost:2080/convert)."
+        elif b == "paddle_vl":
+            enabled = bool(getattr(settings, "PADDLE_VL_ENABLED", False))
+            api_url = bool((getattr(settings, "PADDLE_VL_API_URL", "") or "").strip())
+            available = bool(enabled and api_url)
+            if not enabled:
+                notes = "Set PADDLE_VL_ENABLED=true."
+            elif not api_url:
+                notes = "Configure PADDLE_VL_API_URL (e.g., http://localhost:9030/convert)."
         elif b == "magicpdf":
             available, notes = magicpdf_available()
         else:  # pragma: no cover

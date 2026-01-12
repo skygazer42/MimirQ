@@ -736,6 +736,18 @@ async def update_settings(
                 ]
             )
 
+        if request.marker:
+            mk = request.marker
+            env_vars["MARKER_API_URL"] = _sanitize_env_value("MARKER_API_URL", mk.api_url or "")
+            env_vars["MARKER_TIMEOUT_SEC"] = str(int(mk.timeout_sec or 0))
+            updated_keys.extend(["MARKER_API_URL", "MARKER_TIMEOUT_SEC"])
+
+        if request.paddle_vl:
+            pv = request.paddle_vl
+            env_vars["PADDLE_VL_API_URL"] = _sanitize_env_value("PADDLE_VL_API_URL", pv.api_url or "")
+            env_vars["PADDLE_VL_TIMEOUT_SEC"] = str(int(pv.timeout_sec or 0))
+            updated_keys.extend(["PADDLE_VL_API_URL", "PADDLE_VL_TIMEOUT_SEC"])
+
         if request.magicpdf:
             mp = request.magicpdf
             env_vars["MAGIC_PDF_CLI"] = _sanitize_env_value("MAGIC_PDF_CLI", mp.cli)
@@ -890,6 +902,22 @@ async def get_system_status(
         "enabled": etl_enabled,
         "available": bool(etl_enabled and etl_url),
         "message": "configured" if (etl_enabled and etl_url) else ("disabled" if not etl_enabled else "missing api_url"),
+    }
+
+    marker_enabled = bool(getattr(settings, "MARKER_ENABLED", False))
+    marker_url = bool((getattr(settings, "MARKER_API_URL", "") or "").strip())
+    parsers["marker"] = {
+        "enabled": marker_enabled,
+        "available": bool(marker_enabled and marker_url),
+        "message": "configured" if (marker_enabled and marker_url) else ("disabled" if not marker_enabled else "missing api_url"),
+    }
+
+    paddlevl_enabled = bool(getattr(settings, "PADDLE_VL_ENABLED", False))
+    paddlevl_url = bool((getattr(settings, "PADDLE_VL_API_URL", "") or "").strip())
+    parsers["paddle_vl"] = {
+        "enabled": paddlevl_enabled,
+        "available": bool(paddlevl_enabled and paddlevl_url),
+        "message": "configured" if (paddlevl_enabled and paddlevl_url) else ("disabled" if not paddlevl_enabled else "missing api_url"),
     }
 
     ok, msg = _check_import("docling")
