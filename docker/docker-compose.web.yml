@@ -1,6 +1,6 @@
 services:
   # Next.js 前端（生产构建）
-  web:
+  mimirq-web:
     build:
       context: ../web
       dockerfile: Dockerfile.prod
@@ -15,6 +15,5 @@ services:
     ports:
       - "${WEB_PORT:-3000}:3000"
     depends_on:
-      backend:
+      mimirq-api:
         condition: service_healthy
-
