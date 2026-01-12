@@ -37,11 +37,25 @@ export const PARSER_BACKEND_OPTIONS: ParserBackendOption[] = [
     badge: '结构化',
   },
   {
+    value: 'marker',
+    label: 'Marker（外部）',
+    description: 'Marker · 外部服务 PDF→Markdown（可含图片引用）',
+    icon: 'layout',
+    badge: '外部',
+  },
+  {
     value: 'etl4llm',
     label: 'ETL4LLM 版面解析',
     description: 'etl4llm · 版面/表格/图片感知（需自建服务）',
     icon: 'layout',
     badge: '版面',
+  },
+  {
+    value: 'paddle_vl',
+    label: 'PaddleOCR-VL（外部）',
+    description: 'PaddleOCR-VL · 外部 OCR/版面解析，适合扫描件 PDF',
+    icon: 'deepdoc',
+    badge: '外部',
   },
   {
     value: 'mineru',
@@ -82,6 +96,10 @@ function normalizeParserValue(value?: string) {
   const raw = (value || '').toLowerCase().trim()
   const normalized = raw.replace(/_/g, '-')
   if (normalized === 'magic-pdf') return 'magicpdf'
+  if (normalized === 'marker-pdf') return 'marker'
+  if (normalized === 'paddle-vl') return 'paddle_vl'
+  if (normalized === 'paddleocr-vl') return 'paddle_vl'
+  if (normalized === 'paddleocrvl') return 'paddle_vl'
   if (normalized === 'deepseek-ocr') return 'deepseek_ocr'
   if (normalized === 'etl-4llm') return 'etl4llm'
   if (normalized === 'bisheng-unstructured') return 'etl4llm'

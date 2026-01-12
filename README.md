@@ -69,13 +69,6 @@ Milvus 十亿级向量检索、PostgreSQL 持久化、OpenAI 兼容接口、Dock
 
 如需自定义配置，请参考 [.env.example](docker/.env.example) 中的注释修改 `.env` 文件。完整环境变量说明见 [配置文档](./docs/guides/dependencies.md)。
 
-### Kubernetes 部署
-
-```bash
-helm install mimirq ./k8s/helm/mimirq
-# 或
-kubectl apply -f k8s/manifests/
-```
 
 ## 许可证
 

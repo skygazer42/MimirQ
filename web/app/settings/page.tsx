@@ -669,6 +669,80 @@ export default function SettingsPage() {
                 </div>
               </section>
 
+              {/* Marker 配置 */}
+              <section>
+                <h2 className="text-lg font-semibold text-gray-900 mb-6 flex items-center gap-2">
+                  <LayoutGrid className="h-5 w-5 text-emerald-700" />
+                  Marker 配置
+                </h2>
+
+                <div className="bg-white border border-gray-100 rounded-2xl p-6 shadow-sm space-y-4">
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    <div className="space-y-2 lg:col-span-2">
+                      <label className="text-sm font-medium text-gray-700">API URL</label>
+                      <Input
+                        value={editedSettings.marker?.api_url ?? settings?.marker?.api_url ?? DEFAULT_MARKER.api_url}
+                        onChange={(e) => updateMarker({ api_url: e.target.value })}
+                        placeholder="http://localhost:2080/convert"
+                      />
+                      <div className="text-xs text-gray-500">
+                        启用后会写入 `MARKER_API_URL`，并用于解析器 `marker`。
+                      </div>
+                    </div>
+
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium text-gray-700">超时（秒）</label>
+                      <Input
+                        type="number"
+                        min={30}
+                        value={editedSettings.marker?.timeout_sec ?? settings?.marker?.timeout_sec ?? DEFAULT_MARKER.timeout_sec}
+                        onChange={(e) => updateMarker({ timeout_sec: parseInt(e.target.value || '0', 10) || DEFAULT_MARKER.timeout_sec })}
+                      />
+                      <div className="text-xs text-gray-500">
+                        大文件/复杂 PDF 建议调大
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </section>
+
+              {/* PaddleOCR-VL 配置 */}
+              <section>
+                <h2 className="text-lg font-semibold text-gray-900 mb-6 flex items-center gap-2">
+                  <ScanLine className="h-5 w-5 text-orange-600" />
+                  PaddleOCR-VL 配置
+                </h2>
+
+                <div className="bg-white border border-gray-100 rounded-2xl p-6 shadow-sm space-y-4">
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    <div className="space-y-2 lg:col-span-2">
+                      <label className="text-sm font-medium text-gray-700">API URL</label>
+                      <Input
+                        value={editedSettings.paddle_vl?.api_url ?? settings?.paddle_vl?.api_url ?? DEFAULT_PADDLE_VL.api_url}
+                        onChange={(e) => updatePaddleVL({ api_url: e.target.value })}
+                        placeholder="http://localhost:9030/convert"
+                      />
+                      <div className="text-xs text-gray-500">
+                        启用后会写入 `PADDLE_VL_API_URL`，并用于解析器 `paddle_vl`（别名：paddle-vl / paddleocr-vl）。
+                      </div>
+                    </div>
+
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium text-gray-700">超时（秒）</label>
+                      <Input
+                        type="number"
+                        min={30}
+                        value={editedSettings.paddle_vl?.timeout_sec ?? settings?.paddle_vl?.timeout_sec ?? DEFAULT_PADDLE_VL.timeout_sec}
+                        onChange={(e) => updatePaddleVL({ timeout_sec: parseInt(e.target.value || '0', 10) || DEFAULT_PADDLE_VL.timeout_sec })}
+                      />
+                      <div className="text-xs text-gray-500">
+                        扫描件/OCR 场景建议调大
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </section>
+
               {/* MagicPDF 配置 */}
               <section>
                 <h2 className="text-lg font-semibold text-gray-900 mb-6 flex items-center gap-2">
