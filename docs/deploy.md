@@ -8,7 +8,7 @@
 cd docker
 cp .env.example .env
 docker compose up -d --build
-docker compose --profile web up -d --build   # 可选：前端 UI（profile=web）
+docker compose -f docker-compose.yml -f docker-compose.web.yml up -d --build   # 可选：前端 UI
 ```
 
 ## 2) 本地开发（热更新 / 源码挂载）
@@ -53,7 +53,7 @@ cp .env.example .env
 ```bash
 cd docker
 docker compose up -d --build
-docker compose --profile web up -d --build   # 可选：带前端 UI（profile=web）
+docker compose -f docker-compose.yml -f docker-compose.web.yml up -d --build   # 可选：带前端 UI
 ```
 
 Windows PowerShell 也可使用：
@@ -62,7 +62,7 @@ Windows PowerShell 也可使用：
 Set-Location docker
 Copy-Item .env.example .env -ErrorAction SilentlyContinue
 docker compose up -d --build
-docker compose --profile web up -d --build  # 可选：带前端（profile=web）
+docker compose -f docker-compose.yml -f docker-compose.web.yml up -d --build  # 可选：带前端
 ```
 
 ### 3.3 常用运维命令
@@ -77,6 +77,6 @@ docker compose logs -f --tail=200 worker
 ## 4) 端口与访问
 
 - 后端：`http://localhost:8000/docs`
-- 前端：`http://localhost:3000`（需启用 `web` profile）
+- 前端：`http://localhost:3000`（需叠加 `docker-compose.web.yml`）
 
 生产栈默认仅暴露 `8000/3000`（可通过 `BACKEND_PORT` / `WEB_PORT` 调整映射）。
