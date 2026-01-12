@@ -1,0 +1,163 @@
+"""
+Marker parser (external service).
+
+Marker is an optional heavyweight PDF->Markdown converter. To avoid bloating the
+main backend image, we integrate it as an external HTTP service.
+
+Config via env/.env:
+- MARKER_ENABLED=true
+- MARKER_API_URL=http://localhost:2080/v1/marker/convert  (recommended: full endpoint)
+"""
+
+from __future__ import annotations
+
+import json
+import re
+import zipfile
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Tuple
+
+import requests
+from langchain_core.documents import Document
+
+from app.core.config import settings
+from app.parsing.utils.zip_processor import ZipImageProcessor
+from app.rag.core.logging import get_logger
+
+
+logger = get_logger("parsing.marker")
+
+
+def _sanitize_run_id(value: str) -> str:
+    text = (value or "").strip()
+    text = re.sub(r"[^a-zA-Z0-9._-]+", "_", text)[:120] or "marker"
+    return text
+
+
+class MarkerParser:
+    """
+    Call a Marker-compatible HTTP API and return Markdown output.
+
+    Expected request (default):
+    - POST MARKER_API_URL
+    - multipart/form-data with field name "file"
+
+    Supported responses (best-effort):
+    - application/zip: extract Markdown + images into an artifact directory and return Markdown
+    - application/json: read "markdown"/"text"/"content" fields
+    - text/*: treat as Markdown directly
+    """
+
+    def __init__(self) -> None:
+        self._enabled = bool(getattr(settings, "MARKER_ENABLED", False))
+        self._api_url = (getattr(settings, "MARKER_API_URL", "") or "").strip()
+        self._timeout_sec = float(getattr(settings, "MARKER_TIMEOUT_SEC", 600) or 600)
+
+        if not self._enabled:
+            raise RuntimeError("Marker is disabled (MARKER_ENABLED=false).")
+        if not self._api_url:
+            raise RuntimeError("Marker requires MARKER_API_URL.")
+
+        self._session = requests.Session()
+
+    def _build_artifact_root(self, file_path: Path, document_id: Optional[str]) -> Path:
+        run_id = _sanitize_run_id(document_id or file_path.stem or "marker")
+        return (file_path.parent / ".marker" / run_id).absolute()
+
+    def _post_multipart(self, *, file_path: Path) -> requests.Response:
+        file_bytes = file_path.read_bytes()
+        files = {"file": (file_path.name, file_bytes, "application/pdf")}
+        # Keep params minimal; servers can ignore unknown fields.
+        data = {"output_format": "markdown"}
+        return self._session.post(self._api_url, files=files, data=data, timeout=self._timeout_sec)
+
+    @staticmethod
+    def _looks_like_zip(resp: requests.Response) -> bool:
+        ctype = str(resp.headers.get("content-type") or "").lower()
+        if "application/zip" in ctype or "application/x-zip" in ctype:
+            return True
+        body = getattr(resp, "content", b"") or b""
+        return len(body) >= 4 and body[:2] == b"PK"
+
+    @staticmethod
+    def _extract_markdown_from_json(data: Any) -> str:
+        if isinstance(data, dict):
+            for key in ("markdown", "md", "content", "text", "result"):
+                val = data.get(key)
+                if isinstance(val, str) and val.strip():
+                    return val
+        return ""
+
+    def _handle_zip_response(self, *, resp: requests.Response, artifact_root: Path) -> Tuple[str, Optional[str]]:
+        artifact_root.mkdir(parents=True, exist_ok=True)
+
+        zip_path = artifact_root / "marker_output.zip"
+        zip_path.write_bytes(resp.content or b"")
+
+        extract_root = artifact_root / "output"
+        extract_root.mkdir(parents=True, exist_ok=True)
+
+        with zipfile.ZipFile(zip_path, "r") as zip_ref:
+            ZipImageProcessor._safe_extract(zip_ref, extract_root)
+
+        markdown_files = list(extract_root.rglob("*.md"))
+        if not markdown_files:
+            # Some servers may return .markdown or .txt.
+            markdown_files = list(extract_root.rglob("*.markdown"))
+        if not markdown_files:
+            return "", str(extract_root)
+
+        md_path = ZipImageProcessor._choose_markdown_file(markdown_files)
+        markdown_text = md_path.read_text(encoding="utf-8", errors="ignore")
+        return markdown_text, str(md_path.parent)
+
+    def parse(
+        self,
+        file_path: Path,
+        *,
+        dataset_id: Optional[str] = None,  # kept for interface parity
+        document_id: Optional[str] = None,
+        tenant_id: Optional[str] = None,  # noqa: ARG002 - reserved for future use
+        pdf_quality: Optional[dict[str, Any]] = None,  # noqa: ARG002 - reserved for future use
+        **_kwargs,
+    ) -> List[Document]:
+        file_path = Path(file_path)
+        if not file_path.exists():
+            raise FileNotFoundError(f"File not found: {file_path}")
+
+        artifact_root = self._build_artifact_root(file_path, document_id)
+
+        logger.info("[marker] parsing %s", file_path.name)
+        resp = self._post_multipart(file_path=file_path)
+        if int(getattr(resp, "status_code", 0) or 0) != 200:
+            raise RuntimeError(f"Marker API error {resp.status_code}: {(resp.text or '')[:500]}")
+
+        markdown_text = ""
+        asset_base_dir: Optional[str] = None
+
+        if self._looks_like_zip(resp):
+            markdown_text, asset_base_dir = self._handle_zip_response(resp=resp, artifact_root=artifact_root)
+        else:
+            ctype = str(resp.headers.get("content-type") or "").lower()
+            if "application/json" in ctype:
+                try:
+                    data = resp.json()
+                except Exception:
+                    data = json.loads((resp.text or "").strip() or "{}")
+                markdown_text = self._extract_markdown_from_json(data)
+            else:
+                markdown_text = resp.text or ""
+
+        metadata: Dict[str, Any] = {
+            "source": str(file_path.name),
+            "file_type": "pdf",
+            "parser_backend": "marker",
+            "artifact_dir": str(artifact_root),
+        }
+        if asset_base_dir:
+            metadata["asset_base_dir"] = asset_base_dir
+        if dataset_id:
+            metadata["dataset_id"] = str(dataset_id)
+
+        return [Document(page_content=markdown_text, metadata=metadata)]
+
