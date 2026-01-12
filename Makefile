@@ -1,4 +1,4 @@
-.PHONY: help up up-web up-etl4llm up-marker up-dev up-dev-web up-prod up-prod-web infra-up infra-up-etl4llm infra-up-marker infra-ps infra-down down ps logs restart backend web test api-check api-smoke typecheck lint-py audit-py audit-web audit openapi-export openapi-types openapi-check db-upgrade db-revision verify parser-status clean
+.PHONY: help up up-web up-etl4llm up-marker up-paddlevl up-dev up-dev-web up-prod up-prod-web infra-up infra-up-etl4llm infra-up-marker infra-up-paddlevl infra-ps infra-down down ps logs restart backend web test api-check api-smoke typecheck lint-py audit-py audit-web audit openapi-export openapi-types openapi-check db-upgrade db-revision verify parser-status clean
 
 PY := python3
 ifeq ($(OS),Windows_NT)
@@ -15,6 +15,7 @@ help:
 	@echo "  make up-web    - docker compose up + frontend (extra compose file)"
 	@echo "  make up-etl4llm - docker compose up + ETL4LLM parser (profile etl4llm)"
 	@echo "  make up-marker - docker compose up + Marker parser (profile marker)"
+	@echo "  make up-paddlevl - docker compose up + PaddleOCR-VL parser (profile paddlevl)"
 	@echo "  make up-dev    - alias of up (set UVICORN_RELOAD in docker/.env)"
 	@echo "  make up-dev-web - alias of up-web"
 	@echo "  make up-prod   - alias of up (set ENV=production/AUTH_MODE/SECRET_KEY in docker/.env)"
@@ -22,6 +23,7 @@ help:
 	@echo "  make infra-up  - start infra only (ports exposed)"
 	@echo "  make infra-up-etl4llm - infra-up + ETL4LLM parser (profile etl4llm)"
 	@echo "  make infra-up-marker - infra-up + Marker parser (profile marker)"
+	@echo "  make infra-up-paddlevl - infra-up + PaddleOCR-VL parser (profile paddlevl)"
 	@echo "  make infra-ps  - infra docker compose ps"
 	@echo "  make infra-down - stop infra only"
 	@echo "  make down      - docker compose down"
@@ -59,6 +61,9 @@ up-etl4llm:
 up-marker:
 	$(COMPOSE) --profile marker up -d --build
 
+up-paddlevl:
+	$(COMPOSE) --profile paddlevl up -d --build
+
 up-dev:
 	@$(MAKE) up
 
@@ -79,6 +84,9 @@ infra-up-etl4llm:
 
 infra-up-marker:
 	$(COMPOSE_INFRA) --profile marker up -d --build
+
+infra-up-paddlevl:
+	$(COMPOSE_INFRA) --profile paddlevl up -d --build
 
 infra-ps:
 	$(COMPOSE_INFRA) ps

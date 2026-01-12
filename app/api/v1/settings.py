@@ -488,19 +488,19 @@ async def get_settings(
 ):
     """Get current system config."""
     _ensure_settings_readable(db, tenant_id, account_id)
-        return SystemSettings(
-            feature_flags=FeatureFlags(
-                kg_enabled=settings.KG_ENABLED,
-                deepdoc_enabled=settings.DEEPDOC_ENABLED,
-                docling_enabled=bool(getattr(settings, "DOCLING_ENABLED", False)),
-                etl4llm_enabled=bool(getattr(settings, "ETL4LLM_ENABLED", False)),
-                marker_enabled=bool(getattr(settings, "MARKER_ENABLED", False)),
-                paddle_vl_enabled=bool(getattr(settings, "PADDLE_VL_ENABLED", False)),
-                markitdown_enabled=settings.MARKITDOWN_ENABLED,
-                llama_index_enabled=settings.LLAMA_INDEX_ENABLED,
-                mineru_enabled=settings.MINERU_ENABLED,
-                magicpdf_enabled=bool(getattr(settings, "MAGIC_PDF_ENABLED", False)),
-            ),
+    return SystemSettings(
+        feature_flags=FeatureFlags(
+            kg_enabled=settings.KG_ENABLED,
+            deepdoc_enabled=settings.DEEPDOC_ENABLED,
+            docling_enabled=bool(getattr(settings, "DOCLING_ENABLED", False)),
+            etl4llm_enabled=bool(getattr(settings, "ETL4LLM_ENABLED", False)),
+            marker_enabled=bool(getattr(settings, "MARKER_ENABLED", False)),
+            paddle_vl_enabled=bool(getattr(settings, "PADDLE_VL_ENABLED", False)),
+            markitdown_enabled=settings.MARKITDOWN_ENABLED,
+            llama_index_enabled=settings.LLAMA_INDEX_ENABLED,
+            mineru_enabled=settings.MINERU_ENABLED,
+            magicpdf_enabled=bool(getattr(settings, "MAGIC_PDF_ENABLED", False)),
+        ),
         kg=KGConfig(
             chat_enabled=settings.KG_CHAT_ENABLED,
             extract_prompt_template_id=getattr(settings, "KG_EXTRACT_PROMPT_TEMPLATE_ID", "") or "",

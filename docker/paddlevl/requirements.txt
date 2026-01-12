@@ -1,0 +1,6 @@
+paddlepaddle
+paddleocr
+PyMuPDF
+fastapi
+uvicorn
+python-multipart

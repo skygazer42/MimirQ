@@ -34,6 +34,20 @@ def test_normalize_parser_backend_pandoc_aliases():
     assert normalize_parser_backend("pan_doc") == "pandoc"
 
 
+def test_normalize_parser_backend_marker_aliases():
+    assert normalize_parser_backend("marker") == "marker"
+    assert normalize_parser_backend("marker-pdf") == "marker"
+    assert normalize_parser_backend("marker_pdf") == "marker"
+
+
+def test_normalize_parser_backend_paddlevl_aliases():
+    assert normalize_parser_backend("paddle_vl") == "paddle_vl"
+    assert normalize_parser_backend("paddle-vl") == "paddle_vl"
+    assert normalize_parser_backend("paddleocr-vl") == "paddle_vl"
+    assert normalize_parser_backend("paddleocr_vl") == "paddle_vl"
+    assert normalize_parser_backend("paddleocrvl") == "paddle_vl"
+
+
 def test_normalize_parser_backend_empty():
     assert normalize_parser_backend(None) == ""
     assert normalize_parser_backend("") == ""
