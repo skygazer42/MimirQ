@@ -368,6 +368,18 @@ def _apply_runtime_settings(env_vars: Dict[str, str], updated_keys: list[str]) -
     if "ETL4LLM_FILTER_PAGE_HEADER_FOOTER" in updated_keys and "ETL4LLM_FILTER_PAGE_HEADER_FOOTER" in env_vars:
         settings.ETL4LLM_FILTER_PAGE_HEADER_FOOTER = _parse_bool(env_vars["ETL4LLM_FILTER_PAGE_HEADER_FOOTER"])
 
+    # Marker
+    if "MARKER_API_URL" in updated_keys and "MARKER_API_URL" in env_vars:
+        settings.MARKER_API_URL = env_vars["MARKER_API_URL"]
+    if "MARKER_TIMEOUT_SEC" in updated_keys and "MARKER_TIMEOUT_SEC" in env_vars:
+        settings.MARKER_TIMEOUT_SEC = _parse_int(env_vars["MARKER_TIMEOUT_SEC"], default=settings.MARKER_TIMEOUT_SEC)
+
+    # PaddleOCR-VL
+    if "PADDLE_VL_API_URL" in updated_keys and "PADDLE_VL_API_URL" in env_vars:
+        settings.PADDLE_VL_API_URL = env_vars["PADDLE_VL_API_URL"]
+    if "PADDLE_VL_TIMEOUT_SEC" in updated_keys and "PADDLE_VL_TIMEOUT_SEC" in env_vars:
+        settings.PADDLE_VL_TIMEOUT_SEC = _parse_int(env_vars["PADDLE_VL_TIMEOUT_SEC"], default=settings.PADDLE_VL_TIMEOUT_SEC)
+
     # MagicPDF
     if "MAGIC_PDF_CLI" in updated_keys and "MAGIC_PDF_CLI" in env_vars:
         settings.MAGIC_PDF_CLI = env_vars["MAGIC_PDF_CLI"]
