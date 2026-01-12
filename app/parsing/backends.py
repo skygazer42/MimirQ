@@ -25,6 +25,9 @@ _BACKEND_ALIASES: dict[str, str] = {
     # Pandoc (Office/HTML -> Markdown)
     "pandoc": "pandoc",
     "pan-doc": "pandoc",
+    # Marker (PDF -> Markdown external service)
+    "marker": "marker",
+    "marker-pdf": "marker",
     # Backward-compatible aliases (deprecated)
     "bisheng-unstructured": "etl4llm",
     "bishengunstructured": "etl4llm",

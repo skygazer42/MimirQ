@@ -188,7 +188,7 @@ class Settings(BaseSettings):
 
     # Marker (PDF -> Markdown external service; optional)
     MARKER_ENABLED: bool = False
-    # Full endpoint URL (recommended): http://localhost:2080/v1/marker/convert
+    # Full endpoint URL, e.g. http://localhost:2080/convert (depends on your Marker service).
     MARKER_API_URL: str = ""
     MARKER_TIMEOUT_SEC: int = 600
 
