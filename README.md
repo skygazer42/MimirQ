@@ -37,6 +37,19 @@
 
 ---
 
+## 为什么选择 MimirQ
+
+| 特性 | MimirQ | 其他方案 |
+|------|--------|----------|
+| **可视化切片预览** | 实时预览分块效果 | 黑盒处理 |
+| **混合检索** | 向量 + BM25 双引擎 | 仅向量检索 |
+| **部署复杂度** | Docker 一键部署 | 需要复杂配置 |
+| **开源程度** | MIT 完全开源 | 部分闭源 |
+| **中文支持** | 原生中文优化 (Jieba + BGE) | 需额外配置 |
+| **评测能力** | 内置 RAGAS 评测框架 | 需自行集成 |
+
+---
+
 ## 🌟 核心亮点
 
 <table>
@@ -231,7 +244,7 @@ MimirQ/
 
 ```bash
 # 克隆项目
-git clone https://github.com/yourusername/MimirQ.git
+git clone https://github.com/YOUR_USERNAME/MimirQ.git
 cd MimirQ
 
 # 配置环境变量（Docker Compose 使用 docker/.env）
@@ -413,7 +426,7 @@ pnpm build
 ### 核心文档
 
 - [快速入门](./docs/quickstart.md) - 本地开发、Docker Compose、环境检查
-- [Docker Compose 部署](./docs/deployment/docker_compose.md) - 开发/生产模式、web profile、常见排错
+- [Docker Compose 部署](./docs/deployment/docker_compose.md) - 开发/生产模式、前端拆分、常见排错
 - [Milvus 向量数据库指南](./docs/guides/milvus_guide.md) - 索引类型、性能调优、GPU 加速
 - [RAG 优化指南](./docs/guides/rag_optimization.md) - 对话历史、混合检索、Rerank
 - [LangChain RAG 架构文档](./docs/guides/langchain_agent_migration.md) - Retriever/Runnable 链路
@@ -502,7 +515,7 @@ docs = retriever.invoke(query)
 cd docker
 cp .env.example .env
 docker compose up -d --build
-docker compose --profile web up -d --build   # 可选：前端
+docker compose -f docker-compose.yml -f docker-compose.web.yml up -d --build   # 可选：前端
 
 # 或在仓库根目录用 Makefile（等价）
 make up
@@ -618,6 +631,18 @@ ALLOWED_EXTENSIONS=.pdf,.txt,.md,.doc,.docx,.xls,.xlsx,.csv,.html,.json
 
 ---
 
+## ⭐ Star History
+
+<a href="https://star-history.com/#YOUR_USERNAME/MimirQ&Date">
+ <picture>
+   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=YOUR_USERNAME/MimirQ&type=Date&theme=dark" />
+   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=YOUR_USERNAME/MimirQ&type=Date" />
+   <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=YOUR_USERNAME/MimirQ&type=Date" />
+ </picture>
+</a>
+
+---
+
 ## 🤝 贡献指南
 
 我们欢迎所有形式的贡献！
@@ -656,6 +681,16 @@ MimirQ 基于以下优秀开源项目构建:
 
 ---
 
+## 👥 贡献者
+
+感谢所有为 MimirQ 做出贡献的开发者！
+
+<a href="https://github.com/YOUR_USERNAME/MimirQ/graphs/contributors">
+  <img src="https://contrib.rocks/image?repo=YOUR_USERNAME/MimirQ" />
+</a>
+
+---
+
 ## 📄 许可证
 
 本项目采用 [MIT 许可证](LICENSE)
@@ -665,7 +700,7 @@ MimirQ 基于以下优秀开源项目构建:
 ## 💬 社区与支持
 
 - 📧 邮箱: support@mimirq.com
-- 💬 Discord: [加入我们](https://discord.gg/yourinvite)
+- 💬 Discord: [加入我们](https://discord.gg/YOUR_INVITE)
 - 🐦 Twitter: [@MimirQ](https://twitter.com/mimirq)
 - 📖 文档: https://docs.mimirq.com
 
