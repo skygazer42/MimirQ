@@ -7,11 +7,12 @@ endif
 
 COMPOSE := docker compose -f docker/docker-compose.yml
 COMPOSE_INFRA := docker compose -f docker/docker-compose.infra.yml
+COMPOSE_WEB := docker compose -f docker/docker-compose.yml -f docker/docker-compose.web.yml
 
 help:
 	@echo "MimirQ dev commands (run from repo root):"
 	@echo "  make up        - docker compose up (build + detach)"
-	@echo "  make up-web    - docker compose up + frontend (profile web)"
+	@echo "  make up-web    - docker compose up + frontend (extra compose file)"
 	@echo "  make up-etl4llm - docker compose up + ETL4LLM parser (profile etl4llm)"
 	@echo "  make up-dev    - alias of up (set UVICORN_RELOAD in docker/.env)"
 	@echo "  make up-dev-web - alias of up-web"
@@ -48,7 +49,7 @@ up:
 	$(COMPOSE) up -d --build
 
 up-web:
-	$(COMPOSE) --profile web up -d --build
+	$(COMPOSE_WEB) up -d --build
 
 up-etl4llm:
 	$(COMPOSE) --profile etl4llm up -d --build

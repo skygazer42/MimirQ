@@ -1,36 +1,37 @@
 <div align="center">
 
-# 🔮 MimirQ
+# MimirQ
 
-### 🚀 新一代智能知识库问答系统 | Next-Gen AI Knowledge Base
-
-*基于 RAG (Retrieval-Augmented Generation) 的企业级知识管理平台*
-<br/>
-*可视化切片 • 混合检索 • 多模态解析*
+**开源 RAG 知识库问答系统** | Open-Source RAG Knowledge Base
 
 [English](./README_EN.md) | [简体中文](./README.md)
 
-<p align="center">
-  <a href="#-核心亮点">亮点</a> •
-  <a href="#-功能清单">功能</a> •
-  <a href="#-快速开始">开始</a> •
-  <a href="#-技术架构">架构</a> •
-  <a href="#-部署指南">部署</a> •
-  <a href="#-文档">文档</a>
+<!-- 产品截图 - 请替换为实际截图 -->
+<p>
+  <img src="./docs/images/screenshot-placeholder.png" alt="MimirQ Screenshot" width="80%" />
 </p>
 
-<!-- Tech Stack Badges -->
+*可视化切片 · 混合检索 · 多模态解析 · 一键部署*
+
+<!-- CTA 按钮 -->
+<p>
+  <a href="#-快速开始"><b>快速开始</b></a> ·
+  <a href="#-文档"><b>文档</b></a> ·
+  <a href="https://github.com/YOUR_USERNAME/MimirQ/issues"><b>反馈</b></a>
+</p>
+
+<!-- 徽章 -->
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
 [![Next.js 14](https://img.shields.io/badge/Next.js-14-black)](https://nextjs.org/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.109-009688.svg)](https://fastapi.tiangolo.com/)
-[![LangChain](https://img.shields.io/badge/🦜_LangChain-0.3-green)](https://langchain.com/)
+[![LangChain](https://img.shields.io/badge/LangChain-0.3-green)](https://langchain.com/)
 [![Milvus](https://img.shields.io/badge/Milvus-2.3-00a1e0)](https://milvus.io/)
 
-<!-- Social/Stats Badges -->
-[![Docker Pulls](https://img.shields.io/docker/pulls/yourusername/mimirq?style=flat-square&color=blue)](https://hub.docker.com/r/yourusername/mimirq)
-[![GitHub stars](https://img.shields.io/github/stars/yourusername/mimirq?style=flat-square&color=yellow)](https://github.com/yourusername/mimirq)
-[![Discord](https://img.shields.io/discord/1234567890?logo=discord&label=Discord&color=5865F2)](https://discord.gg/yourinvite)
+[![GitHub stars](https://img.shields.io/github/stars/YOUR_USERNAME/MimirQ?style=flat-square&color=yellow)](https://github.com/YOUR_USERNAME/MimirQ)
+[![GitHub forks](https://img.shields.io/github/forks/YOUR_USERNAME/MimirQ?style=flat-square)](https://github.com/YOUR_USERNAME/MimirQ/fork)
+[![GitHub issues](https://img.shields.io/github/issues/YOUR_USERNAME/MimirQ?style=flat-square)](https://github.com/YOUR_USERNAME/MimirQ/issues)
+[![Docker Pulls](https://img.shields.io/docker/pulls/YOUR_USERNAME/mimirq?style=flat-square&color=blue)](https://hub.docker.com/r/YOUR_USERNAME/mimirq)
 
 </div>
 

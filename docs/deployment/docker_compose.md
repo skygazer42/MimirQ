@@ -5,7 +5,7 @@
 - `docker/docker-compose.yml`：主栈（backend/worker + Postgres/Milvus/Redis/MinIO；默认不暴露基础设施端口）
 - `docker/docker-compose.infra.yml`：仅基础设施（暴露端口，便于本地后端调试）
 
-另外，前端服务 `web` 使用 `profiles: ["web"]`，默认不启动；需要时显式启用即可。
+另外，前端服务 `web` 放在 `docker/docker-compose.web.yml`，默认不启动；需要时用 `-f` 叠加即可（或直接 `make up-web`）。
 
 ---
 
@@ -102,4 +102,3 @@ docker compose down -v
 - 查看后端日志：`docker compose logs -f backend`
 - 就绪探针：`curl -fsS http://localhost:8000/api/v1/health/ready`
 - Milvus 健康：`curl -fsS http://localhost:9091/healthz`
-

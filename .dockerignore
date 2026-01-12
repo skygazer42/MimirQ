@@ -9,6 +9,7 @@ dist/
 *.egg-info/
 
 # Frontend build artifacts (avoid bloating backend build context)
+web/
 web/node_modules/
 web/.next/
 web/.next_build/

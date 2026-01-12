@@ -78,7 +78,7 @@ LIBREOFFICE_ENABLED=true
 cd docker
 cp .env.example .env
 docker compose up -d --build
-docker compose --profile web up -d --build   # 可选：启用前端（profile=web）
+docker compose -f docker-compose.yml -f docker-compose.web.yml up -d --build   # 可选：启用前端
 ```
 
 可选：本地启动后端（Python），依赖服务仍用 Docker：
