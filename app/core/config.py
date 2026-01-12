@@ -186,6 +186,12 @@ class Settings(BaseSettings):
     # 0 = unlimited.
     ETL4LLM_PAGE_IMAGE_MAX_PAGES: int = 20
 
+    # Marker (PDF -> Markdown external service; optional)
+    MARKER_ENABLED: bool = False
+    # Full endpoint URL (recommended): http://localhost:2080/v1/marker/convert
+    MARKER_API_URL: str = ""
+    MARKER_TIMEOUT_SEC: int = 600
+
     # PDF quality OCR validation (used by parse-preview scoring)
     RAPIDOCR_ENABLED: bool = False
 
