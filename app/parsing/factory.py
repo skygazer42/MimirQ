@@ -21,6 +21,7 @@ if TYPE_CHECKING:
     from app.parsing.parsers.deepseek_ocr_parser import DeepSeekOCRParser
     from app.parsing.parsers.etl4llm_parser import Etl4LlmParser
     from app.parsing.parsers.docling_parser import DoclingParser
+    from app.parsing.parsers.marker_parser import MarkerParser
     from app.parsing.parsers.magic_pdf_parser import MagicPDFParser
     from app.parsing.parsers.markitdown_parser import MarkItDownParser
     from app.parsing.parsers.mineru_parser import MinerUParser
@@ -34,6 +35,7 @@ class ParserFactory:
     SUPPORTED_PDF_BACKENDS = {
         "auto",
         "basic",
+        "marker",
         "mineru",
         "deepdoc",
         "deepseek_ocr",
@@ -47,6 +49,7 @@ class ParserFactory:
 
     def __init__(self):
         self._basic_pdf_parser: Optional[PDFParser] = None
+        self._marker_parser: Optional[MarkerParser] = None
         self._mineru_parser: Optional[MinerUParser] = None
         self._deepdoc_parser: Optional[DeepDocParser] = None
         self._deepseek_ocr_parser: Optional[DeepSeekOCRParser] = None
@@ -57,6 +60,8 @@ class ParserFactory:
         self._magicpdf_parser: Optional[MagicPDFParser] = None
 
         logger.debug("[pdf] Basic PyMuPDF parser available (lazy)")
+        if bool(getattr(settings, "MARKER_ENABLED", False)) and bool((getattr(settings, "MARKER_API_URL", "") or "").strip()):
+            logger.debug("[pdf] Marker parser available (requires selection)")
         if settings.MINERU_ENABLED and (settings.MINERU_API_TOKEN or settings.MINERU_LOCAL_SERVER_URL):
             logger.debug("[pdf] MinerU parser available (requires selection)")
         if settings.DEEPDOC_ENABLED:
@@ -167,6 +172,16 @@ class ParserFactory:
         if normalized == "basic":
             return "basic"
 
+        if normalized == "marker":
+            if not bool(getattr(settings, "MARKER_ENABLED", False)):
+                raise ValueError(
+                    "Marker parser is not enabled. "
+                    "Please set MARKER_ENABLED=True and configure MARKER_API_URL."
+                )
+            if not bool((getattr(settings, "MARKER_API_URL", "") or "").strip()):
+                raise ValueError("Marker parser requires MARKER_API_URL.")
+            return "marker"
+
         if normalized == "mineru":
             if not (settings.MINERU_ENABLED and (settings.MINERU_API_TOKEN or settings.MINERU_LOCAL_SERVER_URL)):
                 raise ValueError(
@@ -273,7 +288,7 @@ class ParserFactory:
                 raise ValueError(f"Unsupported file type: {file_ext}")
 
             # Some parsers need dataset/document ids to produce stable artifacts.
-            if backend in {"mineru", "magicpdf", "deepseek_ocr", "etl4llm", "pandoc"}:
+            if backend in {"marker", "mineru", "magicpdf", "deepseek_ocr", "etl4llm", "pandoc"}:
                 documents = parser.parse(
                     file_path,
                     dataset_id=dataset_id,
@@ -324,7 +339,7 @@ class ParserFactory:
         file_ext = (file_ext or "").strip().lower()
 
         # PDF advanced backends (may fail to import due to binary deps or external services); fall back to basic PyMuPDF.
-        if file_ext == ".pdf" and backend in {"docling", "deepdoc", "mineru", "magicpdf", "deepseek_ocr", "etl4llm"}:
+        if file_ext == ".pdf" and backend in {"docling", "deepdoc", "marker", "mineru", "magicpdf", "deepseek_ocr", "etl4llm"}:
             logger.warning(
                 "[parse] PDF backend '%s' failed for %s: %s; falling back to 'basic'",
                 backend,
@@ -430,6 +445,14 @@ class ParserFactory:
                 logger.debug("[pdf] Initializing PyMuPDF parser (basic)")
                 self._basic_pdf_parser = PDFParser()
             return self._basic_pdf_parser
+
+        if backend == "marker":
+            if self._marker_parser is None:
+                from app.parsing.parsers.marker_parser import MarkerParser
+
+                logger.info("[pdf] Initializing Marker parser (external service)")
+                self._marker_parser = MarkerParser()
+            return self._marker_parser
 
         if backend == "mineru":
             if self._mineru_parser is None:
