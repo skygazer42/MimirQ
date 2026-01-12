@@ -1157,7 +1157,7 @@ export function DataGovernancePanel() {
                       )}
                     >
                       {viewMode === 'edit' ? (
-                        <div className="grid grid-cols-2 gap-6 h-full">
+                        <div className="grid grid-cols-2 gap-6 h-[calc(100vh-180px)] min-h-[500px]">
                           {/* 左侧：实时预览 */}
                           <div className="flex flex-col h-full bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
                             <div className="px-4 py-2.5 bg-slate-50/80 border-b border-slate-200 text-xs font-semibold text-slate-500 uppercase tracking-wider flex items-center justify-between">
