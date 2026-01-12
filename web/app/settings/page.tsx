@@ -93,6 +93,22 @@ const FEATURE_FLAGS_CONFIG = [
     dependencies: ['ETL4LLM API URL'],
   },
   {
+    key: 'marker_enabled' as keyof FeatureFlags,
+    name: 'Marker 外部解析',
+    description: '启用 Marker 外部 PDF→Markdown 解析服务（可在解析器下拉中选择）',
+    icon: LayoutGrid,
+    color: 'green',
+    dependencies: ['Marker API URL'],
+  },
+  {
+    key: 'paddle_vl_enabled' as keyof FeatureFlags,
+    name: 'PaddleOCR-VL 外部解析',
+    description: '启用 PaddleOCR-VL 外部 OCR/版面解析服务（适合扫描件 PDF，可在解析器下拉中选择）',
+    icon: ScanLine,
+    color: 'orange',
+    dependencies: ['PaddleOCR-VL API URL'],
+  },
+  {
     key: 'markitdown_enabled' as keyof FeatureFlags,
     name: 'MarkItDown 文档解析',
     description: '启用多格式转 Markdown（Office/表格/PDF），自动选择与解析工作台会使用',
@@ -162,6 +178,16 @@ const DEFAULT_ETL4LLM: Etl4LlmConfig = {
   enable_formula: true,
   extract_images: true,
   filter_page_header_footer: false,
+}
+
+const DEFAULT_MARKER: MarkerConfig = {
+  api_url: '',
+  timeout_sec: 600,
+}
+
+const DEFAULT_PADDLE_VL: PaddleVLConfig = {
+  api_url: '',
+  timeout_sec: 600,
 }
 
 export default function SettingsPage() {
@@ -273,6 +299,18 @@ export default function SettingsPage() {
     const current = (editedSettings.etl4llm || settings?.etl4llm || DEFAULT_ETL4LLM) as Etl4LlmConfig
     const next = { ...current, ...patch }
     setEditedSettings((prev) => ({ ...prev, etl4llm: next }))
+  }
+
+  const updateMarker = (patch: Partial<MarkerConfig>) => {
+    const current = (editedSettings.marker || settings?.marker || DEFAULT_MARKER) as MarkerConfig
+    const next = { ...current, ...patch }
+    setEditedSettings((prev) => ({ ...prev, marker: next }))
+  }
+
+  const updatePaddleVL = (patch: Partial<PaddleVLConfig>) => {
+    const current = (editedSettings.paddle_vl || settings?.paddle_vl || DEFAULT_PADDLE_VL) as PaddleVLConfig
+    const next = { ...current, ...patch }
+    setEditedSettings((prev) => ({ ...prev, paddle_vl: next }))
   }
 
   // 检查是否有未保存的更改
