@@ -43,6 +43,12 @@ import {
   Copy,
   Undo,
   Redo,
+  PanelRightOpen,
+  PanelRightClose,
+  Maximize2,
+  Minimize2,
+  Layout,
+  LayoutTemplate
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { useRouter } from 'next/navigation'
@@ -71,10 +77,10 @@ const WORKFLOW_STEPS = [
 
 // 治理标签页
 const GOVERNANCE_TABS = [
-  { id: 'quality', label: '质量检测', icon: ScanLine, color: 'blue' },
-  { id: 'clean', label: '智能清洗', icon: Wrench, color: 'green' },
-  { id: 'annotate', label: '数据标注', icon: Tag, color: 'purple' },
-  { id: 'classify', label: '分类归档', icon: FolderTree, color: 'orange' },
+  { id: 'quality', label: '质量检测', icon: ScanLine, color: 'blue', desc: '检测文档质量与格式问题' },
+  { id: 'clean', label: '智能清洗', icon: Wrench, color: 'green', desc: '修复格式错误与乱码' },
+  { id: 'annotate', label: '数据标注', icon: Tag, color: 'purple', desc: '标记关键实体与敏感信息' },
+  { id: 'classify', label: '分类归档', icon: FolderTree, color: 'orange', desc: '设置文档分类与标签' },
 ] as const
 
 type GovernanceTab = typeof GOVERNANCE_TABS[number]['id']
@@ -135,13 +141,13 @@ export function DataGovernancePanel() {
   const [governanceStates, setGovernanceStates] = useState<Record<string, FileGovernanceState>>({})
 
   // 侧边栏状态
-  const [sidebarWidth, setSidebarWidth] = useState(288)
+  const [sidebarWidth, setSidebarWidth] = useState(280)
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false)
   const [isResizing, setIsResizing] = useState(false)
   const sidebarRef = useRef<HTMLDivElement>(null)
 
-  // 治理面板状态 (中间栏)
-  const [panelWidth, setPanelWidth] = useState(450)
+  // 治理面板状态 (右侧)
+  const [panelWidth, setPanelWidth] = useState(400)
   const [isPanelCollapsed, setIsPanelCollapsed] = useState(false)
   const [isPanelResizing, setIsPanelResizing] = useState(false)
   const panelRef = useRef<HTMLDivElement>(null)
@@ -169,14 +175,14 @@ export function DataGovernancePanel() {
         const newWidth = mouseMoveEvent.clientX - sidebarLeft
         
         // 限制最小和最大宽度
-        if (newWidth > 150 && newWidth < 600) {
+        if (newWidth > 200 && newWidth < 500) {
           setSidebarWidth(newWidth)
         }
       }
 
       if (isPanelResizing && panelRef.current) {
-        const panelLeft = panelRef.current.getBoundingClientRect().left
-        const newWidth = mouseMoveEvent.clientX - panelLeft
+        // 右侧面板宽度 = 视口宽度 - 鼠标X
+        const newWidth = window.innerWidth - mouseMoveEvent.clientX
         
         if (newWidth > 300 && newWidth < 800) {
           setPanelWidth(newWidth)
@@ -626,10 +632,6 @@ export function DataGovernancePanel() {
                 </p>
               </div>
             </div>
-            {/* 步骤导航保持一致，但处于初始状态 */}
-            <div className="hidden md:flex items-center gap-2 opacity-50 pointer-events-none">
-                {/* 简化显示 */}
-            </div>
           </div>
         </header>
         
@@ -713,155 +715,61 @@ export function DataGovernancePanel() {
   return (
     <div className="flex-1 flex flex-col bg-white min-h-0">
       {/* 顶部标题栏 */}
-      <header className="flex-shrink-0 bg-white border-b border-gray-200 px-6 py-4">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <div className="w-11 h-11 bg-gradient-to-br from-sky-500 to-blue-600 rounded-xl flex items-center justify-center shadow-lg shadow-sky-200">
-              <ShieldCheck className="w-5 h-5 text-white" />
-            </div>
-            <div>
-              <h1 className="text-xl font-bold text-gray-900">数据治理工作台</h1>
-              <p className="text-sm text-gray-500">
-                质量检测 · 智能清洗 · 数据标注 · 分类归档
-              </p>
-            </div>
+      <header className="flex-shrink-0 bg-white border-b border-gray-200 px-6 py-4 h-16 flex items-center justify-between z-20 shadow-sm relative">
+        <div className="flex items-center gap-4">
+          <div className="w-9 h-9 bg-gradient-to-br from-sky-500 to-blue-600 rounded-lg flex items-center justify-center shadow-lg shadow-sky-200/50">
+            <ShieldCheck className="w-5 h-5 text-white" />
           </div>
-
-          {/* 步骤导航 */}
-          <div className="hidden md:flex items-center gap-2">
-            {WORKFLOW_STEPS.map((step, idx) => {
-              const Icon = step.icon
-              const isActive = step.href === '/data-governance'
-              const isPast = idx < WORKFLOW_STEPS.findIndex((s) => s.href === '/data-governance')
-
-              return (
-                <div key={step.href} className="flex items-center">
-                  {idx > 0 && (
-                    <ChevronRight className={cn(
-                      "w-4 h-4 mx-1",
-                      isPast ? "text-green-500" : "text-gray-300"
-                    )} />
-                  )}
-                  <button
-                    onClick={() => router.push(step.href)}
-                    className={cn(
-                      "flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm transition-all",
-                      isActive
-                        ? "bg-sky-100 text-sky-700 font-medium"
-                        : isPast
-                          ? "bg-green-50 text-green-600 hover:bg-green-100"
-                          : "text-gray-400 hover:bg-gray-100"
-                    )}
-                  >
-                    <Icon className="w-4 h-4" />
-                    <span>{step.label}</span>
-                  </button>
-                </div>
-              )
-            })}
+          <div>
+            <h1 className="text-lg font-bold text-gray-900 leading-tight">数据治理工作台</h1>
+            <p className="text-xs text-gray-500 leading-none mt-1">
+              Data Governance Workbench
+            </p>
           </div>
         </div>
-      </header>
 
-      {/* 统计卡片 */}
-      <div className="flex-shrink-0 px-6 py-4 bg-gradient-to-r from-gray-50 to-white border-b border-gray-100">
-        <div className="flex items-center gap-6">
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 bg-blue-100 rounded-lg flex items-center justify-center">
-              <FileText className="w-4 h-4 text-blue-600" />
-            </div>
-            <div>
-              <div className="text-xs text-gray-400">文件总数</div>
-              <div className="text-lg font-bold text-gray-900">{stats.totalFiles}</div>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 bg-green-100 rounded-lg flex items-center justify-center">
-              <CheckCircle className="w-4 h-4 text-green-600" />
-            </div>
-            <div>
-              <div className="text-xs text-gray-400">已检测</div>
-              <div className="text-lg font-bold text-gray-900">{stats.completedFiles}</div>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 bg-purple-100 rounded-lg flex items-center justify-center">
-              <Eraser className="w-4 h-4 text-purple-600" />
-            </div>
-            <div>
-              <div className="text-xs text-gray-400">已修改</div>
-              <div className="text-lg font-bold text-gray-900">{stats.modifiedFiles}</div>
-            </div>
-          </div>
-
-          {stats.avgScore > 0 && (
-            <div className="flex items-center gap-2">
-              <div className="w-8 h-8 bg-sky-100 rounded-lg flex items-center justify-center">
-                <Sparkles className="w-4 h-4 text-sky-600" />
-              </div>
-              <div>
-                <div className="text-xs text-gray-400">平均质量分</div>
-                <div className="text-lg font-bold text-gray-900">{stats.avgScore.toFixed(1)}</div>
-              </div>
-            </div>
-          )}
-
-          <div className="flex-1" />
-
-          <div className="flex items-center gap-2">
-            <Button
+        {/* 顶部右侧操作栏 - 移至顶部释放空间 */}
+        <div className="flex items-center gap-3">
+           <Button
               variant="outline"
               size="sm"
               onClick={handleReset}
               disabled={!governanceState || !governanceState.isModified}
-              className="gap-1.5"
+              className="gap-1.5 h-8 text-xs bg-white hover:bg-gray-50"
             >
               <RotateCcw className="w-3.5 h-3.5" />
-              重置当前
+              重置
             </Button>
             <Button
               size="sm"
               onClick={handleSave}
               disabled={!governanceState}
-              className="gap-2 bg-gradient-to-r from-sky-600 to-blue-600 hover:from-sky-700 hover:to-blue-700"
+              className="gap-2 h-8 text-xs bg-gradient-to-r from-sky-600 to-blue-600 hover:from-sky-700 hover:to-blue-700 border-0 shadow-sm shadow-sky-200"
             >
-              <Save className="w-4 h-4" />
+              <Save className="w-3.5 h-3.5" />
               保存
             </Button>
+            <div className="w-px h-4 bg-gray-300 mx-1" />
             <Button
-              variant="outline"
-              size="sm"
-              onClick={handleSaveAndNextFile}
-              disabled={!governanceState}
-              className="gap-2"
-            >
-              保存并下一份
-              <ChevronRight className="w-4 h-4" />
-            </Button>
-            <Button
-              variant="outline"
+              variant="default"
               size="sm"
               onClick={handlePushToChunkPreview}
               disabled={!isLoaded || files.length === 0}
-              className="gap-2"
+              className="gap-2 h-8 text-xs bg-slate-800 hover:bg-slate-900 text-white shadow-sm"
             >
-              <Layers className="w-4 h-4" />
-              推送到切块预览
-              <ArrowRight className="w-4 h-4" />
+              <Layers className="w-3.5 h-3.5" />
+              推送切块预览
             </Button>
-          </div>
         </div>
-      </div>
+      </header>
 
-      <div className="flex-1 flex overflow-hidden min-h-0 relative">
+      <div className="flex-1 flex overflow-hidden min-h-0 relative bg-slate-50">
         {/* 左侧文件列表 */}
         <aside
           ref={sidebarRef}
           className={cn(
-            "group/sidebar relative flex flex-col flex-shrink-0 bg-gray-50 border-r border-gray-200 transition-all duration-75 ease-in-out",
-            isSidebarCollapsed ? "w-0 border-r-0" : ""
+            "group/sidebar relative flex flex-col flex-shrink-0 bg-white border-r border-gray-200 transition-all duration-300 ease-in-out z-10",
+            isSidebarCollapsed ? "w-0 border-r-0 overflow-hidden" : ""
           )}
           style={{ width: isSidebarCollapsed ? 0 : sidebarWidth }}
         >
@@ -876,127 +784,102 @@ export function DataGovernancePanel() {
             onClick={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
             title={isSidebarCollapsed ? "展开侧边栏" : "收起侧边栏"}
           >
-            {isSidebarCollapsed ? <ChevronRight className="w-3 h-3" /> : <ChevronLeft className="w-3 h-3" />}
+            {isSidebarCollapsed ? <PanelRightOpen className="w-3 h-3" /> : <PanelRightClose className="w-3 h-3" />}
           </Button>
 
           <div className={cn("flex-1 flex flex-col min-h-0 w-full overflow-hidden", isSidebarCollapsed && "invisible")}>
-            <div className="p-4 border-b border-gray-200">
-              <div className="max-h-56 overflow-y-auto pr-1">
-                <DocumentFolderTree />
-              </div>
-            </div>
-
-            <div className="p-4 border-b border-gray-200">
-              <h3 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-3">
-                待治理文件 ({visibleFiles.length})
-              </h3>
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+            {/* 搜索栏 */}
+            <div className="p-3 border-b border-gray-100">
+               <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
                 <input
                   type="text"
                   placeholder="搜索文件..."
-                  className="w-full pl-9 pr-3 py-2 text-sm bg-white border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-transparent"
+                  className="w-full pl-9 pr-3 py-1.5 text-xs bg-gray-50 border border-transparent rounded-lg focus:bg-white focus:outline-none focus:ring-1 focus:ring-sky-500 focus:border-sky-500 transition-all"
                 />
               </div>
             </div>
 
-            <div className="flex-1 overflow-y-auto p-3 space-y-2">
+             {/* 文件目录树 - 可折叠区域 */}
+            <div className="px-3 pt-2 pb-1">
+              <div className="max-h-40 overflow-y-auto rounded-lg bg-gray-50 p-2">
+                 <DocumentFolderTree />
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between px-4 py-2 mt-2">
+              <h3 className="text-xs font-bold text-gray-500 uppercase tracking-wider">
+                文件列表 ({visibleFiles.length})
+              </h3>
+            </div>
+
+            <div className="flex-1 overflow-y-auto px-3 pb-3 space-y-2">
               {visibleFiles.length === 0 ? (
-                <div className="text-sm text-gray-400 text-center py-8">该目录暂无文件</div>
+                <div className="text-xs text-gray-400 text-center py-8">该目录暂无文件</div>
               ) : (
                 visibleFiles.map((file) => {
                 const state = governanceStates[file.id]
                 const hasIssue = state?.issues.some((i) => i.type === 'error')
                 const score = state?.qualityScore || 0
-                const processedAt = (() => {
-                  const raw = file.parsedAt
-                  if (!raw) return ''
-                  const date = new Date(raw)
-                  if (Number.isNaN(date.getTime())) return ''
-                  return date.toLocaleString('zh-CN', {
-                    year: 'numeric',
-                    month: 'numeric',
-                    day: 'numeric',
-                    hour: '2-digit',
-                    minute: '2-digit',
-                    hour12: false,
-                  })
-                })()
 
                 return (
                   <div
                     key={file.id}
                     onClick={() => handleSelectFile(file.id)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' || e.key === ' ') {
-                        e.preventDefault()
-                        handleSelectFile(file.id)
-                      }
-                    }}
-                    role="button"
-                    tabIndex={0}
                     className={cn(
-                      "w-full text-left p-3 rounded-xl border transition-all",
+                      "w-full text-left p-3 rounded-xl border transition-all duration-200 cursor-pointer group relative",
                       selectedFileId === file.id
-                        ? "bg-white border-sky-300 shadow-sm ring-1 ring-sky-100"
-                        : "bg-transparent border-gray-200 hover:bg-white hover:border-gray-300"
+                        ? "bg-sky-50/50 border-sky-200 shadow-sm ring-1 ring-sky-100"
+                        : "bg-white border-gray-100 hover:border-sky-200 hover:shadow-sm"
                     )}
                   >
-                    <div className="flex items-start justify-between gap-2">
+                    <div className="flex items-start gap-3">
+                      <div className={cn(
+                        "w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 text-xs font-bold uppercase",
+                         selectedFileId === file.id ? "bg-sky-100 text-sky-600" : "bg-gray-100 text-gray-500"
+                      )}>
+                        {file.fileType}
+                      </div>
+                      
                       <div className="flex-1 min-w-0">
                         <div className={cn(
-                          "text-sm font-medium truncate",
-                          selectedFileId === file.id ? "text-gray-900" : "text-gray-600"
+                          "text-sm font-medium truncate mb-1",
+                          selectedFileId === file.id ? "text-sky-900" : "text-gray-700"
                         )}>
                           {file.filename}
                         </div>
-                        <div className="flex items-center justify-between gap-2 mt-1">
-                          <div className="flex items-center gap-2">
-                            <span className="text-xs text-gray-400">
-                              {file.fileType.toUpperCase()}
-                            </span>
-                            {score > 0 && (
+                        <div className="flex items-center gap-2">
+                            {score > 0 ? (
                               <span className={cn(
-                                "text-xs px-1.5 py-0.5 rounded font-medium",
-                                score >= 80 ? "bg-green-100 text-green-700" :
-                                score >= 60 ? "bg-yellow-100 text-yellow-700" :
-                                "bg-red-100 text-red-700"
+                                "text-[10px] px-1.5 py-0.5 rounded-full font-medium border",
+                                score >= 80 ? "bg-green-50 text-green-700 border-green-100" :
+                                score >= 60 ? "bg-yellow-50 text-yellow-700 border-yellow-100" :
+                                "bg-red-50 text-red-700 border-red-100"
                               )}>
                                 {score}分
                               </span>
+                            ) : (
+                              <span className="text-[10px] text-gray-400">未检测</span>
                             )}
+                            
                             {state?.isModified && (
-                              <span className="text-xs text-purple-600">● 已修改</span>
+                              <span className="text-[10px] text-purple-600 flex items-center gap-0.5">
+                                <span className="w-1.5 h-1.5 rounded-full bg-purple-500"></span> 已修
+                              </span>
                             )}
-                          </div>
-                          {processedAt && (
-                            <span
-                              className="text-[10px] text-gray-400 whitespace-nowrap"
-                              title={`处理时间：${processedAt}`}
-                            >
-                              {processedAt}
-                            </span>
-                          )}
                         </div>
                       </div>
-                      <div className="flex items-center gap-1 flex-shrink-0">
-                        {hasIssue ? (
-                          <AlertCircle className="w-4 h-4 text-red-500 flex-shrink-0" />
-                        ) : score >= 80 ? (
-                          <CheckCircle className="w-4 h-4 text-green-500 flex-shrink-0" />
-                        ) : null}
+
+                      <div className="flex flex-col items-end gap-1">
+                        {hasIssue && <div className="w-2 h-2 rounded-full bg-red-500" />}
                         <button
-                          type="button"
                           onClick={(e) => {
-                            e.preventDefault()
                             e.stopPropagation()
                             handleDeleteFile(file.id)
                           }}
-                          className="p-1 rounded-md text-gray-400 hover:text-red-600 hover:bg-red-50"
-                          title="删除"
-                          aria-label={`删除 ${file.filename}`}
+                          className="opacity-0 group-hover:opacity-100 p-1 rounded-md text-gray-300 hover:text-red-600 hover:bg-red-50 transition-all"
                         >
-                          <Trash2 className="w-4 h-4" />
+                          <Trash2 className="w-3.5 h-3.5" />
                         </button>
                       </div>
                     </div>
@@ -1005,246 +888,228 @@ export function DataGovernancePanel() {
                 })
               )}
             </div>
+
+            {/* 底部统计栏 (原顶部统计栏) */}
+            <div className="mt-auto border-t border-gray-100 bg-gray-50/50 p-3 space-y-2">
+               <div className="grid grid-cols-2 gap-2">
+                 <div className="bg-white p-2 rounded-lg border border-gray-100 shadow-sm">
+                    <div className="text-[10px] text-gray-400 mb-0.5">完成度</div>
+                    <div className="text-sm font-bold text-gray-900 flex items-baseline gap-1">
+                      {stats.completedFiles} <span className="text-gray-400 font-normal text-xs">/ {stats.totalFiles}</span>
+                    </div>
+                 </div>
+                 <div className="bg-white p-2 rounded-lg border border-gray-100 shadow-sm">
+                    <div className="text-[10px] text-gray-400 mb-0.5">平均分</div>
+                    <div className="text-sm font-bold text-gray-900">
+                      {stats.avgScore > 0 ? stats.avgScore.toFixed(1) : '-'}
+                    </div>
+                 </div>
+               </div>
+            </div>
           </div>
           
           {/* 拖拽手柄 */}
           <div
             className={cn(
-              "absolute right-0 top-0 w-1 h-full cursor-col-resize hover:bg-sky-400 active:bg-sky-600 z-20 transition-colors",
-              isResizing ? "bg-sky-600 w-1.5" : "bg-transparent"
+              "absolute right-0 top-0 w-1 h-full cursor-col-resize hover:bg-sky-400 active:bg-sky-600 z-20 transition-colors opacity-0 hover:opacity-100",
+              isResizing && "bg-sky-600 opacity-100 w-1"
             )}
             onMouseDown={startResizing}
           />
         </aside>
 
-        {/* 主内容区 */}
-        <main className="flex-1 flex flex-col overflow-hidden min-h-0">
+        {/* 主内容区 (中间 + 右侧面板) */}
+        <main className="flex-1 flex overflow-hidden min-h-0 relative">
+          
           {selectedFile && governanceState ? (
             <>
-              {/* 治理标签页导航 */}
-              <div className="flex-shrink-0 bg-white border-b border-gray-200 px-6">
-                <div className="flex items-center gap-1">
-                  {GOVERNANCE_TABS.map((tab) => {
-                    const Icon = tab.icon
-                    const isActive = activeTab === tab.id
-                    const hasChanges = tab.id === 'clean' && governanceState.isModified
-
-                    return (
-                      <button
-                        key={tab.id}
-                        onClick={() => setActiveTab(tab.id)}
-                        className={cn(
-                          "flex items-center gap-2 px-4 py-3 text-sm font-medium border-b-2 transition-all relative",
-                          isActive
-                            ? `border-${tab.color}-500 text-${tab.color}-600`
-                            : "border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-50"
-                        )}
-                      >
-                        <Icon className={cn(
-                          "w-4 h-4",
-                          isActive ? `text-${tab.color}-500` : "text-gray-400"
-                        )} />
-                        <span>{tab.label}</span>
-                        {hasChanges && (
-                          <span className="absolute top-2 right-2 w-2 h-2 bg-purple-500 rounded-full" />
-                        )}
-                      </button>
-                    )
-                  })}
-                </div>
-              </div>
-
-              {/* 内容区 */}
-              <div className="flex-1 flex overflow-hidden min-h-0 relative">
-                {/* 中间预览区 (主内容) */}
-                <div className="flex-1 flex flex-col overflow-hidden bg-white min-h-0 z-0">
-                  {/* 预览工具栏 */}
-                  <div className="flex-shrink-0 h-12 border-b border-gray-100 flex items-center justify-between px-4 bg-gray-50">
-                    <div className="flex items-center gap-2">
-                      {/* 左侧侧边栏展开按钮 (当收起时显示) */}
-                      {isSidebarCollapsed && (
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => setIsSidebarCollapsed(false)}
-                          className="h-8 w-8 mr-2 text-gray-500 hover:text-sky-600"
-                          title="展开文件列表"
-                        >
-                          <FolderTree className="w-4 h-4" />
-                        </Button>
-                      )}
-
-                      <span className="text-xs font-medium text-gray-500">预览内容</span>
-                      <span className={cn(
-                        "text-xs px-2 py-0.5 rounded",
-                        viewMode === 'original'
-                          ? "text-gray-700 bg-gray-100"
-                          : viewMode === 'preview'
-                            ? "text-sky-700 bg-sky-50"
-                            : "text-slate-700 bg-white border border-gray-200"
-                      )}>
-                        {viewMode === 'original' ? '解析原文' : viewMode === 'preview' ? '预览' : '编辑'}
-                      </span>
-                      {governanceState.isModified && (
-                        <span className="text-xs text-purple-600 bg-purple-50 px-2 py-0.5 rounded">
-                          已修改
-                        </span>
-                      )}
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => {
-                          if (viewMode === 'edit') setPreviewFormat('rendered')
-                          setViewMode((m) => (m === 'edit' ? 'preview' : 'edit'))
-                        }}
-                        className="h-7 text-xs gap-1"
-                      >
-                        {viewMode === 'edit' ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5" />}
-                        {viewMode === 'edit' ? '预览（只读）' : '继续编辑'}
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => {
-                          if (viewMode === 'edit') setViewMode('preview')
-                          setPreviewFormat((m) => (m === 'rendered' ? 'markdown' : 'rendered'))
-                        }}
-                        className="h-7 text-xs gap-1"
-                      >
-                        {previewFormat === 'rendered' ? 'Markdown 源码' : '渲染预览'}
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => setViewMode((m) => (m === 'original' ? 'preview' : 'original'))}
-                        className="h-7 text-xs gap-1"
-                      >
-                        <FileText className="w-3.5 h-3.5" />
-                        {viewMode === 'original' ? '返回修改版' : '对比解析原文'}
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="h-7 text-xs gap-1"
-                      >
-                        <Copy className="w-3.5 h-3.5" />
-                        复制
-                      </Button>
-                      
-                      {/* 右侧面板展开按钮 */}
-                      {isPanelCollapsed && (
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => setIsPanelCollapsed(false)}
-                          className="h-8 w-8 ml-2 text-gray-500 hover:text-sky-600 border-l border-gray-200 rounded-none pl-3"
-                          title="展开治理工具"
-                        >
-                          <Wrench className="w-4 h-4" />
-                        </Button>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* 预览内容 */}
-                  <div className="flex-1 overflow-y-auto p-8 bg-gray-50/50 min-h-0">
-                    <div
-                      className={cn(
-                        'mx-auto pb-8 h-full',
-                        viewMode === 'edit' ? 'max-w-[98%]' : (previewFormat === 'rendered' ? 'max-w-6xl' : 'max-w-4xl')
-                      )}
-                    >
-                      {viewMode === 'edit' ? (
-                        <div className="grid grid-cols-2 gap-6 h-[calc(100vh-180px)] min-h-[500px]">
-                          {/* 左侧：实时预览 */}
-                          <div className="flex flex-col h-full bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-                            <div className="px-4 py-2.5 bg-slate-50/80 border-b border-slate-200 text-xs font-semibold text-slate-500 uppercase tracking-wider flex items-center justify-between">
-                              <span>实时预览</span>
-                              <span className="bg-sky-100 text-sky-700 px-1.5 py-0.5 rounded text-[10px]">Rendered</span>
-                            </div>
-                            <div className="flex-1 overflow-y-auto p-6 custom-scrollbar bg-white">
-                              <div className="prose prose-slate max-w-none prose-headings:text-gray-900 prose-p:text-gray-700 prose-a:text-sky-700 prose-code:text-pink-600 prose-code:bg-pink-50 prose-code:px-1 prose-code:py-0.5 prose-code:rounded prose-pre:bg-gray-900 prose-table:border-collapse prose-th:bg-gray-100 prose-th:border prose-th:border-gray-300 prose-th:p-2 prose-td:border prose-td:border-gray-300 prose-td:p-2">
-                                <MarkdownRenderer markdown={displayContent || ''} />
-                              </div>
-                            </div>
-                          </div>
-
-                          {/* 右侧：源码编辑 */}
-                          <div className="flex flex-col h-full bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden ring-1 ring-transparent focus-within:ring-sky-500/30 focus-within:border-sky-400 transition-all">
-                            <div className="px-4 py-2.5 bg-slate-50/80 border-b border-slate-200 text-xs font-semibold text-slate-500 uppercase tracking-wider flex items-center justify-between">
-                              <span>源码编辑</span>
-                              <span className="bg-slate-200 text-slate-700 px-1.5 py-0.5 rounded text-[10px]">Markdown</span>
-                            </div>
-                            <textarea
-                              value={displayContent}
-                              onChange={(e) => handleManualEdit(e.target.value)}
-                              placeholder="在这里直接编辑 Markdown 源码..."
-                              spellCheck={false}
-                              className="flex-1 w-full p-6 resize-none outline-none font-mono text-sm leading-relaxed text-slate-800 bg-white selection:bg-sky-100"
-                            />
-                          </div>
-                        </div>
-                      ) : (
-                        <div
+              {/* 中间：预览画布 */}
+              <div className="flex-1 flex flex-col overflow-hidden relative z-0">
+                {/* 画布工具栏 (悬浮或集成) */}
+                 <div className="absolute top-4 left-1/2 -translate-x-1/2 z-20 flex items-center bg-white/90 backdrop-blur-sm border border-gray-200/60 shadow-sm rounded-full px-2 py-1 gap-1 transition-all hover:shadow-md">
+                     {/* 视图切换 */}
+                     <div className="flex items-center bg-gray-100/50 rounded-full p-0.5">
+                        <button
+                          onClick={() => setViewMode('preview')}
                           className={cn(
-                            "w-full min-h-[800px] p-10 rounded-2xl shadow-md border",
-                            viewMode === 'original'
-                              ? "bg-gray-50/50 border-gray-200 text-gray-600"
-                              : "bg-white border-slate-200"
+                            "px-3 py-1 rounded-full text-xs font-medium transition-all",
+                            viewMode === 'preview' ? "bg-white text-sky-700 shadow-sm" : "text-gray-500 hover:text-gray-700"
                           )}
                         >
-                          {previewFormat === 'rendered' ? (
-                            <div className="flex gap-12">
-                              <div className="min-w-0 flex-1 overflow-x-auto prose prose-slate max-w-none prose-headings:text-gray-900 prose-p:text-gray-700 prose-a:text-sky-700 prose-code:text-pink-600 prose-code:bg-pink-50 prose-code:px-1 prose-code:py-0.5 prose-code:rounded prose-pre:bg-gray-900 prose-table:border-collapse prose-th:bg-gray-100 prose-th:border prose-th:border-gray-300 prose-th:p-2 prose-td:border prose-td:border-gray-300 prose-td:p-2">
-                                <MarkdownRenderer markdown={displayContent || ''} autoScrollToHash />
-                              </div>
-                              {tocEnabled && (
-                                <aside className="hidden xl:block w-72 shrink-0">
-                                  <div className="sticky top-6 max-h-[calc(100vh-220px)] overflow-y-auto rounded-2xl border border-slate-100 bg-slate-50/50 p-5">
-                                    <MarkdownToc markdown={displayContent || ''} />
+                          预览
+                        </button>
+                         <button
+                          onClick={() => setViewMode('edit')}
+                          className={cn(
+                            "px-3 py-1 rounded-full text-xs font-medium transition-all",
+                            viewMode === 'edit' ? "bg-white text-sky-700 shadow-sm" : "text-gray-500 hover:text-gray-700"
+                          )}
+                        >
+                          编辑
+                        </button>
+                        <button
+                          onClick={() => setViewMode('original')}
+                          className={cn(
+                            "px-3 py-1 rounded-full text-xs font-medium transition-all",
+                            viewMode === 'original' ? "bg-white text-sky-700 shadow-sm" : "text-gray-500 hover:text-gray-700"
+                          )}
+                        >
+                          对比
+                        </button>
+                     </div>
+                     
+                     <div className="w-px h-3 bg-gray-300 mx-1" />
+
+                     <Button variant="ghost" size="icon" className="h-7 w-7 rounded-full text-gray-500" onClick={() => setPreviewFormat(prev => prev === 'rendered' ? 'markdown' : 'rendered')} title={previewFormat === 'rendered' ? "查看源码" : "查看渲染"}>
+                         {previewFormat === 'rendered' ? <Hash className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                     </Button>
+                 </div>
+                 
+                 {/* 左侧收起按钮 (如果左侧收起) */}
+                  {isSidebarCollapsed && (
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => setIsSidebarCollapsed(false)}
+                      className="absolute left-4 top-4 z-20 h-8 w-8 bg-white border border-gray-200 shadow-sm rounded-lg text-gray-500 hover:text-sky-600"
+                    >
+                      <PanelRightOpen className="w-4 h-4" />
+                    </Button>
+                  )}
+
+                  {/* 右侧收起按钮 (如果右侧收起) */}
+                  {isPanelCollapsed && (
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => setIsPanelCollapsed(false)}
+                      className="absolute right-4 top-4 z-20 h-8 w-8 bg-white border border-gray-200 shadow-sm rounded-lg text-gray-500 hover:text-sky-600"
+                    >
+                      <PanelRightClose className="w-4 h-4 rotate-180" />
+                    </Button>
+                  )}
+
+                 {/* 内容区域 */}
+                 <div className="flex-1 overflow-y-auto p-4 md:p-8 custom-scrollbar">
+                    <div className={cn(
+                      "mx-auto transition-all duration-300 ease-out",
+                      viewMode === 'edit' ? 'max-w-full' : 'max-w-4xl'
+                    )}>
+                       {/* 纸张效果容器 */}
+                       <div className={cn(
+                         "bg-white min-h-[800px] shadow-sm border border-slate-200/60 rounded-xl overflow-hidden relative",
+                          viewMode === 'edit' ? "h-[calc(100vh-140px)] border-0 shadow-none bg-transparent" : "p-10 md:p-14"
+                       )}>
+                          {/* 治理状态水印/徽章 */}
+                          {viewMode !== 'edit' && governanceState.isModified && (
+                             <div className="absolute top-0 right-0 p-4">
+                                <span className="bg-purple-50 text-purple-700 border border-purple-100 text-xs px-2 py-1 rounded-md font-medium shadow-sm">
+                                  已修改
+                                </span>
+                             </div>
+                          )}
+
+                          {viewMode === 'edit' ? (
+                            <div className="grid grid-cols-2 gap-4 h-full">
+                               {/* 编辑模式：左侧预览 */}
+                               <div className="flex flex-col bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden h-full">
+                                  <div className="px-4 py-2 bg-slate-50 border-b border-slate-200 text-xs font-semibold text-slate-500">
+                                     实时预览
                                   </div>
-                                </aside>
-                              )}
+                                  <div className="flex-1 overflow-y-auto p-6">
+                                     <MarkdownRenderer markdown={displayContent || ''} />
+                                  </div>
+                               </div>
+                               {/* 编辑模式：右侧源码 */}
+                               <div className="flex flex-col bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden h-full">
+                                  <div className="px-4 py-2 bg-slate-50 border-b border-slate-200 text-xs font-semibold text-slate-500">
+                                     源码编辑
+                                  </div>
+                                  <textarea
+                                    value={displayContent}
+                                    onChange={(e) => handleManualEdit(e.target.value)}
+                                    className="flex-1 w-full p-6 resize-none outline-none font-mono text-sm leading-relaxed text-slate-800"
+                                    spellCheck={false}
+                                  />
+                               </div>
                             </div>
                           ) : (
-                            <pre className={cn(
-                              "font-mono text-sm leading-relaxed whitespace-pre-wrap break-words",
-                              viewMode === 'original' ? "text-gray-600" : "text-slate-800"
-                            )}>
-                              {displayContent || ''}
-                            </pre>
+                             // 预览模式
+                             previewFormat === 'rendered' ? (
+                                <div className="prose prose-slate max-w-none prose-headings:text-slate-900 prose-p:text-slate-700 prose-a:text-sky-700">
+                                  <MarkdownRenderer markdown={displayContent || ''} />
+                                </div>
+                             ) : (
+                                <pre className="font-mono text-sm leading-relaxed whitespace-pre-wrap break-words text-slate-800">
+                                  {displayContent || ''}
+                                </pre>
+                             )
                           )}
-                        </div>
-                      )}
+                       </div>
                     </div>
-                  </div>
-                </div>
+                 </div>
+              </div>
 
-                {/* 右侧治理面板 (原左侧) */}
-                <div 
-                  ref={panelRef}
-                  className={cn(
-                    "group/panel relative flex-shrink-0 border-l border-gray-200 bg-gray-50/50 flex flex-col transition-all duration-75 ease-in-out z-10",
-                    isPanelCollapsed ? "w-0 border-l-0" : ""
-                  )}
-                  style={{ width: isPanelCollapsed ? 0 : panelWidth }}
-                >
-                  <div className="flex items-center justify-between px-4 py-2 border-b border-gray-200 bg-white">
-                     <span className="text-xs font-bold text-gray-500 uppercase">治理工具箱</span>
-                     <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-6 w-6 text-gray-400 hover:text-gray-600"
-                        onClick={() => setIsPanelCollapsed(true)}
-                        title="收起面板"
-                     >
-                       <ChevronRight className="w-4 h-4" />
-                     </Button>
-                  </div>
+              {/* 右侧：治理工具面板 (整合了 Tabs) */}
+              <div 
+                ref={panelRef}
+                className={cn(
+                  "group/panel relative flex-shrink-0 border-l border-gray-200 bg-white flex flex-col transition-all duration-300 ease-in-out z-10 shadow-xl",
+                  isPanelCollapsed ? "w-0 border-l-0 translate-x-full" : ""
+                )}
+                style={{ width: isPanelCollapsed ? 0 : panelWidth }}
+              >
+                 {/* 工具面板头部：治理阶段选择 */}
+                 <div className="flex-shrink-0 p-4 border-b border-gray-100 bg-white">
+                    <div className="flex items-center justify-between mb-4">
+                       <h2 className="text-sm font-bold text-gray-900">治理工具箱</h2>
+                       <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-6 w-6 text-gray-400"
+                          onClick={() => setIsPanelCollapsed(true)}
+                       >
+                         <PanelRightClose className="w-4 h-4 rotate-180" />
+                       </Button>
+                    </div>
+                    
+                    {/* 新的 Tab 选择器 */}
+                    <div className="grid grid-cols-4 gap-1 p-1 bg-gray-100/80 rounded-lg">
+                       {GOVERNANCE_TABS.map((tab) => {
+                          const Icon = tab.icon
+                          const isActive = activeTab === tab.id
+                          return (
+                            <button
+                              key={tab.id}
+                              onClick={() => setActiveTab(tab.id)}
+                              className={cn(
+                                "flex flex-col items-center justify-center py-2 px-1 rounded-md transition-all duration-200 relative",
+                                isActive 
+                                  ? "bg-white text-sky-600 shadow-sm ring-1 ring-black/5" 
+                                  : "text-gray-500 hover:text-gray-700 hover:bg-gray-200/50"
+                              )}
+                              title={tab.label}
+                            >
+                               <Icon className={cn("w-4 h-4 mb-1", isActive ? `text-${tab.color}-500` : "")} />
+                               <span className="text-[10px] font-medium scale-90">{tab.label}</span>
+                               {/* 状态点 */}
+                               {tab.id === 'clean' && governanceState.isModified && (
+                                  <span className="absolute top-1.5 right-1.5 w-1.5 h-1.5 bg-purple-500 rounded-full ring-1 ring-white" />
+                               )}
+                            </button>
+                          )
+                       })}
+                    </div>
+                    
+                    {/* 当前工具描述 */}
+                    <div className="mt-3 text-xs text-gray-500 bg-blue-50/50 p-2 rounded border border-blue-100/50 flex items-start gap-2">
+                       <Info className="w-3.5 h-3.5 text-blue-500 mt-0.5 flex-shrink-0" />
+                       {GOVERNANCE_TABS.find(t => t.id === activeTab)?.desc}
+                    </div>
+                 </div>
 
-                  <div className={cn("flex-1 overflow-y-auto w-full", isPanelCollapsed && "invisible")}>
+                 {/* 工具内容区 */}
+                 <div className="flex-1 overflow-y-auto bg-gray-50/30">
                     {activeTab === 'quality' && (
                       <QualityChecker
                         content={governanceState.originalContent}
@@ -1275,25 +1140,28 @@ export function DataGovernancePanel() {
                         onClassify={handleClassify}
                       />
                     )}
-                  </div>
+                 </div>
 
-                  {/* 拖拽手柄 (左侧) */}
-                  <div
+                 {/* 拖拽手柄 */}
+                 <div
                     className={cn(
-                      "absolute left-0 top-0 w-1 h-full cursor-col-resize hover:bg-sky-400 active:bg-sky-600 z-20 transition-colors",
-                      isPanelResizing ? "bg-sky-600 w-1.5" : "bg-transparent"
+                      "absolute left-0 top-0 w-1 h-full cursor-col-resize hover:bg-sky-400 active:bg-sky-600 z-20 transition-colors opacity-0 hover:opacity-100",
+                      isPanelResizing && "bg-sky-600 opacity-100 w-1"
                     )}
                     onMouseDown={startPanelResizing}
                   />
-                </div>
               </div>
             </>
           ) : (
-            <div className="flex-1 flex items-center justify-center">
-              <div className="text-center text-gray-400">
-                <FileSearch className="w-12 h-12 mx-auto mb-3 opacity-50" />
-                <p>请选择文件进行治理</p>
+            // 空状态占位
+            <div className="flex-1 flex flex-col items-center justify-center bg-gray-50/30">
+              <div className="w-24 h-24 bg-gray-100 rounded-full flex items-center justify-center mb-6">
+                <FileSearch className="w-10 h-10 text-gray-400" />
               </div>
+              <h3 className="text-xl font-medium text-gray-900 mb-2">选择文件开始治理</h3>
+              <p className="text-gray-500 max-w-sm text-center">
+                从左侧列表选择一个文件，使用右侧工具箱进行质量检测、清洗与标注。
+              </p>
             </div>
           )}
         </main>
