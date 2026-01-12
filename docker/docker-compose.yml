@@ -35,27 +35,6 @@ x-backend-env: &backend_env
   TASK_WORKER_MAX_JOBS: ${TASK_WORKER_MAX_JOBS_DOCKER:-10}
 
 services:
-  # Local OpenAI-compatible mock (LLM + embeddings) for deterministic smoke tests.
-  mock-openai:
-    image: python:3.11-slim
-    restart: unless-stopped
-    command: ["python", "-u", "/app/scripts/mock_openai_server.py", "--host", "0.0.0.0", "--port", "8001"]
-    volumes:
-      - ..:/app:ro
-    ports:
-      - "8001:8001"
-    healthcheck:
-      test:
-        [
-          "CMD",
-          "python",
-          "-c",
-          "import urllib.request; urllib.request.urlopen('http://localhost:8001/health').read()",
-        ]
-      interval: 5s
-      timeout: 3s
-      retries: 20
-
   # ETL4LLM (Bisheng Unstructured) parser service (optional).
   # Enable with: `docker compose --profile etl4llm up -d`
   # Then set `ETL4LLM_ENABLED=true` and `ETL4LLM_API_URL=http://etl4llm:10001/v1/etl4llm/predict` in docker/.env.
@@ -178,8 +157,6 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
-      mock-openai:
-        condition: service_healthy
     env_file:
       - .env
     environment:
@@ -201,8 +178,6 @@ services:
       postgres:
         condition: service_healthy
       milvus:
-        condition: service_healthy
-      mock-openai:
         condition: service_healthy
     env_file:
       - .env
