@@ -3,16 +3,16 @@
 <img src="./docs/images/cover.png" alt="MimirQ" width="100%" />
 
 <p>
-  <a href="https://github.com/YOUR_USERNAME/MimirQ/wiki"><b>文档</b></a> ·
+  <a href="https://github.com/skygazer42/MimirQ/wiki"><b>文档</b></a> ·
   <a href="#快速开始"><b>快速开始</b></a> ·
-  <a href="https://github.com/YOUR_USERNAME/MimirQ/issues"><b>反馈</b></a>
+  <a href="https://github.com/skygazer42/MimirQ/issues"><b>反馈</b></a>
 </p>
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
-[![Docker Pulls](https://img.shields.io/docker/pulls/YOUR_USERNAME/mimirq?color=blue)](https://hub.docker.com/r/YOUR_USERNAME/mimirq)
-[![GitHub stars](https://img.shields.io/github/stars/YOUR_USERNAME/MimirQ?color=yellow)](https://github.com/YOUR_USERNAME/MimirQ)
-[![GitHub issues](https://img.shields.io/github/issues/YOUR_USERNAME/MimirQ)](https://github.com/YOUR_USERNAME/MimirQ/issues)
+[![Docker Pulls](https://img.shields.io/docker/pulls/skygazer42/mimirq?color=blue)](https://hub.docker.com/r/skygazer42/mimirq)
+[![GitHub stars](https://img.shields.io/github/stars/skygazer42/MimirQ?color=yellow)](https://github.com/skygazer42/MimirQ)
+[![GitHub issues](https://img.shields.io/github/issues/skygazer42/MimirQ)](https://github.com/skygazer42/MimirQ/issues)
 
 [![README in English](https://img.shields.io/badge/English-d9d9d9)](./README_EN.md)
 [![简体中文文档](https://img.shields.io/badge/简体中文-d9d9d9)](./README.md)
@@ -30,7 +30,7 @@ MimirQ 是一个开源的 RAG 知识库问答平台。它将可视化切片预�
 启动 MimirQ 最简单的方式是使用 [Docker Compose](docker/docker-compose.yml)。运行前请确保已安装 [Docker](https://docs.docker.com/get-docker/) 和 [Docker Compose](https://docs.docker.com/compose/install/)：
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/MimirQ.git
+git clone https://github.com/skygazer42/MimirQ.git
 cd MimirQ/docker
 cp .env.example .env
 docker compose up -d
@@ -71,28 +71,6 @@ helm install mimirq ./k8s/helm/mimirq
 # 或
 kubectl apply -f k8s/manifests/
 ```
-
-## 贡献
-
-欢迎参与贡献！请查看 [贡献指南](CONTRIBUTING.md)。
-
-> 我们正在寻找翻译贡献者，如有兴趣请在 [Discord](https://discord.gg/YOUR_INVITE) 联系我们。
-
-## 社区
-
-- [GitHub Discussions](https://github.com/YOUR_USERNAME/MimirQ/discussions) - 分享反馈和提问
-- [GitHub Issues](https://github.com/YOUR_USERNAME/MimirQ/issues) - Bug 报告和功能建议
-- [Discord](https://discord.gg/YOUR_INVITE) - 交流讨论
-
-**贡献者**
-
-<a href="https://github.com/YOUR_USERNAME/MimirQ/graphs/contributors">
-  <img src="https://contrib.rocks/image?repo=YOUR_USERNAME/MimirQ" />
-</a>
-
-## Star History
-
-[![Star History Chart](https://api.star-history.com/svg?repos=YOUR_USERNAME/MimirQ&type=Date)](https://star-history.com/#YOUR_USERNAME/MimirQ&Date)
 
 ## 许可证
 
