@@ -270,6 +270,10 @@ def _apply_runtime_settings(env_vars: Dict[str, str], updated_keys: list[str]) -
         settings.DOCLING_ENABLED = _parse_bool(env_vars["DOCLING_ENABLED"])
     if "ETL4LLM_ENABLED" in updated_keys and "ETL4LLM_ENABLED" in env_vars:
         settings.ETL4LLM_ENABLED = _parse_bool(env_vars["ETL4LLM_ENABLED"])
+    if "MARKER_ENABLED" in updated_keys and "MARKER_ENABLED" in env_vars:
+        settings.MARKER_ENABLED = _parse_bool(env_vars["MARKER_ENABLED"])
+    if "PADDLE_VL_ENABLED" in updated_keys and "PADDLE_VL_ENABLED" in env_vars:
+        settings.PADDLE_VL_ENABLED = _parse_bool(env_vars["PADDLE_VL_ENABLED"])
     if "MARKITDOWN_ENABLED" in updated_keys and "MARKITDOWN_ENABLED" in env_vars:
         settings.MARKITDOWN_ENABLED = _parse_bool(env_vars["MARKITDOWN_ENABLED"])
     if "LLAMA_INDEX_ENABLED" in updated_keys and "LLAMA_INDEX_ENABLED" in env_vars:
@@ -472,17 +476,19 @@ async def get_settings(
 ):
     """Get current system config."""
     _ensure_settings_readable(db, tenant_id, account_id)
-    return SystemSettings(
-        feature_flags=FeatureFlags(
-            kg_enabled=settings.KG_ENABLED,
-            deepdoc_enabled=settings.DEEPDOC_ENABLED,
-            docling_enabled=bool(getattr(settings, "DOCLING_ENABLED", False)),
-            etl4llm_enabled=bool(getattr(settings, "ETL4LLM_ENABLED", False)),
-            markitdown_enabled=settings.MARKITDOWN_ENABLED,
-            llama_index_enabled=settings.LLAMA_INDEX_ENABLED,
-            mineru_enabled=settings.MINERU_ENABLED,
-            magicpdf_enabled=bool(getattr(settings, "MAGIC_PDF_ENABLED", False)),
-        ),
+        return SystemSettings(
+            feature_flags=FeatureFlags(
+                kg_enabled=settings.KG_ENABLED,
+                deepdoc_enabled=settings.DEEPDOC_ENABLED,
+                docling_enabled=bool(getattr(settings, "DOCLING_ENABLED", False)),
+                etl4llm_enabled=bool(getattr(settings, "ETL4LLM_ENABLED", False)),
+                marker_enabled=bool(getattr(settings, "MARKER_ENABLED", False)),
+                paddle_vl_enabled=bool(getattr(settings, "PADDLE_VL_ENABLED", False)),
+                markitdown_enabled=settings.MARKITDOWN_ENABLED,
+                llama_index_enabled=settings.LLAMA_INDEX_ENABLED,
+                mineru_enabled=settings.MINERU_ENABLED,
+                magicpdf_enabled=bool(getattr(settings, "MAGIC_PDF_ENABLED", False)),
+            ),
         kg=KGConfig(
             chat_enabled=settings.KG_CHAT_ENABLED,
             extract_prompt_template_id=getattr(settings, "KG_EXTRACT_PROMPT_TEMPLATE_ID", "") or "",
@@ -532,6 +538,14 @@ async def get_settings(
             extract_images=bool(getattr(settings, "ETL4LLM_EXTRACT_IMAGES", True)),
             filter_page_header_footer=bool(getattr(settings, "ETL4LLM_FILTER_PAGE_HEADER_FOOTER", False)),
         ),
+        marker=MarkerConfig(
+            api_url=str(getattr(settings, "MARKER_API_URL", "") or ""),
+            timeout_sec=int(getattr(settings, "MARKER_TIMEOUT_SEC", 600) or 600),
+        ),
+        paddle_vl=PaddleVLConfig(
+            api_url=str(getattr(settings, "PADDLE_VL_API_URL", "") or ""),
+            timeout_sec=int(getattr(settings, "PADDLE_VL_TIMEOUT_SEC", 600) or 600),
+        ),
         magicpdf=MagicPDFConfig(
             cli=getattr(settings, "MAGIC_PDF_CLI", "magic-pdf") or "magic-pdf",
             method=getattr(settings, "MAGIC_PDF_METHOD", "auto") or "auto",
@@ -579,6 +593,8 @@ async def update_settings(
             env_vars["DEEPDOC_ENABLED"] = str(ff.deepdoc_enabled).lower()
             env_vars["DOCLING_ENABLED"] = str(getattr(ff, "docling_enabled", False)).lower()
             env_vars["ETL4LLM_ENABLED"] = str(getattr(ff, "etl4llm_enabled", False)).lower()
+            env_vars["MARKER_ENABLED"] = str(getattr(ff, "marker_enabled", False)).lower()
+            env_vars["PADDLE_VL_ENABLED"] = str(getattr(ff, "paddle_vl_enabled", False)).lower()
             env_vars["MARKITDOWN_ENABLED"] = str(ff.markitdown_enabled).lower()
             env_vars["LLAMA_INDEX_ENABLED"] = str(ff.llama_index_enabled).lower()
             env_vars["MINERU_ENABLED"] = str(ff.mineru_enabled).lower()
@@ -589,6 +605,8 @@ async def update_settings(
                     "DEEPDOC_ENABLED",
                     "DOCLING_ENABLED",
                     "ETL4LLM_ENABLED",
+                    "MARKER_ENABLED",
+                    "PADDLE_VL_ENABLED",
                     "MARKITDOWN_ENABLED",
                     "LLAMA_INDEX_ENABLED",
                     "MINERU_ENABLED",
