@@ -1,5 +1,5 @@
 services:
-  postgres:
+  mimirq-postgres:
     image: postgres:15
     restart: unless-stopped
     environment:
@@ -16,7 +16,7 @@ services:
       timeout: 5s
       retries: 5
 
-  redis:
+  mimirq-redis:
     image: redis:7
     restart: unless-stopped
     ports:
@@ -27,7 +27,7 @@ services:
       timeout: 5s
       retries: 10
 
-  etcd:
+  mimirq-etcd:
     image: quay.io/coreos/etcd:v3.5.5
     restart: unless-stopped
     environment:
@@ -38,14 +38,14 @@ services:
       - ETCDCTL_API=3
     volumes:
       - etcd_data:/etcd
-    command: etcd -advertise-client-urls=http://etcd:2379 -listen-client-urls=http://0.0.0.0:2379 --data-dir /etcd
+    command: etcd -advertise-client-urls=http://mimirq-etcd:2379 -listen-client-urls=http://0.0.0.0:2379 --data-dir /etcd
     healthcheck:
       test: ["CMD", "etcdctl", "endpoint", "health"]
       interval: 30s
       timeout: 20s
       retries: 3
 
-  minio:
+  mimirq-minio:
     image: minio/minio:RELEASE.2023-03-20T20-16-18Z
     restart: unless-stopped
     environment:
@@ -65,15 +65,15 @@ services:
       timeout: 20s
       retries: 3
 
-  milvus:
+  mimirq-milvus:
     image: milvusdb/milvus:v2.3.5
     restart: unless-stopped
     command: ["milvus", "run", "standalone"]
     security_opt:
       - seccomp:unconfined
     environment:
-      ETCD_ENDPOINTS: etcd:2379
-      MINIO_ADDRESS: minio:9000
+      ETCD_ENDPOINTS: mimirq-etcd:2379
+      MINIO_ADDRESS: mimirq-minio:9000
     volumes:
       - milvus_data:/var/lib/milvus
     healthcheck:
@@ -86,14 +86,14 @@ services:
       - "19530:19530"
       - "9091:9091"
     depends_on:
-      etcd:
+      mimirq-etcd:
         condition: service_healthy
-      minio:
+      mimirq-minio:
         condition: service_healthy
 
   # ETL4LLM (Bisheng Unstructured) parser service (optional).
   # Enable with: `docker compose -f docker/docker-compose.infra.yml --profile etl4llm up -d`
-  etl4llm:
+  mimirq-etl4llm:
     profiles: ["etl4llm"]
     image: dataelement/bisheng-unstructured:v0.0.3.14
     restart: unless-stopped
