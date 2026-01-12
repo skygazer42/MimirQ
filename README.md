@@ -1,715 +1,107 @@
 <div align="center">
 
-# MimirQ
+<img src="./docs/images/cover.png" alt="MimirQ" width="100%" />
 
-**开源 RAG 知识库问答系统** | Open-Source RAG Knowledge Base
-
-[English](./README_EN.md) | [简体中文](./README.md)
-
-<!-- 产品截图 - 请替换为实际截图 -->
 <p>
-  <img src="./docs/images/screenshot-placeholder.png" alt="MimirQ Screenshot" width="80%" />
-</p>
-
-*可视化切片 · 混合检索 · 多模态解析 · 一键部署*
-
-<!-- CTA 按钮 -->
-<p>
-  <a href="#-快速开始"><b>快速开始</b></a> ·
-  <a href="#-文档"><b>文档</b></a> ·
+  <a href="https://github.com/YOUR_USERNAME/MimirQ/wiki"><b>文档</b></a> ·
+  <a href="#快速开始"><b>快速开始</b></a> ·
   <a href="https://github.com/YOUR_USERNAME/MimirQ/issues"><b>反馈</b></a>
 </p>
 
-<!-- 徽章 -->
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
-[![Next.js 14](https://img.shields.io/badge/Next.js-14-black)](https://nextjs.org/)
-[![FastAPI](https://img.shields.io/badge/FastAPI-0.109-009688.svg)](https://fastapi.tiangolo.com/)
-[![LangChain](https://img.shields.io/badge/LangChain-0.3-green)](https://langchain.com/)
-[![Milvus](https://img.shields.io/badge/Milvus-2.3-00a1e0)](https://milvus.io/)
+[![Docker Pulls](https://img.shields.io/docker/pulls/YOUR_USERNAME/mimirq?color=blue)](https://hub.docker.com/r/YOUR_USERNAME/mimirq)
+[![GitHub stars](https://img.shields.io/github/stars/YOUR_USERNAME/MimirQ?color=yellow)](https://github.com/YOUR_USERNAME/MimirQ)
+[![GitHub issues](https://img.shields.io/github/issues/YOUR_USERNAME/MimirQ)](https://github.com/YOUR_USERNAME/MimirQ/issues)
 
-[![GitHub stars](https://img.shields.io/github/stars/YOUR_USERNAME/MimirQ?style=flat-square&color=yellow)](https://github.com/YOUR_USERNAME/MimirQ)
-[![GitHub forks](https://img.shields.io/github/forks/YOUR_USERNAME/MimirQ?style=flat-square)](https://github.com/YOUR_USERNAME/MimirQ/fork)
-[![GitHub issues](https://img.shields.io/github/issues/YOUR_USERNAME/MimirQ?style=flat-square)](https://github.com/YOUR_USERNAME/MimirQ/issues)
-[![Docker Pulls](https://img.shields.io/docker/pulls/YOUR_USERNAME/mimirq?style=flat-square&color=blue)](https://hub.docker.com/r/YOUR_USERNAME/mimirq)
+[![README in English](https://img.shields.io/badge/English-d9d9d9)](./README_EN.md)
+[![简体中文文档](https://img.shields.io/badge/简体中文-d9d9d9)](./README.md)
 
 </div>
 
----
+MimirQ 是一个开源的 RAG 知识库问答平台。它将可视化切片预览、混合检索、多模态解析、评测框架等功能整合在一起，帮助你快速构建企业级知识库应用。
 
-## 为什么选择 MimirQ
+## 快速开始
 
-| 特性 | MimirQ | 其他方案 |
-|------|--------|----------|
-| **可视化切片预览** | 实时预览分块效果 | 黑盒处理 |
-| **混合检索** | 向量 + BM25 双引擎 | 仅向量检索 |
-| **部署复杂度** | Docker 一键部署 | 需要复杂配置 |
-| **开源程度** | MIT 完全开源 | 部分闭源 |
-| **中文支持** | 原生中文优化 (Jieba + BGE) | 需额外配置 |
-| **评测能力** | 内置 RAGAS 评测框架 | 需自行集成 |
+> 开始前请确保机器满足最低要求：
+> - CPU >= 2 核
+> - RAM >= 4 GB
 
----
-
-## 🌟 核心亮点
-
-<table>
-  <tr>
-    <td width="25%" align="center">
-      <img src="./docs/images/icon-chat.svg" alt="对话界面" width="64" />
-      <br/><br/>
-      <strong>智能对话</strong>
-      <br/>
-      <span style="font-size: 12px; color: grey">流式响应 + 引用展示</span>
-    </td>
-    <td width="25%" align="center">
-      <img src="./docs/images/icon-document.svg" alt="文档管理" width="64" />
-      <br/><br/>
-      <strong>文档管理</strong>
-      <br/>
-      <span style="font-size: 12px; color: grey">实时处理状态监控</span>
-    </td>
-    <td width="25%" align="center">
-      <img src="./docs/images/icon-search.svg" alt="知识检索" width="64" />
-      <br/><br/>
-      <strong>混合检索</strong>
-      <br/>
-      <span style="font-size: 12px; color: grey">向量 + BM25 双引擎</span>
-    </td>
-    <td width="25%" align="center">
-      <img src="./docs/images/icon-citation.svg" alt="引用溯源" width="64" />
-      <br/><br/>
-      <strong>答案溯源</strong>
-      <br/>
-      <span style="font-size: 12px; color: grey">文档片段 + 页码标注</span>
-    </td>
-  </tr>
-</table>
-
----
-
-## 🛠️ 功能清单
-
-<table>
-<tr>
-<td width="33%" valign="top">
-
-### 📁 智能文档管理
-- ✅ 支持 PDF / Markdown / TXT 多格式
-- ✅ 拖拽上传 + 批量处理
-- ✅ 实时进度展示
-- ✅ 自动分块索引 (LangChain)
-- ✅ 支持文档更新和版本管理
-
-</td>
-<td width="33%" valign="top">
-
-### 🤖 RAG 智能问答
-- ✅ 混合检索 (向量 + BM25)
-- ✅ 流式响应 (打字机效果)
-- ✅ 对话记忆 (PostgreSQL 持久化)
-- ✅ 多轮对话上下文理解
-- ✅ 引用溯源 (文档 + 页码)
-- ✅ RAGAS 评测 (Faithfulness / Relevancy / Context Precision)
-
-</td>
-<td width="33%" valign="top">
-
-### 🚀 企业级架构
-- ✅ LangChain Runnable/Retriever 编排
-- ✅ Milvus 十亿级向量检索
-- ✅ OpenAI 兼容接口 (支持自部署)
-- ✅ Docker Compose 一键部署
-- ✅ PostgreSQL 持久化存储
-
-</td>
-</tr>
-</table>
-
----
-
-## 🏗️ 技术架构
-
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                         用户界面 (Next.js 14)                      │
-│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐           │
-│  │ 文档管理     │  │ 智能对话     │  │ 引用展示     │           │
-│  └──────────────┘  └──────────────┘  └──────────────┘           │
-└──────────────────────────┬──────────────────────────────────────┘
-                           │ RESTful API / SSE
-┌──────────────────────────▼──────────────────────────────────────┐
-│                   FastAPI 后端服务                                │
-│  ┌────────────────────────────────────────────────────────┐     │
-│  │           LangChain RAG 编排引擎                       │     │
-│  │  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐ │     │
-│  │  │ Chat Model   │  │ Hybrid       │  │ Runnable     │ │     │
-│  │  │ (OpenAI/...) │  │ Retriever    │  │ (Prompt)     │ │     │
-│  │  └──────────────┘  └──────────────┘  └──────────────┘ │     │
-│  └────────────────────────────────────────────────────────┘     │
-│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐           │
-│  │ 文档解析     │  │ 混合检索     │  │ Embedding    │           │
-│  │ (PyMuPDF)    │  │ (Vector+BM25)│  │ (BGE/OpenAI) │           │
-│  └──────────────┘  └──────────────┘  └──────────────┘           │
-└──────────────────────────┬──────────────────────────────────────┘
-                           │
-         ┌─────────────────┼─────────────────┐
-         ▼                 ▼                 ▼
-┌──────────────┐  ┌──────────────┐  ┌──────────────┐
-│  PostgreSQL  │  │    Milvus    │  │  BM25 Index  │
-│ (对话/文档)   │  │ (向量检索)    │  │ (关键词检索)  │
-└──────────────┘  └──────────────┘  └──────────────┘
-                   │
-            ┌──────┴──────┐
-            ▼             ▼
-       ┌────────┐    ┌────────┐
-       │  Etcd  │    │ MinIO  │
-       │(元数据) │    │(对象)   │
-       └────────┘    └────────┘
-```
-
-### 技术栈详情
-
-| 层级 | 技术选型 | 说明 |
-|------|---------|------|
-| **前端** | Next.js 14 (App Router) + TypeScript | 现代化 React 框架 |
-| **UI 组件** | Tailwind CSS + Shadcn/ui | 极简设计系统 |
-| **后端** | FastAPI 0.109 + Python 3.11 | 高性能异步框架 |
-| **AI 编排** | LangChain 1.x (Runnable + Retriever) | 纯 LangChain RAG 链路 |
-| **向量数据库** | Milvus 2.3 + Etcd + MinIO | 十亿级向量检索 |
-| **关系数据库** | PostgreSQL 15 | 文档/对话持久化 |
-| **Embedding** | BGE-large-zh-v1.5 (本地) | 中文向量模型 |
-| **LLM** | OpenAI 兼容接口 | GPT-4 / 自部署模型 |
-| **检索策略** | Hybrid Search (Vector + BM25) | 混合检索算法 |
-| **分词器** | Jieba | 中文分词支持 |
-
----
-
-## 📂 项目结构
+启动 MimirQ 最简单的方式是使用 [Docker Compose](docker/docker-compose.yml)。运行前请确保已安装 [Docker](https://docs.docker.com/get-docker/) 和 [Docker Compose](https://docs.docker.com/compose/install/)：
 
 ```bash
-MimirQ/
-├── app/                 # FastAPI 后端服务（核心代码）
-│   ├── api/             # API 路由
-│   ├── core/            # 核心配置与数据库
-│   ├── models/          # 数据模型 (Pydantic/SQLModel)
-│   ├── services/        # 业务逻辑 (RAG/Milvus/LangChain)
-│   └── deepdoc/         # 深度文档解析模块
-├── docker/              # Docker 部署文件
-│   ├── .env.example
-│   ├── docker-compose.yml
-│   ├── docker-compose.infra.yml
-│   ├── Dockerfile
-│   └── start_backend.sh
-├── Makefile             # 常用命令
-├── requirements.txt     # 后端依赖
-├── scripts/             # 工具脚本
-├── tests/               # 后端测试
-├── web/                 # Next.js 前端界面
-│   ├── app/             # 页面路由
-│   ├── components/      # UI 组件
-│   ├── lib/             # 工具函数与 API 客户端
-│   └── public/          # 静态资源
-├── docs/                # 项目文档
-└── README.md            # 项目说明
-```
-
----
-
-## 🚀 快速开始
-
-### 🔐 认证与登录
-
-- 开发默认使用 `AUTH_MODE=header`：前端会带 `X-User-ID`（默认 `demo`），可不登录直接使用。
-- 若启用账号体系，请将 `AUTH_MODE=jwt` 并配置 `SECRET_KEY`，然后访问前端 `/auth` 登录/注册。
-- 可通过 `NEXT_PUBLIC_USER_ID` / `NEXT_PUBLIC_TENANT_ID` 设置开发环境默认用户/租户。
-
-### 前置要求
-
-| 工具 | 版本要求 | 说明 |
-|------|---------|------|
-| Docker | 20.10+ | 容器化部署 |
-| Docker Compose | 2.0+ | 服务编排 |
-| Node.js | 20+ | 前端开发 (可选) |
-| Python | 3.11+ | 后端开发 (可选) |
-
-### Python 依赖 (可选)
-
-- 统一依赖：`pip install -r requirements.txt`
-
-### 一键部署 (Docker Compose)
-
-只需三步，即可快速启动：
-
-**1. 初始化环境**
-
-```bash
-# 克隆项目
 git clone https://github.com/YOUR_USERNAME/MimirQ.git
-cd MimirQ
-
-# 配置环境变量（Docker Compose 使用 docker/.env）
-cd docker
+cd MimirQ/docker
 cp .env.example .env
-cd ..
-
-# (可选) 前端本地开发 env
-cp web/.env.local.example web/.env.local
+docker compose up -d
 ```
 
-**2. 配置模型密钥 (可选)**
+启动后访问 [http://localhost:8000/docs](http://localhost:8000/docs) 查看 API 文档，或启动前端访问 [http://localhost:3000](http://localhost:3000)。
 
-编辑 `docker/.env` 文件，填入您的 API Key：
+> 如需从源码部署或本地开发，请参考 [开发文档](./docs/quickstart.md)
+
+## 核心功能
+
+**1. 可视化切片预览**
+实时预览文档分块效果，告别黑盒处理，精确调整切片参数。
+
+**2. 混合检索**
+向量检索 + BM25 关键词检索双引擎，RRF 算法融合排序，兼顾语义理解和精确匹配。
+
+**3. 多模态解析**
+支持 PDF、Markdown、TXT 等格式，集成 PyMuPDF、MinerU、ETL4LLM 等多种解析后端。
+
+**4. RAG 智能问答**
+流式响应、引用溯源、多轮对话记忆，基于 LangChain Runnable/Retriever 架构。
+
+**5. RAGAS 评测**
+内置评测框架，支持 Faithfulness、Relevancy、Context Precision 等指标。
+
+**6. 企业级架构**
+Milvus 十亿级向量检索、PostgreSQL 持久化、OpenAI 兼容接口、Docker 一键部署。
+
+## 使用方式
+
+- **Self-hosting**
+  使用 [快速开始](#快速开始) 指南在本地部署，详细配置参考 [文档](./docs/quickstart.md)。
+
+- **企业版**
+  如需企业级功能支持，请 [联系我们](mailto:support@mimirq.com)。
+
+## 高级配置
+
+如需自定义配置，请参考 [.env.example](docker/.env.example) 中的注释修改 `.env` 文件。完整环境变量说明见 [配置文档](./docs/guides/dependencies.md)。
+
+### Kubernetes 部署
 
 ```bash
-# 推荐使用 vim 或 nano 编辑
-vim docker/.env
-
-# 关键配置项:
-# LLM_API_KEY=sk-xxxx
-# LLM_API_BASE=https://api.openai.com/v1
-```
-
-**3. 启动服务**
-
-```bash
-# 启动后端 (PostgreSQL + Milvus + FastAPI)
-make up
-make ps
-
-# 或
-cd docker
-docker compose up -d --build
-
-# 检查服务状态
-docker compose ps
-cd ..
-
-# (可选) 启动前端（两种方式二选一）
-# 1) Docker（生产构建；适合“一键部署”）
-make up-web
-# 2) 本地开发（热更新更快）
-# cd web; pnpm install; pnpm dev
-```
-
-启动后建议做一次快速校验：
-```bash
-make verify
-```
-
-本地开发（推荐，热更新）：
-```bash
-# 只启动依赖（暴露端口，便于调试）
-make infra-up
-
-# 本地跑后端（自动 reload）
-make backend
-
-# (可选) 本地跑前端
-make web
-```
-
-生产部署（推荐）见 `docs/deploy.md`：
-```bash
-# 编辑 docker/.env：ENV=production、AUTH_MODE=jwt、SECRET_KEY、POSTGRES_PASSWORD
-make up
-make up-web   # 可选：前端
-```
-
-### 访问服务
-
-等待后端服务启动后，访问：
-1. 后端接口文档: http://localhost:8000/docs
-2. 前端界面 (需启动前端): http://localhost:3000
-
----
-
-## 📚 使用指南
-
-### 1️⃣ 上传文档
-
-<details>
-<summary>点击展开详细步骤</summary>
-
-1. 访问前端界面 http://localhost:3000
-2. 点击左侧边栏 **"上传文档"** 按钮
-3. 拖拽或选择文件 (支持 PDF / Markdown / TXT)
-4. 等待文档处理完成 (实时显示进度)
-5. 处理完成后文档出现在列表中
-
-**处理流程**:
-```
-上传文件 → 解析文本 → 分块 (1000字符/块) → 生成 Embedding → 存入 Milvus → 完成
-```
-
-</details>
-
-### 2️⃣ 智能问答
-
-<details>
-<summary>点击展开详细步骤</summary>
-
-1. 在右侧对话框输入问题
-2. 点击发送或按 `Enter` 键
-3. 系统自动检索相关文档
-4. AI 流式生成回答 (打字机效果)
-5. 查看引用来源 (文档名 + 页码)
-
-**检索策略**:
-- **向量检索 (60%)**: 语义相似度匹配
-- **BM25 检索 (40%)**: 关键词精确匹配
-- **混合排序**: RRF 算法融合结果
-
-</details>
-
-### 3️⃣ 对话管理
-
-<details>
-<summary>点击展开详细步骤</summary>
-
-- **新建对话**: 点击顶部 **"新建对话"** 按钮
-- **切换对话**: 左侧边栏选择历史对话
-- **清空对话**: 点击对话标题旁的垃圾桶图标
-- **对话记忆**: 系统自动记住最近 5 轮对话 (10 条消息)
-
-**技术实现**:
-- PostgreSQL 持久化对话与消息
-- 仅保留最近 5 轮历史供 LLM 使用
-- LangChain Runnable 链路（Retriever → Prompt → LLM）
-
-</details>
-
----
-
-## 🛠️ 本地开发
-
-### 后端开发
-
-```bash
-# 创建虚拟环境
-python -m venv venv
-source venv/bin/activate  # Windows: venv\Scripts\activate
-
-# 安装依赖（完整 / 精简二选一）
-pip install -r requirements.txt
-
-# 启动依赖（Docker）
-cd docker
-docker compose -f docker-compose.infra.yml up -d postgres etcd minio milvus redis
-cd ..
-
-# 启动后端服务
-uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
-```
-
-### 前端开发
-
-```bash
-cd web
-
-# 安装依赖
-pnpm install
-
-# 启动开发服务器
-pnpm dev
-
-# 构建生产版本
-pnpm build
-
-# （可选）构建前端生产镜像
-# docker build -f Dockerfile.prod -t mimirq-frontend:prod .
-```
-
----
-
-## 📖 文档
-
-### 核心文档
-
-- [快速入门](./docs/quickstart.md) - 本地开发、Docker Compose、环境检查
-- [Docker Compose 部署](./docs/deployment/docker_compose.md) - 开发/生产模式、前端拆分、常见排错
-- [Milvus 向量数据库指南](./docs/guides/milvus_guide.md) - 索引类型、性能调优、GPU 加速
-- [RAG 优化指南](./docs/guides/rag_optimization.md) - 对话历史、混合检索、Rerank
-- [LangChain RAG 架构文档](./docs/guides/langchain_agent_migration.md) - Retriever/Runnable 链路
-- [依赖说明](./docs/guides/dependencies.md) - 不同解析及 Embedding 模式的依赖组合
-- [MinerU 集成](./docs/integrations/mineru_integration.md) - 高级 PDF 解析配置
-- [MagicPDF 集成](./docs/guides/magicpdf_guide.md) - 可选本地高级 PDF 解析（magic-pdf）
-- [ChromaDB → Milvus 迁移](./docs/integrations/migration_chromadb_to_milvus.md) - 架构选择、数据迁移脚本
-
-### API 文档
-
-完整 API 文档请访问: http://localhost:8000/docs
-
-### 健康检查 / 诊断
-
-```bash
-curl http://localhost:8000/api/v1/health
-curl http://localhost:8000/api/v1/health/ready
-```
-
-后端会在响应头返回 `X-Request-ID`（也支持客户端主动传入同名请求头），便于排查链路问题。
-
-**快速参考**:
-
-#### 上传文档
-```bash
-curl -X POST "http://localhost:8000/api/v1/documents/upload" \
-  -H "Content-Type: multipart/form-data" \
-  -F "file=@document.pdf"
-```
-
-#### 流式对话
-```bash
-curl -X POST "http://localhost:8000/api/v1/chat/stream" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "message": "什么是 RAG？",
-    "conversation_id": "uuid",
-    "stream": true
-  }'
-```
-
----
-
-## 🎯 高级特性
-
-### 1. 混合检索 (Hybrid Search)
-
-结合向量检索和关键词检索，提升准确率:
-
-```python
-from app.services.hybrid_retriever import hybrid_retriever
-
-# LangChain 1.x Retriever 混合检索
-retriever = hybrid_retriever.model_copy(update={"k": 10, "alpha": 0.6})
-docs = retriever.invoke(query)
-```
-
-**适用场景**:
-- ✅ 专有名词检索 (如 "项目代号A123")
-- ✅ 代码片段搜索
-- ✅ 数字、日期等精确匹配
-
-### 2. 对话记忆
-
-对话与消息由 PostgreSQL 持久化，前端请求携带最近历史；后端保留最近 5 轮作为 prompt 的 history 输入。
-
-### 3. OpenAI 兼容接口
-
-支持任何 OpenAI 兼容的 LLM 服务:
-
-| 服务 | 配置示例 |
-|------|---------|
-| OpenAI | `LLM_API_BASE=https://api.openai.com/v1` |
-| DeepSeek | `LLM_API_BASE=https://api.deepseek.com/v1` |
-| 通义千问 | `LLM_API_BASE=https://dashscope.aliyuncs.com/compatible-mode/v1` |
-| 本地 Ollama | `LLM_API_BASE=http://localhost:11434/v1` |
-
----
-
-## 🚢 部署指南
-
-### Docker Compose (推荐)
-
-```bash
-# 进入 docker 目录（类似 Dify）
-cd docker
-cp .env.example .env
-docker compose up -d --build
-docker compose -f docker-compose.yml -f docker-compose.web.yml up -d --build   # 可选：前端
-
-# 或在仓库根目录用 Makefile（等价）
-make up
-make up-web
-
-# 仅启动基础设施（给本地跑后端/调试用）
-make infra-up
-```
-
-### Kubernetes
-
-```bash
-# 使用 Helm Chart 部署
 helm install mimirq ./k8s/helm/mimirq
-
-# 或使用 kubectl
+# 或
 kubectl apply -f k8s/manifests/
 ```
 
-### 环境变量配置
+## 贡献
 
-<details>
-<summary>完整环境变量列表</summary>
+欢迎参与贡献！请查看 [贡献指南](CONTRIBUTING.md)。
 
-```bash
-# === LLM 配置 ===
-LLM_API_KEY=sk-your-api-key
-LLM_API_BASE=https://api.openai.com/v1
-LLM_MODEL=gpt-4-turbo-preview
-LLM_TEMPERATURE=0.7
-LLM_TIMEOUT=60
-LLM_MAX_RETRIES=3
+> 我们正在寻找翻译贡献者，如有兴趣请在 [Discord](https://discord.gg/YOUR_INVITE) 联系我们。
 
-# === Embedding 配置 ===
-EMBEDDING_PROVIDER=local  # local | openai_compatible
-EMBEDDING_MODEL=BAAI/bge-large-zh-v1.5
-EMBEDDING_DEVICE=cuda  # cpu | cuda
-EMBEDDING_API_KEY=  # 留空则使用 LLM_API_KEY
-EMBEDDING_API_BASE=  # 留空则使用 LLM_API_BASE
+## 社区
 
-# === 数据库配置 ===
-DATABASE_URL=postgresql://postgres:postgres@postgres:5432/mimirq
+- [GitHub Discussions](https://github.com/YOUR_USERNAME/MimirQ/discussions) - 分享反馈和提问
+- [GitHub Issues](https://github.com/YOUR_USERNAME/MimirQ/issues) - Bug 报告和功能建议
+- [Discord](https://discord.gg/YOUR_INVITE) - 交流讨论
 
-# === Milvus 配置 ===
-MILVUS_HOST=milvus
-MILVUS_PORT=19530
-MILVUS_COLLECTION_NAME=knowledge_base
-
-# === RAG 参数 ===
-CHUNK_SIZE=1000
-CHUNK_OVERLAP=200
-RETRIEVAL_TOP_K=5
-SIMILARITY_THRESHOLD=0.7
-
-# === 索引开关 ===
-CHUNK_VECTOR_ENABLED=true
-BM25_INDEX_ENABLED=true
-EVENT_VECTOR_ENABLED=true
-ENTITY_VECTOR_ENABLED=true
-
-### 解析 / 切块能力开关
-
-| 变量 | 说明 | 默认 |
-|------|------|------|
-| `DEFAULT_PARSER_BACKEND` | `auto/basic/mineru/deepdoc/markitdown`，控制未指定时使用的解析器 | `auto` |
-| `DEEPDOC_ENABLED` | 启用 DeepDoc 解析（仓库内置于 `app/deepdoc`） | `false` |
-| `MARKITDOWN_ENABLED` | 开启微软 MarkItDown 解析，配合 `MARKITDOWN_USE_PLUGINS` 等配置 | `false` |
-| `MINERU_ENABLED` | 开启 MinerU 在线解析（需 `MINERU_API_TOKEN`） | `false` |
-| `GOVERNANCE_ENABLED` | 启用治理清洗流程（Markdown 规范化、正则规则） | `false` |
-| `DEFAULT_CHUNK_STRATEGY` | 默认切块策略：`langchain_recursive` 或 `llama_index` | `langchain_recursive` |
-| `LLAMA_INDEX_ENABLED` | 允许调用 LlamaIndex SentenceSplitter；为 `true` 前端才可选择该切块方式 | `false` |
-
-
-# === 应用配置 ===
-UPLOAD_DIR=/app/uploads
-MAX_FILE_SIZE=10485760  # 10MB
-ALLOWED_EXTENSIONS=.pdf,.txt,.md,.doc,.docx,.xls,.xlsx,.csv,.html,.json
-```
-
-</details>
-
----
-
-## 📊 性能基准
-
-| 指标 | 数值 | 说明 |
-|------|------|------|
-| **文档处理速度** | ~100 页/分钟 | PDF 解析 + 分块 + Embedding |
-| **检索延迟** | <100ms | Milvus 向量检索 (IVF_FLAT) |
-| **LLM 首字延迟** | ~500ms | 包含检索 + LLM 初始化 |
-| **流式输出速度** | ~50 tokens/s | GPT-4 Turbo 平均速度 |
-| **并发支持** | 100+ QPS | 单机 FastAPI + Milvus |
-| **向量容量** | 10 亿+ | Milvus 集群模式 |
-
-**测试环境**: 4 vCPU / 16 GB RAM / SSD
-
----
-
-## 🗺️ Roadmap
-
-- [x] ✅ 基础 RAG 对话功能
-- [x] ✅ Milvus 向量数据库集成
-- [x] ✅ 混合检索 (Vector + BM25)
-- [x] ✅ LangChain Runnable/Retriever 架构
-- [x] ✅ PostgreSQL 对话记忆
-- [ ] 🚧 MinerU 2.5 高级 PDF 解析 (进行中)
-- [ ] 📅 多模态支持 (图片、表格理解)
-- [ ] 📅 知识图谱可视化
-- [ ] 📅 团队协作 (多用户、权限管理)
-- [ ] 📅 API 认证 (NextAuth.js / Clerk)
-- [ ] 📅 Webhook 集成 (Slack / 飞书)
-- [ ] 📅 移动端适配 (React Native)
-
----
-
-## ⭐ Star History
-
-<a href="https://star-history.com/#YOUR_USERNAME/MimirQ&Date">
- <picture>
-   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=YOUR_USERNAME/MimirQ&type=Date&theme=dark" />
-   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=YOUR_USERNAME/MimirQ&type=Date" />
-   <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=YOUR_USERNAME/MimirQ&type=Date" />
- </picture>
-</a>
-
----
-
-## 🤝 贡献指南
-
-我们欢迎所有形式的贡献！
-
-### 如何贡献
-
-1. Fork 本项目
-2. 创建功能分支 (`git checkout -b feature/AmazingFeature`)
-3. 提交更改 (`git commit -m 'Add some AmazingFeature'`)
-4. 推送到分支 (`git push origin feature/AmazingFeature`)
-5. 提交 Pull Request
-
-### 开发规范
-
-- Python: 遵循 PEP 8 规范
-- TypeScript: 遵循 Airbnb 规范
-- 提交信息: 使用 [Conventional Commits](https://www.conventionalcommits.org/)
-
----
-
-## 🙏 致谢
-
-MimirQ 基于以下优秀开源项目构建:
-
-- [LangChain](https://github.com/langchain-ai/langchain) - LLM 应用框架
-- [Milvus](https://github.com/milvus-io/milvus) - 向量数据库
-- [FastAPI](https://github.com/tiangolo/fastapi) - 现代化 Python 框架
-- [Next.js](https://github.com/vercel/next.js) - React 全栈框架
-- [Shadcn/ui](https://ui.shadcn.com/) - 高质量 UI 组件
-
-同时参考/借鉴了以下项目在 RAG 产品与数据处理方向的经验（本项目与其无官方关联）：
-
-- [Dify](https://github.com/langgenius/dify)
-- [RAGFlow](https://github.com/infiniflow/ragflow)
-- [Bisheng](https://github.com/dataelement/bisheng)
-
----
-
-## 👥 贡献者
-
-感谢所有为 MimirQ 做出贡献的开发者！
+**贡献者**
 
 <a href="https://github.com/YOUR_USERNAME/MimirQ/graphs/contributors">
   <img src="https://contrib.rocks/image?repo=YOUR_USERNAME/MimirQ" />
 </a>
 
----
+## Star History
 
-## 📄 许可证
+[![Star History Chart](https://api.star-history.com/svg?repos=YOUR_USERNAME/MimirQ&type=Date)](https://star-history.com/#YOUR_USERNAME/MimirQ&Date)
 
-本项目采用 [MIT 许可证](LICENSE)
+## 许可证
 
----
-
-## 💬 社区与支持
-
-- 📧 邮箱: support@mimirq.com
-- 💬 Discord: [加入我们](https://discord.gg/YOUR_INVITE)
-- 🐦 Twitter: [@MimirQ](https://twitter.com/mimirq)
-- 📖 文档: https://docs.mimirq.com
-
----
-
-<div align="center">
-
-**如果这个项目对你有帮助，请给我们一个 ⭐ Star!**
-
-Made with ❤️ by MimirQ Team
-
-</div>
+本项目采用 [MIT 许可证](LICENSE)。
