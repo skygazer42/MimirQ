@@ -13,6 +13,7 @@ import {
   FileText,
   Upload,
   ChevronRight,
+  ChevronLeft,
   Download,
   Save,
   RotateCcw,
@@ -139,13 +140,25 @@ export function DataGovernancePanel() {
   const [isResizing, setIsResizing] = useState(false)
   const sidebarRef = useRef<HTMLDivElement>(null)
 
+  // 治理面板状态 (中间栏)
+  const [panelWidth, setPanelWidth] = useState(450)
+  const [isPanelCollapsed, setIsPanelCollapsed] = useState(false)
+  const [isPanelResizing, setIsPanelResizing] = useState(false)
+  const panelRef = useRef<HTMLDivElement>(null)
+
   const startResizing = useCallback((e: React.MouseEvent) => {
     e.preventDefault()
     setIsResizing(true)
   }, [])
 
+  const startPanelResizing = useCallback((e: React.MouseEvent) => {
+    e.preventDefault()
+    setIsPanelResizing(true)
+  }, [])
+
   const stopResizing = useCallback(() => {
     setIsResizing(false)
+    setIsPanelResizing(false)
   }, [])
 
   const resize = useCallback(
@@ -160,12 +173,21 @@ export function DataGovernancePanel() {
           setSidebarWidth(newWidth)
         }
       }
+
+      if (isPanelResizing && panelRef.current) {
+        const panelLeft = panelRef.current.getBoundingClientRect().left
+        const newWidth = mouseMoveEvent.clientX - panelLeft
+        
+        if (newWidth > 300 && newWidth < 800) {
+          setPanelWidth(newWidth)
+        }
+      }
     },
-    [isResizing]
+    [isResizing, isPanelResizing]
   )
 
   useEffect(() => {
-    if (isResizing) {
+    if (isResizing || isPanelResizing) {
       window.addEventListener('mousemove', resize)
       window.addEventListener('mouseup', stopResizing)
     }
@@ -173,7 +195,7 @@ export function DataGovernancePanel() {
       window.removeEventListener('mousemove', resize)
       window.removeEventListener('mouseup', stopResizing)
     }
-  }, [isResizing, resize, stopResizing])
+  }, [isResizing, isPanelResizing, resize, stopResizing])
 
   // 选中的文件
   const selectedFile = files.find((f) => f.id === selectedFileId) || null
@@ -1033,39 +1055,71 @@ export function DataGovernancePanel() {
               </div>
 
               {/* 内容区 */}
-              <div className="flex-1 flex overflow-hidden min-h-0">
+              <div className="flex-1 flex overflow-hidden min-h-0 relative">
                 {/* 左侧治理面板 */}
-                <div className="w-[450px] flex-shrink-0 border-r border-gray-200 bg-gray-50/50 overflow-y-auto">
-                  {activeTab === 'quality' && (
-                    <QualityChecker
-                      content={governanceState.originalContent}
-                      initialScore={governanceState.qualityScore}
-                      initialIssues={governanceState.issues}
-                      onComplete={handleQualityCheck}
-                    />
+                <div 
+                  ref={panelRef}
+                  className={cn(
+                    "group/panel relative flex-shrink-0 border-r border-gray-200 bg-gray-50/50 flex flex-col transition-all duration-75 ease-in-out",
+                    isPanelCollapsed ? "w-0 border-r-0" : ""
                   )}
-                  {activeTab === 'clean' && (
-                    <DataCleaner
-                      content={governanceState.originalContent}
-                      cleanedContent={governanceState.cleanedContent}
-                      onClean={handleClean}
-                    />
-                  )}
-                  {activeTab === 'annotate' && (
-                    <DataAnnotator
-                      content={governanceState.cleanedContent}
-                      annotations={governanceState.annotations}
-                      onAnnotate={handleAnnotate}
-                    />
-                  )}
-                  {activeTab === 'classify' && (
-                    <DataClassifier
-                      content={governanceState.cleanedContent}
-                      initialCategory={governanceState.category}
-                      initialTags={governanceState.tags}
-                      onClassify={handleClassify}
-                    />
-                  )}
+                  style={{ width: isPanelCollapsed ? 0 : panelWidth }}
+                >
+                  {/* 面板折叠按钮 */}
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className={cn(
+                      "absolute -right-3 top-3 z-30 h-6 w-6 rounded-full border border-gray-200 bg-white shadow-sm hover:bg-gray-50 text-gray-400 hover:text-gray-600 transition-opacity opacity-0 group-hover/panel:opacity-100",
+                      isPanelCollapsed && "opacity-100 -right-8 translate-x-2"
+                    )}
+                    onClick={() => setIsPanelCollapsed(!isPanelCollapsed)}
+                    title={isPanelCollapsed ? "展开面板" : "收起面板"}
+                  >
+                    {isPanelCollapsed ? <ChevronRight className="w-3 h-3" /> : <ChevronLeft className="w-3 h-3" />}
+                  </Button>
+
+                  <div className={cn("flex-1 overflow-y-auto w-full", isPanelCollapsed && "invisible")}>
+                    {activeTab === 'quality' && (
+                      <QualityChecker
+                        content={governanceState.originalContent}
+                        initialScore={governanceState.qualityScore}
+                        initialIssues={governanceState.issues}
+                        onComplete={handleQualityCheck}
+                      />
+                    )}
+                    {activeTab === 'clean' && (
+                      <DataCleaner
+                        content={governanceState.originalContent}
+                        cleanedContent={governanceState.cleanedContent}
+                        onClean={handleClean}
+                      />
+                    )}
+                    {activeTab === 'annotate' && (
+                      <DataAnnotator
+                        content={governanceState.cleanedContent}
+                        annotations={governanceState.annotations}
+                        onAnnotate={handleAnnotate}
+                      />
+                    )}
+                    {activeTab === 'classify' && (
+                      <DataClassifier
+                        content={governanceState.cleanedContent}
+                        initialCategory={governanceState.category}
+                        initialTags={governanceState.tags}
+                        onClassify={handleClassify}
+                      />
+                    )}
+                  </div>
+
+                  {/* 拖拽手柄 */}
+                  <div
+                    className={cn(
+                      "absolute right-0 top-0 w-1 h-full cursor-col-resize hover:bg-sky-400 active:bg-sky-600 z-20 transition-colors",
+                      isPanelResizing ? "bg-sky-600 w-1.5" : "bg-transparent"
+                    )}
+                    onMouseDown={startPanelResizing}
+                  />
                 </div>
 
                 {/* 右侧预览区 */}
