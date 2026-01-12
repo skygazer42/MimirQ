@@ -133,7 +133,7 @@ class Settings(BaseSettings):
     MAX_INLINE_IMAGE_BYTES: int = 10_000_000
     MAX_INLINE_IMAGES: int = 200
     # Keep this aligned with parser_factory supported non-PDF formats.
-    ALLOWED_EXTENSIONS: str = ".pdf,.txt,.md,.doc,.docx,.xls,.xlsx,.csv,.html,.json"
+    ALLOWED_EXTENSIONS: str = ".pdf,.txt,.md,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.csv,.html,.htm,.json"
 
     @property
     def allowed_extensions_list(self):
@@ -360,6 +360,18 @@ class Settings(BaseSettings):
     DEFAULT_CHUNK_STRATEGY: str = "langchain_recursive"
     DEEPDOC_ENABLED: bool = False
     MARKITDOWN_ENABLED: bool = False
+    # Pandoc Office/HTML -> Markdown parser (optional; requires system pandoc)
+    PANDOC_ENABLED: bool = False
+    PANDOC_CLI: str = "pandoc"
+    PANDOC_TIMEOUT_SEC: int = 180
+    PANDOC_TO_FORMAT: str = "gfm"  # gfm | markdown | commonmark | ...
+    PANDOC_WRAP: str = "none"  # none | auto | preserve
+    PANDOC_EXTRACT_MEDIA: bool = True
+    PANDOC_HTML_USE_READABILITY: bool = True
+    # LibreOffice CLI used as a fallback converter for legacy Office formats (optional; heavy)
+    LIBREOFFICE_ENABLED: bool = False
+    LIBREOFFICE_CLI: str = "soffice"
+    LIBREOFFICE_TIMEOUT_SEC: int = 300
     # MagicPDF (magic-pdf) local parser (optional; heavy dependencies)
     MAGIC_PDF_ENABLED: bool = False
     MAGIC_PDF_CLI: str = "magic-pdf"

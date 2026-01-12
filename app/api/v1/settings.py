@@ -803,6 +803,24 @@ async def get_system_status(
         "message": "installed" if ok else msg,
     }
 
+    pandoc_enabled = bool(getattr(settings, "PANDOC_ENABLED", False))
+    pandoc_cli = (getattr(settings, "PANDOC_CLI", "") or "pandoc").strip() or "pandoc"
+    pandoc_cli_ok = bool(resolve_cli_command(pandoc_cli))
+    parsers["pandoc"] = {
+        "enabled": pandoc_enabled,
+        "available": bool(pandoc_enabled and pandoc_cli_ok),
+        "message": "configured" if (pandoc_enabled and pandoc_cli_ok) else ("disabled" if not pandoc_enabled else f"missing cli: {pandoc_cli}"),
+    }
+
+    lo_enabled = bool(getattr(settings, "LIBREOFFICE_ENABLED", False))
+    lo_cli = (getattr(settings, "LIBREOFFICE_CLI", "") or "soffice").strip() or "soffice"
+    lo_cli_ok = bool(resolve_cli_command(lo_cli))
+    parsers["libreoffice"] = {
+        "enabled": lo_enabled,
+        "available": bool(lo_enabled and lo_cli_ok),
+        "message": "configured" if (lo_enabled and lo_cli_ok) else ("disabled" if not lo_enabled else f"missing cli: {lo_cli}"),
+    }
+
     ok, msg = _check_import("app.deepdoc.parser")
     parsers["deepdoc"] = {
         "enabled": bool(getattr(settings, "DEEPDOC_ENABLED", False)),

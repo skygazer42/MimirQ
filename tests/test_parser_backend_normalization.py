@@ -28,7 +28,12 @@ def test_normalize_parser_backend_etl4llm_aliases():
     assert normalize_parser_backend("bisheng") == "etl4llm"
 
 
+def test_normalize_parser_backend_pandoc_aliases():
+    assert normalize_parser_backend("pandoc") == "pandoc"
+    assert normalize_parser_backend("pan-doc") == "pandoc"
+    assert normalize_parser_backend("pan_doc") == "pandoc"
+
+
 def test_normalize_parser_backend_empty():
     assert normalize_parser_backend(None) == ""
     assert normalize_parser_backend("") == ""
-

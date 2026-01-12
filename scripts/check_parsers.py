@@ -1,6 +1,3 @@
-import shutil
-
-
 def _check_import(module: str) -> tuple[bool, str]:
     try:
         __import__(module)
@@ -11,6 +8,7 @@ def _check_import(module: str) -> tuple[bool, str]:
 
 def main() -> int:
     from app.core.config import settings
+    from app.parsing.utils.cli import resolve_cli_command
 
     rows: list[tuple[str, str, str]] = []
 
@@ -42,6 +40,28 @@ def main() -> int:
     ok, msg = _check_import("markitdown")
     rows.append(("markitdown", "on" if settings.MARKITDOWN_ENABLED else "off", "installed" if ok else msg))
 
+    pandoc_enabled = bool(getattr(settings, "PANDOC_ENABLED", False))
+    pandoc_cli = (getattr(settings, "PANDOC_CLI", "") or "pandoc").strip() or "pandoc"
+    pandoc_path = resolve_cli_command(pandoc_cli)
+    rows.append(
+        (
+            "pandoc",
+            "on" if pandoc_enabled else "off",
+            f"configured ({pandoc_path})" if pandoc_enabled and pandoc_path else ("missing cli" if pandoc_enabled else "disabled"),
+        )
+    )
+
+    lo_enabled = bool(getattr(settings, "LIBREOFFICE_ENABLED", False))
+    lo_cli = (getattr(settings, "LIBREOFFICE_CLI", "") or "soffice").strip() or "soffice"
+    lo_path = resolve_cli_command(lo_cli)
+    rows.append(
+        (
+            "libreoffice",
+            "on" if lo_enabled else "off",
+            f"configured ({lo_path})" if lo_enabled and lo_path else ("missing cli" if lo_enabled else "disabled"),
+        )
+    )
+
     ok, msg = _check_import("docling")
     rows.append(("docling", "on" if getattr(settings, "DOCLING_ENABLED", False) else "off", "installed" if ok else msg))
 
@@ -55,7 +75,7 @@ def main() -> int:
         rows.append(("rapidocr", "off", "disabled"))
 
     cli = (getattr(settings, "MAGIC_PDF_CLI", "") or "magic-pdf").strip() or "magic-pdf"
-    cli_ok = bool(shutil.which(cli))
+    cli_ok = bool(resolve_cli_command(cli))
     magicpdf_configured = bool(getattr(settings, "MAGIC_PDF_ENABLED", False) and cli_ok)
     rows.append(("magicpdf", "on" if getattr(settings, "MAGIC_PDF_ENABLED", False) else "off", "configured" if magicpdf_configured else ("missing cli" if getattr(settings, "MAGIC_PDF_ENABLED", False) else "disabled")))
 
