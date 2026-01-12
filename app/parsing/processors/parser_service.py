@@ -1,6 +1,6 @@
 """
 Unified document parsing entry point:
-- Route by file type (office -> MarkItDown; PDF -> score then choose MarkItDown/DeepDoc/MinerU/basic)
+- Route by file type (office/html -> auto/Pandoc/MarkItDown; PDF -> score then choose the best backend)
 - Extract Markdown, save images to disk, and return preview
 """
 from pathlib import Path
@@ -259,8 +259,8 @@ class DocumentParserService:
                 use_ocr_validation=settings.RAPIDOCR_ENABLED,
             )
         else:
-            # Non-PDF: force MarkItDown (office/spreadsheets) or text parser.
-            parser_backend = parser_backend or "markitdown"
+            # Non-PDF: route by backend (auto prefers Pandoc/Excel when enabled).
+            parser_backend = parser_backend or "auto"
 
         documents, resolved_backend = parser_factory.parse(
             file_path,

@@ -22,6 +22,9 @@ _BACKEND_ALIASES: dict[str, str] = {
     # ETL4LLM (layout/table/image-aware parsing service)
     "etl4llm": "etl4llm",
     "etl-4llm": "etl4llm",
+    # Pandoc (Office/HTML -> Markdown)
+    "pandoc": "pandoc",
+    "pan-doc": "pandoc",
     # Backward-compatible aliases (deprecated)
     "bisheng-unstructured": "etl4llm",
     "bishengunstructured": "etl4llm",
@@ -42,4 +45,3 @@ def normalize_parser_backend(value: Optional[str]) -> str:
         return ""
     text = text.replace("_", "-")
     return _BACKEND_ALIASES.get(text, text)
-

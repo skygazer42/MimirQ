@@ -28,6 +28,8 @@ FROM base AS runtime
 # Runtime tools (healthcheck uses curl in docker-compose)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
+    pandoc \
+    libreoffice \
     && rm -rf /var/lib/apt/lists/*
 
 ARG MIMIRQ_BUILD_SHA=""

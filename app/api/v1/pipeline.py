@@ -1,6 +1,6 @@
 """
 Lightweight parsing and hierarchical chunk preview APIs:
-- /pipeline/parse-preview: route parsing by file type (MarkItDown/DeepDoc/MinerU/Basic), return Markdown + image refs
+- /pipeline/parse-preview: route parsing by file type (auto/Pandoc/MarkItDown/DeepDoc/MinerU/...), return Markdown + image refs
 - /pipeline/chunk-preview: hierarchical Markdown chunking (paragraph/sentence) with highlight offsets
 """
 

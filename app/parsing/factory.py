@@ -24,6 +24,7 @@ if TYPE_CHECKING:
     from app.parsing.parsers.magic_pdf_parser import MagicPDFParser
     from app.parsing.parsers.markitdown_parser import MarkItDownParser
     from app.parsing.parsers.mineru_parser import MinerUParser
+    from app.parsing.parsers.pandoc_parser import PandocParser
     from app.parsing.parsers.pdf_parser import PDFParser
 
 
@@ -41,7 +42,8 @@ class ParserFactory:
         "docling",
         "magicpdf",
     }
-    SUPPORTED_NON_PDF_MARKITDOWN = {".doc", ".docx", ".xls", ".xlsx", ".csv", ".html", ".json"}
+    SUPPORTED_NON_PDF_EXTENSIONS = {".doc", ".docx", ".ppt", ".pptx", ".xls", ".xlsx", ".csv", ".html", ".htm", ".json"}
+    SUPPORTED_NON_PDF_BACKENDS = {"auto", "markitdown", "pandoc", "excel", "docx", "html", "csv", "json"}
 
     def __init__(self):
         self._basic_pdf_parser: Optional[PDFParser] = None
@@ -50,6 +52,7 @@ class ParserFactory:
         self._deepseek_ocr_parser: Optional[DeepSeekOCRParser] = None
         self._etl4llm_parser: Optional[Etl4LlmParser] = None
         self._markitdown_parser: Optional[MarkItDownParser] = None
+        self._pandoc_parser: Optional[PandocParser] = None
         self._docling_parser: Optional[DoclingParser] = None
         self._magicpdf_parser: Optional[MagicPDFParser] = None
 
@@ -76,10 +79,13 @@ class ParserFactory:
             ".md": MarkdownParser(),
             ".doc": None,  # lazy init MarkItDown
             ".docx": None,
+            ".ppt": None,
+            ".pptx": None,
             ".xls": None,
             ".xlsx": None,
             ".csv": None,
             ".html": None,
+            ".htm": None,
             ".json": None,
         }
 
@@ -95,9 +101,45 @@ class ParserFactory:
                 return "text"
             if file_ext == ".md":
                 return "markdown"
-            if file_ext in self.SUPPORTED_NON_PDF_MARKITDOWN:
+            if file_ext not in self.SUPPORTED_NON_PDF_EXTENSIONS:
+                raise ValueError(f"Unsupported file type: {file_ext}")
+
+            if normalized in {"", "auto"}:
+                # Office/HTML defaults:
+                # - Prefer Pandoc for better image/table fidelity when enabled.
+                # - Prefer the built-in Excel Markdown renderer for .xlsx/.xls.
+                if file_ext in {".xlsx", ".xls"}:
+                    return "excel"
+                if file_ext in {".doc", ".ppt"}:
+                    # Pandoc needs LibreOffice for legacy formats.
+                    if bool(getattr(settings, "PANDOC_ENABLED", False)) and bool(getattr(settings, "LIBREOFFICE_ENABLED", False)):
+                        return "pandoc"
+                    return "markitdown"
+                if file_ext in {".docx", ".pptx", ".html", ".htm"}:
+                    if bool(getattr(settings, "PANDOC_ENABLED", False)):
+                        return "pandoc"
+                    return "markitdown"
+                # csv/json: keep MarkItDown as the general converter.
                 return "markitdown"
-            raise ValueError(f"Unsupported file type: {file_ext}")
+
+            if normalized not in self.SUPPORTED_NON_PDF_BACKENDS:
+                raise ValueError(
+                    f"Unsupported parser backend '{normalized}' for {file_ext}. "
+                    f"Supported: {sorted(self.SUPPORTED_NON_PDF_BACKENDS)}"
+                )
+
+            # Backend compatibility checks (best-effort).
+            if normalized == "excel" and file_ext not in {".xls", ".xlsx"}:
+                raise ValueError("excel backend supports only .xls/.xlsx")
+            if normalized == "docx" and file_ext not in {".docx"}:
+                raise ValueError("docx backend supports only .docx")
+            if normalized == "html" and file_ext not in {".html", ".htm"}:
+                raise ValueError("html backend supports only .html/.htm")
+            if normalized == "csv" and file_ext != ".csv":
+                raise ValueError("csv backend supports only .csv")
+            if normalized == "json" and file_ext != ".json":
+                raise ValueError("json backend supports only .json")
+            return normalized
 
         if normalized not in self.SUPPORTED_PDF_BACKENDS:
             raise ValueError(
@@ -200,13 +242,38 @@ class ParserFactory:
                 parser = self.parsers[".txt"]
             elif file_ext == ".md":
                 parser = self.parsers[".md"]
-            elif file_ext in self.SUPPORTED_NON_PDF_MARKITDOWN:
-                parser = self._get_markitdown_parser()
+            elif file_ext in self.SUPPORTED_NON_PDF_EXTENSIONS:
+                if backend == "markitdown":
+                    parser = self._get_markitdown_parser()
+                elif backend == "pandoc":
+                    parser = self._get_pandoc_parser()
+                elif backend == "excel":
+                    from app.parsing.parsers.excel_parser import ExcelParser
+
+                    parser = ExcelParser()
+                elif backend == "docx":
+                    from app.parsing.parsers.docx_parser import DocxParser
+
+                    parser = DocxParser()
+                elif backend == "html":
+                    from app.parsing.parsers.html_parser import HtmlParser
+
+                    parser = HtmlParser()
+                elif backend == "csv":
+                    from app.parsing.parsers.csv_parser import CsvParser
+
+                    parser = CsvParser()
+                elif backend == "json":
+                    from app.parsing.parsers.json_parser import JsonParser
+
+                    parser = JsonParser()
+                else:
+                    raise ValueError(f"Unsupported parser backend '{backend}' for {file_ext}")
             else:
                 raise ValueError(f"Unsupported file type: {file_ext}")
 
             # Some parsers need dataset/document ids to produce stable artifacts.
-            if backend in {"mineru", "magicpdf", "deepseek_ocr", "etl4llm"}:
+            if backend in {"mineru", "magicpdf", "deepseek_ocr", "etl4llm", "pandoc"}:
                 documents = parser.parse(
                     file_path,
                     dataset_id=dataset_id,
@@ -287,11 +354,18 @@ class ParserFactory:
                     from app.parsing.parsers.docx_parser import DocxParser
 
                     return DocxParser().parse(file_path), "docx"
+                if file_ext == ".pptx":
+                    if bool(getattr(settings, "PANDOC_ENABLED", False)):
+                        return self._get_pandoc_parser().parse(file_path), "pandoc"
                 if file_ext in {".xlsx", ".xls"}:
                     from app.parsing.parsers.excel_parser import ExcelParser
 
                     return ExcelParser().parse(file_path), "excel"
                 if file_ext == ".html":
+                    from app.parsing.parsers.html_parser import HtmlParser
+
+                    return HtmlParser().parse(file_path), "html"
+                if file_ext == ".htm":
                     from app.parsing.parsers.html_parser import HtmlParser
 
                     return HtmlParser().parse(file_path), "html"
@@ -313,6 +387,38 @@ class ParserFactory:
                     str(fallback_exc)[:200],
                 )
                 return None, backend
+
+        # Excel parser may fail for legacy .xls when optional engines are missing; fall back to MarkItDown.
+        if backend == "excel":
+            logger.warning(
+                "[parse] Excel parser failed for %s (%s): %s",
+                str(file_path.name),
+                file_ext,
+                str(error)[:200],
+            )
+            try:
+                return self._get_markitdown_parser().parse(file_path), "markitdown"
+            except Exception as fallback_exc:
+                logger.warning(
+                    "[parse] MarkItDown fallback also failed for %s: %s",
+                    str(file_path.name),
+                    str(fallback_exc)[:200],
+                )
+                return None, backend
+
+        # Pandoc may fail when the CLI isn't installed; fall back to MarkItDown or lightweight parsers.
+        if backend == "pandoc":
+            logger.warning(
+                "[parse] Pandoc failed for %s (%s): %s",
+                str(file_path.name),
+                file_ext,
+                str(error)[:200],
+            )
+            try:
+                return self._get_markitdown_parser().parse(file_path), "markitdown"
+            except Exception:
+                # Reuse MarkItDown fallback logic by pretending MarkItDown failed.
+                return self._fallback_parse(file_path=file_path, file_ext=file_ext, requested_backend="markitdown", error=error)
 
         return None, backend
 
@@ -391,6 +497,15 @@ class ParserFactory:
             logger.info("[markitdown] Initializing parser for non-PDF formats")
             self._markitdown_parser = MarkItDownParser()
         return self._markitdown_parser
+
+    def _get_pandoc_parser(self):
+        """Lazy init Pandoc parser for Office/HTML formats."""
+        if self._pandoc_parser is None:
+            from app.parsing.parsers.pandoc_parser import PandocParser
+
+            logger.info("[pandoc] Initializing parser for Office/HTML formats")
+            self._pandoc_parser = PandocParser()
+        return self._pandoc_parser
 
 
 _PARSER_FACTORY: Optional[ParserFactory] = None

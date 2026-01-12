@@ -59,6 +59,17 @@ ETL4LLM_ENABLED=true
 ETL4LLM_API_URL=http://etl4llm:10001/v1/etl4llm/predict
 ```
 
+### (可选) 启用 Pandoc/LibreOffice（Office/HTML 高质量转 Markdown）
+
+适用于：`doc/docx/ppt/pptx/xls/xlsx/html/htm`（图片/表格保真更好）。
+
+在 `docker/.env` 里配置：
+```env
+PANDOC_ENABLED=true
+# 旧格式（.doc/.ppt/.xls）需要 LibreOffice 辅助转换
+LIBREOFFICE_ENABLED=true
+```
+
 ### 生产部署（推荐）
 
 生产部署使用 `docker/docker-compose.yml`（默认不暴露 Postgres/Milvus/Redis/MinIO 端口）：
@@ -101,7 +112,7 @@ make verify
 
 ### Step 1: 上传文档
 1. 点击左侧 "上传文档" 按钮
-2. 选择 PDF、Markdown 或 TXT 文件
+2. 选择 PDF / Office / HTML / Markdown / TXT 文件
 3. 等待文档处理完成（进度条会实时显示）
 
 ### Step 2: 开始对话
