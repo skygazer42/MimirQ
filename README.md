@@ -28,9 +28,6 @@ MimirQ 是一个开源的 RAG 知识库问答平台。它将可视化切片预�
 
 ## 快速开始
 
-> 开始前请确保机器满足最低要求：
-> - CPU >= 2 核
-> - RAM >= 4 GB
 
 启动 MimirQ 最简单的方式是使用 [Docker Compose](docker/docker-compose.yml)。运行前请确保已安装 [Docker](https://docs.docker.com/get-docker/) 和 [Docker Compose](https://docs.docker.com/compose/install/)：
 
