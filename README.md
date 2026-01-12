@@ -42,16 +42,52 @@ MimirQ 是一个开源的 RAG 知识库问答平台，专注于**可视化**和*
 
 ```bash
 git clone https://github.com/YOUR_USERNAME/MimirQ.git
-cd MimirQ/docker
-cp .env.example .env
-docker compose up -d
+cd MimirQ
+
+# 1) 初始化环境变量
+cp docker/.env.example docker/.env
+
+# 2) 启动后端 + 依赖（Postgres/Milvus/Redis/MinIO）
+docker compose -f docker/docker-compose.yml up -d --build
+
+# 3) （可选）启动前端 UI
+docker compose -f docker/docker-compose.yml -f docker/docker-compose.web.yml up -d --build
 ```
 
 启动后访问：
 - API 文档：http://localhost:8000/docs
-- 前端界面：http://localhost:3000（需 `make up-web`）
+- 前端界面：http://localhost:3000（需启动 `docker-compose.web.yml`）
 
 > 详细配置和本地开发请参考 [快速入门文档](./docs/quickstart.md)
+
+## 🐳 Docker Compose 部署（类似 Dify）
+
+默认后端栈在 `docker/docker-compose.yml`，前端 UI 在 `docker/docker-compose.web.yml`（按需叠加）。
+
+### 一键启动（后端 + 依赖）
+
+```bash
+cp docker/.env.example docker/.env
+docker compose -f docker/docker-compose.yml up -d --build
+```
+
+### 一键启动（后端 + 依赖 + 前端 UI）
+
+```bash
+cp docker/.env.example docker/.env
+docker compose -f docker/docker-compose.yml -f docker/docker-compose.web.yml up -d --build
+```
+
+### 停止/更新
+
+```bash
+# 停止
+docker compose -f docker/docker-compose.yml down
+
+# 更新镜像/重建并重启
+docker compose -f docker/docker-compose.yml pull
+docker compose -f docker/docker-compose.yml up -d --build
+```
 
 ## 核心功能
 
