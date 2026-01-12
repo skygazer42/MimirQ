@@ -11,14 +11,14 @@ x-backend-env: &backend_env
   # Process settings (overrides Dockerfile defaults)
   UVICORN_WORKERS: ${BACKEND_WORKERS:-1}
   # Force container-to-container endpoints (do not depend on host-local `.env` defaults like localhost).
-  DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-mimirq}
-  MILVUS_HOST: ${MILVUS_HOST_DOCKER:-milvus}
+  DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@mimirq-postgres:5432/${POSTGRES_DB:-mimirq}
+  MILVUS_HOST: ${MILVUS_HOST_DOCKER:-mimirq-milvus}
   MILVUS_PORT: ${MILVUS_PORT_DOCKER:-19530}
   # Persisted data dirs (mounted as volumes; avoid coupling to /app code mounts).
   UPLOAD_DIR: ${UPLOAD_DIR_DOCKER:-/data/uploads}
   # MinIO for images
   MINIO_ENABLED: ${MINIO_ENABLED_DOCKER:-true}
-  MINIO_ENDPOINT: ${MINIO_ENDPOINT_DOCKER:-minio:9000}
+  MINIO_ENDPOINT: ${MINIO_ENDPOINT_DOCKER:-mimirq-minio:9000}
   MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY_DOCKER:-minioadmin}
   MINIO_SECRET_KEY: ${MINIO_SECRET_KEY_DOCKER:-minioadmin}
   MINIO_BUCKET_NAME: ${MINIO_BUCKET_NAME_DOCKER:-mimirq}
@@ -30,15 +30,15 @@ x-backend-env: &backend_env
   CORS_ORIGINS: ${CORS_ORIGINS_DOCKER:-http://localhost:3000,http://localhost:3001}
   # Task queue
   TASK_QUEUE_ENABLED: ${TASK_QUEUE_ENABLED_DOCKER:-true}
-  REDIS_URL: ${REDIS_URL_DOCKER:-redis://redis:6379/0}
+  REDIS_URL: ${REDIS_URL_DOCKER:-redis://mimirq-redis:6379/0}
   TASK_QUEUE_NAME: ${TASK_QUEUE_NAME_DOCKER:-mimirq}
   TASK_WORKER_MAX_JOBS: ${TASK_WORKER_MAX_JOBS_DOCKER:-10}
 
 services:
   # ETL4LLM (Bisheng Unstructured) parser service (optional).
   # Enable with: `docker compose --profile etl4llm up -d`
-  # Then set `ETL4LLM_ENABLED=true` and `ETL4LLM_API_URL=http://etl4llm:10001/v1/etl4llm/predict` in docker/.env.
-  etl4llm:
+  # Then set `ETL4LLM_ENABLED=true` and `ETL4LLM_API_URL=http://mimirq-etl4llm:10001/v1/etl4llm/predict` in docker/.env.
+  mimirq-etl4llm:
     profiles: ["etl4llm"]
     image: dataelement/bisheng-unstructured:v0.0.3.14
     restart: unless-stopped
@@ -51,7 +51,7 @@ services:
       retries: 3
 
   # Redis（任务队列/缓存/幂等锁）
-  redis:
+  mimirq-redis:
     image: redis:7
     restart: unless-stopped
     healthcheck:
@@ -61,7 +61,7 @@ services:
       retries: 10
 
   # PostgreSQL 数据库
-  postgres:
+  mimirq-postgres:
     image: postgres:15
     restart: unless-stopped
     environment:
@@ -77,7 +77,7 @@ services:
       retries: 5
 
   # Milvus Etcd (元数据存储)
-  etcd:
+  mimirq-etcd:
     image: quay.io/coreos/etcd:v3.5.5
     restart: unless-stopped
     environment:
@@ -88,7 +88,7 @@ services:
       - ETCDCTL_API=3
     volumes:
       - etcd_data:/etcd
-    command: etcd -advertise-client-urls=http://etcd:2379 -listen-client-urls=http://0.0.0.0:2379 --data-dir /etcd
+    command: etcd -advertise-client-urls=http://mimirq-etcd:2379 -listen-client-urls=http://0.0.0.0:2379 --data-dir /etcd
     healthcheck:
       test: ["CMD", "etcdctl", "endpoint", "health"]
       interval: 30s
@@ -96,7 +96,7 @@ services:
       retries: 3
 
   # Milvus MinIO (对象存储)
-  minio:
+  mimirq-minio:
     image: minio/minio:RELEASE.2023-03-20T20-16-18Z
     restart: unless-stopped
     environment:
@@ -115,15 +115,15 @@ services:
       retries: 3
 
   # Milvus 向量数据库
-  milvus:
+  mimirq-milvus:
     image: milvusdb/milvus:v2.3.5
     restart: unless-stopped
     command: ["milvus", "run", "standalone"]
     security_opt:
       - seccomp:unconfined
     environment:
-      ETCD_ENDPOINTS: etcd:2379
-      MINIO_ADDRESS: minio:9000
+      ETCD_ENDPOINTS: mimirq-etcd:2379
+      MINIO_ADDRESS: mimirq-minio:9000
     volumes:
       - milvus_data:/var/lib/milvus
     healthcheck:
@@ -133,13 +133,13 @@ services:
       timeout: 20s
       retries: 3
     depends_on:
-      etcd:
+      mimirq-etcd:
         condition: service_healthy
-      minio:
+      mimirq-minio:
         condition: service_healthy
 
   # FastAPI 后端
-  backend:
+  mimirq-api:
     build: *backend_build
     restart: unless-stopped
     ports:
@@ -151,11 +151,11 @@ services:
       retries: 10
       start_period: 30s
     depends_on:
-      postgres:
+      mimirq-postgres:
         condition: service_healthy
-      milvus:
+      mimirq-milvus:
         condition: service_healthy
-      redis:
+      mimirq-redis:
         condition: service_healthy
     env_file:
       - .env
@@ -165,7 +165,7 @@ services:
       - upload_data:/data/uploads
 
   # Arq worker（后台处理文档解析/索引）
-  worker:
+  mimirq-worker:
     build: *backend_build
     restart: unless-stopped
     # Worker uses the same image as backend, but does not expose HTTP; disable image healthcheck.
@@ -173,11 +173,11 @@ services:
     healthcheck:
       test: ["NONE"]
     depends_on:
-      redis:
+      mimirq-redis:
         condition: service_healthy
-      postgres:
+      mimirq-postgres:
         condition: service_healthy
-      milvus:
+      mimirq-milvus:
         condition: service_healthy
     env_file:
       - .env
