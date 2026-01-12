@@ -40,6 +40,8 @@ import { MarkdownToc } from '@/components/markdown/markdown-toc'
 import { extractMarkdownHeadings } from '@/lib/markdown'
 import { DocumentFolderTree } from '@/components/document-library/folder-tree'
 import { extractZipFiles, isZipFile } from '@/lib/zip'
+import { PdfViewer } from '@/components/parsing/pdf-viewer'
+import { extractBlocksFromMarkdown, ParsingBlock } from '@/lib/parsing-positions'
 import { toast } from 'sonner'
 
 const ZIP_ALLOWED_EXTENSIONS = new Set([
@@ -54,6 +56,19 @@ const ZIP_ALLOWED_EXTENSIONS = new Set([
   'html',
   'json',
 ])
+
+
+interface ParseRun {
+  id: string
+  parserBackend: string
+  parserLabel: string
+  runs?: ParseRun[]
+  activeRunId?: string
+  rawMarkdown: string
+  cleanedMarkdown: string
+  blocks: ParsingBlock[]
+  createdAt: number
+}
 
 // 解析后的文件（扩展版）
 interface ParsedFile extends FileQueueItemData {
@@ -70,6 +85,7 @@ interface ParsedFile extends FileQueueItemData {
     pageCount?: number
     tableCount?: number
     imageCount?: number
+    blockCount?: number
   }
 }
 
@@ -88,6 +104,9 @@ export default function ParsingPage() {
   const [previewMode, setPreviewMode] = useState<'raw' | 'rendered'>('rendered')
   const [isEditing, setIsEditing] = useState(false)
   const [editedContent, setEditedContent] = useState('')
+  const [rightPanelMode, setRightPanelMode] = useState<'blocks' | 'markdown'>('blocks')
+  const [activeBlockId, setActiveBlockId] = useState<string | null>(null)
+  const [hoveredBlockId, setHoveredBlockId] = useState<string | null>(null)
 
   // 解析器设置
   const { parserBackend, setParserBackend } = useParserBackendPreference()
