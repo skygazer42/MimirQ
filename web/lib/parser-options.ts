@@ -38,7 +38,7 @@ export const PARSER_BACKEND_OPTIONS: ParserBackendOption[] = [
   },
   {
     value: 'marker',
-    label: 'Marker（外部）',
+    label: 'Marker（启发式）',
     description: 'Marker · 外部服务 PDF→Markdown（可含图片引用）',
     icon: 'layout',
     badge: '外部',
