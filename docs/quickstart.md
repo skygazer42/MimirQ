@@ -59,7 +59,7 @@ ETL4LLM_ENABLED=true
 ETL4LLM_API_URL=http://mimirq-etl4llm:10001/v1/etl4llm/predict
 ```
 
-### (可选) 启用 Marker（外部服务 PDF→Markdown）
+### (可选) 启用 Marker（启发式服务 PDF→Markdown）
 
 Marker 建议以独立容器/服务运行（重依赖不进入 MimirQ 主镜像），然后在解析时指定 `parser_backend=marker`。
 

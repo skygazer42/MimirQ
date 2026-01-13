@@ -99,6 +99,40 @@ export default function ParsingPage() {
   const [copied, setCopied] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const uploadTargetFolderIdRef = useRef<string | null>(null)
+  const fileIdSetRef = useRef<Set<string>>(new Set())
+  const parseControllersRef = useRef<Map<string, AbortController>>(new Map())
+  const parseProgressIntervalsRef = useRef<Map<string, ReturnType<typeof setInterval>>>(new Map())
+
+  const cancelParse = useCallback((fileId: string) => {
+    const controller = parseControllersRef.current.get(fileId)
+    if (controller) {
+      controller.abort()
+      parseControllersRef.current.delete(fileId)
+    }
+
+    const interval = parseProgressIntervalsRef.current.get(fileId)
+    if (interval) {
+      clearInterval(interval)
+      parseProgressIntervalsRef.current.delete(fileId)
+    }
+  }, [])
+
+  useEffect(() => {
+    fileIdSetRef.current = new Set(files.map((f) => f.id))
+  }, [files])
+
+  useEffect(() => {
+    return () => {
+      for (const controller of parseControllersRef.current.values()) {
+        controller.abort()
+      }
+      parseControllersRef.current.clear()
+      for (const interval of parseProgressIntervalsRef.current.values()) {
+        clearInterval(interval)
+      }
+      parseProgressIntervalsRef.current.clear()
+    }
+  }, [])
 
   // 预览模式 & 编辑模式
   const [previewMode, setPreviewMode] = useState<'raw' | 'rendered'>('rendered')
@@ -368,11 +402,8 @@ export default function ParsingPage() {
 
   // 移除文件
   const removeFile = (fileId: string) => {
+    cancelParse(fileId)
     setFiles((prev) => prev.filter((f) => f.id !== fileId))
-    if (activeFileId === fileId) {
-      const remaining = files.filter((f) => f.id !== fileId)
-      setActiveFileId(remaining.length > 0 ? remaining[0].id : null)
-    }
   }
 
   // 解析文件
@@ -380,6 +411,10 @@ export default function ParsingPage() {
   const parseFile = async (fileId: string) => {
     const file = files.find((f) => f.id === fileId)
     if (!file) return
+
+    cancelParse(fileId)
+    const controller = new AbortController()
+    parseControllersRef.current.set(fileId, controller)
 
     const startTime = Date.now()
 
@@ -401,12 +436,19 @@ export default function ParsingPage() {
         )
       )
     }, 300)
+    parseProgressIntervalsRef.current.set(fileId, progressInterval)
 
     try {
       // ?????????????????????
-      const data = await documentApi.preview(file.file, parserBackend)
+      const data = await documentApi.preview(file.file, parserBackend, undefined, {
+        signal: controller.signal,
+      })
+      if (controller.signal.aborted) return
+      if (parseControllersRef.current.get(fileId) !== controller) return
+      if (!fileIdSetRef.current.has(fileId)) return
 
       clearInterval(progressInterval)
+      parseProgressIntervalsRef.current.delete(fileId)
 
       // ?? segments ????
       const rawMarkdown = data.segments.map((s) => s.content).join('\n\n')
@@ -473,6 +515,10 @@ export default function ParsingPage() {
       })
     } catch (err: any) {
       clearInterval(progressInterval)
+      parseProgressIntervalsRef.current.delete(fileId)
+      if (controller.signal.aborted) return
+      if (parseControllersRef.current.get(fileId) !== controller) return
+      if (!fileIdSetRef.current.has(fileId)) return
       const errorMessage = formatApiError(err, '????')
       setFiles((prev) =>
         prev.map((f) =>
@@ -486,6 +532,15 @@ export default function ParsingPage() {
             : f
         )
       )
+    } finally {
+      if (parseControllersRef.current.get(fileId) === controller) {
+        parseControllersRef.current.delete(fileId)
+      }
+      const interval = parseProgressIntervalsRef.current.get(fileId)
+      if (interval) {
+        clearInterval(interval)
+        parseProgressIntervalsRef.current.delete(fileId)
+      }
     }
   }
 

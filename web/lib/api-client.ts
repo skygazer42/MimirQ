@@ -264,7 +264,8 @@ export const documentApi = {
   async preview(
     file: File,
     parserBackend = 'auto',
-    pipeline?: DocumentPipelineOptions
+    pipeline?: DocumentPipelineOptions,
+    options?: { signal?: AbortSignal }
   ): Promise<DocumentPreview> {
     const formData = new FormData()
     formData.append('file', file)
@@ -273,6 +274,7 @@ export const documentApi = {
 
     const { data } = await apiClient.post('/documents/preview', formData, {
       timeout: API_LONG_TIMEOUT_MS,
+      signal: options?.signal,
     })
 
     return data
