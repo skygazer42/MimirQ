@@ -52,16 +52,23 @@ export function ChunkList() {
 
       <div className="flex-1 overflow-y-auto p-4 space-y-3 custom-scrollbar">
         {previewData?.chunks ? (
-          filteredChunks.map(({ chunk, index }) => (
-            <ChunkCard
-              key={index}
-              chunk={chunk}
-              index={index}
-              isHovered={hoveredChunkIndex === index}
-              onMouseEnter={() => setHoveredChunkIndex(index)}
-              onMouseLeave={() => setHoveredChunkIndex(null)}
-            />
-          ))
+          filteredChunks.length > 0 ? (
+            filteredChunks.map(({ chunk, index }) => (
+              <ChunkCard
+                key={index}
+                chunk={chunk}
+                index={index}
+                isHovered={hoveredChunkIndex === index}
+                onMouseEnter={() => setHoveredChunkIndex(index)}
+                onMouseLeave={() => setHoveredChunkIndex(null)}
+              />
+            ))
+          ) : (
+            <div className="h-full flex flex-col items-center justify-center text-gray-300 gap-2">
+              <Search className="w-10 h-10 opacity-20" />
+              <p className="text-xs text-gray-400">没有匹配的切片</p>
+            </div>
+          )
         ) : isLoading ? (
           <div className="h-full flex flex-col items-center justify-center text-gray-400 gap-2">
             <Loader2 className="w-8 h-8 animate-spin opacity-20" />

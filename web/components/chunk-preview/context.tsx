@@ -63,6 +63,22 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: ChunkPrev
 
   const [previewData, setPreviewData] = useState<ChunkPreviewResponse | null>(null)
   const [hoveredChunkIndex, setHoveredChunkIndex] = useState<number | null>(null)
+  const [lastPreviewAt, setLastPreviewAt] = useState<number | null>(null)
+  const [lastPreviewDurationMs, setLastPreviewDurationMs] = useState<number | null>(null)
+  const [cacheHit, setCacheHit] = useState(false)
+  const [autoPreviewEnabled, setAutoPreviewEnabled] = useState(true)
+  const [runHistory, setRunHistory] = useState<Array<{
+    id: string
+    fileName: string
+    parserBackend: string
+    strategy: string
+    chunkSize: number
+    chunkOverlap: number
+    totalChunks: number
+    durationMs: number
+    createdAt: number
+    cacheHit: boolean
+  }>>([])
 
   const [chunkSize, setChunkSize] = useState(pipelineOptions.chunk_size ?? 1000)
   const [chunkOverlap, setChunkOverlap] = useState(pipelineOptions.chunk_overlap ?? 200)
@@ -74,6 +90,9 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: ChunkPrev
   // Refs
   const previewRequestIdRef = useRef(0)
   const previewAbortRef = useRef<AbortController | null>(null)
+  const previewCacheRef = useRef<
+    Map<string, { data: ChunkPreviewResponse; createdAt: number; durationMs: number }>
+  >(new Map())
 
   useEffect(() => {
     return () => {
@@ -235,8 +254,23 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: ChunkPrev
     setSubmitSuccess(false)
   }, [makeId])
 
+  const buildPreviewCacheKey = useCallback(() => {
+    if (!file) return ''
+    const pipelineKey = pipelineOverridesEnabled ? JSON.stringify(pipelineOptions || {}) : 'none'
+    return [
+      file.name,
+      file.size,
+      file.lastModified,
+      parserBackend,
+      chunkStrategy,
+      chunkSize,
+      chunkOverlap,
+      pipelineKey,
+    ].join('::')
+  }, [file, parserBackend, chunkStrategy, chunkSize, chunkOverlap, pipelineOverridesEnabled, pipelineOptions])
+
   // Actions: 执行预览
-  const runPreview = useCallback(async () => {
+  const runPreview = useCallback(async (options?: { force?: boolean }) => {
     if (!file) return
     if (chunkOverlap >= chunkSize) {
       setError('重叠长度必须小于切块长度')
@@ -248,12 +282,40 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: ChunkPrev
       return
     }
 
+    const cacheKey = buildPreviewCacheKey()
+    const cached = cacheKey ? previewCacheRef.current.get(cacheKey) : undefined
+    if (cached && !options?.force) {
+      setPreviewData(cached.data)
+      setLastPreviewAt(cached.createdAt)
+      setLastPreviewDurationMs(cached.durationMs)
+      setCacheHit(true)
+      setError(null)
+      setRunHistory((prev) => [
+        {
+          id: makeId(),
+          fileName: file.name,
+          parserBackend,
+          strategy: chunkStrategy,
+          chunkSize,
+          chunkOverlap,
+          totalChunks: cached.data.total_chunks,
+          durationMs: cached.durationMs,
+          createdAt: Date.now(),
+          cacheHit: true,
+        },
+        ...prev,
+      ].slice(0, 20))
+      return
+    }
+
     const requestId = ++previewRequestIdRef.current
     previewAbortRef.current?.abort()
     const controller = new AbortController()
     previewAbortRef.current = controller
     setIsLoading(true)
     setError(null)
+    setCacheHit(false)
+    const startTime = performance.now()
 
     try {
       const data = await documentApi.chunkPreview(file, {
@@ -265,6 +327,28 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: ChunkPrev
       }, { signal: controller.signal })
       if (previewRequestIdRef.current !== requestId) return
       setPreviewData(data)
+      const durationMs = Math.max(0, Math.round(performance.now() - startTime))
+      const createdAt = Date.now()
+      setLastPreviewAt(createdAt)
+      setLastPreviewDurationMs(durationMs)
+      if (cacheKey) {
+        previewCacheRef.current.set(cacheKey, { data, createdAt, durationMs })
+      }
+      setRunHistory((prev) => [
+        {
+          id: makeId(),
+          fileName: file.name,
+          parserBackend,
+          strategy: chunkStrategy,
+          chunkSize,
+          chunkOverlap,
+          totalChunks: data.total_chunks,
+          durationMs,
+          createdAt,
+          cacheHit: false,
+        },
+        ...prev,
+      ].slice(0, 20))
     } catch (err: any) {
       if (controller.signal.aborted) return
       if (previewRequestIdRef.current !== requestId) return
@@ -286,6 +370,8 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: ChunkPrev
     pipelineOverridesEnabled,
     pipelineOptions,
     chunkStrategyAvailable,
+    buildPreviewCacheKey,
+    makeId,
   ])
 
   // Actions: 提交入库
@@ -378,6 +464,11 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: ChunkPrev
     setError(null)
     setProcessedStatus({})
     setSubmitSuccess(false)
+    setLastPreviewAt(null)
+    setLastPreviewDurationMs(null)
+    setCacheHit(false)
+    setRunHistory([])
+    previewCacheRef.current.clear()
     setChunkSize(1000)
     setChunkOverlap(200)
     updateOption('chunk_size', 1000)
@@ -386,10 +477,32 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: ChunkPrev
 
   // 自动触发预览
   useEffect(() => {
-    if (file && !previewData && !isLoading && !isSubmitting && !error) {
+    if (autoPreviewEnabled && file && !previewData && !isLoading && !isSubmitting && !error) {
       runPreview()
     }
-  }, [file, previewData, isLoading, isSubmitting, error, runPreview])
+  }, [autoPreviewEnabled, file, previewData, isLoading, isSubmitting, error, runPreview])
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      const isCmdOrCtrl = event.metaKey || event.ctrlKey
+      if (isCmdOrCtrl && event.key.toLowerCase() === 'enter') {
+        event.preventDefault()
+        runPreview({ force: true })
+        return
+      }
+      if (isCmdOrCtrl && event.key.toLowerCase() === 's') {
+        event.preventDefault()
+        submitChunks()
+        return
+      }
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [runPreview, submitChunks])
+
+  const toggleAutoPreview = useCallback((enabled?: boolean) => {
+    setAutoPreviewEnabled((prev) => (typeof enabled === 'boolean' ? enabled : !prev))
+  }, [])
 
   // 组装 Context Value
   const value: ChunkPreviewContextType = {
@@ -405,6 +518,11 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: ChunkPrev
     chunkSize,
     chunkOverlap,
     strategy: chunkStrategy,
+    lastPreviewAt,
+    lastPreviewDurationMs,
+    cacheHit,
+    autoPreviewEnabled,
+    runHistory,
 
     // Derived
     currentFile: file,
@@ -422,6 +540,7 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: ChunkPrev
     submitChunks,
     updateSettings,
     reset,
+    toggleAutoPreview,
     loadExample,
     handleDragOver,
     handleDragLeave,

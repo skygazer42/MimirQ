@@ -36,6 +36,8 @@ export function Sidebar() {
     chunkOverlap,
     chunkStrategy,
     parserBackend,
+    autoPreviewEnabled,
+    runHistory,
     processedStatus,
     setCurrentFileIndex,
     removeFile,
@@ -43,6 +45,7 @@ export function Sidebar() {
     updateSettings,
     runPreview,
     setParserBackend,
+    toggleAutoPreview,
   } = useChunkPreview()
   const { capabilities, parserBackendAvailable } = usePipelineCapabilities()
 
@@ -182,6 +185,28 @@ export function Sidebar() {
         </div>
 
         <div className="space-y-8">
+          <div className="flex items-center justify-between bg-white border border-gray-100 rounded-xl px-3 py-2 shadow-sm">
+            <div>
+              <div className="text-xs font-medium text-gray-700">自动预览</div>
+              <div className="text-[10px] text-gray-400">切换文件后自动生成预览</div>
+            </div>
+            <label className="inline-flex items-center gap-2 text-[10px] text-gray-500">
+              <input
+                type="checkbox"
+                checked={autoPreviewEnabled}
+                onChange={(e) => toggleAutoPreview(e.target.checked)}
+                className="h-3.5 w-3.5 rounded border-gray-300 text-indigo-600 focus:ring-indigo-200"
+              />
+              {autoPreviewEnabled ? '开启' : '关闭'}
+            </label>
+          </div>
+
+          <div className="flex items-center justify-between bg-white border border-gray-100 rounded-xl px-3 py-2 shadow-sm">
+            <div className="text-[10px] text-gray-500">快捷键</div>
+            <div className="text-[10px] text-gray-500">
+              Ctrl/⌘ + Enter 预览 · Ctrl/⌘ + S 入库
+            </div>
+          </div>
           <div className="space-y-2">
             <label className="text-xs font-medium text-gray-500">解析器</label>
             <ParserDropdown value={parserBackend} onChange={setParserBackend} />
@@ -284,6 +309,36 @@ export function Sidebar() {
                 <div className="text-[10px] text-gray-400 uppercase tracking-wider font-medium">最短片段</div>
                 <div className="text-xl font-bold text-gray-900 mt-1">{chunkStats?.min ?? '-'}</div>
               </div>
+            </div>
+          </div>
+        )}
+
+        {runHistory.length > 0 && (
+          <div className="mt-8 pt-8 border-t border-gray-200">
+            <div className="flex items-center gap-2 mb-4">
+              <Sparkles className="w-4 h-4 text-gray-500" />
+              <h2 className="text-xs font-bold text-gray-900 uppercase tracking-wider">最近预览</h2>
+            </div>
+            <div className="space-y-2 max-h-[180px] overflow-y-auto custom-scrollbar pr-1">
+              {runHistory.map((item) => (
+                <div
+                  key={item.id}
+                  className="bg-white border border-gray-100 rounded-xl px-3 py-2 text-[10px] text-gray-500 shadow-sm"
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="font-medium text-gray-700 truncate">{item.fileName}</span>
+                    <span>{new Date(item.createdAt).toLocaleString([], { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })}</span>
+                  </div>
+                  <div className="mt-1 flex flex-wrap gap-2">
+                    <span className="px-2 py-0.5 rounded-full bg-gray-100">Chunks: {item.totalChunks}</span>
+                    <span className="px-2 py-0.5 rounded-full bg-gray-100">耗时: {item.durationMs}ms</span>
+                    <span className="px-2 py-0.5 rounded-full bg-gray-100">{item.strategy}</span>
+                    {item.cacheHit && (
+                      <span className="px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-100">缓存</span>
+                    )}
+                  </div>
+                </div>
+              ))}
             </div>
           </div>
         )}

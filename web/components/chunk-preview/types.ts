@@ -34,6 +34,22 @@ export interface ChunkPreviewState {
   // 预览数据
   previewData: any | null
   hoveredChunkIndex: number | null
+  lastPreviewAt: number | null
+  lastPreviewDurationMs: number | null
+  cacheHit: boolean
+  autoPreviewEnabled: boolean
+  runHistory: Array<{
+    id: string
+    fileName: string
+    parserBackend: string
+    strategy: string
+    chunkSize: number
+    chunkOverlap: number
+    totalChunks: number
+    durationMs: number
+    createdAt: number
+    cacheHit: boolean
+  }>
 
   // 配置状态
   chunkSize: number
@@ -62,10 +78,11 @@ export interface ChunkPreviewActions {
   handleDrop: (e: React.DragEvent) => void
 
   // 数据操作
-  runPreview: () => Promise<void>
+  runPreview: (options?: { force?: boolean }) => Promise<void>
   submitChunks: () => Promise<void>
   loadExample: () => void
   reset: () => void
+  toggleAutoPreview: (enabled?: boolean) => void
 
   // 配置操作
   updateSettings: (settings: Partial<Pick<ChunkPreviewState, 'chunkSize' | 'chunkOverlap' | 'strategy'>>) => void
