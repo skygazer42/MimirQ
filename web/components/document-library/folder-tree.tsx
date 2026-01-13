@@ -413,8 +413,8 @@ export function DocumentFolderTree({
         <div key={folder.id}>
           <div
             className={cn(
-              'group relative flex items-center gap-2 rounded-lg px-2 py-1.5 transition-colors',
-              isActive ? 'bg-indigo-50 text-indigo-700' : 'hover:bg-gray-100 text-gray-700',
+              'group relative flex items-center gap-2 rounded-xl px-3 py-2 transition-all',
+              isActive ? 'bg-white shadow-sm ring-1 ring-indigo-100 text-indigo-900' : 'bg-white/70 hover:bg-white hover:shadow-sm text-gray-700',
               dragOverId === folder.id && 'bg-indigo-50/70 ring-1 ring-indigo-200'
             )}
             onDragOver={(e) => {
@@ -477,7 +477,7 @@ export function DocumentFolderTree({
             >
               {getFolderIconElement(depth, isActive)}
               <span className="text-sm truncate">{folder.name}</span>
-              <span className="ml-auto text-xs text-gray-400">{count}</span>
+              <span className="ml-auto text-[10px] text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full">{count}</span>
             </button>
 
             {onRequestUpload && (
@@ -533,7 +533,7 @@ export function DocumentFolderTree({
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity text-gray-500 hover:text-gray-900 hover:bg-gray-100 rounded-md"
+                  className="h-7 w-7 opacity-0 group-hover:opacity-100 transition-opacity text-gray-500 hover:text-gray-900 hover:bg-gray-100 rounded-lg"
                   aria-label="Folder actions"
                 >
                   <MoreHorizontal className="w-4 h-4" />
@@ -594,7 +594,7 @@ export function DocumentFolderTree({
                       key={f.id}
                       type="button"
                       className={cn(
-                        'w-full flex items-center gap-2 rounded-lg py-1.5 px-2 text-left text-gray-600 hover:bg-gray-50',
+                        'w-full flex items-center gap-2 rounded-lg py-1.5 px-2 text-left text-gray-600 bg-white/60 border border-transparent hover:border-gray-200/70 hover:bg-gray-50/80',
                         'text-sm',
                         f.status === 'error' && 'bg-red-50 hover:bg-red-100 text-red-700',
                         f.status === 'parsing' && 'bg-indigo-50/50'
@@ -666,7 +666,7 @@ export function DocumentFolderTree({
         <Button
           variant="ghost"
           size="icon"
-          className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity text-gray-400 hover:text-indigo-600 hover:bg-indigo-50"
+          className="h-7 w-7 opacity-0 group-hover:opacity-100 transition-opacity text-gray-500 hover:text-indigo-700 hover:bg-indigo-50 rounded-lg"
           title="新建根目录文件夹"
           onClick={() => openCreate(ROOT_FOLDER_ID)}
         >
@@ -677,10 +677,10 @@ export function DocumentFolderTree({
       <div className="space-y-0.5">
         <div
           className={cn(
-            'group relative flex items-center gap-2 rounded-lg px-2 py-1.5 transition-colors',
+            'group relative flex items-center gap-2 rounded-xl px-3 py-2 transition-all',
             activeFolderId === ROOT_FOLDER_ID
-              ? 'bg-indigo-50 text-indigo-700'
-              : 'hover:bg-gray-100 text-gray-700',
+              ? 'bg-white shadow-sm ring-1 ring-indigo-100 text-indigo-900'
+              : 'bg-white/70 hover:bg-white hover:shadow-sm text-gray-700',
             dragOverId === ROOT_FOLDER_ID && 'bg-indigo-50/70 ring-1 ring-indigo-200'
           )}
           onDragOver={(e) => {
@@ -782,7 +782,7 @@ export function DocumentFolderTree({
           >
             {getFolderIconElement(0, activeFolderId === ROOT_FOLDER_ID)}
             <span className="text-sm truncate">根目录</span>
-            <span className="ml-auto text-xs text-gray-400">{rootCount}</span>
+            <span className="ml-auto text-[10px] text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full">{rootCount}</span>
           </button>
 
           {onRequestUpload && (
