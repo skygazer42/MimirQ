@@ -67,6 +67,8 @@ class GovernanceInfo(BaseModel):
     documents: int = 0
     changed_documents: int = 0
     rules_applied: int = 0
+    dropped_documents: int = 0
+    drop_reasons: Dict[str, int] = Field(default_factory=dict)
 
 
 class DocumentDetail(OrmModel):
@@ -102,6 +104,8 @@ class DocumentDetail(OrmModel):
                 documents=int(meta.get("governance_documents") or 0),
                 changed_documents=int(meta.get("governance_changed_documents") or 0),
                 rules_applied=int(meta.get("governance_rules_applied") or 0),
+                dropped_documents=int(meta.get("governance_dropped_documents") or 0),
+                drop_reasons=meta.get("governance_drop_reasons") if isinstance(meta.get("governance_drop_reasons"), dict) else {},
             )
         except Exception:
             self.governance = GovernanceInfo()

@@ -4,6 +4,7 @@ import { useMemo } from 'react'
 import { CheckCircle2, Layers, Network, ShieldCheck, Sparkles } from 'lucide-react'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { cn } from '@/lib/utils'
 import { usePipelineOptions } from '@/contexts/pipeline-options-context'
 
@@ -95,9 +96,37 @@ export function PipelineOptionsPanel({ className, compact }: PipelineOptionsPane
       label: '去重页眉页脚',
       hint: '剔除跨页重复行',
     },
+    {
+      key: 'governance_remove_boilerplate',
+      label: '移除样板信息',
+      hint: '删除免责声明/致谢/版权等低价值内容',
+    },
+    {
+      key: 'governance_pii_anonymize',
+      label: '匿名化隐私信息',
+      hint: '邮箱/电话/身份证/卡号等脱敏',
+    },
+    {
+      key: 'governance_drop_outline_only',
+      label: '丢弃大纲文档',
+      hint: '仅标题/目录为主的文档将被过滤',
+    },
+    {
+      key: 'governance_drop_low_density',
+      label: '丢弃低密度文本',
+      hint: '乱码/符号占比过高将被过滤',
+    },
   ] as const
 
   const governanceNumbers = [
+    {
+      key: 'governance_max_blank_lines',
+      label: '最大空行数',
+      hint: '0 合并段落；2 强分段',
+      min: 0,
+      max: 10,
+      step: 1,
+    },
     {
       key: 'governance_unwrap_max_line_length',
       label: '最大行长',
@@ -137,6 +166,30 @@ export function PipelineOptionsPanel({ className, compact }: PipelineOptionsPane
       min: 2,
       max: 50,
       step: 1,
+    },
+    {
+      key: 'governance_drop_outline_min_content_chars',
+      label: '大纲最小内容量',
+      hint: '少于该值才触发过滤',
+      min: 0,
+      max: 200000,
+      step: 50,
+    },
+    {
+      key: 'governance_drop_outline_max_heading_ratio',
+      label: '大纲标题比例',
+      hint: '越低越严格',
+      min: 0,
+      max: 1,
+      step: 0.05,
+    },
+    {
+      key: 'governance_drop_low_density_threshold',
+      label: '低密度阈值',
+      hint: '越高越严格',
+      min: 0,
+      max: 1,
+      step: 0.02,
     },
   ] as const
 
@@ -216,7 +269,7 @@ export function PipelineOptionsPanel({ className, compact }: PipelineOptionsPane
                 })}
               </div>
 
-                            {group.title === '治理' && (
+              {group.title === '治理' && (
                 <details className="mt-2" open={!compact}>
                   <summary className={cn("cursor-pointer select-none text-gray-500", descClasses)}>
                     高级治理
@@ -252,9 +305,78 @@ export function PipelineOptionsPanel({ className, compact }: PipelineOptionsPane
                         )
                       })}
                     </div>
+
+                    {/* Image removal */}
+                    <div className="grid gap-2">
+                      <div className={cn("text-xs text-gray-600", compact && "text-[10px]")}>图片处理</div>
+                      <Select
+                        value={(options.governance_remove_images as string) || 'none'}
+                        onValueChange={(v) => updateOption('governance_remove_images', v as any)}
+                        disabled={governanceDisabled}
+                      >
+                        <SelectTrigger className={cn("h-9 text-xs", compact && "h-8")}>
+                          <SelectValue placeholder="选择图片处理方式" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="none">保留图片</SelectItem>
+                          <SelectItem value="decorative">删除装饰图（logo/二维码）</SelectItem>
+                          <SelectItem value="all">删除全部图片</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    {/* PII settings */}
+                    {!governanceDisabled && options.governance_pii_anonymize && (
+                      <div className="grid gap-2">
+                        <div className={cn("text-xs text-gray-600", compact && "text-[10px]")}>隐私脱敏</div>
+                        <div className="grid grid-cols-2 gap-2">
+                          <Select
+                            value={(options.governance_pii_mode as string) || 'mask'}
+                            onValueChange={(v) => updateOption('governance_pii_mode', v as any)}
+                            disabled={governanceDisabled}
+                          >
+                            <SelectTrigger className={cn("h-9 text-xs", compact && "h-8")}>
+                              <SelectValue placeholder="脱敏模式" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="mask">固定替换</SelectItem>
+                              <SelectItem value="token">生成占位符</SelectItem>
+                            </SelectContent>
+                          </Select>
+                          <Input
+                            value={options.governance_pii_mask || ''}
+                            disabled={governanceDisabled || (options.governance_pii_mode as string) === 'token'}
+                            onChange={(e) => updateOption('governance_pii_mask', e.currentTarget.value as any)}
+                            placeholder="[REDACTED]"
+                            className={cn("h-9 text-xs", compact && "h-8")}
+                          />
+                        </div>
+                      </div>
+                    )}
+
+                    {/* HTML XPath */}
+                    <div className="grid gap-2">
+                      <div className={cn("text-xs text-gray-600", compact && "text-[10px]")}>HTML XPath（可选）</div>
+                      <Input
+                        value={options.governance_html_xpath || ''}
+                        disabled={governanceDisabled}
+                        onChange={(e) => updateOption('governance_html_xpath', e.currentTarget.value as any)}
+                        placeholder="//article | //main | //body"
+                        className={cn("h-9 text-xs", compact && "h-8")}
+                      />
+                      <div className={cn("text-[10px] text-gray-400", compact && "text-[9px]")}>
+                        仅对 HTML/HTM 文件或输入格式为 HTML 时生效
+                      </div>
+                    </div>
+
                     <div className={cn("grid gap-2", compact ? "gap-2" : "gap-3")}>
                       {governanceNumbers.map((item) => {
                         const value = options[item.key as keyof typeof options]
+                        const shouldHide =
+                          (item.key === 'governance_drop_outline_min_content_chars' || item.key === 'governance_drop_outline_max_heading_ratio') &&
+                          !options.governance_drop_outline_only
+                        const shouldHideLowDensity = item.key === 'governance_drop_low_density_threshold' && !options.governance_drop_low_density
+                        if (shouldHide || shouldHideLowDensity) return null
                         return (
                           <label key={item.key} className="flex flex-col gap-1">
                             <div className="flex items-center justify-between text-xs text-gray-600">

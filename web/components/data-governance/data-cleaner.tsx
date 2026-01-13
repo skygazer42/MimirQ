@@ -38,6 +38,8 @@ export function DataCleaner({ content, cleanedContent = '', onClean }: DataClean
   const [previewDiff, setPreviewDiff] = useState(false)
   const [isApplying, setIsApplying] = useState(false)
   const [backendError, setBackendError] = useState<string | null>(null)
+  const [backendInfo, setBackendInfo] = useState<string | null>(null)
+  const [inputFormat, setInputFormat] = useState<'markdown' | 'html'>('markdown')
   const [llmEnabled, setLlmEnabled] = useState(false)
   const [promptTemplates, setPromptTemplates] = useState<PromptTemplate[]>([])
   const [promptTemplateId, setPromptTemplateId] = useState<string>('')
@@ -65,6 +67,7 @@ export function DataCleaner({ content, cleanedContent = '', onClean }: DataClean
   const handleApply = useCallback(async () => {
     setIsApplying(true)
     setBackendError(null)
+    setBackendInfo(null)
 
     try {
       // 构造请求，直接使用 Context 中的 Pipeline Options
@@ -72,6 +75,8 @@ export function DataCleaner({ content, cleanedContent = '', onClean }: DataClean
         markdown: content,
         use_default_rules: true, // 默认开启基础规则
         rules: [],
+        input_format: inputFormat,
+        html_xpath: inputFormat === 'html' ? (options.governance_html_xpath || undefined) : undefined,
         normalize_line_endings: true,
         trim_trailing_spaces: true,
         
@@ -80,6 +85,17 @@ export function DataCleaner({ content, cleanedContent = '', onClean }: DataClean
         remove_noise_lines: options.governance_remove_noise_lines,
         remove_common_lines: options.governance_remove_common_lines,
         unwrap_lines: options.governance_unwrap_lines,
+        remove_boilerplate: options.governance_remove_boilerplate,
+        remove_images: options.governance_remove_images,
+        pii_anonymize: options.governance_pii_anonymize,
+        pii_mode: options.governance_pii_mode,
+        pii_mask: options.governance_pii_mask,
+        max_blank_lines: options.governance_max_blank_lines,
+        drop_outline_only: options.governance_drop_outline_only,
+        drop_outline_min_content_chars: options.governance_drop_outline_min_content_chars,
+        drop_outline_max_heading_ratio: options.governance_drop_outline_max_heading_ratio,
+        drop_low_density: options.governance_drop_low_density,
+        drop_low_density_threshold: options.governance_drop_low_density_threshold,
         unwrap_max_line_length: options.governance_unwrap_max_line_length,
         noise_min_chars: options.governance_noise_min_chars,
         noise_ratio_threshold: options.governance_noise_ratio_threshold,
@@ -87,6 +103,19 @@ export function DataCleaner({ content, cleanedContent = '', onClean }: DataClean
       }
 
       const res = await pipelineApi.cleanPreview(req)
+      if (res.pii_hits && Object.keys(res.pii_hits).length > 0) {
+        const summary = Object.entries(res.pii_hits)
+          .map(([k, v]) => `${k}=${v}`)
+          .join('，')
+        setBackendInfo(`已匿名化敏感信息：${summary}`)
+      }
+
+      if (res.dropped) {
+        setBackendError(`清洗后文档被过滤：${res.drop_reason || '质量过滤触发'}`)
+        onClean(res.markdown || '')
+        return
+      }
+
       let next = res.markdown
 
       if (llmEnabled) {
@@ -111,7 +140,7 @@ export function DataCleaner({ content, cleanedContent = '', onClean }: DataClean
     } finally {
       setIsApplying(false)
     }
-  }, [content, options, onClean, llmEnabled, promptTemplateId])
+  }, [content, options, onClean, llmEnabled, promptTemplateId, inputFormat])
 
   // 重置
   const handleReset = useCallback(() => {
@@ -125,6 +154,18 @@ export function DataCleaner({ content, cleanedContent = '', onClean }: DataClean
         <div className="flex items-center gap-2">
           <Wrench className="w-5 h-5 text-sky-600" />
           <h3 className="font-bold text-gray-900">智能清洗配置</h3>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-gray-500">输入格式</span>
+          <Select value={inputFormat} onValueChange={(v) => setInputFormat(v as any)}>
+            <SelectTrigger className="h-8 text-xs w-[120px]">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="markdown">Markdown</SelectItem>
+              <SelectItem value="html">HTML</SelectItem>
+            </SelectContent>
+          </Select>
         </div>
       </div>
 
@@ -141,6 +182,11 @@ export function DataCleaner({ content, cleanedContent = '', onClean }: DataClean
       {backendError && (
         <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs text-amber-700">
           {backendError}
+        </div>
+      )}
+      {backendInfo && (
+        <div className="bg-sky-50 border border-sky-200 rounded-xl p-3 text-xs text-sky-700">
+          {backendInfo}
         </div>
       )}
 

@@ -42,6 +42,11 @@ from app.parsing.utils.cli import resolve_cli_command
 from app.api.dependencies.auth import get_current_account_id
 from app.rag.preprocessing.cleaning import clean_markdown, RegexRule, build_repeated_line_signatures
 from app.rag.preprocessing.rules import DEFAULT_MARKDOWN_RULES
+from app.rag.preprocessing.boilerplate import remove_markdown_boilerplate
+from app.rag.preprocessing.images import strip_images
+from app.rag.preprocessing.pii_anonymizer import anonymize_pii
+from app.rag.preprocessing.quality_filters import drop_if_low_density, drop_if_outline_only
+from app.rag.preprocessing.html_xpath import extract_text_from_html
 from app.services.dataset_service import DatasetService
 from app.services.prompt_resolver import resolve_prompt_template
 from app.rag.core.errors import ConfigError
@@ -291,6 +296,19 @@ async def clean_preview(
     Preview governance-style cleaning for Markdown (no persistence) to compare before/after.
     """
     DatasetService.ensure_member(db, tenant_id, account_id)
+    original_input = body.markdown or ""
+
+    input_text = original_input
+    if body.input_format == "html":
+        html = original_input
+        # Optional image stripping before XPath extraction.
+        if str(body.remove_images or "none").strip().lower() in {"decorative", "all"}:
+            html = strip_images(html, mode=str(body.remove_images).strip().lower()).text  # type: ignore[arg-type]
+        extracted = extract_text_from_html(html, xpath=body.html_xpath)
+        if body.html_xpath and extracted.xpath_error and extracted.xpath_error.startswith("xpath_failed:"):
+            raise HTTPException(status_code=400, detail=f"Invalid XPath: {extracted.xpath_error}")
+        input_text = extracted.text or ""
+
     if body.rules:
         rules = [RegexRule(pattern=r.pattern, repl=r.repl, flags=r.flags) for r in body.rules]
     elif body.use_default_rules:
@@ -299,7 +317,7 @@ async def clean_preview(
         rules = []
     common_lines = (
         build_repeated_line_signatures(
-            body.markdown or "",
+            input_text or "",
             min_occurrences=body.common_lines_min_occurrences,
             max_line_length=body.unwrap_max_line_length,
         )
@@ -307,11 +325,12 @@ async def clean_preview(
         else None
     )
     result = clean_markdown(
-        body.markdown,
+        input_text,
         rules=rules,
         normalize_line_endings=body.normalize_line_endings,
         trim_trailing_spaces=body.trim_trailing_spaces,
         collapse_blank_lines=body.collapse_blank_lines,
+        max_blank_lines=body.max_blank_lines,
         remove_control_chars=body.remove_control_chars,
         remove_toc_lines=body.remove_toc_lines,
         remove_noise_lines=body.remove_noise_lines,
@@ -322,10 +341,55 @@ async def clean_preview(
         noise_min_chars=body.noise_min_chars,
         noise_ratio_threshold=body.noise_ratio_threshold,
     )
+
+    text = result.markdown
+    if body.remove_boilerplate:
+        text = remove_markdown_boilerplate(text).text
+
+    if str(body.remove_images or "none").strip().lower() in {"decorative", "all"}:
+        text = strip_images(text, mode=str(body.remove_images).strip().lower()).text  # type: ignore[arg-type]
+
+    pii_hits: dict[str, int] | None = None
+    if body.pii_anonymize:
+        pii = anonymize_pii(text, enabled=True, mode=str(body.pii_mode or "mask"), mask=str(body.pii_mask or "[REDACTED]"))  # type: ignore[arg-type]
+        text = pii.text
+        pii_hits = pii.hits or {}
+
+    if body.drop_outline_only:
+        decision = drop_if_outline_only(
+            text,
+            min_content_chars=int(body.drop_outline_min_content_chars or 0),
+            max_heading_ratio=float(body.drop_outline_max_heading_ratio or 0.0),
+        )
+        if decision.dropped:
+            return CleanPreviewResponse(
+                markdown="",
+                applied_rules=result.applied_rules,
+                changed=True,
+                dropped=True,
+                drop_reason=decision.reason or "outline_only",
+                pii_hits=pii_hits,
+            )
+
+    if body.drop_low_density:
+        decision = drop_if_low_density(text, threshold=float(body.drop_low_density_threshold or 0.0))
+        if decision.dropped:
+            return CleanPreviewResponse(
+                markdown="",
+                applied_rules=result.applied_rules,
+                changed=True,
+                dropped=True,
+                drop_reason=decision.reason or "low_density",
+                pii_hits=pii_hits,
+            )
+
     return CleanPreviewResponse(
-        markdown=result.markdown,
+        markdown=text,
         applied_rules=result.applied_rules,
-        changed=result.changed,
+        changed=bool(text != original_input),
+        dropped=False,
+        drop_reason=None,
+        pii_hits=pii_hits,
     )
 
 
