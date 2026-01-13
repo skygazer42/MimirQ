@@ -366,19 +366,35 @@ export function DocumentFolderTree({
             </button>
 
             {onRequestUpload && (
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity text-gray-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-md"
-                aria-label="Upload to folder"
-                onClick={(e) => {
-                  e.stopPropagation()
-                  setActiveFolderId(folder.id)
-                  onRequestUpload(folder.id)
-                }}
-              >
-                <Plus className="w-4 h-4" />
-              </Button>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity text-gray-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-md"
+                    aria-label="Add content"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <Plus className="w-4 h-4" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start" className="w-48 p-1">
+                  <DropdownMenuItem
+                    className="py-2"
+                    onClick={() => {
+                      setActiveFolderId(folder.id)
+                      onRequestUpload(folder.id)
+                    }}
+                  >
+                    <FileUp className="w-4 h-4 mr-2 text-indigo-600" />
+                    上传文件
+                  </DropdownMenuItem>
+                  <DropdownMenuItem className="py-2" onClick={() => openCreate(folder.id)}>
+                    <FolderPlus className="w-4 h-4 mr-2 text-sky-600" />
+                    新建文件夹
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
             )}
 
             <DropdownMenu>
