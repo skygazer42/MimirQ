@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { ArrowRightLeft, ChevronDown, ChevronRight, FileText, Folder, FolderOpen, MoreHorizontal, Pencil, Plus, Trash2, Upload, FileImage, FileCode, FileSpreadsheet, FileArchive, FileMusic, FileVideo, Library, Package, Database, Loader2, CheckCircle2, AlertCircle, XCircle, Ban, FolderPlus, FileUp } from 'lucide-react'
+import { ArrowRightLeft, ChevronDown, ChevronRight, FileText, Folder, FolderOpen, MoreHorizontal, Pencil, Plus, Trash2, FileImage, FileCode, FileSpreadsheet, FileArchive, FileMusic, FileVideo, Library, Package, Database, Loader2, CheckCircle2, AlertCircle, XCircle, Ban, Paperclip, FolderUp } from 'lucide-react'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
@@ -388,7 +388,7 @@ export function DocumentFolderTree({
                       onRequestUpload(folder.id)
                     }}
                   >
-                    <FileUp className="w-4 h-4 mr-2 text-indigo-600" />
+                    <Paperclip className="w-4 h-4 mr-2 text-indigo-600" />
                     上传文件
                   </DropdownMenuItem>
                   {onRequestUploadFolder && (
@@ -399,13 +399,17 @@ export function DocumentFolderTree({
                         onRequestUploadFolder(folder.id)
                       }}
                     >
-                      <FolderPlus className="w-4 h-4 mr-2 text-sky-600" />
+                      <FolderUp className="w-4 h-4 mr-2 text-sky-600" />
                       上传文件夹
                     </DropdownMenuItem>
                   )}
                   <DropdownMenuItem className="py-2" onClick={() => openCreate(folder.id)}>
-                    <FolderPlus className="w-4 h-4 mr-2 text-amber-600" />
+                    <Folder className="w-4 h-4 mr-2 text-amber-600" />
                     新建文件夹
+                  </DropdownMenuItem>
+                  <DropdownMenuItem className="py-2" onClick={() => openMove(folder)}>
+                    <ArrowRightLeft className="w-4 h-4 mr-2 text-gray-600" />
+                    移动目录
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
@@ -430,7 +434,7 @@ export function DocumentFolderTree({
                       onRequestUpload(folder.id)
                     }}
                   >
-                    <Upload className="w-4 h-4 mr-2" />
+                    <Paperclip className="w-4 h-4 mr-2" />
                     上传文件
                   </DropdownMenuItem>
                 )}
@@ -441,7 +445,7 @@ export function DocumentFolderTree({
                       onRequestUploadFolder(folder.id)
                     }}
                   >
-                    <FolderPlus className="w-4 h-4 mr-2" />
+                    <FolderUp className="w-4 h-4 mr-2" />
                     上传文件夹
                   </DropdownMenuItem>
                 )}
@@ -551,7 +555,7 @@ export function DocumentFolderTree({
           title="新建根目录文件夹"
           onClick={() => openCreate(ROOT_FOLDER_ID)}
         >
-          <FolderPlus className="w-4 h-4" />
+          <FolderOpen className="w-4 h-4" />
         </Button>
       </div>
 
@@ -622,7 +626,7 @@ export function DocumentFolderTree({
                       onRequestUpload(ROOT_FOLDER_ID)
                     }}
                   >
-                    <FileUp className="w-4 h-4 mr-2 text-indigo-600" />
+                    <Paperclip className="w-4 h-4 mr-2 text-indigo-600" />
                     上传文件
                   </DropdownMenuItem>
                   {onRequestUploadFolder && (
@@ -633,12 +637,12 @@ export function DocumentFolderTree({
                         onRequestUploadFolder(ROOT_FOLDER_ID)
                       }}
                     >
-                      <FolderPlus className="w-4 h-4 mr-2 text-sky-600" />
+                      <FolderUp className="w-4 h-4 mr-2 text-sky-600" />
                       上传文件夹
                     </DropdownMenuItem>
                   )}
                   <DropdownMenuItem className="py-2" onClick={() => openCreate(ROOT_FOLDER_ID)}>
-                    <FolderPlus className="w-4 h-4 mr-2 text-amber-600" />
+                    <Folder className="w-4 h-4 mr-2 text-amber-600" />
                     新建文件夹
                   </DropdownMenuItem>
                 </DropdownMenuContent>

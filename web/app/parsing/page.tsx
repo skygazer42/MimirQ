@@ -31,7 +31,8 @@ import {
   AlertCircle,
   CheckCircle2,
   Paperclip,
-  FolderPlus,
+  FolderUp,
+  Plus,
 } from 'lucide-react'
 import { Navbar } from '@/components/navbar'
 import { Button } from '@/components/ui/button'
@@ -409,7 +410,7 @@ export default function ParsingPage() {
       }
 
       setFiles((prev) => [...prev, ...queued])
-      setActiveFileId((prev) => prev ?? queued[0].id)
+      setActiveFileId((prev) => prev 解析 queued[0].id)
 
       if (added > 0) toast.success(`已加入队列：${added} 个文件`)
       if (skipped > 0) toast.warning(`已跳过 ${skipped} 个不支持的文件`)
@@ -418,66 +419,11 @@ export default function ParsingPage() {
   )
 
   const visibleQueueFiles = useMemo(() => {
-    if (!activeFolderId || activeFolderId === ROOT_FOLDER_ID) {
-        // In root, show all files (user request: "Root directory also has a 'No files currently' component... clicking a folder, below should have all files")
-        // Wait, logic:
-        // Sidebar has folder tree.
-        // File list area (bottom of sidebar) shows files in active folder.
-        // Currently, if active is Root, it shows everything? Or just root files?
-        // Original logic:
-        // if activeFolderId is Root, it filters by allowedFolderIds (recursive).
-        // Let's keep recursive for now or just direct?
-        // "below should have that folder's all files" - usually implies direct children.
-        // But user said "Root directory...".
-        // Let's stick to: Show files in current active folder (direct).
-        // BUT the existing logic was recursive for visibleQueueFiles?
-        // "allowedFolderIds" logic suggests recursive visibility for the queue.
-        // If I change to direct only, I might break "Queue" concept.
-        // Let's keep recursive for now but sort by time.
-        // Actually, for a file manager, usually you only see files in current folder.
-        // The previous logic seemed to be "Queue" (all pending/processing files).
-        // The user wants a "File Manager" feel.
-        // "Clicking a folder, below should have that folder's all files".
-        // I will change to DIRECT children only to match standard file explorer behavior,
-        // unless it's a "Global Queue".
-        // Given the UI layout (Sidebar with folder tree AND file list), it's a bit hybrid.
-        // I will assume the file list is the content of the selected folder.
-        
-        // Let's try to support flattening if needed, but for now, direct children is safer for "Folder View".
-        // However, the original code had:
-        /*
-        const childrenByParentId = ...
-        const stack = [activeFolderId]
-        ...
-        return files.filter((f) => allowedFolderIds.has(f.folderId || ROOT_FOLDER_ID))
-        */
-       // This implies it shows files in subfolders too.
-       // I'll keep it for now as "All files in this branch".
-    }
-
-    const childrenByParentId = new Map<string, string[]>()
-    for (const folder of folders) {
-      const parentId = folder.parentId || ROOT_FOLDER_ID
-      const list = childrenByParentId.get(parentId) || []
-      list.push(folder.id)
-      childrenByParentId.set(parentId, list)
-    }
-
-    const allowedFolderIds = new Set<string>()
-    const stack = [activeFolderId || ROOT_FOLDER_ID]
-    while (stack.length > 0) {
-      const current = stack.pop()
-      if (!current) continue
-      if (allowedFolderIds.has(current)) continue
-      allowedFolderIds.add(current)
-      const children = childrenByParentId.get(current) || []
-      for (const childId of children) stack.push(childId)
-    }
-
+    const currentFolderId = activeFolderId || ROOT_FOLDER_ID
     return files
-      .filter((f) => allowedFolderIds.has(f.folderId || ROOT_FOLDER_ID))
-      .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0)) // Newest first
-  }, [files, activeFolderId, folders])
+      .filter((f) => (f.folderId || ROOT_FOLDER_ID) === currentFolderId)
+      .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0))
+  }, [files, activeFolderId])
 
   useEffect(() => {
     if (visibleQueueFiles.length === 0) {
@@ -725,7 +671,7 @@ export default function ParsingPage() {
   // 保存编辑
   const handleSaveEdit = () => {
     if (!activeFile) return
-    const targetRunId = activeRun?.id ?? activeFile.activeRunId
+    const targetRunId = activeRun?.id 解析 activeFile.activeRunId
 
     // 更新文件内容
     setFiles((prev) =>
@@ -865,9 +811,12 @@ export default function ParsingPage() {
 
             {/* File List Header & Toolbar */}
             <div className="px-4 py-2 border-b bg-gray-50 flex items-center justify-between shadow-sm z-10 sticky top-0">
-               <div className="flex items-center gap-2 text-xs font-semibold text-gray-500">
-                  <FolderOpen className="w-3.5 h-3.5" />
-                  <span className="truncate max-w-[120px]" title={activeFolderPathLabel}>{activeFolderPathLabel}</span>
+               <div className="flex items-center gap-2 min-w-0">
+                  <FileText className="w-3.5 h-3.5 text-gray-400" />
+                  <div className="min-w-0">
+                    <div className="text-xs font-semibold text-gray-600">文档列表</div>
+                    <div className="text-[10px] text-gray-400 truncate" title={activeFolderPathLabel}>{activeFolderPathLabel}</div>
+                  </div>
                   <span className="bg-gray-200 text-gray-600 px-1.5 py-0.5 rounded-full text-[10px]">{visibleQueueFiles.length}</span>
                </div>
                
@@ -882,7 +831,7 @@ export default function ParsingPage() {
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
                       <Button variant="ghost" size="icon" className="h-6 w-6 text-gray-500 hover:bg-gray-200 rounded-md">
-                        <FolderPlus className="w-4 h-4" />
+                        <Plus className="w-4 h-4" />
                       </Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end" className="w-48">
@@ -891,33 +840,8 @@ export default function ParsingPage() {
                         上传文件
                       </DropdownMenuItem>
                       <DropdownMenuItem onClick={() => requestUploadFolder(activeFolderId || ROOT_FOLDER_ID)}>
-                        <FolderPlus className="w-4 h-4 mr-2" />
+                        <FolderUp className="w-4 h-4 mr-2" />
                         上传文件夹
-                      </DropdownMenuItem>
-                      <DropdownMenuItem onClick={() => {
-                         const folder = folders.find(f => f.id === activeFolderId)
-                         if (activeFolderId && activeFolderId !== ROOT_FOLDER_ID) {
-                           // Trigger create subfolder via direct call logic or use context if available
-                           // For now, prompt user or use createFolder directly?
-                           // DocumentFolderTree handles creation usually.
-                           // We can use createFolder directly here.
-                           const name = prompt("请输入文件夹名称")
-                           if (name && name.trim()) {
-                             const newId = createFolder(name.trim(), activeFolderId)
-                             // setActiveFolderId(newId) // Keep current active?
-                             toast.success('文件夹已创建')
-                           }
-                         } else {
-                           const name = prompt("请输入文件夹名称")
-                           if (name && name.trim()) {
-                             const newId = createFolder(name.trim(), ROOT_FOLDER_ID)
-                             setActiveFolderId(newId)
-                             toast.success('文件夹已创建')
-                           }
-                         }
-                      }}>
-                        <FolderPlus className="w-4 h-4 mr-2 text-amber-600" />
-                        新建文件夹
                       </DropdownMenuItem>
                     </DropdownMenuContent>
                   </DropdownMenu>
