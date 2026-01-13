@@ -54,7 +54,7 @@ export function ChunkList() {
         <div className="min-h-full rounded-2xl border border-amber-100/70 bg-white/70 p-3 shadow-sm backdrop-blur ring-1 ring-white/60 space-y-3">
           {previewData?.chunks ? (
             filteredChunks.length > 0 ? (
-              filteredChunks.map(({ chunk, index }) => (
+              filteredChunks.map(({ chunk, index }: { chunk: ChunkPreviewItem; index: number }) => (
                 <ChunkCard
                   key={index}
                   chunk={chunk}
@@ -82,7 +82,7 @@ export function ChunkList() {
               <p className="text-[10px] text-stone-400 max-w-xs text-center">{error}</p>
               <button
                 type="button"
-                onClick={runPreview}
+                onClick={() => runPreview()}
                 className="mt-2 text-[10px] px-3 py-1 rounded-full bg-amber-100/70 text-amber-700 hover:bg-amber-100"
               >
                 ????
