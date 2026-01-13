@@ -115,6 +115,7 @@ export default function ParsingPage() {
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false)
   const [isDragging, setIsDragging] = useState(false)
   const [copied, setCopied] = useState(false)
+  const [dragOverFolderId, setDragOverFolderId] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const folderInputRef = useRef<HTMLInputElement>(null)
   const uploadTargetFolderIdRef = useRef<string | null>(null)
@@ -418,12 +419,66 @@ export default function ParsingPage() {
     [parserBackend, activeFolderId, folders, createFolder]
   )
 
+  const currentFolderId = activeFolderId || ROOT_FOLDER_ID
+
   const visibleQueueFiles = useMemo(() => {
-    const currentFolderId = activeFolderId || ROOT_FOLDER_ID
     return files
       .filter((f) => (f.folderId || ROOT_FOLDER_ID) === currentFolderId)
       .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0))
-  }, [files, activeFolderId])
+  }, [files, currentFolderId])
+
+  const childrenByParentId = useMemo(() => {
+    const map = new Map<string, string[]>()
+    for (const folder of folders) {
+      const parentId = folder.parentId || ROOT_FOLDER_ID
+      const list = map.get(parentId) || []
+      list.push(folder.id)
+      map.set(parentId, list)
+    }
+    return map
+  }, [folders])
+
+  const directFolders = useMemo(() => {
+    return folders
+      .filter((f) => (f.parentId || ROOT_FOLDER_ID) === currentFolderId)
+      .sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt))
+  }, [folders, currentFolderId])
+
+  const folderStatsById = useMemo(() => {
+    const filesByFolder = new Map<string, ParsedFile[]>()
+    for (const file of files) {
+      const folderId = file.folderId || ROOT_FOLDER_ID
+      const list = filesByFolder.get(folderId) || []
+      list.push(file)
+      filesByFolder.set(folderId, list)
+    }
+
+    const stats = new Map<string, { count: number; latestTs: number }>()
+    const collect = (folderId: string): { count: number; latestTs: number } => {
+      if (stats.has(folderId)) return stats.get(folderId) as { count: number; latestTs: number }
+      let count = 0
+      let latestTs = 0
+      const directFiles = filesByFolder.get(folderId) || []
+      for (const file of directFiles) {
+        count += 1
+        latestTs = Math.max(latestTs, file.createdAt || 0)
+      }
+      const children = childrenByParentId.get(folderId) || []
+      for (const childId of children) {
+        const child = collect(childId)
+        count += child.count
+        latestTs = Math.max(latestTs, child.latestTs)
+      }
+      const result = { count, latestTs }
+      stats.set(folderId, result)
+      return result
+    }
+
+    for (const folder of folders) {
+      collect(folder.id)
+    }
+    return stats
+  }, [files, folders, childrenByParentId])
 
   useEffect(() => {
     if (visibleQueueFiles.length === 0) {
@@ -471,6 +526,32 @@ export default function ParsingPage() {
     cancelParse(fileId)
     setFiles((prev) => prev.filter((f) => f.id !== fileId))
   }
+
+  const moveFileToFolder = useCallback((fileId: string, folderId: string) => {
+    const targetId = folderId || ROOT_FOLDER_ID
+    setFiles((prev) =>
+      prev.map((f) => (f.id === fileId ? { ...f, folderId: targetId } : f))
+    )
+  }, [])
+
+  const handleFileDragStart = useCallback((e: React.DragEvent, fileId: string) => {
+    e.dataTransfer.setData('text/plain', fileId)
+    e.dataTransfer.effectAllowed = 'move'
+  }, [])
+
+  const handleFolderDragOver = useCallback((e: React.DragEvent, folderId: string) => {
+    e.preventDefault()
+    setDragOverFolderId(folderId)
+  }, [])
+
+  const handleFolderDrop = useCallback((e: React.DragEvent, folderId: string) => {
+    e.preventDefault()
+    const fileId = e.dataTransfer.getData('text/plain')
+    if (fileId) {
+      moveFileToFolder(fileId, folderId)
+    }
+    setDragOverFolderId(null)
+  }, [moveFileToFolder])
 
   // 解析文件（支持删除中断）
   const parseFile = async (fileId: string) => {
@@ -671,7 +752,7 @@ export default function ParsingPage() {
   // 保存编辑
   const handleSaveEdit = () => {
     if (!activeFile) return
-    const targetRunId = activeRun?.id 解析 activeFile.activeRunId
+    const targetRunId = activeRun?.id ?? activeFile.activeRunId
 
     // 更新文件内容
     setFiles((prev) =>
@@ -802,15 +883,20 @@ export default function ParsingPage() {
                <DocumentFolderTree
                   onRequestUpload={requestUploadToFolder}
                   onRequestUploadFolder={requestUploadFolder}
-                  fileItems={[]} 
-                  showFiles="none"
+                  fileItems={[]}
+                  showFiles="expanded"
                   onSelectFile={(fileId) => setActiveFileId(fileId)}
                   onDeleteFolder={handleDeleteFolder}
                />
             </div>
 
             {/* File List Header & Toolbar */}
-            <div className="px-4 py-2 border-b bg-gray-50 flex items-center justify-between shadow-sm z-10 sticky top-0">
+            <div
+              className="px-4 py-2 border-b bg-gray-50 flex items-center justify-between shadow-sm z-10 sticky top-0"
+              onDragOver={(e) => handleFolderDragOver(e, currentFolderId)}
+              onDragLeave={() => setDragOverFolderId(null)}
+              onDrop={(e) => handleFolderDrop(e, currentFolderId)}
+            >
                <div className="flex items-center gap-2 min-w-0">
                   <FileText className="w-3.5 h-3.5 text-gray-400" />
                   <div className="min-w-0">
@@ -850,7 +936,7 @@ export default function ParsingPage() {
 
             {/* File List */}
             <div className="flex-1 overflow-y-auto p-2 custom-scrollbar bg-white">
-               {visibleQueueFiles.length === 0 ? (
+               {directFolders.length === 0 && visibleQueueFiles.length === 0 ? (
                  <div className="h-full flex flex-col items-center justify-center text-gray-400">
                     <div className="w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center mb-3">
                       <FolderOpen className="w-6 h-6 text-gray-300" />
@@ -860,6 +946,45 @@ export default function ParsingPage() {
                  </div>
                ) : (
                  <div className="space-y-1">
+                   {directFolders.map((folder) => {
+                     const stats = folderStatsById.get(folder.id)
+                     const latestTs = stats?.latestTs || Date.parse(folder.createdAt)
+                     return (
+                       <div
+                         key={folder.id}
+                         className={cn(
+                           "flex items-center gap-2 p-2 rounded-lg border border-transparent hover:border-gray-200 hover:bg-gray-50 group transition-all cursor-pointer relative",
+                           dragOverFolderId === folder.id && "border-indigo-200 bg-indigo-50/60",
+                           activeFolderId === folder.id && "bg-indigo-50 border-indigo-100 ring-1 ring-indigo-200"
+                         )}
+                         onClick={() => setActiveFolderId(folder.id)}
+                         onDragOver={(e) => handleFolderDragOver(e, folder.id)}
+                         onDragLeave={() => setDragOverFolderId(null)}
+                         onDrop={(e) => handleFolderDrop(e, folder.id)}
+                       >
+                         <div className="w-8 h-8 rounded-lg bg-amber-50 text-amber-600 flex items-center justify-center flex-shrink-0">
+                           <FolderOpen className="w-4 h-4" />
+                         </div>
+                         <div className="flex-1 min-w-0">
+                           <div className="flex items-center justify-between">
+                             <div className={cn("text-sm font-medium truncate pr-6", activeFolderId === folder.id ? "text-indigo-900" : "text-gray-700")}>
+                               {folder.name}
+                             </div>
+                             <span className="text-[10px] text-gray-400 flex-shrink-0">
+                               {Number.isFinite(latestTs) && latestTs > 0
+                                 ? new Date(latestTs).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+                                 : ''}
+                             </span>
+                           </div>
+                           <div className="flex items-center gap-2 mt-1 min-h-[16px]">
+                             <span className="text-[10px] text-gray-400">
+                               {(stats?.count || 0)} 项
+                             </span>
+                           </div>
+                         </div>
+                       </div>
+                     )
+                   })}
                    {visibleQueueFiles.map(f => (
                      <div key={f.id} 
                           className={cn(
@@ -867,6 +992,8 @@ export default function ParsingPage() {
                             activeFileId === f.id && "bg-indigo-50 border-indigo-100 ring-1 ring-indigo-200"
                           )}
                           onClick={() => setActiveFileId(f.id)}
+                          draggable
+                          onDragStart={(e) => handleFileDragStart(e, f.id)}
                      >
                         {getFileIcon(f.name)}
                         <div className="flex-1 min-w-0">
