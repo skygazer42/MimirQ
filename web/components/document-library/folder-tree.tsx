@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { ArrowRightLeft, ChevronDown, ChevronRight, FileText, Folder, FolderOpen, MoreHorizontal, Pencil, Plus, Trash2, Upload, FileImage, FileCode, FileSpreadsheet, FileArchive, FileMusic, FileVideo, Library, Package, Database, Loader2, CheckCircle2, AlertCircle, XCircle, Ban } from 'lucide-react'
+import { ArrowRightLeft, ChevronDown, ChevronRight, FileText, Folder, FolderOpen, MoreHorizontal, Pencil, Plus, Trash2, Upload, FileImage, FileCode, FileSpreadsheet, FileArchive, FileMusic, FileVideo, Library, Package, Database, Loader2, CheckCircle2, AlertCircle, XCircle, Ban, FolderPlus, FileUp } from 'lucide-react'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
@@ -29,7 +29,7 @@ type FolderDialogState =
   | { open: true; mode: 'rename'; folderId: string }
   | { open: true; mode: 'move'; folderId: string }
 
-function getFileIcon(filename: string) {
+export function getFileIcon(filename: string) {
   const ext = filename.split('.').pop()?.toLowerCase() || ''
   const baseClass = "w-6 h-6 rounded flex items-center justify-center mr-2 flex-shrink-0"
   const iconClass = "w-3.5 h-3.5"
