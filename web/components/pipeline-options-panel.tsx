@@ -16,6 +16,7 @@ type PipelineOptionsPanelProps = {
   enabled?: boolean
   onEnabledChange?: (value: boolean) => void
   onOptionChange?: <K extends keyof DocumentPipelineOptions>(key: K, value: DocumentPipelineOptions[K]) => void
+  hideEnabledToggle?: boolean
 }
 
 export function PipelineOptionsPanel(props: PipelineOptionsPanelProps) {
@@ -214,21 +215,23 @@ export function PipelineOptionsPanel(props: PipelineOptionsPanelProps) {
 
   return (
     <div className={cn("space-y-4", className)}>
-      <div className="flex items-start gap-3">
-        <Checkbox
-          checked={enabled}
-          onCheckedChange={(value) => setEnabled(value === true)}
-          className="mt-1"
-        />
-        <div>
-          <div className={cn("font-semibold text-gray-900", titleClasses)}>
-            启用自定义管线
+      {!props.hideEnabledToggle && (
+        <div className="flex items-start gap-3">
+          <Checkbox
+            checked={enabled}
+            onCheckedChange={(value) => setEnabled(value === true)}
+            className="mt-1"
+          />
+          <div>
+            <div className={cn("font-semibold text-gray-900", titleClasses)}>
+              启用自定义管线
+            </div>
+            <p className={cn("text-gray-500 leading-relaxed", descClasses)}>
+              关闭时使用后端默认配置，仅对新上传文档生效
+            </p>
           </div>
-          <p className={cn("text-gray-500 leading-relaxed", descClasses)}>
-            关闭时使用后端默认配置，仅对新上传文档生效
-          </p>
         </div>
-      </div>
+      )}
 
       <div className={cn("grid gap-4", compact ? "gap-3" : "gap-4")}>
         {optionGroups.map((group) => {

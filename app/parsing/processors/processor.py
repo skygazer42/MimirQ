@@ -27,9 +27,7 @@ from app.types.pipeline import PipelineEffective
 from app.services.indexer import Indexer
 from app.services.pipeline_config import (
     build_indexing_options,
-    parse_pipeline_from_metadata,
     resolve_pipeline_effective,
-    resolve_pipeline_options,
 )
 from app.rag.preprocessing.processor import governance_processor, GovernanceStats
 from app.rag.preprocessing.normalization import normalize_text

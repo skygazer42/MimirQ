@@ -397,6 +397,7 @@ function DatasetForm({
           <div className="p-4 bg-white dark:bg-slate-950">
             <PipelineOptionsPanel
               compact={true}
+              hideEnabledToggle={true}
               enabled={true}
               value={form.pipelineOptions}
               onEnabledChange={() => {

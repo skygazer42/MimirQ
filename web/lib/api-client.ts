@@ -274,11 +274,12 @@ export const documentApi = {
     file: File,
     parserBackend = 'auto',
     pipeline?: DocumentPipelineOptions,
-    options?: { signal?: AbortSignal }
+    options?: { signal?: AbortSignal; dataset_id?: string }
   ): Promise<DocumentPreview> {
     const formData = new FormData()
     formData.append('file', file)
     formData.append('parser_backend', parserBackend)
+    if (options?.dataset_id) formData.append('dataset_id', options.dataset_id)
     appendPipelineOptionsToFormData(formData, pipeline)
 
     const { data } = await apiClient.post('/documents/preview', formData, {
@@ -316,6 +317,7 @@ export const documentApi = {
       parser_backend?: string
       chunk_strategy?: string
       pipeline?: DocumentPipelineOptions
+      dataset_id?: string
     } = {},
     options?: { signal?: AbortSignal }
   ): Promise<ChunkPreviewResponse> {
@@ -323,6 +325,7 @@ export const documentApi = {
     formData.append('file', file)
     formData.append('parser_backend', params.parser_backend || 'auto')
     formData.append('chunk_strategy', params.chunk_strategy || 'langchain_recursive')
+    if (params.dataset_id) formData.append('dataset_id', params.dataset_id)
     appendPipelineOptionsToFormData(formData, params.pipeline)
 
     const effectiveChunkSize = params.chunk_size ?? params.pipeline?.chunk_size ?? 1000
