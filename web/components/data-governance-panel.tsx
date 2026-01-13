@@ -136,6 +136,20 @@ export function DataGovernancePanel() {
   const [isProcessing, setIsProcessing] = useState(false)
   const [isDragging, setIsDragging] = useState(false)
   const [uploading, setUploading] = useState(false)
+  const uploadAbortRef = useRef<AbortController | null>(null)
+
+  useEffect(() => {
+    return () => {
+      uploadAbortRef.current?.abort()
+    }
+  }, [])
+
+  const cancelUploadAndParse = useCallback(() => {
+    uploadAbortRef.current?.abort()
+    uploadAbortRef.current = null
+    setUploading(false)
+    toast.info('已取消解析')
+  }, [])
 
   // 文件治理状态
   const [governanceStates, setGovernanceStates] = useState<Record<string, FileGovernanceState>>({})
@@ -307,6 +321,9 @@ export function DataGovernancePanel() {
 
   // 上传并解析逻辑（支持 .zip 批量解压）
   const handleUploadAndParse = useCallback(async (incomingFiles: File[]) => {
+    uploadAbortRef.current?.abort()
+    const controller = new AbortController()
+    uploadAbortRef.current = controller
     setUploading(true)
     try {
       const baseFolderId = activeFolderId || ROOT_FOLDER_ID
@@ -399,7 +416,9 @@ export function DataGovernancePanel() {
 
       for (const { file, folderId } of expanded) {
         // 使用 preview 接口快速获取 Markdown
-        const data = await documentApi.preview(file, parserBackend)
+        if (controller.signal.aborted || uploadAbortRef.current !== controller) return
+        const data = await documentApi.preview(file, parserBackend, undefined, { signal: controller.signal })
+        if (controller.signal.aborted || uploadAbortRef.current !== controller) return
 
         // 拼接 segments 获取全文
         const markdownContent = data.segments.map((s) => s.content).join('\n\n')
@@ -421,10 +440,14 @@ export function DataGovernancePanel() {
       if (added > 0) toast.success(`已解析并加入：${added} 个文件`)
       if (skipped > 0) toast.warning(`已跳过 ${skipped} 个不支持的文件`)
     } catch (error) {
+      if (controller.signal.aborted || uploadAbortRef.current !== controller) return
       console.error('Failed to parse file:', error)
       toast.error('解析失败，请稍后重试')
     } finally {
-      setUploading(false)
+      if (uploadAbortRef.current === controller) {
+        uploadAbortRef.current = null
+        setUploading(false)
+      }
     }
   }, [addParsedFile, initializeGovernanceState, parserBackend, activeFolderId, libraryFolders, createFolder])
 
@@ -693,6 +716,17 @@ export function DataGovernancePanel() {
                   选择文件
                 </label>
               </div>
+              {uploading && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={cancelUploadAndParse}
+                  className="flex items-center gap-2 px-8 py-4 rounded-xl"
+                >
+                  <X className="w-5 h-5" />
+                  取消
+                </Button>
+              )}
             </div>
             
             <div className="mt-8 flex items-center justify-center gap-8 text-sm text-gray-400">

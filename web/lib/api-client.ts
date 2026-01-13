@@ -4,6 +4,7 @@
 import axios, { AxiosHeaders } from 'axios'
 import type {
   Document,
+  DocumentStatus,
   Conversation,
   Message,
   ChatRequest,
@@ -248,6 +249,14 @@ export const documentApi = {
    */
   async getStatus(documentId: string) {
     const { data } = await apiClient.get(`/documents/${documentId}/status`)
+    return data
+  },
+
+  /**
+   * 取消文档处理
+   */
+  async cancel(documentId: string): Promise<DocumentStatus> {
+    const { data } = await apiClient.post(`/documents/${documentId}/cancel`)
     return data
   },
 
