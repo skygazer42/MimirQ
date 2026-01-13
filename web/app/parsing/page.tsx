@@ -122,15 +122,17 @@ export default function ParsingPage() {
   }, [files])
 
   useEffect(() => {
+    const controllers = parseControllersRef.current
+    const intervals = parseProgressIntervalsRef.current
     return () => {
-      for (const controller of parseControllersRef.current.values()) {
+      for (const controller of controllers.values()) {
         controller.abort()
       }
-      parseControllersRef.current.clear()
-      for (const interval of parseProgressIntervalsRef.current.values()) {
+      controllers.clear()
+      for (const interval of intervals.values()) {
         clearInterval(interval)
       }
-      parseProgressIntervalsRef.current.clear()
+      intervals.clear()
     }
   }, [])
 
@@ -406,8 +408,7 @@ export default function ParsingPage() {
     setFiles((prev) => prev.filter((f) => f.id !== fileId))
   }
 
-  // 解析文件
-  // ????
+  // 解析文件（支持删除中断）
   const parseFile = async (fileId: string) => {
     const file = files.find((f) => f.id === fileId)
     if (!file) return
@@ -426,7 +427,6 @@ export default function ParsingPage() {
       )
     )
 
-    // ??????
     const progressInterval = setInterval(() => {
       setFiles((prev) =>
         prev.map((f) =>
@@ -438,8 +438,14 @@ export default function ParsingPage() {
     }, 300)
     parseProgressIntervalsRef.current.set(fileId, progressInterval)
 
+    const clearProgressInterval = () => {
+      clearInterval(progressInterval)
+      if (parseProgressIntervalsRef.current.get(fileId) === progressInterval) {
+        parseProgressIntervalsRef.current.delete(fileId)
+      }
+    }
+
     try {
-      // ?????????????????????
       const data = await documentApi.preview(file.file, parserBackend, undefined, {
         signal: controller.signal,
       })
@@ -447,10 +453,8 @@ export default function ParsingPage() {
       if (parseControllersRef.current.get(fileId) !== controller) return
       if (!fileIdSetRef.current.has(fileId)) return
 
-      clearInterval(progressInterval)
-      parseProgressIntervalsRef.current.delete(fileId)
+      clearProgressInterval()
 
-      // ?? segments ????
       const rawMarkdown = data.segments.map((s) => s.content).join('\n\n')
       const resolvedBackend = data.parser_backend || parserBackend
       const resolvedLabel = getParserLabel(resolvedBackend)
@@ -469,7 +473,6 @@ export default function ParsingPage() {
         createdAt: Date.now(),
       }
 
-      // ??????
       const stats = {
         charCount: markdownContent.length,
         lineCount: markdownContent.split('\n').length,
@@ -504,7 +507,6 @@ export default function ParsingPage() {
       setHoveredBlockId(null)
       setRightPanelMode(blocks.length ? 'blocks' : 'markdown')
 
-      // ???????
       addParsedFile({
         filename: file.file.name,
         fileType: file.file.name.split('.').pop()?.toLowerCase() || '',
@@ -514,12 +516,10 @@ export default function ParsingPage() {
         folderId: file.folderId,
       })
     } catch (err: any) {
-      clearInterval(progressInterval)
-      parseProgressIntervalsRef.current.delete(fileId)
       if (controller.signal.aborted) return
       if (parseControllersRef.current.get(fileId) !== controller) return
       if (!fileIdSetRef.current.has(fileId)) return
-      const errorMessage = formatApiError(err, '????')
+      const errorMessage = formatApiError(err, '文档解析失败')
       setFiles((prev) =>
         prev.map((f) =>
           f.id === fileId
@@ -536,11 +536,7 @@ export default function ParsingPage() {
       if (parseControllersRef.current.get(fileId) === controller) {
         parseControllersRef.current.delete(fileId)
       }
-      const interval = parseProgressIntervalsRef.current.get(fileId)
-      if (interval) {
-        clearInterval(interval)
-        parseProgressIntervalsRef.current.delete(fileId)
-      }
+      clearProgressInterval()
     }
   }
 
