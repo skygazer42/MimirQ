@@ -50,11 +50,11 @@ export function getFileIcon(filename: string) {
     case 'pdf':
       return <div className={cn(baseClass, "bg-red-100 text-red-600")}><FileText className={iconClass} /></div>
     case 'doc': case 'docx':
-      return <div className={cn(baseClass, "bg-sky-100 text-sky-600")}><FileText className={iconClass} /></div>
+      return <div className={cn(baseClass, "bg-amber-100/70 text-amber-700")}><FileText className={iconClass} /></div>
     case 'txt': case 'md':
-      return <div className={cn(baseClass, "bg-gray-100 text-gray-500")}><FileText className={iconClass} /></div>
+      return <div className={cn(baseClass, "bg-amber-100/70 text-stone-500")}><FileText className={iconClass} /></div>
     default:
-      return <div className={cn(baseClass, "bg-gray-50 text-gray-400")}><FileText className={iconClass} /></div>
+      return <div className={cn(baseClass, "bg-amber-50/70 text-stone-400")}><FileText className={iconClass} /></div>
   }
 }
 
@@ -63,27 +63,27 @@ function getFolderIconElement(depth: number, isOpen: boolean) {
   
   // Root (Depth 0) - handled separately usually, but if passed 0:
   if (depth === 0) {
-    return <Library className={cn(className, "text-indigo-600")} />
+    return <Library className={cn(className, "text-amber-700")} />
   }
   
   // Level 1 (Top categories)
   if (depth === 1) {
-    return <Package className={cn(className, "text-sky-600")} />
+    return <Package className={cn(className, "text-rose-600")} />
   }
 
   // Level 2 (Sub-categories)
   if (depth === 2) {
     return isOpen 
-      ? <FolderOpen className={cn(className, "text-violet-600")} />
-      : <Folder className={cn(className, "text-violet-600")} />
+      ? <FolderOpen className={cn(className, "text-amber-600")} />
+      : <Folder className={cn(className, "text-amber-600")} />
   }
   
   // Deep levels
   const colors = [
-    "text-cyan-600",
-    "text-teal-600",
-    "text-emerald-600",
-    "text-green-600"
+    "text-orange-600",
+    "text-amber-600",
+    "text-rose-600",
+    "text-yellow-700"
   ]
   const color = colors[Math.min(depth - 3, colors.length - 1)]
   
@@ -416,8 +416,8 @@ export function DocumentFolderTree({
           <div
             className={cn(
               'group relative flex items-center gap-2 rounded-xl px-3 py-2 transition-all',
-              isActive ? 'bg-white shadow-sm ring-1 ring-indigo-100 text-indigo-900' : 'bg-white/70 hover:bg-white hover:shadow-sm text-gray-700',
-              dragOverId === folder.id && 'bg-indigo-50/70 ring-1 ring-indigo-200'
+              isActive ? 'bg-white shadow-sm ring-1 ring-amber-100 text-stone-900' : 'bg-white/70 hover:bg-white hover:shadow-sm text-stone-700',
+              dragOverId === folder.id && 'bg-amber-50/70 ring-1 ring-amber-200'
             )}
             onDragOver={(e) => {
               e.preventDefault()
@@ -447,7 +447,7 @@ export function DocumentFolderTree({
             {showFiles === 'expanded' && hasContent && (
               <button
                 type="button"
-                className="w-5 h-5 flex items-center justify-center rounded hover:bg-white/60 text-gray-500"
+                className="w-5 h-5 flex items-center justify-center rounded hover:bg-white/60 text-stone-500"
                 onClick={(e) => {
                   e.stopPropagation()
                   toggleFileList(folder.id)
@@ -479,7 +479,7 @@ export function DocumentFolderTree({
             >
               {getFolderIconElement(depth, isActive)}
               <span className="text-sm truncate">{folder.name}</span>
-              <span className="ml-auto text-[10px] text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full opacity-0 group-hover:opacity-100 transition-opacity">
+              <span className="ml-auto text-[10px] text-stone-500 bg-amber-100/70 px-2 py-0.5 rounded-full opacity-0 group-hover:opacity-100 transition-opacity">
                 {count}
               </span>
             </button>
@@ -490,7 +490,7 @@ export function DocumentFolderTree({
                   <Button
                     variant="ghost"
                     size="icon"
-                    className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity text-gray-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-md"
+                    className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity text-stone-500 hover:text-amber-700 hover:bg-amber-50 rounded-md"
                     aria-label="Add content"
                     onClick={(e) => e.stopPropagation()}
                   >
@@ -505,7 +505,7 @@ export function DocumentFolderTree({
                       onRequestUpload(folder.id)
                     }}
                   >
-                    <Paperclip className="w-4 h-4 mr-2 text-indigo-600" />
+                    <Paperclip className="w-4 h-4 mr-2 text-amber-700" />
                     上传文件
                   </DropdownMenuItem>
                   {onRequestUploadFolder && (
@@ -516,7 +516,7 @@ export function DocumentFolderTree({
                         onRequestUploadFolder(folder.id)
                       }}
                     >
-                      <FolderUp className="w-4 h-4 mr-2 text-sky-600" />
+                      <FolderUp className="w-4 h-4 mr-2 text-amber-600" />
                       上传文件夹
                     </DropdownMenuItem>
                   )}
@@ -525,7 +525,7 @@ export function DocumentFolderTree({
                     新建文件夹
                   </DropdownMenuItem>
                   <DropdownMenuItem className="py-2" onClick={() => openMove(folder)}>
-                    <ArrowRightLeft className="w-4 h-4 mr-2 text-gray-600" />
+                    <ArrowRightLeft className="w-4 h-4 mr-2 text-stone-600" />
                     移动目录
                   </DropdownMenuItem>
                 </DropdownMenuContent>
@@ -537,7 +537,7 @@ export function DocumentFolderTree({
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="h-7 w-7 opacity-0 group-hover:opacity-100 transition-opacity text-gray-500 hover:text-gray-900 hover:bg-gray-100 rounded-lg"
+                  className="h-7 w-7 opacity-0 group-hover:opacity-100 transition-opacity text-stone-500 hover:text-stone-900 hover:bg-amber-100/70 rounded-lg"
                   aria-label="Folder actions"
                 >
                   <MoreHorizontal className="w-4 h-4" />
@@ -590,7 +590,7 @@ export function DocumentFolderTree({
           </div>
 
           {isExpanded && (directFiles.length > 0 || children.length > 0) && (
-            <div className="ml-3 pl-2 border-l border-gray-200">
+            <div className="ml-3 pl-2 border-l border-amber-100/70">
               {directFiles.length > 0 && (
                 <div className="space-y-0.5">
                   {directFiles.map((f) => (
@@ -598,10 +598,10 @@ export function DocumentFolderTree({
                       key={f.id}
                       type="button"
                       className={cn(
-                        'w-full flex items-center gap-2 rounded-lg py-1.5 px-2 text-left text-gray-600 bg-white/60 border border-transparent hover:border-gray-200/70 hover:bg-gray-50/80',
+                        'w-full flex items-center gap-2 rounded-lg py-1.5 px-2 text-left text-stone-600 bg-white/60 border border-transparent hover:border-amber-200/70 hover:bg-amber-50/80',
                         'text-sm',
                         f.status === 'error' && 'bg-red-50 hover:bg-red-100 text-red-700',
-                        f.status === 'parsing' && 'bg-indigo-50/50'
+                        f.status === 'parsing' && 'bg-amber-50/50'
                       )}
                       title={f.error || (f.sourcePath ? `${f.name} · ${f.sourcePath}` : f.name)}
                       onClick={() => {
@@ -613,12 +613,12 @@ export function DocumentFolderTree({
                       <span className="truncate flex-1">{f.name}</span>
                       
                       {f.status === 'parsing' ? (
-                        <div className="w-16 h-1.5 bg-indigo-100 rounded-full overflow-hidden ml-2 flex-shrink-0">
-                          <div className="h-full bg-indigo-500 animate-[progress_1s_ease-in-out_infinite] w-full origin-left scale-x-50" />
+                        <div className="w-16 h-1.5 bg-amber-100 rounded-full overflow-hidden ml-2 flex-shrink-0">
+                          <div className="h-full bg-amber-500 animate-[progress_1s_ease-in-out_infinite] w-full origin-left scale-x-50" />
                         </div>
                       ) : (
                         <>
-                          {f.status === 'pending' && <div className="w-1.5 h-1.5 rounded-full bg-gray-300 ml-2" />}
+                          {f.status === 'pending' && <div className="w-1.5 h-1.5 rounded-full bg-stone-300 ml-2" />}
                           {f.status === 'error' && <AlertCircle className="w-3.5 h-3.5 text-red-500 ml-2" />}
                         </>
                       )}
@@ -666,11 +666,11 @@ export function DocumentFolderTree({
   return (
     <div className={cn('flex flex-col', className)} ref={scrollContainerRef}>
       <div className="flex items-center justify-between mb-2 group">
-        <div className="text-xs font-semibold text-gray-500 uppercase tracking-wider pl-1">文档库</div>
+        <div className="text-xs font-semibold text-stone-500 uppercase tracking-wider pl-1">文档库</div>
         <Button
           variant="ghost"
           size="icon"
-          className="h-7 w-7 opacity-0 group-hover:opacity-100 transition-opacity text-gray-500 hover:text-indigo-700 hover:bg-indigo-50 rounded-lg"
+          className="h-7 w-7 opacity-0 group-hover:opacity-100 transition-opacity text-stone-500 hover:text-amber-700 hover:bg-amber-50 rounded-lg"
           title="新建根目录文件夹"
           onClick={() => openCreate(ROOT_FOLDER_ID)}
         >
@@ -683,9 +683,9 @@ export function DocumentFolderTree({
           className={cn(
             'group relative flex items-center gap-2 rounded-xl px-3 py-2 transition-all',
             activeFolderId === ROOT_FOLDER_ID
-              ? 'bg-white shadow-sm ring-1 ring-indigo-100 text-indigo-900'
-              : 'bg-white/70 hover:bg-white hover:shadow-sm text-gray-700',
-            dragOverId === ROOT_FOLDER_ID && 'bg-indigo-50/70 ring-1 ring-indigo-200'
+              ? 'bg-white shadow-sm ring-1 ring-amber-100 text-stone-900'
+              : 'bg-white/70 hover:bg-white hover:shadow-sm text-stone-700',
+            dragOverId === ROOT_FOLDER_ID && 'bg-amber-50/70 ring-1 ring-amber-200'
           )}
           onDragOver={(e) => {
             e.preventDefault()
@@ -755,7 +755,7 @@ export function DocumentFolderTree({
           {showFiles === 'expanded' && (rootDirectCount > 0 || rootChildren.length > 0) && (
             <button
               type="button"
-              className="w-5 h-5 flex items-center justify-center rounded hover:bg-white/60 text-gray-500"
+              className="w-5 h-5 flex items-center justify-center rounded hover:bg-white/60 text-stone-500"
               onClick={(e) => {
                 e.stopPropagation()
                 toggleFileList(ROOT_FOLDER_ID)
@@ -786,7 +786,7 @@ export function DocumentFolderTree({
           >
             {getFolderIconElement(0, activeFolderId === ROOT_FOLDER_ID)}
             <span className="text-sm truncate">根目录</span>
-            <span className="ml-auto text-[10px] text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full opacity-0 group-hover:opacity-100 transition-opacity">
+            <span className="ml-auto text-[10px] text-stone-500 bg-amber-100/70 px-2 py-0.5 rounded-full opacity-0 group-hover:opacity-100 transition-opacity">
               {rootCount}
             </span>
           </button>
@@ -797,7 +797,7 @@ export function DocumentFolderTree({
                   <Button
                     variant="ghost"
                     size="icon"
-                    className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity text-gray-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-md"
+                    className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity text-stone-500 hover:text-amber-700 hover:bg-amber-50 rounded-md"
                     aria-label="Upload to root folder"
                     onClick={(e) => e.stopPropagation()}
                   >
@@ -812,7 +812,7 @@ export function DocumentFolderTree({
                       onRequestUpload(ROOT_FOLDER_ID)
                     }}
                   >
-                    <Paperclip className="w-4 h-4 mr-2 text-indigo-600" />
+                    <Paperclip className="w-4 h-4 mr-2 text-amber-700" />
                     上传文件
                   </DropdownMenuItem>
                   {onRequestUploadFolder && (
@@ -823,7 +823,7 @@ export function DocumentFolderTree({
                         onRequestUploadFolder(ROOT_FOLDER_ID)
                       }}
                     >
-                      <FolderUp className="w-4 h-4 mr-2 text-sky-600" />
+                      <FolderUp className="w-4 h-4 mr-2 text-amber-600" />
                       上传文件夹
                     </DropdownMenuItem>
                   )}
@@ -837,7 +837,7 @@ export function DocumentFolderTree({
         </div>
 
         {(showFiles === 'all' || (showFiles === 'active' && activeFolderId === ROOT_FOLDER_ID) || (showFiles === 'expanded' && expandedFileFolderIds.has(ROOT_FOLDER_ID))) && (rootDirectFiles.length > 0 || rootChildren.length > 0) && (
-          <div className="ml-3 pl-2 border-l border-gray-200">
+          <div className="ml-3 pl-2 border-l border-amber-100/70">
             {rootDirectFiles.length > 0 && (
               <div className="space-y-0.5">
                 {rootDirectFiles.map((f) => (
@@ -845,9 +845,9 @@ export function DocumentFolderTree({
                     key={f.id}
                     type="button"
                     className={cn(
-                      'w-full flex items-center gap-2 rounded-lg py-1.5 px-2 text-left text-gray-600 hover:bg-gray-50 text-sm',
+                      'w-full flex items-center gap-2 rounded-lg py-1.5 px-2 text-left text-stone-600 hover:bg-amber-50/70 text-sm',
                       f.status === 'error' && 'bg-red-50 hover:bg-red-100 text-red-700',
-                      f.status === 'parsing' && 'bg-indigo-50/50'
+                      f.status === 'parsing' && 'bg-amber-50/50'
                     )}
                     title={f.error || (f.sourcePath ? `${f.name} · ${f.sourcePath}` : f.name)}
                     onClick={() => {
@@ -859,12 +859,12 @@ export function DocumentFolderTree({
                     <span className="truncate flex-1">{f.name}</span>
 
                     {f.status === 'parsing' ? (
-                      <div className="w-16 h-1.5 bg-indigo-100 rounded-full overflow-hidden ml-2 flex-shrink-0">
-                        <div className="h-full bg-indigo-500 animate-[progress_1s_ease-in-out_infinite] w-full origin-left scale-x-50" />
+                      <div className="w-16 h-1.5 bg-amber-100 rounded-full overflow-hidden ml-2 flex-shrink-0">
+                        <div className="h-full bg-amber-500 animate-[progress_1s_ease-in-out_infinite] w-full origin-left scale-x-50" />
                       </div>
                     ) : (
                       <>
-                        {f.status === 'pending' && <div className="w-1.5 h-1.5 rounded-full bg-gray-300 ml-2" />}
+                        {f.status === 'pending' && <div className="w-1.5 h-1.5 rounded-full bg-stone-300 ml-2" />}
                         {f.status === 'error' && <AlertCircle className="w-3.5 h-3.5 text-red-500 ml-2" />}
                       </>
                     )}
@@ -897,7 +897,7 @@ export function DocumentFolderTree({
 
           {dialog.open && dialog.mode === 'move' ? (
             <div className="space-y-3">
-              <div className="text-sm text-gray-700">
+              <div className="text-sm text-stone-700">
                 将 <span className="font-medium">{folders.find((f) => f.id === dialog.folderId)?.name || '文件夹'}</span> 移动到：
               </div>
               <Select value={moveParentId || ROOT_FOLDER_ID} onValueChange={setMoveParentId}>
@@ -912,7 +912,7 @@ export function DocumentFolderTree({
                   ))}
                 </SelectContent>
               </Select>
-              <div className="text-xs text-gray-500">不支持移动到自身或子目录。</div>
+              <div className="text-xs text-stone-500">不支持移动到自身或子目录。</div>
             </div>
           ) : (
             <div className="space-y-2">
@@ -928,7 +928,7 @@ export function DocumentFolderTree({
                 }}
                 autoFocus
               />
-              <div className="text-xs text-gray-500">支持多级目录：在任意文件夹下创建子文件夹。</div>
+              <div className="text-xs text-stone-500">支持多级目录：在任意文件夹下创建子文件夹。</div>
             </div>
           )}
 

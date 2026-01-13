@@ -10,7 +10,7 @@ import { ChunkList } from './preview/chunk-list'
 
 export function Workbench() {
   return (
-    <div className="flex flex-col h-full bg-white text-gray-900 font-sans">
+    <div className="flex flex-col h-full bg-[#FFF9F3] text-stone-900 font-sans">
       {/* 顶部栏 */}
       <TopBar />
 
@@ -19,7 +19,7 @@ export function Workbench() {
         <Sidebar />
 
         {/* 主区域：原文 vs 预览 */}
-        <main className="flex-1 flex overflow-hidden bg-gray-100">
+        <main className="flex-1 flex overflow-hidden bg-amber-50/60">
           {/* 左侧原文 */}
           <OriginalPreview />
 
