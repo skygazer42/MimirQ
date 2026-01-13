@@ -66,5 +66,5 @@ MINERU_API_BASE=https://mineru.net/api/v4
 
 - Dockerfile：`docker/mineru/Dockerfile`
 - 参考：MinerU 上游项目（本环境路径：`/data/temp34/MinerU`）
-- 注意：模型下载非常耗时/耗带宽；默认会在 build 阶段下载全量模型。
-
+- 注意：模型下载非常耗时/耗带宽；默认会在首次使用时从 HuggingFace/ModelScope 按需下载并缓存（`docker-compose.parsers.yml` 默认挂载 `/root/.cache`）。
+- 如需离线/内网环境：可在 build 时预下载（`MINERU_PREFETCH_MODELS=1`，并按需设置 `MINERU_MODEL_DOWNLOAD_SOURCE/MINERU_MODEL_DOWNLOAD_TYPE`）。
