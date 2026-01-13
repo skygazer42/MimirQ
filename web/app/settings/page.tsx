@@ -94,8 +94,8 @@ const FEATURE_FLAGS_CONFIG = [
   },
   {
     key: 'marker_enabled' as keyof FeatureFlags,
-    name: 'Marker 外部解析',
-    description: '启用 Marker 外部 PDF→Markdown 解析服务（可在解析器下拉中选择）',
+    name: 'Marker 启发式解析',
+    description: '启用 Marker 启发式 PDF→Markdown 解析服务（可在解析器下拉中选择）',
     icon: LayoutGrid,
     color: 'green',
     dependencies: ['Marker API URL'],

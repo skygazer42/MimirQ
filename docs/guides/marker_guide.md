@@ -1,4 +1,4 @@
-# Marker（外部服务）解析器集成
+# Marker（启发式服务）解析器集成
 
 MimirQ 支持将 **Marker** 作为可选 PDF 高级解析后端，通过 **独立服务** 输出 Markdown（可含图片引用）。这种方式不会把 `torch/ocr` 等重依赖塞进 MimirQ 主后端镜像。
 
