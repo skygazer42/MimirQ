@@ -8,10 +8,12 @@ import { createContext, useContext, useState, useCallback, useRef, useEffect, Re
 import { documentApi } from '@/lib/api-client'
 import { formatApiError } from '@/lib/api-errors'
 import { useParserBackendPreference } from '@/contexts/parser-backend-context'
+import { usePipelineCapabilities } from '@/contexts/pipeline-capabilities-context'
 import { useChunkStrategyPreference } from '@/contexts/chunk-strategy-context'
 import { usePipelineOptions } from '@/contexts/pipeline-options-context'
 import { useParsedFiles } from '@/store/use-parsed-files-store'
 import { getChunkStrategyLabel } from '@/lib/chunk-strategies'
+import { getParserLabel } from '@/lib/parser-options'
 import type { ChunkPreviewResponse } from '@/types'
 import type { ChunkPreviewState, ChunkPreviewActions, ChunkPreviewFileItem, ChunkPreviewContextType } from './types'
 import { EXAMPLE_TEXT } from './constants'
@@ -39,6 +41,7 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: ChunkPrev
   const { parserBackend, setParserBackend } = useParserBackendPreference()
   const { chunkStrategy, setChunkStrategy } = useChunkStrategyPreference()
   const { enabled: pipelineOverridesEnabled, options: pipelineOptions, updateOption } = usePipelineOptions()
+  const { capabilities, parserBackendAvailable, chunkStrategyAvailable } = usePipelineCapabilities()
 
   // 生成 ID 工具
   const makeId = useCallback(
@@ -102,6 +105,7 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: ChunkPrev
           displayName: originalFilename,
           originalFileType: pf.fileType,
           originalFileSize: pf.fileSize,
+          addedAt: pf.parsedAt ? Date.parse(pf.parsedAt) : Date.now(),
         }
       })
       setFileList(convertedFiles)
@@ -121,6 +125,30 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: ChunkPrev
     }
   }, [pipelineOptions.chunk_overlap, chunkOverlap])
 
+  useEffect(() => {
+    if (!capabilities) return
+    const available = parserBackendAvailable(parserBackend)
+    if (available === false) {
+      const fallback = capabilities.default_parser_backend || 'auto'
+      if (fallback && fallback !== parserBackend) {
+        setParserBackend(fallback)
+        setError(`解析器不可用，已切换为 ${getParserLabel(fallback)}`)
+      }
+    }
+  }, [capabilities, parserBackend, parserBackendAvailable, setParserBackend])
+
+  useEffect(() => {
+    if (!capabilities) return
+    const available = chunkStrategyAvailable(chunkStrategy)
+    if (available === false) {
+      const fallback = capabilities.default_chunk_strategy || 'langchain_recursive'
+      if (fallback && fallback !== chunkStrategy) {
+        setChunkStrategy(fallback)
+        setError(`切块策略不可用，已切换为 ${getChunkStrategyLabel(fallback)}`)
+      }
+    }
+  }, [capabilities, chunkStrategy, chunkStrategyAvailable, setChunkStrategy])
+
   // Actions: 文件操作
   const addFiles = useCallback((files: File[]) => {
     setFileList((prev) => [
@@ -131,6 +159,7 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: ChunkPrev
         displayName: f.name,
         originalFileType: f.name.split('.').pop()?.toLowerCase(),
         originalFileSize: f.size,
+        addedAt: Date.now(),
       })),
     ])
     setPreviewData(null)
@@ -197,6 +226,7 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: ChunkPrev
         displayName: exampleFile.name,
         originalFileType: 'md',
         originalFileSize: exampleFile.size,
+        addedAt: Date.now(),
       },
     ])
     setCurrentFileIndex(0)
@@ -208,6 +238,15 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: ChunkPrev
   // Actions: 执行预览
   const runPreview = useCallback(async () => {
     if (!file) return
+    if (chunkOverlap >= chunkSize) {
+      setError('重叠长度必须小于切块长度')
+      return
+    }
+    const strategyAvailable = chunkStrategyAvailable(chunkStrategy)
+    if (strategyAvailable === false) {
+      setError(`当前切块策略不可用：${getChunkStrategyLabel(chunkStrategy)}`)
+      return
+    }
 
     const requestId = ++previewRequestIdRef.current
     previewAbortRef.current?.abort()
@@ -238,7 +277,16 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: ChunkPrev
         setIsLoading(false)
       }
     }
-  }, [file, chunkSize, chunkOverlap, parserBackend, chunkStrategy, pipelineOverridesEnabled, pipelineOptions])
+  }, [
+    file,
+    chunkSize,
+    chunkOverlap,
+    parserBackend,
+    chunkStrategy,
+    pipelineOverridesEnabled,
+    pipelineOptions,
+    chunkStrategyAvailable,
+  ])
 
   // Actions: 提交入库
   const submitChunks = useCallback(async () => {

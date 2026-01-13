@@ -13,6 +13,7 @@ export type ChunkPreviewFileItem = {
   displayName: string
   originalFileType?: string
   originalFileSize?: number
+  addedAt?: number
 }
 
 export interface ChunkPreviewState {

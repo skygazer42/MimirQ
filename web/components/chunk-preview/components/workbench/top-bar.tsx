@@ -29,6 +29,10 @@ export function TopBar() {
     currentFileItem,
     currentFile,
     previewData,
+    parserBackend,
+    chunkStrategy,
+    chunkSize,
+    chunkOverlap,
     submitSuccess,
     error,
     isSubmitting,
@@ -40,15 +44,15 @@ export function TopBar() {
   if (!currentFile || !currentFileItem) return null
 
   return (
-    <header className="flex-shrink-0 h-16 border-b border-gray-100 flex justify-between items-center px-6 bg-white z-20 shadow-sm relative">
+    <header className="flex-shrink-0 h-16 border-b border-gray-200 flex justify-between items-center px-6 bg-white/80 backdrop-blur z-20 shadow-sm relative">
       <div className="flex items-center gap-4">
-        <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center shadow-blue-200 shadow-md">
+        <div className="w-9 h-9 bg-gradient-to-br from-indigo-600 to-blue-600 rounded-xl flex items-center justify-center shadow-blue-200/70 shadow-md">
           <Layers className="text-white w-5 h-5" />
         </div>
         <div>
           <h1 className="text-sm font-bold text-gray-900 tracking-tight">切片预览工作台</h1>
-          <p className="text-[10px] text-gray-400 font-mono mt-0.5 flex items-center gap-2">
-            <span className="bg-gray-100 px-1.5 rounded text-gray-600 font-bold">
+          <p className="text-[10px] text-gray-500 font-mono mt-0.5 flex items-center gap-2">
+            <span className="bg-gray-100 px-2 py-0.5 rounded-full text-gray-600 font-semibold">
               {currentFileIndex + 1}/{fileList.length}
             </span>
             <span>{currentFileItem?.displayName || currentFile.name}</span>
@@ -66,6 +70,13 @@ export function TopBar() {
               </>
             )}
           </p>
+          <div className="mt-1 flex flex-wrap items-center gap-2 text-[10px] text-gray-500">
+            <span className="px-2 py-0.5 rounded-full bg-gray-100">解析器: {parserBackend}</span>
+            <span className="px-2 py-0.5 rounded-full bg-gray-100">策略: {chunkStrategy}</span>
+            <span className="px-2 py-0.5 rounded-full bg-gray-100">
+              大小: {chunkSize} / 重叠: {chunkOverlap}
+            </span>
+          </div>
         </div>
       </div>
 

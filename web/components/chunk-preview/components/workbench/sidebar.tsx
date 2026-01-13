@@ -3,7 +3,7 @@
  */
 'use client'
 
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import {
   Settings,
   Folder,
@@ -20,8 +20,10 @@ import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import { useChunkPreview } from '@/components/chunk-preview/context'
 import { ChunkStrategyDropdown } from '@/components/ui/chunk-strategy-dropdown'
+import { ParserDropdown } from '@/components/ui/parser-dropdown'
 import { PipelineOptionsPanel } from '@/components/pipeline-options-panel'
 import { getChunkStrategyOption, getChunkStrategyLabel } from '@/lib/chunk-strategies'
+import { usePipelineCapabilities } from '@/contexts/pipeline-capabilities-context'
 
 export function Sidebar() {
   const {
@@ -33,13 +35,16 @@ export function Sidebar() {
     chunkSize,
     chunkOverlap,
     chunkStrategy,
+    parserBackend,
     processedStatus,
     setCurrentFileIndex,
     removeFile,
     addFiles,
     updateSettings,
     runPreview,
+    setParserBackend,
   } = useChunkPreview()
+  const { capabilities, parserBackendAvailable } = usePipelineCapabilities()
 
   const chunkStrategyOption = getChunkStrategyOption(chunkStrategy)
   const resolvedChunkStrategy = previewData?.chunk_strategy || chunkStrategy
@@ -52,6 +57,24 @@ export function Sidebar() {
   const hideChunkSizeControl = isSentenceStrategy || isRagflowStrategy
   const showOverlapControl =
     !isSentenceStrategy && !isRagflowStrategy && !isHierarchicalStrategy && strategyForUi !== 'separator'
+
+  const sortedFileList = [...fileList].sort(
+    (a, b) => (b.addedAt || 0) - (a.addedAt || 0)
+  )
+
+  const currentFileId = fileList[currentFileIndex]?.id
+  const parserAvailable = parserBackendAvailable(parserBackend)
+
+  const chunkStats = useMemo(() => {
+    if (!previewData?.chunks || previewData.chunks.length === 0) return null
+    const lengths = previewData.chunks.map((c) => (c.content || '').length)
+    const total = lengths.reduce((sum, n) => sum + n, 0)
+    return {
+      avg: Math.round(total / lengths.length),
+      min: Math.min(...lengths),
+      max: Math.max(...lengths),
+    }
+  }, [previewData])
 
   function formatFileSize(bytes: number) {
     if (bytes < 1024) return `${bytes} B`
@@ -92,27 +115,43 @@ export function Sidebar() {
           </div>
 
           <div className="space-y-2 max-h-[200px] overflow-y-auto custom-scrollbar pr-1">
-            {fileList.map((f, idx) => (
+            {sortedFileList.map((f) => {
+              const isActive = currentFileId === f.id
+              const displayTime = f.addedAt
+                ? new Date(f.addedAt).toLocaleString([], {
+                    month: '2-digit',
+                    day: '2-digit',
+                    hour: '2-digit',
+                    minute: '2-digit',
+                  })
+                : ''
+              const fileIndex = fileList.findIndex((item) => item.id === f.id)
+              return (
               <div
                 key={f.id}
-                onClick={() => setCurrentFileIndex(idx)}
+                onClick={() => {
+                  if (fileIndex >= 0) setCurrentFileIndex(fileIndex)
+                }}
                 className={cn(
                   'group flex items-center justify-between p-2 rounded-lg text-xs cursor-pointer transition-colors border',
-                  idx === currentFileIndex
+                  isActive
                     ? 'bg-white border-blue-200 shadow-sm ring-1 ring-blue-100'
                     : 'bg-transparent border-transparent hover:bg-gray-100 hover:border-gray-200'
                 )}
               >
                 <div className="flex items-center gap-2 min-w-0 flex-1">
                   <FileIcon
-                    className={cn('w-3.5 h-3.5 flex-shrink-0', idx === currentFileIndex ? 'text-blue-600' : 'text-gray-400')}
+                    className={cn('w-3.5 h-3.5 flex-shrink-0', isActive ? 'text-blue-600' : 'text-gray-400')}
                   />
-                  <span className={cn('truncate font-medium', idx === currentFileIndex ? 'text-gray-900' : 'text-gray-600')}>
+                  <span className={cn('truncate font-medium', isActive ? 'text-gray-900' : 'text-gray-600')}>
                     {f.displayName}
                   </span>
                 </div>
 
                 <div className="flex items-center gap-1 flex-shrink-0">
+                  {displayTime && (
+                    <span className="text-[10px] text-gray-400 mr-1">{displayTime}</span>
+                  )}
                   {f.originalFileType && (
                     <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-gray-100 text-gray-500">
                       {String(f.originalFileType).toUpperCase()}
@@ -124,7 +163,7 @@ export function Sidebar() {
                   <div
                     onClick={(e) => {
                       e.stopPropagation()
-                      removeFile(idx)
+                      removeFile(fileIndex)
                     }}
                     className="opacity-0 group-hover:opacity-100 p-1 hover:bg-red-50 hover:text-red-600 rounded transition-all"
                   >
@@ -132,7 +171,8 @@ export function Sidebar() {
                   </div>
                 </div>
               </div>
-            ))}
+              )
+            })}
           </div>
         </div>
 
@@ -142,6 +182,16 @@ export function Sidebar() {
         </div>
 
         <div className="space-y-8">
+          <div className="space-y-2">
+            <label className="text-xs font-medium text-gray-500">解析器</label>
+            <ParserDropdown value={parserBackend} onChange={setParserBackend} />
+            {parserAvailable === false && (
+              <div className="text-[10px] text-amber-600 bg-amber-50 border border-amber-100 rounded-lg px-2 py-1">
+                当前解析器不可用，建议切换为 {capabilities?.default_parser_backend || 'auto'}。
+              </div>
+            )}
+          </div>
+
           {/* 策略选择 */}
           <div className="space-y-2">
             <label className="text-xs font-medium text-gray-500">切块策略</label>
@@ -224,9 +274,15 @@ export function Sidebar() {
               </div>
               <div className="bg-white p-3 rounded-xl border border-gray-100 shadow-sm">
                 <div className="text-[10px] text-gray-400 uppercase tracking-wider font-medium">平均长度</div>
-                <div className="text-xl font-bold text-gray-900 mt-1">
-                  {Math.round(previewData.total_characters / previewData.total_chunks)}
-                </div>
+                <div className="text-xl font-bold text-gray-900 mt-1">{chunkStats?.avg ?? '-'}</div>
+              </div>
+              <div className="bg-white p-3 rounded-xl border border-gray-100 shadow-sm">
+                <div className="text-[10px] text-gray-400 uppercase tracking-wider font-medium">最长片段</div>
+                <div className="text-xl font-bold text-gray-900 mt-1">{chunkStats?.max ?? '-'}</div>
+              </div>
+              <div className="bg-white p-3 rounded-xl border border-gray-100 shadow-sm">
+                <div className="text-[10px] text-gray-400 uppercase tracking-wider font-medium">最短片段</div>
+                <div className="text-xl font-bold text-gray-900 mt-1">{chunkStats?.min ?? '-'}</div>
               </div>
             </div>
           </div>
