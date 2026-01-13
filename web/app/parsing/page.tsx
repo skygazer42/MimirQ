@@ -26,6 +26,7 @@ import {
   PanelRightOpen,
   PanelRightClose,
   FolderOpen,
+  Play,
 } from 'lucide-react'
 import { Navbar } from '@/components/navbar'
 import { Button } from '@/components/ui/button'
@@ -670,6 +671,10 @@ export default function ParsingPage() {
     router.push('/data-governance')
   }
 
+  const handleDeleteFolder = useCallback((folderIds: string[]) => {
+    setFiles((prev) => prev.filter((f) => !f.folderId || !folderIds.includes(f.folderId)))
+  }, [])
+
   // 计算统计数据
   const pendingCount = visibleQueueFiles.filter((f) => f.status === 'pending').length
   const parsingCount = visibleQueueFiles.filter((f) => f.status === 'parsing').length
@@ -738,7 +743,7 @@ export default function ParsingPage() {
                <div className="px-4 py-2 border-b bg-amber-50/50 flex items-center justify-between transition-all">
                   <span className="text-xs text-amber-700 font-medium">{parseableCount} 个文件待解析</span>
                   <Button variant="ghost" size="sm" onClick={parseAllPending} className="h-6 text-xs gap-1 text-amber-700 hover:text-amber-800 hover:bg-amber-100">
-                    <Zap className="w-3 h-3" />
+                    <Play className="w-3 h-3" />
                     全部解析
                   </Button>
                </div>
@@ -762,6 +767,7 @@ export default function ParsingPage() {
                   }))}
                   showFiles="expanded"
                   onSelectFile={(fileId) => setActiveFileId(fileId)}
+                  onDeleteFolder={handleDeleteFolder}
                   className="pb-10"
                 />
             </div>

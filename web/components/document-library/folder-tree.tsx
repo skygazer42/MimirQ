@@ -30,27 +30,30 @@ type FolderDialogState =
 
 function getFileIcon(filename: string) {
   const ext = filename.split('.').pop()?.toLowerCase() || ''
-  const className = "w-4 h-4 flex-shrink-0"
+  const baseClass = "w-6 h-6 rounded flex items-center justify-center mr-2 flex-shrink-0"
+  const iconClass = "w-3.5 h-3.5"
   
   switch (ext) {
     case 'jpg': case 'jpeg': case 'png': case 'gif': case 'webp': case 'svg': case 'bmp':
-      return <FileImage className={cn(className, "text-purple-500")} />
+      return <div className={cn(baseClass, "bg-purple-100 text-purple-600")}><FileImage className={iconClass} /></div>
     case 'js': case 'jsx': case 'ts': case 'tsx': case 'py': case 'html': case 'css': case 'json': case 'java': case 'go': case 'rs': case 'php':
-      return <FileCode className={cn(className, "text-blue-500")} />
+      return <div className={cn(baseClass, "bg-blue-100 text-blue-600")}><FileCode className={iconClass} /></div>
     case 'xls': case 'xlsx': case 'csv':
-      return <FileSpreadsheet className={cn(className, "text-green-500")} />
+      return <div className={cn(baseClass, "bg-green-100 text-green-600")}><FileSpreadsheet className={iconClass} /></div>
     case 'zip': case 'rar': case '7z': case 'tar': case 'gz':
-      return <FileArchive className={cn(className, "text-yellow-500")} />
+      return <div className={cn(baseClass, "bg-amber-100 text-amber-600")}><FileArchive className={iconClass} /></div>
     case 'mp3': case 'wav': case 'ogg': case 'flac':
-      return <FileMusic className={cn(className, "text-pink-500")} />
+      return <div className={cn(baseClass, "bg-pink-100 text-pink-600")}><FileMusic className={iconClass} /></div>
     case 'mp4': case 'mov': case 'avi': case 'mkv':
-      return <FileVideo className={cn(className, "text-red-500")} />
+      return <div className={cn(baseClass, "bg-rose-100 text-rose-600")}><FileVideo className={iconClass} /></div>
     case 'pdf':
-      return <FileText className={cn(className, "text-red-600")} />
-    case 'doc': case 'docx': case 'txt': case 'md':
-      return <FileText className={cn(className, "text-sky-500")} />
+      return <div className={cn(baseClass, "bg-red-100 text-red-600")}><FileText className={iconClass} /></div>
+    case 'doc': case 'docx':
+      return <div className={cn(baseClass, "bg-sky-100 text-sky-600")}><FileText className={iconClass} /></div>
+    case 'txt': case 'md':
+      return <div className={cn(baseClass, "bg-gray-100 text-gray-500")}><FileText className={iconClass} /></div>
     default:
-      return <FileText className={cn(className, "text-gray-400")} />
+      return <div className={cn(baseClass, "bg-gray-50 text-gray-400")}><FileText className={iconClass} /></div>
   }
 }
 
@@ -100,6 +103,7 @@ export function DocumentFolderTree({
   fileItems?: Array<{ id: string; name: string; folderId?: string; sourcePath?: string; status?: string; error?: string }>
   showFiles?: 'none' | 'active' | 'all' | 'expanded'
   onSelectFile?: (fileId: string) => void
+  onDeleteFolder?: (folderIds: string[]) => void
 }) {
   const {
     files: libraryFiles,
@@ -116,6 +120,24 @@ export function DocumentFolderTree({
   const [folderName, setFolderName] = useState('')
   const [moveParentId, setMoveParentId] = useState(ROOT_FOLDER_ID)
   const [expandedFileFolderIds, setExpandedFileFolderIds] = useState<Set<string>>(() => new Set([ROOT_FOLDER_ID]))
+
+  const handleDelete = useCallback(
+    (folderId: string) => {
+      const ok = window.confirm('确认删除该文件夹及其子文件夹？所有内容将被永久删除。')
+      if (!ok) return
+
+      const collectDescendants = (fid: string): string[] => {
+        const children = folders.filter((f) => f.parentId === fid)
+        return children.flatMap((c) => [c.id, ...collectDescendants(c.id)])
+      }
+      const idsToDelete = [folderId, ...collectDescendants(folderId)]
+
+      deleteFolder(folderId)
+      onDeleteFolder?.(idsToDelete)
+      toast.success('文件夹已删除')
+    },
+    [deleteFolder, folders, onDeleteFolder]
+  )
 
   const displayFiles = useMemo(() => {
     if (fileItems) return fileItems
@@ -251,15 +273,7 @@ export function DocumentFolderTree({
     closeDialog()
   }, [dialog, moveFolder, moveParentId, closeDialog])
 
-  const handleDelete = useCallback(
-    (folderId: string) => {
-      const ok = window.confirm('确认删除该文件夹及其子文件夹？文件将移动到根目录。')
-      if (!ok) return
-      deleteFolder(folderId)
-      toast.success('文件夹已删除')
-    },
-    [deleteFolder]
-  )
+
 
   const moveTargetOptions = useMemo(() => {
     if (!(dialog.open && dialog.mode === 'move')) return []
@@ -434,9 +448,16 @@ export function DocumentFolderTree({
                       {getFileIcon(f.name)}
                       <span className="truncate flex-1">{f.name}</span>
                       
-                      {f.status === 'parsing' && <Loader2 className="w-3.5 h-3.5 animate-spin text-indigo-500" />}
-                      {f.status === 'pending' && <div className="w-1.5 h-1.5 rounded-full bg-gray-300" />}
-                      {f.status === 'error' && <AlertCircle className="w-3.5 h-3.5 text-red-500" />}
+                      {f.status === 'parsing' ? (
+                        <div className="w-16 h-1.5 bg-indigo-100 rounded-full overflow-hidden ml-2 flex-shrink-0">
+                          <div className="h-full bg-indigo-500 animate-[progress_1s_ease-in-out_infinite] w-full origin-left scale-x-50" />
+                        </div>
+                      ) : (
+                        <>
+                          {f.status === 'pending' && <div className="w-1.5 h-1.5 rounded-full bg-gray-300 ml-2" />}
+                          {f.status === 'error' && <AlertCircle className="w-3.5 h-3.5 text-red-500 ml-2" />}
+                        </>
+                      )}
                     </button>
                   ))}
                 </div>
@@ -574,9 +595,16 @@ export function DocumentFolderTree({
                     {getFileIcon(f.name)}
                     <span className="truncate flex-1">{f.name}</span>
 
-                    {f.status === 'parsing' && <Loader2 className="w-3.5 h-3.5 animate-spin text-indigo-500" />}
-                    {f.status === 'pending' && <div className="w-1.5 h-1.5 rounded-full bg-gray-300" />}
-                    {f.status === 'error' && <AlertCircle className="w-3.5 h-3.5 text-red-500" />}
+                    {f.status === 'parsing' ? (
+                      <div className="w-16 h-1.5 bg-indigo-100 rounded-full overflow-hidden ml-2 flex-shrink-0">
+                        <div className="h-full bg-indigo-500 animate-[progress_1s_ease-in-out_infinite] w-full origin-left scale-x-50" />
+                      </div>
+                    ) : (
+                      <>
+                        {f.status === 'pending' && <div className="w-1.5 h-1.5 rounded-full bg-gray-300 ml-2" />}
+                        {f.status === 'error' && <AlertCircle className="w-3.5 h-3.5 text-red-500 ml-2" />}
+                      </>
+                    )}
                   </button>
                 ))}
               </div>
