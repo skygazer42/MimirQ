@@ -33,6 +33,8 @@ export function TopBar() {
     chunkStrategy,
     chunkSize,
     chunkOverlap,
+    lastPreviewDurationMs,
+    cacheHit,
     submitSuccess,
     error,
     isSubmitting,
@@ -76,6 +78,16 @@ export function TopBar() {
             <span className="px-2 py-0.5 rounded-full bg-gray-100">
               大小: {chunkSize} / 重叠: {chunkOverlap}
             </span>
+            {typeof lastPreviewDurationMs === 'number' && (
+              <span className="px-2 py-0.5 rounded-full bg-gray-100">
+                用时: {lastPreviewDurationMs}ms
+              </span>
+            )}
+            {cacheHit && (
+              <span className="px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-100">
+                缓存命中
+              </span>
+            )}
           </div>
         </div>
       </div>
