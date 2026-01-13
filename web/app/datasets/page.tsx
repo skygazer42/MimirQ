@@ -7,6 +7,7 @@ import { Layers, Loader2, Pencil, Plus, RefreshCw, Trash2 } from 'lucide-react'
 import { Navbar } from '@/components/navbar'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { Checkbox } from '@/components/ui/checkbox'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -15,13 +16,17 @@ import { Textarea } from '@/components/ui/textarea'
 import { datasetApi } from '@/lib/api-client'
 import { formatApiError } from '@/lib/api-errors'
 import { cn } from '@/lib/utils'
-import type { Dataset, PermissionEnum } from '@/types'
+import type { Dataset, PermissionEnum, DocumentPipelineOptions } from '@/types'
+import { PipelineOptionsPanel } from '@/components/pipeline-options-panel'
+import { usePipelineOptions } from '@/contexts/pipeline-options-context'
 
 type DatasetFormState = {
   name: string
   description: string
   permission: PermissionEnum
   partialMembersText: string
+  pipelineEnabled: boolean
+  pipelineOptions: DocumentPipelineOptions
 }
 
 function permissionLabel(p: PermissionEnum) {
@@ -44,6 +49,7 @@ function parseMembers(text: string): string[] {
 }
 
 export default function DatasetsPage() {
+  const { options: defaultPipelineOptions } = usePipelineOptions()
   const [items, setItems] = useState<Dataset[]>([])
   const [total, setTotal] = useState(0)
   const [isLoading, setIsLoading] = useState(false)
@@ -57,6 +63,8 @@ export default function DatasetsPage() {
     description: '',
     permission: 'all_team_members',
     partialMembersText: '',
+    pipelineEnabled: false,
+    pipelineOptions: { ...defaultPipelineOptions },
   })
 
   const resetForm = () => {
@@ -65,6 +73,8 @@ export default function DatasetsPage() {
       description: '',
       permission: 'all_team_members',
       partialMembersText: '',
+      pipelineEnabled: false,
+      pipelineOptions: { ...defaultPipelineOptions },
     })
   }
 
@@ -89,7 +99,7 @@ export default function DatasetsPage() {
 
   const canSubmit = useMemo(() => form.name.trim().length > 0, [form.name])
 
-  const buildPayload = () => {
+  const buildPayload = (mode: 'create' | 'update') => {
     const payload: any = {
       name: form.name.trim(),
       description: form.description.trim() || undefined,
@@ -98,13 +108,21 @@ export default function DatasetsPage() {
     if (form.permission === 'partial_members') {
       payload.partial_member_list = parseMembers(form.partialMembersText)
     }
+    if (mode === 'create') {
+      if (form.pipelineEnabled) {
+        payload.pipeline = form.pipelineOptions
+      }
+    } else {
+      // For update: send an empty object to explicitly clear dataset pipeline when disabled.
+      payload.pipeline = form.pipelineEnabled ? form.pipelineOptions : {}
+    }
     return payload
   }
 
   const handleCreate = async () => {
     if (!canSubmit) return
     try {
-      await datasetApi.create(buildPayload())
+      await datasetApi.create(buildPayload('create'))
       toast.success('已创建数据集')
       setCreateOpen(false)
       resetForm()
@@ -117,11 +135,14 @@ export default function DatasetsPage() {
 
   const openEdit = (ds: Dataset) => {
     setEditing(ds)
+    const mergedPipeline = { ...defaultPipelineOptions, ...(ds.pipeline || {}) }
     setForm({
       name: ds.name || '',
       description: ds.description || '',
       permission: ds.permission || 'all_team_members',
       partialMembersText: (ds.partial_member_list || []).join('\n'),
+      pipelineEnabled: !!ds.pipeline,
+      pipelineOptions: mergedPipeline,
     })
     setEditOpen(true)
   }
@@ -130,7 +151,7 @@ export default function DatasetsPage() {
     if (!editing?.id) return
     if (!canSubmit) return
     try {
-      await datasetApi.update(editing.id, buildPayload())
+      await datasetApi.update(editing.id, buildPayload('update'))
       toast.success('已更新数据集')
       setEditOpen(false)
       setEditing(null)
@@ -357,6 +378,43 @@ function DatasetForm({
           />
         </div>
       )}
+
+      <div className="border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden">
+        <div className="px-4 py-3 bg-slate-50 dark:bg-slate-900/40 border-b border-slate-200 dark:border-slate-800 flex items-start gap-3">
+          <Checkbox
+            checked={form.pipelineEnabled}
+            onCheckedChange={(v) => setForm({ ...form, pipelineEnabled: v === true })}
+            className="mt-1"
+          />
+          <div className="min-w-0">
+            <div className="text-sm font-semibold text-slate-900 dark:text-slate-100">数据集默认管线</div>
+            <div className="text-xs text-slate-500 dark:text-slate-400 mt-1 leading-relaxed">
+              启用后，该数据集下的文档默认使用此治理/索引配置；上传文档时的“文档级配置”仍可覆盖。
+            </div>
+          </div>
+        </div>
+        {form.pipelineEnabled && (
+          <div className="p-4 bg-white dark:bg-slate-950">
+            <PipelineOptionsPanel
+              compact={true}
+              enabled={true}
+              value={form.pipelineOptions}
+              onEnabledChange={() => {
+                // dataset panel is always "enabled" when visible; ignore
+              }}
+              onOptionChange={(key, value) => {
+                setForm({
+                  ...form,
+                  pipelineOptions: {
+                    ...form.pipelineOptions,
+                    [key]: value,
+                  },
+                })
+              }}
+            />
+          </div>
+        )}
+      </div>
     </div>
   )
 }
