@@ -1,4 +1,4 @@
-.PHONY: help up up-web up-etl4llm up-marker up-paddlevl up-dev up-dev-web up-prod up-prod-web infra-up infra-up-etl4llm infra-up-marker infra-up-paddlevl infra-ps infra-down down ps logs restart backend web test api-check api-smoke typecheck lint-py audit-py audit-web audit openapi-export openapi-types openapi-check db-upgrade db-revision verify parser-status clean
+.PHONY: help up up-web up-etl4llm up-marker up-paddlevl up-mineru up-dev up-dev-web up-prod up-prod-web infra-up infra-up-etl4llm infra-up-marker infra-up-paddlevl infra-up-mineru infra-ps infra-down down ps logs restart backend web test api-check api-smoke typecheck lint-py audit-py audit-web audit openapi-export openapi-types openapi-check db-upgrade db-revision verify parser-status clean
 
 PY := python3
 ifeq ($(OS),Windows_NT)
