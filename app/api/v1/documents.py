@@ -1287,6 +1287,10 @@ async def cancel_document_processing(
         ds = DatasetService.get_dataset(db, tenant_id, document.dataset_id)
         DatasetService.assert_dataset_writable(db, ds, account_id)
 
+    current_status = str(document.status or "").lower()
+    if current_status in {"completed", "failed"}:
+        raise HTTPException(status_code=409, detail=f"Cannot cancel a {current_status} document")
+
     meta = dict(document.doc_metadata or {})
     meta["cancel_requested"] = True
     document.doc_metadata = meta
@@ -1298,7 +1302,13 @@ async def cancel_document_processing(
     db.refresh(document)
 
     task_id = meta.get("task_id")
-    if bool(getattr(settings, "TASK_QUEUE_ENABLED", False)) and isinstance(task_id, str) and task_id.strip():
+    kg_task_id = meta.get("kg_task_id")
+    task_ids: list[str] = []
+    for raw in (task_id, kg_task_id):
+        if isinstance(raw, str) and raw.strip():
+            task_ids.append(raw.strip())
+
+    if bool(getattr(settings, "TASK_QUEUE_ENABLED", False)) and task_ids:
         try:
             from arq.jobs import Job
             from app.tasks.queue import get_queue
@@ -1306,14 +1316,15 @@ async def cancel_document_processing(
             q = await get_queue()
             if q is not None:
                 queue_name = getattr(settings, "TASK_QUEUE_NAME", "mimirq")
-                job = Job(task_id.strip(), q, _queue_name=queue_name)
-                try:
-                    await job.abort(timeout=0.2)
-                except (TimeoutError, asyncio.TimeoutError):
-                    # Abort signal was enqueued; the worker will pick it up shortly.
-                    pass
+                for tid in task_ids:
+                    job = Job(tid, q, _queue_name=queue_name)
+                    try:
+                        await job.abort(timeout=0.2)
+                    except (TimeoutError, asyncio.TimeoutError):
+                        # Abort signal was enqueued; the worker will pick it up shortly.
+                        pass
         except Exception as exc:  # noqa: BLE001
-            logger.warning("Failed to abort task %s for document %s: %s", task_id, document_id, str(exc)[:200])
+            logger.warning("Failed to abort tasks %s for document %s: %s", task_ids, document_id, str(exc)[:200])
 
     return {
         "id": document.id,
@@ -1346,6 +1357,19 @@ async def delete_document(
     if document.dataset_id:
         ds = DatasetService.get_dataset(db, tenant_id, document.dataset_id)
         DatasetService.assert_dataset_writable(db, ds, account_id)
+
+    # If the document is still being processed, mark it cancelled first so any
+    # running worker can observe it and stop as soon as possible.
+    if str(document.status or "").lower() in {"pending", "processing"}:
+        doc_meta = dict(document.doc_metadata or {})
+        doc_meta["cancel_requested"] = True
+        document.doc_metadata = doc_meta
+        document.status = "cancelled"
+        document.processing_progress = 0
+        document.current_stage = "cancelled"
+        document.error_message = "cancelled"
+        db.commit()
+        db.refresh(document)
 
     # Best-effort: abort any queued/running jobs for this document before deleting.
     doc_meta = document.doc_metadata or {}

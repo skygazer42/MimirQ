@@ -131,6 +131,7 @@ class ParsingStage:
                 last_check = now
                 db_doc = (
                     db.query(DBDocument)
+                    .populate_existing()
                     .filter(DBDocument.id == document_id, DBDocument.tenant_id == tenant_id)
                     .first()
                 )
@@ -230,6 +231,7 @@ class ParsingStage:
             last_check = now
             db_doc = (
                 db.query(DBDocument)
+                .populate_existing()
                 .filter(DBDocument.id == document_id, DBDocument.tenant_id == tenant_id)
                 .first()
             )
@@ -539,6 +541,39 @@ class DocumentProcessorService:
             owns_db = True
 
         try:
+            last_cancel_check = 0.0
+            cached_cancel = False
+
+            async def cancel_check(*, force: bool = False) -> bool:
+                nonlocal last_cancel_check, cached_cancel
+                now = time.monotonic()
+                if not force and now - last_cancel_check < 1.0:
+                    return cached_cancel
+                last_cancel_check = now
+                db_doc = (
+                    db.query(DBDocument)
+                    .populate_existing()
+                    .filter(DBDocument.id == document_id, DBDocument.tenant_id == tenant_id)
+                    .first()
+                )
+                if not db_doc:
+                    cached_cancel = True
+                    return True
+                status = str(db_doc.status or "").lower()
+                if status == "cancelled":
+                    cached_cancel = True
+                    return True
+                meta = db_doc.doc_metadata or {}
+                if isinstance(meta, dict) and bool(meta.get("cancel_requested")):
+                    cached_cancel = True
+                    return True
+                cached_cancel = False
+                return False
+
+            async def raise_if_cancelled(*, force: bool = False) -> None:
+                if await cancel_check(force=force):
+                    raise DocumentCancelledError("cancel_requested")
+
             db_document = (
                 db.query(DBDocument)
                 .filter(DBDocument.id == document_id, DBDocument.tenant_id == tenant_id)
@@ -547,6 +582,9 @@ class DocumentProcessorService:
             if db_document is None:
                 logger.warning("Document not found for processing: tenant=%s document=%s", tenant_id, document_id)
                 return {"status": "skipped", "reason": "document_not_found"}
+
+            # If user already cancelled before the worker started, stop immediately.
+            await raise_if_cancelled(force=True)
 
             # Step 1: update status to processing.
             await self._update_status(
@@ -603,6 +641,8 @@ class DocumentProcessorService:
                     chunk_strategy=chunk_strategy,
                 )
 
+            await raise_if_cancelled(force=True)
+
             resolved_backend = parsed.resolved_backend
             resolved_chunk_strategy = parsed.resolved_chunk_strategy
 
@@ -640,6 +680,8 @@ class DocumentProcessorService:
             # Best-effort cleanup for parser artifact directories (e.g., MagicPDF output).
             self._cleanup_parser_artifacts(artifact_dirs, tenant_id=tenant_id)
 
+            await raise_if_cancelled()
+
             # Governance: normalize/clean documents or ragflow chunks.
             governance_stats: Optional[GovernanceStats] = None
             if parsed.chunks is not None:
@@ -665,6 +707,8 @@ class DocumentProcessorService:
                 parsed_documents = gov.items
                 governance_stats = gov.stats
 
+                await raise_if_cancelled()
+
                 await self._update_status(db, tenant_id, document_id, "processing", 33, "chunking")
                 with metrics_span(
                     "ingest.chunking",
@@ -679,6 +723,8 @@ class DocumentProcessorService:
                         chunk_overlap=int(pipeline_effective.chunk_overlap),
                     )
                 chunks = chunked.chunks
+
+            await raise_if_cancelled()
 
             # Drop extremely short chunks to reduce retrieval noise (keep image-bearing chunks).
             min_chars = max(0, int(getattr(settings, "CHUNK_MIN_CHARS", 0) or 0))
@@ -721,6 +767,8 @@ class DocumentProcessorService:
             if governance_stats is not None:
                 self._record_governance_metadata(db, tenant_id, document_id, governance_stats)
 
+            await raise_if_cancelled()
+
             if not chunks:
                 msg = (
                     "No chunks produced for document (empty or filtered by CHUNK_MIN_CHARS). "
@@ -748,6 +796,7 @@ class DocumentProcessorService:
                 }
 
             # Chunk-level assets & metadata (image upload/binding).
+            await raise_if_cancelled()
             with metrics_span("ingest.chunk_assets"):
                 chunk_asset = chunk_asset_stage.run(
                     chunks=chunks,
@@ -781,7 +830,11 @@ class DocumentProcessorService:
             # Persist all image img_id values to document.metadata (for cleanup).
             self._record_document_image_ids(db, tenant_id=tenant_id, document_id=document_id, img_ids=document_img_ids)
 
+            await raise_if_cancelled()
+
             await self._update_status(db, tenant_id, document_id, "processing", 66, "embedding")
+
+            await raise_if_cancelled()
 
             with metrics_span(
                 "ingest.index",
@@ -806,6 +859,8 @@ class DocumentProcessorService:
                     "total_characters": total_chars,
                 }
             )
+
+            await raise_if_cancelled(force=True)
 
             await self._update_status(
                 db,
@@ -900,6 +955,16 @@ class DocumentProcessorService:
 
         except DocumentCancelledError as e:
             logger.info("Document processing cancelled: tenant=%s document=%s (%s)", tenant_id, document_id, str(e)[:120])
+            # Roll back any uncommitted DB work (e.g., flushed chunks) to avoid committing partial results.
+            try:
+                db.rollback()
+            except Exception:
+                pass
+            # Best-effort cleanup for vector/BM25 side effects (indexing is not transactional).
+            try:
+                Indexer(db).delete_chunk_indexes(tenant_id=tenant_id, document_id=document_id)
+            except Exception:
+                pass
             await self._update_status(
                 db,
                 tenant_id,
@@ -912,6 +977,14 @@ class DocumentProcessorService:
             return {"status": "cancelled"}
         except asyncio.CancelledError:
             # arq Job.abort cancels the coroutine; ensure we stop the child parser process and persist status.
+            try:
+                db.rollback()
+            except Exception:
+                pass
+            try:
+                Indexer(db).delete_chunk_indexes(tenant_id=tenant_id, document_id=document_id)
+            except Exception:
+                pass
             try:
                 await asyncio.shield(
                     self._update_status(
@@ -931,6 +1004,14 @@ class DocumentProcessorService:
             # Error handling.
             logger.exception("Error processing document %s: %s", document_id, e)
             log_metrics({"event": "ingest.failed", "success": False, "error": str(e)[:200]})
+            try:
+                db.rollback()
+            except Exception:
+                pass
+            try:
+                Indexer(db).delete_chunk_indexes(tenant_id=tenant_id, document_id=document_id)
+            except Exception:
+                pass
             await self._update_status(
                 db,
                 tenant_id,
@@ -956,12 +1037,25 @@ class DocumentProcessorService:
         **kwargs
     ):
         """Update document processing status."""
-        db_doc = db.query(DBDocument).filter(
-            DBDocument.id == document_id,
-            DBDocument.tenant_id == tenant_id,
-        ).first()
+        db_doc = (
+            db.query(DBDocument)
+            .populate_existing()
+            .filter(
+                DBDocument.id == document_id,
+                DBDocument.tenant_id == tenant_id,
+            )
+            .first()
+        )
 
         if db_doc:
+            # Do not overwrite a user-requested cancellation from a long-running worker.
+            current_status = str(db_doc.status or "").lower()
+            if current_status == "cancelled" and str(status).lower() != "cancelled":
+                return
+            meta = db_doc.doc_metadata or {}
+            if isinstance(meta, dict) and bool(meta.get("cancel_requested")) and str(status).lower() != "cancelled":
+                return
+
             db_doc.status = status
             db_doc.processing_progress = progress
             db_doc.current_stage = stage

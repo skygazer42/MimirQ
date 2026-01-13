@@ -230,7 +230,7 @@ function DocumentCard({
           {/* 查看详情（切片） */}
           <DocumentDetailDialog document={document} />
 
-          {showDelete && document.status === 'processing' && (
+          {showDelete && (document.status === 'processing' || document.status === 'pending') && (
             <button
               onClick={(e) => {
                 e.stopPropagation()
