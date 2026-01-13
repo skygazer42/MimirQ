@@ -7,6 +7,8 @@ endif
 
 COMPOSE := docker compose -f docker/docker-compose.yml
 COMPOSE_INFRA := docker compose -f docker/docker-compose.infra.yml
+COMPOSE_PARSERS := docker compose -f docker/docker-compose.yml -f docker/docker-compose.parsers.yml
+COMPOSE_INFRA_PARSERS := docker compose -f docker/docker-compose.infra.yml -f docker/docker-compose.parsers.yml
 COMPOSE_WEB := docker compose -f docker/docker-compose.yml -f docker/docker-compose.web.yml
 
 help:
@@ -16,6 +18,7 @@ help:
 	@echo "  make up-etl4llm - docker compose up + ETL4LLM parser (profile etl4llm)"
 	@echo "  make up-marker - docker compose up + Marker parser (profile marker)"
 	@echo "  make up-paddlevl - docker compose up + PaddleOCR-VL parser (profile paddlevl)"
+	@echo "  make up-mineru - docker compose up + MinerU local API (profile mineru)"
 	@echo "  make up-dev    - alias of up (set UVICORN_RELOAD in docker/.env)"
 	@echo "  make up-dev-web - alias of up-web"
 	@echo "  make up-prod   - alias of up (set ENV=production/AUTH_MODE/SECRET_KEY in docker/.env)"
@@ -24,12 +27,13 @@ help:
 	@echo "  make infra-up-etl4llm - infra-up + ETL4LLM parser (profile etl4llm)"
 	@echo "  make infra-up-marker - infra-up + Marker parser (profile marker)"
 	@echo "  make infra-up-paddlevl - infra-up + PaddleOCR-VL parser (profile paddlevl)"
+	@echo "  make infra-up-mineru - infra-up + MinerU local API (profile mineru)"
 	@echo "  make infra-ps  - infra docker compose ps"
 	@echo "  make infra-down - stop infra only"
 	@echo "  make down      - docker compose down"
 	@echo "  make ps        - docker compose ps"
 	@echo "  make logs      - docker compose logs -f"
-	@echo "  make restart   - docker compose restart backend"
+	@echo "  make restart   - docker compose restart mimirq-api"
 	@echo "  make backend   - run backend locally (uvicorn --reload)"
 	@echo "  make web       - run web locally (pnpm dev)"
 	@echo "  make test      - run backend tests (pytest)"
@@ -56,13 +60,16 @@ up-web:
 	$(COMPOSE_WEB) up -d --build
 
 up-etl4llm:
-	$(COMPOSE) --profile etl4llm up -d --build
+	$(COMPOSE_PARSERS) --profile etl4llm up -d --build
 
 up-marker:
-	$(COMPOSE) --profile marker up -d --build
+	$(COMPOSE_PARSERS) --profile marker up -d --build
 
 up-paddlevl:
-	$(COMPOSE) --profile paddlevl up -d --build
+	$(COMPOSE_PARSERS) --profile paddlevl up -d --build
+
+up-mineru:
+	$(COMPOSE_PARSERS) --profile mineru up -d --build
 
 up-dev:
 	@$(MAKE) up
@@ -80,13 +87,16 @@ infra-up:
 	$(COMPOSE_INFRA) up -d
 
 infra-up-etl4llm:
-	$(COMPOSE_INFRA) --profile etl4llm up -d
+	$(COMPOSE_INFRA_PARSERS) --profile etl4llm up -d
 
 infra-up-marker:
-	$(COMPOSE_INFRA) --profile marker up -d --build
+	$(COMPOSE_INFRA_PARSERS) --profile marker up -d --build
 
 infra-up-paddlevl:
-	$(COMPOSE_INFRA) --profile paddlevl up -d --build
+	$(COMPOSE_INFRA_PARSERS) --profile paddlevl up -d --build
+
+infra-up-mineru:
+	$(COMPOSE_INFRA_PARSERS) --profile mineru up -d --build
 
 infra-ps:
 	$(COMPOSE_INFRA) ps
@@ -104,7 +114,7 @@ logs:
 	$(COMPOSE) logs -f --tail=200
 
 restart:
-	$(COMPOSE) restart backend
+	$(COMPOSE) restart mimirq-api
 
 backend:
 	uvicorn app.main:app --reload --host 0.0.0.0 --port 8000 --reload-dir app --reload-dir scripts --reload-exclude web/node_modules --reload-exclude web/.next --reload-exclude web/.next_build --reload-exclude uploads
@@ -123,7 +133,7 @@ api-check:
 	node web/scripts/check-api-coverage.mjs
 
 api-smoke:
-	$(COMPOSE) exec -T backend python scripts/api_smoke.py --base-url http://localhost:8000 --skip-llm-test --skip-mineru
+	$(COMPOSE) exec -T mimirq-api python scripts/api_smoke.py --base-url http://localhost:8000 --skip-llm-test --skip-mineru
 
 typecheck:
 	cd web && pnpm run typecheck

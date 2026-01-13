@@ -933,7 +933,9 @@ class MinerUService:
 
         data: Dict[str, Any] = {
             "lang_list": params.get("lang_list", ["ch"]),
-            "backend": params.get("backend", "vlm-http-client"),
+            # Use a backend that works with a single MinerU API service by default.
+            # Users can override via `params["backend"]` (e.g. "vlm-http-client" with MINERU_VL_SERVER).
+            "backend": params.get("backend", "pipeline"),
             "parse_method": params.get("parse_method", "auto"),
             "return_md": True,
             "response_format_zip": True,
@@ -1149,7 +1151,8 @@ class MinerUService:
         # Build request parameters.
         data = {
             "lang_list": params.get("lang_list", ["ch"]),
-            "backend": params.get("backend", "vlm-http-client"),
+            # Use a backend that works with a single MinerU API service by default.
+            "backend": params.get("backend", "pipeline"),
             "parse_method": params.get("parse_method", "auto"),
             "return_md": True,
             "response_format_zip": True,

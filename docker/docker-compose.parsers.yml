@@ -1,0 +1,94 @@
+# Optional external parser services (heavyweight).
+#
+# Usage examples (from repo root):
+#   docker compose -f docker/docker-compose.yml -f docker/docker-compose.parsers.yml --profile marker up -d --build
+#   docker compose -f docker/docker-compose.yml -f docker/docker-compose.parsers.yml --profile paddlevl up -d --build
+#   docker compose -f docker/docker-compose.yml -f docker/docker-compose.parsers.yml --profile mineru up -d --build
+#
+# For local backend development (infra only):
+#   docker compose -f docker/docker-compose.infra.yml -f docker/docker-compose.parsers.yml --profile mineru up -d --build
+
+services:
+  # ETL4LLM (Bisheng Unstructured) parser service (optional).
+  # Then set `ETL4LLM_ENABLED=true` and `ETL4LLM_API_URL=http://mimirq-etl4llm:10001/v1/etl4llm/predict` in docker/.env.
+  mimirq-etl4llm:
+    profiles: ["etl4llm"]
+    image: dataelement/bisheng-unstructured:v0.0.3.14
+    restart: unless-stopped
+    environment:
+      TZ: Asia/Shanghai
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:10001/health"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+
+  # Marker PDF -> Markdown parser service (optional; heavyweight).
+  # Then set `MARKER_ENABLED=true` and `MARKER_API_URL=http://mimirq-marker:2080/convert` in docker/.env.
+  mimirq-marker:
+    profiles: ["marker"]
+    build:
+      context: ./marker
+    restart: unless-stopped
+    ports:
+      - "2080:2080"
+    environment:
+      TZ: Asia/Shanghai
+    volumes:
+      - marker_cache:/root/.cache
+
+  # PaddleOCR-VL parser service (optional; heavyweight).
+  # Then set `PADDLE_VL_ENABLED=true` and `PADDLE_VL_API_URL=http://mimirq-paddlevl:9030/convert` in docker/.env.
+  mimirq-paddlevl:
+    profiles: ["paddlevl"]
+    build:
+      context: ./paddlevl
+    restart: unless-stopped
+    ports:
+      - "9030:9030"
+    environment:
+      TZ: Asia/Shanghai
+    volumes:
+      - paddlevl_cache:/root/.paddleocr
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://localhost:9030/health').read()",
+        ]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+
+  # MinerU local FastAPI service (optional; heavy; typically requires GPU).
+  # Then set `MINERU_ENABLED=true` and `MINERU_LOCAL_SERVER_URL=http://mimirq-mineru:8000` in docker/.env.
+  mimirq-mineru:
+    profiles: ["mineru"]
+    build:
+      context: ./mineru
+    restart: unless-stopped
+    ports:
+      # Avoid clashing with MimirQ backend (8000).
+      - "30001:8000"
+    environment:
+      TZ: Asia/Shanghai
+      # Keep FastAPI docs enabled by default (so /docs and /openapi.json work).
+      MINERU_API_ENABLE_FASTAPI_DOCS: ${MINERU_API_ENABLE_FASTAPI_DOCS:-1}
+      # Optional: limit concurrent requests at MinerU side (503 when saturated).
+      MINERU_API_MAX_CONCURRENT_REQUESTS: ${MINERU_API_MAX_CONCURRENT_REQUESTS:-0}
+    volumes:
+      # Persist downloaded models/caches across restarts.
+      - mineru_cache:/root/.cache
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8000/openapi.json >/dev/null || exit 1"]
+      interval: 30s
+      timeout: 20s
+      retries: 10
+
+volumes:
+  marker_cache:
+  paddlevl_cache:
+  mineru_cache:
+
