@@ -62,10 +62,6 @@ interface ParseRun {
   id: string
   parserBackend: string
   parserLabel: string
-  runs?: ParseRun[]
-  activeRunId?: string
-  runs?: ParseRun[]
-  activeRunId?: string
   rawMarkdown: string
   cleanedMarkdown: string
   blocks: ParsingBlock[]
@@ -80,6 +76,8 @@ interface ParsedFile extends FileQueueItemData {
   markdownContent: string | null
   parserBackend: string
   parserLabel: string
+  runs?: ParseRun[]
+  activeRunId?: string
   parseStartTime?: number
   stats?: {
     charCount: number
@@ -532,7 +530,7 @@ export default function ParsingPage() {
 
   // 下载 Markdown
   const downloadMarkdown = () => {
-    if (!activeMarkdown) return
+    if (!activeFile || !activeMarkdown) return
     const blob = new Blob([activeMarkdown], { type: 'text/markdown' })
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
@@ -558,33 +556,39 @@ export default function ParsingPage() {
   // 保存编辑
   const handleSaveEdit = () => {
     if (!activeFile) return
+    const targetRunId = activeRun?.id ?? activeFile.activeRunId
 
     // 更新文件内容
     setFiles((prev) =>
-      prev.map((f) =>
-        f.id === activeFile.id
-          ? {
-              ...f,
-              markdownContent: editedContent,
-              runs: f.runs?.map((run) =>
-                run.id === activeRunId
-                  ? {
-                      ...run,
-                      cleanedMarkdown: editedContent,
-                      rawMarkdown: editedContent,
-                      blocks: [],
-                    }
-                  : run
-              ),
-              stats: f.stats ? {
+      prev.map((f) => {
+        if (f.id !== activeFile.id) return f
+        const runs = targetRunId
+          ? f.runs?.map((run) =>
+              run.id === targetRunId
+                ? {
+                    ...run,
+                    cleanedMarkdown: editedContent,
+                    rawMarkdown: editedContent,
+                    blocks: [],
+                  }
+                : run
+            )
+          : f.runs
+
+        return {
+          ...f,
+          markdownContent: editedContent,
+          runs,
+          stats: f.stats
+            ? {
                 ...f.stats,
                 charCount: editedContent.length,
                 lineCount: editedContent.split('\n').length,
                 blockCount: 0,
-              } : undefined,
-            }
-          : f
-      )
+              }
+            : undefined,
+        }
+      })
     )
 
     setRightPanelMode('markdown')
@@ -596,7 +600,7 @@ export default function ParsingPage() {
 
   // 提交到数据治理
   const handleSubmitToGovernance = () => {
-    if (!activeMarkdown) return
+    if (!activeFile || !activeMarkdown) return
 
     // 使用当前内容（可能是编辑后的）提交到数据治理
     addParsedFile({
