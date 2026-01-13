@@ -824,12 +824,17 @@ export default function ParsingPage() {
   const queueCountLabel = visibleQueueFiles.length === 0 ? '0' : `${parsedCount}/${visibleQueueFiles.length}`
 
   return (
-    <div className="flex h-screen overflow-hidden bg-amber-50/70">
-      <Navbar />
+    <div className="relative flex h-screen overflow-hidden bg-amber-50/70">
+      <div className="absolute inset-0 pointer-events-none">
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(251,191,36,0.16),transparent_55%),radial-gradient(circle_at_top_right,rgba(244,114,182,0.12),transparent_50%),radial-gradient(circle_at_bottom_left,rgba(251,146,60,0.12),transparent_55%)]" />
+        <div className="absolute inset-0 opacity-[0.04] bg-[radial-gradient(#92400e_1px,transparent_1px)] [background-size:18px_18px]" />
+      </div>
+      <div className="relative z-10 flex h-full w-full">
+        <Navbar />
 
-      <main className="flex-1 flex flex-col overflow-hidden min-h-0">
+        <main className="flex-1 flex flex-col overflow-hidden min-h-0">
         {/* 顶部标题栏 */}
-        <header className="flex-shrink-0 bg-white border-b border-amber-100/70 px-6 py-4 h-16 flex items-center justify-between z-20 shadow-sm relative">
+        <header className="flex-shrink-0 bg-white/80 border-b border-amber-100/70 px-6 py-4 h-16 flex items-center justify-between z-20 shadow-sm relative backdrop-blur">
           <div className="flex items-center gap-4">
             <div className="w-9 h-9 bg-gradient-to-br from-amber-500 to-rose-500 rounded-lg flex items-center justify-center shadow-lg shadow-amber-200/50">
               <Sparkles className="w-5 h-5 text-white" />
@@ -841,13 +846,14 @@ export default function ParsingPage() {
               </p>
             </div>
           </div>
+          <div className="absolute inset-x-6 bottom-0 h-px bg-gradient-to-r from-transparent via-amber-200/70 to-transparent" />
         </header>
 
         <div className="flex-1 flex overflow-hidden min-h-0">
           {/* 左侧：文件列表面板 */}
           <aside
             className={cn(
-              "group/sidebar relative flex flex-col flex-shrink-0 bg-white border-r border-amber-100/70 transition-all duration-300 ease-in-out z-10",
+              "group/sidebar relative flex flex-col flex-shrink-0 bg-white/80 border-r border-amber-100/70 transition-all duration-300 ease-in-out z-10 backdrop-blur shadow-[inset_-1px_0_0_rgba(255,255,255,0.6)]",
               isSidebarCollapsed ? "w-0 border-r-0" : "w-80"
             )}
             style={{ width: isSidebarCollapsed ? 0 : 320 }}
@@ -880,15 +886,17 @@ export default function ParsingPage() {
 
             {/* Folder Navigation */}
             <div className="flex-none h-1/3 min-h-[200px] overflow-y-auto p-2 border-b custom-scrollbar bg-amber-50/40">
-               <DocumentFolderTree
-                  onRequestUpload={requestUploadToFolder}
-                  onRequestUploadFolder={requestUploadFolder}
-                  fileItems={[]}
-                  showFiles="expanded"
-                  onSelectFile={(fileId) => setActiveFileId(fileId)}
-                  onDeleteFolder={handleDeleteFolder}
-                  onFileDrop={moveFileToFolder}
-               />
+               <div className="h-full rounded-2xl border border-amber-100/70 bg-white/70 p-2 shadow-sm backdrop-blur">
+                 <DocumentFolderTree
+                    onRequestUpload={requestUploadToFolder}
+                    onRequestUploadFolder={requestUploadFolder}
+                    fileItems={[]}
+                    showFiles="expanded"
+                    onSelectFile={(fileId) => setActiveFileId(fileId)}
+                    onDeleteFolder={handleDeleteFolder}
+                    onFileDrop={moveFileToFolder}
+                 />
+               </div>
             </div>
 
             {/* File List Header & Toolbar */}
@@ -960,6 +968,7 @@ export default function ParsingPage() {
 
             {/* File List */}
             <div className="flex-1 overflow-y-auto p-2 custom-scrollbar bg-amber-50/40">
+               <div className="min-h-full rounded-2xl border border-amber-100/70 bg-white/70 p-2 shadow-sm backdrop-blur">
                {directFolders.length === 0 && visibleQueueFiles.length === 0 ? (
                  <div className="h-full flex flex-col items-center justify-center text-stone-400">
                     <div className="w-14 h-14 bg-gradient-to-br from-amber-100/70 to-white rounded-2xl flex items-center justify-center mb-3 shadow-sm">
@@ -1098,6 +1107,7 @@ export default function ParsingPage() {
                    ))}
                  </div>
                )}
+               </div>
             </div>
 
             {/* 隐藏的文件上传 Input */}
@@ -1141,7 +1151,7 @@ export default function ParsingPage() {
           </aside>
 
           {/* 右侧：预览区域 */}
-          <div className="flex-1 flex flex-col bg-white overflow-hidden min-h-0">
+          <div className="flex-1 flex flex-col bg-white/85 backdrop-blur overflow-hidden min-h-0 shadow-[inset_1px_0_0_rgba(255,255,255,0.6)]">
             {!activeFile ? (
               // 空状态
               <div className="flex-1 flex items-center justify-center">
@@ -1512,6 +1522,7 @@ export default function ParsingPage() {
           </div>
         </div>
       </main>
+      </div>
     </div>
   )
 }

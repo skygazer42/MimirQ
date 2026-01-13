@@ -46,7 +46,7 @@ export function TopBar() {
   if (!currentFile || !currentFileItem) return null
 
   return (
-    <header className="flex-shrink-0 h-16 border-b border-amber-100/80 flex justify-between items-center px-6 bg-amber-50/70 backdrop-blur z-20 shadow-sm relative">
+    <header className="flex-shrink-0 h-16 border-b border-amber-100/80 flex justify-between items-center px-6 bg-white/80 backdrop-blur z-20 shadow-sm relative">
       <div className="flex items-center gap-4">
         <div className="w-9 h-9 bg-gradient-to-br from-amber-500 to-rose-500 rounded-xl flex items-center justify-center shadow-amber-200/70 shadow-md">
           <Layers className="text-white w-5 h-5" />
@@ -138,6 +138,7 @@ export function TopBar() {
           {submitSuccess ? '已完成' : '确认入库'}
         </Button>
       </div>
+      <div className="absolute inset-x-6 bottom-0 h-px bg-gradient-to-r from-transparent via-amber-200/70 to-transparent" />
     </header>
   )
 }

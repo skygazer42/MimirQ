@@ -22,8 +22,8 @@ export function ChunkList() {
   }, [previewData, query])
 
   return (
-    <div className="flex-1 flex flex-col min-w-0 bg-amber-50/40">
-      <div className="h-12 border-b border-amber-100/70 bg-white/80 flex items-center justify-between px-4 shrink-0 gap-3">
+    <div className="flex-1 flex flex-col min-w-0 bg-amber-50/40 shadow-[inset_1px_0_0_rgba(255,255,255,0.6)]">
+      <div className="h-12 border-b border-amber-100/70 bg-white/80 flex items-center justify-between px-4 shrink-0 gap-3 backdrop-blur">
         <span className="text-xs font-semibold text-amber-700 flex items-center gap-2">
           <Layers className="w-3.5 h-3.5" />
           切片结果

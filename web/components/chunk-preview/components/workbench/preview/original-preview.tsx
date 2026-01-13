@@ -50,8 +50,8 @@ export function OriginalPreview() {
   }, [hoveredChunkIndex, previewMode])
 
   return (
-    <div className="flex-1 flex flex-col min-w-0 border-r border-amber-100/70 bg-white">
-      <div className="h-10 border-b border-amber-100/70 bg-amber-50/60 flex items-center justify-between px-4 shrink-0">
+    <div className="flex-1 flex flex-col min-w-0 border-r border-amber-100/70 bg-white/85 backdrop-blur shadow-[inset_-1px_0_0_rgba(255,255,255,0.6)]">
+      <div className="h-10 border-b border-amber-100/70 bg-white/80 flex items-center justify-between px-4 shrink-0 backdrop-blur">
         <span className="text-xs font-semibold text-amber-700 flex items-center gap-2">
           <FileText className="w-3.5 h-3.5 text-amber-700" />
           解析原文
