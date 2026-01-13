@@ -849,6 +849,7 @@ export default function ParsingPage() {
                 </div>
               </div>
             )}
+            </div>
           </aside>
 
           {/* 右侧：预览区域 */}
