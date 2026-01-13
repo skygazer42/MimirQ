@@ -197,14 +197,16 @@ export function DocumentFolderTree({
   }, [showFiles, activeFolderId])
 
   useEffect(() => {
+    const expandTimers = dragExpandTimersRef.current
+    const activateTimers = dragActivateTimersRef.current
     return () => {
       if (dragScrollRafRef.current != null) {
         cancelAnimationFrame(dragScrollRafRef.current)
       }
-      for (const timer of dragExpandTimersRef.current.values()) {
+      for (const timer of expandTimers.values()) {
         clearTimeout(timer)
       }
-      for (const timer of dragActivateTimersRef.current.values()) {
+      for (const timer of activateTimers.values()) {
         clearTimeout(timer)
       }
     }
@@ -477,7 +479,9 @@ export function DocumentFolderTree({
             >
               {getFolderIconElement(depth, isActive)}
               <span className="text-sm truncate">{folder.name}</span>
-              <span className="ml-auto text-[10px] text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full">{count}</span>
+              <span className="ml-auto text-[10px] text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full opacity-0 group-hover:opacity-100 transition-opacity">
+                {count}
+              </span>
             </button>
 
             {onRequestUpload && (
@@ -782,7 +786,9 @@ export function DocumentFolderTree({
           >
             {getFolderIconElement(0, activeFolderId === ROOT_FOLDER_ID)}
             <span className="text-sm truncate">根目录</span>
-            <span className="ml-auto text-[10px] text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full">{rootCount}</span>
+            <span className="ml-auto text-[10px] text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full opacity-0 group-hover:opacity-100 transition-opacity">
+              {rootCount}
+            </span>
           </button>
 
           {onRequestUpload && (

@@ -901,7 +901,7 @@ export default function ParsingPage() {
               onDragLeave={() => setDragOverFolderId(null)}
               onDrop={(e) => handleFolderDrop(e, currentFolderId)}
             >
-               <div className="flex items-center gap-3 min-w-0">
+               <div className="flex items-center gap-3 min-w-0 group">
                   <div className="w-8 h-8 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center">
                     <FileText className="w-4 h-4" />
                   </div>
@@ -916,7 +916,9 @@ export default function ParsingPage() {
                       </span>
                     </div>
                   </div>
-                  <span className="bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full text-[11px] font-medium">{visibleQueueFiles.length}</span>
+                  <span className="bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full text-[11px] font-medium opacity-0 group-hover:opacity-100 transition-opacity">
+                    {visibleQueueFiles.length}
+                  </span>
                </div>
                
                <div className="flex items-center gap-1">
@@ -994,7 +996,12 @@ export default function ParsingPage() {
                              </div>
                              <span className="text-[10px] text-gray-400 flex-shrink-0">
                                {Number.isFinite(latestTs) && latestTs > 0
-                                 ? new Date(latestTs).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+                                 ? new Date(latestTs).toLocaleString([], {
+                                     month: '2-digit',
+                                     day: '2-digit',
+                                     hour: '2-digit',
+                                     minute: '2-digit',
+                                   })
                                  : ''}
                              </span>
                            </div>
@@ -1024,7 +1031,14 @@ export default function ParsingPage() {
                                {f.name}
                              </div>
                              <span className="text-[10px] text-gray-400 flex-shrink-0">
-                               {f.createdAt ? new Date(f.createdAt).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : ''}
+                               {f.createdAt
+                                 ? new Date(f.createdAt).toLocaleString([], {
+                                     month: '2-digit',
+                                     day: '2-digit',
+                                     hour: '2-digit',
+                                     minute: '2-digit',
+                                   })
+                                 : ''}
                              </span>
                            </div>
                            
