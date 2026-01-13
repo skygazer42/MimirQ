@@ -154,6 +154,14 @@ async def get_pipeline_capabilities(
                 notes = "Set PADDLE_VL_ENABLED=true."
             elif not api_url:
                 notes = "Configure PADDLE_VL_API_URL (e.g., http://localhost:9030/convert)."
+        elif b == "olmocr":
+            enabled = bool(getattr(settings, "OLMOCR_ENABLED", False))
+            api_url = bool((getattr(settings, "OLMOCR_API_URL", "") or "").strip())
+            available = bool(enabled and api_url)
+            if not enabled:
+                notes = "Set OLMOCR_ENABLED=true."
+            elif not api_url:
+                notes = "Configure OLMOCR_API_URL (e.g., http://localhost:2085/convert)."
         elif b == "magicpdf":
             available, notes = magicpdf_available()
         else:  # pragma: no cover

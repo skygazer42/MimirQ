@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { ArrowRightLeft, ChevronDown, ChevronRight, FileText, Folder, FolderOpen, MoreHorizontal, Pencil, Plus, Trash2, Upload, FileImage, FileCode, FileSpreadsheet, FileArchive, FileMusic, FileVideo, Library, Package, Database } from 'lucide-react'
+import { ArrowRightLeft, ChevronDown, ChevronRight, FileText, Folder, FolderOpen, MoreHorizontal, Pencil, Plus, Trash2, Upload, FileImage, FileCode, FileSpreadsheet, FileArchive, FileMusic, FileVideo, Library, Package, Database, Loader2, CheckCircle2, AlertCircle, XCircle, Ban } from 'lucide-react'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
@@ -97,7 +97,7 @@ export function DocumentFolderTree({
 }: {
   className?: string
   onRequestUpload?: (folderId: string) => void
-  fileItems?: Array<{ id: string; name: string; folderId?: string; sourcePath?: string }>
+  fileItems?: Array<{ id: string; name: string; folderId?: string; sourcePath?: string; status?: string; error?: string }>
   showFiles?: 'none' | 'active' | 'all' | 'expanded'
   onSelectFile?: (fileId: string) => void
 }) {
@@ -123,6 +123,7 @@ export function DocumentFolderTree({
       id: f.id,
       name: f.filename,
       folderId: f.folderId,
+      status: 'parsed',
     }))
   }, [fileItems, libraryFiles])
 
@@ -136,7 +137,7 @@ export function DocumentFolderTree({
   }, [displayFiles])
 
   const directFilesByFolderId = useMemo(() => {
-    const map = new Map<string, Array<{ id: string; name: string; folderId?: string; sourcePath?: string }>>()
+    const map = new Map<string, Array<{ id: string; name: string; folderId?: string; sourcePath?: string; status?: string; error?: string }>>()
     for (const file of displayFiles) {
       const folderId = file.folderId || ROOT_FOLDER_ID
       const list = map.get(folderId) || []
@@ -420,16 +421,22 @@ export function DocumentFolderTree({
                       type="button"
                       className={cn(
                         'w-full flex items-center gap-2 rounded-lg py-1.5 px-2 text-left text-gray-600 hover:bg-gray-50',
-                        'text-sm'
+                        'text-sm',
+                        f.status === 'error' && 'bg-red-50 hover:bg-red-100 text-red-700',
+                        f.status === 'parsing' && 'bg-indigo-50/50'
                       )}
-                      title={f.sourcePath ? `${f.name} · ${f.sourcePath}` : f.name}
+                      title={f.error || (f.sourcePath ? `${f.name} · ${f.sourcePath}` : f.name)}
                       onClick={() => {
                         setActiveFolderId(folder.id)
                         onSelectFile?.(f.id)
                       }}
                     >
                       {getFileIcon(f.name)}
-                      <span className="truncate">{f.name}</span>
+                      <span className="truncate flex-1">{f.name}</span>
+                      
+                      {f.status === 'parsing' && <Loader2 className="w-3.5 h-3.5 animate-spin text-indigo-500" />}
+                      {f.status === 'pending' && <div className="w-1.5 h-1.5 rounded-full bg-gray-300" />}
+                      {f.status === 'error' && <AlertCircle className="w-3.5 h-3.5 text-red-500" />}
                     </button>
                   ))}
                 </div>
@@ -553,15 +560,23 @@ export function DocumentFolderTree({
                   <button
                     key={f.id}
                     type="button"
-                    className="w-full flex items-center gap-2 rounded-lg py-1.5 px-2 text-left text-gray-600 hover:bg-gray-50 text-sm"
-                    title={f.sourcePath ? `${f.name} · ${f.sourcePath}` : f.name}
+                    className={cn(
+                      'w-full flex items-center gap-2 rounded-lg py-1.5 px-2 text-left text-gray-600 hover:bg-gray-50 text-sm',
+                      f.status === 'error' && 'bg-red-50 hover:bg-red-100 text-red-700',
+                      f.status === 'parsing' && 'bg-indigo-50/50'
+                    )}
+                    title={f.error || (f.sourcePath ? `${f.name} · ${f.sourcePath}` : f.name)}
                     onClick={() => {
                       setActiveFolderId(ROOT_FOLDER_ID)
                       onSelectFile?.(f.id)
                     }}
                   >
                     {getFileIcon(f.name)}
-                    <span className="truncate">{f.name}</span>
+                    <span className="truncate flex-1">{f.name}</span>
+
+                    {f.status === 'parsing' && <Loader2 className="w-3.5 h-3.5 animate-spin text-indigo-500" />}
+                    {f.status === 'pending' && <div className="w-1.5 h-1.5 rounded-full bg-gray-300" />}
+                    {f.status === 'error' && <AlertCircle className="w-3.5 h-3.5 text-red-500" />}
                   </button>
                 ))}
               </div>

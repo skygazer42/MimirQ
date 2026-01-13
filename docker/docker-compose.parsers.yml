@@ -4,6 +4,7 @@
 #   docker compose -f docker/docker-compose.yml -f docker/docker-compose.parsers.yml --profile marker up -d --build
 #   docker compose -f docker/docker-compose.yml -f docker/docker-compose.parsers.yml --profile paddlevl up -d --build
 #   docker compose -f docker/docker-compose.yml -f docker/docker-compose.parsers.yml --profile mineru up -d --build
+#   docker compose -f docker/docker-compose.yml -f docker/docker-compose.parsers.yml --profile olmocr up -d --build
 #
 # For local backend development (infra only):
 #   docker compose -f docker/docker-compose.infra.yml -f docker/docker-compose.parsers.yml --profile mineru up -d --build
@@ -89,7 +90,40 @@ services:
       timeout: 20s
       retries: 10
 
+  # olmOCR PDF -> Markdown parser service (optional; heavyweight; requires GPU).
+  # Then set `OLMOCR_ENABLED=true` and `OLMOCR_API_URL=http://mimirq-olmocr:2085/convert` in docker/.env.
+  mimirq-olmocr:
+    profiles: ["olmocr"]
+    build:
+      context: ./olmocr
+    restart: unless-stopped
+    ports:
+      - "2085:2085"
+    environment:
+      TZ: Asia/Shanghai
+      # Server-side concurrency guard (1 = recommended for a single GPU).
+      OLMOCR_MAX_CONCURRENT_JOBS: ${OLMOCR_MAX_CONCURRENT_JOBS:-1}
+      OLMOCR_PIPELINE_TIMEOUT_SEC: ${OLMOCR_PIPELINE_TIMEOUT_SEC:-1800}
+      # Optional: external OpenAI-compatible server mode (vLLM on another host).
+      OLMOCR_SERVER_URL: ${OLMOCR_SERVER_URL:-}
+      OLMOCR_API_KEY: ${OLMOCR_API_KEY:-}
+      OLMOCR_MODEL: ${OLMOCR_MODEL:-}
+    volumes:
+      - olmocr_cache:/root/.cache
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://localhost:2085/health').read()",
+        ]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+
 volumes:
   marker_cache:
   paddlevl_cache:
   mineru_cache:
+  olmocr_cache:

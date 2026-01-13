@@ -45,3 +45,23 @@ def test_factory_resolve_backend_paddlevl_accepts_alias(monkeypatch: pytest.Monk
     factory = ParserFactory()
     assert factory.resolve_backend(".pdf", "paddleocr-vl") == "paddle_vl"
 
+
+def test_factory_resolve_backend_olmocr_requires_enabled():
+    factory = ParserFactory()
+    with pytest.raises(ValueError):
+        factory.resolve_backend(".pdf", "olmocr")
+
+
+def test_factory_resolve_backend_olmocr_requires_api_url(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setattr(settings, "OLMOCR_ENABLED", True)
+    monkeypatch.setattr(settings, "OLMOCR_API_URL", "")
+    factory = ParserFactory()
+    with pytest.raises(ValueError):
+        factory.resolve_backend(".pdf", "olmocr")
+
+
+def test_factory_resolve_backend_olmocr_accepts_alias(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setattr(settings, "OLMOCR_ENABLED", True)
+    monkeypatch.setattr(settings, "OLMOCR_API_URL", "http://example/convert")
+    factory = ParserFactory()
+    assert factory.resolve_backend(".pdf", "olm-ocr") == "olmocr"

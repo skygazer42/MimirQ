@@ -32,6 +32,10 @@ _BACKEND_ALIASES: dict[str, str] = {
     "paddle-vl": "paddle_vl",
     "paddleocr-vl": "paddle_vl",
     "paddleocrvl": "paddle_vl",
+    # olmOCR (PDF -> Markdown external service)
+    "olmocr": "olmocr",
+    "olm-ocr": "olmocr",
+    "olmocr-pdf": "olmocr",
     # Backward-compatible aliases (deprecated)
     "bisheng-unstructured": "etl4llm",
     "bishengunstructured": "etl4llm",

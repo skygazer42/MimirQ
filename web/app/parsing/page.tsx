@@ -25,6 +25,7 @@ import {
   X,
   PanelRightOpen,
   PanelRightClose,
+  FolderOpen,
 } from 'lucide-react'
 import { Navbar } from '@/components/navbar'
 import { Button } from '@/components/ui/button'
@@ -732,9 +733,23 @@ export default function ParsingPage() {
               />
             </div>
 
-            {/* 文档库目录 */}
-            <div className="p-4 border-b">
-              <div className="max-h-56 overflow-y-auto pr-1">
+            {/* 操作栏: 一键解析 */}
+            {parseableCount > 0 && (
+               <div className="px-4 py-2 border-b bg-amber-50/50 flex items-center justify-between transition-all">
+                  <span className="text-xs text-amber-700 font-medium">{parseableCount} 个文件待解析</span>
+                  <Button variant="ghost" size="sm" onClick={parseAllPending} className="h-6 text-xs gap-1 text-amber-700 hover:text-amber-800 hover:bg-amber-100">
+                    <Zap className="w-3 h-3" />
+                    全部解析
+                  </Button>
+               </div>
+            )}
+
+            {/* 文档库目录 (Unified Tree) */}
+            <div className="flex-1 overflow-y-auto p-4">
+                <div className="mb-2 px-1 text-xs text-gray-400 flex items-center gap-1 truncate">
+                  <FolderOpen className="w-3 h-3" />
+                  {activeFolderPathLabel}
+                </div>
                 <DocumentFolderTree
                   onRequestUpload={requestUploadToFolder}
                   fileItems={files.map((f) => ({
@@ -742,93 +757,24 @@ export default function ParsingPage() {
                     name: f.name,
                     folderId: f.folderId,
                     sourcePath: f.sourcePath,
+                    status: f.status,
+                    error: f.error
                   }))}
                   showFiles="expanded"
                   onSelectFile={(fileId) => setActiveFileId(fileId)}
+                  className="pb-10"
                 />
-              </div>
-              <div className="mt-2 text-xs text-gray-500">当前目录：{activeFolderPathLabel}</div>
             </div>
 
-            {/* 上传区域 */}
-            <div className="p-4 border-b">
-              <div
-                className={cn(
-                  'p-5 border-2 border-dashed rounded-xl text-center transition-all cursor-pointer',
-                  isDragging
-                    ? 'border-indigo-500 bg-indigo-50'
-                    : 'border-gray-200 hover:border-indigo-400 hover:bg-indigo-50/30'
-                )}
-                onDragOver={handleDragOver}
-                onDragLeave={handleDragLeave}
-                onDrop={handleDrop}
-                onClick={() => {
-                  uploadTargetFolderIdRef.current = null
-                  fileInputRef.current?.click()
-                }}
-              >
-                  <input
-                    ref={fileInputRef}
-                    type="file"
-                    multiple
-                    accept=".pdf,.txt,.md,.doc,.docx,.xls,.xlsx,.csv,.html,.json,.zip"
-                    className="hidden"
-                    onChange={handleFileSelect}
-                  />
-                <Upload className="w-7 h-7 mx-auto mb-2 text-gray-400" />
-                <p className="text-sm font-medium text-gray-700">拖放或点击上传</p>
-                <p className="text-xs text-gray-400 mt-1">PDF, Word, Excel, TXT, MD, ZIP</p>
-              </div>
-            </div>
-
-            {/* 文件列表 */}
-            <div className="flex-1 overflow-y-auto p-4">
-              <div className="flex items-center justify-between mb-3">
-                <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
-                  文件队列 ({queueCountLabel})
-                </h3>
-                {parseableCount > 0 && (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={parseAllPending}
-                    className="h-7 text-xs gap-1"
-                  >
-                    <Zap className="w-3 h-3" />
-                    一键解析
-                  </Button>
-                )}
-              </div>
-
-              {files.length === 0 ? (
-                <div className="text-center py-8 text-gray-400">
-                  <FileStack className="w-10 h-10 mx-auto mb-2 opacity-50" />
-                  <p className="text-sm">暂无文件</p>
-                  <p className="text-xs mt-1">上传文件开始解析</p>
-                </div>
-              ) : visibleQueueFiles.length === 0 ? (
-                <div className="text-center py-8 text-gray-400">
-                  <p className="text-sm">该目录暂无文件</p>
-                  <p className="text-xs mt-1">可使用目录右侧“上传”按钮，或切到根目录查看全部</p>
-                </div>
-              ) : (
-                <div className="space-y-2">
-                  {visibleQueueFiles.map((file) => (
-                    <FileQueueItem
-                      key={file.id}
-                      file={{
-                        ...file,
-                        folderPathLabel: folderPathById[file.folderId] || '根目录',
-                      }}
-                      isActive={activeFileId === file.id}
-                      onClick={() => setActiveFileId(file.id)}
-                      onRemove={() => removeFile(file.id)}
-                      onRetry={() => parseFile(file.id)}
-                    />
-                  ))}
-                </div>
-              )}
-            </div>
+            {/* 隐藏的文件上传 Input (用于文件夹上传) */}
+            <input
+              ref={fileInputRef}
+              type="file"
+              multiple
+              accept=".pdf,.txt,.md,.doc,.docx,.xls,.xlsx,.csv,.html,.json,.zip"
+              className="hidden"
+              onChange={handleFileSelect}
+            />
 
             {/* 底部统计 */}
             {visibleQueueFiles.length > 0 && (
