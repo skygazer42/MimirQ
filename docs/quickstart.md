@@ -87,6 +87,26 @@ PADDLE_VL_ENABLED=true
 PADDLE_VL_API_URL=http://mimirq-paddlevl:9030/convert
 ```
 
+### (可选) 启用 MinerU（本地 FastAPI ZIP 模式）
+
+MinerU 建议以独立容器运行（依赖/模型较重），MimirQ 通过 HTTP 调用其 `/file_parse` 接口拿到 ZIP（Markdown + images）。
+
+```bash
+make up-mineru
+```
+
+然后在 `docker/.env` 里配置（后端跑在 Docker 时）：
+```env
+MINERU_ENABLED=true
+MINERU_LOCAL_SERVER_URL=http://mimirq-mineru:8000
+```
+
+如果你是“本地跑后端 + Docker 跑 MinerU”，可用：
+```env
+MINERU_ENABLED=true
+MINERU_LOCAL_SERVER_URL=http://localhost:30001
+```
+
 ### (可选) 启用 Pandoc/LibreOffice（Office/HTML 高质量转 Markdown）
 
 适用于：`doc/docx/ppt/pptx/xls/xlsx/html/htm`（图片/表格保真更好）。
@@ -234,7 +254,7 @@ self.llm = ChatAnthropic(
 
 **解决**:
 - 等待 2-5 分钟
-- 查看后端日志: `docker compose logs -f backend`
+- 查看后端日志: `docker compose logs -f mimirq-api`
 - 查看 Milvus 状态: `curl http://localhost:9091/healthz`
 
 ### Q2: AI 回答"没有找到相关资料"？
@@ -334,7 +354,7 @@ mineru:
 遇到问题？
 
 1. 查看 [README.md](./README.md) 完整文档
-2. 查看后端日志: `docker compose logs -f backend`
+2. 查看后端日志: `docker compose logs -f mimirq-api`
 3. 访问 API 文档: http://localhost:8000/docs
 4. 提交 Issue: [GitHub Issues](https://github.com/your-repo/issues)
 

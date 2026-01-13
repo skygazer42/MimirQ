@@ -74,6 +74,8 @@ services:
       - "30001:8000"
     environment:
       TZ: Asia/Shanghai
+      # Model source: "huggingface" (default) or "modelscope" (China-friendly mirror).
+      MINERU_MODEL_SOURCE: ${MINERU_MODEL_SOURCE:-huggingface}
       # Keep FastAPI docs enabled by default (so /docs and /openapi.json work).
       MINERU_API_ENABLE_FASTAPI_DOCS: ${MINERU_API_ENABLE_FASTAPI_DOCS:-1}
       # Optional: limit concurrent requests at MinerU side (503 when saturated).
@@ -91,4 +93,3 @@ volumes:
   marker_cache:
   paddlevl_cache:
   mineru_cache:
-
