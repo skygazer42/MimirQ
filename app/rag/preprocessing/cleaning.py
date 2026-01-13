@@ -4,6 +4,7 @@ import re
 from typing import Callable, Iterable, Optional, Sequence
 
 from app.rag.preprocessing.normalization import normalize_text
+from app.rag.preprocessing.segmentation import limit_blank_lines
 
 
 @dataclass(frozen=True)
@@ -21,7 +22,6 @@ class CleaningResult:
 
 
 _TRAILING_SPACES_RE = re.compile(r"[ \t]+\n")
-_MANY_BLANK_LINES_RE = re.compile(r"\n{3,}")
 _MID_WS_RE = re.compile(r"(?<=\S)[ \t]{2,}(?=\S)")
 _ALNUM_CJK_RE = re.compile(r"[A-Za-z0-9\u4e00-\u9fff]")
 _UPPER_RUN_RE = re.compile(r"[A-Z]{3,}")
@@ -68,6 +68,7 @@ def clean_markdown(
     normalize_line_endings: bool = True,
     trim_trailing_spaces: bool = True,
     collapse_blank_lines: bool = True,
+    max_blank_lines: int = 1,
     remove_control_chars: bool = True,
     remove_toc_lines: bool = True,
     remove_noise_lines: bool = True,
@@ -123,7 +124,7 @@ def clean_markdown(
         text = _TRAILING_SPACES_RE.sub("\n", text)
 
     if collapse_blank_lines:
-        text = _MANY_BLANK_LINES_RE.sub("\n\n", text)
+        text = limit_blank_lines(text, max_blank_lines=max_blank_lines)
 
     return CleaningResult(markdown=text, applied_rules=applied, changed=(text != original))
 

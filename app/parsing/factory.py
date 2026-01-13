@@ -273,6 +273,7 @@ class ParserFactory:
         document_id: Optional[str] = None,
         tenant_id: Optional[str] = None,
         pdf_quality: Optional[dict[str, Any]] = None,
+        html_xpath: Optional[str] = None,
     ) -> Tuple[List[Document], str]:
         """
         Automatically select parser based on file type and return Document list and actual parser name
@@ -327,13 +328,17 @@ class ParserFactory:
                     pdf_quality=pdf_quality,
                 )
             else:
-                documents = parser.parse(file_path)
+                if backend == "html":
+                    documents = parser.parse(file_path, html_xpath=html_xpath)  # type: ignore[call-arg]
+                else:
+                    documents = parser.parse(file_path)
         except Exception as exc:
             fallback_docs, fallback_backend = self._fallback_parse(
                 file_path=file_path,
                 file_ext=file_ext,
                 requested_backend=backend,
                 error=exc,
+                html_xpath=html_xpath,
             )
             if fallback_docs is None:
                 raise
@@ -358,6 +363,7 @@ class ParserFactory:
         file_ext: str,
         requested_backend: str,
         error: Exception,
+        html_xpath: Optional[str] = None,
     ) -> tuple[Optional[List[Document]], str]:
         """
         Best-effort fallback for brittle converter backends.
@@ -409,11 +415,11 @@ class ParserFactory:
                 if file_ext == ".html":
                     from app.parsing.parsers.html_parser import HtmlParser
 
-                    return HtmlParser().parse(file_path), "html"
+                    return HtmlParser().parse(file_path, html_xpath=html_xpath), "html"
                 if file_ext == ".htm":
                     from app.parsing.parsers.html_parser import HtmlParser
 
-                    return HtmlParser().parse(file_path), "html"
+                    return HtmlParser().parse(file_path, html_xpath=html_xpath), "html"
                 if file_ext == ".csv":
                     from app.parsing.parsers.csv_parser import CsvParser
 

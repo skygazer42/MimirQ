@@ -181,6 +181,7 @@ def _parse_documents(payload: dict[str, Any]) -> dict[str, Any]:
         document_id=str(document_id) if document_id else None,
         tenant_id=str(tenant_id),
         pdf_quality=pdf_quality,
+        html_xpath=(payload.get("html_xpath") if isinstance(payload.get("html_xpath"), str) else None),
     )
 
     if mode == "preview":

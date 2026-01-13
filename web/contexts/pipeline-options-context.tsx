@@ -11,6 +11,18 @@ const DEFAULT_OPTIONS: DocumentPipelineOptions = {
   governance_remove_noise_lines: true,
   governance_unwrap_lines: true,
   governance_remove_common_lines: true,
+  governance_remove_boilerplate: false,
+  governance_remove_images: 'none',
+  governance_pii_anonymize: false,
+  governance_pii_mode: 'mask',
+  governance_pii_mask: '[REDACTED]',
+  governance_max_blank_lines: 1,
+  governance_html_xpath: '',
+  governance_drop_outline_only: false,
+  governance_drop_outline_min_content_chars: 200,
+  governance_drop_outline_max_heading_ratio: 0.85,
+  governance_drop_low_density: false,
+  governance_drop_low_density_threshold: 0.12,
   governance_unwrap_max_line_length: 120,
   governance_noise_min_chars: 2,
   governance_noise_ratio_threshold: 0.2,
@@ -63,6 +75,23 @@ const toFloat = (value: unknown): number | undefined => {
   return undefined
 }
 
+const toString = (value: unknown): string | undefined => {
+  if (typeof value === 'string') return value
+  return undefined
+}
+
+const normalizeImageMode = (value: unknown): 'none' | 'decorative' | 'all' => {
+  const v = (toString(value) || '').toLowerCase()
+  if (v === 'decorative' || v === 'all' || v === 'none') return v
+  return 'none'
+}
+
+const normalizePiiMode = (value: unknown): 'mask' | 'token' => {
+  const v = (toString(value) || '').toLowerCase()
+  if (v === 'token') return 'token'
+  return 'mask'
+}
+
 const normalizeOptions = (raw: any): DocumentPipelineOptions => {
   if (!raw || typeof raw !== 'object') return { ...DEFAULT_OPTIONS }
   return {
@@ -71,6 +100,18 @@ const normalizeOptions = (raw: any): DocumentPipelineOptions => {
     governance_remove_noise_lines: toBool(raw.governance_remove_noise_lines) ?? DEFAULT_OPTIONS.governance_remove_noise_lines,
     governance_unwrap_lines: toBool(raw.governance_unwrap_lines) ?? DEFAULT_OPTIONS.governance_unwrap_lines,
     governance_remove_common_lines: toBool(raw.governance_remove_common_lines) ?? DEFAULT_OPTIONS.governance_remove_common_lines,
+    governance_remove_boilerplate: toBool(raw.governance_remove_boilerplate) ?? DEFAULT_OPTIONS.governance_remove_boilerplate,
+    governance_remove_images: normalizeImageMode(raw.governance_remove_images) ?? DEFAULT_OPTIONS.governance_remove_images,
+    governance_pii_anonymize: toBool(raw.governance_pii_anonymize) ?? DEFAULT_OPTIONS.governance_pii_anonymize,
+    governance_pii_mode: normalizePiiMode(raw.governance_pii_mode) ?? DEFAULT_OPTIONS.governance_pii_mode,
+    governance_pii_mask: toString(raw.governance_pii_mask) ?? DEFAULT_OPTIONS.governance_pii_mask,
+    governance_max_blank_lines: toInt(raw.governance_max_blank_lines) ?? DEFAULT_OPTIONS.governance_max_blank_lines,
+    governance_html_xpath: toString(raw.governance_html_xpath) ?? DEFAULT_OPTIONS.governance_html_xpath,
+    governance_drop_outline_only: toBool(raw.governance_drop_outline_only) ?? DEFAULT_OPTIONS.governance_drop_outline_only,
+    governance_drop_outline_min_content_chars: toInt(raw.governance_drop_outline_min_content_chars) ?? DEFAULT_OPTIONS.governance_drop_outline_min_content_chars,
+    governance_drop_outline_max_heading_ratio: toFloat(raw.governance_drop_outline_max_heading_ratio) ?? DEFAULT_OPTIONS.governance_drop_outline_max_heading_ratio,
+    governance_drop_low_density: toBool(raw.governance_drop_low_density) ?? DEFAULT_OPTIONS.governance_drop_low_density,
+    governance_drop_low_density_threshold: toFloat(raw.governance_drop_low_density_threshold) ?? DEFAULT_OPTIONS.governance_drop_low_density_threshold,
     governance_unwrap_max_line_length: toInt(raw.governance_unwrap_max_line_length) ?? DEFAULT_OPTIONS.governance_unwrap_max_line_length,
     governance_noise_min_chars: toInt(raw.governance_noise_min_chars) ?? DEFAULT_OPTIONS.governance_noise_min_chars,
     governance_noise_ratio_threshold: toFloat(raw.governance_noise_ratio_threshold) ?? DEFAULT_OPTIONS.governance_noise_ratio_threshold,

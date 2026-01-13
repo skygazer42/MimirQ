@@ -32,6 +32,8 @@ export interface GovernanceInfo {
   documents: number
   changed_documents: number
   rules_applied: number
+  dropped_documents?: number
+  drop_reasons?: Record<string, number>
 }
 
 export interface DocumentStatus {
@@ -58,6 +60,18 @@ export interface DocumentPipelineOptions {
   governance_remove_noise_lines?: boolean
   governance_unwrap_lines?: boolean
   governance_remove_common_lines?: boolean
+  governance_remove_boilerplate?: boolean
+  governance_remove_images?: 'none' | 'decorative' | 'all' | string
+  governance_pii_anonymize?: boolean
+  governance_pii_mode?: 'mask' | 'token' | string
+  governance_pii_mask?: string
+  governance_max_blank_lines?: number
+  governance_html_xpath?: string
+  governance_drop_outline_only?: boolean
+  governance_drop_outline_min_content_chars?: number
+  governance_drop_outline_max_heading_ratio?: number
+  governance_drop_low_density?: boolean
+  governance_drop_low_density_threshold?: number
   governance_unwrap_max_line_length?: number
   governance_noise_min_chars?: number
   governance_noise_ratio_threshold?: number
@@ -168,14 +182,27 @@ export interface CleanPreviewRequest {
   markdown: string
   rules?: RegexRuleModel[]
   use_default_rules?: boolean
+  input_format?: 'markdown' | 'html'
+  html_xpath?: string
   normalize_line_endings?: boolean
   trim_trailing_spaces?: boolean
   collapse_blank_lines?: boolean
+  max_blank_lines?: number
   remove_control_chars?: boolean
   remove_toc_lines?: boolean
   remove_noise_lines?: boolean
   remove_common_lines?: boolean
   unwrap_lines?: boolean
+  remove_boilerplate?: boolean
+  remove_images?: 'none' | 'decorative' | 'all' | string
+  pii_anonymize?: boolean
+  pii_mode?: 'mask' | 'token' | string
+  pii_mask?: string
+  drop_outline_only?: boolean
+  drop_outline_min_content_chars?: number
+  drop_outline_max_heading_ratio?: number
+  drop_low_density?: boolean
+  drop_low_density_threshold?: number
   unwrap_max_line_length?: number
   noise_min_chars?: number
   noise_ratio_threshold?: number
@@ -186,6 +213,9 @@ export interface CleanPreviewResponse {
   markdown: string
   applied_rules: number
   changed: boolean
+  dropped?: boolean
+  drop_reason?: string | null
+  pii_hits?: Record<string, number> | null
 }
 
 export interface CleanRulesResponse {

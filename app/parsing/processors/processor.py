@@ -100,6 +100,7 @@ class ParsingStage:
         dataset_id: str,
         parser_backend: Optional[str],
         chunk_strategy: Optional[str],
+        html_xpath: Optional[str] = None,
     ) -> ParseResult:
         # IMPORTANT: resolve strategy first so defaults (e.g. DEFAULT_CHUNK_STRATEGY)
         # are honored consistently (including ragflow_* strategies).
@@ -250,19 +251,22 @@ class ParsingStage:
             return False
 
         try:
+            payload = {
+                "action": "parse_documents",
+                "tenant_id": str(tenant_id),
+                "file_path": str(file_path),
+                "parser_backend": effective_parser_backend,
+                "mode": "ingest",
+                "dataset_id": dataset_id,
+                "document_id": str(document_id),
+                "pdf_quality": pdf_quality,
+                "artifact_root": str(artifact_root),
+            }
+            if isinstance(html_xpath, str) and html_xpath.strip():
+                payload["html_xpath"] = html_xpath.strip()
             parsed = await run_subprocess_worker(
                 tenant_id=tenant_id,
-                payload={
-                    "action": "parse_documents",
-                    "tenant_id": str(tenant_id),
-                    "file_path": str(file_path),
-                    "parser_backend": effective_parser_backend,
-                    "mode": "ingest",
-                    "dataset_id": dataset_id,
-                    "document_id": str(document_id),
-                    "pdf_quality": pdf_quality,
-                    "artifact_root": str(artifact_root),
-                },
+                payload=payload,
                 cancel_check=cancel_check,
                 timeout_sec=float(getattr(settings, "TASK_JOB_TIMEOUT_SEC", 60 * 30) or 60 * 30),
             )
@@ -610,6 +614,17 @@ class DocumentProcessorService:
                 "remove_noise_lines": pipeline_effective.governance_remove_noise_lines,
                 "unwrap_lines": pipeline_effective.governance_unwrap_lines,
                 "remove_common_lines": pipeline_effective.governance_remove_common_lines,
+                "remove_boilerplate": pipeline_effective.governance_remove_boilerplate,
+                "remove_images": pipeline_effective.governance_remove_images,
+                "pii_anonymize": pipeline_effective.governance_pii_anonymize,
+                "pii_mode": pipeline_effective.governance_pii_mode,
+                "pii_mask": pipeline_effective.governance_pii_mask,
+                "max_blank_lines": pipeline_effective.governance_max_blank_lines,
+                "drop_outline_only": pipeline_effective.governance_drop_outline_only,
+                "drop_outline_min_content_chars": pipeline_effective.governance_drop_outline_min_content_chars,
+                "drop_outline_max_heading_ratio": pipeline_effective.governance_drop_outline_max_heading_ratio,
+                "drop_low_density": pipeline_effective.governance_drop_low_density,
+                "drop_low_density_threshold": pipeline_effective.governance_drop_low_density_threshold,
                 "unwrap_max_line_length": pipeline_effective.governance_unwrap_max_line_length,
                 "noise_min_chars": pipeline_effective.governance_noise_min_chars,
                 "noise_ratio_threshold": pipeline_effective.governance_noise_ratio_threshold,
@@ -639,6 +654,11 @@ class DocumentProcessorService:
                     dataset_id=dataset_id,
                     parser_backend=parser_backend,
                     chunk_strategy=chunk_strategy,
+                    html_xpath=(
+                        pipeline_effective.governance_html_xpath
+                        if file_path.suffix.lower() in {".html", ".htm"}
+                        else None
+                    ),
                 )
 
             await raise_if_cancelled(force=True)
@@ -695,6 +715,41 @@ class DocumentProcessorService:
                     )
                 chunks = gov.items
                 governance_stats = gov.stats
+
+                if (
+                    bool(pipeline_effective.governance_enabled)
+                    and governance_stats is not None
+                    and not chunks
+                    and int(getattr(governance_stats, "dropped", 0) or 0) > 0
+                ):
+                    self._record_governance_metadata(db, tenant_id, document_id, governance_stats)
+                    reasons = getattr(governance_stats, "drop_reasons", {}) or {}
+                    reason_str = ", ".join([f"{k}:{v}" for k, v in sorted(reasons.items())]) if isinstance(reasons, dict) else ""
+                    msg = (
+                        "Document filtered by governance rules"
+                        + (f" ({reason_str})" if reason_str else "")
+                        + ". You can disable outline/low-density filters or relax thresholds."
+                    )
+                    logger.warning("%s document_id=%s", msg, document_id)
+                    await self._update_status(
+                        db,
+                        tenant_id,
+                        document_id,
+                        "failed",
+                        0,
+                        "failed",
+                        chunk_count=0,
+                        total_characters=0,
+                        error_message=msg,
+                    )
+                    return {
+                        "status": "failed",
+                        "reason": "filtered_by_governance",
+                        "chunk_count": 0,
+                        "total_characters": 0,
+                        "parser_backend": resolved_backend,
+                        "chunk_strategy": resolved_chunk_strategy,
+                    }
             else:
                 with metrics_span("ingest.normalize"):
                     parsed_documents = normalize_stage.run(items=parsed_documents or [])
@@ -706,6 +761,41 @@ class DocumentProcessorService:
                     )
                 parsed_documents = gov.items
                 governance_stats = gov.stats
+
+                if (
+                    bool(pipeline_effective.governance_enabled)
+                    and governance_stats is not None
+                    and not parsed_documents
+                    and int(getattr(governance_stats, "dropped", 0) or 0) > 0
+                ):
+                    self._record_governance_metadata(db, tenant_id, document_id, governance_stats)
+                    reasons = getattr(governance_stats, "drop_reasons", {}) or {}
+                    reason_str = ", ".join([f"{k}:{v}" for k, v in sorted(reasons.items())]) if isinstance(reasons, dict) else ""
+                    msg = (
+                        "Document filtered by governance rules"
+                        + (f" ({reason_str})" if reason_str else "")
+                        + ". You can disable outline/low-density filters or relax thresholds."
+                    )
+                    logger.warning("%s document_id=%s", msg, document_id)
+                    await self._update_status(
+                        db,
+                        tenant_id,
+                        document_id,
+                        "failed",
+                        0,
+                        "failed",
+                        chunk_count=0,
+                        total_characters=0,
+                        error_message=msg,
+                    )
+                    return {
+                        "status": "failed",
+                        "reason": "filtered_by_governance",
+                        "chunk_count": 0,
+                        "total_characters": 0,
+                        "parser_backend": resolved_backend,
+                        "chunk_strategy": resolved_chunk_strategy,
+                    }
 
                 await raise_if_cancelled()
 
@@ -1250,6 +1340,10 @@ class DocumentProcessorService:
         metadata["governance_documents"] = int(stats.documents)
         metadata["governance_changed_documents"] = int(stats.changed)
         metadata["governance_rules_applied"] = int(stats.applied_rules)
+        metadata["governance_dropped_documents"] = int(getattr(stats, "dropped", 0) or 0)
+        reasons = getattr(stats, "drop_reasons", None)
+        if isinstance(reasons, dict) and reasons:
+            metadata["governance_drop_reasons"] = {str(k): int(v) for k, v in reasons.items()}
 
         db_doc.doc_metadata = metadata
         db.commit()
