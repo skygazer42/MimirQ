@@ -86,7 +86,7 @@ export function Sidebar() {
   }
 
   return (
-    <aside className="w-80 bg-amber-50/50 border-r border-amber-100/70 flex flex-col flex-shrink-0 z-10">
+    <aside className="w-80 bg-white/75 border-r border-amber-100/70 flex flex-col flex-shrink-0 z-10 backdrop-blur shadow-[inset_-1px_0_0_rgba(255,255,255,0.6)]">
       <div className="p-6 flex-1 overflow-y-auto">
         {/* 文件列表 */}
         <div className="mb-8 pb-8 border-b border-amber-100/70">
@@ -117,7 +117,7 @@ export function Sidebar() {
             />
           </div>
 
-          <div className="space-y-2 max-h-[200px] overflow-y-auto custom-scrollbar pr-1">
+          <div className="space-y-2 max-h-[200px] overflow-y-auto custom-scrollbar pr-1 rounded-xl border border-amber-100/70 bg-white/80 p-2 shadow-sm backdrop-blur">
             {sortedFileList.map((f) => {
               const isActive = currentFileId === f.id
               const displayTime = f.addedAt

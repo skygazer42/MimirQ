@@ -18,10 +18,10 @@ export function ChunkCard({ chunk, index, isHovered, onMouseEnter, onMouseLeave 
   return (
     <div
       className={cn(
-        'group relative bg-white p-4 rounded-xl border transition-all duration-200 cursor-default',
+        'group relative bg-white/85 p-4 rounded-xl border transition-all duration-200 cursor-default backdrop-blur',
         isHovered
-          ? 'border-amber-400 shadow-md ring-1 ring-amber-100 -translate-y-0.5 z-10'
-          : 'border-amber-200 hover:border-amber-300 hover:shadow-sm'
+          ? 'border-amber-400 shadow-lg shadow-amber-200/30 ring-1 ring-amber-100 -translate-y-0.5 z-10'
+          : 'border-amber-200 hover:border-amber-300 hover:shadow-md hover:shadow-amber-200/20'
       )}
       onMouseEnter={onMouseEnter}
       onMouseLeave={onMouseLeave}
