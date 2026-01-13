@@ -23,6 +23,8 @@ import {
   Edit3,
   Save,
   X,
+  PanelRightOpen,
+  PanelRightClose,
 } from 'lucide-react'
 import { Navbar } from '@/components/navbar'
 import { Button } from '@/components/ui/button'
@@ -95,6 +97,7 @@ export default function ParsingPage() {
   // 文件状态
   const [files, setFiles] = useState<ParsedFile[]>([])
   const [activeFileId, setActiveFileId] = useState<string | null>(null)
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false)
   const [isDragging, setIsDragging] = useState(false)
   const [copied, setCopied] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -696,7 +699,28 @@ export default function ParsingPage() {
 
         <div className="flex-1 flex overflow-hidden min-h-0">
           {/* 左侧：文件列表面板 */}
-          <aside className="w-80 bg-white border-r flex flex-col flex-shrink-0">
+          <aside
+            className={cn(
+              "group/sidebar relative flex flex-col flex-shrink-0 bg-white border-r border-gray-200 transition-all duration-300 ease-in-out z-10",
+              isSidebarCollapsed ? "w-0 border-r-0 overflow-hidden" : "w-80"
+            )}
+            style={{ width: isSidebarCollapsed ? 0 : 320 }}
+          >
+            {/* Toggle Button */}
+            <Button
+              variant="ghost"
+              size="icon"
+              className={cn(
+                "absolute -right-3 top-3 z-30 h-6 w-6 rounded-full border border-gray-200 bg-white shadow-sm hover:bg-gray-50 text-gray-400 hover:text-gray-600 transition-opacity opacity-0 group-hover/sidebar:opacity-100",
+                isSidebarCollapsed && "opacity-100 -right-8 translate-x-2"
+              )}
+              onClick={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
+              title={isSidebarCollapsed ? "展开侧边栏" : "收起侧边栏"}
+            >
+              {isSidebarCollapsed ? <PanelRightOpen className="w-3 h-3" /> : <PanelRightClose className="w-3 h-3" />}
+            </Button>
+
+            <div className={cn("flex-1 flex flex-col min-h-0 w-full overflow-hidden", isSidebarCollapsed && "invisible")}>
             {/* 解析器选择 */}
             <div className="p-4 border-b">
               <div className="flex items-center justify-between mb-3">
