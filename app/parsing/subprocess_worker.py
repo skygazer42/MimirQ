@@ -11,6 +11,7 @@ It exists so the caller can truly cancel parsing by terminating the process
 from __future__ import annotations
 
 import json
+import time
 import traceback
 import uuid
 from pathlib import Path
@@ -236,6 +237,21 @@ def _pipeline_parse_preview(payload: dict[str, Any]) -> dict[str, Any]:
     result = document_parser_service.parse_for_preview(file_path=file_path, tenant_id=tenant_id, parser_backend=parser_backend)
     return _jsonable(result)
 
+def _sleep(payload: dict[str, Any]) -> dict[str, Any]:
+    """
+    Test-only helper action for validating subprocess cancellation.
+
+    Sleeps for `duration_sec` and returns a small payload.
+    """
+    raw = payload.get("duration_sec")
+    try:
+        duration = float(raw or 0.0)
+    except Exception:
+        duration = 0.0
+    duration = max(0.0, min(duration, 60.0))
+    time.sleep(duration)
+    return {"slept_sec": duration}
+
 
 def main() -> int:
     setup_logging()
@@ -262,6 +278,8 @@ def main() -> int:
             data = _ragflow_chunk(payload)
         elif action == "pipeline_parse_preview":
             data = _pipeline_parse_preview(payload)
+        elif action == "sleep":
+            data = _sleep(payload)
         else:
             raise ValueError(f"unsupported action: {action}")
 
