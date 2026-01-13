@@ -128,6 +128,7 @@ export function DocumentFolderTree({
   const [expandedFileFolderIds, setExpandedFileFolderIds] = useState<Set<string>>(() => new Set([ROOT_FOLDER_ID]))
   const [dragOverId, setDragOverId] = useState<string | null>(null)
   const dragExpandTimersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map())
+  const dragActivateTimersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map())
   const scrollContainerRef = useRef<HTMLDivElement>(null)
   const dragScrollRafRef = useRef<number | null>(null)
   const dragScrollDirRef = useRef<1 | -1 | 0>(0)
@@ -199,6 +200,12 @@ export function DocumentFolderTree({
     return () => {
       if (dragScrollRafRef.current != null) {
         cancelAnimationFrame(dragScrollRafRef.current)
+      }
+      for (const timer of dragExpandTimersRef.current.values()) {
+        clearTimeout(timer)
+      }
+      for (const timer of dragActivateTimersRef.current.values()) {
+        clearTimeout(timer)
       }
     }
   }, [])
@@ -361,6 +368,24 @@ export function DocumentFolderTree({
         }
       }
 
+      const requestActivate = (targetId: string) => {
+        const existing = dragActivateTimersRef.current.get(targetId)
+        if (existing) return
+        const timer = setTimeout(() => {
+          dragActivateTimersRef.current.delete(targetId)
+          setActiveFolderId(targetId)
+        }, 220)
+        dragActivateTimersRef.current.set(targetId, timer)
+      }
+
+      const clearActivateTimer = (targetId: string) => {
+        const timer = dragActivateTimersRef.current.get(targetId)
+        if (timer) {
+          clearTimeout(timer)
+          dragActivateTimersRef.current.delete(targetId)
+        }
+      }
+
       const autoScrollOnDrag = (e: React.DragEvent) => {
         const container = scrollContainerRef.current
         if (!container) return
@@ -397,11 +422,12 @@ export function DocumentFolderTree({
               setDragOverId(folder.id)
               requestExpand(folder.id)
               autoScrollOnDrag(e)
-              setActiveFolderId(folder.id)
+              requestActivate(folder.id)
             }}
             onDragLeave={() => {
               setDragOverId((prev) => (prev === folder.id ? null : prev))
               clearExpandTimer(folder.id)
+              clearActivateTimer(folder.id)
             }}
             onDrop={(e) => {
               e.preventDefault()
@@ -409,6 +435,7 @@ export function DocumentFolderTree({
               if (fileId) onFileDrop?.(fileId, folder.id)
               setDragOverId(null)
               clearExpandTimer(folder.id)
+              clearActivateTimer(folder.id)
               dragScrollDirRef.current = 0
             }}
           >
@@ -659,7 +686,14 @@ export function DocumentFolderTree({
           onDragOver={(e) => {
             e.preventDefault()
             setDragOverId(ROOT_FOLDER_ID)
-            setActiveFolderId(ROOT_FOLDER_ID)
+            const existing = dragActivateTimersRef.current.get(ROOT_FOLDER_ID)
+            if (!existing) {
+              const timer = setTimeout(() => {
+                dragActivateTimersRef.current.delete(ROOT_FOLDER_ID)
+                setActiveFolderId(ROOT_FOLDER_ID)
+              }, 220)
+              dragActivateTimersRef.current.set(ROOT_FOLDER_ID, timer)
+            }
             if (showFiles === 'expanded' && !expandedFileFolderIds.has(ROOT_FOLDER_ID)) {
               setExpandedFileFolderIds((prev) => {
                 if (prev.has(ROOT_FOLDER_ID)) return prev
@@ -692,12 +726,22 @@ export function DocumentFolderTree({
           }}
           onDragLeave={() => {
             setDragOverId((prev) => (prev === ROOT_FOLDER_ID ? null : prev))
+            const timer = dragActivateTimersRef.current.get(ROOT_FOLDER_ID)
+            if (timer) {
+              clearTimeout(timer)
+              dragActivateTimersRef.current.delete(ROOT_FOLDER_ID)
+            }
           }}
           onDrop={(e) => {
             e.preventDefault()
             const fileId = e.dataTransfer.getData('text/plain')
             if (fileId) onFileDrop?.(fileId, ROOT_FOLDER_ID)
             setDragOverId(null)
+            const timer = dragActivateTimersRef.current.get(ROOT_FOLDER_ID)
+            if (timer) {
+              clearTimeout(timer)
+              dragActivateTimersRef.current.delete(ROOT_FOLDER_ID)
+            }
             dragScrollDirRef.current = 0
           }}
         >
