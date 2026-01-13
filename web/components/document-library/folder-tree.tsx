@@ -369,7 +369,7 @@ export function DocumentFolderTree({
               <Button
                 variant="ghost"
                 size="icon"
-                className={cn('h-7 w-7', isActive ? 'opacity-100' : 'opacity-0 group-hover:opacity-100')}
+                className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity text-gray-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-md"
                 aria-label="Upload to folder"
                 onClick={(e) => {
                   e.stopPropagation()
@@ -377,7 +377,7 @@ export function DocumentFolderTree({
                   onRequestUpload(folder.id)
                 }}
               >
-                <Upload className="w-4 h-4" />
+                <Plus className="w-4 h-4" />
               </Button>
             )}
 
@@ -386,7 +386,7 @@ export function DocumentFolderTree({
                 <Button
                   variant="ghost"
                   size="icon"
-                  className={cn('h-7 w-7', isActive ? 'opacity-100' : 'opacity-0 group-hover:opacity-100')}
+                  className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity text-gray-500 hover:text-gray-900 hover:bg-gray-100 rounded-md"
                   aria-label="Folder actions"
                 >
                   <MoreHorizontal className="w-4 h-4" />
@@ -563,7 +563,7 @@ export function DocumentFolderTree({
             <Button
               variant="ghost"
               size="icon"
-              className={cn('h-7 w-7', activeFolderId === ROOT_FOLDER_ID ? 'opacity-100' : 'opacity-0 group-hover:opacity-100')}
+              className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity text-gray-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-md"
               aria-label="Upload to root folder"
               onClick={(e) => {
                 e.stopPropagation()
@@ -571,7 +571,7 @@ export function DocumentFolderTree({
                 onRequestUpload(ROOT_FOLDER_ID)
               }}
             >
-              <Upload className="w-4 h-4" />
+              <Plus className="w-4 h-4" />
             </Button>
           )}
         </div>
