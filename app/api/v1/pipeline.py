@@ -9,7 +9,7 @@ import uuid
 import zipfile
 from uuid import UUID
 
-from fastapi import APIRouter, UploadFile, File, Form, HTTPException, Depends
+from fastapi import APIRouter, UploadFile, File, Form, HTTPException, Depends, Request
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
@@ -32,9 +32,9 @@ from app.api.schemas.pipeline import (
     ChunkStrategyInfo,
     ZipWithImagesResponse,
 )
-from app.parsing.processors.parser_service import document_parser_service
 from app.parsing.backends import normalize_parser_backend
 from app.parsing.factory import ParserFactory
+from app.parsing.subprocess_runner import SubprocessCancelled, SubprocessWorkerError, run_subprocess_worker
 from app.rag.chunking import hierarchical_chunk_markdown
 from app.rag.chunking import chunker_factory
 from app.parsing.utils.zip_processor import zip_image_processor
@@ -200,6 +200,7 @@ async def get_pipeline_capabilities(
 
 @router.post("/parse-preview", response_model=ParsePreviewResponse)
 async def parse_preview(
+    request: Request,
     file: UploadFile = File(...),
     parser_backend: str | None = Form(default=None),
     tenant_id: UUID = Depends(get_tenant_id),
@@ -221,20 +222,37 @@ async def parse_preview(
     # Save to a temporary path.
     preview_dir = Path(settings.UPLOAD_DIR) / str(tenant_id) / "preview"
     preview_dir.mkdir(parents=True, exist_ok=True)
-    temp_path = preview_dir / f"{uuid.uuid4()}{file_ext}"
+    run_dir = preview_dir / uuid.uuid4().hex
+    run_dir.mkdir(parents=True, exist_ok=True)
+    temp_path = run_dir / f"input{file_ext}"
     try:
         await save_upload_file(file, temp_path, max_bytes=settings.MAX_FILE_SIZE)
 
-        result = document_parser_service.parse_for_preview(
-            file_path=temp_path,
+        result = await run_subprocess_worker(
             tenant_id=tenant_id,
-            parser_backend=parser_backend,
+            payload={
+                "action": "pipeline_parse_preview",
+                "tenant_id": str(tenant_id),
+                "file_path": str(temp_path),
+                "parser_backend": parser_backend,
+            },
+            disconnect_check=request.is_disconnected,
+            timeout_sec=float(getattr(settings, "TASK_JOB_TIMEOUT_SEC", 60 * 30) or 60 * 30),
         )
         return result
+    except SubprocessCancelled:
+        raise HTTPException(status_code=499, detail="Client closed request")
+    except SubprocessWorkerError as e:
+        err_type = (e.details or {}).get("type")
+        if err_type == "ValueError":
+            raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=500, detail="Failed to parse preview")
     finally:
         try:
-            if temp_path.exists():
-                temp_path.unlink()
+            if run_dir.exists():
+                import shutil
+
+                shutil.rmtree(run_dir, ignore_errors=True)
         except Exception:
             pass
 

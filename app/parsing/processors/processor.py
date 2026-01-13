@@ -14,10 +14,11 @@ import base64
 import hashlib
 import re
 import shutil
+import time
+import uuid
 from app.core.config import settings
 from app.core.database import SessionLocal
 from app.models.document import Document as DBDocument, DocumentChunk
-from app.parsing.factory import parser_factory
 from app.rag.chunking.factory import chunker_factory
 from app.storage.object.minio import minio_service
 from app.types.indexing import IndexKind, IndexRecord
@@ -32,12 +33,17 @@ from app.rag.preprocessing.processor import governance_processor, GovernanceStat
 from app.rag.preprocessing.normalization import normalize_text
 from app.rag.kg.pipeline import extract_events
 from app.parsing.routing import route_pdf_backend
+from app.parsing.subprocess_runner import SubprocessCancelled, SubprocessWorkerError, run_subprocess_worker
 from app.rag.core.logging import get_logger
 from app.rag.core.metadata import normalize_image_metadata
 from app.services.metrics_logger import log_metrics, metrics_span, set_metrics_context
 
 
 logger = get_logger("parsing.document_processor")
+
+
+class DocumentCancelledError(Exception):
+    pass
 
 
 @dataclass(frozen=True)
@@ -107,7 +113,79 @@ class ParsingStage:
                 parser_backend=resolved_backend,
                 chunk_strategy=resolved_chunk_strategy,
             )
-            chunks = await asyncio.to_thread(self._svc._ragflow_chunk_file, file_path, resolved_chunk_strategy)
+            artifact_root = (
+                Path(settings.UPLOAD_DIR)
+                / str(tenant_id)
+                / ".mimirq_parse"
+                / f"{str(document_id)}-ragflow-{uuid.uuid4().hex}"
+            )
+
+            last_check = 0.0
+            cached_cancel = False
+
+            async def cancel_check() -> bool:
+                nonlocal last_check, cached_cancel
+                now = time.monotonic()
+                if now - last_check < 1.0:
+                    return cached_cancel
+                last_check = now
+                db_doc = (
+                    db.query(DBDocument)
+                    .filter(DBDocument.id == document_id, DBDocument.tenant_id == tenant_id)
+                    .first()
+                )
+                if not db_doc:
+                    cached_cancel = True
+                    return True
+                status = str(db_doc.status or "").lower()
+                if status == "cancelled":
+                    cached_cancel = True
+                    return True
+                meta = db_doc.doc_metadata or {}
+                if isinstance(meta, dict) and bool(meta.get("cancel_requested")):
+                    cached_cancel = True
+                    return True
+                cached_cancel = False
+                return False
+
+            try:
+                result = await run_subprocess_worker(
+                    tenant_id=tenant_id,
+                    payload={
+                        "action": "ragflow_chunk",
+                        "tenant_id": str(tenant_id),
+                        "file_path": str(file_path),
+                        "strategy": resolved_chunk_strategy,
+                        "mode": "ingest",
+                        "artifact_root": str(artifact_root),
+                    },
+                    cancel_check=cancel_check,
+                    timeout_sec=float(getattr(settings, "TASK_JOB_TIMEOUT_SEC", 60 * 30) or 60 * 30),
+                )
+            except SubprocessCancelled as exc:
+                try:
+                    shutil.rmtree(artifact_root, ignore_errors=True)
+                except Exception:
+                    pass
+                raise DocumentCancelledError(str(exc))
+            except asyncio.CancelledError:
+                try:
+                    shutil.rmtree(artifact_root, ignore_errors=True)
+                except Exception:
+                    pass
+                raise
+            except SubprocessWorkerError as exc:
+                raise RuntimeError(f"Ragflow parsing failed: {str(exc)[:200]}") from exc
+
+            chunks = [
+                Document(
+                    page_content=str(item.get("page_content") or ""),
+                    metadata=item.get("metadata") if isinstance(item.get("metadata"), dict) else {},
+                    id=item.get("id") if isinstance(item.get("id"), str) else None,
+                )
+                for item in (result.get("documents") or [])
+                if isinstance(item, dict)
+            ]
             return ParseResult(
                 resolved_backend=resolved_backend,
                 resolved_chunk_strategy=resolved_chunk_strategy,
@@ -134,14 +212,83 @@ class ParsingStage:
                     db.commit()
                     db.refresh(db_document)
 
-        documents, resolved_backend = parser_factory.parse(
-            file_path,
-            parser_backend=effective_parser_backend,
-            dataset_id=dataset_id,
-            document_id=str(document_id),
-            tenant_id=str(tenant_id),
-            pdf_quality=pdf_quality,
+        artifact_root = (
+            Path(settings.UPLOAD_DIR)
+            / str(tenant_id)
+            / ".mimirq_parse"
+            / f"{str(document_id)}-parse-{uuid.uuid4().hex}"
         )
+
+        last_check = 0.0
+        cached_cancel = False
+
+        async def cancel_check() -> bool:
+            nonlocal last_check, cached_cancel
+            now = time.monotonic()
+            if now - last_check < 1.0:
+                return cached_cancel
+            last_check = now
+            db_doc = (
+                db.query(DBDocument)
+                .filter(DBDocument.id == document_id, DBDocument.tenant_id == tenant_id)
+                .first()
+            )
+            if not db_doc:
+                cached_cancel = True
+                return True
+            status = str(db_doc.status or "").lower()
+            if status == "cancelled":
+                cached_cancel = True
+                return True
+            meta = db_doc.doc_metadata or {}
+            if isinstance(meta, dict) and bool(meta.get("cancel_requested")):
+                cached_cancel = True
+                return True
+            cached_cancel = False
+            return False
+
+        try:
+            parsed = await run_subprocess_worker(
+                tenant_id=tenant_id,
+                payload={
+                    "action": "parse_documents",
+                    "tenant_id": str(tenant_id),
+                    "file_path": str(file_path),
+                    "parser_backend": effective_parser_backend,
+                    "mode": "ingest",
+                    "dataset_id": dataset_id,
+                    "document_id": str(document_id),
+                    "pdf_quality": pdf_quality,
+                    "artifact_root": str(artifact_root),
+                },
+                cancel_check=cancel_check,
+                timeout_sec=float(getattr(settings, "TASK_JOB_TIMEOUT_SEC", 60 * 30) or 60 * 30),
+            )
+        except SubprocessCancelled as exc:
+            try:
+                shutil.rmtree(artifact_root, ignore_errors=True)
+            except Exception:
+                pass
+            raise DocumentCancelledError(str(exc))
+        except asyncio.CancelledError:
+            try:
+                shutil.rmtree(artifact_root, ignore_errors=True)
+            except Exception:
+                pass
+            raise
+        except SubprocessWorkerError as exc:
+            raise RuntimeError(f"Parsing failed: {str(exc)[:200]}") from exc
+
+        documents = [
+            Document(
+                page_content=str(item.get("page_content") or ""),
+                metadata=item.get("metadata") if isinstance(item.get("metadata"), dict) else {},
+                id=item.get("id") if isinstance(item.get("id"), str) else None,
+            )
+            for item in (parsed.get("documents") or [])
+            if isinstance(item, dict)
+        ]
+        resolved_backend = str(parsed.get("resolved_backend") or effective_parser_backend or parser_backend or "auto")
         self._svc._record_processing_metadata(
             db,
             tenant_id,
@@ -751,6 +898,35 @@ class DocumentProcessorService:
                 "chunk_strategy": resolved_chunk_strategy
             }
 
+        except DocumentCancelledError as e:
+            logger.info("Document processing cancelled: tenant=%s document=%s (%s)", tenant_id, document_id, str(e)[:120])
+            await self._update_status(
+                db,
+                tenant_id,
+                document_id,
+                "cancelled",
+                0,
+                "cancelled",
+                error_message="cancelled",
+            )
+            return {"status": "cancelled"}
+        except asyncio.CancelledError:
+            # arq Job.abort cancels the coroutine; ensure we stop the child parser process and persist status.
+            try:
+                await asyncio.shield(
+                    self._update_status(
+                        db,
+                        tenant_id,
+                        document_id,
+                        "cancelled",
+                        0,
+                        "cancelled",
+                        error_message="cancelled",
+                    )
+                )
+            except Exception:
+                pass
+            raise
         except Exception as e:
             # Error handling.
             logger.exception("Error processing document %s: %s", document_id, e)
@@ -904,7 +1080,7 @@ class DocumentProcessorService:
                 path = Path(raw).resolve(strict=False)
                 if not path.exists():
                     continue
-                if not any(p in path.parts for p in {".magicpdf", ".deepseek_ocr", ".etl4llm", ".marker", ".paddlevl"}):
+                if not any(p in path.parts for p in {".magicpdf", ".deepseek_ocr", ".etl4llm", ".marker", ".paddlevl", ".mimirq_parse"}):
                     continue
                 # Safety: only delete within this tenant's upload directory.
                 path.relative_to(tenant_root)

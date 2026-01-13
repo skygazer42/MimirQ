@@ -307,7 +307,8 @@ export const documentApi = {
       parser_backend?: string
       chunk_strategy?: string
       pipeline?: DocumentPipelineOptions
-    } = {}
+    } = {},
+    options?: { signal?: AbortSignal }
   ): Promise<ChunkPreviewResponse> {
     const formData = new FormData()
     formData.append('file', file)
@@ -320,6 +321,7 @@ export const documentApi = {
 
     const { data } = await apiClient.post('/documents/chunk-preview', formData, {
       timeout: API_LONG_TIMEOUT_MS,
+      signal: options?.signal,
       params: {
         chunk_size: effectiveChunkSize,
         chunk_overlap: effectiveChunkOverlap,
@@ -387,7 +389,11 @@ export const pipelineApi = {
     return data
   },
 
-  async parsePreview(file: File, parserBackend = 'auto'): Promise<PipelineParsePreviewResponse> {
+  async parsePreview(
+    file: File,
+    parserBackend = 'auto',
+    options?: { signal?: AbortSignal }
+  ): Promise<PipelineParsePreviewResponse> {
     const formData = new FormData()
     formData.append('file', file)
     if (parserBackend) {
@@ -395,6 +401,7 @@ export const pipelineApi = {
     }
     const { data } = await apiClient.post('/pipeline/parse-preview', formData, {
       timeout: API_LONG_TIMEOUT_MS,
+      signal: options?.signal,
     })
     return data
   },

@@ -70,6 +70,13 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: ChunkPrev
 
   // Refs
   const previewRequestIdRef = useRef(0)
+  const previewAbortRef = useRef<AbortController | null>(null)
+
+  useEffect(() => {
+    return () => {
+      previewAbortRef.current?.abort()
+    }
+  }, [])
 
   // 当前文件
   const currentFileItem = fileList[currentFileIndex] || null
@@ -203,6 +210,9 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: ChunkPrev
     if (!file) return
 
     const requestId = ++previewRequestIdRef.current
+    previewAbortRef.current?.abort()
+    const controller = new AbortController()
+    previewAbortRef.current = controller
     setIsLoading(true)
     setError(null)
 
@@ -213,13 +223,17 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: ChunkPrev
         parser_backend: parserBackend,
         chunk_strategy: chunkStrategy,
         pipeline: pipelineOverridesEnabled ? pipelineOptions : undefined,
-      })
+      }, { signal: controller.signal })
       if (previewRequestIdRef.current !== requestId) return
       setPreviewData(data)
     } catch (err: any) {
+      if (controller.signal.aborted) return
       if (previewRequestIdRef.current !== requestId) return
       setError(formatApiError(err, '预览失败'))
     } finally {
+      if (previewAbortRef.current === controller) {
+        previewAbortRef.current = null
+      }
       if (previewRequestIdRef.current === requestId) {
         setIsLoading(false)
       }
