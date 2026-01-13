@@ -3,15 +3,18 @@ Text decoding helpers for parsers.
 
 We ingest user-uploaded files from many sources; in practice, plain text /
 markdown files are often not UTF-8 (or may include BOM). This module provides a
-small, dependency-light decoder that:
-- Tries UTF-8 (with BOM handling) first
-- Falls back to chardet detection
-- Decodes with replacement to avoid hard failures
+small decoder that:
+- Handles BOM (UTF-8/UTF-16/UTF-32) when present
+- Tries UTF-8 first
+- Uses chardet as a hint (when available)
+- Falls back to common encodings (GB18030/GBK/BIG5/CP1252/Latin-1, etc.)
+- Always returns a string (worst-case with replacement)
 """
 
 
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Iterable
 
 
 @dataclass(frozen=True)
@@ -20,6 +23,130 @@ class DecodedText:
     encoding: str
     confidence: float
     had_bom: bool
+
+
+_BOM_UTF8 = b"\xef\xbb\xbf"
+_BOM_UTF16_LE = b"\xff\xfe"
+_BOM_UTF16_BE = b"\xfe\xff"
+_BOM_UTF32_LE = b"\xff\xfe\x00\x00"
+_BOM_UTF32_BE = b"\x00\x00\xfe\xff"
+
+
+def _normalize_encoding(name: str) -> str:
+    raw = (name or "").strip()
+    if not raw:
+        return ""
+    lowered = raw.lower().replace("_", "-")
+    # Common aliases from chardet / user-land.
+    if lowered in {"utf-8-sig", "utf8-sig"}:
+        return "utf-8"
+    if lowered in {"utf8"}:
+        return "utf-8"
+    if lowered in {"ascii"}:
+        return "utf-8"
+    if lowered in {"gb2312", "gbk"}:
+        # Superset, more forgiving for legacy simplified Chinese.
+        return "gb18030"
+    if lowered in {"big5"}:
+        return "big5"
+    if lowered in {"windows-1252"}:
+        return "cp1252"
+    if lowered in {"iso-8859-1", "iso8859-1"}:
+        return "latin1"
+    return lowered
+
+
+def _has_utf16_bom(blob: bytes) -> bool:
+    return blob.startswith(_BOM_UTF16_LE) or blob.startswith(_BOM_UTF16_BE)
+
+
+def _has_utf32_bom(blob: bytes) -> bool:
+    return blob.startswith(_BOM_UTF32_LE) or blob.startswith(_BOM_UTF32_BE)
+
+
+def _score_decoded_text(text: str) -> tuple[float, float, float]:
+    """
+    Heuristic scoring to pick the most likely "human readable" decode.
+
+    Returns a tuple suitable for max() comparison:
+    - (cjk_ratio_if_significant, printable_ratio, negative_nul_ratio)
+    """
+    if not text:
+        return (0.0, 0.0, 0.0)
+
+    total = len(text)
+    nul = text.count("\x00")
+
+    # Control characters (excluding common whitespace).
+    control = 0
+    cjk = 0
+    for ch in text:
+        code = ord(ch)
+        if code == 0:
+            continue
+        if code < 32 and ch not in "\n\r\t\f":
+            control += 1
+            continue
+        if code == 127:
+            control += 1
+            continue
+        if (0x4E00 <= code <= 0x9FFF) or (0x3400 <= code <= 0x4DBF):
+            cjk += 1
+
+    printable = max(0, total - control - nul)
+    printable_ratio = printable / max(1, total)
+    nul_ratio = nul / max(1, total)
+
+    cjk_ratio = cjk / max(1, total)
+    # Only boost CJK if it is clearly present; avoids picking GB encodings for mostly Latin text.
+    effective_cjk_ratio = cjk_ratio if (cjk >= 20 and cjk_ratio >= 0.10) else 0.0
+
+    return (effective_cjk_ratio, printable_ratio, -nul_ratio)
+
+
+def _iter_candidate_encodings(*, detected: str | None, default_encoding: str, blob: bytes) -> Iterable[str]:
+    """
+    Yield candidate encodings in priority order, de-duplicated.
+    """
+    seen: set[str] = set()
+
+    def push(enc: str) -> None:
+        norm = _normalize_encoding(enc)
+        if not norm:
+            return
+        if norm in seen:
+            return
+        seen.add(norm)
+        yield_list.append(norm)
+
+    yield_list: list[str] = []
+
+    # Detected encoding (from chardet) first, even if low confidence; we'll still score alternatives.
+    if detected:
+        push(detected)
+
+    # If the file looks like UTF-16/32 without BOM (common on Windows exports), try these early.
+    try:
+        nul_ratio = blob.count(b"\x00") / max(1, len(blob))
+    except Exception:
+        nul_ratio = 0.0
+    if nul_ratio >= 0.10:
+        push("utf-16")
+        push("utf-32")
+
+    # Common fallbacks for "garbled Chinese" cases.
+    push("gb18030")
+    push("gbk")
+    push("big5")
+
+    # Western single-byte fallbacks.
+    push("cp1252")
+    push("latin1")
+
+    # Last resort.
+    push(default_encoding)
+
+    return yield_list
 
 
 def read_text_file(path: Path, *, default_encoding: str = "utf-8") -> DecodedText:
@@ -31,9 +158,24 @@ def read_text_file(path: Path, *, default_encoding: str = "utf-8") -> DecodedTex
     - `confidence` is 1.0 for successful UTF-8 decode, otherwise derived from chardet.
     """
     blob = Path(path).read_bytes()
-    had_bom = blob.startswith(b"\xef\xbb\xbf")
+    had_bom = blob.startswith(_BOM_UTF8) or _has_utf16_bom(blob) or _has_utf32_bom(blob)
 
-    # 1) Fast path: UTF-8 (with BOM stripping).
+    # 1) BOM-aware fast paths.
+    if _has_utf32_bom(blob):
+        try:
+            text = blob.decode("utf-32", errors="strict")
+            return DecodedText(text=text.lstrip("\ufeff"), encoding="utf-32", confidence=1.0, had_bom=True)
+        except UnicodeDecodeError:
+            pass
+
+    if _has_utf16_bom(blob):
+        try:
+            text = blob.decode("utf-16", errors="strict")
+            return DecodedText(text=text.lstrip("\ufeff"), encoding="utf-16", confidence=1.0, had_bom=True)
+        except UnicodeDecodeError:
+            pass
+
+    # 2) Fast path: UTF-8 (with BOM stripping).
     try:
         return DecodedText(
             text=blob.decode("utf-8-sig", errors="strict"),
@@ -44,28 +186,53 @@ def read_text_file(path: Path, *, default_encoding: str = "utf-8") -> DecodedTex
     except UnicodeDecodeError:
         pass
 
-    # 2) Best-effort detection with chardet (optional dependency in minimal/full).
-    encoding = default_encoding
-    confidence = 0.0
+    # 3) Best-effort detection with chardet.
+    detected_encoding: str | None = None
+    detected_confidence = 0.0
     try:
         import chardet  # type: ignore
 
         detected = chardet.detect(blob[:65536])
-        encoding = (detected.get("encoding") or "").strip() or default_encoding
-        confidence = float(detected.get("confidence") or 0.0)
-        if encoding.lower() == "ascii":
-            encoding = "utf-8"
+        detected_encoding = (detected.get("encoding") or "").strip() or None
+        detected_confidence = float(detected.get("confidence") or 0.0)
     except Exception:
-        encoding = default_encoding
-        confidence = 0.0
+        detected_encoding = None
+        detected_confidence = 0.0
 
-    # 3) Decode using detected encoding, falling back to default.
-    try:
-        text = blob.decode(encoding, errors="replace")
-    except Exception:
-        encoding = default_encoding
-        confidence = 0.0
-        text = blob.decode(default_encoding, errors="replace")
+    # 4) Try a small set of candidates and pick the best-scoring result.
+    best_text: str | None = None
+    best_encoding: str | None = None
+    best_score: tuple[float, float, float] = (0.0, 0.0, 0.0)
+    candidates = _iter_candidate_encodings(detected=detected_encoding, default_encoding=default_encoding, blob=blob)
 
-    return DecodedText(text=text, encoding=str(encoding), confidence=float(confidence), had_bom=had_bom)
+    for enc in candidates:
+        try:
+            decoded = blob.decode(enc, errors="strict")
+        except (UnicodeDecodeError, LookupError):
+            continue
+        score = _score_decoded_text(decoded)
+        if best_text is None or score > best_score:
+            best_text = decoded
+            best_encoding = enc
+            best_score = score
 
+    if best_text is None or best_encoding is None:
+        # Worst-case: replacement decode.
+        fallback = _normalize_encoding(detected_encoding or "") or default_encoding
+        try:
+            return DecodedText(
+                text=blob.decode(fallback, errors="replace"),
+                encoding=str(fallback),
+                confidence=float(detected_confidence or 0.0),
+                had_bom=had_bom,
+            )
+        except Exception:
+            return DecodedText(
+                text=blob.decode(default_encoding, errors="replace"),
+                encoding=str(default_encoding),
+                confidence=0.0,
+                had_bom=had_bom,
+            )
+
+    confidence = float(detected_confidence or 0.0) if _normalize_encoding(detected_encoding or "") == best_encoding else 0.0
+    return DecodedText(text=best_text, encoding=str(best_encoding), confidence=confidence, had_bom=had_bom)
