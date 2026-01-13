@@ -410,7 +410,7 @@ export default function ParsingPage() {
       }
 
       setFiles((prev) => [...prev, ...queued])
-      setActiveFileId((prev) => prev 解析 queued[0].id)
+      setActiveFileId((prev) => prev ?? queued[0].id)
 
       if (added > 0) toast.success(`已加入队列：${added} 个文件`)
       if (skipped > 0) toast.warning(`已跳过 ${skipped} 个不支持的文件`)
