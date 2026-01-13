@@ -3,7 +3,7 @@ Document processing pipeline schemas.
 Defines data models for document parsing, chunking, and other pipeline operations.
 """
 
-from typing import List, Optional
+from typing import List, Literal, Optional
 from uuid import UUID
 from pydantic import BaseModel, Field
 
@@ -68,14 +68,37 @@ class CleanPreviewRequest(BaseModel):
     markdown: str
     rules: List[RegexRuleModel] = Field(default_factory=list)
     use_default_rules: bool = True
+    # How to interpret `markdown` input (some governance steps can operate on raw HTML).
+    input_format: Literal["markdown", "html"] = "markdown"
+    # When input_format=html, optionally extract specific nodes via XPath before converting to text.
+    html_xpath: Optional[str] = None
     normalize_line_endings: bool = True
     trim_trailing_spaces: bool = True
     collapse_blank_lines: bool = True
+    # Maximum consecutive blank lines to keep (0 = no blank lines; 1 = default; 2 = allow two blank lines).
+    max_blank_lines: int = Field(default=1, ge=0, le=10)
     remove_control_chars: bool = True
     remove_toc_lines: bool = True
     remove_noise_lines: bool = True
     remove_common_lines: bool = True
     unwrap_lines: bool = True
+    # Remove common boilerplate blocks (ads/navigation/acknowledgements/disclaimers/copyright).
+    remove_boilerplate: bool = False
+    # Image cleanup:
+    # - none: keep all images
+    # - decorative: remove likely decorative images (logos/qrcodes/banners)
+    # - all: remove all image tags/refs
+    remove_images: Literal["none", "decorative", "all"] = "none"
+    # PII anonymization (independent of global PII middleware):
+    pii_anonymize: bool = False
+    pii_mode: Literal["mask", "token"] = "mask"
+    pii_mask: str = Field(default="[REDACTED]", min_length=1, max_length=64)
+    # Document-level filters:
+    drop_outline_only: bool = False
+    drop_outline_min_content_chars: int = Field(default=200, ge=0, le=200_000)
+    drop_outline_max_heading_ratio: float = Field(default=0.85, ge=0.0, le=1.0)
+    drop_low_density: bool = False
+    drop_low_density_threshold: float = Field(default=0.12, ge=0.0, le=1.0)
     unwrap_max_line_length: int = Field(default=120, ge=40, le=400)
     noise_min_chars: int = Field(default=2, ge=1, le=20)
     noise_ratio_threshold: float = Field(default=0.2, ge=0.0, le=1.0)
@@ -86,6 +109,9 @@ class CleanPreviewResponse(BaseModel):
     markdown: str
     applied_rules: int
     changed: bool
+    dropped: bool = False
+    drop_reason: Optional[str] = None
+    pii_hits: Optional[dict[str, int]] = None
 
 
 class CleanRulesResponse(BaseModel):

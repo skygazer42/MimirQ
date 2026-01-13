@@ -45,6 +45,14 @@ def _coerce_float(value: Any) -> Optional[float]:
         return None
 
 
+def _coerce_str(value: Any) -> Optional[str]:
+    if value is None:
+        return None
+    if isinstance(value, str):
+        return value
+    return None
+
+
 def _resolve_flag(default: bool, override: Optional[bool]) -> bool:
     if override is None:
         return bool(default)
@@ -73,6 +81,18 @@ def parse_pipeline_from_metadata(metadata: Dict[str, Any]) -> PipelineOptions:
         governance_remove_noise_lines=_coerce_bool(governance.get("remove_noise_lines")),
         governance_unwrap_lines=_coerce_bool(governance.get("unwrap_lines")),
         governance_remove_common_lines=_coerce_bool(governance.get("remove_common_lines")),
+        governance_remove_boilerplate=_coerce_bool(governance.get("remove_boilerplate")),
+        governance_remove_images=_coerce_str(governance.get("remove_images")),
+        governance_pii_anonymize=_coerce_bool(governance.get("pii_anonymize")),
+        governance_pii_mode=_coerce_str(governance.get("pii_mode")),
+        governance_pii_mask=_coerce_str(governance.get("pii_mask")),
+        governance_max_blank_lines=_coerce_int(governance.get("max_blank_lines")),
+        governance_html_xpath=_coerce_str(governance.get("html_xpath")),
+        governance_drop_outline_only=_coerce_bool(governance.get("drop_outline_only")),
+        governance_drop_outline_min_content_chars=_coerce_int(governance.get("drop_outline_min_content_chars")),
+        governance_drop_outline_max_heading_ratio=_coerce_float(governance.get("drop_outline_max_heading_ratio")),
+        governance_drop_low_density=_coerce_bool(governance.get("drop_low_density")),
+        governance_drop_low_density_threshold=_coerce_float(governance.get("drop_low_density_threshold")),
         governance_unwrap_max_line_length=_coerce_int(governance.get("unwrap_max_line_length")),
         governance_noise_min_chars=_coerce_int(governance.get("noise_min_chars")),
         governance_noise_ratio_threshold=_coerce_float(governance.get("noise_ratio_threshold")),
@@ -109,6 +129,30 @@ def build_pipeline_metadata(options: PipelineOptions) -> Optional[Dict[str, Any]
         governance["unwrap_lines"] = bool(options.governance_unwrap_lines)
     if options.governance_remove_common_lines is not None:
         governance["remove_common_lines"] = bool(options.governance_remove_common_lines)
+    if options.governance_remove_boilerplate is not None:
+        governance["remove_boilerplate"] = bool(options.governance_remove_boilerplate)
+    if options.governance_remove_images is not None:
+        governance["remove_images"] = str(options.governance_remove_images)
+    if options.governance_pii_anonymize is not None:
+        governance["pii_anonymize"] = bool(options.governance_pii_anonymize)
+    if options.governance_pii_mode is not None:
+        governance["pii_mode"] = str(options.governance_pii_mode)
+    if options.governance_pii_mask is not None:
+        governance["pii_mask"] = str(options.governance_pii_mask)
+    if options.governance_max_blank_lines is not None:
+        governance["max_blank_lines"] = int(options.governance_max_blank_lines)
+    if options.governance_html_xpath is not None:
+        governance["html_xpath"] = str(options.governance_html_xpath)
+    if options.governance_drop_outline_only is not None:
+        governance["drop_outline_only"] = bool(options.governance_drop_outline_only)
+    if options.governance_drop_outline_min_content_chars is not None:
+        governance["drop_outline_min_content_chars"] = int(options.governance_drop_outline_min_content_chars)
+    if options.governance_drop_outline_max_heading_ratio is not None:
+        governance["drop_outline_max_heading_ratio"] = float(options.governance_drop_outline_max_heading_ratio)
+    if options.governance_drop_low_density is not None:
+        governance["drop_low_density"] = bool(options.governance_drop_low_density)
+    if options.governance_drop_low_density_threshold is not None:
+        governance["drop_low_density_threshold"] = float(options.governance_drop_low_density_threshold)
     if options.governance_unwrap_max_line_length is not None:
         governance["unwrap_max_line_length"] = int(options.governance_unwrap_max_line_length)
     if options.governance_noise_min_chars is not None:
@@ -165,6 +209,66 @@ def resolve_pipeline_options(options: PipelineOptions) -> PipelineEffective:
         if options.governance_remove_common_lines is None
         else bool(options.governance_remove_common_lines)
     )
+    governance_remove_boilerplate = (
+        getattr(settings, "GOVERNANCE_REMOVE_BOILERPLATE", False)
+        if options.governance_remove_boilerplate is None
+        else bool(options.governance_remove_boilerplate)
+    )
+    governance_remove_images = (
+        getattr(settings, "GOVERNANCE_REMOVE_IMAGES", "none")
+        if options.governance_remove_images is None
+        else str(options.governance_remove_images or "none")
+    )
+    governance_pii_anonymize = (
+        getattr(settings, "GOVERNANCE_PII_ANONYMIZE", False)
+        if options.governance_pii_anonymize is None
+        else bool(options.governance_pii_anonymize)
+    )
+    governance_pii_mode = (
+        getattr(settings, "GOVERNANCE_PII_MODE", "mask")
+        if options.governance_pii_mode is None
+        else str(options.governance_pii_mode or "mask")
+    )
+    governance_pii_mask = (
+        getattr(settings, "GOVERNANCE_PII_MASK", "[REDACTED]")
+        if options.governance_pii_mask is None
+        else str(options.governance_pii_mask or "[REDACTED]")
+    )
+    governance_max_blank_lines = (
+        options.governance_max_blank_lines
+        if options.governance_max_blank_lines is not None
+        else int(getattr(settings, "GOVERNANCE_MAX_BLANK_LINES", 1) or 1)
+    )
+    governance_html_xpath = (
+        getattr(settings, "GOVERNANCE_HTML_XPATH", "")
+        if options.governance_html_xpath is None
+        else str(options.governance_html_xpath or "")
+    )
+    governance_drop_outline_only = (
+        getattr(settings, "GOVERNANCE_DROP_OUTLINE_ONLY", False)
+        if options.governance_drop_outline_only is None
+        else bool(options.governance_drop_outline_only)
+    )
+    governance_drop_outline_min_content_chars = (
+        options.governance_drop_outline_min_content_chars
+        if options.governance_drop_outline_min_content_chars is not None
+        else int(getattr(settings, "GOVERNANCE_DROP_OUTLINE_MIN_CONTENT_CHARS", 200) or 200)
+    )
+    governance_drop_outline_max_heading_ratio = (
+        options.governance_drop_outline_max_heading_ratio
+        if options.governance_drop_outline_max_heading_ratio is not None
+        else float(getattr(settings, "GOVERNANCE_DROP_OUTLINE_MAX_HEADING_RATIO", 0.85) or 0.85)
+    )
+    governance_drop_low_density = (
+        getattr(settings, "GOVERNANCE_DROP_LOW_DENSITY", False)
+        if options.governance_drop_low_density is None
+        else bool(options.governance_drop_low_density)
+    )
+    governance_drop_low_density_threshold = (
+        options.governance_drop_low_density_threshold
+        if options.governance_drop_low_density_threshold is not None
+        else float(getattr(settings, "GOVERNANCE_DROP_LOW_DENSITY_THRESHOLD", 0.12) or 0.12)
+    )
     governance_unwrap_max_line_length = (
         options.governance_unwrap_max_line_length
         if options.governance_unwrap_max_line_length is not None
@@ -199,6 +303,18 @@ def resolve_pipeline_options(options: PipelineOptions) -> PipelineEffective:
         governance_remove_noise_lines=governance_remove_noise_lines,
         governance_unwrap_lines=governance_unwrap_lines,
         governance_remove_common_lines=governance_remove_common_lines,
+        governance_remove_boilerplate=governance_remove_boilerplate,
+        governance_remove_images=str(governance_remove_images or "none"),
+        governance_pii_anonymize=bool(governance_pii_anonymize),
+        governance_pii_mode=str(governance_pii_mode or "mask"),
+        governance_pii_mask=str(governance_pii_mask or "[REDACTED]"),
+        governance_max_blank_lines=int(governance_max_blank_lines),
+        governance_html_xpath=str(governance_html_xpath or ""),
+        governance_drop_outline_only=bool(governance_drop_outline_only),
+        governance_drop_outline_min_content_chars=int(governance_drop_outline_min_content_chars),
+        governance_drop_outline_max_heading_ratio=float(governance_drop_outline_max_heading_ratio),
+        governance_drop_low_density=bool(governance_drop_low_density),
+        governance_drop_low_density_threshold=float(governance_drop_low_density_threshold),
         governance_unwrap_max_line_length=int(governance_unwrap_max_line_length),
         governance_noise_min_chars=int(governance_noise_min_chars),
         governance_noise_ratio_threshold=float(governance_noise_ratio_threshold),

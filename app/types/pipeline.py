@@ -18,6 +18,18 @@ class PipelineOptions:
     governance_remove_noise_lines: Optional[bool] = None
     governance_unwrap_lines: Optional[bool] = None
     governance_remove_common_lines: Optional[bool] = None
+    governance_remove_boilerplate: Optional[bool] = None
+    governance_remove_images: Optional[str] = None
+    governance_pii_anonymize: Optional[bool] = None
+    governance_pii_mode: Optional[str] = None
+    governance_pii_mask: Optional[str] = None
+    governance_max_blank_lines: Optional[int] = None
+    governance_html_xpath: Optional[str] = None
+    governance_drop_outline_only: Optional[bool] = None
+    governance_drop_outline_min_content_chars: Optional[int] = None
+    governance_drop_outline_max_heading_ratio: Optional[float] = None
+    governance_drop_low_density: Optional[bool] = None
+    governance_drop_low_density_threshold: Optional[float] = None
     governance_unwrap_max_line_length: Optional[int] = None
     governance_noise_min_chars: Optional[int] = None
     governance_noise_ratio_threshold: Optional[float] = None
@@ -39,6 +51,18 @@ class PipelineEffective:
     governance_remove_noise_lines: bool
     governance_unwrap_lines: bool
     governance_remove_common_lines: bool
+    governance_remove_boilerplate: bool
+    governance_remove_images: str
+    governance_pii_anonymize: bool
+    governance_pii_mode: str
+    governance_pii_mask: str
+    governance_max_blank_lines: int
+    governance_html_xpath: str
+    governance_drop_outline_only: bool
+    governance_drop_outline_min_content_chars: int
+    governance_drop_outline_max_heading_ratio: float
+    governance_drop_low_density: bool
+    governance_drop_low_density_threshold: float
     governance_unwrap_max_line_length: int
     governance_noise_min_chars: int
     governance_noise_ratio_threshold: float
@@ -57,5 +81,4 @@ __all__ = [
     "PipelineEffective",
     "PipelineOptions",
 ]
-
 
