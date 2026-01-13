@@ -103,11 +103,21 @@ export function DataCleaner({ content, cleanedContent = '', onClean }: DataClean
       }
 
       const res = await pipelineApi.cleanPreview(req)
+      if (typeof res.input_lines === 'number' && typeof res.output_lines === 'number') {
+        const removed = typeof res.removed_lines === 'number' ? res.removed_lines : 0
+        const added = typeof res.added_lines === 'number' ? res.added_lines : 0
+        const changedLines = typeof res.changed_lines === 'number' ? res.changed_lines : 0
+        const inChars = typeof res.input_chars === 'number' ? res.input_chars : content.length
+        const outChars = typeof res.output_chars === 'number' ? res.output_chars : (res.markdown || '').length
+        setBackendInfo(
+          `清洗统计：行 ${res.input_lines} → ${res.output_lines}（- ${removed} / + ${added} / ~ ${changedLines}），字符 ${inChars} → ${outChars}`
+        )
+      }
       if (res.pii_hits && Object.keys(res.pii_hits).length > 0) {
         const summary = Object.entries(res.pii_hits)
           .map(([k, v]) => `${k}=${v}`)
           .join('，')
-        setBackendInfo(`已匿名化敏感信息：${summary}`)
+        setBackendInfo((prev) => (prev ? `${prev}\n已匿名化敏感信息：${summary}` : `已匿名化敏感信息：${summary}`))
       }
 
       if (res.dropped) {

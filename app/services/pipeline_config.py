@@ -4,6 +4,7 @@ Pipeline configuration service.
 Provides parsing, building, and resolution for pipeline configuration.
 """
 
+from dataclasses import asdict
 from typing import Any, Dict, Optional
 
 from app.types.indexing import IndexingOptions
@@ -59,6 +60,23 @@ def _resolve_flag(default: bool, override: Optional[bool]) -> bool:
     if override:
         return bool(default)
     return False
+
+
+def merge_pipeline_options(*options: PipelineOptions) -> PipelineOptions:
+    """
+    Merge PipelineOptions with "last non-None wins" semantics.
+
+    This is the core primitive for tenant->dataset->document->request override merges.
+    """
+    merged: dict[str, Any] = {}
+    for opt in options:
+        if opt is None:
+            continue
+        data = asdict(opt)
+        for k, v in data.items():
+            if v is not None:
+                merged[k] = v
+    return PipelineOptions(**merged) if merged else PipelineOptions()
 
 
 def parse_pipeline_from_metadata(metadata: Dict[str, Any]) -> PipelineOptions:
@@ -181,6 +199,27 @@ def build_pipeline_metadata(options: PipelineOptions) -> Optional[Dict[str, Any]
         pipeline["index"] = index
 
     return pipeline or None
+
+
+def resolve_pipeline_effective(
+    *,
+    dataset_metadata: Optional[Dict[str, Any]] = None,
+    document_metadata: Optional[Dict[str, Any]] = None,
+    request_overrides: Optional[PipelineOptions] = None,
+) -> PipelineEffective:
+    """
+    Resolve the final PipelineEffective for a document processing path using 3 layers:
+
+    Priority (later wins):
+    - tenant defaults (settings)  [handled inside resolve_pipeline_options via None]
+    - dataset metadata.pipeline
+    - document metadata.pipeline
+    - request_overrides (e.g., upload/preview payload)
+    """
+    dataset_opts = parse_pipeline_from_metadata(dataset_metadata or {}) if dataset_metadata else PipelineOptions()
+    doc_opts = parse_pipeline_from_metadata(document_metadata or {}) if document_metadata else PipelineOptions()
+    merged = merge_pipeline_options(dataset_opts, doc_opts, request_overrides or PipelineOptions())
+    return resolve_pipeline_options(merged)
 
 
 def resolve_pipeline_options(options: PipelineOptions) -> PipelineEffective:

@@ -8,6 +8,7 @@ import uuid
 from datetime import datetime
 from sqlalchemy import Column, String, DateTime, Enum, ForeignKey, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import relationship
 from app.core.database import Base
 
@@ -28,6 +29,9 @@ class Dataset(Base):
     description = Column(String(1024), nullable=True)
     permission = Column(Enum(DatasetPermissionEnum), nullable=False, default=DatasetPermissionEnum.ALL_TEAM_MEMBERS)
     owner_id = Column(String(255), nullable=True)  # account/user id
+    # Dataset-level metadata (e.g., pipeline/governance defaults for documents).
+    # Use a non-reserved attribute name; the column name remains "metadata".
+    dataset_metadata = Column("metadata", JSONB, nullable=False, default=dict)
     created_at = Column(DateTime(timezone=True), default=datetime.utcnow)
     updated_at = Column(DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow)
 

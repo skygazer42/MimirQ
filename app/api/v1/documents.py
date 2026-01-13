@@ -44,7 +44,7 @@ from app.services.indexer import Indexer
 from app.services.pipeline_config import (
     build_indexing_options,
     build_pipeline_metadata,
-    resolve_pipeline_options,
+    resolve_pipeline_effective,
 )
 from app.services.mineru_service import mineru_service
 from app.services.dataset_service import DatasetService, EDIT_ROLES
@@ -807,13 +807,17 @@ async def upload_document(
         event_vector_enabled=event_vector_enabled,
         entity_vector_enabled=entity_vector_enabled,
     )
-    pipeline_effective = resolve_pipeline_options(pipeline_options)
+    # Permission check.
+    dataset = _resolve_writable_dataset(db, tenant_id, account_id, dataset_id)
+
+    pipeline_effective = resolve_pipeline_effective(
+        dataset_metadata=(getattr(dataset, "dataset_metadata", None) or {}),
+        document_metadata={},
+        request_overrides=pipeline_options,
+    )
     if resolved_chunk_strategy not in chunker_factory.RAGFLOW_STRATEGIES:
         _validate_chunk_params(pipeline_effective.chunk_size, pipeline_effective.chunk_overlap)
     pipeline_metadata = build_pipeline_metadata(pipeline_options)
-
-    # Permission check.
-    dataset = _resolve_writable_dataset(db, tenant_id, account_id, dataset_id)
 
     # 3. Save file.
     upload_dir = Path(settings.UPLOAD_DIR) / str(tenant_id)
@@ -983,7 +987,11 @@ async def upload_documents_batch(
                     event_vector_enabled=event_vector_enabled,
                     entity_vector_enabled=entity_vector_enabled,
                 )
-                pipeline_effective = resolve_pipeline_options(pipeline_options)
+                pipeline_effective = resolve_pipeline_effective(
+                    dataset_metadata=(getattr(dataset, "dataset_metadata", None) or {}) if dataset else {},
+                    document_metadata={},
+                    request_overrides=pipeline_options,
+                )
                 if resolved_chunk_strategy not in chunker_factory.RAGFLOW_STRATEGIES:
                     _validate_chunk_params(pipeline_effective.chunk_size, pipeline_effective.chunk_overlap)
                 pipeline_metadata = build_pipeline_metadata(pipeline_options)
@@ -1628,6 +1636,7 @@ async def preview_document(
     file: UploadFile = File(...),
     parser_backend: str = Form(default=settings.DEFAULT_PARSER_BACKEND),
     chunk_strategy: str = Form(default=settings.DEFAULT_CHUNK_STRATEGY),
+    dataset_id: Optional[str] = Form(default=None),
     governance_enabled: Optional[bool] = Form(default=None),
     governance_remove_toc_lines: Optional[bool] = Form(default=None),
     governance_remove_noise_lines: Optional[bool] = Form(default=None),
@@ -1696,6 +1705,19 @@ async def preview_document(
             if isinstance(artifact_dir, str) and artifact_dir.strip():
                 artifact_dirs.add(artifact_dir.strip())
 
+        # Optional: incorporate dataset-level pipeline defaults for consistent preview behavior.
+        dataset_meta: dict = {}
+        if dataset_id:
+            try:
+                ds = DatasetService.get_dataset(db, tenant_id, UUID(str(dataset_id)))
+                DatasetService.assert_dataset_readable(db, ds, account_id)
+                dataset_meta = dict(getattr(ds, "dataset_metadata", None) or {})
+            except HTTPException:
+                raise
+            except Exception:
+                # If dataset_id is invalid, keep legacy behavior (no dataset override).
+                dataset_meta = {}
+
         pipeline_options = _to_pipeline_options(
             governance_enabled=governance_enabled,
             governance_remove_toc_lines=governance_remove_toc_lines,
@@ -1708,7 +1730,11 @@ async def preview_document(
             governance_common_lines_min_docs=governance_common_lines_min_docs,
             governance_common_lines_min_ratio=governance_common_lines_min_ratio,
         )
-        pipeline_effective = resolve_pipeline_options(pipeline_options)
+        pipeline_effective = resolve_pipeline_effective(
+            dataset_metadata=dataset_meta,
+            document_metadata={},
+            request_overrides=pipeline_options,
+        )
         if pipeline_effective.governance_enabled:
             documents, _stats = governance_processor.clean_documents(
                 documents,
@@ -1819,7 +1845,11 @@ async def create_document_with_manual_chunks(
     # Create document record.
     document_id = uuid.uuid4()
     pipeline_options = _to_pipeline_options(pipeline=request.pipeline)
-    pipeline_effective = resolve_pipeline_options(pipeline_options)
+    pipeline_effective = resolve_pipeline_effective(
+        dataset_metadata=(getattr(dataset, "dataset_metadata", None) or {}),
+        document_metadata={},
+        request_overrides=pipeline_options,
+    )
     index_options = build_indexing_options(pipeline_effective)
     pipeline_metadata = build_pipeline_metadata(pipeline_options)
 
@@ -1986,6 +2016,7 @@ async def preview_chunking(
     chunk_overlap: int = 200,
     parser_backend: str = Form(default=settings.DEFAULT_PARSER_BACKEND),
     chunk_strategy: str = Form(default=settings.DEFAULT_CHUNK_STRATEGY),
+    dataset_id: Optional[str] = Form(default=None),
     governance_enabled: Optional[bool] = Form(default=None),
     governance_remove_toc_lines: Optional[bool] = Form(default=None),
     governance_remove_noise_lines: Optional[bool] = Form(default=None),
@@ -2050,6 +2081,16 @@ async def preview_chunking(
                 pass
 
         resolved_chunk_strategy = chunker_factory.resolve_strategy(chunk_strategy)
+        dataset_meta: dict = {}
+        if dataset_id:
+            try:
+                ds = DatasetService.get_dataset(db, tenant_id, UUID(str(dataset_id)))
+                DatasetService.assert_dataset_readable(db, ds, account_id)
+                dataset_meta = dict(getattr(ds, "dataset_metadata", None) or {})
+            except HTTPException:
+                raise
+            except Exception:
+                dataset_meta = {}
         pipeline_options = _to_pipeline_options(
             governance_enabled=governance_enabled,
             governance_remove_toc_lines=governance_remove_toc_lines,
@@ -2062,7 +2103,11 @@ async def preview_chunking(
             governance_common_lines_min_docs=governance_common_lines_min_docs,
             governance_common_lines_min_ratio=governance_common_lines_min_ratio,
         )
-        pipeline_effective = resolve_pipeline_options(pipeline_options)
+        pipeline_effective = resolve_pipeline_effective(
+            dataset_metadata=dataset_meta,
+            document_metadata={},
+            request_overrides=pipeline_options,
+        )
         governance_kwargs = {
             "remove_toc_lines": pipeline_effective.governance_remove_toc_lines,
             "remove_noise_lines": pipeline_effective.governance_remove_noise_lines,

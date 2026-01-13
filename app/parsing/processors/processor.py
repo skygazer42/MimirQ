@@ -19,6 +19,7 @@ import uuid
 from app.core.config import settings
 from app.core.database import SessionLocal
 from app.models.document import Document as DBDocument, DocumentChunk
+from app.models.dataset import Dataset
 from app.rag.chunking.factory import chunker_factory
 from app.storage.object.minio import minio_service
 from app.types.indexing import IndexKind, IndexRecord
@@ -27,6 +28,7 @@ from app.services.indexer import Indexer
 from app.services.pipeline_config import (
     build_indexing_options,
     parse_pipeline_from_metadata,
+    resolve_pipeline_effective,
     resolve_pipeline_options,
 )
 from app.rag.preprocessing.processor import governance_processor, GovernanceStats
@@ -605,8 +607,21 @@ class DocumentProcessorService:
             document_img_ids: set[str] = set()
             artifact_dirs: set[str] = set()
 
-            pipeline_options = parse_pipeline_from_metadata(db_document.doc_metadata or {})
-            pipeline_effective = resolve_pipeline_options(pipeline_options)
+            dataset_meta: dict[str, Any] = {}
+            if db_document.dataset_id:
+                ds = (
+                    db.query(Dataset)
+                    .filter(Dataset.id == db_document.dataset_id, Dataset.tenant_id == tenant_id)
+                    .first()
+                )
+                if ds is not None and isinstance(getattr(ds, "dataset_metadata", None), dict):
+                    dataset_meta = dict(ds.dataset_metadata or {})
+
+            pipeline_effective = resolve_pipeline_effective(
+                dataset_metadata=dataset_meta,
+                document_metadata=(db_document.doc_metadata or {}),
+                request_overrides=None,
+            )
             index_options = build_indexing_options(pipeline_effective)
             self._record_pipeline_effective(db, tenant_id, document_id, pipeline_effective)
             governance_kwargs = {

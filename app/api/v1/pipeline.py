@@ -8,6 +8,7 @@ from pathlib import Path
 import uuid
 import zipfile
 from uuid import UUID
+from difflib import SequenceMatcher
 
 from fastapi import APIRouter, UploadFile, File, Form, HTTPException, Depends, Request
 from sqlalchemy.orm import Session
@@ -55,6 +56,29 @@ from app.rag.llm.models import LLMMessage, LLMRole
 from app.api.utils.upload import save_upload_file
 
 router = APIRouter()
+
+def _line_diff_stats(before: str, after: str) -> tuple[int, int, int]:
+    """
+    Compute coarse line-level diff stats for governance preview.
+
+    Returns: (added_lines, removed_lines, changed_lines)
+    - changed_lines counts "replaced" blocks (approximate: max(len(a), len(b))).
+    """
+    a = (before or "").splitlines()
+    b = (after or "").splitlines()
+    sm = SequenceMatcher(a=a, b=b, autojunk=False)
+    added = 0
+    removed = 0
+    changed = 0
+    for tag, i1, i2, j1, j2 in sm.get_opcodes():
+        if tag == "insert":
+            added += (j2 - j1)
+        elif tag == "delete":
+            removed += (i2 - i1)
+        elif tag == "replace":
+            # Count replaced region as changed (best-effort).
+            changed += max(i2 - i1, j2 - j1)
+    return added, removed, changed
 
 def _check_python_import(module_name: str, *, attr: str | None = None) -> tuple[bool, str | None]:
     try:
@@ -362,6 +386,7 @@ async def clean_preview(
             max_heading_ratio=float(body.drop_outline_max_heading_ratio or 0.0),
         )
         if decision.dropped:
+            added, removed, changed_lines = _line_diff_stats(original_input, "")
             return CleanPreviewResponse(
                 markdown="",
                 applied_rules=result.applied_rules,
@@ -369,11 +394,19 @@ async def clean_preview(
                 dropped=True,
                 drop_reason=decision.reason or "outline_only",
                 pii_hits=pii_hits,
+                input_chars=len(original_input),
+                output_chars=0,
+                input_lines=len((original_input or "").splitlines()),
+                output_lines=0,
+                added_lines=added,
+                removed_lines=removed,
+                changed_lines=changed_lines,
             )
 
     if body.drop_low_density:
         decision = drop_if_low_density(text, threshold=float(body.drop_low_density_threshold or 0.0))
         if decision.dropped:
+            added, removed, changed_lines = _line_diff_stats(original_input, "")
             return CleanPreviewResponse(
                 markdown="",
                 applied_rules=result.applied_rules,
@@ -381,8 +414,16 @@ async def clean_preview(
                 dropped=True,
                 drop_reason=decision.reason or "low_density",
                 pii_hits=pii_hits,
+                input_chars=len(original_input),
+                output_chars=0,
+                input_lines=len((original_input or "").splitlines()),
+                output_lines=0,
+                added_lines=added,
+                removed_lines=removed,
+                changed_lines=changed_lines,
             )
 
+    added, removed, changed_lines = _line_diff_stats(original_input, text)
     return CleanPreviewResponse(
         markdown=text,
         applied_rules=result.applied_rules,
@@ -390,6 +431,13 @@ async def clean_preview(
         dropped=False,
         drop_reason=None,
         pii_hits=pii_hits,
+        input_chars=len(original_input),
+        output_chars=len(text or ""),
+        input_lines=len((original_input or "").splitlines()),
+        output_lines=len((text or "").splitlines()),
+        added_lines=added,
+        removed_lines=removed,
+        changed_lines=changed_lines,
     )
 
 
