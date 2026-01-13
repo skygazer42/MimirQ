@@ -834,9 +834,9 @@ export default function ParsingPage() {
 
         <main className="flex-1 flex flex-col overflow-hidden min-h-0">
         {/* 顶部标题栏 */}
-        <header className="flex-shrink-0 bg-white/80 border-b border-amber-100/70 px-6 py-4 h-16 flex items-center justify-between z-20 shadow-sm relative backdrop-blur">
+        <header className="flex-shrink-0 bg-white/80 border-b border-amber-100/70 px-6 py-4 h-16 flex items-center justify-between z-20 shadow-sm relative backdrop-blur shadow-[0_1px_0_rgba(255,255,255,0.8)]">
           <div className="flex items-center gap-4">
-            <div className="w-9 h-9 bg-gradient-to-br from-amber-500 to-rose-500 rounded-lg flex items-center justify-center shadow-lg shadow-amber-200/50">
+            <div className="w-9 h-9 bg-gradient-to-br from-amber-500 to-rose-500 rounded-lg flex items-center justify-center shadow-lg shadow-amber-200/50 ring-1 ring-white/60">
               <Sparkles className="w-5 h-5 text-white" />
             </div>
             <div>
@@ -886,7 +886,7 @@ export default function ParsingPage() {
 
             {/* Folder Navigation */}
             <div className="flex-none h-1/3 min-h-[200px] overflow-y-auto p-2 border-b custom-scrollbar bg-amber-50/40">
-               <div className="h-full rounded-2xl border border-amber-100/70 bg-white/70 p-2 shadow-sm backdrop-blur">
+               <div className="h-full rounded-2xl border border-amber-100/70 bg-white/70 p-2 shadow-sm backdrop-blur ring-1 ring-white/60">
                  <DocumentFolderTree
                     onRequestUpload={requestUploadToFolder}
                     onRequestUploadFolder={requestUploadFolder}
@@ -903,14 +903,14 @@ export default function ParsingPage() {
             <div
               className={cn(
                 "px-4 py-2 border-b flex items-center justify-between z-10 sticky top-0",
-                "bg-amber-50/70 backdrop-blur border-amber-100/70"
+                "bg-amber-50/70 backdrop-blur border-amber-100/70 shadow-[0_1px_0_rgba(255,255,255,0.7)]"
               )}
               onDragOver={(e) => handleFolderDragOver(e, currentFolderId)}
               onDragLeave={() => setDragOverFolderId(null)}
               onDrop={(e) => handleFolderDrop(e, currentFolderId)}
             >
                <div className="flex items-center gap-3 min-w-0 group">
-                  <div className="w-8 h-8 rounded-lg bg-amber-50 text-amber-700 flex items-center justify-center">
+                  <div className="w-8 h-8 rounded-lg bg-amber-50 text-amber-700 flex items-center justify-center ring-1 ring-white/70">
                     <FileText className="w-4 h-4" />
                   </div>
                   <div className="min-w-0">
@@ -968,7 +968,7 @@ export default function ParsingPage() {
 
             {/* File List */}
             <div className="flex-1 overflow-y-auto p-2 custom-scrollbar bg-amber-50/40">
-               <div className="min-h-full rounded-2xl border border-amber-100/70 bg-white/70 p-2 shadow-sm backdrop-blur">
+               <div className="min-h-full rounded-2xl border border-amber-100/70 bg-white/70 p-2 shadow-sm backdrop-blur ring-1 ring-white/60">
                {directFolders.length === 0 && visibleQueueFiles.length === 0 ? (
                  <div className="h-full flex flex-col items-center justify-center text-stone-400">
                     <div className="w-14 h-14 bg-gradient-to-br from-amber-100/70 to-white rounded-2xl flex items-center justify-center mb-3 shadow-sm">
@@ -986,7 +986,7 @@ export default function ParsingPage() {
                        <div
                          key={folder.id}
                          className={cn(
-                           "flex items-center gap-3 p-2.5 rounded-xl border border-transparent hover:border-amber-100/70 hover:bg-amber-50/70 group transition-all cursor-pointer relative",
+                           "flex items-center gap-3 p-2.5 rounded-xl border border-transparent hover:border-amber-100/70 hover:bg-amber-50/70 group transition-all cursor-pointer relative bg-white/70 shadow-sm shadow-amber-100/40",
                            dragOverFolderId === folder.id && "border-amber-200 bg-amber-50/60",
                            activeFolderId === folder.id && "bg-amber-50 border-amber-100 ring-1 ring-amber-200"
                          )}
@@ -1026,7 +1026,7 @@ export default function ParsingPage() {
                    {visibleQueueFiles.map(f => (
                      <div key={f.id} 
                           className={cn(
-                            "flex items-center gap-3 p-2.5 rounded-xl border border-transparent hover:border-amber-100/70 hover:bg-amber-50/70 group transition-all cursor-pointer relative",
+                            "flex items-center gap-3 p-2.5 rounded-xl border border-transparent hover:border-amber-100/70 hover:bg-amber-50/70 group transition-all cursor-pointer relative bg-white/70 shadow-sm shadow-amber-100/40",
                             activeFileId === f.id && "bg-amber-50 border-amber-100 ring-1 ring-amber-200"
                           )}
                           onClick={() => setActiveFileId(f.id)}
@@ -1075,7 +1075,7 @@ export default function ParsingPage() {
                         </div>
                         
                         {/* Stop/Delete Button - Absolute positioned or flex? Group hover */}
-                        <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity bg-amber-50/70 backdrop-blur-sm rounded-md p-0.5 shadow-sm border border-amber-100/70">
+                        <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity bg-amber-50/70 backdrop-blur-sm rounded-md p-0.5 shadow-sm border border-white/70 shadow-[0_4px_12px_rgba(251,191,36,0.18)]">
                            {f.status === 'parsing' && (
                               <Button
                                 variant="ghost"
@@ -1151,7 +1151,7 @@ export default function ParsingPage() {
           </aside>
 
           {/* 右侧：预览区域 */}
-          <div className="flex-1 flex flex-col bg-white/85 backdrop-blur overflow-hidden min-h-0 shadow-[inset_1px_0_0_rgba(255,255,255,0.6)]">
+          <div className="flex-1 flex flex-col bg-white/85 backdrop-blur overflow-hidden min-h-0 shadow-[inset_1px_0_0_rgba(255,255,255,0.6)] ring-1 ring-white/60">
             {!activeFile ? (
               // 空状态
               <div className="flex-1 flex items-center justify-center">

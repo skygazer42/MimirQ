@@ -1,5 +1,5 @@
 /**
- * ChunkList - 切片列表区（右侧）
+ * ChunkList - ?????????
  */
 'use client'
 
@@ -18,7 +18,7 @@ export function ChunkList() {
     const q = query.trim().toLowerCase()
     return previewData.chunks
       .map((chunk: ChunkPreviewItem, index: number) => ({ chunk, index }))
-      .filter(({ chunk }) => (q ? (chunk.content || '').toLowerCase().includes(q) : true))
+      .filter(({ chunk }: { chunk: ChunkPreviewItem }) => (q ? (chunk.content || '').toLowerCase().includes(q) : true))
   }, [previewData, query])
 
   return (
@@ -26,7 +26,7 @@ export function ChunkList() {
       <div className="h-12 border-b border-amber-100/70 bg-white/80 flex items-center justify-between px-4 shrink-0 gap-3 backdrop-blur">
         <span className="text-xs font-semibold text-amber-700 flex items-center gap-2">
           <Layers className="w-3.5 h-3.5" />
-          切片结果
+          ????
           {previewData?.total_chunks ? (
             <span className="text-[10px] text-amber-700 bg-amber-100/70 px-2 py-0.5 rounded-full">
               {previewData.total_chunks}
@@ -39,60 +39,62 @@ export function ChunkList() {
             <input
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="搜索切片内容"
+              placeholder="??????"
               className="w-full h-7 pl-7 pr-2 text-[11px] rounded-lg border border-amber-100/70 bg-white/80 focus:outline-none focus:ring-2 focus:ring-amber-200"
             />
           </div>
           <div className="flex items-center gap-2 text-[10px] text-stone-400">
             <MousePointer2 className="w-3 h-3" />
-            悬停卡片高亮原文
+            ????????
           </div>
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto p-4 space-y-3 custom-scrollbar">
-        {previewData?.chunks ? (
-          filteredChunks.length > 0 ? (
-            filteredChunks.map(({ chunk, index }) => (
-              <ChunkCard
-                key={index}
-                chunk={chunk}
-                index={index}
-                isHovered={hoveredChunkIndex === index}
-                onMouseEnter={() => setHoveredChunkIndex(index)}
-                onMouseLeave={() => setHoveredChunkIndex(null)}
-              />
-            ))
-          ) : (
-            <div className="h-full flex flex-col items-center justify-center text-stone-300 gap-2">
-              <Search className="w-10 h-10 opacity-20" />
-              <p className="text-xs text-stone-400">没有匹配的切片</p>
+      <div className="flex-1 overflow-y-auto p-4 custom-scrollbar">
+        <div className="min-h-full rounded-2xl border border-amber-100/70 bg-white/70 p-3 shadow-sm backdrop-blur ring-1 ring-white/60 space-y-3">
+          {previewData?.chunks ? (
+            filteredChunks.length > 0 ? (
+              filteredChunks.map(({ chunk, index }) => (
+                <ChunkCard
+                  key={index}
+                  chunk={chunk}
+                  index={index}
+                  isHovered={hoveredChunkIndex === index}
+                  onMouseEnter={() => setHoveredChunkIndex(index)}
+                  onMouseLeave={() => setHoveredChunkIndex(null)}
+                />
+              ))
+            ) : (
+              <div className="h-full flex flex-col items-center justify-center text-stone-300 gap-2 py-12">
+                <Search className="w-10 h-10 opacity-20" />
+                <p className="text-xs text-stone-400">???????</p>
+              </div>
+            )
+          ) : isLoading ? (
+            <div className="h-full flex flex-col items-center justify-center text-stone-400 gap-2 py-12">
+              <Loader2 className="w-8 h-8 animate-spin opacity-20" />
+              <p className="text-xs">???...</p>
             </div>
-          )
-        ) : isLoading ? (
-          <div className="h-full flex flex-col items-center justify-center text-stone-400 gap-2">
-            <Loader2 className="w-8 h-8 animate-spin opacity-20" />
-            <p className="text-xs">切片中...</p>
-          </div>
-        ) : error ? (
-          <div className="h-full flex flex-col items-center justify-center text-stone-400 gap-2">
-            <AlertCircle className="w-10 h-10 opacity-20" />
-            <p className="text-xs text-stone-500">预览生成失败</p>
-            <p className="text-[10px] text-stone-400 max-w-xs text-center">{error}</p>
-            <button
-              type="button"
-              onClick={runPreview}
-              className="mt-2 text-[10px] px-3 py-1 rounded-full bg-amber-100/70 text-amber-700 hover:bg-amber-100"
-            >
-              重试预览
-            </button>
-          </div>
-        ) : (
-          <div className="h-full flex flex-col items-center justify-center text-stone-300 gap-2">
-            <Layers className="w-12 h-12 opacity-10" />
-            <p className="text-xs">等待生成预览</p>
-          </div>
-        )}
+          ) : error ? (
+            <div className="h-full flex flex-col items-center justify-center text-stone-400 gap-2 py-12">
+              <AlertCircle className="w-10 h-10 opacity-20" />
+              <p className="text-xs text-stone-500">??????</p>
+              <p className="text-[10px] text-stone-400 max-w-xs text-center">{error}</p>
+              <button
+                type="button"
+                onClick={runPreview}
+                className="mt-2 text-[10px] px-3 py-1 rounded-full bg-amber-100/70 text-amber-700 hover:bg-amber-100"
+              >
+                ????
+              </button>
+            </div>
+          ) : (
+            <div className="h-full flex flex-col items-center justify-center text-stone-300 gap-2 py-12">
+              <Layers className="w-12 h-12 opacity-10" />
+              <p className="text-xs">??????</p>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   )
