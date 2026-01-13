@@ -50,6 +50,12 @@ const makeId = () =>
     ? crypto.randomUUID()
     : Math.random().toString(36).substring(2, 15)
 
+const noopStorage = {
+  getItem: (_name: string) => null,
+  setItem: (_name: string, _value: string) => {},
+  removeItem: (_name: string) => {},
+}
+
 export const useParsedFiles = create<ParsedFilesState>()(
   persist(
     (set, get) => ({
@@ -162,9 +168,11 @@ export const useParsedFiles = create<ParsedFilesState>()(
     }),
     {
       name: 'mimirq_parsed_files',
-      storage: createJSONStorage(() => localStorage),
+      storage: createJSONStorage(() => (typeof window === 'undefined' ? noopStorage : localStorage)),
       onRehydrateStorage: () => (state) => {
-        state?.setLoaded(true)
+        if (typeof window !== 'undefined') {
+          state?.setLoaded(true)
+        }
       },
       migrate: (persistedState: any, version) => {
         // Handle migration from legacy React State hook (raw array)

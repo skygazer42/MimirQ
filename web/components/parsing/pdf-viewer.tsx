@@ -6,13 +6,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Loader2 } from 'lucide-react'
 import type { PDFDocumentProxy } from 'pdfjs-dist'
-import * as pdfjsLib from 'pdfjs-dist'
 import { ParsingBlock, ParsingPosition } from '@/lib/parsing-positions'
-
-pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
-  'pdfjs-dist/build/pdf.worker.min.mjs',
-  import.meta.url
-).toString()
 
 type Box = {
   blockId: string
@@ -55,6 +49,11 @@ export function PdfViewer({
       setIsLoading(true)
       try {
         const data = await file.arrayBuffer()
+        const pdfjsLib = await import('pdfjs-dist')
+        pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
+          'pdfjs-dist/build/pdf.worker.min.mjs',
+          import.meta.url
+        ).toString()
         const doc = await pdfjsLib.getDocument({ data }).promise
         if (cancelled) return
         setPdfDoc(doc)
@@ -108,24 +107,24 @@ export function PdfViewer({
 
   useEffect(() => {
     let cancelled = false
-    if (!pdfDoc || !pageCount) return
+    const doc = pdfDoc
+    const totalPages = pageCount
+    if (!doc || !totalPages) return
 
-    async function renderPages() {
-      for (let i = 1; i <= pageCount; i += 1) {
-        const page = await pdfDoc.getPage(i)
+    async function renderPages(pdf: PDFDocumentProxy) {
+      for (let i = 1; i <= totalPages; i += 1) {
+        const page = await pdf.getPage(i)
         if (cancelled) return
         const viewport = page.getViewport({ scale })
         const canvas = canvasRefs.current.get(i - 1)
         if (!canvas) continue
-        const context = canvas.getContext('2d')
-        if (!context) continue
         canvas.width = viewport.width
         canvas.height = viewport.height
-        await page.render({ canvasContext: context, viewport }).promise
+        await page.render({ canvas, viewport }).promise
       }
     }
 
-    renderPages()
+    renderPages(doc)
     return () => {
       cancelled = true
     }
@@ -221,4 +220,3 @@ export function PdfViewer({
     </div>
   )
 }
-
