@@ -59,6 +59,16 @@ def main() -> int:
         )
     )
 
+    olmocr_enabled = bool(getattr(settings, "OLMOCR_ENABLED", False))
+    olmocr_configured = bool((getattr(settings, "OLMOCR_API_URL", "") or "").strip())
+    rows.append(
+        (
+            "olmocr",
+            "on" if olmocr_enabled else "off",
+            "configured" if olmocr_enabled and olmocr_configured else ("missing OLMOCR_API_URL" if olmocr_enabled else "disabled"),
+        )
+    )
+
     ok, msg = _check_import("markitdown")
     rows.append(("markitdown", "on" if settings.MARKITDOWN_ENABLED else "off", "installed" if ok else msg))
 

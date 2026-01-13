@@ -48,6 +48,14 @@ def test_normalize_parser_backend_paddlevl_aliases():
     assert normalize_parser_backend("paddleocrvl") == "paddle_vl"
 
 
+def test_normalize_parser_backend_olmocr_aliases():
+    assert normalize_parser_backend("olmocr") == "olmocr"
+    assert normalize_parser_backend("olm-ocr") == "olmocr"
+    assert normalize_parser_backend("olm_ocr") == "olmocr"
+    assert normalize_parser_backend("olmocr-pdf") == "olmocr"
+    assert normalize_parser_backend("olmocr_pdf") == "olmocr"
+
+
 def test_normalize_parser_backend_empty():
     assert normalize_parser_backend(None) == ""
     assert normalize_parser_backend("") == ""

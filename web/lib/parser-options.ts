@@ -58,6 +58,13 @@ export const PARSER_BACKEND_OPTIONS: ParserBackendOption[] = [
     badge: '外部',
   },
   {
+    value: 'olmocr',
+    label: 'olmOCR（外部）',
+    description: 'olmOCR · OCR 转 Markdown，适合扫描件/图片型 PDF（需自建服务/GPU）',
+    icon: 'deepdoc',
+    badge: 'OCR',
+  },
+  {
     value: 'mineru',
     label: 'MinerU 高级解析',
     description: '依赖 MinerU 在线服务，擅长复杂排版',
@@ -100,6 +107,8 @@ function normalizeParserValue(value?: string) {
   if (normalized === 'paddle-vl') return 'paddle_vl'
   if (normalized === 'paddleocr-vl') return 'paddle_vl'
   if (normalized === 'paddleocrvl') return 'paddle_vl'
+  if (normalized === 'olm-ocr') return 'olmocr'
+  if (normalized === 'olmocr-pdf') return 'olmocr'
   if (normalized === 'deepseek-ocr') return 'deepseek_ocr'
   if (normalized === 'etl-4llm') return 'etl4llm'
   if (normalized === 'bisheng-unstructured') return 'etl4llm'

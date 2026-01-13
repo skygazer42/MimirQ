@@ -198,6 +198,12 @@ class Settings(BaseSettings):
     PADDLE_VL_API_URL: str = ""
     PADDLE_VL_TIMEOUT_SEC: int = 600
 
+    # olmOCR (PDF -> Markdown external service; optional)
+    OLMOCR_ENABLED: bool = False
+    # Full endpoint URL, e.g. http://localhost:2085/convert (depends on your olmOCR service).
+    OLMOCR_API_URL: str = ""
+    OLMOCR_TIMEOUT_SEC: int = 1800
+
     # PDF quality OCR validation (used by parse-preview scoring)
     RAPIDOCR_ENABLED: bool = False
 

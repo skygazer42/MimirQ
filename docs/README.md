@@ -13,6 +13,7 @@
 - [guides/dependencies.md](./guides/dependencies.md)：不同解析/Embedding 模式的依赖清单。
 - [guides/marker_guide.md](./guides/marker_guide.md)：Marker（外部服务）解析器集成。
 - [guides/paddlevl_guide.md](./guides/paddlevl_guide.md)：PaddleOCR-VL（外部服务）解析器集成。
+- [guides/olmocr_guide.md](./guides/olmocr_guide.md)：olmOCR（外部服务）解析器集成。
 - [guides/mineru_guide.md](./guides/mineru_guide.md)：MinerU（本地/在线）解析器集成（含本地 FastAPI）。
 
 ## 集成与架构迁移
