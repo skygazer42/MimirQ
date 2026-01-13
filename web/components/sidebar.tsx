@@ -11,6 +11,7 @@ import {
   Trash2,
   CheckCircle,
   XCircle,
+  X,
   Clock,
 } from 'lucide-react'
 import { useDocuments } from '@/hooks/use-documents'
@@ -24,7 +25,7 @@ import { getParserLabel } from '@/lib/parser-options'
 import { getChunkStrategyLabel } from '@/lib/chunk-strategies'
 
 export function Sidebar() {
-  const { documents, isLoading, uploadDocument, deleteDocument, loadDocuments } = useDocuments()
+  const { documents, isLoading, uploadDocument, cancelDocument, deleteDocument, loadDocuments } = useDocuments()
   const [selectedDocIds, setSelectedDocIds] = useState<string[]>([])
 
   // 处理文件上传
@@ -118,6 +119,7 @@ export function Sidebar() {
               document={doc}
               isSelected={selectedDocIds.includes(doc.id)}
               onSelect={() => toggleDocumentSelection(doc.id)}
+              onCancel={() => cancelDocument(doc.id)}
               onDelete={() => deleteDocument(doc.id)}
               getStatusIcon={getStatusIcon}
             />
@@ -140,12 +142,14 @@ function DocumentCard({
   document,
   isSelected,
   onSelect,
+  onCancel,
   onDelete,
   getStatusIcon,
 }: {
   document: Document
   isSelected: boolean
   onSelect: () => void
+  onCancel: () => void
   onDelete: () => void
   getStatusIcon: (status: string) => React.ReactNode
 }) {
@@ -225,6 +229,19 @@ function DocumentCard({
 
           {/* 查看详情（切片） */}
           <DocumentDetailDialog document={document} />
+
+          {showDelete && document.status === 'processing' && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation()
+                onCancel()
+              }}
+              className="p-1 hover:bg-amber-50 rounded transition-colors"
+              title="取消处理"
+            >
+              <X className="h-4 w-4 text-amber-600" />
+            </button>
+          )}
 
           {showDelete && document.status !== 'processing' && (
             <button

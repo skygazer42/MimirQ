@@ -70,7 +70,7 @@ export function useDocuments() {
           )
 
           // 如果处理完成或失败，停止轮询
-          if (status.status === 'completed' || status.status === 'failed') {
+          if (status.status === 'completed' || status.status === 'failed' || status.status === 'cancelled') {
             pollTimersRef.current.delete(documentId)
 
             // 重新加载完整的文档信息
@@ -132,6 +132,39 @@ export function useDocuments() {
   )
 
   /**
+   * 取消文档处理
+   */
+  const cancelDocument = useCallback(async (documentId: string) => {
+    const existing = pollTimersRef.current.get(documentId)
+    if (existing) {
+      clearTimeout(existing)
+      pollTimersRef.current.delete(documentId)
+    }
+
+    try {
+      const status = await documentApi.cancel(documentId)
+      setDocuments((prev) =>
+        prev.map((doc) =>
+          doc.id === documentId
+            ? {
+                ...doc,
+                status: status.status,
+                processing_progress: status.processing_progress,
+                current_stage: status.current_stage,
+                error_message: status.error_message,
+              }
+            : doc
+        )
+      )
+      return status
+    } catch (err: any) {
+      setError(formatApiError(err, 'Failed to cancel document'))
+      console.error('Cancel error:', err)
+      throw err
+    }
+  }, [])
+
+  /**
    * 删除文档
    */
   const deleteDocument = useCallback(async (documentId: string) => {
@@ -166,6 +199,7 @@ export function useDocuments() {
     loadDocuments,
     refreshDocuments: loadDocuments,
     uploadDocument,
+    cancelDocument,
     deleteDocument,
   }
 }

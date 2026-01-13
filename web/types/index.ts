@@ -13,7 +13,7 @@ export interface Document {
   filename: string
   file_type: string
   file_size: number
-  status: 'pending' | 'processing' | 'completed' | 'failed'
+  status: 'pending' | 'processing' | 'completed' | 'failed' | 'cancelled'
   processing_progress: number
   chunk_count: number
   total_characters: number
@@ -36,7 +36,7 @@ export interface GovernanceInfo {
 
 export interface DocumentStatus {
   id: string
-  status: string
+  status: 'pending' | 'processing' | 'completed' | 'failed' | 'cancelled'
   processing_progress: number
   current_stage?: string
   error_message?: string
