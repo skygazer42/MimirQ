@@ -464,6 +464,7 @@ export function DocumentFolderTree({
                   ))}
                 </div>
               )}
+              {directFiles.length > 0 && children.length > 0 && <Separator className="my-1.5 ml-2 w-auto" />}
               {children.map((c) => renderFolder(c, depth + 1))}
             </div>
           )}
@@ -611,6 +612,7 @@ export function DocumentFolderTree({
                 ))}
               </div>
             )}
+            {rootDirectFiles.length > 0 && rootChildren.length > 0 && <Separator className="my-1.5 ml-2 w-auto" />}
             {rootChildren.map((folder) => renderFolder(folder, 1))}
           </div>
         )}
