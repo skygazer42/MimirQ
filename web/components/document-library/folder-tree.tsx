@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { ArrowRightLeft, ChevronDown, ChevronRight, FileText, Folder, FolderOpen, MoreHorizontal, Pencil, Plus, Trash2, Upload } from 'lucide-react'
+import { ArrowRightLeft, ChevronDown, ChevronRight, FileText, Folder, FolderOpen, MoreHorizontal, Pencil, Plus, Trash2, Upload, FileImage, FileCode, FileSpreadsheet, FileArchive, FileMusic, FileVideo, Library, Package, Database } from 'lucide-react'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
@@ -27,6 +27,66 @@ type FolderDialogState =
   | { open: true; mode: 'create'; parentId: string }
   | { open: true; mode: 'rename'; folderId: string }
   | { open: true; mode: 'move'; folderId: string }
+
+function getFileIcon(filename: string) {
+  const ext = filename.split('.').pop()?.toLowerCase() || ''
+  const className = "w-4 h-4 flex-shrink-0"
+  
+  switch (ext) {
+    case 'jpg': case 'jpeg': case 'png': case 'gif': case 'webp': case 'svg': case 'bmp':
+      return <FileImage className={cn(className, "text-purple-500")} />
+    case 'js': case 'jsx': case 'ts': case 'tsx': case 'py': case 'html': case 'css': case 'json': case 'java': case 'go': case 'rs': case 'php':
+      return <FileCode className={cn(className, "text-blue-500")} />
+    case 'xls': case 'xlsx': case 'csv':
+      return <FileSpreadsheet className={cn(className, "text-green-500")} />
+    case 'zip': case 'rar': case '7z': case 'tar': case 'gz':
+      return <FileArchive className={cn(className, "text-yellow-500")} />
+    case 'mp3': case 'wav': case 'ogg': case 'flac':
+      return <FileMusic className={cn(className, "text-pink-500")} />
+    case 'mp4': case 'mov': case 'avi': case 'mkv':
+      return <FileVideo className={cn(className, "text-red-500")} />
+    case 'pdf':
+      return <FileText className={cn(className, "text-red-600")} />
+    case 'doc': case 'docx': case 'txt': case 'md':
+      return <FileText className={cn(className, "text-sky-500")} />
+    default:
+      return <FileText className={cn(className, "text-gray-400")} />
+  }
+}
+
+function getFolderIconElement(depth: number, isOpen: boolean) {
+  const className = "w-4 h-4 flex-shrink-0"
+  
+  // Root (Depth 0) - handled separately usually, but if passed 0:
+  if (depth === 0) {
+    return <Library className={cn(className, "text-indigo-600")} />
+  }
+  
+  // Level 1 (Top categories)
+  if (depth === 1) {
+    return <Package className={cn(className, "text-sky-600")} />
+  }
+
+  // Level 2 (Sub-categories)
+  if (depth === 2) {
+    return isOpen 
+      ? <FolderOpen className={cn(className, "text-violet-600")} />
+      : <Folder className={cn(className, "text-violet-600")} />
+  }
+  
+  // Deep levels
+  const colors = [
+    "text-cyan-600",
+    "text-teal-600",
+    "text-emerald-600",
+    "text-green-600"
+  ]
+  const color = colors[Math.min(depth - 3, colors.length - 1)]
+  
+  return isOpen 
+    ? <FolderOpen className={cn(className, color)} />
+    : <Folder className={cn(className, color)} />
+}
 
 export function DocumentFolderTree({
   className,
@@ -233,22 +293,24 @@ export function DocumentFolderTree({
       const isActive = activeFolderId === folder.id
       const count = directCountByFolderId[folder.id] || 0
       const children = childrenByParentId.get(folder.id) || []
-      const showFileNodes =
-        showFiles === 'all'
+      
+      const isExpanded = 
+        showFiles === 'all' 
         || (showFiles === 'active' && isActive)
         || (showFiles === 'expanded' && expandedFileFolderIds.has(folder.id))
-      const directFiles = showFileNodes ? directFilesByFolderId.get(folder.id) || [] : []
+
+      const hasContent = count > 0 || children.length > 0
+      const directFiles = isExpanded ? directFilesByFolderId.get(folder.id) || [] : []
 
       return (
         <div key={folder.id}>
           <div
             className={cn(
-              'group flex items-center gap-2 rounded-lg pr-2 py-1.5 transition-colors',
+              'group flex items-center gap-2 rounded-lg px-2 py-1.5 transition-colors',
               isActive ? 'bg-indigo-50 text-indigo-700' : 'hover:bg-gray-100 text-gray-700'
             )}
-            style={{ paddingLeft: 8 + depth * 14 }}
           >
-            {showFiles === 'expanded' && count > 0 && (
+            {showFiles === 'expanded' && hasContent && (
               <button
                 type="button"
                 className="w-5 h-5 flex items-center justify-center rounded hover:bg-white/60 text-gray-500"
@@ -256,9 +318,9 @@ export function DocumentFolderTree({
                   e.stopPropagation()
                   toggleFileList(folder.id)
                 }}
-                aria-label={expandedFileFolderIds.has(folder.id) ? 'Collapse files' : 'Expand files'}
+                aria-label={isExpanded ? 'Collapse' : 'Expand'}
               >
-                {expandedFileFolderIds.has(folder.id) ? (
+                {isExpanded ? (
                   <ChevronDown className="w-4 h-4" />
                 ) : (
                   <ChevronRight className="w-4 h-4" />
@@ -281,11 +343,7 @@ export function DocumentFolderTree({
               type="button"
               title={folder.name}
             >
-              {isActive ? (
-                <FolderOpen className="w-4 h-4 flex-shrink-0" />
-              ) : (
-                <Folder className="w-4 h-4 flex-shrink-0" />
-              )}
+              {getFolderIconElement(depth, isActive)}
               <span className="text-sm truncate">{folder.name}</span>
               <span className="ml-auto text-xs text-gray-400">{count}</span>
             </button>
@@ -352,31 +410,33 @@ export function DocumentFolderTree({
             </DropdownMenu>
           </div>
 
-          {directFiles.length > 0 && (
-            <div className="space-y-0.5">
-              {directFiles.map((f) => (
-                <button
-                  key={f.id}
-                  type="button"
-                  className={cn(
-                    'w-full flex items-center gap-2 rounded-lg py-1.5 pr-2 text-left text-gray-600 hover:bg-gray-50',
-                    'text-sm'
-                  )}
-                  style={{ paddingLeft: 8 + (depth + 1) * 14 }}
-                  title={f.sourcePath ? `${f.name} · ${f.sourcePath}` : f.name}
-                  onClick={() => {
-                    setActiveFolderId(folder.id)
-                    onSelectFile?.(f.id)
-                  }}
-                >
-                  <FileText className="w-4 h-4 text-gray-400 flex-shrink-0" />
-                  <span className="truncate">{f.name}</span>
-                </button>
-              ))}
+          {isExpanded && (directFiles.length > 0 || children.length > 0) && (
+            <div className="ml-3 pl-2 border-l border-gray-200">
+              {directFiles.length > 0 && (
+                <div className="space-y-0.5">
+                  {directFiles.map((f) => (
+                    <button
+                      key={f.id}
+                      type="button"
+                      className={cn(
+                        'w-full flex items-center gap-2 rounded-lg py-1.5 px-2 text-left text-gray-600 hover:bg-gray-50',
+                        'text-sm'
+                      )}
+                      title={f.sourcePath ? `${f.name} · ${f.sourcePath}` : f.name}
+                      onClick={() => {
+                        setActiveFolderId(folder.id)
+                        onSelectFile?.(f.id)
+                      }}
+                    >
+                      {getFileIcon(f.name)}
+                      <span className="truncate">{f.name}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+              {children.map((c) => renderFolder(c, depth + 1))}
             </div>
           )}
-
-          {children.length > 0 && <div>{children.map((c) => renderFolder(c, depth + 1))}</div>}
         </div>
       )
     },
@@ -413,26 +473,25 @@ export function DocumentFolderTree({
         <div className="text-xs font-semibold text-gray-500 uppercase tracking-wider">文档库</div>
         <Button
           variant="ghost"
-          size="sm"
-          className="h-7 px-2 text-xs gap-1"
+          size="icon"
+          className="h-6 w-6"
+          title="新建文件夹"
           onClick={() => openCreate(activeFolderId || ROOT_FOLDER_ID)}
         >
-          <Plus className="w-3.5 h-3.5" />
-          新建
+          <Plus className="w-4 h-4" />
         </Button>
       </div>
 
       <div className="space-y-0.5">
         <div
           className={cn(
-            'group flex items-center gap-2 rounded-lg pr-2 py-1.5 transition-colors',
+            'group flex items-center gap-2 rounded-lg px-2 py-1.5 transition-colors',
             activeFolderId === ROOT_FOLDER_ID
               ? 'bg-indigo-50 text-indigo-700'
               : 'hover:bg-gray-100 text-gray-700'
           )}
-          style={{ paddingLeft: 8 }}
         >
-          {showFiles === 'expanded' && rootDirectCount > 0 && (
+          {showFiles === 'expanded' && (rootDirectCount > 0 || rootChildren.length > 0) && (
             <button
               type="button"
               className="w-5 h-5 flex items-center justify-center rounded hover:bg-white/60 text-gray-500"
@@ -440,7 +499,7 @@ export function DocumentFolderTree({
                 e.stopPropagation()
                 toggleFileList(ROOT_FOLDER_ID)
               }}
-              aria-label={expandedFileFolderIds.has(ROOT_FOLDER_ID) ? 'Collapse files' : 'Expand files'}
+              aria-label={expandedFileFolderIds.has(ROOT_FOLDER_ID) ? 'Collapse' : 'Expand'}
             >
               {expandedFileFolderIds.has(ROOT_FOLDER_ID) ? (
                 <ChevronDown className="w-4 h-4" />
@@ -464,11 +523,7 @@ export function DocumentFolderTree({
             }}
             type="button"
           >
-            {activeFolderId === ROOT_FOLDER_ID ? (
-              <FolderOpen className="w-4 h-4 flex-shrink-0" />
-            ) : (
-              <Folder className="w-4 h-4 flex-shrink-0" />
-            )}
+            {getFolderIconElement(0, activeFolderId === ROOT_FOLDER_ID)}
             <span className="text-sm truncate">根目录</span>
             <span className="ml-auto text-xs text-gray-400">{rootCount}</span>
           </button>
@@ -490,28 +545,30 @@ export function DocumentFolderTree({
           )}
         </div>
 
-        {rootDirectFiles.length > 0 && (
-          <div className="space-y-0.5">
-            {rootDirectFiles.map((f) => (
-              <button
-                key={f.id}
-                type="button"
-                className="w-full flex items-center gap-2 rounded-lg py-1.5 pr-2 text-left text-gray-600 hover:bg-gray-50 text-sm"
-                style={{ paddingLeft: 8 + 14 }}
-                title={f.sourcePath ? `${f.name} · ${f.sourcePath}` : f.name}
-                onClick={() => {
-                  setActiveFolderId(ROOT_FOLDER_ID)
-                  onSelectFile?.(f.id)
-                }}
-              >
-                <FileText className="w-4 h-4 text-gray-400 flex-shrink-0" />
-                <span className="truncate">{f.name}</span>
-              </button>
-            ))}
+        {(showFiles === 'all' || (showFiles === 'active' && activeFolderId === ROOT_FOLDER_ID) || (showFiles === 'expanded' && expandedFileFolderIds.has(ROOT_FOLDER_ID))) && (rootDirectFiles.length > 0 || rootChildren.length > 0) && (
+          <div className="ml-3 pl-2 border-l border-gray-200">
+            {rootDirectFiles.length > 0 && (
+              <div className="space-y-0.5">
+                {rootDirectFiles.map((f) => (
+                  <button
+                    key={f.id}
+                    type="button"
+                    className="w-full flex items-center gap-2 rounded-lg py-1.5 px-2 text-left text-gray-600 hover:bg-gray-50 text-sm"
+                    title={f.sourcePath ? `${f.name} · ${f.sourcePath}` : f.name}
+                    onClick={() => {
+                      setActiveFolderId(ROOT_FOLDER_ID)
+                      onSelectFile?.(f.id)
+                    }}
+                  >
+                    {getFileIcon(f.name)}
+                    <span className="truncate">{f.name}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+            {rootChildren.map((folder) => renderFolder(folder, 1))}
           </div>
         )}
-
-        {rootChildren.map((folder) => renderFolder(folder, 1))}
       </div>
 
       <Dialog
