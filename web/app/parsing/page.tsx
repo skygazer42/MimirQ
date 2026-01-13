@@ -893,41 +893,62 @@ export default function ParsingPage() {
 
             {/* File List Header & Toolbar */}
             <div
-              className="px-4 py-2 border-b bg-gray-50 flex items-center justify-between shadow-sm z-10 sticky top-0"
+              className={cn(
+                "px-4 py-2 border-b flex items-center justify-between z-10 sticky top-0",
+                "bg-white/80 backdrop-blur border-gray-200"
+              )}
               onDragOver={(e) => handleFolderDragOver(e, currentFolderId)}
               onDragLeave={() => setDragOverFolderId(null)}
               onDrop={(e) => handleFolderDrop(e, currentFolderId)}
             >
-               <div className="flex items-center gap-2 min-w-0">
-                  <FileText className="w-3.5 h-3.5 text-gray-400" />
-                  <div className="min-w-0">
-                    <div className="text-xs font-semibold text-gray-600">文档列表</div>
-                    <div className="text-[10px] text-gray-400 truncate" title={activeFolderPathLabel}>{activeFolderPathLabel}</div>
+               <div className="flex items-center gap-3 min-w-0">
+                  <div className="w-8 h-8 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center">
+                    <FileText className="w-4 h-4" />
                   </div>
-                  <span className="bg-gray-200 text-gray-600 px-1.5 py-0.5 rounded-full text-[10px]">{visibleQueueFiles.length}</span>
+                  <div className="min-w-0">
+                    <div className="text-sm font-semibold text-gray-800">文档列表</div>
+                    <div className="mt-0.5">
+                      <span
+                        className="inline-flex max-w-[220px] items-center truncate rounded-full bg-gray-100/80 px-2 py-0.5 text-[10px] font-medium text-gray-600"
+                        title={activeFolderPathLabel}
+                      >
+                        {activeFolderPathLabel}
+                      </span>
+                    </div>
+                  </div>
+                  <span className="bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full text-[11px] font-medium">{visibleQueueFiles.length}</span>
                </div>
                
                <div className="flex items-center gap-1">
                   {parseableCount > 0 && (
-                    <Button variant="ghost" size="sm" onClick={parseAllPending} className="h-6 text-xs gap-1 text-indigo-600 hover:text-indigo-700 hover:bg-indigo-50 mr-1">
-                      <Play className="w-3 h-3" />
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={parseAllPending}
+                      className="h-7 text-xs gap-1.5 text-indigo-700 hover:text-indigo-800 hover:bg-indigo-50 mr-1 font-medium"
+                    >
+                      <Play className="w-3.5 h-3.5" />
                       解析
                     </Button>
                   )}
                   
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
-                      <Button variant="ghost" size="icon" className="h-6 w-6 text-gray-500 hover:bg-gray-200 rounded-md">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7 text-gray-600 hover:bg-gray-100 rounded-lg"
+                      >
                         <Plus className="w-4 h-4" />
                       </Button>
                     </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end" className="w-48">
+                    <DropdownMenuContent align="end" className="w-52">
                       <DropdownMenuItem onClick={() => requestUploadToFolder(activeFolderId || ROOT_FOLDER_ID)}>
-                        <Paperclip className="w-4 h-4 mr-2" />
+                        <Paperclip className="w-4 h-4 mr-2 text-indigo-600" />
                         上传文件
                       </DropdownMenuItem>
                       <DropdownMenuItem onClick={() => requestUploadFolder(activeFolderId || ROOT_FOLDER_ID)}>
-                        <FolderUp className="w-4 h-4 mr-2" />
+                        <FolderUp className="w-4 h-4 mr-2 text-sky-600" />
                         上传文件夹
                       </DropdownMenuItem>
                     </DropdownMenuContent>
@@ -939,7 +960,7 @@ export default function ParsingPage() {
             <div className="flex-1 overflow-y-auto p-2 custom-scrollbar bg-white">
                {directFolders.length === 0 && visibleQueueFiles.length === 0 ? (
                  <div className="h-full flex flex-col items-center justify-center text-gray-400">
-                    <div className="w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center mb-3">
+                    <div className="w-14 h-14 bg-gradient-to-br from-gray-100 to-white rounded-2xl flex items-center justify-center mb-3 shadow-sm">
                       <FolderOpen className="w-6 h-6 text-gray-300" />
                     </div>
                     <p className="text-sm font-medium text-gray-500">暂无文件</p>
@@ -954,7 +975,7 @@ export default function ParsingPage() {
                        <div
                          key={folder.id}
                          className={cn(
-                           "flex items-center gap-2 p-2 rounded-lg border border-transparent hover:border-gray-200 hover:bg-gray-50 group transition-all cursor-pointer relative",
+                           "flex items-center gap-3 p-2.5 rounded-xl border border-transparent hover:border-gray-200 hover:bg-gray-50 group transition-all cursor-pointer relative",
                            dragOverFolderId === folder.id && "border-indigo-200 bg-indigo-50/60",
                            activeFolderId === folder.id && "bg-indigo-50 border-indigo-100 ring-1 ring-indigo-200"
                          )}
@@ -963,12 +984,12 @@ export default function ParsingPage() {
                          onDragLeave={() => setDragOverFolderId(null)}
                          onDrop={(e) => handleFolderDrop(e, folder.id)}
                        >
-                         <div className="w-8 h-8 rounded-lg bg-amber-50 text-amber-600 flex items-center justify-center flex-shrink-0">
+                         <div className="w-9 h-9 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center flex-shrink-0 shadow-sm">
                            <FolderOpen className="w-4 h-4" />
                          </div>
                          <div className="flex-1 min-w-0">
                            <div className="flex items-center justify-between">
-                             <div className={cn("text-sm font-medium truncate pr-6", activeFolderId === folder.id ? "text-indigo-900" : "text-gray-700")}>
+                             <div className={cn("text-sm font-semibold truncate pr-6", activeFolderId === folder.id ? "text-indigo-900" : "text-gray-700")}>
                                {folder.name}
                              </div>
                              <span className="text-[10px] text-gray-400 flex-shrink-0">
@@ -989,7 +1010,7 @@ export default function ParsingPage() {
                    {visibleQueueFiles.map(f => (
                      <div key={f.id} 
                           className={cn(
-                            "flex items-center gap-2 p-2 rounded-lg border border-transparent hover:border-gray-200 hover:bg-gray-50 group transition-all cursor-pointer relative",
+                            "flex items-center gap-3 p-2.5 rounded-xl border border-transparent hover:border-gray-200 hover:bg-gray-50 group transition-all cursor-pointer relative",
                             activeFileId === f.id && "bg-indigo-50 border-indigo-100 ring-1 ring-indigo-200"
                           )}
                           onClick={() => setActiveFileId(f.id)}
