@@ -30,6 +30,8 @@ import {
   Trash2,
   AlertCircle,
   CheckCircle2,
+  Paperclip,
+  FolderPlus,
 } from 'lucide-react'
 import { Navbar } from '@/components/navbar'
 import { Button } from '@/components/ui/button'
@@ -50,6 +52,12 @@ import { extractZipFiles, isZipFile } from '@/lib/zip'
 import { PdfViewer } from '@/components/parsing/pdf-viewer'
 import { extractBlocksFromMarkdown, ParsingBlock } from '@/lib/parsing-positions'
 import { toast } from 'sonner'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 
 const ZIP_ALLOWED_EXTENSIONS = new Set([
   'pdf',
@@ -86,6 +94,7 @@ interface ParsedFile extends FileQueueItemData {
   runs?: ParseRun[]
   activeRunId?: string
   parseStartTime?: number
+  createdAt?: number
   stats?: {
     charCount: number
     lineCount: number
@@ -106,6 +115,7 @@ export default function ParsingPage() {
   const [isDragging, setIsDragging] = useState(false)
   const [copied, setCopied] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const folderInputRef = useRef<HTMLInputElement>(null)
   const uploadTargetFolderIdRef = useRef<string | null>(null)
   const fileIdSetRef = useRef<Set<string>>(new Set())
   const parseControllersRef = useRef<Map<string, AbortController>>(new Map())
@@ -206,7 +216,23 @@ export default function ParsingPage() {
       const targetId = folderId || ROOT_FOLDER_ID
       uploadTargetFolderIdRef.current = targetId
       setActiveFolderId(targetId)
-      fileInputRef.current?.click()
+      if (fileInputRef.current) {
+        fileInputRef.current.value = ''
+        fileInputRef.current.click()
+      }
+    },
+    [setActiveFolderId]
+  )
+
+  const requestUploadFolder = useCallback(
+    (folderId: string) => {
+      const targetId = folderId || ROOT_FOLDER_ID
+      uploadTargetFolderIdRef.current = targetId
+      setActiveFolderId(targetId)
+      if (folderInputRef.current) {
+        folderInputRef.current.value = ''
+        folderInputRef.current.click()
+      }
     },
     [setActiveFolderId]
   )
@@ -214,23 +240,27 @@ export default function ParsingPage() {
   // 生成唯一 ID
   const generateId = () => Math.random().toString(36).substring(2, 15)
 
-  // 添加文件（支持 .zip 批量解压）
+  // 添加文件（支持 .zip 批量解压，支持文件夹上传）
   const addFiles = useCallback(
     async (incomingFiles: File[], baseFolderIdOverride?: string) => {
       const defaultLabel = getParserLabel(parserBackend)
       const baseFolderId = baseFolderIdOverride || activeFolderId || ROOT_FOLDER_ID
+      const now = Date.now()
 
       const folderIdByKey = new Map<string, string>()
+      // Pre-populate with existing folders
       for (const f of folders) {
         folderIdByKey.set(`${f.parentId || ROOT_FOLDER_ID}::${f.name}`, f.id)
       }
 
       const getOrCreateFolder = (parentId: string, name: string) => {
         const trimmed = name.trim()
+        if (!trimmed) return parentId
         const key = `${parentId}::${trimmed}`
         const cached = folderIdByKey.get(key)
         if (cached) return cached
 
+        // Check if exists in store but not in local map
         const existing = folders.find((f) => (f.parentId || ROOT_FOLDER_ID) === parentId && f.name === trimmed)
         if (existing) {
           folderIdByKey.set(key, existing.id)
@@ -247,6 +277,47 @@ export default function ParsingPage() {
       let added = 0
 
       for (const file of incomingFiles) {
+        // Check for webkitRelativePath (Folder upload)
+        const relativePath = (file as any).webkitRelativePath as string
+        if (relativePath) {
+           const parts = relativePath.split('/')
+           const filename = parts.pop() // Remove filename
+           // parts now contains the folder path relative to the upload root
+           // For folder upload, the first part is the folder name itself.
+           // E.g. "MyDocs/sub/file.txt".
+           
+           if (!filename) continue
+           const ext = filename.split('.').pop()?.toLowerCase() || ''
+           if (!ZIP_ALLOWED_EXTENSIONS.has(ext)) {
+             skipped += 1
+             continue
+           }
+
+           let currentFolderId = baseFolderId
+           // Create folders recursively
+           for (const segment of parts) {
+             currentFolderId = getOrCreateFolder(currentFolderId, segment)
+           }
+
+           queued.push({
+            id: generateId(),
+            file,
+            folderId: currentFolderId,
+            name: filename,
+            sourcePath: relativePath,
+            size: file.size,
+            status: 'pending' as FileStatus,
+            markdownContent: null,
+            error: undefined,
+            parserBackend,
+            parserLabel: defaultLabel,
+            createdAt: now,
+          })
+          added += 1
+          continue
+        }
+
+        // Regular file or ZIP
         if (isZipFile(file)) {
           let extractedCount = 0
           let addedInZip = 0
@@ -284,6 +355,7 @@ export default function ParsingPage() {
                 error: undefined,
                 parserBackend,
                 parserLabel: defaultLabel,
+                createdAt: now,
               })
               added += 1
               addedInZip += 1
@@ -326,6 +398,7 @@ export default function ParsingPage() {
           error: undefined,
           parserBackend,
           parserLabel: defaultLabel,
+          createdAt: now,
         })
         added += 1
       }
@@ -345,7 +418,42 @@ export default function ParsingPage() {
   )
 
   const visibleQueueFiles = useMemo(() => {
-    if (!activeFolderId || activeFolderId === ROOT_FOLDER_ID) return files
+    if (!activeFolderId || activeFolderId === ROOT_FOLDER_ID) {
+        // In root, show all files (user request: "Root directory also has a 'No files currently' component... clicking a folder, below should have all files")
+        // Wait, logic:
+        // Sidebar has folder tree.
+        // File list area (bottom of sidebar) shows files in active folder.
+        // Currently, if active is Root, it shows everything? Or just root files?
+        // Original logic:
+        // if activeFolderId is Root, it filters by allowedFolderIds (recursive).
+        // Let's keep recursive for now or just direct?
+        // "below should have that folder's all files" - usually implies direct children.
+        // But user said "Root directory...".
+        // Let's stick to: Show files in current active folder (direct).
+        // BUT the existing logic was recursive for visibleQueueFiles?
+        // "allowedFolderIds" logic suggests recursive visibility for the queue.
+        // If I change to direct only, I might break "Queue" concept.
+        // Let's keep recursive for now but sort by time.
+        // Actually, for a file manager, usually you only see files in current folder.
+        // The previous logic seemed to be "Queue" (all pending/processing files).
+        // The user wants a "File Manager" feel.
+        // "Clicking a folder, below should have that folder's all files".
+        // I will change to DIRECT children only to match standard file explorer behavior,
+        // unless it's a "Global Queue".
+        // Given the UI layout (Sidebar with folder tree AND file list), it's a bit hybrid.
+        // I will assume the file list is the content of the selected folder.
+        
+        // Let's try to support flattening if needed, but for now, direct children is safer for "Folder View".
+        // However, the original code had:
+        /*
+        const childrenByParentId = ...
+        const stack = [activeFolderId]
+        ...
+        return files.filter((f) => allowedFolderIds.has(f.folderId || ROOT_FOLDER_ID))
+        */
+       // This implies it shows files in subfolders too.
+       // I'll keep it for now as "All files in this branch".
+    }
 
     const childrenByParentId = new Map<string, string[]>()
     for (const folder of folders) {
@@ -356,7 +464,7 @@ export default function ParsingPage() {
     }
 
     const allowedFolderIds = new Set<string>()
-    const stack = [activeFolderId]
+    const stack = [activeFolderId || ROOT_FOLDER_ID]
     while (stack.length > 0) {
       const current = stack.pop()
       if (!current) continue
@@ -366,7 +474,9 @@ export default function ParsingPage() {
       for (const childId of children) stack.push(childId)
     }
 
-    return files.filter((f) => allowedFolderIds.has(f.folderId || ROOT_FOLDER_ID))
+    return files
+      .filter((f) => allowedFolderIds.has(f.folderId || ROOT_FOLDER_ID))
+      .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0)) // Newest first
   }, [files, activeFolderId, folders])
 
   useEffect(() => {
@@ -745,6 +855,7 @@ export default function ParsingPage() {
             <div className="flex-none h-1/3 min-h-[200px] overflow-y-auto p-2 border-b custom-scrollbar bg-white">
                <DocumentFolderTree
                   onRequestUpload={requestUploadToFolder}
+                  onRequestUploadFolder={requestUploadFolder}
                   fileItems={[]} 
                   showFiles="none"
                   onSelectFile={(fileId) => setActiveFileId(fileId)}
@@ -759,43 +870,99 @@ export default function ParsingPage() {
                   <span className="truncate max-w-[120px]" title={activeFolderPathLabel}>{activeFolderPathLabel}</span>
                   <span className="bg-gray-200 text-gray-600 px-1.5 py-0.5 rounded-full text-[10px]">{visibleQueueFiles.length}</span>
                </div>
-               {parseableCount > 0 && (
-                  <Button variant="ghost" size="sm" onClick={parseAllPending} className="h-6 text-xs gap-1 text-indigo-600 hover:text-indigo-700 hover:bg-indigo-50">
-                    <Play className="w-3 h-3" />
-                    解析
-                  </Button>
-               )}
+               
+               <div className="flex items-center gap-1">
+                  {parseableCount > 0 && (
+                    <Button variant="ghost" size="sm" onClick={parseAllPending} className="h-6 text-xs gap-1 text-indigo-600 hover:text-indigo-700 hover:bg-indigo-50 mr-1">
+                      <Play className="w-3 h-3" />
+                      解析
+                    </Button>
+                  )}
+                  
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="ghost" size="icon" className="h-6 w-6 text-gray-500 hover:bg-gray-200 rounded-md">
+                        <FolderPlus className="w-4 h-4" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end" className="w-48">
+                      <DropdownMenuItem onClick={() => requestUploadToFolder(activeFolderId || ROOT_FOLDER_ID)}>
+                        <Paperclip className="w-4 h-4 mr-2" />
+                        上传文件
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => requestUploadFolder(activeFolderId || ROOT_FOLDER_ID)}>
+                        <FolderPlus className="w-4 h-4 mr-2" />
+                        上传文件夹
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => {
+                         const folder = folders.find(f => f.id === activeFolderId)
+                         if (activeFolderId && activeFolderId !== ROOT_FOLDER_ID) {
+                           // Trigger create subfolder via direct call logic or use context if available
+                           // For now, prompt user or use createFolder directly?
+                           // DocumentFolderTree handles creation usually.
+                           // We can use createFolder directly here.
+                           const name = prompt("请输入文件夹名称")
+                           if (name && name.trim()) {
+                             const newId = createFolder(name.trim(), activeFolderId)
+                             // setActiveFolderId(newId) // Keep current active?
+                             toast.success('文件夹已创建')
+                           }
+                         } else {
+                           const name = prompt("请输入文件夹名称")
+                           if (name && name.trim()) {
+                             const newId = createFolder(name.trim(), ROOT_FOLDER_ID)
+                             setActiveFolderId(newId)
+                             toast.success('文件夹已创建')
+                           }
+                         }
+                      }}>
+                        <FolderPlus className="w-4 h-4 mr-2 text-amber-600" />
+                        新建文件夹
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+               </div>
             </div>
 
             {/* File List */}
             <div className="flex-1 overflow-y-auto p-2 custom-scrollbar bg-white">
                {visibleQueueFiles.length === 0 ? (
                  <div className="h-full flex flex-col items-center justify-center text-gray-400">
-                    <p className="text-sm">暂无文件</p>
+                    <div className="w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center mb-3">
+                      <FolderOpen className="w-6 h-6 text-gray-300" />
+                    </div>
+                    <p className="text-sm font-medium text-gray-500">暂无文件</p>
+                    <p className="text-xs text-gray-400 mt-1">拖拽文件到此处或点击上方按钮添加</p>
                  </div>
                ) : (
                  <div className="space-y-1">
                    {visibleQueueFiles.map(f => (
                      <div key={f.id} 
                           className={cn(
-                            "flex items-center gap-2 p-2 rounded-lg border border-transparent hover:border-gray-200 hover:bg-gray-50 group transition-all cursor-pointer",
+                            "flex items-center gap-2 p-2 rounded-lg border border-transparent hover:border-gray-200 hover:bg-gray-50 group transition-all cursor-pointer relative",
                             activeFileId === f.id && "bg-indigo-50 border-indigo-100 ring-1 ring-indigo-200"
                           )}
                           onClick={() => setActiveFileId(f.id)}
                      >
                         {getFileIcon(f.name)}
                         <div className="flex-1 min-w-0">
-                           <div className={cn("text-sm font-medium truncate", activeFileId === f.id ? "text-indigo-900" : "text-gray-700")}>
-                             {f.name}
+                           <div className="flex items-center justify-between">
+                             <div className={cn("text-sm font-medium truncate pr-6", activeFileId === f.id ? "text-indigo-900" : "text-gray-700")}>
+                               {f.name}
+                             </div>
+                             <span className="text-[10px] text-gray-400 flex-shrink-0">
+                               {f.createdAt ? new Date(f.createdAt).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : ''}
+                             </span>
                            </div>
-                           <div className="flex items-center gap-2 mt-0.5 min-h-[16px]">
+                           
+                           <div className="flex items-center gap-2 mt-1 min-h-[16px]">
                               {/* Status Indicator */}
                               {f.status === 'parsing' ? (
-                                <div className="flex items-center gap-2 w-full max-w-[100px]">
-                                   <div className="h-1 flex-1 bg-indigo-100 rounded-full overflow-hidden">
+                                <div className="flex items-center gap-2 w-full max-w-[120px]">
+                                   <div className="h-1.5 flex-1 bg-indigo-100 rounded-full overflow-hidden">
                                       <div className="h-full bg-indigo-500 animate-[progress_1s_ease-in-out_infinite] w-full origin-left scale-x-50" />
                                    </div>
-                                   <span className="text-[10px] text-indigo-500">解析中...</span>
+                                   <span className="text-[10px] text-indigo-500 font-medium">解析中...</span>
                                 </div>
                               ) : f.status === 'error' ? (
                                 <span className="text-[10px] text-red-500 flex items-center gap-1">
@@ -811,31 +978,55 @@ export default function ParsingPage() {
                            </div>
                         </div>
                         
-                        {/* Stop/Delete Button */}
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-7 w-7 opacity-0 group-hover:opacity-100 text-gray-400 hover:text-red-600 transition-opacity"
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            removeFile(f.id)
-                          }}
-                          title={f.status === 'parsing' ? "停止解析" : "删除文件"}
-                        >
-                          {f.status === 'parsing' ? <X className="w-4 h-4" /> : <Trash2 className="w-4 h-4" />}
-                        </Button>
+                        {/* Stop/Delete Button - Absolute positioned or flex? Group hover */}
+                        <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity bg-white/80 backdrop-blur-sm rounded-md p-0.5 shadow-sm border border-gray-100">
+                           {f.status === 'parsing' && (
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-6 w-6 text-gray-500 hover:text-red-600 hover:bg-red-50"
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  cancelParse(f.id)
+                                }}
+                                title="停止解析"
+                              >
+                                <X className="w-3.5 h-3.5" />
+                              </Button>
+                           )}
+                           <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-6 w-6 text-gray-500 hover:text-red-600 hover:bg-red-50"
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                removeFile(f.id)
+                              }}
+                              title="删除文件"
+                           >
+                              <Trash2 className="w-3.5 h-3.5" />
+                           </Button>
+                        </div>
                      </div>
                    ))}
                  </div>
                )}
             </div>
 
-            {/* 隐藏的文件上传 Input (用于文件夹上传) */}
+            {/* 隐藏的文件上传 Input */}
             <input
               ref={fileInputRef}
               type="file"
               multiple
               accept=".pdf,.txt,.md,.doc,.docx,.xls,.xlsx,.csv,.html,.json,.zip"
+              className="hidden"
+              onChange={handleFileSelect}
+            />
+            <input
+              ref={folderInputRef}
+              type="file"
+              multiple
+              {...({ webkitdirectory: "" } as any)}
               className="hidden"
               onChange={handleFileSelect}
             />

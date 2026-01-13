@@ -95,6 +95,7 @@ function getFolderIconElement(depth: number, isOpen: boolean) {
 export function DocumentFolderTree({
   className,
   onRequestUpload,
+  onRequestUploadFolder,
   fileItems,
   showFiles = 'none',
   onSelectFile,
@@ -102,6 +103,7 @@ export function DocumentFolderTree({
 }: {
   className?: string
   onRequestUpload?: (folderId: string) => void
+  onRequestUploadFolder?: (folderId: string) => void
   fileItems?: Array<{ id: string; name: string; folderId?: string; sourcePath?: string; status?: string; error?: string }>
   showFiles?: 'none' | 'active' | 'all' | 'expanded'
   onSelectFile?: (fileId: string) => void
@@ -389,8 +391,20 @@ export function DocumentFolderTree({
                     <FileUp className="w-4 h-4 mr-2 text-indigo-600" />
                     上传文件
                   </DropdownMenuItem>
+                  {onRequestUploadFolder && (
+                    <DropdownMenuItem
+                      className="py-2"
+                      onClick={() => {
+                        setActiveFolderId(folder.id)
+                        onRequestUploadFolder(folder.id)
+                      }}
+                    >
+                      <FolderPlus className="w-4 h-4 mr-2 text-sky-600" />
+                      上传文件夹
+                    </DropdownMenuItem>
+                  )}
                   <DropdownMenuItem className="py-2" onClick={() => openCreate(folder.id)}>
-                    <FolderPlus className="w-4 h-4 mr-2 text-sky-600" />
+                    <FolderPlus className="w-4 h-4 mr-2 text-amber-600" />
                     新建文件夹
                   </DropdownMenuItem>
                 </DropdownMenuContent>
@@ -417,7 +431,18 @@ export function DocumentFolderTree({
                     }}
                   >
                     <Upload className="w-4 h-4 mr-2" />
-                    上传到此目录
+                    上传文件
+                  </DropdownMenuItem>
+                )}
+                {onRequestUploadFolder && (
+                  <DropdownMenuItem
+                    onClick={() => {
+                      setActiveFolderId(folder.id)
+                      onRequestUploadFolder(folder.id)
+                    }}
+                  >
+                    <FolderPlus className="w-4 h-4 mr-2" />
+                    上传文件夹
                   </DropdownMenuItem>
                 )}
                 <DropdownMenuItem onClick={() => openCreate(folder.id)}>
@@ -498,6 +523,7 @@ export function DocumentFolderTree({
       openMove,
       openRename,
       onRequestUpload,
+      onRequestUploadFolder,
       onSelectFile,
       showFiles,
       setActiveFolderId,
@@ -516,16 +542,16 @@ export function DocumentFolderTree({
 
   return (
     <div className={cn('flex flex-col', className)}>
-      <div className="flex items-center justify-between mb-2">
-        <div className="text-xs font-semibold text-gray-500 uppercase tracking-wider">文档库</div>
+      <div className="flex items-center justify-between mb-2 group">
+        <div className="text-xs font-semibold text-gray-500 uppercase tracking-wider pl-1">文档库</div>
         <Button
           variant="ghost"
           size="icon"
-          className="h-6 w-6"
-          title="新建文件夹"
-          onClick={() => openCreate(activeFolderId || ROOT_FOLDER_ID)}
+          className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity text-gray-400 hover:text-indigo-600 hover:bg-indigo-50"
+          title="新建根目录文件夹"
+          onClick={() => openCreate(ROOT_FOLDER_ID)}
         >
-          <Plus className="w-4 h-4" />
+          <FolderPlus className="w-4 h-4" />
         </Button>
       </div>
 
@@ -576,19 +602,47 @@ export function DocumentFolderTree({
           </button>
 
           {onRequestUpload && (
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity text-gray-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-md"
-              aria-label="Upload to root folder"
-              onClick={(e) => {
-                e.stopPropagation()
-                setActiveFolderId(ROOT_FOLDER_ID)
-                onRequestUpload(ROOT_FOLDER_ID)
-              }}
-            >
-              <Plus className="w-4 h-4" />
-            </Button>
+             <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity text-gray-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-md"
+                    aria-label="Upload to root folder"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <Plus className="w-4 h-4" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start" className="w-48 p-1">
+                  <DropdownMenuItem
+                    className="py-2"
+                    onClick={() => {
+                      setActiveFolderId(ROOT_FOLDER_ID)
+                      onRequestUpload(ROOT_FOLDER_ID)
+                    }}
+                  >
+                    <FileUp className="w-4 h-4 mr-2 text-indigo-600" />
+                    上传文件
+                  </DropdownMenuItem>
+                  {onRequestUploadFolder && (
+                    <DropdownMenuItem
+                      className="py-2"
+                      onClick={() => {
+                        setActiveFolderId(ROOT_FOLDER_ID)
+                        onRequestUploadFolder(ROOT_FOLDER_ID)
+                      }}
+                    >
+                      <FolderPlus className="w-4 h-4 mr-2 text-sky-600" />
+                      上传文件夹
+                    </DropdownMenuItem>
+                  )}
+                  <DropdownMenuItem className="py-2" onClick={() => openCreate(ROOT_FOLDER_ID)}>
+                    <FolderPlus className="w-4 h-4 mr-2 text-amber-600" />
+                    新建文件夹
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
           )}
         </div>
 
