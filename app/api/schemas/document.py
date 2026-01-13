@@ -28,7 +28,7 @@ class DocumentPipelineOptions(BaseModel):
     )
     governance_pii_mask: Optional[str] = Field(default=None, description="PII replacement string (mask mode)")
     governance_max_blank_lines: Optional[int] = Field(default=None, ge=0, le=10, description="Max consecutive blank lines")
-    governance_html_xpath: Optional[str] = Field(default=None, description="XPath for HTML extraction (preview/clean only)")
+    governance_html_xpath: Optional[str] = Field(default=None, description="XPath for HTML extraction (HTML/HTM)")
     governance_drop_outline_only: Optional[bool] = None
     governance_drop_outline_min_content_chars: Optional[int] = Field(default=None, ge=0, le=200_000, description="Min content chars before outline filter triggers")
     governance_drop_outline_max_heading_ratio: Optional[float] = Field(default=None, ge=0.0, le=1.0, description="Heading-like paragraph ratio threshold")
