@@ -32,9 +32,11 @@ from app.api.schemas.document import (
     BatchTaskStatus,
     DocumentBatchUploadResponse,
 )
+from langchain_core.documents import Document
 from app.parsing.processors.processor import document_processor
 from app.parsing.factory import parser_factory
 from app.parsing.routing import route_pdf_backend
+from app.parsing.subprocess_runner import SubprocessCancelled, SubprocessWorkerError, run_subprocess_worker
 from app.rag.chunking.factory import chunker_factory
 from app.types.indexing import IndexKind, IndexRecord
 from app.types.pipeline import PipelineOptions
@@ -1258,6 +1260,70 @@ async def get_document_status(
     }
 
 
+@router.post("/{document_id}/cancel", response_model=DocumentStatus)
+async def cancel_document_processing(
+    document_id: uuid.UUID,
+    tenant_id: UUID = Depends(get_tenant_id),
+    account_id: str = Depends(get_current_account_id),
+    db: Session = Depends(get_db),
+):
+    """
+    Cancel an in-progress document processing task.
+
+    Notes:
+    - When TASK_QUEUE_ENABLED=true, this will best-effort abort the arq job.
+    - When queue is disabled, the in-process/background worker cooperatively checks the cancelled status.
+    """
+    DatasetService.ensure_member(db, tenant_id, account_id)
+
+    document = db.query(DBDocument).filter(
+        DBDocument.id == document_id,
+        DBDocument.tenant_id == tenant_id,
+    ).first()
+    if not document:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    if document.dataset_id:
+        ds = DatasetService.get_dataset(db, tenant_id, document.dataset_id)
+        DatasetService.assert_dataset_writable(db, ds, account_id)
+
+    meta = dict(document.doc_metadata or {})
+    meta["cancel_requested"] = True
+    document.doc_metadata = meta
+    document.status = "cancelled"
+    document.processing_progress = 0
+    document.current_stage = "cancelled"
+    document.error_message = "cancelled"
+    db.commit()
+    db.refresh(document)
+
+    task_id = meta.get("task_id")
+    if bool(getattr(settings, "TASK_QUEUE_ENABLED", False)) and isinstance(task_id, str) and task_id.strip():
+        try:
+            from arq.jobs import Job
+            from app.tasks.queue import get_queue
+
+            q = await get_queue()
+            if q is not None:
+                queue_name = getattr(settings, "TASK_QUEUE_NAME", "mimirq")
+                job = Job(task_id.strip(), q, _queue_name=queue_name)
+                try:
+                    await job.abort(timeout=0.2)
+                except (TimeoutError, asyncio.TimeoutError):
+                    # Abort signal was enqueued; the worker will pick it up shortly.
+                    pass
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Failed to abort task %s for document %s: %s", task_id, document_id, str(exc)[:200])
+
+    return {
+        "id": document.id,
+        "status": document.status,
+        "processing_progress": document.processing_progress,
+        "current_stage": document.current_stage,
+        "error_message": document.error_message,
+    }
+
+
 @router.delete("/{document_id}", status_code=204)
 async def delete_document(
     document_id: uuid.UUID,
@@ -1280,6 +1346,36 @@ async def delete_document(
     if document.dataset_id:
         ds = DatasetService.get_dataset(db, tenant_id, document.dataset_id)
         DatasetService.assert_dataset_writable(db, ds, account_id)
+
+    # Best-effort: abort any queued/running jobs for this document before deleting.
+    doc_meta = document.doc_metadata or {}
+    task_ids: list[str] = []
+    for key in ("task_id", "kg_task_id"):
+        v = doc_meta.get(key) if isinstance(doc_meta, dict) else None
+        if isinstance(v, str) and v.strip():
+            task_ids.append(v.strip())
+
+    if bool(getattr(settings, "TASK_QUEUE_ENABLED", False)) and task_ids:
+        try:
+            from arq.jobs import Job
+            from app.tasks.queue import get_queue
+
+            q = await get_queue()
+            if q is not None:
+                queue_name = getattr(settings, "TASK_QUEUE_NAME", "mimirq")
+                for task_id in task_ids:
+                    job = Job(task_id, q, _queue_name=queue_name)
+                    try:
+                        await job.abort(timeout=0.2)
+                    except (TimeoutError, asyncio.TimeoutError):
+                        pass
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(
+                "Failed to abort document tasks before delete: doc=%s tasks=%s err=%s",
+                document_id,
+                task_ids,
+                str(exc)[:200],
+            )
 
     # 1. Delete images in MinIO (if enabled).
     if settings.MINIO_ENABLED:
@@ -1504,6 +1600,7 @@ async def get_image_url(
 
 @router.post("/preview", response_model=DocumentParsePreview)
 async def preview_document(
+    request: Request,
     file: UploadFile = File(...),
     parser_backend: str = Form(default=settings.DEFAULT_PARSER_BACKEND),
     chunk_strategy: str = Form(default=settings.DEFAULT_CHUNK_STRATEGY),
@@ -1540,39 +1637,36 @@ async def preview_document(
     upload_dir = Path(settings.UPLOAD_DIR) / str(tenant_id) / "preview"
     upload_dir.mkdir(parents=True, exist_ok=True)
 
-    temp_path = upload_dir / f"{uuid.uuid4()}{file_ext}"
+    run_dir = upload_dir / uuid.uuid4().hex
+    run_dir.mkdir(parents=True, exist_ok=True)
+    temp_path = run_dir / f"input{file_ext}"
     artifact_dirs: set[str] = set()
 
     try:
         file_size = await save_upload_file(file, temp_path, max_bytes=settings.MAX_FILE_SIZE)
 
-        pdf_quality = None
-        if file_ext == ".pdf":
-            requested = (parser_backend or "").strip().lower()
-            if not requested or requested == "auto":
-                effective_parser_backend, pdf_quality = route_pdf_backend(
-                    temp_path,
-                    requested,
-                    sample_pages=3,
-                    use_ocr_validation=settings.RAPIDOCR_ENABLED,
-                )
-            else:
-                effective_parser_backend = requested
-        else:
-            effective_parser_backend = parser_backend
-
-        documents, resolved_backend = parser_factory.parse(
-            temp_path,
-            parser_backend=effective_parser_backend,
-            tenant_id=str(tenant_id),
-            pdf_quality=pdf_quality,
+        parsed = await run_subprocess_worker(
+            tenant_id=tenant_id,
+            payload={
+                "action": "parse_documents",
+                "tenant_id": str(tenant_id),
+                "file_path": str(temp_path),
+                "parser_backend": parser_backend,
+                "mode": "preview",
+            },
+            disconnect_check=request.is_disconnected,
+            timeout_sec=float(getattr(settings, "TASK_JOB_TIMEOUT_SEC", 60 * 30) or 60 * 30),
         )
-        # DeepDoc/Docling may return extracted images as in-memory objects in metadata.
-        # Persist them as preview-time files and convert to Markdown refs so the frontend can render.
-        documents = _materialize_extracted_images_for_preview(documents, tenant_id=tenant_id)
-        # Parsers like MagicPDF may emit relative image refs (e.g. images/foo.png) that would
-        # otherwise be dead links once we cleanup artifacts. Materialize them into preview images.
-        documents = _materialize_local_images_for_preview(documents, tenant_id=tenant_id)
+        documents = [
+            Document(
+                page_content=str(item.get("page_content") or ""),
+                metadata=item.get("metadata") if isinstance(item.get("metadata"), dict) else {},
+                id=item.get("id") if isinstance(item.get("id"), str) else None,
+            )
+            for item in (parsed.get("documents") or [])
+            if isinstance(item, dict)
+        ]
+        resolved_backend = str(parsed.get("resolved_backend") or parser_backend)
         for doc in documents:
             artifact_dir = (doc.metadata or {}).get("artifact_dir")
             if isinstance(artifact_dir, str) and artifact_dir.strip():
@@ -1621,6 +1715,16 @@ async def preview_document(
             segments=segments,
             parser_backend=resolved_backend
         )
+    except SubprocessCancelled:
+        # Client disconnected; stop work early.
+        raise HTTPException(status_code=499, detail="Client closed request")
+    except SubprocessWorkerError as e:
+        # Map input validation errors to 400 to preserve historical behavior.
+        err_type = (e.details or {}).get("type")
+        if err_type == "ValueError":
+            raise HTTPException(status_code=400, detail=f"Invalid input: {str(e)[:100]}")
+        logger.error("Subprocess worker failed during preview: %s", str(e)[:200])
+        raise HTTPException(status_code=500, detail="Failed to parse document")
     except ValueError as e:
         raise HTTPException(status_code=400, detail=f"Invalid input: {str(e)[:100]}")
     except IOError as e:
@@ -1631,10 +1735,10 @@ async def preview_document(
         raise HTTPException(status_code=500, detail="Failed to parse document")
     finally:
         try:
-            if temp_path.exists():
-                temp_path.unlink()
+            if run_dir.exists():
+                shutil.rmtree(run_dir, ignore_errors=True)
         except OSError as e:
-            logger.warning("Failed to clean up temporary file %s: %s", temp_path, e)
+            logger.warning("Failed to clean up preview directory %s: %s", run_dir, e)
 
         # Best-effort cleanup for preview parser artifacts (e.g., MagicPDF output).
         if artifact_dirs and not bool(getattr(settings, "MAGIC_PDF_KEEP_ARTIFACTS", False)):
@@ -1852,6 +1956,7 @@ async def create_document_with_manual_chunks(
 
 @router.post("/chunk-preview", response_model=ChunkPreviewResponse)
 async def preview_chunking(
+    request: Request,
     file: UploadFile = File(...),
     chunk_size: int = 1000,
     chunk_overlap: int = 200,
@@ -1905,7 +2010,9 @@ async def preview_chunking(
     # Save to a temp path.
     upload_dir = Path(settings.UPLOAD_DIR) / str(tenant_id) / "preview"
     upload_dir.mkdir(parents=True, exist_ok=True)
-    temp_path = upload_dir / f"{uuid.uuid4()}{file_ext}"
+    run_dir = upload_dir / uuid.uuid4().hex
+    run_dir.mkdir(parents=True, exist_ok=True)
+    temp_path = run_dir / f"input{file_ext}"
 
     # Defensive default: avoid NameError if any branch exits early.
     file_size: int = 0
@@ -1946,12 +2053,27 @@ async def preview_chunking(
 
         # Ragflow preset uses a separate branch (self-parse + chunk).
         if resolved_chunk_strategy in chunker_factory.RAGFLOW_STRATEGIES:
-            from app.parsing.processors.processor import document_processor
-            chunks = await asyncio.to_thread(
-                document_processor._ragflow_chunk_file,
-                temp_path,
-                resolved_chunk_strategy
+            result = await run_subprocess_worker(
+                tenant_id=tenant_id,
+                payload={
+                    "action": "ragflow_chunk",
+                    "tenant_id": str(tenant_id),
+                    "file_path": str(temp_path),
+                    "strategy": resolved_chunk_strategy,
+                    "mode": "preview",
+                },
+                disconnect_check=request.is_disconnected,
+                timeout_sec=float(getattr(settings, "TASK_JOB_TIMEOUT_SEC", 60 * 30) or 60 * 30),
             )
+            chunks = [
+                Document(
+                    page_content=str(item.get("page_content") or ""),
+                    metadata=item.get("metadata") if isinstance(item.get("metadata"), dict) else {},
+                    id=item.get("id") if isinstance(item.get("id"), str) else None,
+                )
+                for item in (result.get("documents") or [])
+                if isinstance(item, dict)
+            ]
             resolved_backend = "ragflow"
             documents = []  # Ragflow already handled.
             if pipeline_effective.governance_enabled:
@@ -1960,33 +2082,28 @@ async def preview_chunking(
                     **governance_kwargs,
                 )
         else:
-            # Parse document.
-            pdf_quality = None
-            if file_ext == ".pdf":
-                requested = (parser_backend or "").strip().lower()
-                if not requested or requested == "auto":
-                    effective_parser_backend, pdf_quality = route_pdf_backend(
-                        temp_path,
-                        requested,
-                        sample_pages=3,
-                        use_ocr_validation=settings.RAPIDOCR_ENABLED,
-                    )
-                else:
-                    effective_parser_backend = requested
-            else:
-                effective_parser_backend = parser_backend
-            documents, resolved_backend = parser_factory.parse(
-                temp_path,
-                parser_backend=effective_parser_backend,
-                tenant_id=str(tenant_id),
-                pdf_quality=pdf_quality,
+            parsed = await run_subprocess_worker(
+                tenant_id=tenant_id,
+                payload={
+                    "action": "parse_documents",
+                    "tenant_id": str(tenant_id),
+                    "file_path": str(temp_path),
+                    "parser_backend": parser_backend,
+                    "mode": "preview",
+                },
+                disconnect_check=request.is_disconnected,
+                timeout_sec=float(getattr(settings, "TASK_JOB_TIMEOUT_SEC", 60 * 30) or 60 * 30),
             )
-            # Ensure extracted image objects (e.g., DeepDoc PIL.Image) are JSON-serializable for preview.
-            # Also converts them into Markdown image refs that the frontend can render.
-            documents = _materialize_extracted_images_for_preview(documents, tenant_id=tenant_id)
-            # Parsers like DeepSeek OCR / MagicPDF may emit relative image refs (e.g. images/foo.png).
-            # Materialize them into preview images so the frontend doesn't hit /images/... 404.
-            documents = _materialize_local_images_for_preview(documents, tenant_id=tenant_id)
+            documents = [
+                Document(
+                    page_content=str(item.get("page_content") or ""),
+                    metadata=item.get("metadata") if isinstance(item.get("metadata"), dict) else {},
+                    id=item.get("id") if isinstance(item.get("id"), str) else None,
+                )
+                for item in (parsed.get("documents") or [])
+                if isinstance(item, dict)
+            ]
+            resolved_backend = str(parsed.get("resolved_backend") or parser_backend)
             if pipeline_effective.governance_enabled:
                 documents, _stats = governance_processor.clean_documents(
                     documents,
@@ -2119,14 +2236,22 @@ async def preview_chunking(
             chunk_strategy=resolved_chunk_strategy
         )
 
+    except SubprocessCancelled:
+        raise HTTPException(status_code=499, detail="Client closed request")
+    except SubprocessWorkerError as e:
+        err_type = (e.details or {}).get("type")
+        if err_type == "ValueError":
+            raise HTTPException(status_code=400, detail=str(e))
+        logger.error("Subprocess worker failed during chunk preview: %s", str(e)[:200])
+        raise HTTPException(status_code=500, detail="Failed to preview chunking")
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to preview chunking: {str(e)}")
     finally:
         try:
-            if temp_path.exists():
-                temp_path.unlink()
+            if run_dir.exists():
+                shutil.rmtree(run_dir, ignore_errors=True)
         except Exception:
             pass
 

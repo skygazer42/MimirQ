@@ -680,18 +680,16 @@ export default function ParsingPage() {
 
       <main className="flex-1 flex flex-col overflow-hidden min-h-0">
         {/* 顶部标题栏 */}
-        <header className="bg-white border-b px-6 py-4 flex-shrink-0">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-4">
-              <div className="w-11 h-11 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-xl flex items-center justify-center shadow-lg shadow-indigo-200">
-                <Sparkles className="w-5 h-5 text-white" />
-              </div>
-              <div>
-                <h1 className="text-xl font-bold text-gray-900">文档解析工作台</h1>
-                <p className="text-sm text-gray-500">
-                  上传文件并转换为 Markdown 格式，为数据治理做准备
-                </p>
-              </div>
+        <header className="flex-shrink-0 bg-white border-b border-gray-200 px-6 py-4 h-16 flex items-center justify-between z-20 shadow-sm relative">
+          <div className="flex items-center gap-4">
+            <div className="w-9 h-9 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-lg flex items-center justify-center shadow-lg shadow-indigo-200/50">
+              <Sparkles className="w-5 h-5 text-white" />
+            </div>
+            <div>
+              <h1 className="text-lg font-bold text-gray-900 leading-tight">文档解析工作台</h1>
+              <p className="text-xs text-gray-500 leading-none mt-1">
+                上传文件并转换为 Markdown 格式，为数据治理做准备
+              </p>
             </div>
           </div>
         </header>

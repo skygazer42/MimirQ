@@ -48,6 +48,13 @@ export function ManualUploadDialog({ onUploaded }: ManualUploadDialogProps) {
   const [delimiter, setDelimiter] = useState('## ')
   const { parserBackend, setParserBackend } = useParserBackendPreference()
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const previewAbortRef = useRef<AbortController | null>(null)
+
+  useEffect(() => {
+    return () => {
+      previewAbortRef.current?.abort()
+    }
+  }, [])
 
   useEffect(() => {
     if (typeof pipelineOptions.chunk_size === 'number' && pipelineOptions.chunk_size !== chunkSize) {
@@ -66,6 +73,9 @@ export function ManualUploadDialog({ onUploaded }: ManualUploadDialogProps) {
     if (!files || files.length === 0) return
 
     const selected = files[0]
+    previewAbortRef.current?.abort()
+    const controller = new AbortController()
+    previewAbortRef.current = controller
     setFile(selected)
     setPreview(null)
     setError(null)
@@ -75,13 +85,18 @@ export function ManualUploadDialog({ onUploaded }: ManualUploadDialogProps) {
       const result = await documentApi.preview(
         selected,
         parserBackend,
-        pipelineOverridesEnabled ? pipelineOptions : undefined
+        pipelineOverridesEnabled ? pipelineOptions : undefined,
+        { signal: controller.signal }
       )
       setPreview(result)
     } catch (err: any) {
+      if (controller.signal.aborted) return
       console.error('Preview parse failed:', err)
       setError(formatApiError(err, '文档解析失败'))
     } finally {
+      if (previewAbortRef.current === controller) {
+        previewAbortRef.current = null
+      }
       setIsParsing(false)
       // 清空 input，方便下次选同一文件
       e.target.value = ''
