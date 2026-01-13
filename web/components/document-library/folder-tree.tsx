@@ -97,6 +97,7 @@ export function DocumentFolderTree({
   fileItems,
   showFiles = 'none',
   onSelectFile,
+  onDeleteFolder,
 }: {
   className?: string
   onRequestUpload?: (folderId: string) => void
