@@ -10,11 +10,25 @@ from app.core.database import get_db
 from app.api.dependencies.tenant import get_tenant_id
 from app.api.dependencies.auth import get_current_account_id
 from app.api.schemas.dataset import DatasetCreate, DatasetUpdate, DatasetOut, DatasetListResponse
+from app.api.schemas.document import DocumentPipelineOptions
 from app.models.dataset import DatasetPermissionEnum, DatasetPermission
 from app.services.dataset_service import DatasetService, DatasetPermissionService
 from app.models.dataset import Dataset
+from app.services.pipeline_config import build_pipeline_metadata, parse_pipeline_from_metadata
+from app.types.pipeline import PipelineOptions
 
 router = APIRouter()
+
+def _dataset_pipeline_out(ds: Dataset) -> DocumentPipelineOptions | None:
+    meta = getattr(ds, "dataset_metadata", None)
+    if not isinstance(meta, dict):
+        return None
+    opts = parse_pipeline_from_metadata(meta)
+    data = {k: getattr(opts, k) for k in opts.__dataclass_fields__.keys()}  # type: ignore[attr-defined]
+    # Only return if any pipeline override exists
+    if not any(v is not None for v in data.values()):
+        return None
+    return DocumentPipelineOptions(**data)
 
 
 @router.post("/", response_model=DatasetOut, status_code=201)
@@ -34,6 +48,19 @@ def create_dataset(
         partial_members=payload.partial_member_list or [],
     )
 
+    # Optional dataset-level pipeline defaults.
+    if payload.pipeline is not None:
+        options = PipelineOptions(**payload.pipeline.model_dump(exclude_none=True))
+        pipeline_meta = build_pipeline_metadata(options)
+        meta = dict(getattr(dataset, "dataset_metadata", None) or {})
+        if pipeline_meta:
+            meta["pipeline"] = pipeline_meta
+        else:
+            meta.pop("pipeline", None)
+        dataset.dataset_metadata = meta
+        db.commit()
+        db.refresh(dataset)
+
     partial_list = None
     if dataset.permission == DatasetPermissionEnum.PARTIAL_MEMBERS:
         partial_list = payload.partial_member_list or []
@@ -46,6 +73,8 @@ def create_dataset(
         permission=dataset.permission,
         owner_id=dataset.owner_id,
         partial_member_list=partial_list
+        ,
+        pipeline=_dataset_pipeline_out(dataset),
     )
 
 
@@ -94,7 +123,8 @@ def list_datasets(
             description=ds.description,
             permission=ds.permission,
             owner_id=ds.owner_id,
-            partial_member_list=partial_list
+            partial_member_list=partial_list,
+            pipeline=_dataset_pipeline_out(ds),
         ))
     return {"total": total, "items": results}
 
@@ -118,7 +148,8 @@ def get_dataset(
         description=dataset.description,
         permission=dataset.permission,
         owner_id=dataset.owner_id,
-        partial_member_list=partial_list
+        partial_member_list=partial_list,
+        pipeline=_dataset_pipeline_out(dataset),
     )
 
 
@@ -142,6 +173,20 @@ def update_dataset(
         permission=payload.permission,
         partial_members=payload.partial_member_list,
     )
+
+    # Update dataset-level pipeline defaults (stored in datasets.metadata.pipeline).
+    if payload.pipeline is not None:
+        options = PipelineOptions(**payload.pipeline.model_dump(exclude_none=True))
+        pipeline_meta = build_pipeline_metadata(options)
+        meta = dict(getattr(updated, "dataset_metadata", None) or {})
+        if pipeline_meta:
+            meta["pipeline"] = pipeline_meta
+        else:
+            meta.pop("pipeline", None)
+        updated.dataset_metadata = meta
+        db.commit()
+        db.refresh(updated)
+
     partial_list = None
     if updated.permission == DatasetPermissionEnum.PARTIAL_MEMBERS:
         partial_list = DatasetPermissionService.get_dataset_partial_member_list(db, tenant_id, updated.id)
@@ -153,7 +198,8 @@ def update_dataset(
         description=updated.description,
         permission=updated.permission,
         owner_id=updated.owner_id,
-        partial_member_list=partial_list
+        partial_member_list=partial_list,
+        pipeline=_dataset_pipeline_out(updated),
     )
 
 

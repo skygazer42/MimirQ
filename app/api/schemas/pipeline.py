@@ -112,6 +112,14 @@ class CleanPreviewResponse(BaseModel):
     dropped: bool = False
     drop_reason: Optional[str] = None
     pii_hits: Optional[dict[str, int]] = None
+    # High-level diff/stats to help tune governance parameters.
+    input_chars: int = 0
+    output_chars: int = 0
+    input_lines: int = 0
+    output_lines: int = 0
+    added_lines: int = 0
+    removed_lines: int = 0
+    changed_lines: int = 0
 
 
 class CleanRulesResponse(BaseModel):

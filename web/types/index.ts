@@ -216,6 +216,13 @@ export interface CleanPreviewResponse {
   dropped?: boolean
   drop_reason?: string | null
   pii_hits?: Record<string, number> | null
+  input_chars?: number
+  output_chars?: number
+  input_lines?: number
+  output_lines?: number
+  added_lines?: number
+  removed_lines?: number
+  changed_lines?: number
 }
 
 export interface CleanRulesResponse {
@@ -345,6 +352,7 @@ export interface Dataset {
   permission: PermissionEnum
   owner_id?: string
   partial_member_list?: string[]
+  pipeline?: DocumentPipelineOptions | null
 }
 
 export interface DatasetCreate {
@@ -352,6 +360,7 @@ export interface DatasetCreate {
   description?: string
   permission?: PermissionEnum
   partial_member_list?: string[]
+  pipeline?: DocumentPipelineOptions | null
 }
 
 export interface DatasetUpdate {
@@ -359,6 +368,7 @@ export interface DatasetUpdate {
   description?: string
   permission?: PermissionEnum
   partial_member_list?: string[]
+  pipeline?: DocumentPipelineOptions | null
 }
 
 export interface DatasetListResponse {

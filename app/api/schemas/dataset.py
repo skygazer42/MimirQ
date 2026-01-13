@@ -8,6 +8,7 @@ from pydantic import BaseModel, Field
 
 from app.models.dataset import DatasetPermissionEnum
 from .base import OrmModel
+from .document import DocumentPipelineOptions
 
 
 class DatasetBase(BaseModel):
@@ -15,6 +16,8 @@ class DatasetBase(BaseModel):
     description: Optional[str] = None
     permission: DatasetPermissionEnum = DatasetPermissionEnum.ALL_TEAM_MEMBERS
     partial_member_list: Optional[List[str]] = None
+    # Dataset-level pipeline defaults (governance/indexing). If omitted, tenant defaults apply.
+    pipeline: Optional[DocumentPipelineOptions] = None
 
 
 class DatasetCreate(DatasetBase):
@@ -26,6 +29,7 @@ class DatasetUpdate(BaseModel):
     description: Optional[str] = None
     permission: Optional[DatasetPermissionEnum] = None
     partial_member_list: Optional[List[str]] = None
+    pipeline: Optional[DocumentPipelineOptions] = None
 
 
 class DatasetOut(OrmModel):
@@ -36,6 +40,7 @@ class DatasetOut(OrmModel):
     permission: DatasetPermissionEnum
     owner_id: Optional[str]
     partial_member_list: Optional[List[str]] = None
+    pipeline: Optional[DocumentPipelineOptions] = None
 
 
 class DatasetListResponse(BaseModel):

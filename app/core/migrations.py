@@ -78,6 +78,9 @@ def apply_runtime_migrations(engine) -> None:
             # Store per-message run metadata (metrics/request_id/route/etc.)
             'ALTER TABLE messages ADD COLUMN IF NOT EXISTS message_metadata JSONB;',
 
+            # Datasets: store pipeline/governance defaults in metadata
+            "ALTER TABLE datasets ADD COLUMN IF NOT EXISTS metadata JSONB DEFAULT '{}'::jsonb;",
+
             # Prompt templates: versioning + A/B testing
             'ALTER TABLE prompt_templates ADD COLUMN IF NOT EXISTS template_key VARCHAR(100);',
             # Common query pattern: tenant + conversation timeline

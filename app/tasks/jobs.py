@@ -175,9 +175,9 @@ async def extract_kg_job(ctx, tenant_id: str, document_id: str, requested_by: st
     KG extraction job: extract events/entities from completed chunks and index them.
     """
     from app.models.document import DocumentChunk
+    from app.models.dataset import Dataset
     from app.rag.kg.pipeline import extract_events
-    from app.services.pipeline_config import build_indexing_options, resolve_pipeline_options
-    from app.parsing.processors.processor import parse_pipeline_from_metadata
+    from app.services.pipeline_config import build_indexing_options, resolve_pipeline_effective
 
     t0 = time.perf_counter()
     tid = UUID(tenant_id)
@@ -220,8 +220,17 @@ async def extract_kg_job(ctx, tenant_id: str, document_id: str, requested_by: st
         if not chunks:
             return {"ok": False, "reason": "no_chunks", "tenant_id": tenant_id, "document_id": document_id}
 
-        pipeline_options = parse_pipeline_from_metadata(doc.doc_metadata or {})
-        effective = resolve_pipeline_options(pipeline_options)
+        dataset_meta = {}
+        if doc.dataset_id:
+            ds = db.query(Dataset).filter(Dataset.id == doc.dataset_id, Dataset.tenant_id == tid).first()
+            if ds is not None and isinstance(getattr(ds, "dataset_metadata", None), dict):
+                dataset_meta = dict(ds.dataset_metadata or {})
+
+        effective = resolve_pipeline_effective(
+            dataset_metadata=dataset_meta,
+            document_metadata=(doc.doc_metadata or {}),
+            request_overrides=None,
+        )
         index_options = build_indexing_options(effective)
 
         events = await extract_events(
