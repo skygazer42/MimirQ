@@ -7,14 +7,24 @@ import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { cn } from '@/lib/utils'
 import { usePipelineOptions } from '@/contexts/pipeline-options-context'
+import type { DocumentPipelineOptions } from '@/types'
 
 type PipelineOptionsPanelProps = {
   className?: string
   compact?: boolean
+  value?: DocumentPipelineOptions
+  enabled?: boolean
+  onEnabledChange?: (value: boolean) => void
+  onOptionChange?: <K extends keyof DocumentPipelineOptions>(key: K, value: DocumentPipelineOptions[K]) => void
 }
 
-export function PipelineOptionsPanel({ className, compact }: PipelineOptionsPanelProps) {
-  const { enabled, options, setEnabled, updateOption } = usePipelineOptions()
+export function PipelineOptionsPanel(props: PipelineOptionsPanelProps) {
+  const { className, compact } = props
+  const ctx = usePipelineOptions()
+  const enabled = typeof props.enabled === 'boolean' ? props.enabled : ctx.enabled
+  const options = props.value ?? ctx.options
+  const setEnabled = props.onEnabledChange ?? ctx.setEnabled
+  const updateOption = props.onOptionChange ?? ctx.updateOption
   const kgEnabled = !!options.kg_enabled
   const governanceEnabled = !!options.governance_enabled
   const governanceDisabled = !enabled || !governanceEnabled
