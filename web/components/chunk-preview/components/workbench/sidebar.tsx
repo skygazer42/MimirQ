@@ -70,8 +70,8 @@ export function Sidebar() {
 
   const chunkStats = useMemo(() => {
     if (!previewData?.chunks || previewData.chunks.length === 0) return null
-    const lengths = previewData.chunks.map((c) => (c.content || '').length)
-    const total = lengths.reduce((sum, n) => sum + n, 0)
+    const lengths = previewData.chunks.map((c: { content?: string | null }) => (c.content || '').length)
+    const total = lengths.reduce((sum: number, n: number) => sum + n, 0)
     return {
       avg: Math.round(total / lengths.length),
       min: Math.min(...lengths),
@@ -271,7 +271,7 @@ export function Sidebar() {
           </div>
 
           <Button
-            onClick={runPreview}
+            onClick={() => runPreview()}
             disabled={isLoading}
             className="w-full bg-gradient-to-r from-amber-500 to-rose-500 hover:from-amber-600 hover:to-rose-600 text-white h-11 rounded-xl shadow-md shadow-amber-200/50 transition-all hover:scale-[1.02] active:scale-[0.98] border border-transparent"
           >
