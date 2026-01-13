@@ -133,8 +133,8 @@ export const useParsedFiles = create<ParsedFilesState>()(
         const idsToDelete = [id, ...collectDescendants(id, folders)]
         set((state) => ({
           folders: state.folders.filter((f) => !idsToDelete.includes(f.id)),
-          files: state.files.map((file) =>
-            file.folderId && idsToDelete.includes(file.folderId) ? { ...file, folderId: ROOT_FOLDER_ID } : file
+          files: state.files.filter((file) =>
+            !(file.folderId && idsToDelete.includes(file.folderId))
           ),
           activeFolderId: idsToDelete.includes(state.activeFolderId) ? ROOT_FOLDER_ID : state.activeFolderId,
         }))
