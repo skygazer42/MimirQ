@@ -803,7 +803,7 @@ export function DataGovernancePanel() {
           ref={sidebarRef}
           className={cn(
             "group/sidebar relative flex flex-col flex-shrink-0 bg-white border-r border-gray-200 transition-all duration-300 ease-in-out z-10",
-            isSidebarCollapsed ? "w-0 border-r-0 overflow-hidden" : ""
+            isSidebarCollapsed ? "w-0 border-r-0" : ""
           )}
           style={{ width: isSidebarCollapsed ? 0 : sidebarWidth }}
         >
