@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ArrowRightLeft, ChevronDown, ChevronRight, FileText, Folder, FolderOpen, MoreHorizontal, Pencil, Plus, Trash2, FileImage, FileCode, FileSpreadsheet, FileArchive, FileMusic, FileVideo, Library, Package, Database, Loader2, CheckCircle2, AlertCircle, XCircle, Ban, Paperclip, FolderUp } from 'lucide-react'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
@@ -127,6 +127,10 @@ export function DocumentFolderTree({
   const [moveParentId, setMoveParentId] = useState(ROOT_FOLDER_ID)
   const [expandedFileFolderIds, setExpandedFileFolderIds] = useState<Set<string>>(() => new Set([ROOT_FOLDER_ID]))
   const [dragOverId, setDragOverId] = useState<string | null>(null)
+  const dragExpandTimersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map())
+  const scrollContainerRef = useRef<HTMLDivElement>(null)
+  const dragScrollRafRef = useRef<number | null>(null)
+  const dragScrollDirRef = useRef<1 | -1 | 0>(0)
 
   const handleDelete = useCallback(
     (folderId: string) => {
@@ -190,6 +194,14 @@ export function DocumentFolderTree({
       return next
     })
   }, [showFiles, activeFolderId])
+
+  useEffect(() => {
+    return () => {
+      if (dragScrollRafRef.current != null) {
+        cancelAnimationFrame(dragScrollRafRef.current)
+      }
+    }
+  }, [])
 
   const toggleFileList = useCallback((folderId: string) => {
     const id = folderId || ROOT_FOLDER_ID
@@ -324,28 +336,85 @@ export function DocumentFolderTree({
       const hasContent = count > 0 || children.length > 0
       const directFiles = isExpanded ? directFilesByFolderId.get(folder.id) || [] : []
 
+      const requestExpand = (targetId: string) => {
+        if (showFiles !== 'expanded') return
+        if (expandedFileFolderIds.has(targetId)) return
+        const existing = dragExpandTimersRef.current.get(targetId)
+        if (existing) return
+        const timer = setTimeout(() => {
+          dragExpandTimersRef.current.delete(targetId)
+          setExpandedFileFolderIds((prev) => {
+            if (prev.has(targetId)) return prev
+            const next = new Set(prev)
+            next.add(targetId)
+            return next
+          })
+        }, 350)
+        dragExpandTimersRef.current.set(targetId, timer)
+      }
+
+      const clearExpandTimer = (targetId: string) => {
+        const timer = dragExpandTimersRef.current.get(targetId)
+        if (timer) {
+          clearTimeout(timer)
+          dragExpandTimersRef.current.delete(targetId)
+        }
+      }
+
+      const autoScrollOnDrag = (e: React.DragEvent) => {
+        const container = scrollContainerRef.current
+        if (!container) return
+        const rect = container.getBoundingClientRect()
+        const edge = 24
+        let dir: 1 | -1 | 0 = 0
+        if (e.clientY < rect.top + edge) dir = -1
+        else if (e.clientY > rect.bottom - edge) dir = 1
+        dragScrollDirRef.current = dir
+        if (dir === 0) return
+        if (dragScrollRafRef.current != null) return
+        const step = () => {
+          const d = dragScrollDirRef.current
+          if (!container || d === 0) {
+            dragScrollRafRef.current = null
+            return
+          }
+          container.scrollTop += d * 6
+          dragScrollRafRef.current = requestAnimationFrame(step)
+        }
+        dragScrollRafRef.current = requestAnimationFrame(step)
+      }
+
       return (
         <div key={folder.id}>
           <div
             className={cn(
-              'group flex items-center gap-2 rounded-lg px-2 py-1.5 transition-colors',
+              'group relative flex items-center gap-2 rounded-lg px-2 py-1.5 transition-colors',
               isActive ? 'bg-indigo-50 text-indigo-700' : 'hover:bg-gray-100 text-gray-700',
               dragOverId === folder.id && 'bg-indigo-50/70 ring-1 ring-indigo-200'
             )}
             onDragOver={(e) => {
               e.preventDefault()
               setDragOverId(folder.id)
+              requestExpand(folder.id)
+              autoScrollOnDrag(e)
+              setActiveFolderId(folder.id)
             }}
             onDragLeave={() => {
               setDragOverId((prev) => (prev === folder.id ? null : prev))
+              clearExpandTimer(folder.id)
             }}
             onDrop={(e) => {
               e.preventDefault()
               const fileId = e.dataTransfer.getData('text/plain')
               if (fileId) onFileDrop?.(fileId, folder.id)
               setDragOverId(null)
+              clearExpandTimer(folder.id)
+              dragScrollDirRef.current = 0
             }}
           >
+            {dragOverId === folder.id && (
+              <div className="absolute left-2 right-2 bottom-0 h-0.5 bg-indigo-400 rounded-full" />
+            )}
             {showFiles === 'expanded' && hasContent && (
               <button
                 type="button"
@@ -564,7 +633,7 @@ export function DocumentFolderTree({
   const rootDirectCount = directCountByFolderId[ROOT_FOLDER_ID] || 0
 
   return (
-    <div className={cn('flex flex-col', className)}>
+    <div className={cn('flex flex-col', className)} ref={scrollContainerRef}>
       <div className="flex items-center justify-between mb-2 group">
         <div className="text-xs font-semibold text-gray-500 uppercase tracking-wider pl-1">文档库</div>
         <Button
@@ -581,7 +650,7 @@ export function DocumentFolderTree({
       <div className="space-y-0.5">
         <div
           className={cn(
-            'group flex items-center gap-2 rounded-lg px-2 py-1.5 transition-colors',
+            'group relative flex items-center gap-2 rounded-lg px-2 py-1.5 transition-colors',
             activeFolderId === ROOT_FOLDER_ID
               ? 'bg-indigo-50 text-indigo-700'
               : 'hover:bg-gray-100 text-gray-700',
@@ -590,6 +659,36 @@ export function DocumentFolderTree({
           onDragOver={(e) => {
             e.preventDefault()
             setDragOverId(ROOT_FOLDER_ID)
+            setActiveFolderId(ROOT_FOLDER_ID)
+            if (showFiles === 'expanded' && !expandedFileFolderIds.has(ROOT_FOLDER_ID)) {
+              setExpandedFileFolderIds((prev) => {
+                if (prev.has(ROOT_FOLDER_ID)) return prev
+                const next = new Set(prev)
+                next.add(ROOT_FOLDER_ID)
+                return next
+              })
+            }
+            const container = scrollContainerRef.current
+            if (container) {
+              const rect = container.getBoundingClientRect()
+              const edge = 24
+              let dir: 1 | -1 | 0 = 0
+              if (e.clientY < rect.top + edge) dir = -1
+              else if (e.clientY > rect.bottom - edge) dir = 1
+              dragScrollDirRef.current = dir
+              if (dir !== 0 && dragScrollRafRef.current == null) {
+                const step = () => {
+                  const d = dragScrollDirRef.current
+                  if (!container || d === 0) {
+                    dragScrollRafRef.current = null
+                    return
+                  }
+                  container.scrollTop += d * 6
+                  dragScrollRafRef.current = requestAnimationFrame(step)
+                }
+                dragScrollRafRef.current = requestAnimationFrame(step)
+              }
+            }
           }}
           onDragLeave={() => {
             setDragOverId((prev) => (prev === ROOT_FOLDER_ID ? null : prev))
@@ -599,8 +698,12 @@ export function DocumentFolderTree({
             const fileId = e.dataTransfer.getData('text/plain')
             if (fileId) onFileDrop?.(fileId, ROOT_FOLDER_ID)
             setDragOverId(null)
+            dragScrollDirRef.current = 0
           }}
         >
+          {dragOverId === ROOT_FOLDER_ID && (
+            <div className="absolute left-2 right-2 bottom-0 h-0.5 bg-indigo-400 rounded-full" />
+          )}
           {showFiles === 'expanded' && (rootDirectCount > 0 || rootChildren.length > 0) && (
             <button
               type="button"
