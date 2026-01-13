@@ -100,6 +100,7 @@ export function DocumentFolderTree({
   showFiles = 'none',
   onSelectFile,
   onDeleteFolder,
+  onFileDrop,
 }: {
   className?: string
   onRequestUpload?: (folderId: string) => void
@@ -108,6 +109,7 @@ export function DocumentFolderTree({
   showFiles?: 'none' | 'active' | 'all' | 'expanded'
   onSelectFile?: (fileId: string) => void
   onDeleteFolder?: (folderIds: string[]) => void
+  onFileDrop?: (fileId: string, folderId: string) => void
 }) {
   const {
     files: libraryFiles,
@@ -124,6 +126,7 @@ export function DocumentFolderTree({
   const [folderName, setFolderName] = useState('')
   const [moveParentId, setMoveParentId] = useState(ROOT_FOLDER_ID)
   const [expandedFileFolderIds, setExpandedFileFolderIds] = useState<Set<string>>(() => new Set([ROOT_FOLDER_ID]))
+  const [dragOverId, setDragOverId] = useState<string | null>(null)
 
   const handleDelete = useCallback(
     (folderId: string) => {
@@ -326,8 +329,22 @@ export function DocumentFolderTree({
           <div
             className={cn(
               'group flex items-center gap-2 rounded-lg px-2 py-1.5 transition-colors',
-              isActive ? 'bg-indigo-50 text-indigo-700' : 'hover:bg-gray-100 text-gray-700'
+              isActive ? 'bg-indigo-50 text-indigo-700' : 'hover:bg-gray-100 text-gray-700',
+              dragOverId === folder.id && 'bg-indigo-50/70 ring-1 ring-indigo-200'
             )}
+            onDragOver={(e) => {
+              e.preventDefault()
+              setDragOverId(folder.id)
+            }}
+            onDragLeave={() => {
+              setDragOverId((prev) => (prev === folder.id ? null : prev))
+            }}
+            onDrop={(e) => {
+              e.preventDefault()
+              const fileId = e.dataTransfer.getData('text/plain')
+              if (fileId) onFileDrop?.(fileId, folder.id)
+              setDragOverId(null)
+            }}
           >
             {showFiles === 'expanded' && hasContent && (
               <button
@@ -522,10 +539,12 @@ export function DocumentFolderTree({
       directCountByFolderId,
       directFilesByFolderId,
       expandedFileFolderIds,
+      dragOverId,
       handleDelete,
       openCreate,
       openMove,
       openRename,
+      onFileDrop,
       onRequestUpload,
       onRequestUploadFolder,
       onSelectFile,
@@ -565,8 +584,22 @@ export function DocumentFolderTree({
             'group flex items-center gap-2 rounded-lg px-2 py-1.5 transition-colors',
             activeFolderId === ROOT_FOLDER_ID
               ? 'bg-indigo-50 text-indigo-700'
-              : 'hover:bg-gray-100 text-gray-700'
+              : 'hover:bg-gray-100 text-gray-700',
+            dragOverId === ROOT_FOLDER_ID && 'bg-indigo-50/70 ring-1 ring-indigo-200'
           )}
+          onDragOver={(e) => {
+            e.preventDefault()
+            setDragOverId(ROOT_FOLDER_ID)
+          }}
+          onDragLeave={() => {
+            setDragOverId((prev) => (prev === ROOT_FOLDER_ID ? null : prev))
+          }}
+          onDrop={(e) => {
+            e.preventDefault()
+            const fileId = e.dataTransfer.getData('text/plain')
+            if (fileId) onFileDrop?.(fileId, ROOT_FOLDER_ID)
+            setDragOverId(null)
+          }}
         >
           {showFiles === 'expanded' && (rootDirectCount > 0 || rootChildren.length > 0) && (
             <button

@@ -887,6 +887,7 @@ export default function ParsingPage() {
                   showFiles="expanded"
                   onSelectFile={(fileId) => setActiveFileId(fileId)}
                   onDeleteFolder={handleDeleteFolder}
+                  onFileDrop={moveFileToFolder}
                />
             </div>
 
