@@ -956,3 +956,132 @@ POST /api/v1/rag/retrieve-preview
 ---
 
 *文档版本：1.0 | 最后更新：2024*
+
+---
+
+# 错误码详解
+
+## 错误响应格式
+
+所有错误都返回统一格式：
+
+```json
+{
+  "detail": "错误描述信息"
+}
+```
+
+## 常见错误及解决方案
+
+### 401 Unauthorized - 未认证
+
+**错误信息：** `Not authenticated` 或 `Invalid token`
+
+**原因：**
+- 未携带 Token
+- Token 已过期
+- Token 格式错误
+
+**解决方案：**
+```python
+# 检查请求头格式
+headers = {
+    "Authorization": "Bearer eyJhbGci..."  # 注意 Bearer 后有空格
+}
+
+# Token 过期时重新登录
+if response.status_code == 401:
+    new_token = client.login(email, password)
+```
+
+### 403 Forbidden - 权限不足
+
+**错误信息：** `No permission to access this resource`
+
+**原因：**
+- 尝试访问其他租户的资源
+- 用户角色权限不足
+
+**解决方案：**
+- 确认 document_id 属于当前用户
+- 联系管理员提升权限
+
+### 404 Not Found - 资源不存在
+
+**错误信息：** `Document not found` 或 `Conversation not found`
+
+**原因：**
+- ID 错误或资源已删除
+- 资源属于其他租户
+
+**解决方案：**
+```python
+# 先检查资源是否存在
+try:
+    doc = client.get_document(doc_id)
+except Exception as e:
+    if "404" in str(e):
+        print("文档不存在，请检查 ID")
+```
+
+### 400 Bad Request - 请求参数错误
+
+**常见错误信息：**
+- `document_ids are required`
+- `Invalid UUID format`
+- `message is required`
+
+**解决方案：**
+```python
+# 确保必填参数存在
+payload = {
+    "message": "问题内容",      # 必填
+    "document_ids": ["uuid"],   # 必填
+    "stream": True
+}
+```
+
+### 502 Bad Gateway - 上游服务错误
+
+**错误信息：** `LLM call failed` 或 `Embedding service error`
+
+**原因：**
+- LLM API 调用失败
+- API Key 无效或额度用尽
+
+**解决方案：**
+- 检查 LLM_API_KEY 配置
+- 确认 API 服务可用
+
+### 503 Service Unavailable - 服务不可用
+
+**错误信息：** `KG is disabled` 或 `Feature not enabled`
+
+**原因：** 功能未启用
+
+**解决方案：** 在 `.env` 中启用对应功能
+
+---
+
+# RAG 配置参数详解
+
+对话接口的 `rag_config` 参数控制检索行为，合理配置可显著提升回答质量。
+
+## 基础参数
+
+| 参数 | 类型 | 默认值 | 范围 | 说明 |
+|------|------|--------|------|------|
+| `top_k` | int | 5 | 1-50 | 检索返回的文档块数量 |
+| `score_threshold` | float | 0.7 | 0-1 | 相似度阈值，低于此值被过滤 |
+| `max_tokens` | int | 2000 | - | 上下文最大 token 数 |
+
+**调优建议：**
+```json
+// 精确匹配场景（如FAQ）
+{"top_k": 3, "score_threshold": 0.8}
+
+// 广泛搜索场景（如研究）
+{"top_k": 10, "score_threshold": 0.5}
+```
+
+
