@@ -1084,4 +1084,24 @@ payload = {
 {"top_k": 10, "score_threshold": 0.5}
 ```
 
+## 检索模式 retrieval_mode
+
+| 模式 | 说明 | 适用场景 |
+|------|------|----------|
+| `vector` | 纯向量检索 | 语义相似匹配 |
+| `keyword` | 纯关键词检索 | 精确术语匹配 |
+| `hybrid` | 混合检索（推荐） | 通用场景 |
+| `mmr` | 最大边际相关性 | 需要多样性结果 |
+| `auto` | 自动选择 | 不确定时使用 |
+
+**混合检索权重：**
+```json
+{
+  "retrieval_mode": "hybrid",
+  "alpha": 0.6,           // 向量权重（0-1）
+  "vector_weight": 0.6,   // 向量分数权重
+  "keyword_weight": 0.4   // 关键词分数权重
+}
+```
+
 
