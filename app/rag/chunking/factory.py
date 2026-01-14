@@ -27,6 +27,11 @@ from app.rag.chunking.strategies import (
     CodeChunker,
     SmartCodeChunker,
     AutoChunker,
+    OutlineChunker,
+    TranscriptChunker,
+    QAPairsChunker,
+    PaperChunker,
+    ManuscriptChunker,
 )
 
 
@@ -36,6 +41,7 @@ class ChunkerFactory:
 
     Supported strategies:
     - auto: Content-aware strategy selection
+    - manuscript: Preset for manuscript-like documents
     - langchain_recursive: RecursiveCharacterTextSplitter (default)
     - langchain_token: TokenTextSplitter (by token count)
     - parent_child: Two-level parent-child chunking
@@ -48,6 +54,10 @@ class ChunkerFactory:
     - json: JSON structure-aware chunking
     - code: Programming language-aware chunking
     - smart_code: AST-like code chunking (Python)
+    - outline: Numbered-outline aware chunking
+    - transcript: Transcript / dialogue aware chunking
+    - qa_pairs: Q/A pair aware chunking
+    - paper: Academic paper section aware chunking
 
     RAGFlow strategies (handled separately):
     - ragflow_naive: General-purpose chunking
@@ -58,6 +68,7 @@ class ChunkerFactory:
 
     SUPPORTED_STRATEGIES = {
         "auto": AutoChunker,
+        "manuscript": ManuscriptChunker,
         "langchain_recursive": LangChainRecursiveChunker,
         "langchain_token": LangChainTokenChunker,
         "semantic_sentence": SemanticSentenceChunker,
@@ -72,6 +83,10 @@ class ChunkerFactory:
         "json": JSONChunker,
         "code": CodeChunker,
         "smart_code": SmartCodeChunker,
+        "outline": OutlineChunker,
+        "transcript": TranscriptChunker,
+        "qa_pairs": QAPairsChunker,
+        "paper": PaperChunker,
     }
 
     RAGFLOW_STRATEGIES = {
@@ -79,6 +94,22 @@ class ChunkerFactory:
         "ragflow_book",
         "ragflow_laws",
         "ragflow_email",
+    }
+
+    STRATEGY_ALIASES = {
+        # RAGFlow presets
+        "ragflow": "ragflow_naive",
+        "naive": "ragflow_naive",
+        "book": "ragflow_book",
+        "law": "ragflow_laws",
+        "laws": "ragflow_laws",
+        "legal": "ragflow_laws",
+        "email": "ragflow_email",
+        "mail": "ragflow_email",
+        # Local presets
+        "faq": "qa_pairs",
+        "qa": "qa_pairs",
+        "qna": "qa_pairs",
     }
 
     def resolve_strategy(self, strategy: Optional[str]) -> str:
@@ -95,6 +126,9 @@ class ChunkerFactory:
             ValueError: If strategy is not supported.
         """
         normalized = (strategy or settings.DEFAULT_CHUNK_STRATEGY).lower()
+
+        if normalized in self.STRATEGY_ALIASES:
+            normalized = self.STRATEGY_ALIASES[normalized]
 
         if normalized in self.RAGFLOW_STRATEGIES:
             return normalized

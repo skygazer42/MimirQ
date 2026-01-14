@@ -29,6 +29,7 @@ export function ChunkStrategySelect({
   const handleChange = onChange ?? setChunkStrategy
   const currentOption = getChunkStrategyOption(currentValue)
 
+  const presetStrategies = getStrategiesByGroup('preset')
   const langchainStrategies = getStrategiesByGroup('langchain')
   const llamaIndexStrategies = getStrategiesByGroup('llama_index')
   const ragflowStrategies = getStrategiesByGroup('ragflow')
@@ -60,6 +61,19 @@ export function ChunkStrategySelect({
           compact && 'py-1.5 text-xs'
         )}
       >
+        <optgroup label="预设">
+          {presetStrategies.map((option) => (
+            <option
+              key={option.value}
+              value={option.value}
+              disabled={
+                !!option.disabled || chunkStrategyAvailable(option.value) === false
+              }
+            >
+              {option.label}
+            </option>
+          ))}
+        </optgroup>
         <optgroup label="LangChain">
           {langchainStrategies.map((option) => (
             <option key={option.value} value={option.value} disabled={!!option.disabled || chunkStrategyAvailable(option.value) === false}>
