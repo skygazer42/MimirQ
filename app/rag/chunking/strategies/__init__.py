@@ -62,6 +62,16 @@ Available strategies:
 - terraform_hcl: Terraform/HCL block-aware chunking
 - git_commit_log: Git commit-log aware chunking
 - postmortem_report: Incident postmortem/RCA section-aware chunking
+- docker_compose: Docker Compose service-aware chunking
+- github_actions: GitHub Actions workflow job-aware chunking
+- gitlab_ci: GitLab CI pipeline job-aware chunking
+- ansible_playbook: Ansible playbook play-aware chunking
+- markdown_frontmatter: Markdown YAML frontmatter aware chunking
+- http_trace: HTTP request/response trace chunking
+- junit_xml: JUnit XML testcase-aware chunking
+- sitemap_xml: Sitemap XML entry-aware chunking
+- maven_pom: Maven POM dependency/plugin aware chunking
+- terraform_plan: Terraform plan output block-aware chunking
 """
 from app.rag.chunking.strategies.recursive import LangChainRecursiveChunker
 from app.rag.chunking.strategies.token import LangChainTokenChunker
@@ -131,6 +141,16 @@ from app.rag.chunking.strategies.proto_schema import ProtoSchemaChunker
 from app.rag.chunking.strategies.terraform_hcl import TerraformHCLChunker
 from app.rag.chunking.strategies.git_commit_log import GitCommitLogChunker
 from app.rag.chunking.strategies.postmortem_report import PostmortemReportChunker
+from app.rag.chunking.strategies.docker_compose import DockerComposeChunker
+from app.rag.chunking.strategies.github_actions import GitHubActionsChunker
+from app.rag.chunking.strategies.gitlab_ci import GitLabCIChunker
+from app.rag.chunking.strategies.ansible_playbook import AnsiblePlaybookChunker
+from app.rag.chunking.strategies.markdown_frontmatter import MarkdownFrontmatterChunker
+from app.rag.chunking.strategies.http_trace import HTTPTraceChunker
+from app.rag.chunking.strategies.junit_xml import JUnitXMLChunker
+from app.rag.chunking.strategies.sitemap_xml import SitemapXMLChunker
+from app.rag.chunking.strategies.maven_pom import MavenPOMChunker
+from app.rag.chunking.strategies.terraform_plan import TerraformPlanChunker
 
 __all__ = [
     "LangChainRecursiveChunker",
@@ -196,4 +216,14 @@ __all__ = [
     "TerraformHCLChunker",
     "GitCommitLogChunker",
     "PostmortemReportChunker",
+    "DockerComposeChunker",
+    "GitHubActionsChunker",
+    "GitLabCIChunker",
+    "AnsiblePlaybookChunker",
+    "MarkdownFrontmatterChunker",
+    "HTTPTraceChunker",
+    "JUnitXMLChunker",
+    "SitemapXMLChunker",
+    "MavenPOMChunker",
+    "TerraformPlanChunker",
 ]

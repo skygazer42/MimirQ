@@ -2252,3 +2252,31 @@ alembic upgrade head
 # 启动服务
 uvicorn app.main:app --host 0.0.0.0 --port 8000
 ```
+
+## Docker 部署
+
+```bash
+# 构建镜像
+docker build -t mimirq:latest .
+
+# 启动容器
+docker run -d \
+  --name mimirq \
+  -p 8000:8000 \
+  -e DATABASE_URL=postgresql://... \
+  -e LLM_API_KEY=your-key \
+  mimirq:latest
+```
+
+## 生产环境建议
+
+| 项目 | 建议 |
+|------|------|
+| 进程管理 | 使用 Gunicorn + Uvicorn workers |
+| 反向代理 | Nginx / Traefik |
+| HTTPS | 必须启用 |
+| 监控 | Prometheus + Grafana |
+
+---
+
+*如有问题，请联系开发团队或查看项目 README*

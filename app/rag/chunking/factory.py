@@ -76,6 +76,16 @@ from app.rag.chunking.strategies import (
     TerraformHCLChunker,
     GitCommitLogChunker,
     PostmortemReportChunker,
+    DockerComposeChunker,
+    GitHubActionsChunker,
+    GitLabCIChunker,
+    AnsiblePlaybookChunker,
+    MarkdownFrontmatterChunker,
+    HTTPTraceChunker,
+    JUnitXMLChunker,
+    SitemapXMLChunker,
+    MavenPOMChunker,
+    TerraformPlanChunker,
 )
 
 
@@ -146,6 +156,16 @@ class ChunkerFactory:
     - terraform_hcl: Terraform/HCL block-aware chunking
     - git_commit_log: Git commit-log aware chunking
     - postmortem_report: Incident postmortem/RCA section-aware chunking
+    - docker_compose: Docker Compose service-aware chunking
+    - github_actions: GitHub Actions workflow job-aware chunking
+    - gitlab_ci: GitLab CI pipeline job-aware chunking
+    - ansible_playbook: Ansible playbook play-aware chunking
+    - markdown_frontmatter: Markdown YAML frontmatter aware chunking
+    - http_trace: HTTP request/response trace chunking
+    - junit_xml: JUnit XML testcase-aware chunking
+    - sitemap_xml: Sitemap XML entry-aware chunking
+    - maven_pom: Maven POM dependency/plugin aware chunking
+    - terraform_plan: Terraform plan output block-aware chunking
 
     RAGFlow strategies (handled separately):
     - ragflow_naive: General-purpose chunking
@@ -219,6 +239,16 @@ class ChunkerFactory:
         "terraform_hcl": TerraformHCLChunker,
         "git_commit_log": GitCommitLogChunker,
         "postmortem_report": PostmortemReportChunker,
+        "docker_compose": DockerComposeChunker,
+        "github_actions": GitHubActionsChunker,
+        "gitlab_ci": GitLabCIChunker,
+        "ansible_playbook": AnsiblePlaybookChunker,
+        "markdown_frontmatter": MarkdownFrontmatterChunker,
+        "http_trace": HTTPTraceChunker,
+        "junit_xml": JUnitXMLChunker,
+        "sitemap_xml": SitemapXMLChunker,
+        "maven_pom": MavenPOMChunker,
+        "terraform_plan": TerraformPlanChunker,
     }
 
     RAGFLOW_STRATEGIES = {
@@ -397,6 +427,37 @@ class ChunkerFactory:
         "rca": "postmortem_report",
         "incident_report": "postmortem_report",
         "postmortem_report": "postmortem_report",
+        # DevOps / CI / infra
+        "compose": "docker_compose",
+        "docker-compose": "docker_compose",
+        "docker_compose": "docker_compose",
+        "github_actions": "github_actions",
+        "github_action": "github_actions",
+        "github_workflow": "github_actions",
+        "gha": "github_actions",
+        "gitlab": "gitlab_ci",
+        "gitlab_ci": "gitlab_ci",
+        "gitlab-ci": "gitlab_ci",
+        "ansible": "ansible_playbook",
+        "playbook": "ansible_playbook",
+        "ansible_playbook": "ansible_playbook",
+        "frontmatter": "markdown_frontmatter",
+        "md_frontmatter": "markdown_frontmatter",
+        "markdown_frontmatter": "markdown_frontmatter",
+        "http_trace": "http_trace",
+        "httpdump": "http_trace",
+        "curl_verbose": "http_trace",
+        "junit": "junit_xml",
+        "junit_report": "junit_xml",
+        "junit_xml": "junit_xml",
+        "sitemap": "sitemap_xml",
+        "sitemap_xml": "sitemap_xml",
+        "pom": "maven_pom",
+        "pom_xml": "maven_pom",
+        "maven": "maven_pom",
+        "maven_pom": "maven_pom",
+        "terraform_plan": "terraform_plan",
+        "tfplan": "terraform_plan",
     }
 
     def resolve_strategy(self, strategy: Optional[str]) -> str:

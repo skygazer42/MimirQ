@@ -1,0 +1,175 @@
+"""
+Sitemap XML aware chunking strategy.
+
+Targets sitemap.xml / sitemap index XML and splits by <url> or <sitemap> entry
+blocks while preserving offsets.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+import re
+from typing import Any, List, Optional
+
+from langchain_core.documents import Document
+from langchain_text_splitters import RecursiveCharacterTextSplitter
+
+from app.rag.chunking.base import BaseChunker
+
+
+@dataclass(frozen=True)
+class _Entry:
+    start: int
+    end: int
+    kind: str
+    index: int
+    loc: Optional[str]
+
+
+_URL_START_RE = re.compile(r"(?is)<url\\b[^>]*>")
+_URL_END_RE = re.compile(r"(?is)</url\\s*>")
+_SITEMAP_START_RE = re.compile(r"(?is)<sitemap\\b[^>]*>")
+_SITEMAP_END_RE = re.compile(r"(?is)</sitemap\\s*>")
+_LOC_RE = re.compile(r"(?is)<loc\\b[^>]*>(?P<body>.*?)</loc\\s*>")
+
+
+def _extract_loc(block_text: str) -> Optional[str]:
+    m = _LOC_RE.search(block_text or "")
+    if not m:
+        return None
+    loc = (m.group("body") or "").strip()
+    loc = re.sub(r"\\s+", " ", loc)
+    return loc[:300] or None
+
+
+def _iter_entries(text: str, *, kind: str) -> List[_Entry]:
+    if not text:
+        return []
+    if kind == "url":
+        start_re, end_re = _URL_START_RE, _URL_END_RE
+    else:
+        start_re, end_re = _SITEMAP_START_RE, _SITEMAP_END_RE
+
+    entries: List[_Entry] = []
+    for sm in start_re.finditer(text):
+        em = end_re.search(text, pos=sm.end())
+        if not em:
+            continue
+        start = sm.start()
+        end = em.end()
+        if end < len(text) and text[end : end + 1] == "\n":
+            end += 1
+        blk_text = text[start:end]
+        entries.append(
+            _Entry(
+                start=start,
+                end=end,
+                kind=kind,
+                index=len(entries),
+                loc=_extract_loc(blk_text),
+            )
+        )
+    return entries
+
+
+def looks_like_sitemap_xml(text: str) -> bool:
+    if not text or len(text) < 200:
+        return False
+    lowered = (text or "").lower()
+    if "<urlset" not in lowered and "<sitemapindex" not in lowered:
+        return False
+    urls = len(_URL_START_RE.findall(text[:200000]))
+    maps = len(_SITEMAP_START_RE.findall(text[:200000]))
+    return max(urls, maps) >= 2
+
+
+class SitemapXMLChunker(BaseChunker):
+    def __init__(self, chunk_size: int, chunk_overlap: int):
+        self.chunk_size = int(chunk_size)
+        self.chunk_overlap = int(chunk_overlap)
+
+        self._fallback_splitter = RecursiveCharacterTextSplitter(
+            chunk_size=self.chunk_size,
+            chunk_overlap=self.chunk_overlap,
+            separators=["\n\n", "\n", " ", ""],
+            length_function=len,
+            add_start_index=True,
+        )
+
+    def split_documents(self, documents: List[Document]) -> List[Document]:
+        out: List[Document] = []
+
+        for doc in documents:
+            text = doc.page_content or ""
+            base_meta = dict(doc.metadata or {})
+            if not text.strip():
+                continue
+
+            urls = _iter_entries(text, kind="url")
+            maps = _iter_entries(text, kind="sitemap")
+            entries = urls if len(urls) >= len(maps) else maps
+
+            if not entries:
+                split_docs = self._fallback_splitter.create_documents(texts=[text], metadatas=[base_meta])
+                for sd in split_docs:
+                    local_start = sd.metadata.pop("start_index", None) or 0
+                    abs_start = int(local_start)
+                    abs_end = abs_start + len(sd.page_content)
+                    meta: dict[str, Any] = dict(base_meta)
+                    meta.update(sd.metadata or {})
+                    meta["chunk_strategy"] = "sitemap_xml"
+                    meta["start_char"] = abs_start
+                    meta["end_char"] = abs_end
+                    meta["sitemap_xml_fallback"] = True
+                    meta.setdefault("doc_type_kwd", "sitemap")
+                    out.append(Document(page_content=sd.page_content, metadata=meta))
+                continue
+
+            first = entries[0]
+            if first.start > 0:
+                pre = text[: first.start]
+                if pre.strip():
+                    split_docs = self._fallback_splitter.create_documents(texts=[pre], metadatas=[base_meta])
+                    for sd in split_docs:
+                        local_start = sd.metadata.pop("start_index", None) or 0
+                        abs_start = int(local_start)
+                        abs_end = abs_start + len(sd.page_content)
+                        meta: dict[str, Any] = dict(base_meta)
+                        meta.update(sd.metadata or {})
+                        meta["chunk_strategy"] = "sitemap_xml"
+                        meta["start_char"] = abs_start
+                        meta["end_char"] = abs_end
+                        meta["sitemap_xml_preamble"] = True
+                        meta.setdefault("doc_type_kwd", "sitemap")
+                        out.append(Document(page_content=sd.page_content, metadata=meta))
+
+            for ent in entries:
+                ent_text = text[ent.start : ent.end]
+                if not ent_text.strip():
+                    continue
+                split_docs = self._fallback_splitter.create_documents(texts=[ent_text], metadatas=[base_meta])
+                for sd in split_docs:
+                    local_start = sd.metadata.pop("start_index", None) or 0
+                    abs_start = ent.start + int(local_start)
+                    abs_end = abs_start + len(sd.page_content)
+
+                    meta: dict[str, Any] = dict(base_meta)
+                    meta.update(sd.metadata or {})
+                    meta["chunk_strategy"] = "sitemap_xml"
+                    meta["start_char"] = abs_start
+                    meta["end_char"] = abs_end
+                    meta.setdefault("doc_type_kwd", "sitemap")
+                    meta["sitemap_kind"] = ent.kind
+                    meta["sitemap_index"] = int(ent.index)
+                    meta["sitemap_count"] = int(len(entries))
+                    if ent.loc:
+                        meta["sitemap_loc"] = ent.loc
+                    out.append(Document(page_content=sd.page_content, metadata=meta))
+
+        for idx, chunk in enumerate(out):
+            meta = dict(chunk.metadata or {})
+            meta["chunk_index"] = idx
+            chunk.metadata = meta
+
+        return out
+

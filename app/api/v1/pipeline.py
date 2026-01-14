@@ -208,10 +208,10 @@ async def get_pipeline_capabilities(
         notes: str | None = None
         if s == "auto":
             available = True
-            notes = "Auto-selects a chunker per document (git_commit_log/diff/patch/subtitles/logs/stacktrace/xml/openapi/yaml/toml/sql/terraform/nginx/dockerfile/makefile/kv-config/jsonl/graphql/proto/api/changelog/csv/spreadsheet/chat/email/jira/postmortem/qa/qa_markdown/prd/sop/glossary/meeting_minutes/timeline/resume/slides/laws/paper/book/outline/transcript/rst/asciidoc/latex/org/wiki/html/markdown_table/markdown/json/plain text)."
+            notes = "Auto-selects a chunker per document (git_commit_log/diff/patch/subtitles/logs/stacktrace/http_trace/terraform_plan/xml/junit_xml/sitemap_xml/maven_pom/xml_feed/openapi/github_actions/docker_compose/gitlab_ci/ansible_playbook/yaml/toml/sql/terraform/nginx/dockerfile/makefile/kv-config/jsonl/graphql/proto/api/changelog/csv/spreadsheet/chat/email/jira/postmortem/qa/qa_markdown/prd/sop/glossary/meeting_minutes/timeline/resume/slides/laws/paper/book/outline/transcript/rst/asciidoc/latex/org/wiki/html/markdown_table/markdown_frontmatter/markdown/json/plain text)."
         elif s == "manuscript":
             available = True
-            notes = "Preset for manuscript-like documents (git_commit_log/diff/patch/subtitles/logs/stacktrace/xml/openapi/yaml/toml/sql/terraform/nginx/dockerfile/makefile/kv-config/jsonl/graphql/proto/api/changelog/csv/spreadsheet/chat/email/jira/postmortem/qa/qa_markdown/prd/sop/glossary/meeting_minutes/timeline/resume/slides/laws/paper/book/outline/transcript/rst/asciidoc/latex/org/wiki/html/markdown_table/markdown/...)."
+            notes = "Preset for manuscript-like documents (git_commit_log/diff/patch/subtitles/logs/stacktrace/http_trace/terraform_plan/xml/junit_xml/sitemap_xml/maven_pom/xml_feed/openapi/github_actions/docker_compose/gitlab_ci/ansible_playbook/yaml/toml/sql/terraform/nginx/dockerfile/makefile/kv-config/jsonl/graphql/proto/api/changelog/csv/spreadsheet/chat/email/jira/postmortem/qa/qa_markdown/prd/sop/glossary/meeting_minutes/timeline/resume/slides/laws/paper/book/outline/transcript/rst/asciidoc/latex/org/wiki/html/markdown_table/markdown_frontmatter/markdown/...)."
         elif s == "outline":
             available = True
             notes = "Numbered-outline aware chunking (keeps section heading context)."
@@ -317,12 +317,39 @@ async def get_pipeline_capabilities(
         elif s == "stacktrace":
             available = True
             notes = "Stacktrace aware chunking (groups traceback blocks; for timestamped logs prefer log_events)."
+        elif s == "http_trace":
+            available = True
+            notes = "HTTP trace aware chunking (splits by HTTP request blocks; keeps request+response together)."
+        elif s == "terraform_plan":
+            available = True
+            notes = "Terraform plan output aware chunking (splits by '# ... will be ...' change headers)."
         elif s == "xml_feed":
             available = True
             notes = "XML feed (RSS/Atom) item-aware chunking (splits by <item>/<entry> blocks)."
+        elif s == "junit_xml":
+            available = True
+            notes = "JUnit XML report aware chunking (splits by <testcase> blocks; preserves offsets)."
+        elif s == "sitemap_xml":
+            available = True
+            notes = "Sitemap XML aware chunking (splits by <url>/<sitemap> entry blocks)."
+        elif s == "maven_pom":
+            available = True
+            notes = "Maven POM XML aware chunking (chunks <dependency>/<plugin> records; preserves offsets)."
         elif s == "openapi_spec":
             available = True
             notes = "OpenAPI/Swagger spec aware chunking (splits by per-path blocks under `paths:`)."
+        elif s == "github_actions":
+            available = True
+            notes = "GitHub Actions workflow aware chunking (splits by job blocks under `jobs:`)."
+        elif s == "docker_compose":
+            available = True
+            notes = "Docker Compose YAML aware chunking (splits by service blocks under `services:`)."
+        elif s == "gitlab_ci":
+            available = True
+            notes = "GitLab CI YAML aware chunking (splits by top-level job/config blocks)."
+        elif s == "ansible_playbook":
+            available = True
+            notes = "Ansible playbook aware chunking (splits by top-level plays; preserves offsets)."
         elif s == "dockerfile":
             available = True
             notes = "Dockerfile aware chunking (splits by FROM stages and instruction blocks)."
@@ -353,6 +380,9 @@ async def get_pipeline_capabilities(
         elif s == "jsonl_records":
             available = True
             notes = "JSONL/NDJSON record-aware chunking (groups whole JSON records per line; preserves offsets)."
+        elif s == "markdown_frontmatter":
+            available = True
+            notes = "Markdown frontmatter aware chunking (keeps YAML frontmatter, then chunks the body)."
         elif s == "sentence_window":
             available = True
             notes = "Sentence window chunking with sentence-level overlap."

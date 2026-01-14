@@ -8,8 +8,17 @@ where the best chunking method depends on the content shape:
 - Subtitles -> subtitles
 - Logs -> log_events
 - Stacktraces -> stacktrace
+- HTTP traces -> http_trace
+- Terraform plan output -> terraform_plan
+- JUnit XML reports -> junit_xml
+- Sitemap XML -> sitemap_xml
+- Maven POM -> maven_pom
 - XML feeds (RSS/Atom) -> xml_feed
 - OpenAPI/Swagger specs -> openapi_spec
+- GitHub Actions workflows -> github_actions
+- Docker Compose -> docker_compose
+- GitLab CI -> gitlab_ci
+- Ansible playbooks -> ansible_playbook
 - YAML manifests -> yaml_manifest
 - TOML config -> toml_config
 - JSONL/NDJSON -> jsonl_records
@@ -50,6 +59,7 @@ where the best chunking method depends on the content shape:
 - CSV rows -> csv_rows
 - Spreadsheets -> spreadsheet_sheet
 - Markdown tables -> markdown_table
+- Markdown frontmatter -> markdown_frontmatter
 - Markdown -> markdown_aware
 - Otherwise -> semantic_sentence or langchain_recursive
 """
@@ -114,6 +124,16 @@ from app.rag.chunking.strategies.postmortem_report import PostmortemReportChunke
 from app.rag.chunking.strategies.proto_schema import ProtoSchemaChunker, looks_like_proto_schema
 from app.rag.chunking.strategies.terraform_hcl import TerraformHCLChunker, looks_like_terraform_hcl
 from app.rag.chunking.strategies.xml_feed import XMLFeedChunker, looks_like_xml_feed
+from app.rag.chunking.strategies.docker_compose import DockerComposeChunker, looks_like_docker_compose
+from app.rag.chunking.strategies.github_actions import GitHubActionsChunker, looks_like_github_actions_workflow
+from app.rag.chunking.strategies.gitlab_ci import GitLabCIChunker, looks_like_gitlab_ci
+from app.rag.chunking.strategies.ansible_playbook import AnsiblePlaybookChunker, looks_like_ansible_playbook
+from app.rag.chunking.strategies.markdown_frontmatter import MarkdownFrontmatterChunker, looks_like_markdown_frontmatter
+from app.rag.chunking.strategies.http_trace import HTTPTraceChunker, looks_like_http_trace
+from app.rag.chunking.strategies.junit_xml import JUnitXMLChunker, looks_like_junit_xml
+from app.rag.chunking.strategies.sitemap_xml import SitemapXMLChunker, looks_like_sitemap_xml
+from app.rag.chunking.strategies.maven_pom import MavenPOMChunker, looks_like_maven_pom
+from app.rag.chunking.strategies.terraform_plan import TerraformPlanChunker, looks_like_terraform_plan
 
 
 _MD_HINT_RE = re.compile(
@@ -350,6 +370,46 @@ class ManuscriptChunker(BaseChunker):
             chunk_size=self.chunk_size,
             chunk_overlap=self.chunk_overlap,
         )
+        self._docker_compose = DockerComposeChunker(
+            chunk_size=self.chunk_size,
+            chunk_overlap=self.chunk_overlap,
+        )
+        self._github_actions = GitHubActionsChunker(
+            chunk_size=self.chunk_size,
+            chunk_overlap=self.chunk_overlap,
+        )
+        self._gitlab_ci = GitLabCIChunker(
+            chunk_size=self.chunk_size,
+            chunk_overlap=self.chunk_overlap,
+        )
+        self._ansible = AnsiblePlaybookChunker(
+            chunk_size=self.chunk_size,
+            chunk_overlap=self.chunk_overlap,
+        )
+        self._markdown_frontmatter = MarkdownFrontmatterChunker(
+            chunk_size=self.chunk_size,
+            chunk_overlap=self.chunk_overlap,
+        )
+        self._http_trace = HTTPTraceChunker(
+            chunk_size=self.chunk_size,
+            chunk_overlap=self.chunk_overlap,
+        )
+        self._junit_xml = JUnitXMLChunker(
+            chunk_size=self.chunk_size,
+            chunk_overlap=self.chunk_overlap,
+        )
+        self._sitemap_xml = SitemapXMLChunker(
+            chunk_size=self.chunk_size,
+            chunk_overlap=self.chunk_overlap,
+        )
+        self._maven_pom = MavenPOMChunker(
+            chunk_size=self.chunk_size,
+            chunk_overlap=self.chunk_overlap,
+        )
+        self._terraform_plan = TerraformPlanChunker(
+            chunk_size=self.chunk_size,
+            chunk_overlap=self.chunk_overlap,
+        )
 
     def _select(self, doc: Document) -> tuple[BaseChunker, str]:
         meta = doc.metadata or {}
@@ -362,7 +422,16 @@ class ManuscriptChunker(BaseChunker):
         if file_type in {"jsonl", "ndjson"} or looks_like_jsonl_records(text):
             return self._jsonl, "jsonl_records"
 
-        if file_type in {"xml", "rss", "atom"} or looks_like_xml_feed(text):
+        if looks_like_maven_pom(text):
+            return self._maven_pom, "maven_pom"
+
+        if looks_like_junit_xml(text):
+            return self._junit_xml, "junit_xml"
+
+        if looks_like_sitemap_xml(text):
+            return self._sitemap_xml, "sitemap_xml"
+
+        if file_type in {"rss", "atom"} or looks_like_xml_feed(text):
             return self._xml_feed, "xml_feed"
 
         if file_type in {"graphql", "gql"} or looks_like_graphql_schema(text):
@@ -401,8 +470,26 @@ class ManuscriptChunker(BaseChunker):
         if looks_like_stacktrace(text):
             return self._stacktrace, "stacktrace"
 
+        if looks_like_http_trace(text):
+            return self._http_trace, "http_trace"
+
+        if looks_like_terraform_plan(text):
+            return self._terraform_plan, "terraform_plan"
+
         if looks_like_openapi_spec(text):
             return self._openapi, "openapi_spec"
+
+        if file_type in {"yaml", "yml"} and looks_like_github_actions_workflow(text):
+            return self._github_actions, "github_actions"
+
+        if file_type in {"yaml", "yml"} and looks_like_docker_compose(text):
+            return self._docker_compose, "docker_compose"
+
+        if file_type in {"yaml", "yml"} and looks_like_gitlab_ci(text):
+            return self._gitlab_ci, "gitlab_ci"
+
+        if file_type in {"yaml", "yml"} and looks_like_ansible_playbook(text):
+            return self._ansible, "ansible_playbook"
 
         if file_type in {"yaml", "yml"} or looks_like_yaml_manifest(text):
             return self._yaml, "yaml_manifest"
@@ -505,6 +592,9 @@ class ManuscriptChunker(BaseChunker):
 
         if looks_like_markdown_table(text):
             return self._markdown_table, "markdown_table"
+
+        if file_type in {"md", "markdown"} and looks_like_markdown_frontmatter(text):
+            return self._markdown_frontmatter, "markdown_frontmatter"
 
         if file_type in {"md", "markdown"} or _looks_like_markdown(text):
             return self._markdown, "markdown_aware"
