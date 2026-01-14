@@ -51,6 +51,13 @@ import {
   LayoutTemplate
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
 import { ROOT_FOLDER_ID, useParsedFiles } from '@/store/use-parsed-files-store'
@@ -822,21 +829,38 @@ export function DataGovernancePanel() {
           </Button>
 
           <div className={cn("flex-1 flex flex-col min-h-0 w-full overflow-hidden", isSidebarCollapsed && "invisible")}>
-            {/* 搜索栏 */}
-            <div className="p-3 border-b border-gray-100">
+            {/* 目录切换 & 搜索 */}
+            <div className="p-3 border-b border-slate-100 space-y-3">
+               <Select value={activeFolderId || ROOT_FOLDER_ID} onValueChange={setActiveFolderId}>
+                  <SelectTrigger className="h-9 text-xs bg-slate-50 border-slate-200 focus:ring-sky-500 shadow-sm">
+                     <div className="flex items-center gap-2 truncate">
+                        <FolderTree className="w-3.5 h-3.5 text-sky-600" />
+                        <SelectValue placeholder="切换目录" />
+                     </div>
+                  </SelectTrigger>
+                  <SelectContent>
+                     <SelectItem value={ROOT_FOLDER_ID}>根目录</SelectItem>
+                     {libraryFolders.map(f => (
+                        <SelectItem key={f.id} value={f.id}>
+                           {f.name}
+                        </SelectItem>
+                     ))}
+                  </SelectContent>
+               </Select>
+
                <div className="relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
                 <input
                   type="text"
-                  placeholder="搜索文件..."
-                  className="w-full pl-9 pr-3 py-1.5 text-xs bg-gray-50 border border-transparent rounded-lg focus:bg-white focus:outline-none focus:ring-1 focus:ring-sky-500 focus:border-sky-500 transition-all"
+                  placeholder="搜索当前目录文件..."
+                  className="w-full pl-9 pr-3 py-1.5 text-xs bg-slate-50 border border-transparent rounded-lg focus:bg-white focus:outline-none focus:ring-1 focus:ring-sky-500 focus:border-sky-500 transition-all"
                 />
               </div>
             </div>
 
              {/* 文件目录树 - 可折叠区域 */}
-            <div className="px-3 pt-2 pb-1">
-              <div className="max-h-40 overflow-y-auto rounded-lg bg-gray-50 p-2">
+            <div className="px-3 pt-2 pb-1 border-b border-slate-100 bg-slate-50/20">
+              <div className="max-h-48 overflow-y-auto custom-scrollbar p-1">
                  <DocumentFolderTree />
               </div>
             </div>
