@@ -208,10 +208,10 @@ async def get_pipeline_capabilities(
         notes: str | None = None
         if s == "auto":
             available = True
-            notes = "Auto-selects a chunker per document (diff/patch/subtitles/logs/stacktrace/yaml/toml/sql/nginx/dockerfile/makefile/kv-config/api/changelog/csv/spreadsheet/chat/email/jira/qa/qa_markdown/prd/sop/glossary/meeting_minutes/timeline/resume/slides/laws/paper/book/outline/transcript/rst/asciidoc/latex/org/wiki/html/markdown_table/markdown/json/plain text)."
+            notes = "Auto-selects a chunker per document (git_commit_log/diff/patch/subtitles/logs/stacktrace/xml/openapi/yaml/toml/sql/terraform/nginx/dockerfile/makefile/kv-config/jsonl/graphql/proto/api/changelog/csv/spreadsheet/chat/email/jira/postmortem/qa/qa_markdown/prd/sop/glossary/meeting_minutes/timeline/resume/slides/laws/paper/book/outline/transcript/rst/asciidoc/latex/org/wiki/html/markdown_table/markdown/json/plain text)."
         elif s == "manuscript":
             available = True
-            notes = "Preset for manuscript-like documents (diff/patch/subtitles/logs/stacktrace/yaml/toml/sql/nginx/dockerfile/makefile/kv-config/api/changelog/csv/spreadsheet/chat/email/jira/qa/qa_markdown/prd/sop/glossary/meeting_minutes/timeline/resume/slides/laws/paper/book/outline/transcript/rst/asciidoc/latex/org/wiki/html/markdown_table/markdown/...)."
+            notes = "Preset for manuscript-like documents (git_commit_log/diff/patch/subtitles/logs/stacktrace/xml/openapi/yaml/toml/sql/terraform/nginx/dockerfile/makefile/kv-config/jsonl/graphql/proto/api/changelog/csv/spreadsheet/chat/email/jira/postmortem/qa/qa_markdown/prd/sop/glossary/meeting_minutes/timeline/resume/slides/laws/paper/book/outline/transcript/rst/asciidoc/latex/org/wiki/html/markdown_table/markdown/...)."
         elif s == "outline":
             available = True
             notes = "Numbered-outline aware chunking (keeps section heading context)."
@@ -272,6 +272,9 @@ async def get_pipeline_capabilities(
         elif s == "diff_patch":
             available = True
             notes = "Diff/patch aware chunking (splits by file blocks and @@ hunks)."
+        elif s == "git_commit_log":
+            available = True
+            notes = "Git commit-log aware chunking (splits by 'commit <sha>' blocks; preserves commit context even with patches)."
         elif s == "kv_config":
             available = True
             notes = "Key-value config aware chunking (groups KEY=VALUE entries; supports INI sections)."
@@ -314,6 +317,12 @@ async def get_pipeline_capabilities(
         elif s == "stacktrace":
             available = True
             notes = "Stacktrace aware chunking (groups traceback blocks; for timestamped logs prefer log_events)."
+        elif s == "xml_feed":
+            available = True
+            notes = "XML feed (RSS/Atom) item-aware chunking (splits by <item>/<entry> blocks)."
+        elif s == "openapi_spec":
+            available = True
+            notes = "OpenAPI/Swagger spec aware chunking (splits by per-path blocks under `paths:`)."
         elif s == "dockerfile":
             available = True
             notes = "Dockerfile aware chunking (splits by FROM stages and instruction blocks)."
@@ -323,12 +332,27 @@ async def get_pipeline_capabilities(
         elif s == "nginx_config":
             available = True
             notes = "Nginx config aware chunking (splits by server blocks; brace-aware)."
+        elif s == "terraform_hcl":
+            available = True
+            notes = "Terraform/HCL block-aware chunking (splits by resource/module/variable blocks; brace-aware)."
+        elif s == "graphql_schema":
+            available = True
+            notes = "GraphQL schema aware chunking (splits by top-level type/input/enum/interface/union/scalar/directive/schema definitions)."
+        elif s == "proto_schema":
+            available = True
+            notes = "Protocol Buffers schema aware chunking (splits by message/enum/service blocks; brace-aware)."
         elif s == "jira_ticket":
             available = True
             notes = "Jira/issue-ticket aware chunking (splits by common fields like Summary/Description/Steps/Expected/Actual)."
         elif s == "prd_spec":
             available = True
             notes = "PRD/spec aware chunking (splits by common sections like Background/Goals/Scope/Requirements/Acceptance/Risks)."
+        elif s == "postmortem_report":
+            available = True
+            notes = "Incident postmortem/RCA aware chunking (splits by common sections like Summary/Impact/Timeline/Root Cause/Action Items)."
+        elif s == "jsonl_records":
+            available = True
+            notes = "JSONL/NDJSON record-aware chunking (groups whole JSON records per line; preserves offsets)."
         elif s == "sentence_window":
             available = True
             notes = "Sentence window chunking with sentence-level overlap."

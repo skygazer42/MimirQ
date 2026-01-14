@@ -56,6 +56,14 @@ from app.rag.chunking.strategies.makefile import MakefileChunker, looks_like_mak
 from app.rag.chunking.strategies.nginx_config import NginxConfigChunker, looks_like_nginx_config
 from app.rag.chunking.strategies.jira_ticket import JiraTicketChunker, looks_like_jira_ticket
 from app.rag.chunking.strategies.prd_spec import PRDSpecChunker, looks_like_prd_spec
+from app.rag.chunking.strategies.git_commit_log import GitCommitLogChunker, looks_like_git_commit_log
+from app.rag.chunking.strategies.graphql_schema import GraphQLSchemaChunker, looks_like_graphql_schema
+from app.rag.chunking.strategies.jsonl_records import JsonlRecordsChunker, looks_like_jsonl_records
+from app.rag.chunking.strategies.openapi_spec import OpenAPISpecChunker, looks_like_openapi_spec
+from app.rag.chunking.strategies.postmortem_report import PostmortemReportChunker, looks_like_postmortem_report
+from app.rag.chunking.strategies.proto_schema import ProtoSchemaChunker, looks_like_proto_schema
+from app.rag.chunking.strategies.terraform_hcl import TerraformHCLChunker, looks_like_terraform_hcl
+from app.rag.chunking.strategies.xml_feed import XMLFeedChunker, looks_like_xml_feed
 
 
 _MD_HINT_RE = re.compile(
@@ -90,12 +98,19 @@ class AutoChunker(BaseChunker):
     Strategy selection (per Document):
     - CSV (row-oriented) -> csv_rows
     - Spreadsheet (sheet headings) -> spreadsheet_sheet
+    - Git commit logs -> git_commit_log (splits by commit headers)
     - Diff/patch -> diff_patch (splits by file/hunk)
     - Subtitles -> subtitles (splits by cue timecodes)
     - Logs -> log_events (keeps log entries together)
     - Stacktraces -> stacktrace (groups traceback blocks)
+    - XML feeds (RSS/Atom) -> xml_feed (splits by item/entry blocks)
+    - OpenAPI/Swagger specs -> openapi_spec (splits by paths)
     - YAML manifests -> yaml_manifest (splits by --- docs)
     - TOML config -> toml_config (splits by [tables])
+    - JSONL/NDJSON records -> jsonl_records (groups whole records)
+    - GraphQL schemas -> graphql_schema (splits by type/input/enum)
+    - Protocol Buffers schemas -> proto_schema (splits by message/enum/service)
+    - Terraform/HCL -> terraform_hcl (splits by blocks)
     - Nginx config -> nginx_config (splits by server blocks)
     - Dockerfile -> dockerfile (splits by stages/instructions)
     - Makefile -> makefile (splits by target blocks)
@@ -109,6 +124,7 @@ class AutoChunker(BaseChunker):
     - Markdown Q/A -> qa_markdown (bullets/headings)
     - SOP/procedure -> sop_steps (keeps steps together)
     - Glossary -> glossary (keeps entries together)
+    - Postmortem/RCA reports -> postmortem_report (splits by RCA sections)
     - Resume/CV -> resume_structured (splits by common sections)
     - Slides/deck -> presentation_slides (splits by slide separators)
     - Meeting minutes -> meeting_minutes (splits by agenda/actions/decisions)
@@ -305,6 +321,38 @@ class AutoChunker(BaseChunker):
             chunk_size=self.chunk_size,
             chunk_overlap=self.chunk_overlap,
         )
+        self._git_commit_log = GitCommitLogChunker(
+            chunk_size=self.chunk_size,
+            chunk_overlap=self.chunk_overlap,
+        )
+        self._jsonl = JsonlRecordsChunker(
+            chunk_size=self.chunk_size,
+            chunk_overlap=self.chunk_overlap,
+        )
+        self._xml_feed = XMLFeedChunker(
+            chunk_size=self.chunk_size,
+            chunk_overlap=self.chunk_overlap,
+        )
+        self._openapi = OpenAPISpecChunker(
+            chunk_size=self.chunk_size,
+            chunk_overlap=self.chunk_overlap,
+        )
+        self._graphql = GraphQLSchemaChunker(
+            chunk_size=self.chunk_size,
+            chunk_overlap=self.chunk_overlap,
+        )
+        self._proto = ProtoSchemaChunker(
+            chunk_size=self.chunk_size,
+            chunk_overlap=self.chunk_overlap,
+        )
+        self._terraform = TerraformHCLChunker(
+            chunk_size=self.chunk_size,
+            chunk_overlap=self.chunk_overlap,
+        )
+        self._postmortem = PostmortemReportChunker(
+            chunk_size=self.chunk_size,
+            chunk_overlap=self.chunk_overlap,
+        )
 
     def _select(self, doc: Document) -> tuple[BaseChunker, str]:
         meta = doc.metadata or {}
@@ -314,6 +362,21 @@ class AutoChunker(BaseChunker):
         if file_type in {"json"} or _looks_like_json(text):
             # JSON overlap is usually counterproductive; keep it at 0.
             return JSONChunker(chunk_size=self.chunk_size, chunk_overlap=0), "json"
+
+        if file_type in {"jsonl", "ndjson"} or looks_like_jsonl_records(text):
+            return self._jsonl, "jsonl_records"
+
+        if file_type in {"xml", "rss", "atom"} or looks_like_xml_feed(text):
+            return self._xml_feed, "xml_feed"
+
+        if file_type in {"graphql", "gql"} or looks_like_graphql_schema(text):
+            return self._graphql, "graphql_schema"
+
+        if file_type in {"proto"} or looks_like_proto_schema(text):
+            return self._proto, "proto_schema"
+
+        if file_type in {"tf", "hcl"} or looks_like_terraform_hcl(text):
+            return self._terraform, "terraform_hcl"
 
         if file_type == "csv":
             if looks_like_csv_rows(text):
@@ -327,6 +390,9 @@ class AutoChunker(BaseChunker):
             if looks_like_markdown_table(text):
                 return self._markdown_table, "markdown_table"
 
+        if looks_like_git_commit_log(text):
+            return self._git_commit_log, "git_commit_log"
+
         if looks_like_diff_patch(text):
             return self._diff, "diff_patch"
 
@@ -338,6 +404,9 @@ class AutoChunker(BaseChunker):
 
         if looks_like_stacktrace(text):
             return self._stacktrace, "stacktrace"
+
+        if looks_like_openapi_spec(text):
+            return self._openapi, "openapi_spec"
 
         if file_type in {"yaml", "yml"} or looks_like_yaml_manifest(text):
             return self._yaml, "yaml_manifest"
@@ -374,6 +443,9 @@ class AutoChunker(BaseChunker):
 
         if looks_like_jira_ticket(text):
             return self._jira, "jira_ticket"
+
+        if looks_like_postmortem_report(text):
+            return self._postmortem, "postmortem_report"
 
         if looks_like_qa_pairs(text):
             return self._qa_pairs, "qa_pairs"
