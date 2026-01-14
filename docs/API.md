@@ -2143,3 +2143,112 @@ GET /api/v1/meta
 ```
 
 ---
+
+# 分块策略详解
+
+> 选择合适的分块策略可以显著提升检索效果
+
+## 通用策略
+
+| 策略 | 适用场景 | 说明 |
+|------|----------|------|
+| `auto` | 通用 | 自动识别文档类型并选择最佳策略 |
+| `langchain_recursive` | 通用 | 递归字符分割，最常用 |
+| `markdown_header` | Markdown | 按标题层级分割 |
+| `sentence_window` | 精细检索 | 句子级分割，带上下文窗口 |
+
+## 专业文档策略
+
+| 策略 | 适用场景 |
+|------|----------|
+| `paper` | 学术论文（按章节分割） |
+| `book_structured` | 书籍（按章节分割） |
+| `laws_structured` | 法律文档（按条款分割） |
+| `resume_structured` | 简历（按模块分割） |
+| `presentation_slides` | PPT/演示文稿 |
+
+## 结构化数据策略
+
+| 策略 | 适用场景 |
+|------|----------|
+| `csv_rows` | CSV 表格数据 |
+| `spreadsheet_sheet` | Excel 工作表 |
+| `markdown_table` | Markdown 表格 |
+| `json` | JSON 数据 |
+
+## 技术文档策略
+
+| 策略 | 适用场景 |
+|------|----------|
+| `api_reference` | API 文档 |
+| `changelog` | 更新日志 |
+| `dockerfile` | Dockerfile |
+| `yaml_manifest` | YAML 配置 |
+| `sql_schema` | SQL DDL |
+
+## 对话/日志策略
+
+| 策略 | 适用场景 |
+|------|----------|
+| `chat_history` | 聊天记录 |
+| `email_thread` | 邮件往来 |
+| `log_events` | 日志文件 |
+| `meeting_minutes` | 会议纪要 |
+
+---
+
+# 部署指南
+
+## 环境要求
+
+| 组件 | 最低版本 | 推荐版本 |
+|------|----------|----------|
+| Python | 3.10 | 3.11+ |
+| PostgreSQL | 14 | 16 |
+| Milvus | 2.3 | 2.4+ |
+| Redis | 6.0 | 7.0+ |
+
+## 快速启动
+
+### 1. 克隆项目
+
+```bash
+git clone https://github.com/your-org/mimirq.git
+cd mimirq
+```
+
+### 2. 配置环境变量
+
+```bash
+cp .env.example .env
+# 编辑 .env 文件，配置必要参数
+```
+
+### 3. 必要配置项
+
+```bash
+# 数据库
+DATABASE_URL=postgresql://user:pass@localhost:5432/mimirq
+
+# 向量数据库
+MILVUS_HOST=localhost
+MILVUS_PORT=19530
+
+# LLM 配置
+LLM_API_KEY=your-api-key
+LLM_API_BASE=https://api.openai.com/v1
+LLM_MODEL=gpt-4o-mini
+```
+
+### 4. 启动服务
+
+```bash
+# 安装依赖
+pip install -r requirements.txt
+
+# 数据库迁移
+alembic upgrade head
+
+# 启动服务
+uvicorn app.main:app --host 0.0.0.0 --port 8000
+```
