@@ -297,3 +297,189 @@ def test_auto_chunker_selects_markdown_table_for_table_heavy_markdown():
     assert chunks[0].metadata.get("chunk_strategy_auto") is True
     assert chunks[0].metadata.get("chunk_strategy_selected") == "markdown_table"
 
+
+def test_auto_chunker_selects_diff_patch_for_diff_text():
+    chunker = AutoChunker(chunk_size=240, chunk_overlap=40)
+    text = (
+        "diff --git a/foo.txt b/foo.txt\n"
+        "index 1111111..2222222 100644\n"
+        "--- a/foo.txt\n"
+        "+++ b/foo.txt\n"
+        "@@ -1,2 +1,2 @@\n"
+        "-old\n"
+        "+new\n"
+        "@@ -4,1 +4,1 @@\n"
+        "-old2\n"
+        "+new2\n"
+        "diff --git a/bar.txt b/bar.txt\n"
+        "index 3333333..4444444 100644\n"
+        "--- a/bar.txt\n"
+        "+++ b/bar.txt\n"
+        "@@ -1,1 +1,1 @@\n"
+        "-x\n"
+        "+y\n"
+    )
+    docs = [Document(page_content=text, metadata={"file_type": "txt"})]
+    chunks = chunker.split_documents(docs)
+    assert chunks
+    assert chunks[0].metadata.get("chunk_strategy_auto") is True
+    assert chunks[0].metadata.get("chunk_strategy_selected") == "diff_patch"
+
+
+def test_auto_chunker_selects_subtitles_for_srt_text():
+    chunker = AutoChunker(chunk_size=240, chunk_overlap=40)
+    text = (
+        "1\n"
+        "00:00:01,000 --> 00:00:02,000\n"
+        "Hello.\n\n"
+        "2\n"
+        "00:00:03,000 --> 00:00:04,000\n"
+        "World.\n\n"
+        "3\n"
+        "00:00:05,000 --> 00:00:06,000\n"
+        "Again.\n\n"
+        "4\n"
+        "00:00:07,000 --> 00:00:08,000\n"
+        "Done.\n"
+    )
+    docs = [Document(page_content=text, metadata={"file_type": "txt"})]
+    chunks = chunker.split_documents(docs)
+    assert chunks
+    assert chunks[0].metadata.get("chunk_strategy_auto") is True
+    assert chunks[0].metadata.get("chunk_strategy_selected") == "subtitles"
+
+
+def test_auto_chunker_selects_log_events_for_log_text():
+    chunker = AutoChunker(chunk_size=240, chunk_overlap=40)
+    text = (
+        "2024-01-01 10:00:00,123 INFO service: started\n"
+        "2024-01-01 10:00:01,456 WARN service: warming up\n"
+        "2024-01-01 10:00:02,789 ERROR service: failed\n"
+        "Traceback (most recent call last):\n"
+        "  File \"x.py\", line 1, in <module>\n"
+        "    boom()\n"
+        "2024-01-01 10:00:03,000 INFO service: recovered\n"
+    )
+    docs = [Document(page_content=text, metadata={"file_type": "txt"})]
+    chunks = chunker.split_documents(docs)
+    assert chunks
+    assert chunks[0].metadata.get("chunk_strategy_auto") is True
+    assert chunks[0].metadata.get("chunk_strategy_selected") == "log_events"
+
+
+def test_auto_chunker_selects_kv_config_for_env_like_text():
+    chunker = AutoChunker(chunk_size=240, chunk_overlap=40)
+    text = (
+        "# Example config\n"
+        "DATABASE_URL=postgresql://localhost:5432/db\n"
+        "API_KEY=secret\n"
+        "DEBUG=true\n"
+        "TIMEOUT_SEC=30\n"
+        "RETRY_MAX=2\n"
+        "RERANKER_TOP_N=20\n"
+    )
+    docs = [Document(page_content=text, metadata={"file_type": "txt"})]
+    chunks = chunker.split_documents(docs)
+    assert chunks
+    assert chunks[0].metadata.get("chunk_strategy_auto") is True
+    assert chunks[0].metadata.get("chunk_strategy_selected") == "kv_config"
+
+
+def test_auto_chunker_selects_api_reference_for_endpoint_text():
+    chunker = AutoChunker(chunk_size=240, chunk_overlap=40)
+    text = (
+        "# API\n\n"
+        "GET /health\n"
+        + ("Returns ok. " * 12).strip()
+        + "\n\n"
+        "POST /api/v1/items\n"
+        + ("Creates item. " * 12).strip()
+        + "\n\n"
+        "DELETE /api/v1/items/{id}\n"
+        + ("Deletes item. " * 12).strip()
+        + "\n"
+    )
+    docs = [Document(page_content=text, metadata={"file_type": "md"})]
+    chunks = chunker.split_documents(docs)
+    assert chunks
+    assert chunks[0].metadata.get("chunk_strategy_auto") is True
+    assert chunks[0].metadata.get("chunk_strategy_selected") == "api_reference"
+
+
+def test_auto_chunker_selects_changelog_for_changelog_text():
+    chunker = AutoChunker(chunk_size=240, chunk_overlap=40)
+    text = (
+        "# Changelog\n\n"
+        "## [1.0.0] - 2024-01-01\n"
+        + ("Added feature. " * 15).strip()
+        + "\n\n"
+        "## [0.9.0] - 2023-12-01\n"
+        + ("Fixed bug. " * 15).strip()
+        + "\n"
+    )
+    docs = [Document(page_content=text, metadata={"file_type": "md"})]
+    chunks = chunker.split_documents(docs)
+    assert chunks
+    assert chunks[0].metadata.get("chunk_strategy_auto") is True
+    assert chunks[0].metadata.get("chunk_strategy_selected") == "changelog"
+
+
+def test_auto_chunker_selects_qa_markdown_for_markdown_qa_text():
+    chunker = AutoChunker(chunk_size=240, chunk_overlap=40)
+    text = (
+        "- **Q:** What is RAG?\n"
+        "- **A:** Retrieval-Augmented Generation.\n\n"
+        "- **Q:** Why chunk?\n"
+        "- **A:** Better retrieval.\n"
+    )
+    docs = [Document(page_content=text, metadata={"file_type": "md"})]
+    chunks = chunker.split_documents(docs)
+    assert chunks
+    assert chunks[0].metadata.get("chunk_strategy_auto") is True
+    assert chunks[0].metadata.get("chunk_strategy_selected") == "qa_markdown"
+
+
+def test_auto_chunker_selects_meeting_minutes_for_minutes_text():
+    chunker = AutoChunker(chunk_size=240, chunk_overlap=40)
+    text = (
+        "Meeting Notes\n\n"
+        "Agenda:\n"
+        "- Review progress\n"
+        "- Discuss risks\n\n"
+        "Action Items:\n"
+        "- Alice: update docs\n"
+        "- Bob: run tests\n\n"
+        "Decisions:\n"
+        "- Ship on Friday\n"
+        + ("notes " * 40).strip()
+        + "\n"
+    )
+    docs = [Document(page_content=text, metadata={"file_type": "txt"})]
+    chunks = chunker.split_documents(docs)
+    assert chunks
+    assert chunks[0].metadata.get("chunk_strategy_auto") is True
+    assert chunks[0].metadata.get("chunk_strategy_selected") == "meeting_minutes"
+
+
+def test_auto_chunker_selects_timeline_events_for_timeline_text():
+    chunker = AutoChunker(chunk_size=240, chunk_overlap=40)
+    text = (
+        "2024-01-01 - Kickoff\n"
+        + ("A " * 60).strip()
+        + "\n"
+        "2024-01-02 - Planning\n"
+        + ("B " * 60).strip()
+        + "\n"
+        "2024-01-03 - Execution\n"
+        + ("C " * 60).strip()
+        + "\n"
+        "2024-01-04 - Wrap up\n"
+        + ("D " * 60).strip()
+        + "\n"
+    )
+    docs = [Document(page_content=text, metadata={"file_type": "txt"})]
+    chunks = chunker.split_documents(docs)
+    assert chunks
+    assert chunks[0].metadata.get("chunk_strategy_auto") is True
+    assert chunks[0].metadata.get("chunk_strategy_selected") == "timeline_events"
+

@@ -30,6 +30,15 @@ Available strategies:
 - spreadsheet_sheet: Spreadsheet sheet-aware chunking
 - markdown_table: Markdown table-aware chunking
 - chat_history: Timestamped chat history chunking
+- changelog: Changelog/release notes aware chunking
+- log_events: Log entry aware chunking
+- subtitles: Subtitles (SRT/VTT-like) cue chunking
+- api_reference: API endpoint reference aware chunking
+- diff_patch: Diff/patch aware chunking
+- kv_config: Key-value config aware chunking
+- qa_markdown: Markdown Q/A aware chunking
+- meeting_minutes: Meeting minutes section-aware chunking
+- timeline_events: Timeline/date-event aware chunking
 """
 from app.rag.chunking.strategies.recursive import LangChainRecursiveChunker
 from app.rag.chunking.strategies.token import LangChainTokenChunker
@@ -67,6 +76,15 @@ from app.rag.chunking.strategies.csv_rows import CsvRowsChunker
 from app.rag.chunking.strategies.spreadsheet_sheet import SpreadsheetSheetChunker
 from app.rag.chunking.strategies.markdown_table import MarkdownTableChunker
 from app.rag.chunking.strategies.chat_history import ChatHistoryChunker
+from app.rag.chunking.strategies.changelog import ChangelogChunker
+from app.rag.chunking.strategies.log_events import LogEventsChunker
+from app.rag.chunking.strategies.subtitles import SubtitlesChunker
+from app.rag.chunking.strategies.api_reference import APIReferenceChunker
+from app.rag.chunking.strategies.diff_patch import DiffPatchChunker
+from app.rag.chunking.strategies.kv_config import KVConfigChunker
+from app.rag.chunking.strategies.qa_markdown import QAMarkdownChunker
+from app.rag.chunking.strategies.meeting_minutes import MeetingMinutesChunker
+from app.rag.chunking.strategies.timeline_events import TimelineEventsChunker
 
 __all__ = [
     "LangChainRecursiveChunker",
@@ -100,4 +118,13 @@ __all__ = [
     "SpreadsheetSheetChunker",
     "MarkdownTableChunker",
     "ChatHistoryChunker",
+    "ChangelogChunker",
+    "LogEventsChunker",
+    "SubtitlesChunker",
+    "APIReferenceChunker",
+    "DiffPatchChunker",
+    "KVConfigChunker",
+    "QAMarkdownChunker",
+    "MeetingMinutesChunker",
+    "TimelineEventsChunker",
 ]

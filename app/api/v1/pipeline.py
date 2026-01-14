@@ -208,10 +208,10 @@ async def get_pipeline_capabilities(
         notes: str | None = None
         if s == "auto":
             available = True
-            notes = "Auto-selects a chunker per document (csv/spreadsheet/chat/email/qa/sop/glossary/resume/slides/laws/paper/book/outline/transcript/markdown_table/markdown/json/plain text)."
+            notes = "Auto-selects a chunker per document (diff/patch/subtitles/logs/kv-config/api/changelog/csv/spreadsheet/chat/email/qa/qa_markdown/sop/glossary/meeting_minutes/timeline/resume/slides/laws/paper/book/outline/transcript/markdown_table/markdown/json/plain text)."
         elif s == "manuscript":
             available = True
-            notes = "Preset for manuscript-like documents (csv/spreadsheet/chat/email/qa/sop/glossary/resume/slides/laws/paper/book/outline/transcript/markdown_table/markdown/...)."
+            notes = "Preset for manuscript-like documents (diff/patch/subtitles/logs/kv-config/api/changelog/csv/spreadsheet/chat/email/qa/qa_markdown/sop/glossary/meeting_minutes/timeline/resume/slides/laws/paper/book/outline/transcript/markdown_table/markdown/...)."
         elif s == "outline":
             available = True
             notes = "Numbered-outline aware chunking (keeps section heading context)."
@@ -257,6 +257,33 @@ async def get_pipeline_capabilities(
         elif s == "chat_history":
             available = True
             notes = "Timestamped chat history chunking (keeps whole messages together with message-level overlap)."
+        elif s == "changelog":
+            available = True
+            notes = "Changelog/release-notes aware chunking (splits by release headings like '## [1.2.3] - 2024-01-01')."
+        elif s == "log_events":
+            available = True
+            notes = "Log-events aware chunking (keeps multi-line log entries together; entry-level overlap)."
+        elif s == "subtitles":
+            available = True
+            notes = "Subtitles aware chunking (SRT/VTT-like; splits by timecode cues)."
+        elif s == "api_reference":
+            available = True
+            notes = "API reference aware chunking (splits by endpoint signatures like 'GET /path')."
+        elif s == "diff_patch":
+            available = True
+            notes = "Diff/patch aware chunking (splits by file blocks and @@ hunks)."
+        elif s == "kv_config":
+            available = True
+            notes = "Key-value config aware chunking (groups KEY=VALUE entries; supports INI sections)."
+        elif s == "qa_markdown":
+            available = True
+            notes = "Markdown Q/A aware chunking (supports bullets/headings like '**Q:**' / '### Q:')."
+        elif s == "meeting_minutes":
+            available = True
+            notes = "Meeting-minutes aware chunking (splits by common sections like agenda/actions/decisions)."
+        elif s == "timeline_events":
+            available = True
+            notes = "Timeline/date-event aware chunking (keeps dated events together)."
         elif s == "sentence_window":
             available = True
             notes = "Sentence window chunking with sentence-level overlap."
