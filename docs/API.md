@@ -1593,4 +1593,293 @@ await asyncio.gather(*[wait_for(doc_id) for doc_id in doc_ids])
 
 *文档版本：3.0 | 最后更新：2024*
 
+---
+
+# 评估系统 (RAGAS)
+
+## 什么是 RAGAS？
+
+RAGAS 是 RAG 系统的评估框架，用于衡量回答质量：
+
+| 指标 | 说明 | 范围 |
+|------|------|------|
+| `faithfulness` | 忠实度：回答是否基于检索内容 | 0-1 |
+| `answer_relevancy` | 相关性：回答是否切题 | 0-1 |
+| `context_precision` | 上下文精度 | 0-1 |
+
+## 创建评估任务
+
+```bash
+POST /api/v1/evaluations/ragas/runs
+```
+
+```json
+{
+  "conversation_id": "对话ID",
+  "metrics": ["faithfulness", "answer_relevancy"],
+  "max_turns": 10
+}
+```
+
+## 查看评估结果
+
+```bash
+GET /api/v1/evaluations/ragas/runs/{run_id}
+```
+
+**响应示例：**
+```json
+{
+  "id": "run-uuid",
+  "status": "completed",
+  "scores": {
+    "faithfulness": 0.85,
+    "answer_relevancy": 0.92
+  }
+}
+```
+
+## 回归测试
+
+用于持续监控 RAG 质量：
+
+```bash
+# 创建测试用例
+POST /api/v1/evaluations/ragas/regression/cases
+
+# 运行回归测试
+POST /api/v1/evaluations/ragas/regression/runs
+```
+
+---
+
+# 提示词模板管理
+
+## 为什么需要模板？
+
+- 统一管理 Prompt
+- 支持 A/B 测试
+- 版本控制
+
+## 创建模板
+
+```bash
+POST /api/v1/prompt-templates
+```
+
+```json
+{
+  "name": "客服模板",
+  "content": "你是客服助手。\n\n上下文：{context}\n\n问题：{question}",
+  "variables": ["context", "question"],
+  "category": "chat"
+}
+```
+
+## 在对话中使用模板
+
+```json
+{
+  "message": "问题内容",
+  "document_ids": ["doc-id"],
+  "prompt_template_id": "模板UUID"
+}
+```
+
+## A/B 测试
+
+```json
+{
+  "prompt_ab_experiment_key": "experiment_1"
+}
+```
+
+---
+
+# 系统配置 API
+
+## 获取当前配置
+
+```bash
+GET /api/v1/settings
+```
+
+**响应包含：**
+- LLM 配置
+- 向量数据库配置
+- RAG 参数
+- 功能开关
+
+## 功能开关
+
+| 开关 | 说明 |
+|------|------|
+| `kg_enabled` | 知识图谱 |
+| `docling_enabled` | Docling 解析器 |
+| `mineru_enabled` | MinerU 解析器 |
+
+## 更新配置
+
+```bash
+PUT /api/v1/settings
+```
+
+> 需要管理员权限
+
+---
+
+# 术语表
+
+## 核心概念
+
+| 术语 | 英文 | 解释 |
+|------|------|------|
+| RAG | Retrieval-Augmented Generation | 检索增强生成，结合检索和生成的 AI 技术 |
+| 向量 | Vector | 文本的数学表示，用于语义相似度计算 |
+| 嵌入 | Embedding | 将文本转换为向量的过程 |
+| 分块 | Chunking | 将长文档切分为小段落的过程 |
+| 检索 | Retrieval | 根据问题查找相关文档块 |
+| 重排序 | Reranking | 对检索结果重新排序以提高精度 |
+| 知识图谱 | Knowledge Graph (KG) | 从文档中提取的实体和关系网络 |
+
+## 技术术语
+
+| 术语 | 解释 |
+|------|------|
+| JWT | JSON Web Token，用于身份认证的令牌格式 |
+| SSE | Server-Sent Events，服务器推送事件，用于流式响应 |
+| Top-K | 检索返回的文档块数量 |
+| Score Threshold | 相似度阈值，过滤低相关性结果 |
+| Hybrid Search | 混合检索，结合向量和关键词搜索 |
+| MMR | 最大边际相关性，用于结果多样化 |
+| Token | 文本的最小单位（词或子词） |
+
+## 文件格式
+
+| 格式 | 说明 |
+|------|------|
+| PDF | 便携式文档格式，支持 OCR |
+| DOCX | Microsoft Word 文档 |
+| MD | Markdown 标记语言文档 |
+| TXT | 纯文本文件 |
+| HTML | 网页文档 |
+| XLSX | Microsoft Excel 表格 |
+
+---
+
+# API 模块索引
+
+## 按功能分类
+
+### 用户认证
+| 接口 | 方法 | 说明 |
+|------|------|------|
+| `/auth/register` | POST | 用户注册 |
+| `/auth/login` | POST | 用户登录 |
+| `/auth/me` | GET | 获取当前用户 |
+
+### 文档管理
+| 接口 | 方法 | 说明 |
+|------|------|------|
+| `/documents/upload` | POST | 上传文档 |
+| `/documents/` | GET | 文档列表 |
+| `/documents/{id}` | GET | 文档详情 |
+| `/documents/{id}/status` | GET | 处理状态 |
+| `/documents/{id}` | DELETE | 删除文档 |
+
+### 对话问答
+| 接口 | 方法 | 说明 |
+|------|------|------|
+| `/chat/stream` | POST | 流式对话 |
+| `/chat/conversations` | POST | 创建对话 |
+| `/chat/conversations` | GET | 对话列表 |
+| `/chat/conversations/{id}/messages` | GET | 消息历史 |
+| `/chat/conversations/{id}` | DELETE | 删除对话 |
+
+### 数据集管理
+| 接口 | 方法 | 说明 |
+|------|------|------|
+| `/datasets/` | POST | 创建数据集 |
+| `/datasets/` | GET | 数据集列表 |
+| `/datasets/{id}` | GET | 数据集详情 |
+| `/datasets/{id}` | PATCH | 更新数据集 |
+| `/datasets/{id}` | DELETE | 删除数据集 |
+
+### 知识图谱
+| 接口 | 方法 | 说明 |
+|------|------|------|
+| `/kg/graph` | GET | 获取图谱数据 |
+| `/kg/graph/expand` | GET | 展开节点 |
+| `/kg/graph/search` | GET | 搜索节点 |
+| `/kg/stats` | GET | 图谱统计 |
+| `/kg/documents/{id}/extract` | POST | 触发抽取 |
+
+### 系统管理
+| 接口 | 方法 | 说明 |
+|------|------|------|
+| `/settings` | GET | 获取配置 |
+| `/settings` | PUT | 更新配置 |
+| `/settings/status` | GET | 系统状态 |
+| `/health` | GET | 健康检查 |
+| `/health/ready` | GET | 就绪探针 |
+
+### 调试工具
+| 接口 | 方法 | 说明 |
+|------|------|------|
+| `/rag/retrieve-preview` | POST | 检索预览 |
+| `/rag/prompt-preview` | POST | 提示词预览 |
+| `/evaluations/ragas/runs` | POST | 创建评估 |
+| `/evaluations/ragas/runs/{id}` | GET | 评估结果 |
+
+---
+
+# 版本历史
+
+| 版本 | 日期 | 更新内容 |
+|------|------|----------|
+| 1.0 | 2024-01 | 初始版本，基础 API |
+| 2.0 | 2024-06 | 添加错误码、RAG 参数、调试指南 |
+| 3.0 | 2024-12 | 添加 KG、评估系统、前端集成 |
+
+---
+
+# 快速参考卡片
+
+## 最常用接口
+
+```bash
+# 登录
+POST /api/v1/auth/login
+
+# 上传文档
+POST /api/v1/documents/upload
+
+# 检查状态
+GET /api/v1/documents/{id}/status
+
+# 开始对话
+POST /api/v1/chat/stream
+```
+
+## 必备请求头
+
+```
+Authorization: Bearer <token>
+Content-Type: application/json
+```
+
+## 状态码速查
+
+| 码 | 含义 | 处理方式 |
+|----|------|----------|
+| 200 | 成功 | 正常处理 |
+| 401 | 未认证 | 重新登录 |
+| 404 | 不存在 | 检查 ID |
+| 502 | LLM 错误 | 检查 API Key |
+
+---
+
+*MimirQ API 文档 - 让知识触手可及*
+
+*如有问题，请联系开发团队或查看项目 README*
 
