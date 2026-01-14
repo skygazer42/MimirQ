@@ -99,7 +99,7 @@ def _build_top_blocks(text: str) -> List[_TopBlock]:
 
 
 def looks_like_gitlab_ci(text: str) -> bool:
-    if not text or len(text) < 160:
+    if not text or len(text) < 50:
         return False
     head = (text or "")[:20000].lower()
     if "stages:" not in head and "include:" not in head and "workflow:" not in head:

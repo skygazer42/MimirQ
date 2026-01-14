@@ -55,7 +55,9 @@ def _iter_lines(text: str) -> List[_Line]:
 
 def _extract_play_name(block_text: str) -> Optional[str]:
     head = (block_text or "")[:2000]
-    m = _NAME_RE.search(head)
+    m = re.search(r"(?m)^-\s*name\s*:\s*(?P<val>.+?)\s*$", head)
+    if not m:
+        m = _NAME_RE.search(head)
     if not m:
         return None
     val = (m.group("val") or "").strip()
@@ -108,7 +110,7 @@ def _build_play_blocks(text: str) -> List[_PlayBlock]:
 
 
 def looks_like_ansible_playbook(text: str) -> bool:
-    if not text or len(text) < 160:
+    if not text or len(text) < 60:
         return False
     head = (text or "")[:20000].lower()
     if "hosts:" not in head:

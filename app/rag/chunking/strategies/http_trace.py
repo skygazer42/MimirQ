@@ -58,7 +58,7 @@ def _extract_status(block_text: str) -> Optional[int]:
 
 
 def looks_like_http_trace(text: str) -> bool:
-    if not text or len(text) < 160:
+    if not text or len(text) < 80:
         return False
     head = (text or "")[:120000]
     reqs = list(_REQ_RE.finditer(head))

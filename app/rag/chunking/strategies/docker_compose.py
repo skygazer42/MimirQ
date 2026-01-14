@@ -117,7 +117,7 @@ def _build_service_blocks(text: str) -> List[_ServiceBlock]:
 
 
 def looks_like_docker_compose(text: str) -> bool:
-    if not text or len(text) < 160:
+    if not text or len(text) < 60:
         return False
     head = (text or "")[:20000].lower()
     if "services:" not in head:
