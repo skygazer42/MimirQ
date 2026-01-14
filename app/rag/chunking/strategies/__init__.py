@@ -54,6 +54,14 @@ Available strategies:
 - nginx_config: Nginx config block-aware chunking
 - jira_ticket: Jira/issue ticket section-aware chunking
 - prd_spec: PRD/requirements section-aware chunking
+- jsonl_records: JSONL/NDJSON record-aware chunking
+- xml_feed: XML feed (RSS/Atom) item-aware chunking
+- openapi_spec: OpenAPI/Swagger spec aware chunking
+- graphql_schema: GraphQL schema aware chunking
+- proto_schema: Protocol Buffers schema aware chunking
+- terraform_hcl: Terraform/HCL block-aware chunking
+- git_commit_log: Git commit-log aware chunking
+- postmortem_report: Incident postmortem/RCA section-aware chunking
 """
 from app.rag.chunking.strategies.recursive import LangChainRecursiveChunker
 from app.rag.chunking.strategies.token import LangChainTokenChunker
@@ -115,6 +123,14 @@ from app.rag.chunking.strategies.makefile import MakefileChunker
 from app.rag.chunking.strategies.nginx_config import NginxConfigChunker
 from app.rag.chunking.strategies.jira_ticket import JiraTicketChunker
 from app.rag.chunking.strategies.prd_spec import PRDSpecChunker
+from app.rag.chunking.strategies.jsonl_records import JsonlRecordsChunker
+from app.rag.chunking.strategies.xml_feed import XMLFeedChunker
+from app.rag.chunking.strategies.openapi_spec import OpenAPISpecChunker
+from app.rag.chunking.strategies.graphql_schema import GraphQLSchemaChunker
+from app.rag.chunking.strategies.proto_schema import ProtoSchemaChunker
+from app.rag.chunking.strategies.terraform_hcl import TerraformHCLChunker
+from app.rag.chunking.strategies.git_commit_log import GitCommitLogChunker
+from app.rag.chunking.strategies.postmortem_report import PostmortemReportChunker
 
 __all__ = [
     "LangChainRecursiveChunker",
@@ -172,4 +188,12 @@ __all__ = [
     "NginxConfigChunker",
     "JiraTicketChunker",
     "PRDSpecChunker",
+    "JsonlRecordsChunker",
+    "XMLFeedChunker",
+    "OpenAPISpecChunker",
+    "GraphQLSchemaChunker",
+    "ProtoSchemaChunker",
+    "TerraformHCLChunker",
+    "GitCommitLogChunker",
+    "PostmortemReportChunker",
 ]
