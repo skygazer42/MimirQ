@@ -208,10 +208,10 @@ async def get_pipeline_capabilities(
         notes: str | None = None
         if s == "auto":
             available = True
-            notes = "Auto-selects a chunker per document (email/qa/sop/glossary/laws/paper/book/outline/transcript/markdown/json/plain text)."
+            notes = "Auto-selects a chunker per document (csv/spreadsheet/chat/email/qa/sop/glossary/resume/slides/laws/paper/book/outline/transcript/markdown_table/markdown/json/plain text)."
         elif s == "manuscript":
             available = True
-            notes = "Preset for manuscript-like documents (email/qa/sop/glossary/laws/paper/book/outline/transcript/markdown/...)."
+            notes = "Preset for manuscript-like documents (csv/spreadsheet/chat/email/qa/sop/glossary/resume/slides/laws/paper/book/outline/transcript/markdown_table/markdown/...)."
         elif s == "outline":
             available = True
             notes = "Numbered-outline aware chunking (keeps section heading context)."
@@ -239,6 +239,24 @@ async def get_pipeline_capabilities(
         elif s == "glossary":
             available = True
             notes = "Glossary/dictionary aware chunking (splits by term-definition entries)."
+        elif s == "resume_structured":
+            available = True
+            notes = "Resume/CV section-aware chunking (splits by common resume headings)."
+        elif s == "presentation_slides":
+            available = True
+            notes = "Slide-aware chunking (splits by separators/markers like '---' or 'Slide 1')."
+        elif s == "csv_rows":
+            available = True
+            notes = "CSV row-aware chunking (groups 'row N:' blocks; best with CsvParser output)."
+        elif s == "spreadsheet_sheet":
+            available = True
+            notes = "Spreadsheet sheet-aware chunking (splits by '## Sheet:' sections; best with ExcelParser output)."
+        elif s == "markdown_table":
+            available = True
+            notes = "Markdown table-aware chunking (avoids splitting rows; splits large tables at row boundaries)."
+        elif s == "chat_history":
+            available = True
+            notes = "Timestamped chat history chunking (keeps whole messages together with message-level overlap)."
         elif s == "sentence_window":
             available = True
             notes = "Sentence window chunking with sentence-level overlap."

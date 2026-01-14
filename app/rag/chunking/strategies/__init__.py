@@ -24,6 +24,12 @@ Available strategies:
 - sop_steps: SOP/procedure step-aware chunking
 - glossary: Glossary/dictionary entry-aware chunking
 - sentence_window: Sentence window chunking with sentence overlap
+- resume_structured: Resume/CV section-aware chunking
+- presentation_slides: Slide-aware chunking
+- csv_rows: CSV row-aware chunking
+- spreadsheet_sheet: Spreadsheet sheet-aware chunking
+- markdown_table: Markdown table-aware chunking
+- chat_history: Timestamped chat history chunking
 """
 from app.rag.chunking.strategies.recursive import LangChainRecursiveChunker
 from app.rag.chunking.strategies.token import LangChainTokenChunker
@@ -55,6 +61,12 @@ from app.rag.chunking.strategies.email_thread import EmailThreadChunker
 from app.rag.chunking.strategies.sop_steps import SOPStepsChunker
 from app.rag.chunking.strategies.glossary import GlossaryChunker
 from app.rag.chunking.strategies.sentence_window import SentenceWindowChunker
+from app.rag.chunking.strategies.resume_structured import ResumeStructuredChunker
+from app.rag.chunking.strategies.presentation_slides import PresentationSlidesChunker
+from app.rag.chunking.strategies.csv_rows import CsvRowsChunker
+from app.rag.chunking.strategies.spreadsheet_sheet import SpreadsheetSheetChunker
+from app.rag.chunking.strategies.markdown_table import MarkdownTableChunker
+from app.rag.chunking.strategies.chat_history import ChatHistoryChunker
 
 __all__ = [
     "LangChainRecursiveChunker",
@@ -82,4 +94,10 @@ __all__ = [
     "SOPStepsChunker",
     "GlossaryChunker",
     "SentenceWindowChunker",
+    "ResumeStructuredChunker",
+    "PresentationSlidesChunker",
+    "CsvRowsChunker",
+    "SpreadsheetSheetChunker",
+    "MarkdownTableChunker",
+    "ChatHistoryChunker",
 ]

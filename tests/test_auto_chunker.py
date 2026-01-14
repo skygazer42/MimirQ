@@ -182,3 +182,118 @@ def test_auto_chunker_selects_book_for_book_text():
     assert chunks[0].metadata.get("chunk_strategy_auto") is True
     assert chunks[0].metadata.get("chunk_strategy_selected") == "book_structured"
 
+
+def test_auto_chunker_selects_chat_history_for_timestamped_chat():
+    chunker = AutoChunker(chunk_size=240, chunk_overlap=40)
+    text = (
+        "[2024-01-01 10:00] Alice: " + ("hello " * 12).strip() + "\n"
+        "[2024-01-01 10:01] Bob: " + ("hi " * 12).strip() + "\n"
+        "[2024-01-01 10:02] Alice: " + ("update " * 12).strip() + "\n"
+        "[2024-01-01 10:03] Bob: " + ("thanks " * 12).strip() + "\n"
+    )
+    docs = [Document(page_content=text, metadata={"file_type": "txt"})]
+    chunks = chunker.split_documents(docs)
+    assert chunks
+    assert chunks[0].metadata.get("chunk_strategy_auto") is True
+    assert chunks[0].metadata.get("chunk_strategy_selected") == "chat_history"
+
+
+def test_auto_chunker_selects_resume_for_resume_like_text():
+    chunker = AutoChunker(chunk_size=240, chunk_overlap=40)
+    text = (
+        "# Education\n"
+        + ("University of Example. " * 12)
+        + "\n"
+        "# Work Experience\n"
+        + ("Example Corp. " * 12)
+        + "\n"
+        "# Skills\n"
+        + ("Python, RAG, FastAPI. " * 12)
+        + "\n"
+        "Email: alice@example.com\n"
+    )
+    docs = [Document(page_content=text, metadata={"file_type": "md"})]
+    chunks = chunker.split_documents(docs)
+    assert chunks
+    assert chunks[0].metadata.get("chunk_strategy_auto") is True
+    assert chunks[0].metadata.get("chunk_strategy_selected") == "resume_structured"
+
+
+def test_auto_chunker_selects_presentation_for_slide_like_text():
+    chunker = AutoChunker(chunk_size=240, chunk_overlap=40)
+    text = (
+        "# Slide 1\n"
+        + ("intro " * 25).strip()
+        + "\n"
+        "---\n"
+        "# Slide 2\n"
+        + ("agenda " * 25).strip()
+        + "\n"
+        "---\n"
+        "# Slide 3\n"
+        + ("results " * 25).strip()
+        + "\n"
+    )
+    docs = [Document(page_content=text, metadata={"file_type": "md"})]
+    chunks = chunker.split_documents(docs)
+    assert chunks
+    assert chunks[0].metadata.get("chunk_strategy_auto") is True
+    assert chunks[0].metadata.get("chunk_strategy_selected") == "presentation_slides"
+
+
+def test_auto_chunker_selects_csv_rows_for_csv_parser_output():
+    chunker = AutoChunker(chunk_size=240, chunk_overlap=40)
+    text = (
+        "CSV: demo.csv\n"
+        "Delimiter: ','\n"
+        "Columns: name, age, note\n\n"
+        "row 1: name=Alice | age=30 | note=" + ("a" * 60) + "\n"
+        "row 2: name=Bob | age=31 | note=" + ("b" * 60) + "\n"
+        "row 3: name=Carol | age=29 | note=" + ("c" * 60) + "\n"
+    )
+    docs = [Document(page_content=text, metadata={"file_type": "csv"})]
+    chunks = chunker.split_documents(docs)
+    assert chunks
+    assert chunks[0].metadata.get("chunk_strategy_auto") is True
+    assert chunks[0].metadata.get("chunk_strategy_selected") == "csv_rows"
+
+
+def test_auto_chunker_selects_spreadsheet_sheet_for_excel_parser_output():
+    chunker = AutoChunker(chunk_size=240, chunk_overlap=40)
+    text = (
+        "Excel: demo.xlsx\n"
+        "Sheets: Sheet1, Sheet2\n\n"
+        "## Sheet: Sheet1\n\n"
+        "| A | B |\n"
+        "| --- | --- |\n"
+        "| 1 | 2 |\n\n"
+        "## Sheet: Sheet2\n\n"
+        "| X | Y |\n"
+        "| --- | --- |\n"
+        "| a | b |\n"
+    )
+    docs = [Document(page_content=text, metadata={"file_type": "xlsx"})]
+    chunks = chunker.split_documents(docs)
+    assert chunks
+    assert chunks[0].metadata.get("chunk_strategy_auto") is True
+    assert chunks[0].metadata.get("chunk_strategy_selected") == "spreadsheet_sheet"
+
+
+def test_auto_chunker_selects_markdown_table_for_table_heavy_markdown():
+    chunker = AutoChunker(chunk_size=240, chunk_overlap=40)
+    text = (
+        "# Table Demo\n\n"
+        "| Name | Score |\n"
+        "| --- | --- |\n"
+        "| Alice | 90 |\n"
+        "| Bob | 85 |\n"
+        "| Carol | 95 |\n\n"
+        + ("tail " * 30).strip()
+        + "\n"
+    )
+    docs = [Document(page_content=text, metadata={"file_type": "md"})]
+    chunks = chunker.split_documents(docs)
+    assert chunks
+    assert chunks[0].metadata.get("chunk_strategy_auto") is True
+    assert chunks[0].metadata.get("chunk_strategy_selected") == "markdown_table"
+
