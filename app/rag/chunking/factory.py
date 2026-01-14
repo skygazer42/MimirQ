@@ -32,6 +32,12 @@ from app.rag.chunking.strategies import (
     QAPairsChunker,
     PaperChunker,
     ManuscriptChunker,
+    BookStructuredChunker,
+    LawsStructuredChunker,
+    EmailThreadChunker,
+    SOPStepsChunker,
+    GlossaryChunker,
+    SentenceWindowChunker,
 )
 
 
@@ -46,6 +52,7 @@ class ChunkerFactory:
     - langchain_token: TokenTextSplitter (by token count)
     - parent_child: Two-level parent-child chunking
     - semantic_sentence: Sentence-boundary aggregation
+    - sentence_window: Sentence window (sentence overlap)
     - separator: Custom separator-based chunking
     - llama_index: LlamaIndex SentenceSplitter (disabled)
     - llama_index_hierarchical: LlamaIndex hierarchical (disabled)
@@ -58,6 +65,11 @@ class ChunkerFactory:
     - transcript: Transcript / dialogue aware chunking
     - qa_pairs: Q/A pair aware chunking
     - paper: Academic paper section aware chunking
+    - book_structured: Book chapter/part aware chunking
+    - laws_structured: Legal document clause-aware chunking
+    - email_thread: Email thread aware chunking
+    - sop_steps: SOP/procedure step-aware chunking
+    - glossary: Glossary/dictionary entry-aware chunking
 
     RAGFlow strategies (handled separately):
     - ragflow_naive: General-purpose chunking
@@ -72,6 +84,7 @@ class ChunkerFactory:
         "langchain_recursive": LangChainRecursiveChunker,
         "langchain_token": LangChainTokenChunker,
         "semantic_sentence": SemanticSentenceChunker,
+        "sentence_window": SentenceWindowChunker,
         "separator": SeparatorChunker,
         "llama_index": LlamaIndexChunker,
         "llama_index_hierarchical": LlamaIndexHierarchicalChunker,
@@ -87,6 +100,11 @@ class ChunkerFactory:
         "transcript": TranscriptChunker,
         "qa_pairs": QAPairsChunker,
         "paper": PaperChunker,
+        "book_structured": BookStructuredChunker,
+        "laws_structured": LawsStructuredChunker,
+        "email_thread": EmailThreadChunker,
+        "sop_steps": SOPStepsChunker,
+        "glossary": GlossaryChunker,
     }
 
     RAGFLOW_STRATEGIES = {
@@ -110,6 +128,19 @@ class ChunkerFactory:
         "faq": "qa_pairs",
         "qa": "qa_pairs",
         "qna": "qa_pairs",
+        "sop": "sop_steps",
+        "procedure": "sop_steps",
+        "workflow": "sop_steps",
+        "steps": "sop_steps",
+        "contract": "laws_structured",
+        "policy": "laws_structured",
+        "regulation": "laws_structured",
+        "dictionary": "glossary",
+        "terminology": "glossary",
+        "emailthread": "email_thread",
+        "mail_thread": "email_thread",
+        "book_local": "book_structured",
+        "laws_local": "laws_structured",
     }
 
     def resolve_strategy(self, strategy: Optional[str]) -> str:
