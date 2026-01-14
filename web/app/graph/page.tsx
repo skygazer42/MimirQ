@@ -21,7 +21,9 @@ import {
   Settings,
   MoreHorizontal,
   X,
+  BarChart3,
   Database,
+  Filter,
   Search,
   Layers,
   FileCode,
@@ -43,6 +45,8 @@ import { parseGraphML, GraphData } from '@/lib/graph-parser'
 import { GraphService } from '@/services/graph-service'
 import { findShortestPath } from '@/lib/graph-algorithms'
 import { cn } from '@/lib/utils'
+import { kgApi } from '@/lib/api-client'
+import type { KGEntityDetailResponse, KGEventDetailResponse, KGStatsResponse } from '@/types'
 
 export default function GraphPage() {
   const router = useRouter()
@@ -51,6 +55,13 @@ export default function GraphPage() {
   const [selectedNode, setSelectedNode] = useState<any | null>(null)
   const [isDetailOpen, setIsDetailOpen] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
+  const [dataSource, setDataSource] = useState<'live' | 'mock' | 'file'>('live')
+  const [includeEntityLinks, setIncludeEntityLinks] = useState(true)
+  const [minSharedEvents, setMinSharedEvents] = useState(2)
+  const maxEntityLinks = 1000
+  const [kgStats, setKgStats] = useState<KGStatsResponse | null>(null)
+  const [kgNodeDetail, setKgNodeDetail] = useState<KGEntityDetailResponse | KGEventDetailResponse | null>(null)
+  const [kgNodeDetailLoading, setKgNodeDetailLoading] = useState(false)
   
   // Search & Filter State
   const [searchTerm, setSearchTerm] = useState('')
@@ -114,16 +125,76 @@ export default function GraphPage() {
     }
   }, [deferredSearchTerm, searchMatches, isPathMode, isConnectMode, isExplainMode])
 
+  useEffect(() => {
+    if (dataSource !== 'live') {
+      setKgNodeDetail(null)
+      setKgNodeDetailLoading(false)
+      return
+    }
+    if (!isDetailOpen || !selectedNode?.id) {
+      setKgNodeDetail(null)
+      return
+    }
+
+    const kind = selectedNode?.meta?.kind
+    if (kind !== 'entity' && kind !== 'event') {
+      setKgNodeDetail(null)
+      return
+    }
+
+    let cancelled = false
+    setKgNodeDetail(null)
+    setKgNodeDetailLoading(true)
+    ;(async () => {
+      try {
+        const detail =
+          kind === 'entity' ? await kgApi.getEntity(selectedNode.id) : await kgApi.getEvent(selectedNode.id)
+        if (!cancelled) setKgNodeDetail(detail)
+      } catch (error) {
+        console.error('Fetch KG node detail failed:', error)
+        if (!cancelled) setKgNodeDetail(null)
+      } finally {
+        if (!cancelled) setKgNodeDetailLoading(false)
+      }
+    })()
+
+    return () => {
+      cancelled = true
+    }
+  }, [dataSource, isDetailOpen, selectedNode?.id, selectedNode?.meta?.kind])
+
   // Initialize with real (mock) data from service
-  const loadInitialData = async (source: 'live' | 'mock' = 'live') => {
+  const loadInitialData = async (
+    source: 'live' | 'mock' = 'live',
+    opts?: { includeEntityLinks?: boolean; minSharedEvents?: number }
+  ) => {
     setIsLoading(true)
     try {
-      console.log('Loading initial data...')
-      const data = await GraphService.fetchInitialGraph({ preferMock: source === 'mock' })
-      console.log('Data fetched:', data)
-      console.log('Setting graph data...')
+      const includeLinks = opts?.includeEntityLinks ?? includeEntityLinks
+      const sharedThreshold = opts?.minSharedEvents ?? minSharedEvents
+
+      const data = await GraphService.fetchInitialGraph({
+        preferMock: source === 'mock',
+        includeEntityLinks: source === 'live' ? includeLinks : undefined,
+        minSharedEvents: source === 'live' ? sharedThreshold : undefined,
+        maxEntityLinks: source === 'live' ? maxEntityLinks : undefined,
+      })
       setGraphData(data)
+      setDataSource(source)
+      setKgNodeDetail(null)
       setFileName(source === 'mock' ? '示例数据' : 'Knowledge Base (Live)')
+
+      if (source === 'live') {
+        try {
+          const stats = await kgApi.getStats()
+          setKgStats(stats)
+        } catch {
+          setKgStats(null)
+        }
+      } else {
+        setKgStats(null)
+      }
+
       setIsDetailOpen(false)
       setSelectedNode(null)
       resetPathMode()
@@ -148,6 +219,9 @@ export default function GraphPage() {
         const content = event.target?.result as string
         const parsedData = parseGraphML(content)
         setGraphData(parsedData)
+        setDataSource('file')
+        setKgStats(null)
+        setKgNodeDetail(null)
         setIsDetailOpen(false)
         setSelectedNode(null)
         resetPathMode()
@@ -171,11 +245,15 @@ export default function GraphPage() {
   const handleExpandNode = useCallback(async () => {
     if (!selectedNode) return
     
-    setIsLoading(true)
-    try {
-      const newData = await GraphService.expandNode(selectedNode.id)
-      
-      setGraphData(prev => {
+      setIsLoading(true)
+      try {
+      const newData = await GraphService.expandNode(selectedNode.id, {
+        includeEntityLinks: includeEntityLinks && dataSource === 'live',
+        minSharedEvents,
+        maxEntityLinks,
+      })
+       
+       setGraphData(prev => {
         const existingNodeIds = new Set(prev.nodes.map(n => n.id))
         const uniqueNewNodes = newData.nodes.filter(n => !existingNodeIds.has(n.id))
         
@@ -192,7 +270,7 @@ export default function GraphPage() {
     } finally {
       setIsLoading(false)
     }
-  }, [selectedNode])
+  }, [selectedNode, includeEntityLinks, minSharedEvents, maxEntityLinks, dataSource])
 
   const handleDeleteNode = useCallback(() => {
     if (!selectedNode) return
@@ -459,6 +537,53 @@ export default function GraphPage() {
     }
   }
 
+  const toggleEntityLinks = () => {
+    const next = !includeEntityLinks
+    setIncludeEntityLinks(next)
+    if (dataSource === 'live') {
+      loadInitialData('live', { includeEntityLinks: next })
+    }
+  }
+
+  const cycleMinSharedEvents = () => {
+    const options = [1, 2, 3, 4]
+    const idx = options.indexOf(minSharedEvents)
+    const next = options[(idx + 1) % options.length] || 2
+    setMinSharedEvents(next)
+    if (dataSource === 'live') {
+      loadInitialData('live', { minSharedEvents: next })
+    }
+  }
+
+  const handleExportGraphML = async () => {
+    if (dataSource !== 'live') {
+      toast.info('仅支持导出后端 KG 实时图谱')
+      return
+    }
+
+    setIsLoading(true)
+    try {
+      const xml = await kgApi.exportGraphML({
+        include_entity_links: includeEntityLinks,
+        min_shared_events: minSharedEvents,
+        max_entity_links: maxEntityLinks,
+      })
+      const blob = new Blob([xml], { type: 'application/graphml+xml;charset=utf-8' })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = 'mimirq-kg.graphml'
+      a.click()
+      URL.revokeObjectURL(url)
+      toast.success('已导出 GraphML')
+    } catch (error) {
+      console.error('Export GraphML failed:', error)
+      toast.error('导出 GraphML 失败')
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
   const handleSearchChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     setSearchTerm(e.target.value)
   }, [])
@@ -551,18 +676,66 @@ export default function GraphPage() {
              </div>
           )}
 
-          <div className="flex items-center gap-3 pointer-events-auto">
-             {fileName && (
-              <div className="hidden md:flex items-center gap-2 px-3 py-1.5 bg-gray-100/50 border border-gray-200 rounded-full text-xs text-gray-600 font-medium">
-                <FileCode className="w-3.5 h-3.5 text-gray-400" />
-                <span className="truncate max-w-[150px]">{fileName}</span>
-              </div>
-             )}
+           <div className="flex items-center gap-3 pointer-events-auto">
+              {fileName && (
+               <div className="hidden md:flex items-center gap-2 px-3 py-1.5 bg-gray-100/50 border border-gray-200 rounded-full text-xs text-gray-600 font-medium">
+                 <FileCode className="w-3.5 h-3.5 text-gray-400" />
+                 <span className="truncate max-w-[150px]">{fileName}</span>
+               </div>
+              )}
 
-            <div className="h-6 w-px bg-gray-200 mx-1 hidden sm:block"></div>
+              {dataSource === 'live' && kgStats && (
+                <div className="hidden lg:flex items-center gap-2 px-3 py-1.5 bg-gray-100/50 border border-gray-200 rounded-full text-xs text-gray-600 font-medium">
+                  <BarChart3 className="w-3.5 h-3.5 text-gray-400" />
+                  <span className="font-mono">
+                    E:{kgStats.events} N:{kgStats.entities} L:{kgStats.links}
+                  </span>
+                </div>
+              )}
 
-            <Button variant="ghost" size="sm" onClick={() => loadInitialData('live')} disabled={isLoading} className="text-gray-600 hover:text-indigo-600 hover:bg-indigo-50">
-              <RefreshCw className={cn("w-4 h-4 mr-2", isLoading && "animate-spin")} />
+              {dataSource === 'live' && (
+                <>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={toggleEntityLinks}
+                    className={cn(
+                      "text-gray-600 hover:text-indigo-600 hover:bg-indigo-50",
+                      includeEntityLinks && "bg-indigo-50 text-indigo-600"
+                    )}
+                    title="实体-实体共现连线"
+                  >
+                    <LinkIcon className="w-4 h-4 mr-2" />
+                    {includeEntityLinks ? '实体连线: ON' : '实体连线: OFF'}
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={cycleMinSharedEvents}
+                    className="text-gray-600 hover:text-indigo-600 hover:bg-indigo-50"
+                    title="最小共现事件数（点击循环）"
+                  >
+                    <Filter className="w-4 h-4 mr-2" />
+                    Co≥{minSharedEvents}
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={handleExportGraphML}
+                    disabled={isLoading}
+                    className="text-gray-600 hover:text-indigo-600 hover:bg-indigo-50"
+                    title="导出 GraphML"
+                  >
+                    <FileCode className="w-4 h-4 mr-2" />
+                    导出
+                  </Button>
+                </>
+              )}
+ 
+             <div className="h-6 w-px bg-gray-200 mx-1 hidden sm:block"></div>
+ 
+             <Button variant="ghost" size="sm" onClick={() => loadInitialData('live')} disabled={isLoading} className="text-gray-600 hover:text-indigo-600 hover:bg-indigo-50">
+               <RefreshCw className={cn("w-4 h-4 mr-2", isLoading && "animate-spin")} />
               {isLoading ? '加载中...' : '刷新'}
             </Button>
 
@@ -771,6 +944,66 @@ export default function GraphPage() {
                     </Button>
                   </div>
 
+                  {/* KG Detail (Live) */}
+                  {dataSource === 'live' && (selectedNode?.meta?.kind === 'entity' || selectedNode?.meta?.kind === 'event') && (
+                    <div>
+                      <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3 flex items-center gap-2">
+                        <Network className="w-3 h-3" />
+                        KG Detail
+                      </h3>
+
+                      {kgNodeDetailLoading ? (
+                        <div className="text-xs text-gray-500 bg-gray-50 rounded-xl p-3 border border-gray-100">
+                          Loading...
+                        </div>
+                      ) : !kgNodeDetail ? (
+                        <div className="text-xs text-gray-400 bg-gray-50 rounded-xl p-3 border border-gray-100">
+                          No KG detail available
+                        </div>
+                      ) : selectedNode?.meta?.kind === 'entity' ? (
+                        <div className="space-y-3">
+                          <div className="bg-gray-50 rounded-xl p-3 border border-gray-100">
+                            <div className="text-[10px] font-medium text-gray-500 mb-1">Recent Events</div>
+                            <div className="space-y-1">
+                              {(kgNodeDetail as KGEntityDetailResponse).events?.slice(0, 6)?.map((ev) => (
+                                <div key={ev.id} className="text-xs text-gray-800 truncate" title={ev.title}>
+                                  {ev.title}
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                          <div className="bg-gray-50 rounded-xl p-3 border border-gray-100">
+                            <div className="text-[10px] font-medium text-gray-500 mb-1">Top Neighbors</div>
+                            <div className="space-y-1">
+                              {(kgNodeDetail as KGEntityDetailResponse).neighbors?.slice(0, 8)?.map((n) => (
+                                <div key={n.entity_id} className="flex items-center justify-between gap-2 text-xs">
+                                  <span className="text-gray-800 truncate" title={n.name}>
+                                    {n.name || n.entity_id}
+                                  </span>
+                                  <span className="text-gray-400 font-mono">{n.count}</span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="bg-gray-50 rounded-xl p-3 border border-gray-100">
+                          <div className="text-[10px] font-medium text-gray-500 mb-2">Entities</div>
+                          <div className="space-y-1">
+                            {(kgNodeDetail as KGEventDetailResponse).entities?.slice(0, 12)?.map((row) => (
+                              <div key={row.entity.id} className="flex items-center justify-between gap-2 text-xs">
+                                <span className="text-gray-800 truncate" title={row.entity.name}>
+                                  {row.entity.name || row.entity.id}
+                                </span>
+                                <span className="text-gray-400">{row.role || row.entity.type}</span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
                   {/* Properties List */}
                   <div>
                     <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3 flex items-center gap-2">
@@ -779,7 +1012,7 @@ export default function GraphPage() {
                     </h3>
                     <div className="space-y-3">
                       {Object.entries(selectedNode)
-                        .filter(([key]) => !['id', 'label', 'x', 'y', 'z', 'vx', 'vy', 'vz', 'fx', 'fy', 'fz', 'index', 'color', '__bckgDimensions', 'source'].includes(key))
+                        .filter(([key]) => !['id', 'label', 'x', 'y', 'z', 'vx', 'vy', 'vz', 'fx', 'fy', 'fz', 'index', 'color', '__bckgDimensions', 'source', 'meta'].includes(key))
                         .map(([key, value]) => (
                           <div key={key} className="bg-gray-50 rounded-xl p-3 border border-gray-100">
                             <span className="block text-xs font-medium text-gray-500 mb-1 capitalize">{key}</span>

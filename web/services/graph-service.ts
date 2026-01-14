@@ -32,7 +32,14 @@ export class GraphService {
   /**
    * Fetch the initial graph data (e.g., top entities or root nodes)
    */
-  static async fetchInitialGraph(options: { preferMock?: boolean } = {}): Promise<GraphData> {
+  static async fetchInitialGraph(
+    options: {
+      preferMock?: boolean
+      includeEntityLinks?: boolean
+      minSharedEvents?: number
+      maxEntityLinks?: number
+    } = {}
+  ): Promise<GraphData> {
     if (options.preferMock) {
       await delay(200)
       return GraphService.getMockGraph()
@@ -40,7 +47,11 @@ export class GraphService {
 
     // Try KG live graph first; fallback to mock data (so the page remains usable when KG is disabled).
     try {
-      const data = await kgApi.getGraph()
+      const data = await kgApi.getGraph({
+        include_entity_links: options.includeEntityLinks,
+        min_shared_events: options.minSharedEvents,
+        max_entity_links: options.maxEntityLinks,
+      })
       const nodes = Array.isArray(data?.nodes) ? data.nodes : []
       const links = Array.isArray(data?.links) ? data.links : []
       if (nodes.length > 0) {
@@ -57,7 +68,10 @@ export class GraphService {
   /**
    * Fetch neighbors for a specific node (Lazy Loading)
    */
-  static async expandNode(nodeId: string): Promise<GraphData> {
+  static async expandNode(
+    nodeId: string,
+    options?: { includeEntityLinks?: boolean; minSharedEvents?: number; maxEntityLinks?: number }
+  ): Promise<GraphData> {
     // Prefer backend KG expansion for UUID-like nodes; otherwise fallback to mock expansion
     if (UUID_RE.test(String(nodeId || '').trim())) {
       try {
@@ -66,6 +80,9 @@ export class GraphService {
           max_events: 50,
           max_entities: 400,
           max_links: 5000,
+          include_entity_links: options?.includeEntityLinks,
+          min_shared_events: options?.minSharedEvents,
+          max_entity_links: options?.maxEntityLinks,
         })
         if (data?.nodes && data?.links) {
           return JSON.parse(JSON.stringify({ nodes: data.nodes, links: data.links }))

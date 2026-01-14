@@ -258,27 +258,32 @@ export const GraphViewer = forwardRef<GraphViewerRef, GraphViewerProps>(({
           // Link styling
           linkColor={(link: any) => {
              const linkId = link.id || (link.index !== undefined ? `link-${link.index}` : null)
-             if (highlightedLinkIds.size > 0 && linkId && highlightedLinkIds.has(linkId)) {
-                return '#f59e0b' // Amber 500 (Path Highlight)
-             }
-             if (highlightedNodeIds.size > 0) {
-               const sourceId = typeof link.source === 'object' ? link.source.id : link.source
-               const targetId = typeof link.target === 'object' ? link.target.id : link.target
-               if (highlightedNodeIds.has(sourceId) && highlightedNodeIds.has(targetId)) {
-                 return '#94a3b8' 
-               }
-               return '#e2e8f0' 
-             }
-             return '#cbd5e1'
-          }}
+             const linkKind = link?.meta?.kind || link?.kind
+              if (highlightedLinkIds.size > 0 && linkId && highlightedLinkIds.has(linkId)) {
+                 return '#f59e0b' // Amber 500 (Path Highlight)
+              }
+              if (highlightedNodeIds.size > 0) {
+                const sourceId = typeof link.source === 'object' ? link.source.id : link.source
+                const targetId = typeof link.target === 'object' ? link.target.id : link.target
+                if (highlightedNodeIds.has(sourceId) && highlightedNodeIds.has(targetId)) {
+                  return '#94a3b8' 
+                }
+                return '#e2e8f0' 
+              }
+
+              if (linkKind === 'entity_entity') return '#c4b5fd' // purple-300
+              return '#cbd5e1'
+           }}
           linkWidth={(link: any) => {
-            const linkId = link.id || (link.index !== undefined ? `link-${link.index}` : null)
-            if (highlightedLinkIds.size > 0 && linkId && highlightedLinkIds.has(linkId)) {
-                return 4 
-             }
-             if (highlightedNodeIds.size > 0) return 1
-             return 1.5
-          }}
+             const linkId = link.id || (link.index !== undefined ? `link-${link.index}` : null)
+             const linkKind = link?.meta?.kind || link?.kind
+             if (highlightedLinkIds.size > 0 && linkId && highlightedLinkIds.has(linkId)) {
+                 return 4 
+              }
+              if (highlightedNodeIds.size > 0) return 1
+              if (linkKind === 'entity_entity') return 1
+              return 1.5
+           }}
           linkDirectionalArrowLength={arrowLength}
           linkDirectionalArrowRelPos={1}
           cooldownTicks={cooldownTicks}

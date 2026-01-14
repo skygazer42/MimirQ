@@ -5,6 +5,7 @@
 
 import { useEffect, useState } from 'react'
 import { Loader2, FileText, Info, Database, Calendar, Tag, FileType, Hash, Eye } from 'lucide-react'
+import { toast } from 'sonner'
 
 import {
   Dialog,
@@ -16,7 +17,7 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
-import { documentApi } from '@/lib/api-client'
+import { documentApi, kgApi } from '@/lib/api-client'
 import { formatFileSize, formatDate } from '@/lib/utils'
 import { getParserLabel } from '@/lib/parser-options'
 import { getChunkStrategyLabel } from '@/lib/chunk-strategies'
@@ -33,6 +34,7 @@ export function DocumentDetailDialog({ document, trigger }: DocumentDetailDialog
   const [detail, setDetail] = useState<Document | null>(null)
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [isKgWorking, setIsKgWorking] = useState(false)
 
   useEffect(() => {
     if (!open) return
@@ -73,6 +75,36 @@ export function DocumentDetailDialog({ document, trigger }: DocumentDetailDialog
   
   // 使用详情中的信息优先，否则回退到列表中的简略信息
   const displayDoc = detail || document
+  const canRunKg = displayDoc.status === 'completed' && !isKgWorking
+
+  const handleExtractKG = async () => {
+    if (!canRunKg) return
+    setIsKgWorking(true)
+    try {
+      await kgApi.extract(displayDoc.id, { async: true, replace_existing: true, prune_orphan_entities: true })
+      toast.success('已提交 KG 抽取任务（可前往图谱页刷新查看）')
+    } catch (err: any) {
+      console.error('KG extract failed:', err)
+      toast.error(err?.message || 'KG 抽取失败')
+    } finally {
+      setIsKgWorking(false)
+    }
+  }
+
+  const handleDeleteKG = async () => {
+    if (isKgWorking) return
+    if (!confirm('确定要删除该文档的 KG 事件吗？')) return
+    setIsKgWorking(true)
+    try {
+      const res = await kgApi.deleteDocumentKG(displayDoc.id, { prune_orphan_entities: true })
+      toast.success(`已删除 KG 事件 ${res.events_deleted}，清理实体 ${res.entities_pruned}`)
+    } catch (err: any) {
+      console.error('KG delete failed:', err)
+      toast.error(err?.message || '删除 KG 失败')
+    } finally {
+      setIsKgWorking(false)
+    }
+  }
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -208,9 +240,33 @@ export function DocumentDetailDialog({ document, trigger }: DocumentDetailDialog
         </div>
 
         <DialogFooter className="bg-white dark:bg-slate-900 p-4 border-t border-slate-100 dark:border-slate-800 shrink-0">
-          <Button onClick={() => setOpen(false)} className="w-full sm:w-auto bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 hover:bg-slate-800 dark:hover:bg-slate-200">
-            关闭
-          </Button>
+          <div className="w-full flex flex-col sm:flex-row gap-2 sm:items-center sm:justify-between">
+            <div className="flex flex-col sm:flex-row gap-2">
+              <Button
+                variant="outline"
+                onClick={handleExtractKG}
+                disabled={!canRunKg}
+                className="w-full sm:w-auto"
+              >
+                {isKgWorking ? 'KG 处理中...' : '抽取 KG'}
+              </Button>
+              <Button
+                variant="outline"
+                onClick={handleDeleteKG}
+                disabled={isKgWorking}
+                className="w-full sm:w-auto"
+              >
+                清理 KG
+              </Button>
+            </div>
+
+            <Button
+              onClick={() => setOpen(false)}
+              className="w-full sm:w-auto bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 hover:bg-slate-800 dark:hover:bg-slate-200"
+            >
+              关闭
+            </Button>
+          </div>
         </DialogFooter>
       </DialogContent>
     </Dialog>

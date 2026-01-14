@@ -132,7 +132,18 @@ interface FileGovernanceState {
 
 export function DataGovernancePanel() {
   const router = useRouter()
-  const { files, folders: libraryFolders, activeFolderId, createFolder, isLoaded, clearAll, addParsedFile, updateParsedFile, removeFile } = useParsedFiles()
+  const {
+    files,
+    folders: libraryFolders,
+    activeFolderId,
+    setActiveFolderId,
+    createFolder,
+    isLoaded,
+    clearAll,
+    addParsedFile,
+    updateParsedFile,
+    removeFile,
+  } = useParsedFiles()
   const { parserBackend } = useParserBackendPreference()
 
   // UI 状态
