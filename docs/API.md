@@ -1104,4 +1104,212 @@ payload = {
 }
 ```
 
+## 重排序 Reranker
+
+重排序可提高检索精度，但会增加延迟。
+
+| 参数 | 类型 | 默认值 | 说明 |
+|------|------|--------|------|
+| `enable_reranker` | bool | false | 是否启用 |
+| `reranker_provider` | string | "llm" | 提供者：llm/pc/none |
+| `reranker_top_n` | int | 20 | 重排序候选数量 |
+
+**使用示例：**
+```json
+{
+  "enable_reranker": true,
+  "reranker_provider": "llm",
+  "reranker_top_n": 15
+}
+```
+
+---
+
+# Postman 使用指南
+
+## 导入配置
+
+### 1. 创建环境变量
+
+在 Postman 中创建环境，添加以下变量：
+
+| 变量名 | 值 | 说明 |
+|--------|-----|------|
+| `base_url` | `http://localhost:8000/api/v1` | API 地址 |
+| `token` | （登录后填入） | JWT Token |
+
+### 2. 设置请求头
+
+在 Collection 级别设置通用请求头：
+
+```
+Authorization: Bearer {{token}}
+Content-Type: application/json
+```
+
+### 3. 自动保存 Token
+
+在登录请求的 **Tests** 标签中添加脚本：
+
+```javascript
+if (pm.response.code === 200) {
+    var jsonData = pm.response.json();
+    pm.environment.set("token", jsonData.token.access_token);
+    console.log("Token 已自动保存");
+}
+```
+
+## 测试流式响应
+
+Postman 对 SSE 支持有限，建议：
+
+1. 使用 **curl** 测试流式接口
+2. 或在 Postman 中将 `stream` 设为 `false`
+
+```json
+{
+  "message": "测试问题",
+  "document_ids": ["{{doc_id}}"],
+  "stream": false
+}
+```
+
+---
+
+# 实战场景示例
+
+## 场景1：企业客服机器人
+
+**需求：** 基于产品手册回答用户问题
+
+```python
+# 1. 上传产品手册
+doc = client.upload_document("产品手册.pdf")
+
+# 2. 等待处理
+wait_for_completion(doc["id"])
+
+# 3. 配置高精度检索
+rag_config = {
+    "top_k": 5,
+    "score_threshold": 0.75,
+    "retrieval_mode": "hybrid",
+    "enable_reranker": True
+}
+
+# 4. 回答用户问题
+for event in client.chat_stream(
+    "如何重置密码？",
+    document_ids=[doc["id"]],
+    rag_config=rag_config
+):
+    if event["type"] == "token":
+        print(event["data"]["content"], end="")
+```
+
+## 场景2：文档摘要生成
+
+**需求：** 自动生成文档摘要
+
+```python
+# 使用结构化输出
+response = client.chat(
+    message="请总结这份文档的要点",
+    document_ids=[doc_id],
+    structured_output=True,
+    structured_preset="summary"
+)
+```
+
+## 场景3：多文档对比分析
+
+**需求：** 对比多份报告的差异
+
+```python
+# 上传多份文档
+doc_ids = [
+    client.upload_document("报告2023.pdf")["id"],
+    client.upload_document("报告2024.pdf")["id"]
+]
+
+# 对比分析
+client.chat_stream(
+    "对比这两份报告的主要变化",
+    document_ids=doc_ids,
+    rag_config={"top_k": 10}
+)
+```
+
+---
+
+# 调试与排错指南
+
+## 检索效果调试
+
+使用 RAG 调试接口查看检索结果：
+
+```bash
+POST /api/v1/rag/retrieve-preview
+```
+
+```json
+{
+  "query": "你的问题",
+  "document_ids": ["doc-id"],
+  "rag_config": {"top_k": 10}
+}
+```
+
+**返回内容包含：**
+- 检索到的文档块
+- 每个块的相似度分数
+- 向量分数和关键词分数
+
+## 常见问题排查
+
+### 问题：回答不准确
+
+**排查步骤：**
+1. 检查检索结果是否相关
+2. 调整 `top_k` 和 `score_threshold`
+3. 启用重排序
+
+### 问题：文档处理卡住
+
+**排查步骤：**
+1. 检查文档格式是否支持
+2. 查看后端日志
+3. 尝试更换解析器
+
+### 问题：响应速度慢
+
+**优化建议：**
+1. 减少 `top_k` 值
+2. 关闭重排序
+3. 检查网络延迟
+
+## 健康检查
+
+```bash
+# 快速检查
+curl http://localhost:8000/api/v1/health
+
+# 详细状态
+curl http://localhost:8000/api/v1/health/ready
+```
+
+## 日志查看
+
+后端日志位置：
+- 控制台输出
+- `logs/` 目录（如配置）
+
+**关键日志关键词：**
+- `ERROR` - 错误信息
+- `retrieval` - 检索相关
+- `LLM` - 模型调用
+
+---
+
+*文档版本：2.0 | 最后更新：2024*
 
