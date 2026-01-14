@@ -120,7 +120,7 @@ def _build_job_blocks(text: str) -> List[_JobBlock]:
 
 
 def looks_like_github_actions_workflow(text: str) -> bool:
-    if not text or len(text) < 160:
+    if not text or len(text) < 80:
         return False
     head = (text or "")[:20000].lower()
     if "jobs:" not in head:

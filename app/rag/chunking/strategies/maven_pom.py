@@ -26,16 +26,16 @@ class _Record:
     ga: Optional[str]
 
 
-_DEPENDENCY_START_RE = re.compile(r"(?is)<dependency\\b[^>]*>")
-_DEPENDENCY_END_RE = re.compile(r"(?is)</dependency\\s*>")
-_PLUGIN_START_RE = re.compile(r"(?is)<plugin\\b[^>]*>")
-_PLUGIN_END_RE = re.compile(r"(?is)</plugin\\s*>")
-_GROUP_ID_RE = re.compile(r"(?is)<groupId\\b[^>]*>(?P<body>.*?)</groupId\\s*>")
-_ARTIFACT_ID_RE = re.compile(r"(?is)<artifactId\\b[^>]*>(?P<body>.*?)</artifactId\\s*>")
+_DEPENDENCY_START_RE = re.compile(r"(?is)<dependency\b[^>]*>")
+_DEPENDENCY_END_RE = re.compile(r"(?is)</dependency\s*>")
+_PLUGIN_START_RE = re.compile(r"(?is)<plugin\b[^>]*>")
+_PLUGIN_END_RE = re.compile(r"(?is)</plugin\s*>")
+_GROUP_ID_RE = re.compile(r"(?is)<groupId\b[^>]*>(?P<body>.*?)</groupId\s*>")
+_ARTIFACT_ID_RE = re.compile(r"(?is)<artifactId\b[^>]*>(?P<body>.*?)</artifactId\s*>")
 
 
 def _clean_text(s: str) -> str:
-    out = re.sub(r"\\s+", " ", (s or "").strip())
+    out = re.sub(r"\s+", " ", (s or "").strip())
     return out
 
 
@@ -91,7 +91,7 @@ def _iter_records(text: str) -> List[_Record]:
 
 
 def looks_like_maven_pom(text: str) -> bool:
-    if not text or len(text) < 200:
+    if not text or len(text) < 120:
         return False
     head = (text or "")[:20000].lower()
     if "<project" not in head:

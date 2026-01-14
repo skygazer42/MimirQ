@@ -26,11 +26,11 @@ class _Entry:
     loc: Optional[str]
 
 
-_URL_START_RE = re.compile(r"(?is)<url\\b[^>]*>")
-_URL_END_RE = re.compile(r"(?is)</url\\s*>")
-_SITEMAP_START_RE = re.compile(r"(?is)<sitemap\\b[^>]*>")
-_SITEMAP_END_RE = re.compile(r"(?is)</sitemap\\s*>")
-_LOC_RE = re.compile(r"(?is)<loc\\b[^>]*>(?P<body>.*?)</loc\\s*>")
+_URL_START_RE = re.compile(r"(?is)<url\b[^>]*>")
+_URL_END_RE = re.compile(r"(?is)</url\s*>")
+_SITEMAP_START_RE = re.compile(r"(?is)<sitemap\b[^>]*>")
+_SITEMAP_END_RE = re.compile(r"(?is)</sitemap\s*>")
+_LOC_RE = re.compile(r"(?is)<loc\b[^>]*>(?P<body>.*?)</loc\s*>")
 
 
 def _extract_loc(block_text: str) -> Optional[str]:
@@ -38,7 +38,7 @@ def _extract_loc(block_text: str) -> Optional[str]:
     if not m:
         return None
     loc = (m.group("body") or "").strip()
-    loc = re.sub(r"\\s+", " ", loc)
+    loc = re.sub(r"\s+", " ", loc)
     return loc[:300] or None
 
 
@@ -73,7 +73,7 @@ def _iter_entries(text: str, *, kind: str) -> List[_Entry]:
 
 
 def looks_like_sitemap_xml(text: str) -> bool:
-    if not text or len(text) < 200:
+    if not text or len(text) < 80:
         return False
     lowered = (text or "").lower()
     if "<urlset" not in lowered and "<sitemapindex" not in lowered:
@@ -172,4 +172,3 @@ class SitemapXMLChunker(BaseChunker):
             chunk.metadata = meta
 
         return out
-

@@ -27,8 +27,8 @@ class _ChangeBlock:
     action: str
 
 
-_CHANGE_RE = re.compile(r"(?m)^\\s*#\\s+(?P<addr>.+?)\\s+will\\s+be\\s+(?P<action>.+?)\\s*$")
-_PLAN_HINT_RE = re.compile(r"(?i)terraform\\s+will\\s+perform\\s+the\\s+following\\s+actions|^\\s*Plan:\\s*\\d+", re.MULTILINE)
+_CHANGE_RE = re.compile(r"(?m)^\s*#\s+(?P<addr>.+?)\s+will\s+be\s+(?P<action>.+?)\s*$")
+_PLAN_HINT_RE = re.compile(r"(?i)terraform\s+will\s+perform\s+the\s+following\s+actions|^\s*Plan:\s*\d+", re.MULTILINE)
 
 
 def _build_change_blocks(text: str) -> List[_ChangeBlock]:
@@ -46,7 +46,7 @@ def _build_change_blocks(text: str) -> List[_ChangeBlock]:
 
 
 def looks_like_terraform_plan(text: str) -> bool:
-    if not text or len(text) < 200:
+    if not text or len(text) < 120:
         return False
     head = (text or "")[:200000]
     if not _PLAN_HINT_RE.search(head):
