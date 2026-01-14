@@ -1,0 +1,177 @@
+"""
+Terraform/HCL block-aware chunking strategy.
+
+Targets Terraform-style HCL with blocks such as:
+- resource "aws_instance" "web" { ... }
+- module "vpc" { ... }
+- variable "region" { ... }
+
+The chunker splits by top-level blocks (brace-aware) and preserves offsets.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+import re
+from typing import Any, List, Optional
+
+from langchain_core.documents import Document
+from langchain_text_splitters import RecursiveCharacterTextSplitter
+
+from app.rag.chunking.base import BaseChunker
+
+
+@dataclass(frozen=True)
+class _Block:
+    start: int
+    end: int
+    kind: str
+    labels: list[str]
+    index: int
+
+
+@dataclass(frozen=True)
+class _Section:
+    start: int
+    end: int
+    block: Optional[_Block]
+
+
+_BLOCK_START_RE = re.compile(
+    r"(?m)^\s*(?P<kind>resource|data|module|variable|output|provider|locals|terraform)\b(?P<rest>[^\\n{]*)\{"
+)
+_QUOTED_RE = re.compile(r"\"([^\"]{1,120})\"")
+
+
+def _find_matching_brace(text: str, start: int) -> Optional[int]:
+    brace_pos = text.find("{", start)
+    if brace_pos < 0:
+        return None
+    depth = 0
+    for i in range(brace_pos, len(text)):
+        ch = text[i]
+        if ch == "{":
+            depth += 1
+        elif ch == "}":
+            depth -= 1
+            if depth == 0:
+                end = i + 1
+                if end < len(text) and text[end : end + 1] == "\n":
+                    end += 1
+                return end
+    return None
+
+
+def _parse_labels(kind: str, rest: str) -> list[str]:
+    kind = (kind or "").strip().lower()
+    rest = rest or ""
+    quoted = [m.group(1) for m in _QUOTED_RE.finditer(rest)]
+    if quoted:
+        return quoted[:3]
+    # For locals/terraform blocks without labels.
+    return []
+
+
+def _iter_blocks(text: str) -> List[_Block]:
+    blocks: List[_Block] = []
+    for m in _BLOCK_START_RE.finditer(text or ""):
+        end = _find_matching_brace(text, m.start())
+        if end is None:
+            continue
+        kind = (m.group("kind") or "").strip().lower()
+        rest = (m.group("rest") or "").strip()
+        labels = _parse_labels(kind, rest)
+        blocks.append(_Block(start=m.start(), end=end, kind=kind, labels=labels, index=len(blocks)))
+    return blocks
+
+
+def _build_sections(text: str, blocks: List[_Block]) -> List[_Section]:
+    if not blocks:
+        return [_Section(start=0, end=len(text), block=None)]
+    sections: List[_Section] = []
+    first = blocks[0]
+    if first.start > 0:
+        sections.append(_Section(start=0, end=first.start, block=None))
+    for idx, b in enumerate(blocks):
+        start = b.start
+        end = blocks[idx + 1].start if idx + 1 < len(blocks) else len(text)
+        end = max(end, b.end)
+        sections.append(_Section(start=start, end=end, block=b))
+    return sections
+
+
+def looks_like_terraform_hcl(text: str) -> bool:
+    if not text or len(text) < 120:
+        return False
+    head = (text or "")[:12000].lower()
+    if "terraform {" in head or "provider " in head or "resource " in head:
+        # Ensure braces + at least one block start.
+        return _BLOCK_START_RE.search(text) is not None
+    blocks = _iter_blocks(text)
+    return len(blocks) >= 2
+
+
+class TerraformHCLChunker(BaseChunker):
+    def __init__(self, chunk_size: int, chunk_overlap: int):
+        self.chunk_size = int(chunk_size)
+        self.chunk_overlap = int(chunk_overlap)
+
+        self._fallback_splitter = RecursiveCharacterTextSplitter(
+            chunk_size=self.chunk_size,
+            chunk_overlap=self.chunk_overlap,
+            separators=["\n\n", "\n", "}", " ", ""],
+            length_function=len,
+            add_start_index=True,
+        )
+
+    def split_documents(self, documents: List[Document]) -> List[Document]:
+        out: List[Document] = []
+
+        for doc in documents:
+            text = doc.page_content or ""
+            base_meta = dict(doc.metadata or {})
+            if not text.strip():
+                continue
+
+            blocks = _iter_blocks(text)
+            sections = _build_sections(text, blocks)
+
+            current: Optional[_Block] = None
+            for section in sections:
+                sec_text = text[section.start : section.end]
+                if not sec_text.strip():
+                    continue
+                if section.block is not None:
+                    current = section.block
+
+                split_docs = self._fallback_splitter.create_documents(texts=[sec_text], metadatas=[base_meta])
+                for sd in split_docs:
+                    local_start = sd.metadata.pop("start_index", None) or 0
+                    abs_start = section.start + int(local_start)
+                    abs_end = abs_start + len(sd.page_content)
+
+                    meta: dict[str, Any] = dict(base_meta)
+                    meta.update(sd.metadata or {})
+                    meta["chunk_strategy"] = "terraform_hcl"
+                    meta["start_char"] = abs_start
+                    meta["end_char"] = abs_end
+                    meta.setdefault("doc_type_kwd", "hcl")
+                    if current is not None:
+                        meta["hcl_block_type"] = current.kind
+                        if current.labels:
+                            meta["hcl_block_labels"] = current.labels
+                            meta["hcl_block_label"] = current.labels[0]
+                        if current.kind in {"resource", "data"} and len(current.labels) >= 2:
+                            meta["hcl_address"] = f"{current.kind}.{current.labels[0]}.{current.labels[1]}"
+                        elif current.kind in {"module", "variable", "output", "provider"} and current.labels:
+                            meta["hcl_address"] = f"{current.kind}.{current.labels[0]}"
+
+                    out.append(Document(page_content=sd.page_content, metadata=meta))
+
+        for idx, chunk in enumerate(out):
+            meta = dict(chunk.metadata or {})
+            meta["chunk_index"] = idx
+            chunk.metadata = meta
+
+        return out
+
