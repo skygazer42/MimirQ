@@ -1,4 +1,4 @@
-.PHONY: help up up-web up-etl4llm up-marker up-paddlevl up-mineru up-olmocr up-dev up-dev-web up-prod up-prod-web infra-up infra-up-etl4llm infra-up-marker infra-up-paddlevl infra-up-mineru infra-up-olmocr infra-ps infra-down down ps logs restart backend web test api-check api-smoke typecheck lint-py audit-py audit-web audit openapi-export openapi-types openapi-check db-upgrade db-revision verify parser-status clean
+.PHONY: help up up-web up-etl4llm up-marker up-paddlevl up-mineru up-olmocr up-dev up-dev-web up-prod up-prod-web infra-up infra-up-etl4llm infra-up-marker infra-up-paddlevl infra-up-mineru infra-up-olmocr infra-ps infra-down down ps logs restart backend web test api-check api-smoke typecheck lint-py audit-py audit-web audit openapi-export openapi-types openapi-check db-upgrade db-revision verify parser-status clean doctor
 
 PY := python3
 ifeq ($(OS),Windows_NT)
@@ -54,6 +54,7 @@ help:
 	@echo "  make verify    - api-check + web lint/typecheck + backend compileall"
 	@echo "  make parser-status - print parser backend availability"
 	@echo "  make clean     - remove local caches"
+	@echo "  make doctor    - quick env sanity checks"
 
 up:
 	$(COMPOSE) up -d --build
@@ -168,9 +169,7 @@ openapi-types:
 
 openapi-check:
 	@$(MAKE) openapi-types
-	test -s web/openapi.json
-	test -s web/types/openapi.ts
-	git diff --quiet --exit-code -- web/openapi.json web/types/openapi.ts || (echo "[openapi-check] FAIL: OpenAPI artifacts differ. Run 'make openapi-types' and commit changes." && exit 1)
+	$(PY) scripts/openapi_check.py
 
 db-upgrade:
 	alembic upgrade head
@@ -186,6 +185,7 @@ verify:
 	PYTHONPYCACHEPREFIX=/tmp/mimirq-pycache $(PY) -m compileall -q app
 
 clean:
-	rm -rf .pytest_cache
-	find . -type d -name "__pycache__" -prune -exec rm -rf {} +
-	rm -rf web/.next web/.next_build
+	$(PY) scripts/clean.py
+
+doctor:
+	$(PY) scripts/doctor.py

@@ -1,6 +1,14 @@
-const rawApiBaseUrl = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000').trim()
+function resolveApiBaseUrl(): string {
+  const publicUrl = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000').trim()
+  const internalUrl = (process.env.API_INTERNAL_URL || '').trim()
 
-export const API_BASE_URL = rawApiBaseUrl.replace(/\/+$/, '')
+  // In Docker, the browser should call the host-mapped backend (usually http://localhost:8000),
+  // but the Next.js server (SSR) must call the backend via container-to-container DNS.
+  const chosen = typeof window === 'undefined' && internalUrl ? internalUrl : publicUrl
+  return chosen.replace(/\/+$/, '')
+}
+
+export const API_BASE_URL = resolveApiBaseUrl()
 
 export const API_V1_BASE_URL = `${API_BASE_URL}/api/v1`
 

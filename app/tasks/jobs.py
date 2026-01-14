@@ -3,7 +3,7 @@ Queue job implementations (worker side).
 
 Notes:
 - Jobs must re-validate tenant/document ownership to avoid cross-tenant access.
-- Idempotent locks/cache are TODO; this provides a minimal runnable skeleton.
+- Jobs use best-effort Redis locks/semaphores to avoid duplicate work.
 """
 
 
@@ -16,51 +16,9 @@ from app.models.document import Document as DBDocument
 from app.parsing.processors.processor import document_processor
 from app.rag.core.logging import get_logger
 from app.core.config import settings
+from app.tasks.locks import acquire_lock, get_retry_exc, make_lock_value, release_lock, tenant_acquire, tenant_release
 
 logger = get_logger("tasks.jobs")
-
-def _get_retry_exc():
-    try:
-        from arq import Retry  # type: ignore
-
-        return Retry
-    except Exception:  # noqa: BLE001
-        return None
-
-
-async def _tenant_acquire(redis, *, tenant_id: str, kind: str, limit: int, ttl_sec: int = 120):  # noqa: ANN001
-    """
-    Simple per-tenant concurrency limit (Redis counting semaphore).
-    - If INCR > limit, roll back with DECR and trigger a delayed retry.
-    """
-    if redis is None or limit <= 0:
-        return None
-    key = f"sem:tenant:{tenant_id}:{kind}"
-    try:
-        val = await redis.incr(key)
-        await redis.expire(key, ttl_sec)
-        if int(val) > int(limit):
-            await redis.decr(key)
-            Retry = _get_retry_exc()
-            if Retry:
-                raise Retry(defer=2)  # Retry after 2s (arq increments try).
-            # Return None if Retry is unavailable (non-blocking).
-            return None
-        return key
-    except Exception as exc:  # noqa: BLE001
-        logger.warning("Tenant semaphore acquire failed (skip limit): %s", str(exc)[:200])
-        return None
-
-
-async def _tenant_release(redis, key: str | None):  # noqa: ANN001
-    if redis is None or not key:
-        return
-    try:
-        val = await redis.decr(key)
-        if int(val) <= 0:
-            await redis.delete(key)
-    except Exception as exc:  # noqa: BLE001
-        logger.warning("Tenant semaphore release failed: %s", str(exc)[:200])
 
 
 async def ping_job(ctx) -> dict:  # noqa: ANN001
@@ -108,22 +66,18 @@ async def process_document_job(ctx, tenant_id: str, document_id: str, requested_
         except Exception:  # noqa: BLE001
             redis = None
 
-        lock_val = f"{requested_by}:{int(time.time())}"
+        lock_val = make_lock_value(requested_by)
         lock_ttl = 60 * 40  # 40 min
         if redis is not None:
             # Per-tenant concurrency limit (doc).
-            sem_key = await _tenant_acquire(
+            sem_key = await tenant_acquire(
                 redis,
                 tenant_id=tenant_id,
                 kind="doc",
                 limit=int(getattr(settings, "TASK_TENANT_MAX_CONCURRENCY_DOC", 0) or 0),
                 ttl_sec=120,
             )
-            try:
-                acquired = await redis.set(lock_key, lock_val, ex=lock_ttl, nx=True)
-            except Exception as exc:  # noqa: BLE001
-                logger.warning("Redis lock acquire failed (continue without lock): %s", str(exc)[:200])
-                acquired = True
+            acquired = await acquire_lock(redis, key=lock_key, value=lock_val, ttl_sec=lock_ttl)
             if not acquired:
                 logger.info("Skip document job due to active lock: %s", lock_key)
                 return {
@@ -158,15 +112,8 @@ async def process_document_job(ctx, tenant_id: str, document_id: str, requested_
         return {"ok": True, "elapsed_sec": round(elapsed, 3), "result": result}
     finally:
         if redis is not None and lock_key and lock_val:
-            try:
-                cur = await redis.get(lock_key)
-                cur_decoded = cur.decode("utf-8", "ignore") if isinstance(cur, (bytes, bytearray)) else cur
-                if cur_decoded == lock_val:
-                    await redis.delete(lock_key)
-            except Exception as exc:  # noqa: BLE001
-                logger.warning("Redis lock release failed: %s", str(exc)[:200])
-        if redis is not None:
-            await _tenant_release(redis, sem_key)
+            await release_lock(redis, key=lock_key, value=lock_val)
+        await tenant_release(redis, sem_key)
         db.close()
 
 
@@ -193,6 +140,8 @@ async def extract_kg_job(
     db = SessionLocal()
     redis = None
     sem_key = None
+    lock_key = None
+    lock_val = None
     try:
         try:
             redis = ctx.get("redis") if isinstance(ctx, dict) else None
@@ -200,7 +149,7 @@ async def extract_kg_job(
             redis = None
 
         if redis is not None:
-            sem_key = await _tenant_acquire(
+            sem_key = await tenant_acquire(
                 redis,
                 tenant_id=tenant_id,
                 kind="kg",
@@ -213,10 +162,28 @@ async def extract_kg_job(
             return {"ok": False, "reason": "document_not_found", "tenant_id": tenant_id, "document_id": document_id}
         if (doc.status or "").lower() != "completed":
             # If not completed, retry later (ingest likely still running).
-            Retry = _get_retry_exc()
+            Retry = get_retry_exc()
             if Retry:
                 raise Retry(defer=5)
             return {"ok": False, "reason": "document_not_completed", "status": doc.status}
+
+        pipeline_hash = (doc.doc_metadata or {}).get("pipeline_hash") or "unknown"
+        replace_key = "auto" if replace_existing is None else ("1" if bool(replace_existing) else "0")
+        prune_key = "auto" if prune_orphan_entities is None else ("1" if bool(prune_orphan_entities) else "0")
+        lock_key = f"lock:kg:{tenant_id}:{document_id}:{pipeline_hash}:{replace_key}:{prune_key}"
+        lock_val = make_lock_value(requested_by)
+        lock_ttl = 60 * 40  # 40 min
+        if redis is not None:
+            acquired = await acquire_lock(redis, key=lock_key, value=lock_val, ttl_sec=lock_ttl)
+            if not acquired:
+                logger.info("Skip KG job due to active lock: %s", lock_key)
+                return {
+                    "ok": True,
+                    "skipped": "locked",
+                    "tenant_id": tenant_id,
+                    "document_id": document_id,
+                    "pipeline_hash": pipeline_hash,
+                }
 
         chunks = (
             db.query(DocumentChunk)
@@ -252,8 +219,9 @@ async def extract_kg_job(
         elapsed = time.perf_counter() - t0
         return {"ok": True, "event_count": len(events), "elapsed_sec": round(elapsed, 3)}
     finally:
-        if redis is not None:
-            await _tenant_release(redis, sem_key)
+        if redis is not None and lock_key and lock_val:
+            await release_lock(redis, key=lock_key, value=lock_val)
+        await tenant_release(redis, sem_key)
         db.close()
 
 
@@ -269,6 +237,8 @@ async def rebuild_indexes_job(ctx, tenant_id: str, requested_by: str) -> dict:  
     db = SessionLocal()
     redis = None
     sem_key = None
+    lock_key = None
+    lock_val = None
     try:
         try:
             redis = ctx.get("redis") if isinstance(ctx, dict) else None
@@ -276,7 +246,7 @@ async def rebuild_indexes_job(ctx, tenant_id: str, requested_by: str) -> dict:  
             redis = None
 
         if redis is not None:
-            sem_key = await _tenant_acquire(
+            sem_key = await tenant_acquire(
                 redis,
                 tenant_id=tenant_id,
                 kind="rebuild",
@@ -284,10 +254,20 @@ async def rebuild_indexes_job(ctx, tenant_id: str, requested_by: str) -> dict:  
                 ttl_sec=120,
             )
 
+        lock_key = f"lock:rebuild:{tenant_id}"
+        lock_val = make_lock_value(requested_by)
+        lock_ttl = 60 * 40  # 40 min
+        if redis is not None:
+            acquired = await acquire_lock(redis, key=lock_key, value=lock_val, ttl_sec=lock_ttl)
+            if not acquired:
+                logger.info("Skip rebuild job due to active lock: %s", lock_key)
+                return {"ok": True, "skipped": "locked", "tenant_id": tenant_id}
+
         Indexer(db).rebuild_tenant(tenant_id=tid, kinds=[IndexKind.CHUNK])
         elapsed = time.perf_counter() - t0
         return {"ok": True, "elapsed_sec": round(elapsed, 3)}
     finally:
-        if redis is not None:
-            await _tenant_release(redis, sem_key)
+        if redis is not None and lock_key and lock_val:
+            await release_lock(redis, key=lock_key, value=lock_val)
+        await tenant_release(redis, sem_key)
         db.close()

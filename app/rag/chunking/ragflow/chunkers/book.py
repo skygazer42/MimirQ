@@ -21,7 +21,7 @@ from io import BytesIO
 from app.deepdoc.parser.utils import get_text
 from app.rag.chunking.ragflow.chunkers import naive_chunk as naive
 from app.rag.chunking.ragflow.chunkers.naive import by_plaintext, PARSERS
-from app.rag.chunking.ragflow.nlp import bullets_category, is_english,remove_contents_table, \
+from app.rag.chunking.ragflow.nlp import bullets_category, is_english, remove_contents_table, \
     hierarchical_merge, make_colon_as_title, naive_merge, random_choices, tokenize_table, \
     tokenize_chunks, attach_media_context
 from app.rag.chunking.ragflow.nlp import rag_tokenizer
@@ -85,7 +85,6 @@ def chunk(filename, binary=None, from_page=0, to_page=100000,
     if re.search(r"\.docx$", filename, re.IGNORECASE):
         callback(0.1, "Start to parse.")
         doc_parser = naive.Docx()
-        # TODO: table of contents need to be removed
         sections, tbls = doc_parser(
             filename, binary=binary, from_page=from_page, to_page=to_page)
         remove_contents_table(sections, eng=is_english(
@@ -105,7 +104,7 @@ def chunk(filename, binary=None, from_page=0, to_page=100000,
         parser = PARSERS.get(name, by_plaintext)
         callback(0.1, "Start to parse.")
 
-        sections, tables, pdf_parser = parser(
+        sections, tbls, pdf_parser = parser(
             filename = filename,
             binary = binary,
             from_page = from_page,
@@ -117,11 +116,14 @@ def chunk(filename, binary=None, from_page=0, to_page=100000,
             **kwargs
         )
 
-        if not sections and not tables:
+        if not sections and not tbls:
             return []
 
         if name in ["tcadp", "docling", "mineru"]:
             parser_config["chunk_token_num"] = 0
+
+        sample_texts = [s if isinstance(s, str) else s[0] for s in sections]
+        remove_contents_table(sections, eng=is_english(random_choices(sample_texts, k=200)))
         
         callback(0.8, "Finish parsing.")
     elif re.search(r"\.txt$", filename, re.IGNORECASE):
@@ -143,10 +145,23 @@ def chunk(filename, binary=None, from_page=0, to_page=100000,
 
     elif re.search(r"\.doc$", filename, re.IGNORECASE):
         callback(0.1, "Start to parse.")
+
+        try:
+            from tika import parser as tika_parser
+        except Exception as e:
+            callback(0.8, f"tika not available: {e}. Unsupported .doc parsing.")
+            logging.warning(f"tika not available: {e}. Unsupported .doc parsing for {filename}.")
+            return []
+
         binary = BytesIO(binary)
-        doc_parsed = parser.from_buffer(binary)
-        sections = doc_parsed['content'].split('\n')
-        sections = [(line, "") for line in sections if line]
+        doc_parsed = tika_parser.from_buffer(binary)
+        if doc_parsed.get('content', None) is not None:
+            sections = doc_parsed['content'].split('\n')
+            sections = [(line, "") for line in sections if line]
+        else:
+            callback(0.8, f"tika.parser got empty content from {filename}.")
+            logging.warning(f"tika.parser got empty content from {filename}.")
+            return []
         remove_contents_table(sections, eng=is_english(
             random_choices([t for t, _ in sections], k=200)))
         callback(0.8, "Finish parsing.")
