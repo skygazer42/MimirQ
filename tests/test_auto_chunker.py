@@ -595,3 +595,184 @@ def test_auto_chunker_selects_markup_formats():
         assert chunks[0].metadata.get("chunk_strategy_auto") is True
         assert chunks[0].metadata.get("chunk_strategy_selected") == expected
 
+
+def test_auto_chunker_selects_openapi_spec_for_openapi_yaml():
+    chunker = AutoChunker(chunk_size=240, chunk_overlap=40)
+    text = (
+        "openapi: 3.0.0\n"
+        "info:\n"
+        "  title: Demo\n"
+        "paths:\n"
+        "  /health:\n"
+        "    get:\n"
+        "      responses:\n"
+        "        '200':\n"
+        "          description: ok\n"
+        "  /items:\n"
+        "    post:\n"
+        "      responses:\n"
+        "        '201':\n"
+        "          description: created\n"
+    )
+    docs = [Document(page_content=text, metadata={"file_type": "yaml"})]
+    chunks = chunker.split_documents(docs)
+    assert chunks
+    assert chunks[0].metadata.get("chunk_strategy_selected") == "openapi_spec"
+
+
+def test_auto_chunker_selects_github_actions_for_workflow_yaml():
+    chunker = AutoChunker(chunk_size=240, chunk_overlap=40)
+    text = (
+        "name: CI\n"
+        "on:\n"
+        "  push:\n"
+        "    branches: [main]\n"
+        "jobs:\n"
+        "  build:\n"
+        "    runs-on: ubuntu-latest\n"
+        "    steps:\n"
+        "      - uses: actions/checkout@v4\n"
+    )
+    docs = [Document(page_content=text, metadata={"file_type": "yaml"})]
+    chunks = chunker.split_documents(docs)
+    assert chunks
+    assert chunks[0].metadata.get("chunk_strategy_selected") == "github_actions"
+
+
+def test_auto_chunker_selects_docker_compose_for_compose_yaml():
+    chunker = AutoChunker(chunk_size=240, chunk_overlap=40)
+    text = (
+        "version: \"3.9\"\n"
+        "services:\n"
+        "  web:\n"
+        "    image: nginx:latest\n"
+        "  api:\n"
+        "    build: .\n"
+    )
+    docs = [Document(page_content=text, metadata={"file_type": "yaml"})]
+    chunks = chunker.split_documents(docs)
+    assert chunks
+    assert chunks[0].metadata.get("chunk_strategy_selected") == "docker_compose"
+
+
+def test_auto_chunker_selects_gitlab_ci_for_gitlab_ci_yaml():
+    chunker = AutoChunker(chunk_size=240, chunk_overlap=40)
+    text = (
+        "stages:\n"
+        "  - build\n\n"
+        "build_job:\n"
+        "  script:\n"
+        "    - echo build\n"
+    )
+    docs = [Document(page_content=text, metadata={"file_type": "yml"})]
+    chunks = chunker.split_documents(docs)
+    assert chunks
+    assert chunks[0].metadata.get("chunk_strategy_selected") == "gitlab_ci"
+
+
+def test_auto_chunker_selects_ansible_playbook_for_playbook_yaml():
+    chunker = AutoChunker(chunk_size=240, chunk_overlap=40)
+    text = (
+        "---\n"
+        "- name: Setup\n"
+        "  hosts: all\n"
+        "  tasks:\n"
+        "    - name: Ping\n"
+        "      ping:\n"
+    )
+    docs = [Document(page_content=text, metadata={"file_type": "yaml"})]
+    chunks = chunker.split_documents(docs)
+    assert chunks
+    assert chunks[0].metadata.get("chunk_strategy_selected") == "ansible_playbook"
+
+
+def test_auto_chunker_selects_markdown_frontmatter_for_frontmatter_md():
+    chunker = AutoChunker(chunk_size=240, chunk_overlap=40)
+    text = (
+        "---\n"
+        "title: Demo\n"
+        "---\n\n"
+        "# Heading\n"
+        "Hello.\n"
+    )
+    docs = [Document(page_content=text, metadata={"file_type": "md"})]
+    chunks = chunker.split_documents(docs)
+    assert chunks
+    assert chunks[0].metadata.get("chunk_strategy_selected") == "markdown_frontmatter"
+
+
+def test_auto_chunker_selects_junit_xml_for_junit_report():
+    chunker = AutoChunker(chunk_size=240, chunk_overlap=40)
+    text = (
+        "<testsuite name=\"demo\">\n"
+        "  <testcase classname=\"a\" name=\"t1\"/>\n"
+        "  <testcase classname=\"a\" name=\"t2\"/>\n"
+        "</testsuite>\n"
+    )
+    docs = [Document(page_content=text, metadata={"file_type": "xml"})]
+    chunks = chunker.split_documents(docs)
+    assert chunks
+    assert chunks[0].metadata.get("chunk_strategy_selected") == "junit_xml"
+
+
+def test_auto_chunker_selects_sitemap_xml_for_sitemap():
+    chunker = AutoChunker(chunk_size=240, chunk_overlap=40)
+    text = (
+        "<urlset>\n"
+        "  <url><loc>https://example.com/</loc></url>\n"
+        "  <url><loc>https://example.com/a</loc></url>\n"
+        "</urlset>\n"
+    )
+    docs = [Document(page_content=text, metadata={"file_type": "xml"})]
+    chunks = chunker.split_documents(docs)
+    assert chunks
+    assert chunks[0].metadata.get("chunk_strategy_selected") == "sitemap_xml"
+
+
+def test_auto_chunker_selects_maven_pom_for_pom_xml():
+    chunker = AutoChunker(chunk_size=240, chunk_overlap=40)
+    text = (
+        "<project>\n"
+        "  <modelVersion>4.0.0</modelVersion>\n"
+        "  <dependencies>\n"
+        "    <dependency><groupId>a</groupId><artifactId>b</artifactId></dependency>\n"
+        "    <dependency><groupId>c</groupId><artifactId>d</artifactId></dependency>\n"
+        "  </dependencies>\n"
+        "</project>\n"
+    )
+    docs = [Document(page_content=text, metadata={"file_type": "xml"})]
+    chunks = chunker.split_documents(docs)
+    assert chunks
+    assert chunks[0].metadata.get("chunk_strategy_selected") == "maven_pom"
+
+
+def test_auto_chunker_selects_http_trace_for_http_logs():
+    chunker = AutoChunker(chunk_size=240, chunk_overlap=40)
+    text = (
+        "> GET /health HTTP/1.1\n"
+        "> Host: example.com\n"
+        ">\n"
+        "< HTTP/1.1 200 OK\n"
+        "< Content-Type: text/plain\n"
+        "<\n"
+        "ok\n"
+    )
+    docs = [Document(page_content=text, metadata={"file_type": "log"})]
+    chunks = chunker.split_documents(docs)
+    assert chunks
+    assert chunks[0].metadata.get("chunk_strategy_selected") == "http_trace"
+
+
+def test_auto_chunker_selects_terraform_plan_for_plan_output():
+    chunker = AutoChunker(chunk_size=240, chunk_overlap=40)
+    text = (
+        "Terraform will perform the following actions:\n\n"
+        "  # aws_s3_bucket.b will be created\n"
+        "  + resource \"aws_s3_bucket\" \"b\" {}\n"
+        "Plan: 1 to add, 0 to change, 0 to destroy.\n"
+    )
+    docs = [Document(page_content=text, metadata={"file_type": "txt"})]
+    chunks = chunker.split_documents(docs)
+    assert chunks
+    assert chunks[0].metadata.get("chunk_strategy_selected") == "terraform_plan"
+

@@ -26,10 +26,10 @@ class _CaseBlock:
     classname: Optional[str]
 
 
-_TESTCASE_ANY_RE = re.compile(r"(?is)<testcase\\b[^>]*?/\\s*>|<testcase\\b[^>]*>")
-_TESTCASE_END_RE = re.compile(r"(?is)</testcase\\s*>")
-_TESTSUITE_HINT_RE = re.compile(r"(?is)<testsuites\\b|<testsuite\\b")
-_ATTR_RE = re.compile(r"(?P<key>[A-Za-z_:][A-Za-z0-9_.:-]*)\\s*=\\s*(?P<q>['\\\"])(?P<val>.*?)(?P=q)")
+_TESTCASE_ANY_RE = re.compile(r"(?is)<testcase\b[^>]*?/\s*>|<testcase\b[^>]*>")
+_TESTCASE_END_RE = re.compile(r"(?is)</testcase\s*>")
+_TESTSUITE_HINT_RE = re.compile(r"(?is)<testsuites\b|<testsuite\b")
+_ATTR_RE = re.compile(r"(?P<key>[A-Za-z_:][A-Za-z0-9_.:-]*)\s*=\s*(?P<q>['\"])(?P<val>.*?)(?P=q)")
 
 
 def _extract_attr(tag_text: str, key: str) -> Optional[str]:
@@ -163,4 +163,3 @@ class JUnitXMLChunker(BaseChunker):
             chunk.metadata = meta
 
         return out
-

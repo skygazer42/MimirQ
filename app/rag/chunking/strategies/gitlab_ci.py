@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import re
-from typing import Any, List, Optional
+from typing import Any, List
 
 from langchain_core.documents import Document
 from langchain_text_splitters import RecursiveCharacterTextSplitter
@@ -34,8 +34,8 @@ class _TopBlock:
     index: int
 
 
-_TOP_KEY_RE = re.compile(r"^(?P<key>[A-Za-z0-9_.-]{1,200})\\s*:\\s*(?:#.*)?$")
-_SCRIPT_RE = re.compile(r"(?m)^\\s*script\\s*:\\s*")
+_TOP_KEY_RE = re.compile(r"^(?P<key>[A-Za-z0-9_.-]{1,200})\s*:\s*(?:#.*)?$")
+_SCRIPT_RE = re.compile(r"(?m)^\s*script\s*:\s*")
 
 _RESERVED_KEYS = {
     "stages",
@@ -195,4 +195,3 @@ class GitLabCIChunker(BaseChunker):
             chunk.metadata = meta
 
         return out
-

@@ -33,11 +33,11 @@ class _JobBlock:
     index: int
 
 
-_JOBS_RE = re.compile(r"(?m)^(?P<indent>\\s*)jobs\\s*:\\s*(?:#.*)?$")
-_KEY_RE = re.compile(r"^(?P<indent>\\s*)(?P<key>[A-Za-z0-9][A-Za-z0-9_.-]{0,200})\\s*:\\s*(?:#.*)?$")
-_WORKFLOW_NAME_RE = re.compile(r"(?m)^(?P<indent>\\s*)name\\s*:\\s*(?P<val>.+?)\\s*$")
-_RUNS_ON_RE = re.compile(r"(?m)^\\s*runs-on\\s*:\\s*")
-_ON_RE = re.compile(r"(?m)^(?P<indent>\\s*)on\\s*:\\s*")
+_JOBS_RE = re.compile(r"(?m)^(?P<indent>\s*)jobs\s*:\s*(?:#.*)?$")
+_KEY_RE = re.compile(r"^(?P<indent>\s*)(?P<key>[A-Za-z0-9][A-Za-z0-9_.-]{0,200})\s*:\s*(?:#.*)?$")
+_WORKFLOW_NAME_RE = re.compile(r"(?m)^(?P<indent>\s*)name\s*:\s*(?P<val>.+?)\s*$")
+_RUNS_ON_RE = re.compile(r"(?m)^\s*runs-on\s*:\s*")
+_ON_RE = re.compile(r"(?m)^(?P<indent>\s*)on\s*:\s*")
 
 
 def _iter_lines(text: str) -> List[_Line]:
@@ -226,4 +226,3 @@ class GitHubActionsChunker(BaseChunker):
             chunk.metadata = meta
 
         return out
-

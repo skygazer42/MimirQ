@@ -26,7 +26,6 @@ class _Record:
     ga: Optional[str]
 
 
-_PROJECT_RE = re.compile(r"(?is)<project\\b")
 _DEPENDENCY_START_RE = re.compile(r"(?is)<dependency\\b[^>]*>")
 _DEPENDENCY_END_RE = re.compile(r"(?is)</dependency\\s*>")
 _PLUGIN_START_RE = re.compile(r"(?is)<plugin\\b[^>]*>")
@@ -221,4 +220,3 @@ class MavenPOMChunker(BaseChunker):
             chunk.metadata = meta
 
         return out
-

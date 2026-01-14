@@ -33,10 +33,10 @@ class _ServiceBlock:
     index: int
 
 
-_SERVICES_RE = re.compile(r"(?m)^(?P<indent>\\s*)services\\s*:\\s*(?:#.*)?$")
-_KEY_RE = re.compile(r"^(?P<indent>\\s*)(?P<key>[A-Za-z0-9][A-Za-z0-9_.-]{0,200})\\s*:\\s*(?:#.*)?$")
-_IMAGE_HINT_RE = re.compile(r"(?m)^\\s*(image|build|container_name|ports|depends_on)\\s*:\\s*")
-_VERSION_RE = re.compile(r"(?m)^\\s*version\\s*:\\s*(?P<val>[^\\s#]+)")
+_SERVICES_RE = re.compile(r"(?m)^(?P<indent>\s*)services\s*:\s*(?:#.*)?$")
+_KEY_RE = re.compile(r"^(?P<indent>\s*)(?P<key>[A-Za-z0-9][A-Za-z0-9_.-]{0,200})\s*:\s*(?:#.*)?$")
+_IMAGE_HINT_RE = re.compile(r"(?m)^\s*(image|build|container_name|ports|depends_on)\s*:\s*")
+_VERSION_RE = re.compile(r"(?m)^\s*version\s*:\s*(?P<val>[^\s#]+)")
 
 
 def _iter_lines(text: str) -> List[_Line]:
@@ -221,4 +221,3 @@ class DockerComposeChunker(BaseChunker):
             chunk.metadata = meta
 
         return out
-
