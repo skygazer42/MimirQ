@@ -60,6 +60,46 @@ export const CHUNK_STRATEGY_OPTIONS: ChunkStrategyOption[] = [
     badge: '论文',
     group: 'preset',
   },
+  {
+    value: 'book_structured',
+    label: '书籍/长文档（预设）',
+    description: '识别 Chapter/Part/Volume/第X章 等结构，按章节上下文切块。',
+    icon: 'hierarchical',
+    badge: '书籍',
+    group: 'preset',
+  },
+  {
+    value: 'laws_structured',
+    label: '法律/合同/制度（预设）',
+    description: '识别 第X条/（一）/Article 等条款结构，按条款切块。',
+    icon: 'hierarchical',
+    badge: '条款',
+    group: 'preset',
+  },
+  {
+    value: 'email_thread',
+    label: '邮件线程（预设）',
+    description: '识别 From/To/Subject/-----Original Message----- 等，按邮件消息切块。',
+    icon: 'sentence',
+    badge: '邮件',
+    group: 'preset',
+  },
+  {
+    value: 'sop_steps',
+    label: 'SOP/操作步骤（预设）',
+    description: '识别 Step 1/步骤一 等步骤标题，尽量保持步骤不被拆散。',
+    icon: 'hierarchical',
+    badge: 'SOP',
+    group: 'preset',
+  },
+  {
+    value: 'glossary',
+    label: '术语表/词典（预设）',
+    description: '识别“术语：定义”条目，按条目切块并保留术语列表。',
+    icon: 'separator',
+    badge: '术语',
+    group: 'preset',
+  },
 
   // LangChain / local strategies
   {
@@ -76,6 +116,14 @@ export const CHUNK_STRATEGY_OPTIONS: ChunkStrategyOption[] = [
     description: '按句子边界聚合，减少断句（适合长文本）。',
     icon: 'sentence',
     badge: '句子',
+    group: 'langchain',
+  },
+  {
+    value: 'sentence_window',
+    label: '句子窗口切分',
+    description: '按句子窗口聚合，使用“按句子”重叠（避免 overlap 截断句子）。',
+    icon: 'sentence',
+    badge: '窗口',
     group: 'langchain',
   },
   {
@@ -212,4 +260,3 @@ export function getChunkStrategyLabel(value?: string) {
 export function getStrategiesByGroup(group: string) {
   return CHUNK_STRATEGY_OPTIONS.filter((option) => option.group === group)
 }
-

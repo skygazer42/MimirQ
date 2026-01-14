@@ -208,10 +208,10 @@ async def get_pipeline_capabilities(
         notes: str | None = None
         if s == "auto":
             available = True
-            notes = "Auto-selects a chunker per document (qa/transcript/paper/outline/markdown/json/plain text)."
+            notes = "Auto-selects a chunker per document (email/qa/sop/glossary/laws/paper/book/outline/transcript/markdown/json/plain text)."
         elif s == "manuscript":
             available = True
-            notes = "Preset for manuscript-like documents (auto-selects qa/transcript/paper/outline/markdown/...)."
+            notes = "Preset for manuscript-like documents (email/qa/sop/glossary/laws/paper/book/outline/transcript/markdown/...)."
         elif s == "outline":
             available = True
             notes = "Numbered-outline aware chunking (keeps section heading context)."
@@ -224,6 +224,24 @@ async def get_pipeline_capabilities(
         elif s == "paper":
             available = True
             notes = "Academic paper/report aware chunking (splits by common paper sections)."
+        elif s == "book_structured":
+            available = True
+            notes = "Book chapter/part aware chunking (keeps chapter context)."
+        elif s == "laws_structured":
+            available = True
+            notes = "Legal/policy aware chunking (splits by articles/clauses)."
+        elif s == "email_thread":
+            available = True
+            notes = "Email thread aware chunking (keeps whole messages together)."
+        elif s == "sop_steps":
+            available = True
+            notes = "SOP/procedure aware chunking (splits by Step/步骤 headings)."
+        elif s == "glossary":
+            available = True
+            notes = "Glossary/dictionary aware chunking (splits by term-definition entries)."
+        elif s == "sentence_window":
+            available = True
+            notes = "Sentence window chunking with sentence-level overlap."
         if s.startswith("llama_index"):
             if not bool(getattr(settings, "LLAMA_INDEX_ENABLED", False)):
                 available = False

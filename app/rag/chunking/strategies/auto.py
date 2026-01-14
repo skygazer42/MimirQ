@@ -13,13 +13,18 @@ from typing import List
 from langchain_core.documents import Document
 
 from app.rag.chunking.base import BaseChunker
+from app.rag.chunking.strategies.book_structured import BookStructuredChunker, looks_like_book
+from app.rag.chunking.strategies.email_thread import EmailThreadChunker, looks_like_email_thread
+from app.rag.chunking.strategies.glossary import GlossaryChunker, looks_like_glossary
 from app.rag.chunking.strategies.json_code import JSONChunker
+from app.rag.chunking.strategies.laws_structured import LawsStructuredChunker, looks_like_laws
 from app.rag.chunking.strategies.markdown import MarkdownAwareChunker
 from app.rag.chunking.strategies.outline import OutlineChunker, looks_like_outline
 from app.rag.chunking.strategies.paper import PaperChunker, looks_like_paper
 from app.rag.chunking.strategies.qa_pairs import QAPairsChunker, looks_like_qa_pairs
 from app.rag.chunking.strategies.recursive import LangChainRecursiveChunker
 from app.rag.chunking.strategies.semantic import SemanticSentenceChunker
+from app.rag.chunking.strategies.sop_steps import SOPStepsChunker, looks_like_sop
 from app.rag.chunking.strategies.transcript import TranscriptChunker, looks_like_transcript
 
 
@@ -53,7 +58,12 @@ class AutoChunker(BaseChunker):
     Smart, lightweight chunker selection.
 
     Strategy selection (per Document):
+    - Email thread -> email_thread (keeps messages together)
     - Q/A pairs -> qa_pairs (keeps pairs together)
+    - SOP/procedure -> sop_steps (keeps steps together)
+    - Glossary -> glossary (keeps entries together)
+    - Legal doc -> laws_structured (clause-aware)
+    - Book-like -> book_structured (chapter-aware)
     - Transcript-like -> transcript (keeps speaker turns together)
     - Paper-like -> paper (section-aware)
     - Outline-like -> outline (numbered headings)
@@ -95,30 +105,68 @@ class AutoChunker(BaseChunker):
             chunk_size=self.chunk_size,
             chunk_overlap=self.chunk_overlap,
         )
+        self._email_thread = EmailThreadChunker(
+            chunk_size=self.chunk_size,
+            chunk_overlap=self.chunk_overlap,
+        )
+        self._laws = LawsStructuredChunker(
+            chunk_size=self.chunk_size,
+            chunk_overlap=self.chunk_overlap,
+        )
+        self._book = BookStructuredChunker(
+            chunk_size=self.chunk_size,
+            chunk_overlap=self.chunk_overlap,
+        )
+        self._sop = SOPStepsChunker(
+            chunk_size=self.chunk_size,
+            chunk_overlap=self.chunk_overlap,
+        )
+        self._glossary = GlossaryChunker(
+            chunk_size=self.chunk_size,
+            chunk_overlap=self.chunk_overlap,
+        )
 
     def _select(self, doc: Document) -> tuple[BaseChunker, str]:
         meta = doc.metadata or {}
         file_type = str(meta.get("file_type", "") or "").strip().lower()
         text = doc.page_content or ""
 
+        if file_type in {"md", "markdown"}:
+            return self._markdown, "markdown_aware"
+
         if file_type in {"json"} or _looks_like_json(text):
             # JSON overlap is usually counterproductive; keep it at 0.
             return JSONChunker(chunk_size=self.chunk_size, chunk_overlap=0), "json"
 
+        if looks_like_email_thread(text):
+            return self._email_thread, "email_thread"
+
         if looks_like_qa_pairs(text):
             return self._qa_pairs, "qa_pairs"
 
-        if looks_like_transcript(text):
-            return self._transcript, "transcript"
+        if looks_like_sop(text):
+            return self._sop, "sop_steps"
+
+        if looks_like_glossary(text):
+            return self._glossary, "glossary"
+
+        if looks_like_laws(text):
+            return self._laws, "laws_structured"
 
         if looks_like_paper(text):
             return self._paper, "paper"
 
-        if file_type in {"md", "markdown"} or _looks_like_markdown(text):
+        if looks_like_book(text):
+            return self._book, "book_structured"
+
+        if _looks_like_markdown(text):
             return self._markdown, "markdown_aware"
 
         if looks_like_outline(text):
             return self._outline, "outline"
+
+        if looks_like_transcript(text):
+            return self._transcript, "transcript"
 
         # If the document is long enough, sentence-aware splitting tends to
         # reduce broken sentences and improves retrieval.

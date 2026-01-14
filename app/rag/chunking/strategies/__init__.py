@@ -18,6 +18,12 @@ Available strategies:
 - qa_pairs: Q/A-pair aware chunking
 - paper: Academic paper section-aware chunking
 - manuscript: Content-aware preset for manuscripts
+- book_structured: Book chapter/part aware chunking
+- laws_structured: Legal document clause-aware chunking
+- email_thread: Email thread aware chunking
+- sop_steps: SOP/procedure step-aware chunking
+- glossary: Glossary/dictionary entry-aware chunking
+- sentence_window: Sentence window chunking with sentence overlap
 """
 from app.rag.chunking.strategies.recursive import LangChainRecursiveChunker
 from app.rag.chunking.strategies.token import LangChainTokenChunker
@@ -43,6 +49,12 @@ from app.rag.chunking.strategies.transcript import TranscriptChunker
 from app.rag.chunking.strategies.qa_pairs import QAPairsChunker
 from app.rag.chunking.strategies.paper import PaperChunker
 from app.rag.chunking.strategies.manuscript import ManuscriptChunker
+from app.rag.chunking.strategies.book_structured import BookStructuredChunker
+from app.rag.chunking.strategies.laws_structured import LawsStructuredChunker
+from app.rag.chunking.strategies.email_thread import EmailThreadChunker
+from app.rag.chunking.strategies.sop_steps import SOPStepsChunker
+from app.rag.chunking.strategies.glossary import GlossaryChunker
+from app.rag.chunking.strategies.sentence_window import SentenceWindowChunker
 
 __all__ = [
     "LangChainRecursiveChunker",
@@ -64,4 +76,10 @@ __all__ = [
     "QAPairsChunker",
     "PaperChunker",
     "ManuscriptChunker",
+    "BookStructuredChunker",
+    "LawsStructuredChunker",
+    "EmailThreadChunker",
+    "SOPStepsChunker",
+    "GlossaryChunker",
+    "SentenceWindowChunker",
 ]
