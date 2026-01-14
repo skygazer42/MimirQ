@@ -1,0 +1,182 @@
+"""
+Markdown frontmatter aware chunking strategy.
+
+Targets Markdown documents that start with YAML frontmatter (--- ... ---).
+The chunker keeps the frontmatter as its own chunk(s), then chunks the body
+using markdown-friendly separators while preserving character offsets.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+import re
+from typing import Any, List, Optional, Tuple
+
+from langchain_core.documents import Document
+from langchain_text_splitters import RecursiveCharacterTextSplitter
+
+from app.rag.chunking.base import BaseChunker
+
+
+@dataclass(frozen=True)
+class _Line:
+    start: int
+    end: int
+    plain: str
+
+
+_FRONTMATTER_DELIM = "---"
+_FRONTMATTER_END_RE = re.compile(r"^(---|\\.\\.\\.)\\s*$")
+_FRONTMATTER_KEY_RE = re.compile(r"(?m)^\\s*[A-Za-z0-9_.-]{1,80}\\s*:\\s*.+$")
+_TITLE_RE = re.compile(r"(?m)^\\s*title\\s*:\\s*(?P<val>.+?)\\s*$")
+
+
+def _iter_lines(text: str) -> List[_Line]:
+    out: List[_Line] = []
+    offset = 0
+    for raw in (text or "").splitlines(keepends=True):
+        start = offset
+        end = start + len(raw)
+        offset = end
+        out.append(_Line(start=start, end=end, plain=raw.rstrip("\r\n")))
+    if not out and text:
+        out.append(_Line(start=0, end=len(text), plain=text))
+    return out
+
+
+def _find_frontmatter(text: str) -> Optional[Tuple[int, int]]:
+    if not text:
+        return None
+    lines = _iter_lines(text)
+    if not lines:
+        return None
+
+    first_plain = lines[0].plain.lstrip("\ufeff").strip()
+    if first_plain != _FRONTMATTER_DELIM:
+        return None
+
+    for i in range(1, len(lines)):
+        plain = lines[i].plain.strip()
+        if _FRONTMATTER_END_RE.match(plain):
+            return 0, lines[i].end
+    return None
+
+
+def _extract_title(frontmatter: str) -> Optional[str]:
+    m = _TITLE_RE.search(frontmatter or "")
+    if not m:
+        return None
+    val = (m.group("val") or "").strip().strip("'\"")
+    return val[:200] or None
+
+
+def looks_like_markdown_frontmatter(text: str) -> bool:
+    fm = _find_frontmatter(text)
+    if not fm:
+        return False
+    start, end = fm
+    block = (text or "")[start:end]
+    if len(block) > 30000:
+        return False
+    return bool(_FRONTMATTER_KEY_RE.search(block))
+
+
+class MarkdownFrontmatterChunker(BaseChunker):
+    def __init__(self, chunk_size: int, chunk_overlap: int):
+        self.chunk_size = int(chunk_size)
+        self.chunk_overlap = int(chunk_overlap)
+
+        self._frontmatter_splitter = RecursiveCharacterTextSplitter(
+            chunk_size=self.chunk_size,
+            chunk_overlap=0,
+            separators=["\n", " ", ""],
+            length_function=len,
+            add_start_index=True,
+        )
+
+        separators: list[str] = []
+        for i in range(1, 7):
+            separators.append("\n" + "#" * i + " ")
+        separators.extend(["\n\n", "\n", ". ", "。", "？", "！", " ", ""])
+
+        self._body_splitter = RecursiveCharacterTextSplitter(
+            chunk_size=self.chunk_size,
+            chunk_overlap=self.chunk_overlap,
+            separators=separators,
+            length_function=len,
+            add_start_index=True,
+        )
+
+    def split_documents(self, documents: List[Document]) -> List[Document]:
+        out: List[Document] = []
+
+        for doc in documents:
+            text = doc.page_content or ""
+            base_meta = dict(doc.metadata or {})
+            if not text.strip():
+                continue
+
+            fm = _find_frontmatter(text)
+            if not fm:
+                split_docs = self._body_splitter.create_documents(texts=[text], metadatas=[base_meta])
+                for sd in split_docs:
+                    local_start = sd.metadata.pop("start_index", None) or 0
+                    abs_start = int(local_start)
+                    abs_end = abs_start + len(sd.page_content)
+                    meta: dict[str, Any] = dict(base_meta)
+                    meta.update(sd.metadata or {})
+                    meta["chunk_strategy"] = "markdown_frontmatter"
+                    meta["start_char"] = abs_start
+                    meta["end_char"] = abs_end
+                    meta["markdown_frontmatter_fallback"] = True
+                    meta.setdefault("doc_type_kwd", "markdown")
+                    out.append(Document(page_content=sd.page_content, metadata=meta))
+                continue
+
+            fm_start, fm_end = fm
+            fm_text = text[fm_start:fm_end]
+            title = _extract_title(fm_text)
+
+            split_docs = self._frontmatter_splitter.create_documents(texts=[fm_text], metadatas=[base_meta])
+            for sd in split_docs:
+                local_start = sd.metadata.pop("start_index", None) or 0
+                abs_start = fm_start + int(local_start)
+                abs_end = abs_start + len(sd.page_content)
+                meta: dict[str, Any] = dict(base_meta)
+                meta.update(sd.metadata or {})
+                meta["chunk_strategy"] = "markdown_frontmatter"
+                meta["start_char"] = abs_start
+                meta["end_char"] = abs_end
+                meta["markdown_frontmatter"] = True
+                meta["frontmatter_end_char"] = int(fm_end)
+                if title:
+                    meta["frontmatter_title"] = title
+                meta.setdefault("doc_type_kwd", "markdown")
+                out.append(Document(page_content=sd.page_content, metadata=meta))
+
+            body_text = text[fm_end:]
+            if body_text.strip():
+                split_docs = self._body_splitter.create_documents(texts=[body_text], metadatas=[base_meta])
+                for sd in split_docs:
+                    local_start = sd.metadata.pop("start_index", None) or 0
+                    abs_start = fm_end + int(local_start)
+                    abs_end = abs_start + len(sd.page_content)
+                    meta: dict[str, Any] = dict(base_meta)
+                    meta.update(sd.metadata or {})
+                    meta["chunk_strategy"] = "markdown_frontmatter"
+                    meta["start_char"] = abs_start
+                    meta["end_char"] = abs_end
+                    meta["frontmatter_present"] = True
+                    meta["frontmatter_end_char"] = int(fm_end)
+                    if title:
+                        meta["frontmatter_title"] = title
+                    meta.setdefault("doc_type_kwd", "markdown")
+                    out.append(Document(page_content=sd.page_content, metadata=meta))
+
+        for idx, chunk in enumerate(out):
+            meta = dict(chunk.metadata or {})
+            meta["chunk_index"] = idx
+            chunk.metadata = meta
+
+        return out
+
