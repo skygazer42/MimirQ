@@ -27,10 +27,10 @@ class _RequestBlock:
 
 
 _REQ_RE = re.compile(
-    r"(?m)^(?:>\\s*)?(?P<method>GET|POST|PUT|DELETE|PATCH|OPTIONS|HEAD)\\s+(?P<path>\\S{1,300})\\s+HTTP/(?P<ver>\\d(?:\\.\\d)?)\\s*$",
+    r"(?m)^(?:>\s*)?(?P<method>GET|POST|PUT|DELETE|PATCH|OPTIONS|HEAD)\s+(?P<path>\S{1,300})\s+HTTP/(?P<ver>\d(?:\.\d)?)\s*$",
     re.IGNORECASE,
 )
-_RESP_RE = re.compile(r"(?m)^(?:<\\s*)?HTTP/(?P<ver>\\d(?:\\.\\d)?)\\s+(?P<status>\\d{3})\\b.*$")
+_RESP_RE = re.compile(r"(?m)^(?:<\s*)?HTTP/(?P<ver>\d(?:\.\d)?)\s+(?P<status>\d{3})\b.*$")
 
 
 def _build_request_blocks(text: str) -> List[_RequestBlock]:
@@ -163,4 +163,3 @@ class HTTPTraceChunker(BaseChunker):
             chunk.metadata = meta
 
         return out
-

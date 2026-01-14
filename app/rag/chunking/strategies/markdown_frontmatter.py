@@ -26,9 +26,9 @@ class _Line:
 
 
 _FRONTMATTER_DELIM = "---"
-_FRONTMATTER_END_RE = re.compile(r"^(---|\\.\\.\\.)\\s*$")
-_FRONTMATTER_KEY_RE = re.compile(r"(?m)^\\s*[A-Za-z0-9_.-]{1,80}\\s*:\\s*.+$")
-_TITLE_RE = re.compile(r"(?m)^\\s*title\\s*:\\s*(?P<val>.+?)\\s*$")
+_FRONTMATTER_END_RE = re.compile(r"^(---|\.\.\.)\s*$")
+_FRONTMATTER_KEY_RE = re.compile(r"(?m)^\s*[A-Za-z0-9_.-]{1,80}\s*:\s*.+$")
+_TITLE_RE = re.compile(r"(?m)^\s*title\s*:\s*(?P<val>.+?)\s*$")
 
 
 def _iter_lines(text: str) -> List[_Line]:
@@ -179,4 +179,3 @@ class MarkdownFrontmatterChunker(BaseChunker):
             chunk.metadata = meta
 
         return out
-
