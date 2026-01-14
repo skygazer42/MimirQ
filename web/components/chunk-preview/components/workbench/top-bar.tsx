@@ -46,48 +46,73 @@ export function TopBar() {
   if (!currentFile || !currentFileItem) return null
 
   return (
-    <header className="flex-shrink-0 h-16 border-b border-slate-200/80 flex justify-between items-center px-6 bg-white/80 backdrop-blur z-20 shadow-sm relative">
+    <header className="flex-shrink-0 h-20 border-b border-slate-200/80 flex justify-between items-center px-6 bg-white/80 backdrop-blur z-20 shadow-sm relative">
       <div className="flex items-center gap-4">
-        <div className="w-9 h-9 bg-gradient-to-br from-sky-500 to-blue-500 rounded-xl flex items-center justify-center shadow-sky-200/70 shadow-md">
+        {/* Logo Icon */}
+        <div className="w-10 h-10 bg-gradient-to-br from-sky-500 to-blue-600 rounded-xl flex items-center justify-center shadow-sky-200/70 shadow-lg ring-1 ring-white/50">
           <Layers className="text-white w-5 h-5" />
         </div>
-        <div>
-          <h1 className="text-sm font-bold text-slate-900 tracking-tight">切片预览工作台</h1>
-          <p className="text-[10px] text-slate-500 font-mono mt-0.5 flex items-center gap-2">
-            <span className="bg-sky-100/80 px-2 py-0.5 rounded-full text-sky-800 font-semibold">
-              {currentFileIndex + 1}/{fileList.length}
-            </span>
-            <span>{currentFileItem?.displayName || currentFile.name}</span>
-            {currentFileItem?.originalFileType && (
-              <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-sky-100/70 text-sky-700">
-                {String(currentFileItem.originalFileType).toUpperCase()}
-              </span>
-            )}
-            <span className="w-1 h-1 rounded-full bg-sky-200" />
-            <span>{formatFileSize(currentFileItem?.originalFileSize ?? currentFile.size)}</span>
-            {previewData && (
-              <>
-                <span className="w-1 h-1 rounded-full bg-sky-200" />
-                <span className="text-sky-700 font-semibold">{previewData.total_chunks} Chunks</span>
-              </>
-            )}
-          </p>
-          <div className="mt-1 flex flex-wrap items-center gap-2 text-[10px] text-slate-500">
-            <span className="px-2 py-0.5 rounded-full bg-sky-100/70 text-sky-700">解析器: {parserBackend}</span>
-            <span className="px-2 py-0.5 rounded-full bg-sky-100/70 text-sky-700">策略: {chunkStrategy}</span>
-            <span className="px-2 py-0.5 rounded-full bg-sky-100/70 text-sky-700">
-              大小: {chunkSize} / 重叠: {chunkOverlap}
-            </span>
-            {typeof lastPreviewDurationMs === 'number' && (
-              <span className="px-2 py-0.5 rounded-full bg-sky-100/70 text-sky-700">
-                用时: {lastPreviewDurationMs}ms
-              </span>
-            )}
-            {cacheHit && (
-              <span className="px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-100">
-                缓存命中
-              </span>
-            )}
+        
+        <div className="flex flex-col justify-center min-w-0">
+          {/* Row 1: Title & File Info */}
+          <div className="flex items-center gap-3">
+            <h1 className="text-xs font-bold text-slate-500 uppercase tracking-wider">切片预览</h1>
+            <div className="h-3 w-px bg-slate-300" />
+            <div className="flex items-center gap-2 min-w-0">
+               <span className="text-sm font-bold text-slate-800 truncate max-w-[300px]" title={currentFileItem?.displayName || currentFile.name}>
+                 {currentFileItem?.displayName || currentFile.name}
+               </span>
+               <div className="flex items-center gap-1.5">
+                 <span className="text-[10px] font-bold bg-sky-100 text-sky-700 px-1.5 py-0.5 rounded-md min-w-[2rem] text-center">
+                   #{currentFileIndex + 1}
+                 </span>
+                 {currentFileItem?.originalFileType && (
+                    <span className="text-[10px] font-mono font-medium text-slate-500 border border-slate-200 px-1.5 py-0.5 rounded bg-slate-50">
+                      {String(currentFileItem.originalFileType).toUpperCase()}
+                    </span>
+                 )}
+                 <span className="text-[10px] text-slate-400 font-mono">
+                   {formatFileSize(currentFileItem?.originalFileSize ?? currentFile.size)}
+                 </span>
+               </div>
+            </div>
+          </div>
+
+          {/* Row 2: Process Configs & Stats */}
+          <div className="flex items-center gap-3 mt-1.5">
+             <div className="flex items-center gap-2 text-[11px] text-slate-600 bg-slate-50 border border-slate-100 px-2 py-0.5 rounded-md">
+                <span className="text-slate-400">解析:</span>
+                <span className="font-medium text-sky-700">{parserBackend}</span>
+                <span className="w-px h-2.5 bg-slate-200 mx-0.5" />
+                <span className="text-slate-400">策略:</span>
+                <span className="font-medium text-sky-700">{chunkStrategy}</span>
+                <span className="w-px h-2.5 bg-slate-200 mx-0.5" />
+                <span className="text-slate-400">参数:</span>
+                <span className="font-medium font-mono text-slate-700">{chunkSize}/{chunkOverlap}</span>
+             </div>
+
+             {(typeof lastPreviewDurationMs === 'number' || previewData) && (
+               <div className="flex items-center gap-2 text-[11px]">
+                  {typeof lastPreviewDurationMs === 'number' && (
+                    <span className="text-slate-400 flex items-center gap-1">
+                       <span className="w-1.5 h-1.5 rounded-full bg-slate-300" />
+                       {lastPreviewDurationMs}ms
+                    </span>
+                  )}
+                  {previewData && (
+                    <span className="text-slate-600 font-medium flex items-center gap-1">
+                       <span className="w-1.5 h-1.5 rounded-full bg-green-400" />
+                       {previewData.total_chunks} Chunks
+                    </span>
+                  )}
+               </div>
+             )}
+
+             {cacheHit && (
+                <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-600 border border-emerald-100 font-medium">
+                  Hit Cache
+                </span>
+             )}
           </div>
         </div>
       </div>
@@ -107,15 +132,15 @@ export function TopBar() {
           </div>
         )}
 
-        <div className="h-6 w-px bg-slate-200 mx-2" />
+        <div className="h-8 w-px bg-slate-200 mx-2" />
 
-        <Button variant="ghost" size="sm" onClick={reset} className="text-slate-500 hover:text-slate-900 h-8 text-xs font-medium">
+        <Button variant="ghost" size="sm" onClick={reset} className="text-slate-500 hover:text-slate-900 h-9 px-3 text-xs font-medium hover:bg-slate-100">
           <RotateCcw className="w-3.5 h-3.5 mr-1.5" />
           重置
         </Button>
 
         {onClose && (
-          <Button variant="ghost" size="sm" onClick={onClose} className="text-slate-500 hover:text-slate-900 h-8 w-8 p-0 rounded-full">
+          <Button variant="ghost" size="sm" onClick={onClose} className="text-slate-400 hover:text-slate-700 h-9 w-9 p-0 rounded-full hover:bg-slate-100">
             <X className="w-4 h-4" />
           </Button>
         )}

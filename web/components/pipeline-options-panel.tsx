@@ -1,8 +1,8 @@
 'use client'
 
 import { useMemo } from 'react'
-import { CheckCircle2, Layers, Network, ShieldCheck, Sparkles } from 'lucide-react'
-import { Checkbox } from '@/components/ui/checkbox'
+import { CheckCircle2, Layers, Network, ShieldCheck, Sparkles, ChevronDown } from 'lucide-react'
+import { Switch } from '@/components/ui/switch'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { cn } from '@/lib/utils'
@@ -35,51 +35,57 @@ export function PipelineOptionsPanel(props: PipelineOptionsPanelProps) {
 
   const optionGroups = useMemo(() => ([
     {
-      title: '治理',
+      title: '数据治理',
       icon: ShieldCheck,
+      color: 'text-indigo-600',
+      bgColor: 'bg-indigo-50',
       items: [
         {
           key: 'governance_enabled',
-          label: '数据治理清洗',
-          hint: '解析后统一规范化 Markdown',
+          label: '启用治理清洗',
+          hint: '标准化 Markdown，清洗噪声',
         },
       ],
     },
     {
-      title: '索引',
+      title: '索引策略',
       icon: Layers,
+      color: 'text-sky-600',
+      bgColor: 'bg-sky-50',
       items: [
         {
           key: 'chunk_vector_enabled',
-          label: 'Chunk 向量索引',
-          hint: '写入向量库以支持语义检索',
+          label: '向量索引 (Vector)',
+          hint: '语义检索核心能力',
         },
         {
           key: 'bm25_index_enabled',
-          label: 'BM25 全文索引',
-          hint: '启用关键词检索与混合召回',
+          label: '全文索引 (BM25)',
+          hint: '关键词精准匹配',
         },
       ],
     },
     {
       title: '知识图谱',
       icon: Network,
+      color: 'text-purple-600',
+      bgColor: 'bg-purple-50',
       items: [
         {
           key: 'kg_enabled',
-          label: 'KG 事件抽取',
-          hint: '抽取事件/实体用于知识图谱检索',
+          label: 'KG 抽取',
+          hint: '提取实体与关系',
         },
         {
           key: 'event_vector_enabled',
-          label: '事件向量索引',
-          hint: '事件嵌入写入向量库',
+          label: '事件索引',
+          hint: '事件向量化',
           dependsOn: 'kg_enabled',
         },
         {
           key: 'entity_vector_enabled',
-          label: '实体向量索引',
-          hint: '实体嵌入写入向量库',
+          label: '实体索引',
+          hint: '实体向量化',
           dependsOn: 'kg_enabled',
         },
       ],
@@ -214,213 +220,199 @@ export function PipelineOptionsPanel(props: PipelineOptionsPanelProps) {
   }
 
   return (
-    <div className={cn("space-y-4", className)}>
+    <div className={cn("space-y-4 font-sans", className)}>
       {!props.hideEnabledToggle && (
-        <div className="flex items-start gap-3">
-          <Checkbox
-            checked={enabled}
-            onCheckedChange={(value) => setEnabled(value === true)}
-            className="mt-1"
-          />
+        <div className="flex items-center justify-between p-3 rounded-xl bg-slate-50 border border-slate-200">
           <div>
-            <div className={cn("font-semibold text-gray-900", titleClasses)}>
-              启用自定义管线
+            <div className={cn("font-semibold text-slate-900", titleClasses)}>
+              自定义管线
             </div>
-            <p className={cn("text-gray-500 leading-relaxed", descClasses)}>
-              关闭时使用后端默认配置，仅对新上传文档生效
+            <p className={cn("text-slate-500", descClasses)}>
+              开启后可配置详细的处理流程
             </p>
           </div>
+          <Switch
+            checked={enabled}
+            onCheckedChange={(value) => setEnabled(value === true)}
+          />
         </div>
       )}
 
-      <div className={cn("grid gap-4", compact ? "gap-3" : "gap-4")}>
+      <div className={cn("grid gap-3", compact ? "gap-3" : "gap-4")}>
         {optionGroups.map((group) => {
           const Icon = group.icon
           return (
             <div
               key={group.title}
               className={cn(
-                "rounded-xl border border-gray-100 bg-gray-50/40 px-4 py-3",
-                compact && "px-3 py-2"
+                "rounded-xl border border-slate-200 bg-white overflow-hidden shadow-sm transition-shadow hover:shadow-md",
+                !enabled && "opacity-60 grayscale-[0.5] pointer-events-none"
               )}
             >
-              <div className="flex items-center gap-2 mb-2 text-gray-700">
-                <Icon className={cn("h-4 w-4", compact && "h-3.5 w-3.5")} />
-                <span className={cn("font-semibold", titleClasses)}>{group.title}</span>
+              <div className="flex items-center gap-2 px-3 py-2 bg-slate-50/50 border-b border-slate-100">
+                <div className={cn("p-1 rounded-md", group.bgColor)}>
+                  <Icon className={cn("h-3.5 w-3.5", group.color)} />
+                </div>
+                <span className={cn("font-semibold text-slate-700", titleClasses)}>{group.title}</span>
               </div>
 
-              <div className="space-y-2">
+              <div className="p-3 space-y-3">
                 {group.items.map((item) => {
                   const depends = item.dependsOn === 'kg_enabled'
                   const disabled = !enabled || (depends && !kgEnabled)
                   const checked = !!options[item.key as keyof typeof options]
                   return (
-                    <label
-                      key={item.key}
-                      className={cn(
-                        "flex items-start gap-2 rounded-lg border border-transparent px-2 py-2 transition-colors",
-                        !disabled && "hover:border-gray-200 hover:bg-white",
-                        disabled && "opacity-60"
-                      )}
-                    >
-                      <Checkbox
-                        checked={checked}
-                        onCheckedChange={(value) => handleChecked(item.key as keyof typeof options, value)}
-                        disabled={disabled}
-                        className="mt-0.5"
-                      />
-                      <div>
-                        <div className={cn("font-medium text-gray-800", titleClasses)}>
+                    <div key={item.key} className="flex items-center justify-between gap-3">
+                      <div className="flex-1 min-w-0">
+                        <div className={cn("font-medium text-slate-700 truncate", titleClasses)}>
                           {item.label}
                         </div>
-                        <p className={cn("text-gray-500", descClasses)}>
+                        <p className={cn("text-slate-400 truncate", descClasses)}>
                           {item.hint}
                         </p>
                       </div>
-                    </label>
+                      <Switch
+                        checked={checked}
+                        onCheckedChange={(value) => handleChecked(item.key as keyof typeof options, value)}
+                        disabled={disabled}
+                        className="scale-90 origin-right"
+                      />
+                    </div>
                   )
                 })}
               </div>
 
-              {group.title === '治理' && (
-                <details className="mt-2" open={!compact}>
-                  <summary className={cn("cursor-pointer select-none text-gray-500", descClasses)}>
-                    高级治理
-                  </summary>
-                  <div className={cn("mt-3 space-y-3", compact && "space-y-2")}>
-                    <div className="grid gap-2">
-                      {governanceToggles.map((item) => {
-                        const checked = !!options[item.key as keyof typeof options]
-                        return (
-                          <label
-                            key={item.key}
-                            className={cn(
-                              "flex items-start gap-2 rounded-lg border border-transparent px-2 py-2 transition-colors",
-                              !governanceDisabled && "hover:border-gray-200 hover:bg-white",
-                              governanceDisabled && "opacity-60"
-                            )}
-                          >
-                            <Checkbox
-                              checked={checked}
-                              onCheckedChange={(value) => handleChecked(item.key as keyof typeof options, value)}
-                              disabled={governanceDisabled}
-                              className="mt-0.5"
-                            />
-                            <div>
-                              <div className={cn("font-medium text-gray-800", titleClasses)}>
-                                {item.label}
+              {group.title === '数据治理' && (
+                <div className="border-t border-slate-100">
+                  <details className="group/details">
+                    <summary className={cn("flex items-center justify-between cursor-pointer select-none px-3 py-2 text-slate-500 hover:text-slate-700 hover:bg-slate-50 transition-colors", descClasses)}>
+                      <span>高级治理参数</span>
+                      <ChevronDown className="h-3 w-3 transition-transform group-open/details:rotate-180" />
+                    </summary>
+                    <div className="p-3 pt-0 space-y-4 bg-slate-50/30">
+                      <div className="space-y-3 pt-2">
+                        {governanceToggles.map((item) => {
+                          const checked = !!options[item.key as keyof typeof options]
+                          return (
+                            <div key={item.key} className="flex items-center justify-between gap-3">
+                              <div className="flex-1 min-w-0">
+                                <div className={cn("font-medium text-slate-700 truncate", titleClasses)}>
+                                  {item.label}
+                                </div>
+                                <p className={cn("text-slate-400 truncate", descClasses)}>
+                                  {item.hint}
+                                </p>
                               </div>
-                              <p className={cn("text-gray-500", descClasses)}>
-                                {item.hint}
-                              </p>
+                              <Switch
+                                checked={checked}
+                                onCheckedChange={(value) => handleChecked(item.key as keyof typeof options, value)}
+                                disabled={governanceDisabled}
+                                className="scale-75 origin-right"
+                              />
                             </div>
-                          </label>
-                        )
-                      })}
-                    </div>
-
-                    {/* Image removal */}
-                    <div className="grid gap-2">
-                      <div className={cn("text-xs text-gray-600", compact && "text-[10px]")}>图片处理</div>
-                      <Select
-                        value={(options.governance_remove_images as string) || 'none'}
-                        onValueChange={(v) => updateOption('governance_remove_images', v as any)}
-                        disabled={governanceDisabled}
-                      >
-                        <SelectTrigger className={cn("h-9 text-xs", compact && "h-8")}>
-                          <SelectValue placeholder="选择图片处理方式" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="none">保留图片</SelectItem>
-                          <SelectItem value="decorative">删除装饰图（logo/二维码）</SelectItem>
-                          <SelectItem value="all">删除全部图片</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-
-                    {/* PII settings */}
-                    {!governanceDisabled && options.governance_pii_anonymize && (
-                      <div className="grid gap-2">
-                        <div className={cn("text-xs text-gray-600", compact && "text-[10px]")}>隐私脱敏</div>
-                        <div className="grid grid-cols-2 gap-2">
-                          <Select
-                            value={(options.governance_pii_mode as string) || 'mask'}
-                            onValueChange={(v) => updateOption('governance_pii_mode', v as any)}
-                            disabled={governanceDisabled}
-                          >
-                            <SelectTrigger className={cn("h-9 text-xs", compact && "h-8")}>
-                              <SelectValue placeholder="脱敏模式" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="mask">固定替换</SelectItem>
-                              <SelectItem value="token">生成占位符</SelectItem>
-                            </SelectContent>
-                          </Select>
-                          <Input
-                            value={options.governance_pii_mask || ''}
-                            disabled={governanceDisabled || (options.governance_pii_mode as string) === 'token'}
-                            onChange={(e) => updateOption('governance_pii_mask', e.currentTarget.value as any)}
-                            placeholder="[REDACTED]"
-                            className={cn("h-9 text-xs", compact && "h-8")}
-                          />
-                        </div>
+                          )
+                        })}
                       </div>
-                    )}
 
-                    {/* HTML XPath */}
-                    <div className="grid gap-2">
-                      <div className={cn("text-xs text-gray-600", compact && "text-[10px]")}>HTML XPath（可选）</div>
-                      <Input
-                        value={options.governance_html_xpath || ''}
-                        disabled={governanceDisabled}
-                        onChange={(e) => updateOption('governance_html_xpath', e.currentTarget.value as any)}
-                        placeholder="//article | //main | //body"
-                        className={cn("h-9 text-xs", compact && "h-8")}
-                      />
-                      <div className={cn("text-[10px] text-gray-400", compact && "text-[9px]")}>
-                        仅对 HTML/HTM 文件或输入格式为 HTML 时生效
+                      {/* Image removal */}
+                      <div className="space-y-1.5">
+                        <label className={cn("text-xs font-medium text-slate-600 block", compact && "text-[10px]")}>图片处理</label>
+                        <Select
+                          value={(options.governance_remove_images as string) || 'none'}
+                          onValueChange={(v) => updateOption('governance_remove_images', v as any)}
+                          disabled={governanceDisabled}
+                        >
+                          <SelectTrigger className={cn("h-8 text-xs bg-white", compact && "h-7")}>
+                            <SelectValue placeholder="选择方式" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="none">保留图片</SelectItem>
+                            <SelectItem value="decorative">删除装饰图</SelectItem>
+                            <SelectItem value="all">删除全部图片</SelectItem>
+                          </SelectContent>
+                        </Select>
                       </div>
-                    </div>
 
-                    <div className={cn("grid gap-2", compact ? "gap-2" : "gap-3")}>
-                      {governanceNumbers.map((item) => {
-                        const value = options[item.key as keyof typeof options]
-                        const shouldHide =
-                          (item.key === 'governance_drop_outline_min_content_chars' || item.key === 'governance_drop_outline_max_heading_ratio') &&
-                          !options.governance_drop_outline_only
-                        const shouldHideLowDensity = item.key === 'governance_drop_low_density_threshold' && !options.governance_drop_low_density
-                        if (shouldHide || shouldHideLowDensity) return null
-                        return (
-                          <label key={item.key} className="flex flex-col gap-1">
-                            <div className="flex items-center justify-between text-xs text-gray-600">
-                              <span>{item.label}</span>
-                              <span className="text-[10px] text-gray-400">{item.hint}</span>
-                            </div>
-                            <Input
-                              type="number"
-                              value={typeof value === 'number' ? value : ''}
-                              min={item.min}
-                              max={item.max}
-                              step={item.step}
+                      {/* PII settings */}
+                      {!governanceDisabled && options.governance_pii_anonymize && (
+                        <div className="space-y-1.5">
+                          <label className={cn("text-xs font-medium text-slate-600 block", compact && "text-[10px]")}>隐私脱敏配置</label>
+                          <div className="grid grid-cols-2 gap-2">
+                            <Select
+                              value={(options.governance_pii_mode as string) || 'mask'}
+                              onValueChange={(v) => updateOption('governance_pii_mode', v as any)}
                               disabled={governanceDisabled}
-                              onChange={(e) => handleNumberChange(item.key as keyof typeof options, e.currentTarget.valueAsNumber)}
-                              className={cn(
-                                "h-9 text-xs",
-                                compact && "h-8"
-                              )}
+                            >
+                              <SelectTrigger className={cn("h-8 text-xs bg-white", compact && "h-7")}>
+                                <SelectValue placeholder="模式" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="mask">掩码替换</SelectItem>
+                                <SelectItem value="token">占位符</SelectItem>
+                              </SelectContent>
+                            </Select>
+                            <Input
+                              value={options.governance_pii_mask || ''}
+                              disabled={governanceDisabled || (options.governance_pii_mode as string) === 'token'}
+                              onChange={(e) => updateOption('governance_pii_mask', e.currentTarget.value as any)}
+                              placeholder="[REDACTED]"
+                              className={cn("h-8 text-xs bg-white", compact && "h-7")}
                             />
-                          </label>
-                        )
-                      })}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* HTML XPath */}
+                      <div className="space-y-1.5">
+                        <div className="flex justify-between">
+                           <label className={cn("text-xs font-medium text-slate-600", compact && "text-[10px]")}>HTML 提取 (XPath)</label>
+                        </div>
+                        <Input
+                          value={options.governance_html_xpath || ''}
+                          disabled={governanceDisabled}
+                          onChange={(e) => updateOption('governance_html_xpath', e.currentTarget.value as any)}
+                          placeholder="//article | //main"
+                          className={cn("h-8 text-xs bg-white font-mono", compact && "h-7")}
+                        />
+                      </div>
+
+                      <div className="grid gap-3 pt-1">
+                        {governanceNumbers.map((item) => {
+                          const value = options[item.key as keyof typeof options]
+                          const shouldHide =
+                            (item.key === 'governance_drop_outline_min_content_chars' || item.key === 'governance_drop_outline_max_heading_ratio') &&
+                            !options.governance_drop_outline_only
+                          const shouldHideLowDensity = item.key === 'governance_drop_low_density_threshold' && !options.governance_drop_low_density
+                          if (shouldHide || shouldHideLowDensity) return null
+                          return (
+                            <label key={item.key} className="flex items-center justify-between gap-2">
+                              <span className={cn("text-xs text-slate-600 truncate flex-1", compact && "text-[10px]")} title={item.hint}>{item.label}</span>
+                              <Input
+                                type="number"
+                                value={typeof value === 'number' ? value : ''}
+                                min={item.min}
+                                max={item.max}
+                                step={item.step}
+                                disabled={governanceDisabled}
+                                onChange={(e) => handleNumberChange(item.key as keyof typeof options, e.currentTarget.valueAsNumber)}
+                                className={cn(
+                                  "h-7 w-16 text-right text-xs bg-white px-1",
+                                  compact && "h-6"
+                                )}
+                              />
+                            </label>
+                          )
+                        })}
+                      </div>
                     </div>
-                  </div>
-                </details>
+                  </details>
+                </div>
               )}
 
               {group.title === '知识图谱' && !kgEnabled && (
-                <div className={cn("mt-2 flex items-center gap-2 text-gray-400", descClasses)}>
+                <div className={cn("px-3 py-2 bg-slate-50 border-t border-slate-100 flex items-center gap-2 text-slate-400 italic", descClasses)}>
                   <Sparkles className="h-3 w-3" />
-                  事件/实体索引需先开启 KG
+                  需先开启 KG 抽取才能配置索引
                 </div>
               )}
             </div>
@@ -429,9 +421,9 @@ export function PipelineOptionsPanel(props: PipelineOptionsPanelProps) {
       </div>
 
       {enabled && (
-        <div className={cn("flex items-center gap-2 text-gray-400", descClasses)}>
+        <div className={cn("flex items-center justify-center gap-1.5 text-slate-400 mt-2", descClasses)}>
           <CheckCircle2 className="h-3 w-3" />
-          启用后将覆盖默认索引与治理行为
+          <span>自定义配置已生效</span>
         </div>
       )}
     </div>
