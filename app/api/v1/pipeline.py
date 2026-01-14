@@ -208,7 +208,22 @@ async def get_pipeline_capabilities(
         notes: str | None = None
         if s == "auto":
             available = True
-            notes = "Auto-selects a chunker per document (markdown/json/plain text)."
+            notes = "Auto-selects a chunker per document (qa/transcript/paper/outline/markdown/json/plain text)."
+        elif s == "manuscript":
+            available = True
+            notes = "Preset for manuscript-like documents (auto-selects qa/transcript/paper/outline/markdown/...)."
+        elif s == "outline":
+            available = True
+            notes = "Numbered-outline aware chunking (keeps section heading context)."
+        elif s == "transcript":
+            available = True
+            notes = "Transcript/dialogue aware chunking (keeps speaker turns together)."
+        elif s == "qa_pairs":
+            available = True
+            notes = "FAQ / Q&A aware chunking (keeps Q/A pairs together)."
+        elif s == "paper":
+            available = True
+            notes = "Academic paper/report aware chunking (splits by common paper sections)."
         if s.startswith("llama_index"):
             if not bool(getattr(settings, "LLAMA_INDEX_ENABLED", False)):
                 available = False

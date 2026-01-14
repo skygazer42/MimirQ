@@ -1,10 +1,17 @@
 """
-Auto chunking strategy.
+Manuscript preset chunking strategy.
 
-Selects an appropriate chunker per-document based on metadata + lightweight
-content heuristics.
+This is a convenience preset for "mixed" textual documents (文稿/讲稿/手稿/报告),
+where the best chunking method depends on the content shape:
+- QA pairs / FAQ -> qa_pairs
+- Meeting minutes / interviews -> transcript
+- Papers / reports -> paper
+- Numbered outlines / manuals -> outline
+- Markdown -> markdown_aware
+- Otherwise -> semantic_sentence or langchain_recursive
 """
 
+from __future__ import annotations
 
 import json
 import re
@@ -48,19 +55,9 @@ def _looks_like_json(text: str) -> bool:
         return False
 
 
-class AutoChunker(BaseChunker):
+class ManuscriptChunker(BaseChunker):
     """
-    Smart, lightweight chunker selection.
-
-    Strategy selection (per Document):
-    - Q/A pairs -> qa_pairs (keeps pairs together)
-    - Transcript-like -> transcript (keeps speaker turns together)
-    - Paper-like -> paper (section-aware)
-    - Outline-like -> outline (numbered headings)
-    - Markdown-ish content -> markdown_aware (structure-friendly)
-    - Valid JSON content -> json (structure-friendly, overlap=0)
-    - Long plain text -> semantic_sentence (better boundary alignment)
-    - Default -> langchain_recursive (general purpose)
+    Content-aware preset for manuscript-like documents.
     """
 
     def __init__(self, chunk_size: int, chunk_overlap: int):
@@ -102,7 +99,6 @@ class AutoChunker(BaseChunker):
         text = doc.page_content or ""
 
         if file_type in {"json"} or _looks_like_json(text):
-            # JSON overlap is usually counterproductive; keep it at 0.
             return JSONChunker(chunk_size=self.chunk_size, chunk_overlap=0), "json"
 
         if looks_like_qa_pairs(text):
@@ -111,17 +107,15 @@ class AutoChunker(BaseChunker):
         if looks_like_transcript(text):
             return self._transcript, "transcript"
 
-        if looks_like_paper(text):
-            return self._paper, "paper"
-
         if file_type in {"md", "markdown"} or _looks_like_markdown(text):
             return self._markdown, "markdown_aware"
+
+        if looks_like_paper(text):
+            return self._paper, "paper"
 
         if looks_like_outline(text):
             return self._outline, "outline"
 
-        # If the document is long enough, sentence-aware splitting tends to
-        # reduce broken sentences and improves retrieval.
         if len(text) >= max(self.chunk_size * 2, 1200):
             return self._semantic, "semantic_sentence"
 
@@ -134,7 +128,7 @@ class AutoChunker(BaseChunker):
             produced = chunker.split_documents([doc])
             for item in produced:
                 meta = dict(item.metadata or {})
-                meta["chunk_strategy_auto"] = True
+                meta["chunk_strategy_preset"] = "manuscript"
                 meta.setdefault("chunk_strategy_selected", selected)
                 item.metadata = meta
             chunks.extend(produced)

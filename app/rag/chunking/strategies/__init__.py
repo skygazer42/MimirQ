@@ -13,6 +13,11 @@ Available strategies:
 - json: JSON structure-aware chunking
 - code: Programming language-aware chunking
 - smart_code: AST-like code chunking (Python)
+- outline: Numbered-outline aware chunking
+- transcript: Speaker-turn aware chunking
+- qa_pairs: Q/A-pair aware chunking
+- paper: Academic paper section-aware chunking
+- manuscript: Content-aware preset for manuscripts
 """
 from app.rag.chunking.strategies.recursive import LangChainRecursiveChunker
 from app.rag.chunking.strategies.token import LangChainTokenChunker
@@ -33,6 +38,11 @@ from app.rag.chunking.strategies.json_code import (
     SmartCodeChunker,
 )
 from app.rag.chunking.strategies.auto import AutoChunker
+from app.rag.chunking.strategies.outline import OutlineChunker
+from app.rag.chunking.strategies.transcript import TranscriptChunker
+from app.rag.chunking.strategies.qa_pairs import QAPairsChunker
+from app.rag.chunking.strategies.paper import PaperChunker
+from app.rag.chunking.strategies.manuscript import ManuscriptChunker
 
 __all__ = [
     "LangChainRecursiveChunker",
@@ -49,4 +59,9 @@ __all__ = [
     "CodeChunker",
     "SmartCodeChunker",
     "AutoChunker",
+    "OutlineChunker",
+    "TranscriptChunker",
+    "QAPairsChunker",
+    "PaperChunker",
+    "ManuscriptChunker",
 ]
