@@ -1313,3 +1313,284 @@ curl http://localhost:8000/api/v1/health/ready
 
 *文档版本：2.0 | 最后更新：2024*
 
+---
+
+# 高级功能：知识图谱
+
+> 需要启用 `KG_ENABLED=true`
+
+## 什么是知识图谱？
+
+知识图谱从文档中自动提取：
+- **实体**：人物、组织、地点、概念等
+- **事件**：实体之间的关系和行为
+- **关联**：实体间的连接关系
+
+```
+文档 ──► 抽取 ──► 实体+事件 ──► 图谱可视化
+```
+
+## 核心接口
+
+### 获取图谱数据
+
+```bash
+GET /api/v1/kg/graph?document_ids=uuid1&document_ids=uuid2
+```
+
+**参数：**
+| 参数 | 默认值 | 说明 |
+|------|--------|------|
+| max_events | 200 | 最大事件数 |
+| max_entities | 400 | 最大实体数 |
+| max_links | 2000 | 最大连接数 |
+
+**响应示例：**
+```json
+{
+  "nodes": [
+    {"id": "uuid", "label": "张三", "group": 1, "meta": {"kind": "entity", "type": "PERSON"}}
+  ],
+  "links": [
+    {"source": "event-id", "target": "entity-id", "label": "参与"}
+  ],
+  "stats": {"events": 100, "entities": 200, "links": 500}
+}
+```
+
+### 触发 KG 抽取
+
+```bash
+POST /api/v1/kg/documents/{document_id}/extract
+```
+
+### 搜索节点
+
+```bash
+GET /api/v1/kg/graph/search?q=关键词&limit=20
+```
+
+---
+
+# 前端集成指南
+
+## Vue 3 组件示例
+
+### 聊天组件
+
+```vue
+<template>
+  <div class="chat">
+    <div class="messages">
+      <div v-for="msg in messages" :key="msg.id" :class="msg.role">
+        {{ msg.content }}
+      </div>
+    </div>
+    <input v-model="input" @keyup.enter="send" placeholder="输入问题..." />
+  </div>
+</template>
+
+<script setup>
+import { ref } from 'vue'
+
+const messages = ref([])
+const input = ref('')
+const token = ref(localStorage.getItem('token'))
+
+async function send() {
+  if (!input.value.trim()) return
+
+  messages.value.push({ role: 'user', content: input.value })
+  const question = input.value
+  input.value = ''
+
+  // 添加空的助手消息
+  messages.value.push({ role: 'assistant', content: '' })
+  const lastIdx = messages.value.length - 1
+
+  const response = await fetch('/api/v1/chat/stream', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${token.value}`
+    },
+    body: JSON.stringify({
+      message: question,
+      document_ids: ['your-doc-id'],
+      stream: true
+    })
+  })
+
+  const reader = response.body.getReader()
+  const decoder = new TextDecoder()
+
+  while (true) {
+    const { done, value } = await reader.read()
+    if (done) break
+
+    const chunk = decoder.decode(value)
+    for (const line of chunk.split('\n')) {
+      if (line.startsWith('data: ')) {
+        const event = JSON.parse(line.slice(6))
+        if (event.type === 'token') {
+          messages.value[lastIdx].content += event.data.content
+        }
+      }
+    }
+  }
+}
+</script>
+```
+
+### 文档上传组件
+
+```vue
+<template>
+  <div class="upload">
+    <input type="file" @change="upload" accept=".pdf,.docx,.md,.txt" />
+    <div v-if="status">{{ status }}</div>
+  </div>
+</template>
+
+<script setup>
+import { ref } from 'vue'
+
+const status = ref('')
+
+async function upload(e) {
+  const file = e.target.files[0]
+  if (!file) return
+
+  status.value = '上传中...'
+
+  const formData = new FormData()
+  formData.append('file', file)
+
+  const res = await fetch('/api/v1/documents/upload', {
+    method: 'POST',
+    headers: { 'Authorization': `Bearer ${token}` },
+    body: formData
+  })
+
+  const doc = await res.json()
+  status.value = `已上传，ID: ${doc.id}`
+
+  // 轮询状态
+  pollStatus(doc.id)
+}
+
+async function pollStatus(docId) {
+  const res = await fetch(`/api/v1/documents/${docId}/status`, {
+    headers: { 'Authorization': `Bearer ${token}` }
+  })
+  const data = await res.json()
+
+  if (data.status === 'completed') {
+    status.value = '处理完成！'
+  } else if (data.status === 'failed') {
+    status.value = '处理失败'
+  } else {
+    status.value = `处理中 ${data.processing_progress}%`
+    setTimeout(() => pollStatus(docId), 2000)
+  }
+}
+</script>
+```
+
+---
+
+# 安全最佳实践
+
+## Token 安全
+
+### 存储建议
+
+| 存储方式 | 安全性 | 建议 |
+|----------|--------|------|
+| localStorage | 低 | 仅开发环境 |
+| httpOnly Cookie | 高 | 生产环境推荐 |
+| 内存 | 中 | 单页应用可用 |
+
+## 输入验证
+
+```python
+# 后端已做验证，前端也应检查
+def validate_input(message):
+    if len(message) > 10000:
+        raise ValueError("消息过长")
+    return message.strip()
+```
+
+## CORS 配置
+
+生产环境应限制允许的域名：
+
+```python
+# 后端配置示例
+CORS_ORIGINS = ["https://your-domain.com"]
+```
+
+---
+
+# 性能优化建议
+
+## 前端优化
+
+### 1. 防抖处理
+
+```javascript
+// 避免频繁请求
+function debounce(fn, delay = 300) {
+  let timer
+  return (...args) => {
+    clearTimeout(timer)
+    timer = setTimeout(() => fn(...args), delay)
+  }
+}
+
+const debouncedSearch = debounce(search, 500)
+```
+
+### 2. 请求取消
+
+```javascript
+let controller = null
+
+async function chat(message) {
+  // 取消上一个请求
+  if (controller) controller.abort()
+  controller = new AbortController()
+
+  await fetch('/api/v1/chat/stream', {
+    signal: controller.signal,
+    // ...
+  })
+}
+```
+
+## 后端参数调优
+
+| 场景 | top_k | reranker | 预期延迟 |
+|------|-------|----------|----------|
+| 快速响应 | 3 | 关闭 | < 2s |
+| 平衡模式 | 5 | 关闭 | 2-4s |
+| 高精度 | 10 | 开启 | 4-8s |
+
+## 批量操作
+
+```python
+# 批量上传文档
+files = ["doc1.pdf", "doc2.pdf", "doc3.pdf"]
+for f in files:
+    client.upload_document(f)
+
+# 并行等待处理
+import asyncio
+await asyncio.gather(*[wait_for(doc_id) for doc_id in doc_ids])
+```
+
+---
+
+*文档版本：3.0 | 最后更新：2024*
+
+

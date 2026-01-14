@@ -39,6 +39,21 @@ Available strategies:
 - qa_markdown: Markdown Q/A aware chunking
 - meeting_minutes: Meeting minutes section-aware chunking
 - timeline_events: Timeline/date-event aware chunking
+- html_sections: HTML heading-aware chunking
+- rst_sections: reStructuredText section-aware chunking
+- asciidoc_sections: AsciiDoc section-aware chunking
+- latex_sections: LaTeX section-aware chunking
+- orgmode_sections: Org-mode section-aware chunking
+- mediawiki_sections: MediaWiki section-aware chunking
+- yaml_manifest: YAML manifest multi-doc chunking
+- toml_config: TOML config table-aware chunking
+- sql_schema: SQL schema/DDL statement chunking
+- stacktrace: Stacktrace block-aware chunking
+- dockerfile: Dockerfile instruction-aware chunking
+- makefile: Makefile target-aware chunking
+- nginx_config: Nginx config block-aware chunking
+- jira_ticket: Jira/issue ticket section-aware chunking
+- prd_spec: PRD/requirements section-aware chunking
 """
 from app.rag.chunking.strategies.recursive import LangChainRecursiveChunker
 from app.rag.chunking.strategies.token import LangChainTokenChunker
@@ -85,6 +100,21 @@ from app.rag.chunking.strategies.kv_config import KVConfigChunker
 from app.rag.chunking.strategies.qa_markdown import QAMarkdownChunker
 from app.rag.chunking.strategies.meeting_minutes import MeetingMinutesChunker
 from app.rag.chunking.strategies.timeline_events import TimelineEventsChunker
+from app.rag.chunking.strategies.html_sections import HTMLSectionsChunker
+from app.rag.chunking.strategies.rst_sections import RSTSectionsChunker
+from app.rag.chunking.strategies.asciidoc_sections import AsciiDocSectionsChunker
+from app.rag.chunking.strategies.latex_sections import LatexSectionsChunker
+from app.rag.chunking.strategies.orgmode_sections import OrgModeSectionsChunker
+from app.rag.chunking.strategies.mediawiki_sections import MediaWikiSectionsChunker
+from app.rag.chunking.strategies.yaml_manifest import YAMLManifestChunker
+from app.rag.chunking.strategies.toml_config import TOMLConfigChunker
+from app.rag.chunking.strategies.sql_schema import SqlSchemaChunker
+from app.rag.chunking.strategies.stacktrace import StackTraceChunker
+from app.rag.chunking.strategies.dockerfile import DockerfileChunker
+from app.rag.chunking.strategies.makefile import MakefileChunker
+from app.rag.chunking.strategies.nginx_config import NginxConfigChunker
+from app.rag.chunking.strategies.jira_ticket import JiraTicketChunker
+from app.rag.chunking.strategies.prd_spec import PRDSpecChunker
 
 __all__ = [
     "LangChainRecursiveChunker",
@@ -127,4 +157,19 @@ __all__ = [
     "QAMarkdownChunker",
     "MeetingMinutesChunker",
     "TimelineEventsChunker",
+    "HTMLSectionsChunker",
+    "RSTSectionsChunker",
+    "AsciiDocSectionsChunker",
+    "LatexSectionsChunker",
+    "OrgModeSectionsChunker",
+    "MediaWikiSectionsChunker",
+    "YAMLManifestChunker",
+    "TOMLConfigChunker",
+    "SqlSchemaChunker",
+    "StackTraceChunker",
+    "DockerfileChunker",
+    "MakefileChunker",
+    "NginxConfigChunker",
+    "JiraTicketChunker",
+    "PRDSpecChunker",
 ]

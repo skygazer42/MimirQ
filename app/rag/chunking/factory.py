@@ -53,6 +53,21 @@ from app.rag.chunking.strategies import (
     QAMarkdownChunker,
     MeetingMinutesChunker,
     TimelineEventsChunker,
+    HTMLSectionsChunker,
+    RSTSectionsChunker,
+    AsciiDocSectionsChunker,
+    LatexSectionsChunker,
+    OrgModeSectionsChunker,
+    MediaWikiSectionsChunker,
+    YAMLManifestChunker,
+    TOMLConfigChunker,
+    SqlSchemaChunker,
+    StackTraceChunker,
+    DockerfileChunker,
+    MakefileChunker,
+    NginxConfigChunker,
+    JiraTicketChunker,
+    PRDSpecChunker,
 )
 
 
@@ -100,6 +115,21 @@ class ChunkerFactory:
     - qa_markdown: Markdown Q/A aware chunking
     - meeting_minutes: Meeting minutes section-aware chunking
     - timeline_events: Timeline/date-event aware chunking
+    - html_sections: HTML heading-aware chunking
+    - rst_sections: reStructuredText section-aware chunking
+    - asciidoc_sections: AsciiDoc section-aware chunking
+    - latex_sections: LaTeX section-aware chunking
+    - orgmode_sections: Org-mode section-aware chunking
+    - mediawiki_sections: MediaWiki section-aware chunking
+    - yaml_manifest: YAML manifest multi-doc chunking
+    - toml_config: TOML config table-aware chunking
+    - sql_schema: SQL schema/DDL statement chunking
+    - stacktrace: Stacktrace block-aware chunking
+    - dockerfile: Dockerfile instruction-aware chunking
+    - makefile: Makefile target-aware chunking
+    - nginx_config: Nginx config block-aware chunking
+    - jira_ticket: Jira/issue ticket section-aware chunking
+    - prd_spec: PRD/requirements section-aware chunking
 
     RAGFlow strategies (handled separately):
     - ragflow_naive: General-purpose chunking
@@ -150,6 +180,21 @@ class ChunkerFactory:
         "qa_markdown": QAMarkdownChunker,
         "meeting_minutes": MeetingMinutesChunker,
         "timeline_events": TimelineEventsChunker,
+        "html_sections": HTMLSectionsChunker,
+        "rst_sections": RSTSectionsChunker,
+        "asciidoc_sections": AsciiDocSectionsChunker,
+        "latex_sections": LatexSectionsChunker,
+        "orgmode_sections": OrgModeSectionsChunker,
+        "mediawiki_sections": MediaWikiSectionsChunker,
+        "yaml_manifest": YAMLManifestChunker,
+        "toml_config": TOMLConfigChunker,
+        "sql_schema": SqlSchemaChunker,
+        "stacktrace": StackTraceChunker,
+        "dockerfile": DockerfileChunker,
+        "makefile": MakefileChunker,
+        "nginx_config": NginxConfigChunker,
+        "jira_ticket": JiraTicketChunker,
+        "prd_spec": PRDSpecChunker,
     }
 
     RAGFLOW_STRATEGIES = {
@@ -250,6 +295,56 @@ class ChunkerFactory:
         "时间线": "timeline_events",
         "时间轴": "timeline_events",
         "时间记录": "timeline_events",
+        # Markup / text formats
+        "html_sections": "html_sections",
+        "html": "html_sections",
+        "rst": "rst_sections",
+        "restructuredtext": "rst_sections",
+        "restructured_text": "rst_sections",
+        "asciidoc": "asciidoc_sections",
+        "adoc": "asciidoc_sections",
+        "asciidoc_sections": "asciidoc_sections",
+        "latex": "latex_sections",
+        "tex": "latex_sections",
+        "latex_sections": "latex_sections",
+        "org": "orgmode_sections",
+        "orgmode": "orgmode_sections",
+        "org_mode": "orgmode_sections",
+        "wiki": "mediawiki_sections",
+        "mediawiki": "mediawiki_sections",
+        "wikitext": "mediawiki_sections",
+        # Config / code formats
+        "yaml": "yaml_manifest",
+        "yml": "yaml_manifest",
+        "k8s": "yaml_manifest",
+        "kubernetes": "yaml_manifest",
+        "manifest": "yaml_manifest",
+        "toml": "toml_config",
+        "toml_config": "toml_config",
+        "sql": "sql_schema",
+        "ddl": "sql_schema",
+        "schema": "sql_schema",
+        "sql_schema": "sql_schema",
+        "stack": "stacktrace",
+        "trace": "stacktrace",
+        "traceback": "stacktrace",
+        "stacktrace": "stacktrace",
+        "docker": "dockerfile",
+        "dockerfile": "dockerfile",
+        "make": "makefile",
+        "makefile": "makefile",
+        "nginx": "nginx_config",
+        "nginx_conf": "nginx_config",
+        "nginx_config": "nginx_config",
+        # Business docs
+        "jira": "jira_ticket",
+        "ticket": "jira_ticket",
+        "issue": "jira_ticket",
+        "jira_ticket": "jira_ticket",
+        "prd": "prd_spec",
+        "requirements": "prd_spec",
+        "spec": "prd_spec",
+        "prd_spec": "prd_spec",
     }
 
     def resolve_strategy(self, strategy: Optional[str]) -> str:
