@@ -25,6 +25,8 @@ const DEFAULT_KG_CONFIG: KGConfig = {
   extract_prompt_template_id: '',
   extract_prompt_template_key: '',
   extract_prompt_ab_experiment_key: '',
+  extract_replace_existing: true,
+  extract_prune_orphan_entities: true,
 }
 
 const SELECT_DEFAULT_VALUE = '__mimirq_default__'
@@ -121,6 +123,28 @@ export function KgExtractPromptSettings({ templates }: { templates: PromptTempla
           <div className="text-sm">
             <div className="font-medium">对话启用 KG 增强检索</div>
             <div className="text-muted-foreground text-xs">开启后，Chat 会额外召回 KG 事件摘要作为上下文。</div>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2">
+          <Checkbox
+            checked={draft.extract_replace_existing}
+            onCheckedChange={(v) => setDraft((prev) => ({ ...prev, extract_replace_existing: v === true }))}
+          />
+          <div className="text-sm">
+            <div className="font-medium">重复抽取时替换旧事件</div>
+            <div className="text-muted-foreground text-xs">避免同一文档/切片重复写入 KG 事件。</div>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2">
+          <Checkbox
+            checked={draft.extract_prune_orphan_entities}
+            onCheckedChange={(v) => setDraft((prev) => ({ ...prev, extract_prune_orphan_entities: v === true }))}
+          />
+          <div className="text-sm">
+            <div className="font-medium">清理孤立实体</div>
+            <div className="text-muted-foreground text-xs">替换/删除事件后，自动删除无任何事件关联的实体。</div>
           </div>
         </div>
 

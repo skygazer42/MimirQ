@@ -1,0 +1,366 @@
+from __future__ import annotations
+
+from datetime import datetime, timezone
+from types import SimpleNamespace
+from uuid import UUID
+
+import pytest
+from fastapi import HTTPException
+
+
+class _FakeQuery:
+    def __init__(self, *, scalar=None, first=None, all_rows=None):  # noqa: ANN001
+        self._scalar = scalar
+        self._first = first
+        self._all = all_rows
+
+    def filter(self, *_a, **_k):  # noqa: ANN001
+        return self
+
+    def join(self, *_a, **_k):  # noqa: ANN001
+        return self
+
+    def order_by(self, *_a, **_k):  # noqa: ANN001
+        return self
+
+    def limit(self, *_a, **_k):  # noqa: ANN001
+        return self
+
+    def group_by(self, *_a, **_k):  # noqa: ANN001
+        return self
+
+    def scalar(self):  # noqa: ANN001
+        return self._scalar
+
+    def first(self):  # noqa: ANN001
+        return self._first
+
+    def all(self):  # noqa: ANN001
+        return list(self._all or [])
+
+
+class _FakeDB:
+    def __init__(self, queries):  # noqa: ANN001
+        self._queries = list(queries)
+
+    def query(self, *_a, **_k):  # noqa: ANN001
+        if not self._queries:
+            raise AssertionError("Unexpected db.query call")
+        return self._queries.pop(0)
+
+
+@pytest.mark.asyncio
+async def test_get_kg_stats_no_access_returns_zero(monkeypatch: pytest.MonkeyPatch):
+    from app.core import config as config_mod
+    from app.rag.kg.api.routes import get_kg_stats
+    from app.services.dataset_service import DatasetService
+    import app.rag.kg.api.routes as routes_mod
+
+    monkeypatch.setattr(config_mod.settings, "KG_ENABLED", True, raising=False)
+    monkeypatch.setattr(DatasetService, "ensure_member", lambda *_a, **_k: None, raising=True)
+    monkeypatch.setattr(routes_mod, "_resolve_allowed_documents", lambda **_k: [], raising=True)
+
+    out = await get_kg_stats(document_ids=None, tenant_id=UUID(int=1), account_id="u", db=object())
+    assert out.events == 0
+    assert out.entities == 0
+    assert out.links == 0
+    assert out.entity_types == []
+    assert out.updated_at is None
+
+
+@pytest.mark.asyncio
+async def test_get_kg_stats_counts(monkeypatch: pytest.MonkeyPatch):
+    from app.core import config as config_mod
+    from app.rag.kg.api.routes import get_kg_stats
+    from app.services.dataset_service import DatasetService
+    import app.rag.kg.api.routes as routes_mod
+
+    monkeypatch.setattr(config_mod.settings, "KG_ENABLED", True, raising=False)
+    monkeypatch.setattr(DatasetService, "ensure_member", lambda *_a, **_k: None, raising=True)
+    monkeypatch.setattr(routes_mod, "_resolve_allowed_documents", lambda **_k: [UUID(int=2)], raising=True)
+
+    updated_at = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    db = _FakeDB(
+        queries=[
+            _FakeQuery(scalar=3),  # event_count
+            _FakeQuery(scalar=12),  # link_count
+            _FakeQuery(scalar=5),  # entity_count
+            _FakeQuery(scalar=updated_at),  # updated_at
+            _FakeQuery(all_rows=[("Person", 4), (None, 1)]),  # type_rows
+        ]
+    )
+
+    out = await get_kg_stats(document_ids=None, tenant_id=UUID(int=1), account_id="u", db=db)
+    assert out.events == 3
+    assert out.entities == 5
+    assert out.links == 12
+    assert out.updated_at == updated_at
+    assert [t.model_dump() for t in out.entity_types] == [
+        {"type": "Person", "count": 4},
+        {"type": "unknown", "count": 1},
+    ]
+
+
+@pytest.mark.asyncio
+async def test_export_kg_graph_graphml(monkeypatch: pytest.MonkeyPatch):
+    from app.core import config as config_mod
+    from app.rag.kg.api.routes import export_kg_graph
+    from app.rag.kg.schemas import KGGraphLink, KGGraphNode, KGGraphResponse
+
+    import app.rag.kg.api.routes as routes_mod
+
+    monkeypatch.setattr(config_mod.settings, "KG_ENABLED", True, raising=False)
+
+    async def _fake_get_kg_graph(**_k):  # noqa: ANN001
+        return KGGraphResponse(
+            nodes=[
+                KGGraphNode(id="n1", label="Entity A", group=1, val=1, meta={"kind": "entity", "type": "Person"}),
+                KGGraphNode(id="n2", label="Event 1", group=0, val=1, meta={"kind": "event", "document_id": "d"}),
+            ],
+            links=[
+                KGGraphLink(source="n2", target="n1", label="mentions", weight=1.0, meta={"kind": "event_entity"}),
+                KGGraphLink(
+                    source="n1",
+                    target="n1",
+                    label="co",
+                    weight=0.2,
+                    meta={"kind": "entity_entity", "shared_events": 3},
+                ),
+            ],
+            stats={"events": 1, "entities": 1},
+        )
+
+    monkeypatch.setattr(routes_mod, "get_kg_graph", _fake_get_kg_graph, raising=True)
+
+    resp = await export_kg_graph(
+        document_ids=None,
+        max_events=10,
+        max_entities=10,
+        max_links=10,
+        include_entity_links=True,
+        min_shared_events=2,
+        max_entity_links=1000,
+        download=False,
+        tenant_id=UUID(int=1),
+        account_id="u",
+        db=object(),
+    )
+
+    assert resp.media_type == "application/graphml+xml"
+    body = resp.body.decode("utf-8")
+    assert "<graphml" in body
+    assert 'key id="d0"' in body  # node label
+    assert 'key id="e2"' in body  # edge kind
+    assert "entity_entity" in body
+
+
+@pytest.mark.asyncio
+async def test_delete_kg_for_document_uses_default_prune_setting(monkeypatch: pytest.MonkeyPatch):
+    from app.core import config as config_mod
+    from app.rag.kg.api.routes import delete_kg_for_document
+    from app.services.dataset_service import DatasetService
+
+    import app.rag.kg.api.routes as routes_mod
+
+    monkeypatch.setattr(config_mod.settings, "KG_ENABLED", True, raising=False)
+    monkeypatch.setattr(config_mod.settings, "KG_EXTRACT_PRUNE_ORPHAN_ENTITIES", False, raising=False)
+    monkeypatch.setattr(DatasetService, "ensure_member", lambda *_a, **_k: None, raising=True)
+    monkeypatch.setattr(routes_mod, "filter_allowed_document_ids", lambda *_a, **_k: [UUID(int=2)], raising=True)
+
+    called: dict[str, object] = {}
+
+    class _FakeIndexer:
+        def __init__(self, _db):  # noqa: ANN001
+            return
+
+        def delete_event_indexes(self, **kwargs):  # noqa: ANN003
+            called.update(kwargs)
+            return {"events_deleted": 7, "entities_pruned": 2}
+
+    import app.services.indexer as indexer_mod
+
+    monkeypatch.setattr(indexer_mod, "Indexer", _FakeIndexer, raising=True)
+
+    doc = SimpleNamespace(id=UUID(int=2), tenant_id=UUID(int=1), dataset_id=None)
+    db = _FakeDB([_FakeQuery(first=doc)])
+
+    out = await delete_kg_for_document(
+        document_id=UUID(int=2),
+        prune_orphan_entities=None,
+        tenant_id=UUID(int=1),
+        account_id="u",
+        db=db,
+    )
+    assert out.document_id == UUID(int=2)
+    assert out.events_deleted == 7
+    assert out.entities_pruned == 2
+    assert called["prune_orphan_entities"] is False
+
+
+@pytest.mark.asyncio
+async def test_get_kg_event_detail_no_access_404(monkeypatch: pytest.MonkeyPatch):
+    from app.core import config as config_mod
+    from app.rag.kg.api.routes import get_kg_event_detail
+    from app.services.dataset_service import DatasetService
+    import app.rag.kg.api.routes as routes_mod
+
+    monkeypatch.setattr(config_mod.settings, "KG_ENABLED", True, raising=False)
+    monkeypatch.setattr(DatasetService, "ensure_member", lambda *_a, **_k: None, raising=True)
+    monkeypatch.setattr(routes_mod, "_resolve_allowed_documents", lambda **_k: [], raising=True)
+
+    with pytest.raises(HTTPException) as exc:
+        await get_kg_event_detail(
+            event_id=UUID(int=10),
+            document_ids=None,
+            tenant_id=UUID(int=1),
+            account_id="u",
+            db=object(),
+        )
+    assert exc.value.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_get_kg_event_detail_success(monkeypatch: pytest.MonkeyPatch):
+    from app.core import config as config_mod
+    from app.rag.kg.api.routes import get_kg_event_detail
+    from app.services.dataset_service import DatasetService
+    import app.rag.kg.api.routes as routes_mod
+
+    monkeypatch.setattr(config_mod.settings, "KG_ENABLED", True, raising=False)
+    monkeypatch.setattr(DatasetService, "ensure_member", lambda *_a, **_k: None, raising=True)
+    monkeypatch.setattr(routes_mod, "_resolve_allowed_documents", lambda **_k: [UUID(int=2)], raising=True)
+
+    ev = SimpleNamespace(
+        id=UUID(int=10),
+        title="t",
+        summary="s",
+        content="c",
+        document_id=UUID(int=2),
+        chunk_id=None,
+        references=None,
+        extra_data=None,
+        created_at=None,
+        updated_at=None,
+    )
+    ent = SimpleNamespace(
+        id=UUID(int=20),
+        name="Alice",
+        type="Person",
+        normalized_name="alice",
+        description=None,
+        extra_data=None,
+        created_at=None,
+        updated_at=None,
+    )
+    assoc = SimpleNamespace(weight=0.7, role="subject")
+
+    db = _FakeDB([_FakeQuery(first=ev), _FakeQuery(all_rows=[(assoc, ent)])])
+
+    out = await get_kg_event_detail(
+        event_id=UUID(int=10),
+        document_ids=None,
+        tenant_id=UUID(int=1),
+        account_id="u",
+        db=db,
+    )
+    assert out.event.id == UUID(int=10)
+    assert out.entities[0].entity.id == UUID(int=20)
+    assert out.entities[0].weight == 0.7
+    assert out.entities[0].role == "subject"
+
+
+@pytest.mark.asyncio
+async def test_get_kg_entity_detail_total_events_zero_404(monkeypatch: pytest.MonkeyPatch):
+    from app.core import config as config_mod
+    from app.rag.kg.api.routes import get_kg_entity_detail
+    from app.services.dataset_service import DatasetService
+    import app.rag.kg.api.routes as routes_mod
+
+    monkeypatch.setattr(config_mod.settings, "KG_ENABLED", True, raising=False)
+    monkeypatch.setattr(DatasetService, "ensure_member", lambda *_a, **_k: None, raising=True)
+    monkeypatch.setattr(routes_mod, "_resolve_allowed_documents", lambda **_k: [UUID(int=2)], raising=True)
+
+    ent = SimpleNamespace(
+        id=UUID(int=20),
+        name="Alice",
+        type="Person",
+        normalized_name="alice",
+        description=None,
+        extra_data=None,
+        created_at=None,
+        updated_at=None,
+    )
+
+    db = _FakeDB([_FakeQuery(first=ent), _FakeQuery(scalar=0)])
+
+    with pytest.raises(HTTPException) as exc:
+        await get_kg_entity_detail(
+            entity_id=UUID(int=20),
+            document_ids=None,
+            max_events=10,
+            max_neighbors=10,
+            tenant_id=UUID(int=1),
+            account_id="u",
+            db=db,
+        )
+    assert exc.value.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_get_kg_entity_detail_success(monkeypatch: pytest.MonkeyPatch):
+    from app.core import config as config_mod
+    from app.rag.kg.api.routes import get_kg_entity_detail
+    from app.services.dataset_service import DatasetService
+    import app.rag.kg.api.routes as routes_mod
+
+    monkeypatch.setattr(config_mod.settings, "KG_ENABLED", True, raising=False)
+    monkeypatch.setattr(DatasetService, "ensure_member", lambda *_a, **_k: None, raising=True)
+    monkeypatch.setattr(routes_mod, "_resolve_allowed_documents", lambda **_k: [UUID(int=2)], raising=True)
+
+    ent = SimpleNamespace(
+        id=UUID(int=20),
+        name="Alice",
+        type="Person",
+        normalized_name="alice",
+        description=None,
+        extra_data=None,
+        created_at=None,
+        updated_at=None,
+    )
+    ev = SimpleNamespace(
+        id=UUID(int=10),
+        title="t",
+        summary="s",
+        content="c",
+        document_id=UUID(int=2),
+        chunk_id=None,
+        references=None,
+        extra_data=None,
+        created_at=None,
+        updated_at=None,
+    )
+
+    neighbor_rows = [(UUID(int=30), "Bob", "Person", 2)]
+    db = _FakeDB(
+        [
+            _FakeQuery(first=ent),  # ent
+            _FakeQuery(scalar=3),  # total_events
+            _FakeQuery(all_rows=[ev]),  # events
+            _FakeQuery(all_rows=neighbor_rows),  # neighbors
+        ]
+    )
+
+    out = await get_kg_entity_detail(
+        entity_id=UUID(int=20),
+        document_ids=None,
+        max_events=10,
+        max_neighbors=10,
+        tenant_id=UUID(int=1),
+        account_id="u",
+        db=db,
+    )
+    assert out.entity.id == UUID(int=20)
+    assert [e.id for e in out.events] == [UUID(int=10)]
+    assert out.neighbors[0].entity_id == UUID(int=30)
+    assert out.neighbors[0].count == 2
+    assert out.stats["total_events"] == 3
