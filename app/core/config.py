@@ -426,6 +426,11 @@ class Settings(BaseSettings):
     KG_EXTRACT_PROMPT_TEMPLATE_ID: str = ""
     KG_EXTRACT_PROMPT_TEMPLATE_KEY: str = ""
     KG_EXTRACT_PROMPT_AB_EXPERIMENT_KEY: str = ""
+    # KG extraction behavior.
+    # - replace_existing: removes previously extracted events for the processed chunks (prevents duplicates on re-run).
+    # - prune_orphan_entities: removes entities that have no remaining event links after replacement/deletion.
+    KG_EXTRACT_REPLACE_EXISTING: bool = True
+    KG_EXTRACT_PRUNE_ORPHAN_ENTITIES: bool = True
     CHAT_HISTORY_WINDOW: int = 5
     # Allow chat even when no accessible documents exist (dev-friendly).
     CHAT_ALLOW_EMPTY_DOCUMENTS: bool = True

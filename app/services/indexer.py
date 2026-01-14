@@ -481,24 +481,143 @@ class Indexer:
         except Exception as exc:
             logger.warning("Failed to update BM25 index after deletion: %s", exc)
 
-    def delete_event_indexes(self, *, tenant_id: UUID, document_id: UUID, commit: bool = True) -> None:
+    def delete_event_indexes(
+        self,
+        *,
+        tenant_id: UUID,
+        document_id: UUID,
+        commit: bool = True,
+        prune_orphan_entities: bool = False,
+    ) -> dict[str, int]:
+        return self._delete_event_indexes(
+            tenant_id=tenant_id,
+            query=(
+                self._db.query(KgSourceEvent).filter(
+                    KgSourceEvent.tenant_id == tenant_id,
+                    KgSourceEvent.document_id == document_id,
+                )
+            ),
+            commit=commit,
+            prune_orphan_entities=prune_orphan_entities,
+        )
+
+    def delete_event_indexes_for_chunks(
+        self,
+        *,
+        tenant_id: UUID,
+        chunk_ids: Sequence[UUID],
+        commit: bool = True,
+        exclude_event_ids: Optional[Sequence[UUID]] = None,
+        prune_orphan_entities: bool = False,
+    ) -> dict[str, int]:
+        """
+        Delete KG events (and vectors) for a set of chunk_ids.
+
+        This is primarily used to make KG extraction idempotent when re-running
+        on the same chunks (avoid duplicate events).
+        """
+        chunk_ids_norm = [cid for cid in (_safe_uuid(x) for x in chunk_ids) if cid is not None]
+        if not chunk_ids_norm:
+            return {"events_deleted": 0, "entities_pruned": 0}
+
         query = self._db.query(KgSourceEvent).filter(
             KgSourceEvent.tenant_id == tenant_id,
-            KgSourceEvent.document_id == document_id,
+            KgSourceEvent.chunk_id.in_(chunk_ids_norm),
         )
-        events = query.all()
-        if events:
-            event_ids = [str(ev.id) for ev in events]
-            try:
-                self._event_vector.delete(event_ids)
-            except Exception as exc:
-                logger.warning("Failed to delete KG event vectors: %s", exc)
+        if exclude_event_ids:
+            exclude_norm = [eid for eid in (_safe_uuid(x) for x in exclude_event_ids) if eid is not None]
+            if exclude_norm:
+                query = query.filter(~KgSourceEvent.id.in_(exclude_norm))
 
-            query.delete(synchronize_session=False)
-            if commit:
-                self._db.commit()
+        return self._delete_event_indexes(
+            tenant_id=tenant_id,
+            query=query,
+            commit=commit,
+            prune_orphan_entities=prune_orphan_entities,
+        )
+
+    def prune_orphan_entities(
+        self,
+        *,
+        tenant_id: UUID,
+        entity_ids: Optional[Sequence[UUID]] = None,
+        commit: bool = True,
+    ) -> int:
+        """
+        Delete KG entities (and vectors) that have no remaining KgEventEntity links.
+
+        When `entity_ids` is provided, pruning is scoped to that candidate set.
+        """
+        q = (
+            self._db.query(KgEntity.id)
+            .outerjoin(KgEventEntity, KgEventEntity.entity_id == KgEntity.id)
+            .filter(KgEntity.tenant_id == tenant_id)
+            .filter(KgEventEntity.entity_id.is_(None))
+        )
+        if entity_ids:
+            entity_ids_norm = [eid for eid in (_safe_uuid(x) for x in entity_ids) if eid is not None]
+            if entity_ids_norm:
+                q = q.filter(KgEntity.id.in_(entity_ids_norm))
             else:
-                self._db.flush()
+                return 0
+
+        orphan_ids = [row[0] for row in q.all() if row and row[0]]
+        if not orphan_ids:
+            return 0
+
+        try:
+            self._entity_vector.delete([str(eid) for eid in orphan_ids])
+        except Exception as exc:
+            logger.warning("Failed to delete KG entity vectors: %s", exc)
+
+        self._db.query(KgEntity).filter(KgEntity.id.in_(orphan_ids)).delete(synchronize_session=False)
+        if commit:
+            self._db.commit()
+        else:
+            self._db.flush()
+        return len(orphan_ids)
+
+    def _delete_event_indexes(
+        self,
+        *,
+        tenant_id: UUID,
+        query,
+        commit: bool,
+        prune_orphan_entities: bool,
+    ) -> dict[str, int]:
+        event_ids = [row[0] for row in query.with_entities(KgSourceEvent.id).all() if row and row[0]]
+        if not event_ids:
+            return {"events_deleted": 0, "entities_pruned": 0}
+
+        candidate_entity_ids: list[UUID] = []
+        if prune_orphan_entities:
+            candidate_entity_ids = [
+                row[0]
+                for row in (
+                    self._db.query(KgEventEntity.entity_id)
+                    .filter(KgEventEntity.event_id.in_(event_ids))
+                    .distinct()
+                    .all()
+                )
+                if row and row[0]
+            ]
+
+        try:
+            self._event_vector.delete([str(ev_id) for ev_id in event_ids])
+        except Exception as exc:
+            logger.warning("Failed to delete KG event vectors: %s", exc)
+
+        deleted = int(query.delete(synchronize_session=False) or 0)
+        if commit:
+            self._db.commit()
+        else:
+            self._db.flush()
+
+        pruned = 0
+        if prune_orphan_entities and candidate_entity_ids:
+            pruned = int(self.prune_orphan_entities(tenant_id=tenant_id, entity_ids=candidate_entity_ids, commit=commit))
+
+        return {"events_deleted": deleted, "entities_pruned": pruned}
 
     def rebuild_chunk_indexes(
         self,

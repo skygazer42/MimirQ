@@ -1,4 +1,5 @@
 from uuid import UUID
+import zlib
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from sqlalchemy.orm import Session
@@ -8,7 +9,20 @@ from app.core.database import get_db
 from app.api.dependencies.auth import get_current_account_id
 from app.api.dependencies.tenant import get_tenant_id
 from app.models.document import Document as DBDocument, DocumentChunk
-from app.rag.kg.schemas import KGExtractResponse, KGSearchRequest, KGSearchResponse, KGGraphNode, KGGraphResponse
+from app.rag.kg.schemas import (
+    KGDeleteResponse,
+    KGEntityDetailResponse,
+    KGEntityItem,
+    KGEventDetailResponse,
+    KGEventEntityItem,
+    KGEventItem,
+    KGExtractResponse,
+    KGGraphNode,
+    KGGraphResponse,
+    KGSearchRequest,
+    KGSearchResponse,
+    KGStatsResponse,
+)
 from app.services.document_access import filter_allowed_document_ids, list_accessible_document_ids
 from app.services.dataset_service import DatasetService
 from app.rag.kg.pipeline import extract_events, kg_search
@@ -17,6 +31,16 @@ from app.rag.core.errors import ConfigError
 router = APIRouter()
 
 MAX_DOCUMENT_IDS = 500
+
+
+def _stable_group_for(entity_type: str, *, buckets: int = 24) -> int:
+    """Stable group id for frontend coloring (deterministic across requests)."""
+    key = (entity_type or "unknown").strip().lower() or "unknown"
+    try:
+        digest = zlib.crc32(key.encode("utf-8"))
+    except Exception:
+        digest = zlib.crc32(b"unknown")
+    return int(digest % int(buckets)) + 1
 
 
 def _ensure_enabled():
@@ -57,6 +81,9 @@ async def get_kg_graph(
     max_events: int = Query(default=200, ge=1, le=2000),
     max_entities: int = Query(default=400, ge=1, le=5000),
     max_links: int = Query(default=2000, ge=1, le=20000),
+    include_entity_links: bool = Query(default=False, description="Include entity-entity co-occurrence links"),
+    min_shared_events: int = Query(default=2, ge=1, le=100),
+    max_entity_links: int = Query(default=1000, ge=0, le=20000),
     tenant_id: UUID = Depends(get_tenant_id),
     account_id: str = Depends(get_current_account_id),
     db: Session = Depends(get_db),
@@ -123,17 +150,7 @@ async def get_kg_graph(
     if max_entities and len(allowed_entity_ids) > int(max_entities):
         allowed_entity_ids = {eid for (eid, _cnt) in entity_hit_count.most_common(int(max_entities))}
 
-    # Deterministic grouping for entity types (for stable coloring on frontend).
-    type_to_group: dict[str, int] = {}
-    next_group = 1
-
-    def _group_for(entity_type: str) -> int:
-        nonlocal next_group
-        key = (entity_type or "unknown").strip().lower() or "unknown"
-        if key not in type_to_group:
-            type_to_group[key] = next_group
-            next_group += 1
-        return type_to_group[key]
+    # Stable grouping for entity types (frontend coloring).
 
     nodes: list[dict] = []
     links: list[dict] = []
@@ -168,7 +185,7 @@ async def get_kg_graph(
                 {
                     "id": ent_id,
                     "label": (ent.name or "").strip() or ent_id,
-                    "group": _group_for(getattr(ent, "type", "") or "unknown"),
+                    "group": _stable_group_for(getattr(ent, "type", "") or "unknown"),
                     "val": max(1, int(entity_hit_count.get(ent_id, 0))),
                     "meta": {
                         "kind": "entity",
@@ -187,9 +204,49 @@ async def get_kg_graph(
                 "target": ent_id,
                 "label": (assoc.role or "").strip() or getattr(ent, "type", "") or "mentions",
                 "weight": float(getattr(assoc, "weight", 1.0) or 1.0),
-                "meta": {},
+                "meta": {"kind": "event_entity"},
             }
         )
+
+    entity_links_added = 0
+    base_link_count = len(links)
+    if bool(include_entity_links) and int(max_entity_links) > 0 and len(links) < int(max_links):
+        from itertools import combinations
+
+        event_to_entities: dict[str, set[str]] = {}
+        for assoc, ent in rows:
+            ent_id = str(ent.id)
+            if ent_id not in allowed_entity_ids:
+                continue
+            event_to_entities.setdefault(str(assoc.event_id), set()).add(ent_id)
+
+        co_counts: Counter[tuple[str, str]] = Counter()
+        for ent_ids in event_to_entities.values():
+            ids = sorted(ent_ids)
+            if len(ids) < 2:
+                continue
+            if len(ids) > 60:
+                ids = ids[:60]
+            for a, b in combinations(ids, 2):
+                co_counts[(a, b)] += 1
+
+        remaining_budget = max(0, int(max_links) - len(links))
+        edge_limit = min(int(max_entity_links), remaining_budget)
+        for (a, b), cnt in co_counts.most_common(edge_limit):
+            if int(cnt) < int(min_shared_events):
+                break
+            if len(links) >= int(max_links):
+                break
+            links.append(
+                {
+                    "source": a,
+                    "target": b,
+                    "label": "co_occurs",
+                    "weight": float(cnt),
+                    "meta": {"kind": "entity_entity", "shared_events": int(cnt)},
+                }
+            )
+            entity_links_added += 1
 
     return KGGraphResponse(
         nodes=nodes,
@@ -198,6 +255,8 @@ async def get_kg_graph(
             "events": len(events),
             "entities": len(seen_entities),
             "links": min(len(links), int(max_links)),
+            "event_entity_links": base_link_count,
+            "entity_entity_links": entity_links_added,
         },
     )
 
@@ -209,6 +268,9 @@ async def expand_kg_graph(
     max_events: int = Query(default=50, ge=1, le=500),
     max_entities: int = Query(default=400, ge=1, le=5000),
     max_links: int = Query(default=5000, ge=1, le=20000),
+    include_entity_links: bool = Query(default=False, description="Include entity-entity co-occurrence links"),
+    min_shared_events: int = Query(default=2, ge=1, le=100),
+    max_entity_links: int = Query(default=2000, ge=0, le=20000),
     tenant_id: UUID = Depends(get_tenant_id),
     account_id: str = Depends(get_current_account_id),
     db: Session = Depends(get_db),
@@ -355,16 +417,6 @@ async def expand_kg_graph(
         allowed_entity_ids = {eid for (eid, _cnt) in entity_hit_count.most_common(int(max_entities))}
 
     # Stable grouping by entity type for frontend coloring.
-    type_to_group: dict[str, int] = {}
-    next_group = 1
-
-    def _group_for(entity_type: str) -> int:
-        nonlocal next_group
-        key = (entity_type or "unknown").strip().lower() or "unknown"
-        if key not in type_to_group:
-            type_to_group[key] = next_group
-            next_group += 1
-        return type_to_group[key]
 
     nodes: list[dict] = []
     links: list[dict] = []
@@ -399,7 +451,7 @@ async def expand_kg_graph(
                 {
                     "id": ent_id,
                     "label": (ent.name or "").strip() or ent_id,
-                    "group": _group_for(getattr(ent, "type", "") or "unknown"),
+                    "group": _stable_group_for(getattr(ent, "type", "") or "unknown"),
                     "val": max(1, int(entity_hit_count.get(ent_id, 0))),
                     "meta": {
                         "kind": "entity",
@@ -419,9 +471,49 @@ async def expand_kg_graph(
                 "target": ent_id,
                 "label": (assoc.role or "").strip() or getattr(ent, "type", "") or "mentions",
                 "weight": float(getattr(assoc, "weight", 1.0) or 1.0),
-                "meta": {},
+                "meta": {"kind": "event_entity"},
             }
         )
+
+    entity_links_added = 0
+    base_link_count = len(links)
+    if bool(include_entity_links) and int(max_entity_links) > 0 and len(links) < int(max_links):
+        from itertools import combinations
+
+        event_to_entities: dict[str, set[str]] = {}
+        for assoc, ent in rows:
+            ent_id = str(ent.id)
+            if ent_id not in allowed_entity_ids:
+                continue
+            event_to_entities.setdefault(str(assoc.event_id), set()).add(ent_id)
+
+        co_counts: Counter[tuple[str, str]] = Counter()
+        for ent_ids in event_to_entities.values():
+            ids = sorted(ent_ids)
+            if len(ids) < 2:
+                continue
+            if len(ids) > 60:
+                ids = ids[:60]
+            for a, b in combinations(ids, 2):
+                co_counts[(a, b)] += 1
+
+        remaining_budget = max(0, int(max_links) - len(links))
+        edge_limit = min(int(max_entity_links), remaining_budget)
+        for (a, b), cnt in co_counts.most_common(edge_limit):
+            if int(cnt) < int(min_shared_events):
+                break
+            if len(links) >= int(max_links):
+                break
+            links.append(
+                {
+                    "source": a,
+                    "target": b,
+                    "label": "co_occurs",
+                    "weight": float(cnt),
+                    "meta": {"kind": "entity_entity", "shared_events": int(cnt)},
+                }
+            )
+            entity_links_added += 1
 
     return KGGraphResponse(
         nodes=nodes,
@@ -431,6 +523,8 @@ async def expand_kg_graph(
             "events": len(events),
             "entities": len(seen_entities),
             "links": min(len(links), int(max_links)),
+            "event_entity_links": base_link_count,
+            "entity_entity_links": entity_links_added,
         },
     )
 
@@ -461,7 +555,7 @@ async def search_kg_graph_nodes(
 
     from sqlalchemy import or_
 
-    from app.rag.kg.models import KgEntity, KgSourceEvent
+    from app.rag.kg.models import KgEntity, KgEventEntity, KgSourceEvent
 
     q_text = (q or "").strip()
     if not q_text:
@@ -476,30 +570,23 @@ async def search_kg_graph_nodes(
 
     nodes: list[KGGraphNode] = []
 
-    # Deterministic grouping for entities in this response.
-    type_to_group: dict[str, int] = {}
-    next_group = 1
-
-    def _group_for(entity_type: str) -> int:
-        nonlocal next_group
-        key = (entity_type or "unknown").strip().lower() or "unknown"
-        if key not in type_to_group:
-            type_to_group[key] = next_group
-            next_group += 1
-        return type_to_group[key]
-
     pattern = f"%{q_text}%"
 
     if mode in {"all", "entity"}:
         ents = (
             db.query(KgEntity)
+            .join(KgEventEntity, KgEventEntity.entity_id == KgEntity.id)
+            .join(KgSourceEvent, KgSourceEvent.id == KgEventEntity.event_id)
             .filter(
                 KgEntity.tenant_id == tenant_id,
+                KgSourceEvent.tenant_id == tenant_id,
+                KgSourceEvent.document_id.in_(allowed_doc_ids),
                 or_(
                     KgEntity.name.ilike(pattern),
                     KgEntity.normalized_name.ilike(pattern),
                 ),
             )
+            .distinct()
             .order_by(KgEntity.updated_at.desc())
             .limit(int(limit))
             .all()
@@ -507,9 +594,9 @@ async def search_kg_graph_nodes(
         for ent in ents:
             nodes.append(
                 KGGraphNode(
-                    id=str(ent.id),
-                    label=(ent.name or "").strip() or str(ent.id),
-                    group=_group_for(getattr(ent, "type", "") or "unknown"),
+                     id=str(ent.id),
+                     label=(ent.name or "").strip() or str(ent.id),
+                    group=_stable_group_for(getattr(ent, "type", "") or "unknown"),
                     val=1,
                     meta={
                         "kind": "entity",
@@ -556,11 +643,381 @@ async def search_kg_graph_nodes(
     return nodes[: int(limit)]
 
 
+@router.get("/stats", response_model=KGStatsResponse)
+async def get_kg_stats(
+    document_ids: list[UUID] | None = Query(default=None),
+    tenant_id: UUID = Depends(get_tenant_id),
+    account_id: str = Depends(get_current_account_id),
+    db: Session = Depends(get_db),
+):
+    """
+    Lightweight KG statistics for the current tenant.
+
+    - Requires KG_ENABLED=true.
+    - Enforces document-level access control.
+    """
+    _ensure_enabled()
+    DatasetService.ensure_member(db, tenant_id, account_id)
+
+    allowed_doc_ids = _resolve_allowed_documents(
+        document_ids=document_ids,
+        tenant_id=tenant_id,
+        account_id=account_id,
+        db=db,
+        limit=MAX_DOCUMENT_IDS,
+    )
+    if not allowed_doc_ids:
+        return KGStatsResponse(events=0, entities=0, links=0, entity_types=[], updated_at=None)
+
+    from sqlalchemy import func
+
+    from app.rag.kg.models import KgEntity, KgEventEntity, KgSourceEvent
+
+    event_count = (
+        db.query(func.count(KgSourceEvent.id))
+        .filter(KgSourceEvent.tenant_id == tenant_id, KgSourceEvent.document_id.in_(allowed_doc_ids))
+        .scalar()
+        or 0
+    )
+    link_count = (
+        db.query(func.count(KgEventEntity.id))
+        .join(KgSourceEvent, KgSourceEvent.id == KgEventEntity.event_id)
+        .filter(KgSourceEvent.tenant_id == tenant_id, KgSourceEvent.document_id.in_(allowed_doc_ids))
+        .scalar()
+        or 0
+    )
+    entity_count = (
+        db.query(func.count(func.distinct(KgEventEntity.entity_id)))
+        .join(KgSourceEvent, KgSourceEvent.id == KgEventEntity.event_id)
+        .filter(KgSourceEvent.tenant_id == tenant_id, KgSourceEvent.document_id.in_(allowed_doc_ids))
+        .scalar()
+        or 0
+    )
+    updated_at = (
+        db.query(func.max(KgSourceEvent.updated_at))
+        .filter(KgSourceEvent.tenant_id == tenant_id, KgSourceEvent.document_id.in_(allowed_doc_ids))
+        .scalar()
+    )
+
+    type_rows = (
+        db.query(KgEntity.type, func.count(func.distinct(KgEntity.id)).label("cnt"))
+        .join(KgEventEntity, KgEventEntity.entity_id == KgEntity.id)
+        .join(KgSourceEvent, KgSourceEvent.id == KgEventEntity.event_id)
+        .filter(KgSourceEvent.tenant_id == tenant_id, KgSourceEvent.document_id.in_(allowed_doc_ids))
+        .group_by(KgEntity.type)
+        .order_by(func.count(func.distinct(KgEntity.id)).desc(), KgEntity.type.asc())
+        .limit(50)
+        .all()
+    )
+
+    return KGStatsResponse(
+        events=int(event_count),
+        entities=int(entity_count),
+        links=int(link_count),
+        entity_types=[{"type": str(t or "unknown"), "count": int(cnt or 0)} for (t, cnt) in type_rows],
+        updated_at=updated_at,
+    )
+
+
+@router.get("/graph/export")
+async def export_kg_graph(
+    document_ids: list[UUID] | None = Query(default=None),
+    max_events: int = Query(default=200, ge=1, le=2000),
+    max_entities: int = Query(default=400, ge=1, le=5000),
+    max_links: int = Query(default=2000, ge=1, le=20000),
+    include_entity_links: bool = Query(default=False, description="Include entity-entity co-occurrence links"),
+    min_shared_events: int = Query(default=2, ge=1, le=100),
+    max_entity_links: int = Query(default=1000, ge=0, le=20000),
+    download: bool = Query(default=True),
+    tenant_id: UUID = Depends(get_tenant_id),
+    account_id: str = Depends(get_current_account_id),
+    db: Session = Depends(get_db),
+):
+    """
+    Export KG graph projection as GraphML for external tooling.
+
+    Uses the same access control and projection logic as `GET /kg/graph`.
+    """
+    graph = await get_kg_graph(
+        document_ids=document_ids,
+        max_events=max_events,
+        max_entities=max_entities,
+        max_links=max_links,
+        include_entity_links=include_entity_links,
+        min_shared_events=min_shared_events,
+        max_entity_links=max_entity_links,
+        tenant_id=tenant_id,
+        account_id=account_id,
+        db=db,
+    )
+
+    import xml.etree.ElementTree as ET
+
+    root = ET.Element("graphml", xmlns="http://graphml.graphdrawing.org/xmlns")
+
+    def _key(*, key_id: str, kind: str, name: str, typ: str) -> None:
+        ET.SubElement(
+            root,
+            "key",
+            {
+                "id": key_id,
+                "for": kind,
+                "attr.name": name,
+                "attr.type": typ,
+            },
+        )
+
+    _key(key_id="d0", kind="node", name="label", typ="string")
+    _key(key_id="d1", kind="node", name="kind", typ="string")
+    _key(key_id="d2", kind="node", name="type", typ="string")
+    _key(key_id="d3", kind="node", name="normalized_name", typ="string")
+    _key(key_id="d4", kind="node", name="document_id", typ="string")
+    _key(key_id="d5", kind="node", name="chunk_id", typ="string")
+    _key(key_id="d6", kind="node", name="group", typ="int")
+    _key(key_id="d7", kind="node", name="val", typ="int")
+    _key(key_id="e0", kind="edge", name="label", typ="string")
+    _key(key_id="e1", kind="edge", name="weight", typ="double")
+    _key(key_id="e2", kind="edge", name="kind", typ="string")
+    _key(key_id="e3", kind="edge", name="shared_events", typ="int")
+
+    graph_el = ET.SubElement(root, "graph", {"id": "G", "edgedefault": "directed"})
+
+    for node in graph.nodes:
+        n = ET.SubElement(graph_el, "node", {"id": str(node.id)})
+        meta = dict(getattr(node, "meta", {}) or {})
+        ET.SubElement(n, "data", {"key": "d0"}).text = str(node.label or node.id)
+        ET.SubElement(n, "data", {"key": "d1"}).text = str(meta.get("kind") or "")
+        ET.SubElement(n, "data", {"key": "d2"}).text = str(meta.get("type") or "")
+        ET.SubElement(n, "data", {"key": "d3"}).text = str(meta.get("normalized_name") or "")
+        ET.SubElement(n, "data", {"key": "d4"}).text = str(meta.get("document_id") or "")
+        ET.SubElement(n, "data", {"key": "d5"}).text = str(meta.get("chunk_id") or "")
+        ET.SubElement(n, "data", {"key": "d6"}).text = str(int(getattr(node, "group", 0) or 0))
+        ET.SubElement(n, "data", {"key": "d7"}).text = str(int(getattr(node, "val", 1) or 1))
+
+    for idx, link in enumerate(graph.links):
+        e = ET.SubElement(
+            graph_el,
+            "edge",
+            {
+                "id": f"e{idx}",
+                "source": str(link.source),
+                "target": str(link.target),
+            },
+        )
+        meta = dict(getattr(link, "meta", {}) or {})
+        ET.SubElement(e, "data", {"key": "e0"}).text = str(getattr(link, "label", "") or "")
+        ET.SubElement(e, "data", {"key": "e1"}).text = str(float(getattr(link, "weight", 1.0) or 1.0))
+        ET.SubElement(e, "data", {"key": "e2"}).text = str(meta.get("kind") or "")
+        ET.SubElement(e, "data", {"key": "e3"}).text = str(int(meta.get("shared_events") or 0))
+
+    xml_text = ET.tostring(root, encoding="unicode")
+    payload = f'<?xml version="1.0" encoding="UTF-8"?>\n{xml_text}\n'
+
+    headers = {}
+    if download:
+        headers["Content-Disposition"] = f'attachment; filename="mimirq-kg-{tenant_id}.graphml"'
+
+    return Response(content=payload, media_type="application/graphml+xml", headers=headers)
+
+
+@router.get("/events/{event_id}", response_model=KGEventDetailResponse)
+async def get_kg_event_detail(
+    event_id: UUID,
+    document_ids: list[UUID] | None = Query(default=None),
+    tenant_id: UUID = Depends(get_tenant_id),
+    account_id: str = Depends(get_current_account_id),
+    db: Session = Depends(get_db),
+):
+    """Get a KG event with its linked entities (scoped to accessible documents)."""
+    _ensure_enabled()
+    DatasetService.ensure_member(db, tenant_id, account_id)
+
+    allowed_doc_ids = _resolve_allowed_documents(
+        document_ids=document_ids,
+        tenant_id=tenant_id,
+        account_id=account_id,
+        db=db,
+        limit=MAX_DOCUMENT_IDS,
+    )
+    if not allowed_doc_ids:
+        raise HTTPException(status_code=404, detail="No accessible documents")
+
+    from app.rag.kg.models import KgEntity, KgEventEntity, KgSourceEvent
+
+    ev = (
+        db.query(KgSourceEvent)
+        .filter(
+            KgSourceEvent.tenant_id == tenant_id,
+            KgSourceEvent.id == event_id,
+            KgSourceEvent.document_id.in_(allowed_doc_ids),
+        )
+        .first()
+    )
+    if not ev:
+        raise HTTPException(status_code=404, detail="KG event not found")
+
+    rows = (
+        db.query(KgEventEntity, KgEntity)
+        .join(KgEntity, KgEntity.id == KgEventEntity.entity_id)
+        .filter(KgEventEntity.event_id == ev.id)
+        .all()
+    )
+    entities = [
+        KGEventEntityItem(
+            entity=KGEntityItem.model_validate(ent),
+            weight=float(getattr(assoc, "weight", 1.0) or 1.0),
+            role=(getattr(assoc, "role", None) or None),
+        )
+        for assoc, ent in rows
+        if ent is not None
+    ]
+
+    return KGEventDetailResponse(event=KGEventItem.model_validate(ev), entities=entities)
+
+
+@router.get("/entities/{entity_id}", response_model=KGEntityDetailResponse)
+async def get_kg_entity_detail(
+    entity_id: UUID,
+    document_ids: list[UUID] | None = Query(default=None),
+    max_events: int = Query(default=30, ge=1, le=200),
+    max_neighbors: int = Query(default=20, ge=0, le=200),
+    tenant_id: UUID = Depends(get_tenant_id),
+    account_id: str = Depends(get_current_account_id),
+    db: Session = Depends(get_db),
+):
+    """Get a KG entity, its recent events, and co-occurring entity neighbors."""
+    _ensure_enabled()
+    DatasetService.ensure_member(db, tenant_id, account_id)
+
+    allowed_doc_ids = _resolve_allowed_documents(
+        document_ids=document_ids,
+        tenant_id=tenant_id,
+        account_id=account_id,
+        db=db,
+        limit=MAX_DOCUMENT_IDS,
+    )
+    if not allowed_doc_ids:
+        raise HTTPException(status_code=404, detail="No accessible documents")
+
+    from sqlalchemy import desc, func
+
+    from app.rag.kg.models import KgEntity, KgEventEntity, KgSourceEvent
+
+    ent = db.query(KgEntity).filter(KgEntity.tenant_id == tenant_id, KgEntity.id == entity_id).first()
+    if not ent:
+        raise HTTPException(status_code=404, detail="KG entity not found")
+
+    total_events = (
+        db.query(func.count(func.distinct(KgEventEntity.event_id)))
+        .join(KgSourceEvent, KgSourceEvent.id == KgEventEntity.event_id)
+        .filter(
+            KgSourceEvent.tenant_id == tenant_id,
+            KgSourceEvent.document_id.in_(allowed_doc_ids),
+            KgEventEntity.entity_id == entity_id,
+        )
+        .scalar()
+        or 0
+    )
+    if not total_events:
+        raise HTTPException(status_code=404, detail="KG entity not found")
+
+    events = (
+        db.query(KgSourceEvent)
+        .join(KgEventEntity, KgEventEntity.event_id == KgSourceEvent.id)
+        .filter(
+            KgSourceEvent.tenant_id == tenant_id,
+            KgSourceEvent.document_id.in_(allowed_doc_ids),
+            KgEventEntity.entity_id == entity_id,
+        )
+        .order_by(desc(KgSourceEvent.updated_at))
+        .limit(int(max_events))
+        .all()
+    )
+    event_ids = [e.id for e in events]
+
+    neighbors = []
+    if event_ids and int(max_neighbors) > 0:
+        cnt_expr = func.count(func.distinct(KgEventEntity.event_id)).label("cnt")
+        rows = (
+            db.query(
+                KgEntity.id,
+                KgEntity.name,
+                KgEntity.type,
+                cnt_expr,
+            )
+            .join(KgEventEntity, KgEventEntity.entity_id == KgEntity.id)
+            .filter(KgEventEntity.event_id.in_(event_ids))
+            .filter(KgEntity.tenant_id == tenant_id)
+            .filter(KgEntity.id != entity_id)
+            .group_by(KgEntity.id, KgEntity.name, KgEntity.type)
+            .order_by(cnt_expr.desc(), KgEntity.id.asc())
+            .limit(int(max_neighbors))
+            .all()
+        )
+        neighbors = [
+            {"entity_id": row[0], "name": row[1] or "", "type": row[2] or "unknown", "count": int(row[3] or 0)}
+            for row in rows
+            if row and row[0]
+        ]
+
+    return KGEntityDetailResponse(
+        entity=KGEntityItem.model_validate(ent),
+        events=[KGEventItem.model_validate(ev) for ev in events],
+        neighbors=neighbors,
+        stats={"total_events": int(total_events), "returned_events": len(events), "returned_neighbors": len(neighbors)},
+    )
+
+
+@router.delete("/documents/{document_id}", response_model=KGDeleteResponse)
+async def delete_kg_for_document(
+    document_id: UUID,
+    prune_orphan_entities: bool | None = Query(default=None),
+    tenant_id: UUID = Depends(get_tenant_id),
+    account_id: str = Depends(get_current_account_id),
+    db: Session = Depends(get_db),
+):
+    """Delete KG events for a document (and optionally prune orphan entities)."""
+    _ensure_enabled()
+    DatasetService.ensure_member(db, tenant_id, account_id)
+
+    # Document existence + dataset access.
+    document = (
+        db.query(DBDocument)
+        .filter(DBDocument.id == document_id, DBDocument.tenant_id == tenant_id)
+        .first()
+    )
+    if not document:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    if document.dataset_id:
+        dataset = DatasetService.get_dataset(db, tenant_id, document.dataset_id)
+        DatasetService.assert_dataset_readable(db, dataset, account_id)
+
+    allowed = filter_allowed_document_ids(db, tenant_id, account_id, [document_id])
+    if not allowed:
+        raise HTTPException(status_code=404, detail="Document not accessible")
+
+    eff_prune_orphans = bool(
+        settings.KG_EXTRACT_PRUNE_ORPHAN_ENTITIES if prune_orphan_entities is None else prune_orphan_entities
+    )
+
+    from app.services.indexer import Indexer
+
+    stats = Indexer(db).delete_event_indexes(
+        tenant_id=tenant_id,
+        document_id=document_id,
+        prune_orphan_entities=eff_prune_orphans,
+    )
+    return KGDeleteResponse(document_id=document_id, **(stats or {}))
+
+
 @router.post("/documents/{document_id}/extract", response_model=KGExtractResponse)
 async def run_kg_extraction_for_document(
     document_id: UUID,
     response: Response,
     async_mode: bool = Query(default=False, alias="async"),
+    replace_existing: bool | None = Query(default=None, description="Replace previously extracted events for this document"),
+    prune_orphan_entities: bool | None = Query(default=None, description="Prune entities with no remaining event links"),
     prompt_template_id: UUID | None = Query(default=None),
     prompt_template_key: str | None = Query(default=None),
     prompt_ab_experiment_key: str | None = Query(default=None),
@@ -612,6 +1069,13 @@ async def run_kg_extraction_for_document(
     eff_prompt_template_key = (prompt_template_key or "").strip() or (getattr(settings, "KG_EXTRACT_PROMPT_TEMPLATE_KEY", "") or "").strip() or None
     eff_prompt_ab_experiment_key = (prompt_ab_experiment_key or "").strip() or (getattr(settings, "KG_EXTRACT_PROMPT_AB_EXPERIMENT_KEY", "") or "").strip() or None
 
+    eff_replace_existing = bool(
+        settings.KG_EXTRACT_REPLACE_EXISTING if replace_existing is None else replace_existing
+    )
+    eff_prune_orphans = bool(
+        settings.KG_EXTRACT_PRUNE_ORPHAN_ENTITIES if prune_orphan_entities is None else prune_orphan_entities
+    )
+
     # If async=true, enqueue KG extraction (default remains synchronous for compatibility).
     if bool(async_mode):
         if not bool(getattr(settings, "TASK_QUEUE_ENABLED", False)):
@@ -626,6 +1090,8 @@ async def run_kg_extraction_for_document(
                 document_id=document_id,
                 requested_by=account_id,
                 job_id=job_id,
+                replace_existing=eff_replace_existing,
+                prune_orphan_entities=eff_prune_orphans,
             )
             if task_id:
                 meta = dict(document.doc_metadata or {})
@@ -652,6 +1118,8 @@ async def run_kg_extraction_for_document(
             prompt_template_key=eff_prompt_template_key,
             prompt_ab_experiment_key=eff_prompt_ab_experiment_key,
             ab_user_key=account_id,
+            replace_existing=eff_replace_existing,
+            prune_orphan_entities=eff_prune_orphans,
         )
     except ConfigError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc

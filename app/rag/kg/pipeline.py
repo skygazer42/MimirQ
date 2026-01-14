@@ -33,6 +33,8 @@ async def extract_events(
     prompt_template_key: Optional[str] = None,
     prompt_ab_experiment_key: Optional[str] = None,
     ab_user_key: Optional[str] = None,
+    replace_existing: Optional[bool] = None,
+    prune_orphan_entities: Optional[bool] = None,
 ):
     engine = _load_engine()
     return await engine.extract(
@@ -44,6 +46,8 @@ async def extract_events(
         prompt_template_key=prompt_template_key,
         prompt_ab_experiment_key=prompt_ab_experiment_key,
         ab_user_key=ab_user_key,
+        replace_existing=replace_existing,
+        prune_orphan_entities=prune_orphan_entities,
     )
 
 

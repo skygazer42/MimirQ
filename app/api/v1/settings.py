@@ -95,6 +95,8 @@ class KGConfig(BaseModel):
     extract_prompt_template_id: str = ""
     extract_prompt_template_key: str = ""
     extract_prompt_ab_experiment_key: str = ""
+    extract_replace_existing: bool = True
+    extract_prune_orphan_entities: bool = True
 
 
 class LLMConfig(BaseModel):
@@ -290,6 +292,10 @@ def _apply_runtime_settings(env_vars: Dict[str, str], updated_keys: list[str]) -
         settings.KG_EXTRACT_PROMPT_TEMPLATE_KEY = env_vars["KG_EXTRACT_PROMPT_TEMPLATE_KEY"]
     if "KG_EXTRACT_PROMPT_AB_EXPERIMENT_KEY" in updated_keys and "KG_EXTRACT_PROMPT_AB_EXPERIMENT_KEY" in env_vars:
         settings.KG_EXTRACT_PROMPT_AB_EXPERIMENT_KEY = env_vars["KG_EXTRACT_PROMPT_AB_EXPERIMENT_KEY"]
+    if "KG_EXTRACT_REPLACE_EXISTING" in updated_keys and "KG_EXTRACT_REPLACE_EXISTING" in env_vars:
+        settings.KG_EXTRACT_REPLACE_EXISTING = _parse_bool(env_vars["KG_EXTRACT_REPLACE_EXISTING"])
+    if "KG_EXTRACT_PRUNE_ORPHAN_ENTITIES" in updated_keys and "KG_EXTRACT_PRUNE_ORPHAN_ENTITIES" in env_vars:
+        settings.KG_EXTRACT_PRUNE_ORPHAN_ENTITIES = _parse_bool(env_vars["KG_EXTRACT_PRUNE_ORPHAN_ENTITIES"])
 
     # LLM
     if "LLM_API_KEY" in updated_keys and "LLM_API_KEY" in env_vars:
@@ -506,6 +512,8 @@ async def get_settings(
             extract_prompt_template_id=getattr(settings, "KG_EXTRACT_PROMPT_TEMPLATE_ID", "") or "",
             extract_prompt_template_key=getattr(settings, "KG_EXTRACT_PROMPT_TEMPLATE_KEY", "") or "",
             extract_prompt_ab_experiment_key=getattr(settings, "KG_EXTRACT_PROMPT_AB_EXPERIMENT_KEY", "") or "",
+            extract_replace_existing=bool(getattr(settings, "KG_EXTRACT_REPLACE_EXISTING", True)),
+            extract_prune_orphan_entities=bool(getattr(settings, "KG_EXTRACT_PRUNE_ORPHAN_ENTITIES", True)),
         ),
         llm=LLMConfig(
             api_key=mask_secret(settings.LLM_API_KEY),
@@ -645,11 +653,15 @@ async def update_settings(
             env_vars["KG_EXTRACT_PROMPT_AB_EXPERIMENT_KEY"] = _sanitize_env_value(
                 "KG_EXTRACT_PROMPT_AB_EXPERIMENT_KEY", kg.extract_prompt_ab_experiment_key or ""
             )
+            env_vars["KG_EXTRACT_REPLACE_EXISTING"] = str(bool(getattr(kg, "extract_replace_existing", True))).lower()
+            env_vars["KG_EXTRACT_PRUNE_ORPHAN_ENTITIES"] = str(bool(getattr(kg, "extract_prune_orphan_entities", True))).lower()
             updated_keys.extend(
                 [
                     "KG_EXTRACT_PROMPT_TEMPLATE_ID",
                     "KG_EXTRACT_PROMPT_TEMPLATE_KEY",
                     "KG_EXTRACT_PROMPT_AB_EXPERIMENT_KEY",
+                    "KG_EXTRACT_REPLACE_EXISTING",
+                    "KG_EXTRACT_PRUNE_ORPHAN_ENTITIES",
                 ]
             )
 

@@ -96,9 +96,19 @@ async def test_kg_extract_async_enqueues_and_returns_202(monkeypatch):
     monkeypatch.setattr(config_mod.settings, "KG_ENABLED", True, raising=False)
     monkeypatch.setattr(config_mod.settings, "TASK_QUEUE_ENABLED", True, raising=False)
 
-    async def _fake_enqueue_kg_extraction(*, tenant_id, document_id, requested_by, job_id=None):  # noqa: ANN001
+    async def _fake_enqueue_kg_extraction(  # noqa: ANN001
+        *,
+        tenant_id,
+        document_id,
+        requested_by,
+        job_id=None,
+        replace_existing=None,
+        prune_orphan_entities=None,
+    ):
         assert requested_by == "u"
         assert job_id and job_id.startswith("kg:")
+        assert replace_existing is True
+        assert prune_orphan_entities is True
         return "task-1"
 
     import app.tasks.queue as queue_mod

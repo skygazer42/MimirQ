@@ -1,7 +1,8 @@
+from datetime import datetime
 from typing import Any, Dict, List, Optional
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class KGBaseModel(BaseModel):
@@ -60,3 +61,87 @@ class KGGraphResponse(BaseModel):
     nodes: List[KGGraphNode]
     links: List[KGGraphLink]
     stats: Dict[str, Any] = Field(default_factory=dict)
+
+
+class KGEntityItem(KGBaseModel):
+    """Entity details for API responses."""
+
+    id: UUID
+    name: str
+    type: str
+    normalized_name: str
+    description: Optional[str] = None
+    extra_data: Dict[str, Any] = Field(default_factory=dict)
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+
+    @field_validator("extra_data", mode="before")
+    @classmethod
+    def _coerce_extra_data(cls, v: Any) -> Dict[str, Any]:  # noqa: ANN401
+        return v or {}
+
+
+class KGEventItem(KGBaseModel):
+    """Event details for API responses."""
+
+    id: UUID
+    title: str
+    summary: str
+    content: str
+    document_id: Optional[UUID] = None
+    chunk_id: Optional[UUID] = None
+    references: Dict[str, Any] = Field(default_factory=dict)
+    extra_data: Dict[str, Any] = Field(default_factory=dict)
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+
+    @field_validator("references", "extra_data", mode="before")
+    @classmethod
+    def _coerce_dict_fields(cls, v: Any) -> Dict[str, Any]:  # noqa: ANN401
+        return v or {}
+
+
+class KGEventEntityItem(KGBaseModel):
+    """Event-entity relation details."""
+
+    entity: KGEntityItem
+    weight: float = 1.0
+    role: Optional[str] = None
+
+
+class KGEventDetailResponse(BaseModel):
+    event: KGEventItem
+    entities: List[KGEventEntityItem] = Field(default_factory=list)
+
+
+class KGEntityNeighbor(BaseModel):
+    entity_id: UUID
+    name: str
+    type: str
+    count: int
+
+
+class KGEntityDetailResponse(BaseModel):
+    entity: KGEntityItem
+    events: List[KGEventItem] = Field(default_factory=list)
+    neighbors: List[KGEntityNeighbor] = Field(default_factory=list)
+    stats: Dict[str, Any] = Field(default_factory=dict)
+
+
+class KGEntityTypeCount(BaseModel):
+    type: str
+    count: int
+
+
+class KGStatsResponse(BaseModel):
+    events: int
+    entities: int
+    links: int
+    entity_types: List[KGEntityTypeCount] = Field(default_factory=list)
+    updated_at: Optional[datetime] = None
+
+
+class KGDeleteResponse(BaseModel):
+    document_id: UUID
+    events_deleted: int = 0
+    entities_pruned: int = 0

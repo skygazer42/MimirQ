@@ -170,7 +170,14 @@ async def process_document_job(ctx, tenant_id: str, document_id: str, requested_
         db.close()
 
 
-async def extract_kg_job(ctx, tenant_id: str, document_id: str, requested_by: str) -> dict:  # noqa: ANN001
+async def extract_kg_job(
+    ctx,
+    tenant_id: str,
+    document_id: str,
+    requested_by: str,
+    replace_existing: bool | None = None,
+    prune_orphan_entities: bool | None = None,
+) -> dict:  # noqa: ANN001
     """
     KG extraction job: extract events/entities from completed chunks and index them.
     """
@@ -239,6 +246,8 @@ async def extract_kg_job(ctx, tenant_id: str, document_id: str, requested_by: st
             chunks=chunks,
             index_options=index_options,
             ab_user_key=requested_by,
+            replace_existing=replace_existing,
+            prune_orphan_entities=prune_orphan_entities,
         )
         elapsed = time.perf_counter() - t0
         return {"ok": True, "event_count": len(events), "elapsed_sec": round(elapsed, 3)}
