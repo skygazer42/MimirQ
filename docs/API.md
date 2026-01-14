@@ -632,3 +632,327 @@ curl http://localhost:8000/api/v1/chat/conversations/CONV_ID/messages \
   -H "Authorization: Bearer YOUR_TOKEN"
 ```
 
+---
+
+# API 详细参考
+
+## 通用说明
+
+### 请求头
+
+| 头部 | 必填 | 说明 |
+|------|------|------|
+| `Authorization` | 是* | `Bearer <token>` 格式 |
+| `X-User-ID` | 是* | Header 模式下的用户 ID |
+| `X-Tenant-ID` | 是* | Header 模式下的租户 ID |
+| `Content-Type` | 是 | `application/json` 或 `multipart/form-data` |
+
+> *认证方式二选一
+
+### 分页参数
+
+所有列表接口支持：
+
+| 参数 | 类型 | 默认值 | 说明 |
+|------|------|--------|------|
+| `skip` | int | 0 | 跳过记录数 |
+| `limit` | int | 20 | 返回记录数（最大 100） |
+
+### 响应格式
+
+**成功响应：**
+```json
+{
+  "total": 100,
+  "items": [...]
+}
+```
+
+**错误响应：**
+```json
+{
+  "detail": "错误描述信息"
+}
+```
+
+### HTTP 状态码
+
+| 状态码 | 含义 |
+|--------|------|
+| 200 | 成功 |
+| 201 | 创建成功 |
+| 204 | 删除成功（无返回内容） |
+| 400 | 请求参数错误 |
+| 401 | 未认证 |
+| 403 | 权限不足 |
+| 404 | 资源不存在 |
+| 500 | 服务器内部错误 |
+| 502 | 上游服务错误（如 LLM 调用失败） |
+| 503 | 服务不可用 |
+
+---
+
+## 1. 认证 API `/auth`
+
+### POST /auth/register - 用户注册
+
+**请求体：**
+```json
+{
+  "email": "user@example.com",
+  "username": "myuser",
+  "password": "password123"
+}
+```
+
+**响应 (201)：**
+```json
+{
+  "user": {
+    "id": "uuid",
+    "email": "user@example.com",
+    "username": "myuser"
+  },
+  "token": {
+    "access_token": "eyJhbGciOiJIUzI1NiIs...",
+    "expires_in": 3600
+  }
+}
+```
+
+### POST /auth/login - 用户登录
+
+**请求体：**
+```json
+{
+  "identifier": "user@example.com",
+  "password": "password123"
+}
+```
+
+> `identifier` 可以是邮箱或用户名
+
+### GET /auth/me - 获取当前用户
+
+**响应 (200)：**
+```json
+{
+  "id": "uuid",
+  "email": "user@example.com",
+  "username": "myuser"
+}
+```
+
+---
+
+## 2. 对话 API `/chat`
+
+### POST /chat/stream - 流式对话（核心接口）
+
+**请求体：**
+```json
+{
+  "message": "你的问题",
+  "document_ids": ["doc-uuid-1", "doc-uuid-2"],
+  "conversation_id": "可选，不传则创建新对话",
+  "stream": true,
+  "history": [
+    {"role": "user", "content": "之前的问题"},
+    {"role": "assistant", "content": "之前的回答"}
+  ],
+  "rag_config": {
+    "top_k": 5,
+    "score_threshold": 0.7,
+    "retrieval_mode": "hybrid"
+  }
+}
+```
+
+**SSE 响应事件：**
+
+| 事件类型 | 说明 | 数据示例 |
+|----------|------|----------|
+| `citations` | 引用来源 | `{"data": [{"document_name": "...", "chunk_content": "..."}]}` |
+| `token` | 回答片段 | `{"data": {"content": "这是"}}` |
+| `done` | 完成信号 | `{"data": {"conversation_id": "uuid", "total_tokens": 150}}` |
+| `error` | 错误信息 | `{"data": {"message": "错误描述"}}` |
+
+### POST /chat/conversations - 创建对话
+
+**请求体：**
+```json
+{
+  "title": "对话标题",
+  "document_ids": ["doc-uuid-1"]
+}
+```
+
+### GET /chat/conversations - 获取对话列表
+
+**查询参数：** `skip`, `limit`
+
+### GET /chat/conversations/{id}/messages - 获取消息历史
+
+### DELETE /chat/conversations/{id} - 删除对话
+
+---
+
+## 3. 文档管理 API `/documents`
+
+### POST /documents/upload - 上传文档
+
+**Content-Type:** `multipart/form-data`
+
+**表单参数：**
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| file | File | 是 | 文档文件 |
+| parser_backend | string | 否 | 解析器：auto/basic/docling/mineru |
+| chunk_strategy | string | 否 | 分块策略 |
+| dataset_id | UUID | 否 | 所属数据集 |
+| chunk_size | int | 否 | 分块大小（默认 1000） |
+| chunk_overlap | int | 否 | 重叠大小（默认 200） |
+
+**响应 (201)：**
+```json
+{
+  "id": "doc-uuid",
+  "filename": "document.pdf",
+  "status": "pending",
+  "processing_progress": 0
+}
+```
+
+### GET /documents/{id}/status - 获取处理状态
+
+**响应：**
+```json
+{
+  "id": "doc-uuid",
+  "status": "processing",
+  "processing_progress": 50,
+  "current_stage": "chunking"
+}
+```
+
+**状态值：** `pending` → `processing` → `completed` / `failed`
+
+### GET /documents/ - 获取文档列表
+
+### GET /documents/{id} - 获取文档详情
+
+### DELETE /documents/{id} - 删除文档
+
+---
+
+## 4. 数据集 API `/datasets`
+
+### POST /datasets/ - 创建数据集
+
+```json
+{
+  "name": "产品文档",
+  "description": "产品相关文档集合"
+}
+```
+
+### GET /datasets/ - 获取数据集列表
+
+### GET /datasets/{id} - 获取数据集详情
+
+### PATCH /datasets/{id} - 更新数据集
+
+### DELETE /datasets/{id} - 删除数据集
+
+---
+
+## 5. 健康检查 API `/health`
+
+### GET /health - 轻量检查
+
+```json
+{"ok": true, "time": "2024-01-01T00:00:00Z"}
+```
+
+### GET /health/ready - 就绪探针
+
+检查数据库、Milvus、Redis 连接状态。
+
+---
+
+# 常见问题解答
+
+## Q1: 如何处理 SSE 流式响应？
+
+SSE（Server-Sent Events）是一种服务器推送技术。每行数据格式为：
+
+```
+data: {"type": "token", "data": {"content": "内容"}}
+```
+
+**处理步骤：**
+1. 按行分割响应
+2. 去掉 `data: ` 前缀
+3. JSON 解析
+4. 根据 `type` 字段处理
+
+## Q2: 文档上传后多久可以使用？
+
+取决于文档大小和解析器：
+- 小文档（< 1MB）：通常 10-30 秒
+- 中等文档（1-10MB）：1-5 分钟
+- 大文档（> 10MB）：可能需要更长时间
+
+**建议：** 轮询 `/documents/{id}/status` 接口检查状态。
+
+## Q3: 如何提高回答质量？
+
+1. **调整 top_k**：增加检索数量（5→10）
+2. **启用重排序**：`enable_reranker: true`
+3. **调整阈值**：降低 `score_threshold`（0.7→0.5）
+4. **优化文档**：确保文档质量，避免扫描件
+
+## Q4: Token 过期怎么办？
+
+Token 默认 1 小时过期。解决方案：
+1. 重新调用登录接口获取新 Token
+2. 在前端实现 Token 刷新逻辑
+
+## Q5: 如何调试检索效果？
+
+使用 RAG 调试接口：
+
+```bash
+POST /api/v1/rag/retrieve-preview
+```
+
+可以查看检索到的文档块和相似度分数。
+
+## Q6: 支持哪些语言？
+
+系统支持中文和英文，底层 LLM 决定了语言能力。
+
+---
+
+# 附录
+
+## API 路径速查表
+
+| 功能 | 方法 | 路径 |
+|------|------|------|
+| 注册 | POST | /auth/register |
+| 登录 | POST | /auth/login |
+| 上传文档 | POST | /documents/upload |
+| 文档状态 | GET | /documents/{id}/status |
+| 流式对话 | POST | /chat/stream |
+| 对话列表 | GET | /chat/conversations |
+| 健康检查 | GET | /health |
+
+## 联系与支持
+
+如有问题，请联系开发团队或查看项目文档。
+
+---
+
+*文档版本：1.0 | 最后更新：2024*
