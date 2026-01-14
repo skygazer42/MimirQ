@@ -4,10 +4,10 @@
   "private": true,
   "packageManager": "pnpm@9.0.0",
   "scripts": {
-    "dev": "next dev",
-    "dev:turbo": "next dev --turbo",
+    "dev": "next dev -H 0.0.0.0 -p 3000",
+    "dev:turbo": "next dev --turbo -H 0.0.0.0 -p 3000",
     "build": "next build",
-    "start": "next start",
+    "start": "next start -H 0.0.0.0 -p 3000",
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
     "api-check": "node scripts/check-api-contract.mjs && node scripts/check-api-coverage.mjs",
