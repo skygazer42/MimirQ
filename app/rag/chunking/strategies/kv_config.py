@@ -77,6 +77,8 @@ def _build_sections(text: str) -> List[_Section]:
 
     headers = sorted(headers, key=lambda x: x[0])
     sections: List[_Section] = []
+    if headers[0][0] > 0:
+        sections.append(_Section(start=0, end=headers[0][0], name=None))
     for idx, (start, name) in enumerate(headers):
         end = headers[idx + 1][0] if idx + 1 < len(headers) else len(text)
         sections.append(_Section(start=start, end=end, name=name))
@@ -249,4 +251,3 @@ class KVConfigChunker(BaseChunker):
             chunk.metadata = meta
 
         return out
-

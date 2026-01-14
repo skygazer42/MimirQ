@@ -44,6 +44,15 @@ from app.rag.chunking.strategies import (
     SpreadsheetSheetChunker,
     MarkdownTableChunker,
     ChatHistoryChunker,
+    ChangelogChunker,
+    LogEventsChunker,
+    SubtitlesChunker,
+    APIReferenceChunker,
+    DiffPatchChunker,
+    KVConfigChunker,
+    QAMarkdownChunker,
+    MeetingMinutesChunker,
+    TimelineEventsChunker,
 )
 
 
@@ -82,6 +91,15 @@ class ChunkerFactory:
     - spreadsheet_sheet: Spreadsheet sheet-aware chunking
     - markdown_table: Markdown table-aware chunking
     - chat_history: Timestamped chat history chunking
+    - changelog: Changelog/release notes aware chunking
+    - log_events: Log entry aware chunking
+    - subtitles: Subtitles (SRT/VTT-like) cue chunking
+    - api_reference: API endpoint reference aware chunking
+    - diff_patch: Diff/patch aware chunking
+    - kv_config: Key-value config aware chunking
+    - qa_markdown: Markdown Q/A aware chunking
+    - meeting_minutes: Meeting minutes section-aware chunking
+    - timeline_events: Timeline/date-event aware chunking
 
     RAGFlow strategies (handled separately):
     - ragflow_naive: General-purpose chunking
@@ -123,6 +141,15 @@ class ChunkerFactory:
         "spreadsheet_sheet": SpreadsheetSheetChunker,
         "markdown_table": MarkdownTableChunker,
         "chat_history": ChatHistoryChunker,
+        "changelog": ChangelogChunker,
+        "log_events": LogEventsChunker,
+        "subtitles": SubtitlesChunker,
+        "api_reference": APIReferenceChunker,
+        "diff_patch": DiffPatchChunker,
+        "kv_config": KVConfigChunker,
+        "qa_markdown": QAMarkdownChunker,
+        "meeting_minutes": MeetingMinutesChunker,
+        "timeline_events": TimelineEventsChunker,
     }
 
     RAGFLOW_STRATEGIES = {
@@ -183,6 +210,46 @@ class ChunkerFactory:
         "im": "chat_history",
         "聊天记录": "chat_history",
         "对话记录": "chat_history",
+        "changelog": "changelog",
+        "release_notes": "changelog",
+        "releasenotes": "changelog",
+        "release": "changelog",
+        "releases": "changelog",
+        "log": "log_events",
+        "logs": "log_events",
+        "日志": "log_events",
+        "subtitles": "subtitles",
+        "subtitle": "subtitles",
+        "srt": "subtitles",
+        "vtt": "subtitles",
+        "字幕": "subtitles",
+        "api": "api_reference",
+        "openapi": "api_reference",
+        "swagger": "api_reference",
+        "接口文档": "api_reference",
+        "diff": "diff_patch",
+        "patch": "diff_patch",
+        "gitdiff": "diff_patch",
+        "git_diff": "diff_patch",
+        "kv": "kv_config",
+        "env": "kv_config",
+        "dotenv": "kv_config",
+        "ini": "kv_config",
+        "properties": "kv_config",
+        "配置": "kv_config",
+        "qa_md": "qa_markdown",
+        "faq_md": "qa_markdown",
+        "md_qa": "qa_markdown",
+        "minutes": "meeting_minutes",
+        "meeting": "meeting_minutes",
+        "meeting_notes": "meeting_minutes",
+        "会议纪要": "meeting_minutes",
+        "timeline": "timeline_events",
+        "chronology": "timeline_events",
+        "timeline_events": "timeline_events",
+        "时间线": "timeline_events",
+        "时间轴": "timeline_events",
+        "时间记录": "timeline_events",
     }
 
     def resolve_strategy(self, strategy: Optional[str]) -> str:

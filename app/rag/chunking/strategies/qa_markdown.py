@@ -106,7 +106,7 @@ def _build_pairs(text: str, segs: List[_TagSeg]) -> List[_QAPair]:
 
 
 def looks_like_qa_markdown(text: str) -> bool:
-    if not text or len(text) < 120:
+    if not text or len(text) < 80:
         return False
     segs = _iter_tag_segments(text)
     pairs = _build_pairs(text, segs)
@@ -208,4 +208,3 @@ class QAMarkdownChunker(BaseChunker):
             chunk.metadata = meta
 
         return out
-

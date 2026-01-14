@@ -13,24 +13,33 @@ from typing import List
 from langchain_core.documents import Document
 
 from app.rag.chunking.base import BaseChunker
+from app.rag.chunking.strategies.api_reference import APIReferenceChunker, looks_like_api_reference
 from app.rag.chunking.strategies.book_structured import BookStructuredChunker, looks_like_book
 from app.rag.chunking.strategies.chat_history import ChatHistoryChunker, looks_like_chat_history
+from app.rag.chunking.strategies.changelog import ChangelogChunker, looks_like_changelog
 from app.rag.chunking.strategies.csv_rows import CsvRowsChunker, looks_like_csv_rows
+from app.rag.chunking.strategies.diff_patch import DiffPatchChunker, looks_like_diff_patch
 from app.rag.chunking.strategies.email_thread import EmailThreadChunker, looks_like_email_thread
 from app.rag.chunking.strategies.glossary import GlossaryChunker, looks_like_glossary
 from app.rag.chunking.strategies.json_code import JSONChunker
+from app.rag.chunking.strategies.kv_config import KVConfigChunker, looks_like_kv_config
 from app.rag.chunking.strategies.laws_structured import LawsStructuredChunker, looks_like_laws
+from app.rag.chunking.strategies.log_events import LogEventsChunker, looks_like_log_events
 from app.rag.chunking.strategies.markdown import MarkdownAwareChunker
 from app.rag.chunking.strategies.markdown_table import MarkdownTableChunker, looks_like_markdown_table
+from app.rag.chunking.strategies.meeting_minutes import MeetingMinutesChunker, looks_like_meeting_minutes
 from app.rag.chunking.strategies.outline import OutlineChunker, looks_like_outline
 from app.rag.chunking.strategies.paper import PaperChunker, looks_like_paper
 from app.rag.chunking.strategies.presentation_slides import PresentationSlidesChunker, looks_like_presentation
 from app.rag.chunking.strategies.qa_pairs import QAPairsChunker, looks_like_qa_pairs
+from app.rag.chunking.strategies.qa_markdown import QAMarkdownChunker, looks_like_qa_markdown
 from app.rag.chunking.strategies.recursive import LangChainRecursiveChunker
 from app.rag.chunking.strategies.resume_structured import ResumeStructuredChunker, looks_like_resume
 from app.rag.chunking.strategies.semantic import SemanticSentenceChunker
 from app.rag.chunking.strategies.sop_steps import SOPStepsChunker, looks_like_sop
 from app.rag.chunking.strategies.spreadsheet_sheet import SpreadsheetSheetChunker, looks_like_spreadsheet
+from app.rag.chunking.strategies.subtitles import SubtitlesChunker, looks_like_subtitles
+from app.rag.chunking.strategies.timeline_events import TimelineEventsChunker, looks_like_timeline_events
 from app.rag.chunking.strategies.transcript import TranscriptChunker, looks_like_transcript
 
 
@@ -66,18 +75,27 @@ class AutoChunker(BaseChunker):
     Strategy selection (per Document):
     - CSV (row-oriented) -> csv_rows
     - Spreadsheet (sheet headings) -> spreadsheet_sheet
+    - Diff/patch -> diff_patch (splits by file/hunk)
+    - Subtitles -> subtitles (splits by cue timecodes)
+    - Logs -> log_events (keeps log entries together)
+    - Key-value config -> kv_config
+    - API reference -> api_reference (splits by endpoints)
+    - Changelog -> changelog (splits by releases)
     - Email thread -> email_thread (keeps messages together)
     - Timestamped chat history -> chat_history (keeps messages together)
     - Q/A pairs -> qa_pairs (keeps pairs together)
+    - Markdown Q/A -> qa_markdown (bullets/headings)
     - SOP/procedure -> sop_steps (keeps steps together)
     - Glossary -> glossary (keeps entries together)
     - Resume/CV -> resume_structured (splits by common sections)
     - Slides/deck -> presentation_slides (splits by slide separators)
+    - Meeting minutes -> meeting_minutes (splits by agenda/actions/decisions)
     - Legal doc -> laws_structured (clause-aware)
     - Book-like -> book_structured (chapter-aware)
     - Paper-like -> paper (section-aware)
     - Outline-like -> outline (numbered headings)
     - Transcript-like -> transcript (keeps speaker turns together)
+    - Timeline events -> timeline_events (keeps events together)
     - Markdown tables -> markdown_table (avoids splitting rows)
     - Markdown-ish content -> markdown_aware (structure-friendly)
     - Valid JSON content -> json (structure-friendly, overlap=0)
@@ -161,6 +179,42 @@ class AutoChunker(BaseChunker):
             chunk_size=self.chunk_size,
             chunk_overlap=self.chunk_overlap,
         )
+        self._diff = DiffPatchChunker(
+            chunk_size=self.chunk_size,
+            chunk_overlap=self.chunk_overlap,
+        )
+        self._subtitles = SubtitlesChunker(
+            chunk_size=self.chunk_size,
+            chunk_overlap=self.chunk_overlap,
+        )
+        self._log_events = LogEventsChunker(
+            chunk_size=self.chunk_size,
+            chunk_overlap=self.chunk_overlap,
+        )
+        self._kv_config = KVConfigChunker(
+            chunk_size=self.chunk_size,
+            chunk_overlap=self.chunk_overlap,
+        )
+        self._api = APIReferenceChunker(
+            chunk_size=self.chunk_size,
+            chunk_overlap=self.chunk_overlap,
+        )
+        self._changelog = ChangelogChunker(
+            chunk_size=self.chunk_size,
+            chunk_overlap=self.chunk_overlap,
+        )
+        self._qa_md = QAMarkdownChunker(
+            chunk_size=self.chunk_size,
+            chunk_overlap=self.chunk_overlap,
+        )
+        self._minutes = MeetingMinutesChunker(
+            chunk_size=self.chunk_size,
+            chunk_overlap=self.chunk_overlap,
+        )
+        self._timeline = TimelineEventsChunker(
+            chunk_size=self.chunk_size,
+            chunk_overlap=self.chunk_overlap,
+        )
 
     def _select(self, doc: Document) -> tuple[BaseChunker, str]:
         meta = doc.metadata or {}
@@ -183,6 +237,24 @@ class AutoChunker(BaseChunker):
             if looks_like_markdown_table(text):
                 return self._markdown_table, "markdown_table"
 
+        if looks_like_diff_patch(text):
+            return self._diff, "diff_patch"
+
+        if looks_like_subtitles(text):
+            return self._subtitles, "subtitles"
+
+        if looks_like_log_events(text):
+            return self._log_events, "log_events"
+
+        if looks_like_kv_config(text):
+            return self._kv_config, "kv_config"
+
+        if looks_like_api_reference(text):
+            return self._api, "api_reference"
+
+        if looks_like_changelog(text):
+            return self._changelog, "changelog"
+
         if looks_like_email_thread(text):
             return self._email_thread, "email_thread"
 
@@ -192,11 +264,20 @@ class AutoChunker(BaseChunker):
         if looks_like_qa_pairs(text):
             return self._qa_pairs, "qa_pairs"
 
+        if looks_like_qa_markdown(text):
+            return self._qa_md, "qa_markdown"
+
         if looks_like_sop(text):
             return self._sop, "sop_steps"
 
         if looks_like_glossary(text):
             return self._glossary, "glossary"
+
+        if looks_like_meeting_minutes(text):
+            return self._minutes, "meeting_minutes"
+
+        if looks_like_timeline_events(text):
+            return self._timeline, "timeline_events"
 
         if looks_like_resume(text):
             return self._resume, "resume_structured"
