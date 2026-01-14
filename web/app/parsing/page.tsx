@@ -824,36 +824,36 @@ export default function ParsingPage() {
   const queueCountLabel = visibleQueueFiles.length === 0 ? '0' : `${parsedCount}/${visibleQueueFiles.length}`
 
   return (
-    <div className="relative flex h-screen overflow-hidden bg-amber-50/70">
+    <div className="relative flex h-screen overflow-hidden bg-slate-50">
       <div className="absolute inset-0 pointer-events-none">
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(251,191,36,0.16),transparent_55%),radial-gradient(circle_at_top_right,rgba(244,114,182,0.12),transparent_50%),radial-gradient(circle_at_bottom_left,rgba(251,146,60,0.12),transparent_55%)]" />
-        <div className="absolute inset-0 opacity-[0.04] bg-[radial-gradient(#92400e_1px,transparent_1px)] [background-size:18px_18px]" />
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(14,165,233,0.15),transparent_55%),radial-gradient(circle_at_top_right,rgba(59,130,246,0.15),transparent_50%),radial-gradient(circle_at_bottom_left,rgba(99,102,241,0.15),transparent_55%)]" />
+        <div className="absolute inset-0 opacity-[0.04] bg-[radial-gradient(#0f172a_1px,transparent_1px)] [background-size:18px_18px]" />
       </div>
       <div className="relative z-10 flex h-full w-full">
         <Navbar />
 
         <main className="flex-1 flex flex-col overflow-hidden min-h-0">
         {/* 顶部标题栏 */}
-        <header className="flex-shrink-0 bg-white/80 border-b border-amber-100/70 px-6 py-4 h-16 flex items-center justify-between z-20 shadow-sm relative backdrop-blur shadow-[0_1px_0_rgba(255,255,255,0.8)]">
+        <header className="flex-shrink-0 bg-white/80 border-b border-slate-200/70 px-6 py-4 h-16 flex items-center justify-between z-20 shadow-sm relative backdrop-blur shadow-[0_1px_0_rgba(255,255,255,0.8)]">
           <div className="flex items-center gap-4">
-            <div className="w-9 h-9 bg-gradient-to-br from-amber-500 to-rose-500 rounded-lg flex items-center justify-center shadow-lg shadow-amber-200/50 ring-1 ring-white/60">
+            <div className="w-9 h-9 bg-gradient-to-br from-sky-500 to-blue-600 rounded-lg flex items-center justify-center shadow-lg shadow-sky-200/50 ring-1 ring-white/60">
               <Sparkles className="w-5 h-5 text-white" />
             </div>
             <div>
-              <h1 className="text-lg font-bold text-stone-900 leading-tight">文档解析工作台</h1>
-              <p className="text-xs text-stone-500 leading-none mt-1">
+              <h1 className="text-lg font-bold text-slate-900 leading-tight">文档解析工作台</h1>
+              <p className="text-xs text-slate-500 leading-none mt-1">
                 上传文件并转换为 Markdown 格式，为数据治理做准备
               </p>
             </div>
           </div>
-          <div className="absolute inset-x-6 bottom-0 h-px bg-gradient-to-r from-transparent via-amber-200/70 to-transparent" />
+          <div className="absolute inset-x-6 bottom-0 h-px bg-gradient-to-r from-transparent via-sky-200/70 to-transparent" />
         </header>
 
         <div className="flex-1 flex overflow-hidden min-h-0">
           {/* 左侧：文件列表面板 */}
           <aside
             className={cn(
-              "group/sidebar relative flex flex-col flex-shrink-0 bg-white/80 border-r border-amber-100/70 transition-all duration-300 ease-in-out z-10 backdrop-blur shadow-[inset_-1px_0_0_rgba(255,255,255,0.6)]",
+              "group/sidebar relative flex flex-col flex-shrink-0 bg-white/80 border-r border-slate-200/70 transition-all duration-300 ease-in-out z-10 backdrop-blur shadow-[inset_-1px_0_0_rgba(255,255,255,0.6)]",
               isSidebarCollapsed ? "w-0 border-r-0" : "w-80"
             )}
             style={{ width: isSidebarCollapsed ? 0 : 320 }}
@@ -863,7 +863,7 @@ export default function ParsingPage() {
               variant="ghost"
               size="icon"
               className={cn(
-                "absolute -right-3 top-3 z-30 h-6 w-6 rounded-full border border-amber-100/70 bg-white shadow-sm hover:bg-amber-50/70 text-stone-400 hover:text-stone-600 transition-opacity opacity-0 group-hover/sidebar:opacity-100",
+                "absolute -right-3 top-3 z-30 h-6 w-6 rounded-full border border-slate-200/70 bg-white shadow-sm hover:bg-slate-50 text-slate-400 hover:text-slate-600 transition-opacity opacity-0 group-hover/sidebar:opacity-100",
                 isSidebarCollapsed && "opacity-100 -right-8 translate-x-2"
               )}
               onClick={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
@@ -874,9 +874,9 @@ export default function ParsingPage() {
 
             <div className={cn("flex-1 flex flex-col min-h-0 w-full overflow-hidden", isSidebarCollapsed && "invisible")}>
             {/* 解析器选择 */}
-            <div className="p-4 border-b">
+            <div className="p-4 border-b border-slate-200/70">
               <div className="flex items-center justify-between mb-3">
-                <span className="text-xs font-semibold text-stone-500 uppercase tracking-wider">解析方式</span>
+                <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">解析方式</span>
               </div>
               <ParserDropdown
                 value={parserBackend}
@@ -885,8 +885,8 @@ export default function ParsingPage() {
             </div>
 
             {/* Folder Navigation */}
-            <div className="flex-none h-1/3 min-h-[200px] overflow-y-auto p-2 border-b custom-scrollbar bg-amber-50/40">
-               <div className="h-full rounded-2xl border border-amber-100/70 bg-white/70 p-2 shadow-sm backdrop-blur ring-1 ring-white/60">
+            <div className="flex-none h-1/3 min-h-[200px] overflow-y-auto p-2 border-b border-slate-200/70 custom-scrollbar bg-slate-50/40">
+               <div className="h-full rounded-2xl border border-slate-200/70 bg-white/70 p-2 shadow-sm backdrop-blur ring-1 ring-white/60">
                  <DocumentFolderTree
                     onRequestUpload={requestUploadToFolder}
                     onRequestUploadFolder={requestUploadFolder}
@@ -902,29 +902,29 @@ export default function ParsingPage() {
             {/* File List Header & Toolbar */}
             <div
               className={cn(
-                "px-4 py-2 border-b flex items-center justify-between z-10 sticky top-0",
-                "bg-amber-50/70 backdrop-blur border-amber-100/70 shadow-[0_1px_0_rgba(255,255,255,0.7)]"
+                "px-4 py-2 border-b border-slate-200/70 flex items-center justify-between z-10 sticky top-0",
+                "bg-slate-50/70 backdrop-blur shadow-[0_1px_0_rgba(255,255,255,0.7)]"
               )}
               onDragOver={(e) => handleFolderDragOver(e, currentFolderId)}
               onDragLeave={() => setDragOverFolderId(null)}
               onDrop={(e) => handleFolderDrop(e, currentFolderId)}
             >
                <div className="flex items-center gap-3 min-w-0 group">
-                  <div className="w-8 h-8 rounded-lg bg-amber-50 text-amber-700 flex items-center justify-center ring-1 ring-white/70">
+                  <div className="w-8 h-8 rounded-lg bg-sky-50 text-sky-700 flex items-center justify-center ring-1 ring-white/70">
                     <FileText className="w-4 h-4" />
                   </div>
                   <div className="min-w-0">
-                    <div className="text-sm font-semibold text-stone-800">文档列表</div>
+                    <div className="text-sm font-semibold text-slate-800">文档列表</div>
                     <div className="mt-0.5">
                       <span
-                        className="inline-flex max-w-[220px] items-center truncate rounded-full bg-amber-100/80 px-2 py-0.5 text-[10px] font-medium text-stone-600"
+                        className="inline-flex max-w-[220px] items-center truncate rounded-full bg-sky-100/80 px-2 py-0.5 text-[10px] font-medium text-slate-600"
                         title={activeFolderPathLabel}
                       >
                         {activeFolderPathLabel}
                       </span>
                     </div>
                   </div>
-                  <span className="bg-amber-100/70 text-stone-600 px-2 py-0.5 rounded-full text-[11px] font-medium opacity-0 group-hover:opacity-100 transition-opacity">
+                  <span className="bg-sky-100/70 text-slate-600 px-2 py-0.5 rounded-full text-[11px] font-medium opacity-0 group-hover:opacity-100 transition-opacity">
                     {visibleQueueFiles.length}
                   </span>
                </div>
@@ -935,7 +935,7 @@ export default function ParsingPage() {
                       variant="ghost"
                       size="sm"
                       onClick={parseAllPending}
-                      className="h-7 text-xs gap-1.5 text-amber-700 hover:text-amber-800 hover:bg-amber-50 mr-1 font-medium"
+                      className="h-7 text-xs gap-1.5 text-sky-700 hover:text-sky-800 hover:bg-sky-50 mr-1 font-medium"
                     >
                       <Play className="w-3.5 h-3.5" />
                       解析
@@ -947,18 +947,18 @@ export default function ParsingPage() {
                       <Button
                         variant="ghost"
                         size="icon"
-                        className="h-7 w-7 text-stone-600 hover:bg-amber-100/70 rounded-lg"
+                        className="h-7 w-7 text-slate-600 hover:bg-slate-100/70 rounded-lg"
                       >
                         <Plus className="w-4 h-4" />
                       </Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end" className="w-52">
                       <DropdownMenuItem onClick={() => requestUploadToFolder(activeFolderId || ROOT_FOLDER_ID)}>
-                        <Paperclip className="w-4 h-4 mr-2 text-amber-700" />
+                        <Paperclip className="w-4 h-4 mr-2 text-sky-700" />
                         上传文件
                       </DropdownMenuItem>
                       <DropdownMenuItem onClick={() => requestUploadFolder(activeFolderId || ROOT_FOLDER_ID)}>
-                        <FolderUp className="w-4 h-4 mr-2 text-amber-600" />
+                        <FolderUp className="w-4 h-4 mr-2 text-sky-600" />
                         上传文件夹
                       </DropdownMenuItem>
                     </DropdownMenuContent>
@@ -967,15 +967,15 @@ export default function ParsingPage() {
             </div>
 
             {/* File List */}
-            <div className="flex-1 overflow-y-auto p-2 custom-scrollbar bg-amber-50/40">
-               <div className="min-h-full rounded-2xl border border-amber-100/70 bg-white/70 p-2 shadow-sm backdrop-blur ring-1 ring-white/60">
+            <div className="flex-1 overflow-y-auto p-2 custom-scrollbar bg-slate-50/40">
+               <div className="min-h-full rounded-2xl border border-slate-200/70 bg-white/70 p-2 shadow-sm backdrop-blur ring-1 ring-white/60">
                {directFolders.length === 0 && visibleQueueFiles.length === 0 ? (
-                 <div className="h-full flex flex-col items-center justify-center text-stone-400">
-                    <div className="w-14 h-14 bg-gradient-to-br from-amber-100/70 to-white rounded-2xl flex items-center justify-center mb-3 shadow-sm">
-                      <FolderOpen className="w-6 h-6 text-stone-300" />
+                 <div className="h-full flex flex-col items-center justify-center text-slate-400">
+                    <div className="w-14 h-14 bg-gradient-to-br from-slate-100/70 to-white rounded-2xl flex items-center justify-center mb-3 shadow-sm">
+                      <FolderOpen className="w-6 h-6 text-slate-300" />
                     </div>
-                    <p className="text-sm font-medium text-stone-500">暂无文件</p>
-                    <p className="text-xs text-stone-400 mt-1">拖拽文件到此处或点击上方按钮添加</p>
+                    <p className="text-sm font-medium text-slate-500">暂无文件</p>
+                    <p className="text-xs text-slate-400 mt-1">拖拽文件到此处或点击上方按钮添加</p>
                  </div>
                ) : (
                  <div className="space-y-1">
@@ -986,24 +986,24 @@ export default function ParsingPage() {
                        <div
                          key={folder.id}
                          className={cn(
-                           "flex items-center gap-3 p-2.5 rounded-xl border border-transparent hover:border-amber-100/70 hover:bg-amber-50/70 group transition-all cursor-pointer relative bg-white/70 shadow-sm shadow-amber-100/40",
-                           dragOverFolderId === folder.id && "border-amber-200 bg-amber-50/60",
-                           activeFolderId === folder.id && "bg-amber-50 border-amber-100 ring-1 ring-amber-200"
+                           "flex items-center gap-3 p-2.5 rounded-xl border border-transparent hover:border-sky-100/70 hover:bg-sky-50/70 group transition-all cursor-pointer relative bg-white/70 shadow-sm shadow-slate-100/40",
+                           dragOverFolderId === folder.id && "border-sky-200 bg-sky-50/60",
+                           activeFolderId === folder.id && "bg-sky-50 border-sky-100 ring-1 ring-sky-200"
                          )}
                          onClick={() => setActiveFolderId(folder.id)}
                          onDragOver={(e) => handleFolderDragOver(e, folder.id)}
                          onDragLeave={() => setDragOverFolderId(null)}
                          onDrop={(e) => handleFolderDrop(e, folder.id)}
                        >
-                         <div className="w-9 h-9 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center flex-shrink-0 shadow-sm">
+                         <div className="w-9 h-9 rounded-xl bg-sky-50 text-sky-600 flex items-center justify-center flex-shrink-0 shadow-sm">
                            <FolderOpen className="w-4 h-4" />
                          </div>
                          <div className="flex-1 min-w-0">
                            <div className="flex items-center justify-between">
-                             <div className={cn("text-sm font-semibold truncate pr-6", activeFolderId === folder.id ? "text-amber-900" : "text-stone-700")}>
+                             <div className={cn("text-sm font-semibold truncate pr-6", activeFolderId === folder.id ? "text-sky-900" : "text-slate-700")}>
                                {folder.name}
                              </div>
-                             <span className="text-[10px] text-stone-400 flex-shrink-0">
+                             <span className="text-[10px] text-slate-400 flex-shrink-0">
                                {Number.isFinite(latestTs) && latestTs > 0
                                  ? new Date(latestTs).toLocaleString([], {
                                      month: '2-digit',
@@ -1015,7 +1015,7 @@ export default function ParsingPage() {
                              </span>
                            </div>
                            <div className="flex items-center gap-2 mt-1 min-h-[16px]">
-                             <span className="text-[10px] text-stone-400">
+                             <span className="text-[10px] text-slate-400">
                                {(stats?.count || 0)} 项
                              </span>
                            </div>
@@ -1026,8 +1026,8 @@ export default function ParsingPage() {
                    {visibleQueueFiles.map(f => (
                      <div key={f.id} 
                           className={cn(
-                            "flex items-center gap-3 p-2.5 rounded-xl border border-transparent hover:border-amber-100/70 hover:bg-amber-50/70 group transition-all cursor-pointer relative bg-white/70 shadow-sm shadow-amber-100/40",
-                            activeFileId === f.id && "bg-amber-50 border-amber-100 ring-1 ring-amber-200"
+                            "flex items-center gap-3 p-2.5 rounded-xl border border-transparent hover:border-sky-100/70 hover:bg-sky-50/70 group transition-all cursor-pointer relative bg-white/70 shadow-sm shadow-slate-100/40",
+                            activeFileId === f.id && "bg-sky-50 border-sky-100 ring-1 ring-sky-200"
                           )}
                           onClick={() => setActiveFileId(f.id)}
                           draggable
@@ -1036,10 +1036,10 @@ export default function ParsingPage() {
                         {getFileIcon(f.name)}
                         <div className="flex-1 min-w-0">
                            <div className="flex items-center justify-between">
-                             <div className={cn("text-sm font-medium truncate pr-6", activeFileId === f.id ? "text-amber-900" : "text-stone-700")}>
+                             <div className={cn("text-sm font-medium truncate pr-6", activeFileId === f.id ? "text-sky-900" : "text-slate-700")}>
                                {f.name}
                              </div>
-                             <span className="text-[10px] text-stone-400 flex-shrink-0">
+                             <span className="text-[10px] text-slate-400 flex-shrink-0">
                                {f.createdAt
                                  ? new Date(f.createdAt).toLocaleString([], {
                                      month: '2-digit',
@@ -1055,10 +1055,10 @@ export default function ParsingPage() {
                               {/* Status Indicator */}
                               {f.status === 'parsing' ? (
                                 <div className="flex items-center gap-2 w-full max-w-[120px]">
-                                   <div className="h-1.5 flex-1 bg-amber-100 rounded-full overflow-hidden">
-                                      <div className="h-full bg-amber-500 animate-[progress_1s_ease-in-out_infinite] w-full origin-left scale-x-50" />
+                                   <div className="h-1.5 flex-1 bg-sky-100 rounded-full overflow-hidden">
+                                      <div className="h-full bg-sky-500 animate-[progress_1s_ease-in-out_infinite] w-full origin-left scale-x-50" />
                                    </div>
-                                   <span className="text-[10px] text-amber-600 font-medium">解析中...</span>
+                                   <span className="text-[10px] text-sky-600 font-medium">解析中...</span>
                                 </div>
                               ) : f.status === 'error' ? (
                                 <span className="text-[10px] text-red-500 flex items-center gap-1">
@@ -1069,18 +1069,18 @@ export default function ParsingPage() {
                                   <CheckCircle2 className="w-3 h-3" /> 完成
                                 </span>
                               ) : (
-                                <span className="text-[10px] text-stone-400">等待中</span>
+                                <span className="text-[10px] text-slate-400">等待中</span>
                               )}
                            </div>
                         </div>
                         
                         {/* Stop/Delete Button - Absolute positioned or flex? Group hover */}
-                        <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity bg-amber-50/70 backdrop-blur-sm rounded-md p-0.5 shadow-sm border border-white/70 shadow-[0_4px_12px_rgba(251,191,36,0.18)]">
+                        <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity bg-white/70 backdrop-blur-sm rounded-md p-0.5 shadow-sm border border-slate-100/70">
                            {f.status === 'parsing' && (
                               <Button
                                 variant="ghost"
                                 size="icon"
-                                className="h-6 w-6 text-stone-500 hover:text-red-600 hover:bg-red-50"
+                                className="h-6 w-6 text-slate-500 hover:text-red-600 hover:bg-red-50"
                                 onClick={(e) => {
                                   e.stopPropagation()
                                   cancelParse(f.id)
@@ -1093,7 +1093,7 @@ export default function ParsingPage() {
                            <Button
                               variant="ghost"
                               size="icon"
-                              className="h-6 w-6 text-stone-500 hover:text-red-600 hover:bg-red-50"
+                              className="h-6 w-6 text-slate-500 hover:text-red-600 hover:bg-red-50"
                               onClick={(e) => {
                                 e.stopPropagation()
                                 removeFile(f.id)
@@ -1130,8 +1130,8 @@ export default function ParsingPage() {
 
             {/* 底部统计 */}
             {visibleQueueFiles.length > 0 && (
-              <div className="p-4 border-t bg-amber-50/70">
-                <div className="flex items-center justify-around text-xs text-stone-500">
+              <div className="p-4 border-t border-slate-200/70 bg-slate-50/70">
+                <div className="flex items-center justify-around text-xs text-slate-500">
                   <span className="flex items-center gap-1">
                     <Clock className="w-3 h-3" />
                     {pendingCount} 等待
@@ -1156,11 +1156,11 @@ export default function ParsingPage() {
               // 空状态
               <div className="flex-1 flex items-center justify-center">
                 <div className="text-center max-w-md">
-                  <div className="w-20 h-20 mx-auto mb-4 bg-gradient-to-br from-amber-100/70 to-amber-50/70 rounded-2xl flex items-center justify-center">
-                    <FileText className="w-10 h-10 text-stone-300" />
+                  <div className="w-20 h-20 mx-auto mb-4 bg-gradient-to-br from-slate-100/70 to-slate-50/70 rounded-2xl flex items-center justify-center">
+                    <FileText className="w-10 h-10 text-slate-300" />
                   </div>
-                  <h3 className="text-lg font-medium text-stone-700 mb-2">选择文件开始</h3>
-                  <p className="text-stone-400 text-sm">
+                  <h3 className="text-lg font-medium text-slate-700 mb-2">选择文件开始</h3>
+                  <p className="text-slate-400 text-sm">
                     从左侧上传或选择文件，系统将使用 AI 智能解析文档结构
                   </p>
                 </div>
@@ -1169,19 +1169,19 @@ export default function ParsingPage() {
               <>
                 {/* 统计卡片区 - 解析完成后显示 */}
                 {activeFile.status === 'parsed' && activeFile.stats && (
-                  <div className="px-6 py-4 border-b bg-gradient-to-r from-amber-50/70 to-white">
+                  <div className="px-6 py-4 border-b border-slate-200/70 bg-gradient-to-r from-slate-50/70 to-white">
                     <StatsGrid>
                       <StatCard
                         icon={FileText}
                         label="字符数"
                         value={activeFile.stats.charCount.toLocaleString()}
-                        color="amber"
+                        color="blue"
                       />
                       <StatCard
                         icon={FileStack}
                         label="行数"
                         value={activeFile.stats.lineCount.toLocaleString()}
-                        color="orange"
+                        color="indigo"
                       />
                       <StatCard
                         icon={Table2}
@@ -1207,19 +1207,19 @@ export default function ParsingPage() {
                 )}
 
                 {/* 工具栏 */}
-                <div className="flex items-center justify-between px-6 py-3 border-b bg-amber-50/70">
+                <div className="flex items-center justify-between px-6 py-3 border-b border-slate-200/70 bg-slate-50/70">
                   <div className="flex items-center gap-3">
-                    <span className="font-medium text-stone-900 truncate max-w-[200px]">
+                    <span className="font-medium text-slate-900 truncate max-w-[200px]">
                       {activeFile.file.name}
                     </span>
-                    <span className="text-xs text-stone-400 bg-amber-100/70 px-2 py-0.5 rounded">
+                    <span className="text-xs text-slate-400 bg-slate-200/50 px-2 py-0.5 rounded">
                       {activeFile.parserLabel}
                     </span>
                     {activeFile.runs && activeFile.runs.length > 1 && (
                       <select
                         value={activeRun?.id || ''}
                         onChange={(e) => handleSelectRun(e.target.value)}
-                        className="text-xs border border-amber-100/70 rounded px-2 py-1 bg-white text-stone-600"
+                        className="text-xs border border-slate-200 rounded px-2 py-1 bg-white text-slate-600"
                       >
                         {activeFile.runs.map((run) => (
                           <option key={run.id} value={run.id}>
@@ -1229,7 +1229,7 @@ export default function ParsingPage() {
                       </select>
                     )}
                     {isEditing && (
-                      <span className="text-xs text-amber-600 bg-amber-100 px-2 py-0.5 rounded flex items-center gap-1">
+                      <span className="text-xs text-sky-600 bg-sky-100 px-2 py-0.5 rounded flex items-center gap-1">
                         <Edit3 className="w-3 h-3" />
                         编辑中
                       </span>
@@ -1246,7 +1246,7 @@ export default function ParsingPage() {
                               variant="ghost"
                               size="sm"
                               onClick={handleCancelEdit}
-                              className="gap-1.5 text-stone-500"
+                              className="gap-1.5 text-slate-500"
                             >
                               <X className="w-4 h-4" />
                               取消
@@ -1254,7 +1254,7 @@ export default function ParsingPage() {
                             <Button
                               onClick={handleSaveEdit}
                               size="sm"
-                              className="gap-1.5 bg-amber-600 hover:bg-amber-700"
+                              className="gap-1.5 bg-sky-600 hover:bg-sky-700"
                             >
                               <Save className="w-4 h-4" />
                               保存修改
@@ -1264,14 +1264,14 @@ export default function ParsingPage() {
                           // 预览模式按钮
                           <>
                             {activeBlocks.length > 0 && (
-                              <div className="flex items-center bg-amber-100/70 rounded-lg p-0.5 mr-2">
+                              <div className="flex items-center bg-slate-100 rounded-lg p-0.5 mr-2">
                                 <button
                                   onClick={() => setRightPanelMode('blocks')}
                                   className={cn(
                                     'px-3 py-1.5 text-xs rounded-md transition-all flex items-center gap-1',
                                     rightPanelMode === 'blocks'
-                                      ? 'bg-white text-stone-900 shadow-sm'
-                                      : 'text-stone-500 hover:text-stone-700'
+                                      ? 'bg-white text-slate-900 shadow-sm'
+                                      : 'text-slate-500 hover:text-slate-700'
                                   )}
                                 >
                                   <FileStack className="w-3.5 h-3.5" />
@@ -1282,8 +1282,8 @@ export default function ParsingPage() {
                                   className={cn(
                                     'px-3 py-1.5 text-xs rounded-md transition-all flex items-center gap-1',
                                     rightPanelMode === 'markdown'
-                                      ? 'bg-white text-stone-900 shadow-sm'
-                                      : 'text-stone-500 hover:text-stone-700'
+                                      ? 'bg-white text-slate-900 shadow-sm'
+                                      : 'text-slate-500 hover:text-slate-700'
                                   )}
                                 >
                                   <FileText className="w-3.5 h-3.5" />
@@ -1293,14 +1293,14 @@ export default function ParsingPage() {
                             )}
 
                             {rightPanelMode === 'markdown' && (
-                              <div className="flex items-center bg-amber-100/70 rounded-lg p-0.5 mr-2">
+                              <div className="flex items-center bg-slate-100 rounded-lg p-0.5 mr-2">
                                 <button
                                   onClick={() => setPreviewMode('rendered')}
                                   className={cn(
                                     'px-3 py-1.5 text-xs rounded-md transition-all flex items-center gap-1',
                                     previewMode === 'rendered'
-                                      ? 'bg-white text-stone-900 shadow-sm'
-                                      : 'text-stone-500 hover:text-stone-700'
+                                      ? 'bg-white text-slate-900 shadow-sm'
+                                      : 'text-slate-500 hover:text-slate-700'
                                   )}
                                 >
                                   <Eye className="w-3.5 h-3.5" />
@@ -1311,8 +1311,8 @@ export default function ParsingPage() {
                                   className={cn(
                                     'px-3 py-1.5 text-xs rounded-md transition-all flex items-center gap-1',
                                     previewMode === 'raw'
-                                      ? 'bg-white text-stone-900 shadow-sm'
-                                      : 'text-stone-500 hover:text-stone-700'
+                                      ? 'bg-white text-slate-900 shadow-sm'
+                                      : 'text-slate-500 hover:text-slate-700'
                                   )}
                                 >
                                   <Code className="w-3.5 h-3.5" />
@@ -1346,7 +1346,7 @@ export default function ParsingPage() {
                     )}
 
                     {activeFile.status === 'pending' && (
-                      <Button onClick={() => parseFile(activeFile.id)} className="gap-2 bg-amber-600 hover:bg-amber-700">
+                      <Button onClick={() => parseFile(activeFile.id)} className="gap-2 bg-sky-600 hover:bg-sky-700">
                         <Sparkles className="w-4 h-4" />
                         开始解析
                       </Button>
@@ -1366,11 +1366,11 @@ export default function ParsingPage() {
                   {activeFile.status === 'pending' && (
                     <div className="flex items-center justify-center h-full">
                       <div className="text-center">
-                        <div className="w-16 h-16 mx-auto mb-4 bg-amber-100 rounded-xl flex items-center justify-center">
-                          <Sparkles className="w-8 h-8 text-amber-600" />
+                        <div className="w-16 h-16 mx-auto mb-4 bg-sky-100 rounded-xl flex items-center justify-center">
+                          <Sparkles className="w-8 h-8 text-sky-600" />
                         </div>
-                        <p className="text-stone-600 mb-2">准备就绪</p>
-                        <p className="text-stone-400 text-sm">
+                        <p className="text-slate-600 mb-2">准备就绪</p>
+                        <p className="text-slate-400 text-sm">
                           点击上方按钮，使用 {activeFile.parserLabel} 解析
                         </p>
                       </div>
@@ -1381,15 +1381,15 @@ export default function ParsingPage() {
                     <div className="flex items-center justify-center h-full">
                       <div className="text-center">
                         <div className="relative">
-                          <Loader2 className="w-12 h-12 animate-spin text-amber-600 mx-auto" />
+                          <Loader2 className="w-12 h-12 animate-spin text-sky-600 mx-auto" />
                           <div className="absolute inset-0 flex items-center justify-center">
-                            <span className="text-xs font-medium text-amber-700">
+                            <span className="text-xs font-medium text-sky-700">
                               {Math.round(activeFile.progress || 0)}%
                             </span>
                           </div>
                         </div>
-                        <p className="text-stone-600 mt-4">正在解析...</p>
-                        <p className="text-stone-400 text-sm mt-1">{activeFile.parserLabel}</p>
+                        <p className="text-slate-600 mt-4">正在解析...</p>
+                        <p className="text-slate-400 text-sm mt-1">{activeFile.parserLabel}</p>
                       </div>
                     </div>
                   )}
@@ -1401,7 +1401,7 @@ export default function ParsingPage() {
                           <FileText className="w-8 h-8 text-red-500" />
                         </div>
                         <p className="text-red-600 font-medium mb-2">解析失败</p>
-                        <p className="text-stone-500 text-sm">{activeFile.error}</p>
+                        <p className="text-slate-500 text-sm">{activeFile.error}</p>
                       </div>
                     </div>
                   )}
@@ -1413,7 +1413,7 @@ export default function ParsingPage() {
                           <textarea
                             value={editedContent}
                             onChange={(e) => setEditedContent(e.target.value)}
-                            className="w-full min-h-[500px] p-4 font-mono text-sm leading-relaxed text-stone-700 whitespace-pre-wrap bg-amber-50 border border-amber-200 rounded-xl resize-none focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent"
+                            className="w-full min-h-[500px] p-4 font-mono text-sm leading-relaxed text-slate-700 whitespace-pre-wrap bg-slate-50 border border-slate-200 rounded-xl resize-none focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-transparent"
                             placeholder="在此编辑内容..."
                             autoFocus
                           />
@@ -1421,7 +1421,7 @@ export default function ParsingPage() {
                       ) : (
                         <div className="flex h-full min-h-[520px] flex-col lg:flex-row">
                           {isPdf ? (
-                            <div className="w-full lg:w-1/2 border-b lg:border-b-0 lg:border-r border-amber-100/70 bg-amber-50/70">
+                            <div className="w-full lg:w-1/2 border-b lg:border-b-0 lg:border-r border-slate-200/70 bg-slate-50/70">
                               <PdfViewer
                                 file={activeFile.file}
                                 blocks={activeBlocks}
@@ -1448,15 +1448,15 @@ export default function ParsingPage() {
                                         className={cn(
                                           'w-full text-left rounded-xl border p-4 transition shadow-sm',
                                           isActive
-                                            ? 'border-amber-400 bg-amber-50'
-                                            : 'border-amber-100/70 bg-white hover:border-amber-300'
+                                            ? 'border-sky-400 bg-sky-50'
+                                            : 'border-slate-100/70 bg-white hover:border-sky-300'
                                         )}
                                       >
-                                        <div className="text-xs text-stone-400 mb-2">
+                                        <div className="text-xs text-slate-400 mb-2">
                                           块 {idx + 1}
                                           {Number.isFinite(pageIndex) ? ` · 页 ${Number(pageIndex) + 1}` : ''}
                                         </div>
-                                        <div className="prose prose-stone max-w-none prose-headings:text-stone-900 prose-p:text-stone-700 prose-a:text-amber-700 prose-code:text-amber-700 prose-code:bg-amber-50 prose-code:px-1 prose-code:py-0.5 prose-code:rounded prose-pre:bg-stone-900 prose-table:border-collapse prose-th:bg-amber-100/70 prose-th:border prose-th:border-amber-200 prose-th:p-2 prose-td:border prose-td:border-amber-200 prose-td:p-2">
+                                        <div className="prose prose-slate max-w-none prose-headings:text-slate-900 prose-p:text-slate-700 prose-a:text-sky-700 prose-code:text-sky-700 prose-code:bg-sky-50 prose-code:px-1 prose-code:py-0.5 prose-code:rounded prose-pre:bg-slate-900 prose-table:border-collapse prose-th:bg-sky-100/70 prose-th:border prose-th:border-sky-200 prose-th:p-2 prose-td:border prose-td:border-sky-200 prose-td:p-2">
                                           <MarkdownRenderer markdown={block.text} />
                                         </div>
                                       </button>
@@ -1467,19 +1467,19 @@ export default function ParsingPage() {
                               <div className="h-full overflow-y-auto p-6">
                                 {previewMode === 'rendered' ? (
                                   <div className="flex gap-8">
-                                    <div className="min-w-0 flex-1 prose prose-stone max-w-none prose-headings:text-stone-900 prose-p:text-stone-700 prose-a:text-amber-700 prose-code:text-amber-700 prose-code:bg-amber-50 prose-code:px-1 prose-code:py-0.5 prose-code:rounded prose-pre:bg-stone-900 prose-table:border-collapse prose-th:bg-amber-100/70 prose-th:border prose-th:border-amber-200 prose-th:p-2 prose-td:border prose-td:border-amber-200 prose-td:p-2">
+                                    <div className="min-w-0 flex-1 prose prose-slate max-w-none prose-headings:text-slate-900 prose-p:text-slate-700 prose-a:text-sky-700 prose-code:text-sky-700 prose-code:bg-sky-50 prose-code:px-1 prose-code:py-0.5 prose-code:rounded prose-pre:bg-slate-900 prose-table:border-collapse prose-th:bg-sky-100/70 prose-th:border prose-th:border-sky-200 prose-th:p-2 prose-td:border prose-td:border-sky-200 prose-td:p-2">
                                       <MarkdownRenderer markdown={activeMarkdown} autoScrollToHash />
                                     </div>
                                     {tocEnabled && (
                                       <aside className="hidden xl:block w-64 shrink-0">
-                                        <div className="sticky top-6 max-h-[calc(100vh-220px)] overflow-y-auto rounded-xl border border-amber-100/70 bg-amber-50/40 p-3">
+                                        <div className="sticky top-6 max-h-[calc(100vh-220px)] overflow-y-auto rounded-xl border border-slate-200/70 bg-slate-50/40 p-3">
                                           <MarkdownToc markdown={activeMarkdown} />
                                         </div>
                                       </aside>
                                     )}
                                   </div>
                                 ) : (
-                                  <pre className="font-mono text-sm leading-relaxed text-stone-700 whitespace-pre-wrap bg-amber-50/70 p-6 rounded-xl border">
+                                  <pre className="font-mono text-sm leading-relaxed text-slate-700 whitespace-pre-wrap bg-slate-50/70 p-6 rounded-xl border border-slate-200">
                                     {activeMarkdown}
                                   </pre>
                                 )}
@@ -1494,9 +1494,9 @@ export default function ParsingPage() {
 
                 {/* 底部操作栏 */}
                 {activeFile.status === 'parsed' && activeMarkdown && (
-                  <div className="px-6 py-4 border-t bg-gradient-to-r from-amber-50/70 to-white">
+                  <div className="px-6 py-4 border-t border-slate-200/70 bg-gradient-to-r from-slate-50/70 to-white">
                     <div className="flex items-center justify-between">
-                      <div className="text-sm text-stone-500">
+                      <div className="text-sm text-slate-500">
                         {isEditing
                           ? '编辑完成后点击"保存修改"，然后提交到数据治理'
                           : '确认解析内容无误后，提交到数据治理工作台'
@@ -1506,7 +1506,7 @@ export default function ParsingPage() {
                         {!isEditing && (
                           <Button
                             onClick={handleSubmitToGovernance}
-                            className="gap-2 bg-amber-600 hover:bg-amber-700"
+                            className="gap-2 bg-sky-600 hover:bg-sky-700"
                           >
                             <ShieldCheck className="w-4 h-4" />
                             提交到数据治理

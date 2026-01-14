@@ -46,40 +46,40 @@ export function TopBar() {
   if (!currentFile || !currentFileItem) return null
 
   return (
-    <header className="flex-shrink-0 h-16 border-b border-amber-100/80 flex justify-between items-center px-6 bg-white/80 backdrop-blur z-20 shadow-sm relative">
+    <header className="flex-shrink-0 h-16 border-b border-slate-200/80 flex justify-between items-center px-6 bg-white/80 backdrop-blur z-20 shadow-sm relative">
       <div className="flex items-center gap-4">
-        <div className="w-9 h-9 bg-gradient-to-br from-amber-500 to-rose-500 rounded-xl flex items-center justify-center shadow-amber-200/70 shadow-md">
+        <div className="w-9 h-9 bg-gradient-to-br from-sky-500 to-blue-500 rounded-xl flex items-center justify-center shadow-sky-200/70 shadow-md">
           <Layers className="text-white w-5 h-5" />
         </div>
         <div>
-          <h1 className="text-sm font-bold text-stone-900 tracking-tight">切片预览工作台</h1>
-          <p className="text-[10px] text-stone-500 font-mono mt-0.5 flex items-center gap-2">
-            <span className="bg-amber-100/80 px-2 py-0.5 rounded-full text-amber-800 font-semibold">
+          <h1 className="text-sm font-bold text-slate-900 tracking-tight">切片预览工作台</h1>
+          <p className="text-[10px] text-slate-500 font-mono mt-0.5 flex items-center gap-2">
+            <span className="bg-sky-100/80 px-2 py-0.5 rounded-full text-sky-800 font-semibold">
               {currentFileIndex + 1}/{fileList.length}
             </span>
             <span>{currentFileItem?.displayName || currentFile.name}</span>
             {currentFileItem?.originalFileType && (
-              <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-amber-100/70 text-amber-700">
+              <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-sky-100/70 text-sky-700">
                 {String(currentFileItem.originalFileType).toUpperCase()}
               </span>
             )}
-            <span className="w-1 h-1 rounded-full bg-amber-200" />
+            <span className="w-1 h-1 rounded-full bg-sky-200" />
             <span>{formatFileSize(currentFileItem?.originalFileSize ?? currentFile.size)}</span>
             {previewData && (
               <>
-                <span className="w-1 h-1 rounded-full bg-amber-200" />
-                <span className="text-amber-700 font-semibold">{previewData.total_chunks} Chunks</span>
+                <span className="w-1 h-1 rounded-full bg-sky-200" />
+                <span className="text-sky-700 font-semibold">{previewData.total_chunks} Chunks</span>
               </>
             )}
           </p>
-          <div className="mt-1 flex flex-wrap items-center gap-2 text-[10px] text-stone-500">
-            <span className="px-2 py-0.5 rounded-full bg-amber-100/70 text-amber-700">解析器: {parserBackend}</span>
-            <span className="px-2 py-0.5 rounded-full bg-amber-100/70 text-amber-700">策略: {chunkStrategy}</span>
-            <span className="px-2 py-0.5 rounded-full bg-amber-100/70 text-amber-700">
+          <div className="mt-1 flex flex-wrap items-center gap-2 text-[10px] text-slate-500">
+            <span className="px-2 py-0.5 rounded-full bg-sky-100/70 text-sky-700">解析器: {parserBackend}</span>
+            <span className="px-2 py-0.5 rounded-full bg-sky-100/70 text-sky-700">策略: {chunkStrategy}</span>
+            <span className="px-2 py-0.5 rounded-full bg-sky-100/70 text-sky-700">
               大小: {chunkSize} / 重叠: {chunkOverlap}
             </span>
             {typeof lastPreviewDurationMs === 'number' && (
-              <span className="px-2 py-0.5 rounded-full bg-amber-100/70 text-amber-700">
+              <span className="px-2 py-0.5 rounded-full bg-sky-100/70 text-sky-700">
                 用时: {lastPreviewDurationMs}ms
               </span>
             )}
@@ -107,15 +107,15 @@ export function TopBar() {
           </div>
         )}
 
-        <div className="h-6 w-px bg-amber-100 mx-2" />
+        <div className="h-6 w-px bg-slate-200 mx-2" />
 
-        <Button variant="ghost" size="sm" onClick={reset} className="text-stone-500 hover:text-stone-900 h-8 text-xs font-medium">
+        <Button variant="ghost" size="sm" onClick={reset} className="text-slate-500 hover:text-slate-900 h-8 text-xs font-medium">
           <RotateCcw className="w-3.5 h-3.5 mr-1.5" />
           重置
         </Button>
 
         {onClose && (
-          <Button variant="ghost" size="sm" onClick={onClose} className="text-stone-500 hover:text-stone-900 h-8 w-8 p-0 rounded-full">
+          <Button variant="ghost" size="sm" onClick={onClose} className="text-slate-500 hover:text-slate-900 h-8 w-8 p-0 rounded-full">
             <X className="w-4 h-4" />
           </Button>
         )}
@@ -125,7 +125,7 @@ export function TopBar() {
           disabled={!previewData || isSubmitting || submitSuccess}
           className={cn(
             'h-9 px-5 text-xs font-semibold rounded-lg shadow-lg transition-all',
-            submitSuccess ? 'bg-green-600 hover:bg-green-700 shadow-green-200' : 'bg-gradient-to-r from-amber-500 to-rose-500 hover:from-amber-600 hover:to-rose-600 shadow-amber-200'
+            submitSuccess ? 'bg-green-600 hover:bg-green-700 shadow-green-200' : 'bg-gradient-to-r from-sky-500 to-blue-600 hover:from-sky-600 hover:to-blue-700 shadow-sky-200'
           )}
         >
           {isSubmitting ? (
@@ -138,7 +138,7 @@ export function TopBar() {
           {submitSuccess ? '已完成' : '确认入库'}
         </Button>
       </div>
-      <div className="absolute inset-x-6 bottom-0 h-px bg-gradient-to-r from-transparent via-amber-200/70 to-transparent" />
+      <div className="absolute inset-x-6 bottom-0 h-px bg-gradient-to-r from-transparent via-sky-200/70 to-transparent" />
     </header>
   )
 }
