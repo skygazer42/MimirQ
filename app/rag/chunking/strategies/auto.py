@@ -41,6 +41,21 @@ from app.rag.chunking.strategies.spreadsheet_sheet import SpreadsheetSheetChunke
 from app.rag.chunking.strategies.subtitles import SubtitlesChunker, looks_like_subtitles
 from app.rag.chunking.strategies.timeline_events import TimelineEventsChunker, looks_like_timeline_events
 from app.rag.chunking.strategies.transcript import TranscriptChunker, looks_like_transcript
+from app.rag.chunking.strategies.html_sections import HTMLSectionsChunker, looks_like_html_sections
+from app.rag.chunking.strategies.rst_sections import RSTSectionsChunker, looks_like_rst_sections
+from app.rag.chunking.strategies.asciidoc_sections import AsciiDocSectionsChunker, looks_like_asciidoc
+from app.rag.chunking.strategies.latex_sections import LatexSectionsChunker, looks_like_latex_sections
+from app.rag.chunking.strategies.orgmode_sections import OrgModeSectionsChunker, looks_like_orgmode
+from app.rag.chunking.strategies.mediawiki_sections import MediaWikiSectionsChunker, looks_like_mediawiki
+from app.rag.chunking.strategies.yaml_manifest import YAMLManifestChunker, looks_like_yaml_manifest
+from app.rag.chunking.strategies.toml_config import TOMLConfigChunker, looks_like_toml_config
+from app.rag.chunking.strategies.sql_schema import SqlSchemaChunker, looks_like_sql_schema
+from app.rag.chunking.strategies.stacktrace import StackTraceChunker, looks_like_stacktrace
+from app.rag.chunking.strategies.dockerfile import DockerfileChunker, looks_like_dockerfile
+from app.rag.chunking.strategies.makefile import MakefileChunker, looks_like_makefile
+from app.rag.chunking.strategies.nginx_config import NginxConfigChunker, looks_like_nginx_config
+from app.rag.chunking.strategies.jira_ticket import JiraTicketChunker, looks_like_jira_ticket
+from app.rag.chunking.strategies.prd_spec import PRDSpecChunker, looks_like_prd_spec
 
 
 _MD_HINT_RE = re.compile(
@@ -78,6 +93,13 @@ class AutoChunker(BaseChunker):
     - Diff/patch -> diff_patch (splits by file/hunk)
     - Subtitles -> subtitles (splits by cue timecodes)
     - Logs -> log_events (keeps log entries together)
+    - Stacktraces -> stacktrace (groups traceback blocks)
+    - YAML manifests -> yaml_manifest (splits by --- docs)
+    - TOML config -> toml_config (splits by [tables])
+    - Nginx config -> nginx_config (splits by server blocks)
+    - Dockerfile -> dockerfile (splits by stages/instructions)
+    - Makefile -> makefile (splits by target blocks)
+    - SQL schema -> sql_schema (splits by DDL statements)
     - Key-value config -> kv_config
     - API reference -> api_reference (splits by endpoints)
     - Changelog -> changelog (splits by releases)
@@ -96,6 +118,14 @@ class AutoChunker(BaseChunker):
     - Outline-like -> outline (numbered headings)
     - Transcript-like -> transcript (keeps speaker turns together)
     - Timeline events -> timeline_events (keeps events together)
+    - Jira tickets -> jira_ticket (splits by common ticket fields)
+    - PRD/spec -> prd_spec (splits by common PRD sections)
+    - HTML headings -> html_sections (splits by <h1>-<h6>)
+    - reStructuredText -> rst_sections (splits by underlined headings)
+    - AsciiDoc -> asciidoc_sections (splits by = headings)
+    - LaTeX -> latex_sections (splits by \\section commands)
+    - Org-mode -> orgmode_sections (splits by * headings)
+    - MediaWiki -> mediawiki_sections (splits by == headings)
     - Markdown tables -> markdown_table (avoids splitting rows)
     - Markdown-ish content -> markdown_aware (structure-friendly)
     - Valid JSON content -> json (structure-friendly, overlap=0)
@@ -212,6 +242,66 @@ class AutoChunker(BaseChunker):
             chunk_overlap=self.chunk_overlap,
         )
         self._timeline = TimelineEventsChunker(
+            chunk_size=self.chunk_size,
+            chunk_overlap=self.chunk_overlap,
+        )
+        self._stacktrace = StackTraceChunker(
+            chunk_size=self.chunk_size,
+            chunk_overlap=self.chunk_overlap,
+        )
+        self._yaml = YAMLManifestChunker(
+            chunk_size=self.chunk_size,
+            chunk_overlap=self.chunk_overlap,
+        )
+        self._toml = TOMLConfigChunker(
+            chunk_size=self.chunk_size,
+            chunk_overlap=self.chunk_overlap,
+        )
+        self._sql = SqlSchemaChunker(
+            chunk_size=self.chunk_size,
+            chunk_overlap=self.chunk_overlap,
+        )
+        self._dockerfile = DockerfileChunker(
+            chunk_size=self.chunk_size,
+            chunk_overlap=self.chunk_overlap,
+        )
+        self._makefile = MakefileChunker(
+            chunk_size=self.chunk_size,
+            chunk_overlap=self.chunk_overlap,
+        )
+        self._nginx = NginxConfigChunker(
+            chunk_size=self.chunk_size,
+            chunk_overlap=self.chunk_overlap,
+        )
+        self._jira = JiraTicketChunker(
+            chunk_size=self.chunk_size,
+            chunk_overlap=self.chunk_overlap,
+        )
+        self._prd = PRDSpecChunker(
+            chunk_size=self.chunk_size,
+            chunk_overlap=self.chunk_overlap,
+        )
+        self._html = HTMLSectionsChunker(
+            chunk_size=self.chunk_size,
+            chunk_overlap=self.chunk_overlap,
+        )
+        self._rst = RSTSectionsChunker(
+            chunk_size=self.chunk_size,
+            chunk_overlap=self.chunk_overlap,
+        )
+        self._asciidoc = AsciiDocSectionsChunker(
+            chunk_size=self.chunk_size,
+            chunk_overlap=self.chunk_overlap,
+        )
+        self._latex = LatexSectionsChunker(
+            chunk_size=self.chunk_size,
+            chunk_overlap=self.chunk_overlap,
+        )
+        self._orgmode = OrgModeSectionsChunker(
+            chunk_size=self.chunk_size,
+            chunk_overlap=self.chunk_overlap,
+        )
+        self._mediawiki = MediaWikiSectionsChunker(
             chunk_size=self.chunk_size,
             chunk_overlap=self.chunk_overlap,
         )

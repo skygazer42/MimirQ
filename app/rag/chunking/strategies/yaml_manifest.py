@@ -1,0 +1,210 @@
+"""
+YAML manifest / multi-document aware chunking strategy.
+
+Targets YAML text (including Kubernetes manifests) with patterns like:
+- apiVersion: v1
+- kind: Deployment
+- metadata:
+    name: ...
+- --- document separators
+
+The chunker splits the text into YAML documents first, then applies a fallback
+RecursiveCharacterTextSplitter inside each document while preserving offsets.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+import re
+from typing import Any, List, Optional
+
+from langchain_core.documents import Document
+from langchain_text_splitters import RecursiveCharacterTextSplitter
+
+from app.rag.chunking.base import BaseChunker
+
+
+@dataclass(frozen=True)
+class _Line:
+    start: int
+    end: int
+    text: str
+    plain: str
+
+
+@dataclass(frozen=True)
+class _Doc:
+    start: int
+    end: int
+    index: int
+    kind: Optional[str]
+    name: Optional[str]
+    api_version: Optional[str]
+
+
+_DOC_SEP_RE = re.compile(r"(?m)^\s*---\s*(?:#.*)?$")
+_KV_RE = re.compile(r"^\s*(?P<key>[A-Za-z_][A-Za-z0-9_.-]{0,80})\s*:\s*(?P<val>.+?)\s*(?:#.*)?$")
+_API_VERSION_RE = re.compile(r"(?m)^\s*apiVersion\s*:\s*(?P<val>[^\s#]+)")
+_KIND_RE = re.compile(r"(?m)^\s*kind\s*:\s*(?P<val>[^\s#]+)")
+_METADATA_RE = re.compile(r"^(?P<indent>\s*)metadata\s*:\s*(?:#.*)?$")
+_NAME_RE = re.compile(r"^(?P<indent>\s*)name\s*:\s*(?P<val>[^\s#]+)")
+
+
+def _iter_lines(text: str) -> List[_Line]:
+    out: List[_Line] = []
+    offset = 0
+    for raw in (text or "").splitlines(keepends=True):
+        start = offset
+        end = start + len(raw)
+        offset = end
+        out.append(_Line(start=start, end=end, text=raw, plain=raw.rstrip("\r\n")))
+    if not out and text:
+        out.append(_Line(start=0, end=len(text), text=text, plain=text))
+    return out
+
+
+def _extract_doc_meta(doc_text: str) -> tuple[Optional[str], Optional[str], Optional[str]]:
+    if not doc_text:
+        return None, None, None
+    api = None
+    kind = None
+    name = None
+
+    m = _API_VERSION_RE.search(doc_text[:4000])
+    if m:
+        api = (m.group("val") or "").strip() or None
+    m = _KIND_RE.search(doc_text[:4000])
+    if m:
+        kind = (m.group("val") or "").strip() or None
+
+    lines = _iter_lines(doc_text[:8000])
+    meta_indent: Optional[int] = None
+    for ln in lines:
+        if meta_indent is None:
+            mm = _METADATA_RE.match(ln.plain)
+            if mm:
+                meta_indent = len(mm.group("indent") or "")
+            continue
+        if not ln.plain.strip() or ln.plain.lstrip().startswith("#"):
+            continue
+        indent = len(ln.plain) - len(ln.plain.lstrip(" "))
+        if indent <= meta_indent:
+            break
+        nm = _NAME_RE.match(ln.plain)
+        if nm:
+            name = (nm.group("val") or "").strip() or None
+            break
+
+    return kind, name, api
+
+
+def _build_docs(text: str) -> List[_Doc]:
+    if not text:
+        return []
+
+    seps = [m.start() for m in _DOC_SEP_RE.finditer(text)]
+    docs: List[_Doc] = []
+    if not seps:
+        kind, name, api = _extract_doc_meta(text)
+        return [_Doc(start=0, end=len(text), index=0, kind=kind, name=name, api_version=api)]
+
+    starts = [0] + seps
+    starts = sorted(set(starts))
+    for idx, start in enumerate(starts):
+        end = starts[idx + 1] if idx + 1 < len(starts) else len(text)
+        doc_text = text[start:end]
+        if not doc_text.strip():
+            continue
+        kind, name, api = _extract_doc_meta(doc_text)
+        docs.append(_Doc(start=start, end=end, index=len(docs), kind=kind, name=name, api_version=api))
+    return docs
+
+
+def looks_like_yaml_manifest(text: str) -> bool:
+    if not text or len(text) < 80:
+        return False
+    lowered = (text or "").lower()
+    if "\t" in text:
+        # Tabs are rare in YAML; avoid false positives from other formats.
+        return False
+
+    head = text[:6000]
+    if re.search(r"(?m)^\s*apiVersion\s*:\s*\S+", head) and re.search(r"(?m)^\s*kind\s*:\s*\S+", head):
+        return True
+    if _DOC_SEP_RE.search(head):
+        kv = len(_KV_RE.findall(head))
+        return kv >= 4
+
+    raw_lines = [ln for ln in (text or "").splitlines() if ln.strip() and not ln.lstrip().startswith("#")]
+    if len(raw_lines) < 8:
+        return False
+    kv_lines = 0
+    for ln in raw_lines[:200]:
+        if _KV_RE.match(ln):
+            kv_lines += 1
+    return kv_lines >= 6 and (kv_lines / max(1, len(raw_lines[:200]))) >= 0.25
+
+
+class YAMLManifestChunker(BaseChunker):
+    def __init__(self, chunk_size: int, chunk_overlap: int):
+        self.chunk_size = int(chunk_size)
+        self.chunk_overlap = int(chunk_overlap)
+
+        self._fallback_splitter = RecursiveCharacterTextSplitter(
+            chunk_size=self.chunk_size,
+            chunk_overlap=self.chunk_overlap,
+            separators=["\n\n", "\n", " ", ""],
+            length_function=len,
+            add_start_index=True,
+        )
+
+    def split_documents(self, documents: List[Document]) -> List[Document]:
+        out: List[Document] = []
+
+        for doc in documents:
+            text = doc.page_content or ""
+            base_meta = dict(doc.metadata or {})
+            if not text.strip():
+                continue
+
+            docs = _build_docs(text)
+            if not docs:
+                continue
+
+            for d in docs:
+                doc_text = text[d.start : d.end]
+                if not doc_text.strip():
+                    continue
+
+                split_docs = self._fallback_splitter.create_documents(texts=[doc_text], metadatas=[base_meta])
+                for sd in split_docs:
+                    local_start = sd.metadata.pop("start_index", None) or 0
+                    abs_start = d.start + int(local_start)
+                    abs_end = abs_start + len(sd.page_content)
+
+                    meta: dict[str, Any] = dict(base_meta)
+                    meta.update(sd.metadata or {})
+                    meta["chunk_strategy"] = "yaml_manifest"
+                    meta["start_char"] = abs_start
+                    meta["end_char"] = abs_end
+                    meta.setdefault("doc_type_kwd", "yaml")
+                    meta["yaml_doc_index"] = int(d.index)
+                    meta["yaml_doc_count"] = int(len(docs))
+                    if d.api_version:
+                        meta["yaml_api_version"] = d.api_version
+                    if d.kind:
+                        meta["yaml_kind"] = d.kind
+                    if d.name:
+                        meta["yaml_name"] = d.name
+                    if d.kind and d.name:
+                        meta["yaml_id"] = f"{d.kind}/{d.name}"
+
+                    out.append(Document(page_content=sd.page_content, metadata=meta))
+
+        for idx, chunk in enumerate(out):
+            meta = dict(chunk.metadata or {})
+            meta["chunk_index"] = idx
+            chunk.metadata = meta
+
+        return out
+
