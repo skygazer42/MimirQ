@@ -1,0 +1,38 @@
+services:
+  # Next.js frontend (production build).
+  #
+  # Usage (from repo root):
+  #   docker compose -f docker/docker-compose.yml -f docker/docker-compose.web.yml up -d --build
+  #
+  # Notes:
+  # - `NEXT_PUBLIC_*` are baked at build time (client-side).
+  # - `API_INTERNAL_URL` is server-side only (container-to-container).
+  web:
+    build:
+      context: ../web
+      dockerfile: Dockerfile.prod
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000}
+        NEXT_PUBLIC_API_TIMEOUT_MS: ${NEXT_PUBLIC_API_TIMEOUT_MS:-60000}
+        NEXT_PUBLIC_API_LONG_TIMEOUT_MS: ${NEXT_PUBLIC_API_LONG_TIMEOUT_MS:-600000}
+        NEXT_PUBLIC_USER_ID: ${NEXT_PUBLIC_USER_ID:-demo}
+        NEXT_PUBLIC_TENANT_ID: ${NEXT_PUBLIC_TENANT_ID:-00000000-0000-0000-0000-000000000000}
+        MIMIRQ_BUILD_SHA: ${MIMIRQ_BUILD_SHA:-}
+        MIMIRQ_BUILD_TIME: ${MIMIRQ_BUILD_TIME:-}
+    restart: unless-stopped
+    ports:
+      - "${WEB_PORT:-3000}:3000"
+    environment:
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000}
+      NEXT_PUBLIC_API_TIMEOUT_MS: ${NEXT_PUBLIC_API_TIMEOUT_MS:-60000}
+      NEXT_PUBLIC_API_LONG_TIMEOUT_MS: ${NEXT_PUBLIC_API_LONG_TIMEOUT_MS:-600000}
+      NEXT_PUBLIC_USER_ID: ${NEXT_PUBLIC_USER_ID:-demo}
+      NEXT_PUBLIC_TENANT_ID: ${NEXT_PUBLIC_TENANT_ID:-00000000-0000-0000-0000-000000000000}
+      # Server-side only: used when Next.js renders on the server (not exposed to browser).
+      API_INTERNAL_URL: ${API_INTERNAL_URL_DOCKER:-http://mimirq-api:8000}
+      MIMIRQ_BUILD_SHA: ${MIMIRQ_BUILD_SHA:-}
+      MIMIRQ_BUILD_TIME: ${MIMIRQ_BUILD_TIME:-}
+    depends_on:
+      mimirq-api:
+        condition: service_healthy
+

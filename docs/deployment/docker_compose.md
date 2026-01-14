@@ -24,6 +24,14 @@ cp web/.env.local.example web/.env.local
 - `LLM_API_KEY`（以及可选的 `LLM_API_BASE/LLM_MODEL`）
 - 若启用生产 JWT：`AUTH_MODE=jwt` + `SECRET_KEY`（长度 >= 32）
 
+前端（Docker）可选配置（`docker/docker-compose.web.yml` 使用）：
+
+- `WEB_PORT`：前端端口（默认 `3000`）
+- `NEXT_PUBLIC_API_URL`：浏览器访问后端的地址（默认 `http://localhost:8000`）
+- `API_INTERNAL_URL_DOCKER`：前端容器内（SSR）访问后端的地址（默认 `http://mimirq-api:8000`）
+
+> 注意：不要把 `NEXT_PUBLIC_API_URL` 设置成 `http://mimirq-api:8000`，因为浏览器无法解析 Docker 内部服务名；SSR 需要容器内地址时请改 `API_INTERNAL_URL_DOCKER`。
+
 ---
 
 ## 2) 开发模式（默认）

@@ -4,7 +4,7 @@
 
 ### 1. 克隆项目
 ```bash
-git clone https://github.com/yourusername/MimirQ.git
+git clone https://github.com/skygazer42/MimirQ.git
 cd MimirQ
 ```
 
@@ -43,6 +43,8 @@ make up-web
 # 2) 本地开发（热更新更快）
 # cd web; pnpm install; pnpm dev
 ```
+
+> Docker 启动前端时：`NEXT_PUBLIC_API_URL` 是给浏览器用的（默认 `http://localhost:8000`）；如需 SSR 在容器内访问后端，请设置 `API_INTERNAL_URL_DOCKER=http://mimirq-api:8000`（不要把 `NEXT_PUBLIC_API_URL` 改成 Docker 内部地址）。
 
 ### (可选) 启用 ETL4LLM（Bisheng Unstructured）版面解析
 
@@ -356,7 +358,7 @@ mineru:
 1. 查看 [README.md](./README.md) 完整文档
 2. 查看后端日志: `docker compose logs -f mimirq-api`
 3. 访问 API 文档: http://localhost:8000/docs
-4. 提交 Issue: [GitHub Issues](https://github.com/your-repo/issues)
+4. 提交 Issue: [GitHub Issues](https://github.com/skygazer42/MimirQ/issues)
 
 ---
 

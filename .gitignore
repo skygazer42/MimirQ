@@ -46,6 +46,7 @@ Thumbs.db
 
 # Project specific
 uploads/
+logs/
 chroma_db/
 web/.next/
 web/.next_build/
@@ -54,6 +55,7 @@ web/types/openapi.ts
 *.sqlite
 *.db
 *.tsbuildinfo
+.docling_tmp/
 
 # Docker
 docker/.env
