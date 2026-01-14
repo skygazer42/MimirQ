@@ -32,10 +32,20 @@ class KGEngine:
         prompt_template_key: Optional[str] = None,
         prompt_ab_experiment_key: Optional[str] = None,
         ab_user_key: Optional[str] = None,
+        replace_existing: Optional[bool] = None,
+        prune_orphan_entities: Optional[bool] = None,
     ):
         config = ExtractConfig(
             chunk_ids=list(chunk_ids),
             tenant_id=tenant_id or settings.DEFAULT_TENANT_ID,
+            replace_existing=bool(
+                settings.KG_EXTRACT_REPLACE_EXISTING if replace_existing is None else replace_existing
+            ),
+            prune_orphan_entities=bool(
+                settings.KG_EXTRACT_PRUNE_ORPHAN_ENTITIES
+                if prune_orphan_entities is None
+                else prune_orphan_entities
+            ),
             prompt_template_id=prompt_template_id,
             prompt_template_key=prompt_template_key,
             prompt_ab_experiment_key=prompt_ab_experiment_key,

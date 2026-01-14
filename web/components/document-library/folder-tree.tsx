@@ -32,37 +32,98 @@ type FolderDialogState =
 export function getFileIcon(filename: string, className?: string) {
   const ext = filename.split('.').pop()?.toLowerCase() || ''
   const isLarge = className?.includes('w-12')
-  const baseClass = cn(
-    "rounded flex items-center justify-center mr-2 flex-shrink-0 transition-all border",
-    isLarge ? "w-12 h-12 rounded-xl" : "w-6 h-6 rounded-md",
-    className
-  )
-  const iconClass = isLarge ? "w-6 h-6" : "w-3.5 h-3.5"
   
-  switch (ext) {
-    case 'jpg': case 'jpeg': case 'png': case 'gif': case 'webp': case 'svg': case 'bmp':
-      return <div className={cn(baseClass, "bg-purple-50 text-purple-600 border-purple-100 shadow-sm")}><FileImage className={iconClass} /></div>
-    case 'js': case 'jsx': case 'ts': case 'tsx': case 'py': case 'java': case 'go': case 'rs': case 'php':
-      return <div className={cn(baseClass, "bg-amber-50 text-amber-600 border-amber-100 shadow-sm")}><FileCode className={iconClass} /></div>
-    case 'html': case 'css': case 'json':
-      return <div className={cn(baseClass, "bg-sky-50 text-sky-600 border-sky-100 shadow-sm")}><FileJson className={iconClass} /></div>
-    case 'xls': case 'xlsx':
-      return <div className={cn(baseClass, "bg-emerald-50 text-emerald-600 border-emerald-100 shadow-sm")}><FileSpreadsheet className={iconClass} /></div>
-    case 'csv':
-      return <div className={cn(baseClass, "bg-emerald-100 text-emerald-700 border-emerald-200 shadow-sm")}><FileSpreadsheet className={iconClass} /></div>
-    case 'zip': case 'rar': case '7z': case 'tar': case 'gz':
-      return <div className={cn(baseClass, "bg-orange-50 text-orange-600 border-orange-100 shadow-sm")}><FileArchive className={iconClass} /></div>
-    case 'pdf':
-      return <div className={cn(baseClass, "bg-rose-50 text-rose-600 border-rose-100 shadow-sm")}><FileSignature className={iconClass} /></div>
-    case 'doc': case 'docx':
-      return <div className={cn(baseClass, "bg-blue-50 text-blue-600 border-blue-100 shadow-sm")}><FileText className={iconClass} /></div>
-    case 'txt':
-      return <div className={cn(baseClass, "bg-slate-50 text-slate-500 border-slate-200 shadow-sm")}><AlignLeft className={iconClass} /></div>
-    case 'md':
-      return <div className={cn(baseClass, "bg-indigo-50 text-indigo-600 border-indigo-100 shadow-sm")}><FileCode className={iconClass} /></div>
-    default:
-      return <div className={cn(baseClass, "bg-slate-50 text-slate-400 border-slate-100 shadow-sm")}><FileText className={iconClass} /></div>
+  // Color & Label Mapping
+  let color = 'slate'
+  let label = ext.toUpperCase().slice(0, 3)
+  let Icon = FileText
+
+  if (['pdf'].includes(ext)) { color = 'red'; label = 'PDF' }
+  else if (['doc', 'docx'].includes(ext)) { color = 'blue'; label = 'W'; Icon = FileText } // Word
+  else if (['xls', 'xlsx', 'csv'].includes(ext)) { color = 'emerald'; label = 'X'; Icon = FileSpreadsheet } // Excel
+  else if (['ppt', 'pptx'].includes(ext)) { color = 'orange'; label = 'P'; Icon = FileImage } // PPT
+  else if (['txt', 'md'].includes(ext)) { color = 'slate'; label = 'TXT'; Icon = AlignLeft } // Text
+  else if (['jpg', 'png', 'jpeg', 'gif', 'webp'].includes(ext)) { color = 'purple'; label = 'IMG'; Icon = FileImage } // Image
+  else if (['zip', 'rar', '7z'].includes(ext)) { color = 'amber'; label = 'ZIP'; Icon = FileArchive } // Archive
+  else if (['js', 'ts', 'jsx', 'tsx', 'py', 'json'].includes(ext)) { color = 'indigo'; label = 'CODE'; Icon = FileCode } // Code
+
+  // Small Icon (Simple colored badge)
+  if (!isLarge) {
+    const colorClasses: Record<string, string> = {
+      red: "bg-red-100 text-red-600",
+      blue: "bg-blue-100 text-blue-600",
+      emerald: "bg-emerald-100 text-emerald-600",
+      orange: "bg-orange-100 text-orange-600",
+      slate: "bg-slate-100 text-slate-500",
+      purple: "bg-purple-100 text-purple-600",
+      amber: "bg-amber-100 text-amber-600",
+      indigo: "bg-indigo-100 text-indigo-600",
+    }
+    return (
+      <div className={cn("w-6 h-6 rounded flex items-center justify-center flex-shrink-0", colorClasses[color] || colorClasses.slate, className)}>
+        <Icon className="w-3.5 h-3.5" />
+      </div>
+    )
   }
+
+  // Large Icon (Detailed Paper Style)
+  // Simulating a vertical document page with a colored fold/header
+  const paperColors: Record<string, string> = {
+    red: "from-red-500 to-red-600",
+    blue: "from-blue-500 to-blue-600",
+    emerald: "from-emerald-500 to-emerald-600",
+    orange: "from-orange-500 to-orange-600",
+    slate: "from-slate-500 to-slate-600",
+    purple: "from-purple-500 to-purple-600",
+    amber: "from-amber-500 to-amber-600",
+    indigo: "from-indigo-500 to-indigo-600",
+  }
+
+  const textColors: Record<string, string> = {
+    red: "text-red-600",
+    blue: "text-blue-600",
+    emerald: "text-emerald-600",
+    orange: "text-orange-600",
+    slate: "text-slate-600",
+    purple: "text-purple-600",
+    amber: "text-amber-600",
+    indigo: "text-indigo-600",
+  }
+
+  return (
+    <div className={cn("relative flex items-center justify-center transition-transform hover:scale-105", className)}>
+      {/* Paper Container */}
+      <div className="relative w-9 h-11 bg-white rounded-sm shadow-sm border border-slate-200 overflow-hidden flex flex-col">
+        
+        {/* Top Color Band / Header */}
+        <div className={cn("h-3 w-full bg-gradient-to-r opacity-90", paperColors[color] || paperColors.slate)} />
+        
+        {/* Corner Fold Effect (CSS Triangle) */}
+        <div className="absolute top-0 right-0 border-t-[8px] border-r-[8px] border-t-black/5 border-r-white/0" />
+
+        {/* Content */}
+        <div className="flex-1 flex items-center justify-center bg-slate-50/30">
+           {['W', 'X', 'P'].includes(label) ? (
+             <span className={cn("font-serif font-black text-lg leading-none", textColors[color])}>
+               {label}
+             </span>
+           ) : ['PDF', 'TXT', 'ZIP', 'IMG'].includes(label) ? (
+             <span className={cn("font-bold text-[9px] tracking-tighter leading-none border-2 rounded px-0.5", textColors[color], `border-${color}-200`)}>
+               {label}
+             </span>
+           ) : (
+             <Icon className={cn("w-5 h-5", textColors[color])} />
+           )}
+        </div>
+
+        {/* Faux Text Lines (Decorative) */}
+        <div className="mb-1.5 px-1.5 space-y-0.5 opacity-20">
+           <div className="h-0.5 w-full bg-slate-400 rounded-full" />
+           <div className="h-0.5 w-2/3 bg-slate-400 rounded-full" />
+        </div>
+      </div>
+    </div>
+  )
 }
 
 function getFolderIconElement(depth: number, isOpen: boolean) {

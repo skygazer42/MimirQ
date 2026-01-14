@@ -582,6 +582,74 @@ export interface KGGraphResponse {
   stats?: Record<string, any>
 }
 
+export interface KGEntityItem {
+  id: string
+  name: string
+  type: string
+  normalized_name: string
+  description?: string | null
+  extra_data?: Record<string, any>
+  created_at?: string | null
+  updated_at?: string | null
+}
+
+export interface KGEventItem {
+  id: string
+  title: string
+  summary: string
+  content: string
+  document_id?: string | null
+  chunk_id?: string | null
+  references?: Record<string, any>
+  extra_data?: Record<string, any>
+  created_at?: string | null
+  updated_at?: string | null
+}
+
+export interface KGEventEntityItem {
+  entity: KGEntityItem
+  weight?: number
+  role?: string | null
+}
+
+export interface KGEventDetailResponse {
+  event: KGEventItem
+  entities: KGEventEntityItem[]
+}
+
+export interface KGEntityNeighbor {
+  entity_id: string
+  name: string
+  type: string
+  count: number
+}
+
+export interface KGEntityDetailResponse {
+  entity: KGEntityItem
+  events: KGEventItem[]
+  neighbors: KGEntityNeighbor[]
+  stats?: Record<string, any>
+}
+
+export interface KGEntityTypeCount {
+  type: string
+  count: number
+}
+
+export interface KGStatsResponse {
+  events: number
+  entities: number
+  links: number
+  entity_types: KGEntityTypeCount[]
+  updated_at?: string | null
+}
+
+export interface KGDeleteResponse {
+  document_id: string
+  events_deleted: number
+  entities_pruned: number
+}
+
 // ==================== RAG 调试相关类型 ====================
 
 export interface RetrievePreviewRequest {

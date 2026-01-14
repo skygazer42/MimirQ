@@ -20,11 +20,15 @@ import type {
   MessageFeedback,
   MessageFeedbackCreate,
   MessageFeedbackListResponse,
+  KGDeleteResponse,
+  KGEntityDetailResponse,
+  KGEventDetailResponse,
   KGExtractResponse,
   KGGraphNode,
   KGGraphResponse,
   KGSearchRequest,
   KGSearchResponse,
+  KGStatsResponse,
   BatchUploadRequest,
   BatchUploadResponse,
   BatchTaskStatus,
@@ -662,8 +666,26 @@ export const kgApi = {
   /**
    * 触发 KG 实体/事件抽取
    */
-  async extract(documentId: string): Promise<KGExtractResponse> {
-    const { data } = await apiClient.post(`/kg/documents/${documentId}/extract`)
+  async extract(
+    documentId: string,
+    params?: {
+      async?: boolean
+      replace_existing?: boolean
+      prune_orphan_entities?: boolean
+      prompt_template_id?: string
+      prompt_template_key?: string
+      prompt_ab_experiment_key?: string
+    }
+  ): Promise<KGExtractResponse> {
+    const { data } = await apiClient.post(`/kg/documents/${documentId}/extract`, null, { params })
+    return data
+  },
+
+  async deleteDocumentKG(
+    documentId: string,
+    params?: { prune_orphan_entities?: boolean }
+  ): Promise<KGDeleteResponse> {
+    const { data } = await apiClient.delete(`/kg/documents/${documentId}`, { params })
     return data
   },
 
@@ -675,11 +697,19 @@ export const kgApi = {
     return data
   },
 
+  async getStats(params?: { document_ids?: string[] }): Promise<KGStatsResponse> {
+    const { data } = await apiClient.get('/kg/stats', { params })
+    return data
+  },
+
   async getGraph(params?: {
     document_ids?: string[]
     max_events?: number
     max_entities?: number
     max_links?: number
+    include_entity_links?: boolean
+    min_shared_events?: number
+    max_entity_links?: number
   }): Promise<KGGraphResponse> {
     const { data } = await apiClient.get('/kg/graph', { params })
     return data
@@ -691,8 +721,40 @@ export const kgApi = {
     max_events?: number
     max_entities?: number
     max_links?: number
+    include_entity_links?: boolean
+    min_shared_events?: number
+    max_entity_links?: number
   }): Promise<KGGraphResponse> {
     const { data } = await apiClient.get('/kg/graph/expand', { params })
+    return data
+  },
+
+  async exportGraphML(params?: {
+    document_ids?: string[]
+    max_events?: number
+    max_entities?: number
+    max_links?: number
+    include_entity_links?: boolean
+    min_shared_events?: number
+    max_entity_links?: number
+  }): Promise<string> {
+    const { data } = await apiClient.get('/kg/graph/export', {
+      params,
+      responseType: 'text',
+    })
+    return data as unknown as string
+  },
+
+  async getEvent(eventId: string, params?: { document_ids?: string[] }): Promise<KGEventDetailResponse> {
+    const { data } = await apiClient.get(`/kg/events/${eventId}`, { params })
+    return data
+  },
+
+  async getEntity(
+    entityId: string,
+    params?: { document_ids?: string[]; max_events?: number; max_neighbors?: number }
+  ): Promise<KGEntityDetailResponse> {
+    const { data } = await apiClient.get(`/kg/entities/${entityId}`, { params })
     return data
   },
 
@@ -727,6 +789,8 @@ export interface KGConfig {
   extract_prompt_template_id: string
   extract_prompt_template_key: string
   extract_prompt_ab_experiment_key: string
+  extract_replace_existing: boolean
+  extract_prune_orphan_entities: boolean
 }
 
 export interface LLMConfig {

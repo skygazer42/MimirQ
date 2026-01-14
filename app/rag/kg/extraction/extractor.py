@@ -170,12 +170,25 @@ class EventExtractor:
             if not events_to_index:
                 return []
 
-            result = Indexer(session).upsert(
+            indexer = Indexer(session)
+            result = indexer.upsert(
                 tenant_id=tenant_id,
                 records=events_to_index,
                 options=index_options,
             ).event_result
-            return result.events if result else []
+
+            events = result.events if result else []
+            if events and bool(getattr(config, "replace_existing", False)):
+                try:
+                    indexer.delete_event_indexes_for_chunks(
+                        tenant_id=tenant_id,
+                        chunk_ids=config.chunk_ids,
+                        exclude_event_ids=[ev.id for ev in events],
+                        prune_orphan_entities=bool(getattr(config, "prune_orphan_entities", False)),
+                    )
+                except Exception as exc:  # noqa: BLE001
+                    logger.warning("Failed to cleanup previous KG events for chunks: %s", str(exc)[:200])
+            return events
         except Exception:
             session.rollback()
             raise
