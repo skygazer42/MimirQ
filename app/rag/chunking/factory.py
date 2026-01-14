@@ -68,6 +68,14 @@ from app.rag.chunking.strategies import (
     NginxConfigChunker,
     JiraTicketChunker,
     PRDSpecChunker,
+    JsonlRecordsChunker,
+    XMLFeedChunker,
+    OpenAPISpecChunker,
+    GraphQLSchemaChunker,
+    ProtoSchemaChunker,
+    TerraformHCLChunker,
+    GitCommitLogChunker,
+    PostmortemReportChunker,
 )
 
 
@@ -130,6 +138,14 @@ class ChunkerFactory:
     - nginx_config: Nginx config block-aware chunking
     - jira_ticket: Jira/issue ticket section-aware chunking
     - prd_spec: PRD/requirements section-aware chunking
+    - jsonl_records: JSONL/NDJSON record-aware chunking
+    - xml_feed: XML feed (RSS/Atom) item-aware chunking
+    - openapi_spec: OpenAPI/Swagger spec aware chunking
+    - graphql_schema: GraphQL schema aware chunking
+    - proto_schema: Protocol Buffers schema aware chunking
+    - terraform_hcl: Terraform/HCL block-aware chunking
+    - git_commit_log: Git commit-log aware chunking
+    - postmortem_report: Incident postmortem/RCA section-aware chunking
 
     RAGFlow strategies (handled separately):
     - ragflow_naive: General-purpose chunking
@@ -195,6 +211,14 @@ class ChunkerFactory:
         "nginx_config": NginxConfigChunker,
         "jira_ticket": JiraTicketChunker,
         "prd_spec": PRDSpecChunker,
+        "jsonl_records": JsonlRecordsChunker,
+        "xml_feed": XMLFeedChunker,
+        "openapi_spec": OpenAPISpecChunker,
+        "graphql_schema": GraphQLSchemaChunker,
+        "proto_schema": ProtoSchemaChunker,
+        "terraform_hcl": TerraformHCLChunker,
+        "git_commit_log": GitCommitLogChunker,
+        "postmortem_report": PostmortemReportChunker,
     }
 
     RAGFLOW_STRATEGIES = {
@@ -269,8 +293,8 @@ class ChunkerFactory:
         "vtt": "subtitles",
         "字幕": "subtitles",
         "api": "api_reference",
-        "openapi": "api_reference",
-        "swagger": "api_reference",
+        "openapi": "openapi_spec",
+        "swagger": "openapi_spec",
         "接口文档": "api_reference",
         "diff": "diff_patch",
         "patch": "diff_patch",
