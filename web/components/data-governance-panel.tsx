@@ -54,7 +54,7 @@ import { Button } from '@/components/ui/button'
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
 import { ROOT_FOLDER_ID, useParsedFiles } from '@/store/use-parsed-files-store'
-import { cn } from '@/lib/utils'
+import { cn, formatFileSize } from '@/lib/utils'
 import { QualityChecker } from '@/components/data-governance/quality-checker'
 import { DataCleaner } from '@/components/data-governance/data-cleaner'
 import { DataAnnotator } from '@/components/data-governance/data-annotator'
@@ -861,60 +861,91 @@ export function DataGovernancePanel() {
                     key={file.id}
                     onClick={() => handleSelectFile(file.id)}
                     className={cn(
-                      "w-full text-left p-3 rounded-xl border transition-all duration-200 cursor-pointer group relative",
+                      "w-full text-left p-4 rounded-xl border transition-all duration-200 cursor-pointer group relative",
                       selectedFileId === file.id
-                        ? "bg-sky-50/50 border-sky-200 shadow-sm ring-1 ring-sky-100"
-                        : "bg-white border-gray-100 hover:border-sky-200 hover:shadow-sm"
+                        ? "bg-sky-50/50 border-sky-200 shadow-md ring-1 ring-sky-100"
+                        : "bg-white border-slate-100 hover:border-sky-200 hover:shadow-sm"
                     )}
                   >
-                    <div className="flex items-start gap-3">
+                    <div className="flex items-start gap-4">
+                      {/* File Icon */}
                       <div className={cn(
-                        "w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 text-xs font-bold uppercase",
-                         selectedFileId === file.id ? "bg-sky-100 text-sky-600" : "bg-gray-100 text-gray-500"
+                        "w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0 text-[10px] font-bold uppercase tracking-wider shadow-sm border transition-colors",
+                         selectedFileId === file.id 
+                          ? "bg-sky-100 text-sky-700 border-sky-200" 
+                          : "bg-slate-50 text-slate-400 border-slate-100 group-hover:bg-sky-50 group-hover:text-sky-600 group-hover:border-sky-100"
                       )}>
                         {file.fileType}
                       </div>
                       
                       <div className="flex-1 min-w-0">
-                        <div className={cn(
-                          "text-sm font-medium truncate mb-1",
-                          selectedFileId === file.id ? "text-sky-900" : "text-gray-700"
-                        )}>
-                          {file.filename}
+                        {/* Row 1: Filename & Score */}
+                        <div className="flex items-center justify-between mb-1">
+                          <div className={cn(
+                            "text-sm font-bold truncate mr-2",
+                            selectedFileId === file.id ? "text-sky-900" : "text-slate-700"
+                          )}>
+                            {file.filename}
+                          </div>
+                          {score > 0 ? (
+                            <span className={cn(
+                              "flex-shrink-0 text-[10px] px-2 py-0.5 rounded-full font-bold shadow-sm border",
+                              score >= 80 ? "bg-emerald-50 text-emerald-700 border-emerald-100" :
+                              score >= 60 ? "bg-amber-50 text-amber-700 border-amber-100" :
+                              "bg-rose-50 text-rose-700 border-rose-100"
+                            )}>
+                              {score}分
+                            </span>
+                          ) : (
+                            <span className="flex-shrink-0 text-[10px] text-slate-400 bg-slate-50 px-2 py-0.5 rounded-full border border-slate-100 font-medium">未检测</span>
+                          )}
                         </div>
-                        <div className="flex items-center gap-2">
-                            {score > 0 ? (
-                              <span className={cn(
-                                "text-[10px] px-1.5 py-0.5 rounded-full font-medium border",
-                                score >= 80 ? "bg-green-50 text-green-700 border-green-100" :
-                                score >= 60 ? "bg-yellow-50 text-yellow-700 border-yellow-100" :
-                                "bg-red-50 text-red-700 border-red-100"
-                              )}>
-                                {score}分
-                              </span>
-                            ) : (
-                              <span className="text-[10px] text-gray-400">未检测</span>
-                            )}
-                            
-                            {state?.isModified && (
-                              <span className="text-[10px] text-purple-600 flex items-center gap-0.5">
-                                <span className="w-1.5 h-1.5 rounded-full bg-purple-500"></span> 已修
-                              </span>
-                            )}
-                        </div>
-                      </div>
 
-                      <div className="flex flex-col items-end gap-1">
-                        {hasIssue && <div className="w-2 h-2 rounded-full bg-red-500" />}
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            handleDeleteFile(file.id)
-                          }}
-                          className="opacity-0 group-hover:opacity-100 p-1 rounded-md text-gray-300 hover:text-red-600 hover:bg-red-50 transition-all"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
+                        {/* Row 2: Metadata (Size & Date) */}
+                        <div className="flex items-center gap-2 text-[10px] text-slate-400 mb-2 font-medium">
+                           <span>{formatFileSize(file.fileSize)}</span>
+                           <span className="text-slate-200">|</span>
+                           <span>
+                             {file.parsedAt ? new Date(file.parsedAt).toLocaleDateString([], {
+                               year: 'numeric',
+                               month: '2-digit',
+                               day: '2-digit'
+                             }) : ''}
+                           </span>
+                           <span>
+                             {file.parsedAt ? new Date(file.parsedAt).toLocaleTimeString([], {
+                               hour: '2-digit',
+                               minute: '2-digit'
+                             }) : ''}
+                           </span>
+                        </div>
+
+                        {/* Row 3: Badges & Actions */}
+                        <div className="flex items-center justify-between h-5">
+                          <div className="flex items-center gap-2">
+                              {state?.isModified && (
+                                <span className="text-[9px] text-indigo-600 flex items-center gap-1 bg-indigo-50 px-1.5 py-0.5 rounded border border-indigo-100 font-bold">
+                                  <Sparkles className="w-2.5 h-2.5" /> 已清洗
+                                </span>
+                              )}
+                              {hasIssue && (
+                                 <span className="text-[9px] text-rose-600 flex items-center gap-1 bg-rose-50 px-1.5 py-0.5 rounded border border-rose-100 font-bold">
+                                   <AlertTriangle className="w-2.5 h-2.5" /> 需关注
+                                 </span>
+                              )}
+                          </div>
+
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              handleDeleteFile(file.id)
+                            }}
+                            className="opacity-0 group-hover:opacity-100 p-1 -mr-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded transition-all"
+                            title="删除文件"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
                       </div>
                     </div>
                   </div>
