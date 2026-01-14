@@ -38,6 +38,12 @@ from app.rag.chunking.strategies import (
     SOPStepsChunker,
     GlossaryChunker,
     SentenceWindowChunker,
+    ResumeStructuredChunker,
+    PresentationSlidesChunker,
+    CsvRowsChunker,
+    SpreadsheetSheetChunker,
+    MarkdownTableChunker,
+    ChatHistoryChunker,
 )
 
 
@@ -70,6 +76,12 @@ class ChunkerFactory:
     - email_thread: Email thread aware chunking
     - sop_steps: SOP/procedure step-aware chunking
     - glossary: Glossary/dictionary entry-aware chunking
+    - resume_structured: Resume/CV section-aware chunking
+    - presentation_slides: Slide-aware chunking
+    - csv_rows: CSV row-aware chunking
+    - spreadsheet_sheet: Spreadsheet sheet-aware chunking
+    - markdown_table: Markdown table-aware chunking
+    - chat_history: Timestamped chat history chunking
 
     RAGFlow strategies (handled separately):
     - ragflow_naive: General-purpose chunking
@@ -105,6 +117,12 @@ class ChunkerFactory:
         "email_thread": EmailThreadChunker,
         "sop_steps": SOPStepsChunker,
         "glossary": GlossaryChunker,
+        "resume_structured": ResumeStructuredChunker,
+        "presentation_slides": PresentationSlidesChunker,
+        "csv_rows": CsvRowsChunker,
+        "spreadsheet_sheet": SpreadsheetSheetChunker,
+        "markdown_table": MarkdownTableChunker,
+        "chat_history": ChatHistoryChunker,
     }
 
     RAGFLOW_STRATEGIES = {
@@ -141,6 +159,30 @@ class ChunkerFactory:
         "mail_thread": "email_thread",
         "book_local": "book_structured",
         "laws_local": "laws_structured",
+        # New local presets
+        "resume": "resume_structured",
+        "cv": "resume_structured",
+        "简历": "resume_structured",
+        "履历": "resume_structured",
+        "slides": "presentation_slides",
+        "slide": "presentation_slides",
+        "ppt": "presentation_slides",
+        "pptx": "presentation_slides",
+        "presentation": "presentation_slides",
+        "deck": "presentation_slides",
+        "幻灯片": "presentation_slides",
+        "csv": "csv_rows",
+        "excel": "spreadsheet_sheet",
+        "xlsx": "spreadsheet_sheet",
+        "xls": "spreadsheet_sheet",
+        "spreadsheet": "spreadsheet_sheet",
+        "table": "markdown_table",
+        "md_table": "markdown_table",
+        "chat": "chat_history",
+        "chatlog": "chat_history",
+        "im": "chat_history",
+        "聊天记录": "chat_history",
+        "对话记录": "chat_history",
     }
 
     def resolve_strategy(self, strategy: Optional[str]) -> str:
