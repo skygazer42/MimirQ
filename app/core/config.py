@@ -133,7 +133,7 @@ class Settings(BaseSettings):
     MAX_INLINE_IMAGE_BYTES: int = 10_000_000
     MAX_INLINE_IMAGES: int = 200
     # Keep this aligned with parser_factory supported non-PDF formats.
-    ALLOWED_EXTENSIONS: str = ".pdf,.txt,.md,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.csv,.html,.htm,.json"
+    ALLOWED_EXTENSIONS: str = ".pdf,.txt,.md,.rst,.adoc,.asciidoc,.tex,.yaml,.yml,.toml,.sql,.log,.conf,.ini,.cfg,.env,.properties,.patch,.diff,.srt,.vtt,.mk,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.csv,.html,.htm,.json"
 
     @property
     def allowed_extensions_list(self):

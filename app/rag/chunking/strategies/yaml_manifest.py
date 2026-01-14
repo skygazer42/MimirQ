@@ -44,6 +44,9 @@ class _Doc:
 
 _DOC_SEP_RE = re.compile(r"(?m)^\s*---\s*(?:#.*)?$")
 _KV_RE = re.compile(r"^\s*(?P<key>[A-Za-z_][A-Za-z0-9_.-]{0,80})\s*:\s*(?P<val>.+?)\s*(?:#.*)?$")
+_KEY_ONLY_RE = re.compile(r"^\s*(?P<key>[A-Za-z_][A-Za-z0-9_.-]{0,80})\s*:\s*(?:#.*)?$")
+_INDENTED_KEY_RE = re.compile(r"^\s{2,}[A-Za-z_][A-Za-z0-9_.-]{0,80}\s*:\s*")
+_LIST_ITEM_RE = re.compile(r"^\s*-\s+\S+")
 _API_VERSION_RE = re.compile(r"(?m)^\s*apiVersion\s*:\s*(?P<val>[^\s#]+)")
 _KIND_RE = re.compile(r"(?m)^\s*kind\s*:\s*(?P<val>[^\s#]+)")
 _METADATA_RE = re.compile(r"^(?P<indent>\s*)metadata\s*:\s*(?:#.*)?$")
@@ -123,7 +126,6 @@ def _build_docs(text: str) -> List[_Doc]:
 def looks_like_yaml_manifest(text: str) -> bool:
     if not text or len(text) < 80:
         return False
-    lowered = (text or "").lower()
     if "\t" in text:
         # Tabs are rare in YAML; avoid false positives from other formats.
         return False
@@ -138,11 +140,30 @@ def looks_like_yaml_manifest(text: str) -> bool:
     raw_lines = [ln for ln in (text or "").splitlines() if ln.strip() and not ln.lstrip().startswith("#")]
     if len(raw_lines) < 8:
         return False
-    kv_lines = 0
-    for ln in raw_lines[:200]:
+    key_with_value = 0
+    key_only = 0
+    indented = 0
+    list_items = 0
+    window = raw_lines[:200]
+    for ln in window:
+        if _LIST_ITEM_RE.match(ln):
+            list_items += 1
+        if _INDENTED_KEY_RE.match(ln):
+            indented += 1
+        if _KEY_ONLY_RE.match(ln):
+            key_only += 1
+            continue
         if _KV_RE.match(ln):
-            kv_lines += 1
-    return kv_lines >= 6 and (kv_lines / max(1, len(raw_lines[:200]))) >= 0.25
+            key_with_value += 1
+
+    key_lines = key_with_value + key_only
+    if key_lines < 6:
+        return False
+    ratio = key_lines / max(1, len(window))
+    if ratio < 0.25:
+        return False
+    # Require at least some structural YAML signal to avoid "field: value" false positives.
+    return bool(key_only >= 1 or indented >= 2 or list_items >= 2)
 
 
 class YAMLManifestChunker(BaseChunker):
@@ -207,4 +228,3 @@ class YAMLManifestChunker(BaseChunker):
             chunk.metadata = meta
 
         return out
-

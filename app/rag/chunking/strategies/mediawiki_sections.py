@@ -112,7 +112,7 @@ def _update_heading_stack(stack: List[str], *, level: int, heading_text: str) ->
 
 
 def looks_like_mediawiki(text: str) -> bool:
-    if not text or len(text) < 120:
+    if not text or len(text) < 40:
         return False
     headings = _iter_headings(text)
     if len(headings) >= 2:
@@ -195,4 +195,3 @@ class MediaWikiSectionsChunker(BaseChunker):
             chunk.metadata = meta
 
         return out
-
