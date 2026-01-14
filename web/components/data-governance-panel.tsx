@@ -63,7 +63,7 @@ import { documentApi } from '@/lib/api-client'
 import { useParserBackendPreference } from '@/contexts/parser-backend-context'
 import { MarkdownRenderer } from '@/components/markdown/markdown-renderer'
 import { MarkdownToc } from '@/components/markdown/markdown-toc'
-import { DocumentFolderTree } from '@/components/document-library/folder-tree'
+import { DocumentFolderTree, getFileIcon } from '@/components/document-library/folder-tree'
 import { extractMarkdownHeadings } from '@/lib/markdown'
 import { extractZipFiles, isZipFile } from '@/lib/zip'
 
@@ -869,14 +869,12 @@ export function DataGovernancePanel() {
                   >
                     <div className="flex items-start gap-4">
                       {/* File Icon */}
-                      <div className={cn(
-                        "w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0 text-[10px] font-bold uppercase tracking-wider shadow-sm border transition-colors",
-                         selectedFileId === file.id 
-                          ? "bg-sky-100 text-sky-700 border-sky-200" 
-                          : "bg-slate-50 text-slate-400 border-slate-100 group-hover:bg-sky-50 group-hover:text-sky-600 group-hover:border-sky-100"
-                      )}>
-                        {file.fileType}
-                      </div>
+                      {getFileIcon(file.filename, cn(
+                        "w-12 h-12 rounded-xl shadow-sm border transition-all mr-0",
+                        selectedFileId === file.id 
+                          ? "ring-2 ring-sky-100 ring-offset-1 border-sky-200" 
+                          : "border-slate-100 group-hover:border-sky-200 group-hover:shadow-md"
+                      ))}
                       
                       <div className="flex-1 min-w-0">
                         {/* Row 1: Filename & Score */}

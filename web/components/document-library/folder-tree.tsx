@@ -29,32 +29,33 @@ type FolderDialogState =
   | { open: true; mode: 'rename'; folderId: string }
   | { open: true; mode: 'move'; folderId: string }
 
-export function getFileIcon(filename: string) {
+export function getFileIcon(filename: string, className?: string) {
   const ext = filename.split('.').pop()?.toLowerCase() || ''
-  const baseClass = "w-6 h-6 rounded flex items-center justify-center mr-2 flex-shrink-0"
+  const baseClass = cn("w-6 h-6 rounded flex items-center justify-center mr-2 flex-shrink-0 transition-colors", className)
   const iconClass = "w-3.5 h-3.5"
+  const iconClassLarge = className?.includes('w-12') ? "w-6 h-6" : iconClass
   
   switch (ext) {
     case 'jpg': case 'jpeg': case 'png': case 'gif': case 'webp': case 'svg': case 'bmp':
-      return <div className={cn(baseClass, "bg-purple-100 text-purple-600")}><FileImage className={iconClass} /></div>
+      return <div className={cn(baseClass, "bg-purple-100 text-purple-600")}><FileImage className={iconClassLarge} /></div>
     case 'js': case 'jsx': case 'ts': case 'tsx': case 'py': case 'html': case 'css': case 'json': case 'java': case 'go': case 'rs': case 'php':
-      return <div className={cn(baseClass, "bg-blue-100 text-blue-600")}><FileCode className={iconClass} /></div>
+      return <div className={cn(baseClass, "bg-blue-100 text-blue-600")}><FileCode className={iconClassLarge} /></div>
     case 'xls': case 'xlsx': case 'csv':
-      return <div className={cn(baseClass, "bg-green-100 text-green-600")}><FileSpreadsheet className={iconClass} /></div>
+      return <div className={cn(baseClass, "bg-emerald-100 text-emerald-600")}><FileSpreadsheet className={iconClassLarge} /></div>
     case 'zip': case 'rar': case '7z': case 'tar': case 'gz':
-      return <div className={cn(baseClass, "bg-amber-100 text-amber-600")}><FileArchive className={iconClass} /></div>
+      return <div className={cn(baseClass, "bg-amber-100 text-amber-600")}><FileArchive className={iconClassLarge} /></div>
     case 'mp3': case 'wav': case 'ogg': case 'flac':
-      return <div className={cn(baseClass, "bg-pink-100 text-pink-600")}><FileMusic className={iconClass} /></div>
+      return <div className={cn(baseClass, "bg-pink-100 text-pink-600")}><FileMusic className={iconClassLarge} /></div>
     case 'mp4': case 'mov': case 'avi': case 'mkv':
-      return <div className={cn(baseClass, "bg-rose-100 text-rose-600")}><FileVideo className={iconClass} /></div>
+      return <div className={cn(baseClass, "bg-rose-100 text-rose-600")}><FileVideo className={iconClassLarge} /></div>
     case 'pdf':
-      return <div className={cn(baseClass, "bg-red-100 text-red-600")}><FileText className={iconClass} /></div>
+      return <div className={cn(baseClass, "bg-red-100 text-red-600")}><FileText className={iconClassLarge} /></div>
     case 'doc': case 'docx':
-      return <div className={cn(baseClass, "bg-amber-100/70 text-amber-700")}><FileText className={iconClass} /></div>
+      return <div className={cn(baseClass, "bg-blue-100 text-blue-700")}><FileText className={iconClassLarge} /></div>
     case 'txt': case 'md':
-      return <div className={cn(baseClass, "bg-amber-100/70 text-stone-500")}><FileText className={iconClass} /></div>
+      return <div className={cn(baseClass, "bg-slate-100 text-slate-500")}><FileText className={iconClassLarge} /></div>
     default:
-      return <div className={cn(baseClass, "bg-amber-50/70 text-stone-400")}><FileText className={iconClass} /></div>
+      return <div className={cn(baseClass, "bg-slate-100 text-slate-400")}><FileText className={iconClassLarge} /></div>
   }
 }
 
