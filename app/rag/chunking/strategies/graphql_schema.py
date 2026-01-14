@@ -1,0 +1,157 @@
+"""
+GraphQL schema aware chunking strategy.
+
+Targets .graphql/.gql schema files and splits by top-level definitions such as:
+- type / input / enum / interface / union / scalar / directive / schema
+
+Offsets are preserved.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+import re
+from typing import Any, List, Optional
+
+from langchain_core.documents import Document
+from langchain_text_splitters import RecursiveCharacterTextSplitter
+
+from app.rag.chunking.base import BaseChunker
+
+
+@dataclass(frozen=True)
+class _Def:
+    start: int
+    end: int
+    kind: str
+    name: Optional[str]
+    index: int
+
+
+@dataclass(frozen=True)
+class _Section:
+    start: int
+    end: int
+    definition: Optional[_Def]
+
+
+_DEF_RE = re.compile(
+    r"(?m)^\s*(?:extend\s+)?(?P<kind>type|input|enum|interface|union|scalar|directive|schema)\b\s*(?P<rest>.*)$",
+    re.IGNORECASE,
+)
+_NAME_RE = re.compile(r"^(?P<name>[A-Za-z_][A-Za-z0-9_]*)\b")
+_DIRECTIVE_NAME_RE = re.compile(r"^@(?P<name>[A-Za-z_][A-Za-z0-9_]*)\b")
+
+
+def _iter_defs(text: str) -> List[_Def]:
+    defs: List[_Def] = []
+    for m in _DEF_RE.finditer(text or ""):
+        kind = (m.group("kind") or "").strip().lower()
+        rest = (m.group("rest") or "").strip()
+        name: Optional[str] = None
+        if kind in {"type", "input", "enum", "interface", "union", "scalar"}:
+            nm = _NAME_RE.match(rest)
+            if nm:
+                name = (nm.group("name") or "").strip() or None
+        elif kind == "directive":
+            nm = _DIRECTIVE_NAME_RE.match(rest)
+            if nm:
+                name = (nm.group("name") or "").strip() or None
+        defs.append(_Def(start=m.start(), end=m.end(), kind=kind, name=name, index=len(defs)))
+
+    deduped: List[_Def] = []
+    last_start = -1
+    for d in defs:
+        if d.start == last_start:
+            continue
+        deduped.append(d)
+        last_start = d.start
+    return deduped
+
+
+def _build_sections(text: str, defs: List[_Def]) -> List[_Section]:
+    if not defs:
+        return [_Section(start=0, end=len(text), definition=None)]
+
+    sections: List[_Section] = []
+    first = defs[0]
+    if first.start > 0:
+        sections.append(_Section(start=0, end=first.start, definition=None))
+    for idx, d in enumerate(defs):
+        start = d.start
+        end = defs[idx + 1].start if idx + 1 < len(defs) else len(text)
+        sections.append(_Section(start=start, end=end, definition=d))
+    return sections
+
+
+def looks_like_graphql_schema(text: str) -> bool:
+    if not text or len(text) < 120:
+        return False
+    defs = _iter_defs(text)
+    if len(defs) >= 3:
+        return True
+    # Heuristic: at least 2 defs + GraphQL-ish punctuation.
+    if len(defs) >= 2 and ("type " in (text or "").lower() or "schema {" in (text or "").lower()):
+        return True
+    return False
+
+
+class GraphQLSchemaChunker(BaseChunker):
+    def __init__(self, chunk_size: int, chunk_overlap: int):
+        self.chunk_size = int(chunk_size)
+        self.chunk_overlap = int(chunk_overlap)
+
+        self._fallback_splitter = RecursiveCharacterTextSplitter(
+            chunk_size=self.chunk_size,
+            chunk_overlap=self.chunk_overlap,
+            separators=["\n\n", "\n", "}", " ", ""],
+            length_function=len,
+            add_start_index=True,
+        )
+
+    def split_documents(self, documents: List[Document]) -> List[Document]:
+        out: List[Document] = []
+
+        for doc in documents:
+            text = doc.page_content or ""
+            base_meta = dict(doc.metadata or {})
+            if not text.strip():
+                continue
+
+            defs = _iter_defs(text)
+            sections = _build_sections(text, defs)
+
+            current: Optional[_Def] = None
+            for section in sections:
+                sec_text = text[section.start : section.end]
+                if not sec_text.strip():
+                    continue
+                if section.definition is not None:
+                    current = section.definition
+
+                split_docs = self._fallback_splitter.create_documents(texts=[sec_text], metadatas=[base_meta])
+                for sd in split_docs:
+                    local_start = sd.metadata.pop("start_index", None) or 0
+                    abs_start = section.start + int(local_start)
+                    abs_end = abs_start + len(sd.page_content)
+
+                    meta: dict[str, Any] = dict(base_meta)
+                    meta.update(sd.metadata or {})
+                    meta["chunk_strategy"] = "graphql_schema"
+                    meta["start_char"] = abs_start
+                    meta["end_char"] = abs_end
+                    meta.setdefault("doc_type_kwd", "graphql")
+                    if current is not None:
+                        meta["graphql_kind"] = current.kind
+                        if current.name:
+                            meta["graphql_name"] = current.name
+
+                    out.append(Document(page_content=sd.page_content, metadata=meta))
+
+        for idx, chunk in enumerate(out):
+            meta = dict(chunk.metadata or {})
+            meta["chunk_index"] = idx
+            chunk.metadata = meta
+
+        return out
+
