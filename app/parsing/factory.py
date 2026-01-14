@@ -69,6 +69,16 @@ class ParserFactory:
         ".srt",
         ".vtt",
         ".mk",
+        ".xml",
+        ".rss",
+        ".atom",
+        ".graphql",
+        ".gql",
+        ".proto",
+        ".tf",
+        ".hcl",
+        ".jsonl",
+        ".ndjson",
     }
     SUPPORTED_NON_PDF_EXTENSIONS = PLAIN_TEXT_EXTENSIONS | {
         ".doc",

@@ -2094,4 +2094,52 @@ POST /api/v1/feedback/messages
 }
 ```
 
+## 查询反馈列表
+
+```bash
+GET /api/v1/feedback/messages?skip=0&limit=50
+```
+
+**查询参数：**
+| 参数 | 说明 |
+|------|------|
+| conversation_id | 按对话筛选 |
+| message_id | 按消息筛选 |
+| min_rating | 最低评分 |
+| max_rating | 最高评分 |
+
+---
+
+# 系统元数据 API
+
+> 获取系统版本和功能状态信息
+
+## 获取元数据
+
+```bash
+GET /api/v1/meta
+```
+
+**响应：**
+```json
+{
+  "name": "MimirQ",
+  "api_version": "v1",
+  "time": "2024-01-01T00:00:00Z",
+  "build": {
+    "sha": "abc1234",
+    "time": "2024-01-01"
+  },
+  "features": {
+    "auth_mode": "jwt",
+    "vector_backend": "milvus",
+    "task_queue_enabled": true
+  },
+  "runtime": {
+    "python": "3.11.0",
+    "platform": "Linux-5.15.0"
+  }
+}
+```
+
 ---
