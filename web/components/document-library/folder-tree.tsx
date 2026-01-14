@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { ArrowRightLeft, ChevronDown, ChevronRight, FileText, Folder, FolderOpen, MoreHorizontal, Pencil, Plus, Trash2, FileImage, FileCode, FileSpreadsheet, FileArchive, FileMusic, FileVideo, Library, Package, Database, Loader2, CheckCircle2, AlertCircle, XCircle, Ban, Paperclip, FolderUp } from 'lucide-react'
+import { ArrowRightLeft, ChevronDown, ChevronRight, FileText, Folder, FolderOpen, MoreHorizontal, Pencil, Plus, Trash2, FileImage, FileCode, FileSpreadsheet, FileArchive, FileMusic, FileVideo, Library, Package, Database, Loader2, CheckCircle2, AlertCircle, XCircle, Ban, Paperclip, FolderUp, FileJson, AlignLeft, FileSignature } from 'lucide-react'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
@@ -31,31 +31,37 @@ type FolderDialogState =
 
 export function getFileIcon(filename: string, className?: string) {
   const ext = filename.split('.').pop()?.toLowerCase() || ''
-  const baseClass = cn("w-6 h-6 rounded flex items-center justify-center mr-2 flex-shrink-0 transition-colors", className)
-  const iconClass = "w-3.5 h-3.5"
-  const iconClassLarge = className?.includes('w-12') ? "w-6 h-6" : iconClass
+  const isLarge = className?.includes('w-12')
+  const baseClass = cn(
+    "rounded flex items-center justify-center mr-2 flex-shrink-0 transition-all border",
+    isLarge ? "w-12 h-12 rounded-xl" : "w-6 h-6 rounded-md",
+    className
+  )
+  const iconClass = isLarge ? "w-6 h-6" : "w-3.5 h-3.5"
   
   switch (ext) {
     case 'jpg': case 'jpeg': case 'png': case 'gif': case 'webp': case 'svg': case 'bmp':
-      return <div className={cn(baseClass, "bg-purple-100 text-purple-600")}><FileImage className={iconClassLarge} /></div>
-    case 'js': case 'jsx': case 'ts': case 'tsx': case 'py': case 'html': case 'css': case 'json': case 'java': case 'go': case 'rs': case 'php':
-      return <div className={cn(baseClass, "bg-blue-100 text-blue-600")}><FileCode className={iconClassLarge} /></div>
-    case 'xls': case 'xlsx': case 'csv':
-      return <div className={cn(baseClass, "bg-emerald-100 text-emerald-600")}><FileSpreadsheet className={iconClassLarge} /></div>
+      return <div className={cn(baseClass, "bg-purple-50 text-purple-600 border-purple-100 shadow-sm")}><FileImage className={iconClass} /></div>
+    case 'js': case 'jsx': case 'ts': case 'tsx': case 'py': case 'java': case 'go': case 'rs': case 'php':
+      return <div className={cn(baseClass, "bg-amber-50 text-amber-600 border-amber-100 shadow-sm")}><FileCode className={iconClass} /></div>
+    case 'html': case 'css': case 'json':
+      return <div className={cn(baseClass, "bg-sky-50 text-sky-600 border-sky-100 shadow-sm")}><FileJson className={iconClass} /></div>
+    case 'xls': case 'xlsx':
+      return <div className={cn(baseClass, "bg-emerald-50 text-emerald-600 border-emerald-100 shadow-sm")}><FileSpreadsheet className={iconClass} /></div>
+    case 'csv':
+      return <div className={cn(baseClass, "bg-emerald-100 text-emerald-700 border-emerald-200 shadow-sm")}><FileSpreadsheet className={iconClass} /></div>
     case 'zip': case 'rar': case '7z': case 'tar': case 'gz':
-      return <div className={cn(baseClass, "bg-amber-100 text-amber-600")}><FileArchive className={iconClassLarge} /></div>
-    case 'mp3': case 'wav': case 'ogg': case 'flac':
-      return <div className={cn(baseClass, "bg-pink-100 text-pink-600")}><FileMusic className={iconClassLarge} /></div>
-    case 'mp4': case 'mov': case 'avi': case 'mkv':
-      return <div className={cn(baseClass, "bg-rose-100 text-rose-600")}><FileVideo className={iconClassLarge} /></div>
+      return <div className={cn(baseClass, "bg-orange-50 text-orange-600 border-orange-100 shadow-sm")}><FileArchive className={iconClass} /></div>
     case 'pdf':
-      return <div className={cn(baseClass, "bg-red-100 text-red-600")}><FileText className={iconClassLarge} /></div>
+      return <div className={cn(baseClass, "bg-rose-50 text-rose-600 border-rose-100 shadow-sm")}><FileSignature className={iconClass} /></div>
     case 'doc': case 'docx':
-      return <div className={cn(baseClass, "bg-blue-100 text-blue-700")}><FileText className={iconClassLarge} /></div>
-    case 'txt': case 'md':
-      return <div className={cn(baseClass, "bg-slate-100 text-slate-500")}><FileText className={iconClassLarge} /></div>
+      return <div className={cn(baseClass, "bg-blue-50 text-blue-600 border-blue-100 shadow-sm")}><FileText className={iconClass} /></div>
+    case 'txt':
+      return <div className={cn(baseClass, "bg-slate-50 text-slate-500 border-slate-200 shadow-sm")}><AlignLeft className={iconClass} /></div>
+    case 'md':
+      return <div className={cn(baseClass, "bg-indigo-50 text-indigo-600 border-indigo-100 shadow-sm")}><FileCode className={iconClass} /></div>
     default:
-      return <div className={cn(baseClass, "bg-slate-100 text-slate-400")}><FileText className={iconClassLarge} /></div>
+      return <div className={cn(baseClass, "bg-slate-50 text-slate-400 border-slate-100 shadow-sm")}><FileText className={iconClass} /></div>
   }
 }
 
