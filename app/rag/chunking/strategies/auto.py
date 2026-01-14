@@ -336,6 +336,27 @@ class AutoChunker(BaseChunker):
         if looks_like_log_events(text):
             return self._log_events, "log_events"
 
+        if looks_like_stacktrace(text):
+            return self._stacktrace, "stacktrace"
+
+        if file_type in {"yaml", "yml"} or looks_like_yaml_manifest(text):
+            return self._yaml, "yaml_manifest"
+
+        if file_type in {"toml"} or looks_like_toml_config(text):
+            return self._toml, "toml_config"
+
+        if file_type in {"sql"} or looks_like_sql_schema(text):
+            return self._sql, "sql_schema"
+
+        if looks_like_nginx_config(text):
+            return self._nginx, "nginx_config"
+
+        if looks_like_dockerfile(text):
+            return self._dockerfile, "dockerfile"
+
+        if file_type in {"mk"} or looks_like_makefile(text):
+            return self._makefile, "makefile"
+
         if looks_like_kv_config(text):
             return self._kv_config, "kv_config"
 
@@ -350,6 +371,9 @@ class AutoChunker(BaseChunker):
 
         if looks_like_chat_history(text):
             return self._chat, "chat_history"
+
+        if looks_like_jira_ticket(text):
+            return self._jira, "jira_ticket"
 
         if looks_like_qa_pairs(text):
             return self._qa_pairs, "qa_pairs"
@@ -369,6 +393,9 @@ class AutoChunker(BaseChunker):
         if looks_like_timeline_events(text):
             return self._timeline, "timeline_events"
 
+        if looks_like_prd_spec(text):
+            return self._prd, "prd_spec"
+
         if looks_like_resume(text):
             return self._resume, "resume_structured"
 
@@ -383,6 +410,24 @@ class AutoChunker(BaseChunker):
 
         if looks_like_book(text):
             return self._book, "book_structured"
+
+        if file_type in {"rst"} or looks_like_rst_sections(text):
+            return self._rst, "rst_sections"
+
+        if file_type in {"adoc", "asciidoc"} or looks_like_asciidoc(text):
+            return self._asciidoc, "asciidoc_sections"
+
+        if file_type in {"tex", "latex"} or looks_like_latex_sections(text):
+            return self._latex, "latex_sections"
+
+        if file_type in {"org"} or looks_like_orgmode(text):
+            return self._orgmode, "orgmode_sections"
+
+        if looks_like_mediawiki(text):
+            return self._mediawiki, "mediawiki_sections"
+
+        if looks_like_html_sections(text):
+            return self._html, "html_sections"
 
         if looks_like_markdown_table(text):
             return self._markdown_table, "markdown_table"

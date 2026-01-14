@@ -208,10 +208,10 @@ async def get_pipeline_capabilities(
         notes: str | None = None
         if s == "auto":
             available = True
-            notes = "Auto-selects a chunker per document (diff/patch/subtitles/logs/kv-config/api/changelog/csv/spreadsheet/chat/email/qa/qa_markdown/sop/glossary/meeting_minutes/timeline/resume/slides/laws/paper/book/outline/transcript/markdown_table/markdown/json/plain text)."
+            notes = "Auto-selects a chunker per document (diff/patch/subtitles/logs/stacktrace/yaml/toml/sql/nginx/dockerfile/makefile/kv-config/api/changelog/csv/spreadsheet/chat/email/jira/qa/qa_markdown/prd/sop/glossary/meeting_minutes/timeline/resume/slides/laws/paper/book/outline/transcript/rst/asciidoc/latex/org/wiki/html/markdown_table/markdown/json/plain text)."
         elif s == "manuscript":
             available = True
-            notes = "Preset for manuscript-like documents (diff/patch/subtitles/logs/kv-config/api/changelog/csv/spreadsheet/chat/email/qa/qa_markdown/sop/glossary/meeting_minutes/timeline/resume/slides/laws/paper/book/outline/transcript/markdown_table/markdown/...)."
+            notes = "Preset for manuscript-like documents (diff/patch/subtitles/logs/stacktrace/yaml/toml/sql/nginx/dockerfile/makefile/kv-config/api/changelog/csv/spreadsheet/chat/email/jira/qa/qa_markdown/prd/sop/glossary/meeting_minutes/timeline/resume/slides/laws/paper/book/outline/transcript/rst/asciidoc/latex/org/wiki/html/markdown_table/markdown/...)."
         elif s == "outline":
             available = True
             notes = "Numbered-outline aware chunking (keeps section heading context)."
@@ -284,6 +284,51 @@ async def get_pipeline_capabilities(
         elif s == "timeline_events":
             available = True
             notes = "Timeline/date-event aware chunking (keeps dated events together)."
+        elif s == "html_sections":
+            available = True
+            notes = "HTML heading-aware chunking (splits by <h1>-<h6> tags)."
+        elif s == "rst_sections":
+            available = True
+            notes = "reStructuredText section-aware chunking (splits by underlined headings)."
+        elif s == "asciidoc_sections":
+            available = True
+            notes = "AsciiDoc section-aware chunking (splits by '=' heading lines)."
+        elif s == "latex_sections":
+            available = True
+            notes = "LaTeX section-aware chunking (splits by \\section/\\chapter commands)."
+        elif s == "orgmode_sections":
+            available = True
+            notes = "Org-mode section-aware chunking (splits by '*' heading lines)."
+        elif s == "mediawiki_sections":
+            available = True
+            notes = "MediaWiki section-aware chunking (splits by '== Heading ==' lines)."
+        elif s == "yaml_manifest":
+            available = True
+            notes = "YAML manifest aware chunking (splits by '---' documents; extracts kind/name when present)."
+        elif s == "toml_config":
+            available = True
+            notes = "TOML config aware chunking (splits by [tables] and groups key/value entries)."
+        elif s == "sql_schema":
+            available = True
+            notes = "SQL schema/DDL aware chunking (splits by CREATE/ALTER statements)."
+        elif s == "stacktrace":
+            available = True
+            notes = "Stacktrace aware chunking (groups traceback blocks; for timestamped logs prefer log_events)."
+        elif s == "dockerfile":
+            available = True
+            notes = "Dockerfile aware chunking (splits by FROM stages and instruction blocks)."
+        elif s == "makefile":
+            available = True
+            notes = "Makefile aware chunking (splits by target blocks and recipes)."
+        elif s == "nginx_config":
+            available = True
+            notes = "Nginx config aware chunking (splits by server blocks; brace-aware)."
+        elif s == "jira_ticket":
+            available = True
+            notes = "Jira/issue-ticket aware chunking (splits by common fields like Summary/Description/Steps/Expected/Actual)."
+        elif s == "prd_spec":
+            available = True
+            notes = "PRD/spec aware chunking (splits by common sections like Background/Goals/Scope/Requirements/Acceptance/Risks)."
         elif s == "sentence_window":
             available = True
             notes = "Sentence window chunking with sentence-level overlap."

@@ -6,6 +6,13 @@ where the best chunking method depends on the content shape:
 - Diff/patch -> diff_patch
 - Subtitles -> subtitles
 - Logs -> log_events
+- Stacktraces -> stacktrace
+- YAML manifests -> yaml_manifest
+- TOML config -> toml_config
+- Nginx config -> nginx_config
+- Dockerfile -> dockerfile
+- Makefile -> makefile
+- SQL schema -> sql_schema
 - Key-value config -> kv_config
 - API reference -> api_reference
 - Changelog -> changelog
@@ -17,6 +24,14 @@ where the best chunking method depends on the content shape:
 - Timestamped chat logs -> chat_history
 - Meeting minutes -> meeting_minutes
 - Timeline events -> timeline_events
+- Jira tickets -> jira_ticket
+- PRD/spec -> prd_spec
+- HTML headings -> html_sections
+- reStructuredText -> rst_sections
+- AsciiDoc -> asciidoc_sections
+- LaTeX -> latex_sections
+- Org-mode -> orgmode_sections
+- MediaWiki -> mediawiki_sections
 - Interviews / dialogue -> transcript
 - Legal/policy docs -> laws_structured
 - Papers / reports -> paper
@@ -68,6 +83,21 @@ from app.rag.chunking.strategies.spreadsheet_sheet import SpreadsheetSheetChunke
 from app.rag.chunking.strategies.subtitles import SubtitlesChunker, looks_like_subtitles
 from app.rag.chunking.strategies.timeline_events import TimelineEventsChunker, looks_like_timeline_events
 from app.rag.chunking.strategies.transcript import TranscriptChunker, looks_like_transcript
+from app.rag.chunking.strategies.html_sections import HTMLSectionsChunker, looks_like_html_sections
+from app.rag.chunking.strategies.rst_sections import RSTSectionsChunker, looks_like_rst_sections
+from app.rag.chunking.strategies.asciidoc_sections import AsciiDocSectionsChunker, looks_like_asciidoc
+from app.rag.chunking.strategies.latex_sections import LatexSectionsChunker, looks_like_latex_sections
+from app.rag.chunking.strategies.orgmode_sections import OrgModeSectionsChunker, looks_like_orgmode
+from app.rag.chunking.strategies.mediawiki_sections import MediaWikiSectionsChunker, looks_like_mediawiki
+from app.rag.chunking.strategies.yaml_manifest import YAMLManifestChunker, looks_like_yaml_manifest
+from app.rag.chunking.strategies.toml_config import TOMLConfigChunker, looks_like_toml_config
+from app.rag.chunking.strategies.sql_schema import SqlSchemaChunker, looks_like_sql_schema
+from app.rag.chunking.strategies.stacktrace import StackTraceChunker, looks_like_stacktrace
+from app.rag.chunking.strategies.dockerfile import DockerfileChunker, looks_like_dockerfile
+from app.rag.chunking.strategies.makefile import MakefileChunker, looks_like_makefile
+from app.rag.chunking.strategies.nginx_config import NginxConfigChunker, looks_like_nginx_config
+from app.rag.chunking.strategies.jira_ticket import JiraTicketChunker, looks_like_jira_ticket
+from app.rag.chunking.strategies.prd_spec import PRDSpecChunker, looks_like_prd_spec
 
 
 _MD_HINT_RE = re.compile(
@@ -212,6 +242,66 @@ class ManuscriptChunker(BaseChunker):
             chunk_size=self.chunk_size,
             chunk_overlap=self.chunk_overlap,
         )
+        self._stacktrace = StackTraceChunker(
+            chunk_size=self.chunk_size,
+            chunk_overlap=self.chunk_overlap,
+        )
+        self._yaml = YAMLManifestChunker(
+            chunk_size=self.chunk_size,
+            chunk_overlap=self.chunk_overlap,
+        )
+        self._toml = TOMLConfigChunker(
+            chunk_size=self.chunk_size,
+            chunk_overlap=self.chunk_overlap,
+        )
+        self._sql = SqlSchemaChunker(
+            chunk_size=self.chunk_size,
+            chunk_overlap=self.chunk_overlap,
+        )
+        self._dockerfile = DockerfileChunker(
+            chunk_size=self.chunk_size,
+            chunk_overlap=self.chunk_overlap,
+        )
+        self._makefile = MakefileChunker(
+            chunk_size=self.chunk_size,
+            chunk_overlap=self.chunk_overlap,
+        )
+        self._nginx = NginxConfigChunker(
+            chunk_size=self.chunk_size,
+            chunk_overlap=self.chunk_overlap,
+        )
+        self._jira = JiraTicketChunker(
+            chunk_size=self.chunk_size,
+            chunk_overlap=self.chunk_overlap,
+        )
+        self._prd = PRDSpecChunker(
+            chunk_size=self.chunk_size,
+            chunk_overlap=self.chunk_overlap,
+        )
+        self._html = HTMLSectionsChunker(
+            chunk_size=self.chunk_size,
+            chunk_overlap=self.chunk_overlap,
+        )
+        self._rst = RSTSectionsChunker(
+            chunk_size=self.chunk_size,
+            chunk_overlap=self.chunk_overlap,
+        )
+        self._asciidoc = AsciiDocSectionsChunker(
+            chunk_size=self.chunk_size,
+            chunk_overlap=self.chunk_overlap,
+        )
+        self._latex = LatexSectionsChunker(
+            chunk_size=self.chunk_size,
+            chunk_overlap=self.chunk_overlap,
+        )
+        self._orgmode = OrgModeSectionsChunker(
+            chunk_size=self.chunk_size,
+            chunk_overlap=self.chunk_overlap,
+        )
+        self._mediawiki = MediaWikiSectionsChunker(
+            chunk_size=self.chunk_size,
+            chunk_overlap=self.chunk_overlap,
+        )
 
     def _select(self, doc: Document) -> tuple[BaseChunker, str]:
         meta = doc.metadata or {}
@@ -242,6 +332,27 @@ class ManuscriptChunker(BaseChunker):
         if looks_like_log_events(text):
             return self._log_events, "log_events"
 
+        if looks_like_stacktrace(text):
+            return self._stacktrace, "stacktrace"
+
+        if file_type in {"yaml", "yml"} or looks_like_yaml_manifest(text):
+            return self._yaml, "yaml_manifest"
+
+        if file_type in {"toml"} or looks_like_toml_config(text):
+            return self._toml, "toml_config"
+
+        if file_type in {"sql"} or looks_like_sql_schema(text):
+            return self._sql, "sql_schema"
+
+        if looks_like_nginx_config(text):
+            return self._nginx, "nginx_config"
+
+        if looks_like_dockerfile(text):
+            return self._dockerfile, "dockerfile"
+
+        if file_type in {"mk"} or looks_like_makefile(text):
+            return self._makefile, "makefile"
+
         if looks_like_kv_config(text):
             return self._kv_config, "kv_config"
 
@@ -256,6 +367,9 @@ class ManuscriptChunker(BaseChunker):
 
         if looks_like_chat_history(text):
             return self._chat, "chat_history"
+
+        if looks_like_jira_ticket(text):
+            return self._jira, "jira_ticket"
 
         if looks_like_qa_pairs(text):
             return self._qa_pairs, "qa_pairs"
@@ -275,6 +389,9 @@ class ManuscriptChunker(BaseChunker):
         if looks_like_timeline_events(text):
             return self._timeline, "timeline_events"
 
+        if looks_like_prd_spec(text):
+            return self._prd, "prd_spec"
+
         if looks_like_resume(text):
             return self._resume, "resume_structured"
 
@@ -289,6 +406,24 @@ class ManuscriptChunker(BaseChunker):
 
         if looks_like_book(text):
             return self._book, "book_structured"
+
+        if file_type in {"rst"} or looks_like_rst_sections(text):
+            return self._rst, "rst_sections"
+
+        if file_type in {"adoc", "asciidoc"} or looks_like_asciidoc(text):
+            return self._asciidoc, "asciidoc_sections"
+
+        if file_type in {"tex", "latex"} or looks_like_latex_sections(text):
+            return self._latex, "latex_sections"
+
+        if file_type in {"org"} or looks_like_orgmode(text):
+            return self._orgmode, "orgmode_sections"
+
+        if looks_like_mediawiki(text):
+            return self._mediawiki, "mediawiki_sections"
+
+        if looks_like_html_sections(text):
+            return self._html, "html_sections"
 
         if looks_like_outline(text):
             return self._outline, "outline"

@@ -35,7 +35,7 @@ class _Block:
     frame_count: int
 
 
-_PY_START_RE = re.compile(r"^\s*Traceback \(most recent call last\):\s*$")
+_PY_START_RE = re.compile(r"(?m)^\s*Traceback \(most recent call last\):\s*$")
 _JAVA_START_RE = re.compile(r"^\s*(Exception in thread .+|[A-Za-z0-9_.]+(?:Exception|Error)(?::|$).*)$")
 _FRAME_RE = re.compile(r"^\s*(?:File \"|File '|at\s+|\tat\s+)")
 _CAUSED_BY_RE = re.compile(r"^\s*Caused by:\s+")
@@ -211,4 +211,3 @@ class StackTraceChunker(BaseChunker):
             chunk.metadata = meta
 
         return out
-

@@ -149,7 +149,7 @@ def _build_sections(text: str, headings: List[_Heading]) -> List[_Section]:
 
 
 def looks_like_prd_spec(text: str) -> bool:
-    if not text or len(text) < 160:
+    if not text or len(text) < 80:
         return False
     headings = _iter_headings(text)
     keys = {h.key for h in headings}
@@ -220,4 +220,3 @@ class PRDSpecChunker(BaseChunker):
             chunk.metadata = meta
 
         return out
-

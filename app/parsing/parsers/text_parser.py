@@ -17,9 +17,10 @@ class TextParser:
         decoded = read_text_file(file_path)
         content = decoded.text
 
+        file_type = file_path.suffix.lstrip(".").lower() or "txt"
         metadata = {
             "source": str(file_path.name),
-            "file_type": "txt",
+            "file_type": file_type,
             "encoding": decoded.encoding,
             "encoding_confidence": decoded.confidence,
             "encoding_had_bom": decoded.had_bom,

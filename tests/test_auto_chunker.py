@@ -483,3 +483,115 @@ def test_auto_chunker_selects_timeline_events_for_timeline_text():
     assert chunks[0].metadata.get("chunk_strategy_auto") is True
     assert chunks[0].metadata.get("chunk_strategy_selected") == "timeline_events"
 
+
+def test_auto_chunker_selects_config_and_code_formats():
+    chunker = AutoChunker(chunk_size=240, chunk_overlap=40)
+    cases = [
+        (
+            "yaml_manifest",
+            "yaml",
+            "apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: cm1\n---\napiVersion: v1\nkind: Service\nmetadata:\n  name: svc1\n",
+        ),
+        (
+            "toml_config",
+            "toml",
+            "[tool.poetry]\nname = \"demo\"\nversion = \"0.1.0\"\n\n[tool.poetry.dependencies]\npython = \"^3.11\"\n",
+        ),
+        (
+            "sql_schema",
+            "sql",
+            "CREATE TABLE users (\n  id INT PRIMARY KEY,\n  name TEXT\n);\n\nALTER TABLE users ADD COLUMN email TEXT;\n",
+        ),
+        (
+            "nginx_config",
+            "conf",
+            "server {\n  listen 80;\n  server_name example.com;\n  location / { proxy_pass http://localhost:8000; }\n}\n",
+        ),
+        (
+            "dockerfile",
+            "txt",
+            "FROM python:3.11-slim\nWORKDIR /app\nCOPY . .\nRUN echo hi\n",
+        ),
+        (
+            "makefile",
+            "mk",
+            ".PHONY: build test\nbuild:\n\t@echo build\n\ntest:\n\tpytest -q\n",
+        ),
+        (
+            "stacktrace",
+            "txt",
+            "Traceback (most recent call last):\n  File \"x.py\", line 1, in <module>\n    boom()\nZeroDivisionError: division by zero\n",
+        ),
+    ]
+
+    for expected, file_type, text in cases:
+        docs = [Document(page_content=text, metadata={"file_type": file_type})]
+        chunks = chunker.split_documents(docs)
+        assert chunks
+        assert chunks[0].metadata.get("chunk_strategy_auto") is True
+        assert chunks[0].metadata.get("chunk_strategy_selected") == expected
+
+
+def test_auto_chunker_selects_ticket_and_prd_formats():
+    chunker = AutoChunker(chunk_size=240, chunk_overlap=40)
+    cases = [
+        (
+            "jira_ticket",
+            "txt",
+            "Summary: Login fails\n\nDescription:\nSomething is wrong.\n\nSteps to Reproduce:\n1. Open app\n2. Click login\n\nExpected Result:\nSuccess\n\nActual Result:\n500\n",
+        ),
+        (
+            "prd_spec",
+            "md",
+            "# Background\nx\n\n# Goals\ny\n\n# Scope\nz\n\n# Requirements\nr\n\n# Acceptance Criteria\na\n\n# Risks\nk\n",
+        ),
+    ]
+    for expected, file_type, text in cases:
+        docs = [Document(page_content=text, metadata={"file_type": file_type})]
+        chunks = chunker.split_documents(docs)
+        assert chunks
+        assert chunks[0].metadata.get("chunk_strategy_auto") is True
+        assert chunks[0].metadata.get("chunk_strategy_selected") == expected
+
+
+def test_auto_chunker_selects_markup_formats():
+    chunker = AutoChunker(chunk_size=240, chunk_overlap=40)
+    cases = [
+        (
+            "rst_sections",
+            "rst",
+            "Title\n=====\n\nSection One\n-----------\nhello\n\nSection Two\n-----------\nworld\n",
+        ),
+        (
+            "asciidoc_sections",
+            "adoc",
+            "= Doc Title\n\n== One\nhello\n\n== Two\nworld\n",
+        ),
+        (
+            "latex_sections",
+            "tex",
+            "\\section{Intro}\nhello\n\n\\subsection{Details}\nworld\n",
+        ),
+        (
+            "orgmode_sections",
+            "org",
+            "* Intro\nhello\n\n** Details\nworld\n",
+        ),
+        (
+            "mediawiki_sections",
+            "txt",
+            "== Intro ==\nhello\n\n=== Details ===\n[[Link]]\nworld\n",
+        ),
+        (
+            "html_sections",
+            "html",
+            "<html><body><h1>Intro</h1><p>hello</p><h2>Details</h2><p>world</p></body></html>\n",
+        ),
+    ]
+    for expected, file_type, text in cases:
+        docs = [Document(page_content=text, metadata={"file_type": file_type})]
+        chunks = chunker.split_documents(docs)
+        assert chunks
+        assert chunks[0].metadata.get("chunk_strategy_auto") is True
+        assert chunks[0].metadata.get("chunk_strategy_selected") == expected
+

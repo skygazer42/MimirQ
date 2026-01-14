@@ -52,7 +52,9 @@ interface ChunkStrategyDropdownProps {
 
 export function ChunkStrategyDropdown({ value, onChange, className }: ChunkStrategyDropdownProps) {
   const [isOpen, setIsOpen] = useState(false)
+  const [query, setQuery] = useState('')
   const dropdownRef = useRef<HTMLDivElement>(null)
+  const searchRef = useRef<HTMLInputElement>(null)
   const { chunkStrategyAvailable } = usePipelineCapabilities()
 
   const selectedOption = getChunkStrategyOption(value)
@@ -69,6 +71,23 @@ export function ChunkStrategyDropdown({ value, onChange, className }: ChunkStrat
     document.addEventListener('mousedown', handleClickOutside)
     return () => document.removeEventListener('mousedown', handleClickOutside)
   }, [])
+
+  // 打开时自动聚焦与清理搜索
+  useEffect(() => {
+    if (isOpen) {
+      setTimeout(() => searchRef.current?.focus(), 0)
+    } else {
+      setQuery('')
+    }
+  }, [isOpen])
+
+  const normalizedQuery = query.trim().toLowerCase()
+  const filteredOptions = normalizedQuery
+    ? CHUNK_STRATEGY_OPTIONS.filter((option) => {
+        const haystack = `${option.label} ${option.value} ${option.description} ${option.badge || ''}`.toLowerCase()
+        return haystack.includes(normalizedQuery)
+      })
+    : CHUNK_STRATEGY_OPTIONS
 
   return (
     <div ref={dropdownRef} className={cn('relative', className)}>
@@ -111,8 +130,23 @@ export function ChunkStrategyDropdown({ value, onChange, className }: ChunkStrat
       {/* 下拉菜单 */}
       {isOpen && (
         <div className="absolute z-50 w-full mt-2 bg-white border border-gray-200 rounded-xl shadow-lg overflow-hidden">
-          <div className="py-1">
-            {CHUNK_STRATEGY_OPTIONS.map((option) => {
+          <div className="px-3 py-2 border-b border-gray-100 bg-white">
+            <input
+              ref={searchRef}
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="搜索切块方式..."
+              className={cn(
+                'w-full rounded-lg border border-gray-200 px-2 py-1.5 text-sm',
+                'focus:border-indigo-300 focus:outline-none focus:ring-2 focus:ring-indigo-100'
+              )}
+            />
+          </div>
+          <div className="py-1 max-h-[340px] overflow-auto">
+            {filteredOptions.length === 0 && (
+              <div className="px-3 py-3 text-xs text-gray-400">没有匹配的切块方式</div>
+            )}
+            {filteredOptions.map((option) => {
               const Icon = ICON_MAP[option.icon]
               const color = COLOR_MAP[option.icon]
               const isSelected = option.value === value
