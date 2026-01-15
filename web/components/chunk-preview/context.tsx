@@ -37,7 +37,7 @@ interface ChunkPreviewProviderProps {
 
 export function ChunkPreviewProvider({ children, onConfirm, onClose }: ChunkPreviewProviderProps) {
   // 外部依赖
-  const { files: parsedFiles } = useParsedFiles()
+  const parsedFiles = useParsedFiles((state) => state.files)
   const { parserBackend, setParserBackend } = useParserBackendPreference()
   const { chunkStrategy, setChunkStrategy } = useChunkStrategyPreference()
   const { enabled: pipelineOverridesEnabled, options: pipelineOptions, updateOption } = usePipelineOptions()
