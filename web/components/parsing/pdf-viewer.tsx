@@ -3,7 +3,7 @@
  */
 'use client'
 
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, useCallback } from 'react'
 import { Loader2 } from 'lucide-react'
 import type { PDFDocumentProxy } from 'pdfjs-dist'
 import { ParsingBlock, ParsingPosition } from '@/lib/parsing-positions'
@@ -35,6 +35,9 @@ export function PdfViewer({
   const [pageCount, setPageCount] = useState(0)
   const [scale, setScale] = useState(1)
   const [isLoading, setIsLoading] = useState(false)
+  const [renderedPages, setRenderedPages] = useState<Set<number>>(new Set())
+  const renderingPagesRef = useRef<Set<number>>(new Set())
+  const renderGenRef = useRef(0)
 
   useEffect(() => {
     let cancelled = false
@@ -43,6 +46,7 @@ export function PdfViewer({
       if (!file) {
         setPdfDoc(null)
         setPageCount(0)
+        setRenderedPages(new Set())
         return
       }
 
@@ -58,10 +62,12 @@ export function PdfViewer({
         if (cancelled) return
         setPdfDoc(doc)
         setPageCount(doc.numPages)
+        setRenderedPages(new Set())
       } catch {
         if (!cancelled) {
           setPdfDoc(null)
           setPageCount(0)
+          setRenderedPages(new Set())
         }
       } finally {
         if (!cancelled) setIsLoading(false)
@@ -105,30 +111,94 @@ export function PdfViewer({
     }
   }, [pdfDoc])
 
+  // Invalidate any in-flight renders when doc/scale changes.
   useEffect(() => {
-    let cancelled = false
-    const doc = pdfDoc
-    const totalPages = pageCount
-    if (!doc || !totalPages) return
+    renderGenRef.current += 1
+    renderingPagesRef.current.clear()
+    setRenderedPages(new Set())
+  }, [pdfDoc, scale])
 
-    async function renderPages(pdf: PDFDocumentProxy) {
-      for (let i = 1; i <= totalPages; i += 1) {
-        const page = await pdf.getPage(i)
-        if (cancelled) return
+  const renderPage = useCallback(
+    async (pageIndex: number) => {
+      const doc = pdfDoc
+      const totalPages = pageCount
+      if (!doc || !totalPages) return
+      if (pageIndex < 0 || pageIndex >= totalPages) return
+
+      // Prevent duplicate renders for the same page.
+      if (renderedPages.has(pageIndex)) return
+      if (renderingPagesRef.current.has(pageIndex)) return
+
+      const gen = renderGenRef.current
+      renderingPagesRef.current.add(pageIndex)
+      try {
+        const page = await doc.getPage(pageIndex + 1)
+        if (renderGenRef.current !== gen) return
         const viewport = page.getViewport({ scale })
-        const canvas = canvasRefs.current.get(i - 1)
-        if (!canvas) continue
+        const canvas = canvasRefs.current.get(pageIndex)
+        if (!canvas) return
+
         canvas.width = viewport.width
         canvas.height = viewport.height
         await page.render({ canvas, viewport }).promise
+        if (renderGenRef.current !== gen) return
+
+        setRenderedPages((prev) => {
+          if (prev.has(pageIndex)) return prev
+          const next = new Set(prev)
+          next.add(pageIndex)
+          return next
+        })
+      } catch {
+        // Best-effort: leave it as not rendered; user can scroll away/back to retry.
+      } finally {
+        renderingPagesRef.current.delete(pageIndex)
       }
+    },
+    [pdfDoc, pageCount, renderedPages, scale]
+  )
+
+  // Render pages on-demand as they enter the viewport.
+  useEffect(() => {
+    const container = containerRef.current
+    const doc = pdfDoc
+    const totalPages = pageCount
+    if (!container || !doc || !totalPages) return
+
+    let cancelled = false
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (cancelled) return
+        for (const entry of entries) {
+          if (!entry.isIntersecting) continue
+          const idxAttr = (entry.target as HTMLElement).dataset.pageIndex
+          const idx = idxAttr ? Number(idxAttr) : NaN
+          if (!Number.isFinite(idx)) continue
+          void renderPage(idx)
+        }
+      },
+      {
+        root: container,
+        // Pre-render a bit ahead/behind for smoother scrolling.
+        rootMargin: '800px 0px 800px 0px',
+        threshold: 0.01,
+      }
+    )
+
+    // Observe all page containers.
+    for (let i = 0; i < totalPages; i += 1) {
+      const el = pageRefs.current.get(i)
+      if (el) observer.observe(el)
     }
 
-    renderPages(doc)
+    // Kickstart: render first page ASAP.
+    void renderPage(0)
+
     return () => {
       cancelled = true
+      observer.disconnect()
     }
-  }, [pdfDoc, pageCount, scale])
+  }, [pdfDoc, pageCount, renderPage])
 
   const boxesByPage = useMemo(() => {
     const map = new Map<number, Box[]>()
@@ -176,12 +246,14 @@ export function PdfViewer({
       <div className="mx-auto flex w-full max-w-4xl flex-col gap-6">
         {Array.from({ length: pageCount }).map((_, index) => {
           const pageBoxes = boxesByPage.get(index) || []
+          const isRendered = renderedPages.has(index)
           return (
             <div
               key={`page-${index}`}
               ref={(el) => {
                 if (el) pageRefs.current.set(index, el)
               }}
+              data-page-index={index}
               className="relative rounded-xl border border-gray-200 bg-white shadow-sm"
             >
               <canvas
@@ -190,6 +262,12 @@ export function PdfViewer({
                 }}
                 className="block h-auto w-full rounded-xl"
               />
+              {!isRendered ? (
+                <div className="absolute inset-0 flex items-center justify-center text-xs text-slate-400 bg-white/60 rounded-xl">
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  渲染中...
+                </div>
+              ) : null}
               <div className="pointer-events-none absolute inset-0">
                 {pageBoxes.map((box, boxIndex) => {
                   if (!showAllBoxes && box.blockId !== activeBlockId && box.blockId !== hoveredBlockId) {
