@@ -131,29 +131,23 @@ function getFolderIconElement(depth: number, isOpen: boolean) {
   
   // Root (Depth 0) - handled separately usually, but if passed 0:
   if (depth === 0) {
-    return <Library className={cn(className, "text-amber-700")} />
+    return <Library className={cn(className, "text-slate-500")} />
   }
   
   // Level 1 (Top categories)
   if (depth === 1) {
-    return <Package className={cn(className, "text-rose-600")} />
+    return <Package className={cn(className, "text-slate-500")} />
   }
 
   // Level 2 (Sub-categories)
   if (depth === 2) {
     return isOpen 
-      ? <FolderOpen className={cn(className, "text-amber-600")} />
-      : <Folder className={cn(className, "text-amber-600")} />
+      ? <FolderOpen className={cn(className, "text-slate-500")} />
+      : <Folder className={cn(className, "text-slate-500")} />
   }
   
   // Deep levels
-  const colors = [
-    "text-orange-600",
-    "text-amber-600",
-    "text-rose-600",
-    "text-yellow-700"
-  ]
-  const color = colors[Math.min(depth - 3, colors.length - 1)]
+  const color = "text-slate-500"
   
   return isOpen 
     ? <FolderOpen className={cn(className, color)} />
