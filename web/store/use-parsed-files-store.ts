@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import { persist, createJSONStorage } from 'zustand/middleware'
+import { deleteDocContentFromCache, saveDocContentToCache } from '@/lib/doc-content-cache'
 
 export const ROOT_FOLDER_ID = 'root'
 
@@ -93,6 +94,10 @@ export const useParsedFiles = create<ParsedFilesState>()(
         set((state) => ({
           files: state.files.filter((f) => f.id !== id),
         }))
+        // Best-effort cleanup of large content cache.
+        if (typeof window !== 'undefined') {
+          void deleteDocContentFromCache(id)
+        }
       },
 
       updateParsedFile: (id, updates) => {
@@ -101,10 +106,28 @@ export const useParsedFiles = create<ParsedFilesState>()(
             f.id === id ? { ...f, ...updates, id: f.id } : f
           ),
         }))
+        // Best-effort: persist large markdown to IndexedDB (not localStorage).
+        if (typeof window !== 'undefined') {
+          const nextMarkdown =
+            typeof (updates as any)?.markdownContent === 'string' ? (updates as any).markdownContent : undefined
+          const nextOriginal =
+            typeof (updates as any)?.originalMarkdownContent === 'string' ? (updates as any).originalMarkdownContent : undefined
+          if (typeof nextMarkdown === 'string' || typeof nextOriginal === 'string') {
+            void saveDocContentToCache({
+              id,
+              markdownContent: nextMarkdown ?? '',
+              originalMarkdownContent: nextOriginal ?? '',
+            })
+          }
+        }
       },
 
       clearAll: () => {
         set({ files: [], folders: [], activeFolderId: ROOT_FOLDER_ID })
+        if (typeof window !== 'undefined') {
+          // We don't enumerate all ids here; best-effort keeps localStorage clean, but cache may remain.
+          // Users can clear site data if needed.
+        }
       },
 
       createFolder: (name, parentId) => {
