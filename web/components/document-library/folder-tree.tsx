@@ -57,7 +57,7 @@ export function getFileIcon(filename: string, className?: string) {
       slate: "bg-slate-100 text-slate-500",
       purple: "bg-purple-100 text-purple-600",
       amber: "bg-amber-100 text-amber-600",
-      indigo: "bg-indigo-100 text-indigo-600",
+      indigo: "bg-sky-100 text-sky-600",
     }
     return (
       <div className={cn("w-6 h-6 rounded flex items-center justify-center flex-shrink-0", colorClasses[color] || colorClasses.slate, className)}>
@@ -76,7 +76,7 @@ export function getFileIcon(filename: string, className?: string) {
     slate: "from-slate-500 to-slate-600",
     purple: "from-purple-500 to-purple-600",
     amber: "from-amber-500 to-amber-600",
-    indigo: "from-indigo-500 to-indigo-600",
+    indigo: "from-sky-500 to-sky-600",
   }
 
   const textColors: Record<string, string> = {
@@ -87,7 +87,7 @@ export function getFileIcon(filename: string, className?: string) {
     slate: "text-slate-600",
     purple: "text-purple-600",
     amber: "text-amber-600",
-    indigo: "text-indigo-600",
+    indigo: "text-sky-600",
   }
 
   return (
@@ -508,7 +508,7 @@ export function DocumentFolderTree({
             }}
           >
             {dragOverId === folder.id && (
-              <div className="absolute left-2 right-2 bottom-0 h-0.5 bg-indigo-400 rounded-full" />
+              <div className="absolute left-2 right-2 bottom-0 h-0.5 bg-sky-400 rounded-full" />
             )}
             {showFiles === 'expanded' && hasContent && (
               <button
@@ -816,7 +816,7 @@ export function DocumentFolderTree({
           }}
         >
           {dragOverId === ROOT_FOLDER_ID && (
-            <div className="absolute left-2 right-2 bottom-0 h-0.5 bg-indigo-400 rounded-full" />
+            <div className="absolute left-2 right-2 bottom-0 h-0.5 bg-sky-400 rounded-full" />
           )}
           {showFiles === 'expanded' && (rootDirectCount > 0 || rootChildren.length > 0) && (
             <button

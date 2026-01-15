@@ -37,8 +37,8 @@ export function PipelineOptionsPanel(props: PipelineOptionsPanelProps) {
     {
       title: '数据治理',
       icon: ShieldCheck,
-      color: 'text-indigo-600',
-      bgColor: 'bg-indigo-50',
+      color: 'text-sky-600',
+      bgColor: 'bg-sky-50',
       items: [
         {
           key: 'governance_enabled',
