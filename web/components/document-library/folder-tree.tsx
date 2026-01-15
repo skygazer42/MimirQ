@@ -34,33 +34,35 @@ export function getFileIcon(filename: string, className?: string) {
   const isLarge = className?.includes('w-12')
   
   // Color & Label Mapping
-  let color = 'slate'
+  let tone: 'slate' | 'red' | 'blue' | 'emerald' | 'amber' | 'rose' | 'sky' | 'teal' = 'slate'
   let label = ext.toUpperCase().slice(0, 3)
   let Icon = FileText
 
-  if (['pdf'].includes(ext)) { color = 'red'; label = 'PDF' }
-  else if (['doc', 'docx'].includes(ext)) { color = 'blue'; label = 'W'; Icon = FileText } // Word
-  else if (['xls', 'xlsx', 'csv'].includes(ext)) { color = 'emerald'; label = 'X'; Icon = FileSpreadsheet } // Excel
-  else if (['ppt', 'pptx'].includes(ext)) { color = 'orange'; label = 'P'; Icon = FileImage } // PPT
-  else if (['txt', 'md'].includes(ext)) { color = 'slate'; label = 'TXT'; Icon = AlignLeft } // Text
-  else if (['jpg', 'png', 'jpeg', 'gif', 'webp'].includes(ext)) { color = 'purple'; label = 'IMG'; Icon = FileImage } // Image
-  else if (['zip', 'rar', '7z'].includes(ext)) { color = 'amber'; label = 'ZIP'; Icon = FileArchive } // Archive
-  else if (['js', 'ts', 'jsx', 'tsx', 'py', 'json'].includes(ext)) { color = 'indigo'; label = 'CODE'; Icon = FileCode } // Code
+  // Keep icon shapes distinct; keep colors subtle (Notes-like) and avoid purple.
+  if (['pdf'].includes(ext)) { tone = 'red'; label = 'PDF'; Icon = FileSignature }
+  else if (['doc', 'docx'].includes(ext)) { tone = 'blue'; label = 'DOC'; Icon = FileText } // Word
+  else if (['xls', 'xlsx', 'csv'].includes(ext)) { tone = 'emerald'; label = 'XLS'; Icon = FileSpreadsheet } // Excel/CSV
+  else if (['ppt', 'pptx'].includes(ext)) { tone = 'amber'; label = 'PPT'; Icon = FileImage } // PPT
+  else if (['txt', 'md'].includes(ext)) { tone = 'slate'; label = 'TXT'; Icon = AlignLeft } // Text/Markdown
+  else if (['json'].includes(ext)) { tone = 'teal'; label = 'JSON'; Icon = FileJson } // JSON
+  else if (['jpg', 'png', 'jpeg', 'gif', 'webp'].includes(ext)) { tone = 'rose'; label = 'IMG'; Icon = FileImage } // Image
+  else if (['zip', 'rar', '7z'].includes(ext)) { tone = 'amber'; label = 'ZIP'; Icon = FileArchive } // Archive
+  else if (['js', 'ts', 'jsx', 'tsx', 'py'].includes(ext)) { tone = 'sky'; label = 'CODE'; Icon = FileCode } // Code
 
   // Small Icon (Simple colored badge)
   if (!isLarge) {
-    const colorClasses: Record<string, string> = {
-      red: "bg-red-100 text-red-600",
-      blue: "bg-blue-100 text-blue-600",
-      emerald: "bg-emerald-100 text-emerald-600",
-      orange: "bg-orange-100 text-orange-600",
+    const toneClasses: Record<string, string> = {
+      red: "bg-red-50 text-red-600",
+      blue: "bg-blue-50 text-blue-600",
+      emerald: "bg-emerald-50 text-emerald-700",
+      amber: "bg-amber-50 text-amber-700",
+      rose: "bg-rose-50 text-rose-600",
+      sky: "bg-sky-50 text-sky-700",
+      teal: "bg-teal-50 text-teal-700",
       slate: "bg-slate-100 text-slate-500",
-      purple: "bg-purple-100 text-purple-600",
-      amber: "bg-amber-100 text-amber-600",
-      indigo: "bg-sky-100 text-sky-600",
     }
     return (
-      <div className={cn("w-6 h-6 rounded flex items-center justify-center flex-shrink-0", colorClasses[color] || colorClasses.slate, className)}>
+      <div className={cn("w-6 h-6 rounded-md flex items-center justify-center flex-shrink-0", toneClasses[tone] || toneClasses.slate, className)}>
         <Icon className="w-3.5 h-3.5" />
       </div>
     )
@@ -68,26 +70,37 @@ export function getFileIcon(filename: string, className?: string) {
 
   // Large Icon (Detailed Paper Style)
   // Simulating a vertical document page with a colored fold/header
-  const paperColors: Record<string, string> = {
+  const paperBand: Record<string, string> = {
     red: "from-red-500 to-red-600",
     blue: "from-blue-500 to-blue-600",
     emerald: "from-emerald-500 to-emerald-600",
-    orange: "from-orange-500 to-orange-600",
-    slate: "from-slate-500 to-slate-600",
-    purple: "from-purple-500 to-purple-600",
     amber: "from-amber-500 to-amber-600",
-    indigo: "from-sky-500 to-sky-600",
+    rose: "from-rose-500 to-rose-600",
+    sky: "from-sky-500 to-sky-600",
+    teal: "from-teal-500 to-teal-600",
+    slate: "from-slate-500 to-slate-600",
   }
 
-  const textColors: Record<string, string> = {
+  const textTone: Record<string, string> = {
     red: "text-red-600",
     blue: "text-blue-600",
     emerald: "text-emerald-600",
-    orange: "text-orange-600",
+    amber: "text-amber-700",
+    rose: "text-rose-600",
+    sky: "text-sky-600",
+    teal: "text-teal-700",
     slate: "text-slate-600",
-    purple: "text-purple-600",
-    amber: "text-amber-600",
-    indigo: "text-sky-600",
+  }
+
+  const badgeBorder: Record<string, string> = {
+    red: "border-red-200",
+    blue: "border-blue-200",
+    emerald: "border-emerald-200",
+    amber: "border-amber-200",
+    rose: "border-rose-200",
+    sky: "border-sky-200",
+    teal: "border-teal-200",
+    slate: "border-slate-200",
   }
 
   return (
@@ -96,7 +109,7 @@ export function getFileIcon(filename: string, className?: string) {
       <div className="relative w-9 h-11 bg-white rounded-sm shadow-sm border border-slate-200 overflow-hidden flex flex-col">
         
         {/* Top Color Band / Header */}
-        <div className={cn("h-3 w-full bg-gradient-to-r opacity-90", paperColors[color] || paperColors.slate)} />
+        <div className={cn("h-3 w-full bg-gradient-to-r opacity-85", paperBand[tone] || paperBand.slate)} />
         
         {/* Corner Fold Effect (CSS Triangle) */}
         <div className="absolute top-0 right-0 border-t-[8px] border-r-[8px] border-t-black/5 border-r-white/0" />
@@ -104,15 +117,21 @@ export function getFileIcon(filename: string, className?: string) {
         {/* Content */}
         <div className="flex-1 flex items-center justify-center bg-slate-50/30">
            {['W', 'X', 'P'].includes(label) ? (
-             <span className={cn("font-serif font-black text-lg leading-none", textColors[color])}>
+             <span className={cn("font-serif font-black text-lg leading-none", textTone[tone])}>
                {label}
              </span>
            ) : ['PDF', 'TXT', 'ZIP', 'IMG'].includes(label) ? (
-             <span className={cn("font-bold text-[9px] tracking-tighter leading-none border-2 rounded px-0.5", textColors[color], `border-${color}-200`)}>
+             <span
+               className={cn(
+                 "font-bold text-[9px] tracking-tighter leading-none border-2 rounded px-0.5",
+                 textTone[tone],
+                 badgeBorder[tone] || badgeBorder.slate
+               )}
+             >
                {label}
              </span>
            ) : (
-             <Icon className={cn("w-5 h-5", textColors[color])} />
+             <Icon className={cn("w-5 h-5", textTone[tone])} />
            )}
         </div>
 
