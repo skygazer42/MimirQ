@@ -179,16 +179,14 @@ export function DocumentFolderTree({
   onDeleteFolder?: (folderIds: string[]) => void
   onFileDrop?: (fileId: string, folderId: string) => void
 }) {
-  const {
-    files: libraryFiles,
-    folders,
-    activeFolderId,
-    setActiveFolderId,
-    createFolder,
-    renameFolder,
-    deleteFolder,
-    moveFolder,
-  } = useParsedFiles()
+  const libraryFiles = useParsedFiles((state) => state.files)
+  const folders = useParsedFiles((state) => state.folders)
+  const activeFolderId = useParsedFiles((state) => state.activeFolderId)
+  const setActiveFolderId = useParsedFiles((state) => state.setActiveFolderId)
+  const createFolder = useParsedFiles((state) => state.createFolder)
+  const renameFolder = useParsedFiles((state) => state.renameFolder)
+  const deleteFolder = useParsedFiles((state) => state.deleteFolder)
+  const moveFolder = useParsedFiles((state) => state.moveFolder)
 
   const [dialog, setDialog] = useState<FolderDialogState>({ open: false })
   const [folderName, setFolderName] = useState('')
