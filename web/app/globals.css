@@ -10,20 +10,38 @@
     --card-foreground: 222.2 84% 4.9%;
     --popover: 0 0% 100%;
     --popover-foreground: 222.2 84% 4.9%;
-    --primary: 205 90% 48%;
+    
+    /* 清新天蓝主色 (Sky Blue) */
+    --primary: 199 89% 48%;
     --primary-foreground: 210 40% 98%;
+    
+    /* 柔和次要色 */
     --secondary: 210 40% 96.1%;
     --secondary-foreground: 222.2 47.4% 11.2%;
     --muted: 210 40% 96.1%;
     --muted-foreground: 215.4 16.3% 46.9%;
-    --accent: 210 40% 96.1%;
-    --accent-foreground: 222.2 47.4% 11.2%;
-    --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 210 40% 98%;
+    
+    /* 青绿强调色 (Teal Accent) */
+    --accent: 173 58% 39%;
+    --accent-foreground: 0 0% 100%;
+    
+    /* 柔粉错误色 (Soft Rose) */
+    --destructive: 351 95% 71%;
+    --destructive-foreground: 0 0% 100%;
+    
     --border: 214.3 31.8% 91.4%;
     --input: 214.3 31.8% 91.4%;
-    --ring: 205 90% 48%;
-    --radius: 0.5rem;
+    --ring: 199 89% 48%;
+    
+    /* 升级的圆角系统 */
+    --radius: 0.75rem;
+    --radius-sm: 0.5rem;
+    --radius-lg: 1rem;
+    --radius-xl: 1.25rem;
+    
+    /* 暖橙警告色 (Amber Highlight) */
+    --warning: 38 92% 50%;
+    --warning-foreground: 0 0% 100%;
   }
 
   html {

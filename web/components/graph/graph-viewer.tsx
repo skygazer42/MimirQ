@@ -234,7 +234,7 @@ export const GraphViewer = forwardRef<GraphViewerRef, GraphViewerProps>(({
         <div className="absolute inset-0 flex items-center justify-center text-slate-400">
            {mounted ? (
               <div className="flex flex-col items-center gap-2">
-                 <Loader2 className="w-6 h-6 animate-spin text-indigo-500" />
+                 <Loader2 className="w-6 h-6 animate-spin text-sky-500" />
                  <span className="text-xs">Initializing Layout... ({Math.round(width)}x{Math.round(height)})</span>
               </div>
            ) : (
@@ -271,7 +271,7 @@ export const GraphViewer = forwardRef<GraphViewerRef, GraphViewerProps>(({
                 return '#e2e8f0' 
               }
 
-              if (linkKind === 'entity_entity') return '#c4b5fd' // purple-300
+              if (linkKind === 'entity_entity') return '#67e8f9' // cyan-300 清新青色
               return '#cbd5e1'
            }}
           linkWidth={(link: any) => {
