@@ -113,7 +113,7 @@ export function DocumentDetailDialog({ document, trigger }: DocumentDetailDialog
           <Button
             variant="ghost"
             size="icon"
-            className="h-8 w-8 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 transition-colors"
+            className="h-8 w-8 text-slate-400 hover:text-sky-600 hover:bg-sky-50 dark:hover:bg-sky-900/20 transition-colors"
             title="预览文档内容"
             onClick={(e) => {
               e.stopPropagation()
@@ -128,8 +128,8 @@ export function DocumentDetailDialog({ document, trigger }: DocumentDetailDialog
         {/* Header */}
         <div className="bg-white dark:bg-slate-900 px-6 py-4 border-b border-slate-100 dark:border-slate-800 flex items-start justify-between shrink-0">
           <div className="flex items-start gap-4">
-             <div className="p-3 bg-indigo-50 dark:bg-indigo-900/20 rounded-xl">
-               <Database className="h-6 w-6 text-indigo-600 dark:text-indigo-400" />
+             <div className="p-3 bg-sky-50 dark:bg-sky-900/20 rounded-xl">
+               <Database className="h-6 w-6 text-sky-600 dark:text-sky-400" />
              </div>
              <div>
                 <DialogTitle className="text-lg font-bold text-slate-900 dark:text-white leading-tight">
@@ -184,7 +184,7 @@ export function DocumentDetailDialog({ document, trigger }: DocumentDetailDialog
              <div className="bg-white dark:bg-slate-900 p-4 rounded-xl border border-slate-100 dark:border-slate-800 shadow-sm">
                <p className="text-xs text-slate-500 dark:text-slate-400 font-medium uppercase tracking-wider mb-1">状态</p>
                <div className="flex items-center gap-2 mt-1">
-                 <div className={cn("w-2 h-2 rounded-full", displayDoc.status === 'completed' ? "bg-emerald-500" : "bg-indigo-500 animate-pulse")} />
+                 <div className={cn("w-2 h-2 rounded-full", displayDoc.status === 'completed' ? "bg-emerald-500" : "bg-sky-500 animate-pulse")} />
                  <p className="text-base font-semibold text-slate-900 dark:text-white capitalize">
                    {displayDoc.status === 'completed' ? '已完成' : displayDoc.status}
                  </p>
@@ -196,7 +196,7 @@ export function DocumentDetailDialog({ document, trigger }: DocumentDetailDialog
           <div className="flex-1 overflow-y-auto min-h-0 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-inner dark:shadow-none">
             {isLoading ? (
               <div className="h-full flex flex-col items-center justify-center gap-3">
-                <Loader2 className="h-8 w-8 text-indigo-500 animate-spin" />
+                <Loader2 className="h-8 w-8 text-sky-500 animate-spin" />
                 <p className="text-sm text-slate-500 dark:text-slate-400">正在加载切片数据...</p>
               </div>
             ) : error ? (
@@ -212,7 +212,7 @@ export function DocumentDetailDialog({ document, trigger }: DocumentDetailDialog
             ) : (
               <div className="divide-y divide-slate-100 dark:divide-slate-800">
                 {chunks.map((chunk, index) => (
-                  <div key={chunk.id} className="p-4 hover:bg-indigo-50/30 dark:hover:bg-indigo-900/10 transition-colors group">
+                  <div key={chunk.id} className="p-4 hover:bg-sky-50/30 dark:hover:bg-sky-900/10 transition-colors group">
                     <div className="flex items-center justify-between mb-2">
                        <div className="flex items-center gap-2">
                           <span className="px-2 py-0.5 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 rounded text-xs font-mono font-medium">
@@ -229,7 +229,7 @@ export function DocumentDetailDialog({ document, trigger }: DocumentDetailDialog
                        </div>
                     </div>
                     
-                    <div className="text-sm text-slate-700 dark:text-slate-300 font-mono leading-relaxed whitespace-pre-wrap break-all pl-2 border-l-2 border-transparent group-hover:border-indigo-200 dark:group-hover:border-indigo-800 transition-colors">
+                    <div className="text-sm text-slate-700 dark:text-slate-300 font-mono leading-relaxed whitespace-pre-wrap break-all pl-2 border-l-2 border-transparent group-hover:border-sky-200 dark:group-hover:border-sky-800 transition-colors">
                       {chunk.content}
                     </div>
                   </div>

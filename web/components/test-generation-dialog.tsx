@@ -220,7 +220,7 @@ export function TestGenerationDialog({
         {/* 头部 */}
         <div className="flex items-center justify-between p-6 border-b border-slate-200 dark:border-slate-800">
           <div className="flex items-center gap-3">
-            <div className="p-2 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-lg">
+            <div className="p-2 bg-gradient-to-br from-sky-500 to-purple-600 rounded-lg">
               <Sparkles className="w-5 h-5 text-white" />
             </div>
             <div>
@@ -253,11 +253,11 @@ export function TestGenerationDialog({
                   className={cn(
                     'p-4 rounded-xl border-2 transition text-left',
                     sourceType === 'documents'
-                      ? 'border-indigo-500 bg-indigo-50 dark:bg-indigo-900/20'
+                      ? 'border-sky-500 bg-sky-50 dark:bg-sky-900/20'
                       : 'border-slate-200 dark:border-slate-700 hover:border-slate-300'
                   )}
                 >
-                  <FileText className="w-6 h-6 mb-2 text-indigo-600" />
+                  <FileText className="w-6 h-6 mb-2 text-sky-600" />
                   <div className="font-medium text-slate-900 dark:text-white mb-1">
                     从文档生成
                   </div>
@@ -271,7 +271,7 @@ export function TestGenerationDialog({
                   className={cn(
                     'p-4 rounded-xl border-2 transition text-left',
                     sourceType === 'conversations'
-                      ? 'border-indigo-500 bg-indigo-50 dark:bg-indigo-900/20'
+                      ? 'border-sky-500 bg-sky-50 dark:bg-sky-900/20'
                       : 'border-slate-200 dark:border-slate-700 hover:border-slate-300'
                   )}
                 >
@@ -435,7 +435,7 @@ export function TestGenerationDialog({
                         className={cn(
                           'px-4 py-2 rounded-lg border-2 transition text-sm',
                           questionTypes.includes(type.key)
-                            ? 'border-indigo-500 bg-indigo-50 dark:bg-indigo-900/20 text-indigo-700 dark:text-indigo-300'
+                            ? 'border-sky-500 bg-sky-50 dark:bg-sky-900/20 text-sky-700 dark:text-sky-300'
                             : 'border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400'
                         )}
                       >
@@ -483,7 +483,7 @@ export function TestGenerationDialog({
                   onClick={() => setAutoSave(!autoSave)}
                   className={cn(
                     'relative inline-flex h-6 w-11 items-center rounded-full transition',
-                    autoSave ? 'bg-indigo-600' : 'bg-slate-300 dark:bg-slate-600'
+                    autoSave ? 'bg-sky-600' : 'bg-slate-300 dark:bg-slate-600'
                   )}
                 >
                   <span
@@ -540,7 +540,7 @@ export function TestGenerationDialog({
                               </div>
                             )}
                             {q.metadata?.question_type && (
-                              <span className="inline-block mt-2 px-2 py-0.5 rounded-full bg-indigo-100 dark:bg-indigo-900/30 text-[10px] text-indigo-700 dark:text-indigo-300">
+                              <span className="inline-block mt-2 px-2 py-0.5 rounded-full bg-sky-100 dark:bg-sky-900/30 text-[10px] text-sky-700 dark:text-sky-300">
                                 {q.metadata.question_type}
                               </span>
                             )}

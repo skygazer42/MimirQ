@@ -71,7 +71,7 @@ const markdownComponents = {
       href={href}
       target="_blank"
       rel="noopener noreferrer"
-      className="text-indigo-600 dark:text-indigo-400 font-medium hover:underline decoration-indigo-300 underline-offset-2"
+      className="text-sky-600 dark:text-sky-400 font-medium hover:underline decoration-sky-300 underline-offset-2"
     >
       {children}
     </a>
@@ -99,7 +99,7 @@ const markdownComponents = {
     )
   },
   blockquote: ({ children }: { children?: React.ReactNode }) => (
-    <blockquote className="border-l-4 border-indigo-200 dark:border-indigo-800 pl-4 italic text-slate-500 dark:text-slate-400 my-2 bg-slate-50 dark:bg-slate-800/50 py-2 rounded-r-lg">
+    <blockquote className="border-l-4 border-sky-200 dark:border-sky-800 pl-4 italic text-slate-500 dark:text-slate-400 my-2 bg-slate-50 dark:bg-slate-800/50 py-2 rounded-r-lg">
       {children}
     </blockquote>
   ),
@@ -186,8 +186,8 @@ export const ChatMessageItem = memo(function ChatMessageItem({
       )}
     >
       {!isUser && (
-        <div className="flex-shrink-0 w-8 h-8 rounded-lg bg-indigo-50 dark:bg-indigo-900/30 border border-indigo-100 dark:border-indigo-800 flex items-center justify-center shadow-sm mt-1">
-          <Sparkles className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />
+        <div className="flex-shrink-0 w-8 h-8 rounded-lg bg-sky-50 dark:bg-sky-900/30 border border-sky-100 dark:border-sky-800 flex items-center justify-center shadow-sm mt-1">
+          <Sparkles className="h-4 w-4 text-sky-600 dark:text-sky-400" />
         </div>
       )}
 
@@ -195,7 +195,7 @@ export const ChatMessageItem = memo(function ChatMessageItem({
         className={cn(
           'max-w-2xl px-6 py-4 shadow-sm relative text-[15px]',
           isUser
-            ? 'bg-slate-900 dark:bg-indigo-600 text-white rounded-2xl rounded-tr-sm shadow-md'
+            ? 'bg-slate-900 dark:bg-sky-600 text-white rounded-2xl rounded-tr-sm shadow-md'
             : 'bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200 border border-slate-100 dark:border-slate-800 rounded-2xl rounded-tl-sm'
           )}
       >
@@ -207,7 +207,7 @@ export const ChatMessageItem = memo(function ChatMessageItem({
           className={cn(
             'absolute bottom-2 right-2 z-10 rounded-md p-1.5 transition',
             'opacity-70 hover:opacity-100 group-hover:opacity-100',
-            'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/60 focus-visible:ring-offset-2 focus-visible:ring-offset-transparent',
+            'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500/60 focus-visible:ring-offset-2 focus-visible:ring-offset-transparent',
             isUser
               ? 'text-white/70 hover:text-white hover:bg-white/10'
               : 'text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-100 hover:bg-slate-100/70 dark:hover:bg-slate-800/70'
@@ -284,13 +284,13 @@ const CitationCard = memo(function CitationCard({ citation, index }: { citation:
   })()
 
   return (
-    <div className="text-xs bg-slate-50 dark:bg-slate-800/50 hover:bg-white dark:hover:bg-slate-800 rounded-lg p-2.5 border border-slate-100 dark:border-slate-700 hover:border-indigo-200 dark:hover:border-indigo-700 transition-all cursor-pointer group shadow-sm hover:shadow-md">
+    <div className="text-xs bg-slate-50 dark:bg-slate-800/50 hover:bg-white dark:hover:bg-slate-800 rounded-lg p-2.5 border border-slate-100 dark:border-slate-700 hover:border-sky-200 dark:hover:border-sky-700 transition-all cursor-pointer group shadow-sm hover:shadow-md">
       <div className="flex items-start gap-2.5">
-        <span className="flex-shrink-0 w-4 h-4 bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 border border-indigo-100 dark:border-indigo-800 rounded flex items-center justify-center text-[10px] font-bold shadow-sm group-hover:bg-indigo-50 dark:group-hover:bg-indigo-900/50 group-hover:border-indigo-200 transition-colors">
+        <span className="flex-shrink-0 w-4 h-4 bg-white dark:bg-slate-900 text-sky-600 dark:text-sky-400 border border-sky-100 dark:border-sky-800 rounded flex items-center justify-center text-[10px] font-bold shadow-sm group-hover:bg-sky-50 dark:group-hover:bg-sky-900/50 group-hover:border-sky-200 transition-colors">
           {index + 1}
         </span>
         <div className="flex-1 min-w-0">
-          <p className="font-semibold text-slate-700 dark:text-slate-300 truncate group-hover:text-indigo-700 dark:group-hover:text-indigo-400 transition-colors">
+          <p className="font-semibold text-slate-700 dark:text-slate-300 truncate group-hover:text-sky-700 dark:group-hover:text-sky-400 transition-colors">
             {citation.document_name}
             {citation.page_number && ` · P.${citation.page_number}`}
           </p>
@@ -298,7 +298,7 @@ const CitationCard = memo(function CitationCard({ citation, index }: { citation:
             &quot;{citation.chunk_content}&quot;
           </p>
           <div className="flex items-center gap-2 mt-2">
-            <span className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-400 dark:text-slate-500 px-1.5 py-0.5 rounded text-[10px] group-hover:border-indigo-100 dark:group-hover:border-indigo-800 group-hover:text-indigo-400 transition-colors">
+            <span className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-400 dark:text-slate-500 px-1.5 py-0.5 rounded text-[10px] group-hover:border-sky-100 dark:group-hover:border-sky-800 group-hover:text-sky-400 transition-colors">
               相似度 {Math.round(citation.relevance_score * 100)}%
             </span>
           </div>

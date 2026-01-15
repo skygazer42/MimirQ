@@ -19,8 +19,8 @@ export function EmptyState() {
   return (
     <div className="relative min-h-full w-full bg-slate-50 text-slate-900 font-sans flex flex-col items-center justify-center p-6 overflow-hidden selection:bg-sky-100 selection:text-sky-900">
       {/* 背景光晕 */}
-      <div className="absolute top-[-20%] left-[-10%] w-[50%] h-[50%] rounded-full bg-gradient-to-br from-sky-100/50 to-indigo-100/40 blur-[120px] pointer-events-none mix-blend-multiply" />
-      <div className="absolute bottom-[-20%] right-[-10%] w-[50%] h-[50%] rounded-full bg-gradient-to-tl from-indigo-100/50 to-blue-100/40 blur-[120px] pointer-events-none mix-blend-multiply" />
+      <div className="absolute top-[-20%] left-[-10%] w-[50%] h-[50%] rounded-full bg-gradient-to-br from-sky-100/50 to-sky-100/40 blur-[120px] pointer-events-none mix-blend-multiply" />
+      <div className="absolute bottom-[-20%] right-[-10%] w-[50%] h-[50%] rounded-full bg-gradient-to-tl from-sky-100/50 to-blue-100/40 blur-[120px] pointer-events-none mix-blend-multiply" />
       <div className="absolute inset-0 bg-[linear-gradient(to_right,#80808008_1px,transparent_1px),linear-gradient(to_bottom,#80808008_1px,transparent_1px)] bg-[size:32px_32px] [mask-image:radial-gradient(ellipse_60%_50%_at_50%_0%,#000_70%,transparent_100%)] pointer-events-none" />
 
       <div className="relative w-full max-w-4xl flex flex-col items-center z-10">
@@ -104,7 +104,7 @@ export function EmptyState() {
             }}
             className="group bg-white p-5 rounded-2xl border border-slate-200 shadow-sm hover:shadow-md hover:border-sky-200 cursor-pointer transition-all duration-200 flex flex-col items-start gap-3"
           >
-            <div className="p-2 rounded-lg bg-indigo-50 text-indigo-600 group-hover:bg-indigo-100 transition-colors">
+            <div className="p-2 rounded-lg bg-sky-50 text-sky-600 group-hover:bg-sky-100 transition-colors">
               <BookOpen className="w-5 h-5" />
             </div>
             <div>

@@ -36,7 +36,7 @@ const COLOR_MAP: Record<
   ChunkStrategyOption['icon'],
   { bg: string; text: string }
 > = {
-  recursive: { bg: 'bg-indigo-100', text: 'text-indigo-600' },
+  recursive: { bg: 'bg-sky-100', text: 'text-sky-600' },
   token: { bg: 'bg-amber-100', text: 'text-amber-600' },
   sentence: { bg: 'bg-green-100', text: 'text-green-600' },
   separator: { bg: 'bg-gray-100', text: 'text-gray-600' },
@@ -99,7 +99,7 @@ export function ChunkStrategyDropdown({ value, onChange, className }: ChunkStrat
           'w-full flex items-center gap-3 px-3 py-2.5 rounded-xl border transition-all',
           'bg-white hover:bg-gray-50',
           isOpen
-            ? 'border-indigo-300 ring-2 ring-indigo-100'
+            ? 'border-sky-300 ring-2 ring-sky-100'
             : 'border-gray-200 hover:border-gray-300'
         )}
       >
@@ -112,7 +112,7 @@ export function ChunkStrategyDropdown({ value, onChange, className }: ChunkStrat
               {selectedOption.label}
             </span>
             {selectedOption.badge && (
-              <span className="text-[10px] font-medium px-1.5 py-0.5 bg-indigo-100 text-indigo-600 rounded">
+              <span className="text-[10px] font-medium px-1.5 py-0.5 bg-sky-100 text-sky-600 rounded">
                 {selectedOption.badge}
               </span>
             )}
@@ -138,7 +138,7 @@ export function ChunkStrategyDropdown({ value, onChange, className }: ChunkStrat
               placeholder="搜索切块方式..."
               className={cn(
                 'w-full rounded-lg border border-gray-200 px-2 py-1.5 text-sm',
-                'focus:border-indigo-300 focus:outline-none focus:ring-2 focus:ring-indigo-100'
+                'focus:border-sky-300 focus:outline-none focus:ring-2 focus:ring-sky-100'
               )}
             />
           </div>
@@ -164,7 +164,7 @@ export function ChunkStrategyDropdown({ value, onChange, className }: ChunkStrat
                   }}
                   className={cn(
                     'w-full flex items-center gap-3 px-3 py-2.5 transition-colors',
-                    isSelected ? 'bg-indigo-50' : 'hover:bg-gray-50',
+                    isSelected ? 'bg-sky-50' : 'hover:bg-gray-50',
                     isDisabled && 'opacity-50 cursor-not-allowed hover:bg-transparent'
                   )}
                 >
@@ -176,7 +176,7 @@ export function ChunkStrategyDropdown({ value, onChange, className }: ChunkStrat
                       <span
                         className={cn(
                           'text-sm font-medium truncate',
-                          isSelected ? 'text-indigo-600' : 'text-gray-900'
+                          isSelected ? 'text-sky-600' : 'text-gray-900'
                         )}
                       >
                         {option.label}
@@ -186,7 +186,7 @@ export function ChunkStrategyDropdown({ value, onChange, className }: ChunkStrat
                           className={cn(
                             'text-[10px] font-medium px-1.5 py-0.5 rounded',
                             isSelected
-                              ? 'bg-indigo-100 text-indigo-600'
+                              ? 'bg-sky-100 text-sky-600'
                               : option.badge === 'Token'
                               ? 'bg-amber-100 text-amber-600'
                               : 'bg-gray-100 text-gray-500'
@@ -199,7 +199,7 @@ export function ChunkStrategyDropdown({ value, onChange, className }: ChunkStrat
                     <p className="text-xs text-gray-400 truncate">{option.description}</p>
                   </div>
                   {isSelected && (
-                    <Check className="w-4 h-4 text-indigo-600 flex-shrink-0" />
+                    <Check className="w-4 h-4 text-sky-600 flex-shrink-0" />
                   )}
                 </button>
               )

@@ -468,14 +468,14 @@ function WelcomeScreen() {
   return (
     <div className="flex flex-col items-center justify-center h-full min-h-[60vh] text-center animate-in fade-in slide-in-from-bottom-4 duration-700 select-none">
       <div className="relative group cursor-default mb-8">
-        <div className="absolute -inset-4 bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500 rounded-full blur-xl opacity-20 group-hover:opacity-40 transition duration-1000 group-hover:duration-200"></div>
+        <div className="absolute -inset-4 bg-gradient-to-r from-sky-500 via-purple-500 to-pink-500 rounded-full blur-xl opacity-20 group-hover:opacity-40 transition duration-1000 group-hover:duration-200"></div>
         <div className="relative p-6 bg-white dark:bg-slate-900 rounded-2xl shadow-sm ring-1 ring-slate-200/50 dark:ring-slate-800 flex items-center justify-center transform transition-transform duration-500 group-hover:scale-105">
-          <Sparkles className="h-10 w-10 text-indigo-600 dark:text-indigo-400" />
+          <Sparkles className="h-10 w-10 text-sky-600 dark:text-sky-400" />
         </div>
       </div>
       
       <h2 className="text-3xl font-bold text-slate-900 dark:text-white mb-4 tracking-tight">
-        {greeting}，<span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-600 to-purple-600 dark:from-indigo-400 dark:to-purple-400">朋友</span>
+        {greeting}，<span className="text-transparent bg-clip-text bg-gradient-to-r from-sky-600 to-purple-600 dark:from-sky-400 dark:to-purple-400">朋友</span>
       </h2>
       <p className="text-slate-500 dark:text-slate-400 max-w-md text-base leading-relaxed">
         我是您的智能知识助手。您可以随时向我提问，我会帮您分析、总结并回答相关问题。

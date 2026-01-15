@@ -37,7 +37,7 @@ const ICON_MAP = {
 
 // 颜色映射
 const COLOR_MAP = {
-  auto: { bg: 'bg-indigo-100', text: 'text-indigo-600' },
+  auto: { bg: 'bg-sky-100', text: 'text-sky-600' },
   basic: { bg: 'bg-gray-100', text: 'text-gray-600' },
   docling: { bg: 'bg-teal-100', text: 'text-teal-700' },
   layout: { bg: 'bg-emerald-100', text: 'text-emerald-700' },
@@ -84,7 +84,7 @@ export function ParserDropdown({ value, onChange, className }: ParserDropdownPro
           'w-full flex items-center gap-3 px-3 py-2.5 rounded-xl border transition-all',
           'bg-white hover:bg-gray-50',
           isOpen
-            ? 'border-indigo-300 ring-2 ring-indigo-100'
+            ? 'border-sky-300 ring-2 ring-sky-100'
             : 'border-gray-200 hover:border-gray-300'
         )}
       >
@@ -97,7 +97,7 @@ export function ParserDropdown({ value, onChange, className }: ParserDropdownPro
               {selectedOption.label}
             </span>
             {selectedOption.badge && (
-              <span className="text-[10px] font-medium px-1.5 py-0.5 bg-indigo-100 text-indigo-600 rounded">
+              <span className="text-[10px] font-medium px-1.5 py-0.5 bg-sky-100 text-sky-600 rounded">
                 {selectedOption.badge}
               </span>
             )}
@@ -135,7 +135,7 @@ export function ParserDropdown({ value, onChange, className }: ParserDropdownPro
                   }}
                   className={cn(
                     'w-full flex items-center gap-3 px-3 py-2.5 transition-colors',
-                    isSelected ? 'bg-indigo-50' : 'hover:bg-gray-50',
+                    isSelected ? 'bg-sky-50' : 'hover:bg-gray-50',
                     isDisabled && 'opacity-50 cursor-not-allowed hover:bg-transparent'
                   )}
                 >
@@ -147,7 +147,7 @@ export function ParserDropdown({ value, onChange, className }: ParserDropdownPro
                       <span
                         className={cn(
                           'text-sm font-medium truncate',
-                          isSelected ? 'text-indigo-600' : 'text-gray-900'
+                          isSelected ? 'text-sky-600' : 'text-gray-900'
                         )}
                       >
                         {option.label}
@@ -157,7 +157,7 @@ export function ParserDropdown({ value, onChange, className }: ParserDropdownPro
                           className={cn(
                             'text-[10px] font-medium px-1.5 py-0.5 rounded',
                             isSelected
-                              ? 'bg-indigo-100 text-indigo-600'
+                              ? 'bg-sky-100 text-sky-600'
                               : 'bg-gray-100 text-gray-500'
                           )}
                         >
@@ -168,7 +168,7 @@ export function ParserDropdown({ value, onChange, className }: ParserDropdownPro
                     <p className="text-xs text-gray-400 truncate">{option.description}</p>
                   </div>
                   {isSelected && (
-                    <Check className="w-4 h-4 text-indigo-600 flex-shrink-0" />
+                    <Check className="w-4 h-4 text-sky-600 flex-shrink-0" />
                   )}
                 </button>
               )
