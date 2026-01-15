@@ -308,7 +308,7 @@ export function RegressionTestTab() {
                       icon={BarChart3}
                       label={m.key}
                       value={m.value.toFixed(3)}
-                      color="indigo"
+                      color="sky"
                       className="bg-white/80 dark:bg-slate-900/80 border-slate-200 dark:border-slate-800 shadow-sm"
                     />
                   ))}

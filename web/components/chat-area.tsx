@@ -401,9 +401,9 @@ export function ChatArea({
           {/* 输入框 */}
           <div className="relative group">
             <div className={cn(
-              "relative bg-white/80 dark:bg-slate-900/80 backdrop-blur-xl rounded-3xl shadow-sm border border-slate-200/60 dark:border-slate-800 transition-all duration-300",
-              "focus-within:shadow-md focus-within:border-slate-300 dark:focus-within:border-slate-700 focus-within:ring-2 focus-within:ring-slate-100 dark:focus-within:ring-slate-800",
-              "hover:border-slate-300 dark:hover:border-slate-700 hover:shadow-sm"
+              "relative bg-white/80 dark:bg-slate-900/80 backdrop-blur-xl rounded-3xl shadow-lg border border-slate-200/60 dark:border-slate-800 transition-all duration-300",
+              "focus-within:shadow-xl focus-within:shadow-sky-500/10 focus-within:border-sky-300 dark:focus-within:border-sky-700 focus-within:ring-2 focus-within:ring-sky-100 dark:focus-within:ring-sky-900/30",
+              "hover:border-sky-200 dark:hover:border-sky-800 hover:shadow-lg hover:shadow-sky-500/5"
             )}>
             <textarea
               ref={textareaRef}
@@ -468,14 +468,14 @@ function WelcomeScreen() {
   return (
     <div className="flex flex-col items-center justify-center h-full min-h-[60vh] text-center animate-in fade-in slide-in-from-bottom-4 duration-700 select-none">
       <div className="relative group cursor-default mb-8">
-        <div className="absolute -inset-4 bg-gradient-to-r from-sky-500 via-purple-500 to-pink-500 rounded-full blur-xl opacity-20 group-hover:opacity-40 transition duration-1000 group-hover:duration-200"></div>
-        <div className="relative p-6 bg-white dark:bg-slate-900 rounded-2xl shadow-sm ring-1 ring-slate-200/50 dark:ring-slate-800 flex items-center justify-center transform transition-transform duration-500 group-hover:scale-105">
-          <Sparkles className="h-10 w-10 text-sky-600 dark:text-sky-400" />
+        <div className="absolute -inset-4 bg-gradient-to-r from-sky-400 via-cyan-400 to-teal-400 rounded-full blur-xl opacity-20 group-hover:opacity-40 transition duration-1000 group-hover:duration-200"></div>
+        <div className="relative p-6 bg-white dark:bg-slate-900 rounded-2xl shadow-lg ring-1 ring-slate-200/50 dark:ring-slate-800 flex items-center justify-center transform transition-transform duration-500 group-hover:scale-105">
+          <Sparkles className="h-10 w-10 text-sky-600 dark:text-sky-400 animate-pulse" />
         </div>
       </div>
       
       <h2 className="text-3xl font-bold text-slate-900 dark:text-white mb-4 tracking-tight">
-        {greeting}，<span className="text-transparent bg-clip-text bg-gradient-to-r from-sky-600 to-purple-600 dark:from-sky-400 dark:to-purple-400">朋友</span>
+        {greeting}，<span className="text-transparent bg-clip-text bg-gradient-to-r from-sky-600 via-cyan-600 to-teal-600 dark:from-sky-400 dark:via-cyan-400 dark:to-teal-400">朋友</span>
       </h2>
       <p className="text-slate-500 dark:text-slate-400 max-w-md text-base leading-relaxed">
         我是您的智能知识助手。您可以随时向我提问，我会帮您分析、总结并回答相关问题。
