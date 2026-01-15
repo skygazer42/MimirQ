@@ -168,7 +168,11 @@ export default function ParsingPage() {
   const { parserBackend, setParserBackend } = useParserBackendPreference()
 
   // 共享存储
-  const { addParsedFile, activeFolderId, folders, createFolder, setActiveFolderId } = useParsedFiles()
+  const addParsedFile = useParsedFiles((state) => state.addParsedFile)
+  const activeFolderId = useParsedFiles((state) => state.activeFolderId)
+  const folders = useParsedFiles((state) => state.folders)
+  const createFolder = useParsedFiles((state) => state.createFolder)
+  const setActiveFolderId = useParsedFiles((state) => state.setActiveFolderId)
 
   // 获取当前选中的文件
   const activeFile = files.find((f) => f.id === activeFileId) || null

@@ -169,6 +169,15 @@ export const useParsedFiles = create<ParsedFilesState>()(
     {
       name: 'mimirq_parsed_files',
       storage: createJSONStorage(() => (typeof window === 'undefined' ? noopStorage : localStorage)),
+      partialize: (state) => ({
+        files: state.files.map((f) => ({
+          ...f,
+          markdownContent: '', // Exclude large content from localStorage to prevent 5MB limit crash
+          originalMarkdownContent: '',
+        })),
+        folders: state.folders,
+        activeFolderId: state.activeFolderId,
+      }),
       onRehydrateStorage: () => (state) => {
         if (typeof window !== 'undefined') {
           state?.setLoaded(true)
