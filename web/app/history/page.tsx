@@ -39,7 +39,7 @@ function HistoryPageLoading() {
     <div className="flex h-screen overflow-hidden bg-white dark:bg-slate-950">
       <Navbar />
       <div className="flex-1 flex items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin text-indigo-500" />
+        <Loader2 className="h-8 w-8 animate-spin text-sky-500" />
       </div>
     </div>
   )
@@ -187,7 +187,7 @@ function HistoryPageContent() {
                 placeholder="搜索对话..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pl-9 pr-4 py-2 text-sm bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all"
+                className="w-full pl-9 pr-4 py-2 text-sm bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-transparent transition-all"
               />
             </div>
           </div>
@@ -196,7 +196,7 @@ function HistoryPageContent() {
           <div className="flex-1 overflow-y-auto">
             {isLoadingList ? (
               <div className="flex items-center justify-center py-8">
-                <Loader2 className="h-6 w-6 animate-spin text-indigo-500" />
+                <Loader2 className="h-6 w-6 animate-spin text-sky-500" />
               </div>
             ) : filteredConversations.length === 0 ? (
               <div className="text-center py-12 px-4 text-slate-500 text-sm">
@@ -239,7 +239,7 @@ function HistoryPageContent() {
               {/* 对话头部 */}
               <div className="px-6 py-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between bg-white/80 dark:bg-slate-950/80 backdrop-blur-md sticky top-0 z-10">
                 <div className="flex items-center gap-4">
-                  <div className="w-10 h-10 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-xl flex items-center justify-center shadow-md shadow-indigo-200 dark:shadow-none">
+                  <div className="w-10 h-10 bg-gradient-to-br from-sky-500 to-teal-600 rounded-xl flex items-center justify-center shadow-md shadow-sky-200 dark:shadow-none">
                     <MessageSquare className="h-5 w-5 text-white" />
                   </div>
                   <div>
@@ -264,7 +264,7 @@ function HistoryPageContent() {
                   <Button
                     size="sm"
                     onClick={handleContinueChat}
-                    className="gap-2 rounded-xl bg-slate-900 dark:bg-indigo-600 hover:bg-slate-800 dark:hover:bg-indigo-700 text-white"
+                    className="gap-2 rounded-xl bg-slate-900 dark:bg-sky-600 hover:bg-slate-800 dark:hover:bg-sky-700 text-white"
                   >
                     <Send className="h-3.5 w-3.5" />
                     继续对话
@@ -276,7 +276,7 @@ function HistoryPageContent() {
               <div className="flex-1 overflow-y-auto px-6 py-8">
                 {isLoadingMessages ? (
                   <div className="flex items-center justify-center h-full">
-                    <Loader2 className="h-8 w-8 animate-spin text-indigo-500" />
+                    <Loader2 className="h-8 w-8 animate-spin text-sky-500" />
                   </div>
                 ) : messages.length === 0 ? (
                   <div className="flex flex-col items-center justify-center h-full text-slate-400">
@@ -311,9 +311,9 @@ function HistoryPageContent() {
             /* 空状态 */
             <div className="flex-1 flex flex-col items-center justify-center text-center px-8">
               <div className="relative mb-8">
-                <div className="absolute -inset-4 bg-gradient-to-r from-indigo-500 to-purple-600 rounded-full blur-2xl opacity-10 animate-pulse"></div>
+                <div className="absolute -inset-4 bg-gradient-to-r from-sky-500 to-teal-600 rounded-full blur-2xl opacity-10 animate-pulse"></div>
                 <div className="relative p-6 bg-white dark:bg-slate-900 rounded-3xl shadow-xl ring-1 ring-slate-200 dark:ring-slate-800">
-                  <History className="h-12 w-12 text-indigo-600 dark:text-indigo-400" />
+                  <History className="h-12 w-12 text-sky-600 dark:text-sky-400" />
                 </div>
               </div>
               <h2 className="text-3xl font-bold text-slate-900 dark:text-white mb-4 tracking-tight">
@@ -353,7 +353,7 @@ function ConversationItem({
       className={cn(
         'group px-4 py-4 cursor-pointer transition-all border-l-4 relative',
         isSelected 
-          ? 'bg-indigo-50/50 dark:bg-indigo-900/20 border-l-indigo-600' 
+          ? 'bg-sky-50/50 dark:bg-sky-900/20 border-l-sky-600' 
           : 'border-l-transparent hover:bg-slate-100/50 dark:hover:bg-slate-800/50'
       )}
       onClick={onSelect}
@@ -362,7 +362,7 @@ function ConversationItem({
         <div className="flex-1 min-w-0">
           <h3 className={cn(
             'font-bold truncate text-[14px] tracking-tight',
-            isSelected ? 'text-indigo-900 dark:text-indigo-300' : 'text-slate-700 dark:text-slate-300'
+            isSelected ? 'text-sky-900 dark:text-sky-300' : 'text-slate-700 dark:text-slate-300'
           )}>
             {conversation.title || '未命名对话'}
           </h3>
