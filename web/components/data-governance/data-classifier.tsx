@@ -176,7 +176,7 @@ export function DataClassifier({ content, initialCategory = null, initialTags = 
                   "w-8 h-8 rounded-lg flex items-center justify-center",
                   category.color === 'blue' && "bg-blue-100",
                   category.color === 'green' && "bg-green-100",
-                  category.color === 'purple' && "bg-purple-100",
+                  category.color === 'purple' && "bg-teal-100",
                   category.color === 'red' && "bg-red-100",
                   category.color === 'orange' && "bg-orange-100",
                   category.color === 'yellow' && "bg-yellow-100",

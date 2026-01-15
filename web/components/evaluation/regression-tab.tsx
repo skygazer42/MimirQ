@@ -158,7 +158,7 @@ export function RegressionTestTab() {
         失败
       </span>
     ) : (
-      <span className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-semibold bg-indigo-50 text-indigo-700 border border-indigo-100">
+      <span className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-semibold bg-sky-50 text-sky-700 border border-sky-100">
         <Loader2 className="w-3.5 h-3.5 animate-spin" />
         运行中
       </span>
@@ -255,7 +255,7 @@ export function RegressionTestTab() {
                     onClick={() => setSelectedRunId(run.id)}
                     className={cn(
                       'w-full text-left p-4 border-b border-slate-100 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/40 transition',
-                      selectedRunId === run.id && 'bg-indigo-50/60 dark:bg-indigo-900/10'
+                      selectedRunId === run.id && 'bg-sky-50/60 dark:bg-sky-900/10'
                     )}
                   >
                     <div className="flex items-center justify-between gap-2">
@@ -269,7 +269,7 @@ export function RegressionTestTab() {
                             ? 'bg-emerald-50 text-emerald-700 border-emerald-100'
                             : run.status === 'failed'
                             ? 'bg-red-50 text-red-700 border-red-100'
-                            : 'bg-indigo-50 text-indigo-700 border-indigo-100'
+                            : 'bg-sky-50 text-sky-700 border-sky-100'
                         )}
                       >
                         {run.status}
@@ -346,7 +346,7 @@ export function RegressionTestTab() {
                           {Object.entries(item.scores).map(([k, v]: [string, any]) => (
                             <span
                               key={k}
-                              className="text-[10px] px-2 py-0.5 rounded-full bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300"
+                              className="text-[10px] px-2 py-0.5 rounded-full bg-sky-100 dark:bg-sky-900/30 text-sky-700 dark:text-sky-300"
                             >
                               {k}: {typeof v === 'number' ? v.toFixed(2) : v}
                             </span>
