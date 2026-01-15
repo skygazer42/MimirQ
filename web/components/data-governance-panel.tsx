@@ -954,7 +954,7 @@ export function DataGovernancePanel() {
                         <div className="flex items-center justify-between h-5">
                           <div className="flex items-center gap-2">
                               {state?.isModified && (
-                                <span className="text-[9px] text-indigo-600 flex items-center gap-1 bg-indigo-50 px-1.5 py-0.5 rounded border border-indigo-100 font-bold">
+                                <span className="text-[9px] text-sky-600 flex items-center gap-1 bg-sky-50 px-1.5 py-0.5 rounded border border-sky-100 font-bold">
                                   <Sparkles className="w-2.5 h-2.5" /> 已清洗
                                 </span>
                               )}
