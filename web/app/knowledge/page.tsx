@@ -459,7 +459,7 @@ export default function KnowledgePage() {
           {activeTab === 'retrieval' && (
             <div className="max-w-4xl mx-auto animate-in fade-in slide-in-from-bottom-2 duration-500">
               <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm p-8 text-center relative overflow-hidden">
-                <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-sky-500 via-purple-500 to-pink-500" />
+                <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-sky-500 via-teal-500 to-pink-500" />
                 
                 <div className="mb-8">
                   <div className="w-16 h-16 bg-sky-50 dark:bg-sky-900/20 text-sky-600 dark:text-sky-400 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-sm">
