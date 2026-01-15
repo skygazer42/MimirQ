@@ -257,7 +257,7 @@ export default function KnowledgePage() {
               icon={FileStack}
               label="文档总数"
               value={totalDocs}
-              color="indigo"
+              color="sky"
               className="bg-white/80 dark:bg-slate-900/80 backdrop-blur-sm border-slate-200 dark:border-slate-800 shadow-sm"
             />
             <StatCard
@@ -271,7 +271,7 @@ export default function KnowledgePage() {
               icon={Layers}
               label="知识分块"
               value={totalChunks.toLocaleString()}
-              color="purple"
+              color="teal"
               className="bg-white/80 dark:bg-slate-900/80 backdrop-blur-sm border-slate-200 dark:border-slate-800 shadow-sm"
             />
             <StatCard
@@ -286,7 +286,7 @@ export default function KnowledgePage() {
                 icon={failedDocs > 0 ? XCircle : Loader2}
                 label={failedDocs > 0 ? '需关注' : '处理中'}
                 value={failedDocs > 0 ? failedDocs : processingDocs}
-                color={failedDocs > 0 ? 'red' : 'indigo'}
+                color={failedDocs > 0 ? 'red' : 'sky'}
                 className="bg-white/80 dark:bg-slate-900/80 backdrop-blur-sm border-slate-200 dark:border-slate-800 shadow-sm"
               />
             )}
