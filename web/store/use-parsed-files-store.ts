@@ -20,6 +20,12 @@ export interface ParsedFileData {
   parsedAt: string
   parser: string
   folderId?: string
+  /**
+   * UI status for the document library.
+   * Note: we don't persist the original File object, only metadata + parsed markdown.
+   */
+  status?: 'pending' | 'parsing' | 'parsed' | 'error'
+  error?: string
 }
 
 interface ParsedFilesState {
@@ -71,6 +77,7 @@ export const useParsedFiles = create<ParsedFilesState>()(
           id: makeId(),
           parsedAt: new Date().toISOString(),
           folderId: file.folderId || ROOT_FOLDER_ID,
+          status: file.status ?? 'parsed',
         }
 
         set((state) => ({ files: [...state.files, newFile] }))

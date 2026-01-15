@@ -92,6 +92,11 @@ interface ParsedFile extends FileQueueItemData {
   markdownContent: string | null
   parserBackend: string
   parserLabel: string
+  /**
+   * Persisted library id in Zustand (`useParsedFiles.files`).
+   * Used to keep document library stable across route changes.
+   */
+  libraryId?: string
   runs?: ParseRun[]
   activeRunId?: string
   parseStartTime?: number
@@ -169,6 +174,9 @@ export default function ParsingPage() {
 
   // 共享存储
   const addParsedFile = useParsedFiles((state) => state.addParsedFile)
+  const libraryFiles = useParsedFiles((state) => state.files)
+  const updateParsedFile = useParsedFiles((state) => state.updateParsedFile)
+  const removeParsedFile = useParsedFiles((state) => state.removeFile)
   const activeFolderId = useParsedFiles((state) => state.activeFolderId)
   const folders = useParsedFiles((state) => state.folders)
   const createFolder = useParsedFiles((state) => state.createFolder)
@@ -176,6 +184,11 @@ export default function ParsingPage() {
 
   // 获取当前选中的文件
   const activeFile = files.find((f) => f.id === activeFileId) || null
+  const [activeLibraryFileId, setActiveLibraryFileId] = useState<string | null>(null)
+  const activeLibraryFile = useMemo(() => {
+    if (!activeLibraryFileId) return null
+    return libraryFiles.find((f) => f.id === activeLibraryFileId) || null
+  }, [activeLibraryFileId, libraryFiles])
 
   const activeRun = useMemo(() => {
     if (!activeFile) return null
@@ -185,7 +198,8 @@ export default function ParsingPage() {
     return selected || runs[runs.length - 1]
   }, [activeFile])
 
-  const activeMarkdown = activeRun?.cleanedMarkdown || activeFile?.markdownContent || ''
+  const activeMarkdown =
+    activeRun?.cleanedMarkdown || activeFile?.markdownContent || activeLibraryFile?.markdownContent || ''
   const activeBlocks = activeRun?.blocks || []
   const isPdf = Boolean(activeFile?.file?.name?.toLowerCase().endsWith('.pdf'))
 
@@ -414,13 +428,30 @@ export default function ParsingPage() {
         return
       }
 
-      setFiles((prev) => [...prev, ...queued])
-      setActiveFileId((prev) => prev ?? queued[0].id)
+      // Persist a lightweight library entry immediately so navigation won't lose it.
+      // Note: we don't persist the original File object, only metadata + parsing results later.
+      const queuedWithLibrary = queued.map((q) => {
+        const libId = addParsedFile({
+          filename: q.name,
+          fileType: q.name.split('.').pop()?.toLowerCase() || '',
+          fileSize: q.size,
+          markdownContent: '',
+          originalMarkdownContent: '',
+          parser: q.parserLabel,
+          folderId: q.folderId,
+          status: 'pending',
+          error: undefined,
+        })
+        return { ...q, libraryId: libId }
+      })
+
+      setFiles((prev) => [...prev, ...queuedWithLibrary])
+      setActiveFileId((prev) => prev ?? queuedWithLibrary[0].id)
 
       if (added > 0) toast.success(`已加入队列：${added} 个文件`)
       if (skipped > 0) toast.warning(`已跳过 ${skipped} 个不支持的文件`)
     },
-    [parserBackend, activeFolderId, folders, createFolder]
+    [parserBackend, activeFolderId, folders, createFolder, addParsedFile]
   )
 
   const currentFolderId = activeFolderId || ROOT_FOLDER_ID
@@ -430,6 +461,24 @@ export default function ParsingPage() {
       .filter((f) => (f.folderId || ROOT_FOLDER_ID) === currentFolderId)
       .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0))
   }, [files, currentFolderId])
+
+  const visibleLibraryFiles = useMemo(() => {
+    return libraryFiles
+      .filter((f) => (f.folderId || ROOT_FOLDER_ID) === currentFolderId)
+      .sort((a, b) => Date.parse(b.parsedAt) - Date.parse(a.parsedAt))
+  }, [libraryFiles, currentFolderId])
+
+  const queueLibraryIdSet = useMemo(() => {
+    const ids = new Set<string>()
+    for (const f of files) {
+      if (f.libraryId) ids.add(f.libraryId)
+    }
+    return ids
+  }, [files])
+
+  const visibleLibraryOnlyFiles = useMemo(() => {
+    return visibleLibraryFiles.filter((f) => !queueLibraryIdSet.has(f.id))
+  }, [visibleLibraryFiles, queueLibraryIdSet])
 
   const childrenByParentId = useMemo(() => {
     const map = new Map<string, string[]>()
@@ -449,12 +498,19 @@ export default function ParsingPage() {
   }, [folders, currentFolderId])
 
   const folderStatsById = useMemo(() => {
-    const filesByFolder = new Map<string, ParsedFile[]>()
-    for (const file of files) {
-      const folderId = file.folderId || ROOT_FOLDER_ID
-      const list = filesByFolder.get(folderId) || []
-      list.push(file)
-      filesByFolder.set(folderId, list)
+    const byFolder = new Map<string, { count: number; latestTs: number }>()
+    const bump = (folderId: string, ts: number) => {
+      const cur = byFolder.get(folderId) || { count: 0, latestTs: 0 }
+      byFolder.set(folderId, { count: cur.count + 1, latestTs: Math.max(cur.latestTs, ts) })
+    }
+
+    // Library entries (persisted across routes)
+    for (const f of libraryFiles) {
+      bump(f.folderId || ROOT_FOLDER_ID, Math.max(0, Date.parse(f.parsedAt)))
+    }
+    // Current session queue entries (may include File object + status/progress)
+    for (const f of files) {
+      bump(f.folderId || ROOT_FOLDER_ID, f.createdAt || 0)
     }
 
     const stats = new Map<string, { count: number; latestTs: number }>()
@@ -462,10 +518,10 @@ export default function ParsingPage() {
       if (stats.has(folderId)) return stats.get(folderId) as { count: number; latestTs: number }
       let count = 0
       let latestTs = 0
-      const directFiles = filesByFolder.get(folderId) || []
-      for (const file of directFiles) {
-        count += 1
-        latestTs = Math.max(latestTs, file.createdAt || 0)
+      const direct = byFolder.get(folderId)
+      if (direct) {
+        count += direct.count
+        latestTs = Math.max(latestTs, direct.latestTs)
       }
       const children = childrenByParentId.get(folderId) || []
       for (const childId of children) {
@@ -482,19 +538,20 @@ export default function ParsingPage() {
       collect(folder.id)
     }
     return stats
-  }, [files, folders, childrenByParentId])
+  }, [files, folders, childrenByParentId, libraryFiles])
 
   useEffect(() => {
     if (visibleQueueFiles.length === 0) {
-      setActiveFileId(null)
+      if (activeFileId) setActiveFileId(null)
       return
     }
 
     const stillVisible = activeFileId && visibleQueueFiles.some((f) => f.id === activeFileId)
     if (!stillVisible) {
-      setActiveFileId(visibleQueueFiles[0].id)
+      // Don't override the selection if user is browsing a persisted library entry.
+      if (!activeLibraryFileId) setActiveFileId(visibleQueueFiles[0].id)
     }
-  }, [visibleQueueFiles, activeFileId])
+  }, [visibleQueueFiles, activeFileId, activeLibraryFileId])
 
   // 拖放处理
   const handleDragOver = useCallback((e: React.DragEvent) => {
@@ -527,8 +584,19 @@ export default function ParsingPage() {
 
   // 移除文件
   const removeFile = (fileId: string) => {
-    cancelParse(fileId)
-    setFiles((prev) => prev.filter((f) => f.id !== fileId))
+    // `fileId` could be a queue id or a persisted library id.
+    const queue = files.find((f) => f.id === fileId) || null
+    const libId = queue?.libraryId || (libraryFiles.some((f) => f.id === fileId) ? fileId : null)
+
+    if (queue) {
+      cancelParse(queue.id)
+      setFiles((prev) => prev.filter((f) => f.id !== queue.id))
+      if (activeFileId === queue.id) setActiveFileId(null)
+    }
+    if (libId) {
+      removeParsedFile(libId)
+      if (activeLibraryFileId === libId) setActiveLibraryFileId(null)
+    }
   }
 
   const moveFileToFolder = useCallback((fileId: string, folderId: string) => {
@@ -536,7 +604,12 @@ export default function ParsingPage() {
     setFiles((prev) =>
       prev.map((f) => (f.id === fileId ? { ...f, folderId: targetId } : f))
     )
-  }, [])
+
+    // Keep the persisted library entry in sync.
+    const queueMatch = files.find((f) => f.id === fileId) || null
+    const libId = queueMatch?.libraryId || (libraryFiles.some((f) => f.id === fileId) ? fileId : null)
+    if (libId) updateParsedFile(libId, { folderId: targetId })
+  }, [files, libraryFiles, updateParsedFile])
 
   const handleFileDragStart = useCallback((e: React.DragEvent, fileId: string) => {
     e.dataTransfer.setData('text/plain', fileId)
@@ -575,6 +648,9 @@ export default function ParsingPage() {
           : f
       )
     )
+    if (file.libraryId) {
+      updateParsedFile(file.libraryId, { status: 'parsing', error: undefined })
+    }
 
     const progressInterval = setInterval(() => {
       setFiles((prev) =>
@@ -656,14 +732,35 @@ export default function ParsingPage() {
       setHoveredBlockId(null)
       setRightPanelMode(blocks.length ? 'blocks' : 'markdown')
 
-      addParsedFile({
-        filename: file.file.name,
-        fileType: file.file.name.split('.').pop()?.toLowerCase() || '',
-        fileSize: file.file.size,
-        markdownContent,
-        parser: resolvedLabel,
-        folderId: file.folderId,
-      })
+      // Update the existing library entry created at upload time (preferred),
+      // otherwise create one and backfill `libraryId` on the queue item.
+      if (file.libraryId) {
+        updateParsedFile(file.libraryId, {
+          filename: file.file.name,
+          fileType: file.file.name.split('.').pop()?.toLowerCase() || '',
+          fileSize: file.file.size,
+          markdownContent,
+          originalMarkdownContent: rawMarkdown,
+          parser: resolvedLabel,
+          folderId: file.folderId,
+          parsedAt: new Date().toISOString(),
+          status: 'parsed',
+          error: undefined,
+        })
+      } else {
+        const libId = addParsedFile({
+          filename: file.file.name,
+          fileType: file.file.name.split('.').pop()?.toLowerCase() || '',
+          fileSize: file.file.size,
+          markdownContent,
+          originalMarkdownContent: rawMarkdown,
+          parser: resolvedLabel,
+          folderId: file.folderId,
+          status: 'parsed',
+          error: undefined,
+        })
+        setFiles((prev) => prev.map((f) => (f.id === fileId ? { ...f, libraryId: libId } : f)))
+      }
     } catch (err: any) {
       if (controller.signal.aborted) return
       if (parseControllersRef.current.get(fileId) !== controller) return
@@ -681,6 +778,9 @@ export default function ParsingPage() {
             : f
         )
       )
+      if (file.libraryId) {
+        updateParsedFile(file.libraryId, { status: 'error', error: errorMessage })
+      }
     } finally {
       if (parseControllersRef.current.get(fileId) === controller) {
         parseControllersRef.current.delete(fileId)
@@ -803,14 +903,28 @@ export default function ParsingPage() {
     if (!activeFile || !activeMarkdown) return
 
     // 使用当前内容（可能是编辑后的）提交到数据治理
-    addParsedFile({
-      filename: activeFile.file.name,
-      fileType: activeFile.file.name.split('.').pop()?.toLowerCase() || '',
-      fileSize: activeFile.file.size,
-      markdownContent: activeMarkdown,
-      parser: activeFile.parserLabel,
-      folderId: activeFile.folderId,
-    })
+    if (activeFile.libraryId) {
+      updateParsedFile(activeFile.libraryId, {
+        markdownContent: activeMarkdown,
+        originalMarkdownContent: activeMarkdown,
+        parser: activeFile.parserLabel,
+        status: 'parsed',
+        error: undefined,
+      })
+    } else {
+      const libId = addParsedFile({
+        filename: activeFile.file.name,
+        fileType: activeFile.file.name.split('.').pop()?.toLowerCase() || '',
+        fileSize: activeFile.file.size,
+        markdownContent: activeMarkdown,
+        originalMarkdownContent: activeMarkdown,
+        parser: activeFile.parserLabel,
+        folderId: activeFile.folderId,
+        status: 'parsed',
+        error: undefined,
+      })
+      setFiles((prev) => prev.map((f) => (f.id === activeFile.id ? { ...f, libraryId: libId } : f)))
+    }
 
     router.push('/data-governance')
   }
@@ -894,9 +1008,19 @@ export default function ParsingPage() {
                  <DocumentFolderTree
                     onRequestUpload={requestUploadToFolder}
                     onRequestUploadFolder={requestUploadFolder}
-                    fileItems={[]}
                     showFiles="expanded"
-                    onSelectFile={(fileId) => setActiveFileId(fileId)}
+                    onSelectFile={(fileId) => {
+                      // `DocumentFolderTree` emits library ids by default.
+                      // If we still have the File object in the current session, map back to queue id for PDF preview.
+                      const queueMatch = files.find((f) => f.libraryId === fileId)
+                      if (queueMatch) {
+                        setActiveLibraryFileId(null)
+                        setActiveFileId(queueMatch.id)
+                        return
+                      }
+                      setActiveFileId(null)
+                      setActiveLibraryFileId(fileId)
+                    }}
                     onDeleteFolder={handleDeleteFolder}
                     onFileDrop={moveFileToFolder}
                  />
@@ -1027,6 +1151,80 @@ export default function ParsingPage() {
                        </div>
                      )
                    })}
+                  {/* Persisted library entries (only those not present in current session queue) */}
+                  {visibleLibraryOnlyFiles.map((f) => {
+                    const ts = Date.parse(f.parsedAt)
+                    const status = f.status || 'parsed'
+                    return (
+                      <div
+                        key={f.id}
+                        className={cn(
+                          "flex items-center gap-3 p-2.5 rounded-xl border border-transparent hover:border-sky-100/70 hover:bg-sky-50/60 group transition-all cursor-pointer relative bg-white/60 shadow-sm shadow-slate-100/30",
+                          activeLibraryFileId === f.id && "bg-sky-50 border-sky-100 ring-1 ring-sky-200"
+                        )}
+                        onClick={() => {
+                          setActiveFileId(null)
+                          setActiveLibraryFileId(f.id)
+                        }}
+                      >
+                        {getFileIcon(f.filename)}
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center justify-between">
+                            <div
+                              className={cn(
+                                "text-sm font-medium truncate pr-6",
+                                activeLibraryFileId === f.id ? "text-sky-900" : "text-slate-700"
+                              )}
+                            >
+                              {f.filename}
+                            </div>
+                            <span className="text-[10px] text-slate-400 flex-shrink-0">
+                              {Number.isFinite(ts) && ts > 0
+                                ? new Date(ts).toLocaleString([], {
+                                    month: '2-digit',
+                                    day: '2-digit',
+                                    hour: '2-digit',
+                                    minute: '2-digit',
+                                  })
+                                : ''}
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-2 mt-1 min-h-[16px]">
+                            {status === 'parsing' ? (
+                              <span className="text-[10px] text-sky-600 font-medium flex items-center gap-1">
+                                <Loader2 className="w-3 h-3 animate-spin" /> 解析中...
+                              </span>
+                            ) : status === 'error' ? (
+                              <span className="text-[10px] text-red-500 flex items-center gap-1">
+                                <AlertCircle className="w-3 h-3" /> 失败
+                              </span>
+                            ) : status === 'pending' ? (
+                              <span className="text-[10px] text-slate-400">等待中</span>
+                            ) : (
+                              <span className="text-[10px] text-green-600 flex items-center gap-1">
+                                <CheckCircle2 className="w-3 h-3" /> 已入库
+                              </span>
+                            )}
+                          </div>
+                        </div>
+
+                        <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity bg-white/70 backdrop-blur-sm rounded-md p-0.5 shadow-sm border border-slate-100/70">
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-6 w-6 text-slate-500 hover:text-red-600 hover:bg-red-50"
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              removeFile(f.id)
+                            }}
+                            title="从文档库删除"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </Button>
+                        </div>
+                      </div>
+                    )
+                  })}
                    {visibleQueueFiles.map(f => (
                      <div key={f.id} 
                           className={cn(
@@ -1156,7 +1354,7 @@ export default function ParsingPage() {
 
           {/* 右侧：预览区域 */}
           <div className="flex-1 flex flex-col bg-white/85 backdrop-blur overflow-hidden min-h-0 shadow-[inset_1px_0_0_rgba(255,255,255,0.6)] ring-1 ring-white/60">
-            {!activeFile ? (
+            {!(activeFile || activeLibraryFile) ? (
               // 空状态
               <div className="flex-1 flex items-center justify-center">
                 <div className="text-center max-w-md">
@@ -1171,6 +1369,61 @@ export default function ParsingPage() {
               </div>
             ) : (
               <>
+                {/* Library-only selection (no File object in current session) */}
+                {!activeFile && activeLibraryFile ? (
+                  <div className="flex-1 flex flex-col min-h-0">
+                    <div className="flex items-center justify-between px-6 py-3 border-b border-slate-200/70 bg-slate-50/70">
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2">
+                          <span className="font-medium text-slate-900 truncate max-w-[420px]">
+                            {activeLibraryFile.filename}
+                          </span>
+                          <span className="text-[10px] text-slate-500 bg-slate-200/50 px-2 py-0.5 rounded">
+                            文档库
+                          </span>
+                          {activeLibraryFile.status && (
+                            <span className="text-[10px] text-slate-500 bg-white/70 border border-slate-200 px-2 py-0.5 rounded">
+                              {activeLibraryFile.status}
+                            </span>
+                          )}
+                        </div>
+                        <div className="mt-0.5 text-[11px] text-slate-500">
+                          该条目来自文档库（未保留本地 PDF 原文件）。可查看解析后的 Markdown；如需 PDF 预览请重新上传该文件。
+                        </div>
+                      </div>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="text-slate-600 hover:bg-slate-100"
+                        onClick={() => {
+                          setActiveLibraryFileId(null)
+                        }}
+                      >
+                        关闭
+                      </Button>
+                    </div>
+
+                    <div className="flex-1 overflow-hidden min-h-0">
+                      {activeMarkdown ? (
+                        <div className="h-full overflow-y-auto px-6 py-6">
+                          <MarkdownRenderer markdown={activeMarkdown} />
+                        </div>
+                      ) : (
+                        <div className="h-full flex items-center justify-center">
+                          <div className="text-center max-w-md">
+                            <div className="w-16 h-16 mx-auto mb-3 bg-gradient-to-br from-slate-100/70 to-slate-50/70 rounded-2xl flex items-center justify-center">
+                              <FileText className="w-8 h-8 text-slate-300" />
+                            </div>
+                            <p className="text-slate-500 text-sm font-medium">暂无可展示的解析内容</p>
+                            <p className="text-slate-400 text-xs mt-1">若该文件还未解析，或内容未缓存，请重新选择文件并解析。</p>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ) : null}
+                {activeFile ? (
+                  <>
                 {/* 统计卡片区 - 解析完成后显示 */}
                 {activeFile.status === 'parsed' && activeFile.stats && (
                   <div className="px-6 py-4 border-b border-slate-200/70 bg-gradient-to-r from-slate-50/70 to-white">
@@ -1521,6 +1774,8 @@ export default function ParsingPage() {
                     </div>
                   </div>
                 )}
+                  </>
+                ) : null}
               </>
             )}
           </div>
