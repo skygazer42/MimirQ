@@ -191,7 +191,18 @@ export function Navbar({
         {/* 新对话按钮 */}
         <div className="p-4 pb-2">
           <Button
-            className="w-full justify-start gap-2 bg-gradient-to-r from-primary via-primary/95 to-accent/90 hover:from-primary/95 hover:via-primary/90 hover:to-accent/85 text-primary-foreground shadow-lg hover:shadow-xl hover:shadow-primary/30 h-11 rounded-2xl transition-all duration-300 hover:-translate-y-0.5 active:translate-y-0 font-semibold"
+            className={cn(
+              "w-full justify-start gap-2 h-11 rounded-2xl font-semibold transition-all duration-300",
+              // Softer, more neutral “glass” look to match the page theme.
+              "bg-white/70 dark:bg-slate-900/60 backdrop-blur-xl",
+              "border border-slate-200/70 dark:border-slate-700/70",
+              "text-slate-900 dark:text-slate-100",
+              // Subtle tint + lift on hover (keeps brand feel without being too blue).
+              "hover:bg-gradient-to-r hover:from-sky-50/80 hover:via-white hover:to-teal-50/70",
+              "dark:hover:from-sky-950/30 dark:hover:via-slate-900/40 dark:hover:to-teal-950/25",
+              "shadow-sm hover:shadow-md hover:shadow-sky-500/10",
+              "hover:-translate-y-0.5 active:translate-y-0"
+            )}
             onClick={() => {
               router.push('/')
               closeSidebarOnMobile()
