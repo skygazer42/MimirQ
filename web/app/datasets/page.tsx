@@ -182,13 +182,13 @@ export default function DatasetsPage() {
       <Navbar />
 
       <main className="flex-1 flex flex-col overflow-hidden relative">
-        <div className="absolute top-0 left-0 right-0 h-64 bg-gradient-to-b from-indigo-50/50 dark:from-indigo-900/10 to-transparent pointer-events-none" />
+        <div className="absolute top-0 left-0 right-0 h-64 bg-gradient-to-b from-sky-50/50 dark:from-sky-900/10 to-transparent pointer-events-none" />
 
         <header className="px-8 py-6 flex-shrink-0 z-10">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
               <div className="w-12 h-12 bg-white dark:bg-slate-900 rounded-2xl flex items-center justify-center shadow-sm border border-slate-100 dark:border-slate-800">
-                <Layers className="w-6 h-6 text-indigo-600 dark:text-indigo-400" />
+                <Layers className="w-6 h-6 text-sky-600 dark:text-sky-400" />
               </div>
               <div>
                 <h1 className="text-2xl font-bold text-slate-900 dark:text-white tracking-tight">数据集</h1>
@@ -212,7 +212,7 @@ export default function DatasetsPage() {
                 if (open) resetForm()
               }}>
                 <DialogTrigger asChild>
-                  <Button className="gap-2 bg-indigo-600 hover:bg-indigo-700 text-white shadow-lg shadow-indigo-200 dark:shadow-indigo-900/20 rounded-xl">
+                  <Button className="gap-2 bg-sky-600 hover:bg-sky-700 text-white shadow-lg shadow-sky-200 dark:shadow-sky-900/20 rounded-xl">
                     <Plus className="w-4 h-4" />
                     新建数据集
                   </Button>
