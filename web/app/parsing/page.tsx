@@ -53,6 +53,7 @@ import { extractZipFiles, isZipFile } from '@/lib/zip'
 import { PdfViewer } from '@/components/parsing/pdf-viewer'
 import { extractBlocksFromMarkdown, ParsingBlock } from '@/lib/parsing-positions'
 import { toast } from 'sonner'
+import { deleteDocContentFromCache, getDocContentFromCache, saveDocContentToCache } from '@/lib/doc-content-cache'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -190,6 +191,37 @@ export default function ParsingPage() {
     if (!activeLibraryFileId) return null
     return libraryFiles.find((f) => f.id === activeLibraryFileId) || null
   }, [activeLibraryFileId, libraryFiles])
+
+  // Lazy-load persisted markdown from IndexedDB when a library entry is selected.
+  useEffect(() => {
+    const id = (activeLibraryFileId || '').trim()
+    if (!id) return
+    const file = activeLibraryFile
+    if (!file) return
+    if ((file.markdownContent || '').trim()) return
+
+    let cancelled = false
+    ;(async () => {
+      try {
+        const cached = await getDocContentFromCache(id)
+        if (cancelled) return
+        const markdown = (cached?.markdownContent || '').trim()
+        const original = (cached?.originalMarkdownContent || '').trim()
+        if (!markdown && !original) return
+        updateParsedFile(id, {
+          markdownContent: markdown || original,
+          originalMarkdownContent: original || markdown,
+          status: file.status || 'parsed',
+        })
+      } catch {
+        // ignore
+      }
+    })()
+
+    return () => {
+      cancelled = true
+    }
+  }, [activeLibraryFileId, activeLibraryFile, updateParsedFile])
 
   const activeRun = useMemo(() => {
     if (!activeFile) return null
@@ -596,6 +628,7 @@ export default function ParsingPage() {
     }
     if (libId) {
       removeParsedFile(libId)
+      void deleteDocContentFromCache(libId)
       if (activeLibraryFileId === libId) setActiveLibraryFileId(null)
     }
   }
@@ -757,6 +790,12 @@ export default function ParsingPage() {
           status: 'parsed',
           error: undefined,
         })
+        // Persist large content to IndexedDB for cross-page navigation / reload.
+        void saveDocContentToCache({
+          id: file.libraryId,
+          markdownContent,
+          originalMarkdownContent: rawMarkdown,
+        })
       } else {
         const libId = addParsedFile({
           filename: file.file.name,
@@ -770,6 +809,11 @@ export default function ParsingPage() {
           error: undefined,
         })
         setFiles((prev) => prev.map((f) => (f.id === fileId ? { ...f, libraryId: libId } : f)))
+        void saveDocContentToCache({
+          id: libId,
+          markdownContent,
+          originalMarkdownContent: rawMarkdown,
+        })
       }
     } catch (err: any) {
       if (controller.signal.aborted) return
@@ -1406,6 +1450,22 @@ export default function ParsingPage() {
                               {activeLibraryFile.status}
                             </span>
                           )}
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-7 px-2 text-[11px] text-slate-600 hover:bg-slate-100"
+                            onClick={async () => {
+                              try {
+                                await navigator.clipboard.writeText(activeLibraryFile.filename)
+                                toast.success('已复制文件名')
+                              } catch {
+                                toast.error('复制失败')
+                              }
+                            }}
+                            title="复制文件名"
+                          >
+                            复制名称
+                          </Button>
                         </div>
                         <div className="mt-0.5 text-[11px] text-slate-500">
                           该条目来自文档库（未保留本地 PDF 原文件）。可查看解析后的 Markdown；如需 PDF 预览请重新上传该文件。
