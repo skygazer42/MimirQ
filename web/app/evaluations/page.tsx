@@ -208,7 +208,7 @@ function EvaluationsPageContent() {
       )
     }
     return (
-      <span className={cn(base, 'bg-indigo-50 text-indigo-700 border border-indigo-100')}>
+      <span className={cn(base, 'bg-sky-50 text-sky-700 border border-sky-100')}>
         <Loader2 className="w-3.5 h-3.5 animate-spin" />
         运行中
       </span>
@@ -219,7 +219,7 @@ function EvaluationsPageContent() {
     <main className="flex-1 flex flex-col overflow-hidden relative">
       {activeTab === 'conversation' && (
         <>
-          <div className="absolute top-0 left-0 right-0 h-64 bg-gradient-to-b from-indigo-50/50 dark:from-indigo-900/10 to-transparent pointer-events-none" />
+          <div className="absolute top-0 left-0 right-0 h-64 bg-gradient-to-b from-sky-50/50 dark:from-sky-900/10 to-transparent pointer-events-none" />
 
           <header className="px-8 py-6 flex-shrink-0 z-10">
             {/* Tab 切换 */}
@@ -229,7 +229,7 @@ function EvaluationsPageContent() {
                 className={cn(
                   'flex items-center gap-2 px-4 py-2 rounded-lg transition text-sm font-medium',
                   isActiveTab('conversation')
-                    ? 'bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 shadow-sm border border-slate-200 dark:border-slate-800'
+                    ? 'bg-white dark:bg-slate-900 text-sky-600 dark:text-sky-400 shadow-sm border border-slate-200 dark:border-slate-800'
                     : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
                 )}
               >
@@ -241,7 +241,7 @@ function EvaluationsPageContent() {
                 className={cn(
                   'flex items-center gap-2 px-4 py-2 rounded-lg transition text-sm font-medium',
                   isActiveTab('regression')
-                    ? 'bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 shadow-sm border border-slate-200 dark:border-slate-800'
+                    ? 'bg-white dark:bg-slate-900 text-sky-600 dark:text-sky-400 shadow-sm border border-slate-200 dark:border-slate-800'
                     : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
                 )}
               >
@@ -252,7 +252,7 @@ function EvaluationsPageContent() {
           <div className="flex items-center justify-between mb-6">
             <div className="flex items-center gap-4">
               <div className="w-12 h-12 bg-white dark:bg-slate-900 rounded-2xl flex items-center justify-center shadow-sm border border-slate-100 dark:border-slate-800">
-                <BarChart3 className="w-6 h-6 text-indigo-600 dark:text-indigo-400" />
+                <BarChart3 className="w-6 h-6 text-sky-600 dark:text-sky-400" />
               </div>
               <div>
                 <h1 className="text-2xl font-bold text-slate-900 dark:text-white tracking-tight">
@@ -277,7 +277,7 @@ function EvaluationsPageContent() {
                 刷新
               </Button>
               <Button
-                className="gap-2 bg-indigo-600 hover:bg-indigo-700 text-white shadow-lg shadow-indigo-200 dark:shadow-indigo-900/20 rounded-xl"
+                className="gap-2 bg-sky-600 hover:bg-sky-700 text-white shadow-lg shadow-sky-200 dark:shadow-sky-900/20 rounded-xl"
                 disabled={isStarting || !selectedConversationId}
                 onClick={handleStart}
               >
@@ -393,7 +393,7 @@ function EvaluationsPageContent() {
                         onClick={() => setSelectedRunId(r.id)}
                         className={cn(
                           'w-full text-left p-4 border-b border-slate-100 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/40 transition',
-                          selectedRunId === r.id && 'bg-indigo-50/60 dark:bg-indigo-900/10'
+                          selectedRunId === r.id && 'bg-sky-50/60 dark:bg-sky-900/10'
                         )}
                       >
                         <div className="flex items-center justify-between gap-2">
@@ -407,7 +407,7 @@ function EvaluationsPageContent() {
                                 ? 'bg-emerald-50 text-emerald-700 border-emerald-100'
                                 : r.status === 'failed'
                                 ? 'bg-red-50 text-red-700 border-red-100'
-                                : 'bg-indigo-50 text-indigo-700 border-indigo-100'
+                                : 'bg-sky-50 text-sky-700 border-sky-100'
                             )}
                           >
                             {r.status}
