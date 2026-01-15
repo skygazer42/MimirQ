@@ -137,8 +137,8 @@ export function FileQueueItem({
       className={cn(
         'group p-3 rounded-xl border transition-all cursor-pointer',
         isActive
-          ? 'bg-indigo-50 border-indigo-200 shadow-sm'
-          : 'bg-white border-gray-200 hover:border-indigo-200 hover:bg-gray-50'
+          ? 'bg-sky-50 border-sky-200 shadow-sm'
+          : 'bg-white border-gray-200 hover:border-sky-200 hover:bg-gray-50'
       )}
       onClick={onClick}
     >

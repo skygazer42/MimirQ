@@ -229,14 +229,14 @@ export function DataCleaner({ content, cleanedContent = '', onClean }: DataClean
       <div className="border border-gray-200 rounded-xl p-4 bg-white">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <Sparkles className="w-4 h-4 text-purple-600" />
+            <Sparkles className="w-4 h-4 text-teal-600" />
             <span className="text-sm font-medium text-gray-800">LLM 深度清洗</span>
           </div>
           <Button
             variant={llmEnabled ? 'default' : 'outline'}
             size="sm"
             onClick={() => setLlmEnabled((v) => !v)}
-            className={cn(llmEnabled ? 'bg-purple-600 hover:bg-purple-700' : '')}
+            className={cn(llmEnabled ? 'bg-teal-600 hover:bg-teal-700' : '')}
           >
             {llmEnabled ? '已启用' : '启用'}
           </Button>
