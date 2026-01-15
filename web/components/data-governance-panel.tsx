@@ -132,18 +132,15 @@ interface FileGovernanceState {
 
 export function DataGovernancePanel() {
   const router = useRouter()
-  const {
-    files,
-    folders: libraryFolders,
-    activeFolderId,
-    setActiveFolderId,
-    createFolder,
-    isLoaded,
-    clearAll,
-    addParsedFile,
-    updateParsedFile,
-    removeFile,
-  } = useParsedFiles()
+  const files = useParsedFiles((state) => state.files)
+  const libraryFolders = useParsedFiles((state) => state.folders)
+  const activeFolderId = useParsedFiles((state) => state.activeFolderId)
+  const setActiveFolderId = useParsedFiles((state) => state.setActiveFolderId)
+  const createFolder = useParsedFiles((state) => state.createFolder)
+  const isLoaded = useParsedFiles((state) => state.isLoaded)
+  const addParsedFile = useParsedFiles((state) => state.addParsedFile)
+  const updateParsedFile = useParsedFiles((state) => state.updateParsedFile)
+  const removeFile = useParsedFiles((state) => state.removeFile)
   const { parserBackend } = useParserBackendPreference()
 
   // UI 状态
