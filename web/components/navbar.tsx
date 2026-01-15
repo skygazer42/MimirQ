@@ -178,7 +178,7 @@ export function Navbar({
         {/* Logo 区域 */}
         <div className="h-16 px-6 border-b border-slate-50 dark:border-slate-800 flex items-center gap-3">
           <Link href="/" className="flex items-center gap-3 group">
-            <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center shadow-sm group-hover:shadow-md transition-all duration-300">
+            <div className="w-8 h-8 bg-gradient-to-br from-primary to-primary/80 rounded-xl flex items-center justify-center shadow-sm group-hover:shadow-lg group-hover:shadow-primary/30 transition-all duration-300 group-hover:scale-105">
               <span className="text-primary-foreground font-bold text-lg">M</span>
             </div>
             <div className="flex flex-col">
@@ -191,14 +191,14 @@ export function Navbar({
         {/* 新对话按钮 */}
         <div className="p-4 pb-2">
           <Button
-            className="w-full justify-start gap-2 bg-gradient-to-r from-primary to-primary/90 hover:from-primary/90 hover:to-primary text-primary-foreground shadow-md hover:shadow-lg hover:shadow-primary/20 h-11 rounded-2xl transition-all duration-300 hover:-translate-y-0.5 active:translate-y-0"
+            className="w-full justify-start gap-2 bg-gradient-to-r from-primary via-primary/95 to-accent/90 hover:from-primary/95 hover:via-primary/90 hover:to-accent/85 text-primary-foreground shadow-lg hover:shadow-xl hover:shadow-primary/30 h-11 rounded-2xl transition-all duration-300 hover:-translate-y-0.5 active:translate-y-0 font-semibold"
             onClick={() => {
               router.push('/')
               closeSidebarOnMobile()
             }}
           >
             <Plus className="h-4 w-4" />
-            <span className="font-medium">新对话</span>
+            <span>新对话</span>
           </Button>
         </div>
 
