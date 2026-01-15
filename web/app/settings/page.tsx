@@ -65,7 +65,7 @@ const FEATURE_FLAGS_CONFIG = [
     name: 'KG 知识抽取',
     description: '启用知识图谱抽取，自动抽取文档中的实体和事件',
     icon: Sparkles,
-    color: 'purple',
+    color: 'teal',
     dependencies: ['Milvus', 'LLM'],
   },
   {
@@ -113,7 +113,7 @@ const FEATURE_FLAGS_CONFIG = [
     name: 'MarkItDown 文档解析',
     description: '启用多格式转 Markdown（Office/表格/PDF），自动选择与解析工作台会使用',
     icon: FileCode,
-    color: 'purple',
+    color: 'teal',
     dependencies: [],
   },
   {
@@ -137,7 +137,7 @@ const FEATURE_FLAGS_CONFIG = [
     name: 'MagicPDF 本地解析',
     description: '启用 magic-pdf 本地高级解析后端（可在解析器下拉中选择）',
     icon: Wand2,
-    color: 'purple',
+    color: 'teal',
     dependencies: ['magic-pdf'],
   },
 ]
@@ -375,7 +375,7 @@ export default function SettingsPage() {
 
   const getColorClasses = (color: string) => {
     const colors: Record<string, { bg: string; border: string; text: string; iconBg: string }> = {
-      purple: { bg: 'bg-purple-50', border: 'border-purple-200', text: 'text-purple-600', iconBg: 'bg-purple-100' },
+      teal: { bg: 'bg-purple-50', border: 'border-purple-200', text: 'text-purple-600', iconBg: 'bg-purple-100' },
       blue: { bg: 'bg-blue-50', border: 'border-blue-200', text: 'text-blue-600', iconBg: 'bg-blue-100' },
       green: { bg: 'bg-green-50', border: 'border-green-200', text: 'text-green-600', iconBg: 'bg-green-100' },
       orange: { bg: 'bg-orange-50', border: 'border-orange-200', text: 'text-orange-600', iconBg: 'bg-orange-100' },
