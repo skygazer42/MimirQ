@@ -206,6 +206,7 @@ export function DocumentFolderTree({
   const [moveParentId, setMoveParentId] = useState(ROOT_FOLDER_ID)
   const [expandedFileFolderIds, setExpandedFileFolderIds] = useState<Set<string>>(() => new Set([ROOT_FOLDER_ID]))
   const [dragOverId, setDragOverId] = useState<string | null>(null)
+  const draggedFolderIdRef = useRef<string | null>(null)
   const dragExpandTimersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map())
   const dragActivateTimersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map())
   const scrollContainerRef = useRef<HTMLDivElement>(null)
@@ -300,6 +301,27 @@ export function DocumentFolderTree({
       return next
     })
   }, [])
+
+  const DND_FOLDER_MIME = 'application/x-mimirq-folder'
+
+  const moveFolderWithToast = useCallback(
+    (folderId: string, targetParentId: string) => {
+      const target = targetParentId || ROOT_FOLDER_ID
+      const ok = moveFolder(folderId, target)
+      if (ok) {
+        toast.success('文件夹已移动')
+        return true
+      }
+      const currentParentId = folders.find((f) => f.id === folderId)?.parentId || ROOT_FOLDER_ID
+      if ((currentParentId || ROOT_FOLDER_ID) === (target || ROOT_FOLDER_ID)) {
+        toast.info('该文件夹已在目标目录')
+      } else {
+        toast.error('移动失败：目标目录不合法（可能是自身/子目录/不存在）')
+      }
+      return false
+    },
+    [moveFolder, folders]
+  )
 
   const childrenByParentId = useMemo(() => {
     const map = new Map<string, FolderNode[]>()
@@ -510,6 +532,22 @@ export function DocumentFolderTree({
               isActive ? 'bg-white shadow-sm ring-1 ring-amber-100 text-stone-900' : 'bg-white/70 hover:bg-white hover:shadow-sm text-stone-700',
               dragOverId === folder.id && 'bg-amber-50/70 ring-1 ring-amber-200'
             )}
+            draggable
+            onDragStart={(e) => {
+              // Folder drag
+              draggedFolderIdRef.current = folder.id
+              try {
+                e.dataTransfer.setData(DND_FOLDER_MIME, folder.id)
+              } catch {
+                // ignore
+              }
+              e.dataTransfer.effectAllowed = 'move'
+            }}
+            onDragEnd={() => {
+              draggedFolderIdRef.current = null
+              setDragOverId(null)
+              dragScrollDirRef.current = 0
+            }}
             onDragOver={(e) => {
               e.preventDefault()
               setDragOverId(folder.id)
@@ -524,8 +562,15 @@ export function DocumentFolderTree({
             }}
             onDrop={(e) => {
               e.preventDefault()
-              const fileId = e.dataTransfer.getData('text/plain')
-              if (fileId) onFileDrop?.(fileId, folder.id)
+              // Folder drop has priority over file drop.
+              const draggedFolderId =
+                e.dataTransfer.getData(DND_FOLDER_MIME) || draggedFolderIdRef.current || ''
+              if (draggedFolderId) {
+                moveFolderWithToast(draggedFolderId, folder.id)
+              } else {
+                const fileId = e.dataTransfer.getData('text/plain')
+                if (fileId) onFileDrop?.(fileId, folder.id)
+              }
               setDragOverId(null)
               clearExpandTimer(folder.id)
               clearActivateTimer(folder.id)
@@ -732,6 +777,7 @@ export function DocumentFolderTree({
       expandedFileFolderIds,
       dragOverId,
       handleDelete,
+      moveFolderWithToast,
       openCreate,
       openMove,
       openRename,
@@ -829,8 +875,14 @@ export function DocumentFolderTree({
           }}
           onDrop={(e) => {
             e.preventDefault()
-            const fileId = e.dataTransfer.getData('text/plain')
-            if (fileId) onFileDrop?.(fileId, ROOT_FOLDER_ID)
+            const draggedFolderId =
+              e.dataTransfer.getData(DND_FOLDER_MIME) || draggedFolderIdRef.current || ''
+            if (draggedFolderId) {
+              moveFolderWithToast(draggedFolderId, ROOT_FOLDER_ID)
+            } else {
+              const fileId = e.dataTransfer.getData('text/plain')
+              if (fileId) onFileDrop?.(fileId, ROOT_FOLDER_ID)
+            }
             setDragOverId(null)
             const timer = dragActivateTimersRef.current.get(ROOT_FOLDER_ID)
             if (timer) {

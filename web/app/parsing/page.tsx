@@ -177,6 +177,7 @@ export default function ParsingPage() {
   const libraryFiles = useParsedFiles((state) => state.files)
   const updateParsedFile = useParsedFiles((state) => state.updateParsedFile)
   const removeParsedFile = useParsedFiles((state) => state.removeFile)
+  const moveFolder = useParsedFiles((state) => state.moveFolder)
   const activeFolderId = useParsedFiles((state) => state.activeFolderId)
   const folders = useParsedFiles((state) => state.folders)
   const createFolder = useParsedFiles((state) => state.createFolder)
@@ -623,12 +624,21 @@ export default function ParsingPage() {
 
   const handleFolderDrop = useCallback((e: React.DragEvent, folderId: string) => {
     e.preventDefault()
-    const fileId = e.dataTransfer.getData('text/plain')
-    if (fileId) {
-      moveFileToFolder(fileId, folderId)
+    const targetId = folderId || ROOT_FOLDER_ID
+
+    const draggedFolderId = e.dataTransfer.getData('application/x-mimirq-folder')
+    if (draggedFolderId) {
+      const ok = moveFolder(draggedFolderId, targetId)
+      if (ok) toast.success('文件夹已移动')
+      else toast.error('移动失败：目标目录不合法（可能是自身/子目录/不存在）')
+      setDragOverFolderId(null)
+      return
     }
+
+    const fileId = e.dataTransfer.getData('text/plain')
+    if (fileId) moveFileToFolder(fileId, targetId)
     setDragOverFolderId(null)
-  }, [moveFileToFolder])
+  }, [moveFileToFolder, moveFolder])
 
   // 解析文件（支持删除中断）
   const parseFile = async (fileId: string) => {
@@ -1119,6 +1129,15 @@ export default function ParsingPage() {
                           dragOverFolderId === folder.id && "bg-slate-50 ring-1 ring-slate-200",
                           activeFolderId === folder.id && "bg-slate-50 ring-1 ring-slate-200"
                         )}
+                        draggable
+                        onDragStart={(e) => {
+                          try {
+                            e.dataTransfer.setData('application/x-mimirq-folder', folder.id)
+                          } catch {
+                            // ignore
+                          }
+                          e.dataTransfer.effectAllowed = 'move'
+                        }}
                          onClick={() => setActiveFolderId(folder.id)}
                          onDragOver={(e) => handleFolderDragOver(e, folder.id)}
                          onDragLeave={() => setDragOverFolderId(null)}
