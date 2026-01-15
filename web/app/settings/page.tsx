@@ -1025,10 +1025,10 @@ export default function SettingsPage() {
               <section>
                 <div className="flex items-center justify-between mb-6">
                   <h2 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
-                    <Eye className="h-5 w-5 text-indigo-600" />
+                    <Eye className="h-5 w-5 text-sky-600" />
                     观测与调试
                   </h2>
-                  <div className="flex items-center gap-2 px-3 py-1 bg-indigo-50 text-indigo-700 rounded-full text-xs font-medium border border-indigo-100">
+                  <div className="flex items-center gap-2 px-3 py-1 bg-sky-50 text-sky-700 rounded-full text-xs font-medium border border-sky-100">
                     <span>保存后通常可立即生效</span>
                   </div>
                 </div>
@@ -1056,7 +1056,7 @@ export default function SettingsPage() {
                         className="shrink-0"
                       >
                         {((editedSettings.observability?.tool_call_log_enabled ?? settings?.observability?.tool_call_log_enabled) ?? DEFAULT_OBSERVABILITY.tool_call_log_enabled) ? (
-                          <ToggleRight className="w-10 h-10 text-indigo-600" />
+                          <ToggleRight className="w-10 h-10 text-sky-600" />
                         ) : (
                           <ToggleLeft className="w-10 h-10 text-gray-300 hover:text-gray-400" />
                         )}
@@ -1070,7 +1070,7 @@ export default function SettingsPage() {
                             type="checkbox"
                             checked={((editedSettings.observability?.tool_call_log_include_preview ?? settings?.observability?.tool_call_log_include_preview) ?? DEFAULT_OBSERVABILITY.tool_call_log_include_preview)}
                             onChange={(e) => updateObservability({ tool_call_log_include_preview: e.target.checked })}
-                            className="h-4 w-4 accent-indigo-600"
+                            className="h-4 w-4 accent-sky-600"
                           />
                           <span className="text-sm text-gray-700">包含结果 preview</span>
                         </div>
@@ -1110,7 +1110,7 @@ export default function SettingsPage() {
                         className="shrink-0"
                       >
                         {((editedSettings.observability?.agent_log_enabled ?? settings?.observability?.agent_log_enabled) ?? DEFAULT_OBSERVABILITY.agent_log_enabled) ? (
-                          <ToggleRight className="w-10 h-10 text-indigo-600" />
+                          <ToggleRight className="w-10 h-10 text-sky-600" />
                         ) : (
                           <ToggleLeft className="w-10 h-10 text-gray-300 hover:text-gray-400" />
                         )}
@@ -1124,7 +1124,7 @@ export default function SettingsPage() {
                             type="checkbox"
                             checked={((editedSettings.observability?.agent_log_include_execution_path ?? settings?.observability?.agent_log_include_execution_path) ?? DEFAULT_OBSERVABILITY.agent_log_include_execution_path)}
                             onChange={(e) => updateObservability({ agent_log_include_execution_path: e.target.checked })}
-                            className="h-4 w-4 accent-indigo-600"
+                            className="h-4 w-4 accent-sky-600"
                           />
                           <span className="text-sm text-gray-700">包含 execution path</span>
                         </div>
@@ -1164,7 +1164,7 @@ export default function SettingsPage() {
                         className="shrink-0"
                       >
                         {((editedSettings.safety?.pii_redaction_enabled ?? settings?.safety?.pii_redaction_enabled) ?? DEFAULT_SAFETY.pii_redaction_enabled) ? (
-                          <ToggleRight className="w-10 h-10 text-indigo-600" />
+                          <ToggleRight className="w-10 h-10 text-sky-600" />
                         ) : (
                           <ToggleLeft className="w-10 h-10 text-gray-300 hover:text-gray-400" />
                         )}
@@ -1216,7 +1216,7 @@ export default function SettingsPage() {
                         className="shrink-0"
                       >
                         {((editedSettings.langgraph?.use_subgraphs ?? settings?.langgraph?.use_subgraphs) ?? DEFAULT_LANGGRAPH.use_subgraphs) ? (
-                          <ToggleRight className="w-10 h-10 text-indigo-600" />
+                          <ToggleRight className="w-10 h-10 text-sky-600" />
                         ) : (
                           <ToggleLeft className="w-10 h-10 text-gray-300 hover:text-gray-400" />
                         )}
