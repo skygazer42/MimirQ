@@ -375,10 +375,22 @@ export function DocumentFolderTree({
 
   const handleMoveSubmit = useCallback(() => {
     if (!(dialog.open && dialog.mode === 'move')) return
-    moveFolder(dialog.folderId, moveParentId || ROOT_FOLDER_ID)
-    toast.success('文件夹已移动')
+    const targetParentId = moveParentId || ROOT_FOLDER_ID
+    const ok = moveFolder(dialog.folderId, targetParentId)
+    if (ok) {
+      toast.success('文件夹已移动')
+      closeDialog()
+      return
+    }
+    // Provide accurate feedback instead of always reporting success.
+    const currentParentId = folders.find((f) => f.id === dialog.folderId)?.parentId || ROOT_FOLDER_ID
+    if ((currentParentId || ROOT_FOLDER_ID) === (targetParentId || ROOT_FOLDER_ID)) {
+      toast.info('该文件夹已在目标目录')
+    } else {
+      toast.error('移动失败：目标目录不合法（可能是自身/子目录/不存在）')
+    }
     closeDialog()
-  }, [dialog, moveFolder, moveParentId, closeDialog])
+  }, [dialog, moveFolder, moveParentId, closeDialog, folders])
 
 
 
