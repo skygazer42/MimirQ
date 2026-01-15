@@ -1185,7 +1185,7 @@ export default function ParsingPage() {
                         icon={FileStack}
                         label="行数"
                         value={activeFile.stats.lineCount.toLocaleString()}
-                        color="indigo"
+                        color="cyan"
                       />
                       <StatCard
                         icon={Table2}
