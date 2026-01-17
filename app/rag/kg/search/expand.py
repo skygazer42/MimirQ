@@ -19,6 +19,7 @@ class ExpandResult:
     key_final: List[Dict[str, Any]]
     event_ids: List[str]
     clues: List[Dict[str, Any]]
+    clues_dropped: int
     event_scores: Dict[str, float]
 
 
@@ -32,12 +33,12 @@ class ExpandSearcher:
                 key_final=recall_result.key_final,
                 event_ids=recall_result.event_ids,
                 clues=recall_result.clues,
+                clues_dropped=0,
                 event_scores=recall_result.event_scores,
             )
 
         tracker = Tracker(config)
-        for clue in recall_result.clues:
-            tracker.clues.append(clue)
+        tracker.extend_clues(list(recall_result.clues or []))
 
         session = get_session()
         try:
@@ -45,10 +46,11 @@ class ExpandSearcher:
             event_repo = EventRepository(session)
             tenant_id = config.tenant_id or settings.DEFAULT_TENANT_ID
 
-            known_entities: Set[str] = {e["entity_id"] for e in recall_result.key_final}
+            known_entities: Set[str] = {e["entity_id"] for e in recall_result.key_final if e.get("entity_id")}
             entity_weights = dict(recall_result.key_weights)
-            discovered_events: List[str] = list(recall_result.event_ids)
-            current_entities = list(known_entities)
+            discovered_events: List[str] = list(recall_result.event_ids or [])
+            discovered_event_ids: Set[str] = set(discovered_events)
+            current_entities = [e["entity_id"] for e in (recall_result.key_final or []) if e.get("entity_id")]
 
             for hop in range(config.expand.max_hops):
                 if not current_entities:
@@ -60,7 +62,13 @@ class ExpandSearcher:
                     limit=config.expand.max_events_per_hop,
                     document_ids=config.document_ids,
                 )
-                new_event_ids = [str(e.id) for e in events if str(e.id) not in discovered_events]
+                new_event_ids: List[str] = []
+                for ev in events:
+                    ev_id = str(ev.id)
+                    if ev_id in discovered_event_ids:
+                        continue
+                    discovered_event_ids.add(ev_id)
+                    new_event_ids.append(ev_id)
                 if not new_event_ids:
                     break
                 discovered_events.extend(new_event_ids)
@@ -77,6 +85,7 @@ class ExpandSearcher:
 
                 # collect new entities from these events
                 new_entities: Dict[str, float] = {}
+                events_by_id = {str(ev.id): ev for ev in events}
                 for ev_id, ents in assoc_map.items():
                     for ent in ents:
                         ent_id = str(ent.id)
@@ -86,7 +95,11 @@ class ExpandSearcher:
                         new_entities[ent_id] = new_entities.get(ent_id, 0.0) + weight
                         tracker.add_clue(
                             stage=f"expand-hop-{hop+1}",
-                            from_node={"type": "event", "id": ev_id, "label": "event"},
+                            from_node=Tracker.build_event_node(
+                                events_by_id.get(ev_id) or {"id": ev_id},
+                                stage=f"expand-hop-{hop+1}",
+                                hop=hop + 1,
+                            ),
                             to_node=Tracker.build_entity_node(
                                 {"entity_id": ent_id, "name": ent.name, "type": ent.type, "hop": hop + 1}
                             ),
@@ -106,8 +119,12 @@ class ExpandSearcher:
                     entity_weights[ent_id] = entity_weights.get(ent_id, 0.0) * 0.5 + w * 0.5
                     current_entities.append(ent_id)
 
+                min_events = int(getattr(config.expand, "min_events_per_hop", 0) or 0)
+                if min_events > 0 and len(new_event_ids) < min_events:
+                    break
+
             # build key_final list
-            key_final: List[Dict[str, any]] = []
+            key_final: List[Dict[str, Any]] = []
             ent_objects = entity_repo.get_entities_by_ids(list(known_entities), tenant_id=tenant_id)
             for ent in ent_objects:
                 key_final.append(
@@ -125,6 +142,7 @@ class ExpandSearcher:
                 key_final=key_final,
                 event_ids=discovered_events,
                 clues=tracker.get_clues(),
+                clues_dropped=int(getattr(tracker, "clues_dropped", 0) or 0),
                 event_scores=recall_result.event_scores,
             )
         finally:

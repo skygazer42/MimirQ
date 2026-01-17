@@ -21,6 +21,7 @@ class RecallResult:
     key_final: List[Dict[str, Any]]
     event_ids: List[str]
     clues: List[Dict[str, Any]]
+    clues_dropped: int
     key_weights: Dict[str, float]
     event_scores: Dict[str, float]
 
@@ -97,6 +98,7 @@ class RecallSearcher:
                 limit=config.recall.vector_candidates * 2,
                 document_ids=config.document_ids,
             )
+            event_ids_from_entities = list(event_ids_from_entities)[: config.rerank.max_key_recall_results]
 
             # === Step3: query -> events (vector) ===
             content_results = event_repo.search_similar_by_content(
@@ -110,6 +112,7 @@ class RecallSearcher:
                 for item in content_results
                 if item.get("similarity", 0.0) >= config.recall.event_similarity_threshold
             ]
+            event_query_related = event_query_related[: config.rerank.max_query_recall_results]
 
             for ev in event_query_related:
                 tracker.add_clue(
@@ -180,6 +183,7 @@ class RecallSearcher:
                 key_final=key_final,
                 event_ids=merged_event_ids,
                 clues=tracker.get_clues(),
+                clues_dropped=int(getattr(tracker, "clues_dropped", 0) or 0),
                 key_weights=key_weights,
                 event_scores=event_scores,
             )
