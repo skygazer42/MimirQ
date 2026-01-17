@@ -27,7 +27,7 @@ class UserService:
     def get_by_id(db: Session, user_id: str) -> User | None:
         try:
             user_uuid = UUID(str(user_id))
-        except Exception:
+        except ValueError:
             return None
         return db.query(User).filter(User.id == user_uuid).first()
 
@@ -90,7 +90,7 @@ class UserService:
             return
         try:
             tenant_id = UUID(raw_tenant)
-        except Exception:
+        except ValueError:
             return
 
         tenant = db.query(Tenant).filter(Tenant.id == tenant_id).first()

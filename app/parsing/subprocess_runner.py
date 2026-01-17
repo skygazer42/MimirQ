@@ -217,13 +217,12 @@ async def run_subprocess_worker(
         try:
             if log_file is not None:
                 log_file.close()
-        except Exception:
+        except (OSError, ValueError):
             pass
 
         # Best-effort cleanup.
         for p in (payload_path, result_path, log_path):
             try:
-                if p.exists():
-                    p.unlink()
-            except Exception:
+                p.unlink(missing_ok=True)
+            except OSError:
                 pass
