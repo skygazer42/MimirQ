@@ -24,6 +24,9 @@ import {
   PopoverTrigger,
 } from '@/components/ui/popover'
 
+import getCaretCoordinates from 'textarea-caret'
+import { SlashMenu } from '@/components/chat/slash-menu'
+
 const SELECT_DEFAULT_VALUE = '__mimirq_default__'
 const DEFAULT_VISIBLE_MESSAGES = 80
 const LOAD_MORE_STEP = 40
@@ -63,6 +66,37 @@ export function ChatArea({
   const autoScrollRef = useRef(true)
   const scrollRafRef = useRef<number | null>(null)
   const ragSettingsId = 'rag-settings-panel'
+
+  // Slash Menu State
+  const [slashOpen, setSlashOpen] = useState(false)
+  const [slashPos, setSlashPos] = useState({ top: 0, left: 0 })
+
+  const handleKeyUp = useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === '/') {
+       const el = e.currentTarget
+       const caret = getCaretCoordinates(el, el.selectionEnd)
+       const rect = el.getBoundingClientRect()
+       setSlashPos({
+           top: rect.top + caret.top + 20, // offset
+           left: rect.left + caret.left
+       })
+       setSlashOpen(true)
+    }
+  }, [])
+
+  const handleSlashSelect = useCallback((cmd: string) => {
+      setSlashOpen(false)
+      // Logic to handle command selection (e.g., clear text, insert template)
+      // For now, just a toast
+      toast.info(`Selected command: ${cmd}`)
+      
+      // Remove the slash
+      setInputValue(prev => prev.slice(0, -1)) 
+      
+      if (cmd === 'clear') {
+          resetConversation()
+      }
+  }, [resetConversation])
 
   // Load prompt templates
   useEffect(() => {
@@ -408,6 +442,7 @@ export function ChatArea({
               value={inputValue}
               onChange={(e) => setInputValue(e.target.value)}
               onKeyDown={handleKeyDown}
+              onKeyUp={handleKeyUp}
               placeholder="问点什么... (Shift + Enter 换行)"
               autoFocus
               className="w-full px-5 py-4 pr-16 resize-none outline-none rounded-3xl max-h-48 bg-transparent text-sm leading-relaxed placeholder:text-muted-foreground/60 scrollbar-hide"
@@ -443,13 +478,19 @@ export function ChatArea({
             </div>
           </div>
           
-          <div className="text-center">
-            <p className="text-[10px] text-muted-foreground/40 font-medium tracking-widest uppercase scale-90">
-                AI can make mistakes. Check important info.
-            </p>
+          <p className="text-[10px] text-slate-400 dark:text-slate-500 text-center font-medium tracking-wide opacity-0 group-hover:opacity-100 transition-opacity duration-500">
+             POWERED BY MIMIRQ AI
+          </p>
           </div>
         </div>
       </div>
+      
+      <SlashMenu 
+        open={slashOpen} 
+        onOpenChange={setSlashOpen} 
+        onSelect={handleSlashSelect} 
+        position={slashPos} 
+      />
     </div>
   )
 }

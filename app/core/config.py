@@ -476,7 +476,16 @@ class Settings(BaseSettings):
     KG_SEARCH_MAX_CLUES: int = 2000
     # - Upper bound for event candidates passed into rerank (0 disables).
     KG_SEARCH_MAX_RERANK_CANDIDATES: int = 500
+    # - Disable clue generation entirely (saves CPU/memory; response still contains `clues: []`).
+    KG_SEARCH_CLUES_ENABLED: bool = True
+    # - Truncate clue node content/description (0 disables).
+    KG_SEARCH_NODE_TEXT_MAX_CHARS: int = 400
+    # - Global KG search timeout (seconds, 0 disables).
+    KG_SEARCH_TIMEOUT_SEC: float = 0.0
     KG_SEARCH_METRICS_ENABLED: bool = False
+    # KG rerank guardrails.
+    # - Cap PageRank graph edge count (0 disables).
+    KG_PAGERANK_MAX_EDGES: int = 0
     CHAT_HISTORY_WINDOW: int = 5
     # Allow chat even when no accessible documents exist (dev-friendly).
     CHAT_ALLOW_EMPTY_DOCUMENTS: bool = True

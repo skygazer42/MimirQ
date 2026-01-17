@@ -198,3 +198,30 @@
 
 - KG API：
   - `KG_API_MAX_DOCUMENT_IDS=500`（统一约束 `/kg/graph` 与 `/kg/search` 等接口的 document_ids 范围）
+
+---
+
+## 第五阶段（81–90）：KG Search 性能 / 超时 / 响应体积优化清单
+
+> 目标：进一步降低 KG search 端到端延迟与外部调用次数，增强超时可控性，并继续压缩 clues 相关响应体积（可开关、可截断）。
+
+81. [x] **query embedding 复用**：recall 生成一次 embedding，rerank 复用避免二次调用
+82. [x] **全链路超时**：新增 `KG_SEARCH_TIMEOUT_SEC`（0=禁用），超时返回 504（API 层）
+83. [x] **clues 总开关**：新增 `KG_SEARCH_CLUES_ENABLED`，关闭时不生成 clues（节省 CPU/内存）
+84. [x] **node 文本截断**：新增 `KG_SEARCH_NODE_TEXT_MAX_CHARS`，对 clue node 的 content/description 截断
+85. [x] **expand 早停**：当已达到 `KG_SEARCH_MAX_RERANK_CANDIDATES` 时提前停止后续 hop
+86. [x] **PageRank 构图优化**：用 entity->events 方式构图，避免 O(n^2) 交集
+87. [x] **PageRank 迭代优化**：稀疏传播计算，避免每轮 O(n^2) 扫描
+88. [x] **RRF recall 排序优化**：仅对候选集合排序并加稳定 tie-breaker（更快更稳）
+89. [x] **单测覆盖**：覆盖 embedding 复用 / 超时 / 截断 / 早停 至少 3 项
+90. [x] **文档对齐**：勾选完成项并补充默认值/推荐值
+
+### 阶段五新增/相关配置（默认值）
+
+- KG search：
+  - `KG_SEARCH_TIMEOUT_SEC=0`（0=禁用；建议线上按 SLA 设置）
+  - `KG_SEARCH_CLUES_ENABLED=true`
+  - `KG_SEARCH_NODE_TEXT_MAX_CHARS=400`（0=禁用）
+
+- KG rerank：
+  - `KG_PAGERANK_MAX_EDGES=0`（0=禁用；可用于防止极端候选集构图过慢）

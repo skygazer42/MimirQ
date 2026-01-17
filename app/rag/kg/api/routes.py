@@ -1,3 +1,4 @@
+import asyncio
 from uuid import UUID
 import zlib
 
@@ -1249,6 +1250,8 @@ async def run_kg_search(
             tenant_id=tenant_id,
             document_ids=allowed_doc_ids,
         )
+    except (asyncio.TimeoutError, TimeoutError) as exc:
+        raise HTTPException(status_code=504, detail="KG search timed out") from exc
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"KG search failed: {exc}") from exc
 

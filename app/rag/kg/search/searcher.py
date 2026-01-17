@@ -1,6 +1,7 @@
 """
 Unified entry for KG search: recall -> expand -> rerank.
 """
+import asyncio
 import time
 from typing import Any, Dict
 
@@ -44,6 +45,28 @@ class KGSearcher:
         self.expand_searcher = ExpandSearcher()
 
     async def search(self, config: SearchConfig) -> Dict[str, Any]:
+        timeout_sec = float(getattr(settings, "KG_SEARCH_TIMEOUT_SEC", 0.0) or 0.0)
+        if timeout_sec <= 0:
+            return await self._search_impl(config)
+
+        t0 = time.perf_counter()
+        try:
+            return await asyncio.wait_for(self._search_impl(config), timeout=timeout_sec)
+        except asyncio.TimeoutError:
+            if bool(getattr(settings, "KG_SEARCH_METRICS_ENABLED", False)):
+                log_metrics(
+                    {
+                        "event": "kg.search.timeout",
+                        "tenant_id": str(config.tenant_id) if config.tenant_id else None,
+                        "doc_count": int(len(config.document_ids or [])),
+                        "query_chars": int(len(config.query or "")),
+                        "timeout_sec": float(timeout_sec),
+                        "elapsed_sec": round(float(time.perf_counter() - t0), 3),
+                    }
+                )
+            raise
+
+    async def _search_impl(self, config: SearchConfig) -> Dict[str, Any]:
         metrics_enabled = bool(getattr(settings, "KG_SEARCH_METRICS_ENABLED", False))
         doc_count = len(config.document_ids or [])
         query_chars = len(config.query or "")
@@ -103,6 +126,7 @@ class KGSearcher:
             config=config,
             event_scores=expand_result.event_scores,
             key_final=expand_result.key_final,
+            query_vector=getattr(recall_result, "query_vector", None),
         )
         rerank_elapsed = time.perf_counter() - t0
 

@@ -51,15 +51,25 @@ class ExpandSearcher:
             discovered_events: List[str] = list(recall_result.event_ids or [])
             discovered_event_ids: Set[str] = set(discovered_events)
             current_entities = [e["entity_id"] for e in (recall_result.key_final or []) if e.get("entity_id")]
+            max_candidates = max(0, int(getattr(settings, "KG_SEARCH_MAX_RERANK_CANDIDATES", 0) or 0))
 
             for hop in range(config.expand.max_hops):
                 if not current_entities:
                     break
+                if max_candidates > 0 and len(discovered_event_ids) >= max_candidates:
+                    break
+
+                limit = int(config.expand.max_events_per_hop)
+                if max_candidates > 0:
+                    remaining = max(0, int(max_candidates) - int(len(discovered_event_ids)))
+                    if remaining <= 0:
+                        break
+                    limit = max(1, min(limit, remaining))
 
                 events = event_repo.find_events_by_entities(
                     current_entities,
                     tenant_id=tenant_id,
-                    limit=config.expand.max_events_per_hop,
+                    limit=limit,
                     document_ids=config.document_ids,
                 )
                 new_event_ids: List[str] = []
@@ -72,6 +82,8 @@ class ExpandSearcher:
                 if not new_event_ids:
                     break
                 discovered_events.extend(new_event_ids)
+                if max_candidates > 0 and len(discovered_event_ids) >= max_candidates:
+                    break
 
                 # score new events using existing entity weights
                 assoc_map = event_repo.get_entities_for_events(new_event_ids, tenant_id=tenant_id)

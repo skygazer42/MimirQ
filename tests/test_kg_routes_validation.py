@@ -97,3 +97,27 @@ async def test_kg_search_tenant_mismatch(monkeypatch: pytest.MonkeyPatch):
     with pytest.raises(HTTPException) as exc:
         await run_kg_search(payload=payload, tenant_id=UUID(int=3), account_id="u", db=object())
     assert exc.value.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_kg_search_timeout_returns_504(monkeypatch: pytest.MonkeyPatch):
+    import asyncio
+    from app.core import config as config_mod
+    from app.rag.kg.api.routes import run_kg_search
+    from app.rag.kg.schemas import KGSearchRequest
+    from app.services.dataset_service import DatasetService
+    import app.rag.kg.api.routes as routes_mod
+
+    monkeypatch.setattr(config_mod.settings, "KG_ENABLED", True, raising=False)
+    monkeypatch.setattr(DatasetService, "ensure_member", lambda *_a, **_k: None, raising=True)
+    monkeypatch.setattr(routes_mod, "_resolve_allowed_documents", lambda **_k: [UUID(int=2)], raising=True)
+
+    async def _fake_kg_search(*_a, **_k):  # noqa: ANN001
+        raise asyncio.TimeoutError("boom")
+
+    monkeypatch.setattr(routes_mod, "kg_search", _fake_kg_search, raising=True)
+
+    payload = KGSearchRequest(query="q", tenant_id=None, document_ids=[UUID(int=2)])
+    with pytest.raises(HTTPException) as exc:
+        await run_kg_search(payload=payload, tenant_id=UUID(int=1), account_id="u", db=object())
+    assert exc.value.status_code == 504

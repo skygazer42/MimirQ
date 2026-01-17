@@ -18,6 +18,8 @@ class RerankRRFSearcher:
         config: SearchConfig,
         event_ids: List[str],
         event_scores: Dict[str, float],
+        *,
+        query_vector: List[float] | None = None,
     ) -> Dict[str, Any]:
         session = get_session()
         try:
@@ -26,10 +28,11 @@ class RerankRRFSearcher:
             if not events:
                 return {"events": [], "clues": [], "stats": {}}
 
-            query_vec = await self.processor.generate_embedding(config.query)
+            query_vec = query_vector if query_vector is not None else await self.processor.generate_embedding(config.query)
 
             # Rank1: recall scores
-            recall_rank = sorted(event_scores.items(), key=lambda x: x[1], reverse=True)
+            recall_scores = {str(eid): float(event_scores.get(str(eid), 0.0) or 0.0) for eid in event_ids if eid}
+            recall_rank = sorted(recall_scores.items(), key=lambda x: (-x[1], x[0]))
             recall_order = {eid: idx for idx, (eid, _) in enumerate(recall_rank)}
 
             # Rank2: query similarity
@@ -37,7 +40,7 @@ class RerankRRFSearcher:
             for ev in events:
                 sim = cosine_similarity(query_vec, ev.content_vector or [])
                 sim_scores[str(ev.id)] = sim
-            sim_rank = sorted(sim_scores.items(), key=lambda x: x[1], reverse=True)
+            sim_rank = sorted(sim_scores.items(), key=lambda x: (-x[1], x[0]))
             sim_order = {eid: idx for idx, (eid, _) in enumerate(sim_rank)}
 
             fused = {}
