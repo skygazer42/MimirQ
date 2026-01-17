@@ -2,9 +2,12 @@
 
 import { useCallback } from 'react'
 import { useRouter } from 'next/navigation'
+import { cn } from '@/lib/utils'
 
 import { Navbar } from '@/components/navbar'
 import { ChatArea } from '@/components/chat-area'
+import { DocumentViewerPanel } from '@/components/document-viewer-panel'
+import { useDocumentView } from '@/store/document-view'
 
 export function ChatPageClient({
   initialConversationId,
@@ -14,6 +17,7 @@ export function ChatPageClient({
   initialPrompt?: string
 }) {
   const router = useRouter()
+  const { isOpen } = useDocumentView()
 
   const handleConversationId = useCallback(
     (conversationId: string) => {
@@ -26,15 +30,21 @@ export function ChatPageClient({
   )
 
   return (
-    <div className="flex h-screen overflow-hidden bg-white">
+    <div className="flex h-screen overflow-hidden bg-background">
       <Navbar />
-      <main className="flex-1 flex flex-col overflow-hidden">
+      <main 
+        className={cn(
+            "flex-1 flex flex-col overflow-hidden transition-all duration-300 ease-in-out",
+            isOpen ? "mr-[40vw] xl:mr-[40vw] lg:mr-[500px]" : "mr-0"
+        )}
+      >
         <ChatArea
           initialConversationId={initialConversationId}
           initialPrompt={initialPrompt}
           onConversationId={handleConversationId}
         />
       </main>
+      <DocumentViewerPanel />
     </div>
   )
 }

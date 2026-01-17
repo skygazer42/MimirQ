@@ -14,6 +14,7 @@ import type { Citation, Message } from '@/types'
 import { cn } from '@/lib/utils'
 import { API_BASE_URL, toAbsoluteBackendUrl } from '@/lib/env'
 import { getAccessToken, getTenantId } from '@/lib/auth-storage'
+import { useDocumentView } from '@/store/document-view'
 
 let BACKEND_ORIGIN = ''
 try {
@@ -301,6 +302,7 @@ export const ChatMessageItem = memo(function ChatMessageItem({
 })
 
 const CitationCard = memo(function CitationCard({ citation, index }: { citation: Citation; index: number }) {
+  const { openDocument } = useDocumentView()
   const [hideImage, setHideImage] = useState(false)
   const imgUrl = (() => {
     if (!citation.img_url) return null
@@ -309,8 +311,19 @@ const CitationCard = memo(function CitationCard({ citation, index }: { citation:
     return maybeAttachImageAuthToken(resolved)
   })()
 
+  const handleClick = useCallback((e: React.MouseEvent) => {
+    e.stopPropagation()
+    // Open document viewer panel
+    if (citation.document_id) {
+        openDocument(citation.document_id, citation.chunk_id)
+    }
+  }, [citation.document_id, citation.chunk_id, openDocument])
+
   return (
-    <div className="group/card text-xs bg-card hover:bg-secondary/30 rounded-lg p-3 border border-border/60 hover:border-primary/30 transition-all duration-300 cursor-pointer shadow-sm hover:shadow-md hover:-translate-y-0.5">
+    <div 
+        onClick={handleClick}
+        className="group/card text-xs bg-card hover:bg-secondary/30 rounded-lg p-3 border border-border/60 hover:border-primary/30 transition-all duration-300 cursor-pointer shadow-sm hover:shadow-md hover:-translate-y-0.5"
+    >
       <div className="flex items-start gap-3">
         <span className="flex-shrink-0 w-5 h-5 bg-secondary text-primary border border-border rounded flex items-center justify-center text-[10px] font-bold group-hover/card:bg-primary group-hover/card:text-primary-foreground transition-colors">
           {index + 1}
