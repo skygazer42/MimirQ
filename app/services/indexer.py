@@ -953,7 +953,16 @@ class Indexer:
                 "index_kind": IndexKind.EVENT.value,
             }
             if isinstance(refs, dict):
-                for k in ("chunk_index", "page", "start_char", "end_char", "chunk_key", "content_hash", "source"):
+                for k in (
+                    "chunk_index",
+                    "page",
+                    "start_char",
+                    "end_char",
+                    "chunk_key",
+                    "content_hash",
+                    "content_len",
+                    "source",
+                ):
                     v = refs.get(k)
                     if v is None:
                         continue
