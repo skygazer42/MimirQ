@@ -120,35 +120,10 @@ class ParsingStage:
                 / ".mimirq_parse"
                 / f"{str(document_id)}-ragflow-{uuid.uuid4().hex}"
             )
+            cancel_check = self._svc._build_cancel_check(db=db, tenant_id=tenant_id, document_id=document_id)
 
-            last_check = 0.0
-            cached_cancel = False
-
-            async def cancel_check() -> bool:
-                nonlocal last_check, cached_cancel
-                now = time.monotonic()
-                if now - last_check < 1.0:
-                    return cached_cancel
-                last_check = now
-                db_doc = (
-                    db.query(DBDocument)
-                    .populate_existing()
-                    .filter(DBDocument.id == document_id, DBDocument.tenant_id == tenant_id)
-                    .first()
-                )
-                if not db_doc:
-                    cached_cancel = True
-                    return True
-                status = str(db_doc.status or "").lower()
-                if status == "cancelled":
-                    cached_cancel = True
-                    return True
-                meta = db_doc.doc_metadata or {}
-                if isinstance(meta, dict) and bool(meta.get("cancel_requested")):
-                    cached_cancel = True
-                    return True
-                cached_cancel = False
-                return False
+            async def cancel_check_worker() -> bool:
+                return await cancel_check()
 
             try:
                 result = await run_subprocess_worker(
@@ -161,7 +136,7 @@ class ParsingStage:
                         "mode": "ingest",
                         "artifact_root": str(artifact_root),
                     },
-                    cancel_check=cancel_check,
+                    cancel_check=cancel_check_worker,
                     timeout_sec=float(getattr(settings, "TASK_JOB_TIMEOUT_SEC", 60 * 30) or 60 * 30),
                 )
             except SubprocessCancelled as exc:
@@ -220,35 +195,10 @@ class ParsingStage:
             / ".mimirq_parse"
             / f"{str(document_id)}-parse-{uuid.uuid4().hex}"
         )
+        cancel_check = self._svc._build_cancel_check(db=db, tenant_id=tenant_id, document_id=document_id)
 
-        last_check = 0.0
-        cached_cancel = False
-
-        async def cancel_check() -> bool:
-            nonlocal last_check, cached_cancel
-            now = time.monotonic()
-            if now - last_check < 1.0:
-                return cached_cancel
-            last_check = now
-            db_doc = (
-                db.query(DBDocument)
-                .populate_existing()
-                .filter(DBDocument.id == document_id, DBDocument.tenant_id == tenant_id)
-                .first()
-            )
-            if not db_doc:
-                cached_cancel = True
-                return True
-            status = str(db_doc.status or "").lower()
-            if status == "cancelled":
-                cached_cancel = True
-                return True
-            meta = db_doc.doc_metadata or {}
-            if isinstance(meta, dict) and bool(meta.get("cancel_requested")):
-                cached_cancel = True
-                return True
-            cached_cancel = False
-            return False
+        async def cancel_check_worker() -> bool:
+            return await cancel_check()
 
         try:
             payload = {
@@ -267,7 +217,7 @@ class ParsingStage:
             parsed = await run_subprocess_worker(
                 tenant_id=tenant_id,
                 payload=payload,
-                cancel_check=cancel_check,
+                cancel_check=cancel_check_worker,
                 timeout_sec=float(getattr(settings, "TASK_JOB_TIMEOUT_SEC", 60 * 30) or 60 * 30),
             )
         except SubprocessCancelled as exc:
@@ -512,6 +462,52 @@ class DocumentProcessorService:
     # Preset strategies (parse + chunk directly).
     RAGFLOW_STRATEGIES = {"ragflow_naive", "ragflow_book", "ragflow_laws", "ragflow_email"}
 
+    def _build_cancel_check(
+        self,
+        *,
+        db: Session,
+        tenant_id: UUID,
+        document_id: UUID,
+        poll_interval_sec: float = 1.0,
+    ):
+        """
+        Build a cached cancel-check closure.
+
+        This is shared by:
+        - ingest pipeline (DocumentProcessorService)
+        - parsing subprocess runner (ParsingStage)
+        """
+        last_check = 0.0
+        cached_cancel = False
+
+        async def cancel_check(*, force: bool = False) -> bool:
+            nonlocal last_check, cached_cancel
+            now = time.monotonic()
+            if not force and (now - last_check) < float(poll_interval_sec):
+                return cached_cancel
+            last_check = now
+            db_doc = (
+                db.query(DBDocument)
+                .populate_existing()
+                .filter(DBDocument.id == document_id, DBDocument.tenant_id == tenant_id)
+                .first()
+            )
+            if not db_doc:
+                cached_cancel = True
+                return True
+            status = str(db_doc.status or "").lower()
+            if status == "cancelled":
+                cached_cancel = True
+                return True
+            meta = db_doc.doc_metadata or {}
+            if isinstance(meta, dict) and bool(meta.get("cancel_requested")):
+                cached_cancel = True
+                return True
+            cached_cancel = False
+            return False
+
+        return cancel_check
+
     async def process_document(
         self,
         file_path: Path,
@@ -545,34 +541,7 @@ class DocumentProcessorService:
             owns_db = True
 
         try:
-            last_cancel_check = 0.0
-            cached_cancel = False
-
-            async def cancel_check(*, force: bool = False) -> bool:
-                nonlocal last_cancel_check, cached_cancel
-                now = time.monotonic()
-                if not force and now - last_cancel_check < 1.0:
-                    return cached_cancel
-                last_cancel_check = now
-                db_doc = (
-                    db.query(DBDocument)
-                    .populate_existing()
-                    .filter(DBDocument.id == document_id, DBDocument.tenant_id == tenant_id)
-                    .first()
-                )
-                if not db_doc:
-                    cached_cancel = True
-                    return True
-                status = str(db_doc.status or "").lower()
-                if status == "cancelled":
-                    cached_cancel = True
-                    return True
-                meta = db_doc.doc_metadata or {}
-                if isinstance(meta, dict) and bool(meta.get("cancel_requested")):
-                    cached_cancel = True
-                    return True
-                cached_cancel = False
-                return False
+            cancel_check = self._build_cancel_check(db=db, tenant_id=tenant_id, document_id=document_id)
 
             async def raise_if_cancelled(*, force: bool = False) -> None:
                 if await cancel_check(force=force):
@@ -688,6 +657,12 @@ class DocumentProcessorService:
                             img_id = item.get("img_id") if isinstance(item, dict) else None
                             if isinstance(img_id, str) and img_id.strip():
                                 document_img_ids.add(img_id)
+                    artifact_dir = (doc.metadata or {}).get("artifact_dir")
+                    if isinstance(artifact_dir, str) and artifact_dir.strip():
+                        artifact_dirs.add(artifact_dir.strip())
+            # Also collect artifact directories from ragflow chunks (subprocess image materialization).
+            if parsed.chunks:
+                for doc in parsed.chunks:
                     artifact_dir = (doc.metadata or {}).get("artifact_dir")
                     if isinstance(artifact_dir, str) and artifact_dir.strip():
                         artifact_dirs.add(artifact_dir.strip())
