@@ -44,6 +44,33 @@ def _compute_content_hash(text: str) -> str:
     return hashlib.sha256(normalized.encode("utf-8")).hexdigest()
 
 
+def _is_chunk_unchanged(
+    prior_events: Sequence[KgSourceEvent],
+    *,
+    content_hash: str,
+    prompt_selector_expected: dict[str, str],
+) -> bool:
+    if not prior_events:
+        return False
+    if not isinstance(content_hash, str) or not content_hash.strip():
+        return False
+
+    for ev in prior_events:
+        refs = ev.references if isinstance(getattr(ev, "references", None), dict) else {}
+        prior_hash = (refs.get("content_hash") or "").strip() if isinstance(refs, dict) else ""
+        if not prior_hash or prior_hash != content_hash:
+            return False
+
+        extra = getattr(ev, "extra_data", None)
+        if not isinstance(extra, dict):
+            return False
+        for key in _PROMPT_SELECTOR_KEYS:
+            if _normalize_prompt_selector_value(extra.get(key)) != prompt_selector_expected.get(key, ""):
+                return False
+
+    return True
+
+
 class EventExtractor:
     """Orchestrates event extraction for a batch of chunks."""
 
@@ -134,14 +161,6 @@ class EventExtractor:
                 "kg_prompt_ab_experiment_key": _normalize_prompt_selector_value(config.prompt_ab_experiment_key),
             }
 
-            def _selector_matches(extra: object) -> bool:
-                if not isinstance(extra, dict):
-                    return False
-                for key in _PROMPT_SELECTOR_KEYS:
-                    if _normalize_prompt_selector_value(extra.get(key)) != prompt_selector_expected[key]:
-                        return False
-                return True
-
             # Ensure chunk hashes/keys exist even if upstream parsing didn't inject them.
             chunk_hash_by_id: dict[object, str] = {}
             chunk_key_by_id: dict[object, str] = {}
@@ -185,18 +204,7 @@ class EventExtractor:
                     if not cur_hash:
                         continue
 
-                    ok = True
-                    for ev in prior:
-                        refs = ev.references if isinstance(getattr(ev, "references", None), dict) else {}
-                        prior_hash = (refs.get("content_hash") or "").strip() if isinstance(refs, dict) else ""
-                        if not prior_hash or prior_hash != cur_hash:
-                            ok = False
-                            break
-                        if not _selector_matches(getattr(ev, "extra_data", None)):
-                            ok = False
-                            break
-
-                    if ok:
+                    if _is_chunk_unchanged(prior, content_hash=cur_hash, prompt_selector_expected=prompt_selector_expected):
                         skipped_chunk_ids.add(ch.id)
                         kept_events.extend(prior)
 

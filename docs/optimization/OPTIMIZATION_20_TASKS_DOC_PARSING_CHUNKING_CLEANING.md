@@ -52,29 +52,46 @@
 
 ### A. KG 抽取与索引（21–30）
 
-21. [ ] **增量抽取**：基于 `chunk.content_hash` 跳过“未变化且 prompt 选择一致”的 chunks（可开关）
-22. [ ] **单 chunk 超时**：LLM 抽取支持 per-chunk timeout（超时按失败隔离，不拖死整批）
-23. [ ] **上下文上限可配**：KG 抽取 prompt 的 `context` 最大字符数可配置
-24. [ ] **上下文窗口**：可选在抽取时加入邻近 chunks 作为背景上下文（不改变归属 chunk_id）
-25. [ ] **回写文档元信息**：抽取完成后写入 `kg_event_count/kg_skipped_chunks/kg_failed_chunks/kg_extracted_at`
-26. [ ] **hash 兜底**：chunk metadata 缺少 `content_hash` 时，使用规范化内容计算
-27. [ ] **prompt 一致性**：prompt_template 选择变化时，强制重抽（不走“未变化跳过”）
-28. [ ] **向量 metadata 更完整**：KG event/entity 向量索引 metadata 补齐 `chunk_key/content_hash/start/end`
-29. [ ] **图谱/expand SQL 预筛**：graph/expand 都在 SQL 层做 top-entity 预筛，减少 join 行
-30. [ ] **共现边参数化**：每个事件参与共现计算的 entity 数上限支持 settings 配置
+21. [x] **增量抽取**：基于 `chunk.content_hash` 跳过“未变化且 prompt 选择一致”的 chunks（可开关）
+22. [x] **单 chunk 超时**：LLM 抽取支持 per-chunk timeout（超时按失败隔离，不拖死整批）
+23. [x] **上下文上限可配**：KG 抽取 prompt 的 `context` 最大字符数可配置
+24. [x] **上下文窗口**：可选在抽取时加入邻近 chunks 作为背景上下文（不改变归属 chunk_id）
+25. [x] **回写文档元信息**：抽取完成后写入 `kg_event_count/kg_skipped_chunks/kg_failed_chunks/kg_extracted_at`
+26. [x] **hash 兜底**：chunk metadata 缺少 `content_hash` 时，使用规范化内容计算
+27. [x] **prompt 一致性**：prompt_template 选择变化时，强制重抽（不走“未变化跳过”）
+28. [x] **向量 metadata 更完整**：KG event/entity 向量索引 metadata 补齐 `chunk_key/content_hash/start/end`
+29. [x] **图谱/expand SQL 预筛**：graph/expand 都在 SQL 层做 top-entity 预筛，减少 join 行
+30. [x] **共现边参数化**：每个事件参与共现计算的 entity 数上限支持 settings 配置
 
 ### B. 切块与资产（31–36）
 
-31. [ ] **chunk 元数据兜底**：持久化前强制补齐 `chunk_key/content_hash/content_len`
-32. [ ] **chunk 上限保护**：新增 `MAX_CHUNKS_PER_DOCUMENT`（0=不限），超限截断并记录原因
-33. [ ] **MinIO chunk_key 统一**：MinIO 上传使用 `chunk_key`（默认回退 chunk_index），避免漂移
-34. [ ] **BM25 metadata 补齐**：BM25 侧也补齐 `content_hash/chunk_key/content_len` 便于排障
-35. [ ] **去重可观测性**：chunk 去重/截断写入 metrics 与 doc_metadata 计数
-36. [ ] **安全边界**：对内联图片/解析产物路径继续保持 tenant 目录隔离与清理安全
+31. [x] **chunk 元数据兜底**：持久化前强制补齐 `chunk_key/content_hash/content_len`
+32. [x] **chunk 上限保护**：新增 `MAX_CHUNKS_PER_DOCUMENT`（0=不限），超限截断并记录原因
+33. [x] **MinIO chunk_key 统一**：MinIO 上传使用 `chunk_key`（默认回退 chunk_index），避免漂移
+34. [x] **BM25 metadata 补齐**：BM25 侧也补齐 `content_hash/chunk_key/content_len` 便于排障
+35. [x] **去重可观测性**：chunk 去重/截断写入 metrics 与 doc_metadata 计数
+36. [x] **安全边界**：对内联图片/解析产物路径继续保持 tenant 目录隔离与清理安全
 
 ### C. 解析子进程安全与稳健（37–40）
 
-37. [ ] **payload 体积上限**：subprocess payload JSON 写盘前做 size 限制（避免 OOM/磁盘爆）
-38. [ ] **result 体积上限**：读取 result.json 前做 size 限制（避免异常输出拖垮主进程）
-39. [ ] **测试覆盖**：为增量抽取/超时/上限/size guard 增加单测
-40. [ ] **文档对齐**：标记完成项、补开关说明与推荐默认值
+37. [x] **payload 体积上限**：subprocess payload JSON 写盘前做 size 限制（避免 OOM/磁盘爆）
+38. [x] **result 体积上限**：读取 result.json 前做 size 限制（避免异常输出拖垮主进程）
+39. [x] **测试覆盖**：为增量抽取/超时/上限/size guard 增加单测
+40. [x] **文档对齐**：标记完成项、补开关说明与推荐默认值
+
+### 阶段二新增/相关配置（默认值）
+
+- KG 抽取增量/上下文/超时：
+  - `KG_EXTRACT_SKIP_UNCHANGED_CHUNKS=false`：仅当 `replace_existing=true` 且（`content_hash` + prompt selector）一致时跳过未变化 chunk
+  - `KG_EXTRACT_CHUNK_TIMEOUT_SEC=0`：单 chunk 超时（0=禁用）
+  - `KG_EXTRACT_CONTEXT_WINDOW_CHUNKS=0`：邻近 chunk 上下文窗口（0=禁用）
+  - `KG_EXTRACT_CONTEXT_MAX_CHARS=8000`：prompt context 截断上限
+  - `KG_ENTITY_LINK_MAX_ENTITIES_PER_EVENT=60`：共现边计算时每事件参与实体数上限（0=不限制，仍受整体 max_links/max_entity_links 预算约束）
+
+- 切块与索引兜底：
+  - `MAX_CHUNKS_PER_DOCUMENT=0`：每文档最大 chunk 数（0=不限）
+  - `CHUNK_DEDUP_ENABLED=false`：同文档内“完全重复文本”chunk 去重开关
+
+- 解析子进程安全：
+  - `SUBPROCESS_PAYLOAD_MAX_BYTES=2000000`：payload JSON 上限（0=禁用）
+  - `SUBPROCESS_RESULT_MAX_BYTES=50000000`：result JSON 上限（0=禁用）
