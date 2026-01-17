@@ -54,7 +54,7 @@ export function DocumentViewerPanel() {
     <div 
         className={cn(
             "fixed inset-y-0 right-0 z-50 flex flex-col bg-background border-l border-border shadow-2xl transition-all duration-300 ease-in-out",
-            isExpanded ? "w-[80vw]" : "w-[40vw] min-w-[500px]"
+            isExpanded ? "w-full md:w-[80vw]" : "w-full md:w-[40vw] md:min-w-[500px]"
         )}
     >
       {/* Header */}
