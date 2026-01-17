@@ -242,6 +242,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/documents/{document_id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Cancel Document Processing
+         * @description Cancel an in-progress document processing task.
+         *
+         *     Notes:
+         *     - When TASK_QUEUE_ENABLED=true, this will best-effort abort the arq job.
+         *     - When queue is disabled, the in-process/background worker cooperatively checks the cancelled status.
+         */
+        post: operations["cancel_document_processing_api_v1_documents__document_id__cancel_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/documents/image/{image_id}": {
         parameters: {
             query?: never;
@@ -252,7 +276,7 @@ export interface paths {
         /**
          * Get Image
          * @description Return stored image by image_id.
-         *     Standard path: {UPLOAD_DIR}/images/{image_id}.png
+         *     Standard path: {UPLOAD_DIR}/{tenant_id}/images/{image_id}(.png|.jpg|.jpeg|.webp|.gif|.bmp)
          */
         get: operations["get_image_api_v1_documents_image__image_id__get"];
         put?: never;
@@ -676,6 +700,111 @@ export interface paths {
         put?: never;
         post?: never;
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/kg/stats": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Kg Stats
+         * @description Lightweight KG statistics for the current tenant.
+         *
+         *     - Requires KG_ENABLED=true.
+         *     - Enforces document-level access control.
+         */
+        get: operations["get_kg_stats_api_v1_kg_stats_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/kg/graph/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Export Kg Graph
+         * @description Export KG graph projection as GraphML for external tooling.
+         *
+         *     Uses the same access control and projection logic as `GET /kg/graph`.
+         */
+        get: operations["export_kg_graph_api_v1_kg_graph_export_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/kg/events/{event_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Kg Event Detail
+         * @description Get a KG event with its linked entities (scoped to accessible documents).
+         */
+        get: operations["get_kg_event_detail_api_v1_kg_events__event_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/kg/entities/{entity_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Kg Entity Detail
+         * @description Get a KG entity, its recent events, and co-occurring entity neighbors.
+         */
+        get: operations["get_kg_entity_detail_api_v1_kg_entities__entity_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/kg/documents/{document_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete Kg For Document
+         * @description Delete KG events for a document (and optionally prune orphan entities).
+         */
+        delete: operations["delete_kg_for_document_api_v1_kg_documents__document_id__delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -1557,6 +1686,8 @@ export interface components {
              * @default langchain_recursive
              */
             chunk_strategy: string;
+            /** Dataset Id */
+            dataset_id?: string | null;
             /** Governance Enabled */
             governance_enabled?: boolean | null;
             /** Governance Remove Toc Lines */
@@ -1595,6 +1726,8 @@ export interface components {
              * @default langchain_recursive
              */
             chunk_strategy: string;
+            /** Dataset Id */
+            dataset_id?: string | null;
             /** Governance Enabled */
             governance_enabled?: boolean | null;
             /** Governance Remove Toc Lines */
@@ -2094,6 +2227,14 @@ export interface components {
              */
             use_default_rules: boolean;
             /**
+             * Input Format
+             * @default markdown
+             * @enum {string}
+             */
+            input_format: "markdown" | "html";
+            /** Html Xpath */
+            html_xpath?: string | null;
+            /**
              * Normalize Line Endings
              * @default true
              */
@@ -2108,6 +2249,11 @@ export interface components {
              * @default true
              */
             collapse_blank_lines: boolean;
+            /**
+             * Max Blank Lines
+             * @default 1
+             */
+            max_blank_lines: number;
             /**
              * Remove Control Chars
              * @default true
@@ -2133,6 +2279,58 @@ export interface components {
              * @default true
              */
             unwrap_lines: boolean;
+            /**
+             * Remove Boilerplate
+             * @default false
+             */
+            remove_boilerplate: boolean;
+            /**
+             * Remove Images
+             * @default none
+             * @enum {string}
+             */
+            remove_images: "none" | "decorative" | "all";
+            /**
+             * Pii Anonymize
+             * @default false
+             */
+            pii_anonymize: boolean;
+            /**
+             * Pii Mode
+             * @default mask
+             * @enum {string}
+             */
+            pii_mode: "mask" | "token";
+            /**
+             * Pii Mask
+             * @default [REDACTED]
+             */
+            pii_mask: string;
+            /**
+             * Drop Outline Only
+             * @default false
+             */
+            drop_outline_only: boolean;
+            /**
+             * Drop Outline Min Content Chars
+             * @default 200
+             */
+            drop_outline_min_content_chars: number;
+            /**
+             * Drop Outline Max Heading Ratio
+             * @default 0.85
+             */
+            drop_outline_max_heading_ratio: number;
+            /**
+             * Drop Low Density
+             * @default false
+             */
+            drop_low_density: boolean;
+            /**
+             * Drop Low Density Threshold
+             * @default 0.12
+             */
+            drop_low_density_threshold: number;
             /**
              * Unwrap Max Line Length
              * @default 120
@@ -2162,6 +2360,52 @@ export interface components {
             applied_rules: number;
             /** Changed */
             changed: boolean;
+            /**
+             * Dropped
+             * @default false
+             */
+            dropped: boolean;
+            /** Drop Reason */
+            drop_reason?: string | null;
+            /** Pii Hits */
+            pii_hits?: {
+                [key: string]: number;
+            } | null;
+            /**
+             * Input Chars
+             * @default 0
+             */
+            input_chars: number;
+            /**
+             * Output Chars
+             * @default 0
+             */
+            output_chars: number;
+            /**
+             * Input Lines
+             * @default 0
+             */
+            input_lines: number;
+            /**
+             * Output Lines
+             * @default 0
+             */
+            output_lines: number;
+            /**
+             * Added Lines
+             * @default 0
+             */
+            added_lines: number;
+            /**
+             * Removed Lines
+             * @default 0
+             */
+            removed_lines: number;
+            /**
+             * Changed Lines
+             * @default 0
+             */
+            changed_lines: number;
         };
         /** CleanRulesResponse */
         CleanRulesResponse: {
@@ -2245,6 +2489,7 @@ export interface components {
             permission: components["schemas"]["DatasetPermissionEnum"];
             /** Partial Member List */
             partial_member_list?: string[] | null;
+            pipeline?: components["schemas"]["DocumentPipelineOptions"] | null;
         };
         /** DatasetListResponse */
         DatasetListResponse: {
@@ -2274,6 +2519,7 @@ export interface components {
             owner_id: string | null;
             /** Partial Member List */
             partial_member_list?: string[] | null;
+            pipeline?: components["schemas"]["DocumentPipelineOptions"] | null;
         };
         /**
          * DatasetPermissionEnum
@@ -2289,6 +2535,7 @@ export interface components {
             permission?: components["schemas"]["DatasetPermissionEnum"] | null;
             /** Partial Member List */
             partial_member_list?: string[] | null;
+            pipeline?: components["schemas"]["DocumentPipelineOptions"] | null;
         };
         /**
          * DocumentBatchUploadFailure
@@ -2441,6 +2688,54 @@ export interface components {
             governance_unwrap_lines?: boolean | null;
             /** Governance Remove Common Lines */
             governance_remove_common_lines?: boolean | null;
+            /** Governance Remove Boilerplate */
+            governance_remove_boilerplate?: boolean | null;
+            /**
+             * Governance Remove Images
+             * @description Image removal mode: none | decorative | all
+             */
+            governance_remove_images?: string | null;
+            /** Governance Pii Anonymize */
+            governance_pii_anonymize?: boolean | null;
+            /**
+             * Governance Pii Mode
+             * @description PII anonymization mode: mask | token
+             */
+            governance_pii_mode?: string | null;
+            /**
+             * Governance Pii Mask
+             * @description PII replacement string (mask mode)
+             */
+            governance_pii_mask?: string | null;
+            /**
+             * Governance Max Blank Lines
+             * @description Max consecutive blank lines
+             */
+            governance_max_blank_lines?: number | null;
+            /**
+             * Governance Html Xpath
+             * @description XPath for HTML extraction (HTML/HTM)
+             */
+            governance_html_xpath?: string | null;
+            /** Governance Drop Outline Only */
+            governance_drop_outline_only?: boolean | null;
+            /**
+             * Governance Drop Outline Min Content Chars
+             * @description Min content chars before outline filter triggers
+             */
+            governance_drop_outline_min_content_chars?: number | null;
+            /**
+             * Governance Drop Outline Max Heading Ratio
+             * @description Heading-like paragraph ratio threshold
+             */
+            governance_drop_outline_max_heading_ratio?: number | null;
+            /** Governance Drop Low Density */
+            governance_drop_low_density?: boolean | null;
+            /**
+             * Governance Drop Low Density Threshold
+             * @description Alnum/CJK density threshold
+             */
+            governance_drop_low_density_threshold?: number | null;
             /**
              * Governance Unwrap Max Line Length
              * @description max line length
@@ -2533,6 +2828,47 @@ export interface components {
             api_base: string;
         };
         /**
+         * Etl4LlmConfig
+         * @description ETL4LLM (layout/table/image parsing) config.
+         */
+        Etl4LlmConfig: {
+            /**
+             * Api Url
+             * @default
+             */
+            api_url: string;
+            /**
+             * Timeout Sec
+             * @default 120
+             */
+            timeout_sec: number;
+            /**
+             * Mode
+             * @default partition
+             */
+            mode: string;
+            /**
+             * Force Ocr
+             * @default false
+             */
+            force_ocr: boolean;
+            /**
+             * Enable Formula
+             * @default true
+             */
+            enable_formula: boolean;
+            /**
+             * Extract Images
+             * @default true
+             */
+            extract_images: boolean;
+            /**
+             * Filter Page Header Footer
+             * @default false
+             */
+            filter_page_header_footer: boolean;
+        };
+        /**
          * FeatureFlags
          * @description Feature flags.
          */
@@ -2547,6 +2883,26 @@ export interface components {
              * @default false
              */
             deepdoc_enabled: boolean;
+            /**
+             * Docling Enabled
+             * @default false
+             */
+            docling_enabled: boolean;
+            /**
+             * Etl4Llm Enabled
+             * @default false
+             */
+            etl4llm_enabled: boolean;
+            /**
+             * Marker Enabled
+             * @default false
+             */
+            marker_enabled: boolean;
+            /**
+             * Paddle Vl Enabled
+             * @default false
+             */
+            paddle_vl_enabled: boolean;
             /**
              * Markitdown Enabled
              * @default false
@@ -2626,6 +2982,15 @@ export interface components {
              * @default 0
              */
             rules_applied: number;
+            /**
+             * Dropped Documents
+             * @default 0
+             */
+            dropped_documents: number;
+            /** Drop Reasons */
+            drop_reasons?: {
+                [key: string]: number;
+            };
         };
         /** HTTPValidationError */
         HTTPValidationError: {
@@ -2687,6 +3052,139 @@ export interface components {
              * @default
              */
             extract_prompt_ab_experiment_key: string;
+            /**
+             * Extract Replace Existing
+             * @default true
+             */
+            extract_replace_existing: boolean;
+            /**
+             * Extract Prune Orphan Entities
+             * @default true
+             */
+            extract_prune_orphan_entities: boolean;
+        };
+        /** KGDeleteResponse */
+        KGDeleteResponse: {
+            /**
+             * Document Id
+             * Format: uuid
+             */
+            document_id: string;
+            /**
+             * Events Deleted
+             * @default 0
+             */
+            events_deleted: number;
+            /**
+             * Entities Pruned
+             * @default 0
+             */
+            entities_pruned: number;
+        };
+        /** KGEntityDetailResponse */
+        KGEntityDetailResponse: {
+            entity: components["schemas"]["KGEntityItem"];
+            /** Events */
+            events?: components["schemas"]["KGEventItem"][];
+            /** Neighbors */
+            neighbors?: components["schemas"]["KGEntityNeighbor"][];
+            /** Stats */
+            stats?: Record<string, never>;
+        };
+        /**
+         * KGEntityItem
+         * @description Entity details for API responses.
+         */
+        KGEntityItem: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+            /** Type */
+            type: string;
+            /** Normalized Name */
+            normalized_name: string;
+            /** Description */
+            description?: string | null;
+            /** Extra Data */
+            extra_data?: Record<string, never>;
+            /** Created At */
+            created_at?: string | null;
+            /** Updated At */
+            updated_at?: string | null;
+        };
+        /** KGEntityNeighbor */
+        KGEntityNeighbor: {
+            /**
+             * Entity Id
+             * Format: uuid
+             */
+            entity_id: string;
+            /** Name */
+            name: string;
+            /** Type */
+            type: string;
+            /** Count */
+            count: number;
+        };
+        /** KGEntityTypeCount */
+        KGEntityTypeCount: {
+            /** Type */
+            type: string;
+            /** Count */
+            count: number;
+        };
+        /** KGEventDetailResponse */
+        KGEventDetailResponse: {
+            event: components["schemas"]["KGEventItem"];
+            /** Entities */
+            entities?: components["schemas"]["KGEventEntityItem"][];
+        };
+        /**
+         * KGEventEntityItem
+         * @description Event-entity relation details.
+         */
+        KGEventEntityItem: {
+            entity: components["schemas"]["KGEntityItem"];
+            /**
+             * Weight
+             * @default 1
+             */
+            weight: number;
+            /** Role */
+            role?: string | null;
+        };
+        /**
+         * KGEventItem
+         * @description Event details for API responses.
+         */
+        KGEventItem: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Title */
+            title: string;
+            /** Summary */
+            summary: string;
+            /** Content */
+            content: string;
+            /** Document Id */
+            document_id?: string | null;
+            /** Chunk Id */
+            chunk_id?: string | null;
+            /** References */
+            references?: Record<string, never>;
+            /** Extra Data */
+            extra_data?: Record<string, never>;
+            /** Created At */
+            created_at?: string | null;
+            /** Updated At */
+            updated_at?: string | null;
         };
         /**
          * KGExtractResponse
@@ -2788,6 +3286,19 @@ export interface components {
             result: Record<string, never>;
             /** Query */
             query: string;
+        };
+        /** KGStatsResponse */
+        KGStatsResponse: {
+            /** Events */
+            events: number;
+            /** Entities */
+            entities: number;
+            /** Links */
+            links: number;
+            /** Entity Types */
+            entity_types?: components["schemas"]["KGEntityTypeCount"][];
+            /** Updated At */
+            updated_at?: string | null;
         };
         /** KeywordExtractRequest */
         KeywordExtractRequest: {
@@ -2978,6 +3489,22 @@ export interface components {
             /** Metadata */
             metadata?: Record<string, never>;
             pipeline?: components["schemas"]["DocumentPipelineOptions"] | null;
+        };
+        /**
+         * MarkerConfig
+         * @description Marker external PDF->Markdown service config.
+         */
+        MarkerConfig: {
+            /**
+             * Api Url
+             * @default
+             */
+            api_url: string;
+            /**
+             * Timeout Sec
+             * @default 600
+             */
+            timeout_sec: number;
         };
         /**
          * MessageFeedbackCreateRequest
@@ -3250,6 +3777,22 @@ export interface components {
              * @description Total page count
              */
             page_count: number;
+        };
+        /**
+         * PaddleVLConfig
+         * @description PaddleOCR-VL external PDF->Markdown service config.
+         */
+        PaddleVLConfig: {
+            /**
+             * Api Url
+             * @default
+             */
+            api_url: string;
+            /**
+             * Timeout Sec
+             * @default 600
+             */
+            timeout_sec: number;
         };
         /** ParsePreviewResponse */
         ParsePreviewResponse: {
@@ -4089,6 +4632,9 @@ export interface components {
             milvus: components["schemas"]["MilvusConfig"];
             rag: components["schemas"]["RAGConfig"];
             mineru: components["schemas"]["MinerUConfig"];
+            etl4llm: components["schemas"]["Etl4LlmConfig"];
+            marker: components["schemas"]["MarkerConfig"];
+            paddle_vl: components["schemas"]["PaddleVLConfig"];
             magicpdf: components["schemas"]["MagicPDFConfig"];
             observability: components["schemas"]["ObservabilityConfig"];
             safety: components["schemas"]["SafetyConfig"];
@@ -4233,6 +4779,9 @@ export interface components {
             milvus?: components["schemas"]["MilvusConfig"] | null;
             rag?: components["schemas"]["RAGConfig"] | null;
             mineru?: components["schemas"]["MinerUConfig"] | null;
+            etl4llm?: components["schemas"]["Etl4LlmConfig"] | null;
+            marker?: components["schemas"]["MarkerConfig"] | null;
+            paddle_vl?: components["schemas"]["PaddleVLConfig"] | null;
             magicpdf?: components["schemas"]["MagicPDFConfig"] | null;
             observability?: components["schemas"]["ObservabilityConfig"] | null;
             safety?: components["schemas"]["SafetyConfig"] | null;
@@ -4693,7 +5242,7 @@ export interface operations {
             };
         };
     };
-    get_image_api_v1_documents_image__image_id__get: {
+    cancel_document_processing_api_v1_documents__document_id__cancel_post: {
         parameters: {
             query?: never;
             header?: {
@@ -4701,6 +5250,37 @@ export interface operations {
                 authorization?: string | null;
                 "x-user-id"?: string | null;
             };
+            path: {
+                document_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentStatus"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_image_api_v1_documents_image__image_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
             path: {
                 image_id: string;
             };
@@ -4731,11 +5311,7 @@ export interface operations {
     get_image_url_api_v1_documents_image_url__img_id__get: {
         parameters: {
             query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path: {
                 img_id: string;
             };
@@ -5424,6 +6000,10 @@ export interface operations {
                 max_events?: number;
                 max_entities?: number;
                 max_links?: number;
+                /** @description Include entity-entity co-occurrence links */
+                include_entity_links?: boolean;
+                min_shared_events?: number;
+                max_entity_links?: number;
             };
             header?: {
                 "x-tenant-id"?: string | null;
@@ -5464,6 +6044,10 @@ export interface operations {
                 max_events?: number;
                 max_entities?: number;
                 max_links?: number;
+                /** @description Include entity-entity co-occurrence links */
+                include_entity_links?: boolean;
+                min_shared_events?: number;
+                max_entity_links?: number;
             };
             header?: {
                 "x-tenant-id"?: string | null;
@@ -5535,10 +6119,205 @@ export interface operations {
             };
         };
     };
+    get_kg_stats_api_v1_kg_stats_get: {
+        parameters: {
+            query?: {
+                document_ids?: string[] | null;
+            };
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["KGStatsResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    export_kg_graph_api_v1_kg_graph_export_get: {
+        parameters: {
+            query?: {
+                document_ids?: string[] | null;
+                max_events?: number;
+                max_entities?: number;
+                max_links?: number;
+                /** @description Include entity-entity co-occurrence links */
+                include_entity_links?: boolean;
+                min_shared_events?: number;
+                max_entity_links?: number;
+                download?: boolean;
+            };
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_kg_event_detail_api_v1_kg_events__event_id__get: {
+        parameters: {
+            query?: {
+                document_ids?: string[] | null;
+            };
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path: {
+                event_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["KGEventDetailResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_kg_entity_detail_api_v1_kg_entities__entity_id__get: {
+        parameters: {
+            query?: {
+                document_ids?: string[] | null;
+                max_events?: number;
+                max_neighbors?: number;
+            };
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path: {
+                entity_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["KGEntityDetailResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_kg_for_document_api_v1_kg_documents__document_id__delete: {
+        parameters: {
+            query?: {
+                prune_orphan_entities?: boolean | null;
+            };
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path: {
+                document_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["KGDeleteResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     run_kg_extraction_for_document_api_v1_kg_documents__document_id__extract_post: {
         parameters: {
             query?: {
                 async?: boolean;
+                /** @description Replace previously extracted events for this document */
+                replace_existing?: boolean | null;
+                /** @description Prune entities with no remaining event links */
+                prune_orphan_entities?: boolean | null;
                 prompt_template_id?: string | null;
                 prompt_template_key?: string | null;
                 prompt_ab_experiment_key?: string | null;
