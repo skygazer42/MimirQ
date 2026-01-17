@@ -469,6 +469,14 @@ class Settings(BaseSettings):
     KG_EXTRACT_SKIP_UNCHANGED_CHUNKS: bool = False
     # Graph co-occurrence computation guardrail: cap entity count per event when building co-occurrence edges.
     KG_ENTITY_LINK_MAX_ENTITIES_PER_EVENT: int = 60
+    # KG API guardrails.
+    KG_API_MAX_DOCUMENT_IDS: int = 500
+    # KG search guardrails/observability.
+    # - Max clue items returned by KG search (0 disables).
+    KG_SEARCH_MAX_CLUES: int = 2000
+    # - Upper bound for event candidates passed into rerank (0 disables).
+    KG_SEARCH_MAX_RERANK_CANDIDATES: int = 500
+    KG_SEARCH_METRICS_ENABLED: bool = False
     CHAT_HISTORY_WINDOW: int = 5
     # Allow chat even when no accessible documents exist (dev-friendly).
     CHAT_ALLOW_EMPTY_DOCUMENTS: bool = True

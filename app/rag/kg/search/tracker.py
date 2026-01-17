@@ -4,6 +4,7 @@ Clue tracker with normalized node formats for query/entity/event.
 import uuid
 from typing import Any, Dict, List, Optional
 
+from app.core.config import settings
 from app.rag.kg.search.config import SearchConfig
 
 
@@ -11,6 +12,27 @@ class Tracker:
     def __init__(self, config: Optional[SearchConfig] = None):
         self.config = config
         self.clues: List[Dict[str, Any]] = []
+        self.clues_dropped: int = 0
+        self._max_clues: int = max(0, int(getattr(settings, "KG_SEARCH_MAX_CLUES", 0) or 0))
+
+    def extend_clues(self, clues: List[Dict[str, Any]]) -> None:
+        if not clues:
+            return
+        if self._max_clues <= 0:
+            self.clues.extend(clues)
+            return
+
+        remaining = self._max_clues - len(self.clues)
+        if remaining <= 0:
+            self.clues_dropped += len(clues)
+            return
+
+        if len(clues) <= remaining:
+            self.clues.extend(clues)
+            return
+
+        self.clues.extend(clues[:remaining])
+        self.clues_dropped += len(clues) - remaining
 
     @staticmethod
     def _uuid_from_text(prefix: str, text: str) -> str:
@@ -68,6 +90,9 @@ class Tracker:
         relation: str = "",
         metadata: Optional[Dict[str, Any]] = None,
     ) -> None:
+        if self._max_clues > 0 and len(self.clues) >= self._max_clues:
+            self.clues_dropped += 1
+            return
         self.clues.append(
             {
                 "id": str(uuid.uuid4()),
