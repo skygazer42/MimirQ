@@ -98,6 +98,10 @@ const config = {
             transform: "translateX(100%)",
           },
         },
+        "blink": {
+          "0%, 100%": { opacity: "1" },
+          "50%": { opacity: "0" },
+        },
       },
       animation: {
         "accordion-down": "accordion-down 0.2s ease-out",
@@ -109,6 +113,7 @@ const config = {
         "fade-in": "fade-in 0.3s ease-out forwards",
         "pulse-subtle": "pulse-subtle 2s cubic-bezier(0.4, 0, 0.6, 1) infinite",
         "shimmer": "shimmer 2s infinite",
+        "blink": "blink 1s step-end infinite",
       },
     },
   },

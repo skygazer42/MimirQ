@@ -6,7 +6,7 @@
 import { memo, useEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import Image from 'next/image'
-import { Check, Copy, Database, Sparkles } from 'lucide-react'
+import { Check, Copy, Database, Bot, User } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 
@@ -58,20 +58,20 @@ function maybeAttachImageAuthToken(url: string): string {
 
 const markdownPlugins = [remarkGfm]
 const markdownComponents = {
-  p: ({ children }: { children?: ReactNode }) => <p className="mb-2 last:mb-0">{children}</p>,
+  p: ({ children }: { children?: ReactNode }) => <p className="mb-3 last:mb-0 leading-relaxed">{children}</p>,
   ul: ({ children }: { children?: ReactNode }) => (
-    <ul className="list-disc pl-4 mb-2 space-y-1 marker:text-slate-400">{children}</ul>
+    <ul className="list-disc pl-5 mb-3 space-y-1.5 marker:text-muted-foreground/60">{children}</ul>
   ),
   ol: ({ children }: { children?: ReactNode }) => (
-    <ol className="list-decimal pl-4 mb-2 space-y-1 marker:text-slate-400">{children}</ol>
+    <ol className="list-decimal pl-5 mb-3 space-y-1.5 marker:text-muted-foreground/60">{children}</ol>
   ),
-  li: ({ children }: { children?: ReactNode }) => <li className="mb-0.5">{children}</li>,
+  li: ({ children }: { children?: ReactNode }) => <li className="pl-1">{children}</li>,
   a: ({ href, children }: { href?: string; children?: ReactNode }) => (
     <a
       href={href}
       target="_blank"
       rel="noopener noreferrer"
-      className="text-sky-600 dark:text-sky-400 font-medium hover:underline decoration-sky-300 underline-offset-2"
+      className="text-primary font-medium hover:underline decoration-primary/30 underline-offset-4 transition-colors"
     >
       {children}
     </a>
@@ -94,12 +94,12 @@ const markdownComponents = {
         unoptimized
         sizes="(max-width: 768px) 100vw, 768px"
         loading="lazy"
-        className="my-2 w-full h-auto max-h-96 object-contain rounded-lg border border-slate-200/70 dark:border-slate-700 bg-white dark:bg-slate-900"
+        className="my-3 w-full h-auto max-h-96 object-contain rounded-xl border border-border/50 bg-background/50 shadow-sm"
       />
     )
   },
   blockquote: ({ children }: { children?: React.ReactNode }) => (
-    <blockquote className="border-l-4 border-sky-200 dark:border-sky-800 pl-4 italic text-slate-500 dark:text-slate-400 my-2 bg-slate-50 dark:bg-slate-800/50 py-2 rounded-r-lg">
+    <blockquote className="border-l-4 border-primary/30 pl-4 italic text-muted-foreground my-3 bg-secondary/30 py-2 pr-2 rounded-r-lg">
       {children}
     </blockquote>
   ),
@@ -112,7 +112,7 @@ const markdownComponents = {
     ) : (
       <code
         className={cn(
-          'bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded-md text-sm text-pink-500 dark:text-pink-400 font-mono',
+          'bg-secondary/50 px-1.5 py-0.5 rounded-md text-sm font-mono text-primary',
           className
         )}
         {...props}
@@ -181,22 +181,22 @@ export const ChatMessageItem = memo(function ChatMessageItem({
   return (
     <div
       className={cn(
-        'flex gap-4 px-4 group animate-in fade-in slide-in-from-bottom-2 duration-500',
+        'flex gap-4 px-2 group animate-in fade-in slide-in-from-bottom-2 duration-500',
         isUser ? 'justify-end' : 'justify-start'
       )}
     >
       {!isUser && (
-        <div className="flex-shrink-0 w-8 h-8 rounded-lg bg-sky-50 dark:bg-sky-900/30 border border-sky-100 dark:border-sky-800 flex items-center justify-center shadow-sm mt-1">
-          <Sparkles className="h-4 w-4 text-sky-600 dark:text-sky-400" />
+        <div className="flex-shrink-0 w-8 h-8 rounded-xl bg-background border border-border flex items-center justify-center shadow-sm mt-0.5">
+          <Bot className="h-4 w-4 text-primary" />
         </div>
       )}
 
       <div
         className={cn(
-          'max-w-2xl px-6 py-4 shadow-sm relative text-[15px]',
+          'max-w-3xl px-6 py-4 shadow-sm relative text-[15px] transition-all duration-300',
           isUser
-            ? 'bg-slate-900 dark:bg-sky-600 text-white rounded-2xl rounded-tr-sm shadow-md'
-            : 'bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200 border border-slate-100 dark:border-slate-800 rounded-2xl rounded-tl-sm'
+            ? 'bg-primary text-primary-foreground rounded-2xl rounded-tr-sm shadow-md shadow-primary/10'
+            : 'bg-card text-foreground border border-border/60 rounded-2xl rounded-tl-sm hover:shadow-md hover:border-border/80'
           )}
       >
         <button
@@ -205,37 +205,37 @@ export const ChatMessageItem = memo(function ChatMessageItem({
           aria-label={copied ? 'Copied' : 'Copy message'}
           title={copied ? 'Copied' : 'Copy'}
           className={cn(
-            'absolute bottom-2 right-2 z-10 rounded-md p-1.5 transition',
-            'opacity-70 hover:opacity-100 group-hover:opacity-100',
-            'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500/60 focus-visible:ring-offset-2 focus-visible:ring-offset-transparent',
+            'absolute bottom-2 right-2 z-10 rounded-md p-1.5 transition-all duration-200',
+            'opacity-0 group-hover:opacity-100 scale-90 group-hover:scale-100',
+            'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60',
             isUser
-              ? 'text-white/70 hover:text-white hover:bg-white/10'
-              : 'text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-100 hover:bg-slate-100/70 dark:hover:bg-slate-800/70'
+              ? 'text-primary-foreground/70 hover:text-primary-foreground hover:bg-white/10'
+              : 'text-muted-foreground hover:text-foreground hover:bg-secondary'
           )}
         >
           {copied ? (
-            <Check className="h-4 w-4" />
+            <Check className="h-3.5 w-3.5" />
           ) : (
-            <Copy className="h-4 w-4" />
+            <Copy className="h-3.5 w-3.5" />
           )}
         </button>
 
         <div
           className={cn(
             'prose max-w-none break-words leading-relaxed dark:prose-invert',
-            isUser ? 'prose-invert' : 'prose-slate',
-            'prose-p:my-1.5 prose-p:leading-7',
-            'prose-pre:bg-slate-900 dark:prose-pre:bg-slate-950 prose-pre:border prose-pre:border-slate-800 dark:prose-pre:border-slate-800 prose-pre:text-slate-50 prose-pre:rounded-xl prose-pre:p-4 prose-pre:my-2',
-            'prose-code:bg-slate-100 dark:prose-code:bg-slate-800 prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded-md prose-code:text-sm prose-code:font-mono prose-code:text-pink-600 dark:prose-code:text-pink-400 prose-code:before:content-none prose-code:after:content-none',
-            isUser && 'prose-code:bg-slate-800 prose-code:text-slate-200'
+            isUser ? 'prose-invert' : 'prose-neutral',
+            'prose-p:my-2 prose-p:leading-7',
+            'prose-pre:bg-secondary/50 prose-pre:border prose-pre:border-border/50 prose-pre:text-foreground prose-pre:rounded-xl prose-pre:p-4 prose-pre:my-3',
+            'prose-code:bg-secondary/50 prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded-md prose-code:text-sm font-mono text-primary prose-code:before:content-none prose-code:after:content-none',
+            isUser && 'prose-code:bg-white/20 prose-code:text-white'
           )}
         >
           {isUser ? (
-            <div className="whitespace-pre-wrap font-normal">{message.content}</div>
+            <div className="whitespace-pre-wrap font-normal tracking-wide">{message.content}</div>
           ) : isStreaming ? (
             <div className="whitespace-pre-wrap font-normal">
               {message.content}
-              <span className="inline-block w-2 animate-pulse">▍</span>
+              <span className="inline-block w-2 h-4 ml-1 bg-primary animate-blink align-middle" />
             </div>
           ) : (
             <ReactMarkdown
@@ -248,12 +248,12 @@ export const ChatMessageItem = memo(function ChatMessageItem({
         </div>
 
         {!isUser && message.citations && message.citations.length > 0 && (
-          <div className="mt-4 pt-3 border-t border-slate-100 dark:border-slate-800 space-y-2">
-            <div className="flex items-center gap-2 text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+          <div className="mt-5 pt-3 border-t border-border/40 space-y-3">
+            <div className="flex items-center gap-2 text-[10px] font-bold text-muted-foreground uppercase tracking-widest opacity-80">
               <Database className="w-3 h-3" />
               参考来源
             </div>
-            <div className="grid grid-cols-1 gap-2">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               {message.citations.map((citation, idx) => {
                 const citationKey = `${citation.document_id}-${citation.chunk_id || citation.page_number || idx}`
                 return (
@@ -266,8 +266,8 @@ export const ChatMessageItem = memo(function ChatMessageItem({
       </div>
 
       {isUser && (
-        <div className="flex-shrink-0 w-8 h-8 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-[10px] font-bold text-slate-500 dark:text-slate-400 mt-1 border border-slate-200 dark:border-slate-700">
-          U
+        <div className="flex-shrink-0 w-8 h-8 rounded-xl bg-primary text-primary-foreground flex items-center justify-center text-xs font-bold shadow-md shadow-primary/20 mt-0.5">
+          <User className="h-4 w-4" />
         </div>
       )}
     </div>
@@ -284,37 +284,35 @@ const CitationCard = memo(function CitationCard({ citation, index }: { citation:
   })()
 
   return (
-    <div className="text-xs bg-slate-50 dark:bg-slate-800/50 hover:bg-white dark:hover:bg-slate-800 rounded-lg p-2.5 border border-slate-100 dark:border-slate-700 hover:border-sky-200 dark:hover:border-sky-700 transition-all cursor-pointer group shadow-sm hover:shadow-md">
-      <div className="flex items-start gap-2.5">
-        <span className="flex-shrink-0 w-4 h-4 bg-white dark:bg-slate-900 text-sky-600 dark:text-sky-400 border border-sky-100 dark:border-sky-800 rounded flex items-center justify-center text-[10px] font-bold shadow-sm group-hover:bg-sky-50 dark:group-hover:bg-sky-900/50 group-hover:border-sky-200 transition-colors">
+    <div className="group/card text-xs bg-card hover:bg-secondary/30 rounded-lg p-3 border border-border/60 hover:border-primary/30 transition-all duration-300 cursor-pointer shadow-sm hover:shadow-md hover:-translate-y-0.5">
+      <div className="flex items-start gap-3">
+        <span className="flex-shrink-0 w-5 h-5 bg-secondary text-primary border border-border rounded flex items-center justify-center text-[10px] font-bold group-hover/card:bg-primary group-hover/card:text-primary-foreground transition-colors">
           {index + 1}
         </span>
-        <div className="flex-1 min-w-0">
-          <p className="font-semibold text-slate-700 dark:text-slate-300 truncate group-hover:text-sky-700 dark:group-hover:text-sky-400 transition-colors">
+        <div className="flex-1 min-w-0 space-y-1">
+          <p className="font-semibold text-foreground truncate transition-colors">
             {citation.document_name}
-            {citation.page_number && ` · P.${citation.page_number}`}
+            {citation.page_number && <span className="text-muted-foreground font-normal ml-1">· P.{citation.page_number}</span>}
           </p>
-          <p className="text-slate-500 dark:text-slate-400 mt-1 line-clamp-2 leading-relaxed group-hover:text-slate-600 dark:group-hover:text-slate-300">
+          <p className="text-muted-foreground mt-1 line-clamp-2 leading-relaxed group-hover/card:text-foreground/80 transition-colors">
             &quot;{citation.chunk_content}&quot;
           </p>
-          <div className="flex items-center gap-2 mt-2">
-            <span className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-400 dark:text-slate-500 px-1.5 py-0.5 rounded text-[10px] group-hover:border-sky-100 dark:group-hover:border-sky-800 group-hover:text-sky-400 transition-colors">
+          <div className="flex items-center gap-2 mt-2 pt-1">
+            <span className="bg-secondary/50 border border-border text-muted-foreground px-1.5 py-0.5 rounded text-[10px]">
               相似度 {Math.round(citation.relevance_score * 100)}%
             </span>
           </div>
 
           {citation.has_image && imgUrl && !hideImage && (
-            <div className="mt-2">
-              <a href={imgUrl} target="_blank" rel="noopener noreferrer" className="block">
+            <div className="mt-2 rounded-md overflow-hidden border border-border/50">
+              <a href={imgUrl} target="_blank" rel="noopener noreferrer" className="block relative aspect-video">
                 <Image
                   src={imgUrl}
                   alt="引用图片"
-                  width={800}
-                  height={600}
+                  fill
                   unoptimized
-                  sizes="(max-width: 768px) 100vw, 640px"
-                  loading="lazy"
-                  className="w-full h-auto max-h-48 object-contain rounded-md border border-slate-200/70 dark:border-slate-700 bg-white dark:bg-slate-900"
+                  sizes="(max-width: 768px) 100vw, 300px"
+                  className="object-cover group-hover/card:scale-105 transition-transform duration-500"
                   onError={() => setHideImage(true)}
                 />
               </a>
