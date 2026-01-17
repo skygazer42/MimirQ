@@ -2,14 +2,15 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { User, Mail, Lock } from 'lucide-react'
+import { User, Mail, Lock, Sparkles, ArrowRight, Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { authApi } from '@/lib/api-client'
 import { setAuthSession } from '@/lib/auth-storage'
 import { formatApiError } from '@/lib/api-errors'
+import { ParticleBackground } from '@/components/ui/particle-background'
+import { cn } from '@/lib/utils'
 
 type Mode = 'login' | 'register'
 
@@ -49,130 +50,180 @@ export default function AuthPage() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50 flex items-center justify-center px-6 py-10">
-      <Card className="w-full max-w-md p-8">
-        <div className="text-center mb-6">
-          <h1 className="text-2xl font-bold text-slate-900">MimirQ 账户</h1>
-          <p className="text-sm text-slate-500 mt-2">
-            {mode === 'login' ? '登录后管理您的知识库' : '注册新账号开始使用'}
-          </p>
-        </div>
+    <div className="relative min-h-screen w-full flex items-center justify-center overflow-hidden bg-gradient-to-br from-slate-900 via-slate-950 to-black text-white selection:bg-primary selection:text-white">
+      {/* 3D 粒子背景 */}
+      <ParticleBackground />
 
-        <div className="flex gap-2 mb-6">
-          <Button
-            type="button"
-            variant={mode === 'login' ? 'default' : 'outline'}
-            className="flex-1"
-            onClick={() => setMode('login')}
-          >
-            登录
-          </Button>
-          <Button
-            type="button"
-            variant={mode === 'register' ? 'default' : 'outline'}
-            className="flex-1"
-            onClick={() => setMode('register')}
-          >
-            注册
-          </Button>
-        </div>
+      {/* 光效装饰 */}
+      <div className="absolute top-[-20%] left-[-10%] w-[500px] h-[500px] bg-primary/20 rounded-full blur-[120px] animate-pulse-subtle pointer-events-none" />
+      <div className="absolute bottom-[-20%] right-[-10%] w-[500px] h-[500px] bg-purple-500/20 rounded-full blur-[120px] animate-pulse-subtle pointer-events-none" style={{ animationDelay: '1s' }} />
 
-        <form onSubmit={handleSubmit} className="space-y-4">
-          {mode === 'register' && (
-            <>
-              <div className="space-y-2">
-                <Label htmlFor="email">邮箱</Label>
-                <div className="relative">
-                  <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
-                  <Input
-                    id="email"
-                    type="email"
-                    autoComplete="email"
-                    placeholder="name@example.com"
-                    className="pl-9"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    required
-                  />
+      <div className="relative z-10 w-full max-w-md p-6 animate-fade-in-up">
+        {/* Logo / Brand */}
+        <div className="flex flex-col items-center mb-8 space-y-4">
+            <div className="relative group">
+                <div className="absolute -inset-1 bg-gradient-to-r from-cyan-400 to-primary rounded-xl blur opacity-40 group-hover:opacity-75 transition duration-500"></div>
+                <div className="relative w-16 h-16 bg-slate-950 rounded-xl flex items-center justify-center border border-white/10 shadow-2xl">
+                    <Sparkles className="w-8 h-8 text-cyan-400 animate-pulse" />
                 </div>
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="username">用户名</Label>
-                <div className="relative">
-                  <User className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
-                  <Input
-                    id="username"
-                    placeholder="输入用户名"
-                    className="pl-9"
-                    value={username}
-                    onChange={(e) => setUsername(e.target.value)}
-                    required
-                  />
-                </div>
-              </div>
-            </>
-          )}
-
-          {mode === 'login' && (
-            <div className="space-y-2">
-              <Label htmlFor="identifier">邮箱或用户名</Label>
-              <Input
-                id="identifier"
-                placeholder="邮箱或用户名"
-                value={identifier}
-                onChange={(e) => setIdentifier(e.target.value)}
-                required
-              />
             </div>
-          )}
-
-          <div className="space-y-2">
-            <Label htmlFor="password">密码</Label>
-            <div className="relative">
-              <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
-              <Input
-                id="password"
-                type="password"
-                autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
-                placeholder="请输入密码"
-                className="pl-9"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                required
-              />
+            <div className="text-center">
+                <h1 className="text-3xl font-bold tracking-tight bg-clip-text text-transparent bg-gradient-to-b from-white to-white/60">
+                    MimirQ
+                </h1>
+                <p className="text-sm text-slate-400 mt-2 font-medium tracking-wide">
+                    下一代智能知识库平台
+                </p>
             </div>
-          </div>
-
-          {mode === 'register' && (
-            <div className="space-y-2">
-              <Label htmlFor="confirmPassword">确认密码</Label>
-              <Input
-                id="confirmPassword"
-                type="password"
-                autoComplete="new-password"
-                placeholder="再次输入密码"
-                value={confirmPassword}
-                onChange={(e) => setConfirmPassword(e.target.value)}
-                required
-              />
-            </div>
-          )}
-
-          {error && (
-            <div className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-600">
-              {error}
-            </div>
-          )}
-
-          <Button type="submit" className="w-full" disabled={isSubmitting}>
-            {isSubmitting ? '处理中...' : mode === 'login' ? '登录' : '注册'}
-          </Button>
-        </form>
-
-        <div className="mt-6 text-xs text-slate-500">
-          开发模式下可无需登录，继续使用默认 `X-User-ID` 进行访问。
         </div>
-      </Card>
+
+        {/* 玻璃拟态卡片 */}
+        <div className="backdrop-blur-xl bg-white/5 border border-white/10 rounded-3xl p-8 shadow-2xl ring-1 ring-white/5">
+            {/* Tab Switcher */}
+            <div className="flex p-1 bg-black/20 rounded-xl mb-8 border border-white/5">
+                <button
+                    type="button"
+                    className={cn(
+                        "flex-1 py-2 text-sm font-medium rounded-lg transition-all duration-300",
+                        mode === 'login' ? "bg-white/10 text-white shadow-sm" : "text-slate-400 hover:text-white"
+                    )}
+                    onClick={() => setMode('login')}
+                >
+                    登录
+                </button>
+                <button
+                    type="button"
+                    className={cn(
+                        "flex-1 py-2 text-sm font-medium rounded-lg transition-all duration-300",
+                        mode === 'register' ? "bg-white/10 text-white shadow-sm" : "text-slate-400 hover:text-white"
+                    )}
+                    onClick={() => setMode('register')}
+                >
+                    注册
+                </button>
+            </div>
+
+            <form onSubmit={handleSubmit} className="space-y-5">
+                {mode === 'register' && (
+                    <div className="space-y-4 animate-fade-in">
+                        <div className="space-y-2">
+                            <Label htmlFor="email" className="text-xs text-slate-300">邮箱地址</Label>
+                            <div className="relative group">
+                                <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-500 group-focus-within:text-cyan-400 transition-colors" />
+                                <Input
+                                    id="email"
+                                    type="email"
+                                    placeholder="name@example.com"
+                                    className="pl-10 bg-black/20 border-white/10 text-white placeholder:text-slate-600 focus:border-cyan-500/50 focus:ring-cyan-500/20"
+                                    value={email}
+                                    onChange={(e) => setEmail(e.target.value)}
+                                    required
+                                />
+                            </div>
+                        </div>
+                        <div className="space-y-2">
+                            <Label htmlFor="username" className="text-xs text-slate-300">用户名</Label>
+                            <div className="relative group">
+                                <User className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-500 group-focus-within:text-cyan-400 transition-colors" />
+                                <Input
+                                    id="username"
+                                    placeholder="设置用户名"
+                                    className="pl-10 bg-black/20 border-white/10 text-white placeholder:text-slate-600 focus:border-cyan-500/50 focus:ring-cyan-500/20"
+                                    value={username}
+                                    onChange={(e) => setUsername(e.target.value)}
+                                    required
+                                />
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {mode === 'login' && (
+                    <div className="space-y-2 animate-fade-in">
+                        <Label htmlFor="identifier" className="text-xs text-slate-300">账号</Label>
+                        <div className="relative group">
+                            <User className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-500 group-focus-within:text-cyan-400 transition-colors" />
+                            <Input
+                                id="identifier"
+                                placeholder="输入邮箱或用户名"
+                                className="pl-10 bg-black/20 border-white/10 text-white placeholder:text-slate-600 focus:border-cyan-500/50 focus:ring-cyan-500/20 h-11"
+                                value={identifier}
+                                onChange={(e) => setIdentifier(e.target.value)}
+                                required
+                            />
+                        </div>
+                    </div>
+                )}
+
+                <div className="space-y-2">
+                    <Label htmlFor="password" className="text-xs text-slate-300">
+                        {mode === 'login' ? '密码' : '设置密码'}
+                    </Label>
+                    <div className="relative group">
+                        <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-500 group-focus-within:text-cyan-400 transition-colors" />
+                        <Input
+                            id="password"
+                            type="password"
+                            placeholder="••••••••"
+                            className="pl-10 bg-black/20 border-white/10 text-white placeholder:text-slate-600 focus:border-cyan-500/50 focus:ring-cyan-500/20 h-11"
+                            value={password}
+                            onChange={(e) => setPassword(e.target.value)}
+                            required
+                        />
+                    </div>
+                </div>
+
+                {mode === 'register' && (
+                    <div className="space-y-2 animate-fade-in">
+                        <Label htmlFor="confirmPassword" classNam="text-xs text-slate-300">确认密码</Label>
+                        <div className="relative group">
+                            <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-500 group-focus-within:text-cyan-400 transition-colors" />
+                            <Input
+                                id="confirmPassword"
+                                type="password"
+                                placeholder="••••••••"
+                                className="pl-10 bg-black/20 border-white/10 text-white placeholder:text-slate-600 focus:border-cyan-500/50 focus:ring-cyan-500/20"
+                                value={confirmPassword}
+                                onChange={(e) => setConfirmPassword(e.target.value)}
+                                required
+                            />
+                        </div>
+                    </div>
+                )}
+
+                {error && (
+                    <div className="rounded-lg border border-red-500/20 bg-red-500/10 p-3 flex items-start gap-2 animate-fade-in">
+                        <div className="w-1 h-1 mt-2 rounded-full bg-red-500 shrink-0" />
+                        <p className="text-xs text-red-200">{error}</p>
+                    </div>
+                )}
+
+                <Button 
+                    type="submit" 
+                    className="w-full h-11 bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white font-semibold rounded-xl shadow-lg shadow-cyan-500/20 transition-all duration-300 hover:scale-[1.02] active:scale-[0.98]"
+                    disabled={isSubmitting}
+                >
+                    {isSubmitting ? (
+                        <>
+                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                            处理中...
+                        </>
+                    ) : (
+                        <>
+                            {mode === 'login' ? '登 录' : '创建账户'}
+                            <ArrowRight className="ml-2 h-4 w-4 opacity-70" />
+                        </>
+                    )}
+                </Button>
+            </form>
+        </div>
+
+        <div className="mt-8 text-center">
+            <p className="text-xs text-slate-500">
+                遇到问题？ <a href="#" className="text-slate-400 hover:text-white underline underline-offset-4 transition-colors">联系管理员</a>
+            </p>
+        </div>
+      </div>
     </div>
   )
 }

@@ -3,6 +3,7 @@ Simplified event processor: call LLM to extract events and entities from chunk t
 """
 from typing import Any, Dict, List
 
+from app.core.config import settings
 from app.models.document import DocumentChunk
 from app.rag.llm.base import BaseLLMClient
 from app.rag.llm.models import LLMMessage, LLMRole
@@ -33,12 +34,17 @@ class EventProcessor:
         context_parts = []
         for idx, chunk in enumerate(sections, 1):
             page = getattr(chunk, "page_number", None)
-            prefix = f"[Chunk {idx}"
+            if idx == 1:
+                prefix = "[Target"
+            else:
+                prefix = f"[Context {idx - 1}"
             if page is not None:
                 prefix += f" p{page}"
             prefix += "]"
             context_parts.append(f"{prefix} {chunk.content}")
-        context = "\n\n".join(context_parts)[:8000]
+        max_chars = int(getattr(settings, "KG_EXTRACT_CONTEXT_MAX_CHARS", 8000) or 8000)
+        max_chars = max(1000, min(max_chars, 200_000))
+        context = "\n\n".join(context_parts)[:max_chars]
 
         schema = {
             "type": "object",
