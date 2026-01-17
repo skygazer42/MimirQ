@@ -16,6 +16,7 @@ import getCaretCoordinates from 'textarea-caret'
 import { SlashMenu } from '@/components/chat/slash-menu'
 import { globalEventBus } from '@/lib/event-bus'
 import { Magnetic } from '@/components/ui/magnetic'
+import { ScrollReveal } from '@/components/ui/scroll-reveal'
 
 const SELECT_DEFAULT_VALUE = '__mimirq_default__'
 const DEFAULT_VISIBLE_MESSAGES = 80
@@ -269,7 +270,9 @@ export function ChatArea({
 
           <div className="space-y-6">
             {visibleMessages.map((message) => (
-              <ChatMessageItem key={message.id} message={message} />
+              <ScrollReveal key={message.id}>
+                <ChatMessageItem message={message} />
+              </ScrollReveal>
             ))}
 
             {/* 正在生成的消息 */}
