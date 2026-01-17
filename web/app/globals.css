@@ -4,52 +4,103 @@
 
 @layer base {
   :root {
-    --background: 0 0% 100%;
-    --foreground: 222.2 84% 4.9%;
-    --card: 0 0% 100%;
-    --card-foreground: 222.2 84% 4.9%;
-    --popover: 0 0% 100%;
-    --popover-foreground: 222.2 84% 4.9%;
+    /* Base - Modern Clean Light (Zinch/Slate based) */
+    --background: 0 0% 100%; /* Pure white for cleanliness */
+    --foreground: 240 10% 3.9%; /* Deep Zinc */
     
-    /* 清新天蓝主色 (Sky Blue) */
-    --primary: 199 89% 48%;
+    /* Cards - Slightly distinct to create layer */
+    --card: 0 0% 100%;
+    --card-foreground: 240 10% 3.9%;
+    
+    --popover: 0 0% 100%;
+    --popover-foreground: 240 10% 3.9%;
+    
+    /* Primary - Sophisticated Indigo/Blue (Interstellar) */
+    --primary: 221.2 83.2% 53.3%;
     --primary-foreground: 210 40% 98%;
     
-    /* 柔和次要色 */
-    --secondary: 210 40% 96.1%;
-    --secondary-foreground: 222.2 47.4% 11.2%;
-    --muted: 210 40% 96.1%;
-    --muted-foreground: 215.4 16.3% 46.9%;
+    /* Secondary - Subtle Gray */
+    --secondary: 240 4.8% 95.9%;
+    --secondary-foreground: 240 5.9% 10%;
     
-    /* 青绿强调色 (Teal Accent) */
-    --accent: 173 58% 39%;
-    --accent-foreground: 0 0% 100%;
+    /* Muted - For de-emphasized text */
+    --muted: 240 4.8% 95.9%;
+    --muted-foreground: 240 3.8% 46.1%;
     
-    /* 柔粉错误色 (Soft Rose) */
-    --destructive: 351 95% 71%;
-    --destructive-foreground: 0 0% 100%;
+    /* Accent - For hover states/highlights */
+    --accent: 240 4.8% 95.9%;
+    --accent-foreground: 240 5.9% 10%;
     
-    --border: 214.3 31.8% 91.4%;
-    --input: 214.3 31.8% 91.4%;
-    --ring: 199 89% 48%;
+    /* Destructive - Soft Red */
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 0 0% 98%;
     
-    /* 升级的圆角系统 */
+    /* Borders & Inputs */
+    --border: 240 5.9% 90%;
+    --input: 240 5.9% 90%;
+    --ring: 221.2 83.2% 53.3%;
+    
+    /* Radius - Modern curve */
     --radius: 0.75rem;
     --radius-sm: 0.5rem;
     --radius-lg: 1rem;
-    --radius-xl: 1.25rem;
-    
-    /* 暖橙警告色 (Amber Highlight) */
-    --warning: 38 92% 50%;
-    --warning-foreground: 0 0% 100%;
-  }
+    --radius-xl: 1.5rem;
 
-  html {
-    color-scheme: light;
+    /* Sidebar Variables */
+    --sidebar-background: 240 5.9% 97%; /* Very light grey */
+    --sidebar-foreground: 240 10% 3.9%;
+    --sidebar-border: 240 5.9% 90%;
   }
 
   html.dark {
-    color-scheme: dark;
+    /* Base - Deep Space Dark */
+    --background: 240 10% 3.9%;
+    --foreground: 0 0% 98%;
+    
+    --card: 240 10% 5%; /* Slightly lighter than bg */
+    --card-foreground: 0 0% 98%;
+    
+    --popover: 240 10% 3.9%;
+    --popover-foreground: 0 0% 98%;
+    
+    /* Primary - Bright Indigo in Dark */
+    --primary: 217.2 91.2% 59.8%;
+    --primary-foreground: 222.2 47.4% 11.2%;
+    
+    --secondary: 240 3.7% 15.9%;
+    --secondary-foreground: 0 0% 98%;
+    
+    --muted: 240 3.7% 15.9%;
+    --muted-foreground: 240 5% 64.9%;
+    
+    --accent: 240 3.7% 15.9%;
+    --accent-foreground: 0 0% 98%;
+    
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 0 0% 98%;
+    
+    --border: 240 3.7% 15.9%;
+    --input: 240 3.7% 15.9%;
+    --ring: 217.2 91.2% 59.8%;
+
+    /* Sidebar Variables Dark */
+    --sidebar-background: 240 10% 3.9%;
+    --sidebar-foreground: 240 4.8% 95.9%;
+    --sidebar-border: 240 3.7% 15.9%;
+  }
+}
+
+@layer utilities {
+  .glass {
+    @apply bg-background/60 backdrop-blur-lg border-b border-white/10 dark:border-white/5;
+  }
+  
+  .glass-card {
+    @apply bg-card/50 backdrop-blur-md border border-white/20 dark:border-white/10 shadow-sm;
+  }
+
+  .text-balance {
+    text-wrap: balance;
   }
 }
 
