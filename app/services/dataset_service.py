@@ -1,12 +1,12 @@
 """
 Dataset service: creation, permission checks, partial member management.
 """
-import os
 from typing import List, Optional
 from uuid import UUID
 from sqlalchemy.orm import Session
 from fastapi import HTTPException, status
 
+from app.core.env import is_production_env
 from app.models.dataset import Dataset, DatasetPermission, DatasetPermissionEnum
 from app.models.tenant import Tenant, TenantMember
 
@@ -22,8 +22,7 @@ class DatasetService:
             TenantMember.user_id == account_id
         ).first()
         if not member:
-            is_production = os.getenv("ENV", "").lower() in ("prod", "production")
-            if not is_production:
+            if not is_production_env():
                 # Dev-friendly bootstrap: create tenant + membership on first use.
                 tenant = db.query(Tenant).filter(Tenant.id == tenant_id).first()
                 if not tenant:

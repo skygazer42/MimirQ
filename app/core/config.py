@@ -13,6 +13,7 @@ import sys
 import warnings
 from pathlib import Path
 
+from app.core.env import is_production_env
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from pydantic import AliasChoices, Field, model_validator
 
@@ -567,7 +568,7 @@ class Settings(BaseSettings):
     @model_validator(mode="after")
     def validate_settings(self) -> "Settings":
         """Validate configuration settings at startup."""
-        is_production = os.getenv("ENV", "").lower() in ("prod", "production")
+        is_production = is_production_env()
 
         # Security: Auth mode guard
         auth_mode = (getattr(self, "AUTH_MODE", "jwt") or "jwt").lower()

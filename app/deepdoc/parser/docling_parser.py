@@ -14,6 +14,7 @@
 #  limitations under the License.
 #
 
+import contextlib
 import logging
 import re
 from dataclasses import dataclass
@@ -86,7 +87,7 @@ class DoclingParser(RAGFlowPdfParser):
 
         try:
             import fitz  # PyMuPDF
-        except Exception:
+        except ImportError:
             return
 
         doc = None
@@ -119,10 +120,8 @@ class DoclingParser(RAGFlowPdfParser):
             self.logger.warning("[Docling] PyMuPDF render failed: %s", str(e)[:200])
         finally:
             if doc is not None:
-                try:
+                with contextlib.suppress(Exception):
                     doc.close()
-                except Exception:
-                    pass
 
     def _make_line_tag(self,bbox: _BBox) -> str:
         if bbox is None:

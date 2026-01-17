@@ -157,7 +157,7 @@ class LayoutRecognizer(Recognizer):
         ocr_res = boxes
 
         garbag_set = set()
-        for k in garbages.keys():
+        for k in garbages:
             garbages[k] = Counter(garbages[k])
             for g, c in garbages[k].items():
                 if c > 1:
