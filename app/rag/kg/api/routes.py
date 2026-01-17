@@ -252,6 +252,9 @@ async def get_kg_graph(
     if bool(include_entity_links) and int(max_entity_links) > 0 and len(links) < int(max_links):
         from itertools import combinations
 
+        per_event_entity_cap = int(getattr(settings, "KG_ENTITY_LINK_MAX_ENTITIES_PER_EVENT", 60) or 60)
+        per_event_entity_cap = max(0, min(per_event_entity_cap, 500))
+
         event_to_entities: dict[str, set[str]] = {}
         for assoc, ent in rows:
             ent_id = str(ent.id)
@@ -264,8 +267,8 @@ async def get_kg_graph(
             ids = sorted(ent_ids)
             if len(ids) < 2:
                 continue
-            if len(ids) > 60:
-                ids = ids[:60]
+            if per_event_entity_cap > 0 and len(ids) > per_event_entity_cap:
+                ids = ids[:per_event_entity_cap]
             for a, b in combinations(ids, 2):
                 co_counts[(a, b)] += 1
 
@@ -560,6 +563,9 @@ async def expand_kg_graph(
     if bool(include_entity_links) and int(max_entity_links) > 0 and len(links) < int(max_links):
         from itertools import combinations
 
+        per_event_entity_cap = int(getattr(settings, "KG_ENTITY_LINK_MAX_ENTITIES_PER_EVENT", 60) or 60)
+        per_event_entity_cap = max(0, min(per_event_entity_cap, 500))
+
         event_to_entities: dict[str, set[str]] = {}
         for assoc, ent in rows:
             ent_id = str(ent.id)
@@ -572,8 +578,8 @@ async def expand_kg_graph(
             ids = sorted(ent_ids)
             if len(ids) < 2:
                 continue
-            if len(ids) > 60:
-                ids = ids[:60]
+            if per_event_entity_cap > 0 and len(ids) > per_event_entity_cap:
+                ids = ids[:per_event_entity_cap]
             for a, b in combinations(ids, 2):
                 co_counts[(a, b)] += 1
 

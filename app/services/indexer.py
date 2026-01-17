@@ -4,6 +4,7 @@ Indexing service implementation.
 Provides a unified interface for document chunk and event indexing.
 """
 import asyncio
+import hashlib
 import logging
 import time
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
@@ -30,6 +31,7 @@ from app.rag.retriever import hybrid_retriever
 from app.storage.vector.factory import get_vector_store
 from app.storage.vector.milvus import get_milvus_adapter, resolve_collection_name
 from app.rag.core.metadata import normalize_image_metadata
+from app.rag.preprocessing.normalization import normalize_text
 from app.services.metrics_logger import log_metrics
 
 logger = logging.getLogger("indexer")
@@ -53,6 +55,31 @@ def _safe_uuid(value: Any) -> Optional[UUID]:
         return UUID(str(value))
     except Exception:
         return None
+
+
+def _ensure_chunk_metadata(
+    meta: Dict[str, Any],
+    *,
+    content: str,
+    document_id: UUID,
+    chunk_index: int,
+) -> Dict[str, Any]:
+    """Ensure stable per-chunk metadata fields exist (used across DB/vector/BM25)."""
+    if not isinstance(meta, dict):
+        meta = {}
+
+    meta.setdefault("chunk_key", f"{str(document_id)}:{int(chunk_index)}")
+
+    normalized = normalize_text(content or "", normalize_line_endings=True, remove_control_chars=True)
+    stripped = (normalized or "").strip()
+    meta.setdefault("content_len", int(len(stripped)))
+
+    raw_hash = meta.get("content_hash")
+    if not isinstance(raw_hash, str) or not raw_hash.strip():
+        meta["content_hash"] = hashlib.sha256(stripped.encode("utf-8", "ignore")).hexdigest()
+        meta.setdefault("content_hash_algo", "sha256")
+
+    return meta
 
 
 class Indexer:
@@ -213,11 +240,12 @@ class Indexer:
         normalized_chunks: List[ChunkInput] = []
         vector_docs: List[Dict[str, Any]] = []
         chunk_ids: List[UUID] = []
-        for c in chunks:
+        for idx, c in enumerate(chunks):
             meta = dict(c.metadata or {})
             meta.setdefault("index_kind", IndexKind.CHUNK.value)
             meta.setdefault("tenant_id", str(tenant_id))
             meta.setdefault("document_id", str(document_id))
+            meta = _ensure_chunk_metadata(meta, content=c.content or "", document_id=document_id, chunk_index=idx)
             # Ensure every chunk has a stable UUID for cross-system linking.
             chunk_id = _safe_uuid(meta.get("chunk_id")) or uuid.uuid4()
             meta["chunk_id"] = str(chunk_id)
@@ -805,6 +833,7 @@ class Indexer:
             meta.setdefault("tenant_id", str(tenant_id))
             meta.setdefault("document_id", str(document_id))
             meta.setdefault("chunk_index", idx)
+            meta = _ensure_chunk_metadata(meta, content=chunk.content or "", document_id=document_id, chunk_index=idx)
             meta["chunk_id"] = str(chunk_id)
             page_number = (
                 _safe_int(chunk.page_number)
@@ -854,6 +883,12 @@ class Indexer:
         for db_chunk in db_chunks:
             meta = dict(db_chunk.doc_metadata or {})
             normalize_image_metadata(meta)
+            meta = _ensure_chunk_metadata(
+                meta,
+                content=db_chunk.content or "",
+                document_id=document_id,
+                chunk_index=int(db_chunk.chunk_index or 0),
+            )
             meta.setdefault("index_kind", IndexKind.CHUNK.value)
             meta.setdefault("tenant_id", str(tenant_id))
             meta.setdefault("document_id", str(document_id))
