@@ -2,6 +2,7 @@
 Document management API.
 """
 import asyncio
+import contextlib
 import hashlib
 import json
 import os
@@ -35,7 +36,6 @@ from app.api.schemas.document import (
 from langchain_core.documents import Document
 from app.parsing.processors.processor import document_processor
 from app.parsing.factory import parser_factory
-from app.parsing.routing import route_pdf_backend
 from app.parsing.subprocess_runner import SubprocessCancelled, SubprocessWorkerError, run_subprocess_worker
 from app.rag.chunking.factory import chunker_factory
 from app.types.indexing import IndexKind, IndexRecord
@@ -75,7 +75,7 @@ MINIO_IMAGE_REF_RE = re.compile(r"(?:https?://[^\s)\"']+)?/api/v1/documents/imag
 def _parse_uuid(value: str) -> UUID:
     try:
         return UUID(str(value))
-    except Exception:
+    except ValueError:
         raise HTTPException(status_code=400, detail="Invalid tenant id")
 
 
@@ -559,7 +559,7 @@ def _rewrite_preview_images_to_minio(
             continue
         try:
             local_id = uuid.UUID(raw_id).hex
-        except Exception:
+        except ValueError:
             continue
 
         if local_id in seen_local_ids:
@@ -581,7 +581,7 @@ def _rewrite_preview_images_to_minio(
                         if candidate.suffix.lower() in image_exts and candidate.exists() and candidate.is_file():
                             img_path = candidate
                             break
-                except Exception:
+                except OSError:
                     img_path = None
 
             if img_path is None:
@@ -590,12 +590,12 @@ def _rewrite_preview_images_to_minio(
             try:
                 if img_path.stat().st_size > max_bytes:
                     continue
-            except Exception:
+            except OSError:
                 continue
 
             try:
                 raw = img_path.read_bytes()
-            except Exception:
+            except OSError:
                 continue
             if not raw or len(raw) > max_bytes:
                 continue
@@ -624,16 +624,11 @@ def _rewrite_preview_images_to_minio(
                 logger.warning("Failed converting preview image %s to JPEG: %s", local_id, str(e)[:200])
                 continue
             finally:
-                if converted is not None:
-                    try:
-                        converted.close()
-                    except Exception:
-                        pass
-                if img is not None:
-                    try:
-                        img.close()
-                    except Exception:
-                        pass
+                for to_close in (converted, img):
+                    if to_close is None:
+                        continue
+                    with contextlib.suppress(Exception):
+                        to_close.close()
 
             digest = hashlib.sha256(image_bytes).hexdigest()
             img_id = digest_to_img_id.get(digest)
@@ -669,7 +664,7 @@ def _rewrite_preview_images_to_minio(
             return match.group(0)
         try:
             local_id = uuid.UUID(raw_id).hex
-        except Exception:
+        except ValueError:
             return match.group(0)
         img_id = local_id_to_img_id.get(local_id)
         if not img_id:
@@ -1326,11 +1321,9 @@ async def cancel_document_processing(
                 queue_name = getattr(settings, "TASK_QUEUE_NAME", "mimirq")
                 for tid in task_ids:
                     job = Job(tid, q, _queue_name=queue_name)
-                    try:
-                        await job.abort(timeout=0.2)
-                    except (TimeoutError, asyncio.TimeoutError):
+                    with contextlib.suppress(TimeoutError, asyncio.TimeoutError):
                         # Abort signal was enqueued; the worker will pick it up shortly.
-                        pass
+                        await job.abort(timeout=0.2)
         except Exception as exc:  # noqa: BLE001
             logger.warning("Failed to abort tasks %s for document %s: %s", task_ids, document_id, str(exc)[:200])
 
@@ -1397,10 +1390,8 @@ async def delete_document(
                 queue_name = getattr(settings, "TASK_QUEUE_NAME", "mimirq")
                 for task_id in task_ids:
                     job = Job(task_id, q, _queue_name=queue_name)
-                    try:
+                    with contextlib.suppress(TimeoutError, asyncio.TimeoutError):
                         await job.abort(timeout=0.2)
-                    except (TimeoutError, asyncio.TimeoutError):
-                        pass
         except Exception as exc:  # noqa: BLE001
             logger.warning(
                 "Failed to abort document tasks before delete: doc=%s tasks=%s err=%s",
@@ -1499,7 +1490,7 @@ async def get_image(
     # Prevent path traversal: only allow UUID / 32-hex (internal image_id).
     try:
         safe_id = uuid.UUID(image_id).hex
-    except Exception:
+    except ValueError:
         raise HTTPException(status_code=404, detail="Image not found")
 
     images_dir_resolved = images_dir.resolve(strict=False)
@@ -1518,7 +1509,7 @@ async def get_image(
         # Safety check: ensure file_path stays under images_dir (prevent path traversal).
         try:
             file_path.relative_to(images_dir_resolved)
-        except Exception:
+        except ValueError:
             continue
         if file_path.exists() and file_path.is_file():
             return FileResponse(file_path, media_type=media_type)
@@ -1804,10 +1795,8 @@ async def preview_document(
                     path.relative_to(tenant_root)
                 except Exception:
                     continue
-                try:
+                with contextlib.suppress(Exception):
                     shutil.rmtree(path, ignore_errors=True)
-                except Exception:
-                    pass
 
 
 @router.post("/manual", response_model=DocumentDetail, status_code=201)
@@ -1974,7 +1963,7 @@ async def create_document_with_manual_chunks(
                 if raw_tid:
                     try:
                         prompt_template_id = UUID(raw_tid)
-                    except Exception:
+                    except ValueError:
                         logger.warning("Invalid KG_EXTRACT_PROMPT_TEMPLATE_ID: %s", raw_tid[:50])
                 await extract_events(
                     chunk_ids=persist_result.chunk_ids,
@@ -1995,10 +1984,8 @@ async def create_document_with_manual_chunks(
     except Exception as e:
         db.rollback()
         # Best-effort cleanup for partially indexed vectors / BM25
-        try:
+        with contextlib.suppress(Exception):
             Indexer(db).delete_chunk_indexes(tenant_id=tenant_id, document_id=document_id)
-        except Exception:
-            pass
         db_document.status = 'failed'
         db_document.processing_progress = 0
         db_document.current_stage = 'failed'

@@ -301,3 +301,64 @@
 ### D. 测试与验证（130）
 
 130. [x] **全量验证**：`pytest -q` 全绿
+
+---
+
+## 第八阶段（131–170）：整体后端优化（40 项，减法优先）清单
+
+> 目标：继续做“减法 + 性能”——减少权限校验/DB 查询冗余、收敛异常捕获范围、清理无用 import、简化资源清理代码；不引入无谓抽象与过度防御。
+
+### A. Chat / 权限（131–140）
+
+131. [x] **Stream chat 去重 member 校验**：`/chat/stream` 移除冗余 `ensure_member`（由 document_access 路径兜底）
+132. [x] **会话列表去 N+1（权限）**：`/chat/conversations` 用批量 doc_ids 校验替代逐会话 `filter_allowed_document_ids`
+133. [x] **dataset 权限逻辑提取**：document_access 抽出 `_resolve_allowed_dataset_ids` 作为单点
+134. [x] **批量文档权限集合**：新增 `get_allowed_document_id_sets(..., check_member=...)` 供批量场景复用
+135. [x] **filter_allowed_document_ids 减法**：改为基于集合 helper 计算（减少重复查询/重复分支）
+136. [x] **list_accessible_document_ids 减法**：改为基于集合 helper 计算（减少重复查询/重复分支）
+137. [x] **ONLY_ME 冗余判断删除**：移除 doc loop 中重复的 ONLY_ME 分支（由 allowed_dataset_ids 结果表达）
+138. [x] **missing 文档报错更稳定**：404 missing 文档 id 按输入顺序输出（便于定位）
+139. [x] **会话访问校验减法**：`_ensure_conversation_access` 改用集合 helper（避免额外 member 查询）
+140. [x] **member 校验不重复**：批量权限计算使用 `check_member=False`（端点已先 ensure_member）
+
+### B. 文档 / 解析 / 管道（141–156）
+
+141. [x] **pipeline import 检测异常收敛**：`_check_python_import` 只捕获 `ImportError/AttributeError`
+142. [x] **parse-preview 清理简化**：`shutil.rmtree(..., ignore_errors=True)` 替代嵌套 try/exists 判断
+143. [x] **documents import 减法**：移除未使用的 `route_pdf_backend` import
+144. [x] **UUID 解析异常收敛**：`_parse_uuid` 只捕获 `ValueError`
+145. [x] **预览图片 UUID 解析收敛（1）**：preview image refs 解析只捕获 `ValueError`
+146. [x] **预览图片 UUID 解析收敛（2）**：preview image replacer 解析只捕获 `ValueError`
+147. [x] **glob 异常收敛**：图片 fallback glob 只捕获 `OSError`
+148. [x] **stat 异常收敛**：`Path.stat()` 只捕获 `OSError`
+149. [x] **read_bytes 异常收敛**：`Path.read_bytes()` 只捕获 `OSError`
+150. [x] **get_image UUID 校验收敛**：image_id 校验只捕获 `ValueError`
+151. [x] **get_image 路径校验收敛**：`relative_to` 只捕获 `ValueError`
+152. [x] **PIL close 清理减法**：用 `contextlib.suppress` + for-loop 简化 close 清理
+153. [x] **取消任务超时清理减法（cancel）**：`job.abort` 用 `contextlib.suppress(TimeoutError, asyncio.TimeoutError)`
+154. [x] **取消任务超时清理减法（delete）**：`job.abort` 用 `contextlib.suppress(TimeoutError, asyncio.TimeoutError)`
+155. [x] **artifact 清理减法**：`shutil.rmtree` 用 `contextlib.suppress`（ignore_errors 之外再兜底）
+156. [x] **KG 模板 UUID 解析收敛**：`KG_EXTRACT_PROMPT_TEMPLATE_ID` 解析只捕获 `ValueError`
+
+### C. Chunking 策略清理（157–165）
+
+157. [x] **chunker import 减法**：`api_reference.py` 删除未使用 `Optional`
+158. [x] **chunker import 减法**：`diff_patch.py` 删除未使用 `Optional/Tuple`
+159. [x] **chunker import 减法**：`email_thread.py` 删除未使用 `Optional`
+160. [x] **chunker import 减法**：`glossary.py` 删除未使用 `Optional`
+161. [x] **chunker import 减法**：`makefile.py` 删除未使用 `Optional`
+162. [x] **chunker import 减法**：`outline.py` 删除未使用 `Iterable`
+163. [x] **chunker import 减法**：`spreadsheet_sheet.py` 删除未使用 `Optional`
+164. [x] **chunker import 减法**：`subtitles.py` 删除未使用 `Optional`
+165. [x] **chunker import 减法**：`transcript.py` 删除未使用 `Optional`
+
+### D. Core / 服务工具（166–169）
+
+166. [x] **pipeline 输出简化**：datasets pipeline 输出去掉冗余 `.keys()`
+167. [x] **token 统计更稳**：`num_tokens_from_string` 编码异常时回退启发式（不再返回 0）
+168. [x] **JWT/日志异常收敛**：jwt_inspect + logging_config 收敛异常范围并删除无用 try/except
+169. [x] **工具层小减法合集**：indexer/milvus/jsonl/embedding/schema 等收敛异常与去 `.keys()` / 去重复实现
+
+### E. 测试与验证（170）
+
+170. [x] **全量验证**：`pytest -q` 全绿

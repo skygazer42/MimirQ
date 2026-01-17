@@ -8,6 +8,7 @@ services where we do not have the signing key.
 from __future__ import annotations
 
 import base64
+import binascii
 import json
 from datetime import datetime, timezone
 from typing import Any, Optional
@@ -33,7 +34,7 @@ def try_get_jwt_claims(token: str) -> Optional[dict[str, Any]]:
     try:
         payload = _base64url_decode(payload_b64)
         obj = json.loads(payload.decode("utf-8"))
-    except Exception:
+    except (binascii.Error, UnicodeDecodeError, ValueError):
         return None
     return obj if isinstance(obj, dict) else None
 
@@ -49,7 +50,7 @@ def try_get_jwt_exp(token: str) -> Optional[int]:
     if isinstance(exp, (int, float)):
         try:
             return int(exp)
-        except Exception:
+        except (TypeError, ValueError):
             return None
     return None
 
@@ -57,4 +58,3 @@ def try_get_jwt_exp(token: str) -> Optional[int]:
 def format_unix_ts_utc(ts: int) -> str:
     """Format unix seconds as an ISO-8601 UTC string."""
     return datetime.fromtimestamp(int(ts), tz=timezone.utc).isoformat().replace("+00:00", "Z")
-

@@ -30,7 +30,11 @@ from app.api.schemas.chat import (
     CheckpointListResponse,
     CheckpointDetailResponse,
 )
-from app.services.document_access import filter_allowed_document_ids, list_accessible_document_ids
+from app.services.document_access import (
+    filter_allowed_document_ids,
+    get_allowed_document_id_sets,
+    list_accessible_document_ids,
+)
 from app.rag.engine import get_rag_engine
 from app.rag.core.text import parse_json_from_text
 from app.services.metrics_logger import log_metrics, set_metrics_context
@@ -68,7 +72,20 @@ def _ensure_conversation_access(
     """
     if not conv.document_ids:
         return []
-    allowed = filter_allowed_document_ids(db, tenant_id, account_id, conv.document_ids)
+    doc_ids = list(conv.document_ids or [])
+    allowed_ids, missing_ids = get_allowed_document_id_sets(
+        db,
+        tenant_id,
+        account_id,
+        doc_ids,
+        check_member=False,
+    )
+    if missing_ids:
+        missing = [str(doc_id) for doc_id in doc_ids if doc_id in missing_ids]
+        raise HTTPException(status_code=404, detail=f"Documents not found: {', '.join(missing)}")
+    allowed = [doc_id for doc_id in doc_ids if doc_id in allowed_ids]
+    if not allowed:
+        raise HTTPException(status_code=403, detail="No accessible documents for this request")
     return allowed
 
 
@@ -156,9 +173,6 @@ async def stream_chat(
     allowed_doc_ids: list[UUID] = []
     long_term_messages: list[dict] = []
     allow_empty_docs = bool(getattr(settings, "CHAT_ALLOW_EMPTY_DOCUMENTS", True))
-
-    # Ensure tenant membership.
-    DatasetService.ensure_member(db, tenant_id, account_id)
 
     # 1. Load or create a conversation.
     if conversation_id:
@@ -535,14 +549,35 @@ async def list_conversations(
         Conversation.updated_at.desc()
     ).offset(skip).limit(limit).all()
 
+    doc_ids_by_conversation_id: dict[UUID, list[UUID]] = {}
+    all_doc_ids: set[UUID] = set()
+    for conv in conversations_raw:
+        doc_ids = list(getattr(conv, "document_ids", None) or [])
+        doc_ids_by_conversation_id[conv.id] = doc_ids
+        all_doc_ids.update(doc_ids)
+
+    allowed_doc_ids: set[UUID] = set()
+    missing_doc_ids: set[UUID] = set()
+    if all_doc_ids:
+        allowed_doc_ids, missing_doc_ids = get_allowed_document_id_sets(
+            db,
+            tenant_id,
+            account_id,
+            list(all_doc_ids),
+            check_member=False,
+        )
+
     conversations = []
     for conv in conversations_raw:
-        try:
-            _ensure_conversation_access(db, tenant_id, account_id, conv)
+        doc_ids = doc_ids_by_conversation_id.get(conv.id) or []
+        if not doc_ids:
             conversations.append(conv)
-        except HTTPException:
-            # skip conversations the user cannot access
             continue
+        doc_id_set = set(doc_ids)
+        if doc_id_set & missing_doc_ids:
+            continue
+        if doc_id_set & allowed_doc_ids:
+            conversations.append(conv)
 
     result_items = []
     last_message_by_conversation_id: dict[UUID, Message] = {}

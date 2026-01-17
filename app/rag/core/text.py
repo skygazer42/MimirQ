@@ -7,6 +7,8 @@ import json
 import re
 from typing import Any, Dict, Tuple, Literal
 
+from app.core.token_utils import estimate_tokens
+
 
 _JSON_FENCE_RE = re.compile(r"```(?:json)?\s*(.*?)\s*```", flags=re.IGNORECASE | re.DOTALL)
 _SENTENCE_RE = re.compile(r"[^。！？.!?\n]+[。！？.!?\n]?", flags=re.S)
@@ -20,11 +22,6 @@ _QUERY_REWRITE_TRIGGER_RE = re.compile(
     r"(它们?|他(们)?|她(们)?|这个|这(段|部分|些)|那(个)?|上述|上面|前面|之前|刚才|上文|下文|这里|那里|继续|同上|同理)",
     flags=re.IGNORECASE,
 )
-
-
-def estimate_tokens(text: str) -> int:
-    """Rough token estimate used for guards; not exact."""
-    return max(1, len(text) // 4)
 
 
 def _extract_string_items_from_lines(text: str, *, max_items: int = 12) -> list[str]:

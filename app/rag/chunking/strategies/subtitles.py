@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import re
-from typing import Any, List, Optional
+from typing import Any, List
 
 from langchain_core.documents import Document
 from langchain_text_splitters import RecursiveCharacterTextSplitter
@@ -202,4 +202,3 @@ class SubtitlesChunker(BaseChunker):
             chunk.metadata = meta
 
         return out
-

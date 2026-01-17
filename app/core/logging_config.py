@@ -36,7 +36,7 @@ def reset_request_context(tokens: Dict[str, Any]) -> None:
         _request_id.reset(tokens["request_id"])
         _tenant_id.reset(tokens["tenant_id"])
         _user_id.reset(tokens["user_id"])
-    except Exception:  # noqa: BLE001
+    except (KeyError, ValueError):
         # Best-effort: never fail request processing due to logging context cleanup.
         return
 
@@ -104,11 +104,7 @@ def configure_logging(*, log_level: str = "INFO", log_format: str = "plain") -> 
     """
     _install_record_factory()
 
-    level = logging.INFO
-    try:
-        level = int(logging._nameToLevel.get(str(log_level).upper(), logging.INFO))
-    except Exception:  # noqa: BLE001
-        level = logging.INFO
+    level = int(logging._nameToLevel.get(str(log_level).upper(), logging.INFO))
 
     if str(log_format).lower() != "json":
         return
@@ -116,4 +112,3 @@ def configure_logging(*, log_level: str = "INFO", log_format: str = "plain") -> 
     handler = logging.StreamHandler(sys.stdout)
     handler.setFormatter(JSONFormatter())
     logging.basicConfig(level=level, handlers=[handler], force=True)
-

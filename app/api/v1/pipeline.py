@@ -5,6 +5,7 @@ Lightweight parsing and hierarchical chunk preview APIs:
 """
 
 from pathlib import Path
+import shutil
 import uuid
 import zipfile
 from uuid import UUID
@@ -86,7 +87,7 @@ def _check_python_import(module_name: str, *, attr: str | None = None) -> tuple[
         if attr:
             getattr(mod, attr)
         return True, None
-    except Exception as exc:
+    except (ImportError, AttributeError) as exc:
         return False, str(exc)[:200] or "import failed"
 
 
@@ -462,13 +463,7 @@ async def parse_preview(
             raise HTTPException(status_code=400, detail=str(e))
         raise HTTPException(status_code=500, detail="Failed to parse preview")
     finally:
-        try:
-            if run_dir.exists():
-                import shutil
-
-                shutil.rmtree(run_dir, ignore_errors=True)
-        except Exception:
-            pass
+        shutil.rmtree(run_dir, ignore_errors=True)
 
 
 @router.post("/chunk-preview", response_model=ChunkPreviewResponse)
