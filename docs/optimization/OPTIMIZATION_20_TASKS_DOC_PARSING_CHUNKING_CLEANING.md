@@ -263,3 +263,41 @@
 
 109. [x] **单测对齐**：更新/补齐单测以匹配精简后的接口/数据结构
 110. [x] **全量验证**：`pytest -q` 全绿
+
+---
+
+## 第七阶段（111–130）：整体后端优化（减法优先）清单
+
+> 目标：不局限 KG，优先做减法（去冗余、去不必要的防御性代码、去 N+1），让 API/Service/Core 工具层更短更清晰、DB/CPU 更省。
+
+### A. API 层去冗余（111–114）
+
+111. [x] **RAG 预览去重 member 校验**：`/retrieve-preview` 与 `/prompt-preview` 移除重复 `ensure_member`（由 document_access 兜底）
+112. [x] **RAG 预览 import 减法**：随去重移除 `DatasetService` 未使用 import
+113. [x] **Chat 创建会话去重 member 校验**：`/conversations` 移除重复 `ensure_member`（由 document_access 兜底）
+114. [x] **tenant 解析异常收敛**：UUID 解析只捕获 `ValueError`（避免吞掉非预期异常）
+
+### B. Services 层减法与性能（115–121）
+
+115. [x] **pipeline flag 简化**：`_resolve_flag` 简化为单表达式（保持“只能禁用不能强启用”的语义）
+116. [x] **pipeline 数值解析异常收敛**：`_coerce_int/_coerce_float` 只捕获 `TypeError/ValueError`
+117. [x] **DatasetPermissionService 参数减法**：移除未使用 `operator_id` 参数并更新调用点
+118. [x] **partial member 去重/清洗**：更新 partial members 时先去重/去空白，避免触发唯一约束错误
+119. [x] **partial member 校验去 N+1**：用 1 次查询校验 `member_ids` 是否都在 tenant 中
+120. [x] **partial member 批量替换**：`delete(synchronize_session=False)` + `add_all` 替代逐条写入
+121. [x] **UserService 异常收敛**：UUID 解析只捕获 `ValueError`（`get_by_id/ensure_default_membership`）
+
+### C. Core/Utils 层减法（122–129）
+
+122. [x] **bcrypt 校验异常收敛**：`verify_password` 只捕获 `TypeError/ValueError`
+123. [x] **token count 提取减法**：`total_token_count_from_response` 用 `getattr/type-check` 替代多层 try/except
+124. [x] **JSON 解析异常收敛**：`parse_json_from_text` 仅捕获 `ValueError`（避免吞掉非 JSON 类异常）
+125. [x] **HTTP/2 可选依赖异常收敛**：可选 `h2` import 仅捕获 `ImportError`
+126. [x] **http2 enable 逻辑简化**：去掉冗余 bool 包装与中间变量
+127. [x] **Retry-After 解析异常收敛**：只捕获 `TypeError/ValueError`
+128. [x] **上传清理减法**：`_safe_unlink` 使用 `unlink(missing_ok=True)` 并仅 suppress `OSError`
+129. [x] **子进程清理减法**：subprocess runner 用 `unlink(missing_ok=True)` 并收敛异常范围（close/cleanup）
+
+### D. 测试与验证（130）
+
+130. [ ] **全量验证**：`pytest -q` 全绿
