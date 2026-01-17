@@ -24,6 +24,8 @@ import { ManualUploadDialog } from '@/components/manual-upload-dialog'
 import { DocumentDetailDialog } from '@/components/document-detail-dialog'
 import { getParserLabel } from '@/lib/parser-options'
 import { getChunkStrategyLabel } from '@/lib/chunk-strategies'
+import { LottieAnimation, LOTTIE_URLS } from '@/components/ui/lottie-animation'
+import { PipelineVisualizer } from '@/components/ui/pipeline-visualizer'
 
 export function Sidebar() {
   const { documents, isLoading, uploadDocument, cancelDocument, deleteDocument, loadDocuments } = useDocuments()
@@ -224,16 +226,9 @@ function DocumentCard({
 
           {/* 处理进度 */}
           {(document.status === 'processing' || document.status === 'pending') && (
-            <div className="mt-3 relative">
-              <div className="w-full bg-secondary rounded-full h-1 overflow-hidden">
-                <div
-                  className="bg-primary h-full rounded-full transition-all duration-500 ease-out relative"
-                  style={{ width: `${document.processing_progress}%` }}
-                >
-                    <div className="absolute inset-0 bg-white/30 animate-[shimmer_1s_infinite]" />
-                </div>
-              </div>
-              <div className="flex justify-between items-center mt-1">
+            <div className="mt-3">
+              <PipelineVisualizer progress={document.processing_progress} className="py-2 scale-90 origin-left w-[110%]" />
+              <div className="flex justify-between items-center mt-6">
                  <p className="text-[10px] text-muted-foreground">
                     {document.current_stage || '处理中'}
                  </p>
