@@ -9,14 +9,15 @@ import {
   Upload,
   Loader2,
   Trash2,
-  CheckCircle,
-  XCircle,
+  CheckCircle2,
+  AlertCircle,
   X,
   Clock,
+  MoreVertical,
+  File,
 } from 'lucide-react'
 import { useDocuments } from '@/hooks/use-documents'
 import { formatFileSize, formatDate, getFileIcon } from '@/lib/utils'
-import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import type { Document } from '@/types'
 import { ManualUploadDialog } from '@/components/manual-upload-dialog'
@@ -40,8 +41,6 @@ export function Sidebar() {
         console.error('Upload failed:', error)
       }
     }
-
-    // 清空 input
     e.target.value = ''
   }
 
@@ -54,69 +53,93 @@ export function Sidebar() {
     )
   }
 
-  // 获取状态图标
+  // 获取状态图标 - 更精致的版本
   const getStatusIcon = (status: string) => {
     switch (status) {
       case 'completed':
-        return <CheckCircle className="h-4 w-4 text-green-500" />
+        return <CheckCircle2 className="h-4 w-4 text-emerald-500" />
       case 'failed':
-        return <XCircle className="h-4 w-4 text-red-500" />
+        return <AlertCircle className="h-4 w-4 text-destructive" />
       case 'processing':
       case 'pending':
-        return <Loader2 className="h-4 w-4 text-blue-500 animate-spin" />
+        return <Loader2 className="h-4 w-4 text-primary animate-spin" />
       default:
-        return <Clock className="h-4 w-4 text-gray-400" />
+        return <Clock className="h-4 w-4 text-muted-foreground" />
     }
   }
 
   return (
-    <div className="w-80 h-screen bg-gray-50 border-r border-gray-200 flex flex-col">
-      {/* 头部 */}
-      <div className="p-6 border-b border-gray-200 bg-white">
-        <h2 className="text-lg font-semibold text-gray-900 mb-4">知识库</h2>
+    <aside className="w-80 h-screen bg-sidebar-background/95 backdrop-blur-xl border-r border-sidebar-border flex flex-col shadow-[1px_0_20px_rgba(0,0,0,0.02)] transition-colors duration-300">
+      {/* 头部 - 增加空间感 */}
+      <div className="p-6 border-b border-sidebar-border/60">
+        <div className="flex items-center justify-between mb-6">
+            <div className="flex items-center gap-2">
+                <div className="h-8 w-8 rounded-lg bg-primary/10 flex items-center justify-center">
+                    <FileText className="h-4 w-4 text-primary" />
+                </div>
+                <h2 className="text-lg font-semibold tracking-tight text-foreground/90">知识库</h2>
+            </div>
+            <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-secondary text-secondary-foreground">
+                {documents.length}
+            </span>
+        </div>
 
-        {/* 上传按钮 */}
-        <label htmlFor="file-upload">
-          <div className="flex items-center justify-center gap-2 w-full px-4 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 cursor-pointer transition-colors">
-            <Upload className="h-4 w-4" />
-            <span className="text-sm font-medium">上传文档</span>
-          </div>
-          <input
-            id="file-upload"
-            type="file"
-            multiple
-            accept=".pdf,.txt,.md,.doc,.docx,.xls,.xlsx,.csv,.html,.json"
-            className="hidden"
-            onChange={handleFileUpload}
-          />
-        </label>
+        {/* 上传按钮组 - 更有层次感 */}
+        <div className="space-y-3">
+            <label htmlFor="file-upload" className="group relative overflow-hidden flex items-center justify-center gap-2 w-full px-4 py-3 bg-primary text-primary-foreground rounded-xl shadow-md shadow-primary/20 hover:shadow-lg hover:shadow-primary/30 hover:-translate-y-0.5 active:translate-y-0 cursor-pointer transition-all duration-300">
+                <div className="absolute inset-0 bg-gradient-to-tr from-white/0 via-white/10 to-white/0 opacity-0 group-hover:opacity-100 transition-opacity" />
+                <Upload className="h-4 w-4" />
+                <span className="text-sm font-medium">上传文档</span>
+                <input
+                    id="file-upload"
+                    type="file"
+                    multiple
+                    accept=".pdf,.txt,.md,.doc,.docx,.xls,.xlsx,.csv,.html,.json"
+                    className="hidden"
+                    onChange={handleFileUpload}
+                />
+            </label>
 
-        {/* 高级手动切片上传 */}
-        <ManualUploadDialog onUploaded={loadDocuments} />
+            <div className="grid grid-cols-1">
+                 <ManualUploadDialog onUploaded={loadDocuments} />
+            </div>
+        </div>
 
         {selectedDocIds.length > 0 && (
-          <p className="mt-3 text-xs text-gray-500 text-center">
-            已选择 {selectedDocIds.length} 个文档
-          </p>
+          <div className="mt-4 flex items-center justify-between px-1 py-1 bg-accent/50 rounded-md border border-accent">
+            <p className="text-xs text-muted-foreground pl-2">
+              已选 {selectedDocIds.length} 项
+            </p>
+            <button 
+                onClick={() => setSelectedDocIds([])}
+                className="p-1 hover:bg-background rounded-sm transition-colors"
+            >
+                <X className="h-3 w-3 text-muted-foreground" />
+            </button>
+          </div>
         )}
       </div>
 
-      {/* 文档列表 */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-2">
+      {/* 文档列表 - 优化滚动体验 */}
+      <div className="flex-1 overflow-y-auto p-4 space-y-3 scrollbar-hide">
         {isLoading && documents.length === 0 ? (
-          <div className="flex items-center justify-center h-32">
-            <Loader2 className="h-6 w-6 animate-spin text-gray-400" />
+          <div className="flex flex-col items-center justify-center h-40 gap-3">
+            <Loader2 className="h-8 w-8 animate-spin text-primary/30" />
+            <p className="text-sm text-muted-foreground animate-pulse">加载中...</p>
           </div>
         ) : documents.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-32 text-gray-400">
-            <FileText className="h-12 w-12 mb-2" />
-            <p className="text-sm">暂无文档</p>
+          <div className="flex flex-col items-center justify-center h-48 text-muted-foreground/50 gap-4">
+            <div className="h-16 w-16 rounded-2xl bg-secondary/50 flex items-center justify-center">
+                <File className="h-8 w-8" />
+            </div>
+            <p className="text-sm">暂无文档，请上传</p>
           </div>
         ) : (
-          documents.map((doc) => (
+          documents.map((doc, index) => (
             <DocumentCard
               key={doc.id}
               document={doc}
+              index={index}
               isSelected={selectedDocIds.includes(doc.id)}
               onSelect={() => toggleDocumentSelection(doc.id)}
               onCancel={() => cancelDocument(doc.id)}
@@ -126,20 +149,14 @@ export function Sidebar() {
           ))
         )}
       </div>
-
-      {/* 底部统计 */}
-      <div className="p-4 border-t border-gray-200 bg-white">
-        <p className="text-xs text-gray-500">
-          共 {documents.length} 个文档
-        </p>
-      </div>
-    </div>
+    </aside>
   )
 }
 
-// 文档卡片组件
+// 文档卡片组件 - 玻璃拟态与微交互
 function DocumentCard({
   document,
+  index,
   isSelected,
   onSelect,
   onCancel,
@@ -147,13 +164,14 @@ function DocumentCard({
   getStatusIcon,
 }: {
   document: Document
+  index: number
   isSelected: boolean
   onSelect: () => void
   onCancel: () => void
   onDelete: () => void
   getStatusIcon: (status: string) => React.ReactNode
 }) {
-  const [showDelete, setShowDelete] = useState(false)
+  const [isHovered, setIsHovered] = useState(false)
   const parserBackend = (document.metadata?.parser_backend as string) || ''
   const parserLabel = parserBackend ? getParserLabel(parserBackend) : null
   const chunkStrategyValue = (document.metadata?.chunk_strategy as string) || ''
@@ -162,99 +180,127 @@ function DocumentCard({
   return (
     <div
       className={cn(
-        'group relative p-3 rounded-lg border transition-all cursor-pointer',
+        'group relative p-3 rounded-xl border transition-all duration-300 cursor-pointer animate-fade-in-up',
         isSelected
-          ? 'bg-blue-50 border-blue-200'
-          : 'bg-white border-gray-200 hover:border-gray-300 hover:shadow-sm'
+          ? 'bg-primary/5 border-primary/30 shadow-[0_0_0_1px_rgba(var(--primary),0.2)]'
+          : 'bg-card/50 hover:bg-card border-border/50 hover:border-border/80 hover:shadow-md hover:shadow-black/5 hover:-translate-y-0.5'
       )}
+      style={{ animationDelay: `${index * 50}ms` }}
       onClick={onSelect}
-      onMouseEnter={() => setShowDelete(true)}
-      onMouseLeave={() => setShowDelete(false)}
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
     >
       <div className="flex items-start gap-3">
-        {/* 文件图标 */}
-        <div className="text-2xl mt-0.5">
+        {/* 文件图标容器 */}
+        <div className={cn(
+            "p-2 rounded-lg transition-colors text-xl",
+            isSelected ? "bg-primary/10 text-primary" : "bg-secondary text-muted-foreground group-hover:text-foreground"
+        )}>
           {getFileIcon(document.file_type)}
         </div>
 
         {/* 文档信息 */}
-        <div className="flex-1 min-w-0">
-          <h3 className="text-sm font-medium text-gray-900 truncate">
-            {document.filename}
-          </h3>
-          <div className="flex items-center gap-2 mt-1">
-            <span className="text-xs text-gray-500">
+        <div className="flex-1 min-w-0 py-0.5">
+          <div className="flex items-start justify-between gap-2">
+             <h3 className={cn(
+                 "text-sm font-medium truncate transition-colors",
+                 isSelected ? "text-primary" : "text-foreground"
+             )}>
+                {document.filename}
+            </h3>
+            <div className="shrink-0 pt-0.5 opacity-70">
+                {getStatusIcon(document.status)}
+            </div>
+          </div>
+          
+          <div className="flex items-center gap-2 mt-1.5">
+            <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-secondary text-secondary-foreground/70">
               {formatFileSize(document.file_size)}
             </span>
-            <span className="text-xs text-gray-400">·</span>
-            <span className="text-xs text-gray-500">
+            <span className="text-[10px] text-muted-foreground/60">
               {formatDate(document.created_at)}
             </span>
           </div>
 
           {/* 处理进度 */}
           {(document.status === 'processing' || document.status === 'pending') && (
-            <div className="mt-2">
-              <div className="w-full bg-gray-200 rounded-full h-1.5">
+            <div className="mt-3 relative">
+              <div className="w-full bg-secondary rounded-full h-1 overflow-hidden">
                 <div
-                  className="bg-blue-500 h-1.5 rounded-full transition-all"
+                  className="bg-primary h-full rounded-full transition-all duration-500 ease-out relative"
                   style={{ width: `${document.processing_progress}%` }}
-                />
+                >
+                    <div className="absolute inset-0 bg-white/30 animate-[shimmer_1s_infinite]" />
+                </div>
               </div>
-              <p className="text-xs text-gray-500 mt-1">
-                {document.current_stage || '处理中'}...{' '}
-                {document.processing_progress}%
-              </p>
+              <div className="flex justify-between items-center mt-1">
+                 <p className="text-[10px] text-muted-foreground">
+                    {document.current_stage || '处理中'}
+                 </p>
+                 <span className="text-[10px] font-mono text-primary/80">
+                    {document.processing_progress}%
+                 </span>
+              </div>
             </div>
           )}
 
-          {/* 完成状态 */}
-          {document.status === 'completed' && (
-            <div className="text-xs text-gray-500 mt-1 flex flex-col gap-0.5">
-              <span>{document.chunk_count} 个片段</span>
-              {parserLabel && <span>解析器：{parserLabel}</span>}
-              {chunkStrategyLabel && <span>切块：{chunkStrategyLabel}</span>}
-            </div>
+          {/* 属性标签 */}
+          {document.status === 'completed' && isHovered && (
+             <div className="mt-2 flex flex-wrap gap-1 animate-fade-in">
+                <span className="text-[10px] px-1.5 py-0.5 bg-secondary/80 rounded text-muted-foreground">
+                    {document.chunk_count} 片段
+                </span>
+                {parserLabel && (
+                    <span className="text-[10px] px-1.5 py-0.5 bg-secondary/80 rounded text-muted-foreground">
+                        {parserLabel}
+                    </span>
+                )}
+             </div>
           )}
 
           {/* 错误信息 */}
           {document.status === 'failed' && (
-            <p className="text-xs text-red-500 mt-1">处理失败</p>
+            <p className="text-[10px] text-destructive mt-1 font-medium bg-destructive/5 px-1.5 py-0.5 rounded inline-block">
+                处理失败
+            </p>
           )}
         </div>
+      </div>
 
-        {/* 状态和操作 */}
-        <div className="flex flex-col items-end gap-2">
-          {getStatusIcon(document.status)}
-
-          {/* 查看详情（切片） */}
-          <DocumentDetailDialog document={document} />
-
-          {showDelete && (document.status === 'processing' || document.status === 'pending') && (
+      {/* 悬浮操作栏 */}
+      <div className={cn(
+          "absolute right-2 top-2 flex flex-col gap-1 transition-all duration-200",
+          isHovered ? "opacity-100 translate-x-0" : "opacity-0 translate-x-2 pointer-events-none"
+      )}>
+        <DocumentDetailDialog document={document} trigger={
+            <button className="p-1.5 bg-background/80 backdrop-blur border shadow-sm rounded-md hover:bg-primary hover:text-primary-foreground transition-colors" title="查看详情">
+                <FileText className="h-3.5 w-3.5" />
+            </button>
+        } />
+        
+        {(document.status === 'processing' || document.status === 'pending') ? (
             <button
               onClick={(e) => {
                 e.stopPropagation()
                 onCancel()
               }}
-              className="p-1 hover:bg-amber-50 rounded transition-colors"
+              className="p-1.5 bg-background/80 backdrop-blur border shadow-sm rounded-md hover:bg-amber-100 hover:text-amber-600 transition-colors"
               title="取消处理"
             >
-              <X className="h-4 w-4 text-amber-600" />
+              <X className="h-3.5 w-3.5" />
             </button>
-          )}
-
-          {showDelete && document.status !== 'processing' && (
+        ) : (
             <button
               onClick={(e) => {
                 e.stopPropagation()
                 onDelete()
               }}
-              className="p-1 hover:bg-red-50 rounded transition-colors"
+              className="p-1.5 bg-background/80 backdrop-blur border shadow-sm rounded-md hover:bg-destructive hover:text-destructive-foreground transition-colors"
+              title="删除文档"
             >
-              <Trash2 className="h-4 w-4 text-red-500" />
+              <Trash2 className="h-3.5 w-3.5" />
             </button>
-          )}
-        </div>
+        )}
       </div>
     </div>
   )
