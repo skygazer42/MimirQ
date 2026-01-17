@@ -15,8 +15,10 @@ import {
   Clock,
   MoreVertical,
   File,
+  Search,
 } from 'lucide-react'
 import { useDocuments } from '@/hooks/use-documents'
+import { useLocalSearch } from '@/hooks/use-local-search'
 import { formatFileSize, formatDate, getFileIcon } from '@/lib/utils'
 import { cn } from '@/lib/utils'
 import type { Document } from '@/types'
@@ -32,6 +34,19 @@ import { TiltCard } from '@/components/ui/tilt-card'
 export function Sidebar() {
   const { documents, isLoading, uploadDocument, cancelDocument, deleteDocument, loadDocuments } = useDocuments()
   const [selectedDocIds, setSelectedDocIds] = useState<string[]>([])
+  const parentRef = useRef<HTMLDivElement>(null)
+
+  const { term, setTerm, results } = useLocalSearch(documents, {
+      fields: ['filename', 'file_type'],
+      storeFields: ['id']
+  })
+
+  const rowVirtualizer = useVirtualizer({
+    count: results.length,
+    getScrollElement: () => parentRef.current,
+    estimateSize: () => 100, // 估算高度，卡片大约 80-100px
+    overscan: 5,
+  })
 
   // 处理文件上传
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -88,8 +103,26 @@ export function Sidebar() {
             </span>
         </div>
 
-        {/* 上传按钮组 - 更有层次感 */}
         <div className="space-y-3">
+            <div className="relative group">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground group-focus-within:text-primary transition-colors" />
+                <input 
+                    type="text"
+                    value={term}
+                    onChange={(e) => setTerm(e.target.value)}
+                    placeholder="快速搜索文档..."
+                    className="w-full h-9 pl-9 pr-3 bg-secondary/50 border border-transparent focus:bg-background focus:border-primary/30 rounded-lg text-xs outline-none transition-all"
+                />
+                {term && (
+                    <button 
+                        onClick={() => setTerm('')}
+                        className="absolute right-2 top-1/2 -translate-y-1/2 p-1 hover:bg-secondary rounded-md"
+                    >
+                        <X className="h-3 w-3 text-muted-foreground" />
+                    </button>
+                )}
+            </div>
+
             <Magnetic strength={0.3}>
                 <label htmlFor="file-upload" className="group relative overflow-hidden flex items-center justify-center gap-2 w-full px-4 py-3 bg-primary text-primary-foreground rounded-xl shadow-md shadow-primary/20 hover:shadow-lg hover:shadow-primary/30 hover:-translate-y-0.5 active:translate-y-0 cursor-pointer transition-all duration-300">
                     <div className="absolute inset-0 bg-gradient-to-tr from-white/0 via-white/10 to-white/0 opacity-0 group-hover:opacity-100 transition-opacity" />
@@ -126,33 +159,65 @@ export function Sidebar() {
         )}
       </div>
 
-      {/* 文档列表 - 优化滚动体验 */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-3 scrollbar-hide">
+      {/* 文档列表 - 优化滚动体验 (虚拟列表 + 本地搜索) */}
+      <div 
+        ref={parentRef} 
+        className="flex-1 overflow-y-auto p-4 scrollbar-hide"
+      >
         {isLoading && documents.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-40 gap-3">
             <Loader2 className="h-8 w-8 animate-spin text-primary/30" />
             <p className="text-sm text-muted-foreground animate-pulse">加载中...</p>
           </div>
-        ) : documents.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-48 text-muted-foreground/50 gap-4">
-            <div className="h-16 w-16 rounded-2xl bg-secondary/50 flex items-center justify-center">
-                <File className="h-8 w-8" />
-            </div>
-            <p className="text-sm">暂无文档，请上传</p>
+        ) : results.length === 0 ? (
+          <div className="flex flex-col items-center justify-center h-64 text-muted-foreground/50 gap-4">
+            <LottieAnimation 
+                url={LOTTIE_URLS.EMPTY_DOCUMENTS} 
+                className="w-40 h-40 opacity-80"
+            />
+            <p className="text-sm font-medium tracking-tight">
+                {documents.length > 0 ? "未找到匹配文档" : "暂无文档，请上传知识"}
+            </p>
           </div>
         ) : (
-          documents.map((doc, index) => (
-            <DocumentCard
-              key={doc.id}
-              document={doc}
-              index={index}
-              isSelected={selectedDocIds.includes(doc.id)}
-              onSelect={() => toggleDocumentSelection(doc.id)}
-              onCancel={() => cancelDocument(doc.id)}
-              onDelete={() => deleteDocument(doc.id)}
-              getStatusIcon={getStatusIcon}
-            />
-          ))
+          <div 
+            style={{ 
+                height: `${rowVirtualizer.getTotalSize()}px`, 
+                width: '100%', 
+                position: 'relative' 
+            }}
+          >
+            {rowVirtualizer.getVirtualItems().map((virtualRow) => {
+                const doc = results[virtualRow.index]
+                if (!doc) return null
+                
+                return (
+                    <div
+                        key={virtualRow.key}
+                        data-index={virtualRow.index}
+                        ref={rowVirtualizer.measureElement}
+                        style={{
+                            position: 'absolute',
+                            top: 0,
+                            left: 0,
+                            width: '100%',
+                            transform: `translateY(${virtualRow.start}px)`,
+                        }}
+                        className="pb-3"
+                    >
+                        <DocumentCard
+                            document={doc}
+                            index={virtualRow.index}
+                            isSelected={selectedDocIds.includes(doc.id)}
+                            onSelect={() => toggleDocumentSelection(doc.id)}
+                            onCancel={() => cancelDocument(doc.id)}
+                            onDelete={() => deleteDocument(doc.id)}
+                            getStatusIcon={getStatusIcon}
+                        />
+                    </div>
+                )
+            })}
+          </div>
         )}
       </div>
     </aside>

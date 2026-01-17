@@ -35,11 +35,9 @@ router = APIRouter()
 def _stable_group_for(entity_type: str, *, buckets: int = 24) -> int:
     """Stable group id for frontend coloring (deterministic across requests)."""
     key = (entity_type or "unknown").strip().lower() or "unknown"
-    try:
-        digest = zlib.crc32(key.encode("utf-8"))
-    except Exception:
-        digest = zlib.crc32(b"unknown")
-    return int(digest % int(buckets)) + 1
+    buckets_i = max(1, int(buckets))
+    digest = zlib.crc32(key.encode("utf-8"))
+    return int(digest % buckets_i) + 1
 
 
 def _ensure_enabled():
@@ -56,9 +54,8 @@ def _resolve_allowed_documents(
     tenant_id: UUID,
     account_id: str,
     db: Session,
-    limit: int | None = None,
 ) -> list[UUID]:
-    eff_limit = int(getattr(settings, "KG_API_MAX_DOCUMENT_IDS", 500) or 500) if limit is None else int(limit)
+    eff_limit = max(0, int(getattr(settings, "KG_API_MAX_DOCUMENT_IDS", 500) or 500))
     if document_ids:
         # Deduplicate while preserving original order.
         seen: set[UUID] = set()
@@ -68,8 +65,8 @@ def _resolve_allowed_documents(
                 seen.add(doc_id)
                 deduped.append(doc_id)
 
-        if eff_limit > 0 and len(deduped) > int(eff_limit):
-            raise HTTPException(status_code=400, detail=f"Too many document_ids (max {int(eff_limit)})")
+        if eff_limit > 0 and len(deduped) > eff_limit:
+            raise HTTPException(status_code=400, detail=f"Too many document_ids (max {eff_limit})")
 
         return filter_allowed_document_ids(db, tenant_id, account_id, deduped)
     return list_accessible_document_ids(db, tenant_id, account_id, status="completed", limit=eff_limit)
@@ -97,7 +94,6 @@ async def get_kg_graph(
     - The response is intentionally lightweight and capped by max_* params.
     """
     _ensure_enabled()
-    DatasetService.ensure_member(db, tenant_id, account_id)
 
     allowed_doc_ids: list[UUID]
     allowed_doc_ids = _resolve_allowed_documents(
@@ -323,7 +319,6 @@ async def expand_kg_graph(
     - Enforces document-level access control.
     """
     _ensure_enabled()
-    DatasetService.ensure_member(db, tenant_id, account_id)
 
     allowed_doc_ids = _resolve_allowed_documents(
         document_ids=document_ids,
@@ -627,7 +622,6 @@ async def search_kg_graph_nodes(
     Search KG nodes (entities/events) for UI autocomplete / quick jump.
     """
     _ensure_enabled()
-    DatasetService.ensure_member(db, tenant_id, account_id)
 
     allowed_doc_ids = _resolve_allowed_documents(
         document_ids=document_ids,
@@ -744,7 +738,6 @@ async def get_kg_stats(
     - Enforces document-level access control.
     """
     _ensure_enabled()
-    DatasetService.ensure_member(db, tenant_id, account_id)
 
     allowed_doc_ids = _resolve_allowed_documents(
         document_ids=document_ids,
@@ -916,7 +909,6 @@ async def get_kg_event_detail(
 ):
     """Get a KG event with its linked entities (scoped to accessible documents)."""
     _ensure_enabled()
-    DatasetService.ensure_member(db, tenant_id, account_id)
 
     allowed_doc_ids = _resolve_allowed_documents(
         document_ids=document_ids,
@@ -972,7 +964,6 @@ async def get_kg_entity_detail(
 ):
     """Get a KG entity, its recent events, and co-occurring entity neighbors."""
     _ensure_enabled()
-    DatasetService.ensure_member(db, tenant_id, account_id)
 
     allowed_doc_ids = _resolve_allowed_documents(
         document_ids=document_ids,
@@ -1062,24 +1053,7 @@ async def delete_kg_for_document(
 ):
     """Delete KG events for a document (and optionally prune orphan entities)."""
     _ensure_enabled()
-    DatasetService.ensure_member(db, tenant_id, account_id)
-
-    # Document existence + dataset access.
-    document = (
-        db.query(DBDocument)
-        .filter(DBDocument.id == document_id, DBDocument.tenant_id == tenant_id)
-        .first()
-    )
-    if not document:
-        raise HTTPException(status_code=404, detail="Document not found")
-
-    if document.dataset_id:
-        dataset = DatasetService.get_dataset(db, tenant_id, document.dataset_id)
-        DatasetService.assert_dataset_readable(db, dataset, account_id)
-
-    allowed = filter_allowed_document_ids(db, tenant_id, account_id, [document_id])
-    if not allowed:
-        raise HTTPException(status_code=404, detail="Document not accessible")
+    filter_allowed_document_ids(db, tenant_id, account_id, [document_id])
 
     eff_prune_orphans = bool(
         settings.KG_EXTRACT_PRUNE_ORPHAN_ENTITIES if prune_orphan_entities is None else prune_orphan_entities
@@ -1113,7 +1087,6 @@ async def run_kg_extraction_for_document(
     Trigger KG extraction for a processed document (rebuilds events/entities from chunks).
     """
     _ensure_enabled()
-
     document = (
         db.query(DBDocument)
         .filter(DBDocument.id == document_id, DBDocument.tenant_id == tenant_id)
@@ -1231,8 +1204,6 @@ async def run_kg_search(
 
     if payload.tenant_id and payload.tenant_id != tenant_id:
         raise HTTPException(status_code=400, detail="tenant_id mismatch")
-
-    DatasetService.ensure_member(db, tenant_id, account_id)
 
     if not payload.document_ids:
         raise HTTPException(status_code=400, detail="document_ids are required for KG search")
