@@ -21,5 +21,5 @@ def get_tenant_id(x_tenant_id: str | None = Header(default=None)) -> UUID:
         raw = settings.DEFAULT_TENANT_ID
     try:
         return UUID(str(raw))
-    except Exception:
+    except ValueError:
         raise HTTPException(status_code=400, detail="Invalid tenant id")

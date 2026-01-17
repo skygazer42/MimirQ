@@ -19,7 +19,6 @@ from app.api.dependencies.tenant import get_tenant_id
 from app.api.schemas.chat import ChatRAGConfig, HistoryMessage
 from app.core.config import settings
 from app.core.database import get_db
-from app.services.dataset_service import DatasetService
 from app.services.document_access import filter_allowed_document_ids, list_accessible_document_ids
 
 router = APIRouter()
@@ -46,8 +45,6 @@ async def retrieve_preview(
     db: Session = Depends(get_db),
 ):
     """Execute retrieval only (no answer generation); for parameter tuning and retrieval quality debugging."""
-    DatasetService.ensure_member(db, tenant_id, account_id)
-
     if body.document_ids:
         allowed_doc_ids = filter_allowed_document_ids(db, tenant_id, account_id, body.document_ids)
     else:
@@ -126,8 +123,6 @@ async def prompt_preview(
     db: Session = Depends(get_db),
 ):
     """Execute retrieval and return final prompt (no LLM call); for debugging prompt/context assembly."""
-    DatasetService.ensure_member(db, tenant_id, account_id)
-
     if body.document_ids:
         allowed_doc_ids = filter_allowed_document_ids(db, tenant_id, account_id, body.document_ids)
     else:

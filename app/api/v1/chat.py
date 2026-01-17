@@ -498,7 +498,6 @@ async def create_conversation(
     db: Session = Depends(get_db)
 ):
     """Create a new conversation."""
-    DatasetService.ensure_member(db, tenant_id, account_id)
     allow_empty_docs = bool(getattr(settings, "CHAT_ALLOW_EMPTY_DOCUMENTS", True))
     if request.document_ids:
         allowed_doc_ids = filter_allowed_document_ids(db, tenant_id, account_id, request.document_ids)
