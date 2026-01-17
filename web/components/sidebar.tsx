@@ -27,6 +27,7 @@ import { getChunkStrategyLabel } from '@/lib/chunk-strategies'
 import { LottieAnimation, LOTTIE_URLS } from '@/components/ui/lottie-animation'
 import { PipelineVisualizer } from '@/components/ui/pipeline-visualizer'
 import { Magnetic } from '@/components/ui/magnetic'
+import { TiltCard } from '@/components/ui/tilt-card'
 
 export function Sidebar() {
   const { documents, isLoading, uploadDocument, cancelDocument, deleteDocument, loadDocuments } = useDocuments()
@@ -183,14 +184,13 @@ function DocumentCard({
   const chunkStrategyLabel = chunkStrategyValue ? getChunkStrategyLabel(chunkStrategyValue) : null
 
   return (
-    <div
+    <TiltCard
       className={cn(
-        'group relative p-3 rounded-xl border transition-all duration-300 cursor-pointer animate-fade-in-up',
+        'group relative p-3 rounded-xl border cursor-pointer animate-fade-in-up h-full',
         isSelected
           ? 'bg-primary/5 border-primary/30 shadow-[0_0_0_1px_rgba(var(--primary),0.2)]'
-          : 'bg-card/50 hover:bg-card border-border/50 hover:border-border/80 hover:shadow-md hover:shadow-black/5 hover:-translate-y-0.5'
+          : 'bg-card/50 hover:bg-card border-border/50 hover:border-border/80 hover:shadow-md hover:shadow-black/5'
       )}
-      style={{ animationDelay: `${index * 50}ms` }}
       onClick={onSelect}
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
@@ -300,6 +300,6 @@ function DocumentCard({
             </button>
         )}
       </div>
-    </div>
+    </TiltCard>
   )
 }
