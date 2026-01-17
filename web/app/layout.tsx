@@ -6,6 +6,7 @@ import { PipelineOptionsProvider } from "@/contexts/pipeline-options-context"
 import { PipelineCapabilitiesProvider } from "@/contexts/pipeline-capabilities-context"
 import { ThemeProvider } from "@/components/theme-provider"
 import { SonnerToaster } from "@/components/sonner-toaster"
+import { CommandMenu } from "@/components/command-menu"
 
 export const metadata: Metadata = {
   title: "MimirQ - AI 知识库助手",
@@ -30,6 +31,7 @@ export default function RootLayout({
           disableTransitionOnChange
         >
           <SonnerToaster />
+          <CommandMenu />
           <PipelineCapabilitiesProvider>
             <ParserBackendProvider>
               <ChunkStrategyProvider>
