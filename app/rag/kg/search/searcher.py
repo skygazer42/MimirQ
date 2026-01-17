@@ -25,6 +25,19 @@ def _cap_clues(clues: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], int]:
     return clues[:max_clues], len(clues) - max_clues
 
 
+def _cap_rerank_event_ids(event_ids: list[str], scores: dict[str, float]) -> tuple[list[str], int]:
+    max_candidates = max(0, int(getattr(settings, "KG_SEARCH_MAX_RERANK_CANDIDATES", 0) or 0))
+    if max_candidates <= 0 or len(event_ids) <= max_candidates:
+        return event_ids, 0
+
+    ordered = sorted(
+        (str(eid) for eid in event_ids if eid),
+        key=lambda eid: (-float(scores.get(str(eid), 0.0) or 0.0), str(eid)),
+    )
+    kept = ordered[:max_candidates]
+    return kept, max(0, len(event_ids) - len(kept))
+
+
 class KGSearcher:
     def __init__(self):
         self.recall_searcher = RecallSearcher()
@@ -77,7 +90,12 @@ class KGSearcher:
 
         # rerank
         t0 = time.perf_counter()
-        candidates = [RerankCandidate(id=str(eid), text="") for eid in expand_result.event_ids]
+        event_ids_total = list(expand_result.event_ids or [])
+        event_ids_for_rerank, candidates_dropped = _cap_rerank_event_ids(
+            event_ids_total,
+            dict(expand_result.event_scores or {}),
+        )
+        candidates = [RerankCandidate(id=str(eid), text="") for eid in event_ids_for_rerank]
         reranker = get_kg_reranker(config.rerank.strategy)
         rerank_result = await reranker.arerank_kg(
             query=config.query,
@@ -91,9 +109,18 @@ class KGSearcher:
         combined_clues = list((expand_result.clues or [])) + list((rerank_result.clues or []))
         combined_clues, clues_dropped = _cap_clues(combined_clues)
         stats = dict(rerank_result.stats or {})
-        stats.setdefault("clues_returned", len(combined_clues))
-        if clues_dropped:
-            stats["clues_dropped"] = int(stats.get("clues_dropped", 0) or 0) + int(clues_dropped)
+        stats["candidates_total"] = int(len(event_ids_total))
+        stats["candidates_used"] = int(len(event_ids_for_rerank))
+        if candidates_dropped:
+            stats["candidates_dropped"] = int(candidates_dropped)
+
+        recall_dropped = int(getattr(recall_result, "clues_dropped", 0) or 0)
+        expand_dropped = int(getattr(expand_result, "clues_dropped", 0) or 0)
+        clues_dropped_total = int(recall_dropped + expand_dropped + int(clues_dropped))
+        stats["clues_returned"] = int(len(combined_clues))
+        if clues_dropped_total:
+            stats["clues_dropped"] = int(clues_dropped_total)
+        stats.setdefault("clues_max", int(getattr(settings, "KG_SEARCH_MAX_CLUES", 0) or 0))
         stats.setdefault(
             "timing_sec",
             {
@@ -112,10 +139,11 @@ class KGSearcher:
                     "tenant_id": str(config.tenant_id) if config.tenant_id else None,
                     "doc_count": int(doc_count),
                     "strategy": str(config.rerank.strategy),
-                    "candidates": int(len(expand_result.event_ids or [])),
+                    "candidates": int(len(event_ids_for_rerank)),
+                    "candidates_total": int(len(event_ids_total)),
                     "returned": int(len(rerank_result.items or [])),
                     "clues": int(len(combined_clues)),
-                    "clues_dropped": int(clues_dropped),
+                    "clues_dropped": int(clues_dropped_total),
                     "elapsed_sec": round(float(rerank_elapsed), 3),
                 }
             )

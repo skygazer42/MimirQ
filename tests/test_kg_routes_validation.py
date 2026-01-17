@@ -7,7 +7,10 @@ from fastapi import HTTPException
 
 
 def test_resolve_allowed_documents_dedupes(monkeypatch: pytest.MonkeyPatch):
+    from app.core import config as config_mod
     import app.rag.kg.api.routes as routes_mod
+
+    monkeypatch.setattr(config_mod.settings, "KG_API_MAX_DOCUMENT_IDS", 500, raising=False)
 
     called: dict[str, object] = {}
 
@@ -24,14 +27,16 @@ def test_resolve_allowed_documents_dedupes(monkeypatch: pytest.MonkeyPatch):
         tenant_id=UUID(int=3),
         account_id="u",
         db=object(),
-        limit=routes_mod.MAX_DOCUMENT_IDS,
     )
     assert out == [d1, d2]
     assert called["doc_ids"] == [d1, d2]
 
 
 def test_resolve_allowed_documents_rejects_too_many(monkeypatch: pytest.MonkeyPatch):
+    from app.core import config as config_mod
     import app.rag.kg.api.routes as routes_mod
+
+    monkeypatch.setattr(config_mod.settings, "KG_API_MAX_DOCUMENT_IDS", 2, raising=False)
 
     monkeypatch.setattr(
         routes_mod,
@@ -40,14 +45,13 @@ def test_resolve_allowed_documents_rejects_too_many(monkeypatch: pytest.MonkeyPa
         raising=True,
     )
 
-    doc_ids = [UUID(int=i) for i in range(1, routes_mod.MAX_DOCUMENT_IDS + 2)]
+    doc_ids = [UUID(int=1), UUID(int=2), UUID(int=3)]
     with pytest.raises(HTTPException) as exc:
         routes_mod._resolve_allowed_documents(
             document_ids=doc_ids,
             tenant_id=UUID(int=3),
             account_id="u",
             db=object(),
-            limit=routes_mod.MAX_DOCUMENT_IDS,
         )
     assert exc.value.status_code == 400
 
@@ -93,4 +97,3 @@ async def test_kg_search_tenant_mismatch(monkeypatch: pytest.MonkeyPatch):
     with pytest.raises(HTTPException) as exc:
         await run_kg_search(payload=payload, tenant_id=UUID(int=3), account_id="u", db=object())
     assert exc.value.status_code == 400
-

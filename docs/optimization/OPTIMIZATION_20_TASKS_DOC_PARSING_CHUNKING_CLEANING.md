@@ -159,35 +159,35 @@
 
 ### A. KG Search 可观测性与返回体积（61–68）
 
-61. [ ] **clue 上限配置**：新增 `KG_SEARCH_MAX_CLUES`（0=禁用）并在 Tracker 中生效
-62. [ ] **clue 丢弃计数**：Tracker 记录 `clues_dropped` 并透出到 search `stats`
-63. [ ] **合并裁剪**：KGSearcher 合并 `expand+rerank` clues 时统一裁剪，避免大响应
-64. [ ] **阶段耗时 metrics**：recall/expand/rerank 各自耗时记录到 metrics logger（开关控制）
-65. [ ] **候选计数 metrics**：记录 keys/events/clues/doc_count 等关键计数（不记录 query 文本）
-66. [ ] **空结果口径**：空候选/空 events 时仍返回稳定的 stats 字段（便于前端渲染）
-67. [ ] **rerank 输入上限**：新增 `KG_SEARCH_MAX_RERANK_CANDIDATES`（0=禁用），rerank 前截断 event_ids
-68. [ ] **SearchConfig 对齐**：使用 `rerank.max_key_recall_results/max_query_recall_results` 对 recall 事件候选做上限
+61. [x] **clue 上限配置**：新增 `KG_SEARCH_MAX_CLUES`（0=禁用）并在 Tracker 中生效
+62. [x] **clue 丢弃计数**：Tracker 记录 `clues_dropped` 并透出到 search `stats`
+63. [x] **合并裁剪**：KGSearcher 合并 `expand+rerank` clues 时统一裁剪，避免大响应
+64. [x] **阶段耗时 metrics**：recall/expand/rerank 各自耗时记录到 metrics logger（开关控制）
+65. [x] **候选计数 metrics**：记录 keys/events/clues/doc_count 等关键计数（不记录 query 文本）
+66. [x] **空结果口径**：空候选/空 events 时仍返回稳定的 stats 字段（便于前端渲染）
+67. [x] **rerank 输入上限**：新增 `KG_SEARCH_MAX_RERANK_CANDIDATES`（0=禁用），rerank 前截断 event_ids
+68. [x] **SearchConfig 对齐**：使用 `rerank.max_key_recall_results/max_query_recall_results` 对 recall 事件候选做上限
 
 ### B. Expand 预算与稳健性（69–74）
 
-69. [ ] **UUID 归一化**：`find_events_by_entities` 使用 `_as_uuid_list` 去重/过滤非法 UUID
-70. [ ] **SQL 去重**：`find_events_by_entities` 使用 `group_by` + `order_by count` 返回唯一事件（避免 join 重复）
-71. [ ] **discover set**：Expand 使用 set 跟踪 discovered_event_ids，避免 O(n) membership
-72. [ ] **min_events_per_hop 生效**：每 hop 新事件不足阈值则停止后续 hop（避免低收益扩展）
-73. [ ] **expand 总事件上限**：扩展后 event_ids 做上限保护（复用 rerank 输入上限）
-74. [ ] **clue node 统一**：Expand 的 event->entity clue 使用 `Tracker.build_event_node/build_entity_node`
+69. [x] **UUID 归一化**：`find_events_by_entities` 使用 `_as_uuid_list` 去重/过滤非法 UUID
+70. [x] **SQL 去重**：`find_events_by_entities` 使用 `group_by` + `order_by count` 返回唯一事件（避免 join 重复）
+71. [x] **discover set**：Expand 使用 set 跟踪 discovered_event_ids，避免 O(n) membership
+72. [x] **min_events_per_hop 生效**：每 hop 新事件不足阈值则停止后续 hop（避免低收益扩展）
+73. [x] **expand 总事件上限**：扩展后 event_ids 做上限保护（复用 rerank 输入上限）
+74. [x] **clue node 统一**：Expand 的 event->entity clue 使用 `Tracker.build_event_node/build_entity_node`
 
 ### C. KG API 限流与一致性（75–78）
 
-75. [ ] **API 文档ID上限可配**：新增 `KG_API_MAX_DOCUMENT_IDS` 并替换 `routes.py` 常量
-76. [ ] **请求模型放开**：`KGSearchRequest.document_ids` 去掉硬编码 `max_length=500`，由后端统一限流
-77. [ ] **统一 limit 来源**：所有调用 `_resolve_allowed_documents` 的 endpoints 统一使用同一 limit
-78. [ ] **错误信息一致**：超限返回统一 `"Too many document_ids (max X)"` 并覆盖测试
+75. [x] **API 文档ID上限可配**：新增 `KG_API_MAX_DOCUMENT_IDS` 并替换 `routes.py` 常量
+76. [x] **请求模型放开**：`KGSearchRequest.document_ids` 去掉硬编码 `max_length=500`，由后端统一限流
+77. [x] **统一 limit 来源**：所有调用 `_resolve_allowed_documents` 的 endpoints 统一使用同一 limit
+78. [x] **错误信息一致**：超限返回统一 `"Too many document_ids (max X)"` 并覆盖测试
 
 ### D. 测试与文档（79–80）
 
-79. [ ] **单测覆盖**：clue cap / UUID 归一 / min_events_per_hop / API limit 至少覆盖 3 项
-80. [ ] **文档对齐**：标记完成项并补充配置默认值/推荐值
+79. [x] **单测覆盖**：clue cap / UUID 归一 / min_events_per_hop / API limit 至少覆盖 3 项
+80. [x] **文档对齐**：标记完成项并补充配置默认值/推荐值
 
 ### 阶段四新增/相关配置（默认值）
 

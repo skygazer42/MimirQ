@@ -30,8 +30,6 @@ from app.rag.core.errors import ConfigError
 
 router = APIRouter()
 
-MAX_DOCUMENT_IDS = 500
-
 
 def _stable_group_for(entity_type: str, *, buckets: int = 24) -> int:
     """Stable group id for frontend coloring (deterministic across requests)."""
@@ -57,8 +55,9 @@ def _resolve_allowed_documents(
     tenant_id: UUID,
     account_id: str,
     db: Session,
-    limit: int = MAX_DOCUMENT_IDS,
+    limit: int | None = None,
 ) -> list[UUID]:
+    eff_limit = int(getattr(settings, "KG_API_MAX_DOCUMENT_IDS", 500) or 500) if limit is None else int(limit)
     if document_ids:
         # Deduplicate while preserving original order.
         seen: set[UUID] = set()
@@ -68,11 +67,11 @@ def _resolve_allowed_documents(
                 seen.add(doc_id)
                 deduped.append(doc_id)
 
-        if len(deduped) > int(limit):
-            raise HTTPException(status_code=400, detail=f"Too many document_ids (max {int(limit)})")
+        if eff_limit > 0 and len(deduped) > int(eff_limit):
+            raise HTTPException(status_code=400, detail=f"Too many document_ids (max {int(eff_limit)})")
 
         return filter_allowed_document_ids(db, tenant_id, account_id, deduped)
-    return list_accessible_document_ids(db, tenant_id, account_id, status="completed", limit=limit)
+    return list_accessible_document_ids(db, tenant_id, account_id, status="completed", limit=eff_limit)
 
 
 @router.get("/graph", response_model=KGGraphResponse)
@@ -105,7 +104,6 @@ async def get_kg_graph(
         tenant_id=tenant_id,
         account_id=account_id,
         db=db,
-        limit=MAX_DOCUMENT_IDS,
     )
 
     if not allowed_doc_ids:
@@ -331,7 +329,6 @@ async def expand_kg_graph(
         tenant_id=tenant_id,
         account_id=account_id,
         db=db,
-        limit=MAX_DOCUMENT_IDS,
     )
     if not allowed_doc_ids:
         return KGGraphResponse(nodes=[], links=[], stats={"reason": "no_accessible_documents"})
@@ -636,7 +633,6 @@ async def search_kg_graph_nodes(
         tenant_id=tenant_id,
         account_id=account_id,
         db=db,
-        limit=MAX_DOCUMENT_IDS,
     )
 
     from sqlalchemy import or_
@@ -754,7 +750,6 @@ async def get_kg_stats(
         tenant_id=tenant_id,
         account_id=account_id,
         db=db,
-        limit=MAX_DOCUMENT_IDS,
     )
     if not allowed_doc_ids:
         return KGStatsResponse(events=0, entities=0, links=0, entity_types=[], updated_at=None)
@@ -927,7 +922,6 @@ async def get_kg_event_detail(
         tenant_id=tenant_id,
         account_id=account_id,
         db=db,
-        limit=MAX_DOCUMENT_IDS,
     )
     if not allowed_doc_ids:
         raise HTTPException(status_code=404, detail="No accessible documents")
@@ -984,7 +978,6 @@ async def get_kg_entity_detail(
         tenant_id=tenant_id,
         account_id=account_id,
         db=db,
-        limit=MAX_DOCUMENT_IDS,
     )
     if not allowed_doc_ids:
         raise HTTPException(status_code=404, detail="No accessible documents")
@@ -1248,7 +1241,6 @@ async def run_kg_search(
         tenant_id=tenant_id,
         account_id=account_id,
         db=db,
-        limit=MAX_DOCUMENT_IDS,
     )
 
     try:
