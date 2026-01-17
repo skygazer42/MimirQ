@@ -224,4 +224,42 @@
   - `KG_SEARCH_NODE_TEXT_MAX_CHARS=400`（0=禁用）
 
 - KG rerank：
-  - `KG_PAGERANK_MAX_EDGES=0`（0=禁用；可用于防止极端候选集构图过慢）
+  - （无新增配置）
+
+---
+
+## 第六阶段（91–110）：后端减法（去冗余 / 去多余防御）清单
+
+> 目标：减少重复校验、重复 cap 与无意义的 try/except；删除冗余字段/日志/配置，让 KG API / KG Search 代码更短、更清晰、依赖更少。
+
+### A. KG API 去冗余（91–96）
+
+91. [x] **去重 member 校验**：移除 routes 中重复 `DatasetService.ensure_member`（统一由 document_access 层兜底）
+92. [x] **limit 收敛**：`_resolve_allowed_documents` 删除 `limit` 参数（统一读取 `KG_API_MAX_DOCUMENT_IDS`）
+93. [x] **去无意义 try/except**：`_stable_group_for` 移除无必要的异常吞掉逻辑
+94. [x] **删除不可达/重复分支**：`delete_kg_for_document` 移除重复 document/dataset 校验与不可达 `allowed` 检查
+95. [x] **search 端点减法**：`/kg/search` 去除重复 member 校验（由 `_resolve_allowed_documents` 负责）
+96. [x] **extract 端点减法**：`/kg/documents/{id}/extract` 只保留必要的 document+dataset 校验（去掉额外的 filter_allowed_document_ids 依赖）
+
+### B. KG Search 去冗余（97–103）
+
+97. [x] **Tracker 减负**：去掉未使用的 `config` 成员与构造参数
+98. [x] **结构字段减法**：`RecallResult` 移除冗余 `original_query`
+99. [x] **丢弃计数减法**：`RecallResult/ExpandResult` 移除 `clues_dropped` 字段与跨阶段透传
+100. [x] **clues cap 单点化**：`KGSearcher` 删除二次 clues cap（统一由 Tracker 控制）
+101. [x] **candidate cap 单点化**：`KGSearcher` 删除 rerank 前二次 candidate cap（统一在 recall/expand 上限）
+102. [x] **recall 上限统一**：recall 阶段对齐 `KG_SEARCH_MAX_RERANK_CANDIDATES`（避免后置截断）
+103. [x] **expand 早停**：expand 达到候选上限即停止后续 hop（减少 DB 压力）
+
+### C. Rerank / 配置 减法（104–108）
+
+104. [x] **删除边预算配置**：PageRank 构图去掉边预算开关（候选上限已足够）
+105. [x] **配置面收敛**：删除 `KG_PAGERANK_MAX_EDGES` 配置项
+106. [x] **返回字段减法**：PageRank stats 去掉 `edges/edges_capped`（减少无必要返回冗余）
+107. [x] **日志减法**：移除 KG search 相关模块未使用的 logger/get_logger
+108. [x] **stats 精简**：search response stats 只保留必要的 `candidates/clues/timing` 等核心字段
+
+### D. 测试与验证（109–110）
+
+109. [x] **单测对齐**：更新/补齐单测以匹配精简后的接口/数据结构
+110. [x] **全量验证**：`pytest -q` 全绿
