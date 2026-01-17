@@ -199,6 +199,32 @@ export const ChatMessageItem = memo(function ChatMessageItem({
             : 'bg-card text-foreground border border-border/60 rounded-2xl rounded-tl-sm hover:shadow-md hover:border-border/80'
           )}
       >
+        {/* 思维链 / 步骤展示 */}
+        {!isUser && message.steps && message.steps.length > 0 && (
+          <div className="mb-4 space-y-2 animate-fade-in">
+             <div className="flex items-center gap-2 text-[10px] font-bold text-primary/70 uppercase tracking-widest">
+                <div className="relative flex h-2 w-2">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75"></span>
+                    <span className="relative inline-flex rounded-full h-2 w-2 bg-primary"></span>
+                </div>
+                思考路径
+             </div>
+             <div className="pl-4 border-l border-primary/20 space-y-1">
+                {message.steps.map((step, idx) => (
+                    <div 
+                        key={idx} 
+                        className={cn(
+                            "text-xs transition-opacity duration-500",
+                            idx === message.steps!.length - 1 ? "text-foreground font-medium animate-pulse" : "text-muted-foreground/60"
+                        )}
+                    >
+                        {step}
+                    </div>
+                ))}
+             </div>
+          </div>
+        )}
+
         <button
           type="button"
           onClick={handleCopy}

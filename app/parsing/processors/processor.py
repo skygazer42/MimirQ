@@ -73,6 +73,12 @@ class ChunkingResult:
 
 
 @dataclass(frozen=True)
+class ChunkDedupResult:
+    chunks: List[Document]
+    duplicates_dropped: int
+
+
+@dataclass(frozen=True)
 class ChunkAssetResult:
     chunks: List[Document]
     img_ids: List[str]
@@ -369,6 +375,49 @@ class ChunkingStage:
         return ChunkingResult(chunks=chunker.split_documents(documents))
 
 
+class ChunkDedupStage:
+    def run(self, *, chunks: List[Document], enabled: bool) -> ChunkDedupResult:
+        """
+        Drop exact-duplicate *text* chunks within a single document.
+
+        Notes:
+        - Keeps image/table-related chunks even if their text matches (assets matter).
+        - Uses a normalized content hash for comparison (line endings/control chars).
+        """
+        if not enabled or not chunks:
+            return ChunkDedupResult(chunks=chunks, duplicates_dropped=0)
+
+        seen: set[str] = set()
+        out: List[Document] = []
+        dropped = 0
+
+        for c in chunks:
+            raw = c.page_content or ""
+            normalized = normalize_text(raw, normalize_line_endings=True, remove_control_chars=True)
+            digest = hashlib.sha256(normalized.strip().encode("utf-8", "ignore")).hexdigest()
+
+            meta = dict(c.metadata or {})
+            meta.setdefault("content_hash", digest)
+            meta.setdefault("content_hash_algo", "sha256")
+            meta.setdefault("content_len", len(normalized.strip()))
+
+            doc_type = str(meta.get("doc_type_kwd") or "").lower()
+            has_asset = (
+                doc_type in {"image", "table"}
+                or meta.get("image") is not None
+                or bool(meta.get("img_id") or meta.get("image_id") or meta.get("image_url"))
+            )
+            if not has_asset:
+                if digest in seen:
+                    dropped += 1
+                    continue
+                seen.add(digest)
+
+            out.append(Document(page_content=c.page_content, metadata=meta, id=getattr(c, "id", None)))
+
+        return ChunkDedupResult(chunks=out, duplicates_dropped=dropped)
+
+
 class ChunkAssetStage:
     def __init__(self, service: "DocumentProcessorService"):
         self._svc = service
@@ -390,6 +439,13 @@ class ChunkAssetStage:
             meta["chunk_index"] = idx
             meta["parser_backend"] = resolved_backend
             meta["chunk_strategy"] = resolved_chunk_strategy
+            meta.setdefault("chunk_key", f"{str(document_id)}:{idx}")
+
+            content_norm = normalize_text(chunk.page_content or "", normalize_line_endings=True, remove_control_chars=True)
+            meta.setdefault("content_len", len(content_norm.strip()))
+            if not isinstance(meta.get("content_hash"), str) or not str(meta.get("content_hash") or "").strip():
+                meta["content_hash"] = hashlib.sha256(content_norm.strip().encode("utf-8", "ignore")).hexdigest()
+                meta.setdefault("content_hash_algo", "sha256")
             chunk.metadata = meta
 
             img_id = self._svc._extract_and_upload_image_to_minio(
@@ -619,6 +675,7 @@ class DocumentProcessorService:
             normalize_stage = NormalizeStage()
             governance_stage = GovernanceStage()
             chunking_stage = ChunkingStage()
+            chunk_dedup_stage = ChunkDedupStage()
             chunk_asset_stage = ChunkAssetStage(self)
             index_stage = IndexStage()
 
@@ -841,6 +898,25 @@ class DocumentProcessorService:
                     )
                 elif dropped:
                     logger.info("Dropped %s short chunks (<%s chars) for document %s", dropped, min_chars, document_id)
+
+            # Optional exact-duplicate text chunk drop (within document).
+            dedup_enabled = bool(getattr(settings, "CHUNK_DEDUP_ENABLED", False))
+            if dedup_enabled and chunks:
+                with metrics_span("ingest.chunk_dedup", enabled=True):
+                    deduped = chunk_dedup_stage.run(chunks=chunks, enabled=True)
+                chunks = deduped.chunks
+                if int(deduped.duplicates_dropped) > 0:
+                    logger.info(
+                        "Dropped %s duplicate chunks for document %s",
+                        int(deduped.duplicates_dropped),
+                        document_id,
+                    )
+                    log_metrics(
+                        {
+                            "event": "ingest.chunk_dedup",
+                            "duplicates_dropped": int(deduped.duplicates_dropped),
+                        }
+                    )
 
             if governance_stats is not None:
                 self._record_governance_metadata(db, tenant_id, document_id, governance_stats)

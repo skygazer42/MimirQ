@@ -383,6 +383,7 @@ export interface Message {
   role: 'user' | 'assistant'
   content: string
   citations?: Citation[]
+  steps?: string[]
   created_at: string
 }
 
@@ -406,7 +407,7 @@ export interface ConversationDetail {
 }
 
 export interface StreamEvent {
-  type: 'citations' | 'token' | 'done' | 'error' | 'route' | 'rewrite' | 'graph'
+  type: 'citations' | 'token' | 'done' | 'error' | 'route' | 'rewrite' | 'graph' | 'event'
   data: any
   request_id?: string
 }

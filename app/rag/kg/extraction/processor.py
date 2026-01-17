@@ -32,7 +32,12 @@ class EventProcessor:
 
         context_parts = []
         for idx, chunk in enumerate(sections, 1):
-            context_parts.append(f"[Chunk {idx}] {chunk.content}")
+            page = getattr(chunk, "page_number", None)
+            prefix = f"[Chunk {idx}"
+            if page is not None:
+                prefix += f" p{page}"
+            prefix += "]"
+            context_parts.append(f"{prefix} {chunk.content}")
         context = "\n\n".join(context_parts)[:8000]
 
         schema = {
@@ -96,7 +101,7 @@ class EventProcessor:
                 # fallback to first sentence
                 title = summary[:50] or "Event"
             entities_raw = raw.get("entities") or []
-            entities = []
+            entity_map: dict[tuple[str, str], dict[str, Any]] = {}
             for ent in entities_raw:
                 if isinstance(ent, dict):
                     name = ent.get("name") or ""
@@ -108,21 +113,29 @@ class EventProcessor:
                     desc = ""
                 if not name:
                     continue
-                entities.append(
-                    {
+                normalized_name = self.parser.normalize_name(name)
+                normalized_type = self.parser.normalize_type(etype)
+                key = (normalized_type, normalized_name)
+                existing = entity_map.get(key)
+                if existing is None:
+                    entity_map[key] = {
                         "name": name.strip(),
-                        "normalized_name": self.parser.normalize_name(name),
-                        "type": etype.strip(),
+                        "normalized_name": normalized_name,
+                        "type": normalized_type,
                         "description": desc.strip(),
                     }
-                )
+                else:
+                    # Best-effort merge: keep longer description.
+                    new_desc = desc.strip()
+                    if new_desc and len(new_desc) > len(str(existing.get("description") or "")):
+                        existing["description"] = new_desc
 
             events.append(
                 {
                     "title": title,
                     "summary": summary or title,
                     "content": summary or title,
-                    "entities": entities,
+                    "entities": list(entity_map.values()),
                     "chunk_id": str(sections[0].id),
                 }
             )

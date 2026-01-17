@@ -39,15 +39,21 @@ export function useChat({
   const [isLoading, setIsLoading] = useState(false)
   const [currentResponse, setCurrentResponse] = useState('')
   const [currentCitations, setCurrentCitations] = useState<Citation[]>([])
+  const [currentSteps, setCurrentSteps] = useState<string[]>([])
 
   const messagesRef = useRef<Message[]>([])
   const abortControllerRef = useRef<AbortController | null>(null)
   const fullResponseRef = useRef<string>('')
+  const currentStepsRef = useRef<string[]>([])
   const rafIdRef = useRef<number | null>(null)
 
   useEffect(() => {
     messagesRef.current = messages
   }, [messages])
+
+  useEffect(() => {
+    currentStepsRef.current = currentSteps
+  }, [currentSteps])
 
   useEffect(() => {
     return () => {
@@ -133,7 +139,10 @@ export function useChat({
       setIsLoading(true)
       setCurrentResponse('')
       setCurrentCitations([])
+      setCurrentSteps([])
       fullResponseRef.current = ''
+      currentStepsRef.current = []
+
       if (rafIdRef.current != null) {
         window.cancelAnimationFrame(rafIdRef.current)
         rafIdRef.current = null
@@ -211,6 +220,7 @@ export function useChat({
         const decoder = new TextDecoder()
         const sse = createSseDataParser()
         let citations: Citation[] = []
+        let steps: string[] = []
 
         while (true) {
           const { done, value } = await reader.read()
@@ -229,6 +239,12 @@ export function useChat({
             if (event.type === 'citations') {
               citations = event.data
               setCurrentCitations(citations)
+            } else if (event.type === 'event') {
+               const msg = event.data?.message
+               if (msg) {
+                 steps = [...steps, msg]
+                 setCurrentSteps(steps)
+               }
             } else if (event.type === 'token') {
               fullResponseRef.current += event.data.content
               scheduleCurrentResponseUpdate()
@@ -254,12 +270,14 @@ export function useChat({
                 role: 'assistant',
                 content: assistantContent,
                 citations,
+                steps,
                 created_at: new Date().toISOString(),
               }
 
               setMessages((prev) => [...prev, assistantMessage])
               setCurrentResponse('')
               setCurrentCitations([])
+              setCurrentSteps([])
               fullResponseRef.current = ''
             } else if (event.type === 'error') {
               const msg = event.data?.message || 'Unknown error'
@@ -340,6 +358,7 @@ export function useChat({
     isLoading,
     currentResponse,
     currentCitations,
+    currentSteps,
     sendMessage,
     stopGeneration,
     clearMessages,

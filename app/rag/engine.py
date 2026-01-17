@@ -641,6 +641,7 @@ Requirements:
             decompose_used = bool(sub_questions)
 
             # Step 1: Hybrid retrieval (LangChain Retriever).
+            yield {"type": "event", "data": {"message": "正在从知识库中检索相关资料..."}}
             retriever = hybrid_retriever.model_copy(
                 update={
                     "k": top_k,
@@ -742,6 +743,8 @@ Requirements:
             else:
                 docs = self.fuse_docs_rrf(docs_by_query, rrf_k=settings.RETRIEVAL_RRF_K, meta_prefix="query_expansion")
             docs = docs[: max(0, int(top_k or 0))] if docs else []
+
+            yield {"type": "event", "data": {"message": f"找到 {len(docs)} 条相关参考，正在整理回答..."}}
 
             # Build citation info.
             citations: List[Dict[str, Any]] = build_citations_from_docs(
