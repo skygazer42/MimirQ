@@ -483,9 +483,6 @@ class Settings(BaseSettings):
     # - Global KG search timeout (seconds, 0 disables).
     KG_SEARCH_TIMEOUT_SEC: float = 0.0
     KG_SEARCH_METRICS_ENABLED: bool = False
-    # KG rerank guardrails.
-    # - Cap PageRank graph edge count (0 disables).
-    KG_PAGERANK_MAX_EDGES: int = 0
     CHAT_HISTORY_WINDOW: int = 5
     # Allow chat even when no accessible documents exist (dev-friendly).
     CHAT_ALLOW_EMPTY_DOCUMENTS: bool = True

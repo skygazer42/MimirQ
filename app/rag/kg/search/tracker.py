@@ -9,8 +9,7 @@ from app.rag.kg.search.config import SearchConfig
 
 
 class Tracker:
-    def __init__(self, config: Optional[SearchConfig] = None):
-        self.config = config
+    def __init__(self):
         self.clues: List[Dict[str, Any]] = []
         self.clues_dropped: int = 0
         self._clues_enabled: bool = bool(getattr(settings, "KG_SEARCH_CLUES_ENABLED", True))

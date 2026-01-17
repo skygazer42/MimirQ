@@ -10,19 +10,14 @@ from app.rag.kg.search.config import SearchConfig
 from app.rag.kg.search.tracker import Tracker
 from app.rag.kg.search.utils import cosine_similarity
 from app.rag.kg.repository import EntityRepository, EventRepository, get_session
-from app.rag.kg.utils import get_logger
-
-logger = get_logger("kg.search.recall")
 
 
 @dataclass
 class RecallResult:
-    original_query: str
     query_vector: List[float]
     key_final: List[Dict[str, Any]]
     event_ids: List[str]
     clues: List[Dict[str, Any]]
-    clues_dropped: int
     key_weights: Dict[str, float]
     event_scores: Dict[str, float]
 
@@ -32,12 +27,16 @@ class RecallSearcher:
         self.processor = DocumentProcessor()
 
     async def search(self, config: SearchConfig) -> RecallResult:
-        tracker = Tracker(config)
+        tracker = Tracker()
         session = get_session()
         try:
             entity_repo = EntityRepository(session)
             event_repo = EventRepository(session)
             tenant_id = config.tenant_id or settings.DEFAULT_TENANT_ID
+            max_events = int(config.recall.max_events)
+            max_candidates = max(0, int(getattr(settings, "KG_SEARCH_MAX_RERANK_CANDIDATES", 0) or 0))
+            if max_candidates > 0:
+                max_events = min(max_events, max_candidates)
 
             # === Step1: query -> keys (vector) ===
             query_vec = await self.processor.generate_embedding(config.query)
@@ -128,7 +127,7 @@ class RecallSearcher:
             # === Step4: merge events ===
             merged_event_ids = list(
                 dict.fromkeys(event_ids_from_entities + [e["event_id"] for e in event_query_related])
-            )[: config.recall.max_events]
+            )[:max_events]
 
             # === Step5/6: compute event-key weights & event scores ===
             events_detail = event_repo.get_events_by_ids(
@@ -154,7 +153,7 @@ class RecallSearcher:
 
             # sort events by score and trim
             merged_event_ids.sort(key=lambda eid: event_scores.get(str(eid), 0.0), reverse=True)
-            merged_event_ids = merged_event_ids[: config.recall.max_events]
+            merged_event_ids = merged_event_ids[:max_events]
 
             # === Step7: backprop key weights from events ===
             key_event_weights: Dict[str, float] = {}
@@ -180,12 +179,10 @@ class RecallSearcher:
             key_final = key_final[: config.recall.final_entity_count]
 
             return RecallResult(
-                original_query=config.query,
                 query_vector=query_vec,
                 key_final=key_final,
                 event_ids=merged_event_ids,
                 clues=tracker.get_clues(),
-                clues_dropped=int(getattr(tracker, "clues_dropped", 0) or 0),
                 key_weights=key_weights,
                 event_scores=event_scores,
             )

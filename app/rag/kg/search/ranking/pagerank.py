@@ -3,14 +3,10 @@ PageRank-style rerank combining query similarity and entity co-occurrence graph.
 """
 from typing import Any, Dict, List
 
-from app.core.config import settings
 from app.rag.kg.loading.processor import DocumentProcessor
 from app.rag.kg.search.config import SearchConfig
 from app.rag.kg.search.utils import cosine_similarity, format_events
 from app.rag.kg.repository import EventRepository, get_session
-from app.rag.kg.utils import get_logger
-
-logger = get_logger("kg.search.rerank.pagerank")
 
 
 class RerankPageRankSearcher:
@@ -49,8 +45,6 @@ class RerankPageRankSearcher:
                 base_scores[str(ev.id)] = 0.5 * recall_score + 0.3 * sim + 0.2 * boost
 
             graph: Dict[str, Dict[str, float]] = {str(ev.id): {} for ev in events}
-            max_edges = max(0, int(getattr(settings, "KG_PAGERANK_MAX_EDGES", 0) or 0))
-            edges_added = 0
 
             # Build event-event edges by shared entities (faster than O(n^2) set intersections).
             entity_to_events: dict[str, list[str]] = {}
@@ -69,27 +63,15 @@ class RerankPageRankSearcher:
                 key=lambda kv: (-float(key_weight_map.get(kv[0], 0.1) or 0.1), kv[0]),
             )
 
-            capped = False
             for ent_id, ev_list in entities_ordered:
-                if capped:
-                    break
                 if not ev_list or len(ev_list) < 2:
                     continue
 
                 w_ent = float(key_weight_map.get(ent_id, 0.1) or 0.1)
                 ev_list = sorted(set(ev_list))
                 for i, a in enumerate(ev_list):
-                    if capped:
-                        break
                     for b in ev_list[i + 1 :]:
-                        if max_edges > 0 and edges_added >= max_edges:
-                            capped = True
-                            break
-                        cur = float(graph[a].get(b, 0.0) or 0.0)
-                        if cur == 0.0:
-                            edges_added += 1
-                        w_new = cur + w_ent
-                        graph[a][b] = w_new
+                        graph[a][b] = float(graph[a].get(b, 0.0) or 0.0) + w_ent
                         graph[b][a] = float(graph[b].get(a, 0.0) or 0.0) + w_ent
 
             scores = self._pagerank(
@@ -104,12 +86,7 @@ class RerankPageRankSearcher:
             return {
                 "events": results,
                 "clues": [],
-                "stats": {
-                    "total_candidates": len(events),
-                    "returned": len(results),
-                    "edges": int(edges_added),
-                    "edges_capped": bool(capped),
-                },
+                "stats": {"total_candidates": len(events), "returned": len(results)},
             }
         finally:
             session.close()

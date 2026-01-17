@@ -9,9 +9,6 @@ from app.rag.kg.search.config import SearchConfig
 from app.rag.kg.search.recall import RecallResult
 from app.rag.kg.search.tracker import Tracker
 from app.rag.kg.repository import EntityRepository, EventRepository, get_session
-from app.rag.kg.utils import get_logger
-
-logger = get_logger("kg.search.expand")
 
 
 @dataclass
@@ -19,7 +16,6 @@ class ExpandResult:
     key_final: List[Dict[str, Any]]
     event_ids: List[str]
     clues: List[Dict[str, Any]]
-    clues_dropped: int
     event_scores: Dict[str, float]
 
 
@@ -33,11 +29,10 @@ class ExpandSearcher:
                 key_final=recall_result.key_final,
                 event_ids=recall_result.event_ids,
                 clues=recall_result.clues,
-                clues_dropped=0,
                 event_scores=recall_result.event_scores,
             )
 
-        tracker = Tracker(config)
+        tracker = Tracker()
         tracker.extend_clues(list(recall_result.clues or []))
 
         session = get_session()
@@ -154,7 +149,6 @@ class ExpandSearcher:
                 key_final=key_final,
                 event_ids=discovered_events,
                 clues=tracker.get_clues(),
-                clues_dropped=int(getattr(tracker, "clues_dropped", 0) or 0),
                 event_scores=recall_result.event_scores,
             )
         finally:
