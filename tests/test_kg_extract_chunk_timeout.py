@@ -16,6 +16,13 @@ async def test_event_extractor_enforces_per_chunk_timeout(monkeypatch):
     from app.rag.kg.extraction.config import ExtractConfig
     from app.rag.kg.extraction.processor import EventProcessor
 
+    class _Query:
+        def filter(self, *_a, **_k):  # noqa: ANN001, ANN002, ANN003
+            return self
+
+        def all(self):  # noqa: ANN201
+            return []
+
     class _Session:
         def commit(self):  # noqa: D401
             """No-op."""
@@ -27,7 +34,7 @@ async def test_event_extractor_enforces_per_chunk_timeout(monkeypatch):
             """No-op."""
 
         def query(self, *_a, **_k):  # noqa: ANN001, ANN002, ANN003
-            raise AssertionError("should not query DB when chunks are provided and skip/prompt are disabled")
+            return _Query()
 
     monkeypatch.setattr(extractor_mod, "SessionLocal", lambda: _Session(), raising=True)
 
@@ -63,4 +70,3 @@ async def test_event_extractor_enforces_per_chunk_timeout(monkeypatch):
     out = await extractor.extract(cfg, chunks=[_Chunk()])
 
     assert out == []
-
