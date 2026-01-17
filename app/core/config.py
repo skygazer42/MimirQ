@@ -45,6 +45,8 @@ class Settings(BaseSettings):
     MINIO_BUCKET_NAME: str = "mimirq"
     MINIO_USE_SSL: bool = False
     MINIO_METRICS_LOG_PATH: str = "./logs/minio_metrics.jsonl"
+    # 0 disables. Used when uploading extracted images to MinIO to avoid huge payloads.
+    MINIO_IMAGE_MAX_BYTES: int = 0
 
     # Task Queue / Redis (ingest throughput optimization)
     # - Task queue is off by default: keeps API compatibility; when enabled,
@@ -243,6 +245,10 @@ class Settings(BaseSettings):
     # Guardrail: cap chunk count per document during ingest (0 disables).
     # Useful for huge PDFs that would otherwise generate excessive chunks and indexing load.
     MAX_CHUNKS_PER_DOCUMENT: int = 0
+    # Strategy when MAX_CHUNKS_PER_DOCUMENT is enabled:
+    # - head: keep first N
+    # - asset_uniform: always keep first chunk + asset chunks, then uniformly sample remaining text chunks
+    MAX_CHUNKS_PER_DOCUMENT_STRATEGY: str = "head"
     # Optional: drop exact-duplicate text chunks within a single document.
     # Useful for PDFs that repeat headers/footers or boilerplate blocks.
     CHUNK_DEDUP_ENABLED: bool = False
