@@ -10,6 +10,7 @@ import { documentApi } from "@/lib/api-client"
 import { API_V1_BASE_URL } from "@/lib/env"
 import type { Document, DocumentChunk } from "@/types"
 import { getAccessToken } from "@/lib/auth-storage"
+import { FloatingMenu } from "@/components/document-viewer/floating-menu"
 
 export function DocumentViewerPanel() {
   const { isOpen, documentId, highlightChunkId, closeDocument, activeTab, setActiveTab } = useDocumentView()
@@ -51,6 +52,8 @@ export function DocumentViewerPanel() {
   const fileUrl = documentId ? `${API_V1_BASE_URL}/documents/${documentId}/download?token=${getAccessToken()}` : ''
 
   return (
+    <>
+    <FloatingMenu />
     <div 
         className={cn(
             "fixed inset-y-0 right-0 z-50 flex flex-col bg-background border-l border-border shadow-2xl transition-all duration-300 ease-in-out",
@@ -151,5 +154,6 @@ export function DocumentViewerPanel() {
          </Tabs>
       </div>
     </div>
+    </>
   )
 }

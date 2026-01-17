@@ -4,28 +4,18 @@
 'use client'
 
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react'
-import { Send, StopCircle, Sparkles, Database, Wand2, Settings2, Bot } from 'lucide-react'
+import { Send, StopCircle, Sparkles, Database, Wand2, Settings2, Bot, Mic } from 'lucide-react'
 import { toast } from 'sonner'
 import { useChat } from '@/hooks/use-chat'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import { promptTemplateApi, PromptTemplate } from '@/lib/api-client'
 import { ChatMessageItem } from '@/components/chat/message-item'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from '@/components/ui/popover'
-
+import { VoiceModeOverlay } from '@/components/chat/voice-mode-overlay'
 import getCaretCoordinates from 'textarea-caret'
 import { SlashMenu } from '@/components/chat/slash-menu'
+import { globalEventBus } from '@/lib/event-bus'
+import { Magnetic } from '@/components/ui/magnetic'
 
 const SELECT_DEFAULT_VALUE = '__mimirq_default__'
 const DEFAULT_VISIBLE_MESSAGES = 80
@@ -70,6 +60,7 @@ export function ChatArea({
   // Slash Menu State
   const [slashOpen, setSlashOpen] = useState(false)
   const [slashPos, setSlashPos] = useState({ top: 0, left: 0 })
+  const [voiceModeOpen, setVoiceModeOpen] = useState(false)
 
   const handleKeyUp = useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === '/') {
@@ -109,6 +100,15 @@ export function ChatArea({
       }
     }
     loadTemplates()
+    
+    // Subscribe to global events (from context menu)
+    const unsubscribe = globalEventBus.on('chat:send', (prompt: string) => {
+        setInputValue(prompt)
+        // Optionally auto-send, but filling input is safer
+        // sendMessage(prompt) 
+    })
+    
+    return () => unsubscribe()
   }, [])
 
   const {
@@ -449,31 +449,47 @@ export function ChatArea({
               rows={1}
             />
 
-            <div className="absolute right-2 bottom-2">
+            <div className="absolute right-2 bottom-2 flex items-center gap-2">
+              <Magnetic strength={0.4}>
+                <Button
+                    size="icon"
+                    variant="ghost"
+                    onClick={() => setVoiceModeOpen(true)}
+                    className="rounded-full h-10 w-10 text-slate-400 hover:text-slate-600 hover:bg-slate-100 dark:hover:bg-slate-800"
+                    title="语音模式"
+                >
+                    <Mic className="h-5 w-5" />
+                </Button>
+              </Magnetic>
+
               {isLoading ? (
-                <Button
-                  size="icon"
-                  onClick={stopGeneration}
-                  className="rounded-full h-9 w-9 bg-destructive/10 text-destructive hover:bg-destructive/20 hover:text-destructive shadow-sm"
-                  title="停止生成"
-                >
-                  <StopCircle className="h-4 w-4" />
-                </Button>
+                <Magnetic strength={0.2}>
+                    <Button
+                    size="icon"
+                    onClick={stopGeneration}
+                    className="rounded-full h-9 w-9 bg-destructive/10 text-destructive hover:bg-destructive/20 hover:text-destructive shadow-sm"
+                    title="停止生成"
+                    >
+                    <StopCircle className="h-4 w-4" />
+                    </Button>
+                </Magnetic>
               ) : (
-                <Button
-                  size="icon"
-                  onClick={handleSend}
-                  disabled={!inputValue.trim()}
-                  className={cn(
-                    "rounded-full h-9 w-9 transition-all duration-300 shadow-sm",
-                    inputValue.trim() 
-                      ? "bg-primary text-primary-foreground hover:bg-primary/90 hover:scale-105 hover:shadow-md" 
-                      : "bg-secondary text-muted-foreground cursor-not-allowed"
-                  )}
-                  title="发送"
-                >
-                  <Send className="h-4 w-4" />
-                </Button>
+                <Magnetic strength={0.5}>
+                    <Button
+                    size="icon"
+                    onClick={handleSend}
+                    disabled={!inputValue.trim()}
+                    className={cn(
+                        "rounded-full h-9 w-9 transition-all duration-300 shadow-sm",
+                        inputValue.trim() 
+                        ? "bg-primary text-primary-foreground hover:bg-primary/90 hover:scale-105 hover:shadow-md" 
+                        : "bg-secondary text-muted-foreground cursor-not-allowed"
+                    )}
+                    title="发送"
+                    >
+                    <Send className="h-4 w-4" />
+                    </Button>
+                </Magnetic>
               )}
             </div>
           </div>
@@ -490,6 +506,15 @@ export function ChatArea({
         onOpenChange={setSlashOpen} 
         onSelect={handleSlashSelect} 
         position={slashPos} 
+      />
+      
+      <VoiceModeOverlay 
+        isOpen={voiceModeOpen} 
+        onClose={() => setVoiceModeOpen(false)}
+        onSend={(text) => {
+            setVoiceModeOpen(false)
+            sendMessage(text)
+        }}
       />
     </div>
   )

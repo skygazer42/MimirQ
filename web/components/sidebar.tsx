@@ -26,6 +26,7 @@ import { getParserLabel } from '@/lib/parser-options'
 import { getChunkStrategyLabel } from '@/lib/chunk-strategies'
 import { LottieAnimation, LOTTIE_URLS } from '@/components/ui/lottie-animation'
 import { PipelineVisualizer } from '@/components/ui/pipeline-visualizer'
+import { Magnetic } from '@/components/ui/magnetic'
 
 export function Sidebar() {
   const { documents, isLoading, uploadDocument, cancelDocument, deleteDocument, loadDocuments } = useDocuments()
@@ -88,19 +89,21 @@ export function Sidebar() {
 
         {/* 上传按钮组 - 更有层次感 */}
         <div className="space-y-3">
-            <label htmlFor="file-upload" className="group relative overflow-hidden flex items-center justify-center gap-2 w-full px-4 py-3 bg-primary text-primary-foreground rounded-xl shadow-md shadow-primary/20 hover:shadow-lg hover:shadow-primary/30 hover:-translate-y-0.5 active:translate-y-0 cursor-pointer transition-all duration-300">
-                <div className="absolute inset-0 bg-gradient-to-tr from-white/0 via-white/10 to-white/0 opacity-0 group-hover:opacity-100 transition-opacity" />
-                <Upload className="h-4 w-4" />
-                <span className="text-sm font-medium">上传文档</span>
-                <input
-                    id="file-upload"
-                    type="file"
-                    multiple
-                    accept=".pdf,.txt,.md,.doc,.docx,.xls,.xlsx,.csv,.html,.json"
-                    className="hidden"
-                    onChange={handleFileUpload}
-                />
-            </label>
+            <Magnetic strength={0.3}>
+                <label htmlFor="file-upload" className="group relative overflow-hidden flex items-center justify-center gap-2 w-full px-4 py-3 bg-primary text-primary-foreground rounded-xl shadow-md shadow-primary/20 hover:shadow-lg hover:shadow-primary/30 hover:-translate-y-0.5 active:translate-y-0 cursor-pointer transition-all duration-300">
+                    <div className="absolute inset-0 bg-gradient-to-tr from-white/0 via-white/10 to-white/0 opacity-0 group-hover:opacity-100 transition-opacity" />
+                    <Upload className="h-4 w-4" />
+                    <span className="text-sm font-medium">上传文档</span>
+                    <input
+                        id="file-upload"
+                        type="file"
+                        multiple
+                        accept=".pdf,.txt,.md,.doc,.docx,.xls,.xlsx,.csv,.html,.json"
+                        className="hidden"
+                        onChange={handleFileUpload}
+                    />
+                </label>
+            </Magnetic>
 
             <div className="grid grid-cols-1">
                  <ManualUploadDialog onUploaded={loadDocuments} />
