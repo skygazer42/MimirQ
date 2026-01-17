@@ -18,6 +18,7 @@ logger = get_logger("kg.search.recall")
 @dataclass
 class RecallResult:
     original_query: str
+    query_vector: List[float]
     key_final: List[Dict[str, Any]]
     event_ids: List[str]
     clues: List[Dict[str, Any]]
@@ -180,6 +181,7 @@ class RecallSearcher:
 
             return RecallResult(
                 original_query=config.query,
+                query_vector=query_vec,
                 key_final=key_final,
                 event_ids=merged_event_ids,
                 clues=tracker.get_clues(),

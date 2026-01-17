@@ -74,6 +74,7 @@ async def test_expand_stops_when_new_events_below_min_events_per_hop(monkeypatch
     )
     recall_result = RecallResult(
         original_query="q",
+        query_vector=[0.0],
         key_final=[{"entity_id": str(UUID(int=10)), "name": "A", "type": "t", "weight": 1.0}],
         event_ids=[str(UUID(int=100))],
         clues=[],
@@ -86,4 +87,3 @@ async def test_expand_stops_when_new_events_below_min_events_per_hop(monkeypatch
 
     assert calls["find"] == 1
     assert set(result.event_ids) == {str(UUID(int=100)), str(UUID(int=101)), str(UUID(int=102))}
-
