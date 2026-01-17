@@ -59,11 +59,11 @@ def _try_parse_json_line(line: str) -> Optional[tuple[Any, list[str]]]:
         return None
     try:
         obj = json.loads(s)
-    except Exception:
+    except ValueError:
         return None
     keys: list[str] = []
     if isinstance(obj, dict):
-        for k in obj.keys():
+        for k in obj:
             if isinstance(k, str):
                 keys.append(k)
     return obj, keys
@@ -191,4 +191,3 @@ class JsonlRecordsChunker(BaseChunker):
             chunk.metadata = meta
 
         return out
-

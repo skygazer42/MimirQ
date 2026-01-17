@@ -100,7 +100,7 @@ def _milvus_value_expr(field: str, value: Any) -> Optional[str]:
     if field in _MILVUS_NUMERIC_FIELDS:
         try:
             return str(int(value))
-        except Exception:
+        except (TypeError, ValueError):
             return None
     if field in _MILVUS_STRING_FIELDS:
         return f"\"{_escape_milvus_string(str(value))}\""

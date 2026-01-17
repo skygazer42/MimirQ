@@ -39,7 +39,7 @@ def num_tokens_from_string(string: str) -> int:
     try:
         return len(encoder.encode(string))
     except Exception:
-        return 0
+        return max(1, len(string) // 4)
 
 
 def total_token_count_from_response(resp: Any) -> int:

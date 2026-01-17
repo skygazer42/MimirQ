@@ -42,7 +42,7 @@ def _safe_int(value: Any) -> Optional[int]:
         return None
     try:
         return int(value)
-    except Exception:
+    except (TypeError, ValueError):
         return None
 
 
@@ -53,7 +53,7 @@ def _safe_uuid(value: Any) -> Optional[UUID]:
         return value
     try:
         return UUID(str(value))
-    except Exception:
+    except ValueError:
         return None
 
 

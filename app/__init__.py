@@ -17,7 +17,7 @@ def _preload_conda_libstdcxx() -> None:
         import ctypes
 
         ctypes.CDLL(libstdcxx, mode=ctypes.RTLD_GLOBAL)
-    except Exception:
+    except OSError:
         return
 
 

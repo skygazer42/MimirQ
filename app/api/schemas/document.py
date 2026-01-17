@@ -107,7 +107,7 @@ class DocumentDetail(OrmModel):
                 dropped_documents=int(meta.get("governance_dropped_documents") or 0),
                 drop_reasons=meta.get("governance_drop_reasons") if isinstance(meta.get("governance_drop_reasons"), dict) else {},
             )
-        except Exception:
+        except (TypeError, ValueError):
             self.governance = GovernanceInfo()
         return self
 
