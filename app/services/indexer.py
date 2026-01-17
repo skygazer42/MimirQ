@@ -907,19 +907,27 @@ class Indexer:
         for ev in events:
             if not ev.content_vector:
                 continue
+            refs = ev.references if isinstance(getattr(ev, "references", None), dict) else {}
             embeddings.append(list(ev.content_vector))
+            meta: Dict[str, Any] = {
+                "tenant_id": str(ev.tenant_id),
+                "document_id": str(ev.document_id) if ev.document_id else "",
+                "chunk_id": str(ev.chunk_id) if ev.chunk_id else "",
+                "title": ev.title,
+                "summary": ev.summary,
+                "index_kind": IndexKind.EVENT.value,
+            }
+            if isinstance(refs, dict):
+                for k in ("chunk_index", "page", "start_char", "end_char", "chunk_key", "content_hash", "source"):
+                    v = refs.get(k)
+                    if v is None:
+                        continue
+                    meta[k] = v
             items.append(
                 {
                     "id": str(ev.id),
                     "content": ev.content,
-                    "metadata": {
-                        "tenant_id": str(ev.tenant_id),
-                        "document_id": str(ev.document_id) if ev.document_id else "",
-                        "chunk_id": str(ev.chunk_id) if ev.chunk_id else "",
-                        "title": ev.title,
-                        "summary": ev.summary,
-                        "index_kind": IndexKind.EVENT.value,
-                    },
+                    "metadata": meta,
                 }
             )
 
@@ -944,6 +952,7 @@ class Indexer:
                     "content": ent.name,
                     "metadata": {
                         "name": ent.name,
+                        "normalized_name": ent.normalized_name,
                         "tenant_id": str(ent.tenant_id),
                         "type": ent.type,
                         "description": ent.description or "",

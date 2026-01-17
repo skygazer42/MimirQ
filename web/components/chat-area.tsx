@@ -82,6 +82,7 @@ export function ChatArea({
     isLoading,
     currentResponse,
     currentCitations,
+    currentSteps,
     sendMessage,
     stopGeneration,
     conversationId,
@@ -238,13 +239,14 @@ export function ChatArea({
             ))}
 
             {/* 正在生成的消息 */}
-            {isLoading && currentResponse && (
+            {isLoading && (currentResponse || currentSteps.length > 0) && (
               <ChatMessageItem
                 message={{
                   id: 'streaming',
                   role: 'assistant',
                   content: currentResponse,
                   citations: currentCitations,
+                  steps: currentSteps,
                   created_at: new Date().toISOString(),
                 }}
                 isStreaming

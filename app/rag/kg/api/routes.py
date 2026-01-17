@@ -114,6 +114,7 @@ async def get_kg_graph(
     from collections import Counter
 
     from app.rag.kg.models import KgEntity, KgEventEntity, KgSourceEvent
+    from sqlalchemy import func
 
     events = (
         db.query(KgSourceEvent)
@@ -131,24 +132,62 @@ async def get_kg_graph(
 
     event_ids = [e.id for e in events]
 
-    # Fetch join rows in one pass (event_id -> entity details + edge metadata)
+    # Compute event degrees across all edges (for node sizing).
+    event_degree: Counter[str] = Counter()
+    degree_rows = (
+        db.query(KgEventEntity.event_id, func.count(KgEventEntity.entity_id).label("cnt"))
+        .filter(KgEventEntity.event_id.in_(event_ids))
+        .group_by(KgEventEntity.event_id)
+        .all()
+    )
+    for ev_id, cnt in degree_rows:
+        event_degree[str(ev_id)] = int(cnt or 0)
+
+    # Prefilter entities in SQL to reduce join row volume.
+    entity_hit_count: Counter[str] = Counter()
+    ent_rows = (
+        db.query(KgEventEntity.entity_id, func.count(KgEventEntity.event_id).label("cnt"))
+        .filter(KgEventEntity.event_id.in_(event_ids))
+        .group_by(KgEventEntity.entity_id)
+        .order_by(func.count(KgEventEntity.event_id).desc())
+        .limit(int(max_entities))
+        .all()
+    )
+    allowed_entity_ids = [row[0] for row in ent_rows if row and row[0]]
+    allowed_entity_id_strs = {str(eid) for eid in allowed_entity_ids}
+    for ent_id, cnt in ent_rows:
+        entity_hit_count[str(ent_id)] = int(cnt or 0)
+
+    if not allowed_entity_ids:
+        # Events exist but no entity links.
+        nodes = []
+        for ev in events:
+            eid = str(ev.id)
+            nodes.append(
+                {
+                    "id": eid,
+                    "label": (ev.title or "").strip() or eid,
+                    "group": 0,
+                    "val": max(1, int(event_degree.get(eid, 0))),
+                    "meta": {
+                        "kind": "event",
+                        "document_id": str(ev.document_id) if ev.document_id else "",
+                        "chunk_id": str(ev.chunk_id) if ev.chunk_id else "",
+                    },
+                }
+            )
+        return KGGraphResponse(nodes=nodes, links=[], stats={"events": len(events), "entities": 0, "links": 0})
+
+    # Fetch join rows only for the selected entity ids.
     rows = (
         db.query(KgEventEntity, KgEntity)
         .join(KgEntity, KgEntity.id == KgEventEntity.entity_id)
-        .filter(KgEventEntity.event_id.in_(event_ids))
+        .filter(
+            KgEventEntity.event_id.in_(event_ids),
+            KgEventEntity.entity_id.in_(allowed_entity_ids),
+        )
         .all()
     )
-
-    entity_hit_count: Counter[str] = Counter()
-    event_degree: Counter[str] = Counter()
-    for assoc, ent in rows:
-        eid = str(ent.id)
-        entity_hit_count[eid] += 1
-        event_degree[str(assoc.event_id)] += 1
-
-    allowed_entity_ids = set(entity_hit_count.keys())
-    if max_entities and len(allowed_entity_ids) > int(max_entities):
-        allowed_entity_ids = {eid for (eid, _cnt) in entity_hit_count.most_common(int(max_entities))}
 
     # Stable grouping for entity types (frontend coloring).
 
@@ -176,7 +215,7 @@ async def get_kg_graph(
     seen_entities: set[str] = set()
     for assoc, ent in rows:
         ent_id = str(ent.id)
-        if ent_id not in allowed_entity_ids:
+        if ent_id not in allowed_entity_id_strs:
             continue
 
         if ent_id not in seen_entities:
@@ -216,7 +255,7 @@ async def get_kg_graph(
         event_to_entities: dict[str, set[str]] = {}
         for assoc, ent in rows:
             ent_id = str(ent.id)
-            if ent_id not in allowed_entity_ids:
+            if ent_id not in allowed_entity_id_strs:
                 continue
             event_to_entities.setdefault(str(assoc.event_id), set()).add(ent_id)
 
@@ -397,24 +436,65 @@ async def expand_kg_graph(
     if not events:
         return KGGraphResponse(nodes=[], links=[], stats={"events": 0, "entities": 0, "links": 0})
 
+    from sqlalchemy import func
+
     event_ids = [e.id for e in events]
+
+    # Compute event degrees across all edges (for node sizing).
+    event_degree: Counter[str] = Counter()
+    degree_rows = (
+        db.query(KgEventEntity.event_id, func.count(KgEventEntity.entity_id).label("cnt"))
+        .filter(KgEventEntity.event_id.in_(event_ids))
+        .group_by(KgEventEntity.event_id)
+        .all()
+    )
+    for ev_id, cnt in degree_rows:
+        event_degree[str(ev_id)] = int(cnt or 0)
+
+    # Prefilter entities in SQL to reduce join row volume.
+    entity_hit_count: Counter[str] = Counter()
+    ent_rows = (
+        db.query(KgEventEntity.entity_id, func.count(KgEventEntity.event_id).label("cnt"))
+        .filter(KgEventEntity.event_id.in_(event_ids))
+        .group_by(KgEventEntity.entity_id)
+        .order_by(func.count(KgEventEntity.event_id).desc())
+        .limit(int(max_entities))
+        .all()
+    )
+    allowed_entity_ids = [row[0] for row in ent_rows if row and row[0]]
+    allowed_entity_id_strs = {str(eid) for eid in allowed_entity_ids}
+    for ent_id, cnt in ent_rows:
+        entity_hit_count[str(ent_id)] = int(cnt or 0)
+
+    if not allowed_entity_ids:
+        nodes = []
+        for ev in events:
+            ev_id = str(ev.id)
+            nodes.append(
+                {
+                    "id": ev_id,
+                    "label": (ev.title or "").strip() or ev_id,
+                    "group": 0,
+                    "val": max(1, int(event_degree.get(ev_id, 0))),
+                    "meta": {
+                        "kind": "event",
+                        "document_id": str(ev.document_id) if ev.document_id else "",
+                        "chunk_id": str(ev.chunk_id) if ev.chunk_id else "",
+                        "center": str(ev.id) == str(node_id),
+                    },
+                }
+            )
+        return KGGraphResponse(nodes=nodes, links=[], stats={"events": len(events), "entities": 0, "links": 0})
+
     rows = (
         db.query(KgEventEntity, KgEntity)
         .join(KgEntity, KgEntity.id == KgEventEntity.entity_id)
-        .filter(KgEventEntity.event_id.in_(event_ids))
+        .filter(
+            KgEventEntity.event_id.in_(event_ids),
+            KgEventEntity.entity_id.in_(allowed_entity_ids),
+        )
         .all()
     )
-
-    entity_hit_count: Counter[str] = Counter()
-    event_degree: Counter[str] = Counter()
-    for assoc, ent in rows:
-        ent_id = str(ent.id)
-        entity_hit_count[ent_id] += 1
-        event_degree[str(assoc.event_id)] += 1
-
-    allowed_entity_ids = set(entity_hit_count.keys())
-    if max_entities and len(allowed_entity_ids) > int(max_entities):
-        allowed_entity_ids = {eid for (eid, _cnt) in entity_hit_count.most_common(int(max_entities))}
 
     # Stable grouping by entity type for frontend coloring.
 
@@ -442,7 +522,7 @@ async def expand_kg_graph(
     seen_entities: set[str] = set()
     for assoc, ent in rows:
         ent_id = str(ent.id)
-        if ent_id not in allowed_entity_ids:
+        if ent_id not in allowed_entity_id_strs:
             continue
 
         if ent_id not in seen_entities:
@@ -483,7 +563,7 @@ async def expand_kg_graph(
         event_to_entities: dict[str, set[str]] = {}
         for assoc, ent in rows:
             ent_id = str(ent.id)
-            if ent_id not in allowed_entity_ids:
+            if ent_id not in allowed_entity_id_strs:
                 continue
             event_to_entities.setdefault(str(assoc.event_id), set()).add(ent_id)
 
@@ -570,7 +650,11 @@ async def search_kg_graph_nodes(
 
     nodes: list[KGGraphNode] = []
 
-    pattern = f"%{q_text}%"
+    # Split on whitespace and use % join so "foo   bar" matches "foo ... bar".
+    import re
+
+    terms = [t for t in re.split(r"\s+", q_text) if t]
+    pattern = "%" + "%".join(terms[:6]) + "%" if terms else f"%{q_text}%"
 
     if mode in {"all", "entity"}:
         ents = (

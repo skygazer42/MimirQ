@@ -235,6 +235,9 @@ class Settings(BaseSettings):
     CHUNK_OVERLAP: int = 200
     # Drop extremely short chunks during indexing (0 disables).
     CHUNK_MIN_CHARS: int = 30
+    # Optional: drop exact-duplicate text chunks within a single document.
+    # Useful for PDFs that repeat headers/footers or boilerplate blocks.
+    CHUNK_DEDUP_ENABLED: bool = False
     RETRIEVAL_TOP_K: int = 5
     SIMILARITY_THRESHOLD: float = 0.7
     # Concurrent retrieval across query variants (multi-query / decompose / HyDE).
@@ -431,6 +434,11 @@ class Settings(BaseSettings):
     # - prune_orphan_entities: removes entities that have no remaining event links after replacement/deletion.
     KG_EXTRACT_REPLACE_EXISTING: bool = True
     KG_EXTRACT_PRUNE_ORPHAN_ENTITIES: bool = True
+    # KG extraction performance/guardrails.
+    KG_EXTRACT_MAX_CONCURRENCY: int = 3
+    KG_EXTRACT_EMBED_BATCH_SIZE: int = 128
+    KG_EXTRACT_MAX_EVENTS_PER_CHUNK: int = 6
+    KG_EXTRACT_MAX_ENTITIES_PER_EVENT: int = 30
     CHAT_HISTORY_WINDOW: int = 5
     # Allow chat even when no accessible documents exist (dev-friendly).
     CHAT_ALLOW_EMPTY_DOCUMENTS: bool = True
