@@ -439,6 +439,16 @@ class Settings(BaseSettings):
     KG_EXTRACT_EMBED_BATCH_SIZE: int = 128
     KG_EXTRACT_MAX_EVENTS_PER_CHUNK: int = 6
     KG_EXTRACT_MAX_ENTITIES_PER_EVENT: int = 30
+    KG_EXTRACT_CONTEXT_MAX_CHARS: int = 8000
+    # 0 disables. When enabled, KG extraction wraps each per-chunk LLM call in a timeout.
+    KG_EXTRACT_CHUNK_TIMEOUT_SEC: int = 0
+    # Optional context window: include neighbor chunks as background (0 disables).
+    KG_EXTRACT_CONTEXT_WINDOW_CHUNKS: int = 0
+    # Optional incremental extraction: skip unchanged chunks when prompt selection matches.
+    # Default false to preserve backward-compatible behavior (prompt changes should re-extract).
+    KG_EXTRACT_SKIP_UNCHANGED_CHUNKS: bool = False
+    # Graph co-occurrence computation guardrail: cap entity count per event when building co-occurrence edges.
+    KG_ENTITY_LINK_MAX_ENTITIES_PER_EVENT: int = 60
     CHAT_HISTORY_WINDOW: int = 5
     # Allow chat even when no accessible documents exist (dev-friendly).
     CHAT_ALLOW_EMPTY_DOCUMENTS: bool = True

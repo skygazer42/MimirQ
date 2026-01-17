@@ -43,3 +43,38 @@
 - **切块后处理**：`app/parsing/processors/processor.py`（chunk 去重、chunk metadata 注入）
 - **配置项**：`app/core/config.py`（新增 KG 抽取与 chunk 后处理相关开关与阈值）
 - **测试**：`tests/`（新增单测文件，覆盖归一化与去重/metadata）
+
+---
+
+## 第二阶段（21–40）：KG / 解析 / 切块进阶优化清单
+
+> 目标：在不破坏默认兼容性的前提下，进一步降低 KG 抽取与图谱 API 的成本/延迟，提升可观测性与可运维性，并增强切块/解析链路的“兜底能力”。
+
+### A. KG 抽取与索引（21–30）
+
+21. [ ] **增量抽取**：基于 `chunk.content_hash` 跳过“未变化且 prompt 选择一致”的 chunks（可开关）
+22. [ ] **单 chunk 超时**：LLM 抽取支持 per-chunk timeout（超时按失败隔离，不拖死整批）
+23. [ ] **上下文上限可配**：KG 抽取 prompt 的 `context` 最大字符数可配置
+24. [ ] **上下文窗口**：可选在抽取时加入邻近 chunks 作为背景上下文（不改变归属 chunk_id）
+25. [ ] **回写文档元信息**：抽取完成后写入 `kg_event_count/kg_skipped_chunks/kg_failed_chunks/kg_extracted_at`
+26. [ ] **hash 兜底**：chunk metadata 缺少 `content_hash` 时，使用规范化内容计算
+27. [ ] **prompt 一致性**：prompt_template 选择变化时，强制重抽（不走“未变化跳过”）
+28. [ ] **向量 metadata 更完整**：KG event/entity 向量索引 metadata 补齐 `chunk_key/content_hash/start/end`
+29. [ ] **图谱/expand SQL 预筛**：graph/expand 都在 SQL 层做 top-entity 预筛，减少 join 行
+30. [ ] **共现边参数化**：每个事件参与共现计算的 entity 数上限支持 settings 配置
+
+### B. 切块与资产（31–36）
+
+31. [ ] **chunk 元数据兜底**：持久化前强制补齐 `chunk_key/content_hash/content_len`
+32. [ ] **chunk 上限保护**：新增 `MAX_CHUNKS_PER_DOCUMENT`（0=不限），超限截断并记录原因
+33. [ ] **MinIO chunk_key 统一**：MinIO 上传使用 `chunk_key`（默认回退 chunk_index），避免漂移
+34. [ ] **BM25 metadata 补齐**：BM25 侧也补齐 `content_hash/chunk_key/content_len` 便于排障
+35. [ ] **去重可观测性**：chunk 去重/截断写入 metrics 与 doc_metadata 计数
+36. [ ] **安全边界**：对内联图片/解析产物路径继续保持 tenant 目录隔离与清理安全
+
+### C. 解析子进程安全与稳健（37–40）
+
+37. [ ] **payload 体积上限**：subprocess payload JSON 写盘前做 size 限制（避免 OOM/磁盘爆）
+38. [ ] **result 体积上限**：读取 result.json 前做 size 限制（避免异常输出拖垮主进程）
+39. [ ] **测试覆盖**：为增量抽取/超时/上限/size guard 增加单测
+40. [ ] **文档对齐**：标记完成项、补开关说明与推荐默认值
