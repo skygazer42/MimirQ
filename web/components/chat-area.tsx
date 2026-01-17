@@ -4,7 +4,7 @@
 'use client'
 
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react'
-import { Send, StopCircle, Sparkles, Database, Wand2 } from 'lucide-react'
+import { Send, StopCircle, Sparkles, Database, Wand2, Settings2, Bot } from 'lucide-react'
 import { toast } from 'sonner'
 import { useChat } from '@/hooks/use-chat'
 import { Button } from '@/components/ui/button'
@@ -18,6 +18,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover'
 
 const SELECT_DEFAULT_VALUE = '__mimirq_default__'
 const DEFAULT_VISIBLE_MESSAGES = 80
@@ -137,7 +142,7 @@ export function ChatArea({
     })
   }, [])
 
-  // 自动滚动：仅在用户停留在底部附近时触发，并做 rAF 节流，避免流式输出时抖动/卡顿。
+  // 自动滚动
   useEffect(() => {
     scheduleScrollToBottom('smooth')
   }, [messages.length, scheduleScrollToBottom])
@@ -160,11 +165,11 @@ export function ChatArea({
   useEffect(() => {
     if (textareaRef.current) {
       textareaRef.current.style.height = 'auto'
-      textareaRef.current.style.height = `${textareaRef.current.scrollHeight}px`
+      textareaRef.current.style.height = `${Math.min(textareaRef.current.scrollHeight, 200)}px`
     }
   }, [inputValue])
 
-  // Support deep-linking with prefilled prompt (?prompt=...)
+  // Support deep-linking
   useEffect(() => {
     const p = (initialPrompt || '').trim()
     if (!p) return
@@ -182,15 +187,13 @@ export function ChatArea({
     [messages, visibleCount]
   )
 
-  // 发送消息
   const handleSend = useCallback(() => {
     if (!inputValue.trim() || isLoading) return
-
     sendMessage(inputValue)
     setInputValue('')
+    if (textareaRef.current) textareaRef.current.style.height = 'auto'
   }, [inputValue, isLoading, sendMessage])
 
-  // 按键处理
   const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
@@ -199,212 +202,205 @@ export function ChatArea({
   }, [handleSend])
 
   return (
-    <div className="flex-1 flex flex-col bg-slate-50/50 dark:bg-slate-950 h-screen relative transition-colors duration-300">
-      {/* 消息列表 */}
+    <div className="flex-1 flex flex-col bg-background h-screen relative transition-colors duration-300">
+      {/* 消息列表区域 */}
       <div
         ref={scrollContainerRef}
         onScroll={updateAutoScroll}
-        className="flex-1 overflow-y-auto pt-24 px-4 pb-4 scroll-smooth"
+        className="flex-1 overflow-y-auto px-4 pb-4 scroll-smooth scrollbar-thin scrollbar-thumb-secondary/50 scrollbar-track-transparent"
         role="log"
         aria-live="polite"
         aria-busy={isLoading}
       >
-        <div className="max-w-3xl mx-auto space-y-8">
+        <div className="max-w-4xl mx-auto flex flex-col min-h-full py-10">
           {messages.length === 0 && !isLoading && (
-            <WelcomeScreen />
+            <div className="flex-1 flex items-center justify-center">
+              <WelcomeScreen />
+            </div>
           )}
 
           {hiddenCount > 0 && (
-            <div className="flex justify-center">
+            <div className="flex justify-center py-4">
               <Button
-                variant="outline"
+                variant="ghost"
                 size="sm"
                 onClick={() => setVisibleCount((count) => Math.min(messages.length, count + LOAD_MORE_STEP))}
-                className="rounded-full text-xs"
+                className="rounded-full text-xs text-muted-foreground hover:bg-secondary"
               >
                 显示更早消息（{hiddenCount}）
               </Button>
             </div>
           )}
 
-          {visibleMessages.map((message) => (
-            <ChatMessageItem key={message.id} message={message} />
-          ))}
+          <div className="space-y-6">
+            {visibleMessages.map((message) => (
+              <ChatMessageItem key={message.id} message={message} />
+            ))}
 
-          {/* 正在生成的消息 */}
-          {isLoading && currentResponse && (
-            <ChatMessageItem
-              message={{
-                id: 'streaming',
-                role: 'assistant',
-                content: currentResponse,
-                citations: currentCitations,
-                created_at: new Date().toISOString(),
-              }}
-              isStreaming
-            />
-          )}
+            {/* 正在生成的消息 */}
+            {isLoading && currentResponse && (
+              <ChatMessageItem
+                message={{
+                  id: 'streaming',
+                  role: 'assistant',
+                  content: currentResponse,
+                  citations: currentCitations,
+                  created_at: new Date().toISOString(),
+                }}
+                isStreaming
+              />
+            )}
+          </div>
 
           <div ref={messagesEndRef} className="h-4" />
         </div>
       </div>
 
-      {/* 输入框区域 - 悬浮风格 */}
-      <div className="px-4 pb-6 pt-2">
-        <div className="max-w-3xl mx-auto space-y-3">
-          {/* 提示词模板选择器 */}
-          {promptTemplates.length > 0 && (
-            <div className="flex items-center gap-2 px-2">
-              <Wand2 className="w-4 h-4 text-slate-400" />
-              <Select
-                value={promptTemplateId || SELECT_DEFAULT_VALUE}
-                onValueChange={(v) => setPromptTemplateId(v === SELECT_DEFAULT_VALUE ? '' : v)}
-              >
-                <SelectTrigger className="w-[240px] h-8 text-sm">
-                  <SelectValue placeholder="选择提示词模板" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value={SELECT_DEFAULT_VALUE}>默认模板</SelectItem>
-                  {promptTemplates.map((template) => (
-                    <SelectItem key={template.id} value={template.id}>
-                      {template.name}
-                      {template.category && (
-                        <span className="text-xs text-muted-foreground ml-2">
-                          ({template.category})
-                        </span>
-                      )}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              {promptTemplateId && (
-                <span className="text-xs text-slate-500">
-                  {selectedPromptTemplate?.description}
-                </span>
-              )}
+      {/* 底部输入区域 */}
+      <div className="px-4 pb-6 pt-2 z-10">
+        <div className="max-w-3xl mx-auto space-y-4">
+          
+          {/* 工具栏 (Settings & Templates) */}
+          <div className="flex items-center justify-between px-2 animate-fade-in opacity-0 hover:opacity-100 focus-within:opacity-100 transition-opacity duration-300">
+            <div className="flex items-center gap-2">
+                {promptTemplates.length > 0 && (
+                    <Popover>
+                        <PopoverTrigger asChild>
+                            <Button variant="ghost" size="sm" className="h-8 gap-2 text-muted-foreground hover:text-primary rounded-full hover:bg-secondary/80">
+                                <Wand2 className="w-3.5 h-3.5" />
+                                <span className="text-xs">{selectedPromptTemplate?.name || '默认模板'}</span>
+                            </Button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-64 p-2" align="start">
+                             <div className="text-xs font-medium text-muted-foreground mb-2 px-2">选择 Prompt 模板</div>
+                             <div className="max-h-60 overflow-y-auto space-y-1">
+                                <div 
+                                    className={cn("px-2 py-1.5 rounded-md cursor-pointer text-sm hover:bg-secondary transition-colors", !promptTemplateId && "bg-secondary/50 font-medium text-primary")}
+                                    onClick={() => setPromptTemplateId('')}
+                                >
+                                    默认模板
+                                </div>
+                                {promptTemplates.map(t => (
+                                    <div 
+                                        key={t.id}
+                                        className={cn("px-2 py-1.5 rounded-md cursor-pointer text-sm hover:bg-secondary transition-colors flex flex-col gap-0.5", promptTemplateId === t.id && "bg-secondary/50 font-medium text-primary")}
+                                        onClick={() => setPromptTemplateId(t.id)}
+                                    >
+                                        <span>{t.name}</span>
+                                        {t.description && <span className="text-[10px] text-muted-foreground/70 truncate">{t.description}</span>}
+                                    </div>
+                                ))}
+                             </div>
+                        </PopoverContent>
+                    </Popover>
+                )}
             </div>
-          )}
 
-          {/* RAG 参数（联调用：让前端能直接控制后端 rag_config） */}
-          <div className="px-2">
-            <Button
-              type="button"
-              variant="ghost"
-              className="h-8 px-2 text-xs text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-100"
-              onClick={() => setShowRagSettings((v) => !v)}
-              aria-expanded={showRagSettings}
-              aria-controls={ragSettingsId}
-            >
-              <Database className="w-4 h-4 mr-2" />
-              RAG 设置
-            </Button>
+            <Popover open={showRagSettings} onOpenChange={setShowRagSettings}>
+                <PopoverTrigger asChild>
+                    <Button variant="ghost" size="sm" className={cn("h-8 gap-1.5 rounded-full transition-colors", (ragConfig.retrieval_mode !== 'auto' || ragConfig.use_graph) ? "text-primary bg-primary/10 hover:bg-primary/20" : "text-muted-foreground hover:bg-secondary/80")}>
+                        <Settings2 className="w-3.5 h-3.5" />
+                        <span className="text-xs">RAG 配置</span>
+                    </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-80 p-4" align="end" sideOffset={10}>
+                    <div className="space-y-4">
+                        <div className="flex items-center justify-between">
+                            <h4 className="font-medium text-sm">检索设置</h4>
+                            <span className="text-[10px] text-muted-foreground">Adjust retrieval parameters</span>
+                        </div>
+                        
+                        <div className="grid grid-cols-2 gap-4">
+                            <div className="space-y-1.5">
+                                <label className="text-xs text-muted-foreground">检索模式</label>
+                                <Select
+                                    value={ragConfig.retrieval_mode}
+                                    onValueChange={(v) => setRagConfig((prev) => ({ ...prev, retrieval_mode: v }))}
+                                >
+                                    <SelectTrigger className="h-8 text-xs">
+                                        <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="auto">Auto (自动)</SelectItem>
+                                        <SelectItem value="hybrid">Hybrid (混合)</SelectItem>
+                                        <SelectItem value="vector">Vector (向量)</SelectItem>
+                                        <SelectItem value="keyword">Keyword (关键词)</SelectItem>
+                                        <SelectItem value="mmr">MMR (多样性)</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                             <div className="space-y-1.5">
+                                <label className="text-xs text-muted-foreground">Top K</label>
+                                <input
+                                    type="number"
+                                    min={1}
+                                    max={20}
+                                    value={ragConfig.top_k}
+                                    onChange={(e) => setRagConfig((prev) => ({ ...prev, top_k: Number(e.target.value) }))}
+                                    className="flex h-8 w-full rounded-md border border-input bg-background px-3 py-1 text-xs shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                                />
+                            </div>
+                        </div>
+
+                        <div className="space-y-3 pt-2 border-t">
+                            <label className="flex items-center justify-between text-sm cursor-pointer hover:bg-secondary/50 p-1 rounded-md transition-colors">
+                                <span className="text-muted-foreground text-xs">使用知识图谱 (LangGraph)</span>
+                                <input
+                                    type="checkbox"
+                                    checked={ragConfig.use_graph}
+                                    onChange={(e) => setRagConfig((prev) => ({ ...prev, use_graph: e.target.checked }))}
+                                    className="accent-primary h-4 w-4"
+                                />
+                            </label>
+                            <label className="flex items-center justify-between text-sm cursor-pointer hover:bg-secondary/50 p-1 rounded-md transition-colors">
+                                <span className="text-muted-foreground text-xs">启用长短期记忆</span>
+                                <input
+                                    type="checkbox"
+                                    checked={enableLongTermMemory}
+                                    onChange={(e) => setEnableLongTermMemory(e.target.checked)}
+                                    className="accent-primary h-4 w-4"
+                                />
+                            </label>
+                            <label className="flex items-center justify-between text-sm cursor-pointer hover:bg-secondary/50 p-1 rounded-md transition-colors">
+                                <span className="text-muted-foreground text-xs">结构化输出</span>
+                                <input
+                                    type="checkbox"
+                                    checked={structuredOutput}
+                                    onChange={(e) => setStructuredOutput(e.target.checked)}
+                                    className="accent-primary h-4 w-4"
+                                />
+                            </label>
+                             {structuredOutput && (
+                                <div className="pl-4 pt-1">
+                                    <Select
+                                        value={structuredPreset || SELECT_DEFAULT_VALUE}
+                                        onValueChange={(v) => setStructuredPreset(v === SELECT_DEFAULT_VALUE ? '' : v)}
+                                    >
+                                        <SelectTrigger className="h-7 text-xs w-full">
+                                            <SelectValue placeholder="选择 Preset" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value={SELECT_DEFAULT_VALUE}>Custom (默认)</SelectItem>
+                                            <SelectItem value="faq">FAQ</SelectItem>
+                                            <SelectItem value="summary">Summary</SelectItem>
+                                            <SelectItem value="action_items">Action Items</SelectItem>
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                </PopoverContent>
+            </Popover>
           </div>
 
-          {showRagSettings && (
-            <div
-              id={ragSettingsId}
-              className="px-2 flex flex-wrap items-center gap-3 text-xs text-slate-600 dark:text-slate-300"
-            >
-              <div className="flex items-center gap-2">
-                <span className="text-slate-400">检索</span>
-                <Select
-                  value={ragConfig.retrieval_mode}
-                  onValueChange={(v) => setRagConfig((prev) => ({ ...prev, retrieval_mode: v }))}
-                >
-                  <SelectTrigger className="w-[140px] h-8 text-xs">
-                    <SelectValue placeholder="选择模式" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="auto">auto（自动）</SelectItem>
-                    <SelectItem value="hybrid">hybrid（混合）</SelectItem>
-                    <SelectItem value="vector">vector（向量）</SelectItem>
-                    <SelectItem value="keyword">keyword（全文）</SelectItem>
-                    <SelectItem value="mmr">mmr（多样性）</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <label className="flex items-center gap-2">
-                <span className="text-slate-400">TopK</span>
-                <input
-                  type="number"
-                  min={1}
-                  max={50}
-                  value={ragConfig.top_k}
-                  onChange={(e) => setRagConfig((prev) => ({ ...prev, top_k: Number(e.target.value || 0) }))}
-                  className="w-16 h-8 px-2 rounded-md border border-slate-200 dark:border-slate-700 bg-white/70 dark:bg-slate-900/70"
-                />
-              </label>
-
-              <label className="flex items-center gap-2">
-                <span className="text-slate-400">阈值</span>
-                <input
-                  type="number"
-                  min={0}
-                  max={1}
-                  step={0.05}
-                  value={ragConfig.score_threshold}
-                  onChange={(e) => setRagConfig((prev) => ({ ...prev, score_threshold: Number(e.target.value || 0) }))}
-                  className="w-20 h-8 px-2 rounded-md border border-slate-200 dark:border-slate-700 bg-white/70 dark:bg-slate-900/70"
-                />
-              </label>
-
-              <label className="flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  checked={ragConfig.use_graph}
-                  onChange={(e) => setRagConfig((prev) => ({ ...prev, use_graph: e.target.checked }))}
-                />
-                <span>LangGraph</span>
-              </label>
-
-              <label className="flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  checked={structuredOutput}
-                  onChange={(e) => setStructuredOutput(e.target.checked)}
-                />
-                <span>结构化</span>
-              </label>
-
-                {structuredOutput && (
-                  <div className="flex items-center gap-2">
-                    <span className="text-slate-400">Preset</span>
-                    <Select
-                      value={structuredPreset || SELECT_DEFAULT_VALUE}
-                      onValueChange={(v) => setStructuredPreset(v === SELECT_DEFAULT_VALUE ? '' : v)}
-                    >
-                      <SelectTrigger className="w-[160px] h-8 text-xs">
-                        <SelectValue placeholder="选择 preset" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value={SELECT_DEFAULT_VALUE}>custom（默认）</SelectItem>
-                        <SelectItem value="faq">faq</SelectItem>
-                        <SelectItem value="summary">summary</SelectItem>
-                        <SelectItem value="action_items">action_items</SelectItem>
-                      </SelectContent>
-                  </Select>
-                </div>
-              )}
-
-              <label className="flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  checked={enableLongTermMemory}
-                  onChange={(e) => setEnableLongTermMemory(e.target.checked)}
-                />
-                <span>长记忆</span>
-              </label>
-            </div>
-          )}
-
-          {/* 输入框 */}
-          <div className="relative group">
-            <div className={cn(
-              "relative bg-white/80 dark:bg-slate-900/80 backdrop-blur-xl rounded-3xl shadow-lg border border-slate-200/60 dark:border-slate-800 transition-all duration-300",
-              "focus-within:shadow-xl focus-within:shadow-sky-500/10 focus-within:border-sky-300 dark:focus-within:border-sky-700 focus-within:ring-2 focus-within:ring-sky-100 dark:focus-within:ring-sky-900/30",
-              "hover:border-sky-200 dark:hover:border-sky-800 hover:shadow-lg hover:shadow-sky-500/5"
-            )}>
+          {/* 输入框本体 */}
+          <div className={cn(
+            "relative group rounded-3xl bg-background border transition-all duration-300",
+            "shadow-[0_2px_15px_-3px_rgba(0,0,0,0.07),0_10px_20px_-2px_rgba(0,0,0,0.04)] dark:shadow-none",
+            "focus-within:ring-2 focus-within:ring-primary/20 focus-within:border-primary/50",
+            "hover:border-primary/30"
+          )}>
             <textarea
               ref={textareaRef}
               value={inputValue}
@@ -412,47 +408,43 @@ export function ChatArea({
               onKeyDown={handleKeyDown}
               placeholder="问点什么... (Shift + Enter 换行)"
               autoFocus
-              aria-label="聊天输入框"
-              enterKeyHint="send"
-              className="w-full px-6 py-4 pr-24 resize-none outline-none rounded-3xl max-h-48 bg-transparent text-slate-700 dark:text-slate-200 placeholder:text-slate-400 font-medium"
+              className="w-full px-5 py-4 pr-16 resize-none outline-none rounded-3xl max-h-48 bg-transparent text-sm leading-relaxed placeholder:text-muted-foreground/60 scrollbar-hide"
               rows={1}
             />
 
-            <div className="absolute right-2 bottom-2 flex items-center gap-2">
+            <div className="absolute right-2 bottom-2">
               {isLoading ? (
                 <Button
                   size="icon"
-                  variant="ghost"
                   onClick={stopGeneration}
+                  className="rounded-full h-9 w-9 bg-destructive/10 text-destructive hover:bg-destructive/20 hover:text-destructive shadow-sm"
                   title="停止生成"
-                  aria-label="停止生成"
-                  className="rounded-full hover:bg-red-50 dark:hover:bg-red-900/20 text-red-500 transition-colors h-10 w-10 animate-pulse"
                 >
-                  <StopCircle className="h-5 w-5" />
+                  <StopCircle className="h-4 w-4" />
                 </Button>
               ) : (
                 <Button
                   size="icon"
                   onClick={handleSend}
                   disabled={!inputValue.trim()}
-                  title="发送消息"
-                  aria-label="发送消息"
                   className={cn(
-                    "rounded-full h-10 w-10 transition-all duration-300 flex items-center justify-center",
+                    "rounded-full h-9 w-9 transition-all duration-300 shadow-sm",
                     inputValue.trim() 
-                      ? "bg-slate-900 dark:bg-slate-100 hover:bg-slate-800 dark:hover:bg-slate-200 text-white dark:text-slate-900 shadow-md hover:shadow-lg transform hover:-translate-y-0.5" 
-                      : "bg-slate-100 dark:bg-slate-800 text-slate-300 dark:text-slate-600"
+                      ? "bg-primary text-primary-foreground hover:bg-primary/90 hover:scale-105 hover:shadow-md" 
+                      : "bg-secondary text-muted-foreground cursor-not-allowed"
                   )}
+                  title="发送"
                 >
-                  <Send className="h-4 w-4 ml-0.5" />
+                  <Send className="h-4 w-4" />
                 </Button>
               )}
             </div>
           </div>
-
-          <p className="text-[10px] text-slate-400 dark:text-slate-500 text-center font-medium tracking-wide opacity-0 group-hover:opacity-100 transition-opacity duration-500">
-             POWERED BY MIMIRQ AI
-          </p>
+          
+          <div className="text-center">
+            <p className="text-[10px] text-muted-foreground/40 font-medium tracking-widest uppercase scale-90">
+                AI can make mistakes. Check important info.
+            </p>
           </div>
         </div>
       </div>
@@ -460,26 +452,45 @@ export function ChatArea({
   )
 }
 
-// 欢迎屏幕
+// 欢迎屏幕 - 优化版
 function WelcomeScreen() {
   const hour = new Date().getHours()
-  const greeting = hour < 12 ? '上午好' : hour < 18 ? '下午好' : '晚上好'
+  const greeting = hour < 5 ? '夜深了' : hour < 11 ? '早上好' : hour < 13 ? '中午好' : hour < 18 ? '下午好' : '晚上好'
 
   return (
-    <div className="flex flex-col items-center justify-center h-full min-h-[60vh] text-center animate-in fade-in slide-in-from-bottom-4 duration-700 select-none">
-      <div className="relative group cursor-default mb-8">
-        <div className="absolute -inset-4 bg-gradient-to-r from-sky-400 via-cyan-400 to-teal-400 rounded-full blur-xl opacity-20 group-hover:opacity-40 transition duration-1000 group-hover:duration-200"></div>
-        <div className="relative p-6 bg-white dark:bg-slate-900 rounded-2xl shadow-lg ring-1 ring-slate-200/50 dark:ring-slate-800 flex items-center justify-center transform transition-transform duration-500 group-hover:scale-105">
-          <Sparkles className="h-10 w-10 text-sky-600 dark:text-sky-400 animate-pulse" />
-        </div>
+    <div className="flex flex-col items-center justify-center text-center space-y-8 animate-fade-in-up px-4">
+      <div className="relative">
+         <div className="absolute -inset-4 bg-gradient-to-tr from-primary/30 to-purple-500/30 rounded-full blur-2xl opacity-20 animate-pulse-subtle"></div>
+         <div className="relative h-20 w-20 bg-background rounded-2xl shadow-xl flex items-center justify-center border border-border/50">
+            <Bot className="h-10 w-10 text-primary" />
+         </div>
       </div>
-      
-      <h2 className="text-3xl font-bold text-slate-900 dark:text-white mb-4 tracking-tight">
-        {greeting}，<span className="text-transparent bg-clip-text bg-gradient-to-r from-sky-600 via-cyan-600 to-teal-600 dark:from-sky-400 dark:via-cyan-400 dark:to-teal-400">朋友</span>
-      </h2>
-      <p className="text-slate-500 dark:text-slate-400 max-w-md text-base leading-relaxed">
-        我是您的智能知识助手。您可以随时向我提问，我会帮您分析、总结并回答相关问题。
-      </p>
+
+      <div className="space-y-2 max-w-lg">
+        <h2 className="text-3xl font-bold tracking-tight text-foreground">
+            {greeting}，<span className="text-primary">探索者</span>
+        </h2>
+        <p className="text-muted-foreground text-sm md:text-base leading-relaxed">
+            我是 MimirQ，你的智能知识中枢。<br/>
+            我可以协助你分析文档、提取信息或进行深入的研究。
+        </p>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-3 w-full max-w-2xl opacity-0 animate-fade-in-up" style={{ animationDelay: '200ms', animationFillMode: 'forwards' }}>
+         <FeatureCard icon={Database} title="混合检索" desc="结合语义与关键词的精准召回" />
+         <FeatureCard icon={Sparkles} title="智能问答" desc="基于上下文的深度推理与回答" />
+         <FeatureCard icon={Wand2} title="结构化输出" desc="将非结构化数据转化为表格或JSON" />
+      </div>
     </div>
   )
+}
+
+function FeatureCard({ icon: Icon, title, desc }: { icon: any, title: string, desc: string }) {
+    return (
+        <div className="p-4 rounded-xl bg-secondary/30 border border-border/50 hover:bg-secondary/60 transition-colors cursor-default text-left group">
+            <Icon className="h-5 w-5 text-primary mb-2 opacity-70 group-hover:opacity-100 transition-opacity" />
+            <h3 className="text-sm font-medium text-foreground mb-1">{title}</h3>
+            <p className="text-xs text-muted-foreground">{desc}</p>
+        </div>
+    )
 }
