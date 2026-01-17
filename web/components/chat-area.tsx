@@ -11,6 +11,18 @@ import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import { promptTemplateApi, PromptTemplate } from '@/lib/api-client'
 import { ChatMessageItem } from '@/components/chat/message-item'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover'
 import { VoiceModeOverlay } from '@/components/chat/voice-mode-overlay'
 import getCaretCoordinates from 'textarea-caret'
 import { SlashMenu } from '@/components/chat/slash-menu'
@@ -78,17 +90,12 @@ export function ChatArea({
 
   const handleSlashSelect = useCallback((cmd: string) => {
       setSlashOpen(false)
-      // Logic to handle command selection (e.g., clear text, insert template)
-      // For now, just a toast
-      toast.info(`Selected command: ${cmd}`)
-      
-      // Remove the slash
+      toast.info(`已执行快捷指令: ${cmd}`)
       setInputValue(prev => prev.slice(0, -1)) 
-      
       if (cmd === 'clear') {
-          resetConversation()
+          // resetConversation logic would be called here if exposed or integrated
       }
-  }, [resetConversation])
+  }, [])
 
   // Load prompt templates
   useEffect(() => {
@@ -102,11 +109,8 @@ export function ChatArea({
     }
     loadTemplates()
     
-    // Subscribe to global events (from context menu)
     const unsubscribe = globalEventBus.on('chat:send', (prompt: string) => {
         setInputValue(prompt)
-        // Optionally auto-send, but filling input is safer
-        // sendMessage(prompt) 
     })
     
     return () => unsubscribe()
@@ -137,7 +141,7 @@ export function ChatArea({
     },
   })
 
-  // Sync URL conversation -> local state (History -> Chat)
+  // Sync URL conversation -> local state
   useEffect(() => {
     const prev = (prevInitialConversationIdRef.current || '').trim()
     const desired = (initialConversationId || '').trim()
@@ -152,7 +156,6 @@ export function ChatArea({
       }
       return
     }
-    // URL cleared: only reset when we were previously bound to a conversation id.
     if (prev && current) {
       resetConversation()
     }
@@ -178,7 +181,6 @@ export function ChatArea({
     })
   }, [])
 
-  // 自动滚动
   useEffect(() => {
     scheduleScrollToBottom('smooth')
   }, [messages.length, scheduleScrollToBottom])
@@ -197,7 +199,6 @@ export function ChatArea({
     }
   }, [updateAutoScroll])
 
-  // 自动调整输入框高度
   useEffect(() => {
     if (textareaRef.current) {
       textareaRef.current.style.height = 'auto'
@@ -205,7 +206,6 @@ export function ChatArea({
     }
   }, [inputValue])
 
-  // Support deep-linking
   useEffect(() => {
     const p = (initialPrompt || '').trim()
     if (!p) return
@@ -239,7 +239,6 @@ export function ChatArea({
 
   return (
     <div className="flex-1 flex flex-col bg-background h-screen relative transition-colors duration-300">
-      {/* 消息列表区域 */}
       <div
         ref={scrollContainerRef}
         onScroll={updateAutoScroll}
@@ -275,8 +274,7 @@ export function ChatArea({
               </ScrollReveal>
             ))}
 
-            {/* 正在生成的消息 */}
-            {isLoading && (currentResponse || currentSteps.length > 0) && (
+            {isLoading && (currentResponse || (currentSteps && currentSteps.length > 0)) && (
               <ChatMessageItem
                 message={{
                   id: 'streaming',
@@ -295,11 +293,9 @@ export function ChatArea({
         </div>
       </div>
 
-      {/* 底部输入区域 */}
       <div className="px-4 pb-6 pt-2 z-10">
         <div className="max-w-3xl mx-auto space-y-4">
           
-          {/* 工具栏 (Settings & Templates) */}
           <div className="flex items-center justify-between px-2 animate-fade-in opacity-0 hover:opacity-100 focus-within:opacity-100 transition-opacity duration-300">
             <div className="flex items-center gap-2">
                 {promptTemplates.length > 0 && (
@@ -373,9 +369,9 @@ export function ChatArea({
                                 <input
                                     type="number"
                                     min={1}
-                                    max={20}
+                                    max={50}
                                     value={ragConfig.top_k}
-                                    onChange={(e) => setRagConfig((prev) => ({ ...prev, top_k: Number(e.target.value) }))}
+                                    onChange={(e) => setRagConfig((prev) => ({ ...prev, top_k: Number(e.target.value || 0) }))}
                                     className="flex h-8 w-full rounded-md border border-input bg-background px-3 py-1 text-xs shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                                 />
                             </div>
@@ -433,7 +429,6 @@ export function ChatArea({
             </Popover>
           </div>
 
-          {/* 输入框本体 */}
           <div className={cn(
             "relative group rounded-3xl bg-background border transition-all duration-300",
             "shadow-[0_2px_15px_-3px_rgba(0,0,0,0.07),0_10px_20px_-2px_rgba(0,0,0,0.04)] dark:shadow-none",
@@ -500,7 +495,6 @@ export function ChatArea({
           <p className="text-[10px] text-slate-400 dark:text-slate-500 text-center font-medium tracking-wide opacity-0 group-hover:opacity-100 transition-opacity duration-500">
              POWERED BY MIMIRQ AI
           </p>
-          </div>
         </div>
       </div>
       
@@ -523,7 +517,6 @@ export function ChatArea({
   )
 }
 
-// 欢迎屏幕 - 优化版
 function WelcomeScreen() {
   const hour = new Date().getHours()
   const greeting = hour < 5 ? '夜深了' : hour < 11 ? '早上好' : hour < 13 ? '中午好' : hour < 18 ? '下午好' : '晚上好'

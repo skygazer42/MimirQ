@@ -16,7 +16,7 @@ try:
     import h2  # noqa: F401
 
     _HTTP2_AVAILABLE = True
-except Exception:  # noqa: BLE001
+except ImportError:
     # Optional dependency for httpx HTTP/2 support.
     _HTTP2_AVAILABLE = False
 
@@ -49,8 +49,7 @@ class HTTPClientPool:
                         pool=float(getattr(settings, "HTTP_CLIENT_TIMEOUT_POOL_SEC", 5.0)),
                     )
 
-                    http2_enabled = bool(getattr(settings, "HTTP_CLIENT_HTTP2_ENABLED", True))
-                    http2 = bool(http2_enabled and _HTTP2_AVAILABLE)
+                    http2 = bool(getattr(settings, "HTTP_CLIENT_HTTP2_ENABLED", True)) and _HTTP2_AVAILABLE
                     
                     self._client = httpx.AsyncClient(
                         limits=limits,
@@ -157,7 +156,7 @@ class HTTPClientPool:
                     if status == 429:
                         try:
                             retry_after = float(e.response.headers.get("Retry-After", ""))
-                        except Exception:
+                        except (TypeError, ValueError):
                             retry_after = None
 
                     base_delay = max(current_delay, retry_after) if retry_after else current_delay

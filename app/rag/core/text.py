@@ -112,7 +112,7 @@ def parse_json_from_text(
                         return list_values[0], {"ok": True, "method": f"{method}:wrapped:single_list", "error": None}
                 last_error = f"expected_array_got_{type(data).__name__}"
                 continue
-        except Exception as exc:  # noqa: BLE001
+        except ValueError as exc:
             last_error = str(exc)[:200]
             continue
 

@@ -61,43 +61,51 @@ def total_token_count_from_response(resp: Any) -> int:
         return 0
 
     # OpenAI-style response
-    if hasattr(resp, "usage") and hasattr(resp.usage, "total_tokens"):
-        try:
-            return resp.usage.total_tokens
-        except Exception:
-            pass
+    usage = getattr(resp, "usage", None)
+    total_tokens = getattr(usage, "total_tokens", None)
+    if isinstance(total_tokens, int) and not isinstance(total_tokens, bool):
+        return total_tokens
 
     # Google-style response
-    if hasattr(resp, "usage_metadata") and hasattr(resp.usage_metadata, "total_tokens"):
-        try:
-            return resp.usage_metadata.total_tokens
-        except Exception:
-            pass
+    usage_metadata = getattr(resp, "usage_metadata", None)
+    total_tokens = getattr(usage_metadata, "total_tokens", None)
+    if isinstance(total_tokens, int) and not isinstance(total_tokens, bool):
+        return total_tokens
 
     # Dict with usage.total_tokens
     if isinstance(resp, dict):
         usage = resp.get("usage", {})
-        if "total_tokens" in usage:
-            try:
-                return usage["total_tokens"]
-            except Exception:
-                pass
+        if isinstance(usage, dict):
+            total_tokens = usage.get("total_tokens")
+            if isinstance(total_tokens, int) and not isinstance(total_tokens, bool):
+                return total_tokens
 
-        # Dict with usage.input_tokens + output_tokens
-        if "input_tokens" in usage and "output_tokens" in usage:
-            try:
-                return usage["input_tokens"] + usage["output_tokens"]
-            except Exception:
-                pass
+            # Dict with usage.input_tokens + output_tokens
+            input_tokens = usage.get("input_tokens")
+            output_tokens = usage.get("output_tokens")
+            if (
+                isinstance(input_tokens, int)
+                and not isinstance(input_tokens, bool)
+                and isinstance(output_tokens, int)
+                and not isinstance(output_tokens, bool)
+            ):
+                return input_tokens + output_tokens
 
     # Cohere-style response
-    if isinstance(resp, dict) and "meta" in resp:
-        tokens = resp["meta"].get("tokens", {})
-        if "input_tokens" in tokens and "output_tokens" in tokens:
-            try:
-                return tokens["input_tokens"] + tokens["output_tokens"]
-            except Exception:
-                pass
+    if isinstance(resp, dict):
+        meta = resp.get("meta", {})
+        if isinstance(meta, dict):
+            tokens = meta.get("tokens", {})
+            if isinstance(tokens, dict):
+                input_tokens = tokens.get("input_tokens")
+                output_tokens = tokens.get("output_tokens")
+                if (
+                    isinstance(input_tokens, int)
+                    and not isinstance(input_tokens, bool)
+                    and isinstance(output_tokens, int)
+                    and not isinstance(output_tokens, bool)
+                ):
+                    return input_tokens + output_tokens
 
     return 0
 

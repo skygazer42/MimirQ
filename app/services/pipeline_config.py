@@ -33,7 +33,7 @@ def _coerce_int(value: Any) -> Optional[int]:
         return None
     try:
         return int(value)
-    except Exception:
+    except (TypeError, ValueError):
         return None
 
 
@@ -42,7 +42,7 @@ def _coerce_float(value: Any) -> Optional[float]:
         return None
     try:
         return float(value)
-    except Exception:
+    except (TypeError, ValueError):
         return None
 
 
@@ -55,11 +55,7 @@ def _coerce_str(value: Any) -> Optional[str]:
 
 
 def _resolve_flag(default: bool, override: Optional[bool]) -> bool:
-    if override is None:
-        return bool(default)
-    if override:
-        return bool(default)
-    return False
+    return bool(default) and override is not False
 
 
 def merge_pipeline_options(*options: PipelineOptions) -> PipelineOptions:
