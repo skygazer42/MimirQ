@@ -147,6 +147,7 @@ async def run_subprocess_worker(
         )
 
         start = time.monotonic()
+        max_log_bytes = int(getattr(settings, "SUBPROCESS_LOG_MAX_BYTES", 0) or 0)
         while process.returncode is None:
             try:
                 if disconnect_check is not None and await disconnect_check():
@@ -155,6 +156,18 @@ async def run_subprocess_worker(
                 if cancel_check is not None and await cancel_check():
                     await _terminate_process_group(process)
                     raise SubprocessCancelled("cancel_requested")
+                if max_log_bytes > 0:
+                    try:
+                        log_size = int(log_path.stat().st_size)
+                    except Exception:
+                        log_size = 0
+                    if log_size > max_log_bytes:
+                        await _terminate_process_group(process)
+                        raise SubprocessWorkerError(
+                            "worker_log_too_large",
+                            details={"max_bytes": int(max_log_bytes), "actual_bytes": int(log_size)},
+                            log_tail=_read_log_tail(log_path),
+                        )
                 if timeout_sec is not None and (time.monotonic() - start) > timeout_sec:
                     await _terminate_process_group(process)
                     raise SubprocessWorkerError("worker_timeout", log_tail=_read_log_tail(log_path))

@@ -38,10 +38,10 @@ def _normalize_prompt_selector_value(value: object) -> str:
     return str(value).strip()
 
 
-def _compute_content_hash(text: str) -> str:
+def _compute_content_stats(text: str) -> tuple[str, int]:
     normalized = normalize_text(text or "", normalize_line_endings=True, remove_control_chars=True)
-    normalized = " ".join((normalized or "").strip().split())
-    return hashlib.sha256(normalized.encode("utf-8")).hexdigest()
+    stripped = (normalized or "").strip()
+    return hashlib.sha256(stripped.encode("utf-8", "ignore")).hexdigest(), int(len(stripped))
 
 
 def _is_chunk_unchanged(
@@ -146,14 +146,25 @@ class EventExtractor:
             context_window = int(getattr(settings, "KG_EXTRACT_CONTEXT_WINDOW_CHUNKS", 0) or 0)
             context_window = max(0, min(context_window, 20))
 
+            min_chars = max(0, int(getattr(settings, "KG_EXTRACT_MIN_CHARS", 0) or 0))
+            chunk_max_retries = max(0, int(getattr(settings, "KG_EXTRACT_CHUNK_MAX_RETRIES", 0) or 0))
+            retry_backoff_sec = float(getattr(settings, "KG_EXTRACT_CHUNK_RETRY_BACKOFF_SEC", 0.5) or 0.5)
+            if retry_backoff_sec < 0:
+                retry_backoff_sec = 0.0
+
             replace_existing = bool(getattr(config, "replace_existing", False))
             skip_unchanged = bool(getattr(settings, "KG_EXTRACT_SKIP_UNCHANGED_CHUNKS", False)) and bool(replace_existing)
 
             failed_chunks = 0
             timed_out_chunks = 0
+            timeout_chunk_ids: set[object] = set()
             failed_chunk_ids: set[object] = set()
             succeeded_chunk_ids: set[object] = set()
             skipped_chunk_ids: set[object] = set()
+            skipped_short_chunk_ids: set[object] = set()
+            retry_chunk_ids: set[object] = set()
+            retry_attempts_total = 0
+            llm_called_chunk_ids: set[object] = set()
 
             prompt_selector_expected = {
                 "kg_prompt_template_id": _normalize_prompt_selector_value(chosen_template_id),
@@ -164,14 +175,30 @@ class EventExtractor:
             # Ensure chunk hashes/keys exist even if upstream parsing didn't inject them.
             chunk_hash_by_id: dict[object, str] = {}
             chunk_key_by_id: dict[object, str] = {}
+            chunk_len_by_id: dict[object, int] = {}
             for ch in resolved_chunks:
                 meta = getattr(ch, "doc_metadata", None)
                 meta_dict = meta if isinstance(meta, dict) else {}
                 raw_hash = meta_dict.get("content_hash")
                 content_hash = raw_hash.strip() if isinstance(raw_hash, str) and raw_hash.strip() else ""
+                raw_len = meta_dict.get("content_len")
+                content_len: int | None
+                try:
+                    content_len = int(raw_len) if raw_len is not None else None
+                except Exception:
+                    content_len = None
+
+                computed_digest = ""
+                computed_len = 0
+                if not content_hash or content_len is None:
+                    computed_digest, computed_len = _compute_content_stats(getattr(ch, "content", "") or "")
                 if not content_hash:
-                    content_hash = _compute_content_hash(getattr(ch, "content", "") or "")
+                    content_hash = computed_digest
+                if content_len is None:
+                    content_len = computed_len
+
                 chunk_hash_by_id[ch.id] = content_hash
+                chunk_len_by_id[ch.id] = max(0, int(content_len))
 
                 raw_key = meta_dict.get("chunk_key")
                 chunk_key = raw_key.strip() if isinstance(raw_key, str) and raw_key.strip() else ""
@@ -230,30 +257,69 @@ class EventExtractor:
             async def _extract_one(chunk: DocumentChunk, *, batch_index: int) -> Tuple[DocumentChunk, List[Dict]]:
                 nonlocal failed_chunks
                 nonlocal timed_out_chunks
+                nonlocal retry_attempts_total
                 text = (chunk.content or "").strip()
                 if not text:
                     succeeded_chunk_ids.add(chunk.id)
                     return chunk, []
-                try:
-                    async with sem:
-                        coro = processor.extract_from_sections(_build_sections(chunk), batch_index=batch_index)
-                        if chunk_timeout_sec > 0:
-                            data = await asyncio.wait_for(coro, timeout=chunk_timeout_sec)
-                        else:
-                            data = await coro
+
+                meta = getattr(chunk, "doc_metadata", None)
+                meta_dict = meta if isinstance(meta, dict) else {}
+                has_asset = False
+                doc_type = str(meta_dict.get("doc_type_kwd") or "").lower()
+                if doc_type in {"image", "table"}:
+                    has_asset = True
+                elif meta_dict.get("image") is not None:
+                    has_asset = True
+                elif meta_dict.get("img_id") or meta_dict.get("image_id") or meta_dict.get("image_url") or meta_dict.get("image_path"):
+                    has_asset = True
+
+                content_len = int(chunk_len_by_id.get(chunk.id, len(text)))
+                if min_chars > 0 and content_len < int(min_chars) and not has_asset:
+                    skipped_short_chunk_ids.add(chunk.id)
                     succeeded_chunk_ids.add(chunk.id)
-                    return chunk, data if isinstance(data, list) else []
-                except asyncio.TimeoutError:
-                    timed_out_chunks += 1
-                    failed_chunks += 1
-                    failed_chunk_ids.add(chunk.id)
-                    logger.warning("KG extract timed out for chunk %s (timeout=%.2fs)", getattr(chunk, "id", ""), chunk_timeout_sec)
                     return chunk, []
-                except Exception as exc:  # noqa: BLE001
-                    failed_chunks += 1
-                    failed_chunk_ids.add(chunk.id)
-                    logger.warning("KG extract failed for chunk %s: %s", getattr(chunk, "id", ""), str(exc)[:200])
-                    return chunk, []
+
+                attempt = 0
+                last_exc: Exception | None = None
+                while True:
+                    try:
+                        async with sem:
+                            llm_called_chunk_ids.add(chunk.id)
+                            coro = processor.extract_from_sections(_build_sections(chunk), batch_index=batch_index)
+                            if chunk_timeout_sec > 0:
+                                data = await asyncio.wait_for(coro, timeout=chunk_timeout_sec)
+                            else:
+                                data = await coro
+                        succeeded_chunk_ids.add(chunk.id)
+                        if attempt > 0:
+                            retry_chunk_ids.add(chunk.id)
+                            retry_attempts_total += int(attempt)
+                        return chunk, data if isinstance(data, list) else []
+                    except asyncio.TimeoutError as exc:
+                        timed_out_chunks += 1
+                        timeout_chunk_ids.add(chunk.id)
+                        last_exc = exc
+                    except Exception as exc:  # noqa: BLE001
+                        last_exc = exc
+
+                    if attempt >= int(chunk_max_retries):
+                        if attempt > 0:
+                            retry_chunk_ids.add(chunk.id)
+                            retry_attempts_total += int(attempt)
+                        failed_chunks += 1
+                        failed_chunk_ids.add(chunk.id)
+                        logger.warning(
+                            "KG extract failed for chunk %s after %s attempts: %s",
+                            getattr(chunk, "id", ""),
+                            attempt + 1,
+                            str(last_exc)[:200] if last_exc else "unknown_error",
+                        )
+                        return chunk, []
+
+                    attempt += 1
+                    if retry_backoff_sec > 0:
+                        await asyncio.sleep(float(retry_backoff_sec) * (2 ** (attempt - 1)))
 
             extracted: List[Tuple[DocumentChunk, List[Dict]]] = []
             group_size = max(1, max_concurrency * 4)
@@ -388,6 +454,7 @@ class EventExtractor:
                     refs["source"] = source_val.strip()
                 refs["chunk_key"] = chunk_key_by_id.get(chunk.id) or str(chunk.chunk_index)
                 refs["content_hash"] = chunk_hash_by_id.get(chunk.id) or ""
+                refs["content_len"] = int(chunk_len_by_id.get(chunk.id, 0) or 0)
 
                 events_to_index.append(
                     IndexRecord(
@@ -409,31 +476,68 @@ class EventExtractor:
                 )
 
             if not events_to_index:
-                # Only skipped (unchanged) or failed chunks; keep existing events as-is.
-                if kept_events:
-                    elapsed = time.perf_counter() - t0
-                    log_metrics(
-                        {
-                            "event": "kg.extract",
-                            "chunk_count": len(resolved_chunks),
-                            "chunk_skipped": int(len(skipped_chunk_ids)),
-                            "chunk_failed": int(failed_chunks),
-                            "chunk_timeout": int(timed_out_chunks),
-                            "event_new": 0,
-                            "event_kept": int(len(kept_events)),
-                            "event_total": int(len(kept_events)),
-                            "elapsed_sec": round(float(elapsed), 3),
-                        }
-                    )
-                    self._writeback_document_metadata(
-                        session=session,
-                        chunks=resolved_chunks,
-                        kept_events=kept_events,
-                        skipped_chunk_ids=skipped_chunk_ids,
-                        failed_chunk_ids=failed_chunk_ids,
-                    )
-                    return kept_events
-                return []
+                kept_on_failure: list[KgSourceEvent] = []
+                if replace_existing and failed_chunk_ids:
+                    if existing_events_by_chunk:
+                        for cid in failed_chunk_ids:
+                            kept_on_failure.extend(existing_events_by_chunk.get(cid) or [])
+                    else:
+                        existing = (
+                            session.query(KgSourceEvent)
+                            .filter(
+                                KgSourceEvent.tenant_id == tenant_id,
+                                KgSourceEvent.chunk_id.in_(list(failed_chunk_ids)),
+                            )
+                            .all()
+                        )
+                        for ev in existing:
+                            if getattr(ev, "chunk_id", None) in failed_chunk_ids:
+                                kept_on_failure.append(ev)
+
+                cleanup_chunk_ids = [cid for cid in succeeded_chunk_ids if cid not in skipped_chunk_ids]
+                if replace_existing and cleanup_chunk_ids:
+                    try:
+                        Indexer(session).delete_event_indexes_for_chunks(
+                            tenant_id=tenant_id,
+                            chunk_ids=list(cleanup_chunk_ids),
+                            exclude_event_ids=[],
+                            prune_orphan_entities=bool(getattr(config, "prune_orphan_entities", False)),
+                        )
+                    except Exception as exc:  # noqa: BLE001
+                        logger.warning("Failed to cleanup previous KG events for chunks: %s", str(exc)[:200])
+
+                events = list(kept_events) + list(kept_on_failure)
+                elapsed = time.perf_counter() - t0
+                log_metrics(
+                    {
+                        "event": "kg.extract",
+                        "chunk_count": len(resolved_chunks),
+                        "chunk_processed": int(len(chunks_to_process)),
+                        "chunk_skipped": int(len(skipped_chunk_ids)),
+                        "chunk_skipped_short": int(len(skipped_short_chunk_ids)),
+                        "chunk_failed": int(failed_chunks),
+                        "chunk_timeout": int(len(timeout_chunk_ids)),
+                        "timeout_errors": int(timed_out_chunks),
+                        "retry_chunks": int(len(retry_chunk_ids)),
+                        "retry_attempts": int(retry_attempts_total),
+                        "llm_called_chunks": int(len(llm_called_chunk_ids)),
+                        "event_new": 0,
+                        "event_kept": int(len(events)),
+                        "event_total": int(len(events)),
+                        "elapsed_sec": round(float(elapsed), 3),
+                    }
+                )
+                self._writeback_document_metadata(
+                    session=session,
+                    tenant_id=tenant_id,
+                    chunks=resolved_chunks,
+                    kept_events=events,
+                    skipped_chunk_ids=skipped_chunk_ids,
+                    skipped_short_chunk_ids=skipped_short_chunk_ids,
+                    failed_chunk_ids=failed_chunk_ids,
+                    retry_chunk_ids=retry_chunk_ids,
+                )
+                return events
 
             indexer = Indexer(session)
             result = indexer.upsert(
@@ -482,8 +586,13 @@ class EventExtractor:
                     "chunk_count": len(resolved_chunks),
                     "chunk_processed": int(len(chunks_to_process)),
                     "chunk_skipped": int(len(skipped_chunk_ids)),
+                    "chunk_skipped_short": int(len(skipped_short_chunk_ids)),
                     "chunk_failed": int(failed_chunks),
-                    "chunk_timeout": int(timed_out_chunks),
+                    "chunk_timeout": int(len(timeout_chunk_ids)),
+                    "timeout_errors": int(timed_out_chunks),
+                    "retry_chunks": int(len(retry_chunk_ids)),
+                    "retry_attempts": int(retry_attempts_total),
+                    "llm_called_chunks": int(len(llm_called_chunk_ids)),
                     "event_new": int(len(new_events)),
                     "event_kept": int(len(kept_events) + len(kept_on_failure)),
                     "event_total": int(len(events)),
@@ -494,10 +603,13 @@ class EventExtractor:
             )
             self._writeback_document_metadata(
                 session=session,
+                tenant_id=tenant_id,
                 chunks=resolved_chunks,
                 kept_events=events,
                 skipped_chunk_ids=skipped_chunk_ids,
+                skipped_short_chunk_ids=skipped_short_chunk_ids,
                 failed_chunk_ids=failed_chunk_ids,
+                retry_chunk_ids=retry_chunk_ids,
             )
             return events
         except Exception:
@@ -510,10 +622,13 @@ class EventExtractor:
         self,
         *,
         session,
+        tenant_id,
         chunks: Sequence[DocumentChunk],
         kept_events: Sequence[KgSourceEvent],
         skipped_chunk_ids: set[object],
+        skipped_short_chunk_ids: set[object],
         failed_chunk_ids: set[object],
+        retry_chunk_ids: set[object],
     ) -> None:
         try:
             from app.models.document import Document as DBDocument
@@ -541,21 +656,40 @@ class EventExtractor:
 
             skipped_count_by_doc: dict[object, int] = {doc_id: 0 for doc_id in doc_ids}
             failed_count_by_doc: dict[object, int] = {doc_id: 0 for doc_id in doc_ids}
+            short_skipped_count_by_doc: dict[object, int] = {doc_id: 0 for doc_id in doc_ids}
+            retry_count_by_doc: dict[object, int] = {doc_id: 0 for doc_id in doc_ids}
             for cid in skipped_chunk_ids:
                 doc_id = chunk_id_to_doc_id.get(cid)
                 if doc_id in skipped_count_by_doc:
                     skipped_count_by_doc[doc_id] += 1
+            for cid in skipped_short_chunk_ids:
+                doc_id = chunk_id_to_doc_id.get(cid)
+                if doc_id in short_skipped_count_by_doc:
+                    short_skipped_count_by_doc[doc_id] += 1
             for cid in failed_chunk_ids:
                 doc_id = chunk_id_to_doc_id.get(cid)
                 if doc_id in failed_count_by_doc:
                     failed_count_by_doc[doc_id] += 1
+            for cid in retry_chunk_ids:
+                doc_id = chunk_id_to_doc_id.get(cid)
+                if doc_id in retry_count_by_doc:
+                    retry_count_by_doc[doc_id] += 1
 
-            docs = session.query(DBDocument).filter(DBDocument.id.in_(list(doc_ids))).all()
+            docs = (
+                session.query(DBDocument)
+                .filter(
+                    DBDocument.id.in_(list(doc_ids)),
+                    DBDocument.tenant_id == tenant_id,
+                )
+                .all()
+            )
             for doc in docs:
                 meta = dict(getattr(doc, "doc_metadata", None) or {})
                 meta["kg_event_count"] = int(event_count_by_doc.get(doc.id, 0))
                 meta["kg_skipped_chunks"] = int(skipped_count_by_doc.get(doc.id, 0))
+                meta["kg_skipped_short_chunks"] = int(short_skipped_count_by_doc.get(doc.id, 0))
                 meta["kg_failed_chunks"] = int(failed_count_by_doc.get(doc.id, 0))
+                meta["kg_retry_chunks"] = int(retry_count_by_doc.get(doc.id, 0))
                 meta["kg_extracted_at"] = extracted_at
                 doc.doc_metadata = meta
             session.commit()

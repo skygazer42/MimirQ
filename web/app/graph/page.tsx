@@ -39,8 +39,11 @@ import {
   Link as LinkIcon,
   PlusCircle,
   Lightbulb,
+  Box,
+  BoxSelect,
 } from 'lucide-react'
 import { GraphViewer, GraphViewerRef, LayoutMode } from '@/components/graph/graph-viewer'
+import { KnowledgeGraph3D } from '@/components/graph/force-graph-3d'
 import { parseGraphML, GraphData } from '@/lib/graph-parser'
 import { GraphService } from '@/services/graph-service'
 import { findShortestPath } from '@/lib/graph-algorithms'
@@ -62,6 +65,7 @@ export default function GraphPage() {
   const [kgStats, setKgStats] = useState<KGStatsResponse | null>(null)
   const [kgNodeDetail, setKgNodeDetail] = useState<KGEntityDetailResponse | KGEventDetailResponse | null>(null)
   const [kgNodeDetailLoading, setKgNodeDetailLoading] = useState(false)
+  const [viewMode, setViewMode] = useState<'2d' | '3d'>('3d')
   
   // Search & Filter State
   const [searchTerm, setSearchTerm] = useState('')
@@ -766,16 +770,25 @@ export default function GraphPage() {
           }}></div>
 
           {graphData.nodes.length > 0 ? (
-            <GraphViewer 
-              ref={graphRef as React.RefObject<GraphViewerRef>}
-              data={graphData} 
-              onNodeClick={handleNodeClick}
-              onBackgroundClick={() => setIsDetailOpen(false)}
-              highlightedNodeIds={highlightedNodeIds}
-              highlightedLinkIds={highlightedLinkIds}
-              showEdgeLabels={showEdgeLabels}
-              layoutMode={layoutMode}
-            />
+            viewMode === '3d' ? (
+                <KnowledgeGraph3D 
+                    data={graphData}
+                    onNodeClick={(node) => {
+                        handleNodeClick(node)
+                    }}
+                />
+            ) : (
+                <GraphViewer 
+                ref={graphRef as React.RefObject<GraphViewerRef>}
+                data={graphData} 
+                onNodeClick={handleNodeClick}
+                onBackgroundClick={() => setIsDetailOpen(false)}
+                highlightedNodeIds={highlightedNodeIds}
+                highlightedLinkIds={highlightedLinkIds}
+                showEdgeLabels={showEdgeLabels}
+                layoutMode={layoutMode}
+                />
+            )
           ) : (
             <div className="absolute inset-0 flex flex-col items-center justify-center z-10">
               <div className="w-32 h-32 bg-white rounded-full shadow-xl shadow-sky-100 flex items-center justify-center mb-8 animate-in zoom-in-50 duration-500">
@@ -855,6 +868,18 @@ export default function GraphPage() {
              
              {/* View Options */}
              <div className="bg-white/90 backdrop-blur-sm p-1.5 rounded-2xl shadow-xl shadow-gray-200 border border-gray-100/50 flex flex-col gap-1">
+                <Button 
+                   variant="ghost" 
+                   size="icon" 
+                   onClick={() => setViewMode(viewMode === '3d' ? '2d' : '3d')}
+                   className={cn(
+                     "rounded-xl hover:bg-violet-50 hover:text-violet-600 transition-colors", 
+                     viewMode === '3d' && "bg-violet-100 text-violet-600 ring-2 ring-violet-500/20"
+                   )}
+                   title={viewMode === '3d' ? "切换至 2D 平面" : "切换至 3D 空间"}
+                >
+                  {viewMode === '3d' ? <Box className="w-5 h-5" /> : <BoxSelect className="w-5 h-5" />}
+                </Button>
                 <Button 
                    variant="ghost" 
                    size="icon" 

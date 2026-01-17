@@ -69,6 +69,7 @@ class Settings(BaseSettings):
     # 0 disables.
     SUBPROCESS_PAYLOAD_MAX_BYTES: int = 2_000_000
     SUBPROCESS_RESULT_MAX_BYTES: int = 50_000_000
+    SUBPROCESS_LOG_MAX_BYTES: int = 20_000_000
 
     # Embedding cache (Redis, improves ingest throughput; best-effort).
     EMBEDDING_CACHE_ENABLED: bool = True
@@ -453,9 +454,14 @@ class Settings(BaseSettings):
     KG_EXTRACT_EMBED_BATCH_SIZE: int = 128
     KG_EXTRACT_MAX_EVENTS_PER_CHUNK: int = 6
     KG_EXTRACT_MAX_ENTITIES_PER_EVENT: int = 30
+    # Skip low-signal chunks (0 disables).
+    KG_EXTRACT_MIN_CHARS: int = 0
     KG_EXTRACT_CONTEXT_MAX_CHARS: int = 8000
     # 0 disables. When enabled, KG extraction wraps each per-chunk LLM call in a timeout.
     KG_EXTRACT_CHUNK_TIMEOUT_SEC: int = 0
+    # Per-chunk retry (0 disables). Applies to transient failures in the extraction call.
+    KG_EXTRACT_CHUNK_MAX_RETRIES: int = 0
+    KG_EXTRACT_CHUNK_RETRY_BACKOFF_SEC: float = 0.5
     # Optional context window: include neighbor chunks as background (0 disables).
     KG_EXTRACT_CONTEXT_WINDOW_CHUNKS: int = 0
     # Optional incremental extraction: skip unchanged chunks when prompt selection matches.
