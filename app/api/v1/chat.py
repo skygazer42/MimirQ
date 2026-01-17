@@ -2,7 +2,6 @@
 Chat API.
 """
 import logging
-import os
 import re
 from uuid import UUID
 import uuid
@@ -40,6 +39,7 @@ from app.rag.core.text import parse_json_from_text
 from app.services.metrics_logger import log_metrics, set_metrics_context
 from app.core.token_utils import num_tokens_from_string
 from app.core.config import settings
+from app.core.env import is_production_env
 from app.api.dependencies.tenant import get_tenant_id
 from app.api.dependencies.auth import get_current_account_id
 from app.rag.preprocessing.tokenization import tokenize_for_bm25
@@ -477,7 +477,7 @@ async def stream_chat(
 
         except Exception as e:
             logger.error("Chat stream error: %s", str(e)[:200])
-            is_production = os.getenv("ENV", "").lower() in ("prod", "production")
+            is_production = is_production_env()
             detail = _format_stream_error_message(e)
             message = "An error occurred during chat processing"
             if not is_production and detail:

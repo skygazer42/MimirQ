@@ -4,6 +4,7 @@ Supports reading and updating .env configuration.
 """
 
 import ipaddress
+import contextlib
 import time
 from pathlib import Path
 from typing import Any, Dict, Optional
@@ -814,19 +815,15 @@ async def update_settings(
             updated_keys.append("LANGGRAPH_USE_SUBGRAPHS")
 
         write_env_file(env_vars)
-        try:
-            _apply_runtime_settings(env_vars, updated_keys)
-        except Exception:
+        with contextlib.suppress(Exception):
             # Best-effort only.
-            pass
+            _apply_runtime_settings(env_vars, updated_keys)
         if request.llm is not None:
             # RAG engine caches LLM clients; reset so new settings take effect.
-            try:
+            with contextlib.suppress(Exception):
                 from app.rag.engine import reset_rag_engine
 
                 reset_rag_engine()
-            except Exception:
-                pass
 
         return {
             "success": True,

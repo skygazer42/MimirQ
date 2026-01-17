@@ -93,7 +93,7 @@ class _FallbackTrie:
             raise ValueError("Trie cache is not UTF-8 JSON") from exc
         except json.JSONDecodeError as exc:
             raise ValueError("Trie cache is not valid JSON") from exc
-        if not isinstance(data, dict) or not all(isinstance(k, str) for k in data.keys()):
+        if not isinstance(data, dict) or not all(isinstance(k, str) for k in data):
             raise ValueError("Invalid trie cache format")
         obj = cls()
         obj._data = data

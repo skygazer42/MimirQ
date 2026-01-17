@@ -148,10 +148,7 @@ class MinerUParser(RAGFlowPdfParser):
         with zipfile.ZipFile(zip_path, "r") as zip_ref:
             if not root_dir:
                 files = zip_ref.namelist()
-                if files and files[0].endswith("/"):
-                    root_dir = files[0]
-                else:
-                    root_dir = None
+                root_dir = files[0] if files and files[0].endswith("/") else None
 
             if not root_dir or not root_dir.endswith("/"):
                 self.logger.info(f"[MinerU] No root directory found, extracting all (root_hint={root_dir})")
@@ -181,8 +178,8 @@ class MinerUParser(RAGFlowPdfParser):
     def _is_http_endpoint_valid(url, timeout=5):
         try:
             response = requests.head(url, timeout=timeout, allow_redirects=True)
-            return response.status_code in [200, 301, 302, 307, 308]
-        except Exception:
+            return int(response.status_code) in {200, 301, 302, 307, 308}
+        except (requests.RequestException, ValueError):
             return False
 
     def check_installation(self, backend: str = "pipeline", server_url: Optional[str] = None) -> tuple[bool, str]:

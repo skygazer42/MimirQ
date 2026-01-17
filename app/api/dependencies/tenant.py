@@ -5,9 +5,9 @@ Parses tenant ID from request headers with default value fallback.
 """
 
 from uuid import UUID
-import os
 from fastapi import Header, HTTPException
 from app.core.config import settings
+from app.core.env import is_production_env
 
 def get_tenant_id(x_tenant_id: str | None = Header(default=None)) -> UUID:
     """
@@ -15,8 +15,7 @@ def get_tenant_id(x_tenant_id: str | None = Header(default=None)) -> UUID:
     """
     raw = x_tenant_id
     if not raw:
-        is_production = os.getenv("ENV", "").lower() in ("prod", "production")
-        if is_production:
+        if is_production_env():
             raise HTTPException(status_code=400, detail="X-Tenant-ID header required")
         raw = settings.DEFAULT_TENANT_ID
     try:

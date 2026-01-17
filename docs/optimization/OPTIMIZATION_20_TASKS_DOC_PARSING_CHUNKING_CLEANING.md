@@ -362,3 +362,47 @@
 ### E. 测试与验证（170）
 
 170. [x] **全量验证**：`pytest -q` 全绿
+
+---
+
+## 第九阶段（171–190）：整体后端优化（20 项，减法优先）清单
+
+> 目标：继续“做减法”——统一环境判断、减少重复/冗余分支、收敛 try/except、清理无用 import；同时保持行为不变并用单测兜底。
+
+### A. 环境判断收敛（171–177）
+
+171. [x] **生产环境判定单点化**：新增 `app/core/env.py:is_production_env`
+172. [x] **dataset_service 去重复**：`ensure_member` 使用 `is_production_env` 替代内联 `os.getenv("ENV")` 判断
+173. [x] **tenant 依赖去重复**：`get_tenant_id` 使用 `is_production_env`（默认 tenant 仅限非生产）
+174. [x] **chat 去重复**：stream error 分支使用 `is_production_env`（避免散落 ENV 判断）
+175. [x] **documents 去重复**：资产/图片相关端点使用 `is_production_env`
+176. [x] **settings 校验去重复**：`Settings.validate_settings` 使用 `is_production_env`
+177. [x] **import 减法**：移除已不再需要的 `os` import（chat/tenant/dataset_service）
+
+### B. Documents 清理减法（178–181）
+
+178. [x] **预览图片简化**：preview image `image_obj` 赋值改为三元表达式（减少分支）
+179. [x] **预览图片异常收敛**：`img.convert(...)` 用 `contextlib.suppress` 替代 try/except/pass
+180. [x] **预览图片清理减法**：image 对象 `close()` 用 `contextlib.suppress`（更短更清晰）
+181. [x] **chunk-preview 轻量清理**：`file_size` fallback 的 `stat()` 用 `contextlib.suppress(OSError)`
+
+### C. Settings API 清理（182–183）
+
+182. [x] **运行时应用配置减法**：`_apply_runtime_settings` 用 `contextlib.suppress`（best-effort）
+183. [x] **RAG engine reset 减法**：`reset_rag_engine()` 用 `contextlib.suppress`（best-effort）
+
+### D. Core Paths 微简化（184）
+
+184. [x] **upload path 分支简化**：`get_upload_path` 用三元表达式替代 if/else
+
+### E. DeepDoc 微清理（185–189）
+
+185. [x] **MinerU 解压简化**：root_dir 推断用三元表达式替代 if/else
+186. [x] **MinerU endpoint 校验收敛**：仅捕获 `requests.RequestException/ValueError`，并用 set 判断 status
+187. [x] **Tokenizer 缓存校验减法**：去掉 dict `.keys()` 迭代（更直接）
+188. [x] **LayoutRecognize 遍历减法**：去掉 dict `.keys()` 迭代（更直接）
+189. [x] **Docling 资源清理**：PyMuPDF import 仅捕获 `ImportError` + `doc.close()` 用 `contextlib.suppress`
+
+### F. 测试与验证（190）
+
+190. [x] **全量验证**：`pytest -q` 全绿

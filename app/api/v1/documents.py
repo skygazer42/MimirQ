@@ -51,6 +51,7 @@ from app.services.dataset_service import DatasetService, EDIT_ROLES
 from app.storage.object.minio import minio_service
 from app.models.dataset import Dataset, DatasetPermission, DatasetPermissionEnum
 from app.core.config import settings
+from app.core.env import is_production_env
 from fastapi.responses import FileResponse, RedirectResponse
 from app.api.dependencies.tenant import get_tenant_id
 from app.api.dependencies.auth import get_current_account_id
@@ -110,8 +111,7 @@ def _resolve_tenant_id_for_asset_request(request: Request) -> UUID:
     if provided is not None:
         return provided
 
-    is_production = os.getenv("ENV", "").lower() in ("prod", "production")
-    if is_production:
+    if is_production_env():
         raise HTTPException(status_code=400, detail="X-Tenant-ID header or tenant_id query param required")
     return _parse_uuid(str(settings.DEFAULT_TENANT_ID))
 
@@ -171,15 +171,14 @@ def _materialize_extracted_images_for_preview(documents: list, *, tenant_id: UUI
         url = f"/api/v1/documents/image/{preview_id}"
 
         try:
-            if isinstance(image_obj, (bytes, bytearray)):
-                img = PILImage.open(BytesIO(bytes(image_obj)))
-            else:
-                img = image_obj
-            try:
+            img = (
+                PILImage.open(BytesIO(bytes(image_obj)))
+                if isinstance(image_obj, (bytes, bytearray))
+                else image_obj
+            )
+            with contextlib.suppress(Exception):
                 if getattr(img, "mode", None) != "RGB":
                     img = img.convert("RGB")
-            except Exception:
-                pass
 
             img.save(out_path, format="JPEG", quality=85, optimize=True)
         except Exception as e:
@@ -188,11 +187,9 @@ def _materialize_extracted_images_for_preview(documents: list, *, tenant_id: UUI
             # Always remove the raw image object from metadata to keep JSON-serializable.
             meta.pop("image", None)
             doc.metadata = meta
-            try:
-                if image_obj is not None and not isinstance(image_obj, (bytes, bytearray)) and hasattr(image_obj, "close"):
+            if not isinstance(image_obj, (bytes, bytearray)) and hasattr(image_obj, "close"):
+                with contextlib.suppress(Exception):
                     image_obj.close()
-            except Exception:
-                pass
 
         # Update content with an image reference.
         caption = (getattr(doc, "page_content", "") or "").strip()
@@ -1459,7 +1456,7 @@ async def get_image(
     Standard path: {UPLOAD_DIR}/{tenant_id}/images/{image_id}(.png|.jpg|.jpeg|.webp|.gif|.bmp)
     """
     tenant_id = _resolve_tenant_id_for_asset_request(request)
-    is_production = os.getenv("ENV", "").lower() in ("prod", "production")
+    is_production = is_production_env()
     auth_mode = (getattr(settings, "AUTH_MODE", "jwt") or "jwt").lower()
     account_id: Optional[str] = None
 
@@ -1532,7 +1529,7 @@ async def get_image_url(
             status_code=503,
             detail="MinIO is disabled; cannot retrieve image URL"
         )
-    is_production = os.getenv("ENV", "").lower() in ("prod", "production")
+    is_production = is_production_env()
     auth_mode = (getattr(settings, "AUTH_MODE", "jwt") or "jwt").lower()
     account_id: Optional[str] = None
 
@@ -2062,10 +2059,8 @@ async def preview_chunking(
     try:
         file_size = int(await save_upload_file(file, temp_path, max_bytes=settings.MAX_FILE_SIZE) or 0)
         if file_size <= 0:
-            try:
-                file_size = temp_path.stat().st_size
-            except Exception:
-                pass
+            with contextlib.suppress(OSError):
+                file_size = int(temp_path.stat().st_size)
 
         resolved_chunk_strategy = chunker_factory.resolve_strategy(chunk_strategy)
         dataset_meta: dict = {}

@@ -91,10 +91,7 @@ def get_upload_path(filename: str, tenant_id: Optional[str] = None) -> Path:
     Returns:
         Full file path.
     """
-    if tenant_id:
-        upload_dir = UPLOAD_DIR / tenant_id
-    else:
-        upload_dir = UPLOAD_DIR
+    upload_dir = UPLOAD_DIR / tenant_id if tenant_id else UPLOAD_DIR
 
     ensure_dir(upload_dir)
     return upload_dir / filename
