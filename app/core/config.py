@@ -63,6 +63,11 @@ class Settings(BaseSettings):
     TASK_TENANT_MAX_CONCURRENCY_DOC: int = 2
     TASK_TENANT_MAX_CONCURRENCY_KG: int = 1
 
+    # Subprocess worker guardrails (parsing backends).
+    # 0 disables.
+    SUBPROCESS_PAYLOAD_MAX_BYTES: int = 2_000_000
+    SUBPROCESS_RESULT_MAX_BYTES: int = 50_000_000
+
     # Embedding cache (Redis, improves ingest throughput; best-effort).
     EMBEDDING_CACHE_ENABLED: bool = True
     EMBEDDING_CACHE_TTL_SEC: int = 7 * 24 * 3600
@@ -235,6 +240,9 @@ class Settings(BaseSettings):
     CHUNK_OVERLAP: int = 200
     # Drop extremely short chunks during indexing (0 disables).
     CHUNK_MIN_CHARS: int = 30
+    # Guardrail: cap chunk count per document during ingest (0 disables).
+    # Useful for huge PDFs that would otherwise generate excessive chunks and indexing load.
+    MAX_CHUNKS_PER_DOCUMENT: int = 0
     # Optional: drop exact-duplicate text chunks within a single document.
     # Useful for PDFs that repeat headers/footers or boilerplate blocks.
     CHUNK_DEDUP_ENABLED: bool = False

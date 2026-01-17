@@ -115,7 +115,21 @@ async def run_subprocess_worker(
     result_path = workdir / f"{run_id}.result.json"
     log_path = workdir / f"{run_id}.log"
 
-    payload_path.write_text(json.dumps(payload, ensure_ascii=False, default=str), encoding="utf-8")
+    payload_json = json.dumps(payload, ensure_ascii=False, default=str)
+    max_payload_bytes = int(getattr(settings, "SUBPROCESS_PAYLOAD_MAX_BYTES", 0) or 0)
+    if max_payload_bytes > 0:
+        payload_bytes = payload_json.encode("utf-8", errors="ignore")
+        if len(payload_bytes) > max_payload_bytes:
+            raise SubprocessWorkerError(
+                "payload_too_large",
+                details={
+                    "max_bytes": int(max_payload_bytes),
+                    "actual_bytes": int(len(payload_bytes)),
+                },
+            )
+        payload_path.write_bytes(payload_bytes)
+    else:
+        payload_path.write_text(payload_json, encoding="utf-8")
 
     log_file = None
     process: asyncio.subprocess.Process | None = None
@@ -156,6 +170,22 @@ async def run_subprocess_worker(
                 log_tail=_read_log_tail(log_path),
             )
 
+        max_result_bytes = int(getattr(settings, "SUBPROCESS_RESULT_MAX_BYTES", 0) or 0)
+        if max_result_bytes > 0:
+            try:
+                size = int(result_path.stat().st_size)
+            except Exception:
+                size = 0
+            if size > int(max_result_bytes):
+                raise SubprocessWorkerError(
+                    "worker_result_too_large",
+                    details={
+                        "max_bytes": int(max_result_bytes),
+                        "actual_bytes": int(size),
+                    },
+                    log_tail=_read_log_tail(log_path),
+                )
+
         raw = result_path.read_text(encoding="utf-8", errors="ignore")
         parsed = json.loads(raw or "{}")
         if not isinstance(parsed, dict):
@@ -184,4 +214,3 @@ async def run_subprocess_worker(
                     p.unlink()
             except Exception:
                 pass
-

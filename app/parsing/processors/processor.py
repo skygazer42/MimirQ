@@ -901,10 +901,12 @@ class DocumentProcessorService:
 
             # Optional exact-duplicate text chunk drop (within document).
             dedup_enabled = bool(getattr(settings, "CHUNK_DEDUP_ENABLED", False))
+            dedup_dropped = 0
             if dedup_enabled and chunks:
                 with metrics_span("ingest.chunk_dedup", enabled=True):
                     deduped = chunk_dedup_stage.run(chunks=chunks, enabled=True)
                 chunks = deduped.chunks
+                dedup_dropped = int(deduped.duplicates_dropped)
                 if int(deduped.duplicates_dropped) > 0:
                     logger.info(
                         "Dropped %s duplicate chunks for document %s",
@@ -917,6 +919,46 @@ class DocumentProcessorService:
                             "duplicates_dropped": int(deduped.duplicates_dropped),
                         }
                     )
+
+            # Guardrail: cap chunk count per document (0 disables).
+            max_chunks_per_document = max(0, int(getattr(settings, "MAX_CHUNKS_PER_DOCUMENT", 0) or 0))
+            truncated_from = 0
+            truncated_to = 0
+            truncated_dropped = 0
+            if max_chunks_per_document > 0 and chunks and len(chunks) > max_chunks_per_document:
+                truncated_from = len(chunks)
+                chunks = chunks[:max_chunks_per_document]
+                truncated_to = len(chunks)
+                truncated_dropped = max(0, truncated_from - truncated_to)
+                logger.info(
+                    "Truncated chunks for document %s: kept=%s dropped=%s (MAX_CHUNKS_PER_DOCUMENT=%s)",
+                    document_id,
+                    truncated_to,
+                    truncated_dropped,
+                    max_chunks_per_document,
+                )
+                log_metrics(
+                    {
+                        "event": "ingest.chunk_truncate",
+                        "chunk_before": int(truncated_from),
+                        "chunk_after": int(truncated_to),
+                        "dropped": int(truncated_dropped),
+                        "max_chunks_per_document": int(max_chunks_per_document),
+                    }
+                )
+
+            if dedup_enabled or max_chunks_per_document > 0:
+                self._record_chunk_postprocess_metadata(
+                    db,
+                    tenant_id=tenant_id,
+                    document_id=document_id,
+                    dedup_enabled=dedup_enabled,
+                    dedup_dropped=dedup_dropped,
+                    max_chunks_per_document=max_chunks_per_document,
+                    truncated_from=truncated_from,
+                    truncated_to=truncated_to,
+                    truncated_dropped=truncated_dropped,
+                )
 
             if governance_stats is not None:
                 self._record_governance_metadata(db, tenant_id, document_id, governance_stats)
@@ -1437,6 +1479,42 @@ class DocumentProcessorService:
         db.commit()
         db.refresh(db_doc)
 
+    def _record_chunk_postprocess_metadata(
+        self,
+        db: Session,
+        *,
+        tenant_id: UUID,
+        document_id: UUID,
+        dedup_enabled: bool,
+        dedup_dropped: int,
+        max_chunks_per_document: int,
+        truncated_from: int,
+        truncated_to: int,
+        truncated_dropped: int,
+    ) -> None:
+        """Persist chunk postprocessing stats (dedup/truncation) on the document metadata."""
+        db_doc = (
+            db.query(DBDocument)
+            .filter(DBDocument.id == document_id, DBDocument.tenant_id == tenant_id)
+            .first()
+        )
+        if not db_doc:
+            return
+
+        metadata = dict(db_doc.doc_metadata or {})
+        metadata["chunk_postprocess"] = {
+            "dedup_enabled": bool(dedup_enabled),
+            "dedup_dropped": int(dedup_dropped),
+            "max_chunks_per_document": int(max_chunks_per_document),
+            "truncated": bool(int(truncated_dropped) > 0),
+            "truncated_from": int(truncated_from),
+            "truncated_to": int(truncated_to),
+            "truncated_dropped": int(truncated_dropped),
+        }
+        db_doc.doc_metadata = metadata
+        db.commit()
+        db.refresh(db_doc)
+
     def _record_document_image_ids(self, db: Session, tenant_id: UUID, document_id: UUID, img_ids: set[str]):
         """
         Store all img_id values for a document in documents.metadata for cleanup.
@@ -1800,7 +1878,7 @@ class DocumentProcessorService:
                 tenant_id=tenant_id,
                 dataset_id=dataset_id,
                 document_id=document_id,
-                chunk_key=str(chunk_index),
+                chunk_key=str(metadata.get("chunk_key") or chunk_index),
                 extension="jpg",
             )
             
