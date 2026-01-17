@@ -169,10 +169,19 @@ export function Navbar({
 
   return (
     <>
+      {/* Mobile Overlay */}
+      {isSidebarOpen && (
+        <div 
+            className="fixed inset-0 bg-black/50 z-40 md:hidden backdrop-blur-sm transition-opacity"
+            onClick={() => setSidebarOpen(false)}
+        />
+      )}
+
       <nav
         className={cn(
-          'flex-shrink-0 bg-white dark:bg-slate-950 border-r border-slate-100 dark:border-slate-800 flex flex-col transition-all duration-300 ease-in-out relative z-50',
-          isSidebarOpen ? 'w-[280px]' : 'w-0 overflow-hidden'
+          'flex-shrink-0 bg-white dark:bg-slate-950 border-r border-slate-100 dark:border-slate-800 flex flex-col transition-all duration-300 ease-in-out z-50',
+          'fixed inset-y-0 left-0 md:relative', // Mobile: fixed, Desktop: relative
+          isSidebarOpen ? 'w-[280px] translate-x-0' : 'w-[280px] -translate-x-full md:w-0 md:translate-x-0 md:overflow-hidden'
         )}
       >
         {/* Logo 区域 */}
