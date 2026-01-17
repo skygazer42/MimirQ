@@ -91,7 +91,7 @@ class DatasetService:
         db.refresh(dataset)
 
         if permission == DatasetPermissionEnum.PARTIAL_MEMBERS and partial_members:
-            DatasetPermissionService.update_partial_member_list(db, tenant_id, dataset.id, partial_members, owner_id)
+            DatasetPermissionService.update_partial_member_list(db, tenant_id, dataset.id, partial_members)
 
         return dataset
 
@@ -122,14 +122,14 @@ class DatasetService:
         if permission is not None:
             if permission == DatasetPermissionEnum.PARTIAL_MEMBERS:
                 DatasetPermissionService.update_partial_member_list(
-                    db, dataset.tenant_id, dataset.id, partial_members or [], updater_id
+                    db, dataset.tenant_id, dataset.id, partial_members or []
                 )
             else:
                 DatasetPermissionService.clear_partial_member_list(db, dataset.tenant_id, dataset.id)
         else:
             if dataset.permission == DatasetPermissionEnum.PARTIAL_MEMBERS and partial_members is not None:
                 DatasetPermissionService.update_partial_member_list(
-                    db, dataset.tenant_id, dataset.id, partial_members, updater_id
+                    db, dataset.tenant_id, dataset.id, partial_members
                 )
 
         return dataset
@@ -197,29 +197,49 @@ class DatasetPermissionService:
         tenant_id: UUID,
         dataset_id: UUID,
         member_ids: List[str],
-        operator_id: str
     ):
-        # ensure all members belong to tenant
-        for mid in member_ids:
-            member = db.query(TenantMember).filter(
-                TenantMember.tenant_id == tenant_id,
-                TenantMember.user_id == mid
-            ).first()
-            if not member:
-                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Member {mid} not in tenant")
+        normalized_member_ids: list[str] = []
+        seen: set[str] = set()
+        for member_id in member_ids:
+            mid = str(member_id or "").strip()
+            if not mid or mid in seen:
+                continue
+            seen.add(mid)
+            normalized_member_ids.append(mid)
 
-        # remove existing
+        if normalized_member_ids:
+            rows = (
+                db.query(TenantMember.user_id)
+                .filter(
+                    TenantMember.tenant_id == tenant_id,
+                    TenantMember.user_id.in_(normalized_member_ids),
+                )
+                .all()
+            )
+            found = {row[0] for row in rows}
+            missing = [mid for mid in normalized_member_ids if mid not in found]
+            if missing:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Member(s) not in tenant: {', '.join(missing)}",
+                )
+
         db.query(DatasetPermission).filter(
             DatasetPermission.tenant_id == tenant_id,
-            DatasetPermission.dataset_id == dataset_id
-        ).delete()
-        # add new
-        for mid in member_ids:
-            db.add(DatasetPermission(
-                tenant_id=tenant_id,
-                dataset_id=dataset_id,
-                account_id=mid
-            ))
+            DatasetPermission.dataset_id == dataset_id,
+        ).delete(synchronize_session=False)
+
+        if normalized_member_ids:
+            db.add_all(
+                [
+                    DatasetPermission(
+                        tenant_id=tenant_id,
+                        dataset_id=dataset_id,
+                        account_id=mid,
+                    )
+                    for mid in normalized_member_ids
+                ]
+            )
         db.commit()
 
     @staticmethod

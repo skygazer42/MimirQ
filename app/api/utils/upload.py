@@ -16,9 +16,8 @@ from fastapi import HTTPException, UploadFile
 
 
 def _safe_unlink(path: Path) -> None:
-    with contextlib.suppress(Exception):
-        if path.exists():
-            path.unlink()
+    with contextlib.suppress(OSError):
+        path.unlink(missing_ok=True)
 
 
 async def save_upload_file(
@@ -58,4 +57,3 @@ async def save_upload_file(
 
 
 __all__ = ["save_upload_file"]
-
