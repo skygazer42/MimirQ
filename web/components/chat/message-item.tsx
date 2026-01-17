@@ -15,6 +15,8 @@ import { cn } from '@/lib/utils'
 import { API_BASE_URL, toAbsoluteBackendUrl } from '@/lib/env'
 import { getAccessToken, getTenantId } from '@/lib/auth-storage'
 import { useDocumentView } from '@/store/document-view'
+import { LottieAnimation, LOTTIE_URLS } from '@/components/ui/lottie-animation'
+import { CinematicTypewriter } from '@/components/ui/cinematic-typewriter'
 
 let BACKEND_ORIGIN = ''
 try {
@@ -260,10 +262,7 @@ export const ChatMessageItem = memo(function ChatMessageItem({
           {isUser ? (
             <div className="whitespace-pre-wrap font-normal tracking-wide">{message.content}</div>
           ) : isStreaming ? (
-            <div className="whitespace-pre-wrap font-normal">
-              {message.content}
-              <span className="inline-block w-2 h-4 ml-1 bg-primary animate-blink align-middle" />
-            </div>
+            <CinematicTypewriter content={message.content} isStreaming={true} />
           ) : (
             <ReactMarkdown
               remarkPlugins={markdownPlugins}

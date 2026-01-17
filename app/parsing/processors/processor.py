@@ -91,6 +91,114 @@ class IndexResult:
     db_chunks: List[DocumentChunk]
 
 
+def _chunk_has_asset(meta: dict[str, Any]) -> bool:
+    doc_type = str(meta.get("doc_type_kwd") or "").lower()
+    if doc_type in {"image", "table"}:
+        return True
+    if meta.get("image") is not None:
+        return True
+    if isinstance(meta.get("image_path"), str) and meta.get("image_path").strip():
+        return True
+    return bool(meta.get("img_id") or meta.get("image_id") or meta.get("image_url"))
+
+
+def _uniform_sample_indices(indices: List[int], k: int) -> List[int]:
+    if k <= 0:
+        return []
+    if k >= len(indices):
+        return list(indices)
+    if len(indices) == 1:
+        return [indices[0]]
+    if k == 1:
+        return [indices[len(indices) // 2]]
+
+    n = len(indices)
+    picked: List[int] = []
+    seen: set[int] = set()
+    for i in range(k):
+        pos = round(i * (n - 1) / (k - 1))
+        pos = max(0, min(n - 1, int(pos)))
+        idx = indices[pos]
+        if idx in seen:
+            continue
+        seen.add(idx)
+        picked.append(idx)
+
+    if len(picked) < k:
+        for idx in indices:
+            if idx in seen:
+                continue
+            seen.add(idx)
+            picked.append(idx)
+            if len(picked) >= k:
+                break
+
+    return picked[:k]
+
+
+def _truncate_chunks_for_limit(
+    chunks: List[Document],
+    *,
+    max_chunks: int,
+    strategy: str,
+) -> tuple[List[Document], dict[str, Any]]:
+    if max_chunks <= 0 or not chunks or len(chunks) <= max_chunks:
+        return chunks, {"strategy": (strategy or "head").strip().lower() or "head", "asset_total": 0, "asset_kept": 0}
+
+    strategy_norm = (strategy or "head").strip().lower() or "head"
+    total = len(chunks)
+
+    asset_indices: List[int] = []
+    for idx, chunk in enumerate(chunks):
+        meta = chunk.metadata if isinstance(getattr(chunk, "metadata", None), dict) else {}
+        if _chunk_has_asset(meta):
+            asset_indices.append(idx)
+
+    if strategy_norm not in {"head", "asset_uniform"}:
+        strategy_norm = "head"
+
+    if strategy_norm == "head":
+        kept_chunks = chunks[:max_chunks]
+        asset_kept = 0
+        for c in kept_chunks:
+            meta = c.metadata if isinstance(getattr(c, "metadata", None), dict) else {}
+            if _chunk_has_asset(meta):
+                asset_kept += 1
+        return kept_chunks, {
+            "strategy": "head",
+            "asset_total": int(len(asset_indices)),
+            "asset_kept": int(asset_kept),
+        }
+
+    # asset_uniform: keep first chunk + assets, then uniformly sample remaining text chunks.
+    must_keep: List[int] = [0]
+    for idx in asset_indices:
+        if idx not in must_keep:
+            must_keep.append(idx)
+
+    if len(must_keep) > max_chunks:
+        must_keep = must_keep[:max_chunks]
+
+    remaining_slots = max_chunks - len(must_keep)
+    keep_set = set(must_keep)
+    if remaining_slots > 0:
+        candidate_indices = [i for i in range(total) if i not in keep_set]
+        sampled = _uniform_sample_indices(candidate_indices, remaining_slots)
+        keep_set |= set(sampled)
+
+    kept_chunks = [chunks[i] for i in range(total) if i in keep_set]
+    asset_kept = 0
+    for idx in asset_indices:
+        if idx in keep_set:
+            asset_kept += 1
+
+    return kept_chunks, {
+        "strategy": "asset_uniform",
+        "asset_total": int(len(asset_indices)),
+        "asset_kept": int(asset_kept),
+    }
+
+
 class ParsingStage:
     def __init__(self, service: "DocumentProcessorService"):
         self._svc = service
@@ -922,19 +1030,33 @@ class DocumentProcessorService:
 
             # Guardrail: cap chunk count per document (0 disables).
             max_chunks_per_document = max(0, int(getattr(settings, "MAX_CHUNKS_PER_DOCUMENT", 0) or 0))
+            truncation_strategy = str(getattr(settings, "MAX_CHUNKS_PER_DOCUMENT_STRATEGY", "head") or "head")
             truncated_from = 0
             truncated_to = 0
             truncated_dropped = 0
+            truncated_asset_total = 0
+            truncated_asset_kept = 0
+            truncated_strategy_used = ""
             if max_chunks_per_document > 0 and chunks and len(chunks) > max_chunks_per_document:
                 truncated_from = len(chunks)
-                chunks = chunks[:max_chunks_per_document]
+                chunks, truncation_info = _truncate_chunks_for_limit(
+                    chunks,
+                    max_chunks=max_chunks_per_document,
+                    strategy=truncation_strategy,
+                )
                 truncated_to = len(chunks)
                 truncated_dropped = max(0, truncated_from - truncated_to)
+                truncated_asset_total = int(truncation_info.get("asset_total") or 0)
+                truncated_asset_kept = int(truncation_info.get("asset_kept") or 0)
+                truncated_strategy_used = str(truncation_info.get("strategy") or "").strip() or str(truncation_strategy)
                 logger.info(
-                    "Truncated chunks for document %s: kept=%s dropped=%s (MAX_CHUNKS_PER_DOCUMENT=%s)",
+                    "Truncated chunks for document %s: kept=%s dropped=%s assets=%s/%s strategy=%s (MAX_CHUNKS_PER_DOCUMENT=%s)",
                     document_id,
                     truncated_to,
                     truncated_dropped,
+                    truncated_asset_kept,
+                    truncated_asset_total,
+                    truncated_strategy_used,
                     max_chunks_per_document,
                 )
                 log_metrics(
@@ -944,6 +1066,9 @@ class DocumentProcessorService:
                         "chunk_after": int(truncated_to),
                         "dropped": int(truncated_dropped),
                         "max_chunks_per_document": int(max_chunks_per_document),
+                        "strategy": truncated_strategy_used,
+                        "asset_kept": int(truncated_asset_kept),
+                        "asset_total": int(truncated_asset_total),
                     }
                 )
 
@@ -955,9 +1080,12 @@ class DocumentProcessorService:
                     dedup_enabled=dedup_enabled,
                     dedup_dropped=dedup_dropped,
                     max_chunks_per_document=max_chunks_per_document,
+                    max_chunks_strategy=truncated_strategy_used or truncation_strategy,
                     truncated_from=truncated_from,
                     truncated_to=truncated_to,
                     truncated_dropped=truncated_dropped,
+                    truncated_asset_total=truncated_asset_total,
+                    truncated_asset_kept=truncated_asset_kept,
                 )
 
             if governance_stats is not None:
@@ -1488,9 +1616,12 @@ class DocumentProcessorService:
         dedup_enabled: bool,
         dedup_dropped: int,
         max_chunks_per_document: int,
+        max_chunks_strategy: str,
         truncated_from: int,
         truncated_to: int,
         truncated_dropped: int,
+        truncated_asset_total: int,
+        truncated_asset_kept: int,
     ) -> None:
         """Persist chunk postprocessing stats (dedup/truncation) on the document metadata."""
         db_doc = (
@@ -1506,10 +1637,13 @@ class DocumentProcessorService:
             "dedup_enabled": bool(dedup_enabled),
             "dedup_dropped": int(dedup_dropped),
             "max_chunks_per_document": int(max_chunks_per_document),
+            "max_chunks_strategy": str(max_chunks_strategy or "").strip() or "head",
             "truncated": bool(int(truncated_dropped) > 0),
             "truncated_from": int(truncated_from),
             "truncated_to": int(truncated_to),
             "truncated_dropped": int(truncated_dropped),
+            "truncated_asset_total": int(truncated_asset_total),
+            "truncated_asset_kept": int(truncated_asset_kept),
         }
         db_doc.doc_metadata = metadata
         db.commit()
@@ -1824,6 +1958,46 @@ class DocumentProcessorService:
                 # Non-image chunk: drop image field to avoid JSON serialization failure.
                 metadata.pop("image", None)
 
+        # Subprocess parser may materialize PIL.Image into an on-disk file path.
+        image_path: Path | None = None
+        raw_path = metadata.get("image_path")
+        if raw_image is None and isinstance(raw_path, str) and raw_path.strip():
+            doc_type = str(metadata.get("doc_type_kwd") or "").lower()
+            if doc_type != "image":
+                metadata.pop("image_path", None)
+            else:
+                try:
+                    upload_root = Path(settings.UPLOAD_DIR).resolve(strict=False)
+                    tenant_root = (upload_root / str(tenant_id)).resolve(strict=False)
+                    candidate = Path(raw_path.strip()).resolve(strict=False)
+                    candidate.relative_to(tenant_root)
+                    if candidate.exists() and candidate.is_file():
+                        max_bytes = int(getattr(settings, "MINIO_IMAGE_MAX_BYTES", 0) or 0)
+                        if max_bytes > 0:
+                            try:
+                                size = int(candidate.stat().st_size)
+                            except Exception:
+                                size = 0
+                            if size > max_bytes:
+                                metadata.pop("image_path", None)
+                                try:
+                                    candidate.unlink()
+                                except Exception:
+                                    pass
+                            else:
+                                image_path = candidate
+                                raw_image = candidate.read_bytes()
+                                found_key = "image_path"
+                        else:
+                            image_path = candidate
+                            raw_image = candidate.read_bytes()
+                            found_key = "image_path"
+                    else:
+                        metadata.pop("image_path", None)
+                except Exception:
+                    # Unsafe or unreadable path; drop it to avoid leaking arbitrary filesystem paths.
+                    metadata.pop("image_path", None)
+
         if raw_image is None:
             for key in possible_keys:
                 val = metadata.get(key)
@@ -1890,6 +2064,13 @@ class DocumentProcessorService:
             for key in possible_keys:
                 if key in metadata and key != found_key:
                     del metadata[key]
+
+            # If the subprocess provided an on-disk image file, remove it after successful upload.
+            if image_path is not None:
+                try:
+                    image_path.unlink()
+                except Exception:
+                    pass
 
             logger.info("Image uploaded and bound: img_id=%s", img_id)
             return img_id

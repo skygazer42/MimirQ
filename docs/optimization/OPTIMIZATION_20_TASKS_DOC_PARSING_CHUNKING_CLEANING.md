@@ -95,3 +95,41 @@
 - 解析子进程安全：
   - `SUBPROCESS_PAYLOAD_MAX_BYTES=2000000`：payload JSON 上限（0=禁用）
   - `SUBPROCESS_RESULT_MAX_BYTES=50000000`：result JSON 上限（0=禁用）
+
+---
+
+## 第三阶段（41–60）：KG / 解析 / 切块 进一步优化清单
+
+> 目标：把“高频线上坑”兜到底：图片资产跨进程可用、超大文档可控、KG 抽取更稳健（短块跳过/重试/一致性）、subprocess 日志不炸盘，并补齐相应测试与文档。
+
+### A. 切块截断与可观测性（41–46）
+
+41. [ ] **截断策略可配**：新增 `MAX_CHUNKS_PER_DOCUMENT_STRATEGY`（head | asset_uniform）
+42. [ ] **资产优先截断**：`asset_uniform` 优先保留 image/table 等资产 chunks，并保留首块
+43. [ ] **均匀采样文本块**：在资产之外对文本块做均匀采样补齐至上限（避免只保留开头）
+44. [ ] **截断统计增强**：`doc_metadata.chunk_postprocess` 记录 strategy/asset_kept/asset_total
+45. [ ] **metrics 增强**：`ingest.chunk_truncate` 增补 strategy/asset_kept 等字段
+46. [ ] **单测覆盖**：截断策略选择逻辑单测（asset_uniform/head）
+
+### B. 资产图片跨进程上传（47–52）
+
+47. [ ] **image_path 上传**：支持 `metadata.image_path`（subprocess 落盘）在主进程上传到 MinIO
+48. [ ] **路径安全校验**：`image_path` 必须位于当前 tenant 的 `UPLOAD_DIR/{tenant}` 目录内
+49. [ ] **图片体积上限**：新增 `MINIO_IMAGE_MAX_BYTES`（0=禁用），超限跳过并清理字段
+50. [ ] **上传后清理文件**：上传成功后 best-effort `unlink(image_path)`，避免磁盘堆积
+51. [ ] **元数据清理**：上传后移除 `image_path`/残留 image 字段，避免 JSON 过大或不可序列化
+52. [ ] **单测覆盖**：image_path 上传/安全校验/清理行为单测
+
+### C. KG 抽取稳健性与一致性（53–58）
+
+53. [ ] **短块跳过**：新增 `KG_EXTRACT_MIN_CHARS`，对低信息短块跳过抽取并计数
+54. [ ] **单 chunk 重试**：新增 `KG_EXTRACT_CHUNK_MAX_RETRIES` + `KG_EXTRACT_CHUNK_RETRY_BACKOFF_SEC`
+55. [ ] **引用补齐 content_len**：event `references` 补 `content_len`（优先用 chunk metadata，缺失则计算）
+56. [ ] **回写 tenant 过滤**：writeback document metadata 时同时按 tenant_id 过滤（安全）
+57. [ ] **回写字段扩展**：写入 `kg_skipped_short_chunks/kg_retry_chunks`（保守：新增字段不破坏兼容）
+58. [ ] **单测覆盖**：重试/短块跳过/tenant 过滤至少覆盖其中两项
+
+### D. Subprocess 日志与磁盘安全（59–60）
+
+59. [ ] **log 体积上限**：新增 `SUBPROCESS_LOG_MAX_BYTES`，运行中超限终止并抛 `worker_log_too_large`
+60. [ ] **单测+文档对齐**：log guard 单测 + 清单勾选 + 配置说明补齐
