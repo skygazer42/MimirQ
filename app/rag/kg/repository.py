@@ -311,12 +311,12 @@ class EventRepository:
 
     def find_events_by_entities(
         self,
-        entity_ids: Iterable[str],
+        entity_ids: Iterable[str | UUID],
         tenant_id,
         limit: int = 50,
         document_ids: Optional[List[UUID]] = None,
     ) -> List[KgSourceEvent]:
-        ids = list(entity_ids)
+        ids = _as_uuid_list(entity_ids)
         if not ids:
             return []
         stmt = (
@@ -324,6 +324,8 @@ class EventRepository:
             .join(KgEventEntity, KgEventEntity.event_id == KgSourceEvent.id)
             .where(KgEventEntity.entity_id.in_(ids))
             .where(KgSourceEvent.tenant_id == tenant_id)
+            .group_by(KgSourceEvent.id)
+            .order_by(func.count(KgEventEntity.entity_id).desc(), KgSourceEvent.updated_at.desc())
             .limit(limit)
         )
         if document_ids:
