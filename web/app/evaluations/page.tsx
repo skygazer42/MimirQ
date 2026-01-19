@@ -255,7 +255,7 @@ function EvaluationsPageContent() {
                 <BarChart3 className="w-6 h-6 text-sky-600 dark:text-sky-400" />
               </div>
               <div>
-                <h1 className="text-2xl font-bold text-slate-900 dark:text-white tracking-tight">
+                <h1 className="text-3xl font-bold text-foreground tracking-tight">
                   RAGAS 评测
                 </h1>
                 <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
