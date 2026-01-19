@@ -84,7 +84,7 @@ export default function IngestionMonitorPage() {
     refetchInterval: autoRefresh ? 5_000 : false,
   })
 
-  const documents = data?.items || []
+  const documents = useMemo(() => data?.items || [], [data])
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase()
@@ -162,7 +162,7 @@ export default function IngestionMonitorPage() {
                 入库监控中心
               </h1>
               <p className="text-sm text-muted-foreground mt-2 max-w-2xl">
-                SYSTEM_STATUS: <span className="text-primary">ONLINE</span> // 实时追踪解析、切块、向量化与索引构建进度。
+                SYSTEM_STATUS: <span className="text-primary">ONLINE</span> <span className="opacity-50 mx-2">{'//'}</span> 实时追踪解析、切块、向量化与索引构建进度。
               </p>
             </div>
 
