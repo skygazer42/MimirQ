@@ -7,6 +7,7 @@ import { Star, RefreshCw, Search, ArrowUpRight, Copy } from 'lucide-react'
 import { toast } from 'sonner'
 
 import { Navbar } from '@/components/navbar'
+import { PageHeader } from '@/components/ui/page-header'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
@@ -54,7 +55,7 @@ export default function FeedbackTriagePage() {
     staleTime: 5_000,
   })
 
-  const items = data?.items || []
+  const items = useMemo(() => data?.items || [], [data])
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase()
@@ -104,55 +105,50 @@ export default function FeedbackTriagePage() {
 
       <main className="relative z-10 flex-1 flex flex-col overflow-hidden">
 
-        <header className="px-8 pt-8 pb-6 flex-shrink-0">
-          <div className="flex items-start justify-between gap-4">
-            <div>
-              <div className="flex items-center gap-3 mb-2">
-                <div className="p-2 rounded-xl bg-primary/10 border border-primary/20">
-                  <Star className="w-6 h-6 text-primary fill-primary/20" />
+        <PageHeader
+          title="反馈质检"
+          icon={Star}
+          iconColor="text-primary"
+          description={
+            <span>
+              QUALITY_CONTROL: <span className="text-primary">ACTIVE</span> <span className="opacity-50 mx-2">{'//'}</span> 汇总用户评分与反馈，驱动模型迭代与知识库优化。
+            </span>
+          }
+        >
+          <Button
+            variant="outline"
+            className="gap-2 border-primary/20 hover:bg-primary/10 hover:text-primary transition-all duration-300 group rounded-full"
+            onClick={() => refetch()}
+          >
+            <RefreshCw className={cn('h-4 w-4 transition-transform group-hover:rotate-180', isFetching ? 'animate-spin' : '')} />
+            刷新数据
+          </Button>
+        </PageHeader>
+
+        <div className="px-8 pb-4 grid grid-cols-2 md:grid-cols-5 gap-4">
+          {[5, 4, 3, 2, 1].map((r) => (
+            <div key={r} className="group relative overflow-hidden rounded-2xl border bg-white/5 border-white/10 hover:border-primary/30 p-4 transition-all duration-300 hover:shadow-lg backdrop-blur-sm">
+              <div className="absolute inset-0 bg-gradient-to-br from-white/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
+
+              <div className="relative z-10 flex items-center justify-between">
+                <div className="flex items-center gap-1">
+                  <Star className={cn("w-4 h-4", r >= 4 ? "text-yellow-400 fill-yellow-400" : "text-muted-foreground")} />
+                  <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider">{r} 星</span>
                 </div>
-                <h1 className="text-3xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-primary to-blue-400 tracking-tight">反馈质检</h1>
+                <div className={cn("text-2xl font-black tracking-tight transition-transform group-hover:scale-110", r >= 4 ? "text-primary" : "text-muted-foreground")}>
+                  {stats[r] || 0}
+                </div>
               </div>
-              <p className="text-sm text-muted-foreground max-w-2xl pl-12 border-l-2 border-primary/20">
-                QUALITY_CONTROL: <span className="text-primary">ACTIVE</span> // 汇总用户评分与反馈，驱动模型迭代与知识库优化。
-              </p>
+              {/* Progress bar visual */}
+              <div className="mt-3 h-1 w-full bg-white/10 rounded-full overflow-hidden">
+                <div
+                  className={cn("h-full rounded-full transition-all duration-1000", r >= 4 ? "bg-gradient-to-r from-yellow-400 to-orange-400" : "bg-muted-foreground/30")}
+                  style={{ width: `${Math.min(100, (stats[r] || 0) * 5)}%` }} // Rough viz
+                />
+              </div>
             </div>
-
-            <Button
-              variant="outline"
-              className="gap-2 border-primary/20 hover:bg-primary/10 hover:text-primary transition-all duration-300 group rounded-full"
-              onClick={() => refetch()}
-            >
-              <RefreshCw className={cn('h-4 w-4 transition-transform group-hover:rotate-180', isFetching ? 'animate-spin' : '')} />
-              刷新数据
-            </Button>
-          </div>
-
-          <div className="mt-8 grid grid-cols-2 md:grid-cols-5 gap-4">
-            {[5, 4, 3, 2, 1].map((r) => (
-              <div key={r} className="group relative overflow-hidden rounded-2xl border bg-white/5 border-white/10 hover:border-primary/30 p-4 transition-all duration-300 hover:shadow-lg backdrop-blur-sm">
-                <div className="absolute inset-0 bg-gradient-to-br from-white/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
-
-                <div className="relative z-10 flex items-center justify-between">
-                  <div className="flex items-center gap-1">
-                    <Star className={cn("w-4 h-4", r >= 4 ? "text-yellow-400 fill-yellow-400" : "text-muted-foreground")} />
-                    <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider">{r} 星</span>
-                  </div>
-                  <div className={cn("text-2xl font-black tracking-tight transition-transform group-hover:scale-110", r >= 4 ? "text-primary" : "text-muted-foreground")}>
-                    {stats[r] || 0}
-                  </div>
-                </div>
-                {/* Progress bar visual */}
-                <div className="mt-3 h-1 w-full bg-white/10 rounded-full overflow-hidden">
-                  <div
-                    className={cn("h-full rounded-full transition-all duration-1000", r >= 4 ? "bg-gradient-to-r from-yellow-400 to-orange-400" : "bg-muted-foreground/30")}
-                    style={{ width: `${Math.min(100, (stats[r] || 0) * 5)}%` }} // Rough viz
-                  />
-                </div>
-              </div>
-            ))}
-          </div>
-        </header>
+          ))}
+        </div>
 
         <div className="px-8 pb-6 flex-shrink-0 z-10">
           <div className="flex flex-col md:flex-row md:items-center gap-4 bg-white/5 backdrop-blur-md border border-white/10 p-2 rounded-2xl">
@@ -227,7 +223,7 @@ export default function FeedbackTriagePage() {
 
                     {it.message_content && !it.reason && (
                       <div className="mt-4 text-sm text-muted-foreground/60 bg-black/20 p-2 rounded-lg border border-white/5 line-clamp-2 font-serif italic">
-                        "{it.message_content}"
+                        &quot;{it.message_content}&quot;
                       </div>
                     )}
                   </div>

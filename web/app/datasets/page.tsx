@@ -5,6 +5,7 @@ import { toast } from 'sonner'
 import { Layers, Loader2, Pencil, Plus, RefreshCw, Trash2 } from 'lucide-react'
 
 import { Navbar } from '@/components/navbar'
+import { PageHeader } from '@/components/ui/page-header'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
@@ -178,114 +179,129 @@ export default function DatasetsPage() {
   }
 
   return (
-    <div className="flex h-screen overflow-hidden bg-slate-50/50 dark:bg-slate-950 transition-colors duration-300">
+    <div className="flex min-h-screen overflow-hidden bg-background font-sans selection:bg-cyan-500/20 selection:text-cyan-400">
+      {/* Cyber Archive Ambient Background */}
+      <div className="fixed inset-0 z-0 pointer-events-none bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-slate-900 via-slate-950 to-black" />
+      <div className="fixed inset-0 z-0 pointer-events-none">
+        <div className="absolute top-[-10%] right-[-10%] w-[800px] h-[800px] bg-cyan-500/5 rounded-full blur-[100px] animate-pulse-subtle" />
+        <div className="absolute bottom-[-10%] left-[-10%] w-[600px] h-[600px] bg-blue-600/5 rounded-full blur-[120px] animate-pulse-subtle" style={{ animationDelay: '2s' }} />
+      </div>
+
       <Navbar />
 
-      <main className="flex-1 flex flex-col overflow-hidden relative">
-        <div className="absolute top-0 left-0 right-0 h-64 bg-gradient-to-b from-sky-50/50 dark:from-sky-900/10 to-transparent pointer-events-none" />
+      <main className="relative z-10 flex-1 flex flex-col overflow-hidden">
 
-        <header className="px-8 py-6 flex-shrink-0 z-10">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-4">
-              <div className="w-12 h-12 bg-white dark:bg-slate-900 rounded-2xl flex items-center justify-center shadow-sm border border-slate-100 dark:border-slate-800">
-                <Layers className="w-6 h-6 text-sky-600 dark:text-sky-400" />
-              </div>
-              <div>
-                <h1 className="text-2xl font-bold text-slate-900 dark:text-white tracking-tight">数据集</h1>
-                <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">管理知识库集合与访问权限</p>
-              </div>
-            </div>
+        <PageHeader
+          title="数据集"
+          badge="Archive"
+          icon={Layers}
+          iconColor="text-cyan-400"
+          description={
+            <span className="flex items-center gap-2">
+              <span className="w-1.5 h-1.5 rounded-full bg-cyan-500/50 animate-pulse" />
+              管理知识库集合与访问权限
+              <span className="ml-4 text-xs font-mono text-cyan-500/50 uppercase tracking-widest">
+                Total Archives: <span className="text-cyan-400 font-bold">{total}</span>
+              </span>
+            </span>
+          }
+        >
+          <div className="flex items-center gap-3">
+            <Button
+              variant="outline"
+              className="gap-2 rounded-lg border-slate-800 bg-slate-900/50 text-slate-400 hover:text-cyan-400 hover:border-cyan-500/30 hover:bg-cyan-950/30 transition-all font-mono text-xs uppercase tracking-wider"
+              onClick={() => load()}
+              disabled={isLoading}
+            >
+              <RefreshCw className={cn('w-3.5 h-3.5', isLoading && 'animate-spin')} />
+              Sync
+            </Button>
 
-            <div className="flex items-center gap-2">
-              <Button
-                variant="outline"
-                className="gap-2 rounded-xl"
-                onClick={() => load()}
-                disabled={isLoading}
-              >
-                <RefreshCw className={cn('w-4 h-4', isLoading && 'animate-spin')} />
-                刷新
-              </Button>
+            <Dialog open={createOpen} onOpenChange={(open) => {
+              setCreateOpen(open)
+              if (open) resetForm()
+            }}>
+              <DialogTrigger asChild>
+                <Button className="gap-2 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-white shadow-[0_0_20px_-5px_rgba(6,182,212,0.4)] border border-cyan-400/20 font-medium">
+                  <Plus className="w-4 h-4" />
+                  新建数据集
+                </Button>
+              </DialogTrigger>
+              <DialogContent className="max-w-xl border-cyan-500/20 bg-slate-950/95 backdrop-blur-xl shadow-2xl sm:rounded-2xl">
+                <DialogHeader>
+                  <DialogTitle className="text-xl font-bold text-white">新建数据集</DialogTitle>
+                  <DialogDescription className="text-slate-400">为文档分组并设置访问权限</DialogDescription>
+                </DialogHeader>
 
-              <Dialog open={createOpen} onOpenChange={(open) => {
-                setCreateOpen(open)
-                if (open) resetForm()
-              }}>
-                <DialogTrigger asChild>
-                  <Button className="gap-2 bg-sky-600 hover:bg-sky-700 text-white shadow-lg shadow-sky-200 dark:shadow-sky-900/20 rounded-xl">
-                    <Plus className="w-4 h-4" />
-                    新建数据集
-                  </Button>
-                </DialogTrigger>
-                <DialogContent className="max-w-xl">
-                  <DialogHeader>
-                    <DialogTitle>新建数据集</DialogTitle>
-                    <DialogDescription>为文档分组并设置访问权限</DialogDescription>
-                  </DialogHeader>
+                <DatasetForm form={form} setForm={setForm} />
 
-                  <DatasetForm form={form} setForm={setForm} />
-
-                  <DialogFooter>
-                    <Button variant="outline" onClick={() => setCreateOpen(false)}>取消</Button>
-                    <Button onClick={handleCreate} disabled={!canSubmit}>创建</Button>
-                  </DialogFooter>
-                </DialogContent>
-              </Dialog>
-            </div>
+                <DialogFooter className="mt-4">
+                  <Button variant="ghost" onClick={() => setCreateOpen(false)} className="text-slate-400 hover:text-white hover:bg-white/5">取消</Button>
+                  <Button onClick={handleCreate} disabled={!canSubmit} className="bg-cyan-600 hover:bg-cyan-500 text-white">确认创建</Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
           </div>
+        </PageHeader>
 
-          <div className="mt-4 text-sm text-slate-500 dark:text-slate-400">
-            共 <span className="font-semibold text-slate-700 dark:text-slate-200">{total}</span> 个数据集
-          </div>
-        </header>
-
-        <section className="flex-1 overflow-y-auto px-8 pb-8">
-          <div className="bg-white/80 dark:bg-slate-900/80 backdrop-blur-sm border border-slate-200 dark:border-slate-800 rounded-2xl overflow-hidden">
-            <div className="px-6 py-4 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
-              <div className="text-sm font-semibold text-slate-800 dark:text-slate-200">数据集列表</div>
+        <section className="flex-1 overflow-y-auto px-8 pb-8 custom-scrollbar">
+          {/* Glass Panel Container */}
+          <div className="bg-slate-900/40 backdrop-blur-md border border-white/5 rounded-3xl overflow-hidden shadow-xl min-h-[500px] flex flex-col">
+            <div className="px-6 py-4 border-b border-white/5 flex items-center justify-between bg-white/[0.02]">
+              <div className="text-xs font-bold text-slate-400 uppercase tracking-wider">Dataset Registry</div>
               {isLoading && (
-                <div className="flex items-center gap-2 text-sm text-slate-500">
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                  加载中...
+                <div className="flex items-center gap-2 text-xs text-cyan-500/70 font-mono">
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  LOADING_ARCHIVES...
                 </div>
               )}
             </div>
 
             {items.length === 0 && !isLoading ? (
-              <div className="p-10 text-center text-slate-500 dark:text-slate-400">
-                暂无数据集，点击“新建数据集”开始创建。
+              <div className="flex-1 flex flex-col items-center justify-center p-10 text-center space-y-4">
+                <div className="w-20 h-20 rounded-full bg-white/5 border border-white/5 flex items-center justify-center animate-pulse">
+                  <Layers className="w-8 h-8 text-slate-600" />
+                </div>
+                <div>
+                  <div className="text-slate-400 font-medium">暂无数据集</div>
+                  <div className="text-slate-600 text-sm mt-1">点击右上角“新建数据集”开始构建知识库</div>
+                </div>
               </div>
             ) : (
-              <div className="divide-y divide-slate-100 dark:divide-slate-800">
+              <div className="divide-y divide-white/5">
                 {items.map((ds) => (
-                  <div key={ds.id} className="px-6 py-4 flex items-start justify-between gap-4">
-                    <div className="min-w-0">
-                        <div className="flex items-center gap-3">
-                        <div className="font-semibold text-slate-900 dark:text-white truncate">{ds.name}</div>
-                        <Badge variant={permissionBadgeVariant(ds.permission)}>
+                  <div key={ds.id} className="group px-6 py-5 flex items-start justify-between gap-6 hover:bg-white/[0.02] transition-colors">
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-3 mb-1.5">
+                        <div className="font-bold text-lg text-slate-200 group-hover:text-cyan-400 transition-colors truncate tracking-tight">{ds.name}</div>
+                        <Badge variant={permissionBadgeVariant(ds.permission)} className="bg-transparent border-slate-700 text-slate-400 text-[10px] uppercase tracking-wider font-mono">
                           {permissionLabel(ds.permission)}
                         </Badge>
                       </div>
                       {ds.description && (
-                        <div className="mt-1 text-sm text-slate-500 dark:text-slate-400 line-clamp-2">
+                        <div className="text-sm text-slate-500 group-hover:text-slate-400 line-clamp-2 leading-relaxed">
                           {ds.description}
                         </div>
                       )}
-                      {ds.permission === 'partial_members' && (ds.partial_member_list || []).length > 0 && (
-                        <div className="mt-2 text-xs text-slate-500 dark:text-slate-400">
-                          成员：{(ds.partial_member_list || []).slice(0, 6).join(', ')}
-                          {(ds.partial_member_list || []).length > 6 ? ' ...' : ''}
-                        </div>
-                      )}
+
+                      <div className="mt-3 flex items-center gap-4 text-xs font-mono text-slate-600">
+                        {ds.permission === 'partial_members' && (ds.partial_member_list || []).length > 0 && (
+                          <span className="flex items-center gap-1.5">
+                            <span className="w-1 h-1 rounded-full bg-cyan-500/50" />
+                            MEMBERS: {(ds.partial_member_list || []).length}
+                          </span>
+                        )}
+                        <span className="text-slate-700">ID: {ds.id.slice(0, 8)}</span>
+                      </div>
                     </div>
 
-                    <div className="flex items-center gap-2 flex-shrink-0">
-                      <Button variant="outline" size="sm" className="gap-2" onClick={() => openEdit(ds)}>
-                        <Pencil className="w-4 h-4" />
+                    <div className="flex items-center gap-2 flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity translate-x-4 group-hover:translate-x-0 duration-300">
+                      <Button variant="outline" size="sm" className="gap-2 border-slate-700 bg-transparent text-slate-400 hover:text-white hover:bg-white/5" onClick={() => openEdit(ds)}>
+                        <Pencil className="w-3.5 h-3.5" />
                         编辑
                       </Button>
-                      <Button variant="destructive" size="sm" className="gap-2" onClick={() => handleDelete(ds)}>
-                        <Trash2 className="w-4 h-4" />
+                      <Button variant="destructive" size="sm" className="gap-2 bg-red-500/10 border border-red-500/20 text-red-400 hover:bg-red-500/20" onClick={() => handleDelete(ds)}>
+                        <Trash2 className="w-3.5 h-3.5" />
                         删除
                       </Button>
                     </div>
@@ -303,17 +319,17 @@ export default function DatasetsPage() {
             resetForm()
           }
         }}>
-          <DialogContent className="max-w-xl">
+          <DialogContent className="max-w-xl border-cyan-500/20 bg-slate-950/95 backdrop-blur-xl shadow-2xl sm:rounded-2xl">
             <DialogHeader>
-              <DialogTitle>编辑数据集</DialogTitle>
-              <DialogDescription>更新名称、描述与访问权限</DialogDescription>
+              <DialogTitle className="text-xl font-bold text-white">编辑数据集</DialogTitle>
+              <DialogDescription className="text-slate-400">更新名称、描述与访问权限</DialogDescription>
             </DialogHeader>
 
             <DatasetForm form={form} setForm={setForm} />
 
-            <DialogFooter>
-              <Button variant="outline" onClick={() => setEditOpen(false)}>取消</Button>
-              <Button onClick={handleUpdate} disabled={!canSubmit || !editing}>保存</Button>
+            <DialogFooter className="mt-4">
+              <Button variant="ghost" onClick={() => setEditOpen(false)} className="text-slate-400 hover:text-white hover:bg-white/5">取消</Button>
+              <Button onClick={handleUpdate} disabled={!canSubmit || !editing} className="bg-cyan-600 hover:bg-cyan-500 text-white">保存变更</Button>
             </DialogFooter>
           </DialogContent>
         </Dialog>
@@ -330,35 +346,36 @@ function DatasetForm({
   setForm: (next: DatasetFormState) => void
 }) {
   return (
-    <div className="grid gap-4">
+    <div className="grid gap-5">
       <div className="grid gap-2">
-        <Label htmlFor="ds-name">名称</Label>
+        <Label htmlFor="ds-name" className="text-slate-300">名称</Label>
         <Input
           id="ds-name"
           value={form.name}
           onChange={(e) => setForm({ ...form, name: e.target.value })}
           placeholder="例如：产品文档 / 技术周报 / 合同资料"
+          className="bg-slate-900/50 border-slate-800 focus:border-cyan-500/50 focus:ring-cyan-500/20 text-slate-200 placeholder:text-slate-600"
         />
       </div>
 
       <div className="grid gap-2">
-        <Label htmlFor="ds-desc">描述（可选）</Label>
+        <Label htmlFor="ds-desc" className="text-slate-300">描述（可选）</Label>
         <Textarea
           id="ds-desc"
           value={form.description}
           onChange={(e) => setForm({ ...form, description: e.target.value })}
           placeholder="用于说明该数据集包含哪些文档、用途是什么..."
-          className="min-h-[96px]"
+          className="min-h-[96px] bg-slate-900/50 border-slate-800 focus:border-cyan-500/50 focus:ring-cyan-500/20 text-slate-200 placeholder:text-slate-600 resize-none"
         />
       </div>
 
       <div className="grid gap-2">
-        <Label>权限</Label>
+        <Label className="text-slate-300">权限</Label>
         <Select value={form.permission} onValueChange={(v) => setForm({ ...form, permission: v as PermissionEnum })}>
-          <SelectTrigger>
+          <SelectTrigger className="bg-slate-900/50 border-slate-800 text-slate-200">
             <SelectValue placeholder="选择权限" />
           </SelectTrigger>
-          <SelectContent>
+          <SelectContent className="bg-slate-900 border-slate-800 text-slate-200">
             <SelectItem value="all_team_members">全员可见</SelectItem>
             <SelectItem value="only_me">仅自己</SelectItem>
             <SelectItem value="partial_members">部分成员</SelectItem>
@@ -368,33 +385,33 @@ function DatasetForm({
 
       {form.permission === 'partial_members' && (
         <div className="grid gap-2">
-          <Label htmlFor="ds-members">成员列表（account_id，一行一个或逗号分隔）</Label>
+          <Label htmlFor="ds-members" className="text-slate-300">成员列表（account_id，一行一个或逗号分隔）</Label>
           <Textarea
             id="ds-members"
             value={form.partialMembersText}
             onChange={(e) => setForm({ ...form, partialMembersText: e.target.value })}
             placeholder="user_1\nuser_2"
-            className="min-h-[96px]"
+            className="min-h-[96px] bg-slate-900/50 border-slate-800 text-slate-200 font-mono text-sm"
           />
         </div>
       )}
 
-      <div className="border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden">
-        <div className="px-4 py-3 bg-slate-50 dark:bg-slate-900/40 border-b border-slate-200 dark:border-slate-800 flex items-start gap-3">
+      <div className="border border-slate-800 rounded-xl overflow-hidden bg-slate-900/30">
+        <div className="px-4 py-3 bg-slate-900/50 border-b border-slate-800 flex items-start gap-3">
           <Checkbox
             checked={form.pipelineEnabled}
             onCheckedChange={(v) => setForm({ ...form, pipelineEnabled: v === true })}
-            className="mt-1"
+            className="mt-1 border-slate-600 data-[state=checked]:bg-cyan-600 data-[state=checked]:border-cyan-600"
           />
           <div className="min-w-0">
-            <div className="text-sm font-semibold text-slate-900 dark:text-slate-100">数据集默认管线</div>
-            <div className="text-xs text-slate-500 dark:text-slate-400 mt-1 leading-relaxed">
+            <div className="text-sm font-bold text-slate-200">数据集默认管线</div>
+            <div className="text-xs text-slate-500 mt-1 leading-relaxed">
               启用后，该数据集下的文档默认使用此治理/索引配置；上传文档时的“文档级配置”仍可覆盖。
             </div>
           </div>
         </div>
         {form.pipelineEnabled && (
-          <div className="p-4 bg-white dark:bg-slate-950">
+          <div className="p-4 bg-slate-950/50">
             <PipelineOptionsPanel
               compact={true}
               hideEnabledToggle={true}
