@@ -23,6 +23,7 @@ x-backend-env: &backend_env
   MINIO_SECRET_KEY: ${MINIO_SECRET_KEY_DOCKER:-minioadmin}
   MINIO_BUCKET_NAME: ${MINIO_BUCKET_NAME_DOCKER:-mimirq}
   MINIO_USE_SSL: ${MINIO_USE_SSL_DOCKER:-false}
+  MINIO_DOCUMENTS_ENABLED: ${MINIO_DOCUMENTS_ENABLED_DOCKER:-true}
   # CORS (frontend)
   CORS_ORIGINS: ${CORS_ORIGINS_DOCKER:-http://localhost:3000,http://localhost:3001}
   # Task queue

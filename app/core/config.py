@@ -47,6 +47,8 @@ class Settings(BaseSettings):
     MINIO_METRICS_LOG_PATH: str = "./logs/minio_metrics.jsonl"
     # 0 disables. Used when uploading extracted images to MinIO to avoid huge payloads.
     MINIO_IMAGE_MAX_BYTES: int = 0
+    # Store uploaded document source files in MinIO (recommended for enterprise deployments / multi-instance).
+    MINIO_DOCUMENTS_ENABLED: bool = False
 
     # Task Queue / Redis (ingest throughput optimization)
     # - Task queue is off by default: keeps API compatibility; when enabled,
