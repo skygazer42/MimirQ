@@ -429,6 +429,62 @@ export const documentApi = {
   },
 }
 
+// ==================== Parsing Workspace API ====================
+
+export interface ParsingContentResponse {
+  document_id: string
+  parser_backend: string
+  markdown_content: string
+  original_markdown_content: string
+}
+
+export interface ParsingContentUpdateRequest {
+  markdown_content: string
+  original_markdown_content?: string | null
+}
+
+export const parsingApi = {
+  async listDocuments(params?: { skip?: number; limit?: number; status?: string }): Promise<{ total: number; items: Document[] }> {
+    const { data } = await apiClient.get('/parsing/documents', { params })
+    return data
+  },
+
+  async upload(file: File, options?: { parser_backend?: string }): Promise<Document> {
+    const formData = new FormData()
+    formData.append('file', file)
+    formData.append('parser_backend', (options?.parser_backend || 'auto').toString())
+    const { data } = await apiClient.post('/parsing/documents', formData)
+    return data
+  },
+
+  async parse(documentId: string, options?: { parser_backend?: string; signal?: AbortSignal }): Promise<ParsingContentResponse> {
+    const { data } = await apiClient.post(
+      `/parsing/documents/${documentId}/parse`,
+      null,
+      {
+        timeout: API_LONG_TIMEOUT_MS,
+        signal: options?.signal,
+        params: options?.parser_backend ? { parser_backend: options.parser_backend } : undefined,
+      }
+    )
+    return data
+  },
+
+  async getContent(documentId: string): Promise<ParsingContentResponse> {
+    const { data } = await apiClient.get(`/parsing/documents/${documentId}/content`)
+    return data
+  },
+
+  async updateContent(documentId: string, payload: ParsingContentUpdateRequest): Promise<ParsingContentResponse> {
+    const { data } = await apiClient.patch(`/parsing/documents/${documentId}/content`, payload)
+    return data
+  },
+
+  async delete(documentId: string): Promise<void> {
+    await apiClient.delete(`/parsing/documents/${documentId}`)
+  },
+}
+
 // ==================== Auth API ====================
 
 export const authApi = {

@@ -63,11 +63,12 @@ import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
 import { ROOT_FOLDER_ID, useParsedFiles } from '@/store/use-parsed-files-store'
 import { cn, formatFileSize } from '@/lib/utils'
+import { getDocContentFromCache } from '@/lib/doc-content-cache'
 import { QualityChecker } from '@/components/data-governance/quality-checker'
 import { DataCleaner } from '@/components/data-governance/data-cleaner'
 import { DataAnnotator } from '@/components/data-governance/data-annotator'
 import { DataClassifier } from '@/components/data-governance/data-classifier'
-import { documentApi } from '@/lib/api-client'
+import { documentApi, parsingApi } from '@/lib/api-client'
 import { useParserBackendPreference } from '@/contexts/parser-backend-context'
 import { MarkdownRenderer } from '@/components/markdown/markdown-renderer'
 import { MarkdownToc } from '@/components/markdown/markdown-toc'
@@ -267,7 +268,22 @@ export function DataGovernancePanel() {
     const originalContent = file.originalMarkdownContent ?? file.markdownContent
     const cleanedContent = file.markdownContent
     setGovernanceStates((prev) => {
-      if (prev[file.id]) return prev
+      const existing = prev[file.id]
+      if (existing) {
+        // If we initialized with empty content (e.g., after refresh), backfill once content is loaded.
+        const hasAnyExistingContent = Boolean((existing.originalContent || '').trim() || (existing.cleanedContent || '').trim())
+        const hasIncomingContent = Boolean(originalContent.trim() || cleanedContent.trim())
+        if (hasAnyExistingContent || !hasIncomingContent) return prev
+        return {
+          ...prev,
+          [file.id]: {
+            ...existing,
+            originalContent,
+            cleanedContent,
+            isModified: cleanedContent !== originalContent,
+          },
+        }
+      }
       return {
         ...prev,
         [file.id]: {
@@ -285,6 +301,54 @@ export function DataGovernancePanel() {
     })
   }, [])
 
+  // Ensure markdown is available after refresh: load from IndexedDB cache first, fallback to backend.
+  useEffect(() => {
+    const file = selectedFile
+    const id = (file?.id || '').trim()
+    if (!id) return
+    if ((file?.markdownContent || '').trim()) {
+      initializeGovernanceState(file as any)
+      return
+    }
+
+    let cancelled = false
+    ;(async () => {
+      try {
+        const cached = await getDocContentFromCache(id)
+        if (cancelled) return
+        const markdown = (cached?.markdownContent || '').trim()
+        const original = (cached?.originalMarkdownContent || '').trim()
+        if (markdown || original) {
+          const nextMarkdown = markdown || original
+          const nextOriginal = original || markdown
+          updateParsedFile(id, { markdownContent: nextMarkdown, originalMarkdownContent: nextOriginal })
+          initializeGovernanceState({ id, markdownContent: nextMarkdown, originalMarkdownContent: nextOriginal })
+          return
+        }
+      } catch {
+        // ignore
+      }
+
+      try {
+        const remote = await parsingApi.getContent(id)
+        if (cancelled) return
+        const markdown = (remote?.markdown_content || '').trim()
+        const original = (remote?.original_markdown_content || '').trim()
+        if (!markdown && !original) return
+        const nextMarkdown = markdown || original
+        const nextOriginal = original || markdown
+        updateParsedFile(id, { markdownContent: nextMarkdown, originalMarkdownContent: nextOriginal })
+        initializeGovernanceState({ id, markdownContent: nextMarkdown, originalMarkdownContent: nextOriginal })
+      } catch {
+        // ignore
+      }
+    })()
+
+    return () => {
+      cancelled = true
+    }
+  }, [initializeGovernanceState, selectedFile, updateParsedFile])
+
   const handleDeleteFile = useCallback(
     (fileId: string) => {
       const target = files.find((f) => f.id === fileId)
@@ -292,6 +356,14 @@ export function DataGovernancePanel() {
 
       const ok = window.confirm(`删除文件 “${target.filename}” ？`)
       if (!ok) return
+
+      void (async () => {
+        try {
+          await parsingApi.delete(fileId)
+        } catch {
+          // ignore: some entries may be local-only or already deleted on the backend
+        }
+      })()
 
       removeFile(fileId)
       setGovernanceStates((prev) => {
