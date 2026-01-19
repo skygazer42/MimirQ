@@ -1369,7 +1369,7 @@ export default function ParsingPage() {
                 {/* File List */}
                 <div className="flex-1 overflow-y-auto p-2 custom-scrollbar bg-white">
                   <div className="min-h-full rounded-2xl border border-slate-200/70 bg-white p-2">
-                    {directFolders.length === 0 && visibleQueueFiles.length === 0 ? (
+                    {directFolders.length === 0 && visibleQueueFiles.length === 0 && visibleLibraryOnlyFiles.length === 0 ? (
                       <div className="h-full flex flex-col items-center justify-center text-slate-400">
                         <div className="w-14 h-14 bg-gradient-to-br from-slate-100/70 to-white rounded-2xl flex items-center justify-center mb-3 shadow-sm">
                           <FolderOpen className="w-6 h-6 text-slate-300" />
