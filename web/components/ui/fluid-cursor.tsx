@@ -8,7 +8,7 @@ export function FluidCursor() {
   const [variant, setVariant] = useState<"default" | "pointer" | "text" | "hidden">("default")
   const cursorX = useMotionValue(-100)
   const cursorY = useMotionValue(-100)
-  
+
   const springConfig = { damping: 25, stiffness: 700 }
   const cursorXSpring = useSpring(cursorX, springConfig)
   const cursorYSpring = useSpring(cursorY, springConfig)
@@ -18,7 +18,7 @@ export function FluidCursor() {
   useEffect(() => {
     // Hide default cursor
     document.body.style.cursor = 'none'
-    
+
     // Add class to body to indicate custom cursor active
     document.body.classList.add('custom-cursor')
 
@@ -28,22 +28,22 @@ export function FluidCursor() {
     }
 
     const checkHover = (e: MouseEvent) => {
-        const target = e.target as HTMLElement
-        
-        // Check for buttons/links
-        const isClickable = target.closest('button') || target.closest('a') || target.closest('[role="button"]')
-        // Check for inputs/textareas
-        const isInput = target.closest('input') || target.closest('textarea') || target.closest('[contenteditable="true"]')
-        
-        if (isInput) {
-            setVariant("text")
-        } else if (isClickable) {
-            setVariant("pointer")
-        } else {
-            setVariant("default")
-        }
+      const target = e.target as HTMLElement
+
+      // Check for buttons/links
+      const isClickable = target.closest('button') || target.closest('a') || target.closest('[role="button"]')
+      // Check for inputs/textareas
+      const isInput = target.closest('input') || target.closest('textarea') || target.closest('[contenteditable="true"]')
+
+      if (isInput) {
+        setVariant("text")
+      } else if (isClickable) {
+        setVariant("pointer")
+      } else {
+        setVariant("default")
+      }
     }
-    
+
     const handleMouseLeave = () => setVariant("hidden")
     const handleMouseEnter = () => setVariant("default")
 
@@ -60,7 +60,7 @@ export function FluidCursor() {
       document.body.style.cursor = 'auto'
       document.body.classList.remove('custom-cursor')
     }
-  }, [pathname]) // Re-run on route change to ensure clean state
+  }, [pathname, cursorX, cursorY]) // Re-run on route change to ensure clean state
 
   // Variants for Framer Motion
   const variants = {
@@ -91,16 +91,16 @@ export function FluidCursor() {
       mixBlendMode: "difference" as const,
     },
     hidden: {
-        opacity: 0
+      opacity: 0
     }
   }
 
   // Only render on desktop to avoid issues on touch devices
   const [isDesktop, setIsDesktop] = useState(false)
   useEffect(() => {
-      if (window.matchMedia("(pointer: fine)").matches) {
-          setIsDesktop(true)
-      }
+    if (window.matchMedia("(pointer: fine)").matches) {
+      setIsDesktop(true)
+    }
   }, [])
 
   if (!isDesktop) return null
