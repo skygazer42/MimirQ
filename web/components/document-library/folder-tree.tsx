@@ -32,7 +32,7 @@ type FolderDialogState =
 export function getFileIcon(filename: string, className?: string) {
   const ext = filename.split('.').pop()?.toLowerCase() || ''
   const isLarge = className?.includes('w-12')
-  
+
   // Color & Label Mapping
   let tone: 'slate' | 'red' | 'blue' | 'emerald' | 'amber' | 'rose' | 'sky' | 'teal' = 'slate'
   let label = ext.toUpperCase().slice(0, 3)
@@ -107,38 +107,38 @@ export function getFileIcon(filename: string, className?: string) {
     <div className={cn("relative flex items-center justify-center transition-transform hover:scale-105", className)}>
       {/* Paper Container */}
       <div className="relative w-9 h-11 bg-white rounded-sm shadow-sm border border-slate-200 overflow-hidden flex flex-col">
-        
+
         {/* Top Color Band / Header */}
         <div className={cn("h-3 w-full bg-gradient-to-r opacity-85", paperBand[tone] || paperBand.slate)} />
-        
+
         {/* Corner Fold Effect (CSS Triangle) */}
         <div className="absolute top-0 right-0 border-t-[8px] border-r-[8px] border-t-black/5 border-r-white/0" />
 
         {/* Content */}
         <div className="flex-1 flex items-center justify-center bg-slate-50/30">
-           {['W', 'X', 'P'].includes(label) ? (
-             <span className={cn("font-serif font-black text-lg leading-none", textTone[tone])}>
-               {label}
-             </span>
-           ) : ['PDF', 'TXT', 'ZIP', 'IMG'].includes(label) ? (
-             <span
-               className={cn(
-                 "font-bold text-[9px] tracking-tighter leading-none border-2 rounded px-0.5",
-                 textTone[tone],
-                 badgeBorder[tone] || badgeBorder.slate
-               )}
-             >
-               {label}
-             </span>
-           ) : (
-             <Icon className={cn("w-5 h-5", textTone[tone])} />
-           )}
+          {['W', 'X', 'P'].includes(label) ? (
+            <span className={cn("font-serif font-black text-lg leading-none", textTone[tone])}>
+              {label}
+            </span>
+          ) : ['PDF', 'TXT', 'ZIP', 'IMG'].includes(label) ? (
+            <span
+              className={cn(
+                "font-bold text-[9px] tracking-tighter leading-none border-2 rounded px-0.5",
+                textTone[tone],
+                badgeBorder[tone] || badgeBorder.slate
+              )}
+            >
+              {label}
+            </span>
+          ) : (
+            <Icon className={cn("w-5 h-5", textTone[tone])} />
+          )}
         </div>
 
         {/* Faux Text Lines (Decorative) */}
         <div className="mb-1.5 px-1.5 space-y-0.5 opacity-20">
-           <div className="h-0.5 w-full bg-slate-400 rounded-full" />
-           <div className="h-0.5 w-2/3 bg-slate-400 rounded-full" />
+          <div className="h-0.5 w-full bg-slate-400 rounded-full" />
+          <div className="h-0.5 w-2/3 bg-slate-400 rounded-full" />
         </div>
       </div>
     </div>
@@ -147,12 +147,12 @@ export function getFileIcon(filename: string, className?: string) {
 
 function getFolderIconElement(depth: number, isOpen: boolean) {
   const className = "w-4 h-4 flex-shrink-0"
-  
+
   // Root (Depth 0) - handled separately usually, but if passed 0:
   if (depth === 0) {
     return <Library className={cn(className, "text-slate-500")} />
   }
-  
+
   // Level 1 (Top categories)
   if (depth === 1) {
     return <Package className={cn(className, "text-slate-500")} />
@@ -160,15 +160,15 @@ function getFolderIconElement(depth: number, isOpen: boolean) {
 
   // Level 2 (Sub-categories)
   if (depth === 2) {
-    return isOpen 
+    return isOpen
       ? <FolderOpen className={cn(className, "text-slate-500")} />
       : <Folder className={cn(className, "text-slate-500")} />
   }
-  
+
   // Deep levels
   const color = "text-slate-500"
-  
-  return isOpen 
+
+  return isOpen
     ? <FolderOpen className={cn(className, color)} />
     : <Folder className={cn(className, color)} />
 }
@@ -449,9 +449,9 @@ export function DocumentFolderTree({
       const isActive = activeFolderId === folder.id
       const count = directCountByFolderId[folder.id] || 0
       const children = childrenByParentId.get(folder.id) || []
-      
-      const isExpanded = 
-        showFiles === 'all' 
+
+      const isExpanded =
+        showFiles === 'all'
         || (showFiles === 'active' && isActive)
         || (showFiles === 'expanded' && expandedFileFolderIds.has(folder.id))
 
@@ -529,8 +529,8 @@ export function DocumentFolderTree({
           <div
             className={cn(
               'group relative flex items-center gap-2 rounded-xl px-3 py-2 transition-all',
-              isActive ? 'bg-white shadow-sm ring-1 ring-amber-100 text-stone-900' : 'bg-white/70 hover:bg-white hover:shadow-sm text-stone-700',
-              dragOverId === folder.id && 'bg-amber-50/70 ring-1 ring-amber-200'
+              isActive ? 'bg-white shadow-sm ring-1 ring-sky-100 text-slate-900' : 'bg-white/70 hover:bg-white hover:shadow-sm text-slate-700',
+              dragOverId === folder.id && 'bg-sky-50/70 ring-1 ring-sky-200'
             )}
             draggable
             onDragStart={(e) => {
@@ -615,7 +615,7 @@ export function DocumentFolderTree({
             >
               {getFolderIconElement(depth, isActive)}
               <span className="text-sm truncate">{folder.name}</span>
-              <span className="ml-auto text-[10px] text-stone-500 bg-amber-100/70 px-2 py-0.5 rounded-full opacity-0 group-hover:opacity-100 transition-opacity">
+              <span className="ml-auto text-[10px] text-slate-500 bg-sky-100/70 px-2 py-0.5 rounded-full opacity-0 group-hover:opacity-100 transition-opacity">
                 {count}
               </span>
             </button>
@@ -626,7 +626,7 @@ export function DocumentFolderTree({
                   <Button
                     variant="ghost"
                     size="icon"
-                    className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity text-stone-500 hover:text-amber-700 hover:bg-amber-50 rounded-md"
+                    className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity text-slate-400 hover:text-sky-700 hover:bg-sky-50 rounded-md"
                     aria-label="Add content"
                     onClick={(e) => e.stopPropagation()}
                   >
@@ -641,7 +641,7 @@ export function DocumentFolderTree({
                       onRequestUpload(folder.id)
                     }}
                   >
-                    <Paperclip className="w-4 h-4 mr-2 text-amber-700" />
+                    <Paperclip className="w-4 h-4 mr-2 text-sky-700" />
                     上传文件
                   </DropdownMenuItem>
                   {onRequestUploadFolder && (
@@ -652,16 +652,16 @@ export function DocumentFolderTree({
                         onRequestUploadFolder(folder.id)
                       }}
                     >
-                      <FolderUp className="w-4 h-4 mr-2 text-amber-600" />
+                      <FolderUp className="w-4 h-4 mr-2 text-sky-600" />
                       上传文件夹
                     </DropdownMenuItem>
                   )}
                   <DropdownMenuItem className="py-2" onClick={() => openCreate(folder.id)}>
-                    <Folder className="w-4 h-4 mr-2 text-amber-600" />
+                    <Folder className="w-4 h-4 mr-2 text-sky-600" />
                     新建文件夹
                   </DropdownMenuItem>
                   <DropdownMenuItem className="py-2" onClick={() => openMove(folder)}>
-                    <ArrowRightLeft className="w-4 h-4 mr-2 text-stone-600" />
+                    <ArrowRightLeft className="w-4 h-4 mr-2 text-slate-600" />
                     移动目录
                   </DropdownMenuItem>
                 </DropdownMenuContent>
@@ -673,7 +673,7 @@ export function DocumentFolderTree({
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="h-7 w-7 opacity-0 group-hover:opacity-100 transition-opacity text-stone-500 hover:text-stone-900 hover:bg-amber-100/70 rounded-lg"
+                  className="h-7 w-7 opacity-0 group-hover:opacity-100 transition-opacity text-slate-400 hover:text-slate-900 hover:bg-sky-100/70 rounded-lg"
                   aria-label="Folder actions"
                 >
                   <MoreHorizontal className="w-4 h-4" />
@@ -747,7 +747,7 @@ export function DocumentFolderTree({
                     >
                       {getFileIcon(f.name)}
                       <span className="truncate flex-1">{f.name}</span>
-                      
+
                       {f.status === 'parsing' ? (
                         <div className="w-16 h-1.5 bg-amber-100 rounded-full overflow-hidden ml-2 flex-shrink-0">
                           <div className="h-full bg-amber-500 animate-[progress_1s_ease-in-out_infinite] w-full origin-left scale-x-50" />
@@ -803,11 +803,11 @@ export function DocumentFolderTree({
   return (
     <div className={cn('flex flex-col', className)} ref={scrollContainerRef}>
       <div className="flex items-center justify-between mb-2 group">
-        <div className="text-xs font-semibold text-stone-500 uppercase tracking-wider pl-1">文档库</div>
+        <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider pl-1">文档库</div>
         <Button
           variant="ghost"
           size="icon"
-          className="h-7 w-7 opacity-0 group-hover:opacity-100 transition-opacity text-stone-500 hover:text-amber-700 hover:bg-amber-50 rounded-lg"
+          className="h-7 w-7 opacity-0 group-hover:opacity-100 transition-opacity text-slate-400 hover:text-sky-700 hover:bg-sky-50 rounded-lg"
           title="新建根目录文件夹"
           onClick={() => openCreate(ROOT_FOLDER_ID)}
         >
@@ -820,9 +820,9 @@ export function DocumentFolderTree({
           className={cn(
             'group relative flex items-center gap-2 rounded-xl px-3 py-2 transition-all',
             activeFolderId === ROOT_FOLDER_ID
-              ? 'bg-white shadow-sm ring-1 ring-amber-100 text-stone-900'
-              : 'bg-white/70 hover:bg-white hover:shadow-sm text-stone-700',
-            dragOverId === ROOT_FOLDER_ID && 'bg-amber-50/70 ring-1 ring-amber-200'
+              ? 'bg-white shadow-sm ring-1 ring-sky-100 text-slate-900'
+              : 'bg-white/70 hover:bg-white hover:shadow-sm text-slate-700',
+            dragOverId === ROOT_FOLDER_ID && 'bg-sky-50/70 ring-1 ring-sky-200'
           )}
           onDragOver={(e) => {
             e.preventDefault()
@@ -935,52 +935,52 @@ export function DocumentFolderTree({
           </button>
 
           {onRequestUpload && (
-             <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity text-stone-500 hover:text-amber-700 hover:bg-amber-50 rounded-md"
-                    aria-label="Upload to root folder"
-                    onClick={(e) => e.stopPropagation()}
-                  >
-                    <Plus className="w-4 h-4" />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="start" className="w-48 p-1">
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity text-stone-500 hover:text-amber-700 hover:bg-amber-50 rounded-md"
+                  aria-label="Upload to root folder"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <Plus className="w-4 h-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start" className="w-48 p-1">
+                <DropdownMenuItem
+                  className="py-2"
+                  onClick={() => {
+                    setActiveFolderId(ROOT_FOLDER_ID)
+                    onRequestUpload(ROOT_FOLDER_ID)
+                  }}
+                >
+                  <Paperclip className="w-4 h-4 mr-2 text-amber-700" />
+                  上传文件
+                </DropdownMenuItem>
+                {onRequestUploadFolder && (
                   <DropdownMenuItem
                     className="py-2"
                     onClick={() => {
                       setActiveFolderId(ROOT_FOLDER_ID)
-                      onRequestUpload(ROOT_FOLDER_ID)
+                      onRequestUploadFolder(ROOT_FOLDER_ID)
                     }}
                   >
-                    <Paperclip className="w-4 h-4 mr-2 text-amber-700" />
-                    上传文件
+                    <FolderUp className="w-4 h-4 mr-2 text-amber-600" />
+                    上传文件夹
                   </DropdownMenuItem>
-                  {onRequestUploadFolder && (
-                    <DropdownMenuItem
-                      className="py-2"
-                      onClick={() => {
-                        setActiveFolderId(ROOT_FOLDER_ID)
-                        onRequestUploadFolder(ROOT_FOLDER_ID)
-                      }}
-                    >
-                      <FolderUp className="w-4 h-4 mr-2 text-amber-600" />
-                      上传文件夹
-                    </DropdownMenuItem>
-                  )}
-                  <DropdownMenuItem className="py-2" onClick={() => openCreate(ROOT_FOLDER_ID)}>
-                    <Folder className="w-4 h-4 mr-2 text-amber-600" />
-                    新建文件夹
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
+                )}
+                <DropdownMenuItem className="py-2" onClick={() => openCreate(ROOT_FOLDER_ID)}>
+                  <Folder className="w-4 h-4 mr-2 text-amber-600" />
+                  新建文件夹
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           )}
         </div>
 
         {(showFiles === 'all' || (showFiles === 'active' && activeFolderId === ROOT_FOLDER_ID) || (showFiles === 'expanded' && expandedFileFolderIds.has(ROOT_FOLDER_ID))) && (rootDirectFiles.length > 0 || rootChildren.length > 0) && (
-          <div className="ml-3 pl-2 border-l border-amber-100/70">
+          <div className="ml-3 pl-2 border-l border-sky-100/70">
             {rootDirectFiles.length > 0 && (
               <div className="space-y-0.5">
                 {rootDirectFiles.map((f) => (
@@ -988,9 +988,9 @@ export function DocumentFolderTree({
                     key={f.id}
                     type="button"
                     className={cn(
-                      'w-full flex items-center gap-2 rounded-lg py-1.5 px-2 text-left text-stone-600 hover:bg-amber-50/70 text-sm',
+                      'w-full flex items-center gap-2 rounded-lg py-1.5 px-2 text-left text-slate-600 hover:bg-sky-50/70 text-sm',
                       f.status === 'error' && 'bg-red-50 hover:bg-red-100 text-red-700',
-                      f.status === 'parsing' && 'bg-amber-50/50'
+                      f.status === 'parsing' && 'bg-sky-50/50'
                     )}
                     title={f.error || (f.sourcePath ? `${f.name} · ${f.sourcePath}` : f.name)}
                     onClick={() => {
@@ -1002,12 +1002,12 @@ export function DocumentFolderTree({
                     <span className="truncate flex-1">{f.name}</span>
 
                     {f.status === 'parsing' ? (
-                      <div className="w-16 h-1.5 bg-amber-100 rounded-full overflow-hidden ml-2 flex-shrink-0">
-                        <div className="h-full bg-amber-500 animate-[progress_1s_ease-in-out_infinite] w-full origin-left scale-x-50" />
+                      <div className="w-16 h-1.5 bg-sky-100 rounded-full overflow-hidden ml-2 flex-shrink-0">
+                        <div className="h-full bg-sky-500 animate-[progress_1s_ease-in-out_infinite] w-full origin-left scale-x-50" />
                       </div>
                     ) : (
                       <>
-                        {f.status === 'pending' && <div className="w-1.5 h-1.5 rounded-full bg-stone-300 ml-2" />}
+                        {f.status === 'pending' && <div className="w-1.5 h-1.5 rounded-full bg-slate-200 ml-2" />}
                         {f.status === 'error' && <AlertCircle className="w-3.5 h-3.5 text-red-500 ml-2" />}
                       </>
                     )}
