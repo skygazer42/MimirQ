@@ -179,9 +179,9 @@ export default function DatasetsPage() {
   }
 
   return (
-    <div className="flex min-h-screen overflow-hidden bg-background font-sans selection:bg-cyan-500/20 selection:text-cyan-400">
-      {/* Cyber Archive Ambient Background */}
-      <div className="fixed inset-0 z-0 pointer-events-none bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-slate-900 via-slate-950 to-black" />
+    <div className="flex min-h-screen overflow-hidden bg-slate-50 font-sans selection:bg-cyan-500/20 selection:text-cyan-600">
+      {/* Light Ambient Background */}
+      <div className="fixed inset-0 z-0 pointer-events-none bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-white via-slate-50 to-slate-100" />
       <div className="fixed inset-0 z-0 pointer-events-none">
         <div className="absolute top-[-10%] right-[-10%] w-[800px] h-[800px] bg-cyan-500/5 rounded-full blur-[100px] animate-pulse-subtle" />
         <div className="absolute bottom-[-10%] left-[-10%] w-[600px] h-[600px] bg-blue-600/5 rounded-full blur-[120px] animate-pulse-subtle" style={{ animationDelay: '2s' }} />
@@ -246,7 +246,7 @@ export default function DatasetsPage() {
 
         <section className="flex-1 overflow-y-auto px-8 pb-8 custom-scrollbar">
           {/* Light Panel Container */}
-          <div className="bg-white backdrop-blur-md border border-slate-200 rounded-3xl overflow-hidden shadow-lg min-h-[500px] flex flex-col">
+          <div className="bg-white border border-slate-200 rounded-3xl overflow-hidden shadow-sm min-h-[500px] flex flex-col">
             <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
               <div className="text-xs font-bold text-slate-500 uppercase tracking-wider">Dataset Registry</div>
               {isLoading && (

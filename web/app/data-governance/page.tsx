@@ -18,7 +18,7 @@ const DataGovernancePanel = dynamic(
 
 export default function DataGovernancePage() {
   return (
-    <div className="flex h-screen overflow-hidden bg-slate-950 font-sans selection:bg-cyan-500/20 selection:text-cyan-400">
+    <div className="flex h-screen overflow-hidden bg-white font-sans selection:bg-cyan-500/20 selection:text-cyan-600">
       {/* Ambient Background */}
       <div className="fixed inset-0 z-0 pointer-events-none">
         <div className="absolute top-[-20%] left-[-10%] w-[800px] h-[800px] bg-cyan-500/5 rounded-full blur-[120px] animate-pulse-subtle" />

@@ -840,15 +840,15 @@ export function DataGovernancePanel() {
 
           <div className={cn("flex-1 flex flex-col min-h-0 w-full overflow-hidden", isSidebarCollapsed && "invisible")}>
             {/* 目录切换 & 搜索 */}
-            <div className="p-3 border-b border-white/5 space-y-3">
+            <div className="p-3 border-b border-slate-100 space-y-3">
               <Select value={activeFolderId || ROOT_FOLDER_ID} onValueChange={setActiveFolderId}>
-                <SelectTrigger className="h-9 text-xs bg-white/5 border-white/5 text-slate-300 focus:ring-sky-500/50 focus:bg-white/10">
+                <SelectTrigger className="h-9 text-xs bg-slate-50 border-slate-200 text-slate-700 focus:ring-sky-500/50 focus:bg-white transition-all">
                   <div className="flex items-center gap-2 truncate">
-                    <FolderTree className="w-3.5 h-3.5 text-sky-500" />
+                    <FolderTree className="w-3.5 h-3.5 text-sky-600" />
                     <SelectValue placeholder="切换目录" />
                   </div>
                 </SelectTrigger>
-                <SelectContent className="bg-slate-900 border-white/10 text-slate-300">
+                <SelectContent className="bg-white border-slate-200 text-slate-700">
                   <SelectItem value={ROOT_FOLDER_ID}>根目录</SelectItem>
                   {libraryFolders.map(f => (
                     <SelectItem key={f.id} value={f.id}>
@@ -859,11 +859,11 @@ export function DataGovernancePanel() {
               </Select>
 
               <div className="relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-500" />
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
                 <input
                   type="text"
                   placeholder="搜索当前目录文件..."
-                  className="w-full pl-9 pr-3 py-1.5 text-xs bg-white/5 border border-transparent rounded-lg text-slate-300 placeholder:text-slate-600 focus:bg-white/10 focus:outline-none focus:ring-1 focus:ring-sky-500/50 focus:border-sky-500/50 transition-all"
+                  className="w-full pl-9 pr-3 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg text-slate-700 placeholder:text-slate-400 focus:bg-white focus:outline-none focus:ring-1 focus:ring-sky-500/50 focus:border-sky-500/50 transition-all"
                 />
               </div>
             </div>
