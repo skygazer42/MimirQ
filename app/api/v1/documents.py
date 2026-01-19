@@ -7,6 +7,7 @@ import hashlib
 import json
 import re
 import shutil
+import mimetypes
 from fastapi import APIRouter, Depends, UploadFile, File, HTTPException, BackgroundTasks, Form, Request
 from fastapi import Response
 from sqlalchemy.orm import Session, selectinload
@@ -1255,6 +1256,75 @@ async def get_document(
         setattr(document, "chunks_loaded", document.chunks)
 
     return document
+
+
+@router.get("/{document_id}/download")
+async def download_document(
+    document_id: uuid.UUID,
+    request: Request,
+    inline: bool = True,
+    db: Session = Depends(get_db),
+):
+    """
+    Download (or inline-preview) a document file.
+
+    This endpoint supports `?token=` and `?tenant_id=` query params to enable
+    usage in <iframe>/<a> tags where custom headers cannot be set.
+    """
+    tenant_id = _resolve_tenant_id_for_asset_request(request)
+    account_id = _resolve_account_id_for_asset_request(request)
+
+    # Best-effort permission check: allow anonymous in local/dev header mode.
+    if account_id:
+        DatasetService.ensure_member(db, tenant_id, account_id)
+
+    document = (
+        db.query(DBDocument)
+        .filter(DBDocument.id == document_id, DBDocument.tenant_id == tenant_id)
+        .first()
+    )
+    if not document:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    if document.dataset_id and account_id:
+        ds = DatasetService.get_dataset(db, tenant_id, document.dataset_id)
+        DatasetService.assert_dataset_readable(db, ds, account_id)
+
+    raw_path = str(document.file_path or "").strip()
+    if not raw_path or raw_path.startswith("manual://"):
+        raise HTTPException(status_code=404, detail="Document file not available")
+
+    path = Path(raw_path).resolve(strict=False)
+    if not path.exists() or not path.is_file():
+        raise HTTPException(status_code=404, detail="Document file not found")
+
+    # Prevent path traversal / unsafe paths in DB: only allow files under uploads/{tenant_id}/
+    upload_root = Path(settings.UPLOAD_DIR).resolve(strict=False)
+    tenant_root = (upload_root / str(tenant_id)).resolve(strict=False)
+    try:
+        path.relative_to(tenant_root)
+    except ValueError:
+        raise HTTPException(status_code=403, detail="Document file access denied")
+
+    media_type, _encoding = mimetypes.guess_type(path.name)
+    if not media_type:
+        media_type = "application/octet-stream"
+
+    # Avoid caching sensitive content; tokens may be embedded in URLs.
+    headers = {
+        "Cache-Control": "no-store",
+        "Pragma": "no-cache",
+        "Expires": "0",
+        "X-Content-Type-Options": "nosniff",
+    }
+
+    return FileResponse(
+        path,
+        media_type=media_type,
+        filename=document.filename,
+        content_disposition_type="inline" if inline else "attachment",
+        headers=headers,
+    )
 
 
 @router.get("/{document_id}/status", response_model=DocumentStatus)
