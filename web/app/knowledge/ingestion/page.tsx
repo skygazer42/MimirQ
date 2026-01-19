@@ -41,16 +41,16 @@ function StatusPill({ status }: { status: Document['status'] }) {
   const cfg = (() => {
     switch (status) {
       case 'completed':
-        return { icon: CheckCircle2, cls: 'bg-emerald-500/10 text-emerald-600 border-emerald-500/20' }
+        return { icon: CheckCircle2, cls: 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-500/20' }
       case 'failed':
-        return { icon: AlertCircle, cls: 'bg-red-500/10 text-red-600 border-red-500/20' }
+        return { icon: AlertCircle, cls: 'bg-red-500/10 text-red-700 dark:text-red-400 border-red-500/20' }
       case 'cancelled':
-        return { icon: AlertCircle, cls: 'bg-slate-500/10 text-slate-600 border-slate-500/20' }
+        return { icon: AlertCircle, cls: 'bg-slate-500/10 text-slate-700 dark:text-slate-300 border-slate-500/20' }
       case 'pending':
-        return { icon: Clock, cls: 'bg-sky-500/10 text-sky-600 border-sky-500/20' }
+        return { icon: Clock, cls: 'bg-sky-500/10 text-sky-700 dark:text-sky-400 border-sky-500/20' }
       case 'processing':
       default:
-        return { icon: Loader2, cls: 'bg-sky-500/10 text-sky-600 border-sky-500/20' }
+        return { icon: Loader2, cls: 'bg-sky-500/10 text-sky-700 dark:text-sky-400 border-sky-500/20' }
     }
   })()
 

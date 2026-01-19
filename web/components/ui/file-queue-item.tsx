@@ -19,13 +19,13 @@ const FILE_TYPE_CONFIG: Record<
   string,
   { icon: typeof FileText; color: string; bg: string }
 > = {
-  pdf: { icon: FileText, color: 'text-red-500', bg: 'bg-red-50' },
-  xlsx: { icon: FileSpreadsheet, color: 'text-green-600', bg: 'bg-green-50' },
-  xls: { icon: FileSpreadsheet, color: 'text-green-600', bg: 'bg-green-50' },
-  docx: { icon: FileType, color: 'text-blue-600', bg: 'bg-blue-50' },
-  doc: { icon: FileType, color: 'text-blue-600', bg: 'bg-blue-50' },
-  txt: { icon: File, color: 'text-gray-600', bg: 'bg-gray-50' },
-  md: { icon: FileText, color: 'text-purple-600', bg: 'bg-purple-50' },
+  pdf: { icon: FileText, color: 'text-red-600 dark:text-red-400', bg: 'bg-red-50 dark:bg-red-900/20' },
+  xlsx: { icon: FileSpreadsheet, color: 'text-emerald-700 dark:text-emerald-400', bg: 'bg-emerald-50 dark:bg-emerald-900/20' },
+  xls: { icon: FileSpreadsheet, color: 'text-emerald-700 dark:text-emerald-400', bg: 'bg-emerald-50 dark:bg-emerald-900/20' },
+  docx: { icon: FileType, color: 'text-blue-700 dark:text-blue-400', bg: 'bg-blue-50 dark:bg-blue-900/20' },
+  doc: { icon: FileType, color: 'text-blue-700 dark:text-blue-400', bg: 'bg-blue-50 dark:bg-blue-900/20' },
+  txt: { icon: File, color: 'text-slate-600 dark:text-slate-300', bg: 'bg-slate-50 dark:bg-slate-800/60' },
+  md: { icon: FileText, color: 'text-purple-700 dark:text-purple-300', bg: 'bg-purple-50 dark:bg-purple-900/20' },
 }
 
 export type FileStatus = 'pending' | 'parsing' | 'parsed' | 'error'
@@ -68,7 +68,7 @@ export function FileQueueItem({
     switch (file.status) {
       case 'pending':
         return (
-          <div className="flex items-center gap-1.5 text-xs text-gray-500">
+          <div className="flex items-center gap-1.5 text-xs text-slate-600 dark:text-slate-400">
             <Clock className="w-3 h-3" />
             <span>等待解析</span>
           </div>
@@ -76,14 +76,14 @@ export function FileQueueItem({
       case 'parsing':
         return (
           <div className="space-y-1.5">
-            <div className="flex items-center gap-1.5 text-xs text-blue-600">
+            <div className="flex items-center gap-1.5 text-xs text-sky-700 dark:text-sky-300">
               <Loader2 className="w-3 h-3 animate-spin" />
               <span>解析中 {file.progress ? `${file.progress}%` : ''}</span>
             </div>
             {file.progress !== undefined && (
-              <div className="w-full h-1.5 bg-gray-100 rounded-full overflow-hidden">
+              <div className="w-full h-1.5 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
                 <div
-                  className="h-full bg-blue-500 rounded-full transition-all duration-300"
+                  className="h-full bg-sky-500 rounded-full transition-all duration-300"
                   style={{ width: `${file.progress}%` }}
                 />
               </div>
@@ -93,25 +93,25 @@ export function FileQueueItem({
       case 'parsed':
         return (
           <div className="flex items-center gap-2 text-xs">
-            <span className="flex items-center gap-1 text-green-600">
+            <span className="flex items-center gap-1 text-emerald-700 dark:text-emerald-400">
               <CheckCircle className="w-3 h-3" />
               已完成
             </span>
             {file.parser && (
-              <span className="text-gray-400">· {file.parser}</span>
+              <span className="text-slate-500 dark:text-slate-400">· {file.parser}</span>
             )}
             {file.chunkStrategyLabel && (
-              <span className="text-gray-400">· {file.chunkStrategyLabel}</span>
+              <span className="text-slate-500 dark:text-slate-400">· {file.chunkStrategyLabel}</span>
             )}
             {file.duration && (
-              <span className="text-gray-400">· {file.duration}s</span>
+              <span className="text-slate-500 dark:text-slate-400">· {file.duration}s</span>
             )}
           </div>
         )
       case 'error':
         return (
           <div className="flex items-center justify-between">
-            <span className="flex items-center gap-1 text-xs text-red-600">
+            <span className="flex items-center gap-1 text-xs text-red-700 dark:text-red-400">
               <XCircle className="w-3 h-3" />
               解析失败
             </span>
@@ -121,7 +121,7 @@ export function FileQueueItem({
                   e.stopPropagation()
                   onRetry()
                 }}
-                className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-700"
+                className="flex items-center gap-1 text-xs text-sky-700 dark:text-sky-300 hover:text-sky-800 dark:hover:text-sky-200"
               >
                 <RotateCcw className="w-3 h-3" />
                 重试
@@ -137,8 +137,8 @@ export function FileQueueItem({
       className={cn(
         'group p-3 rounded-xl border transition-all cursor-pointer',
         isActive
-          ? 'bg-sky-50 border-sky-200 shadow-sm'
-          : 'bg-white border-gray-200 hover:border-sky-200 hover:bg-gray-50'
+          ? 'bg-sky-50 dark:bg-sky-950/30 border-sky-200 dark:border-sky-900/40 shadow-sm dark:shadow-none'
+          : 'bg-white dark:bg-slate-950/40 border-slate-200 dark:border-slate-800 hover:border-sky-200 dark:hover:border-sky-900/40 hover:bg-slate-50 dark:hover:bg-slate-950/60'
       )}
       onClick={onClick}
     >
@@ -151,7 +151,7 @@ export function FileQueueItem({
         {/* 文件信息 */}
         <div className="flex-1 min-w-0">
           <div className="flex items-start justify-between gap-2">
-            <p className="text-sm font-medium text-gray-900 truncate">
+            <p className="text-sm font-medium text-slate-900 dark:text-slate-100 truncate">
               {file.name}
             </p>
             {onRemove && (
@@ -160,16 +160,16 @@ export function FileQueueItem({
                   e.stopPropagation()
                   onRemove()
                 }}
-                className="opacity-0 group-hover:opacity-100 p-1 hover:bg-red-50 rounded transition-all flex-shrink-0"
+                className="opacity-0 group-hover:opacity-100 p-1 hover:bg-red-50 dark:hover:bg-red-900/20 rounded transition-all flex-shrink-0"
               >
-                <Trash2 className="w-3.5 h-3.5 text-gray-400 hover:text-red-500" />
+                <Trash2 className="w-3.5 h-3.5 text-slate-400 hover:text-red-600 dark:hover:text-red-400" />
               </button>
             )}
           </div>
 
           {(file.folderPathLabel || file.sourcePath) && (
             <p
-              className="mt-0.5 text-xs text-gray-400 truncate"
+              className="mt-0.5 text-xs text-slate-500 dark:text-slate-400 truncate"
               title={[file.folderPathLabel, file.sourcePath].filter(Boolean).join(' · ')}
             >
               {file.folderPathLabel ? `目录：${file.folderPathLabel}` : ''}
@@ -177,7 +177,7 @@ export function FileQueueItem({
             </p>
           )}
 
-          <div className="flex items-center gap-2 mt-0.5 text-xs text-gray-400">
+          <div className="flex items-center gap-2 mt-0.5 text-xs text-slate-500 dark:text-slate-400">
             <span>{formatFileSize(file.size)}</span>
             {file.pageCount && (
               <>
@@ -193,7 +193,7 @@ export function FileQueueItem({
 
       {/* 错误信息 */}
       {file.status === 'error' && file.error && (
-        <p className="mt-2 text-xs text-red-500 bg-red-50 px-2 py-1 rounded">
+        <p className="mt-2 text-xs text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/20 px-2 py-1 rounded">
           {file.error}
         </p>
       )}
