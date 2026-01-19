@@ -5,6 +5,9 @@ import axios, { AxiosHeaders } from 'axios'
 import type {
   Document,
   DocumentStatus,
+  DocumentUserMetadataPatchRequest,
+  DocumentBatchUserMetadataPatchRequest,
+  DocumentBatchUserMetadataPatchResponse,
   Conversation,
   Message,
   ChatRequest,

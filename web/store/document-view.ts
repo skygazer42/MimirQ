@@ -22,7 +22,7 @@ export const useDocumentView = create<DocumentViewState>((set) => ({
     isOpen: true, 
     documentId, 
     highlightChunkId: chunkId || null,
-    activeTab: 'preview' 
+    activeTab: chunkId ? 'chunks' : 'preview' 
   }),
   
   closeDocument: () => set({ 
