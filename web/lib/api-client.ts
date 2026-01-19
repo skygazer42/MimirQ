@@ -77,6 +77,7 @@ import { extractBackendMessage, extractBackendRequestId, withRequestId } from '@
 import { getAuthHeaders } from '@/lib/auth-headers'
 import { API_LONG_TIMEOUT_MS, API_TIMEOUT_MS, API_V1_BASE_URL } from '@/lib/env'
 import { appendPipelineOptionsToFormData } from '@/lib/form-data'
+import { resolveParserBackendForFilename, resolveParserBackendForFiles } from '@/lib/parser-compat'
 
 function getOrCreateRequestId(headers: AxiosHeaders): string {
   const existing = headers.get('X-Request-ID')
@@ -177,9 +178,10 @@ export const documentApi = {
     file: File,
     options: { parser_backend?: string; chunk_strategy?: string; dataset_id?: string; pipeline?: DocumentPipelineOptions } = {}
   ): Promise<Document> {
+    const resolvedParser = resolveParserBackendForFilename(file.name, options.parser_backend)
     const formData = new FormData()
     formData.append('file', file)
-    formData.append('parser_backend', options.parser_backend || 'auto')
+    formData.append('parser_backend', resolvedParser.backend || 'auto')
     formData.append('chunk_strategy', options.chunk_strategy || 'langchain_recursive')
     if (options.dataset_id) {
       formData.append('dataset_id', options.dataset_id)
@@ -204,11 +206,12 @@ export const documentApi = {
       max_concurrent?: number
     } = {}
   ): Promise<DocumentBatchUploadResponse> {
+    const resolvedParser = resolveParserBackendForFiles(files, options.parser_backend)
     const formData = new FormData()
     for (const file of files) {
       formData.append('files', file)
     }
-    formData.append('parser_backend', options.parser_backend || 'auto')
+    formData.append('parser_backend', resolvedParser.backend || 'auto')
     formData.append('chunk_strategy', options.chunk_strategy || 'langchain_recursive')
     if (options.dataset_id) {
       formData.append('dataset_id', options.dataset_id)
@@ -324,9 +327,10 @@ export const documentApi = {
     pipeline?: DocumentPipelineOptions,
     options?: { signal?: AbortSignal; dataset_id?: string }
   ): Promise<DocumentPreview> {
+    const resolvedParser = resolveParserBackendForFilename(file.name, parserBackend)
     const formData = new FormData()
     formData.append('file', file)
-    formData.append('parser_backend', parserBackend)
+    formData.append('parser_backend', resolvedParser.backend || 'auto')
     if (options?.dataset_id) formData.append('dataset_id', options.dataset_id)
     appendPipelineOptionsToFormData(formData, pipeline)
 
@@ -369,9 +373,10 @@ export const documentApi = {
     } = {},
     options?: { signal?: AbortSignal }
   ): Promise<ChunkPreviewResponse> {
+    const resolvedParser = resolveParserBackendForFilename(file.name, params.parser_backend || 'auto')
     const formData = new FormData()
     formData.append('file', file)
-    formData.append('parser_backend', params.parser_backend || 'auto')
+    formData.append('parser_backend', resolvedParser.backend || 'auto')
     formData.append('chunk_strategy', params.chunk_strategy || 'langchain_recursive')
     if (params.dataset_id) formData.append('dataset_id', params.dataset_id)
     appendPipelineOptionsToFormData(formData, params.pipeline)
@@ -454,11 +459,10 @@ export const pipelineApi = {
     parserBackend = 'auto',
     options?: { signal?: AbortSignal }
   ): Promise<PipelineParsePreviewResponse> {
+    const resolvedParser = resolveParserBackendForFilename(file.name, parserBackend)
     const formData = new FormData()
     formData.append('file', file)
-    if (parserBackend) {
-      formData.append('parser_backend', parserBackend)
-    }
+    formData.append('parser_backend', resolvedParser.backend || 'auto')
     const { data } = await apiClient.post('/pipeline/parse-preview', formData, {
       timeout: API_LONG_TIMEOUT_MS,
       signal: options?.signal,

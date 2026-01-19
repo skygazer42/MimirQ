@@ -54,6 +54,7 @@ import { PdfViewer } from '@/components/parsing/pdf-viewer'
 import { extractBlocksFromMarkdown, ParsingBlock } from '@/lib/parsing-positions'
 import { toast } from 'sonner'
 import { deleteDocContentFromCache, getDocContentFromCache, saveDocContentToCache } from '@/lib/doc-content-cache'
+import { resolveParserBackendForFilename } from '@/lib/parser-compat'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -174,12 +175,14 @@ export default function ParsingPage() {
   const { parserBackend, setParserBackend } = useParserBackendPreference()
 
   useEffect(() => {
-    const nextLabel = getParserLabel(parserBackend)
     setFiles((prev) =>
       prev.map((f) => {
         if (f.status !== 'pending' && f.status !== 'error') return f
-        if (f.parserBackend === parserBackend && f.parserLabel === nextLabel) return f
-        return { ...f, parserBackend, parserLabel: nextLabel }
+        const resolved = resolveParserBackendForFilename(f.name, parserBackend)
+        const nextBackend = resolved.backend
+        const nextLabel = getParserLabel(nextBackend)
+        if (f.parserBackend === nextBackend && f.parserLabel === nextLabel) return f
+        return { ...f, parserBackend: nextBackend, parserLabel: nextLabel }
       })
     )
   }, [parserBackend])
@@ -307,7 +310,6 @@ export default function ParsingPage() {
   // 添加文件（支持 .zip 批量解压，支持文件夹上传）
   const addFiles = useCallback(
     async (incomingFiles: File[], baseFolderIdOverride?: string) => {
-      const defaultLabel = getParserLabel(parserBackend)
       const baseFolderId = baseFolderIdOverride || activeFolderId || ROOT_FOLDER_ID
       const now = Date.now()
 
@@ -373,8 +375,8 @@ export default function ParsingPage() {
             status: 'pending' as FileStatus,
             markdownContent: null,
             error: undefined,
-            parserBackend,
-            parserLabel: defaultLabel,
+            parserBackend: resolveParserBackendForFilename(filename, parserBackend).backend,
+            parserLabel: getParserLabel(resolveParserBackendForFilename(filename, parserBackend).backend),
             createdAt: now,
           })
           added += 1
@@ -417,8 +419,8 @@ export default function ParsingPage() {
                 status: 'pending' as FileStatus,
                 markdownContent: null,
                 error: undefined,
-                parserBackend,
-                parserLabel: defaultLabel,
+                parserBackend: resolveParserBackendForFilename(filename, parserBackend).backend,
+                parserLabel: getParserLabel(resolveParserBackendForFilename(filename, parserBackend).backend),
                 createdAt: now,
               })
               added += 1
@@ -460,8 +462,8 @@ export default function ParsingPage() {
           status: 'pending' as FileStatus,
           markdownContent: null,
           error: undefined,
-          parserBackend,
-          parserLabel: defaultLabel,
+          parserBackend: resolveParserBackendForFilename(file.name, parserBackend).backend,
+          parserLabel: getParserLabel(resolveParserBackendForFilename(file.name, parserBackend).backend),
           createdAt: now,
         })
         added += 1
@@ -693,7 +695,8 @@ export default function ParsingPage() {
     const controller = new AbortController()
     parseControllersRef.current.set(fileId, controller)
 
-    const requestedBackend = parserBackend
+    const resolvedRequested = resolveParserBackendForFilename(file.file.name, parserBackend)
+    const requestedBackend = resolvedRequested.backend
     const requestedLabel = getParserLabel(requestedBackend)
 
     const startTime = Date.now()
