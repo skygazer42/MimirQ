@@ -707,8 +707,8 @@ export function DataGovernancePanel() {
               </p>
 
               <div className="max-w-md w-full mx-auto mb-10 text-left relative z-20">
-                <div className="text-xs font-bold text-sky-500/70 uppercase tracking-widest mb-3 pl-1">Knowledge Graph Structure</div>
-                <div className="bg-black/40 border border-white/10 rounded-xl p-4 max-h-48 overflow-y-auto custom-scrollbar backdrop-blur-md">
+                <div className="text-xs font-bold text-sky-600 uppercase tracking-widest mb-3 pl-1">Knowledge Graph Structure</div>
+                <div className="bg-sky-50/80 border border-sky-100 rounded-xl p-4 max-h-48 overflow-y-auto custom-scrollbar shadow-sm">
                   <DocumentFolderTree />
                 </div>
               </div>
