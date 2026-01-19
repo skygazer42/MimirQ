@@ -802,20 +802,7 @@ export function DocumentFolderTree({
 
   return (
     <div className={cn('flex flex-col', className)} ref={scrollContainerRef}>
-      <div className="flex items-center justify-between mb-2 group">
-        <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider pl-1">文档库</div>
-        <Button
-          variant="ghost"
-          size="icon"
-          className="h-7 w-7 opacity-0 group-hover:opacity-100 transition-opacity text-slate-400 hover:text-sky-700 hover:bg-sky-50 rounded-lg"
-          title="新建根目录文件夹"
-          onClick={() => openCreate(ROOT_FOLDER_ID)}
-        >
-          <FolderOpen className="w-4 h-4" />
-        </Button>
-      </div>
-
-      <div className="space-y-0.5">
+      <div className="space-y-1">
         <div
           className={cn(
             'group relative flex items-center gap-2 rounded-xl px-3 py-2 transition-all',
