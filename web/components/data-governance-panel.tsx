@@ -767,7 +767,7 @@ export function DataGovernancePanel() {
   }
 
   return (
-    <div className="flex-1 flex flex-col bg-white min-h-0">
+    <div className="flex-1 flex flex-col bg-background text-foreground min-h-0">
       <PageHeader
         title="数据治理工作台"
         badge="Workbench"
@@ -786,7 +786,7 @@ export function DataGovernancePanel() {
             size="sm"
             onClick={handleReset}
             disabled={!governanceState || !governanceState.isModified}
-            className="gap-1.5 h-8 text-xs border-white/10 bg-white/5 text-slate-400 hover:text-white hover:bg-white/10"
+            className="gap-1.5 h-8 text-xs"
           >
             <RotateCcw className="w-3.5 h-3.5" />
             重置
@@ -800,7 +800,7 @@ export function DataGovernancePanel() {
             <Save className="w-3.5 h-3.5" />
             保存
           </Button>
-          <div className="w-px h-4 bg-white/10 mx-1" />
+          <div className="w-px h-4 bg-slate-200 dark:bg-white/10 mx-1" />
           <Button
             variant="default"
             size="sm"
@@ -814,7 +814,7 @@ export function DataGovernancePanel() {
         </div>
       </PageHeader>
 
-      <div className="flex-1 flex overflow-hidden min-h-0 relative bg-slate-50">
+      <div className="flex-1 flex overflow-hidden min-h-0 relative bg-background">
         {/* 左侧文件列表 */}
         <aside
           ref={sidebarRef}
