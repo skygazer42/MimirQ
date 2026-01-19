@@ -286,124 +286,168 @@ export const ChatMessageItem = memo(function ChatMessageItem({
               ))}
             </div>
           </div>
-	        )}
+        )}
 
-	        {!isUser && message.message_metadata && (
-	          <>
-	            <button
-	              type="button"
-	              onClick={() => setDiagOpen(true)}
-	              aria-label="Diagnostics"
-	              title="检索诊断"
-	              className={cn(
-	                'absolute bottom-2 right-11 z-10 rounded-md p-1.5 transition-all duration-200',
-	                'opacity-0 group-hover:opacity-100 scale-90 group-hover:scale-100',
-	                'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60',
-	                'text-muted-foreground hover:text-foreground hover:bg-secondary'
-	              )}
-	            >
-	              <BarChart3 className="h-3.5 w-3.5" />
-	            </button>
+        {!isUser && message.message_metadata && (
+          <>
+            <button
+              type="button"
+              onClick={() => setDiagOpen(true)}
+              aria-label="Diagnostics"
+              title="检索诊断"
+              className={cn(
+                'absolute bottom-2 right-11 z-10 rounded-md p-1.5 transition-all duration-200',
+                'opacity-0 group-hover:opacity-100 scale-90 group-hover:scale-100',
+                'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60',
+                'text-muted-foreground hover:text-foreground hover:bg-secondary'
+              )}
+            >
+              <BarChart3 className="h-3.5 w-3.5" />
+            </button>
 
-	            <Dialog open={diagOpen} onOpenChange={setDiagOpen}>
-	              <DialogContent className="max-w-3xl">
-	                <DialogHeader>
-	                  <DialogTitle className="flex items-center justify-between gap-3">
-	                    <span className="truncate">检索诊断</span>
-	                    <Button size="sm" variant="outline" onClick={handleCopyDiagnostics}>
-	                      复制 JSON
-	                    </Button>
-	                  </DialogTitle>
-	                </DialogHeader>
+            <Dialog open={diagOpen} onOpenChange={setDiagOpen}>
+              <DialogContent className="max-w-4xl border-cyan-500/20 bg-slate-950/95 shadow-[0_0_50px_-10px_rgba(6,182,212,0.15)] backdrop-blur-xl p-0 overflow-hidden sm:rounded-[2rem]">
+                {/* Decorative HUD Elements */}
+                <div className="absolute top-0 left-0 w-20 h-20 border-l-2 border-t-2 border-cyan-500/30 rounded-tl-3xl pointer-events-none" />
+                <div className="absolute top-0 right-0 w-20 h-20 border-r-2 border-t-2 border-cyan-500/30 rounded-tr-3xl pointer-events-none" />
+                <div className="absolute bottom-0 left-0 w-20 h-20 border-l-2 border-b-2 border-cyan-500/30 rounded-bl-3xl pointer-events-none" />
+                <div className="absolute bottom-0 right-0 w-20 h-20 border-r-2 border-b-2 border-cyan-500/30 rounded-br-3xl pointer-events-none" />
+                <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-cyan-500/50 to-transparent" />
+                <div className="absolute inset-x-0 bottom-0 h-px bg-gradient-to-r from-transparent via-cyan-500/50 to-transparent" />
 
-	                <div className="space-y-6">
-	                  <div className="rounded-2xl border border-border bg-background/60 p-4">
-	                    <div className="text-sm font-medium">关键信息</div>
-	                    <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-3">
-	                      <div className="rounded-xl border border-border bg-background p-3">
-	                        <div className="text-[11px] text-muted-foreground">message_id</div>
-	                        <div className="mt-1 text-xs font-mono break-words">{message.id}</div>
-	                      </div>
-	                      <div className="rounded-xl border border-border bg-background p-3">
-	                        <div className="text-[11px] text-muted-foreground">citations</div>
-	                        <div className="mt-1 text-xs font-mono break-words">{(message.citations || []).length}</div>
-	                      </div>
-	                    </div>
-	                  </div>
+                <DialogHeader className="px-8 pt-8 pb-4 relative z-10 border-b border-cyan-500/10 bg-cyan-950/20">
+                  <DialogTitle className="flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-3">
+                      <div className="p-2 rounded-lg bg-cyan-500/10 border border-cyan-500/20 text-cyan-400">
+                        <BarChart3 className="w-5 h-5" />
+                      </div>
+                      <div>
+                        <span className="block text-lg font-bold text-cyan-50 tracking-wide">SYSTEM_DIAGNOSTICS</span>
+                        <span className="block text-[10px] font-mono text-cyan-500/60 uppercase tracking-widest">Retrieval & Generation Telemetry</span>
+                      </div>
+                    </div>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={handleCopyDiagnostics}
+                      className="bg-cyan-950/50 border-cyan-500/30 text-cyan-400 hover:bg-cyan-500/20 hover:text-cyan-300 hover:border-cyan-500/50 uppercase text-[10px] font-mono tracking-wider"
+                    >
+                      <Copy className="w-3.5 h-3.5 mr-2" />
+                      Copy JSON payload
+                    </Button>
+                  </DialogTitle>
+                </DialogHeader>
 
-		                  <div className="rounded-2xl border border-border bg-background/60 p-4">
-		                    <div className="text-sm font-medium">Metrics</div>
-		                    {metricEntries.length ? (
-		                      <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-3">
-		                        {metricEntries.map((e) => (
-		                          <div key={e.k} className="rounded-xl border border-border bg-background p-3">
-		                            <div className="text-[11px] text-muted-foreground">{e.k}</div>
-		                            <div className="mt-1 text-xs font-mono break-words">{String(e.v)}</div>
-		                          </div>
-		                        ))}
-		                      </div>
-		                    ) : (
-		                      <div className="mt-2 text-xs text-muted-foreground">暂无 metrics</div>
-		                    )}
-		                  </div>
+                <div className="p-8 space-y-6 max-h-[70vh] overflow-y-auto custom-scrollbar relative z-10">
 
-		                  <div className="rounded-2xl border border-border bg-background/60 p-4">
-		                    <div className="flex items-center justify-between gap-3">
-		                      <div className="text-sm font-medium">Citations Scores</div>
-		                      <div className="text-xs text-muted-foreground tabular-nums">{citationRows.length}</div>
-		                    </div>
+                  {/* Grid Layout */}
+                  <div className="grid grid-cols-1 md:grid-cols-12 gap-6">
 
-		                    {citationRows.length ? (
-		                      <div className="mt-3 overflow-x-auto">
-		                        <table className="w-full text-xs">
-		                          <thead>
-		                            <tr className="text-muted-foreground border-b border-border/60">
-		                              <th className="text-left font-medium py-2 pr-3">#</th>
-		                              <th className="text-left font-medium py-2 pr-3">文档</th>
-		                              <th className="text-left font-medium py-2 pr-3">页</th>
-		                              <th className="text-left font-medium py-2 pr-3">rel</th>
-		                              <th className="text-left font-medium py-2 pr-3">vec</th>
-		                              <th className="text-left font-medium py-2 pr-3">bm25</th>
-		                              <th className="text-left font-medium py-2 pr-3">rerank</th>
-		                            </tr>
-		                          </thead>
-		                          <tbody>
-		                            {citationRows.map((c, idx) => (
-		                              <tr key={`${c.document_id}-${c.chunk_id || c.page_number || idx}`} className="border-b border-border/40">
-		                                <td className="py-2 pr-3 text-muted-foreground tabular-nums">{idx + 1}</td>
-		                                <td className="py-2 pr-3 max-w-[280px] truncate" title={c.document_name}>
-		                                  {c.document_name}
-		                                </td>
-		                                <td className="py-2 pr-3 text-muted-foreground tabular-nums">{c.page_number ?? '-'}</td>
-		                                <td className="py-2 pr-3 font-mono tabular-nums">{Number.isFinite(c.relevance_score) ? c.relevance_score.toFixed(3) : '-'}</td>
-		                                <td className="py-2 pr-3 font-mono tabular-nums">{c.vector_score != null ? Number(c.vector_score).toFixed(3) : '-'}</td>
-		                                <td className="py-2 pr-3 font-mono tabular-nums">{c.bm25_score != null ? Number(c.bm25_score).toFixed(3) : '-'}</td>
-		                                <td className="py-2 pr-3 font-mono tabular-nums">{c.rerank_score != null ? Number(c.rerank_score).toFixed(3) : '-'}</td>
-		                              </tr>
-		                            ))}
-		                          </tbody>
-		                        </table>
-		                      </div>
-		                    ) : (
-		                      <div className="mt-2 text-xs text-muted-foreground">暂无 citations</div>
-		                    )}
-		                  </div>
+                    {/* Left Column: Metadata & Metrics */}
+                    <div className="md:col-span-4 space-y-6">
+                      {/* Message Info */}
+                      <div className="rounded-xl border border-cyan-500/20 bg-cyan-950/10 overflow-hidden">
+                        <div className="px-4 py-2 bg-cyan-500/5 border-b border-cyan-500/10 flex items-center justify-between">
+                          <span className="text-[10px] bg-clip-text text-transparent bg-gradient-to-r from-cyan-400 to-blue-400 font-black uppercase tracking-widest">Meta Info</span>
+                          <div className="flex gap-1">
+                            <div className="w-1.5 h-1.5 rounded-full bg-cyan-500/40" />
+                            <div className="w-1.5 h-1.5 rounded-full bg-cyan-500/20" />
+                          </div>
+                        </div>
+                        <div className="p-4 space-y-4">
+                          <div>
+                            <div className="text-[10px] text-cyan-500/50 uppercase tracking-wider mb-1">Message ID</div>
+                            <div className="font-mono text-xs text-cyan-100 break-all bg-black/40 p-2 rounded border border-cyan-500/10 select-all">{message.id}</div>
+                          </div>
+                        </div>
+                      </div>
 
-		                  <div className="rounded-2xl border border-border bg-background/60 p-4">
-		                    <div className="text-sm font-medium">Raw JSON</div>
-		                    <pre className="mt-3 max-h-64 overflow-auto rounded-xl bg-background p-3 text-xs border border-border/60">
-		                      {JSON.stringify({ message_metadata: message.message_metadata || null }, null, 2)}
-	                    </pre>
-	                  </div>
-	                </div>
-	              </DialogContent>
-	            </Dialog>
-	          </>
-	        )}
+                      {/* Metrics */}
+                      <div className="rounded-xl border border-blue-500/20 bg-blue-950/10 overflow-hidden">
+                        <div className="px-4 py-2 bg-blue-500/5 border-b border-blue-500/10 flex items-center justify-between">
+                          <span className="text-[10px] bg-clip-text text-transparent bg-gradient-to-r from-blue-400 to-indigo-400 font-black uppercase tracking-widest">Performance</span>
+                        </div>
+                        <div className="p-2 grid grid-cols-1 gap-2">
+                          {metricEntries.length ? metricEntries.map((e) => (
+                            <div key={e.k} className="flex items-center justify-between p-2 rounded bg-blue-500/5 border border-blue-500/10">
+                              <span className="text-[10px] text-blue-400/80 uppercase tracking-wider">{e.k.replace(/_/g, ' ')}</span>
+                              <span className="font-mono text-xs text-blue-100">{String(e.v)}</span>
+                            </div>
+                          )) : (
+                            <div className="p-4 text-center text-xs text-blue-400/50">No metrics recorded</div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
 
-	        <button
-	          type="button"
-	          onClick={handleCopy}
+                    {/* Right Column: Citations Table */}
+                    <div className="md:col-span-8 space-y-6">
+                      <div className="rounded-xl border border-emerald-500/20 bg-emerald-950/10 overflow-hidden min-h-[300px] flex flex-col">
+                        <div className="px-4 py-2 bg-emerald-500/5 border-b border-emerald-500/10 flex items-center justify-between">
+                          <span className="text-[10px] bg-clip-text text-transparent bg-gradient-to-r from-emerald-400 to-teal-400 font-black uppercase tracking-widest">Citation Reliability Analysis</span>
+                          <span className="text-[10px] px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-400 font-mono">{citationRows.length} Sources</span>
+                        </div>
+
+                        {citationRows.length ? (
+                          <div className="overflow-x-auto flex-1">
+                            <table className="w-full text-xs text-left">
+                              <thead>
+                                <tr className="border-b border-emerald-500/10 text-emerald-500/60 uppercase tracking-wider text-[10px]">
+                                  <th className="px-4 py-3 font-medium">#</th>
+                                  <th className="px-4 py-3 font-medium">Document / Source</th>
+                                  <th className="px-4 py-3 font-medium text-right">Page</th>
+                                  <th className="px-4 py-3 font-medium text-right text-emerald-400">Score</th>
+                                  <th className="px-4 py-3 font-medium text-right">Vector</th>
+                                  <th className="px-4 py-3 font-medium text-right">BM25</th>
+                                  <th className="px-4 py-3 font-medium text-right">Rerank</th>
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y divide-emerald-500/10">
+                                {citationRows.map((c, idx) => (
+                                  <tr key={`${c.document_id}-${c.chunk_id || c.page_number || idx}`} className="hover:bg-emerald-500/5 transition-colors group">
+                                    <td className="px-4 py-2.5 font-mono text-emerald-500/50">{idx + 1}</td>
+                                    <td className="px-4 py-2.5">
+                                      <div className="max-w-[200px] truncate text-emerald-100 font-medium group-hover:text-emerald-300 transition-colors" title={c.document_name}>{c.document_name}</div>
+                                    </td>
+                                    <td className="px-4 py-2.5 text-emerald-500/70 text-right font-mono">{c.page_number ?? '-'}</td>
+                                    <td className="px-4 py-2.5 text-right font-mono text-emerald-400 font-bold shadow-[0_0_10px_-4px_rgba(16,185,129,0.3)]">{Number.isFinite(c.relevance_score) ? c.relevance_score.toFixed(3) : '-'}</td>
+                                    <td className="px-4 py-2.5 text-right font-mono text-emerald-500/60">{c.vector_score != null ? Number(c.vector_score).toFixed(3) : '-'}</td>
+                                    <td className="px-4 py-2.5 text-right font-mono text-emerald-500/60">{c.bm25_score != null ? Number(c.bm25_score).toFixed(3) : '-'}</td>
+                                    <td className="px-4 py-2.5 text-right font-mono text-emerald-500/60">{c.rerank_score != null ? Number(c.rerank_score).toFixed(3) : '-'}</td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        ) : (
+                          <div className="flex-1 flex items-center justify-center p-8 text-emerald-500/30 text-xs uppercase tracking-widest">
+                            No citations recorded for this response
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Raw Data Toggle */}
+                      <div className="rounded-xl border border-slate-700/50 bg-black/40">
+                        <div className="px-4 py-2 border-b border-slate-700/50 bg-white/5 flex items-center gap-2">
+                          <div className="w-2 h-2 rounded-full bg-slate-500" />
+                          <span className="text-[10px] text-slate-400 uppercase tracking-widest">Raw Payload Payload</span>
+                        </div>
+                        <pre className="p-4 text-[10px] font-mono text-slate-400 overflow-auto max-h-40 custom-scrollbar opacity-70 hover:opacity-100 transition-opacity">
+                          {JSON.stringify({ message_metadata: message.message_metadata || null }, null, 2)}
+                        </pre>
+                      </div>
+                    </div>
+
+                  </div>
+                </div>
+              </DialogContent>
+            </Dialog>
+          </>
+        )}
+
+        <button
+          type="button"
+          onClick={handleCopy}
           aria-label={copied ? 'Copied' : 'Copy message'}
           title={copied ? 'Copied' : 'Copy'}
           className={cn(
@@ -446,8 +490,8 @@ export const ChatMessageItem = memo(function ChatMessageItem({
           )}
         </div>
 
-	        {!isUser && message.citations && message.citations.length > 0 && (
-	          <div className="mt-5 pt-3 border-t border-border/40 space-y-3">
+        {!isUser && message.citations && message.citations.length > 0 && (
+          <div className="mt-5 pt-3 border-t border-border/40 space-y-3">
             <div className="flex items-center gap-2 text-[10px] font-bold text-muted-foreground uppercase tracking-widest opacity-80">
               <Database className="w-3 h-3" />
               参考来源
@@ -460,43 +504,43 @@ export const ChatMessageItem = memo(function ChatMessageItem({
                 )
               })}
             </div>
-	          </div>
-	        )}
+          </div>
+        )}
 
-	        {!isUser && canRate && (
-	          <div className="mt-5 pt-3 border-t border-border/40 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-	            <div className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest opacity-80">
-	              反馈评分
-	            </div>
-	            <div className="flex items-center gap-1">
-	              {[1, 2, 3, 4, 5].map((v) => {
-	                const active = rating != null && v <= rating
-	                return (
-	                  <button
-	                    key={v}
-	                    type="button"
-	                    disabled={ratingSending}
-	                    onClick={() => submitRating(v)}
-	                    className={cn(
-	                      'h-8 w-8 inline-flex items-center justify-center rounded-lg transition-colors',
-	                      'hover:bg-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60',
-	                      ratingSending && 'opacity-50 cursor-not-allowed'
-	                    )}
-	                    aria-label={`rate-${v}`}
-	                    title={`${v} 星`}
-	                  >
-	                    <Star
-	                      className={cn('h-4 w-4', active ? 'text-yellow-500' : 'text-muted-foreground')}
-	                      fill={active ? 'currentColor' : 'none'}
-	                    />
-	                  </button>
-	                )
-	              })}
-	              {ratingSending && <span className="text-xs text-muted-foreground ml-2">提交中…</span>}
-	            </div>
-	          </div>
-	        )}
-	      </div>
+        {!isUser && canRate && (
+          <div className="mt-5 pt-3 border-t border-border/40 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <div className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest opacity-80">
+              反馈评分
+            </div>
+            <div className="flex items-center gap-1">
+              {[1, 2, 3, 4, 5].map((v) => {
+                const active = rating != null && v <= rating
+                return (
+                  <button
+                    key={v}
+                    type="button"
+                    disabled={ratingSending}
+                    onClick={() => submitRating(v)}
+                    className={cn(
+                      'h-8 w-8 inline-flex items-center justify-center rounded-lg transition-colors',
+                      'hover:bg-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60',
+                      ratingSending && 'opacity-50 cursor-not-allowed'
+                    )}
+                    aria-label={`rate-${v}`}
+                    title={`${v} 星`}
+                  >
+                    <Star
+                      className={cn('h-4 w-4', active ? 'text-yellow-500' : 'text-muted-foreground')}
+                      fill={active ? 'currentColor' : 'none'}
+                    />
+                  </button>
+                )
+              })}
+              {ratingSending && <span className="text-xs text-muted-foreground ml-2">提交中…</span>}
+            </div>
+          </div>
+        )}
+      </div>
 
       {isUser && (
         <div className="flex-shrink-0 w-8 h-8 rounded-xl bg-primary text-primary-foreground flex items-center justify-center text-xs font-bold shadow-md shadow-primary/20 mt-0.5">
