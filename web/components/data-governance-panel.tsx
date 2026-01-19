@@ -707,8 +707,8 @@ export function DataGovernancePanel() {
               </p>
 
               <div className="max-w-md w-full mx-auto mb-10 text-left relative z-20">
-                <div className="text-xs font-bold text-sky-600 uppercase tracking-widest mb-3 pl-1">Knowledge Graph Structure</div>
-                <div className="bg-sky-50/80 border border-sky-100 rounded-xl p-4 max-h-48 overflow-y-auto custom-scrollbar shadow-sm">
+                <div className="text-xs font-medium text-sky-500 uppercase tracking-widest mb-3 pl-2">文档结构</div>
+                <div className="bg-sky-50/50 border border-sky-100/60 rounded-2xl p-5 max-h-48 overflow-y-auto custom-scrollbar shadow-sm">
                   <DocumentFolderTree />
                 </div>
               </div>
@@ -767,7 +767,7 @@ export function DataGovernancePanel() {
   }
 
   return (
-    <div className="flex-1 flex flex-col bg-slate-950 min-h-0">
+    <div className="flex-1 flex flex-col bg-white min-h-0">
       <PageHeader
         title="数据治理工作台"
         badge="Workbench"
