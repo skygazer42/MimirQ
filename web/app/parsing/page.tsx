@@ -173,6 +173,17 @@ export default function ParsingPage() {
   // 解析器设置
   const { parserBackend, setParserBackend } = useParserBackendPreference()
 
+  useEffect(() => {
+    const nextLabel = getParserLabel(parserBackend)
+    setFiles((prev) =>
+      prev.map((f) => {
+        if (f.status !== 'pending' && f.status !== 'error') return f
+        if (f.parserBackend === parserBackend && f.parserLabel === nextLabel) return f
+        return { ...f, parserBackend, parserLabel: nextLabel }
+      })
+    )
+  }, [parserBackend])
+
   // 共享存储
   const addParsedFile = useParsedFiles((state) => state.addParsedFile)
   const libraryFiles = useParsedFiles((state) => state.files)
@@ -682,17 +693,28 @@ export default function ParsingPage() {
     const controller = new AbortController()
     parseControllersRef.current.set(fileId, controller)
 
+    const requestedBackend = parserBackend
+    const requestedLabel = getParserLabel(requestedBackend)
+
     const startTime = Date.now()
 
     setFiles((prev) =>
       prev.map((f) =>
         f.id === fileId
-          ? { ...f, status: 'parsing' as FileStatus, error: undefined, progress: 0, parseStartTime: startTime }
+          ? {
+              ...f,
+              status: 'parsing' as FileStatus,
+              error: undefined,
+              progress: 0,
+              parseStartTime: startTime,
+              parserBackend: requestedBackend,
+              parserLabel: requestedLabel,
+            }
           : f
       )
     )
     if (file.libraryId) {
-      updateParsedFile(file.libraryId, { status: 'parsing', error: undefined })
+      updateParsedFile(file.libraryId, { status: 'parsing', error: undefined, parser: requestedLabel })
     }
 
     const progressInterval = setInterval(() => {
@@ -714,7 +736,7 @@ export default function ParsingPage() {
     }
 
     try {
-      const data = await documentApi.preview(file.file, parserBackend, undefined, {
+      const data = await documentApi.preview(file.file, requestedBackend, undefined, {
         signal: controller.signal,
       })
       if (controller.signal.aborted) return
@@ -724,7 +746,7 @@ export default function ParsingPage() {
       clearProgressInterval()
 
       const rawMarkdown = data.segments.map((s) => s.content).join('\n\n')
-      const resolvedBackend = data.parser_backend || parserBackend
+      const resolvedBackend = data.parser_backend || requestedBackend
       const resolvedLabel = getParserLabel(resolvedBackend)
       const duration = ((Date.now() - startTime) / 1000).toFixed(1)
       const parsed = extractBlocksFromMarkdown(rawMarkdown)
@@ -1055,6 +1077,9 @@ export default function ParsingPage() {
                     value={parserBackend}
                     onChange={setParserBackend}
                   />
+                  <p className="mt-2 text-[11px] text-slate-400 leading-relaxed">
+                    修改解析方式会同步更新「等待解析 / 失败」的队列文件
+                  </p>
                 </div>
 
                 {/* Folder Navigation */}
