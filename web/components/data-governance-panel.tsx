@@ -1125,14 +1125,74 @@ export function DataGovernancePanel() {
                         </div>
                       ) : (
                         // 预览模式
-                        previewFormat === 'rendered' ? (
-                          <div className="prose prose-slate max-w-none prose-headings:text-slate-900 prose-p:text-slate-700 prose-a:text-sky-700">
-                            <MarkdownRenderer markdown={displayContent || ''} />
+                        displayContent?.includes('该条目来自文档库（未保留本地 PDF 原文件）') ? (
+                          <div className="flex flex-col items-center justify-center h-full p-8 text-center">
+                            <div className="w-16 h-16 bg-slate-50 rounded-2xl flex items-center justify-center mb-6 border border-slate-100 shadow-sm">
+                              <FileText className="w-8 h-8 text-slate-400" />
+                            </div>
+                            <h3 className="text-lg font-bold text-slate-900 mb-2 truncate max-w-lg">
+                              {selectedFile?.filename || '未知文件'}
+                            </h3>
+                            <div className="flex items-center gap-2 mb-8">
+                              <span className="px-2.5 py-1 rounded-full bg-slate-100 text-slate-600 text-xs font-medium border border-slate-200">
+                                文档库
+                              </span>
+                              <span className="px-2.5 py-1 rounded-full bg-amber-50 text-amber-700 text-xs font-medium border border-amber-100 flex items-center gap-1">
+                                <div className="w-1.5 h-1.5 rounded-full bg-amber-500" />
+                                Pending
+                              </span>
+                            </div>
+
+                            <div className="max-w-md bg-slate-50 rounded-xl p-5 border border-slate-200 mb-8 text-left">
+                              <p className="text-sm text-slate-600 leading-relaxed flex gap-3">
+                                <Info className="w-5 h-5 text-sky-500 flex-shrink-0 mt-0.5" />
+                                该条目来自文档库（未保留本地 PDF 原文件）。可查看解析后的 Markdown；如需 PDF 预览请重新上传该文件。
+                              </p>
+                            </div>
+
+                            <div className="flex items-center gap-3">
+                              <Button
+                                variant="outline"
+                                className="gap-2 bg-white hover:bg-slate-50 text-slate-700 border-slate-200"
+                                onClick={() => {
+                                  if (selectedFile?.filename) {
+                                    navigator.clipboard.writeText(selectedFile.filename)
+                                    toast.success('文件名已复制')
+                                  }
+                                }}
+                              >
+                                <Copy className="w-4 h-4" />
+                                复制名称
+                              </Button>
+                              <Button
+                                variant="outline"
+                                className="gap-2 bg-white hover:bg-red-50 text-slate-700 hover:text-red-600 border-slate-200 hover:border-red-200"
+                                onClick={() => {
+                                  if (confirm('确定要从文档库中移除该文件记录吗？')) {
+                                    if (selectedFileId) {
+                                      const { removeFile } = useParsedFiles.getState()
+                                      removeFile(selectedFileId)
+                                      setSelectedFileId(null)
+                                      toast.success('文件已移除')
+                                    }
+                                  }
+                                }}
+                              >
+                                <Trash2 className="w-4 h-4" />
+                                移除文件
+                              </Button>
+                            </div>
                           </div>
                         ) : (
-                          <pre className="font-mono text-sm leading-relaxed whitespace-pre-wrap break-words text-slate-800">
-                            {displayContent || ''}
-                          </pre>
+                          previewFormat === 'rendered' ? (
+                            <div className="prose prose-slate max-w-none prose-headings:text-slate-900 prose-p:text-slate-700 prose-a:text-sky-700">
+                              <MarkdownRenderer markdown={displayContent || ''} />
+                            </div>
+                          ) : (
+                            <pre className="font-mono text-sm leading-relaxed whitespace-pre-wrap break-words text-slate-800">
+                              {displayContent || ''}
+                            </pre>
+                          )
                         )
                       )}
                     </div>
