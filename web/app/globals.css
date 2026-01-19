@@ -4,103 +4,100 @@
 
 @layer base {
   :root {
-    /* Base - Modern Clean Light (Zinch/Slate based) */
-    --background: 0 0% 100%; /* Pure white for cleanliness */
-    --foreground: 240 10% 3.9%; /* Deep Zinc */
+    /* Base - Modern Clean Light (Ice/Slate based) */
+    --background: 210 40% 98%; /* Very faint cool white */
+    --foreground: 222.2 84% 4.9%; /* Deepest Blue-Black */
     
-    /* Cards - Slightly distinct to create layer */
+    /* Cards - White with subtle elevation */
     --card: 0 0% 100%;
-    --card-foreground: 240 10% 3.9%;
+    --card-foreground: 222.2 84% 4.9%;
     
     --popover: 0 0% 100%;
-    --popover-foreground: 240 10% 3.9%;
+    --popover-foreground: 222.2 84% 4.9%;
     
-    /* Primary - Sophisticated Indigo/Blue (Interstellar) */
-    --primary: 221.2 83.2% 53.3%;
+    /* Primary - Vibrant Indigo (Enterprise Intelligence) */
+    --primary: 249 90% 60%; /* Vivid Violet/Indigo */
     --primary-foreground: 210 40% 98%;
     
-    /* Secondary - Subtle Gray */
-    --secondary: 240 4.8% 95.9%;
-    --secondary-foreground: 240 5.9% 10%;
+    /* Secondary - Soft Cool Gray */
+    --secondary: 210 40% 96.1%;
+    --secondary-foreground: 222.2 47.4% 11.2%;
     
-    /* Muted - For de-emphasized text */
-    --muted: 240 4.8% 95.9%;
-    --muted-foreground: 240 3.8% 46.1%;
+    /* Muted - For background/disabled text */
+    --muted: 210 40% 96.1%;
+    --muted-foreground: 215.4 16.3% 46.9%;
     
-    /* Accent - For hover states/highlights */
-    --accent: 240 4.8% 95.9%;
-    --accent-foreground: 240 5.9% 10%;
+    /* Accent - For hovers */
+    --accent: 210 40% 96.1%;
+    --accent-foreground: 222.2 47.4% 11.2%;
     
-    /* Destructive - Soft Red */
+    /* Destructive - Refined Red */
     --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 0 0% 98%;
+    --destructive-foreground: 210 40% 98%;
     
-    /* Borders & Inputs */
-    --border: 240 5.9% 90%;
-    --input: 240 5.9% 90%;
-    --ring: 221.2 83.2% 53.3%;
+    /* Borders & Inputs - Subtle Cool Gray */
+    --border: 214.3 31.8% 91.4%;
+    --input: 214.3 31.8% 91.4%;
+    --ring: 249 90% 60%; /* Primary color ring */
     
-    /* Radius - Modern curve */
+    /* Radius - Consistent Curves */
     --radius: 0.75rem;
-    --radius-sm: 0.5rem;
-    --radius-lg: 1rem;
-    --radius-xl: 1.5rem;
-
-    /* Sidebar Variables */
-    --sidebar-background: 240 5.9% 97%; /* Very light grey */
-    --sidebar-foreground: 240 10% 3.9%;
-    --sidebar-border: 240 5.9% 90%;
+    
+    /* Sidebar - Slightly distinct from main background */
+    --sidebar-background: 0 0% 100%; 
+    --sidebar-foreground: 222.2 84% 4.9%;
+    --sidebar-border: 214.3 31.8% 91.4%;
+    
+    /* Custom Shadows for depth */
+    --shadow-soft: 0 2px 10px rgba(0, 0, 0, 0.05);
+    --shadow-strong: 0 10px 30px rgba(0, 0, 0, 0.08);
   }
 
   html.dark {
-    /* Base - Deep Space Dark */
-    --background: 240 10% 3.9%;
-    --foreground: 0 0% 98%;
+    /* Base - Deep Space Void (Not pure black) */
+    --background: 222 47% 11%;
+    --foreground: 210 40% 98%;
     
-    --card: 240 10% 5%; /* Slightly lighter than bg */
-    --card-foreground: 0 0% 98%;
+    /* Cards - Layered Dark (Slightly lighter than BG) */
+    --card: 217 33% 17%;
+    --card-foreground: 210 40% 98%;
     
-    --popover: 240 10% 3.9%;
-    --popover-foreground: 0 0% 98%;
+    --popover: 217 33% 17%;
+    --popover-foreground: 210 40% 98%;
     
-    /* Primary - Bright Indigo in Dark */
-    --primary: 217.2 91.2% 59.8%;
-    --primary-foreground: 222.2 47.4% 11.2%;
+    /* Primary - Luminous Violet/Indigo */
+    --primary: 249 90% 68%; /* Brighter for dark mode */
+    --primary-foreground: 210 40% 98%;
     
-    --secondary: 240 3.7% 15.9%;
-    --secondary-foreground: 0 0% 98%;
+    /* Secondary - Deep Gray/Blue */
+    --secondary: 217 33% 17%; /* Same as card */
+    --secondary-foreground: 210 40% 98%;
     
-    --muted: 240 3.7% 15.9%;
-    --muted-foreground: 240 5% 64.9%;
+    /* Muted - Subtle */
+    --muted: 217 33% 17%;
+    --muted-foreground: 215 20% 65%;
     
-    --accent: 240 3.7% 15.9%;
-    --accent-foreground: 0 0% 98%;
+    /* Accent - Lighter interaction layer */
+    --accent: 217 33% 20%; 
+    --accent-foreground: 210 40% 98%;
     
+    /* Destructive */
     --destructive: 0 62.8% 30.6%;
-    --destructive-foreground: 0 0% 98%;
+    --destructive-foreground: 210 40% 98%;
     
-    --border: 240 3.7% 15.9%;
-    --input: 240 3.7% 15.9%;
-    --ring: 217.2 91.2% 59.8%;
+    /* Borders & Inputs */
+    --border: 217 33% 20%;
+    --input: 217 33% 20%;
+    --ring: 249 90% 68%;
 
-    /* Sidebar Variables Dark */
-    --sidebar-background: 240 10% 3.9%;
-    --sidebar-foreground: 240 4.8% 95.9%;
-    --sidebar-border: 240 3.7% 15.9%;
-  }
-}
-
-@layer utilities {
-  .glass {
-    @apply bg-background/60 backdrop-blur-lg border-b border-white/10 dark:border-white/5;
-  }
-  
-  .glass-card {
-    @apply bg-card/50 backdrop-blur-md border border-white/20 dark:border-white/10 shadow-sm;
-  }
-
-  .text-balance {
-    text-wrap: balance;
+    /* Sidebar - Darker than main content to recede */
+    --sidebar-background: 222 47% 10%; 
+    --sidebar-foreground: 210 40% 98%;
+    --sidebar-border: 217 33% 17%;
+    
+    /* Shadows */
+    --shadow-soft: 0 2px 10px rgba(0, 0, 0, 0.3);
+    --shadow-strong: 0 10px 30px rgba(0, 0, 0, 0.5);
   }
 }
 
@@ -109,30 +106,48 @@
     @apply border-border;
   }
   body {
-    @apply bg-background text-foreground antialiased;
-    font-feature-settings: "rlig" 1, "calt" 1;
-    scrollbar-gutter: stable;
+    @apply bg-background text-foreground antialiased selection:bg-primary/20 selection:text-primary;
+    font-feature-settings: "rlig" 1, "calt" 1, "ss01" 1; /* Smart OpenType features */
   }
-
-  :focus-visible {
-    outline: 2px solid hsl(var(--ring));
-    outline-offset: 2px;
+  
+  h1, h2, h3, h4, h5, h6 {
+    @apply tracking-tight font-semibold;
   }
 }
 
-/* 自定义滚动条样式 */
-* {
-  scrollbar-width: thin;
-  scrollbar-color: theme('colors.slate.400') transparent;
+@layer utilities {
+  .glass {
+    @apply bg-white/70 dark:bg-black/40 backdrop-blur-xl border border-white/20 dark:border-white/5;
+  }
+  
+  .glass-card {
+    @apply bg-card/60 dark:bg-card/40 backdrop-blur-md border border-border/50 shadow-sm transition-all hover:border-primary/20 hover:shadow-md;
+  }
+  
+  .text-gradient {
+    @apply bg-clip-text text-transparent bg-gradient-to-r from-primary via-purple-500 to-pink-500;
+  }
+  
+  .border-gradient {
+    @apply border-transparent bg-origin-border bg-clip-border;
+    background-image: linear-gradient(to right, hsl(var(--background)), hsl(var(--background))), linear-gradient(to right, hsl(var(--primary)), orchid); 
+  }
+
+  /* Hide scrollbar for Chrome, Safari and Opera */
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+  /* Hide scrollbar for IE, Edge and Firefox */
+  .no-scrollbar {
+    -ms-overflow-style: none;  /* IE and Edge */
+    scrollbar-width: none;  /* Firefox */
+  }
 }
 
-.dark * {
-  scrollbar-color: theme('colors.slate.600') transparent;
-}
-
+/* Custom Scrollbar - Sleek & Thin */
 ::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+  width: 6px;
+  height: 6px;
 }
 
 ::-webkit-scrollbar-track {
@@ -140,17 +155,17 @@
 }
 
 ::-webkit-scrollbar-thumb {
-  @apply bg-slate-300/80 rounded-full hover:bg-sky-400/60 transition-all;
+  @apply bg-muted-foreground/20 rounded-full hover:bg-primary/50 transition-colors;
 }
 
 .dark ::-webkit-scrollbar-thumb {
-  @apply bg-slate-600/80 hover:bg-sky-500/60;
+  @apply bg-muted-foreground/30 hover:bg-primary/60;
 }
 
-/* 打字机效果的光标 */
+/* Typing Cursor Animation */
 @keyframes blink {
-  0%, 50% { opacity: 1; }
-  51%, 100% { opacity: 0; }
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
 }
 
 .typing-cursor {
@@ -158,15 +173,7 @@
   width: 2px;
   height: 1em;
   background-color: currentColor;
-  margin-left: 2px;
-  animation: blink 1s infinite;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after {
-    animation-duration: 0.01ms !important;
-    animation-iteration-count: 1 !important;
-    transition-duration: 0.01ms !important;
-    scroll-behavior: auto !important;
-  }
+  margin-left: 1px;
+  vertical-align: text-bottom;
+  animation: blink 1s step-end infinite;
 }

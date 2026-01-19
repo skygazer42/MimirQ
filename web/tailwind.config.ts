@@ -55,10 +55,18 @@ const config = {
       },
       borderRadius: {
         xl: "var(--radius-xl)",
-        lg: "var(--radius-lg)",
-        DEFAULT: "var(--radius)",
-        md: "var(--radius)",
-        sm: "var(--radius-sm)",
+        lg: "var(--radius)",
+        md: "calc(var(--radius) - 2px)",
+        sm: "calc(var(--radius) - 4px)",
+      },
+      boxShadow: {
+        'soft': 'var(--shadow-soft)',
+        'strong': 'var(--shadow-strong)',
+        'glow': '0 0 20px -5px hsl(var(--primary) / 0.3)',
+      },
+      backgroundImage: {
+        'gradient-radial': 'radial-gradient(var(--tw-gradient-stops))',
+        'hero-glow': 'conic-gradient(from 180deg at 50% 50%, hsl(var(--primary) / 0.1) 0deg, transparent 180deg, hsl(var(--primary) / 0.1) 360deg)',
       },
       keyframes: {
         "accordion-down": {
