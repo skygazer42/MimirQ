@@ -265,10 +265,39 @@ export const documentApi = {
   },
 
   /**
+   * 重试文档处理（失败/取消后）
+   */
+  async retry(documentId: string, params?: { force?: boolean }): Promise<DocumentStatus> {
+    const { data } = await apiClient.post(`/documents/${documentId}/retry`, null, { params })
+    return data
+  },
+
+  /**
    * 删除文档
    */
   async delete(documentId: string): Promise<void> {
     await apiClient.delete(`/documents/${documentId}`)
+  },
+
+  /**
+   * 更新文档的用户元数据（metadata.user）
+   */
+  async patchUserMetadata(
+    documentId: string,
+    payload: DocumentUserMetadataPatchRequest
+  ): Promise<Document> {
+    const { data } = await apiClient.patch(`/documents/${documentId}/metadata`, payload)
+    return data
+  },
+
+  /**
+   * 批量更新文档用户元数据（metadata.user）
+   */
+  async batchPatchUserMetadata(
+    payload: DocumentBatchUserMetadataPatchRequest
+  ): Promise<DocumentBatchUserMetadataPatchResponse> {
+    const { data } = await apiClient.post(`/documents/batch/metadata`, payload)
+    return data
   },
 
   /**
