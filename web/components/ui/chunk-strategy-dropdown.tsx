@@ -36,12 +36,12 @@ const COLOR_MAP: Record<
   ChunkStrategyOption['icon'],
   { bg: string; text: string }
 > = {
-  recursive: { bg: 'bg-sky-100', text: 'text-sky-600' },
-  token: { bg: 'bg-amber-100', text: 'text-amber-600' },
-  sentence: { bg: 'bg-green-100', text: 'text-green-600' },
-  separator: { bg: 'bg-gray-100', text: 'text-gray-600' },
-  hierarchical: { bg: 'bg-purple-100', text: 'text-purple-600' },
-  ragflow: { bg: 'bg-sky-100', text: 'text-sky-600' },
+  recursive: { bg: 'bg-sky-100 dark:bg-sky-500/20', text: 'text-sky-600 dark:text-sky-300' },
+  token: { bg: 'bg-amber-100 dark:bg-amber-500/20', text: 'text-amber-600 dark:text-amber-300' },
+  sentence: { bg: 'bg-green-100 dark:bg-green-500/20', text: 'text-green-600 dark:text-green-300' },
+  separator: { bg: 'bg-muted', text: 'text-muted-foreground' },
+  hierarchical: { bg: 'bg-purple-100 dark:bg-purple-500/20', text: 'text-purple-600 dark:text-purple-300' },
+  ragflow: { bg: 'bg-sky-100 dark:bg-sky-500/20', text: 'text-sky-600 dark:text-sky-300' },
 }
 
 interface ChunkStrategyDropdownProps {
@@ -97,10 +97,10 @@ export function ChunkStrategyDropdown({ value, onChange, className }: ChunkStrat
         onClick={() => setIsOpen(!isOpen)}
         className={cn(
           'w-full flex items-center gap-3 px-3 py-2.5 rounded-xl border transition-all',
-          'bg-white hover:bg-gray-50',
+          'bg-card hover:bg-muted',
           isOpen
-            ? 'border-sky-300 ring-2 ring-sky-100'
-            : 'border-gray-200 hover:border-gray-300'
+            ? 'border-sky-300/60 ring-2 ring-sky-500/10'
+            : 'border-border hover:border-border'
         )}
       >
         <div className={cn('p-1.5 rounded-lg', selectedColor.bg)}>
@@ -108,20 +108,20 @@ export function ChunkStrategyDropdown({ value, onChange, className }: ChunkStrat
         </div>
         <div className="flex-1 text-left min-w-0">
           <div className="flex items-center gap-2">
-            <span className="text-sm font-medium text-gray-900 truncate">
+            <span className="text-sm font-medium text-foreground truncate">
               {selectedOption.label}
             </span>
             {selectedOption.badge && (
-              <span className="text-[10px] font-medium px-1.5 py-0.5 bg-sky-100 text-sky-600 rounded">
+              <span className="text-[10px] font-medium px-1.5 py-0.5 bg-sky-100 text-sky-600 dark:bg-sky-500/20 dark:text-sky-300 rounded">
                 {selectedOption.badge}
               </span>
             )}
           </div>
-          <p className="text-xs text-gray-400 truncate">{selectedOption.description}</p>
+          <p className="text-xs text-muted-foreground truncate">{selectedOption.description}</p>
         </div>
         <ChevronDown
           className={cn(
-            'w-4 h-4 text-gray-400 transition-transform flex-shrink-0',
+            'w-4 h-4 text-muted-foreground transition-transform flex-shrink-0',
             isOpen && 'rotate-180'
           )}
         />
@@ -129,22 +129,22 @@ export function ChunkStrategyDropdown({ value, onChange, className }: ChunkStrat
 
       {/* 下拉菜单 */}
       {isOpen && (
-        <div className="absolute z-50 w-full mt-2 bg-white border border-gray-200 rounded-xl shadow-lg overflow-hidden">
-          <div className="px-3 py-2 border-b border-gray-100 bg-white">
+        <div className="absolute z-50 w-full mt-2 bg-card border border-border rounded-xl shadow-lg overflow-hidden">
+          <div className="px-3 py-2 border-b border-border bg-card">
             <input
               ref={searchRef}
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder="搜索切块方式..."
               className={cn(
-                'w-full rounded-lg border border-gray-200 px-2 py-1.5 text-sm',
-                'focus:border-sky-300 focus:outline-none focus:ring-2 focus:ring-sky-100'
+                'w-full rounded-lg border border-border px-2 py-1.5 text-sm',
+                'focus:border-sky-300 focus:outline-none focus:ring-2 focus:ring-sky-500/20'
               )}
             />
           </div>
           <div className="py-1 max-h-[340px] overflow-auto">
             {filteredOptions.length === 0 && (
-              <div className="px-3 py-3 text-xs text-gray-400">没有匹配的切块方式</div>
+              <div className="px-3 py-3 text-xs text-muted-foreground">没有匹配的切块方式</div>
             )}
             {filteredOptions.map((option) => {
               const Icon = ICON_MAP[option.icon]
@@ -164,7 +164,7 @@ export function ChunkStrategyDropdown({ value, onChange, className }: ChunkStrat
                   }}
                   className={cn(
                     'w-full flex items-center gap-3 px-3 py-2.5 transition-colors',
-                    isSelected ? 'bg-sky-50' : 'hover:bg-gray-50',
+                    isSelected ? 'bg-sky-500/10 dark:bg-sky-500/20' : 'hover:bg-muted',
                     isDisabled && 'opacity-50 cursor-not-allowed hover:bg-transparent'
                   )}
                 >
@@ -176,7 +176,7 @@ export function ChunkStrategyDropdown({ value, onChange, className }: ChunkStrat
                       <span
                         className={cn(
                           'text-sm font-medium truncate',
-                          isSelected ? 'text-sky-600' : 'text-gray-900'
+                          isSelected ? 'text-sky-600 dark:text-sky-300' : 'text-foreground'
                         )}
                       >
                         {option.label}
@@ -186,20 +186,20 @@ export function ChunkStrategyDropdown({ value, onChange, className }: ChunkStrat
                           className={cn(
                             'text-[10px] font-medium px-1.5 py-0.5 rounded',
                             isSelected
-                              ? 'bg-sky-100 text-sky-600'
+                              ? 'bg-sky-100 text-sky-600 dark:bg-sky-500/20 dark:text-sky-300'
                               : option.badge === 'Token'
-                              ? 'bg-amber-100 text-amber-600'
-                              : 'bg-gray-100 text-gray-500'
+                              ? 'bg-amber-100 text-amber-600 dark:bg-amber-500/20 dark:text-amber-300'
+                              : 'bg-muted text-muted-foreground'
                           )}
                         >
                           {option.badge}
                         </span>
                       )}
                     </div>
-                    <p className="text-xs text-gray-400 truncate">{option.description}</p>
+                    <p className="text-xs text-muted-foreground truncate">{option.description}</p>
                   </div>
                   {isSelected && (
-                    <Check className="w-4 h-4 text-sky-600 flex-shrink-0" />
+                    <Check className="w-4 h-4 text-sky-600 dark:text-sky-300 flex-shrink-0" />
                   )}
                 </button>
               )

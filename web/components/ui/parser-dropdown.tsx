@@ -37,15 +37,15 @@ const ICON_MAP = {
 
 // 颜色映射
 const COLOR_MAP = {
-  auto: { bg: 'bg-sky-100', text: 'text-sky-600' },
-  basic: { bg: 'bg-gray-100', text: 'text-gray-600' },
-  docling: { bg: 'bg-teal-100', text: 'text-teal-700' },
-  layout: { bg: 'bg-emerald-100', text: 'text-emerald-700' },
-  mineru: { bg: 'bg-blue-100', text: 'text-blue-600' },
-  deepdoc: { bg: 'bg-orange-100', text: 'text-orange-600' },
-  deepseekocr: { bg: 'bg-rose-100', text: 'text-rose-700' },
-  markitdown: { bg: 'bg-purple-100', text: 'text-purple-600' },
-  magicpdf: { bg: 'bg-fuchsia-100', text: 'text-fuchsia-700' },
+  auto: { bg: 'bg-sky-100 dark:bg-sky-500/20', text: 'text-sky-600 dark:text-sky-300' },
+  basic: { bg: 'bg-muted', text: 'text-muted-foreground' },
+  docling: { bg: 'bg-teal-100 dark:bg-teal-500/20', text: 'text-teal-700 dark:text-teal-300' },
+  layout: { bg: 'bg-emerald-100 dark:bg-emerald-500/20', text: 'text-emerald-700 dark:text-emerald-300' },
+  mineru: { bg: 'bg-blue-100 dark:bg-blue-500/20', text: 'text-blue-600 dark:text-blue-300' },
+  deepdoc: { bg: 'bg-orange-100 dark:bg-orange-500/20', text: 'text-orange-600 dark:text-orange-300' },
+  deepseekocr: { bg: 'bg-rose-100 dark:bg-rose-500/20', text: 'text-rose-700 dark:text-rose-300' },
+  markitdown: { bg: 'bg-purple-100 dark:bg-purple-500/20', text: 'text-purple-600 dark:text-purple-300' },
+  magicpdf: { bg: 'bg-fuchsia-100 dark:bg-fuchsia-500/20', text: 'text-fuchsia-700 dark:text-fuchsia-300' },
 }
 
 interface ParserDropdownProps {
@@ -102,10 +102,10 @@ export function ParserDropdown({ value, onChange, className }: ParserDropdownPro
         onClick={() => setIsOpen(!isOpen)}
         className={cn(
           'w-full flex items-center gap-3 px-3 py-2.5 rounded-xl border transition-all',
-          'bg-white hover:bg-gray-50',
+          'bg-card hover:bg-muted',
           isOpen
-            ? 'border-sky-300 ring-2 ring-sky-100'
-            : 'border-gray-200 hover:border-gray-300'
+            ? 'border-sky-300/60 ring-2 ring-sky-500/10'
+            : 'border-border hover:border-border'
         )}
       >
         <div className={cn('p-1.5 rounded-lg', selectedColor.bg)}>
@@ -113,20 +113,20 @@ export function ParserDropdown({ value, onChange, className }: ParserDropdownPro
         </div>
         <div className="flex-1 text-left min-w-0">
           <div className="flex items-center gap-2">
-            <span className="text-sm font-medium text-gray-900 truncate">
+            <span className="text-sm font-medium text-foreground truncate">
               {selectedOption.label}
             </span>
             {selectedOption.badge && (
-              <span className="text-[10px] font-medium px-1.5 py-0.5 bg-sky-100 text-sky-600 rounded">
+              <span className="text-[10px] font-medium px-1.5 py-0.5 bg-sky-100 text-sky-600 dark:bg-sky-500/20 dark:text-sky-300 rounded">
                 {selectedOption.badge}
               </span>
             )}
           </div>
-          <p className="text-xs text-gray-400 truncate">{selectedOption.description}</p>
+          <p className="text-xs text-muted-foreground truncate">{selectedOption.description}</p>
         </div>
         <ChevronDown
           className={cn(
-            'w-4 h-4 text-gray-400 transition-transform flex-shrink-0',
+            'w-4 h-4 text-muted-foreground transition-transform flex-shrink-0',
             isOpen && 'rotate-180'
           )}
         />
@@ -134,9 +134,16 @@ export function ParserDropdown({ value, onChange, className }: ParserDropdownPro
 
       {/* 下拉菜单 */}
       {isOpen && (
-        <div className="absolute z-50 w-full mt-2 bg-white border border-gray-200 rounded-xl shadow-lg overflow-hidden">
+        <div className="absolute z-50 w-full mt-2 bg-card border border-border rounded-xl shadow-lg overflow-hidden">
           {(loading || error) && (
-            <div className={cn('px-3 py-2 text-xs border-b', error ? 'bg-red-50 text-red-700 border-red-100' : 'bg-gray-50 text-gray-600 border-gray-100')}>
+            <div
+              className={cn(
+                'px-3 py-2 text-xs border-b',
+                error
+                  ? 'bg-red-50 text-red-700 border-red-100 dark:bg-red-500/10 dark:text-red-300 dark:border-red-500/30'
+                  : 'bg-muted text-muted-foreground border-border'
+              )}
+            >
               <div className="flex items-start justify-between gap-2">
                 <div className="min-w-0">
                   {loading ? '正在加载后端解析器能力…' : '无法获取后端解析器能力，部分选项可能不可用。'}
@@ -144,7 +151,7 @@ export function ParserDropdown({ value, onChange, className }: ParserDropdownPro
                 {error ? (
                   <button
                     type="button"
-                    className="flex-shrink-0 text-xs text-red-700 hover:text-red-800 underline underline-offset-2"
+                    className="flex-shrink-0 text-xs text-red-700 hover:text-red-800 dark:text-red-300 dark:hover:text-red-200 underline underline-offset-2"
                     onClick={() => {
                       void refresh()
                     }}
@@ -153,7 +160,11 @@ export function ParserDropdown({ value, onChange, className }: ParserDropdownPro
                   </button>
                 ) : null}
               </div>
-              {error ? <div className="mt-1 text-[11px] text-red-600/80 truncate" title={error}>{error}</div> : null}
+              {error ? (
+                <div className="mt-1 text-[11px] text-red-600/80 dark:text-red-300/80 truncate" title={error}>
+                  {error}
+                </div>
+              ) : null}
             </div>
           )}
           <div className="py-1">
@@ -179,7 +190,7 @@ export function ParserDropdown({ value, onChange, className }: ParserDropdownPro
                   }}
                   className={cn(
                     'w-full flex items-center gap-3 px-3 py-2.5 transition-colors',
-                    isSelected ? 'bg-sky-50' : 'hover:bg-gray-50',
+                    isSelected ? 'bg-sky-500/10 dark:bg-sky-500/20' : 'hover:bg-muted',
                     isDisabled && 'opacity-50 cursor-not-allowed hover:bg-transparent'
                   )}
                 >
@@ -191,7 +202,7 @@ export function ParserDropdown({ value, onChange, className }: ParserDropdownPro
                       <span
                         className={cn(
                           'text-sm font-medium truncate',
-                          isSelected ? 'text-sky-600' : 'text-gray-900'
+                          isSelected ? 'text-sky-600 dark:text-sky-300' : 'text-foreground'
                         )}
                       >
                         {option.label}
@@ -201,23 +212,23 @@ export function ParserDropdown({ value, onChange, className }: ParserDropdownPro
                           className={cn(
                             'text-[10px] font-medium px-1.5 py-0.5 rounded',
                             isSelected
-                              ? 'bg-sky-100 text-sky-600'
-                              : 'bg-gray-100 text-gray-500'
+                              ? 'bg-sky-100 text-sky-600 dark:bg-sky-500/20 dark:text-sky-300'
+                              : 'bg-muted text-muted-foreground'
                           )}
                         >
                           {option.badge}
                         </span>
                       )}
                     </div>
-                    <p className="text-xs text-gray-400 truncate">{option.description}</p>
+                    <p className="text-xs text-muted-foreground truncate">{option.description}</p>
                   </div>
                   {isDisabled && (
-                    <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-gray-100 text-gray-500 flex-shrink-0">
+                    <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-muted text-muted-foreground flex-shrink-0">
                       未启用
                     </span>
                   )}
                   {isSelected && (
-                    <Check className="w-4 h-4 text-sky-600 flex-shrink-0" />
+                    <Check className="w-4 h-4 text-sky-600 dark:text-sky-300 flex-shrink-0" />
                   )}
                 </button>
               )

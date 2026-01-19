@@ -375,29 +375,54 @@ export default function SettingsPage() {
 
   const getColorClasses = (color: string) => {
     const colors: Record<string, { bg: string; border: string; text: string; iconBg: string }> = {
-      teal: { bg: 'bg-purple-50', border: 'border-purple-200', text: 'text-purple-600', iconBg: 'bg-purple-100' },
-      blue: { bg: 'bg-blue-50', border: 'border-blue-200', text: 'text-blue-600', iconBg: 'bg-blue-100' },
-      green: { bg: 'bg-green-50', border: 'border-green-200', text: 'text-green-600', iconBg: 'bg-green-100' },
-      orange: { bg: 'bg-orange-50', border: 'border-orange-200', text: 'text-orange-600', iconBg: 'bg-orange-100' },
-      cyan: { bg: 'bg-cyan-50', border: 'border-cyan-200', text: 'text-cyan-600', iconBg: 'bg-cyan-100' },
+      teal: {
+        bg: 'bg-purple-50 dark:bg-purple-500/10',
+        border: 'border-purple-200 dark:border-purple-500/30',
+        text: 'text-purple-600 dark:text-purple-300',
+        iconBg: 'bg-purple-100 dark:bg-purple-500/20',
+      },
+      blue: {
+        bg: 'bg-blue-50 dark:bg-blue-500/10',
+        border: 'border-blue-200 dark:border-blue-500/30',
+        text: 'text-blue-600 dark:text-blue-300',
+        iconBg: 'bg-blue-100 dark:bg-blue-500/20',
+      },
+      green: {
+        bg: 'bg-green-50 dark:bg-green-500/10',
+        border: 'border-green-200 dark:border-green-500/30',
+        text: 'text-green-600 dark:text-green-300',
+        iconBg: 'bg-green-100 dark:bg-green-500/20',
+      },
+      orange: {
+        bg: 'bg-orange-50 dark:bg-orange-500/10',
+        border: 'border-orange-200 dark:border-orange-500/30',
+        text: 'text-orange-600 dark:text-orange-300',
+        iconBg: 'bg-orange-100 dark:bg-orange-500/20',
+      },
+      cyan: {
+        bg: 'bg-cyan-50 dark:bg-cyan-500/10',
+        border: 'border-cyan-200 dark:border-cyan-500/30',
+        text: 'text-cyan-600 dark:text-cyan-300',
+        iconBg: 'bg-cyan-100 dark:bg-cyan-500/20',
+      },
     }
     return colors[color] || colors.blue
   }
 
   return (
-    <div className="flex h-screen overflow-hidden bg-gray-50/50">
+    <div className="flex h-screen overflow-hidden bg-muted/50">
       <Navbar />
       <main className="flex-1 overflow-y-auto">
         <div className="max-w-6xl mx-auto px-8 py-10">
           {/* 页面头部 */}
           <div className="flex items-center justify-between mb-10">
             <div className="flex items-center gap-4">
-              <div className="p-3 bg-white border border-gray-100 rounded-xl shadow-sm">
-                <Settings2 className="h-6 w-6 text-gray-700" />
+              <div className="p-3 bg-card border border-border rounded-xl shadow-sm">
+                <Settings2 className="h-6 w-6 text-foreground/80" />
               </div>
               <div>
-                <h1 className="text-2xl font-bold text-gray-900 tracking-tight">设置与配置</h1>
-                <p className="text-sm text-gray-500 mt-1">
+                <h1 className="text-2xl font-bold text-foreground tracking-tight">设置与配置</h1>
+                <p className="text-sm text-muted-foreground mt-1">
                   管理功能开关、模型接入及系统参数
                 </p>
               </div>
@@ -408,7 +433,9 @@ export default function SettingsPage() {
               {saveMessage && (
                 <div className={cn(
                   "flex items-center gap-2 px-3 py-1.5 rounded-full text-sm",
-                  saveMessage.type === 'success' ? 'bg-green-50 text-green-600' : 'bg-red-50 text-red-600'
+                  saveMessage.type === 'success'
+                    ? 'bg-green-50 text-green-600 dark:bg-green-500/10 dark:text-green-300'
+                    : 'bg-red-50 text-red-600 dark:bg-red-500/10 dark:text-red-300'
                 )}>
                   {saveMessage.type === 'success' ? <CheckCircle2 className="w-4 h-4" /> : <XCircle className="w-4 h-4" />}
                   {saveMessage.text}
@@ -428,7 +455,7 @@ export default function SettingsPage() {
                 disabled={!hasChanges || saving}
                 className={cn(
                   "gap-2",
-                  hasChanges ? "bg-blue-600 hover:bg-blue-700" : "bg-gray-300"
+                  hasChanges ? "bg-blue-600 hover:bg-blue-700" : "bg-muted text-muted-foreground"
                 )}
               >
                 <Save className={cn("w-4 h-4", saving && "animate-pulse")} />
@@ -439,36 +466,36 @@ export default function SettingsPage() {
 
           {loading ? (
             <div className="flex items-center justify-center h-64">
-              <RefreshCw className="w-8 h-8 animate-spin text-gray-400" />
+              <RefreshCw className="w-8 h-8 animate-spin text-muted-foreground" />
             </div>
           ) : (
             <div className="space-y-12">
               {/* 前端偏好设置（本地） */}
               <section>
                 <div className="flex items-center justify-between mb-6">
-                  <h2 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
-                    <Sliders className="h-5 w-5 text-blue-600" />
+                  <h2 className="text-lg font-semibold text-foreground flex items-center gap-2">
+                    <Sliders className="h-5 w-5 text-blue-600 dark:text-blue-400" />
                     前端偏好（本地）
                   </h2>
-                  <div className="flex items-center gap-2 px-3 py-1 bg-gray-100 text-gray-600 rounded-full text-xs font-medium border border-gray-200">
+                  <div className="flex items-center gap-2 px-3 py-1 bg-muted text-muted-foreground rounded-full text-xs font-medium border border-border">
                     <span>仅保存在浏览器，影响新上传/预览</span>
                   </div>
                 </div>
 
-                <div className="bg-white rounded-xl p-6 border border-gray-100 shadow-sm space-y-6">
+                <div className="bg-card rounded-xl p-6 border border-border shadow-sm space-y-6">
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <div className="space-y-2">
-                      <div className="text-sm font-medium text-gray-700">解析方式</div>
+                      <div className="text-sm font-medium text-foreground/80">解析方式</div>
                       <ParserDropdown value={parserBackend} onChange={setParserBackend} />
                     </div>
                     <div className="space-y-2">
-                      <div className="text-sm font-medium text-gray-700">切块策略</div>
+                      <div className="text-sm font-medium text-foreground/80">切块策略</div>
                       <ChunkStrategyDropdown value={chunkStrategy} onChange={setChunkStrategy} />
                     </div>
                   </div>
 
                   <div>
-                    <div className="text-sm font-medium text-gray-700 mb-3">入库管线</div>
+                    <div className="text-sm font-medium text-foreground/80 mb-3">入库管线</div>
                     <PipelineOptionsPanel />
                   </div>
                 </div>
@@ -477,11 +504,11 @@ export default function SettingsPage() {
               {/* 功能开关区域 */}
               <section>
                 <div className="flex items-center justify-between mb-6">
-                  <h2 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
-                    <Zap className="h-5 w-5 text-amber-500" />
+                  <h2 className="text-lg font-semibold text-foreground flex items-center gap-2">
+                    <Zap className="h-5 w-5 text-amber-500 dark:text-amber-300" />
                     功能开关
                   </h2>
-                  <div className="flex items-center gap-2 px-3 py-1 bg-amber-50 text-amber-700 rounded-full text-xs font-medium border border-amber-100">
+                  <div className="flex items-center gap-2 px-3 py-1 bg-amber-50 text-amber-700 rounded-full text-xs font-medium border border-amber-100 dark:bg-amber-500/10 dark:text-amber-300 dark:border-amber-500/30">
                     <AlertCircle className="h-3 w-3" />
                     <span>更改后需重启后端生效</span>
                   </div>
@@ -498,8 +525,8 @@ export default function SettingsPage() {
                       <div
                         key={feature.key}
                         className={cn(
-                          "relative bg-white rounded-xl p-5 border-2 transition-all duration-200 cursor-pointer group",
-                          isEnabled ? `${colors.border} ${colors.bg}` : "border-gray-100 hover:border-gray-200",
+                          "relative bg-card rounded-xl p-5 border-2 transition-all duration-200 cursor-pointer group",
+                          isEnabled ? `${colors.border} ${colors.bg}` : "border-border hover:border-border",
                           isEdited && "ring-2 ring-blue-400 ring-offset-2"
                         )}
                         onClick={() => toggleFeature(feature.key)}
@@ -508,24 +535,24 @@ export default function SettingsPage() {
                           <div className="flex items-start gap-3">
                             <div className={cn(
                               "p-2 rounded-lg transition-colors",
-                              isEnabled ? colors.iconBg : "bg-gray-100"
+                              isEnabled ? colors.iconBg : "bg-muted"
                             )}>
-                              <Icon className={cn("h-5 w-5", isEnabled ? colors.text : "text-gray-400")} />
+                              <Icon className={cn("h-5 w-5", isEnabled ? colors.text : "text-muted-foreground")} />
                             </div>
                             <div>
                               <h3 className={cn(
                                 "font-medium transition-colors",
-                                isEnabled ? "text-gray-900" : "text-gray-600"
+                                isEnabled ? "text-foreground" : "text-muted-foreground"
                               )}>
                                 {feature.name}
                               </h3>
-                              <p className="text-xs text-gray-500 mt-1 leading-relaxed">
+                              <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
                                 {feature.description}
                               </p>
                               {feature.dependencies.length > 0 && (
                                 <div className="flex flex-wrap gap-1 mt-2">
                                   {feature.dependencies.map((dep) => (
-                                    <span key={dep} className="text-[10px] px-1.5 py-0.5 bg-gray-100 text-gray-500 rounded">
+                                    <span key={dep} className="text-[10px] px-1.5 py-0.5 bg-muted text-muted-foreground rounded">
                                       需要: {dep}
                                     </span>
                                   ))}
@@ -537,7 +564,7 @@ export default function SettingsPage() {
                             {isEnabled ? (
                               <ToggleRight className={cn("w-8 h-8", colors.text)} />
                             ) : (
-                              <ToggleLeft className="w-8 h-8 text-gray-300 group-hover:text-gray-400" />
+                              <ToggleLeft className="w-8 h-8 text-muted-foreground group-hover:text-muted-foreground" />
                             )}
                           </div>
                         </div>
@@ -549,31 +576,31 @@ export default function SettingsPage() {
 
               {/* ETL4LLM 配置 */}
               <section>
-                <h2 className="text-lg font-semibold text-gray-900 mb-6 flex items-center gap-2">
-                  <LayoutGrid className="h-5 w-5 text-emerald-700" />
+                <h2 className="text-lg font-semibold text-foreground mb-6 flex items-center gap-2">
+                  <LayoutGrid className="h-5 w-5 text-emerald-700 dark:text-emerald-300" />
                   ETL4LLM 配置
                 </h2>
 
-                <div className="bg-white border border-gray-100 rounded-2xl p-6 shadow-sm space-y-4">
+                <div className="bg-card border border-border rounded-2xl p-6 shadow-sm space-y-4">
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                     <div className="space-y-2 lg:col-span-2">
-                      <label className="text-sm font-medium text-gray-700">API URL</label>
+                      <label className="text-sm font-medium text-foreground/80">API URL</label>
                       <Input
                         value={editedSettings.etl4llm?.api_url ?? settings?.etl4llm?.api_url ?? DEFAULT_ETL4LLM.api_url}
                         onChange={(e) => updateEtl4Llm({ api_url: e.target.value })}
                         placeholder="http://localhost:10001/v1/etl4llm/predict"
                       />
-                      <div className="text-xs text-gray-500">
+                      <div className="text-xs text-muted-foreground">
                         启用后会写入 `ETL4LLM_API_URL`，并用于解析器 `etl4llm`。
                       </div>
                     </div>
 
                     <div className="space-y-2">
-                      <label className="text-sm font-medium text-gray-700">模式</label>
+                      <label className="text-sm font-medium text-foreground/80">模式</label>
                       <select
                         value={editedSettings.etl4llm?.mode ?? settings?.etl4llm?.mode ?? DEFAULT_ETL4LLM.mode}
                         onChange={(e) => updateEtl4Llm({ mode: e.target.value })}
-                        className="w-full px-3 py-2 rounded-lg border border-gray-200 bg-white text-sm"
+                        className="w-full px-3 py-2 rounded-lg border border-border bg-card text-sm"
                       >
                         <option value="partition">partition（版面/结构）</option>
                         <option value="text">text（纯文本）</option>
@@ -581,7 +608,7 @@ export default function SettingsPage() {
                     </div>
 
                     <div className="space-y-2">
-                      <label className="text-sm font-medium text-gray-700">超时（秒）</label>
+                      <label className="text-sm font-medium text-foreground/80">超时（秒）</label>
                       <Input
                         type="number"
                         min={10}
@@ -591,10 +618,10 @@ export default function SettingsPage() {
                     </div>
                   </div>
 
-                  <div className="flex items-center justify-between border-t border-gray-100 pt-4">
+                  <div className="flex items-center justify-between border-t border-border pt-4">
                     <div>
-                      <div className="text-sm font-medium text-gray-700">强制 OCR</div>
-                      <div className="text-xs text-gray-500 mt-0.5">扫描件/图片型 PDF 建议开启</div>
+                      <div className="text-sm font-medium text-foreground/80">强制 OCR</div>
+                      <div className="text-xs text-muted-foreground mt-0.5">扫描件/图片型 PDF 建议开启</div>
                     </div>
                     <button
                       type="button"
@@ -602,18 +629,18 @@ export default function SettingsPage() {
                       className={cn(
                         'px-3 py-1.5 rounded-full text-xs font-medium border',
                         (editedSettings.etl4llm?.force_ocr ?? settings?.etl4llm?.force_ocr ?? DEFAULT_ETL4LLM.force_ocr)
-                          ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                          : 'bg-gray-50 text-gray-600 border-gray-200'
+                          ? 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-500/10 dark:text-emerald-300 dark:border-emerald-500/30'
+                          : 'bg-muted text-muted-foreground border-border'
                       )}
                     >
                       {(editedSettings.etl4llm?.force_ocr ?? settings?.etl4llm?.force_ocr ?? DEFAULT_ETL4LLM.force_ocr) ? '已开启' : '已关闭'}
                     </button>
                   </div>
 
-                  <div className="flex items-center justify-between border-t border-gray-100 pt-4">
+                  <div className="flex items-center justify-between border-t border-border pt-4">
                     <div>
-                      <div className="text-sm font-medium text-gray-700">提取图片</div>
-                      <div className="text-xs text-gray-500 mt-0.5">输出图片引用用于预览/入库</div>
+                      <div className="text-sm font-medium text-foreground/80">提取图片</div>
+                      <div className="text-xs text-muted-foreground mt-0.5">输出图片引用用于预览/入库</div>
                     </div>
                     <button
                       type="button"
@@ -621,18 +648,18 @@ export default function SettingsPage() {
                       className={cn(
                         'px-3 py-1.5 rounded-full text-xs font-medium border',
                         (editedSettings.etl4llm?.extract_images ?? settings?.etl4llm?.extract_images ?? DEFAULT_ETL4LLM.extract_images)
-                          ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                          : 'bg-gray-50 text-gray-600 border-gray-200'
+                          ? 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-500/10 dark:text-emerald-300 dark:border-emerald-500/30'
+                          : 'bg-muted text-muted-foreground border-border'
                       )}
                     >
                       {(editedSettings.etl4llm?.extract_images ?? settings?.etl4llm?.extract_images ?? DEFAULT_ETL4LLM.extract_images) ? '已开启' : '已关闭'}
                     </button>
                   </div>
 
-                  <div className="flex items-center justify-between border-t border-gray-100 pt-4">
+                  <div className="flex items-center justify-between border-t border-border pt-4">
                     <div>
-                      <div className="text-sm font-medium text-gray-700">公式识别</div>
-                      <div className="text-xs text-gray-500 mt-0.5">尽量保留公式/LaTeX 输出</div>
+                      <div className="text-sm font-medium text-foreground/80">公式识别</div>
+                      <div className="text-xs text-muted-foreground mt-0.5">尽量保留公式/LaTeX 输出</div>
                     </div>
                     <button
                       type="button"
@@ -640,18 +667,18 @@ export default function SettingsPage() {
                       className={cn(
                         'px-3 py-1.5 rounded-full text-xs font-medium border',
                         (editedSettings.etl4llm?.enable_formula ?? settings?.etl4llm?.enable_formula ?? DEFAULT_ETL4LLM.enable_formula)
-                          ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                          : 'bg-gray-50 text-gray-600 border-gray-200'
+                          ? 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-500/10 dark:text-emerald-300 dark:border-emerald-500/30'
+                          : 'bg-muted text-muted-foreground border-border'
                       )}
                     >
                       {(editedSettings.etl4llm?.enable_formula ?? settings?.etl4llm?.enable_formula ?? DEFAULT_ETL4LLM.enable_formula) ? '已开启' : '已关闭'}
                     </button>
                   </div>
 
-                  <div className="flex items-center justify-between border-t border-gray-100 pt-4">
+                  <div className="flex items-center justify-between border-t border-border pt-4">
                     <div>
-                      <div className="text-sm font-medium text-gray-700">过滤页眉页脚</div>
-                      <div className="text-xs text-gray-500 mt-0.5">减少检索噪音（若服务支持）</div>
+                      <div className="text-sm font-medium text-foreground/80">过滤页眉页脚</div>
+                      <div className="text-xs text-muted-foreground mt-0.5">减少检索噪音（若服务支持）</div>
                     </div>
                     <button
                       type="button"
@@ -659,8 +686,8 @@ export default function SettingsPage() {
                       className={cn(
                         'px-3 py-1.5 rounded-full text-xs font-medium border',
                         (editedSettings.etl4llm?.filter_page_header_footer ?? settings?.etl4llm?.filter_page_header_footer ?? DEFAULT_ETL4LLM.filter_page_header_footer)
-                          ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                          : 'bg-gray-50 text-gray-600 border-gray-200'
+                          ? 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-500/10 dark:text-emerald-300 dark:border-emerald-500/30'
+                          : 'bg-muted text-muted-foreground border-border'
                       )}
                     >
                       {(editedSettings.etl4llm?.filter_page_header_footer ?? settings?.etl4llm?.filter_page_header_footer ?? DEFAULT_ETL4LLM.filter_page_header_footer) ? '已开启' : '已关闭'}
@@ -671,34 +698,34 @@ export default function SettingsPage() {
 
               {/* Marker 配置 */}
               <section>
-                <h2 className="text-lg font-semibold text-gray-900 mb-6 flex items-center gap-2">
-                  <LayoutGrid className="h-5 w-5 text-emerald-700" />
+                <h2 className="text-lg font-semibold text-foreground mb-6 flex items-center gap-2">
+                  <LayoutGrid className="h-5 w-5 text-emerald-700 dark:text-emerald-300" />
                   Marker 配置
                 </h2>
 
-                <div className="bg-white border border-gray-100 rounded-2xl p-6 shadow-sm space-y-4">
+                <div className="bg-card border border-border rounded-2xl p-6 shadow-sm space-y-4">
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                     <div className="space-y-2 lg:col-span-2">
-                      <label className="text-sm font-medium text-gray-700">API URL</label>
+                      <label className="text-sm font-medium text-foreground/80">API URL</label>
                       <Input
                         value={editedSettings.marker?.api_url ?? settings?.marker?.api_url ?? DEFAULT_MARKER.api_url}
                         onChange={(e) => updateMarker({ api_url: e.target.value })}
                         placeholder="http://localhost:2080/convert"
                       />
-                      <div className="text-xs text-gray-500">
+                      <div className="text-xs text-muted-foreground">
                         启用后会写入 `MARKER_API_URL`，并用于解析器 `marker`。
                       </div>
                     </div>
 
                     <div className="space-y-2">
-                      <label className="text-sm font-medium text-gray-700">超时（秒）</label>
+                      <label className="text-sm font-medium text-foreground/80">超时（秒）</label>
                       <Input
                         type="number"
                         min={30}
                         value={editedSettings.marker?.timeout_sec ?? settings?.marker?.timeout_sec ?? DEFAULT_MARKER.timeout_sec}
                         onChange={(e) => updateMarker({ timeout_sec: parseInt(e.target.value || '0', 10) || DEFAULT_MARKER.timeout_sec })}
                       />
-                      <div className="text-xs text-gray-500">
+                      <div className="text-xs text-muted-foreground">
                         大文件/复杂 PDF 建议调大
                       </div>
                     </div>
@@ -708,34 +735,34 @@ export default function SettingsPage() {
 
               {/* PaddleOCR-VL 配置 */}
               <section>
-                <h2 className="text-lg font-semibold text-gray-900 mb-6 flex items-center gap-2">
-                  <ScanLine className="h-5 w-5 text-orange-600" />
+                <h2 className="text-lg font-semibold text-foreground mb-6 flex items-center gap-2">
+                  <ScanLine className="h-5 w-5 text-orange-600 dark:text-orange-300" />
                   PaddleOCR-VL 配置
                 </h2>
 
-                <div className="bg-white border border-gray-100 rounded-2xl p-6 shadow-sm space-y-4">
+                <div className="bg-card border border-border rounded-2xl p-6 shadow-sm space-y-4">
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                     <div className="space-y-2 lg:col-span-2">
-                      <label className="text-sm font-medium text-gray-700">API URL</label>
+                      <label className="text-sm font-medium text-foreground/80">API URL</label>
                       <Input
                         value={editedSettings.paddle_vl?.api_url ?? settings?.paddle_vl?.api_url ?? DEFAULT_PADDLE_VL.api_url}
                         onChange={(e) => updatePaddleVL({ api_url: e.target.value })}
                         placeholder="http://localhost:9030/convert"
                       />
-                      <div className="text-xs text-gray-500">
+                      <div className="text-xs text-muted-foreground">
                         启用后会写入 `PADDLE_VL_API_URL`，并用于解析器 `paddle_vl`（别名：paddle-vl / paddleocr-vl）。
                       </div>
                     </div>
 
                     <div className="space-y-2">
-                      <label className="text-sm font-medium text-gray-700">超时（秒）</label>
+                      <label className="text-sm font-medium text-foreground/80">超时（秒）</label>
                       <Input
                         type="number"
                         min={30}
                         value={editedSettings.paddle_vl?.timeout_sec ?? settings?.paddle_vl?.timeout_sec ?? DEFAULT_PADDLE_VL.timeout_sec}
                         onChange={(e) => updatePaddleVL({ timeout_sec: parseInt(e.target.value || '0', 10) || DEFAULT_PADDLE_VL.timeout_sec })}
                       />
-                      <div className="text-xs text-gray-500">
+                      <div className="text-xs text-muted-foreground">
                         扫描件/OCR 场景建议调大
                       </div>
                     </div>
@@ -745,19 +772,19 @@ export default function SettingsPage() {
 
               {/* MagicPDF 配置 */}
               <section>
-                <h2 className="text-lg font-semibold text-gray-900 mb-6 flex items-center gap-2">
-                  <Wand2 className="h-5 w-5 text-fuchsia-700" />
+                <h2 className="text-lg font-semibold text-foreground mb-6 flex items-center gap-2">
+                  <Wand2 className="h-5 w-5 text-fuchsia-700 dark:text-fuchsia-300" />
                   MagicPDF 配置
                 </h2>
 
-                <div className="bg-white border border-gray-100 rounded-2xl p-6 shadow-sm space-y-4">
+                <div className="bg-card border border-border rounded-2xl p-6 shadow-sm space-y-4">
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                     <div className="space-y-2">
-                      <label className="text-sm font-medium text-gray-700">解析方法</label>
+                      <label className="text-sm font-medium text-foreground/80">解析方法</label>
                       <select
                         value={editedSettings.magicpdf?.method ?? settings?.magicpdf?.method ?? DEFAULT_MAGICPDF.method}
                         onChange={(e) => updateMagicPDF({ method: e.target.value })}
-                        className="w-full px-3 py-2 rounded-lg border border-gray-200 bg-white text-sm"
+                        className="w-full px-3 py-2 rounded-lg border border-border bg-card text-sm"
                       >
                         <option value="auto">auto（自动）</option>
                         <option value="txt">txt（文本优先）</option>
@@ -766,7 +793,7 @@ export default function SettingsPage() {
                     </div>
 
                     <div className="space-y-2">
-                      <label className="text-sm font-medium text-gray-700">语言（可选）</label>
+                      <label className="text-sm font-medium text-foreground/80">语言（可选）</label>
                       <Input
                         value={editedSettings.magicpdf?.lang ?? settings?.magicpdf?.lang ?? DEFAULT_MAGICPDF.lang}
                         onChange={(e) => updateMagicPDF({ lang: e.target.value })}
@@ -775,7 +802,7 @@ export default function SettingsPage() {
                     </div>
 
                     <div className="space-y-2">
-                      <label className="text-sm font-medium text-gray-700">超时（秒）</label>
+                      <label className="text-sm font-medium text-foreground/80">超时（秒）</label>
                       <Input
                         type="number"
                         min={30}
@@ -785,10 +812,10 @@ export default function SettingsPage() {
                     </div>
                   </div>
 
-                  <div className="flex items-center justify-between border-t border-gray-100 pt-4">
+                  <div className="flex items-center justify-between border-t border-border pt-4">
                     <div>
-                      <div className="text-sm font-medium text-gray-700">保留解析产物</div>
-                      <div className="text-xs text-gray-500 mt-0.5">
+                      <div className="text-sm font-medium text-foreground/80">保留解析产物</div>
+                      <div className="text-xs text-muted-foreground mt-0.5">
                         默认会在入库流程完成后清理 `.magicpdf/` 目录
                       </div>
                     </div>
@@ -798,8 +825,8 @@ export default function SettingsPage() {
                       className={cn(
                         'px-3 py-1.5 rounded-full text-xs font-medium border',
                         (editedSettings.magicpdf?.keep_artifacts ?? settings?.magicpdf?.keep_artifacts ?? DEFAULT_MAGICPDF.keep_artifacts)
-                          ? 'bg-fuchsia-50 text-fuchsia-700 border-fuchsia-200'
-                          : 'bg-gray-50 text-gray-600 border-gray-200'
+                          ? 'bg-fuchsia-50 text-fuchsia-700 border-fuchsia-200 dark:bg-fuchsia-500/10 dark:text-fuchsia-300 dark:border-fuchsia-500/30'
+                          : 'bg-muted text-muted-foreground border-border'
                       )}
                     >
                       {(editedSettings.magicpdf?.keep_artifacts ?? settings?.magicpdf?.keep_artifacts ?? DEFAULT_MAGICPDF.keep_artifacts) ? '已开启' : '已关闭'}
@@ -811,8 +838,8 @@ export default function SettingsPage() {
               {/* 系统状态 */}
               {status && (
                 <section>
-                  <h2 className="text-lg font-semibold text-gray-900 mb-6 flex items-center gap-2">
-                    <Database className="h-5 w-5 text-blue-600" />
+                  <h2 className="text-lg font-semibold text-foreground mb-6 flex items-center gap-2">
+                    <Database className="h-5 w-5 text-blue-600 dark:text-blue-400" />
                     系统状态
                   </h2>
 
@@ -840,23 +867,23 @@ export default function SettingsPage() {
                   </div>
 
                   {backendMeta && (
-                    <div className="mt-6 bg-white border border-gray-100 rounded-2xl p-5 shadow-sm">
-                      <div className="text-sm font-medium text-gray-700 mb-3">Backend</div>
-                      <div className="text-xs text-gray-600 space-y-2">
+                    <div className="mt-6 bg-card border border-border rounded-2xl p-5 shadow-sm">
+                      <div className="text-sm font-medium text-foreground/80 mb-3">Backend</div>
+                      <div className="text-xs text-muted-foreground space-y-2">
                         <div>
                           API: {backendMeta.name} ({backendMeta.api_version})
                           {backendMeta.build?.sha ? ` @ ${backendMeta.build.sha.slice(0, 7)}` : ''}
                         </div>
                         {backendMeta.features && (
                           <div className="flex flex-wrap gap-2">
-                            <span className="px-2 py-0.5 rounded-full border border-gray-200 bg-gray-50">
+                            <span className="px-2 py-0.5 rounded-full border border-border bg-muted">
                               auth={backendMeta.features.auth_mode || '-'}
                             </span>
-                            <span className="px-2 py-0.5 rounded-full border border-gray-200 bg-gray-50">
+                            <span className="px-2 py-0.5 rounded-full border border-border bg-muted">
                               vector={backendMeta.features.vector_backend || '-'}
                             </span>
                             {typeof backendMeta.features.task_queue_enabled === 'boolean' && (
-                              <span className="px-2 py-0.5 rounded-full border border-gray-200 bg-gray-50">
+                              <span className="px-2 py-0.5 rounded-full border border-border bg-muted">
                                 queue={backendMeta.features.task_queue_enabled ? 'on' : 'off'}
                               </span>
                             )}
@@ -868,8 +895,8 @@ export default function SettingsPage() {
                   )}
 
                   {status.parsers && (
-                    <div className="mt-6 bg-white border border-gray-100 rounded-2xl p-5 shadow-sm">
-                      <div className="text-sm font-medium text-gray-700 mb-3">解析器状态</div>
+                    <div className="mt-6 bg-card border border-border rounded-2xl p-5 shadow-sm">
+                      <div className="text-sm font-medium text-foreground/80 mb-3">解析器状态</div>
                       <div className="flex flex-wrap gap-2">
                         {Object.entries(status.parsers).map(([key, info]) => (
                           <span
@@ -878,8 +905,8 @@ export default function SettingsPage() {
                             className={cn(
                               'text-xs px-2.5 py-1 rounded-full border',
                               info.available
-                                ? 'bg-green-50 text-green-700 border-green-200'
-                                : 'bg-gray-50 text-gray-600 border-gray-200'
+                                ? 'bg-green-50 text-green-700 border-green-200 dark:bg-green-500/10 dark:text-green-300 dark:border-green-500/30'
+                                : 'bg-muted text-muted-foreground border-border'
                             )}
                           >
                             {key} {info.available ? '可用' : '不可用'}
@@ -894,11 +921,11 @@ export default function SettingsPage() {
               {/* 模型配置区域 */}
               <section>
                 <div className="flex items-center justify-between mb-6">
-                  <h2 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
-                    <Server className="h-5 w-5 text-blue-600" />
+                  <h2 className="text-lg font-semibold text-foreground flex items-center gap-2">
+                    <Server className="h-5 w-5 text-blue-600 dark:text-blue-400" />
                     模型服务商
                   </h2>
-                  <div className="flex items-center gap-2 px-3 py-1 bg-blue-50 text-blue-700 rounded-full text-xs font-medium border border-blue-100">
+                  <div className="flex items-center gap-2 px-3 py-1 bg-blue-50 text-blue-700 rounded-full text-xs font-medium border border-blue-100 dark:bg-blue-500/10 dark:text-blue-300 dark:border-blue-500/30">
                     <Lightbulb className="h-3 w-3" />
                     <span>点击卡片配置 API Key</span>
                   </div>
@@ -908,16 +935,16 @@ export default function SettingsPage() {
                   {(['model', 'embedding', 'reranker'] as ProviderCategory[]).map((category) => {
                     const InfoIcon = CATEGORY_INFO[category].icon
                     return (
-                      <div key={category} className="bg-white rounded-2xl p-6 border border-gray-100 shadow-sm hover:shadow-md transition-shadow duration-300">
+                      <div key={category} className="bg-card rounded-2xl p-6 border border-border shadow-sm hover:shadow-md transition-shadow duration-300">
                         <div className="flex items-start gap-4 mb-6">
-                          <div className="p-2 bg-gray-50 rounded-lg">
-                            <InfoIcon className="h-5 w-5 text-gray-600" />
+                          <div className="p-2 bg-muted rounded-lg">
+                            <InfoIcon className="h-5 w-5 text-muted-foreground" />
                           </div>
                           <div>
-                            <h3 className="text-base font-medium text-gray-900">
+                            <h3 className="text-base font-medium text-foreground">
                               {CATEGORY_INFO[category].title}
                             </h3>
-                            <p className="text-sm text-gray-500 mt-0.5">
+                            <p className="text-sm text-muted-foreground mt-0.5">
                               {CATEGORY_INFO[category].description}
                             </p>
                           </div>
@@ -940,17 +967,17 @@ export default function SettingsPage() {
 
               {/* RAG 参数设置 */}
               <section>
-                <h2 className="text-lg font-semibold text-gray-900 mb-6 flex items-center gap-2">
-                  <Sliders className="h-5 w-5 text-blue-600" />
+                <h2 className="text-lg font-semibold text-foreground mb-6 flex items-center gap-2">
+                    <Sliders className="h-5 w-5 text-blue-600 dark:text-blue-400" />
                   RAG 参数
                 </h2>
 
-                <div className="bg-white border border-gray-100 rounded-2xl p-6 shadow-sm">
+                <div className="bg-card border border-border rounded-2xl p-6 shadow-sm">
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                     <div>
                       <div className="flex justify-between items-center mb-2">
-                        <label className="text-sm font-medium text-gray-700">Top K</label>
-                        <span className="text-xs bg-gray-100 px-2 py-0.5 rounded text-gray-600">
+                        <label className="text-sm font-medium text-foreground/80">Top K</label>
+                        <span className="text-xs bg-muted px-2 py-0.5 rounded text-muted-foreground">
                           {settings?.rag.retrieval_top_k ?? 5}
                         </span>
                       </div>
@@ -963,17 +990,17 @@ export default function SettingsPage() {
                           const rag = { ...(settings?.rag ?? {}), ...(editedSettings.rag ?? {}), retrieval_top_k: parseInt(e.target.value) }
                           setEditedSettings(prev => ({ ...prev, rag: rag as any }))
                         }}
-                        className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
+                        className="w-full h-2 bg-muted rounded-lg appearance-none cursor-pointer accent-blue-600"
                       />
-                      <p className="text-xs text-gray-400 mt-2">
+                      <p className="text-xs text-muted-foreground mt-2">
                         每次检索返回的最相关文档片段数量
                       </p>
                     </div>
 
                     <div>
                       <div className="flex justify-between items-center mb-2">
-                        <label className="text-sm font-medium text-gray-700">相似度阈值</label>
-                        <span className="text-xs bg-gray-100 px-2 py-0.5 rounded text-gray-600">
+                        <label className="text-sm font-medium text-foreground/80">相似度阈值</label>
+                        <span className="text-xs bg-muted px-2 py-0.5 rounded text-muted-foreground">
                           {(editedSettings.rag?.similarity_threshold ?? settings?.rag.similarity_threshold ?? 0.7).toFixed(1)}
                         </span>
                       </div>
@@ -987,17 +1014,17 @@ export default function SettingsPage() {
                           const rag = { ...(settings?.rag ?? {}), ...(editedSettings.rag ?? {}), similarity_threshold: parseFloat(e.target.value) }
                           setEditedSettings(prev => ({ ...prev, rag: rag as any }))
                         }}
-                        className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
+                        className="w-full h-2 bg-muted rounded-lg appearance-none cursor-pointer accent-blue-600"
                       />
-                      <p className="text-xs text-gray-400 mt-2">
+                      <p className="text-xs text-muted-foreground mt-2">
                         过滤掉相关性得分低于此值的片段
                       </p>
                     </div>
 
                     <div>
                       <div className="flex justify-between items-center mb-2">
-                        <label className="text-sm font-medium text-gray-700">分块大小</label>
-                        <span className="text-xs bg-gray-100 px-2 py-0.5 rounded text-gray-600">
+                        <label className="text-sm font-medium text-foreground/80">分块大小</label>
+                        <span className="text-xs bg-muted px-2 py-0.5 rounded text-muted-foreground">
                           {editedSettings.rag?.chunk_size ?? settings?.rag.chunk_size ?? 1000}
                         </span>
                       </div>
@@ -1011,9 +1038,9 @@ export default function SettingsPage() {
                           const rag = { ...(settings?.rag ?? {}), ...(editedSettings.rag ?? {}), chunk_size: parseInt(e.target.value) }
                           setEditedSettings(prev => ({ ...prev, rag: rag as any }))
                         }}
-                        className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
+                        className="w-full h-2 bg-muted rounded-lg appearance-none cursor-pointer accent-blue-600"
                       />
-                      <p className="text-xs text-gray-400 mt-2">
+                      <p className="text-xs text-muted-foreground mt-2">
                         文档分块的目标字符数
                       </p>
                     </div>
@@ -1024,25 +1051,25 @@ export default function SettingsPage() {
               {/* 观测与调试 */}
               <section>
                 <div className="flex items-center justify-between mb-6">
-                  <h2 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
-                    <Eye className="h-5 w-5 text-sky-600" />
+                  <h2 className="text-lg font-semibold text-foreground flex items-center gap-2">
+                    <Eye className="h-5 w-5 text-sky-600 dark:text-sky-400" />
                     观测与调试
                   </h2>
-                  <div className="flex items-center gap-2 px-3 py-1 bg-sky-50 text-sky-700 rounded-full text-xs font-medium border border-sky-100">
+                  <div className="flex items-center gap-2 px-3 py-1 bg-sky-50 text-sky-700 rounded-full text-xs font-medium border border-sky-100 dark:bg-sky-500/10 dark:text-sky-300 dark:border-sky-500/30">
                     <span>保存后通常可立即生效</span>
                   </div>
                 </div>
 
-                <div className="bg-white border border-gray-100 rounded-2xl p-6 shadow-sm space-y-8">
+                <div className="bg-card border border-border rounded-2xl p-6 shadow-sm space-y-8">
                   {/* Tool call logging */}
                   <div className="space-y-3">
                     <div className="flex items-start justify-between gap-4">
                       <div>
-                        <div className="text-sm font-semibold text-gray-900 flex items-center gap-2">
-                          <FileSearch className="h-4 w-4 text-gray-600" />
+                        <div className="text-sm font-semibold text-foreground flex items-center gap-2">
+                          <FileSearch className="h-4 w-4 text-muted-foreground" />
                           Tool Call 日志
                         </div>
-                        <div className="text-xs text-gray-500 mt-1">
+                        <div className="text-xs text-muted-foreground mt-1">
                           记录工具调用耗时、成功/失败与参数键名（preview 可选，建议配合 PII 脱敏）
                         </div>
                       </div>
@@ -1056,9 +1083,9 @@ export default function SettingsPage() {
                         className="shrink-0"
                       >
                         {((editedSettings.observability?.tool_call_log_enabled ?? settings?.observability?.tool_call_log_enabled) ?? DEFAULT_OBSERVABILITY.tool_call_log_enabled) ? (
-                          <ToggleRight className="w-10 h-10 text-sky-600" />
+                          <ToggleRight className="w-10 h-10 text-sky-600 dark:text-sky-400" />
                         ) : (
-                          <ToggleLeft className="w-10 h-10 text-gray-300 hover:text-gray-400" />
+                          <ToggleLeft className="w-10 h-10 text-muted-foreground hover:text-muted-foreground" />
                         )}
                       </button>
                     </div>
@@ -1072,10 +1099,10 @@ export default function SettingsPage() {
                             onChange={(e) => updateObservability({ tool_call_log_include_preview: e.target.checked })}
                             className="h-4 w-4 accent-sky-600"
                           />
-                          <span className="text-sm text-gray-700">包含结果 preview</span>
+                          <span className="text-sm text-foreground/80">包含结果 preview</span>
                         </div>
                         <div>
-                          <div className="text-xs text-gray-500 mb-1">preview 最大字符数</div>
+                          <div className="text-xs text-muted-foreground mb-1">preview 最大字符数</div>
                           <Input
                             type="number"
                             min={0}
@@ -1092,11 +1119,11 @@ export default function SettingsPage() {
                   <div className="space-y-3 border-t pt-6">
                     <div className="flex items-start justify-between gap-4">
                       <div>
-                        <div className="text-sm font-semibold text-gray-900 flex items-center gap-2">
-                          <Settings2 className="h-4 w-4 text-gray-600" />
+                        <div className="text-sm font-semibold text-foreground flex items-center gap-2">
+                          <Settings2 className="h-4 w-4 text-muted-foreground" />
                           Workflow 生命周期日志
                         </div>
-                        <div className="text-xs text-gray-500 mt-1">
+                        <div className="text-xs text-muted-foreground mt-1">
                           记录工作流总耗时、steps、success/fail（可选携带 execution path）
                         </div>
                       </div>
@@ -1110,9 +1137,9 @@ export default function SettingsPage() {
                         className="shrink-0"
                       >
                         {((editedSettings.observability?.agent_log_enabled ?? settings?.observability?.agent_log_enabled) ?? DEFAULT_OBSERVABILITY.agent_log_enabled) ? (
-                          <ToggleRight className="w-10 h-10 text-sky-600" />
+                          <ToggleRight className="w-10 h-10 text-sky-600 dark:text-sky-400" />
                         ) : (
-                          <ToggleLeft className="w-10 h-10 text-gray-300 hover:text-gray-400" />
+                          <ToggleLeft className="w-10 h-10 text-muted-foreground hover:text-muted-foreground" />
                         )}
                       </button>
                     </div>
@@ -1126,10 +1153,10 @@ export default function SettingsPage() {
                             onChange={(e) => updateObservability({ agent_log_include_execution_path: e.target.checked })}
                             className="h-4 w-4 accent-sky-600"
                           />
-                          <span className="text-sm text-gray-700">包含 execution path</span>
+                          <span className="text-sm text-foreground/80">包含 execution path</span>
                         </div>
                         <div>
-                          <div className="text-xs text-gray-500 mb-1">错误 preview 最大字符数</div>
+                          <div className="text-xs text-muted-foreground mb-1">错误 preview 最大字符数</div>
                           <Input
                             type="number"
                             min={0}
@@ -1146,11 +1173,11 @@ export default function SettingsPage() {
                   <div className="space-y-3 border-t pt-6">
                     <div className="flex items-start justify-between gap-4">
                       <div>
-                        <div className="text-sm font-semibold text-gray-900 flex items-center gap-2">
-                          <EyeOff className="h-4 w-4 text-gray-600" />
+                        <div className="text-sm font-semibold text-foreground flex items-center gap-2">
+                          <EyeOff className="h-4 w-4 text-muted-foreground" />
                           PII 脱敏
                         </div>
-                        <div className="text-xs text-gray-500 mt-1">
+                        <div className="text-xs text-muted-foreground mt-1">
                           对模型输入/输出与工具调用做脱敏（流式输出会做 holdback 以减少漏出）
                         </div>
                       </div>
@@ -1164,9 +1191,9 @@ export default function SettingsPage() {
                         className="shrink-0"
                       >
                         {((editedSettings.safety?.pii_redaction_enabled ?? settings?.safety?.pii_redaction_enabled) ?? DEFAULT_SAFETY.pii_redaction_enabled) ? (
-                          <ToggleRight className="w-10 h-10 text-sky-600" />
+                          <ToggleRight className="w-10 h-10 text-sky-600 dark:text-sky-400" />
                         ) : (
-                          <ToggleLeft className="w-10 h-10 text-gray-300 hover:text-gray-400" />
+                          <ToggleLeft className="w-10 h-10 text-muted-foreground hover:text-muted-foreground" />
                         )}
                       </button>
                     </div>
@@ -1174,14 +1201,14 @@ export default function SettingsPage() {
                     {((editedSettings.safety?.pii_redaction_enabled ?? settings?.safety?.pii_redaction_enabled) ?? DEFAULT_SAFETY.pii_redaction_enabled) && (
                       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-2">
                         <div>
-                          <div className="text-xs text-gray-500 mb-1">脱敏占位符</div>
+                          <div className="text-xs text-muted-foreground mb-1">脱敏占位符</div>
                           <Input
                             value={editedSettings.safety?.pii_redaction_mask ?? settings?.safety?.pii_redaction_mask ?? DEFAULT_SAFETY.pii_redaction_mask}
                             onChange={(e) => updateSafety({ pii_redaction_mask: e.target.value })}
                           />
                         </div>
                         <div>
-                          <div className="text-xs text-gray-500 mb-1">流式 holdback 字符数</div>
+                          <div className="text-xs text-muted-foreground mb-1">流式 holdback 字符数</div>
                           <Input
                             type="number"
                             min={0}
@@ -1198,11 +1225,11 @@ export default function SettingsPage() {
                   <div className="space-y-3 border-t pt-6">
                     <div className="flex items-start justify-between gap-4">
                       <div>
-                        <div className="text-sm font-semibold text-gray-900 flex items-center gap-2">
-                          <Network className="h-4 w-4 text-gray-600" />
+                        <div className="text-sm font-semibold text-foreground flex items-center gap-2">
+                          <Network className="h-4 w-4 text-muted-foreground" />
                           LangGraph 子图组合（Subgraph）
                         </div>
-                        <div className="text-xs text-gray-500 mt-1">
+                        <div className="text-xs text-muted-foreground mt-1">
                           将 retrieve/generate 作为子图节点组合（更模块化，便于后续扩展）
                         </div>
                       </div>
@@ -1216,9 +1243,9 @@ export default function SettingsPage() {
                         className="shrink-0"
                       >
                         {((editedSettings.langgraph?.use_subgraphs ?? settings?.langgraph?.use_subgraphs) ?? DEFAULT_LANGGRAPH.use_subgraphs) ? (
-                          <ToggleRight className="w-10 h-10 text-sky-600" />
+                          <ToggleRight className="w-10 h-10 text-sky-600 dark:text-sky-400" />
                         ) : (
-                          <ToggleLeft className="w-10 h-10 text-gray-300 hover:text-gray-400" />
+                          <ToggleLeft className="w-10 h-10 text-muted-foreground hover:text-muted-foreground" />
                         )}
                       </button>
                     </div>
@@ -1245,20 +1272,20 @@ export default function SettingsPage() {
 function StatusCard({ label, connected, message }: { label: string; connected: boolean; message: string }) {
   return (
     <div className={cn(
-      "bg-white rounded-xl p-4 border transition-colors",
-      connected ? "border-green-200" : "border-red-200"
+      "bg-card rounded-xl p-4 border transition-colors",
+      connected ? "border-green-200 dark:border-green-500/40" : "border-red-200 dark:border-red-500/40"
     )}>
       <div className="flex items-center justify-between mb-2">
-        <span className="text-sm font-medium text-gray-700">{label}</span>
+        <span className="text-sm font-medium text-foreground/80">{label}</span>
         {connected ? (
-          <CheckCircle2 className="w-5 h-5 text-green-500" />
+          <CheckCircle2 className="w-5 h-5 text-green-500 dark:text-green-300" />
         ) : (
-          <XCircle className="w-5 h-5 text-red-500" />
+          <XCircle className="w-5 h-5 text-red-500 dark:text-red-300" />
         )}
       </div>
       <p className={cn(
         "text-xs truncate",
-        connected ? "text-green-600" : "text-red-600"
+        connected ? "text-green-600 dark:text-green-300" : "text-red-600 dark:text-red-300"
       )}>
         {message || (connected ? '已连接' : '未连接')}
       </p>

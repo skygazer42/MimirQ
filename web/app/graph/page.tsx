@@ -608,18 +608,18 @@ export default function GraphPage() {
   }
 
   return (
-    <div className="flex h-screen overflow-hidden bg-slate-50">
+    <div className="flex h-screen overflow-hidden bg-background">
       <Navbar />
       
       <main className="flex-1 flex flex-col transition-all duration-300 relative">
         {/* Header */}
-        <header className="absolute top-0 left-0 right-0 z-20 h-16 px-6 flex items-center justify-between bg-white/80 backdrop-blur-md border-b border-gray-200/50 pointer-events-none">
+        <header className="absolute top-0 left-0 right-0 z-20 h-16 px-6 flex items-center justify-between bg-card/80 backdrop-blur-md border-b border-border/50 pointer-events-none">
           <div className="flex items-center gap-3 pointer-events-auto">
             <div className="p-2 bg-gradient-to-br from-sky-500 to-teal-600 rounded-lg shadow-sm">
               <Share2 className="w-5 h-5 text-white" />
             </div>
             <div>
-              <h1 className="text-lg font-bold text-gray-900 tracking-tight">知识图谱</h1>
+              <h1 className="text-lg font-bold text-foreground tracking-tight">知识图谱</h1>
             </div>
           </div>
           
@@ -627,17 +627,17 @@ export default function GraphPage() {
           {graphData.nodes.length > 0 && !isPathMode && !isConnectMode && !isExplainMode && (
             <div className="pointer-events-auto absolute left-1/2 -translate-x-1/2 top-1/2 -translate-y-1/2 w-full max-w-md">
               <div className="relative group">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 group-focus-within:text-sky-500 transition-colors" />
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground group-focus-within:text-sky-500 dark:group-focus-within:text-sky-300 transition-colors" />
                 <input 
                   ref={searchInputRef}
                   type="text" 
                   value={searchTerm}
                   onChange={handleSearchChange}
                   placeholder="搜索实体节点... (Ctrl+F)"
-                  className="w-full h-10 pl-10 pr-4 bg-gray-100/50 border border-gray-200 rounded-full text-sm focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500 transition-all backdrop-blur-sm shadow-sm"
+                  className="w-full h-10 pl-10 pr-4 bg-muted/50 border border-border rounded-full text-sm focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500 transition-all backdrop-blur-sm shadow-sm"
                 />
                 {searchTerm && (
-                   <div className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-gray-400">
+                   <div className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">
                      {highlightedNodeIds.size} 匹配
                    </div>
                 )}
@@ -652,7 +652,7 @@ export default function GraphPage() {
                 <span className="text-sm font-medium">
                   {!pathStartNode ? "请点击选择【起点】" : !pathEndNode ? "请点击选择【终点】" : "路径分析完成"}
                 </span>
-                <button onClick={resetPathMode} className="ml-2 hover:bg-sky-500 rounded-full p-0.5">
+                <button onClick={resetPathMode} className="ml-2 hover:bg-sky-500/10 dark:hover:bg-sky-500/20 rounded-full p-0.5">
                   <X className="w-4 h-4" />
                 </button>
              </div>
@@ -663,7 +663,7 @@ export default function GraphPage() {
                 <span className="text-sm font-medium">
                    正在连接: {connectSourceNode?.label} ... 请点击目标节点
                 </span>
-                <button onClick={resetConnectMode} className="ml-2 hover:bg-emerald-500 rounded-full p-0.5">
+                <button onClick={resetConnectMode} className="ml-2 hover:bg-emerald-500/10 dark:hover:bg-emerald-500/20 rounded-full p-0.5">
                   <X className="w-4 h-4" />
                 </button>
              </div>
@@ -674,7 +674,7 @@ export default function GraphPage() {
                 <span className="text-sm font-medium">
                    推理路径演示中... ({currentStepIndex + 1}/{explainSteps.length})
                 </span>
-                <button onClick={resetExplainMode} className="ml-2 hover:bg-teal-500 rounded-full p-0.5">
+                <button onClick={resetExplainMode} className="ml-2 hover:bg-teal-500/10 dark:hover:bg-teal-500/20 rounded-full p-0.5">
                   <X className="w-4 h-4" />
                 </button>
              </div>
@@ -682,15 +682,15 @@ export default function GraphPage() {
 
            <div className="flex items-center gap-3 pointer-events-auto">
               {fileName && (
-               <div className="hidden md:flex items-center gap-2 px-3 py-1.5 bg-gray-100/50 border border-gray-200 rounded-full text-xs text-gray-600 font-medium">
-                 <FileCode className="w-3.5 h-3.5 text-gray-400" />
+               <div className="hidden md:flex items-center gap-2 px-3 py-1.5 bg-muted/50 border border-border rounded-full text-xs text-muted-foreground font-medium">
+                 <FileCode className="w-3.5 h-3.5 text-muted-foreground" />
                  <span className="truncate max-w-[150px]">{fileName}</span>
                </div>
               )}
 
               {dataSource === 'live' && kgStats && (
-                <div className="hidden lg:flex items-center gap-2 px-3 py-1.5 bg-gray-100/50 border border-gray-200 rounded-full text-xs text-gray-600 font-medium">
-                  <BarChart3 className="w-3.5 h-3.5 text-gray-400" />
+                <div className="hidden lg:flex items-center gap-2 px-3 py-1.5 bg-muted/50 border border-border rounded-full text-xs text-muted-foreground font-medium">
+                  <BarChart3 className="w-3.5 h-3.5 text-muted-foreground" />
                   <span className="font-mono">
                     E:{kgStats.events} N:{kgStats.entities} L:{kgStats.links}
                   </span>
@@ -704,8 +704,8 @@ export default function GraphPage() {
                     size="sm"
                     onClick={toggleEntityLinks}
                     className={cn(
-                      "text-gray-600 hover:text-sky-600 hover:bg-sky-50",
-                      includeEntityLinks && "bg-sky-50 text-sky-600"
+                      "text-muted-foreground hover:text-sky-600 dark:hover:text-sky-300 hover:bg-sky-500/10 dark:hover:bg-sky-500/20",
+                      includeEntityLinks && "bg-sky-500/10 dark:bg-sky-500/20 text-sky-600 dark:text-sky-300"
                     )}
                     title="实体-实体共现连线"
                   >
@@ -716,7 +716,7 @@ export default function GraphPage() {
                     variant="ghost"
                     size="sm"
                     onClick={cycleMinSharedEvents}
-                    className="text-gray-600 hover:text-sky-600 hover:bg-sky-50"
+                    className="text-muted-foreground hover:text-sky-600 dark:hover:text-sky-300 hover:bg-sky-500/10 dark:hover:bg-sky-500/20"
                     title="最小共现事件数（点击循环）"
                   >
                     <Filter className="w-4 h-4 mr-2" />
@@ -727,7 +727,7 @@ export default function GraphPage() {
                     size="sm"
                     onClick={handleExportGraphML}
                     disabled={isLoading}
-                    className="text-gray-600 hover:text-sky-600 hover:bg-sky-50"
+                    className="text-muted-foreground hover:text-sky-600 dark:hover:text-sky-300 hover:bg-sky-500/10 dark:hover:bg-sky-500/20"
                     title="导出 GraphML"
                   >
                     <FileCode className="w-4 h-4 mr-2" />
@@ -736,16 +736,16 @@ export default function GraphPage() {
                 </>
               )}
  
-             <div className="h-6 w-px bg-gray-200 mx-1 hidden sm:block"></div>
+             <div className="h-6 w-px bg-muted mx-1 hidden sm:block"></div>
  
-             <Button variant="ghost" size="sm" onClick={() => loadInitialData('live')} disabled={isLoading} className="text-gray-600 hover:text-sky-600 hover:bg-sky-50">
+             <Button variant="ghost" size="sm" onClick={() => loadInitialData('live')} disabled={isLoading} className="text-muted-foreground hover:text-sky-600 dark:hover:text-sky-300 hover:bg-sky-500/10 dark:hover:bg-sky-500/20">
                <RefreshCw className={cn("w-4 h-4 mr-2", isLoading && "animate-spin")} />
               {isLoading ? '加载中...' : '刷新'}
             </Button>
 
             <Button 
               size="sm" 
-              className="gap-2 bg-sky-600 hover:bg-sky-700 shadow-lg shadow-sky-200 transition-all"
+              className="gap-2 bg-sky-600 hover:bg-sky-700 shadow-lg shadow-sky-500/20 dark:shadow-sky-500/10 transition-all"
               onClick={triggerFileUpload}
             >
               <Upload className="w-4 h-4" />
@@ -762,7 +762,7 @@ export default function GraphPage() {
         </header>
 
         {/* Graph Area */}
-        <div className="flex-1 w-full relative bg-slate-50 overflow-hidden min-h-[500px]">
+        <div className="flex-1 w-full relative bg-background overflow-hidden min-h-[500px]">
           {/* Dot Pattern Background */}
           <div className="absolute inset-0 z-0 opacity-[0.4]" style={{
              backgroundImage: 'radial-gradient(#cbd5e1 1px, transparent 1px)', 
@@ -791,23 +791,23 @@ export default function GraphPage() {
             )
           ) : (
             <div className="absolute inset-0 flex flex-col items-center justify-center z-10">
-              <div className="w-32 h-32 bg-white rounded-full shadow-xl shadow-sky-100 flex items-center justify-center mb-8 animate-in zoom-in-50 duration-500">
-                <div className="w-24 h-24 bg-sky-50 rounded-full flex items-center justify-center">
-                   <Share2 className="w-10 h-10 text-sky-500" />
+              <div className="w-32 h-32 bg-card rounded-full shadow-xl shadow-sky-500/20 dark:shadow-sky-500/10 flex items-center justify-center mb-8 animate-in zoom-in-50 duration-500">
+                <div className="w-24 h-24 bg-sky-500/10 dark:bg-sky-500/20 rounded-full flex items-center justify-center">
+                   <Share2 className="w-10 h-10 text-sky-500 dark:text-sky-300" />
                 </div>
               </div>
-              <h3 className="text-2xl font-bold text-gray-900 mb-3 tracking-tight">探索知识网络</h3>
-              <p className="max-w-md text-center text-gray-500 mb-10 leading-relaxed">
+              <h3 className="text-2xl font-bold text-foreground mb-3 tracking-tight">探索知识网络</h3>
+              <p className="max-w-md text-center text-muted-foreground mb-10 leading-relaxed">
                 连接知识孤岛，发现潜在关联。
                 <br/>支持实时数据加载、搜索与深度分析。
               </p>
               <div className="flex gap-4">
-                 <Button size="lg" variant="outline" onClick={() => loadInitialData('mock')} disabled={isLoading} className="border-gray-200 hover:bg-gray-50 hover:text-gray-900">
+                 <Button size="lg" variant="outline" onClick={() => loadInitialData('mock')} disabled={isLoading} className="border-border hover:bg-muted hover:text-foreground">
                    {isLoading ? '加载中...' : '加载示例数据'}
                  </Button>
                  <Button 
                     size="lg" 
-                    className="bg-sky-600 hover:bg-sky-700 shadow-xl shadow-sky-200"
+                    className="bg-sky-600 hover:bg-sky-700 shadow-xl shadow-sky-500/20 dark:shadow-sky-500/10"
                     onClick={triggerFileUpload}
                   >
                     <Upload className="w-5 h-5 mr-2" />
@@ -819,10 +819,10 @@ export default function GraphPage() {
 
           {/* Explainability Panel (Bottom Left) */}
           {isExplainMode && (
-            <div className="absolute bottom-8 left-8 z-20 w-80 bg-white/95 backdrop-blur-md rounded-2xl shadow-2xl border border-teal-100 animate-in slide-in-from-bottom-10 fade-in duration-500 overflow-hidden">
-               <div className="p-4 border-b border-teal-50 bg-teal-50/50 flex items-center gap-2">
-                 <Lightbulb className="w-4 h-4 text-teal-600" />
-                 <h3 className="font-bold text-gray-900 text-sm">RAG 推理过程</h3>
+            <div className="absolute bottom-8 left-8 z-20 w-80 bg-card/95 backdrop-blur-md rounded-2xl shadow-2xl border border-teal-500/30 animate-in slide-in-from-bottom-10 fade-in duration-500 overflow-hidden">
+               <div className="p-4 border-b border-teal-500/20 bg-teal-500/10 flex items-center gap-2">
+                 <Lightbulb className="w-4 h-4 text-teal-600 dark:text-teal-300" />
+                 <h3 className="font-bold text-foreground text-sm">RAG 推理过程</h3>
                </div>
                <div className="p-4 space-y-4 max-h-[300px] overflow-y-auto">
                  {explainSteps.map((step, idx) => {
@@ -832,15 +832,15 @@ export default function GraphPage() {
                    
                    return (
                      <div key={idx} className={cn("relative pl-4 border-l-2 transition-all duration-500", 
-                        isActive ? "border-teal-500" : isDone ? "border-teal-200" : "border-gray-100 opacity-50"
+                        isActive ? "border-teal-500" : isDone ? "border-teal-500/30" : "border-border opacity-50"
                      )}>
                         <div className={cn("absolute -left-[5px] top-0 w-2 h-2 rounded-full transition-colors", 
-                           isActive ? "bg-teal-500" : isDone ? "bg-teal-200" : "bg-gray-200"
+                           isActive ? "bg-teal-500" : isDone ? "bg-teal-500/20" : "bg-muted"
                         )}></div>
-                        <p className="text-xs font-semibold text-gray-900 mb-0.5">
+                        <p className="text-xs font-semibold text-foreground mb-0.5">
                           {node?.label || step.node}
                         </p>
-                        <p className="text-[10px] text-gray-500 leading-snug">
+                        <p className="text-[10px] text-muted-foreground leading-snug">
                           {step.reason}
                         </p>
                      </div>
@@ -853,21 +853,21 @@ export default function GraphPage() {
           {/* Floating Controls */}
           <div className="absolute bottom-8 right-8 z-10 flex flex-col gap-3">
              {/* Main Zoom Controls */}
-             <div className="flex flex-col gap-1 bg-white/90 backdrop-blur-sm p-1.5 rounded-2xl shadow-xl shadow-gray-200 border border-gray-100/50">
-                <Button variant="ghost" size="icon" onClick={() => graphRef.current?.zoomIn()} className="rounded-xl hover:bg-sky-50 hover:text-sky-600" title="放大">
+             <div className="flex flex-col gap-1 bg-card/90 backdrop-blur-sm p-1.5 rounded-2xl shadow-xl shadow-black/10 dark:shadow-black/30 border border-border/50">
+                <Button variant="ghost" size="icon" onClick={() => graphRef.current?.zoomIn()} className="rounded-xl hover:bg-sky-500/10 dark:hover:bg-sky-500/20 hover:text-sky-600 dark:hover:text-sky-300" title="放大">
                   <ZoomIn className="w-5 h-5" />
                 </Button>
-                <Button variant="ghost" size="icon" onClick={() => graphRef.current?.zoomOut()} className="rounded-xl hover:bg-sky-50 hover:text-sky-600" title="缩小">
+                <Button variant="ghost" size="icon" onClick={() => graphRef.current?.zoomOut()} className="rounded-xl hover:bg-sky-500/10 dark:hover:bg-sky-500/20 hover:text-sky-600 dark:hover:text-sky-300" title="缩小">
                   <ZoomOut className="w-5 h-5" />
                 </Button>
-                <div className="h-px bg-gray-100 mx-2 my-0.5"></div>
-                <Button variant="ghost" size="icon" onClick={() => graphRef.current?.zoomToFit()} className="rounded-xl hover:bg-sky-50 hover:text-sky-600" title="适应屏幕">
+                <div className="h-px bg-muted mx-2 my-0.5"></div>
+                <Button variant="ghost" size="icon" onClick={() => graphRef.current?.zoomToFit()} className="rounded-xl hover:bg-sky-500/10 dark:hover:bg-sky-500/20 hover:text-sky-600 dark:hover:text-sky-300" title="适应屏幕">
                   <Maximize className="w-5 h-5" />
                 </Button>
              </div>
              
              {/* View Options */}
-             <div className="bg-white/90 backdrop-blur-sm p-1.5 rounded-2xl shadow-xl shadow-gray-200 border border-gray-100/50 flex flex-col gap-1">
+             <div className="bg-card/90 backdrop-blur-sm p-1.5 rounded-2xl shadow-xl shadow-black/10 dark:shadow-black/30 border border-border/50 flex flex-col gap-1">
                 <Button 
                    variant="ghost" 
                    size="icon" 
@@ -885,8 +885,8 @@ export default function GraphPage() {
                    size="icon" 
                    onClick={startExplainMode}
                    className={cn(
-                     "rounded-xl hover:bg-teal-50 hover:text-teal-600 transition-colors", 
-                     isExplainMode && "bg-teal-100 text-teal-600 ring-2 ring-teal-500/20"
+                     "rounded-xl hover:bg-teal-500/10 dark:hover:bg-teal-500/20 hover:text-teal-600 dark:hover:text-teal-300 transition-colors", 
+                     isExplainMode && "bg-teal-500/20 dark:bg-teal-500/30 text-teal-600 dark:text-teal-300 ring-2 ring-teal-500/20"
                    )}
                    title="推理演示 (Explain)"
                 >
@@ -896,7 +896,7 @@ export default function GraphPage() {
                    variant="ghost" 
                    size="icon" 
                    onClick={cycleLayoutMode}
-                   className="rounded-xl hover:bg-sky-50 hover:text-sky-600" 
+                   className="rounded-xl hover:bg-sky-500/10 dark:hover:bg-sky-500/20 hover:text-sky-600 dark:hover:text-sky-300" 
                    title={`切换布局: ${getLayoutLabel()}`}
                 >
                   <Layout className="w-5 h-5" />
@@ -918,7 +918,7 @@ export default function GraphPage() {
                   variant="ghost" 
                   size="icon" 
                   onClick={() => setShowEdgeLabels(!showEdgeLabels)} 
-                  className={cn("rounded-xl hover:bg-sky-50 hover:text-sky-600", showEdgeLabels && "bg-sky-50 text-sky-600")} 
+                  className={cn("rounded-xl hover:bg-sky-500/10 dark:hover:bg-sky-500/20 hover:text-sky-600 dark:hover:text-sky-300", showEdgeLabels && "bg-sky-500/10 dark:bg-sky-500/20 text-sky-600 dark:text-sky-300")} 
                   title="显示/隐藏连线标签"
                 >
                   <Type className="w-5 h-5" />
@@ -928,22 +928,22 @@ export default function GraphPage() {
 
           {/* Info Panel / Sidebar (Right) */}
           <div className={cn(
-            "absolute top-4 right-4 bottom-24 w-80 bg-white/95 backdrop-blur-md rounded-2xl shadow-2xl border border-gray-100 transform transition-transform duration-300 ease-in-out z-20 flex flex-col overflow-hidden",
+            "absolute top-4 right-4 bottom-24 w-80 bg-card/95 backdrop-blur-md rounded-2xl shadow-2xl border border-border transform transition-transform duration-300 ease-in-out z-20 flex flex-col overflow-hidden",
             isDetailOpen && selectedNode ? "translate-x-0" : "translate-x-[120%]"
           )}>
             {selectedNode && (
               <>
-                <div className="p-5 border-b border-gray-100 flex items-start justify-between bg-gradient-to-r from-gray-50 to-white">
+                <div className="p-5 border-b border-border flex items-start justify-between bg-gradient-to-r from-muted/60 to-card">
                   <div>
-                    <h2 className="font-bold text-lg text-gray-900 line-clamp-2">{selectedNode.label}</h2>
-                    <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-medium bg-sky-50 text-sky-600 mt-2 border border-sky-100">
+                    <h2 className="font-bold text-lg text-foreground line-clamp-2">{selectedNode.label}</h2>
+                    <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-medium bg-sky-500/10 dark:bg-sky-500/20 text-sky-600 dark:text-sky-300 mt-2 border border-sky-500/30">
                       <Database className="w-3 h-3" />
                       ID: {selectedNode.id}
                     </span>
                   </div>
                   <button 
                     onClick={() => setIsDetailOpen(false)}
-                    className="text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg p-1 transition-colors"
+                    className="text-muted-foreground hover:text-muted-foreground hover:bg-muted rounded-lg p-1 transition-colors"
                   >
                     <X className="w-5 h-5" />
                   </button>
@@ -954,7 +954,7 @@ export default function GraphPage() {
                   <div className="grid grid-cols-2 gap-3">
                     <Button 
                       onClick={handleChatWithNode}
-                      className="w-full bg-sky-600 hover:bg-sky-700 text-white shadow-md shadow-sky-100"
+                      className="w-full bg-sky-600 hover:bg-sky-700 text-white shadow-md shadow-sky-500/20 dark:shadow-sky-500/10"
                     >
                       <MessageSquare className="w-4 h-4 mr-2" />
                       对话
@@ -972,55 +972,55 @@ export default function GraphPage() {
                   {/* KG Detail (Live) */}
                   {dataSource === 'live' && (selectedNode?.meta?.kind === 'entity' || selectedNode?.meta?.kind === 'event') && (
                     <div>
-                      <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3 flex items-center gap-2">
+                      <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3 flex items-center gap-2">
                         <Network className="w-3 h-3" />
                         KG Detail
                       </h3>
 
                       {kgNodeDetailLoading ? (
-                        <div className="text-xs text-gray-500 bg-gray-50 rounded-xl p-3 border border-gray-100">
+                        <div className="text-xs text-muted-foreground bg-muted rounded-xl p-3 border border-border">
                           Loading...
                         </div>
                       ) : !kgNodeDetail ? (
-                        <div className="text-xs text-gray-400 bg-gray-50 rounded-xl p-3 border border-gray-100">
+                        <div className="text-xs text-muted-foreground bg-muted rounded-xl p-3 border border-border">
                           No KG detail available
                         </div>
                       ) : selectedNode?.meta?.kind === 'entity' ? (
                         <div className="space-y-3">
-                          <div className="bg-gray-50 rounded-xl p-3 border border-gray-100">
-                            <div className="text-[10px] font-medium text-gray-500 mb-1">Recent Events</div>
+                          <div className="bg-muted rounded-xl p-3 border border-border">
+                            <div className="text-[10px] font-medium text-muted-foreground mb-1">Recent Events</div>
                             <div className="space-y-1">
                               {(kgNodeDetail as KGEntityDetailResponse).events?.slice(0, 6)?.map((ev) => (
-                                <div key={ev.id} className="text-xs text-gray-800 truncate" title={ev.title}>
+                                <div key={ev.id} className="text-xs text-foreground truncate" title={ev.title}>
                                   {ev.title}
                                 </div>
                               ))}
                             </div>
                           </div>
-                          <div className="bg-gray-50 rounded-xl p-3 border border-gray-100">
-                            <div className="text-[10px] font-medium text-gray-500 mb-1">Top Neighbors</div>
+                          <div className="bg-muted rounded-xl p-3 border border-border">
+                            <div className="text-[10px] font-medium text-muted-foreground mb-1">Top Neighbors</div>
                             <div className="space-y-1">
                               {(kgNodeDetail as KGEntityDetailResponse).neighbors?.slice(0, 8)?.map((n) => (
                                 <div key={n.entity_id} className="flex items-center justify-between gap-2 text-xs">
-                                  <span className="text-gray-800 truncate" title={n.name}>
+                                  <span className="text-foreground truncate" title={n.name}>
                                     {n.name || n.entity_id}
                                   </span>
-                                  <span className="text-gray-400 font-mono">{n.count}</span>
+                                  <span className="text-muted-foreground font-mono">{n.count}</span>
                                 </div>
                               ))}
                             </div>
                           </div>
                         </div>
                       ) : (
-                        <div className="bg-gray-50 rounded-xl p-3 border border-gray-100">
-                          <div className="text-[10px] font-medium text-gray-500 mb-2">Entities</div>
+                        <div className="bg-muted rounded-xl p-3 border border-border">
+                          <div className="text-[10px] font-medium text-muted-foreground mb-2">Entities</div>
                           <div className="space-y-1">
                             {(kgNodeDetail as KGEventDetailResponse).entities?.slice(0, 12)?.map((row) => (
                               <div key={row.entity.id} className="flex items-center justify-between gap-2 text-xs">
-                                <span className="text-gray-800 truncate" title={row.entity.name}>
+                                <span className="text-foreground truncate" title={row.entity.name}>
                                   {row.entity.name || row.entity.id}
                                 </span>
-                                <span className="text-gray-400">{row.role || row.entity.type}</span>
+                                <span className="text-muted-foreground">{row.role || row.entity.type}</span>
                               </div>
                             ))}
                           </div>
@@ -1031,7 +1031,7 @@ export default function GraphPage() {
 
                   {/* Properties List */}
                   <div>
-                    <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3 flex items-center gap-2">
+                    <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3 flex items-center gap-2">
                       <Info className="w-3 h-3" />
                       属性详情
                     </h3>
@@ -1039,9 +1039,9 @@ export default function GraphPage() {
                       {Object.entries(selectedNode)
                         .filter(([key]) => !['id', 'label', 'x', 'y', 'z', 'vx', 'vy', 'vz', 'fx', 'fy', 'fz', 'index', 'color', '__bckgDimensions', 'source', 'meta'].includes(key))
                         .map(([key, value]) => (
-                          <div key={key} className="bg-gray-50 rounded-xl p-3 border border-gray-100">
-                            <span className="block text-xs font-medium text-gray-500 mb-1 capitalize">{key}</span>
-                            <span className="block text-sm text-gray-800 break-words">{String(value)}</span>
+                          <div key={key} className="bg-muted rounded-xl p-3 border border-border">
+                            <span className="block text-xs font-medium text-muted-foreground mb-1 capitalize">{key}</span>
+                            <span className="block text-sm text-foreground break-words">{String(value)}</span>
                           </div>
                         ))}
                          {selectedNode.source && (
@@ -1057,7 +1057,7 @@ export default function GraphPage() {
 
                   {/* Edit Actions */}
                   <div>
-                     <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3 flex items-center gap-2">
+                     <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3 flex items-center gap-2">
                       <Layers className="w-3 h-3" />
                       操作
                     </h3>
@@ -1066,7 +1066,7 @@ export default function GraphPage() {
                         variant="outline" 
                         onClick={handleExpandNode} 
                         disabled={isLoading}
-                        className="w-full justify-start text-xs h-9 hover:bg-sky-50 hover:text-sky-600 text-gray-600"
+                        className="w-full justify-start text-xs h-9 hover:bg-sky-500/10 dark:hover:bg-sky-500/20 hover:text-sky-600 dark:hover:text-sky-300 text-muted-foreground"
                       >
                         <Network className="w-3 h-3 mr-2" />
                         {isLoading ? '展开中...' : '展开邻居节点'}
@@ -1075,7 +1075,7 @@ export default function GraphPage() {
                          <Button 
                           variant="outline" 
                           onClick={startConnectMode}
-                          className="w-full justify-start text-xs h-9 hover:bg-emerald-50 hover:text-emerald-600 hover:border-emerald-100 text-gray-600"
+                          className="w-full justify-start text-xs h-9 hover:bg-emerald-500/10 dark:hover:bg-emerald-500/20 hover:text-emerald-600 dark:hover:text-emerald-300 hover:border-emerald-500/30 text-muted-foreground"
                         >
                           <LinkIcon className="w-3 h-3 mr-2" />
                           连接
@@ -1083,7 +1083,7 @@ export default function GraphPage() {
                         <Button 
                           variant="outline" 
                           onClick={handleDeleteNode}
-                          className="w-full justify-start text-xs h-9 hover:bg-red-50 hover:text-red-600 hover:border-red-100 text-gray-600"
+                          className="w-full justify-start text-xs h-9 hover:bg-red-500/10 dark:hover:bg-red-500/20 dark:bg-red-500/20 hover:text-red-600 dark:hover:text-red-300 hover:border-red-500/30 text-muted-foreground"
                         >
                           <Trash2 className="w-3 h-3 mr-2" />
                           删除
