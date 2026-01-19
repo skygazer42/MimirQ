@@ -9,6 +9,7 @@ import { usePathname, useRouter } from 'next/navigation'
 import {
   MessageSquare,
   Database,
+  Activity,
   Layers,
   History,
   Settings,
@@ -19,6 +20,7 @@ import {
   ChevronLeft,
   ChevronRight,
   BarChart3,
+  Star,
   Wand2,
   ShieldCheck,
   User,
@@ -44,6 +46,16 @@ const menuItems = [
     icon: Database,
     label: '知识库',
     href: '/knowledge',
+  },
+  {
+    icon: Activity,
+    label: '入库监控',
+    href: '/knowledge/ingestion',
+  },
+  {
+    icon: Star,
+    label: '反馈质检',
+    href: '/knowledge/feedback',
   },
   {
     icon: Layers,

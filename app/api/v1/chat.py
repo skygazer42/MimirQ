@@ -238,6 +238,7 @@ async def stream_chat(
         nonlocal citations_data, full_response
         doc_ids_to_use = allowed_doc_ids or []
         request_id = getattr(http_request.state, "request_id", None) or uuid.uuid4().hex
+        assistant_message_id = uuid.uuid4()
         metrics_data = {}
         set_metrics_context(
             request_id=request_id,
@@ -356,6 +357,7 @@ async def stream_chat(
                 done_payload = {
                     "type": "done",
                     "data": {
+                        "assistant_message_id": str(assistant_message_id),
                         "conversation_id": str(conversation_id) if conversation_id else None,
                         "total_tokens": num_tokens_from_string(full_response or ""),
                         "total_chars": len(full_response or ""),
@@ -386,6 +388,7 @@ async def stream_chat(
                 )
 
                 assistant_message = Message(
+                    id=assistant_message_id,
                     tenant_id=tenant_id,
                     conversation_id=conversation_id,
                     role='assistant',
@@ -448,6 +451,8 @@ async def stream_chat(
                 if event['type'] == 'citations':
                     citations_data = event['data']
                 if event['type'] == 'done':
+                    if isinstance(event.get("data"), dict):
+                        event["data"]["assistant_message_id"] = str(assistant_message_id)
                     metrics_data = event['data'].get("metrics", {})
 
                 # Accumulate full response.
@@ -460,6 +465,7 @@ async def stream_chat(
 
             # 4. Persist assistant response.
             assistant_message = Message(
+                id=assistant_message_id,
                 tenant_id=tenant_id,
                 conversation_id=conversation_id,
                 role='assistant',

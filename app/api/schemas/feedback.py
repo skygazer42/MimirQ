@@ -38,3 +38,16 @@ class MessageFeedbackOut(OrmModel):
 class MessageFeedbackList(BaseModel):
     total: int
     items: List[MessageFeedbackOut]
+
+
+class MessageFeedbackEnrichedOut(MessageFeedbackOut):
+    """Feedback with joined message/conversation context for triage UIs."""
+
+    conversation_title: Optional[str] = None
+    message_content: Optional[str] = None
+    message_created_at: Optional[datetime] = None
+
+
+class MessageFeedbackEnrichedList(BaseModel):
+    total: int
+    items: List[MessageFeedbackEnrichedOut]

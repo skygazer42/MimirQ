@@ -256,6 +256,11 @@ export function useChat({
                 onConversationId?.(nextConversationId)
               }
 
+              const doneData = event?.data || {}
+              const assistantMessageId = String(
+                doneData?.assistant_message_id || doneData?.message_id || Date.now().toString()
+              )
+
               let assistantContent = fullResponseRef.current
               if (structuredOutput && event?.data?.structured_data != null) {
                 try {
@@ -265,12 +270,28 @@ export function useChat({
                 }
               }
 
+              const messageMetadata = {
+                ...(doneData?.metrics || {}),
+                request_id: event.request_id || doneData?.request_id,
+                total_tokens: doneData?.total_tokens,
+                total_chars: doneData?.total_chars,
+                citations_count: doneData?.citations_count,
+                model_used: doneData?.model_used,
+                route: doneData?.route,
+                retrieval_mode: doneData?.retrieval_mode,
+                vector_backend: doneData?.vector_backend,
+                structured: doneData?.structured,
+                structured_preset: doneData?.structured_preset,
+                structured_parse_ok: (doneData?.metrics || {})?.structured_parse_ok,
+              }
+
               const assistantMessage: Message = {
-                id: Date.now().toString(),
+                id: assistantMessageId,
                 role: 'assistant',
                 content: assistantContent,
                 citations,
                 steps,
+                message_metadata: messageMetadata,
                 created_at: new Date().toISOString(),
               }
 

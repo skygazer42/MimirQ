@@ -23,6 +23,7 @@ import type {
   MessageFeedback,
   MessageFeedbackCreate,
   MessageFeedbackListResponse,
+  MessageFeedbackEnrichedListResponse,
   KGDeleteResponse,
   KGEntityDetailResponse,
   KGEventDetailResponse,
@@ -247,6 +248,17 @@ export const documentApi = {
 
     const { data } = await apiClient.get(`/documents/${documentId}`, {
       params,
+    })
+    return data
+  },
+
+  /**
+   * 下载/预览原始文件（返回 Blob）
+   */
+  async download(documentId: string, params?: { inline?: boolean }): Promise<Blob> {
+    const { data } = await apiClient.get(`/documents/${documentId}/download`, {
+      params,
+      responseType: 'blob',
     })
     return data
   },
@@ -688,6 +700,21 @@ export const feedbackApi = {
     message_id?: string
   }): Promise<MessageFeedbackListResponse> {
     const { data } = await apiClient.get('/feedback/messages', { params })
+    return data
+  },
+
+  /**
+   * 获取反馈列表（联表包含消息内容/对话标题，用于质检面板）
+   */
+  async listEnriched(params?: {
+    skip?: number
+    limit?: number
+    conversation_id?: string
+    message_id?: string
+    min_rating?: number
+    max_rating?: number
+  }): Promise<MessageFeedbackEnrichedListResponse> {
+    const { data } = await apiClient.get('/feedback/messages/enriched', { params })
     return data
   },
 }

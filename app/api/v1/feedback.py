@@ -15,8 +15,14 @@ from app.core.database import get_db
 from app.api.dependencies.auth import get_current_account_id
 from app.api.dependencies.tenant import get_tenant_id
 from app.models.chat import Message
+from app.models.chat import Conversation
 from app.models.feedback import MessageFeedback
-from app.api.schemas.feedback import MessageFeedbackCreateRequest, MessageFeedbackList, MessageFeedbackOut
+from app.api.schemas.feedback import (
+    MessageFeedbackCreateRequest,
+    MessageFeedbackList,
+    MessageFeedbackOut,
+    MessageFeedbackEnrichedList,
+)
 from app.services.dataset_service import DatasetService
 
 router = APIRouter(tags=["Feedback"])
@@ -111,3 +117,63 @@ async def list_message_feedback(
         .all()
     )
     return {"total": total, "items": rows}
+
+
+@router.get("/messages/enriched", response_model=MessageFeedbackEnrichedList)
+async def list_message_feedback_enriched(
+    skip: int = Query(default=0, ge=0),
+    limit: int = Query(default=50, ge=1, le=200),
+    conversation_id: UUID | None = None,
+    message_id: UUID | None = None,
+    min_rating: int | None = None,
+    max_rating: int | None = None,
+    tenant_id: UUID = Depends(get_tenant_id),
+    account_id: str = Depends(get_current_account_id),
+    db: Session = Depends(get_db),
+):
+    """Feedback list with joined message content + conversation title (for triage dashboards)."""
+    DatasetService.ensure_member(db, tenant_id, account_id)
+
+    query = (
+        db.query(
+            MessageFeedback,
+            Message.content,
+            Message.created_at,
+            Conversation.title,
+        )
+        .join(Message, Message.id == MessageFeedback.message_id)
+        .join(Conversation, Conversation.id == MessageFeedback.conversation_id)
+        .filter(
+            MessageFeedback.tenant_id == tenant_id,
+            Message.tenant_id == tenant_id,
+            Conversation.tenant_id == tenant_id,
+        )
+    )
+
+    if conversation_id:
+        query = query.filter(MessageFeedback.conversation_id == conversation_id)
+    if message_id:
+        query = query.filter(MessageFeedback.message_id == message_id)
+    if min_rating is not None:
+        query = query.filter(MessageFeedback.rating >= int(min_rating))
+    if max_rating is not None:
+        query = query.filter(MessageFeedback.rating <= int(max_rating))
+
+    total = query.count()
+    rows = (
+        query.order_by(MessageFeedback.updated_at.desc())
+        .offset(skip)
+        .limit(limit)
+        .all()
+    )
+
+    items = []
+    for fb, msg_content, msg_created_at, conv_title in rows:
+        # Attach non-persisted attrs for Pydantic serialization.
+        setattr(fb, "conversation_title", conv_title)
+        content = (msg_content or "").strip()
+        setattr(fb, "message_content", content[:4000] if content else None)
+        setattr(fb, "message_created_at", msg_created_at)
+        items.append(fb)
+
+    return {"total": total, "items": items}
