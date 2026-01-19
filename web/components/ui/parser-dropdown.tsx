@@ -57,7 +57,27 @@ interface ParserDropdownProps {
 export function ParserDropdown({ value, onChange, className }: ParserDropdownProps) {
   const [isOpen, setIsOpen] = useState(false)
   const dropdownRef = useRef<HTMLDivElement>(null)
-  const { parserBackendAvailable } = usePipelineCapabilities()
+  const { capabilities, loading, error, refresh, parserBackendAvailable } = usePipelineCapabilities()
+
+  const normalizeBackendName = (backend?: string) => {
+    const raw = (backend || '').toLowerCase().trim()
+    const normalized = raw.replace(/_/g, '-')
+    if (normalized === 'magic-pdf') return 'magicpdf'
+    if (normalized === 'olm-ocr') return 'olmocr'
+    if (normalized === 'olmocr-pdf') return 'olmocr'
+    if (normalized === 'etl-4llm') return 'etl4llm'
+    if (normalized === 'bisheng-unstructured') return 'etl4llm'
+    if (normalized === 'bishengunstructured') return 'etl4llm'
+    if (normalized === 'bisheng') return 'etl4llm'
+    return normalized
+  }
+
+  const parserNotesByName = new Map<string, string>()
+  for (const info of capabilities?.pdf_backends || []) {
+    const key = normalizeBackendName(info.name)
+    const notes = (info.notes || '').trim()
+    if (key && notes) parserNotesByName.set(key, notes)
+  }
 
   const selectedOption = getParserOption(value)
   const SelectedIcon = ICON_MAP[selectedOption.icon]
@@ -115,6 +135,27 @@ export function ParserDropdown({ value, onChange, className }: ParserDropdownPro
       {/* 下拉菜单 */}
       {isOpen && (
         <div className="absolute z-50 w-full mt-2 bg-white border border-gray-200 rounded-xl shadow-lg overflow-hidden">
+          {(loading || error) && (
+            <div className={cn('px-3 py-2 text-xs border-b', error ? 'bg-red-50 text-red-700 border-red-100' : 'bg-gray-50 text-gray-600 border-gray-100')}>
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0">
+                  {loading ? '正在加载后端解析器能力…' : '无法获取后端解析器能力，部分选项可能不可用。'}
+                </div>
+                {error ? (
+                  <button
+                    type="button"
+                    className="flex-shrink-0 text-xs text-red-700 hover:text-red-800 underline underline-offset-2"
+                    onClick={() => {
+                      void refresh()
+                    }}
+                  >
+                    重试
+                  </button>
+                ) : null}
+              </div>
+              {error ? <div className="mt-1 text-[11px] text-red-600/80 truncate" title={error}>{error}</div> : null}
+            </div>
+          )}
           <div className="py-1">
             {PARSER_BACKEND_OPTIONS.map((option) => {
               const Icon = ICON_MAP[option.icon]
@@ -122,12 +163,15 @@ export function ParserDropdown({ value, onChange, className }: ParserDropdownPro
               const isSelected = option.value === selectedOption.value
               const availability = parserBackendAvailable(option.value)
               const isDisabled = option.value !== 'auto' && option.value !== 'basic' && availability !== true
+              const notes = parserNotesByName.get(normalizeBackendName(option.value))
+              const disabledTitle = notes || '后端未启用该解析器（可到“设置”开启/配置）'
 
               return (
                 <button
                   key={option.value}
                   type="button"
                   disabled={isDisabled}
+                  title={isDisabled ? disabledTitle : undefined}
                   onClick={() => {
                     if (isDisabled) return
                     onChange(option.value)
@@ -167,6 +211,11 @@ export function ParserDropdown({ value, onChange, className }: ParserDropdownPro
                     </div>
                     <p className="text-xs text-gray-400 truncate">{option.description}</p>
                   </div>
+                  {isDisabled && (
+                    <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-gray-100 text-gray-500 flex-shrink-0">
+                      未启用
+                    </span>
+                  )}
                   {isSelected && (
                     <Check className="w-4 h-4 text-sky-600 flex-shrink-0" />
                   )}
