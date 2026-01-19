@@ -6,7 +6,7 @@
 import { memo, useEffect, useRef, useState, useCallback } from 'react'
 import type { ReactNode } from 'react'
 import Image from 'next/image'
-import { Check, Copy, Database, Bot, User } from 'lucide-react'
+import { BarChart3, Check, Copy, Database, Bot, Star, User } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 
@@ -17,6 +17,10 @@ import { getAccessToken, getTenantId } from '@/lib/auth-storage'
 import { useDocumentView } from '@/store/document-view'
 
 import { CinematicTypewriter } from '@/components/ui/cinematic-typewriter'
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { Button } from '@/components/ui/button'
+import { feedbackApi } from '@/lib/api-client'
+import { toast } from 'sonner'
 
 let BACKEND_ORIGIN = ''
 try {
@@ -135,6 +139,9 @@ export const ChatMessageItem = memo(function ChatMessageItem({
 }) {
   const isUser = message.role === 'user'
   const [copied, setCopied] = useState(false)
+  const [diagOpen, setDiagOpen] = useState(false)
+  const [rating, setRating] = useState<number | null>(null)
+  const [ratingSending, setRatingSending] = useState(false)
   const copyTimerRef = useRef<number | null>(null)
 
   useEffect(() => {
@@ -181,6 +188,59 @@ export const ChatMessageItem = memo(function ChatMessageItem({
     copyTimerRef.current = window.setTimeout(() => setCopied(false), 1200)
   }
 
+  const handleCopyDiagnostics = useCallback(async () => {
+    const payload = {
+      message_id: message.id,
+      message_metadata: message.message_metadata || null,
+      citations: message.citations || [],
+    }
+    try {
+      await navigator.clipboard.writeText(JSON.stringify(payload, null, 2))
+    } catch {
+      // ignore
+    }
+  }, [message.citations, message.id, message.message_metadata])
+
+  const metrics = (message.message_metadata || {}) as Record<string, any>
+  const metricEntries: Array<{ k: string; v: any }> = [
+    { k: 'request_id', v: metrics.request_id },
+    { k: 'retrieval_mode', v: metrics.retrieval_mode ?? metrics.retrieval_mode_requested },
+    { k: 'vector_backend', v: metrics.vector_backend },
+    { k: 'route', v: metrics.route ?? metrics.model_route },
+    { k: 'elapsed_sec', v: metrics.elapsed_sec },
+    { k: 'retrieval_elapsed_sec', v: metrics.retrieval_elapsed_sec },
+    { k: 'generation_elapsed_sec', v: metrics.generation_elapsed_sec },
+    { k: 'docs_returned', v: metrics.docs_returned },
+    { k: 'distinct_documents', v: metrics.distinct_documents },
+    { k: 'top_k', v: metrics.top_k },
+  ].filter((e) => e.v !== undefined && e.v !== null && String(e.v).trim() !== '')
+
+  const citationRows = (message.citations || [])
+    .slice()
+    .sort((a, b) => (Number(b.relevance_score) || 0) - (Number(a.relevance_score) || 0))
+
+  const canRate = (() => {
+    if (isUser) return false
+    if (isStreaming) return false
+    // Feedback API requires persisted assistant message UUID.
+    return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(message.id)
+  })()
+
+  const submitRating = useCallback(async (nextRating: number) => {
+    if (!canRate) return
+    if (ratingSending) return
+    setRating(nextRating)
+    setRatingSending(true)
+    try {
+      await feedbackApi.create({ message_id: message.id, rating: nextRating })
+      toast.success('已提交反馈')
+    } catch (err: any) {
+      toast.error(err?.message || '反馈提交失败')
+    } finally {
+      setRatingSending(false)
+    }
+  }, [canRate, message.id, ratingSending])
+
   return (
     <div
       className={cn(
@@ -226,11 +286,124 @@ export const ChatMessageItem = memo(function ChatMessageItem({
               ))}
             </div>
           </div>
-        )}
+	        )}
 
-        <button
-          type="button"
-          onClick={handleCopy}
+	        {!isUser && message.message_metadata && (
+	          <>
+	            <button
+	              type="button"
+	              onClick={() => setDiagOpen(true)}
+	              aria-label="Diagnostics"
+	              title="检索诊断"
+	              className={cn(
+	                'absolute bottom-2 right-11 z-10 rounded-md p-1.5 transition-all duration-200',
+	                'opacity-0 group-hover:opacity-100 scale-90 group-hover:scale-100',
+	                'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60',
+	                'text-muted-foreground hover:text-foreground hover:bg-secondary'
+	              )}
+	            >
+	              <BarChart3 className="h-3.5 w-3.5" />
+	            </button>
+
+	            <Dialog open={diagOpen} onOpenChange={setDiagOpen}>
+	              <DialogContent className="max-w-3xl">
+	                <DialogHeader>
+	                  <DialogTitle className="flex items-center justify-between gap-3">
+	                    <span className="truncate">检索诊断</span>
+	                    <Button size="sm" variant="outline" onClick={handleCopyDiagnostics}>
+	                      复制 JSON
+	                    </Button>
+	                  </DialogTitle>
+	                </DialogHeader>
+
+	                <div className="space-y-6">
+	                  <div className="rounded-2xl border border-border bg-background/60 p-4">
+	                    <div className="text-sm font-medium">关键信息</div>
+	                    <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-3">
+	                      <div className="rounded-xl border border-border bg-background p-3">
+	                        <div className="text-[11px] text-muted-foreground">message_id</div>
+	                        <div className="mt-1 text-xs font-mono break-words">{message.id}</div>
+	                      </div>
+	                      <div className="rounded-xl border border-border bg-background p-3">
+	                        <div className="text-[11px] text-muted-foreground">citations</div>
+	                        <div className="mt-1 text-xs font-mono break-words">{(message.citations || []).length}</div>
+	                      </div>
+	                    </div>
+	                  </div>
+
+		                  <div className="rounded-2xl border border-border bg-background/60 p-4">
+		                    <div className="text-sm font-medium">Metrics</div>
+		                    {metricEntries.length ? (
+		                      <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-3">
+		                        {metricEntries.map((e) => (
+		                          <div key={e.k} className="rounded-xl border border-border bg-background p-3">
+		                            <div className="text-[11px] text-muted-foreground">{e.k}</div>
+		                            <div className="mt-1 text-xs font-mono break-words">{String(e.v)}</div>
+		                          </div>
+		                        ))}
+		                      </div>
+		                    ) : (
+		                      <div className="mt-2 text-xs text-muted-foreground">暂无 metrics</div>
+		                    )}
+		                  </div>
+
+		                  <div className="rounded-2xl border border-border bg-background/60 p-4">
+		                    <div className="flex items-center justify-between gap-3">
+		                      <div className="text-sm font-medium">Citations Scores</div>
+		                      <div className="text-xs text-muted-foreground tabular-nums">{citationRows.length}</div>
+		                    </div>
+
+		                    {citationRows.length ? (
+		                      <div className="mt-3 overflow-x-auto">
+		                        <table className="w-full text-xs">
+		                          <thead>
+		                            <tr className="text-muted-foreground border-b border-border/60">
+		                              <th className="text-left font-medium py-2 pr-3">#</th>
+		                              <th className="text-left font-medium py-2 pr-3">文档</th>
+		                              <th className="text-left font-medium py-2 pr-3">页</th>
+		                              <th className="text-left font-medium py-2 pr-3">rel</th>
+		                              <th className="text-left font-medium py-2 pr-3">vec</th>
+		                              <th className="text-left font-medium py-2 pr-3">bm25</th>
+		                              <th className="text-left font-medium py-2 pr-3">rerank</th>
+		                            </tr>
+		                          </thead>
+		                          <tbody>
+		                            {citationRows.map((c, idx) => (
+		                              <tr key={`${c.document_id}-${c.chunk_id || c.page_number || idx}`} className="border-b border-border/40">
+		                                <td className="py-2 pr-3 text-muted-foreground tabular-nums">{idx + 1}</td>
+		                                <td className="py-2 pr-3 max-w-[280px] truncate" title={c.document_name}>
+		                                  {c.document_name}
+		                                </td>
+		                                <td className="py-2 pr-3 text-muted-foreground tabular-nums">{c.page_number ?? '-'}</td>
+		                                <td className="py-2 pr-3 font-mono tabular-nums">{Number.isFinite(c.relevance_score) ? c.relevance_score.toFixed(3) : '-'}</td>
+		                                <td className="py-2 pr-3 font-mono tabular-nums">{c.vector_score != null ? Number(c.vector_score).toFixed(3) : '-'}</td>
+		                                <td className="py-2 pr-3 font-mono tabular-nums">{c.bm25_score != null ? Number(c.bm25_score).toFixed(3) : '-'}</td>
+		                                <td className="py-2 pr-3 font-mono tabular-nums">{c.rerank_score != null ? Number(c.rerank_score).toFixed(3) : '-'}</td>
+		                              </tr>
+		                            ))}
+		                          </tbody>
+		                        </table>
+		                      </div>
+		                    ) : (
+		                      <div className="mt-2 text-xs text-muted-foreground">暂无 citations</div>
+		                    )}
+		                  </div>
+
+		                  <div className="rounded-2xl border border-border bg-background/60 p-4">
+		                    <div className="text-sm font-medium">Raw JSON</div>
+		                    <pre className="mt-3 max-h-64 overflow-auto rounded-xl bg-background p-3 text-xs border border-border/60">
+		                      {JSON.stringify({ message_metadata: message.message_metadata || null }, null, 2)}
+	                    </pre>
+	                  </div>
+	                </div>
+	              </DialogContent>
+	            </Dialog>
+	          </>
+	        )}
+
+	        <button
+	          type="button"
+	          onClick={handleCopy}
           aria-label={copied ? 'Copied' : 'Copy message'}
           title={copied ? 'Copied' : 'Copy'}
           className={cn(
@@ -273,8 +446,8 @@ export const ChatMessageItem = memo(function ChatMessageItem({
           )}
         </div>
 
-        {!isUser && message.citations && message.citations.length > 0 && (
-          <div className="mt-5 pt-3 border-t border-border/40 space-y-3">
+	        {!isUser && message.citations && message.citations.length > 0 && (
+	          <div className="mt-5 pt-3 border-t border-border/40 space-y-3">
             <div className="flex items-center gap-2 text-[10px] font-bold text-muted-foreground uppercase tracking-widest opacity-80">
               <Database className="w-3 h-3" />
               参考来源
@@ -287,9 +460,43 @@ export const ChatMessageItem = memo(function ChatMessageItem({
                 )
               })}
             </div>
-          </div>
-        )}
-      </div>
+	          </div>
+	        )}
+
+	        {!isUser && canRate && (
+	          <div className="mt-5 pt-3 border-t border-border/40 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+	            <div className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest opacity-80">
+	              反馈评分
+	            </div>
+	            <div className="flex items-center gap-1">
+	              {[1, 2, 3, 4, 5].map((v) => {
+	                const active = rating != null && v <= rating
+	                return (
+	                  <button
+	                    key={v}
+	                    type="button"
+	                    disabled={ratingSending}
+	                    onClick={() => submitRating(v)}
+	                    className={cn(
+	                      'h-8 w-8 inline-flex items-center justify-center rounded-lg transition-colors',
+	                      'hover:bg-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60',
+	                      ratingSending && 'opacity-50 cursor-not-allowed'
+	                    )}
+	                    aria-label={`rate-${v}`}
+	                    title={`${v} 星`}
+	                  >
+	                    <Star
+	                      className={cn('h-4 w-4', active ? 'text-yellow-500' : 'text-muted-foreground')}
+	                      fill={active ? 'currentColor' : 'none'}
+	                    />
+	                  </button>
+	                )
+	              })}
+	              {ratingSending && <span className="text-xs text-muted-foreground ml-2">提交中…</span>}
+	            </div>
+	          </div>
+	        )}
+	      </div>
 
       {isUser && (
         <div className="flex-shrink-0 w-8 h-8 rounded-xl bg-primary text-primary-foreground flex items-center justify-center text-xs font-bold shadow-md shadow-primary/20 mt-0.5">

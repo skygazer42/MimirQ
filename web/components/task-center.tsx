@@ -2,17 +2,22 @@
 
 import { useQuery } from '@tanstack/react-query'
 import { documentApi } from '@/lib/api-client'
-import { Loader2, CheckCircle2, AlertCircle, X, ChevronUp, ChevronDown } from 'lucide-react'
+import { Loader2, AlertCircle, X, ChevronUp, ChevronDown, Ban, RotateCcw, ArrowUpRight } from 'lucide-react'
 import { useState } from 'react'
 import { cn } from '@/lib/utils'
 import { Button } from './ui/button'
 import { ScrollArea } from './ui/scroll-area'
+import { useRouter } from 'next/navigation'
+import { toast } from 'sonner'
+import { formatApiError } from '@/lib/api-errors'
 
 export function TaskCenter() {
   const [isOpen, setIsOpen] = useState(false)
+  const [acting, setActing] = useState<{ id: string; action: 'cancel' | 'retry' } | null>(null)
+  const router = useRouter()
   
   // Poll for active tasks globally
-  const { data: documents = [] } = useQuery({
+  const { data: documents = [], refetch } = useQuery({
     queryKey: ['documents'],
     queryFn: async () => {
       const res = await documentApi.list({ limit: 100 })
@@ -30,15 +35,57 @@ export function TaskCenter() {
   
   if (totalActive === 0 && failedTasks.length === 0) return null
 
+  const handleCancel = async (id: string) => {
+    if (acting) return
+    setActing({ id, action: 'cancel' })
+    try {
+      await documentApi.cancel(id)
+      toast.success('已取消任务')
+      await refetch()
+    } catch (err: any) {
+      toast.error(formatApiError(err, '取消失败'))
+    } finally {
+      setActing(null)
+    }
+  }
+
+  const handleRetry = async (id: string) => {
+    if (acting) return
+    setActing({ id, action: 'retry' })
+    try {
+      await documentApi.retry(id)
+      toast.success('已触发重试')
+      await refetch()
+    } catch (err: any) {
+      toast.error(formatApiError(err, '重试失败'))
+    } finally {
+      setActing(null)
+    }
+  }
+
   return (
     <div className="fixed bottom-4 right-20 z-50 flex flex-col items-end">
         {isOpen && (
             <div className="mb-2 w-80 bg-background border border-border rounded-xl shadow-2xl overflow-hidden animate-in slide-in-from-bottom-5 fade-in">
                 <div className="p-3 border-b border-border bg-muted/50 flex justify-between items-center">
                     <h4 className="text-xs font-semibold">任务列表 ({totalActive})</h4>
-                    <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => setIsOpen(false)}>
-                        <X className="h-3 w-3" />
-                    </Button>
+                    <div className="flex items-center gap-1">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 px-2 text-xs gap-1"
+                        onClick={() => {
+                          router.push('/knowledge/ingestion')
+                          setIsOpen(false)
+                        }}
+                      >
+                        监控
+                        <ArrowUpRight className="h-3.5 w-3.5" />
+                      </Button>
+                      <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => setIsOpen(false)}>
+                          <X className="h-3 w-3" />
+                      </Button>
+                    </div>
                 </div>
                 <ScrollArea className="h-48">
                     <div className="p-2 space-y-2">
@@ -52,6 +99,16 @@ export function TaskCenter() {
                                     </div>
                                 </div>
                                 <span className="text-[10px] text-muted-foreground">{doc.processing_progress}%</span>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-7 w-7"
+                                  disabled={acting?.id === doc.id}
+                                  onClick={() => handleCancel(doc.id)}
+                                  title="取消"
+                                >
+                                  <Ban className="h-3.5 w-3.5" />
+                                </Button>
                             </div>
                         ))}
                         {failedTasks.map(doc => (
@@ -61,6 +118,16 @@ export function TaskCenter() {
                                     <p className="text-xs font-medium truncate text-destructive">{doc.filename}</p>
                                     <p className="text-[10px] text-destructive/80 truncate">处理失败</p>
                                 </div>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-7 w-7"
+                                  disabled={acting?.id === doc.id}
+                                  onClick={() => handleRetry(doc.id)}
+                                  title="重试"
+                                >
+                                  <RotateCcw className="h-3.5 w-3.5" />
+                                </Button>
                             </div>
                         ))}
                     </div>

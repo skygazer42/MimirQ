@@ -84,8 +84,6 @@ export function DocumentViewerPanel() {
     }, 100)
   }, [highlightChunkId, activeTab, chunks])
 
-  if (!isOpen) return null
-
   const matchChunkIds = React.useMemo(() => {
     const q = chunkQuery.trim().toLowerCase()
     if (!q) return []
@@ -131,6 +129,8 @@ export function DocumentViewerPanel() {
     setActiveTab("chunks")
     setHighlightChunk(matchChunkIds[clamped] || null)
   }, [matchChunkIds, setActiveTab, setHighlightChunk])
+
+  if (!isOpen) return null
 
   return (
     <>

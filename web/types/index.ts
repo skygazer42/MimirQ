@@ -401,6 +401,7 @@ export interface Message {
   content: string
   citations?: Citation[]
   steps?: string[]
+  message_metadata?: Record<string, any> | null
   created_at: string
 }
 
@@ -517,6 +518,17 @@ export interface MessageFeedbackCreate {
 export interface MessageFeedbackListResponse {
   total: number
   items: MessageFeedback[]
+}
+
+export interface MessageFeedbackEnriched extends MessageFeedback {
+  conversation_title?: string
+  message_content?: string
+  message_created_at?: string
+}
+
+export interface MessageFeedbackEnrichedListResponse {
+  total: number
+  items: MessageFeedbackEnriched[]
 }
 
 // ==================== Auth ====================

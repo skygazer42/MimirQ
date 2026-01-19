@@ -10,6 +10,7 @@ import {
   RefreshCw,
   Search,
 } from 'lucide-react'
+import { toast } from 'sonner'
 
 import { Navbar } from '@/components/navbar'
 import { DocumentViewerPanel } from '@/components/document-viewer-panel'
@@ -21,6 +22,8 @@ import { documentApi } from '@/lib/api-client'
 import { cn, formatDate, formatFileSize } from '@/lib/utils'
 import type { Document } from '@/types'
 import { useDocumentView } from '@/store/document-view'
+import { IngestionDetailDialog } from '@/components/ingestion/ingestion-detail-dialog'
+import { formatApiError } from '@/lib/api-errors'
 
 type StatusFilter = 'all' | Document['status']
 
@@ -64,6 +67,9 @@ export default function IngestionMonitorPage() {
   const [autoRefresh, setAutoRefresh] = useState(true)
   const [status, setStatus] = useState<StatusFilter>('all')
   const [search, setSearch] = useState('')
+  const [detailOpen, setDetailOpen] = useState(false)
+  const [detailDocumentId, setDetailDocumentId] = useState<string | null>(null)
+  const [acting, setActing] = useState<{ id: string; action: 'cancel' | 'retry' } | null>(null)
 
   const { data, isFetching, refetch } = useQuery({
     queryKey: ['ingestion-documents', status],
@@ -105,6 +111,32 @@ export default function IngestionMonitorPage() {
 
     return { pending, processing, completed, failed, cancelled, totalSize }
   }, [documents])
+
+  const handleCancel = async (docId: string) => {
+    setActing({ id: docId, action: 'cancel' })
+    try {
+      await documentApi.cancel(docId)
+      toast.success('已取消入库任务')
+      await refetch()
+    } catch (err: any) {
+      toast.error(formatApiError(err, '取消失败'))
+    } finally {
+      setActing(null)
+    }
+  }
+
+  const handleRetry = async (docId: string) => {
+    setActing({ id: docId, action: 'retry' })
+    try {
+      await documentApi.retry(docId)
+      toast.success('已触发重新入库')
+      await refetch()
+    } catch (err: any) {
+      toast.error(formatApiError(err, '重试失败'))
+    } finally {
+      setActing(null)
+    }
+  }
 
   return (
     <div className="flex h-screen overflow-hidden bg-slate-50/50 dark:bg-slate-950 transition-colors duration-300">
@@ -197,9 +229,21 @@ export default function IngestionMonitorPage() {
         <section className="flex-1 overflow-y-auto px-8 pb-10 z-10">
           <div className="space-y-3">
             {filtered.map((doc) => (
-              <button
+              <div
                 key={doc.id}
-                onClick={() => openDocument(doc.id)}
+                role="button"
+                tabIndex={0}
+                onClick={() => {
+                  setDetailDocumentId(doc.id)
+                  setDetailOpen(true)
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault()
+                    setDetailDocumentId(doc.id)
+                    setDetailOpen(true)
+                  }
+                }}
                 className={cn(
                   'w-full text-left rounded-2xl border border-slate-200 dark:border-slate-800 bg-white/80 dark:bg-slate-900/70 backdrop-blur-sm p-4',
                   'hover:shadow-md hover:shadow-sky-500/10 transition-all'
@@ -219,8 +263,46 @@ export default function IngestionMonitorPage() {
                     </div>
                   </div>
 
-                  <div className="text-xs text-slate-500 dark:text-slate-400 tabular-nums">
-                    {doc.status === 'processing' || doc.status === 'pending' ? `${doc.processing_progress}%` : ''}
+                  <div className="flex items-center gap-2">
+                    <div className="text-xs text-slate-500 dark:text-slate-400 tabular-nums min-w-[48px] text-right">
+                      {doc.status === 'processing' || doc.status === 'pending' ? `${doc.processing_progress}%` : ''}
+                    </div>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="bg-white/80 dark:bg-slate-900/60"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        openDocument(doc.id)
+                      }}
+                    >
+                      查看内容
+                    </Button>
+                    {(doc.status === 'processing' || doc.status === 'pending') && (
+                      <Button
+                        size="sm"
+                        variant="destructive"
+                        disabled={acting?.id === doc.id}
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          handleCancel(doc.id)
+                        }}
+                      >
+                        {acting?.id === doc.id && acting.action === 'cancel' ? '取消中…' : '取消'}
+                      </Button>
+                    )}
+                    {(doc.status === 'failed' || doc.status === 'cancelled') && (
+                      <Button
+                        size="sm"
+                        disabled={acting?.id === doc.id}
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          handleRetry(doc.id)
+                        }}
+                      >
+                        {acting?.id === doc.id && acting.action === 'retry' ? '重试中…' : '重试'}
+                      </Button>
+                    )}
                   </div>
                 </div>
 
@@ -241,7 +323,7 @@ export default function IngestionMonitorPage() {
                     <span className="font-mono">{doc.error_message}</span>
                   </div>
                 )}
-              </button>
+              </div>
             ))}
 
             {!filtered.length && (
@@ -254,7 +336,14 @@ export default function IngestionMonitorPage() {
       </main>
 
       <DocumentViewerPanel />
+      <IngestionDetailDialog
+        open={detailOpen}
+        onOpenChange={(next) => {
+          setDetailOpen(next)
+          if (!next) setDetailDocumentId(null)
+        }}
+        documentId={detailDocumentId}
+      />
     </div>
   )
 }
-
