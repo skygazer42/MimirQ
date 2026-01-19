@@ -180,7 +180,7 @@ export function DataAnnotator({ content, annotations = [], onAnnotate }: DataAnn
                   type.color === 'blue' && "bg-blue-100 text-blue-800 border border-blue-200",
                   type.color === 'green' && "bg-green-100 text-green-800 border border-green-200",
                   type.color === 'red' && "bg-red-100 text-red-800 border border-red-200 line-through",
-                  type.color === 'purple' && "bg-purple-100 text-purple-800 border border-purple-200",
+                  type.color === 'purple' && "bg-purple-500/10 dark:bg-purple-500/20 text-purple-700 dark:text-purple-300 border border-purple-500/30",
                 )}
                 title={seg.annotation.label}
               >
@@ -201,12 +201,12 @@ export function DataAnnotator({ content, annotations = [], onAnnotate }: DataAnn
       {/* 标题 */}
       <div className="flex items-center gap-2">
         <Tag className="w-5 h-5 text-purple-600" />
-        <h3 className="font-bold text-gray-900">数据标注</h3>
+        <h3 className="font-bold text-foreground">数据标注</h3>
       </div>
 
       {/* 标注类型选择 */}
       <div className="space-y-2">
-        <div className="text-xs font-medium text-gray-500">选择标注类型</div>
+        <div className="text-xs font-medium text-muted-foreground">选择标注类型</div>
         <div className="grid grid-cols-2 gap-2">
           {ANNOTATION_TYPES.map((type) => {
             const Icon = type.icon
@@ -221,7 +221,7 @@ export function DataAnnotator({ content, annotations = [], onAnnotate }: DataAnn
                   "flex items-center gap-2 p-2.5 rounded-lg border text-left transition-all",
                   isSelected
                     ? `bg-${type.color}-50 border-${type.color}-300 ring-1 ring-${type.color}-200`
-                    : "bg-gray-50 border-gray-200 hover:bg-gray-100"
+                    : "bg-muted border-border hover:bg-muted"
                 )}
               >
                 <div className={cn(
@@ -229,18 +229,18 @@ export function DataAnnotator({ content, annotations = [], onAnnotate }: DataAnn
                   type.color === 'blue' && "bg-blue-100",
                   type.color === 'green' && "bg-green-100",
                   type.color === 'red' && "bg-red-100",
-                  type.color === 'purple' && "bg-purple-100",
+                  type.color === 'purple' && "bg-purple-500/10 dark:bg-purple-500/20",
                 )}>
                   <Icon className={cn("w-3.5 h-3.5", `text-${type.color}-600`)} />
                 </div>
                 <div className="flex-1">
                   <div className={cn(
                     "text-sm font-medium",
-                    isSelected ? `text-${type.color}-900` : "text-gray-700"
+                    isSelected ? `text-${type.color}-900` : "text-foreground/80"
                   )}>
                     {type.label}
                   </div>
-                  <div className="text-xs text-gray-400">{count} 个</div>
+                  <div className="text-xs text-muted-foreground">{count} 个</div>
                 </div>
               </button>
             )
@@ -256,20 +256,20 @@ export function DataAnnotator({ content, annotations = [], onAnnotate }: DataAnn
             placeholder="输入自定义标签名称..."
             value={customLabel}
             onChange={(e) => setCustomLabel(e.target.value)}
-            className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+            className="w-full px-3 py-2 text-sm border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent"
           />
         </div>
       )}
 
       {/* 选区标注操作 */}
       {selection ? (
-        <div className="bg-purple-50 border border-purple-200 rounded-xl p-4">
+        <div className="bg-purple-500/10 dark:bg-purple-500/20 border border-purple-500/30 rounded-xl p-4">
           <div className="flex items-center gap-2 mb-2">
             <Search className="w-4 h-4 text-purple-600" />
             <span className="text-sm font-medium text-purple-700">已选中文本</span>
           </div>
-          <div className="bg-white p-2 rounded border border-purple-100 mb-3">
-            <div className="text-sm text-gray-700 line-clamp-2">
+          <div className="bg-card p-2 rounded border border-purple-500/30 mb-3">
+            <div className="text-sm text-foreground/80 line-clamp-2">
               {selection.text}
             </div>
           </div>
@@ -308,7 +308,7 @@ export function DataAnnotator({ content, annotations = [], onAnnotate }: DataAnn
 
       {/* 已有标注列表 */}
       <div className="space-y-2">
-        <div className="text-xs font-medium text-gray-500">已有标注 ({localAnnotations.length})</div>
+        <div className="text-xs font-medium text-muted-foreground">已有标注 ({localAnnotations.length})</div>
 
         {ANNOTATION_TYPES.map((type) => {
           const items = annotationsByType[type.id]
@@ -318,14 +318,14 @@ export function DataAnnotator({ content, annotations = [], onAnnotate }: DataAnn
           if (items.length === 0) return null
 
           return (
-            <div key={type.id} className="border border-gray-200 rounded-xl overflow-hidden">
+            <div key={type.id} className="border border-border rounded-xl overflow-hidden">
               <button
                 onClick={() => toggleExpandedType(type.id)}
-                className="w-full flex items-center justify-between p-3 hover:bg-gray-50 transition-colors"
+                className="w-full flex items-center justify-between p-3 hover:bg-muted transition-colors"
               >
                 <div className="flex items-center gap-2">
                   <Icon className={cn("w-4 h-4", `text-${type.color}-500`)} />
-                  <span className="text-sm font-medium text-gray-700">{type.label}</span>
+                  <span className="text-sm font-medium text-foreground/80">{type.label}</span>
                   <span className={cn(
                     "text-xs px-1.5 py-0.5 rounded-full",
                     `bg-${type.color}-100`,
@@ -335,24 +335,24 @@ export function DataAnnotator({ content, annotations = [], onAnnotate }: DataAnn
                   </span>
                 </div>
                 {isExpanded ? (
-                  <ChevronDown className="w-4 h-4 text-gray-400" />
+                  <ChevronDown className="w-4 h-4 text-muted-foreground" />
                 ) : (
-                  <ChevronRight className="w-4 h-4 text-gray-400" />
+                  <ChevronRight className="w-4 h-4 text-muted-foreground" />
                 )}
               </button>
 
               {isExpanded && (
-                <div className="p-3 pt-0 border-t border-gray-100 space-y-2">
+                <div className="p-3 pt-0 border-t border-border space-y-2">
                   {items.map((anno) => (
                     <div
                       key={anno.id}
-                      className="flex items-center justify-between p-2 bg-gray-50 rounded-lg"
+                      className="flex items-center justify-between p-2 bg-muted rounded-lg"
                     >
                       <div className="flex-1 min-w-0">
-                        <div className="text-xs text-gray-400">
+                        <div className="text-xs text-muted-foreground">
                           位置: {anno.start} - {anno.end}
                         </div>
-                        <div className="text-sm text-gray-700 truncate">
+                        <div className="text-sm text-foreground/80 truncate">
                           {anno.text}
                         </div>
                       </div>
@@ -360,7 +360,7 @@ export function DataAnnotator({ content, annotations = [], onAnnotate }: DataAnn
                         onClick={() => handleDeleteAnnotation(anno.id)}
                         variant="ghost"
                         size="sm"
-                        className="h-7 w-7 p-0 text-gray-400 hover:text-red-500"
+                        className="h-7 w-7 p-0 text-muted-foreground hover:text-red-500"
                       >
                         <X className="w-3.5 h-3.5" />
                       </Button>
@@ -373,7 +373,7 @@ export function DataAnnotator({ content, annotations = [], onAnnotate }: DataAnn
         })}
 
         {localAnnotations.length === 0 && (
-          <div className="text-center py-8 text-gray-400">
+          <div className="text-center py-8 text-muted-foreground">
             <Tag className="w-10 h-10 mx-auto mb-2 opacity-30" />
             <p className="text-sm">暂无标注</p>
             <p className="text-xs mt-1">选中文本后点击上方按钮添加</p>

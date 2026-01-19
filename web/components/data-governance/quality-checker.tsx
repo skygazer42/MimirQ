@@ -229,10 +229,10 @@ export function QualityChecker({ content, initialScore = 0, initialIssues = [], 
 
   // 获取分数等级
   const scoreGrade = useMemo(() => {
-    if (score >= 90) return { label: '优秀', color: 'green', bg: 'bg-green-100', text: 'text-green-700' }
-    if (score >= 75) return { label: '良好', color: 'blue', bg: 'bg-blue-100', text: 'text-blue-700' }
-    if (score >= 60) return { label: '及格', color: 'yellow', bg: 'bg-yellow-100', text: 'text-yellow-700' }
-    return { label: '较差', color: 'red', bg: 'bg-red-100', text: 'text-red-700' }
+    if (score >= 90) return { label: '优秀', color: 'green', bg: 'bg-green-500/10 dark:bg-green-500/20', text: 'text-green-700 dark:text-green-300' }
+    if (score >= 75) return { label: '良好', color: 'blue', bg: 'bg-blue-500/10 dark:bg-blue-500/20', text: 'text-blue-700 dark:text-blue-300' }
+    if (score >= 60) return { label: '及格', color: 'yellow', bg: 'bg-yellow-500/10 dark:bg-yellow-500/20', text: 'text-yellow-700 dark:text-yellow-300' }
+    return { label: '较差', color: 'red', bg: 'bg-red-500/10 dark:bg-red-500/20', text: 'text-red-700 dark:text-red-300' }
   }, [score])
 
   // 初始自动扫描
@@ -249,7 +249,7 @@ export function QualityChecker({ content, initialScore = 0, initialIssues = [], 
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <ScanLine className="w-5 h-5 text-blue-600" />
-            <h3 className="font-bold text-gray-900">质量检测</h3>
+            <h3 className="font-bold text-foreground">质量检测</h3>
           </div>
           <Button
             onClick={handleScan}
@@ -275,17 +275,17 @@ export function QualityChecker({ content, initialScore = 0, initialIssues = [], 
         {score > 0 && (
           <div className={cn(
             "p-4 rounded-xl border-2 bg-gradient-to-br",
-            scoreGrade.color === 'green' && "from-green-50 to-emerald-50 border-green-200",
-            scoreGrade.color === 'blue' && "from-blue-50 to-indigo-50 border-blue-200",
-            scoreGrade.color === 'yellow' && "from-yellow-50 to-amber-50 border-yellow-200",
-            scoreGrade.color === 'red' && "from-red-50 to-orange-50 border-red-200",
+            scoreGrade.color === 'green' && "from-green-500/10 to-emerald-500/10 border-green-500/30",
+            scoreGrade.color === 'blue' && "from-blue-500/10 to-indigo-500/10 border-blue-500/30",
+            scoreGrade.color === 'yellow' && "from-yellow-500/10 to-amber-500/10 border-yellow-500/30",
+            scoreGrade.color === 'red' && "from-red-500/10 to-orange-500/10 border-red-500/30",
           )}>
             <div className="flex items-center justify-between">
               <div>
-                <div className="text-sm text-gray-500 mb-1">数据质量评分</div>
+                <div className="text-sm text-muted-foreground mb-1">数据质量评分</div>
                 <div className="flex items-baseline gap-2">
-                  <span className="text-4xl font-bold text-gray-900">{score}</span>
-                  <span className="text-sm text-gray-400">/ 100</span>
+                  <span className="text-4xl font-bold text-foreground">{score}</span>
+                  <span className="text-sm text-muted-foreground">/ 100</span>
                   <span className={cn("text-xs px-2 py-0.5 rounded-full font-medium", scoreGrade.bg, scoreGrade.text)}>
                     {scoreGrade.label}
                   </span>
@@ -293,10 +293,10 @@ export function QualityChecker({ content, initialScore = 0, initialIssues = [], 
               </div>
               <div className={cn(
                 "w-16 h-16 rounded-full flex items-center justify-center border-4",
-                scoreGrade.color === 'green' && "border-green-300 bg-green-50",
-                scoreGrade.color === 'blue' && "border-blue-300 bg-blue-50",
-                scoreGrade.color === 'yellow' && "border-yellow-300 bg-yellow-50",
-                scoreGrade.color === 'red' && "border-red-300 bg-red-50",
+                scoreGrade.color === 'green' && "border-green-500/30 bg-green-500/10 dark:bg-green-500/20",
+                scoreGrade.color === 'blue' && "border-blue-500/30 bg-blue-500/10 dark:bg-blue-500/20",
+                scoreGrade.color === 'yellow' && "border-yellow-500/30 bg-yellow-500/10 dark:bg-yellow-500/20",
+                scoreGrade.color === 'red' && "border-red-500/30 bg-red-500/10 dark:bg-red-500/20",
               )}>
                 <span className={cn("text-2xl font-bold", scoreGrade.text)}>
                   {score}
@@ -317,32 +317,32 @@ export function QualityChecker({ content, initialScore = 0, initialIssues = [], 
           return (
             <div
               key={item.id}
-              className="border border-gray-200 rounded-xl overflow-hidden"
+              className="border border-border rounded-xl overflow-hidden"
             >
               <button
                 onClick={() => toggleExpanded(item.id)}
-                className="w-full flex items-center justify-between p-3 hover:bg-gray-50 transition-colors"
+                className="w-full flex items-center justify-between p-3 hover:bg-muted transition-colors"
               >
                 <div className="flex items-center gap-3">
-                  <div className="w-8 h-8 rounded-lg bg-gray-100 flex items-center justify-center">
-                    <Icon className="w-4 h-4 text-gray-600" />
+                  <div className="w-8 h-8 rounded-lg bg-muted flex items-center justify-center">
+                    <Icon className="w-4 h-4 text-muted-foreground" />
                   </div>
-                  <span className="text-sm font-medium text-gray-700">{item.label}</span>
+                  <span className="text-sm font-medium text-foreground/80">{item.label}</span>
                   {item.id === 'issues' && issueCount > 0 && (
-                    <span className="text-xs bg-red-100 text-red-600 px-1.5 py-0.5 rounded-full">
+                    <span className="text-xs bg-red-500/10 dark:bg-red-500/20 text-red-600 px-1.5 py-0.5 rounded-full">
                       {issueCount}
                     </span>
                   )}
                 </div>
                 {isExpanded ? (
-                  <ChevronDown className="w-4 h-4 text-gray-400" />
+                  <ChevronDown className="w-4 h-4 text-muted-foreground" />
                 ) : (
-                  <ChevronRight className="w-4 h-4 text-gray-400" />
+                  <ChevronRight className="w-4 h-4 text-muted-foreground" />
                 )}
               </button>
 
               {isExpanded && (
-                <div className="p-4 pt-0 border-t border-gray-100 bg-gray-50/50">
+                <div className="p-4 pt-0 border-t border-border bg-muted/50">
                   {item.id === 'chars' && (
                     <div className="grid grid-cols-2 gap-3">
                       <StatRow label="总字符数" value={textStats.chars.toLocaleString()} />
@@ -394,9 +394,9 @@ export function QualityChecker({ content, initialScore = 0, initialIssues = [], 
                             key={issue.id}
                             className={cn(
                               "flex items-start gap-2 p-3 rounded-lg",
-                              issue.type === 'error' && "bg-red-50 border border-red-100",
-                              issue.type === 'warning' && "bg-yellow-50 border border-yellow-100",
-                              issue.type === 'info' && "bg-blue-50 border border-blue-100",
+                              issue.type === 'error' && "bg-red-500/10 dark:bg-red-500/20 border border-red-500/30",
+                              issue.type === 'warning' && "bg-yellow-500/10 dark:bg-yellow-500/20 border border-yellow-500/30",
+                              issue.type === 'info' && "bg-blue-500/10 dark:bg-blue-500/20 border border-blue-500/30",
                             )}
                           >
                             {issue.type === 'error' && <AlertTriangle className="w-4 h-4 text-red-500 flex-shrink-0 mt-0.5" />}
@@ -404,9 +404,9 @@ export function QualityChecker({ content, initialScore = 0, initialIssues = [], 
                             {issue.type === 'info' && <Info className="w-4 h-4 text-blue-500 flex-shrink-0 mt-0.5" />}
                             <span className={cn(
                               "text-sm",
-                              issue.type === 'error' && "text-red-700",
-                              issue.type === 'warning' && "text-yellow-700",
-                              issue.type === 'info' && "text-blue-700",
+                              issue.type === 'error' && "text-red-700 dark:text-red-300",
+                              issue.type === 'warning' && "text-yellow-700 dark:text-yellow-300",
+                              issue.type === 'info' && "text-blue-700 dark:text-blue-300",
                             )}>
                               {issue.message}
                             </span>
@@ -428,8 +428,8 @@ export function QualityChecker({ content, initialScore = 0, initialIssues = [], 
 function StatRow({ label, value }: { label: string; value: string | number }) {
   return (
     <div className="flex items-center justify-between py-2">
-      <span className="text-xs text-gray-500">{label}</span>
-      <span className="text-sm font-medium text-gray-900">{value}</span>
+      <span className="text-xs text-muted-foreground">{label}</span>
+      <span className="text-sm font-medium text-foreground">{value}</span>
     </div>
   )
 }

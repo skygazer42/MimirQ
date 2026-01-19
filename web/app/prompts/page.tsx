@@ -27,6 +27,7 @@ import { promptTemplateApi, PromptTemplate, PromptTemplateCreate } from '@/lib/a
 import { Plus, Edit, Trash2, Copy, Check, X, Eye, Search, Filter } from 'lucide-react'
 import { toast } from 'sonner'
 import { KgExtractPromptSettings } from '@/components/kg-extract-prompt-settings'
+import { Navbar } from '@/components/navbar'
 
 export default function PromptsPage() {
   const [templates, setTemplates] = useState<PromptTemplate[]>([])
@@ -248,7 +249,10 @@ export default function PromptsPage() {
   }
 
   return (
-    <div className="container mx-auto py-8">
+    <div className="flex h-screen overflow-hidden bg-background">
+      <Navbar />
+      <main className="flex-1 overflow-y-auto">
+        <div className="container mx-auto py-8">
       <div className="flex justify-between items-center mb-6">
         <div>
           <h1 className="text-3xl font-bold">提示词模板管理</h1>
@@ -305,7 +309,7 @@ export default function PromptsPage() {
 
       {/* Batch Actions */}
       {selectedIds.size > 0 && (
-        <div className="mb-4 p-4 bg-slate-100 dark:bg-slate-800 rounded-lg flex items-center justify-between">
+        <div className="mb-4 p-4 bg-muted dark:bg-muted rounded-lg flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Checkbox checked={true} onCheckedChange={handleSelectAll} />
             <span className="text-sm font-medium">已选择 {selectedIds.size} 个模板</span>
@@ -359,7 +363,7 @@ export default function PromptsPage() {
               <Card
                 key={template.id}
                 className={`relative cursor-pointer transition-colors hover:border-primary ${
-                  selectedIds.has(template.id) ? 'border-primary bg-slate-50 dark:bg-slate-900' : ''
+                  selectedIds.has(template.id) ? 'border-primary bg-muted/50 dark:bg-muted/60' : ''
                 }`}
               >
                 <CardHeader>
@@ -556,7 +560,7 @@ export default function PromptsPage() {
 
               <div>
                 <Label className="text-sm font-medium">模板内容</Label>
-                <div className="mt-2 p-4 bg-slate-100 dark:bg-slate-900 rounded-lg">
+                <div className="mt-2 p-4 bg-muted dark:bg-muted/60 rounded-lg">
                   <pre className="text-sm whitespace-pre-wrap font-mono">
                     {previewTemplate.content}
                   </pre>
@@ -680,6 +684,8 @@ export default function PromptsPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+        </div>
+      </main>
     </div>
   )
 }
