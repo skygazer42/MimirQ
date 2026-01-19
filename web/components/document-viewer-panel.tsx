@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { X, Maximize2, Minimize2, FileText, List, ChevronRight, Loader2, Download } from "lucide-react"
+import { X, Maximize2, Minimize2, FileText, Loader2, Download } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useDocumentView } from "@/store/document-view"
 import { Button } from "@/components/ui/button"
@@ -9,16 +9,53 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { documentApi } from "@/lib/api-client"
 import { API_V1_BASE_URL } from "@/lib/env"
 import type { Document, DocumentChunk } from "@/types"
-import { getAccessToken } from "@/lib/auth-storage"
+import { getAccessToken, getTenantId } from "@/lib/auth-storage"
 import { FloatingMenu } from "@/components/document-viewer/floating-menu"
 
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+}
+
+function highlightText(content: string, query: string) {
+  const q = (query || "").trim()
+  if (!q) return content
+  const re = new RegExp(escapeRegExp(q), "ig")
+  const out: React.ReactNode[] = []
+  let lastIndex = 0
+  let matchCount = 0
+
+  for (const match of content.matchAll(re)) {
+    const idx = match.index
+    if (idx == null) continue
+    const matched = match[0] || ""
+    if (!matched) continue
+    if (idx > lastIndex) out.push(content.slice(lastIndex, idx))
+    out.push(
+      <mark
+        key={`${idx}-${matched}`}
+        className="rounded bg-yellow-200/60 px-0.5 text-foreground dark:bg-yellow-400/20"
+      >
+        {content.slice(idx, idx + matched.length)}
+      </mark>
+    )
+    lastIndex = idx + matched.length
+    matchCount += 1
+    if (matchCount >= 50) break
+  }
+
+  if (lastIndex < content.length) out.push(content.slice(lastIndex))
+  return out.length ? out : content
+}
+
 export function DocumentViewerPanel() {
-  const { isOpen, documentId, highlightChunkId, closeDocument, activeTab, setActiveTab } = useDocumentView()
+  const { isOpen, documentId, highlightChunkId, closeDocument, activeTab, setActiveTab, setHighlightChunk } = useDocumentView()
   const [doc, setDoc] = React.useState<Document | null>(null)
   const [chunks, setChunks] = React.useState<DocumentChunk[]>([])
   const [isLoading, setIsLoading] = React.useState(false)
   const [isExpanded, setIsExpanded] = React.useState(false)
   const chunksListRef = React.useRef<HTMLDivElement>(null)
+  const [chunkQuery, setChunkQuery] = React.useState("")
+  const [matchCursor, setMatchCursor] = React.useState(0)
 
   // Load document metadata and chunks
   React.useEffect(() => {
@@ -49,7 +86,51 @@ export function DocumentViewerPanel() {
 
   if (!isOpen) return null
 
-  const fileUrl = documentId ? `${API_V1_BASE_URL}/documents/${documentId}/download?token=${getAccessToken()}` : ''
+  const matchChunkIds = React.useMemo(() => {
+    const q = chunkQuery.trim().toLowerCase()
+    if (!q) return []
+    const ids: string[] = []
+    for (const c of chunks) {
+      const text = (c.content || "").toLowerCase()
+      if (text.includes(q)) ids.push(c.id)
+    }
+    return ids
+  }, [chunks, chunkQuery])
+
+  React.useEffect(() => {
+    setMatchCursor(0)
+  }, [chunkQuery])
+
+  const fileUrl = React.useMemo(() => {
+    if (!documentId) return ""
+    const url = new URL(`${API_V1_BASE_URL}/documents/${documentId}/download`)
+    const token = getAccessToken()
+    const tenantId = getTenantId()
+    if (tenantId) url.searchParams.set("tenant_id", tenantId)
+    if (token) url.searchParams.set("token", token)
+    return url.toString()
+  }, [documentId])
+
+  const downloadUrl = React.useMemo(() => {
+    if (!documentId) return ""
+    const url = new URL(`${API_V1_BASE_URL}/documents/${documentId}/download`)
+    const token = getAccessToken()
+    const tenantId = getTenantId()
+    if (tenantId) url.searchParams.set("tenant_id", tenantId)
+    if (token) url.searchParams.set("token", token)
+    url.searchParams.set("inline", "0")
+    return url.toString()
+  }, [documentId])
+
+  const canInlinePreview = (doc?.file_type || "").toLowerCase() === "pdf"
+
+  const jumpToMatch = React.useCallback((nextIndex: number) => {
+    if (!matchChunkIds.length) return
+    const clamped = ((nextIndex % matchChunkIds.length) + matchChunkIds.length) % matchChunkIds.length
+    setMatchCursor(clamped)
+    setActiveTab("chunks")
+    setHighlightChunk(matchChunkIds[clamped] || null)
+  }, [matchChunkIds, setActiveTab, setHighlightChunk])
 
   return (
     <>
@@ -77,6 +158,11 @@ export function DocumentViewerPanel() {
         </div>
         
         <div className="flex items-center gap-1">
+            <Button variant="ghost" size="icon" asChild title="下载原文件">
+              <a href={downloadUrl || "#"} target="_blank" rel="noopener noreferrer">
+                <Download className="h-4 w-4" />
+              </a>
+            </Button>
             <Button variant="ghost" size="icon" onClick={() => setIsExpanded(!isExpanded)} title={isExpanded ? "收起" : "展开"}>
                 {isExpanded ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
             </Button>
@@ -95,7 +181,7 @@ export function DocumentViewerPanel() {
                         value="preview" 
                         className="h-10 rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent px-2 font-medium"
                     >
-                        PDF 原文
+                        原文
                     </TabsTrigger>
                     <TabsTrigger 
                         value="chunks" 
@@ -107,20 +193,89 @@ export function DocumentViewerPanel() {
             </div>
 
             <TabsContent value="preview" className="flex-1 m-0 h-full bg-slate-100 dark:bg-slate-900 relative">
-                {fileUrl ? (
-                    <iframe 
-                        src={`${fileUrl}#toolbar=0`} 
-                        className="w-full h-full border-none" 
-                        title="PDF Preview"
-                    />
+                {isLoading && !doc ? (
+                  <div className="flex items-center justify-center h-full text-muted-foreground">
+                    <Loader2 className="h-8 w-8 animate-spin" />
+                  </div>
+                ) : canInlinePreview && fileUrl ? (
+                  <iframe
+                    src={`${fileUrl}#toolbar=0`}
+                    className="w-full h-full border-none"
+                    title="Document Preview"
+                  />
                 ) : (
-                    <div className="flex items-center justify-center h-full text-muted-foreground">
-                        <Loader2 className="h-8 w-8 animate-spin" />
+                  <div className="h-full flex items-center justify-center p-6">
+                    <div className="max-w-md w-full rounded-xl border border-border bg-background p-6 shadow-sm">
+                      <div className="flex items-start gap-3">
+                        <div className="p-2 rounded-lg bg-primary/10">
+                          <FileText className="h-5 w-5 text-primary" />
+                        </div>
+                        <div className="flex-1">
+                          <h4 className="text-sm font-semibold">暂不支持内嵌预览</h4>
+                          <p className="text-xs text-muted-foreground mt-1">
+                            当前文件类型为 <span className="font-mono">{doc?.file_type || "-"}</span>。你可以下载原文件，
+                            或切换到「智能切片」查看内容。
+                          </p>
+                          <div className="mt-4 flex items-center gap-2">
+                            <Button size="sm" variant="outline" asChild>
+                              <a href={downloadUrl || "#"} target="_blank" rel="noopener noreferrer">
+                                下载原文件
+                              </a>
+                            </Button>
+                            <Button size="sm" onClick={() => setActiveTab("chunks")}>
+                              查看切片
+                            </Button>
+                          </div>
+                        </div>
+                      </div>
                     </div>
+                  </div>
                 )}
             </TabsContent>
 
             <TabsContent value="chunks" className="flex-1 m-0 h-full overflow-hidden flex flex-col bg-slate-50/50 dark:bg-slate-950/50">
+                 <div className="p-4 border-b border-border bg-background/60 backdrop-blur-sm">
+                   <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+                     <input
+                       value={chunkQuery}
+                       onChange={(e) => setChunkQuery(e.target.value)}
+                       onKeyDown={(e) => {
+                         if (e.key === "Enter") jumpToMatch(matchCursor)
+                       }}
+                       placeholder="搜索切片内容…"
+                       className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                     />
+                     <div className="flex items-center gap-2">
+                       <div className="text-xs text-muted-foreground tabular-nums min-w-[88px] text-right">
+                         {chunkQuery.trim() ? (
+                           matchChunkIds.length ? (
+                             <span>{matchCursor + 1}/{matchChunkIds.length}</span>
+                           ) : (
+                             <span>0/0</span>
+                           )
+                         ) : (
+                           <span>—</span>
+                         )}
+                       </div>
+                       <Button
+                         size="sm"
+                         variant="outline"
+                         disabled={!matchChunkIds.length}
+                         onClick={() => jumpToMatch(matchCursor - 1)}
+                       >
+                         上一个
+                       </Button>
+                       <Button
+                         size="sm"
+                         variant="outline"
+                         disabled={!matchChunkIds.length}
+                         onClick={() => jumpToMatch(matchCursor + 1)}
+                       >
+                         下一个
+                       </Button>
+                     </div>
+                   </div>
+                 </div>
                  <div className="flex-1 overflow-y-auto p-4 space-y-4 scroll-smooth" ref={chunksListRef}>
                     {chunks.map((chunk) => (
                         <div 
@@ -142,7 +297,7 @@ export function DocumentViewerPanel() {
                                 )}
                             </div>
                             <p className="text-sm leading-relaxed text-foreground/90 font-mono whitespace-pre-wrap">
-                                {chunk.content}
+                                {highlightText(chunk.content, chunkQuery)}
                             </p>
                         </div>
                     ))}
