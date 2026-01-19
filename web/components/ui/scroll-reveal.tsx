@@ -22,7 +22,7 @@ export function ScrollReveal({ children, className, direction = "up", delay = 0 
       y: 0,
       x: 0,
       transition: {
-        type: "spring",
+        type: "spring" as const,
         stiffness: 100,
         damping: 20,
         delay,

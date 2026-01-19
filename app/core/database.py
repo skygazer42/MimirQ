@@ -3,6 +3,8 @@ Database configuration and session management module
 
 Provides database connection, session factory, and dependency injection.
 """
+import contextlib
+
 from sqlalchemy import create_engine
 from sqlalchemy.engine.url import make_url
 from sqlalchemy.orm import declarative_base, sessionmaker
@@ -37,5 +39,10 @@ def get_db():
     db = SessionLocal()
     try:
         yield db
+    except Exception:
+        # Ensure the connection is returned to the pool in a clean state.
+        with contextlib.suppress(Exception):
+            db.rollback()
+        raise
     finally:
         db.close()

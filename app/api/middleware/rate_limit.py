@@ -25,7 +25,8 @@ class TokenBucket:
     capacity: float
     refill_rate: float  # tokens per second
     tokens: float = field(default=None)
-    last_refill: float = field(default_factory=time.time)
+    # Use monotonic time to avoid clock jumps affecting rate calculations.
+    last_refill: float = field(default_factory=time.monotonic)
     lock: Lock = field(default_factory=Lock)
 
     def __post_init__(self) -> None:
@@ -34,7 +35,7 @@ class TokenBucket:
 
     def consume(self, tokens: float = 1) -> Tuple[bool, float]:
         with self.lock:
-            now = time.time()
+            now = time.monotonic()
             elapsed = now - self.last_refill
             self.tokens = min(self.capacity, self.tokens + elapsed * self.refill_rate)
             self.last_refill = now
@@ -60,11 +61,11 @@ class RateLimiter:
         self.cleanup_interval = float(cleanup_interval)
         self._buckets: Dict[str, TokenBucket] = {}
         self._global_lock = Lock()
-        self._last_cleanup = time.time()
+        self._last_cleanup = time.monotonic()
 
     def _get_bucket(self, key: str) -> TokenBucket:
         with self._global_lock:
-            now = time.time()
+            now = time.monotonic()
             if now - self._last_cleanup > self.cleanup_interval:
                 self._cleanup_old_buckets(now)
                 self._last_cleanup = now

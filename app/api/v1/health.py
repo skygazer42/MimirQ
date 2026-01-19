@@ -13,6 +13,7 @@ from fastapi import APIRouter, Response
 from app.core.config import settings
 from app.core.database import SessionLocal
 from app.storage.vector.milvus import milvus_store
+from app.storage.object.minio import minio_service
 from app.api.schemas.health import HealthResponse, ReadyResponse
 
 
@@ -27,10 +28,12 @@ def _ready_cache_key() -> tuple[object, ...]:
         (getattr(settings, "VECTOR_BACKEND", "milvus") or "milvus").lower(),
         bool(getattr(settings, "TASK_QUEUE_ENABLED", False)),
         bool(getattr(settings, "EMBEDDING_CACHE_ENABLED", False)),
+        bool(getattr(settings, "MINIO_ENABLED", False)),
         # Include endpoints so the cache doesn't hide hot-reloaded settings changes.
         str(getattr(settings, "REDIS_URL", "") or ""),
         str(getattr(settings, "MILVUS_HOST", "") or ""),
         int(getattr(settings, "MILVUS_PORT", 0) or 0),
+        str(getattr(settings, "MINIO_ENDPOINT", "") or ""),
     )
 
 
@@ -139,6 +142,13 @@ def ready(response: Response) -> dict:
             if redis_required:
                 ok = False
 
+    minio_enabled = bool(getattr(settings, "MINIO_ENABLED", False))
+    minio_status = {"status": "disabled", "enabled": minio_enabled}
+    if minio_enabled:
+        minio_status = minio_service.health_check()
+        if minio_status.get("status") != "connected":
+            ok = False
+
     if not ok:
         response.status_code = 503
 
@@ -147,6 +157,7 @@ def ready(response: Response) -> dict:
         "database": db_status,
         "vector": vector_status,
         "redis": redis_status,
+        "minio": minio_status,
     }
     _ready_cache["ts"] = time.monotonic()
     _ready_cache["payload"] = payload
