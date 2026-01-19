@@ -1,6 +1,6 @@
 """
-Global async HTTP client pool.
-Provides a unified httpx AsyncClient config for external API calls.
+Global HTTP client pool (sync + async).
+Provides unified httpx client configs for external API calls.
 """
 import asyncio
 import contextlib

@@ -89,9 +89,9 @@ export function Sidebar() {
   }
 
   return (
-    <aside className="w-80 h-screen bg-sidebar-background/95 backdrop-blur-xl border-r border-sidebar-border flex flex-col shadow-[1px_0_20px_rgba(0,0,0,0.02)] transition-colors duration-300">
+    <aside className="w-80 h-screen glass border-r border-white/10 flex flex-col shadow-[1px_0_30px_rgba(0,0,0,0.03)] transition-all duration-300 relative z-20">
       {/* 头部 - 增加空间感 */}
-      <div className="p-6 border-b border-sidebar-border/60">
+      <div className="p-6 border-b border-white/10">
         <div className="flex items-center justify-between mb-6">
           <div className="flex items-center gap-2">
             <div className="h-8 w-8 rounded-lg bg-primary/10 flex items-center justify-center">
@@ -112,7 +112,7 @@ export function Sidebar() {
               value={term}
               onChange={(e) => setTerm(e.target.value)}
               placeholder="快速搜索文档..."
-              className="w-full h-9 pl-9 pr-3 bg-secondary/50 border border-transparent focus:bg-background focus:border-primary/30 rounded-lg text-xs outline-none transition-all"
+              className="w-full h-9 pl-9 pr-3 bg-white/5 border border-white/10 focus:bg-white/10 focus:border-primary/30 rounded-lg text-xs outline-none transition-all placeholder:text-muted-foreground/50"
             />
             {term && (
               <button
@@ -252,10 +252,10 @@ function DocumentCard({
   return (
     <TiltCard
       className={cn(
-        'group relative p-3 rounded-xl border cursor-pointer animate-fade-in-up h-full',
+        'group relative p-3 rounded-xl border cursor-pointer animate-fade-in-up h-full transition-all duration-300',
         isSelected
-          ? 'bg-primary/5 border-primary/30 shadow-[0_0_0_1px_rgba(var(--primary),0.2)]'
-          : 'bg-card/50 hover:bg-card border-border/50 hover:border-border/80 hover:shadow-md hover:shadow-black/5'
+          ? 'bg-primary/10 border-primary/40 shadow-glow'
+          : 'bg-white/5 hover:bg-white/10 border-white/5 hover:border-white/20 hover:shadow-lg hover:shadow-black/5'
       )}
       onClick={onSelect}
       onMouseEnter={() => setIsHovered(true)}
