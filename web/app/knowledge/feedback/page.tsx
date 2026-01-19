@@ -127,22 +127,22 @@ export default function FeedbackTriagePage() {
 
         <div className="px-8 pb-4 grid grid-cols-2 md:grid-cols-5 gap-4">
           {[5, 4, 3, 2, 1].map((r) => (
-            <div key={r} className="group relative overflow-hidden rounded-2xl border bg-white/5 border-white/10 hover:border-primary/30 p-4 transition-all duration-300 hover:shadow-lg backdrop-blur-sm">
-              <div className="absolute inset-0 bg-gradient-to-br from-white/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
+            <div key={r} className="group relative overflow-hidden rounded-2xl border bg-white border-slate-200 hover:border-primary/30 p-4 transition-all duration-300 hover:shadow-lg backdrop-blur-sm">
+              <div className="absolute inset-0 bg-gradient-to-br from-slate-50 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
 
               <div className="relative z-10 flex items-center justify-between">
                 <div className="flex items-center gap-1">
-                  <Star className={cn("w-4 h-4", r >= 4 ? "text-yellow-400 fill-yellow-400" : "text-muted-foreground")} />
-                  <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider">{r} 星</span>
+                  <Star className={cn("w-4 h-4", r >= 4 ? "text-yellow-400 fill-yellow-400" : "text-slate-400")} />
+                  <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">{r} 星</span>
                 </div>
-                <div className={cn("text-2xl font-black tracking-tight transition-transform group-hover:scale-110", r >= 4 ? "text-primary" : "text-muted-foreground")}>
+                <div className={cn("text-2xl font-black tracking-tight transition-transform group-hover:scale-110", r >= 4 ? "text-primary" : "text-slate-500")}>
                   {stats[r] || 0}
                 </div>
               </div>
               {/* Progress bar visual */}
-              <div className="mt-3 h-1 w-full bg-white/10 rounded-full overflow-hidden">
+              <div className="mt-3 h-1 w-full bg-slate-100 rounded-full overflow-hidden">
                 <div
-                  className={cn("h-full rounded-full transition-all duration-1000", r >= 4 ? "bg-gradient-to-r from-yellow-400 to-orange-400" : "bg-muted-foreground/30")}
+                  className={cn("h-full rounded-full transition-all duration-1000", r >= 4 ? "bg-gradient-to-r from-yellow-400 to-orange-400" : "bg-slate-300")}
                   style={{ width: `${Math.min(100, (stats[r] || 0) * 5)}%` }} // Rough viz
                 />
               </div>
@@ -151,9 +151,9 @@ export default function FeedbackTriagePage() {
         </div>
 
         <div className="px-8 pb-6 flex-shrink-0 z-10">
-          <div className="flex flex-col md:flex-row md:items-center gap-4 bg-white/5 backdrop-blur-md border border-white/10 p-2 rounded-2xl">
+          <div className="flex flex-col md:flex-row md:items-center gap-4 bg-white backdrop-blur-md border border-slate-200 p-2 rounded-2xl shadow-sm">
             <div className="relative flex-1 group">
-              <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground group-hover:text-primary transition-colors" />
+              <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 group-hover:text-primary transition-colors" />
               <Input
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}

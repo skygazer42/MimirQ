@@ -187,17 +187,17 @@ export default function IngestionMonitorPage() {
 
         <div className="px-8 pb-4 grid grid-cols-2 md:grid-cols-5 gap-4">
           {[
-            { label: '等待队列', value: stats.pending, color: 'text-primary', border: 'border-primary/20', bg: 'from-primary/5 to-transparent' },
-            { label: '正在处理', value: stats.processing, color: 'text-blue-400', border: 'border-blue-500/20', bg: 'from-blue-500/5 to-transparent' },
-            { label: '已完成', value: stats.completed, color: 'text-emerald-400', border: 'border-emerald-500/20', bg: 'from-emerald-500/5 to-transparent' },
-            { label: '失败任务', value: stats.failed, color: 'text-red-400', border: 'border-red-500/20', bg: 'from-red-500/5 to-transparent' },
-            { label: '总存储量', value: formatFileSize(stats.totalSize), color: 'text-purple-400', border: 'border-purple-500/20', bg: 'from-purple-500/5 to-transparent' },
+            { label: '等待队列', value: stats.pending, color: 'text-sky-600', border: 'border-sky-200', bg: 'bg-sky-50' },
+            { label: '正在处理', value: stats.processing, color: 'text-blue-600', border: 'border-blue-200', bg: 'bg-blue-50' },
+            { label: '已完成', value: stats.completed, color: 'text-emerald-600', border: 'border-emerald-200', bg: 'bg-emerald-50' },
+            { label: '失败任务', value: stats.failed, color: 'text-red-600', border: 'border-red-200', bg: 'bg-red-50' },
+            { label: '总存储量', value: formatFileSize(stats.totalSize), color: 'text-purple-600', border: 'border-purple-200', bg: 'bg-purple-50' },
           ].map((stat, idx) => (
-            <div key={idx} className={cn("relative overflow-hidden rounded-2xl border bg-gradient-to-br backdrop-blur-sm p-4 transition-all duration-300 hover:scale-105 hover:shadow-lg", stat.border, stat.bg)}>
-              <div className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-1">{stat.label}</div>
+            <div key={idx} className={cn("relative overflow-hidden rounded-2xl border transition-all duration-300 hover:scale-105 hover:shadow-md", stat.border, stat.bg)}>
+              <div className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">{stat.label}</div>
               <div className={cn("text-2xl font-black tracking-tight", stat.color)}>{stat.value}</div>
               {/* Decorative corner */}
-              <div className={cn("absolute top-0 right-0 w-8 h-8 opacity-20", stat.color)}>
+              <div className={cn("absolute top-0 right-0 w-8 h-8 opacity-10", stat.color)}>
                 <svg viewBox="0 0 24 24" fill="currentColor"><path d="M0 0h24v24H0z" fill="none" /><path d="M21 3H3v18h18V3zm-2 16H5V5h14v14z" opacity=".3" /><path d="M21 3h-8v2h8v8h2V5c0-1.1-.9-2-2-2z" /></svg>
               </div>
             </div>
@@ -205,9 +205,9 @@ export default function IngestionMonitorPage() {
         </div>
 
         <div className="px-8 pb-6 flex-shrink-0 z-10">
-          <div className="flex flex-col md:flex-row md:items-center gap-4 bg-white/5 backdrop-blur-md border border-white/10 p-2 rounded-2xl">
+          <div className="flex flex-col md:flex-row md:items-center gap-4 bg-white backdrop-blur-md border border-slate-200 p-2 rounded-2xl shadow-sm">
             <div className="relative flex-1 group">
-              <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground group-hover:text-primary transition-colors" />
+              <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 group-hover:text-primary transition-colors" />
               <Input
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
