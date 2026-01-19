@@ -8,7 +8,6 @@ Centralized settings management including:
 - Storage backend config
 """
 from typing import Literal, Optional
-import os
 import sys
 import warnings
 from pathlib import Path
