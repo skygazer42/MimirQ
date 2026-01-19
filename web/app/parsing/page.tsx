@@ -140,6 +140,7 @@ export default function ParsingPage() {
   const parseProgressIntervalsRef = useRef<Map<string, ReturnType<typeof setInterval>>>(new Map())
   const rebindInputRef = useRef<HTMLInputElement>(null)
   const rebindTargetRef = useRef<{ libraryId: string; autoParse: boolean } | null>(null)
+  const [isQueueRehydrating, setIsQueueRehydrating] = useState(false)
   const [autoParseFileId, setAutoParseFileId] = useState<string | null>(null)
   const [activeLibrarySourceStatus, setActiveLibrarySourceStatus] = useState<'unknown' | 'available' | 'missing'>(
     'unknown'
@@ -775,6 +776,67 @@ export default function ParsingPage() {
   const visibleLibraryOnlyFiles = useMemo(() => {
     return visibleLibraryFiles.filter((f) => !queueLibraryIdSet.has(f.id))
   }, [visibleLibraryFiles, queueLibraryIdSet])
+
+  // Auto-rehydrate queue items from IndexedDB when returning to /parsing.
+  // This allows resuming pending/error parses after route changes / refresh.
+  useEffect(() => {
+    if (!isLibraryLoaded) return
+
+    const folderId = currentFolderId
+    if (!folderId) return
+    if (rehydratedFolderIdsRef.current.has(folderId)) return
+
+    const candidates = visibleLibraryOnlyFiles.filter((f) => {
+      const status = (f.status || 'parsed') as FileStatus
+      return status === 'pending' || status === 'error' || status === 'parsing'
+    })
+
+    rehydratedFolderIdsRef.current.add(folderId)
+    if (candidates.length === 0) return
+
+    let cancelled = false
+    setIsQueueRehydrating(true)
+      ; (async () => {
+        let missing = 0
+
+        for (const entry of candidates) {
+          if (cancelled) return
+
+          try {
+            const cached = await getDocSourceFromCache(entry.id)
+            if (!cached) {
+              missing += 1
+              if ((entry.status || 'pending') !== 'error') {
+                updateParsedFile(entry.id, { status: 'error', error: '源文件缓存缺失，请重新上传' })
+              }
+              continue
+            }
+
+            const file = new File([cached.blob], cached.filename || entry.filename, {
+              type: cached.mimeType || 'application/octet-stream',
+              lastModified: cached.lastModified || Date.now(),
+            })
+
+            await mountLibraryFileToQueue(entry.id, file, { select: false })
+          } catch {
+            missing += 1
+            if ((entry.status || 'pending') !== 'error') {
+              updateParsedFile(entry.id, { status: 'error', error: '恢复源文件失败，请重新上传' })
+            }
+          }
+        }
+
+        if (cancelled) return
+        if (missing > 0) toast.warning(`有 ${missing} 个文件缺少源文件缓存，需重新上传才能继续解析`)
+      })()
+        .finally(() => {
+          if (!cancelled) setIsQueueRehydrating(false)
+        })
+
+    return () => {
+      cancelled = true
+    }
+  }, [currentFolderId, isLibraryLoaded, mountLibraryFileToQueue, updateParsedFile, visibleLibraryOnlyFiles])
 
   const childrenByParentId = useMemo(() => {
     const map = new Map<string, string[]>()
