@@ -344,6 +344,22 @@ def main() -> int:
                 f"/api/v1/documents/{doc_id}/status",
                 expected=[200],
             )
+            runner.call(
+                "PATCH",
+                "/api/v1/documents/{document_id}/metadata",
+                f"/api/v1/documents/{doc_id}/metadata",
+                expected=[200, 403, 404],
+                json={"patch": {"source": "smoke"}, "replace": False},
+            )
+            runner.call(
+                "GET",
+                "/api/v1/documents/{document_id}/download",
+                f"/api/v1/documents/{doc_id}/download?inline=true",
+                expected=[200, 403, 404],
+            )
+        else:
+            runner.mark("PATCH", "/api/v1/documents/{document_id}/metadata")
+            runner.mark("GET", "/api/v1/documents/{document_id}/download")
 
         # Preview endpoints.
         runner.call(
@@ -382,6 +398,42 @@ def main() -> int:
         else:
             runner.mark("POST", "/api/v1/documents/manual")
             manual_doc_id = None
+
+        batch_patch_ids: list[str] = []
+        if doc_id:
+            batch_patch_ids.append(str(doc_id))
+        if manual_doc_id:
+            batch_patch_ids.append(str(manual_doc_id))
+        if not batch_patch_ids:
+            batch_patch_ids.append(str(uuid.uuid4()))
+
+        runner.call(
+            "POST",
+            "/api/v1/documents/batch/metadata",
+            "/api/v1/documents/batch/metadata",
+            expected=[200],
+            json={
+                "document_ids": batch_patch_ids,
+                "patch": {"batch": True, "source": "smoke"},
+                "replace": False,
+            },
+        )
+
+        cancel_target = str(manual_doc_id or uuid.uuid4())
+        runner.call(
+            "POST",
+            "/api/v1/documents/{document_id}/cancel",
+            f"/api/v1/documents/{cancel_target}/cancel",
+            expected=[200, 404, 409],
+        )
+
+        retry_target = str(manual_doc_id or uuid.uuid4())
+        runner.call(
+            "POST",
+            "/api/v1/documents/{document_id}/retry",
+            f"/api/v1/documents/{retry_target}/retry",
+            expected=[200, 404, 409],
+        )
 
         # Batch upload URL apply (MinerU).
         if args.skip_mineru:
@@ -782,6 +834,13 @@ def main() -> int:
             runner.mark("POST", "/api/v1/feedback/messages")
             runner.mark("GET", "/api/v1/feedback/messages")
 
+        runner.call(
+            "GET",
+            "/api/v1/feedback/messages/enriched",
+            "/api/v1/feedback/messages/enriched?limit=5",
+            expected=[200],
+        )
+
         # KG endpoints (may be disabled).
         runner.call(
             "GET",
@@ -802,6 +861,31 @@ def main() -> int:
             "/api/v1/kg/graph/search?q=smoke",
             expected=[200, 400, 503],
         )
+        runner.call(
+            "GET",
+            "/api/v1/kg/stats",
+            "/api/v1/kg/stats",
+            expected=[200, 503],
+        )
+        runner.call(
+            "GET",
+            "/api/v1/kg/graph/export",
+            "/api/v1/kg/graph/export?download=false",
+            expected=[200, 503],
+        )
+        probe_uuid = uuid.uuid4()
+        runner.call(
+            "GET",
+            "/api/v1/kg/events/{event_id}",
+            f"/api/v1/kg/events/{probe_uuid}",
+            expected=[200, 404, 503],
+        )
+        runner.call(
+            "GET",
+            "/api/v1/kg/entities/{entity_id}",
+            f"/api/v1/kg/entities/{probe_uuid}",
+            expected=[200, 404, 503],
+        )
         if doc_id:
             runner.call(
                 "POST",
@@ -819,6 +903,14 @@ def main() -> int:
         else:
             runner.mark("POST", "/api/v1/kg/documents/{document_id}/extract")
             runner.mark("POST", "/api/v1/kg/search")
+
+        kg_delete_target = str(doc_id or uuid.uuid4())
+        runner.call(
+            "DELETE",
+            "/api/v1/kg/documents/{document_id}",
+            f"/api/v1/kg/documents/{kg_delete_target}",
+            expected=[200, 403, 404, 503],
+        )
 
         # Cleanup endpoints.
         if conversation_id:
