@@ -10,14 +10,13 @@ import json
 from langchain_core.documents import Document
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
-import httpx
 import time
 
 from app.core.config import settings
+from app.core.http_client import get_http_client_pool
 from app.core.token_utils import num_tokens_from_string, truncate
 from app.rag.core.conversation import format_history_text
 from app.rag.core.citations import build_citations_from_docs
-from app.rag.core.http import httpx_trust_env
 from app.rag.core.logging import get_logger
 from app.rag.core.text import (
     parse_json_from_text,
@@ -39,10 +38,10 @@ class RAGEngine:
     """RAG Conversation Engine"""
 
     def __init__(self) -> None:
-        # LLM config.
-        trust_env = httpx_trust_env(logger=logger)
-        self.http_client = httpx.Client(trust_env=trust_env)
-        self.http_async_client = httpx.AsyncClient(trust_env=trust_env)
+        # LLM config: share process-wide HTTP clients for connection reuse and consistent timeouts.
+        pool = get_http_client_pool()
+        self.http_client = pool.get_sync_client()
+        self.http_async_client = pool.get_async_client()
 
         # Build available models for dynamic routing (inspired by agent middleware pattern)
         default_model_name = settings.LLM_MODEL or "gpt-4-turbo-preview"

@@ -79,6 +79,35 @@ def _parse_uuid(value: str) -> UUID:
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid tenant id")
 
+def _resolve_account_id_for_asset_request(request: Request) -> Optional[str]:
+    """
+    Resolve account id for asset endpoints that may be requested by <img src>.
+
+    - AUTH_MODE=header: allow anonymous in local/dev (headers can't be set by <img>).
+    - AUTH_MODE=jwt: require either Authorization header or ?token= query param.
+    """
+    is_production = is_production_env()
+    auth_mode = (getattr(settings, "AUTH_MODE", "jwt") or "jwt").lower()
+
+    if auth_mode == "header":
+        account_id = (request.headers.get("x-user-id") or "").strip() or None
+        if is_production and not account_id:
+            raise HTTPException(status_code=401, detail="X-User-ID header required")
+        return account_id
+
+    # jwt mode: allow either Authorization header or `?token=` query param for <img src>.
+    authorization = (request.headers.get("authorization") or "").strip()
+    token = (request.query_params.get("token") or request.query_params.get("access_token") or "").strip()
+    if not authorization and token:
+        authorization = token if token.lower().startswith("bearer ") else f"Bearer {token}"
+    if not authorization:
+        raise HTTPException(status_code=401, detail="Authentication required")
+
+    try:
+        return get_current_account_id(authorization=authorization, x_user_id=None)
+    except HTTPException:
+        raise HTTPException(status_code=401, detail="Authentication required")
+
 
 def _get_tenant_id_from_request_if_provided(request: Request) -> Optional[UUID]:
     """
@@ -1456,28 +1485,7 @@ async def get_image(
     Standard path: {UPLOAD_DIR}/{tenant_id}/images/{image_id}(.png|.jpg|.jpeg|.webp|.gif|.bmp)
     """
     tenant_id = _resolve_tenant_id_for_asset_request(request)
-    is_production = is_production_env()
-    auth_mode = (getattr(settings, "AUTH_MODE", "jwt") or "jwt").lower()
-    account_id: Optional[str] = None
-
-    if auth_mode == "header":
-        account_id = (request.headers.get("x-user-id") or "").strip() or None
-        if is_production and not account_id:
-            raise HTTPException(status_code=401, detail="X-User-ID header required")
-    else:
-        # For jwt mode, allow either Authorization header or `?token=` query param
-        # so <img src="..."> can work.
-        authorization = (request.headers.get("authorization") or "").strip()
-        token = (request.query_params.get("token") or request.query_params.get("access_token") or "").strip()
-        if not authorization and token:
-            authorization = token if token.lower().startswith("bearer ") else f"Bearer {token}"
-        if authorization:
-            try:
-                account_id = get_current_account_id(authorization=authorization, x_user_id=None)
-            except HTTPException:
-                account_id = None
-        if not account_id:
-            raise HTTPException(status_code=401, detail="Authentication required")
+    account_id = _resolve_account_id_for_asset_request(request)
 
     # Best-effort permission check: in local/dev header mode, image URLs are loaded
     # by the browser without custom headers; allow anonymous image access there.
@@ -1509,7 +1517,16 @@ async def get_image(
         except ValueError:
             continue
         if file_path.exists() and file_path.is_file():
-            return FileResponse(file_path, media_type=media_type)
+            max_age = max(0, int(getattr(settings, "ASSET_CACHE_MAX_AGE_SEC", 0) or 0))
+            cache_control = f"private, max-age={max_age}" if max_age > 0 else "no-cache"
+            return FileResponse(
+                file_path,
+                media_type=media_type,
+                headers={
+                    "Cache-Control": cache_control,
+                    "X-Content-Type-Options": "nosniff",
+                },
+            )
 
     raise HTTPException(status_code=404, detail="Image not found")
 
@@ -1529,26 +1546,7 @@ async def get_image_url(
             status_code=503,
             detail="MinIO is disabled; cannot retrieve image URL"
         )
-    is_production = is_production_env()
-    auth_mode = (getattr(settings, "AUTH_MODE", "jwt") or "jwt").lower()
-    account_id: Optional[str] = None
-
-    if auth_mode == "header":
-        account_id = (request.headers.get("x-user-id") or "").strip() or None
-        if is_production and not account_id:
-            raise HTTPException(status_code=401, detail="X-User-ID header required")
-    else:
-        authorization = (request.headers.get("authorization") or "").strip()
-        token = (request.query_params.get("token") or request.query_params.get("access_token") or "").strip()
-        if not authorization and token:
-            authorization = token if token.lower().startswith("bearer ") else f"Bearer {token}"
-        if authorization:
-            try:
-                account_id = get_current_account_id(authorization=authorization, x_user_id=None)
-            except HTTPException:
-                account_id = None
-        if not account_id:
-            raise HTTPException(status_code=401, detail="Authentication required")
+    account_id = _resolve_account_id_for_asset_request(request)
 
     # Resolve tenant_id even when the request is coming from <img src> (no custom headers).
     requested_tenant = _get_tenant_id_from_request_if_provided(request)
@@ -1610,7 +1608,16 @@ async def get_image_url(
     try:
         url = minio_service.get_image_url(img_id, extension="jpg")
         # Redirect to MinIO presigned URL.
-        return RedirectResponse(url=url, status_code=302)
+        return RedirectResponse(
+            url=url,
+            status_code=302,
+            headers={
+                # Avoid caching sensitive presigned URLs.
+                "Cache-Control": "no-store",
+                "Pragma": "no-cache",
+                "Expires": "0",
+            },
+        )
     except Exception as e:
         raise HTTPException(
             status_code=404,

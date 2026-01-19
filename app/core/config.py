@@ -141,6 +141,9 @@ class Settings(BaseSettings):
     # Inline/local image upload safety limits (Markdown/HTML image refs -> MinIO).
     MAX_INLINE_IMAGE_BYTES: int = 10_000_000
     MAX_INLINE_IMAGES: int = 200
+    # Static asset caching for upload-served images (GET /api/v1/documents/image/{id}).
+    # 0 disables caching headers.
+    ASSET_CACHE_MAX_AGE_SEC: int = 3600
     # Keep this aligned with parser_factory supported non-PDF formats.
     ALLOWED_EXTENSIONS: str = ".pdf,.txt,.md,.rst,.adoc,.asciidoc,.tex,.yaml,.yml,.toml,.sql,.log,.conf,.ini,.cfg,.env,.properties,.patch,.diff,.srt,.vtt,.mk,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.csv,.html,.htm,.json,.jsonl,.ndjson,.xml,.rss,.atom,.graphql,.gql,.proto,.tf,.hcl"
 
@@ -229,7 +232,10 @@ class Settings(BaseSettings):
     CORS_ORIGINS: str = "http://localhost:3000,http://localhost:3001"
     # Allow browsers to read diagnostic headers from cross-origin responses.
     # NOTE: This does not affect which headers the backend sends, only what the browser exposes to JS.
-    CORS_EXPOSE_HEADERS: str = "X-Request-ID,X-Process-Time-Ms,Retry-After"
+    CORS_EXPOSE_HEADERS: str = "X-Request-ID,X-Process-Time-Ms,Server-Timing,Retry-After"
+
+    # Emit Server-Timing response header for quick perf debugging.
+    SERVER_TIMING_ENABLED: bool = True
 
     HOST: str = "0.0.0.0"
     PORT: int = 8000

@@ -10,6 +10,7 @@ import { CommandMenu } from "@/components/command-menu"
 import { ThemeCustomizer } from "@/components/theme-customizer"
 import { FluidCursor } from "@/components/ui/fluid-cursor"
 import { TaskCenter } from "@/components/task-center"
+import { QueryProvider } from "@/components/providers/query-provider"
 
 export const metadata: Metadata = {
   title: "MimirQ - AI 知识库助手",
@@ -33,17 +34,20 @@ export default function RootLayout({
           enableSystem
           disableTransitionOnChange
         >
-          <SonnerToaster />
-          <CommandMenu />
-                      <ThemeCustomizer />
-                      <FluidCursor />
-                      <TaskCenter />
-                      <PipelineCapabilitiesProvider>            <ParserBackendProvider>
-              <ChunkStrategyProvider>
-                <PipelineOptionsProvider>{children}</PipelineOptionsProvider>
-              </ChunkStrategyProvider>
-            </ParserBackendProvider>
-          </PipelineCapabilitiesProvider>
+          <QueryProvider>
+            <SonnerToaster />
+            <CommandMenu />
+            <ThemeCustomizer />
+            <FluidCursor />
+            <TaskCenter />
+            <PipelineCapabilitiesProvider>
+              <ParserBackendProvider>
+                <ChunkStrategyProvider>
+                  <PipelineOptionsProvider>{children}</PipelineOptionsProvider>
+                </ChunkStrategyProvider>
+              </ParserBackendProvider>
+            </PipelineCapabilitiesProvider>
+          </QueryProvider>
         </ThemeProvider>
       </body>
     </html>

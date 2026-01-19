@@ -46,6 +46,37 @@ class MinIOService:
             self._ensure_bucket()
         return self._client
 
+    def health_check(self) -> Dict[str, Any]:
+        """
+        Best-effort connectivity check for readiness probes.
+
+        Notes:
+        - When MINIO_ENABLED=true, this also ensures the configured bucket exists.
+        - Never raises: returns a structured status dict.
+        """
+        enabled = bool(getattr(settings, "MINIO_ENABLED", False))
+        if not enabled:
+            return {"enabled": False, "status": "disabled"}
+
+        t0 = time.perf_counter()
+        try:
+            client = self._get_client()
+            client.bucket_exists(self._bucket_name)
+            return {
+                "enabled": True,
+                "status": "connected",
+                "bucket": self._bucket_name,
+                "elapsed_ms": round((time.perf_counter() - t0) * 1000.0, 2),
+            }
+        except Exception as exc:  # noqa: BLE001
+            return {
+                "enabled": True,
+                "status": "disconnected",
+                "bucket": self._bucket_name,
+                "error": str(exc)[:200],
+                "elapsed_ms": round((time.perf_counter() - t0) * 1000.0, 2),
+            }
+
     def _ensure_bucket(self):
         """Ensure the bucket exists; create it if missing."""
         client = self._client

@@ -3,7 +3,8 @@
  */
 'use client'
 
-import { useState } from 'react'
+import { useState, useRef } from 'react'
+import { useVirtualizer } from '@tanstack/react-virtual'
 import {
   FileText,
   Upload,
@@ -37,8 +38,8 @@ export function Sidebar() {
   const parentRef = useRef<HTMLDivElement>(null)
 
   const { term, setTerm, results } = useLocalSearch(documents, {
-      fields: ['filename', 'file_type'],
-      storeFields: ['id']
+    fields: ['filename', 'file_type'],
+    storeFields: ['id']
   })
 
   const rowVirtualizer = useVirtualizer({
@@ -92,56 +93,56 @@ export function Sidebar() {
       {/* 头部 - 增加空间感 */}
       <div className="p-6 border-b border-sidebar-border/60">
         <div className="flex items-center justify-between mb-6">
-            <div className="flex items-center gap-2">
-                <div className="h-8 w-8 rounded-lg bg-primary/10 flex items-center justify-center">
-                    <FileText className="h-4 w-4 text-primary" />
-                </div>
-                <h2 className="text-lg font-semibold tracking-tight text-foreground/90">知识库</h2>
+          <div className="flex items-center gap-2">
+            <div className="h-8 w-8 rounded-lg bg-primary/10 flex items-center justify-center">
+              <FileText className="h-4 w-4 text-primary" />
             </div>
-            <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-secondary text-secondary-foreground">
-                {documents.length}
-            </span>
+            <h2 className="text-lg font-semibold tracking-tight text-foreground/90">知识库</h2>
+          </div>
+          <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-secondary text-secondary-foreground">
+            {documents.length}
+          </span>
         </div>
 
         <div className="space-y-3">
-            <div className="relative group">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground group-focus-within:text-primary transition-colors" />
-                <input 
-                    type="text"
-                    value={term}
-                    onChange={(e) => setTerm(e.target.value)}
-                    placeholder="快速搜索文档..."
-                    className="w-full h-9 pl-9 pr-3 bg-secondary/50 border border-transparent focus:bg-background focus:border-primary/30 rounded-lg text-xs outline-none transition-all"
-                />
-                {term && (
-                    <button 
-                        onClick={() => setTerm('')}
-                        className="absolute right-2 top-1/2 -translate-y-1/2 p-1 hover:bg-secondary rounded-md"
-                    >
-                        <X className="h-3 w-3 text-muted-foreground" />
-                    </button>
-                )}
-            </div>
+          <div className="relative group">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground group-focus-within:text-primary transition-colors" />
+            <input
+              type="text"
+              value={term}
+              onChange={(e) => setTerm(e.target.value)}
+              placeholder="快速搜索文档..."
+              className="w-full h-9 pl-9 pr-3 bg-secondary/50 border border-transparent focus:bg-background focus:border-primary/30 rounded-lg text-xs outline-none transition-all"
+            />
+            {term && (
+              <button
+                onClick={() => setTerm('')}
+                className="absolute right-2 top-1/2 -translate-y-1/2 p-1 hover:bg-secondary rounded-md"
+              >
+                <X className="h-3 w-3 text-muted-foreground" />
+              </button>
+            )}
+          </div>
 
-            <Magnetic strength={0.3}>
-                <label htmlFor="file-upload" className="group relative overflow-hidden flex items-center justify-center gap-2 w-full px-4 py-3 bg-primary text-primary-foreground rounded-xl shadow-md shadow-primary/20 hover:shadow-lg hover:shadow-primary/30 hover:-translate-y-0.5 active:translate-y-0 cursor-pointer transition-all duration-300">
-                    <div className="absolute inset-0 bg-gradient-to-tr from-white/0 via-white/10 to-white/0 opacity-0 group-hover:opacity-100 transition-opacity" />
-                    <Upload className="h-4 w-4" />
-                    <span className="text-sm font-medium">上传文档</span>
-                    <input
-                        id="file-upload"
-                        type="file"
-                        multiple
-                        accept=".pdf,.txt,.md,.doc,.docx,.xls,.xlsx,.csv,.html,.json"
-                        className="hidden"
-                        onChange={handleFileUpload}
-                    />
-                </label>
-            </Magnetic>
+          <Magnetic strength={0.3}>
+            <label htmlFor="file-upload" className="group relative overflow-hidden flex items-center justify-center gap-2 w-full px-4 py-3 bg-primary text-primary-foreground rounded-xl shadow-md shadow-primary/20 hover:shadow-lg hover:shadow-primary/30 hover:-translate-y-0.5 active:translate-y-0 cursor-pointer transition-all duration-300">
+              <div className="absolute inset-0 bg-gradient-to-tr from-white/0 via-white/10 to-white/0 opacity-0 group-hover:opacity-100 transition-opacity" />
+              <Upload className="h-4 w-4" />
+              <span className="text-sm font-medium">上传文档</span>
+              <input
+                id="file-upload"
+                type="file"
+                multiple
+                accept=".pdf,.txt,.md,.doc,.docx,.xls,.xlsx,.csv,.html,.json"
+                className="hidden"
+                onChange={handleFileUpload}
+              />
+            </label>
+          </Magnetic>
 
-            <div className="grid grid-cols-1">
-                 <ManualUploadDialog onUploaded={loadDocuments} />
-            </div>
+          <div className="grid grid-cols-1">
+            <ManualUploadDialog onUploaded={loadDocuments} />
+          </div>
         </div>
 
         {selectedDocIds.length > 0 && (
@@ -149,19 +150,19 @@ export function Sidebar() {
             <p className="text-xs text-muted-foreground pl-2">
               已选 {selectedDocIds.length} 项
             </p>
-            <button 
-                onClick={() => setSelectedDocIds([])}
-                className="p-1 hover:bg-background rounded-sm transition-colors"
+            <button
+              onClick={() => setSelectedDocIds([])}
+              className="p-1 hover:bg-background rounded-sm transition-colors"
             >
-                <X className="h-3 w-3 text-muted-foreground" />
+              <X className="h-3 w-3 text-muted-foreground" />
             </button>
           </div>
         )}
       </div>
 
       {/* 文档列表 - 优化滚动体验 (虚拟列表 + 本地搜索) */}
-      <div 
-        ref={parentRef} 
+      <div
+        ref={parentRef}
         className="flex-1 overflow-y-auto p-4 scrollbar-hide"
       >
         {isLoading && documents.length === 0 ? (
@@ -171,51 +172,51 @@ export function Sidebar() {
           </div>
         ) : results.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-64 text-muted-foreground/50 gap-4">
-            <LottieAnimation 
-                url={LOTTIE_URLS.EMPTY_DOCUMENTS} 
-                className="w-40 h-40 opacity-80"
+            <LottieAnimation
+              url={LOTTIE_URLS.EMPTY_DOCUMENTS}
+              className="w-40 h-40 opacity-80"
             />
             <p className="text-sm font-medium tracking-tight">
-                {documents.length > 0 ? "未找到匹配文档" : "暂无文档，请上传知识"}
+              {documents.length > 0 ? "未找到匹配文档" : "暂无文档，请上传知识"}
             </p>
           </div>
         ) : (
-          <div 
-            style={{ 
-                height: `${rowVirtualizer.getTotalSize()}px`, 
-                width: '100%', 
-                position: 'relative' 
+          <div
+            style={{
+              height: `${rowVirtualizer.getTotalSize()}px`,
+              width: '100%',
+              position: 'relative'
             }}
           >
             {rowVirtualizer.getVirtualItems().map((virtualRow) => {
-                const doc = results[virtualRow.index]
-                if (!doc) return null
-                
-                return (
-                    <div
-                        key={virtualRow.key}
-                        data-index={virtualRow.index}
-                        ref={rowVirtualizer.measureElement}
-                        style={{
-                            position: 'absolute',
-                            top: 0,
-                            left: 0,
-                            width: '100%',
-                            transform: `translateY(${virtualRow.start}px)`,
-                        }}
-                        className="pb-3"
-                    >
-                        <DocumentCard
-                            document={doc}
-                            index={virtualRow.index}
-                            isSelected={selectedDocIds.includes(doc.id)}
-                            onSelect={() => toggleDocumentSelection(doc.id)}
-                            onCancel={() => cancelDocument(doc.id)}
-                            onDelete={() => deleteDocument(doc.id)}
-                            getStatusIcon={getStatusIcon}
-                        />
-                    </div>
-                )
+              const doc = results[virtualRow.index]
+              if (!doc) return null
+
+              return (
+                <div
+                  key={virtualRow.key}
+                  data-index={virtualRow.index}
+                  ref={rowVirtualizer.measureElement}
+                  style={{
+                    position: 'absolute',
+                    top: 0,
+                    left: 0,
+                    width: '100%',
+                    transform: `translateY(${virtualRow.start}px)`,
+                  }}
+                  className="pb-3"
+                >
+                  <DocumentCard
+                    document={doc}
+                    index={virtualRow.index}
+                    isSelected={selectedDocIds.includes(doc.id)}
+                    onSelect={() => toggleDocumentSelection(doc.id)}
+                    onCancel={() => cancelDocument(doc.id)}
+                    onDelete={() => deleteDocument(doc.id)}
+                    getStatusIcon={getStatusIcon}
+                  />
+                </div>
+              )
             })}
           </div>
         )}
@@ -263,8 +264,8 @@ function DocumentCard({
       <div className="flex items-start gap-3">
         {/* 文件图标容器 */}
         <div className={cn(
-            "p-2 rounded-lg transition-colors text-xl",
-            isSelected ? "bg-primary/10 text-primary" : "bg-secondary text-muted-foreground group-hover:text-foreground"
+          "p-2 rounded-lg transition-colors text-xl",
+          isSelected ? "bg-primary/10 text-primary" : "bg-secondary text-muted-foreground group-hover:text-foreground"
         )}>
           {getFileIcon(document.file_type)}
         </div>
@@ -272,17 +273,17 @@ function DocumentCard({
         {/* 文档信息 */}
         <div className="flex-1 min-w-0 py-0.5">
           <div className="flex items-start justify-between gap-2">
-             <h3 className={cn(
-                 "text-sm font-medium truncate transition-colors",
-                 isSelected ? "text-primary" : "text-foreground"
-             )}>
-                {document.filename}
+            <h3 className={cn(
+              "text-sm font-medium truncate transition-colors",
+              isSelected ? "text-primary" : "text-foreground"
+            )}>
+              {document.filename}
             </h3>
             <div className="shrink-0 pt-0.5 opacity-70">
-                {getStatusIcon(document.status)}
+              {getStatusIcon(document.status)}
             </div>
           </div>
-          
+
           <div className="flex items-center gap-2 mt-1.5">
             <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-secondary text-secondary-foreground/70">
               {formatFileSize(document.file_size)}
@@ -297,34 +298,34 @@ function DocumentCard({
             <div className="mt-3">
               <PipelineVisualizer progress={document.processing_progress} className="py-2 scale-90 origin-left w-[110%]" />
               <div className="flex justify-between items-center mt-6">
-                 <p className="text-[10px] text-muted-foreground">
-                    {document.current_stage || '处理中'}
-                 </p>
-                 <span className="text-[10px] font-mono text-primary/80">
-                    {document.processing_progress}%
-                 </span>
+                <p className="text-[10px] text-muted-foreground">
+                  {document.current_stage || '处理中'}
+                </p>
+                <span className="text-[10px] font-mono text-primary/80">
+                  {document.processing_progress}%
+                </span>
               </div>
             </div>
           )}
 
           {/* 属性标签 */}
           {document.status === 'completed' && isHovered && (
-             <div className="mt-2 flex flex-wrap gap-1 animate-fade-in">
+            <div className="mt-2 flex flex-wrap gap-1 animate-fade-in">
+              <span className="text-[10px] px-1.5 py-0.5 bg-secondary/80 rounded text-muted-foreground">
+                {document.chunk_count} 片段
+              </span>
+              {parserLabel && (
                 <span className="text-[10px] px-1.5 py-0.5 bg-secondary/80 rounded text-muted-foreground">
-                    {document.chunk_count} 片段
+                  {parserLabel}
                 </span>
-                {parserLabel && (
-                    <span className="text-[10px] px-1.5 py-0.5 bg-secondary/80 rounded text-muted-foreground">
-                        {parserLabel}
-                    </span>
-                )}
-             </div>
+              )}
+            </div>
           )}
 
           {/* 错误信息 */}
           {document.status === 'failed' && (
             <p className="text-[10px] text-destructive mt-1 font-medium bg-destructive/5 px-1.5 py-0.5 rounded inline-block">
-                处理失败
+              处理失败
             </p>
           )}
         </div>
@@ -332,37 +333,37 @@ function DocumentCard({
 
       {/* 悬浮操作栏 */}
       <div className={cn(
-          "absolute right-2 top-2 flex flex-col gap-1 transition-all duration-200",
-          isHovered ? "opacity-100 translate-x-0" : "opacity-0 translate-x-2 pointer-events-none"
+        "absolute right-2 top-2 flex flex-col gap-1 transition-all duration-200",
+        isHovered ? "opacity-100 translate-x-0" : "opacity-0 translate-x-2 pointer-events-none"
       )}>
         <DocumentDetailDialog document={document} trigger={
-            <button className="p-1.5 bg-background/80 backdrop-blur border shadow-sm rounded-md hover:bg-primary hover:text-primary-foreground transition-colors" title="查看详情">
-                <FileText className="h-3.5 w-3.5" />
-            </button>
+          <button className="p-1.5 bg-background/80 backdrop-blur border shadow-sm rounded-md hover:bg-primary hover:text-primary-foreground transition-colors" title="查看详情">
+            <FileText className="h-3.5 w-3.5" />
+          </button>
         } />
-        
+
         {(document.status === 'processing' || document.status === 'pending') ? (
-            <button
-              onClick={(e) => {
-                e.stopPropagation()
-                onCancel()
-              }}
-              className="p-1.5 bg-background/80 backdrop-blur border shadow-sm rounded-md hover:bg-amber-100 hover:text-amber-600 transition-colors"
-              title="取消处理"
-            >
-              <X className="h-3.5 w-3.5" />
-            </button>
+          <button
+            onClick={(e) => {
+              e.stopPropagation()
+              onCancel()
+            }}
+            className="p-1.5 bg-background/80 backdrop-blur border shadow-sm rounded-md hover:bg-amber-100 hover:text-amber-600 transition-colors"
+            title="取消处理"
+          >
+            <X className="h-3.5 w-3.5" />
+          </button>
         ) : (
-            <button
-              onClick={(e) => {
-                e.stopPropagation()
-                onDelete()
-              }}
-              className="p-1.5 bg-background/80 backdrop-blur border shadow-sm rounded-md hover:bg-destructive hover:text-destructive-foreground transition-colors"
-              title="删除文档"
-            >
-              <Trash2 className="h-3.5 w-3.5" />
-            </button>
+          <button
+            onClick={(e) => {
+              e.stopPropagation()
+              onDelete()
+            }}
+            className="p-1.5 bg-background/80 backdrop-blur border shadow-sm rounded-md hover:bg-destructive hover:text-destructive-foreground transition-colors"
+            title="删除文档"
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+          </button>
         )}
       </div>
     </TiltCard>

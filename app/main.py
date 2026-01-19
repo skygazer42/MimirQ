@@ -198,6 +198,14 @@ async def lifespan(app: FastAPI):
 
     # Close task queue connection (optional).
     await close_queue()
+
+    # Dispose DB engine pool (best-effort; avoids lingering connections in some runtimes).
+    try:
+        engine.dispose()
+        logger.info("Database engine disposed")
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Failed to dispose database engine: %s", str(exc)[:200])
+
     shutdown_otel()
 
 
@@ -265,7 +273,10 @@ if bool(getattr(settings, "PROMETHEUS_ENABLED", False)):
     )
 
 # Process-time header (useful for debugging and quick perf checks).
-app.add_middleware(ProcessTimeMiddleware)
+app.add_middleware(
+    ProcessTimeMiddleware,
+    server_timing_enabled=bool(getattr(settings, "SERVER_TIMING_ENABLED", True)),
+)
 
 # Request-id middleware (outermost; propagates X-Request-ID for tracing).
 app.add_middleware(RequestIDMiddleware)
