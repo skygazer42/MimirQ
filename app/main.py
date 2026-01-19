@@ -27,11 +27,13 @@ warnings.filterwarnings(
 
 import logging
 from pathlib import Path
+from urllib.parse import urlparse
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 
 from app.core.config import settings
+from app.core.env import is_production_env
 from app.core.logging_config import configure_logging
 from app.core.otel import init_otel, instrument_fastapi, instrument_httpx, shutdown_otel
 from app.core.sentry import init_sentry
@@ -58,6 +60,47 @@ import app.models.feedback  # noqa: F401
 import app.models.user  # noqa: F401
 
 logger = logging.getLogger("mimirq")
+
+def _expand_dev_cors_origins(origins: list[str]) -> list[str]:
+    """
+    Dev-friendly CORS: add localhost/IP aliases for the same port.
+
+    This prevents common UX issues when the frontend is opened via:
+    - http://0.0.0.0:3000 (Next dev prints this by default)
+    - http://127.0.0.1:3000
+    while backend env only allows http://localhost:3000.
+    """
+    if not origins:
+        return origins
+    if "*" in origins:
+        return origins
+
+    expanded: set[str] = set()
+    for raw in origins:
+        origin = (raw or "").strip().rstrip("/")
+        if origin:
+            expanded.add(origin)
+
+    for origin in list(expanded):
+        try:
+            parsed = urlparse(origin)
+        except Exception:
+            continue
+
+        scheme = (parsed.scheme or "").lower().strip()
+        host = (parsed.hostname or "").lower().strip()
+        port = parsed.port
+        if scheme not in {"http", "https"}:
+            continue
+        if host not in {"localhost", "127.0.0.1", "0.0.0.0"}:
+            continue
+
+        for alt in {"localhost", "127.0.0.1", "0.0.0.0"}:
+            if alt == host:
+                continue
+            expanded.add(f"{scheme}://{alt}:{port}" if port is not None else f"{scheme}://{alt}")
+
+    return sorted(expanded)
 
 # Optional JSON logging (LOG_FORMAT=json).
 configure_logging(
@@ -221,9 +264,13 @@ app = FastAPI(
 instrument_fastapi(app)
 
 # CORS config
+cors_origins = parse_csv(settings.CORS_ORIGINS)
+if not is_production_env():
+    cors_origins = _expand_dev_cors_origins(cors_origins)
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=parse_csv(settings.CORS_ORIGINS),
+    allow_origins=cors_origins,
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["*"],

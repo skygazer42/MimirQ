@@ -140,12 +140,13 @@ export default function IngestionMonitorPage() {
   }
 
   return (
-    <div className="flex min-h-screen overflow-hidden bg-background font-sans selection:bg-primary/20 selection:text-primary">
-      {/* Ambient Background */}
-      <div className="fixed inset-0 z-0 pointer-events-none">
-        <div className="absolute top-[-20%] right-[-10%] w-[800px] h-[800px] bg-primary/5 rounded-full blur-[120px] animate-pulse-subtle" />
-        <div className="absolute bottom-[-10%] left-[-20%] w-[600px] h-[600px] bg-purple-500/5 rounded-full blur-[120px] animate-pulse-subtle" style={{ animationDelay: '2s' }} />
-      </div>
+    <div className="flex min-h-screen overflow-hidden bg-slate-50 dark:bg-slate-950 font-sans selection:bg-slate-200 dark:selection:bg-slate-800 selection:text-slate-900 dark:selection:text-slate-100">
+      {/* Premium Texture Background - Dark mode reduced opacity */}
+      <div className="fixed inset-0 z-0 opacity-40 dark:opacity-20 pointer-events-none" style={{ backgroundImage: 'radial-gradient(#cbd5e1 1px, transparent 1px)', backgroundSize: '32px 32px' }} />
+
+      {/* Soft Ambient Light - Dark mode darker/adjusted */}
+      <div className="fixed top-0 left-1/4 w-[800px] h-[800px] bg-sky-200/20 dark:bg-sky-900/10 rounded-full blur-[120px] pointer-events-none mix-blend-multiply dark:mix-blend-normal" />
+      <div className="fixed bottom-0 right-1/4 w-[600px] h-[600px] bg-indigo-200/20 dark:bg-indigo-900/10 rounded-full blur-[100px] pointer-events-none mix-blend-multiply dark:mix-blend-normal" />
 
       <Navbar />
 
@@ -155,69 +156,86 @@ export default function IngestionMonitorPage() {
           isOpen ? 'mr-0 md:mr-[40vw] xl:mr-[40vw] lg:mr-[500px]' : 'mr-0'
         )}
       >
-        <PageHeader
-          title="入库监控中心"
-          icon={Search}
-          iconColor="text-primary"
-          description={
-            <span>
-              SYSTEM_STATUS: <span className="text-primary">ONLINE</span> <span className="opacity-50 mx-2">{'//'}</span> 实时追踪解析、切块、向量化与索引构建进度。
-            </span>
-          }
-        >
-          <div className="flex items-center gap-3">
-            <Button
-              variant="outline"
-              className="gap-2 border-primary/20 hover:bg-primary/10 hover:text-primary transition-all duration-300 group"
-              onClick={() => refetch()}
-            >
-              <RefreshCw className={cn('h-4 w-4 transition-transform group-hover:rotate-180', isFetching ? 'animate-spin' : '')} />
-              刷新状态
-            </Button>
-            <div className="flex items-center gap-3 rounded-full border border-white/10 bg-white/5 backdrop-blur-md px-4 py-2 hover:border-primary/30 transition-colors">
-              <span className="text-xs font-medium text-muted-foreground">自动同步</span>
-              <Switch
-                checked={autoRefresh}
-                onCheckedChange={setAutoRefresh}
-                className="data-[state=checked]:bg-primary"
-              />
+        <div className="sticky top-0 z-20 backdrop-blur-md bg-white/70 dark:bg-slate-950/70 border-b border-slate-200/50 dark:border-slate-800/50 transition-all duration-300">
+          <PageHeader
+            title="入库监控中心"
+            icon={Search}
+            iconColor="text-sky-500 dark:text-sky-400"
+            className="!pt-6 !pb-6"
+            description={
+              <span className="flex items-center gap-2 text-slate-500 dark:text-slate-400">
+                <span className="font-bold text-slate-700 dark:text-slate-200">SYSTEM_STATUS</span>
+                <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-100 dark:border-emerald-500/20 uppercase tracking-wider">Online</span>
+                <span className="text-slate-300 dark:text-slate-600">|</span>
+                实时追踪解析、切块、向量化与索引构建进度。
+              </span>
+            }
+          >
+            <div className="flex items-center gap-3">
+              <Button
+                variant="outline"
+                className="gap-2 bg-white/50 dark:bg-slate-900/50 border-slate-200 dark:border-slate-800 hover:bg-white dark:hover:bg-slate-800 hover:border-slate-300 dark:hover:border-slate-700 text-slate-600 dark:text-slate-300 rounded-full transition-all duration-300 shadow-sm"
+                onClick={() => refetch()}
+              >
+                <RefreshCw className={cn('h-3.5 w-3.5 transition-transform group-hover:rotate-180', isFetching ? 'animate-spin' : '')} />
+                刷新状态
+              </Button>
+              <div className="flex items-center gap-3 rounded-full border border-slate-200 dark:border-slate-800 bg-white/50 dark:bg-slate-900/50 backdrop-blur-md px-4 py-1.5 hover:border-slate-300 dark:hover:border-slate-700 transition-colors shadow-sm">
+                <span className="text-xs font-bold text-slate-500 dark:text-slate-400">自动同步</span>
+                <Switch
+                  checked={autoRefresh}
+                  onCheckedChange={setAutoRefresh}
+                  className="scale-75 data-[state=checked]:bg-sky-500"
+                />
+              </div>
             </div>
-          </div>
-        </PageHeader>
+          </PageHeader>
+        </div>
 
-        <div className="px-8 pb-4 grid grid-cols-2 md:grid-cols-5 gap-4">
+        <div className="px-8 pb-4 grid grid-cols-2 lg:grid-cols-5 gap-4 mt-4">
           {[
-            { label: '等待队列', value: stats.pending, color: 'text-sky-600', border: 'border-sky-200', bg: 'bg-sky-50' },
-            { label: '正在处理', value: stats.processing, color: 'text-blue-600', border: 'border-blue-200', bg: 'bg-blue-50' },
-            { label: '已完成', value: stats.completed, color: 'text-emerald-600', border: 'border-emerald-200', bg: 'bg-emerald-50' },
-            { label: '失败任务', value: stats.failed, color: 'text-red-600', border: 'border-red-200', bg: 'bg-red-50' },
-            { label: '总存储量', value: formatFileSize(stats.totalSize), color: 'text-purple-600', border: 'border-purple-200', bg: 'bg-purple-50' },
+            { label: '等待队列', value: stats.pending, icon: Clock, color: 'text-amber-600 dark:text-amber-400', bg: 'bg-amber-50 dark:bg-amber-500/10', border: 'group-hover:border-amber-200 dark:group-hover:border-amber-800' },
+            { label: '正在处理', value: stats.processing, icon: Loader2, color: 'text-sky-600 dark:text-sky-400', bg: 'bg-sky-50 dark:bg-sky-500/10', border: 'group-hover:border-sky-200 dark:group-hover:border-sky-800', spin: true },
+            { label: '已完成', value: stats.completed, icon: CheckCircle2, color: 'text-emerald-600 dark:text-emerald-400', bg: 'bg-emerald-50 dark:bg-emerald-500/10', border: 'group-hover:border-emerald-200 dark:group-hover:border-emerald-800' },
+            { label: '失败任务', value: stats.failed, icon: AlertCircle, color: 'text-red-600 dark:text-red-400', bg: 'bg-red-50 dark:bg-red-500/10', border: 'group-hover:border-red-200 dark:group-hover:border-red-800' },
+            { label: '总存储量', value: formatFileSize(stats.totalSize), icon: Search, color: 'text-indigo-600 dark:text-indigo-400', bg: 'bg-indigo-50 dark:bg-indigo-500/10', border: 'group-hover:border-indigo-200 dark:group-hover:border-indigo-800' },
           ].map((stat, idx) => (
-            <div key={idx} className={cn("relative overflow-hidden rounded-2xl border transition-all duration-300 hover:scale-105 hover:shadow-md", stat.border, stat.bg)}>
-              <div className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">{stat.label}</div>
-              <div className={cn("text-2xl font-black tracking-tight", stat.color)}>{stat.value}</div>
-              {/* Decorative corner */}
-              <div className={cn("absolute top-0 right-0 w-8 h-8 opacity-10", stat.color)}>
-                <svg viewBox="0 0 24 24" fill="currentColor"><path d="M0 0h24v24H0z" fill="none" /><path d="M21 3H3v18h18V3zm-2 16H5V5h14v14z" opacity=".3" /><path d="M21 3h-8v2h8v8h2V5c0-1.1-.9-2-2-2z" /></svg>
+            <div key={idx} className={cn(
+              "group relative overflow-hidden rounded-2xl bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 shadow-[0_2px_20px_rgba(0,0,0,0.04)] dark:shadow-none hover:shadow-[0_8px_30px_rgba(0,0,0,0.08)] transition-all duration-300 hover:-translate-y-1",
+              stat.border
+            )}>
+              <div className="p-5 flex flex-col justify-between h-full relative z-10">
+                <div className="flex items-center justify-between mb-4">
+                  <div className={cn("p-2 rounded-lg transition-colors", stat.bg)}>
+                    <stat.icon className={cn("w-5 h-5", stat.color, stat.spin && "animate-spin")} />
+                  </div>
+                  <div className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-slate-500">{stat.label}</div>
+                </div>
+                <div className="flex items-baseline gap-1">
+                  <span className={cn("text-3xl font-black tracking-tight", stat.color)}>{stat.value}</span>
+                  {idx === 4 && <span className="text-xs font-medium text-slate-400 dark:text-slate-500">Total</span>}
+                </div>
               </div>
             </div>
           ))}
         </div>
 
-        <div className="px-8 pb-6 flex-shrink-0 z-10">
-          <div className="flex flex-col md:flex-row md:items-center gap-4 bg-white backdrop-blur-md border border-slate-200 p-2 rounded-2xl shadow-sm">
-            <div className="relative flex-1 group">
-              <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 group-hover:text-primary transition-colors" />
+        <div className="px-8 pb-6 flex-shrink-0 z-10 sticky top-[88px] my-2">
+          <div className="flex flex-col md:flex-row md:items-center gap-0 bg-white/80 dark:bg-slate-900/80 backdrop-blur-xl border border-slate-200 dark:border-slate-800 shadow-lg shadow-slate-200/50 dark:shadow-none rounded-full p-1.5 transition-all duration-300 hover:shadow-xl hover:shadow-sky-100 dark:hover:shadow-none hover:border-sky-100 dark:hover:border-slate-700 max-w-4xl mx-auto md:mx-0">
+            <div className="relative flex-1 group pl-2">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 dark:text-slate-500 group-hover:text-sky-500 dark:group-hover:text-sky-400 transition-colors" />
               <Input
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 placeholder="搜索任务ID或文件名..."
-                className="pl-11 bg-transparent border-0 focus-visible:ring-0 text-foreground placeholder:text-muted-foreground/50 h-11"
+                className="pl-9 bg-transparent border-0 focus-visible:ring-0 text-slate-700 dark:text-slate-200 placeholder:text-slate-400 dark:placeholder:text-slate-600 h-10 rounded-full"
               />
             </div>
-            <div className="w-px h-8 bg-white/10 hidden md:block" />
+
+            <div className="w-px h-6 bg-slate-200 dark:bg-slate-800 hidden md:block mx-2" />
+
             <Select value={status} onValueChange={(v) => setStatus(v as StatusFilter)}>
-              <SelectTrigger className="w-full md:w-48 bg-transparent border-0 focus:ring-0 h-11 text-muted-foreground hover:text-foreground">
+              <SelectTrigger className="w-full md:w-48 bg-transparent border-0 focus:ring-0 h-10 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 rounded-full hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors">
                 <SelectValue placeholder="筛选状态" />
               </SelectTrigger>
               <SelectContent>
@@ -244,40 +262,49 @@ export default function IngestionMonitorPage() {
                   setDetailOpen(true)
                 }}
                 className={cn(
-                  'group w-full text-left rounded-2xl border transition-all duration-300 relative overflow-hidden',
-                  'bg-white/5 border-white/10 hover:bg-white/10 hover:border-primary/30 hover:shadow-[0_0_30px_-10px_rgba(var(--primary),0.2)]'
+                  'group w-full text-left rounded-xl border transition-all duration-300 relative overflow-hidden',
+                  'bg-white dark:bg-slate-900 border-slate-100 dark:border-slate-800 hover:border-sky-200 dark:hover:border-sky-800 hover:shadow-[0_8px_30px_rgba(0,0,0,0.04)] hover:-translate-y-0.5'
                 )}
               >
                 {/* Progress Background Mesh for Processing */}
                 {doc.status === 'processing' && (
-                  <div className="absolute inset-0 z-0 opacity-5 pointer-events-none bg-[url('/grid.svg')] bg-center [mask-image:linear-gradient(to_right,white,transparent)]" />
+                  <div className="absolute inset-0 z-0 opacity-[0.03] dark:opacity-[0.05] pointer-events-none bg-[url('https://grainy-gradients.vercel.app/noise.svg')] mix-blend-multiply dark:mix-blend-overlay" />
                 )}
 
-                <div className="flex items-center justify-between gap-4 p-5 relative z-10">
+                {/* Status Bar Accent */}
+                <div className={cn("absolute left-0 top-0 bottom-0 w-1",
+                  doc.status === 'processing' ? "bg-sky-500" :
+                    doc.status === 'completed' ? "bg-emerald-500" :
+                      doc.status === 'failed' ? "bg-red-500" : "bg-slate-200 dark:bg-slate-700"
+                )} />
+
+                <div className="flex items-center justify-between gap-6 p-5 relative z-10 pl-6">
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-3 mb-2">
                       <StatusPill status={doc.status} />
-                      <span className="font-mono text-[10px] text-muted-foreground/50">ID: {doc.id.slice(0, 8)}</span>
+                      <span className="font-mono text-[10px] text-slate-400 dark:text-slate-500">ID: {doc.id.slice(0, 8)}</span>
                     </div>
+
                     <div className="flex items-center gap-3">
-                      <p className="font-bold text-lg text-foreground truncate group-hover:text-primary transition-colors">{doc.filename}</p>
+                      <p className="font-bold text-base text-slate-800 dark:text-slate-100 truncate group-hover:text-sky-600 dark:group-hover:text-sky-400 transition-colors tracking-tight">{doc.filename}</p>
                     </div>
-                    <div className="mt-2 text-xs text-muted-foreground flex flex-wrap gap-x-6 gap-y-1 font-medium">
-                      <div className="flex items-center gap-1.5">
-                        <div className="w-1.5 h-1.5 rounded-full bg-slate-500/50" />
-                        更新于 {formatDate(doc.updated_at)}
+
+                    <div className="mt-3 text-xs text-slate-500 dark:text-slate-400 flex flex-wrap gap-x-6 gap-y-1 font-medium items-center">
+                      <div className="flex items-center gap-1.5 bg-slate-50 dark:bg-slate-800 px-2 py-0.5 rounded-md border border-slate-100 dark:border-slate-700">
+                        <Clock className="w-3 h-3 text-slate-400 dark:text-slate-500" />
+                        {formatDate(doc.updated_at)}
                       </div>
                       <div className="flex items-center gap-1.5">
-                        <div className="w-1.5 h-1.5 rounded-full bg-slate-500/50" />
+                        <div className="w-1 h-1 rounded-full bg-slate-300 dark:bg-slate-600" />
                         {formatFileSize(doc.file_size)}
                       </div>
                       <div className="flex items-center gap-1.5">
-                        <div className="w-1.5 h-1.5 rounded-full bg-slate-500/50" />
+                        <div className="w-1 h-1 rounded-full bg-slate-300 dark:bg-slate-600" />
                         {doc.chunk_count ?? 0} 切片
                       </div>
                       {doc.current_stage && (
-                        <div className="flex items-center gap-1.5 text-primary">
-                          <div className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />
+                        <div className="flex items-center gap-1.5 text-sky-600 dark:text-sky-400 font-bold bg-sky-50 dark:bg-sky-500/10 px-2 py-0.5 rounded-full border border-sky-100 dark:border-sky-500/20 text-[10px] uppercase tracking-wider">
+                          <div className="w-1.5 h-1.5 rounded-full bg-sky-500 animate-pulse" />
                           {doc.current_stage}
                         </div>
                       )}
@@ -285,13 +312,13 @@ export default function IngestionMonitorPage() {
                   </div>
 
                   {/* Actions & Progress Area */}
-                  <div className="flex flex-col items-end gap-3 min-w-[120px]">
+                  <div className="flex flex-col items-end gap-3 min-w-[140px]">
 
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all duration-300 translate-x-2 group-hover:translate-x-0">
                       <Button
                         size="sm"
                         variant="ghost"
-                        className="h-8 text-xs hover:bg-white/10 hover:text-primary"
+                        className="h-8 px-3 text-xs text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 hover:text-sky-600 dark:hover:text-sky-400 rounded-lg"
                         onClick={(e) => {
                           e.stopPropagation()
                           openDocument(doc.id)
@@ -304,7 +331,7 @@ export default function IngestionMonitorPage() {
                         <Button
                           size="sm"
                           variant="ghost"
-                          className="h-8 text-xs text-red-400 hover:text-red-300 hover:bg-red-500/10"
+                          className="h-8 px-3 text-xs text-red-500 dark:text-red-400 hover:text-red-600 dark:hover:text-red-300 hover:bg-red-50 dark:hover:bg-red-500/10 rounded-lg"
                           disabled={acting?.id === doc.id}
                           onClick={(e) => {
                             e.stopPropagation()
@@ -319,7 +346,7 @@ export default function IngestionMonitorPage() {
                         <Button
                           size="sm"
                           variant="ghost"
-                          className="h-8 text-xs text-primary hover:text-primary/80 hover:bg-primary/10"
+                          className="h-8 px-3 text-xs text-sky-600 dark:text-sky-400 hover:text-sky-700 dark:hover:text-sky-300 hover:bg-sky-50 dark:hover:bg-sky-500/10 rounded-lg"
                           disabled={acting?.id === doc.id}
                           onClick={(e) => {
                             e.stopPropagation()
@@ -332,35 +359,37 @@ export default function IngestionMonitorPage() {
                     </div>
 
                     {/* Progress Bar */}
-                    {/* {(doc.status === 'processing' || doc.status === 'pending') && ( */}
-                    <div className="w-full max-w-[160px] space-y-1.5">
-                      <div className="flex items-center justify-between text-[10px] font-medium text-muted-foreground">
-                        <span>PROGRESS</span>
-                        <span>{doc.processing_progress || 0}%</span>
+                    <div className="w-full max-w-[140px] space-y-1.5">
+                      <div className="flex items-center justify-between text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">
+                        <span>Progress</span>
+                        <span className={cn(doc.status === 'processing' ? "text-sky-600 dark:text-sky-400" : "text-slate-400")}>{doc.processing_progress || 0}%</span>
                       </div>
-                      <div className="h-1.5 w-full rounded-full bg-white/5 overflow-hidden border border-white/5">
+                      <div className="h-1.5 w-full rounded-full bg-slate-100 dark:bg-slate-800 overflow-hidden">
                         <div
                           className={cn(
-                            "h-full transition-all duration-500 relative",
-                            doc.status === 'failed' ? "bg-red-500" : "bg-primary"
+                            "h-full transition-all duration-500 relative rounded-full",
+                            doc.status === 'failed' ? "bg-red-400" :
+                              doc.status === 'completed' ? "bg-emerald-400" :
+                                "bg-sky-500"
                           )}
                           style={{ width: `${Math.max(0, Math.min(100, doc.processing_progress || 0))}%` }}
                         >
-                          <div className="absolute inset-0 bg-white/20 animate-pulse-subtle" />
+                          {doc.status === 'processing' && <div className="absolute inset-0 bg-white/30 animate-pulse" />}
                         </div>
                       </div>
                     </div>
-                    {/* )} */}
                   </div>
                 </div>
 
                 {/* Error Message Panel */}
                 {doc.status === 'failed' && doc.error_message && (
-                  <div className="mx-5 mb-5 mt-0 rounded-lg border border-red-500/20 bg-red-500/10 p-3 flex items-start gap-3">
-                    <AlertCircle className="w-4 h-4 text-red-400 flex-shrink-0 mt-0.5" />
+                  <div className="mx-6 mb-5 mt-0 rounded-xl border border-red-200 dark:border-red-500/30 bg-red-50/50 dark:bg-red-500/10 p-4 flex items-start gap-4">
+                    <div className="p-2 bg-red-100 dark:bg-red-900/30 rounded-full">
+                      <AlertCircle className="w-4 h-4 text-red-500 dark:text-red-400 flex-shrink-0" />
+                    </div>
                     <div className="space-y-1">
-                      <div className="text-xs font-bold text-red-400">错误日志</div>
-                      <div className="text-xs font-mono text-red-300/80 break-all">{doc.error_message}</div>
+                      <div className="text-xs font-bold text-red-600 dark:text-red-400 uppercase tracking-wider">Error Log</div>
+                      <div className="text-xs font-mono text-red-600/80 dark:text-red-400/80 break-all leading-relaxed">{doc.error_message}</div>
                     </div>
                   </div>
                 )}
@@ -369,10 +398,10 @@ export default function IngestionMonitorPage() {
 
             {!filtered.length && (
               <div className="flex flex-col items-center justify-center py-20 text-center">
-                <div className="w-20 h-20 rounded-full bg-white/5 flex items-center justify-center mb-4">
-                  <Search className="w-8 h-8 text-muted-foreground/30" />
+                <div className="w-20 h-20 rounded-full bg-slate-50 dark:bg-slate-900 flex items-center justify-center mb-4">
+                  <Search className="w-8 h-8 text-slate-300 dark:text-slate-600" />
                 </div>
-                <p className="text-muted-foreground">没有找到相关的入库任务</p>
+                <p className="text-slate-500 dark:text-slate-400 font-medium">没有找到相关的入库任务</p>
               </div>
             )}
           </div>
