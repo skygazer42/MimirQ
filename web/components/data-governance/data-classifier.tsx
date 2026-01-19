@@ -130,7 +130,7 @@ export function DataClassifier({ content, initialCategory = null, initialTags = 
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <FolderTree className="w-5 h-5 text-orange-600" />
-          <h3 className="font-bold text-gray-900">分类归档</h3>
+          <h3 className="font-bold text-foreground">分类归档</h3>
         </div>
         <Button
           onClick={handleAutoClassify}
@@ -141,7 +141,7 @@ export function DataClassifier({ content, initialCategory = null, initialTags = 
         >
           {isAutoClassifying ? (
             <>
-              <div className="w-3.5 h-3.5 border-2 border-gray-300 border-t-orange-500 rounded-full animate-spin" />
+              <div className="w-3.5 h-3.5 border-2 border-border border-t-orange-500 rounded-full animate-spin" />
               分析中...
             </>
           ) : (
@@ -155,7 +155,7 @@ export function DataClassifier({ content, initialCategory = null, initialTags = 
 
       {/* 分类选择 */}
       <div className="space-y-2">
-        <div className="text-xs font-medium text-gray-500">文档分类</div>
+        <div className="text-xs font-medium text-muted-foreground">文档分类</div>
         <div className="grid grid-cols-2 gap-2">
           {PRESET_CATEGORIES.map((category) => {
             const Icon = category.icon
@@ -169,7 +169,7 @@ export function DataClassifier({ content, initialCategory = null, initialTags = 
                   "flex items-center gap-2 p-3 rounded-xl border text-left transition-all",
                   isSelected
                     ? `bg-${category.color}-50 border-${category.color}-300 ring-1 ring-${category.color}-200`
-                    : "bg-gray-50 border-gray-200 hover:bg-gray-100"
+                    : "bg-muted border-border hover:bg-muted"
                 )}
               >
                 <div className={cn(
@@ -180,13 +180,13 @@ export function DataClassifier({ content, initialCategory = null, initialTags = 
                   category.color === 'red' && "bg-red-100",
                   category.color === 'orange' && "bg-orange-100",
                   category.color === 'yellow' && "bg-yellow-100",
-                  category.color === 'gray' && "bg-gray-100",
+                  category.color === 'gray' && "bg-muted",
                 )}>
                   <Icon className={cn("w-4 h-4", `text-${category.color}-600`)} />
                 </div>
                 <span className={cn(
                   "text-sm font-medium",
-                  isSelected ? `text-${category.color}-900` : "text-gray-700"
+                  isSelected ? `text-${category.color}-900` : "text-foreground/80"
                 )}>
                   {category.label}
                 </span>
@@ -201,11 +201,11 @@ export function DataClassifier({ content, initialCategory = null, initialTags = 
 
       {/* 标签管理 */}
       <div className="space-y-3">
-        <div className="text-xs font-medium text-gray-500">标签</div>
+        <div className="text-xs font-medium text-muted-foreground">标签</div>
 
         {/* 已选标签 */}
         {tags.length > 0 && (
-          <div className="flex flex-wrap gap-2 p-3 bg-gray-50 rounded-xl">
+          <div className="flex flex-wrap gap-2 p-3 bg-muted rounded-xl">
             {tags.map((tag) => (
               <span
                 key={tag}
@@ -237,7 +237,7 @@ export function DataClassifier({ content, initialCategory = null, initialTags = 
                 handleAddTag(newTag)
               }
             }}
-            className="flex-1 px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent"
+            className="flex-1 px-3 py-2 text-sm border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent"
           />
           <Button
             onClick={() => handleAddTag(newTag)}
@@ -275,7 +275,7 @@ export function DataClassifier({ content, initialCategory = null, initialTags = 
                         ? "bg-orange-500 text-white"
                         : isRecommended
                           ? "bg-orange-100 text-orange-700 hover:bg-orange-200"
-                          : "bg-gray-100 text-gray-600 hover:bg-gray-200",
+                          : "bg-muted text-muted-foreground hover:bg-border",
                       )}
                   >
                     {isRecommended && !isAdded && <Sparkles className="w-3 h-3" />}
@@ -288,7 +288,7 @@ export function DataClassifier({ content, initialCategory = null, initialTags = 
             {SUGGESTED_TAGS.length > 8 && !showAllTags && suggestedTags.length === 0 && (
               <button
                 onClick={() => setShowAllTags(true)}
-                className="text-xs text-gray-400 hover:text-gray-600"
+                className="text-xs text-muted-foreground hover:text-muted-foreground"
               >
                 显示更多...
               </button>
@@ -299,7 +299,7 @@ export function DataClassifier({ content, initialCategory = null, initialTags = 
 
       {/* 分类信息摘要 */}
       {(selectedCategory || tags.length > 0) && (
-        <div className="bg-gradient-to-r from-orange-50 to-amber-50 border border-orange-200 rounded-xl p-4">
+        <div className="bg-gradient-to-r from-orange-500/10 to-amber-500/10 border border-orange-500/30 rounded-xl p-4">
           <div className="flex items-center gap-2 mb-3">
             <Check className="w-4 h-4 text-orange-600" />
             <span className="text-sm font-medium text-orange-900">归档信息</span>

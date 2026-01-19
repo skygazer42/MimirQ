@@ -163,10 +163,10 @@ export function DataCleaner({ content, cleanedContent = '', onClean }: DataClean
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <Wrench className="w-5 h-5 text-sky-600" />
-          <h3 className="font-bold text-gray-900">智能清洗配置</h3>
+          <h3 className="font-bold text-foreground">智能清洗配置</h3>
         </div>
         <div className="flex items-center gap-2">
-          <span className="text-xs text-gray-500">输入格式</span>
+          <span className="text-xs text-muted-foreground">输入格式</span>
           <Select value={inputFormat} onValueChange={(v) => setInputFormat(v as any)}>
             <SelectTrigger className="h-8 text-xs w-[120px]">
               <SelectValue />
@@ -184,13 +184,13 @@ export function DataCleaner({ content, cleanedContent = '', onClean }: DataClean
         <div className="bg-sky-50 px-4 py-2 border-b border-sky-100 text-xs font-medium text-sky-700">
           规则配置
         </div>
-        <div className="p-4 bg-white">
+        <div className="p-4 bg-card">
            <PipelineOptionsPanel compact={false} />
         </div>
       </div>
 
       {backendError && (
-        <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs text-amber-700">
+        <div className="bg-amber-500/10 dark:bg-amber-500/20 border border-amber-500/30 rounded-xl p-3 text-xs text-amber-700 dark:text-amber-300">
           {backendError}
         </div>
       )}
@@ -201,7 +201,7 @@ export function DataCleaner({ content, cleanedContent = '', onClean }: DataClean
       )}
 
       {/* 操作按钮 */}
-      <div className="flex items-center gap-2 pt-4 border-t border-gray-200">
+      <div className="flex items-center gap-2 pt-4 border-t border-border">
         <Button
           onClick={handleReset}
           variant="outline"
@@ -226,11 +226,11 @@ export function DataCleaner({ content, cleanedContent = '', onClean }: DataClean
       </div>
 
       {/* LLM 清洗 */}
-      <div className="border border-gray-200 rounded-xl p-4 bg-white">
+      <div className="border border-border rounded-xl p-4 bg-card">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Sparkles className="w-4 h-4 text-teal-600" />
-            <span className="text-sm font-medium text-gray-800">LLM 深度清洗</span>
+            <span className="text-sm font-medium text-foreground">LLM 深度清洗</span>
           </div>
           <Button
             variant={llmEnabled ? 'default' : 'outline'}
@@ -245,7 +245,7 @@ export function DataCleaner({ content, cleanedContent = '', onClean }: DataClean
         {llmEnabled && (
           <div className="mt-3 space-y-2">
             <div className="flex items-center gap-2">
-              <span className="text-xs text-gray-500 w-16">提示词</span>
+              <span className="text-xs text-muted-foreground w-16">提示词</span>
               <Select
                 value={promptTemplateId || SELECT_DEFAULT_VALUE}
                 onValueChange={(v) => setPromptTemplateId(v === SELECT_DEFAULT_VALUE ? '' : v)}
@@ -268,17 +268,17 @@ export function DataCleaner({ content, cleanedContent = '', onClean }: DataClean
       </div>
 
       {/* 差异对比 (简化版) */}
-      <div className="border border-gray-200 rounded-xl overflow-hidden">
+      <div className="border border-border rounded-xl overflow-hidden">
           <button
             onClick={() => setPreviewDiff(!previewDiff)}
-            className="w-full flex items-center justify-between p-3 hover:bg-gray-50 transition-colors"
+            className="w-full flex items-center justify-between p-3 hover:bg-muted transition-colors"
           >
-            <span className="text-sm font-medium text-gray-700">内容差异对比</span>
-            <TextCursorInput className="w-4 h-4 text-gray-400" />
+            <span className="text-sm font-medium text-foreground/80">内容差异对比</span>
+            <TextCursorInput className="w-4 h-4 text-muted-foreground" />
           </button>
           {previewDiff && (
-            <div className="p-4 border-t border-gray-200 bg-gray-50 max-h-60 overflow-y-auto">
-               <p className="text-xs text-gray-500 mb-2">对比功能开发中...</p>
+            <div className="p-4 border-t border-border bg-muted max-h-60 overflow-y-auto">
+               <p className="text-xs text-muted-foreground mb-2">对比功能开发中...</p>
             </div>
           )}
       </div>

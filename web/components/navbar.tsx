@@ -48,21 +48,6 @@ const menuItems = [
     href: '/knowledge',
   },
   {
-    icon: Activity,
-    label: '入库监控',
-    href: '/knowledge/ingestion',
-  },
-  {
-    icon: Star,
-    label: '反馈质检',
-    href: '/knowledge/feedback',
-  },
-  {
-    icon: Layers,
-    label: '数据集',
-    href: '/datasets',
-  },
-  {
     icon: History,
     label: '问答历史',
     href: '/history',
@@ -91,6 +76,21 @@ const menuItems = [
     icon: BarChart3,
     label: 'RAGAS 评测',
     href: '/evaluations',
+  },
+  {
+    icon: Activity,
+    label: '入库监控',
+    href: '/knowledge/ingestion',
+  },
+  {
+    icon: Star,
+    label: '反馈质检',
+    href: '/knowledge/feedback',
+  },
+  {
+    icon: Layers,
+    label: '数据集',
+    href: '/datasets',
   },
   {
     icon: Wand2,
