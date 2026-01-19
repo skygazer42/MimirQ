@@ -1,18 +1,54 @@
 """
-MinIO object storage service for images extracted during document parsing.
+MinIO object storage service (S3-compatible).
+
+Used for:
+- images extracted during document parsing (legacy + current)
+- document source files when enabled (enterprise deployments)
 """
 import asyncio
+import contextlib
 import io
-from typing import Any, Optional, BinaryIO, Union, List, Dict
+from dataclasses import dataclass
+from typing import Any, Optional, BinaryIO, Union, List, Dict, Iterator
 import json
 import time
 from pathlib import Path
+from urllib.parse import urlparse
 
 from app.core.config import settings
 from app.rag.core.logging import get_logger
 
 
 logger = get_logger("storage.minio")
+
+
+@dataclass(frozen=True)
+class MinIOObjectRef:
+    bucket: str
+    object_name: str
+
+
+def is_minio_uri(value: str) -> bool:
+    return str(value or "").strip().lower().startswith("minio://")
+
+
+def parse_minio_uri(uri: str) -> MinIOObjectRef:
+    parsed = urlparse(str(uri or "").strip())
+    if parsed.scheme != "minio":
+        raise ValueError("invalid_minio_uri_scheme")
+    bucket = (parsed.netloc or "").strip()
+    object_name = (parsed.path or "").lstrip("/").strip()
+    if not bucket or not object_name:
+        raise ValueError("invalid_minio_uri")
+    return MinIOObjectRef(bucket=bucket, object_name=object_name)
+
+
+def build_minio_uri(bucket: str, object_name: str) -> str:
+    b = (bucket or "").strip()
+    o = (object_name or "").lstrip("/").strip()
+    if not b or not o:
+        raise ValueError("invalid_minio_uri_components")
+    return f"minio://{b}/{o}"
 
 
 class MinIOService:
@@ -343,6 +379,139 @@ class MinIOService:
         except Exception as e:  # noqa: BLE001
             logger.warning("MinIO delete image failed: %s", e)
             self._log_metric("delete", False, time.perf_counter() - t0, locals().get("object_name", ""), error=str(e))
+
+    def build_document_object_name(
+        self,
+        *,
+        tenant_id: str,
+        dataset_id: str,
+        document_id: str,
+        extension: str,
+    ) -> str:
+        ext = (extension or "").strip().lower()
+        if ext and not ext.startswith("."):
+            ext = f".{ext}"
+        if not ext:
+            raise ValueError("document_extension_required")
+        return f"documents/{tenant_id}/{dataset_id}/{document_id}{ext}"
+
+    def upload_document_file(
+        self,
+        *,
+        file_path: Path,
+        tenant_id: str,
+        dataset_id: str,
+        document_id: str,
+        extension: str,
+        content_type: Optional[str] = None,
+    ) -> str:
+        """
+        Upload a document source file to MinIO and return a `minio://` URI.
+        """
+        if not bool(getattr(settings, "MINIO_DOCUMENTS_ENABLED", False)):
+            raise RuntimeError("MinIO document storage is disabled (MINIO_DOCUMENTS_ENABLED=false)")
+
+        t0 = time.perf_counter()
+        object_name = self.build_document_object_name(
+            tenant_id=str(tenant_id),
+            dataset_id=str(dataset_id),
+            document_id=str(document_id),
+            extension=str(extension or ""),
+        )
+        client = self._get_client()
+        try:
+            client.fput_object(
+                bucket_name=self._bucket_name,
+                object_name=object_name,
+                file_path=str(file_path),
+                content_type=content_type or "application/octet-stream",
+            )
+            self._log_metric("upload_doc", True, time.perf_counter() - t0, object_name)
+            return build_minio_uri(self._bucket_name, object_name)
+        except Exception as exc:  # noqa: BLE001
+            logger.error("MinIO document upload failed: %s", str(exc)[:200])
+            self._log_metric("upload_doc", False, time.perf_counter() - t0, object_name, error=str(exc))
+            raise RuntimeError(f"MinIO document upload failed: {exc}") from exc
+
+    def stat_object(self, *, object_name: str) -> Any:
+        client = self._get_client()
+        return client.stat_object(bucket_name=self._bucket_name, object_name=object_name)
+
+    def open_object(
+        self,
+        *,
+        object_name: str,
+        offset: int = 0,
+        length: Optional[int] = None,
+    ) -> Any:
+        client = self._get_client()
+        kwargs: dict[str, Any] = {}
+        if int(offset or 0) > 0:
+            kwargs["offset"] = int(offset)
+        if length is not None:
+            kwargs["length"] = int(length)
+        return client.get_object(bucket_name=self._bucket_name, object_name=object_name, **kwargs)
+
+    def download_object_to_path(self, *, object_name: str, destination: Path, max_bytes: int = 0) -> Path:
+        """
+        Download an object to a local file path.
+
+        Raises:
+            ValueError: when the object exceeds max_bytes (if provided).
+            RuntimeError: when MinIO is disabled or the download fails.
+        """
+        client = self._get_client()
+        t0 = time.perf_counter()
+        try:
+            stat = client.stat_object(bucket_name=self._bucket_name, object_name=object_name)
+            size = int(getattr(stat, "size", 0) or 0)
+            if int(max_bytes or 0) > 0 and size > int(max_bytes):
+                raise ValueError("object_too_large")
+
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            client.fget_object(
+                bucket_name=self._bucket_name,
+                object_name=object_name,
+                file_path=str(destination),
+            )
+            self._log_metric("download", True, time.perf_counter() - t0, object_name)
+            return destination
+        except Exception as exc:  # noqa: BLE001
+            self._log_metric("download", False, time.perf_counter() - t0, object_name, error=str(exc))
+            raise RuntimeError(f"MinIO download failed: {exc}") from exc
+
+    def delete_object(self, *, object_name: str) -> None:
+        client = self._get_client()
+        t0 = time.perf_counter()
+        with contextlib.suppress(Exception):
+            client.remove_object(bucket_name=self._bucket_name, object_name=object_name)
+            self._log_metric("delete_obj", True, time.perf_counter() - t0, object_name)
+
+    def iter_object_bytes(
+        self,
+        *,
+        object_name: str,
+        offset: int = 0,
+        length: Optional[int] = None,
+        chunk_size: int = 1024 * 1024,
+    ) -> Iterator[bytes]:
+        """
+        Stream object bytes in a generator suitable for Starlette's StreamingResponse.
+        """
+        response = None
+        try:
+            response = self.open_object(object_name=object_name, offset=offset, length=length)
+            while True:
+                chunk = response.read(int(chunk_size))
+                if not chunk:
+                    break
+                yield chunk
+        finally:
+            if response is not None:
+                with contextlib.suppress(Exception):
+                    response.close()
+                with contextlib.suppress(Exception):
+                    response.release_conn()
 
     def delete_dataset_images(self, tenant_id: str, dataset_id: str):
         """

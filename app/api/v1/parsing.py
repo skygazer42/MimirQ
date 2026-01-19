@@ -6,7 +6,7 @@ Why this exists:
 - `/parsing` UI needs persistence across restarts (upload once, keep list + parsed markdown).
 
 This router stores:
-- the original source file on the server (under uploads/{tenant}/parsing/)
+- the original source file (local disk under uploads/{tenant}/parsing/, or MinIO when enabled)
 - the parsed markdown in PostgreSQL (document_parsed_contents)
 
 It also reuses dataset permissions for access control by placing workspace documents into a
@@ -15,6 +15,7 @@ per-user ONLY_ME dataset (auto-created on demand).
 
 from __future__ import annotations
 
+import asyncio
 import contextlib
 import re
 import uuid
@@ -38,6 +39,7 @@ from app.models.document import Document as DBDocument, DocumentParsedContent
 from app.parsing.factory import parser_factory
 from app.parsing.subprocess_runner import SubprocessCancelled, SubprocessWorkerError, run_subprocess_worker
 from app.services.dataset_service import DatasetService
+from app.storage.object.minio import is_minio_uri, minio_service, parse_minio_uri
 from app.rag.core.logging import get_logger
 
 logger = get_logger("api.parsing")
@@ -204,7 +206,14 @@ async def upload_parsing_document(
 
     document_id = uuid.uuid4()
 
-    upload_dir = _parsing_upload_dir(tenant_id)
+    use_object_storage = bool(getattr(settings, "MINIO_ENABLED", False)) and bool(
+        getattr(settings, "MINIO_DOCUMENTS_ENABLED", False)
+    )
+
+    if use_object_storage:
+        upload_dir = (Path(settings.UPLOAD_DIR) / str(tenant_id) / ".tmp").resolve(strict=False)
+    else:
+        upload_dir = _parsing_upload_dir(tenant_id)
     upload_dir.mkdir(parents=True, exist_ok=True)
     source_path = upload_dir / f"{document_id}{file_ext}"
 
@@ -213,12 +222,28 @@ async def upload_parsing_document(
     except HTTPException:
         raise
 
-    _assert_path_under_tenant_root(tenant_id=tenant_id, path=source_path)
+    if not use_object_storage:
+        _assert_path_under_tenant_root(tenant_id=tenant_id, path=source_path)
 
     meta = {
         "workspace": "parsing",
         "parser_backend_requested": (parser_backend or "").strip().lower() or "auto",
     }
+
+    stored_path = str(source_path)
+    if use_object_storage:
+        try:
+            stored_path = minio_service.upload_document_file(
+                file_path=source_path,
+                tenant_id=str(tenant_id),
+                dataset_id=str(dataset.id),
+                document_id=str(document_id),
+                extension=file_ext,
+                content_type=(file.content_type or "application/octet-stream"),
+            )
+        finally:
+            with contextlib.suppress(Exception):
+                source_path.unlink(missing_ok=True)
 
     doc = DBDocument(
         id=document_id,
@@ -227,7 +252,7 @@ async def upload_parsing_document(
         filename=file.filename,
         file_type=file_ext.lstrip("."),
         file_size=file_size,
-        file_path=str(source_path),
+        file_path=stored_path,
         status="pending",
         processing_progress=0,
         current_stage="parsing",
@@ -259,10 +284,47 @@ async def parse_workspace_document(
     if not raw_path or raw_path.startswith("manual://"):
         raise HTTPException(status_code=404, detail="Source file not available")
 
-    source_path = Path(raw_path).resolve(strict=False)
-    _assert_path_under_tenant_root(tenant_id=tenant_id, path=source_path)
-    if not source_path.exists() or not source_path.is_file():
-        raise HTTPException(status_code=404, detail="Source file not found")
+    temp_path: Path | None = None
+    if is_minio_uri(raw_path):
+        if not bool(getattr(settings, "MINIO_ENABLED", False)):
+            raise HTTPException(status_code=503, detail="Object storage is disabled")
+        try:
+            ref = parse_minio_uri(raw_path)
+        except ValueError:
+            raise HTTPException(status_code=404, detail="Source file not found")
+        if ref.bucket != str(getattr(settings, "MINIO_BUCKET_NAME", "")):
+            raise HTTPException(status_code=403, detail="Source file access denied")
+
+        dataset_id = str(doc.dataset_id) if doc.dataset_id else str(tenant_id)
+        expected_object = minio_service.build_document_object_name(
+            tenant_id=str(tenant_id),
+            dataset_id=dataset_id,
+            document_id=str(doc.id),
+            extension=f".{(doc.file_type or '').lower()}",
+        )
+        if ref.object_name != expected_object:
+            raise HTTPException(status_code=403, detail="Source file access denied")
+
+        try:
+            minio_service.stat_object(object_name=ref.object_name)
+        except Exception:
+            raise HTTPException(status_code=404, detail="Source file not found")
+
+        temp_dir = (Path(settings.UPLOAD_DIR) / str(tenant_id) / ".tmp").resolve(strict=False)
+        suffix = f".{(doc.file_type or '').lower()}"
+        temp_path = temp_dir / f"{doc.id}.{uuid.uuid4().hex}{suffix}"
+        await asyncio.to_thread(
+            minio_service.download_object_to_path,
+            object_name=ref.object_name,
+            destination=temp_path,
+            max_bytes=int(getattr(settings, "MAX_FILE_SIZE", 0) or 0),
+        )
+        source_path = temp_path
+    else:
+        source_path = Path(raw_path).resolve(strict=False)
+        _assert_path_under_tenant_root(tenant_id=tenant_id, path=source_path)
+        if not source_path.exists() or not source_path.is_file():
+            raise HTTPException(status_code=404, detail="Source file not found")
 
     doc.status = "processing"
     doc.processing_progress = 0
@@ -380,6 +442,10 @@ async def parse_workspace_document(
         doc.error_message = msg
         db.commit()
         raise HTTPException(status_code=500, detail="Failed to parse document")
+    finally:
+        if temp_path is not None:
+            with contextlib.suppress(Exception):
+                temp_path.unlink(missing_ok=True)
 
 
 @router.get("/documents/{document_id}/content", response_model=ParsingContentResponse)
@@ -488,12 +554,28 @@ async def delete_parsing_document(
     ds = DatasetService.get_dataset(db, tenant_id, doc.dataset_id)
     DatasetService.assert_dataset_writable(db, ds, account_id)
 
-    # Best-effort delete local file.
+    # Best-effort delete source file.
     with contextlib.suppress(Exception):
-        file_path = Path(str(doc.file_path or "")).resolve(strict=False)
-        _assert_path_under_tenant_root(tenant_id=tenant_id, path=file_path)
-        if file_path.exists() and file_path.is_file():
-            file_path.unlink()
+        raw_path = str(doc.file_path or "").strip()
+        if raw_path and not raw_path.startswith("manual://"):
+            if is_minio_uri(raw_path):
+                if bool(getattr(settings, "MINIO_ENABLED", False)):
+                    ref = parse_minio_uri(raw_path)
+                    if ref.bucket == str(getattr(settings, "MINIO_BUCKET_NAME", "")):
+                        dataset_id = str(doc.dataset_id) if doc.dataset_id else str(tenant_id)
+                        expected_object = minio_service.build_document_object_name(
+                            tenant_id=str(tenant_id),
+                            dataset_id=dataset_id,
+                            document_id=str(doc.id),
+                            extension=f".{(doc.file_type or '').lower()}",
+                        )
+                        if ref.object_name == expected_object:
+                            minio_service.delete_object(object_name=ref.object_name)
+            else:
+                file_path = Path(raw_path).resolve(strict=False)
+                _assert_path_under_tenant_root(tenant_id=tenant_id, path=file_path)
+                if file_path.exists() and file_path.is_file():
+                    file_path.unlink()
 
     db.delete(doc)
     db.commit()

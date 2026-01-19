@@ -23,6 +23,7 @@ MINIO_ACCESS_KEY=minioadmin
 MINIO_SECRET_KEY=minioadmin
 MINIO_BUCKET_NAME=mimirq
 MINIO_USE_SSL=false
+MINIO_DOCUMENTS_ENABLED=true
 ```
 
 ### 2. 启动 MinIO

@@ -7,15 +7,19 @@ Notes:
 """
 
 
+import asyncio
+import contextlib
 import time
 from pathlib import Path
 from uuid import UUID
+import uuid
 
 from app.core.database import SessionLocal
 from app.models.document import Document as DBDocument
 from app.parsing.processors.processor import document_processor
 from app.rag.core.logging import get_logger
 from app.core.config import settings
+from app.storage.object.minio import is_minio_uri, minio_service, parse_minio_uri
 from app.tasks.locks import acquire_lock, get_retry_exc, make_lock_value, release_lock, tenant_acquire, tenant_release
 
 logger = get_logger("tasks.jobs")
@@ -91,7 +95,117 @@ async def process_document_job(ctx, tenant_id: str, document_id: str, requested_
         # Validation passed: execute document processing.
         parser_backend = (doc.doc_metadata or {}).get("parser_backend")
         chunk_strategy = (doc.doc_metadata or {}).get("chunk_strategy")
-        file_path = Path(doc.file_path)
+
+        raw_path = str(getattr(doc, "file_path", "") or "").strip()
+        file_path: Path | None = None
+        temp_path: Path | None = None
+
+        if not raw_path or raw_path.startswith("manual://"):
+            await document_processor._update_status(
+                db,
+                tid,
+                did,
+                "failed",
+                0,
+                "failed",
+                error_message="document_file_not_available",
+            )
+            return {"ok": False, "reason": "document_file_not_available", "tenant_id": tenant_id, "document_id": document_id}
+
+        if is_minio_uri(raw_path):
+            if not bool(getattr(settings, "MINIO_ENABLED", False)):
+                await document_processor._update_status(
+                    db,
+                    tid,
+                    did,
+                    "failed",
+                    0,
+                    "failed",
+                    error_message="object_storage_disabled",
+                )
+                return {"ok": False, "reason": "object_storage_disabled", "tenant_id": tenant_id, "document_id": document_id}
+            try:
+                ref = parse_minio_uri(raw_path)
+            except ValueError:
+                await document_processor._update_status(
+                    db,
+                    tid,
+                    did,
+                    "failed",
+                    0,
+                    "failed",
+                    error_message="invalid_object_path",
+                )
+                return {"ok": False, "reason": "invalid_object_path", "tenant_id": tenant_id, "document_id": document_id}
+
+            if ref.bucket != str(getattr(settings, "MINIO_BUCKET_NAME", "")):
+                await document_processor._update_status(
+                    db,
+                    tid,
+                    did,
+                    "failed",
+                    0,
+                    "failed",
+                    error_message="object_bucket_denied",
+                )
+                return {"ok": False, "reason": "object_bucket_denied", "tenant_id": tenant_id, "document_id": document_id}
+
+            dataset_id = str(doc.dataset_id) if doc.dataset_id else str(tid)
+            expected_object = minio_service.build_document_object_name(
+                tenant_id=str(tid),
+                dataset_id=dataset_id,
+                document_id=str(did),
+                extension=f".{(doc.file_type or '').lower()}",
+            )
+            if ref.object_name != expected_object:
+                await document_processor._update_status(
+                    db,
+                    tid,
+                    did,
+                    "failed",
+                    0,
+                    "failed",
+                    error_message="object_key_denied",
+                )
+                return {"ok": False, "reason": "object_key_denied", "tenant_id": tenant_id, "document_id": document_id}
+
+            temp_dir = (Path(settings.UPLOAD_DIR) / str(tid) / ".tmp").resolve(strict=False)
+            suffix = f".{(doc.file_type or '').lower()}"
+            temp_path = temp_dir / f"{did}.{uuid.uuid4().hex}{suffix}"
+            try:
+                await asyncio.to_thread(
+                    minio_service.download_object_to_path,
+                    object_name=ref.object_name,
+                    destination=temp_path,
+                    max_bytes=int(getattr(settings, "MAX_FILE_SIZE", 0) or 0),
+                )
+            except Exception as exc:  # noqa: BLE001
+                with contextlib.suppress(Exception):
+                    temp_path.unlink(missing_ok=True)
+                await document_processor._update_status(
+                    db,
+                    tid,
+                    did,
+                    "failed",
+                    0,
+                    "failed",
+                    error_message=str(exc)[:200],
+                )
+                return {"ok": False, "reason": "download_failed", "tenant_id": tenant_id, "document_id": document_id}
+            file_path = temp_path
+        else:
+            file_path = Path(raw_path)
+            if not file_path.exists() or not file_path.is_file():
+                await document_processor._update_status(
+                    db,
+                    tid,
+                    did,
+                    "failed",
+                    0,
+                    "failed",
+                    error_message="document_file_not_found",
+                )
+                return {"ok": False, "reason": "document_file_not_found", "tenant_id": tenant_id, "document_id": document_id}
 
         logger.info(
             "Processing document job: tenant_id=%s document_id=%s requested_by=%s",
@@ -100,14 +214,19 @@ async def process_document_job(ctx, tenant_id: str, document_id: str, requested_
             requested_by,
         )
 
-        result = await document_processor.process_document(
-            file_path=file_path,
-            document_id=did,
-            tenant_id=tid,
-            parser_backend=parser_backend,
-            chunk_strategy=chunk_strategy,
-            db=db,
-        )
+        try:
+            result = await document_processor.process_document(
+                file_path=file_path,
+                document_id=did,
+                tenant_id=tid,
+                parser_backend=parser_backend,
+                chunk_strategy=chunk_strategy,
+                db=db,
+            )
+        finally:
+            if temp_path is not None:
+                with contextlib.suppress(Exception):
+                    temp_path.unlink(missing_ok=True)
         elapsed = time.perf_counter() - t0
         return {"ok": True, "elapsed_sec": round(elapsed, 3), "result": result}
     finally:

@@ -52,11 +52,11 @@ from app.services.pipeline_config import (
 )
 from app.services.mineru_service import mineru_service
 from app.services.dataset_service import DatasetService, EDIT_ROLES
-from app.storage.object.minio import minio_service
+from app.storage.object.minio import minio_service, is_minio_uri, parse_minio_uri
 from app.models.dataset import Dataset, DatasetPermission, DatasetPermissionEnum
 from app.core.config import settings
 from app.core.env import is_production_env
-from fastapi.responses import FileResponse, RedirectResponse
+from fastapi.responses import FileResponse, RedirectResponse, StreamingResponse
 from app.api.dependencies.tenant import get_tenant_id
 from app.api.dependencies.auth import get_current_account_id
 from app.rag.kg.pipeline import extract_events
@@ -1443,6 +1443,103 @@ async def download_document(
     if not raw_path or raw_path.startswith("manual://"):
         raise HTTPException(status_code=404, detail="Document file not available")
 
+    # Object storage path (MinIO/S3-compatible).
+    if is_minio_uri(raw_path):
+        if not bool(getattr(settings, "MINIO_ENABLED", False)):
+            raise HTTPException(status_code=503, detail="Object storage is disabled")
+
+        try:
+            ref = parse_minio_uri(raw_path)
+        except ValueError:
+            raise HTTPException(status_code=404, detail="Document file not available")
+
+        if ref.bucket != str(getattr(settings, "MINIO_BUCKET_NAME", "")):
+            raise HTTPException(status_code=403, detail="Document file access denied")
+
+        dataset_id = str(document.dataset_id) if document.dataset_id else str(tenant_id)
+        expected_object = minio_service.build_document_object_name(
+            tenant_id=str(tenant_id),
+            dataset_id=dataset_id,
+            document_id=str(document.id),
+            extension=f".{(document.file_type or '').lower()}",
+        )
+        if ref.object_name != expected_object:
+            raise HTTPException(status_code=403, detail="Document file access denied")
+
+        try:
+            stat = minio_service.stat_object(object_name=ref.object_name)
+        except Exception:
+            raise HTTPException(status_code=404, detail="Document file not found")
+
+        total_size = int(getattr(stat, "size", 0) or 0)
+        if total_size <= 0:
+            raise HTTPException(status_code=404, detail="Document file not found")
+
+        range_header = (request.headers.get("range") or "").strip()
+        offset = 0
+        length: Optional[int] = None
+        status_code = 200
+        headers: dict[str, str] = {
+            "Cache-Control": "no-store",
+            "Pragma": "no-cache",
+            "Expires": "0",
+            "X-Content-Type-Options": "nosniff",
+            "Accept-Ranges": "bytes",
+        }
+
+        # Basic single-range support for PDF iframe previews.
+        if range_header.lower().startswith("bytes="):
+            spec = range_header[6:].strip()
+            if "," in spec:
+                raise HTTPException(status_code=416, detail="Multiple ranges not supported")
+            start_s, end_s = (spec.split("-", 1) + [""])[:2]
+            try:
+                if start_s == "":
+                    # suffix range: "-N"
+                    suffix = int(end_s)
+                    if suffix <= 0:
+                        raise ValueError
+                    offset = max(0, total_size - suffix)
+                    end = total_size - 1
+                else:
+                    offset = int(start_s)
+                    end = int(end_s) if end_s else (total_size - 1)
+                    if offset < 0:
+                        raise ValueError
+                    if end < offset:
+                        raise ValueError
+                    if offset >= total_size:
+                        raise HTTPException(status_code=416, detail="Range not satisfiable")
+                    end = min(end, total_size - 1)
+                length = int(end - offset + 1)
+                status_code = 206
+                headers["Content-Range"] = f"bytes {offset}-{offset + length - 1}/{total_size}"
+                headers["Content-Length"] = str(length)
+            except HTTPException:
+                raise
+            except Exception:
+                raise HTTPException(status_code=416, detail="Invalid Range header")
+        else:
+            headers["Content-Length"] = str(total_size)
+
+        media_type, _encoding = mimetypes.guess_type(document.filename)
+        if not media_type:
+            media_type = "application/octet-stream"
+
+        from urllib.parse import quote
+
+        disposition = "inline" if inline else "attachment"
+        safe_name = (document.filename or "document").replace("\n", " ").replace("\r", " ")
+        headers["Content-Disposition"] = f"{disposition}; filename*=UTF-8''{quote(safe_name)}"
+
+        return StreamingResponse(
+            minio_service.iter_object_bytes(object_name=ref.object_name, offset=offset, length=length),
+            status_code=status_code,
+            media_type=media_type,
+            headers=headers,
+        )
+
+    # Local filesystem path (legacy/default).
     path = Path(raw_path).resolve(strict=False)
     if not path.exists() or not path.is_file():
         raise HTTPException(status_code=404, detail="Document file not found")
@@ -1620,9 +1717,36 @@ async def retry_document_processing(
     raw_path = str(document.file_path or "").strip()
     if not raw_path or raw_path.startswith("manual://"):
         raise HTTPException(status_code=409, detail="Document file is not reprocessable")
-    file_path = Path(raw_path)
-    if not file_path.exists() or not file_path.is_file():
-        raise HTTPException(status_code=404, detail="Document file not found")
+
+    object_name: str | None = None
+    file_path: Path | None = None
+    if is_minio_uri(raw_path):
+        if not bool(getattr(settings, "MINIO_ENABLED", False)):
+            raise HTTPException(status_code=503, detail="Object storage is disabled")
+        try:
+            ref = parse_minio_uri(raw_path)
+        except ValueError:
+            raise HTTPException(status_code=404, detail="Document file not found")
+        if ref.bucket != str(getattr(settings, "MINIO_BUCKET_NAME", "")):
+            raise HTTPException(status_code=403, detail="Document file access denied")
+        dataset_id = str(document.dataset_id) if document.dataset_id else str(tenant_id)
+        expected_object = minio_service.build_document_object_name(
+            tenant_id=str(tenant_id),
+            dataset_id=dataset_id,
+            document_id=str(document.id),
+            extension=f".{(document.file_type or '').lower()}",
+        )
+        if ref.object_name != expected_object:
+            raise HTTPException(status_code=403, detail="Document file access denied")
+        try:
+            minio_service.stat_object(object_name=ref.object_name)
+        except Exception:
+            raise HTTPException(status_code=404, detail="Document file not found")
+        object_name = ref.object_name
+    else:
+        file_path = Path(raw_path)
+        if not file_path.exists() or not file_path.is_file():
+            raise HTTPException(status_code=404, detail="Document file not found")
 
     # Reset indexes (vector/BM25/KG) + DB chunks to avoid duplicates on re-run.
     with contextlib.suppress(Exception):
@@ -1668,14 +1792,42 @@ async def retry_document_processing(
         db.commit()
         db.refresh(document)
     else:
-        background_tasks.add_task(
-            document_processor.process_document,
-            file_path,
-            document_id,
-            tenant_id,
-            meta.get("parser_backend"),
-            meta.get("chunk_strategy"),
-        )
+        if file_path is not None:
+            background_tasks.add_task(
+                document_processor.process_document,
+                file_path,
+                document_id,
+                tenant_id,
+                meta.get("parser_backend"),
+                meta.get("chunk_strategy"),
+            )
+        else:
+            # Queue is disabled; download from object storage and process locally (best-effort cleanup).
+            temp_dir = (Path(settings.UPLOAD_DIR) / str(tenant_id) / ".tmp").resolve(strict=False)
+            suffix = f".{(document.file_type or '').lower()}"
+            temp_path = temp_dir / f"{document_id}.{uuid.uuid4().hex}{suffix}"
+
+            async def _process_from_object_store() -> None:
+                try:
+                    await asyncio.to_thread(
+                        minio_service.download_object_to_path,
+                        object_name=str(object_name),
+                        destination=temp_path,
+                        max_bytes=int(getattr(settings, "MAX_FILE_SIZE", 0) or 0),
+                    )
+                    await document_processor.process_document(
+                        file_path=temp_path,
+                        document_id=document_id,
+                        tenant_id=tenant_id,
+                        parser_backend=meta.get("parser_backend"),
+                        chunk_strategy=meta.get("chunk_strategy"),
+                        db=None,
+                    )
+                finally:
+                    with contextlib.suppress(Exception):
+                        temp_path.unlink(missing_ok=True)
+
+            background_tasks.add_task(_process_from_object_store)
 
     return {
         "id": document.id,
@@ -1784,9 +1936,28 @@ async def delete_document(
 
     # 3. Delete local file.
     try:
-        file_path = Path(document.file_path)
-        if file_path.exists():
-            file_path.unlink()
+        raw_path = str(document.file_path or "").strip()
+        if raw_path and not raw_path.startswith("manual://"):
+            if is_minio_uri(raw_path):
+                if bool(getattr(settings, "MINIO_ENABLED", False)):
+                    try:
+                        ref = parse_minio_uri(raw_path)
+                        if ref.bucket == str(getattr(settings, "MINIO_BUCKET_NAME", "")):
+                            dataset_id = str(document.dataset_id) if document.dataset_id else str(tenant_id)
+                            expected_object = minio_service.build_document_object_name(
+                                tenant_id=str(tenant_id),
+                                dataset_id=dataset_id,
+                                document_id=str(document.id),
+                                extension=f".{(document.file_type or '').lower()}",
+                            )
+                            if ref.object_name == expected_object:
+                                minio_service.delete_object(object_name=ref.object_name)
+                    except Exception as e:
+                        logger.warning("Failed to delete document from object storage: %s", e)
+            else:
+                file_path = Path(raw_path)
+                if file_path.exists():
+                    file_path.unlink()
     except Exception as e:
         logger.warning("Failed to delete file: %s", e)
 
