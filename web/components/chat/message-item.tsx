@@ -3,7 +3,7 @@
  */
 'use client'
 
-import { memo, useEffect, useRef, useState } from 'react'
+import { memo, useEffect, useRef, useState, useCallback } from 'react'
 import type { ReactNode } from 'react'
 import Image from 'next/image'
 import { Check, Copy, Database, Bot, User } from 'lucide-react'
@@ -15,7 +15,7 @@ import { cn } from '@/lib/utils'
 import { API_BASE_URL, toAbsoluteBackendUrl } from '@/lib/env'
 import { getAccessToken, getTenantId } from '@/lib/auth-storage'
 import { useDocumentView } from '@/store/document-view'
-import { LottieAnimation, LOTTIE_URLS } from '@/components/ui/lottie-animation'
+
 import { CinematicTypewriter } from '@/components/ui/cinematic-typewriter'
 
 let BACKEND_ORIGIN = ''
@@ -200,31 +200,31 @@ export const ChatMessageItem = memo(function ChatMessageItem({
           isUser
             ? 'bg-primary text-primary-foreground rounded-2xl rounded-tr-sm shadow-md shadow-primary/10'
             : 'bg-card text-foreground border border-border/60 rounded-2xl rounded-tl-sm hover:shadow-md hover:border-border/80'
-          )}
+        )}
       >
         {/* 思维链 / 步骤展示 */}
         {!isUser && message.steps && message.steps.length > 0 && (
           <div className="mb-4 space-y-2 animate-fade-in">
-             <div className="flex items-center gap-2 text-[10px] font-bold text-primary/70 uppercase tracking-widest">
-                <div className="relative flex h-2 w-2">
-                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75"></span>
-                    <span className="relative inline-flex rounded-full h-2 w-2 bg-primary"></span>
+            <div className="flex items-center gap-2 text-[10px] font-bold text-primary/70 uppercase tracking-widest">
+              <div className="relative flex h-2 w-2">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-primary"></span>
+              </div>
+              思考路径
+            </div>
+            <div className="pl-4 border-l border-primary/20 space-y-1">
+              {message.steps.map((step, idx) => (
+                <div
+                  key={idx}
+                  className={cn(
+                    "text-xs transition-opacity duration-500",
+                    idx === message.steps!.length - 1 ? "text-foreground font-medium animate-pulse" : "text-muted-foreground/60"
+                  )}
+                >
+                  {step}
                 </div>
-                思考路径
-             </div>
-             <div className="pl-4 border-l border-primary/20 space-y-1">
-                {message.steps.map((step, idx) => (
-                    <div 
-                        key={idx} 
-                        className={cn(
-                            "text-xs transition-opacity duration-500",
-                            idx === message.steps!.length - 1 ? "text-foreground font-medium animate-pulse" : "text-muted-foreground/60"
-                        )}
-                    >
-                        {step}
-                    </div>
-                ))}
-             </div>
+              ))}
+            </div>
           </div>
         )}
 
@@ -314,14 +314,14 @@ const CitationCard = memo(function CitationCard({ citation, index }: { citation:
     e.stopPropagation()
     // Open document viewer panel
     if (citation.document_id) {
-        openDocument(citation.document_id, citation.chunk_id)
+      openDocument(citation.document_id, citation.chunk_id)
     }
   }, [citation.document_id, citation.chunk_id, openDocument])
 
   return (
-    <div 
-        onClick={handleClick}
-        className="group/card text-xs bg-card hover:bg-secondary/30 rounded-lg p-3 border border-border/60 hover:border-primary/30 transition-all duration-300 cursor-pointer shadow-sm hover:shadow-md hover:-translate-y-0.5"
+    <div
+      onClick={handleClick}
+      className="group/card text-xs bg-card hover:bg-secondary/30 rounded-lg p-3 border border-border/60 hover:border-primary/30 transition-all duration-300 cursor-pointer shadow-sm hover:shadow-md hover:-translate-y-0.5"
     >
       <div className="flex items-start gap-3">
         <span className="flex-shrink-0 w-5 h-5 bg-secondary text-primary border border-border rounded flex items-center justify-center text-[10px] font-bold group-hover/card:bg-primary group-hover/card:text-primary-foreground transition-colors">
