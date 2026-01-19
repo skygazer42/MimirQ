@@ -227,16 +227,16 @@ export default function DatasetsPage() {
                   新建数据集
                 </Button>
               </DialogTrigger>
-              <DialogContent className="max-w-xl border-cyan-500/20 bg-slate-950/95 backdrop-blur-xl shadow-2xl sm:rounded-2xl">
+              <DialogContent className="max-w-xl border-slate-200 bg-white/95 backdrop-blur-xl shadow-2xl sm:rounded-2xl">
                 <DialogHeader>
-                  <DialogTitle className="text-xl font-bold text-white">新建数据集</DialogTitle>
-                  <DialogDescription className="text-slate-400">为文档分组并设置访问权限</DialogDescription>
+                  <DialogTitle className="text-xl font-bold text-slate-900">新建数据集</DialogTitle>
+                  <DialogDescription className="text-slate-500">为文档分组并设置访问权限</DialogDescription>
                 </DialogHeader>
 
                 <DatasetForm form={form} setForm={setForm} />
 
                 <DialogFooter className="mt-4">
-                  <Button variant="ghost" onClick={() => setCreateOpen(false)} className="text-slate-400 hover:text-white hover:bg-white/5">取消</Button>
+                  <Button variant="ghost" onClick={() => setCreateOpen(false)} className="text-slate-500 hover:text-slate-900 hover:bg-slate-100">取消</Button>
                   <Button onClick={handleCreate} disabled={!canSubmit} className="bg-cyan-600 hover:bg-cyan-500 text-white">确认创建</Button>
                 </DialogFooter>
               </DialogContent>
@@ -245,10 +245,10 @@ export default function DatasetsPage() {
         </PageHeader>
 
         <section className="flex-1 overflow-y-auto px-8 pb-8 custom-scrollbar">
-          {/* Glass Panel Container */}
-          <div className="bg-slate-900/40 backdrop-blur-md border border-white/5 rounded-3xl overflow-hidden shadow-xl min-h-[500px] flex flex-col">
-            <div className="px-6 py-4 border-b border-white/5 flex items-center justify-between bg-white/[0.02]">
-              <div className="text-xs font-bold text-slate-400 uppercase tracking-wider">Dataset Registry</div>
+          {/* Light Panel Container */}
+          <div className="bg-white backdrop-blur-md border border-slate-200 rounded-3xl overflow-hidden shadow-lg min-h-[500px] flex flex-col">
+            <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
+              <div className="text-xs font-bold text-slate-500 uppercase tracking-wider">Dataset Registry</div>
               {isLoading && (
                 <div className="flex items-center gap-2 text-xs text-cyan-500/70 font-mono">
                   <Loader2 className="w-3.5 h-3.5 animate-spin" />

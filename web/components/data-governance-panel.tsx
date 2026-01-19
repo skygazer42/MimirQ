@@ -814,12 +814,12 @@ export function DataGovernancePanel() {
         </div>
       </PageHeader>
 
-      <div className="flex-1 flex overflow-hidden min-h-0 relative bg-slate-950">
+      <div className="flex-1 flex overflow-hidden min-h-0 relative bg-slate-50">
         {/* 左侧文件列表 */}
         <aside
           ref={sidebarRef}
           className={cn(
-            "group/sidebar relative flex flex-col flex-shrink-0 bg-slate-900/50 backdrop-blur-xl border-r border-white/5 transition-all duration-300 ease-in-out z-10",
+            "group/sidebar relative flex flex-col flex-shrink-0 bg-white border-r border-slate-200 transition-all duration-300 ease-in-out z-10",
             isSidebarCollapsed ? "w-0 border-r-0" : ""
           )}
           style={{ width: isSidebarCollapsed ? 0 : sidebarWidth }}
@@ -829,7 +829,7 @@ export function DataGovernancePanel() {
             variant="ghost"
             size="icon"
             className={cn(
-              "absolute -right-3 top-3 z-30 h-6 w-6 rounded-full border border-white/10 bg-slate-900 shadow-lg text-slate-400 hover:text-white hover:bg-white/10 transition-opacity opacity-0 group-hover/sidebar:opacity-100",
+              "absolute -right-3 top-3 z-30 h-6 w-6 rounded-full border border-slate-200 bg-white shadow-sm text-slate-400 hover:text-slate-600 hover:bg-slate-50 transition-opacity opacity-0 group-hover/sidebar:opacity-100",
               isSidebarCollapsed && "opacity-100 -right-8 translate-x-2"
             )}
             onClick={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
@@ -869,21 +869,21 @@ export function DataGovernancePanel() {
             </div>
 
             {/* 文件目录树 - 可折叠区域 */}
-            <div className="px-3 pt-2 pb-1 border-b border-white/5 bg-black/20">
+            <div className="px-3 pt-2 pb-1 border-b border-slate-100 bg-slate-50/50">
               <div className="max-h-48 overflow-y-auto custom-scrollbar p-1">
                 <DocumentFolderTree />
               </div>
             </div>
 
             <div className="flex items-center justify-between px-4 py-2 mt-2">
-              <h3 className="text-xs font-bold text-sky-500/70 uppercase tracking-widest pl-1">
+              <h3 className="text-xs font-bold text-slate-500 uppercase tracking-widest pl-1">
                 Files ({visibleFiles.length})
               </h3>
             </div>
 
             <div className="flex-1 overflow-y-auto px-3 pb-3 space-y-2 custom-scrollbar">
               {visibleFiles.length === 0 ? (
-                <div className="text-xs text-slate-600 text-center py-8">该目录暂无文件</div>
+                <div className="text-xs text-slate-400 text-center py-8">该目录暂无文件</div>
               ) : (
                 visibleFiles.map((file) => {
                   const state = governanceStates[file.id]
@@ -897,8 +897,8 @@ export function DataGovernancePanel() {
                       className={cn(
                         "w-full text-left p-4 rounded-xl border transition-all duration-200 cursor-pointer group relative",
                         selectedFileId === file.id
-                          ? "bg-sky-500/10 border-sky-500/50 shadow-[0_0_20px_-5px_rgba(14,165,233,0.3)]"
-                          : "bg-white/5 border-white/5 hover:bg-white/10 hover:border-white/20"
+                          ? "bg-sky-50 border-sky-200 shadow-md ring-1 ring-sky-100"
+                          : "bg-white border-slate-100 hover:border-sky-200 hover:shadow-sm"
                       )}
                     >
                       <div className="flex items-start gap-4">
@@ -906,8 +906,8 @@ export function DataGovernancePanel() {
                         {getFileIcon(file.filename, cn(
                           "w-12 h-12 rounded-xl shadow-sm border transition-all mr-0",
                           selectedFileId === file.id
-                            ? "ring-2 ring-sky-500/20 ring-offset-1 ring-offset-transparent border-sky-500/50"
-                            : "border-white/10 group-hover:border-white/20"
+                            ? "ring-2 ring-sky-100 ring-offset-1 border-sky-200"
+                            : "border-slate-100 group-hover:border-sky-200 group-hover:shadow-md"
                         ))}
 
                         <div className="flex-1 min-w-0">
@@ -915,28 +915,28 @@ export function DataGovernancePanel() {
                           <div className="flex items-center justify-between mb-1">
                             <div className={cn(
                               "text-sm font-bold truncate mr-2 transition-colors",
-                              selectedFileId === file.id ? "text-sky-400" : "text-slate-300 group-hover:text-slate-200"
+                              selectedFileId === file.id ? "text-sky-700" : "text-slate-700 group-hover:text-slate-900"
                             )}>
                               {file.filename}
                             </div>
                             {score > 0 ? (
                               <span className={cn(
                                 "flex-shrink-0 text-[10px] px-2 py-0.5 rounded-full font-bold shadow-sm border",
-                                score >= 80 ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20" :
-                                  score >= 60 ? "bg-amber-500/10 text-amber-400 border-amber-500/20" :
-                                    "bg-rose-500/10 text-rose-400 border-rose-500/20"
+                                score >= 80 ? "bg-emerald-50 text-emerald-700 border-emerald-100" :
+                                  score >= 60 ? "bg-amber-50 text-amber-700 border-amber-100" :
+                                    "bg-rose-50 text-rose-700 border-rose-100"
                               )}>
                                 {score}分
                               </span>
                             ) : (
-                              <span className="flex-shrink-0 text-[10px] text-slate-500 bg-white/5 px-2 py-0.5 rounded-full border border-white/10 font-medium">未检测</span>
+                              <span className="flex-shrink-0 text-[10px] text-slate-400 bg-slate-50 px-2 py-0.5 rounded-full border border-slate-100 font-medium">未检测</span>
                             )}
                           </div>
 
                           {/* Row 2: Metadata (Size & Date) */}
-                          <div className="flex items-center gap-2 text-[10px] text-slate-500 mb-2 font-medium font-mono">
+                          <div className="flex items-center gap-2 text-[10px] text-slate-400 mb-2 font-medium font-mono">
                             <span>{formatFileSize(file.fileSize)}</span>
-                            <span className="text-slate-700">|</span>
+                            <span className="text-slate-300">|</span>
                             <span>
                               {file.parsedAt ? new Date(file.parsedAt).toLocaleDateString([], {
                                 year: 'numeric',
@@ -950,12 +950,12 @@ export function DataGovernancePanel() {
                           <div className="flex items-center justify-between h-5">
                             <div className="flex items-center gap-2">
                               {state?.isModified && (
-                                <span className="text-[9px] text-sky-400 flex items-center gap-1 bg-sky-500/10 px-1.5 py-0.5 rounded border border-sky-500/20 font-bold">
+                                <span className="text-[9px] text-sky-600 flex items-center gap-1 bg-sky-50 px-1.5 py-0.5 rounded border border-sky-100 font-bold">
                                   <Sparkles className="w-2.5 h-2.5" /> 已清洗
                                 </span>
                               )}
                               {hasIssue && (
-                                <span className="text-[9px] text-rose-400 flex items-center gap-1 bg-rose-500/10 px-1.5 py-0.5 rounded border border-rose-500/20 font-bold">
+                                <span className="text-[9px] text-rose-600 flex items-center gap-1 bg-rose-50 px-1.5 py-0.5 rounded border border-rose-100 font-bold">
                                   <AlertTriangle className="w-2.5 h-2.5" /> 需关注
                                 </span>
                               )}
@@ -966,7 +966,7 @@ export function DataGovernancePanel() {
                                 e.stopPropagation()
                                 handleDeleteFile(file.id)
                               }}
-                              className="opacity-0 group-hover:opacity-100 p-1 -mr-1 text-slate-500 hover:text-red-400 hover:bg-red-500/10 rounded transition-all"
+                              className="opacity-0 group-hover:opacity-100 p-1 -mr-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded transition-all"
                               title="删除文件"
                             >
                               <Trash2 className="w-3.5 h-3.5" />
@@ -981,17 +981,17 @@ export function DataGovernancePanel() {
             </div>
 
             {/* 底部统计栏 */}
-            <div className="mt-auto border-t border-white/5 bg-black/20 p-3 space-y-2 backdrop-blur-sm">
+            <div className="mt-auto border-t border-slate-200 bg-slate-50/50 p-3 space-y-2 backdrop-blur-sm">
               <div className="grid grid-cols-2 gap-2">
-                <div className="bg-white/5 p-2 rounded-lg border border-white/5 hover:border-sky-500/30 transition-colors">
+                <div className="bg-white p-2 rounded-lg border border-slate-200 hover:border-sky-500/30 transition-colors">
                   <div className="text-[10px] text-slate-500 mb-0.5 uppercase tracking-wider">Storage</div>
-                  <div className="text-sm font-bold text-slate-200 flex items-baseline gap-1 font-mono">
-                    {stats.completedFiles} <span className="text-slate-600 font-normal text-xs">/ {stats.totalFiles}</span>
+                  <div className="text-sm font-bold text-slate-700 flex items-baseline gap-1 font-mono">
+                    {stats.completedFiles} <span className="text-slate-400 font-normal text-xs">/ {stats.totalFiles}</span>
                   </div>
                 </div>
-                <div className="bg-white/5 p-2 rounded-lg border border-white/5 hover:border-emerald-500/30 transition-colors">
+                <div className="bg-white p-2 rounded-lg border border-slate-200 hover:border-emerald-500/30 transition-colors">
                   <div className="text-[10px] text-slate-500 mb-0.5 uppercase tracking-wider">Avg Score</div>
-                  <div className="text-sm font-bold text-slate-200 font-mono">
+                  <div className="text-sm font-bold text-slate-700 font-mono">
                     {stats.avgScore > 0 ? stats.avgScore.toFixed(1) : '-'}
                   </div>
                 </div>
@@ -1017,14 +1017,14 @@ export function DataGovernancePanel() {
               {/* 中间：预览画布 */}
               <div className="flex-1 flex flex-col overflow-hidden relative z-0">
                 {/* 画布工具栏 (悬浮或集成) */}
-                <div className="absolute top-4 left-1/2 -translate-x-1/2 z-20 flex items-center bg-slate-900/80 backdrop-blur-md border border-white/10 shadow-lg shadow-black/20 rounded-full px-2 py-1 gap-1 transition-all hover:bg-slate-900/90 hover:border-white/20">
+                <div className="absolute top-4 left-1/2 -translate-x-1/2 z-20 flex items-center bg-white/80 backdrop-blur-md border border-slate-200 shadow-sm rounded-full px-2 py-1 gap-1 transition-all hover:bg-white hover:border-slate-300">
                   {/* 视图切换 */}
-                  <div className="flex items-center bg-white/5 rounded-full p-0.5 border border-white/5">
+                  <div className="flex items-center bg-slate-100 rounded-full p-0.5 border border-slate-200">
                     <button
                       onClick={() => setViewMode('preview')}
                       className={cn(
                         "px-3 py-1 rounded-full text-xs font-medium transition-all",
-                        viewMode === 'preview' ? "bg-sky-600 text-white shadow-sm" : "text-slate-400 hover:text-white hover:bg-white/5"
+                        viewMode === 'preview' ? "bg-white text-sky-700 shadow-sm ring-1 ring-black/5" : "text-slate-500 hover:text-slate-700 hover:bg-black/5"
                       )}
                     >
                       预览
@@ -1033,7 +1033,7 @@ export function DataGovernancePanel() {
                       onClick={() => setViewMode('edit')}
                       className={cn(
                         "px-3 py-1 rounded-full text-xs font-medium transition-all",
-                        viewMode === 'edit' ? "bg-sky-600 text-white shadow-sm" : "text-slate-400 hover:text-white hover:bg-white/5"
+                        viewMode === 'edit' ? "bg-white text-sky-700 shadow-sm ring-1 ring-black/5" : "text-slate-500 hover:text-slate-700 hover:bg-black/5"
                       )}
                     >
                       编辑
@@ -1042,16 +1042,16 @@ export function DataGovernancePanel() {
                       onClick={() => setViewMode('original')}
                       className={cn(
                         "px-3 py-1 rounded-full text-xs font-medium transition-all",
-                        viewMode === 'original' ? "bg-sky-600 text-white shadow-sm" : "text-slate-400 hover:text-white hover:bg-white/5"
+                        viewMode === 'original' ? "bg-white text-sky-700 shadow-sm ring-1 ring-black/5" : "text-slate-500 hover:text-slate-700 hover:bg-black/5"
                       )}
                     >
                       对比
                     </button>
                   </div>
 
-                  <div className="w-px h-3 bg-white/10 mx-1" />
+                  <div className="w-px h-3 bg-slate-300 mx-1" />
 
-                  <Button variant="ghost" size="icon" className="h-7 w-7 rounded-full text-slate-400 hover:text-white hover:bg-white/10" onClick={() => setPreviewFormat(prev => prev === 'rendered' ? 'markdown' : 'rendered')} title={previewFormat === 'rendered' ? "查看源码" : "查看渲染"}>
+                  <Button variant="ghost" size="icon" className="h-7 w-7 rounded-full text-slate-500 hover:text-slate-700 hover:bg-slate-100" onClick={() => setPreviewFormat(prev => prev === 'rendered' ? 'markdown' : 'rendered')} title={previewFormat === 'rendered' ? "查看源码" : "查看渲染"}>
                     {previewFormat === 'rendered' ? <Hash className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
                   </Button>
                 </div>
@@ -1062,19 +1062,18 @@ export function DataGovernancePanel() {
                     variant="ghost"
                     size="icon"
                     onClick={() => setIsSidebarCollapsed(false)}
-                    className="absolute left-4 top-4 z-20 h-8 w-8 bg-black/20 border border-white/10 shadow-sm rounded-lg text-slate-400 hover:text-white hover:bg-white/10 backdrop-blur-md transition-all"
+                    className="absolute left-4 top-4 z-20 h-8 w-8 bg-white/80 border border-slate-200 shadow-sm rounded-lg text-slate-500 hover:text-sky-600 hover:bg-white backdrop-blur-md transition-all"
                   >
                     <PanelRightOpen className="w-4 h-4" />
                   </Button>
                 )}
 
-                {/* 右侧收起按钮 (如果右侧收起) */}
                 {isPanelCollapsed && (
                   <Button
                     variant="ghost"
                     size="icon"
                     onClick={() => setIsPanelCollapsed(false)}
-                    className="absolute right-4 top-4 z-20 h-8 w-8 bg-black/20 border border-white/10 shadow-sm rounded-lg text-slate-400 hover:text-white hover:bg-white/10 backdrop-blur-md transition-all"
+                    className="absolute right-4 top-4 z-20 h-8 w-8 bg-white/80 border border-slate-200 shadow-sm rounded-lg text-slate-500 hover:text-sky-600 hover:bg-white backdrop-blur-md transition-all"
                   >
                     <PanelRightClose className="w-4 h-4 rotate-180" />
                   </Button>
@@ -1088,7 +1087,7 @@ export function DataGovernancePanel() {
                   )}>
                     {/* 纸张效果容器 */}
                     <div className={cn(
-                      "bg-slate-900/50 backdrop-blur-sm min-h-[800px] shadow-2xl border border-white/5 rounded-xl overflow-hidden relative",
+                      "bg-white min-h-[800px] shadow-sm border border-slate-200/60 rounded-xl overflow-hidden relative",
                       viewMode === 'edit' ? "h-[calc(100vh-140px)] border-0 shadow-none bg-transparent" : "p-10 md:p-14"
                     )}>
                       {/* 治理状态水印/徽章 */}
@@ -1103,8 +1102,8 @@ export function DataGovernancePanel() {
                       {viewMode === 'edit' ? (
                         <div className="grid grid-cols-2 gap-4 h-full">
                           {/* 编辑模式：左侧预览 */}
-                          <div className="flex flex-col bg-slate-900/50 rounded-xl border border-white/10 shadow-lg overflow-hidden h-full">
-                            <div className="px-4 py-2 bg-white/5 border-b border-white/10 text-xs font-semibold text-slate-400">
+                          <div className="flex flex-col bg-slate-50 rounded-xl border border-slate-200 shadow-sm overflow-hidden h-full">
+                            <div className="px-4 py-2 bg-slate-100 border-b border-slate-200 text-xs font-semibold text-slate-500">
                               实时预览
                             </div>
                             <div className="flex-1 overflow-y-auto p-6">
@@ -1112,8 +1111,8 @@ export function DataGovernancePanel() {
                             </div>
                           </div>
                           {/* 编辑模式：右侧源码 */}
-                          <div className="flex flex-col bg-slate-950 rounded-xl border border-white/10 shadow-lg overflow-hidden h-full">
-                            <div className="px-4 py-2 bg-white/5 border-b border-white/10 text-xs font-semibold text-slate-400">
+                          <div className="flex flex-col bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden h-full">
+                            <div className="px-4 py-2 bg-slate-100 border-b border-slate-200 text-xs font-semibold text-slate-500">
                               源码编辑
                             </div>
                             <textarea
@@ -1151,16 +1150,16 @@ export function DataGovernancePanel() {
                 style={{ width: isPanelCollapsed ? 0 : panelWidth }}
               >
                 {/* 工具面板头部：治理阶段选择 */}
-                <div className="flex-shrink-0 p-4 border-b border-white/5 bg-black/20">
+                <div className="flex-shrink-0 p-4 border-b border-slate-200 bg-white">
                   <div className="flex items-center justify-between mb-4">
-                    <h2 className="text-sm font-bold text-white flex items-center gap-2">
-                      <Sparkles className="w-4 h-4 text-sky-500" />
+                    <h2 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                      <Sparkles className="w-4 h-4 text-sky-600" />
                       治理工具箱
                     </h2>
                     <Button
                       variant="ghost"
                       size="icon"
-                      className="h-6 w-6 text-slate-400 hover:text-white hover:bg-white/10"
+                      className="h-6 w-6 text-slate-400 hover:text-slate-600 hover:bg-slate-100"
                       onClick={() => setIsPanelCollapsed(true)}
                     >
                       <PanelRightClose className="w-4 h-4 rotate-180" />
@@ -1168,7 +1167,7 @@ export function DataGovernancePanel() {
                   </div>
 
                   {/* 新的 Tab 选择器 */}
-                  <div className="grid grid-cols-4 gap-1 p-1 bg-white/5 rounded-lg border border-white/5">
+                  <div className="grid grid-cols-4 gap-1 p-1 bg-slate-100 rounded-lg border border-slate-200">
                     {GOVERNANCE_TABS.map((tab) => {
                       const Icon = tab.icon
                       const isActive = activeTab === tab.id
@@ -1179,16 +1178,16 @@ export function DataGovernancePanel() {
                           className={cn(
                             "flex flex-col items-center justify-center py-2 px-1 rounded-md transition-all duration-200 relative",
                             isActive
-                              ? "bg-sky-600 text-white shadow-lg shadow-sky-900/20 ring-1 ring-sky-400/50"
-                              : "text-slate-500 hover:text-slate-200 hover:bg-white/5"
+                              ? "bg-white text-sky-600 shadow-sm ring-1 ring-slate-200"
+                              : "text-slate-500 hover:text-slate-700 hover:bg-slate-200/50"
                           )}
                           title={tab.label}
                         >
-                          <Icon className={cn("w-4 h-4 mb-1", isActive ? "text-white" : "")} />
+                          <Icon className={cn("w-4 h-4 mb-1", isActive ? "text-sky-600" : "")} />
                           <span className="text-[10px] font-medium scale-90">{tab.label}</span>
                           {/* 状态点 */}
                           {tab.id === 'clean' && governanceState.isModified && (
-                            <span className="absolute top-1.5 right-1.5 w-1.5 h-1.5 bg-purple-500 rounded-full ring-1 ring-black/50 shadow-[0_0_5px_rgba(168,85,247,0.5)]" />
+                            <span className="absolute top-1.5 right-1.5 w-1.5 h-1.5 bg-purple-500 rounded-full ring-1 ring-white shadow-sm" />
                           )}
                         </button>
                       )
@@ -1196,8 +1195,8 @@ export function DataGovernancePanel() {
                   </div>
 
                   {/* 当前工具描述 */}
-                  <div className="mt-3 text-xs text-slate-400 bg-sky-500/10 p-2 rounded border border-sky-500/20 flex items-start gap-2">
-                    <Info className="w-3.5 h-3.5 text-sky-400 mt-0.5 flex-shrink-0" />
+                  <div className="mt-3 text-xs text-slate-500 bg-sky-50 p-2 rounded border border-sky-100 flex items-start gap-2">
+                    <Info className="w-3.5 h-3.5 text-sky-500 mt-0.5 flex-shrink-0" />
                     {GOVERNANCE_TABS.find(t => t.id === activeTab)?.desc}
                   </div>
                 </div>
@@ -1248,12 +1247,12 @@ export function DataGovernancePanel() {
             </>
           ) : (
             // 空状态占位
-            <div className="flex-1 flex flex-col items-center justify-center bg-slate-900/50 backdrop-blur-sm">
-              <div className="w-24 h-24 bg-white/5 rounded-full border border-white/5 flex items-center justify-center mb-6 shadow-2xl">
-                <FileSearch className="w-10 h-10 text-sky-500/50" />
+            <div className="flex-1 flex flex-col items-center justify-center bg-slate-50">
+              <div className="w-24 h-24 bg-white rounded-full border border-slate-200 flex items-center justify-center mb-6 shadow-sm">
+                <FileSearch className="w-10 h-10 text-slate-300" />
               </div>
-              <h3 className="text-xl font-medium text-white mb-2">选择文件开始治理</h3>
-              <p className="text-slate-400 max-w-sm text-center">
+              <h3 className="text-xl font-medium text-slate-900 mb-2">选择文件开始治理</h3>
+              <p className="text-slate-500 max-w-sm text-center">
                 从左侧列表选择一个文件，使用右侧工具箱进行质量检测、清洗与标注。
               </p>
             </div>
