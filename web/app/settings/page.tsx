@@ -421,7 +421,7 @@ export default function SettingsPage() {
                 <Settings2 className="h-6 w-6 text-foreground/80" />
               </div>
               <div>
-                <h1 className="text-2xl font-bold text-foreground tracking-tight">设置与配置</h1>
+                <h1 className="text-3xl font-bold text-foreground tracking-tight">设置与配置</h1>
                 <p className="text-sm text-muted-foreground mt-1">
                   管理功能开关、模型接入及系统参数
                 </p>

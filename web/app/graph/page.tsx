@@ -619,7 +619,7 @@ export default function GraphPage() {
               <Share2 className="w-5 h-5 text-white" />
             </div>
             <div>
-              <h1 className="text-lg font-bold text-foreground tracking-tight">知识图谱</h1>
+              <h1 className="text-3xl font-bold text-foreground tracking-tight">知识图谱</h1>
             </div>
           </div>
           

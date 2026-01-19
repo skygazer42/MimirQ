@@ -195,7 +195,7 @@ export default function KnowledgePage() {
                 <Database className="w-6 h-6 text-sky-600 dark:text-sky-400" />
               </div>
               <div>
-                <h1 className="text-2xl font-bold text-slate-900 dark:text-white tracking-tight">知识库管理</h1>
+                <h1 className="text-3xl font-bold text-foreground tracking-tight">知识库管理</h1>
                 <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
                   管理您的文档资产，构建专属知识大脑
                 </p>

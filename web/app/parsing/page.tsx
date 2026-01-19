@@ -1364,7 +1364,7 @@ export default function ParsingPage() {
                 <Sparkles className="w-5 h-5 text-foreground/80 dark:text-muted-foreground" />
               </div>
               <div>
-                <h1 className="text-lg font-bold text-foreground dark:text-foreground leading-tight">文档解析工作台</h1>
+                <h1 className="text-3xl font-bold text-foreground leading-tight">文档解析工作台</h1>
                 <p className="text-xs text-muted-foreground dark:text-muted-foreground leading-none mt-1">
                   上传文件并转换为 Markdown 格式，为数据治理做准备
                 </p>
