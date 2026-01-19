@@ -8,20 +8,22 @@ These are used across:
 
 
 from typing import List
+from functools import lru_cache
 
 import jieba
 
 from app.rag.preprocessing.stopwords import STOPWORDS
 
 
-def tokenize_for_bm25(text: str) -> List[str]:
-    """
-    Tokenize text for BM25.
+_BM25_TOKENIZE_CACHE_MAX_CHARS = 200
 
-    Notes:
-    - Uses jieba search mode.
-    - Applies conservative filters: stopwords, empty tokens, single-character tokens.
-    """
+
+@lru_cache(maxsize=4096)
+def _tokenize_for_bm25_cached(text: str) -> tuple[str, ...]:
+    return tuple(_tokenize_for_bm25_impl(text))
+
+
+def _tokenize_for_bm25_impl(text: str) -> List[str]:
     raw = (text or "").strip()
     if not raw:
         return []
@@ -40,3 +42,19 @@ def tokenize_for_bm25(text: str) -> List[str]:
         tokens.append(norm)
     return tokens
 
+
+def tokenize_for_bm25(text: str) -> List[str]:
+    """
+    Tokenize text for BM25.
+
+    Notes:
+    - Uses jieba search mode.
+    - Applies conservative filters: stopwords, empty tokens, single-character tokens.
+    """
+    raw = (text or "").strip()
+    if not raw:
+        return []
+    # Cache only short strings (queries, titles) to avoid unbounded memory use.
+    if len(raw) <= _BM25_TOKENIZE_CACHE_MAX_CHARS:
+        return list(_tokenize_for_bm25_cached(raw))
+    return _tokenize_for_bm25_impl(raw)

@@ -19,8 +19,8 @@ def get_current_account_id(
     """
     Resolve current account id from request headers.
 
-    - AUTH_MODE=jwt (default): require Authorization: Bearer <token> and validate JWT.
-    - AUTH_MODE=header: require X-User-ID header (unsafe; intended for local/dev only).
+    - AUTH_MODE=jwt: require Authorization: Bearer <token> and validate JWT.
+    - AUTH_MODE=header (local/dev default): require X-User-ID header (unsafe; forbidden in production).
     """
     mode = (getattr(settings, "AUTH_MODE", "jwt") or "jwt").lower()
 
