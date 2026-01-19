@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import { persist, createJSONStorage } from 'zustand/middleware'
-import { deleteDocContentFromCache, saveDocContentToCache } from '@/lib/doc-content-cache'
+import { deleteDocContentFromCache, deleteDocSourceFromCache, saveDocContentToCache } from '@/lib/doc-content-cache'
 
 export const ROOT_FOLDER_ID = 'root'
 
@@ -97,6 +97,7 @@ export const useParsedFiles = create<ParsedFilesState>()(
         // Best-effort cleanup of large content cache.
         if (typeof window !== 'undefined') {
           void deleteDocContentFromCache(id)
+          void deleteDocSourceFromCache(id)
         }
       },
 
@@ -161,6 +162,11 @@ export const useParsedFiles = create<ParsedFilesState>()(
 
         const folders = get().folders
         const idsToDelete = [id, ...collectDescendants(id, folders)]
+        const fileIdsToDelete = get()
+          .files
+          .filter((file) => Boolean(file.folderId) && idsToDelete.includes(String(file.folderId)))
+          .map((file) => file.id)
+
         set((state) => ({
           folders: state.folders.filter((f) => !idsToDelete.includes(f.id)),
           files: state.files.filter((file) =>
@@ -168,6 +174,13 @@ export const useParsedFiles = create<ParsedFilesState>()(
           ),
           activeFolderId: idsToDelete.includes(state.activeFolderId) ? ROOT_FOLDER_ID : state.activeFolderId,
         }))
+
+        if (typeof window !== 'undefined' && fileIdsToDelete.length > 0) {
+          for (const fileId of fileIdsToDelete) {
+            void deleteDocContentFromCache(fileId)
+            void deleteDocSourceFromCache(fileId)
+          }
+        }
       },
 
       moveFolder: (id, parentId) => {

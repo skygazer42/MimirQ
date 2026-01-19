@@ -53,7 +53,14 @@ import { extractZipFiles, isZipFile } from '@/lib/zip'
 import { PdfViewer } from '@/components/parsing/pdf-viewer'
 import { extractBlocksFromMarkdown, ParsingBlock } from '@/lib/parsing-positions'
 import { toast } from 'sonner'
-import { deleteDocContentFromCache, getDocContentFromCache, saveDocContentToCache } from '@/lib/doc-content-cache'
+import {
+  deleteDocContentFromCache,
+  deleteDocSourceFromCache,
+  getDocContentFromCache,
+  getDocSourceFromCache,
+  saveDocContentToCache,
+  saveDocSourceToCache,
+} from '@/lib/doc-content-cache'
 import { resolveParserBackendForFilename } from '@/lib/parser-compat'
 import {
   DropdownMenu,
@@ -127,8 +134,15 @@ export default function ParsingPage() {
   const folderInputRef = useRef<HTMLInputElement>(null)
   const uploadTargetFolderIdRef = useRef<string | null>(null)
   const fileIdSetRef = useRef<Set<string>>(new Set())
+  const filesRef = useRef<ParsedFile[]>([])
   const parseControllersRef = useRef<Map<string, AbortController>>(new Map())
   const parseProgressIntervalsRef = useRef<Map<string, ReturnType<typeof setInterval>>>(new Map())
+  const rebindInputRef = useRef<HTMLInputElement>(null)
+  const rebindTargetRef = useRef<{ libraryId: string; autoParse: boolean } | null>(null)
+  const [autoParseFileId, setAutoParseFileId] = useState<string | null>(null)
+  const [activeLibrarySourceStatus, setActiveLibrarySourceStatus] = useState<'unknown' | 'available' | 'missing'>(
+    'unknown'
+  )
 
   const cancelParse = useCallback((fileId: string) => {
     const controller = parseControllersRef.current.get(fileId)
@@ -146,6 +160,7 @@ export default function ParsingPage() {
 
   useEffect(() => {
     fileIdSetRef.current = new Set(files.map((f) => f.id))
+    filesRef.current = files
   }, [files])
 
   useEffect(() => {
@@ -237,6 +252,31 @@ export default function ParsingPage() {
     }
   }, [activeLibraryFileId, activeLibraryFile, updateParsedFile])
 
+  useEffect(() => {
+    const id = (activeLibraryFileId || '').trim()
+    if (!id) {
+      setActiveLibrarySourceStatus('unknown')
+      return
+    }
+
+    setActiveLibrarySourceStatus('unknown')
+    let cancelled = false
+      ; (async () => {
+        try {
+          const cached = await getDocSourceFromCache(id)
+          if (cancelled) return
+          setActiveLibrarySourceStatus(cached ? 'available' : 'missing')
+        } catch {
+          if (cancelled) return
+          setActiveLibrarySourceStatus('missing')
+        }
+      })()
+
+    return () => {
+      cancelled = true
+    }
+  }, [activeLibraryFileId])
+
   const activeRun = useMemo(() => {
     if (!activeFile) return null
     const runs = activeFile.runs || []
@@ -306,6 +346,128 @@ export default function ParsingPage() {
 
   // 生成唯一 ID
   const generateId = () => Math.random().toString(36).substring(2, 15)
+
+  const requestRebindForLibraryFile = useCallback((libraryId: string, autoParse: boolean) => {
+    const id = (libraryId || '').trim()
+    if (!id) return
+    rebindTargetRef.current = { libraryId: id, autoParse }
+    if (rebindInputRef.current) {
+      rebindInputRef.current.value = ''
+      rebindInputRef.current.click()
+    }
+  }, [])
+
+  const upsertQueueItemForLibrary = useCallback(
+    (libraryId: string, sourceFile: File, options: { autoParse?: boolean } = {}) => {
+      const id = (libraryId || '').trim()
+      if (!id) return null
+      if (!sourceFile) return null
+
+      const libEntry = libraryFiles.find((f) => f.id === id) || null
+      if (!libEntry) {
+        toast.error('文档库条目不存在，无法恢复/重新绑定')
+        return null
+      }
+
+      const resolved = resolveParserBackendForFilename(sourceFile.name, parserBackend)
+      const backend = resolved.backend
+      const label = getParserLabel(backend)
+      const now = Date.now()
+      const queueId = generateId()
+      const folderId = libEntry.folderId || ROOT_FOLDER_ID
+
+      const queueItem: ParsedFile = {
+        id: queueId,
+        file: sourceFile,
+        folderId,
+        name: sourceFile.name,
+        size: sourceFile.size,
+        status: 'pending',
+        markdownContent: null,
+        error: undefined,
+        parserBackend: backend,
+        parserLabel: label,
+        libraryId: id,
+        createdAt: now,
+      }
+
+      setFiles((prev) => [...prev.filter((f) => f.libraryId !== id), queueItem])
+      setActiveFileId(queueId)
+      setActiveLibraryFileId(null)
+
+      updateParsedFile(id, {
+        filename: queueItem.name,
+        fileType: queueItem.name.split('.').pop()?.toLowerCase() || '',
+        fileSize: queueItem.size,
+        folderId,
+        status: 'pending',
+        error: undefined,
+        parser: label,
+      })
+
+      if (options.autoParse) setAutoParseFileId(queueId)
+      return queueId
+    },
+    [libraryFiles, parserBackend, updateParsedFile]
+  )
+
+  const handleRebindFileSelect = useCallback(
+    async (e: React.ChangeEvent<HTMLInputElement>) => {
+      const target = rebindTargetRef.current
+      rebindTargetRef.current = null
+
+      const selectedFile = e.target.files?.[0] || null
+      e.target.value = ''
+
+      if (!target?.libraryId) return
+      if (!selectedFile) return
+
+      try {
+        await saveDocSourceToCache({ id: target.libraryId, file: selectedFile })
+        setActiveLibrarySourceStatus('available')
+      } catch (err) {
+        console.warn('Failed to cache source file:', err)
+        toast.warning('源文件缓存失败：刷新后仍需重新上传')
+      }
+
+      upsertQueueItemForLibrary(target.libraryId, selectedFile, { autoParse: target.autoParse })
+    },
+    [upsertQueueItemForLibrary]
+  )
+
+  const restoreLibraryFileFromCache = useCallback(
+    async (libraryId: string, autoParse: boolean) => {
+      const id = (libraryId || '').trim()
+      if (!id) return
+      const existing = filesRef.current.find((f) => f.libraryId === id) || null
+      if (existing) {
+        setActiveFileId(existing.id)
+        setActiveLibraryFileId(null)
+        if (autoParse) setAutoParseFileId(existing.id)
+        return
+      }
+
+      try {
+        const cached = await getDocSourceFromCache(id)
+        if (!cached?.blob) {
+          setActiveLibrarySourceStatus('missing')
+          toast.error('未找到源文件缓存，请重新上传该文件')
+          return
+        }
+        const file = new File([cached.blob], cached.filename || 'document', {
+          type: cached.mimeType || cached.blob.type || 'application/octet-stream',
+          lastModified: cached.lastModified || Date.now(),
+        })
+        setActiveLibrarySourceStatus('available')
+        upsertQueueItemForLibrary(id, file, { autoParse })
+      } catch (err) {
+        console.warn('Failed to restore source file:', err)
+        setActiveLibrarySourceStatus('missing')
+        toast.error('恢复源文件失败，请重新上传该文件')
+      }
+    },
+    [upsertQueueItemForLibrary]
+  )
 
   // 添加文件（支持 .zip 批量解压，支持文件夹上传）
   const addFiles = useCallback(
@@ -491,6 +653,19 @@ export default function ParsingPage() {
         return { ...q, libraryId: libId }
       })
 
+      // Best-effort: cache original source files in IndexedDB so refresh/restart can resume parsing.
+      void (async () => {
+        const results = await Promise.allSettled(
+          queuedWithLibrary
+            .filter((q) => q.libraryId)
+            .map((q) => saveDocSourceToCache({ id: q.libraryId as string, file: q.file }))
+        )
+        const failed = results.filter((r) => r.status === 'rejected').length
+        if (failed > 0) {
+          toast.warning(`有 ${failed} 个文件未能缓存源文件，刷新后需要重新上传`)
+        }
+      })()
+
       setFiles((prev) => [...prev, ...queuedWithLibrary])
       setActiveFileId((prev) => prev ?? queuedWithLibrary[0].id)
 
@@ -642,6 +817,7 @@ export default function ParsingPage() {
     if (libId) {
       removeParsedFile(libId)
       void deleteDocContentFromCache(libId)
+      void deleteDocSourceFromCache(libId)
       if (activeLibraryFileId === libId) setActiveLibraryFileId(null)
     }
   }
@@ -687,8 +863,8 @@ export default function ParsingPage() {
   }, [moveFileToFolder, moveFolder])
 
   // 解析文件（支持删除中断）
-  const parseFile = async (fileId: string) => {
-    const file = files.find((f) => f.id === fileId)
+  const parseFile = useCallback(async (fileId: string) => {
+    const file = filesRef.current.find((f) => f.id === fileId) || null
     if (!file) return
 
     cancelParse(fileId)
@@ -700,6 +876,11 @@ export default function ParsingPage() {
     const requestedLabel = getParserLabel(requestedBackend)
 
     const startTime = Date.now()
+
+    // Best-effort: ensure the source file is cached for refresh/restart resume.
+    if (file.libraryId) {
+      void saveDocSourceToCache({ id: file.libraryId, file: file.file })
+    }
 
     setFiles((prev) =>
       prev.map((f) =>
@@ -834,6 +1015,7 @@ export default function ParsingPage() {
           error: undefined,
         })
         setFiles((prev) => prev.map((f) => (f.id === fileId ? { ...f, libraryId: libId } : f)))
+        void saveDocSourceToCache({ id: libId, file: file.file })
         void saveDocContentToCache({
           id: libId,
           markdownContent,
@@ -866,7 +1048,14 @@ export default function ParsingPage() {
       }
       clearProgressInterval()
     }
-  }
+  }, [addParsedFile, cancelParse, parserBackend, updateParsedFile])
+
+  useEffect(() => {
+    if (!autoParseFileId) return
+    const id = autoParseFileId
+    setAutoParseFileId(null)
+    void parseFile(id)
+  }, [autoParseFileId, parseFile])
 
   const parseAllPending = async () => {
     const targets = visibleQueueFiles.filter((f) => f.status === 'pending' || f.status === 'error')
@@ -1310,6 +1499,13 @@ export default function ParsingPage() {
                   className="hidden"
                   onChange={handleFileSelect}
                 />
+                <input
+                  ref={rebindInputRef}
+                  type="file"
+                  accept=".pdf,.txt,.md,.doc,.docx,.xls,.xlsx,.csv,.html,.json"
+                  className="hidden"
+                  onChange={handleRebindFileSelect}
+                />
 
                 {/* 底部统计 */}
                 {visibleQueueFiles.length > 0 && (
@@ -1385,19 +1581,76 @@ export default function ParsingPage() {
                             </Button>
                           </div>
                           <div className="mt-0.5 text-[11px] text-slate-500">
-                            该条目来自文档库（未保留本地 PDF 原文件）。可查看解析后的 Markdown；如需 PDF 预览请重新上传该文件。
+                            {activeLibrarySourceStatus === 'available'
+                              ? '已在本地缓存源文件：可恢复 PDF 预览/继续解析（刷新/重启后仍可用）。'
+                              : activeLibrarySourceStatus === 'missing'
+                                ? '该条目没有可用的源文件缓存：仅可查看 Markdown；如需继续解析/PDF 预览请重新上传该文件。'
+                                : '正在检查源文件缓存…'}
                           </div>
                         </div>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="text-slate-600 hover:bg-slate-100"
-                          onClick={() => {
-                            setActiveLibraryFileId(null)
-                          }}
-                        >
-                          关闭
-                        </Button>
+                        <div className="flex items-center gap-2 flex-shrink-0">
+                          {activeLibrarySourceStatus === 'available' ? (
+                            <>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-7 px-2 text-[11px] text-slate-600 hover:bg-slate-100"
+                                onClick={() => restoreLibraryFileFromCache(activeLibraryFile.id, false)}
+                                title="恢复源文件到队列（用于 PDF 预览或继续解析）"
+                              >
+                                <Paperclip className="w-3.5 h-3.5 mr-1" />
+                                恢复源文件
+                              </Button>
+                              {activeLibraryFile.status && activeLibraryFile.status !== 'parsed' ? (
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-7 px-2 text-[11px] text-slate-600 hover:bg-slate-100"
+                                  onClick={() => restoreLibraryFileFromCache(activeLibraryFile.id, true)}
+                                  title="恢复并开始解析"
+                                >
+                                  <Play className="w-3.5 h-3.5 mr-1" />
+                                  继续解析
+                                </Button>
+                              ) : null}
+                            </>
+                          ) : (
+                            <>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-7 px-2 text-[11px] text-slate-600 hover:bg-slate-100"
+                                onClick={() => requestRebindForLibraryFile(activeLibraryFile.id, false)}
+                                title="重新上传源文件以恢复 PDF 预览/继续解析"
+                              >
+                                <Paperclip className="w-3.5 h-3.5 mr-1" />
+                                重新上传
+                              </Button>
+                              {activeLibraryFile.status && activeLibraryFile.status !== 'parsed' ? (
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-7 px-2 text-[11px] text-slate-600 hover:bg-slate-100"
+                                  onClick={() => requestRebindForLibraryFile(activeLibraryFile.id, true)}
+                                  title="重新上传并开始解析"
+                                >
+                                  <Play className="w-3.5 h-3.5 mr-1" />
+                                  上传并解析
+                                </Button>
+                              ) : null}
+                            </>
+                          )}
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="text-slate-600 hover:bg-slate-100"
+                            onClick={() => {
+                              setActiveLibraryFileId(null)
+                            }}
+                          >
+                            关闭
+                          </Button>
+                        </div>
                       </div>
 
                       <div className="flex-1 overflow-hidden min-h-0">
