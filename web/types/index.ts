@@ -44,6 +44,23 @@ export interface DocumentStatus {
   error_message?: string
 }
 
+export interface DocumentUserMetadataPatchRequest {
+  patch: Record<string, any>
+  replace?: boolean
+}
+
+export interface DocumentBatchUserMetadataPatchRequest {
+  document_ids: string[]
+  patch: Record<string, any>
+  replace?: boolean
+}
+
+export interface DocumentBatchUserMetadataPatchResponse {
+  updated: number
+  not_found: string[]
+  denied: string[]
+}
+
 export interface DocumentChunk {
   id: string
   content: string

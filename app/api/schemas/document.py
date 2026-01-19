@@ -48,6 +48,35 @@ class DocumentPipelineOptions(BaseModel):
     entity_vector_enabled: Optional[bool] = None
 
 
+class DocumentUserMetadataPatchRequest(BaseModel):
+    """
+    Patch `documents.metadata.user` (user-editable metadata namespace).
+
+    - When `replace=false` (default), merge keys into existing `metadata.user`.
+    - When `replace=true`, replace the whole `metadata.user` object.
+    - Any key with value `null` will be removed (merge mode only).
+    """
+
+    patch: Dict[str, Any] = Field(default_factory=dict, description="User metadata patch; null values remove keys.")
+    replace: bool = Field(default=False, description="Replace entire metadata.user instead of merging")
+
+
+class DocumentBatchUserMetadataPatchRequest(BaseModel):
+    """Batch patch for `documents.metadata.user`."""
+
+    document_ids: List[UUID] = Field(..., min_length=1, max_length=200)
+    patch: Dict[str, Any] = Field(default_factory=dict)
+    replace: bool = False
+
+
+class DocumentBatchUserMetadataPatchResponse(BaseModel):
+    """Batch patch result."""
+
+    updated: int
+    not_found: List[UUID] = Field(default_factory=list)
+    denied: List[UUID] = Field(default_factory=list)
+
+
 class DocumentChunkSchema(OrmModel):
     """Document chunk."""
     id: UUID
