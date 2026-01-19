@@ -164,6 +164,12 @@ class ParserFactory:
             if file_ext not in self.SUPPORTED_NON_PDF_EXTENSIONS:
                 raise ValueError(f"Unsupported file type: {file_ext}")
 
+            # If a PDF-only backend is selected (common when frontend stores a global preference),
+            # fall back to non-PDF auto routing instead of failing hard.
+            if normalized not in {"", "auto"} and normalized not in self.SUPPORTED_NON_PDF_BACKENDS:
+                if normalized in self.SUPPORTED_PDF_BACKENDS:
+                    normalized = "auto"
+
             if normalized in {"", "auto"}:
                 # Office/HTML defaults:
                 # - Prefer Pandoc for better image/table fidelity when enabled.

@@ -33,3 +33,8 @@ def test_non_pdf_auto_routes_doc_to_pandoc_with_libreoffice(monkeypatch):
     factory = ParserFactory()
     assert factory.resolve_backend(".doc", None) == "pandoc"
 
+
+def test_non_pdf_pdf_backend_falls_back_to_auto(monkeypatch):
+    monkeypatch.setattr(settings, "PANDOC_ENABLED", False, raising=False)
+    factory = ParserFactory()
+    assert factory.resolve_backend(".docx", "basic") == "markitdown"
