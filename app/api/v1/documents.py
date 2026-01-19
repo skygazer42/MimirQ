@@ -5,10 +5,10 @@ import asyncio
 import contextlib
 import hashlib
 import json
-import os
 import re
 import shutil
 from fastapi import APIRouter, Depends, UploadFile, File, HTTPException, BackgroundTasks, Form, Request
+from fastapi import Response
 from sqlalchemy.orm import Session, selectinload
 from typing import List, Optional
 from uuid import UUID
@@ -1519,13 +1519,39 @@ async def get_image(
         if file_path.exists() and file_path.is_file():
             max_age = max(0, int(getattr(settings, "ASSET_CACHE_MAX_AGE_SEC", 0) or 0))
             cache_control = f"private, max-age={max_age}" if max_age > 0 else "no-cache"
+            try:
+                st = file_path.stat()
+            except Exception:
+                st = None
+
+            etag: str | None = None
+            if st is not None:
+                # Strong etag based on mtime+size; stable for immutable UUID-based assets.
+                etag = f"\"{int(getattr(st, 'st_mtime_ns', 0) or 0):x}-{int(getattr(st, 'st_size', 0) or 0):x}\""
+
+            if etag:
+                if_none_match = (request.headers.get("if-none-match") or "").strip()
+                if if_none_match:
+                    candidates_etag = [p.strip() for p in if_none_match.split(",") if p.strip()]
+                    if "*" in candidates_etag or etag in candidates_etag:
+                        return Response(
+                            status_code=304,
+                            headers={
+                                "ETag": etag,
+                                "Cache-Control": cache_control,
+                                "X-Content-Type-Options": "nosniff",
+                            },
+                        )
             return FileResponse(
                 file_path,
                 media_type=media_type,
                 headers={
                     "Cache-Control": cache_control,
                     "X-Content-Type-Options": "nosniff",
+                    **({"ETag": etag} if etag else {}),
                 },
+                stat_result=st,
+                content_disposition_type="inline",
             )
 
     raise HTTPException(status_code=404, detail="Image not found")

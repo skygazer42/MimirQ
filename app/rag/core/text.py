@@ -7,7 +7,7 @@ import json
 import re
 from typing import Any, Dict, Tuple, Literal
 
-from app.core.token_utils import estimate_tokens
+from app.core.token_utils import estimate_tokens  # noqa: F401
 
 
 _JSON_FENCE_RE = re.compile(r"```(?:json)?\s*(.*?)\s*```", flags=re.IGNORECASE | re.DOTALL)
