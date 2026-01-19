@@ -583,7 +583,7 @@ export function DocumentFolderTree({
             {showFiles === 'expanded' && hasContent && (
               <button
                 type="button"
-                className="w-5 h-5 flex items-center justify-center rounded hover:bg-white/60 text-stone-500"
+                className="w-5 h-5 flex items-center justify-center rounded hover:bg-white/60 text-slate-500"
                 onClick={(e) => {
                   e.stopPropagation()
                   toggleFileList(folder.id)
@@ -726,7 +726,7 @@ export function DocumentFolderTree({
           </div>
 
           {isExpanded && (directFiles.length > 0 || children.length > 0) && (
-            <div className="ml-3 pl-2 border-l border-amber-100/70">
+            <div className="ml-3 pl-2 border-l border-sky-100/70">
               {directFiles.length > 0 && (
                 <div className="space-y-0.5">
                   {directFiles.map((f) => (
@@ -734,10 +734,10 @@ export function DocumentFolderTree({
                       key={f.id}
                       type="button"
                       className={cn(
-                        'w-full flex items-center gap-2 rounded-lg py-1.5 px-2 text-left text-stone-600 bg-white/60 border border-transparent hover:border-amber-200/70 hover:bg-amber-50/80',
+                        'w-full flex items-center gap-2 rounded-lg py-1.5 px-2 text-left text-slate-600 bg-white/60 border border-transparent hover:border-sky-200/70 hover:bg-sky-50/80',
                         'text-sm',
                         f.status === 'error' && 'bg-red-50 hover:bg-red-100 text-red-700',
-                        f.status === 'parsing' && 'bg-amber-50/50'
+                        f.status === 'parsing' && 'bg-sky-50/50'
                       )}
                       title={f.error || (f.sourcePath ? `${f.name} · ${f.sourcePath}` : f.name)}
                       onClick={() => {
@@ -749,12 +749,12 @@ export function DocumentFolderTree({
                       <span className="truncate flex-1">{f.name}</span>
 
                       {f.status === 'parsing' ? (
-                        <div className="w-16 h-1.5 bg-amber-100 rounded-full overflow-hidden ml-2 flex-shrink-0">
-                          <div className="h-full bg-amber-500 animate-[progress_1s_ease-in-out_infinite] w-full origin-left scale-x-50" />
+                        <div className="w-16 h-1.5 bg-sky-100 rounded-full overflow-hidden ml-2 flex-shrink-0">
+                          <div className="h-full bg-sky-500 animate-[progress_1s_ease-in-out_infinite] w-full origin-left scale-x-50" />
                         </div>
                       ) : (
                         <>
-                          {f.status === 'pending' && <div className="w-1.5 h-1.5 rounded-full bg-stone-300 ml-2" />}
+                          {f.status === 'pending' && <div className="w-1.5 h-1.5 rounded-full bg-slate-300 ml-2" />}
                           {f.status === 'error' && <AlertCircle className="w-3.5 h-3.5 text-red-500 ml-2" />}
                         </>
                       )}
@@ -929,7 +929,7 @@ export function DocumentFolderTree({
           >
             {getFolderIconElement(0, activeFolderId === ROOT_FOLDER_ID)}
             <span className="text-sm truncate">根目录</span>
-            <span className="ml-auto text-[10px] text-stone-500 bg-amber-100/70 px-2 py-0.5 rounded-full opacity-0 group-hover:opacity-100 transition-opacity">
+            <span className="ml-auto text-[10px] text-slate-500 bg-sky-100/70 px-2 py-0.5 rounded-full opacity-0 group-hover:opacity-100 transition-opacity">
               {rootCount}
             </span>
           </button>
@@ -940,7 +940,7 @@ export function DocumentFolderTree({
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity text-stone-500 hover:text-amber-700 hover:bg-amber-50 rounded-md"
+                  className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity text-slate-400 hover:text-sky-700 hover:bg-sky-50 rounded-md"
                   aria-label="Upload to root folder"
                   onClick={(e) => e.stopPropagation()}
                 >
@@ -955,7 +955,7 @@ export function DocumentFolderTree({
                     onRequestUpload(ROOT_FOLDER_ID)
                   }}
                 >
-                  <Paperclip className="w-4 h-4 mr-2 text-amber-700" />
+                  <Paperclip className="w-4 h-4 mr-2 text-sky-700" />
                   上传文件
                 </DropdownMenuItem>
                 {onRequestUploadFolder && (
@@ -966,12 +966,12 @@ export function DocumentFolderTree({
                       onRequestUploadFolder(ROOT_FOLDER_ID)
                     }}
                   >
-                    <FolderUp className="w-4 h-4 mr-2 text-amber-600" />
+                    <FolderUp className="w-4 h-4 mr-2 text-sky-600" />
                     上传文件夹
                   </DropdownMenuItem>
                 )}
                 <DropdownMenuItem className="py-2" onClick={() => openCreate(ROOT_FOLDER_ID)}>
-                  <Folder className="w-4 h-4 mr-2 text-amber-600" />
+                  <Folder className="w-4 h-4 mr-2 text-sky-600" />
                   新建文件夹
                 </DropdownMenuItem>
               </DropdownMenuContent>
