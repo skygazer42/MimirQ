@@ -5,7 +5,7 @@
 
 export interface GraphNode {
   id: string
-  label?: string
+  label: string
   val?: number // size
   color?: string
   [key: string]: any
@@ -26,7 +26,7 @@ export interface GraphData {
 export const parseGraphML = (xmlContent: string): GraphData => {
   const parser = new DOMParser()
   const xmlDoc = parser.parseFromString(xmlContent, 'text/xml')
-  
+
   const nodes: GraphNode[] = []
   const links: GraphLink[] = []
 
@@ -46,25 +46,25 @@ export const parseGraphML = (xmlContent: string): GraphData => {
     const id = node.getAttribute('id')
     if (!id) return
 
-    const nodeData: GraphNode = { id }
-    
+    const nodeData: GraphNode = { id, label: id }
+
     // Parse data attributes
     node.querySelectorAll('data').forEach((data) => {
       const keyId = data.getAttribute('key')
       if (keyId && keys[keyId]) {
         const { name } = keys[keyId]
         nodeData[name] = data.textContent
-        
+
         // Map common names to visual properties
         if (name.toLowerCase() === 'label' || name.toLowerCase() === 'name') {
           nodeData.label = data.textContent || id
         }
       }
     })
-    
+
     // Default label if missing
     if (!nodeData.label) nodeData.label = id
-    
+
     // Random color assignment if not present (can be improved)
     if (!nodeData.color) {
       // nodeData.color = ... 
@@ -77,10 +77,10 @@ export const parseGraphML = (xmlContent: string): GraphData => {
   xmlDoc.querySelectorAll('edge').forEach((edge) => {
     const source = edge.getAttribute('source')
     const target = edge.getAttribute('target')
-    
+
     if (source && target) {
       const linkData: GraphLink = { source, target }
-      
+
       // Parse data attributes for edges
       edge.querySelectorAll('data').forEach((data) => {
         const keyId = data.getAttribute('key')
@@ -89,7 +89,7 @@ export const parseGraphML = (xmlContent: string): GraphData => {
           linkData[name] = data.textContent
         }
       })
-      
+
       links.push(linkData)
     }
   })
