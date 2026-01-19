@@ -37,6 +37,8 @@ interface ParsedFilesState {
 
   // Actions
   addParsedFile: (file: Omit<ParsedFileData, 'id' | 'parsedAt'>) => string
+  upsertParsedFile: (file: ParsedFileData) => void
+  setParsedFiles: (files: ParsedFileData[]) => void
   getFile: (id: string) => ParsedFileData | null
   removeFile: (id: string) => void
   updateParsedFile: (id: string, updates: Partial<Omit<ParsedFileData, 'id'>>) => void
@@ -84,6 +86,38 @@ export const useParsedFiles = create<ParsedFilesState>()(
         set((state) => ({ files: [...state.files, newFile] }))
 
         return newFile.id
+      },
+
+      upsertParsedFile: (file) => {
+        const incoming: ParsedFileData = {
+          ...file,
+          id: String(file.id),
+          folderId: file.folderId || ROOT_FOLDER_ID,
+          status: file.status ?? 'parsed',
+          parsedAt: file.parsedAt || new Date().toISOString(),
+          originalMarkdownContent: file.originalMarkdownContent ?? file.markdownContent,
+        }
+
+        set((state) => {
+          const exists = state.files.some((f) => f.id === incoming.id)
+          return {
+            files: exists
+              ? state.files.map((f) => (f.id === incoming.id ? { ...f, ...incoming, id: f.id } : f))
+              : [...state.files, incoming],
+          }
+        })
+      },
+
+      setParsedFiles: (files) => {
+        const normalized = (files || []).map((file) => ({
+          ...file,
+          id: String(file.id),
+          folderId: file.folderId || ROOT_FOLDER_ID,
+          status: file.status ?? 'parsed',
+          parsedAt: file.parsedAt || new Date().toISOString(),
+          originalMarkdownContent: file.originalMarkdownContent ?? file.markdownContent,
+        }))
+        set({ files: normalized })
       },
 
       getFile: (id) => {

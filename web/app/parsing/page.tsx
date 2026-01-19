@@ -36,7 +36,7 @@ import {
 } from 'lucide-react'
 import { Navbar } from '@/components/navbar'
 import { Button } from '@/components/ui/button'
-import { documentApi } from '@/lib/api-client'
+import { documentApi, parsingApi } from '@/lib/api-client'
 import { formatApiError } from '@/lib/api-errors'
 import { formatFileSize, cn } from '@/lib/utils'
 import { ROOT_FOLDER_ID, useParsedFiles } from '@/store/use-parsed-files-store'
@@ -136,6 +136,7 @@ export default function ParsingPage() {
   const fileIdSetRef = useRef<Set<string>>(new Set())
   const filesRef = useRef<ParsedFile[]>([])
   const rehydratedFolderIdsRef = useRef<Set<string>>(new Set())
+  const didSyncLibraryFromServerRef = useRef(false)
   const parseControllersRef = useRef<Map<string, AbortController>>(new Map())
   const parseProgressIntervalsRef = useRef<Map<string, ReturnType<typeof setInterval>>>(new Map())
   const rebindInputRef = useRef<HTMLInputElement>(null)
@@ -206,6 +207,8 @@ export default function ParsingPage() {
 
   // 共享存储
   const addParsedFile = useParsedFiles((state) => state.addParsedFile)
+  const upsertParsedFile = useParsedFiles((state) => state.upsertParsedFile)
+  const setParsedFiles = useParsedFiles((state) => state.setParsedFiles)
   const libraryFiles = useParsedFiles((state) => state.files)
   const updateParsedFile = useParsedFiles((state) => state.updateParsedFile)
   const removeParsedFile = useParsedFiles((state) => state.removeFile)
@@ -216,6 +219,55 @@ export default function ParsingPage() {
   const setActiveFolderId = useParsedFiles((state) => state.setActiveFolderId)
   const isLibraryLoaded = useParsedFiles((state) => state.isLoaded)
 
+  const mapBackendStatusToLibraryStatus = useCallback((status?: string): FileStatus => {
+    const normalized = (status || '').toLowerCase()
+    if (normalized === 'processing') return 'parsing'
+    if (normalized === 'completed') return 'parsed'
+    if (normalized === 'failed' || normalized === 'cancelled') return 'error'
+    return 'pending'
+  }, [])
+
+  const syncLibraryFromServer = useCallback(async () => {
+    try {
+      const { items } = await parsingApi.listDocuments({ skip: 0, limit: 500 })
+      const current = useParsedFiles.getState().files || []
+      const byId = new Map(current.map((f) => [f.id, f]))
+
+      const next = items.map((doc) => {
+        const id = String(doc.id || '').trim()
+        const existing = byId.get(id)
+        const meta = (doc.metadata || {}) as Record<string, any>
+        const backend = String(meta?.parser_backend || meta?.parser_backend_requested || 'auto')
+        const status = mapBackendStatusToLibraryStatus(doc.status)
+
+        return {
+          id,
+          filename: doc.filename || existing?.filename || 'document',
+          fileType: doc.file_type || existing?.fileType || '',
+          fileSize: Number(doc.file_size || existing?.fileSize || 0),
+          markdownContent: existing?.markdownContent || '',
+          originalMarkdownContent: existing?.originalMarkdownContent || '',
+          parsedAt: String(doc.updated_at || doc.created_at || existing?.parsedAt || new Date().toISOString()),
+          parser: getParserLabel(backend),
+          folderId: existing?.folderId || ROOT_FOLDER_ID,
+          status,
+          error: status === 'error' ? String(doc.error_message || existing?.error || '解析失败') : undefined,
+        }
+      })
+
+      setParsedFiles(next)
+    } catch (err) {
+      console.warn('Failed to sync parsing library from server:', err)
+    }
+  }, [mapBackendStatusToLibraryStatus, setParsedFiles])
+
+  useEffect(() => {
+    if (!isLibraryLoaded) return
+    if (didSyncLibraryFromServerRef.current) return
+    didSyncLibraryFromServerRef.current = true
+    void syncLibraryFromServer()
+  }, [isLibraryLoaded, syncLibraryFromServer])
+
   // 获取当前选中的文件
   const activeFile = files.find((f) => f.id === activeFileId) || null
   const [activeLibraryFileId, setActiveLibraryFileId] = useState<string | null>(null)
@@ -224,7 +276,7 @@ export default function ParsingPage() {
     return libraryFiles.find((f) => f.id === activeLibraryFileId) || null
   }, [activeLibraryFileId, libraryFiles])
 
-  // Lazy-load persisted markdown from IndexedDB when a library entry is selected.
+  // Lazy-load persisted markdown from IndexedDB / backend when a library entry is selected.
   useEffect(() => {
     const id = (activeLibraryFileId || '').trim()
     if (!id) return
@@ -239,11 +291,29 @@ export default function ParsingPage() {
           if (cancelled) return
           const markdown = (cached?.markdownContent || '').trim()
           const original = (cached?.originalMarkdownContent || '').trim()
+          if (markdown || original) {
+            updateParsedFile(id, {
+              markdownContent: markdown || original,
+              originalMarkdownContent: original || markdown,
+              status: file.status || 'parsed',
+            })
+            return
+          }
+        } catch {
+          // ignore
+        }
+
+        try {
+          const remote = await parsingApi.getContent(id)
+          if (cancelled) return
+          const markdown = (remote?.markdown_content || '').trim()
+          const original = (remote?.original_markdown_content || '').trim()
           if (!markdown && !original) return
           updateParsedFile(id, {
             markdownContent: markdown || original,
             originalMarkdownContent: original || markdown,
             status: file.status || 'parsed',
+            parser: getParserLabel(remote?.parser_backend || 'auto'),
           })
         } catch {
           // ignore
@@ -262,22 +332,8 @@ export default function ParsingPage() {
       return
     }
 
-    setActiveLibrarySourceStatus('unknown')
-    let cancelled = false
-      ; (async () => {
-        try {
-          const cached = await getDocSourceFromCache(id)
-          if (cancelled) return
-          setActiveLibrarySourceStatus(cached ? 'available' : 'missing')
-        } catch {
-          if (cancelled) return
-          setActiveLibrarySourceStatus('missing')
-        }
-      })()
-
-    return () => {
-      cancelled = true
-    }
+    // Source files are persisted on the backend; local cache is optional.
+    setActiveLibrarySourceStatus('available')
   }, [activeLibraryFileId])
 
   const activeRun = useMemo(() => {
@@ -503,7 +559,7 @@ export default function ParsingPage() {
         setActiveLibrarySourceStatus('available')
       } catch (err) {
         console.warn('Failed to cache source file:', err)
-        toast.warning('源文件缓存失败：刷新后仍需重新上传')
+        toast.warning('源文件本地缓存失败：刷新后需要预览时将从服务器重新下载')
       }
 
       void mountLibraryFileToQueue(target.libraryId, selectedFile, { autoParse: target.autoParse })
@@ -524,25 +580,33 @@ export default function ParsingPage() {
       }
 
       try {
-        const cached = await getDocSourceFromCache(id)
-        if (!cached?.blob) {
-          setActiveLibrarySourceStatus('missing')
-          toast.error('未找到源文件缓存，请重新上传该文件')
+        const nameFromLibrary = libraryFiles.find((f) => f.id === id)?.filename || 'document'
+
+        const cached = await getDocSourceFromCache(id).catch(() => null)
+        if (cached?.blob) {
+          const file = new File([cached.blob], cached.filename || nameFromLibrary, {
+            type: cached.mimeType || cached.blob.type || 'application/octet-stream',
+            lastModified: cached.lastModified || Date.now(),
+          })
+          setActiveLibrarySourceStatus('available')
+          void mountLibraryFileToQueue(id, file, { autoParse })
           return
         }
-        const file = new File([cached.blob], cached.filename || 'document', {
-          type: cached.mimeType || cached.blob.type || 'application/octet-stream',
-          lastModified: cached.lastModified || Date.now(),
+
+        const blob = await documentApi.download(id, { inline: true })
+        const file = new File([blob], nameFromLibrary, {
+          type: (blob as any)?.type || 'application/octet-stream',
+          lastModified: Date.now(),
         })
         setActiveLibrarySourceStatus('available')
         void mountLibraryFileToQueue(id, file, { autoParse })
       } catch (err) {
         console.warn('Failed to restore source file:', err)
         setActiveLibrarySourceStatus('missing')
-        toast.error('恢复源文件失败，请重新上传该文件')
+        toast.error('从服务器下载源文件失败，请稍后重试')
       }
     },
-    [mountLibraryFileToQueue]
+    [libraryFiles, mountLibraryFileToQueue]
   )
 
   // 添加文件（支持 .zip 批量解压，支持文件夹上传）
@@ -712,43 +776,49 @@ export default function ParsingPage() {
         return
       }
 
-      // Persist a lightweight library entry immediately so navigation won't lose it.
-      // Note: we don't persist the original File object, only metadata + parsing results later.
-      const queuedWithLibrary = queued.map((q) => {
-        const libId = addParsedFile({
-          filename: q.name,
-          fileType: q.name.split('.').pop()?.toLowerCase() || '',
-          fileSize: q.size,
-          markdownContent: '',
-          originalMarkdownContent: '',
-          parser: q.parserLabel,
-          folderId: q.folderId,
-          status: 'pending',
-          error: undefined,
-        })
-        return { ...q, libraryId: libId }
-      })
+      // Enterprise persistence: upload sources to backend immediately so restarts keep the library.
+      const queuedWithLibrary: ParsedFile[] = []
+      let uploadFailed = 0
 
-      // Best-effort: cache original source files in IndexedDB so refresh/restart can resume parsing.
-      void (async () => {
-        const results = await Promise.allSettled(
-          queuedWithLibrary
-            .filter((q) => q.libraryId)
-            .map((q) => saveDocSourceToCache({ id: q.libraryId as string, file: q.file }))
-        )
-        const failed = results.filter((r) => r.status === 'rejected').length
-        if (failed > 0) {
-          toast.warning(`有 ${failed} 个文件未能缓存源文件，刷新后需要重新上传`)
+      for (const q of queued) {
+        try {
+          const doc = await parsingApi.upload(q.file, { parser_backend: q.parserBackend })
+          const libId = String(doc.id || '').trim()
+          if (!libId) throw new Error('Missing document id from backend')
+
+          upsertParsedFile({
+            id: libId,
+            filename: doc.filename || q.name,
+            fileType: doc.file_type || q.name.split('.').pop()?.toLowerCase() || '',
+            fileSize: Number(doc.file_size || q.size),
+            markdownContent: '',
+            originalMarkdownContent: '',
+            parsedAt: String(doc.updated_at || doc.created_at || new Date().toISOString()),
+            parser: getParserLabel(String((doc.metadata as any)?.parser_backend_requested || q.parserBackend || 'auto')),
+            folderId: q.folderId,
+            status: mapBackendStatusToLibraryStatus(doc.status),
+            error: doc.error_message || undefined,
+          })
+
+          queuedWithLibrary.push({ ...q, libraryId: libId })
+        } catch (err: any) {
+          uploadFailed += 1
+          queuedWithLibrary.push({
+            ...q,
+            status: 'error' as FileStatus,
+            error: formatApiError(err, '上传失败'),
+          })
         }
-      })()
+      }
 
       setFiles((prev) => [...prev, ...queuedWithLibrary])
       setActiveFileId((prev) => prev ?? queuedWithLibrary[0].id)
 
       if (added > 0) toast.success(`已加入队列：${added} 个文件`)
+      if (uploadFailed > 0) toast.warning(`有 ${uploadFailed} 个文件上传失败（可稍后重试）`)
       if (skipped > 0) toast.warning(`已跳过 ${skipped} 个不支持的文件`)
     },
-    [parserBackend, activeFolderId, folders, createFolder, addParsedFile, generateId]
+    [parserBackend, activeFolderId, folders, createFolder, generateId, mapBackendStatusToLibraryStatus, upsertParsedFile]
   )
 
   const currentFolderId = activeFolderId || ROOT_FOLDER_ID
@@ -806,9 +876,6 @@ export default function ParsingPage() {
             const cached = await getDocSourceFromCache(entry.id)
             if (!cached) {
               missing += 1
-              if ((entry.status || 'pending') !== 'error') {
-                updateParsedFile(entry.id, { status: 'error', error: '源文件缓存缺失，请重新上传' })
-              }
               continue
             }
 
@@ -820,14 +887,11 @@ export default function ParsingPage() {
             await mountLibraryFileToQueue(entry.id, file, { select: false })
           } catch {
             missing += 1
-            if ((entry.status || 'pending') !== 'error') {
-              updateParsedFile(entry.id, { status: 'error', error: '恢复源文件失败，请重新上传' })
-            }
           }
         }
 
         if (cancelled) return
-        if (missing > 0) toast.warning(`有 ${missing} 个文件缺少源文件缓存，需重新上传才能继续解析`)
+        if (missing > 0) toast.warning(`有 ${missing} 个文件未在本地缓存源文件，需要预览时将从服务器下载`)
       })()
         .finally(() => {
           if (!cancelled) setIsQueueRehydrating(false)
@@ -836,7 +900,7 @@ export default function ParsingPage() {
     return () => {
       cancelled = true
     }
-  }, [currentFolderId, isLibraryLoaded, mountLibraryFileToQueue, updateParsedFile, visibleLibraryOnlyFiles])
+  }, [currentFolderId, isLibraryLoaded, mountLibraryFileToQueue, visibleLibraryOnlyFiles])
 
   const childrenByParentId = useMemo(() => {
     const map = new Map<string, string[]>()
@@ -952,6 +1016,13 @@ export default function ParsingPage() {
       if (activeFileId === queue.id) setActiveFileId(null)
     }
     if (libId) {
+      void (async () => {
+        try {
+          await parsingApi.delete(libId)
+        } catch (err: any) {
+          toast.error(formatApiError(err, '删除失败'))
+        }
+      })()
       removeParsedFile(libId)
       void deleteDocContentFromCache(libId)
       void deleteDocSourceFromCache(libId)
@@ -1014,11 +1085,6 @@ export default function ParsingPage() {
 
     const startTime = Date.now()
 
-    // Best-effort: ensure the source file is cached for refresh/restart resume.
-    if (file.libraryId) {
-      void saveDocSourceToCache({ id: file.libraryId, file: file.file })
-    }
-
     setFiles((prev) =>
       prev.map((f) =>
         f.id === fileId
@@ -1056,22 +1122,50 @@ export default function ParsingPage() {
       }
     }
 
+    let libraryId = (file.libraryId || '').trim()
+
     try {
-      const data = await documentApi.preview(file.file, requestedBackend, undefined, {
-        signal: controller.signal,
-      })
+      if (!libraryId) {
+        const created = await parsingApi.upload(file.file, { parser_backend: requestedBackend })
+        libraryId = String(created.id || '').trim()
+        if (!libraryId) throw new Error('Missing document id from backend')
+
+        upsertParsedFile({
+          id: libraryId,
+          filename: created.filename || file.file.name,
+          fileType: created.file_type || file.file.name.split('.').pop()?.toLowerCase() || '',
+          fileSize: Number(created.file_size || file.file.size),
+          markdownContent: '',
+          originalMarkdownContent: '',
+          parsedAt: String(created.updated_at || created.created_at || new Date().toISOString()),
+          parser: requestedLabel,
+          folderId: file.folderId,
+          status: mapBackendStatusToLibraryStatus(created.status),
+          error: created.error_message || undefined,
+        })
+
+        setFiles((prev) => prev.map((f) => (f.id === fileId ? { ...f, libraryId } : f)))
+      }
+
+      if (controller.signal.aborted) return
+      if (parseControllersRef.current.get(fileId) !== controller) return
+      if (!fileIdSetRef.current.has(fileId)) return
+
+      updateParsedFile(libraryId, { status: 'parsing', error: undefined, parser: requestedLabel, folderId: file.folderId })
+
+      const data = await parsingApi.parse(libraryId, { parser_backend: requestedBackend, signal: controller.signal })
       if (controller.signal.aborted) return
       if (parseControllersRef.current.get(fileId) !== controller) return
       if (!fileIdSetRef.current.has(fileId)) return
 
       clearProgressInterval()
 
-      const rawMarkdown = data.segments.map((s) => s.content).join('\n\n')
+      const rawMarkdown = (data.original_markdown_content || data.markdown_content || '').toString()
       const resolvedBackend = data.parser_backend || requestedBackend
       const resolvedLabel = getParserLabel(resolvedBackend)
       const duration = ((Date.now() - startTime) / 1000).toFixed(1)
       const parsed = extractBlocksFromMarkdown(rawMarkdown)
-      const markdownContent = parsed.cleanedMarkdown
+      const markdownContent = (data.markdown_content || parsed.cleanedMarkdown).toString()
       const blocks = parsed.blocks
       const runId = `${resolvedBackend}-${Date.now()}`
       const run = {
@@ -1118,47 +1212,19 @@ export default function ParsingPage() {
       setHoveredBlockId(null)
       setRightPanelMode(blocks.length ? 'blocks' : 'markdown')
 
-      // Update the existing library entry created at upload time (preferred),
-      // otherwise create one and backfill `libraryId` on the queue item.
-      if (file.libraryId) {
-        updateParsedFile(file.libraryId, {
-          filename: file.file.name,
-          fileType: file.file.name.split('.').pop()?.toLowerCase() || '',
-          fileSize: file.file.size,
-          markdownContent,
-          originalMarkdownContent: rawMarkdown,
-          parser: resolvedLabel,
-          folderId: file.folderId,
-          parsedAt: new Date().toISOString(),
-          status: 'parsed',
-          error: undefined,
-        })
-        // Persist large content to IndexedDB for cross-page navigation / reload.
-        void saveDocContentToCache({
-          id: file.libraryId,
-          markdownContent,
-          originalMarkdownContent: rawMarkdown,
-        })
-      } else {
-        const libId = addParsedFile({
-          filename: file.file.name,
-          fileType: file.file.name.split('.').pop()?.toLowerCase() || '',
-          fileSize: file.file.size,
-          markdownContent,
-          originalMarkdownContent: rawMarkdown,
-          parser: resolvedLabel,
-          folderId: file.folderId,
-          status: 'parsed',
-          error: undefined,
-        })
-        setFiles((prev) => prev.map((f) => (f.id === fileId ? { ...f, libraryId: libId } : f)))
-        void saveDocSourceToCache({ id: libId, file: file.file })
-        void saveDocContentToCache({
-          id: libId,
-          markdownContent,
-          originalMarkdownContent: rawMarkdown,
-        })
-      }
+      // Sync persisted library entry (backend + local store cache).
+      updateParsedFile(libraryId, {
+        filename: file.file.name,
+        fileType: file.file.name.split('.').pop()?.toLowerCase() || '',
+        fileSize: file.file.size,
+        markdownContent,
+        originalMarkdownContent: rawMarkdown,
+        parser: resolvedLabel,
+        folderId: file.folderId,
+        parsedAt: new Date().toISOString(),
+        status: 'parsed',
+        error: undefined,
+      })
     } catch (err: any) {
       if (controller.signal.aborted) return
       if (parseControllersRef.current.get(fileId) !== controller) return
@@ -1176,8 +1242,8 @@ export default function ParsingPage() {
             : f
         )
       )
-      if (file.libraryId) {
-        updateParsedFile(file.libraryId, { status: 'error', error: errorMessage })
+      if (libraryId) {
+        updateParsedFile(libraryId, { status: 'error', error: errorMessage })
       }
     } finally {
       if (parseControllersRef.current.get(fileId) === controller) {
@@ -1185,7 +1251,7 @@ export default function ParsingPage() {
       }
       clearProgressInterval()
     }
-  }, [addParsedFile, cancelParse, parserBackend, updateParsedFile])
+  }, [cancelParse, mapBackendStatusToLibraryStatus, parserBackend, updateParsedFile, upsertParsedFile])
 
   useEffect(() => {
     if (!autoParseFileId) return
@@ -1259,7 +1325,7 @@ export default function ParsingPage() {
   }
 
   // 保存编辑
-  const handleSaveEdit = () => {
+  const handleSaveEdit = async () => {
     if (!activeFile) return
     const targetRunId = activeRun?.id ?? activeFile.activeRunId
 
@@ -1301,6 +1367,23 @@ export default function ParsingPage() {
     setHoveredBlockId(null)
 
     setIsEditing(false)
+
+    const libId = (activeFile.libraryId || '').trim()
+    if (!libId) return
+
+    try {
+      const saved = await parsingApi.updateContent(libId, { markdown_content: editedContent })
+      updateParsedFile(libId, {
+        markdownContent: saved.markdown_content || editedContent,
+        originalMarkdownContent: saved.original_markdown_content || editedContent,
+        status: 'parsed',
+        error: undefined,
+        parser: getParserLabel(saved.parser_backend || 'auto'),
+      })
+      toast.success('已保存到服务器')
+    } catch (err: any) {
+      toast.error(formatApiError(err, '保存失败'))
+    }
   }
 
   // 提交到数据治理
@@ -1730,9 +1813,9 @@ export default function ParsingPage() {
                           </div>
                           <div className="mt-0.5 text-[11px] text-muted-foreground dark:text-muted-foreground">
                             {activeLibrarySourceStatus === 'available'
-                              ? '已在本地缓存源文件：可恢复 PDF 预览/继续解析（刷新/重启后仍可用）。'
+                              ? '源文件已保存在服务器：可恢复 PDF 预览/继续解析（刷新/重启后仍可用）。'
                               : activeLibrarySourceStatus === 'missing'
-                                ? '该条目没有可用的源文件缓存：仅可查看 Markdown；如需继续解析/PDF 预览请重新上传该文件。'
+                                ? '该条目的源文件暂不可用：仅可查看 Markdown；可稍后重试下载或重新上传替换。'
                                 : '正在检查源文件缓存…'}
                           </div>
                         </div>
@@ -1744,7 +1827,7 @@ export default function ParsingPage() {
                                 size="sm"
                                 className="h-7 px-2 text-[11px] text-muted-foreground dark:text-muted-foreground hover:bg-muted dark:hover:bg-muted"
                                 onClick={() => restoreLibraryFileFromCache(activeLibraryFile.id, false)}
-                                title="恢复源文件到队列（用于 PDF 预览或继续解析）"
+                                title="从服务器下载源文件到队列（用于 PDF 预览或继续解析）"
                               >
                                 <Paperclip className="w-3.5 h-3.5 mr-1" />
                                 恢复源文件
@@ -1769,7 +1852,7 @@ export default function ParsingPage() {
                                 size="sm"
                                 className="h-7 px-2 text-[11px] text-muted-foreground dark:text-muted-foreground hover:bg-muted dark:hover:bg-muted"
                                 onClick={() => requestRebindForLibraryFile(activeLibraryFile.id, false)}
-                                title="重新上传源文件以恢复 PDF 预览/继续解析"
+                                title="重新上传源文件以替换服务器上的源文件"
                               >
                                 <Paperclip className="w-3.5 h-3.5 mr-1" />
                                 重新上传

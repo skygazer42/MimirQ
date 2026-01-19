@@ -46,6 +46,12 @@ class Document(Base):
 
     # Relations
     chunks = relationship("DocumentChunk", back_populates="document", cascade="all, delete-orphan")
+    parsed_content = relationship(
+        "DocumentParsedContent",
+        back_populates="document",
+        cascade="all, delete-orphan",
+        uselist=False,
+    )
 
 
 class DocumentChunk(Base):
@@ -74,3 +80,26 @@ class DocumentChunk(Base):
 
     # Relations
     document = relationship("Document", back_populates="chunks")
+
+
+class DocumentParsedContent(Base):
+    """
+    Persisted parsed markdown content for a document.
+
+    This keeps large markdown out of JSONB metadata while still allowing
+    enterprise-grade persistence across restarts.
+    """
+
+    __tablename__ = "document_parsed_contents"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id = Column(UUID(as_uuid=True), nullable=False, index=True)
+    document_id = Column(UUID(as_uuid=True), ForeignKey("documents.id", ondelete="CASCADE"), nullable=False, unique=True, index=True)
+
+    markdown_content = Column(Text, nullable=False, default="")
+    original_markdown_content = Column(Text, nullable=False, default="")
+
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+    document = relationship("Document", back_populates="parsed_content")
