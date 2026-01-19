@@ -126,10 +126,13 @@ export function IngestionDetailDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-3xl">
-        <DialogHeader>
+      <DialogContent className="max-w-3xl bg-[#fafafa] border-slate-200 shadow-2xl sm:rounded-[2rem] p-0 overflow-hidden outline-none">
+        {/* Paper Texture Overlay */}
+        <div className="absolute inset-0 opacity-50 pointer-events-none mix-blend-multiply" style={{ backgroundImage: 'url("data:image/svg+xml,%3Csvg width=\'100\' height=\'100\' viewBox=\'0 0 100 100\' xmlns=\'http://www.w3.org/200\'%3E%3Cfilter id=\'noise\'%3E%3CfeTurbulence type=\'fractalNoise\' baseFrequency=\'0.8\' numOctaves=\'4\' stitchTiles=\'stitch\'/%3E%3C/filter%3E%3Crect width=\'100\' height=\'100\' filter=\'url(%23noise)\' opacity=\'0.08\'/%3E%3C/svg%3E")', backgroundSize: '200px 200px' }} />
+
+        <DialogHeader className="px-8 pt-8 pb-6 border-b border-slate-200/60 bg-white relative z-10">
           <DialogTitle className="flex items-center justify-between gap-3">
-            <span className="truncate">{doc?.filename || '入库详情'}</span>
+            <span className="truncate text-xl font-bold tracking-tight text-slate-900">{doc?.filename || '入库详情'}</span>
             {doc && (
               <Badge variant={statusBadgeVariant(doc.status)} className="shrink-0">
                 {doc.status}
@@ -139,16 +142,20 @@ export function IngestionDetailDialog({
         </DialogHeader>
 
         {isLoading && (
-          <div className="py-10 flex items-center justify-center text-muted-foreground">
-            <Loader2 className="h-6 w-6 animate-spin" />
+          <div className="py-20 flex items-center justify-center text-slate-400">
+            <Loader2 className="h-8 w-8 animate-spin" />
           </div>
         )}
 
         {isError && !isLoading && (
-          <div className="rounded-xl border border-red-500/20 bg-red-500/5 p-4 text-sm text-red-700 dark:text-red-300">
-            加载失败，请重试。
-            <div className="mt-3">
-              <Button size="sm" variant="outline" onClick={() => refetch()}>
+          <div className="m-8 rounded-xl border border-red-200 bg-red-50 p-6 text-sm text-red-700 relative z-10">
+            <div className="flex items-center gap-2 mb-2">
+              <AlertCircle className="w-5 h-5 text-red-500" />
+              <span className="font-bold">加载失败</span>
+            </div>
+            <p>无法获取文档详情，请重试。</p>
+            <div className="mt-4">
+              <Button size="sm" variant="outline" className="bg-white border-red-200 text-red-700 hover:bg-red-50" onClick={() => refetch()}>
                 重新加载
               </Button>
             </div>
@@ -156,93 +163,102 @@ export function IngestionDetailDialog({
         )}
 
         {!isLoading && doc && (
-          <div className="space-y-6">
-            <div className="rounded-2xl border border-border bg-background/60 p-4">
-              <div className="flex items-center justify-between gap-3">
-                <div className="text-sm font-medium">处理流水线</div>
-                <div className="text-xs text-muted-foreground tabular-nums">{doc.processing_progress ?? 0}%</div>
+          <div className="p-8 space-y-8 max-h-[70vh] overflow-y-auto custom-scrollbar relative z-10">
+
+            {/* Pipeline Stage Card */}
+            <div className="rounded-2xl border border-slate-200 bg-white shadow-sm p-6 relative overflow-hidden">
+              <div className="flex items-center justify-between gap-3 mb-6">
+                <div className="text-sm font-bold text-slate-900 uppercase tracking-wider">Processing Pipeline</div>
+                <div className="text-xs font-mono text-slate-500 bg-slate-100 px-2 py-1 rounded-md">Progress: {doc.processing_progress ?? 0}%</div>
               </div>
 
-              <div className="mt-3 grid grid-cols-5 gap-2">
-                {STAGES.map((s, idx) => {
-                  const isDone = doc.status === 'completed' ? true : idx < activeIndex
-                  const isActive = doc.status !== 'completed' && idx === activeIndex
-                  const isFailed = doc.status === 'failed' && isActive
-                  const Icon = isDone ? CheckCircle2 : isFailed ? AlertCircle : null
-                  return (
-                    <div key={s.key} className="flex flex-col items-center gap-1.5">
-                      <div
-                        className={cn(
-                          'h-8 w-8 rounded-full border flex items-center justify-center',
-                          isDone && 'bg-emerald-500/10 border-emerald-500/30 text-emerald-600',
-                          isActive && !isFailed && 'bg-sky-500/10 border-sky-500/30 text-sky-600',
-                          isFailed && 'bg-red-500/10 border-red-500/30 text-red-600',
-                          !isDone && !isActive && 'bg-muted/40 border-border text-muted-foreground'
-                        )}
-                      >
-                        {Icon ? <Icon className={cn('h-4 w-4', isDone && 'text-emerald-600')} /> : <span className="text-xs">{idx + 1}</span>}
+              <div className="relative z-10">
+                <div className="grid grid-cols-5 gap-4">
+                  {STAGES.map((s, idx) => {
+                    const isDone = doc.status === 'completed' ? true : idx < activeIndex
+                    const isActive = doc.status !== 'completed' && idx === activeIndex
+                    const isFailed = doc.status === 'failed' && isActive
+                    const Icon = isDone ? CheckCircle2 : isFailed ? AlertCircle : null
+                    return (
+                      <div key={s.key} className="flex flex-col items-center gap-3 group">
+                        <div
+                          className={cn(
+                            'h-10 w-10 rounded-full border-2 flex items-center justify-center transition-all duration-300',
+                            isDone && 'bg-emerald-50 border-emerald-500 text-emerald-600 shadow-[0_0_10px_rgba(16,185,129,0.2)]',
+                            isActive && !isFailed && 'bg-sky-50 border-sky-500 text-sky-600 shadow-[0_0_10px_rgba(14,165,233,0.3)] scale-110',
+                            isFailed && 'bg-red-50 border-red-500 text-red-600 shadow-[0_0_10px_rgba(239,68,68,0.3)]',
+                            !isDone && !isActive && 'bg-slate-50 border-slate-200 text-slate-300'
+                          )}
+                        >
+                          {Icon ? <Icon className={cn('h-5 w-5', isDone && 'text-emerald-600')} /> : <span className="text-xs font-bold">{idx + 1}</span>}
+                        </div>
+                        <div className={cn('text-[11px] font-bold uppercase tracking-wider', isActive ? 'text-slate-900' : 'text-slate-400')}>
+                          {s.label}
+                        </div>
                       </div>
-                      <div className={cn('text-[11px] font-medium', isActive ? 'text-foreground' : 'text-muted-foreground')}>
-                        {s.label}
-                      </div>
-                    </div>
-                  )
-                })}
-              </div>
-
-              {(doc.status === 'processing' || doc.status === 'pending') && (
-                <div className="mt-4">
-                  <div className="h-2 w-full rounded-full bg-muted overflow-hidden">
-                    <div
-                      className="h-full bg-sky-600 dark:bg-sky-500 transition-all duration-500"
-                      style={{ width: `${Math.max(0, Math.min(100, doc.processing_progress || 0))}%` }}
-                    />
-                  </div>
+                    )
+                  })}
                 </div>
-              )}
+
+                {(doc.status === 'processing' || doc.status === 'pending') && (
+                  <div className="mt-8">
+                    <div className="h-1.5 w-full rounded-full bg-slate-100 overflow-hidden">
+                      <div
+                        className="h-full bg-sky-500 transition-all duration-500 shadow-[0_0_10px_rgba(14,165,233,0.5)]"
+                        style={{ width: `${Math.max(0, Math.min(100, doc.processing_progress || 0))}%` }}
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
 
             {doc.status === 'failed' && doc.error_message && (
-              <div className="rounded-2xl border border-red-500/20 bg-red-500/5 p-4">
-                <div className="text-sm font-medium text-red-700 dark:text-red-300">错误信息</div>
-                <pre className="mt-2 whitespace-pre-wrap break-words rounded-xl bg-background/60 p-3 text-xs text-red-700 dark:text-red-200">
+              <div className="rounded-2xl border border-red-200 bg-red-50 p-5 shadow-inner">
+                <div className="text-sm font-bold text-red-700 flex items-center gap-2 mb-2">
+                  <AlertCircle className="w-4 h-4" />
+                  错误信息
+                </div>
+                <pre className="whitespace-pre-wrap break-words rounded-xl bg-white border border-red-100 p-4 text-xs font-mono text-red-600 leading-relaxed shadow-sm">
                   {doc.error_message}
                 </pre>
               </div>
             )}
 
-            <div className="rounded-2xl border border-border bg-background/60 p-4">
-              <div className="text-sm font-medium">运行信息</div>
-              <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-3">
+            {/* Runtime Info - Ticket Style */}
+            <div className="rounded-2xl border border-slate-200 bg-slate-50/50 p-6">
+              <div className="text-sm font-bold text-slate-900 uppercase tracking-wider mb-4">Runtime Details</div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {runtime.map((item) => (
-                  <div key={item.k} className="rounded-xl border border-border bg-background p-3">
-                    <div className="text-[11px] text-muted-foreground">{item.k}</div>
-                    <div className="mt-1 text-xs font-mono text-foreground break-words">{item.v}</div>
+                  <div key={item.k} className="bg-white rounded-xl border border-slate-100 p-3 shadow-sm hover:shadow-md transition-shadow duration-200">
+                    <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">{item.k}</div>
+                    <div className="text-xs font-mono text-slate-700 break-words font-medium">{item.v}</div>
                   </div>
                 ))}
               </div>
             </div>
 
-            <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-end gap-2">
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-end gap-3 pt-6 border-t border-slate-200/60 block">
               <Button
                 variant="outline"
+                className="rounded-full border-slate-200 hover:bg-slate-50 text-slate-700"
                 disabled={!doc || isActing}
                 onClick={() => doc && openDocument(doc.id)}
               >
-                查看内容
+                查看解析内容
               </Button>
               {canCancel && (
-                <Button variant="destructive" disabled={isActing} onClick={handleCancel}>
+                <Button variant="destructive" className="rounded-full shadow-red-200 shadow-lg" disabled={isActing} onClick={handleCancel}>
                   取消任务
                 </Button>
               )}
               {canRetry && (
-                <Button disabled={isActing} onClick={() => handleRetry(false)}>
+                <Button className="rounded-full bg-sky-600 hover:bg-sky-700 shadow-sky-200 shadow-lg" disabled={isActing} onClick={() => handleRetry(false)}>
                   重试入库
                 </Button>
               )}
               {canForceRetry && (
-                <Button variant="outline" disabled={isActing} onClick={() => handleRetry(true)}>
+                <Button variant="outline" className="rounded-full border-slate-200 hover:text-red-600 hover:border-red-200" disabled={isActing} onClick={() => handleRetry(true)}>
                   强制重跑
                 </Button>
               )}
@@ -251,5 +267,6 @@ export function IngestionDetailDialog({
         )}
       </DialogContent>
     </Dialog>
+
   )
 }

@@ -3,7 +3,7 @@
 import { useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useRouter } from 'next/navigation'
-import { Star, RefreshCw, Search, ArrowUpRight, Copy } from 'lucide-react'
+import { Star, RefreshCw, Search, ArrowUpRight, Copy, MessageSquare, Loader2, ThumbsUp, ThumbsDown, ArrowRight } from 'lucide-react'
 import { toast } from 'sonner'
 
 import { Navbar } from '@/components/navbar'
@@ -18,6 +18,7 @@ import type { MessageFeedbackEnriched } from '@/types'
 import { formatApiError } from '@/lib/api-errors'
 
 type RatingFilter = 'all' | '1' | '2' | '3' | '4' | '5'
+type FeedbackType = 'all' | 'thumbs_up' | 'thumbs_down'
 
 function Stars({ rating }: { rating: number }) {
   const v = Math.max(1, Math.min(5, Number(rating) || 0))
@@ -40,13 +41,18 @@ function Stars({ rating }: { rating: number }) {
 export default function FeedbackTriagePage() {
   const router = useRouter()
   const [ratingFilter, setRatingFilter] = useState<RatingFilter>('all')
-  const [search, setSearch] = useState('')
+  const [filterType, setFilterType] = useState<FeedbackType | 'all'>('all')
+  const [searchTerm, setSearchTerm] = useState('')
   const [detail, setDetail] = useState<MessageFeedbackEnriched | null>(null)
 
   const params = useMemo(() => {
-    if (ratingFilter === 'all') return {}
-    const v = Number(ratingFilter)
-    return { min_rating: v, max_rating: v }
+    const p: any = {}
+    if (ratingFilter !== 'all') {
+      const v = Number(ratingFilter)
+      p.min_rating = v
+      p.max_rating = v
+    }
+    return p
   }, [ratingFilter])
 
   const { data, isFetching, refetch } = useQuery({
@@ -57,31 +63,44 @@ export default function FeedbackTriagePage() {
 
   const items = useMemo(() => data?.items || [], [data])
 
-  const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase()
-    if (!q) return items
-    return items.filter((it) => {
-      const hay = [
-        it.conversation_title,
-        it.message_content,
-        it.reason,
-        (it.tags || []).join(' '),
-      ]
-        .filter(Boolean)
-        .join(' ')
-        .toLowerCase()
-      return hay.includes(q)
-    })
-  }, [items, search])
-
   const stats = useMemo(() => {
-    const byRating: Record<number, number> = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 }
+    const s = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0, total: 0, upvotes: 0, downvotes: 0 }
     for (const it of items) {
+      s.total++
       const r = Number(it.rating) || 0
-      if (r >= 1 && r <= 5) byRating[r] += 1
+      if (r >= 1 && r <= 5) (s as any)[r] += 1
+      if (it.feedback_type === 'thumbs_up') s.upvotes++
+      if (it.feedback_type === 'thumbs_down') s.downvotes++
     }
-    return byRating
+    return s
   }, [items])
+
+  const filtered = useMemo(() => {
+    let res = items
+    const q = searchTerm.trim().toLowerCase()
+
+    if (filterType !== 'all') {
+      res = res.filter(i => i.feedback_type === filterType)
+    }
+
+    if (q) {
+      res = res.filter((it) => {
+        const hay = [
+          it.conversation_title,
+          it.message_content,
+          it.reason,
+          (it.tags || []).join(' '),
+          it.id,
+          it.account_id
+        ]
+          .filter(Boolean)
+          .join(' ')
+          .toLowerCase()
+        return hay.includes(q)
+      })
+    }
+    return res
+  }, [items, searchTerm, filterType])
 
   const copyDetail = async (it: MessageFeedbackEnriched) => {
     try {
@@ -93,263 +112,257 @@ export default function FeedbackTriagePage() {
   }
 
   return (
-    <div className="flex min-h-screen overflow-hidden bg-background font-sans selection:bg-primary/20 selection:text-primary">
-      {/* Ambient Background */}
-      <div className="fixed inset-0 z-0 pointer-events-none">
-        <div className="absolute top-[-20%] left-[-10%] w-[800px] h-[800px] bg-primary/5 rounded-full blur-[120px] animate-pulse-subtle" />
-        <div className="absolute bottom-[-10%] right-[-20%] w-[600px] h-[600px] bg-purple-500/5 rounded-full blur-[120px] animate-pulse-subtle" style={{ animationDelay: '3s' }} />
-        <div className="absolute top-[30%] left-[30%] w-[400px] h-[400px] bg-blue-500/5 rounded-full blur-[100px] animate-pulse-subtle" style={{ animationDelay: '1.5s' }} />
-      </div>
-
+    <div className="flex min-h-screen overflow-hidden bg-slate-50 dark:bg-slate-950 font-sans selection:bg-indigo-100 dark:selection:bg-indigo-900 selection:text-indigo-900 dark:selection:text-indigo-100">
       <Navbar />
 
-      <main className="relative z-10 flex-1 flex flex-col overflow-hidden">
+      <main className="relative z-10 flex-1 flex flex-col overflow-hidden transition-all duration-300">
+        {/* Background Texture - Dark mode adjusted */}
+        <div className="fixed inset-0 z-0 pointer-events-none opacity-60 dark:opacity-20 mix-blend-multiply dark:mix-blend-normal"
+          style={{ backgroundImage: 'radial-gradient(#cbd5e1 1px, transparent 1px)', backgroundSize: '32px 32px' }} />
 
-        <PageHeader
-          title="反馈质检"
-          icon={Star}
-          iconColor="text-primary"
-          description={
-            <span>
-              QUALITY_CONTROL: <span className="text-primary">ACTIVE</span> <span className="opacity-50 mx-2">{'//'}</span> 汇总用户评分与反馈，驱动模型迭代与知识库优化。
-            </span>
-          }
-        >
-          <Button
-            variant="outline"
-            className="gap-2 border-primary/20 hover:bg-primary/10 hover:text-primary transition-all duration-300 group rounded-full"
-            onClick={() => refetch()}
+        <div className="fixed top-0 right-0 w-[600px] h-[600px] bg-indigo-200/20 dark:bg-indigo-900/10 rounded-full blur-[100px] pointer-events-none" />
+        <div className="fixed bottom-0 left-0 w-[600px] h-[600px] bg-sky-200/20 dark:bg-sky-900/10 rounded-full blur-[100px] pointer-events-none" />
+
+        <div className="sticky top-0 z-20 backdrop-blur-md bg-white/70 dark:bg-slate-950/70 border-b border-slate-200/50 dark:border-slate-800/50 transition-all duration-300">
+          <PageHeader
+            title="反馈分析中心"
+            icon={MessageSquare}
+            iconColor="text-indigo-500 dark:text-indigo-400"
+            className="!pt-6 !pb-6"
+            description={
+              <span className="flex items-center gap-2 text-slate-500 dark:text-slate-400">
+                <span className="font-bold text-slate-700 dark:text-slate-200">TRIAGE_MODE</span>
+                <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border border-indigo-100 dark:border-indigo-500/20 uppercase tracking-wider">Active</span>
+                <span className="text-slate-300 dark:text-slate-600">|</span>
+                用户反馈实时监控与优化分析。
+              </span>
+            }
           >
-            <RefreshCw className={cn('h-4 w-4 transition-transform group-hover:rotate-180', isFetching ? 'animate-spin' : '')} />
-            刷新数据
-          </Button>
-        </PageHeader>
+            <div className="flex items-center gap-3">
+              <Button
+                variant="outline"
+                className="gap-2 bg-white/50 dark:bg-slate-900/50 border-slate-200 dark:border-slate-800 hover:bg-white dark:hover:bg-slate-800 hover:border-slate-300 dark:hover:border-slate-700 text-slate-600 dark:text-slate-300 rounded-full transition-all duration-300 shadow-sm"
+                onClick={() => refetch()}
+              >
+                <RefreshCw className={cn('h-3.5 w-3.5 transition-transform group-hover:rotate-180', isFetching ? 'animate-spin' : '')} />
+                刷新数据
+              </Button>
+            </div>
+          </PageHeader>
+        </div>
 
-        <div className="px-8 pb-4 grid grid-cols-2 md:grid-cols-5 gap-4">
-          {[5, 4, 3, 2, 1].map((r) => (
-            <div key={r} className="group relative overflow-hidden rounded-2xl border bg-white border-slate-200 hover:border-primary/30 p-4 transition-all duration-300 hover:shadow-lg backdrop-blur-sm">
-              <div className="absolute inset-0 bg-gradient-to-br from-slate-50 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
-
-              <div className="relative z-10 flex items-center justify-between">
-                <div className="flex items-center gap-1">
-                  <Star className={cn("w-4 h-4", r >= 4 ? "text-yellow-400 fill-yellow-400" : "text-slate-400")} />
-                  <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">{r} 星</span>
+        <div className="px-8 pb-4 grid grid-cols-2 lg:grid-cols-4 gap-4 mt-4">
+          {[
+            { label: '总反馈量', value: stats.total, icon: MessageSquare, color: 'text-indigo-600 dark:text-indigo-400', bg: 'bg-indigo-50 dark:bg-indigo-500/10', border: 'hover:border-indigo-200 dark:hover:border-indigo-800' },
+            { label: '点赞 (Like)', value: stats.upvotes, icon: ThumbsUp, color: 'text-emerald-600 dark:text-emerald-400', bg: 'bg-emerald-50 dark:bg-emerald-500/10', border: 'hover:border-emerald-200 dark:hover:border-emerald-800' },
+            { label: '点踩 (Dislike)', value: stats.downvotes, icon: ThumbsDown, color: 'text-rose-600 dark:text-rose-400', bg: 'bg-rose-50 dark:bg-rose-500/10', border: 'hover:border-rose-200 dark:hover:border-rose-800' },
+            { label: '平均响应', value: '~1.2s', icon: Loader2, color: 'text-sky-600 dark:text-sky-400', bg: 'bg-sky-50 dark:bg-sky-500/10', border: 'hover:border-sky-200 dark:hover:border-sky-800' },
+          ].map((stat, idx) => (
+            <div key={idx} className={cn(
+              "group relative overflow-hidden rounded-2xl bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 shadow-[0_2px_20px_rgba(0,0,0,0.04)] dark:shadow-none hover:shadow-[0_8px_30px_rgba(0,0,0,0.08)] transition-all duration-300 hover:-translate-y-1",
+              stat.border
+            )}>
+              <div className="p-5 flex flex-col justify-between h-full relative z-10">
+                <div className="flex items-center justify-between mb-4">
+                  <div className={cn("p-2 rounded-lg transition-colors", stat.bg)}>
+                    <stat.icon className={cn("w-5 h-5", stat.color)} />
+                  </div>
+                  <div className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-slate-500">{stat.label}</div>
                 </div>
-                <div className={cn("text-2xl font-black tracking-tight transition-transform group-hover:scale-110", r >= 4 ? "text-primary" : "text-slate-500")}>
-                  {stats[r] || 0}
+                <div className="flex items-baseline gap-1">
+                  <span className={cn("text-3xl font-black tracking-tight", stat.color)}>{stat.value}</span>
                 </div>
-              </div>
-              {/* Progress bar visual */}
-              <div className="mt-3 h-1 w-full bg-slate-100 rounded-full overflow-hidden">
-                <div
-                  className={cn("h-full rounded-full transition-all duration-1000", r >= 4 ? "bg-gradient-to-r from-yellow-400 to-orange-400" : "bg-slate-300")}
-                  style={{ width: `${Math.min(100, (stats[r] || 0) * 5)}%` }} // Rough viz
-                />
               </div>
             </div>
           ))}
         </div>
 
-        <div className="px-8 pb-6 flex-shrink-0 z-10">
-          <div className="flex flex-col md:flex-row md:items-center gap-4 bg-white backdrop-blur-md border border-slate-200 p-2 rounded-2xl shadow-sm">
-            <div className="relative flex-1 group">
-              <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 group-hover:text-primary transition-colors" />
+        <div className="px-8 pb-6 flex-shrink-0 z-10 sticky top-[88px] my-2">
+          <div className="flex flex-col md:flex-row md:items-center gap-0 bg-white/80 dark:bg-slate-900/80 backdrop-blur-xl border border-slate-200 dark:border-slate-800 shadow-lg shadow-slate-200/50 dark:shadow-none rounded-full p-1.5 transition-all duration-300 max-w-4xl mx-auto md:mx-0">
+            <div className="relative flex-1 group pl-2">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 dark:text-slate-500 group-hover:text-indigo-500 dark:group-hover:text-indigo-400 transition-colors" />
               <Input
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder="搜索反馈内容、原因、标签或ID..."
-                className="pl-11 bg-transparent border-0 focus-visible:ring-0 text-foreground placeholder:text-muted-foreground/50 h-11"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                placeholder="搜索反馈内容..."
+                className="pl-9 bg-transparent border-0 focus-visible:ring-0 text-slate-700 dark:text-slate-200 placeholder:text-slate-400 dark:placeholder:text-slate-600 h-10 rounded-full"
               />
             </div>
-            <div className="w-px h-8 bg-white/10 hidden md:block" />
-            <Select value={ratingFilter} onValueChange={(v) => setRatingFilter(v as RatingFilter)}>
-              <SelectTrigger className="w-full md:w-48 bg-transparent border-0 focus:ring-0 h-11 text-muted-foreground hover:text-foreground">
-                <SelectValue placeholder="筛选评分" />
+
+            <div className="w-px h-6 bg-slate-200 dark:bg-slate-800 hidden md:block mx-2" />
+
+            <Select value={filterType} onValueChange={(v) => setFilterType(v as FeedbackType | 'all')}>
+              <SelectTrigger className="w-full md:w-32 bg-transparent border-0 focus:ring-0 h-10 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 rounded-full hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors">
+                <SelectValue placeholder="类型" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">全部评分</SelectItem>
-                <SelectItem value="5">5 星 - 极好</SelectItem>
-                <SelectItem value="4">4 星 - 满意</SelectItem>
-                <SelectItem value="3">3 星 - 一般</SelectItem>
-                <SelectItem value="2">2 星 - 较差</SelectItem>
-                <SelectItem value="1">1 星 - 极差</SelectItem>
+                <SelectItem value="all">全部</SelectItem>
+                <SelectItem value="thumbs_up">点赞</SelectItem>
+                <SelectItem value="thumbs_down">点踩</SelectItem>
               </SelectContent>
             </Select>
           </div>
         </div>
 
         <section className="flex-1 overflow-y-auto px-8 pb-10 z-10 custom-scrollbar">
-          <div className="space-y-4">
-            {filtered.map((it) => (
+          <div className="space-y-3">
+            {filtered.map((item) => (
               <div
-                key={it.id}
+                key={item.id}
+                role="button"
+                tabIndex={0}
+                onClick={() => setDetail(item)}
                 className={cn(
-                  'group w-full rounded-2xl border transition-all duration-300 relative overflow-hidden',
-                  'bg-white/5 border-white/10 hover:bg-white/10 hover:border-primary/30 hover:shadow-[0_0_30px_-10px_rgba(var(--primary),0.2)]',
-                  'p-5 backdrop-blur-sm'
+                  'group w-full text-left rounded-xl border transition-all duration-300 relative overflow-hidden',
+                  'bg-white dark:bg-slate-900 border-slate-100 dark:border-slate-800 hover:border-indigo-200 dark:hover:border-indigo-800 hover:shadow-[0_8px_30px_rgba(0,0,0,0.04)] hover:-translate-y-0.5'
                 )}
               >
-                {/* Decorative Accent */}
-                <div className={cn("absolute left-0 top-0 bottom-0 w-1 transition-colors", Number(it.rating) >= 4 ? "bg-primary" : "bg-muted-foreground/20")} />
+                <div className={cn("absolute left-0 top-0 bottom-0 w-1 transition-colors",
+                  item.feedback_type === 'thumbs_up' ? "bg-emerald-500 group-hover:bg-emerald-400" : "bg-rose-500 group-hover:bg-rose-400"
+                )} />
 
-                <div className="flex items-start justify-between gap-4 pl-3">
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-3 mb-2">
-                      <div className="flex items-center gap-1 bg-black/20 rounded-full px-2 py-0.5 border border-white/5">
-                        <Stars rating={it.rating} />
-                      </div>
-                      <h3 className="font-semibold text-lg text-foreground truncate group-hover:text-primary transition-colors">
-                        {it.conversation_title || `Conversation ${it.conversation_id.slice(0, 8)}`}
-                      </h3>
-                    </div>
-
-                    <div className="mt-2 text-xs text-muted-foreground flex flex-wrap gap-x-4 gap-y-1 font-mono items-center">
-                      <span className="flex items-center gap-1.5">
-                        <div className="w-1.5 h-1.5 rounded-full bg-slate-500/50" />
-                        {formatDate(it.updated_at)}
-                      </span>
-                      <span className="bg-white/5 px-1.5 py-0.5 rounded text-xs select-all">MSG_ID: {it.message_id.slice(0, 8)}</span>
-                      <span className="bg-white/5 px-1.5 py-0.5 rounded text-xs select-all">USER: {it.account_id}</span>
-                    </div>
-
-                    {it.reason && (
-                      <div className="mt-4 flex gap-3 text-sm">
-                        <span className="text-muted-foreground/60 font-medium whitespace-nowrap pt-1">FEEDBACK</span>
-                        <div className="text-foreground/80 leading-relaxed bg-white/5 p-2 rounded-lg border border-white/5 w-full">
-                          {it.reason}
-                        </div>
-                      </div>
-                    )}
-
-                    {it.message_content && !it.reason && (
-                      <div className="mt-4 text-sm text-muted-foreground/60 bg-black/20 p-2 rounded-lg border border-white/5 line-clamp-2 font-serif italic">
-                        &quot;{it.message_content}&quot;
-                      </div>
-                    )}
+                <div className="flex items-start gap-4 p-5 pl-7">
+                  <div className={cn(
+                    "w-10 h-10 rounded-full flex items-center justify-center shrink-0 border",
+                    item.feedback_type === 'thumbs_up'
+                      ? "bg-emerald-50 dark:bg-emerald-500/10 border-emerald-100 dark:border-emerald-500/20 text-emerald-600 dark:text-emerald-400"
+                      : "bg-rose-50 dark:bg-rose-500/10 border-rose-100 dark:border-rose-500/20 text-rose-600 dark:text-rose-400"
+                  )}>
+                    {item.feedback_type === 'thumbs_up' ? <ThumbsUp className="w-5 h-5" /> : <ThumbsDown className="w-5 h-5" />}
                   </div>
 
-                  <div className="flex flex-col gap-2">
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      onClick={() => setDetail(it)}
-                      className="text-primary hover:text-primary hover:bg-primary/10"
-                    >
-                      查看详情
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      className="text-muted-foreground hover:text-foreground hover:bg-white/10"
-                      onClick={() => router.push(`/history?id=${encodeURIComponent(it.conversation_id)}`)}
-                    >
-                      <ArrowUpRight className="h-4 w-4" />
-                    </Button>
+                  <div className="flex-1 min-w-0 pt-0.5">
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-mono text-slate-400 dark:text-slate-500">{item.id.slice(0, 8)}</span>
+                        <span className="text-xs font-medium text-slate-300 dark:text-slate-600">·</span>
+                        <span className="text-xs text-slate-500 dark:text-slate-400">{formatDate(item.created_at)}</span>
+                      </div>
+                      <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <span className="text-xs font-bold text-indigo-500 dark:text-indigo-400">查看详情</span>
+                        <ArrowRight className="w-3 h-3 text-indigo-500 dark:text-indigo-400" />
+                      </div>
+                    </div>
+
+                    <h3 className="text-base font-bold text-slate-800 dark:text-slate-100 mb-2 truncate pr-4">{item.user_comment || "用户未留言"}</h3>
+                    <div className="bg-slate-50 dark:bg-slate-800/50 rounded-lg p-3 border border-slate-100 dark:border-slate-800/50">
+                      <p className="text-sm text-slate-600 dark:text-slate-300 line-clamp-2 font-medium leading-relaxed">
+                        {item.target_response}
+                      </p>
+                    </div>
+
+                    {Array.isArray(item.tags) && item.tags.length > 0 && (
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        {item.tags.slice(0, 5).map((t) => (
+                          <span key={t} className="text-[10px] uppercase tracking-wider font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-500/10 border border-indigo-100 dark:border-indigo-500/20 px-2 py-0.5 rounded-md">
+                            {t}
+                          </span>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 </div>
-
-                {Array.isArray(it.tags) && it.tags.length > 0 && (
-                  <div className="mt-4 pl-3 flex flex-wrap gap-2">
-                    {it.tags.slice(0, 12).map((t) => (
-                      <span key={t} className="text-[10px] uppercase tracking-wider font-bold text-primary/80 bg-primary/10 border border-primary/20 px-2 py-1 rounded-md">
-                        {t}
-                      </span>
-                    ))}
-                  </div>
-                )}
               </div>
             ))}
 
             {!filtered.length && (
               <div className="flex flex-col items-center justify-center py-20 text-center">
-                <div className="w-20 h-20 rounded-full bg-white/5 flex items-center justify-center mb-4 animate-pulse">
-                  <Search className="w-8 h-8 text-muted-foreground/30" />
+                <div className="w-20 h-20 rounded-full bg-slate-50 dark:bg-slate-900 flex items-center justify-center mb-4">
+                  <Search className="w-8 h-8 text-slate-300 dark:text-slate-600" />
                 </div>
-                <p className="text-muted-foreground">没有找到相关的反馈记录</p>
-                <p className="text-xs text-muted-foreground/50 mt-1">系统将持续监控新的用户反馈...</p>
+                <p className="text-slate-500 dark:text-slate-400 font-medium">没有找到相关的反馈记录</p>
               </div>
             )}
           </div>
         </section>
 
         <Dialog open={Boolean(detail)} onOpenChange={(o) => (!o ? setDetail(null) : null)}>
-          <DialogContent className="max-w-3xl border-primary/20 bg-slate-950/95 backdrop-blur-xl shadow-[0_0_50px_-10px_rgba(var(--primary),0.2)] sm:rounded-[2rem] p-0 overflow-hidden">
-            {/* Decorative HUD Elements */}
-            <div className="absolute top-0 right-0 w-32 h-32 bg-primary/10 blur-[60px] pointer-events-none" />
-            <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-transparent via-primary/50 to-transparent" />
+          <DialogContent className="max-w-3xl bg-[#fafafa] dark:bg-slate-950 border-slate-200 dark:border-slate-800 shadow-2xl sm:rounded-[2rem] p-0 overflow-hidden outline-none">
+            {/* Paper Texture Overlay */}
+            <div className="absolute inset-0 opacity-50 dark:opacity-10 pointer-events-none mix-blend-multiply dark:mix-blend-overlay" style={{ backgroundImage: 'url("data:image/svg+xml,%3Csvg width=\'100\' height=\'100\' viewBox=\'0 0 100 100\' xmlns=\'http://www.w3.org/200\'%3E%3Cfilter id=\'noise\'%3E%3CfeTurbulence type=\'fractalNoise\' baseFrequency=\'0.8\' numOctaves=\'4\' stitchTiles=\'stitch\'/%3E%3C/filter%3E%3Crect width=\'100\' height=\'100\' filter=\'url(%23noise)\' opacity=\'0.08\'/%3E%3C/svg%3E")', backgroundSize: '200px 200px' }} />
 
-            <DialogHeader className="px-8 pt-8 pb-4 border-b border-white/10 bg-white/5 relative z-10">
+            <DialogHeader className="px-8 pt-8 pb-4 border-b border-slate-200/60 dark:border-slate-800/60 bg-white dark:bg-slate-900 relative z-10">
               <DialogTitle className="flex items-center justify-between gap-3">
                 <div className="flex items-center gap-3">
-                  <Stars rating={detail?.rating || 0} />
-                  <span className="text-lg font-bold tracking-wide">反馈详情报告</span>
+                  <span className="text-lg font-bold tracking-tight text-slate-900 dark:text-slate-100">反馈详情报告</span>
                 </div>
                 {detail && (
-                  <Button size="sm" variant="outline" className="border-white/10 hover:border-primary/50 text-xs" onClick={() => copyDetail(detail)}>
+                  <Button size="sm" variant="outline" className="border-slate-200 dark:border-slate-800 text-xs bg-white dark:bg-slate-900" onClick={() => copyDetail(detail)}>
                     <Copy className="h-3.5 w-3.5 mr-2" />
-                    Copy Payload
+                    Copy JSON
                   </Button>
                 )}
               </DialogTitle>
             </DialogHeader>
 
             {detail && (
-              <div className="p-8 space-y-6 max-h-[70vh] overflow-y-auto custom-scrollbar relative z-10">
+              <div className="p-8 space-y-8 max-h-[70vh] overflow-y-auto custom-scrollbar relative z-10">
 
                 {/* Meta Card */}
-                <div className="rounded-xl border border-white/10 bg-white/5 p-4 flex flex-col md:flex-row md:items-center justify-between gap-4">
+                <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-6 flex flex-col md:flex-row md:items-center justify-between gap-4 shadow-sm">
                   <div>
-                    <div className="text-sm font-bold text-foreground">{detail.conversation_title || `对话 ${detail.conversation_id}`}</div>
-                    <div className="mt-1 text-xs text-muted-foreground font-mono flex items-center gap-3">
-                      <span>ID: {detail.id}</span>
-                      <span className="w-1 h-1 rounded-full bg-white/20" />
-                      <span>MSG: {detail.message_id}</span>
+                    <div className="text-sm font-bold text-slate-900 dark:text-slate-100 mb-1">{detail.conversation_title || `对话 ${detail.conversation_id}`}</div>
+                    <div className="text-xs text-slate-500 dark:text-slate-400 font-mono flex items-center gap-3">
+                      <span>ID: {detail.id.slice(0, 8)}</span>
+                      <span className="w-1 h-1 rounded-full bg-slate-300 dark:bg-slate-600" />
+                      <span>Msg: {detail.message_id.slice(0, 8)}</span>
                     </div>
                   </div>
-                  <div className="text-xs font-mono text-primary/80 bg-primary/10 px-3 py-1.5 rounded-full border border-primary/20">
-                    {formatDate(detail.updated_at)}
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-mono text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-500/10 px-3 py-1.5 rounded-full border border-indigo-100 dark:border-indigo-500/20 font-bold">
+                      {formatDate(detail.updated_at)}
+                    </span>
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 gap-6">
+                <div className="grid grid-cols-1 gap-8">
                   {detail.reason && (
-                    <div className="space-y-2">
-                      <div className="text-xs font-bold text-muted-foreground uppercase tracking-widest pl-1">User Feedback</div>
-                      <div className="rounded-xl border border-red-500/20 bg-red-500/5 p-4 text-sm leading-relaxed text-foreground/90">
+                    <div className="space-y-3">
+                      <div className="flex items-center gap-2 text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest pl-1">
+                        <MessageSquare className="w-3.5 h-3.5" />
+                        User Feedback
+                      </div>
+                      <div className="rounded-2xl border border-rose-100 dark:border-rose-900/30 bg-rose-50/50 dark:bg-rose-900/10 p-5 text-sm leading-relaxed text-rose-900 dark:text-rose-100 shadow-sm">
                         {detail.reason}
                       </div>
                     </div>
                   )}
 
                   {detail.expected_answer && (
-                    <div className="space-y-2">
-                      <div className="text-xs font-bold text-primary/80 uppercase tracking-widest pl-1">Expected Output</div>
-                      <div className="rounded-xl border border-primary/20 bg-primary/5 p-4 text-sm leading-relaxed text-foreground/90 font-medium">
+                    <div className="space-y-3">
+                      <div className="flex items-center gap-2 text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest pl-1">
+                        <Star className="w-3.5 h-3.5" />
+                        Expected Output
+                      </div>
+                      <div className="rounded-2xl border border-emerald-100 dark:border-emerald-900/30 bg-emerald-50/50 dark:bg-emerald-900/10 p-5 text-sm leading-relaxed text-emerald-900 dark:text-emerald-100 shadow-sm font-medium">
                         {detail.expected_answer}
                       </div>
                     </div>
                   )}
 
                   {detail.message_content && (
-                    <div className="space-y-2">
-                      <div className="text-xs font-bold text-muted-foreground uppercase tracking-widest pl-1">AI Response Content</div>
-                      <div className="rounded-xl border border-white/10 bg-black/20 p-4 text-sm leading-relaxed text-muted-foreground font-mono text-[13px] whitespace-pre-wrap max-h-60 overflow-y-auto custom-scrollbar">
+                    <div className="space-y-3">
+                      <div className="flex items-center gap-2 text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest pl-1">
+                        <Loader2 className="w-3.5 h-3.5" />
+                        AI Response
+                      </div>
+                      <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/50 p-5 text-sm leading-relaxed text-slate-600 dark:text-slate-300 font-mono text-[13px] whitespace-pre-wrap max-h-80 overflow-y-auto custom-scrollbar shadow-inner">
                         {detail.message_content}
                       </div>
                     </div>
                   )}
                 </div>
 
-                <div className="flex items-center justify-end gap-3 pt-4 border-t border-white/10">
+                <div className="flex items-center justify-end gap-3 pt-6 border-t border-slate-200/60 dark:border-slate-800/60">
                   <Button
                     variant="outline"
                     onClick={() => router.push(`/history?id=${encodeURIComponent(detail.conversation_id)}`)}
-                    className="gap-2 border-white/10 hover:bg-white/5"
+                    className="rounded-full border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800 gap-2"
                   >
                     跳转至对话上下文
                     <ArrowUpRight className="h-3.5 w-3.5" />
                   </Button>
-                  <Button onClick={() => setDetail(null)} className="bg-primary text-primary-foreground hover:bg-primary/90">关闭面板</Button>
+                  <Button onClick={() => setDetail(null)} className="rounded-full bg-indigo-600 hover:bg-indigo-700 text-white shadow-lg shadow-indigo-200 dark:shadow-none">关闭面板</Button>
                 </div>
               </div>
             )}
@@ -359,4 +372,3 @@ export default function FeedbackTriagePage() {
     </div>
   )
 }
-
