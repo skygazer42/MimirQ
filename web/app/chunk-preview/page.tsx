@@ -14,7 +14,7 @@ const ChunkPreview = dynamic(
 
 export default function ChunkPreviewPage() {
   return (
-    <div className="flex h-screen overflow-hidden bg-gray-50">
+    <div className="flex h-screen overflow-hidden bg-background">
       <Navbar />
 
       <main className="flex-1 flex flex-col overflow-hidden min-h-0">

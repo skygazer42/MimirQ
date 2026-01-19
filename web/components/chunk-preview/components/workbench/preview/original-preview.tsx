@@ -50,15 +50,15 @@ export function OriginalPreview() {
   }, [hoveredChunkIndex, previewMode])
 
   return (
-    <div className="flex-1 flex flex-col min-w-0 border-r border-slate-200/70 bg-white/85 backdrop-blur shadow-[inset_-1px_0_0_rgba(255,255,255,0.6)]">
-      <div className="h-10 border-b border-slate-200/70 bg-white/80 flex items-center justify-between px-4 shrink-0 backdrop-blur">
-        <span className="text-xs font-semibold text-sky-700 flex items-center gap-2">
-          <FileText className="w-3.5 h-3.5 text-sky-700" />
+    <div className="flex-1 flex flex-col min-w-0 border-r border-border/60 bg-card/85 backdrop-blur shadow-[inset_-1px_0_0_rgba(255,255,255,0.35)] dark:shadow-[inset_-1px_0_0_rgba(15,23,42,0.4)]">
+      <div className="h-10 border-b border-border/60 bg-card/80 flex items-center justify-between px-4 shrink-0 backdrop-blur">
+        <span className="text-xs font-semibold text-sky-600 dark:text-sky-300 flex items-center gap-2">
+          <FileText className="w-3.5 h-3.5 text-sky-600 dark:text-sky-300" />
           原文内容
         </span>
         <div className="flex items-center gap-2">
           {previewData && (
-            <span className="text-[10px] font-mono text-slate-400">
+            <span className="text-[10px] font-mono text-muted-foreground">
               {previewData.total_characters.toLocaleString()} chars
             </span>
           )}
@@ -75,35 +75,35 @@ export function OriginalPreview() {
       </div>
 
       <div className="flex-1 overflow-y-auto p-4 scroll-smooth">
-        <div className="min-h-full rounded-2xl border border-slate-200/70 bg-white/70 p-6 shadow-sm backdrop-blur ring-1 ring-white/60">
+        <div className="min-h-full rounded-2xl border border-border/60 bg-card/70 p-6 shadow-sm backdrop-blur ring-1 ring-border/40">
           {previewData ? (
             previewData.original_text ? (
               previewMode === 'rendered' ? (
                 <div className="mx-auto w-full max-w-6xl flex gap-8">
                   <div className="min-w-0 flex-1">
-                    <div className="prose prose-slate max-w-none prose-headings:text-slate-900 prose-p:text-slate-700 prose-a:text-sky-700 prose-code:text-sky-700 prose-code:bg-sky-50 prose-code:px-1 prose-code:py-0.5 prose-code:rounded prose-pre:bg-slate-900">
+                    <div className="prose prose-slate dark:prose-invert max-w-none prose-headings:text-foreground prose-p:text-muted-foreground prose-a:text-sky-600 dark:prose-a:text-sky-300 prose-code:text-sky-600 dark:prose-code:text-sky-300 prose-code:bg-sky-500/10 dark:prose-code:bg-slate-800 prose-code:px-1 prose-code:py-0.5 prose-code:rounded prose-pre:bg-slate-900">
                       <MarkdownRenderer markdown={previewData.original_text} autoScrollToHash />
                     </div>
-                    <p className="mt-4 text-[11px] text-slate-400">
+                    <p className="mt-4 text-[11px] text-muted-foreground">
                       提示：渲染模式下不支持高亮显示，请切换至源码模式查看切片对应位置
                     </p>
                   </div>
                   {tocEnabled && (
                     <aside className="hidden xl:block w-64 shrink-0">
-                      <div className="sticky top-6 max-h-[calc(100vh-220px)] overflow-y-auto rounded-xl border border-slate-200/70 bg-white p-3">
+                      <div className="sticky top-6 max-h-[calc(100vh-220px)] overflow-y-auto rounded-xl border border-border/60 bg-card p-3">
                         <MarkdownToc markdown={previewData.original_text} />
                       </div>
                     </aside>
                   )}
                 </div>
               ) : (
-                <div className="font-mono text-sm leading-relaxed text-slate-600 whitespace-pre-wrap max-w-3xl mx-auto">
+                <div className="font-mono text-sm leading-relaxed text-muted-foreground whitespace-pre-wrap max-w-3xl mx-auto">
                   {hoveredChunkIndex !== null && getHighlightedText ? (
                     <>
                       <span className="opacity-40">{getHighlightedText.before}</span>
                       <mark
                         ref={highlightRef}
-                        className="bg-sky-200 text-slate-900 rounded px-0.5 py-0.5 mx-0.5 shadow-sm font-medium"
+                        className="bg-sky-500/20 dark:bg-sky-500/30 text-foreground rounded px-0.5 py-0.5 mx-0.5 shadow-sm font-medium"
                       >
                         {getHighlightedText.highlighted}
                       </mark>
@@ -115,25 +115,25 @@ export function OriginalPreview() {
                 </div>
               )
             ) : (
-              <div className="h-full flex flex-col items-center justify-center text-slate-400 gap-2">
+              <div className="h-full flex flex-col items-center justify-center text-muted-foreground gap-2">
                 <FileText className="w-12 h-12 opacity-10" />
                 <p className="text-xs">暂无原文内容</p>
-                <p className="text-xs text-slate-400">请先生成预览</p>
+                <p className="text-xs text-muted-foreground">请先生成预览</p>
               </div>
             )
           ) : isLoading ? (
-            <div className="h-full flex flex-col items-center justify-center text-slate-400 gap-2">
+            <div className="h-full flex flex-col items-center justify-center text-muted-foreground gap-2">
               <Loader2 className="w-8 h-8 animate-spin opacity-20" />
               <p className="text-xs">加载中...</p>
             </div>
           ) : error ? (
-            <div className="h-full flex flex-col items-center justify-center text-slate-400 gap-2">
+            <div className="h-full flex flex-col items-center justify-center text-muted-foreground gap-2">
               <AlertCircle className="w-10 h-10 opacity-20" />
-              <p className="text-xs text-slate-500">加载失败</p>
-              <p className="text-xs text-slate-400 max-w-[360px] text-center break-words line-clamp-3">{error}</p>
+              <p className="text-xs text-muted-foreground">加载失败</p>
+              <p className="text-xs text-muted-foreground max-w-[360px] text-center break-words line-clamp-3">{error}</p>
             </div>
           ) : (
-            <div className="h-full flex flex-col items-center justify-center text-slate-300 gap-2">
+            <div className="h-full flex flex-col items-center justify-center text-muted-foreground gap-2">
               <FileText className="w-12 h-12 opacity-10" />
               <p className="text-xs">等待预览</p>
             </div>
