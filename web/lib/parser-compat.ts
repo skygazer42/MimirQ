@@ -1,5 +1,3 @@
-'use client'
-
 type ParserResolveResult = {
   backend: string
   changed: boolean
@@ -112,4 +110,3 @@ export function resolveParserBackendForFiles(files: File[], requestedBackend?: s
   if (!changed) return { backend: normalized, changed: false }
   return { backend: 'auto', changed: normalized !== 'auto', reason: 'batch upload contains mixed/unsupported file types' }
 }
-
