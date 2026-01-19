@@ -18,7 +18,15 @@ import type { MessageFeedbackEnriched } from '@/types'
 import { formatApiError } from '@/lib/api-errors'
 
 type RatingFilter = 'all' | '1' | '2' | '3' | '4' | '5'
-type FeedbackType = 'all' | 'thumbs_up' | 'thumbs_down'
+type FeedbackType = 'thumbs_up' | 'thumbs_down'
+type FeedbackTypeFilter = 'all' | FeedbackType
+
+function classifyFeedback(rating: number): FeedbackType | 'neutral' {
+  const v = Number(rating) || 0
+  if (v >= 4) return 'thumbs_up'
+  if (v > 0 && v <= 2) return 'thumbs_down'
+  return 'neutral'
+}
 
 function Stars({ rating }: { rating: number }) {
   const v = Math.max(1, Math.min(5, Number(rating) || 0))
@@ -41,7 +49,7 @@ function Stars({ rating }: { rating: number }) {
 export default function FeedbackTriagePage() {
   const router = useRouter()
   const [ratingFilter, setRatingFilter] = useState<RatingFilter>('all')
-  const [filterType, setFilterType] = useState<FeedbackType | 'all'>('all')
+  const [filterType, setFilterType] = useState<FeedbackTypeFilter>('all')
   const [searchTerm, setSearchTerm] = useState('')
   const [detail, setDetail] = useState<MessageFeedbackEnriched | null>(null)
 
@@ -69,8 +77,9 @@ export default function FeedbackTriagePage() {
       s.total++
       const r = Number(it.rating) || 0
       if (r >= 1 && r <= 5) (s as any)[r] += 1
-      if (it.feedback_type === 'thumbs_up') s.upvotes++
-      if (it.feedback_type === 'thumbs_down') s.downvotes++
+      const kind = classifyFeedback(r)
+      if (kind === 'thumbs_up') s.upvotes++
+      if (kind === 'thumbs_down') s.downvotes++
     }
     return s
   }, [items])
@@ -80,7 +89,7 @@ export default function FeedbackTriagePage() {
     const q = searchTerm.trim().toLowerCase()
 
     if (filterType !== 'all') {
-      res = res.filter(i => i.feedback_type === filterType)
+      res = res.filter((i) => classifyFeedback(i.rating) === filterType)
     }
 
     if (q) {
@@ -191,7 +200,7 @@ export default function FeedbackTriagePage() {
 
             <div className="w-px h-6 bg-slate-200 dark:bg-slate-800 hidden md:block mx-2" />
 
-            <Select value={filterType} onValueChange={(v) => setFilterType(v as FeedbackType | 'all')}>
+            <Select value={filterType} onValueChange={(v) => setFilterType(v as FeedbackTypeFilter)}>
               <SelectTrigger className="w-full md:w-32 bg-transparent border-0 focus:ring-0 h-10 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 rounded-full hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors">
                 <SelectValue placeholder="类型" />
               </SelectTrigger>
@@ -206,36 +215,57 @@ export default function FeedbackTriagePage() {
 
         <section className="flex-1 overflow-y-auto px-8 pb-10 z-10 custom-scrollbar">
           <div className="space-y-3">
-            {filtered.map((item) => (
-              <div
-                key={item.id}
-                role="button"
-                tabIndex={0}
-                onClick={() => setDetail(item)}
-                className={cn(
-                  'group w-full text-left rounded-xl border transition-all duration-300 relative overflow-hidden',
-                  'bg-white dark:bg-slate-900 border-slate-100 dark:border-slate-800 hover:border-indigo-200 dark:hover:border-indigo-800 hover:shadow-[0_8px_30px_rgba(0,0,0,0.04)] hover:-translate-y-0.5'
-                )}
-              >
-                <div className={cn("absolute left-0 top-0 bottom-0 w-1 transition-colors",
-                  item.feedback_type === 'thumbs_up' ? "bg-emerald-500 group-hover:bg-emerald-400" : "bg-rose-500 group-hover:bg-rose-400"
-                )} />
+            {filtered.map((item) => {
+              const kind = classifyFeedback(item.rating)
+              const isUp = kind === 'thumbs_up'
+              const isDown = kind === 'thumbs_down'
+              return (
+                <div
+                  key={item.id}
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => setDetail(item)}
+                  className={cn(
+                    'group w-full text-left rounded-xl border transition-all duration-300 relative overflow-hidden',
+                    'bg-white dark:bg-slate-900 border-slate-100 dark:border-slate-800 hover:border-indigo-200 dark:hover:border-indigo-800 hover:shadow-[0_8px_30px_rgba(0,0,0,0.04)] hover:-translate-y-0.5'
+                  )}
+                >
+                  <div
+                    className={cn(
+                      "absolute left-0 top-0 bottom-0 w-1 transition-colors",
+                      isUp
+                        ? "bg-emerald-500 group-hover:bg-emerald-400"
+                        : isDown
+                          ? "bg-rose-500 group-hover:bg-rose-400"
+                          : "bg-slate-300 group-hover:bg-slate-400 dark:bg-slate-700 dark:group-hover:bg-slate-600"
+                    )}
+                  />
 
-                <div className="flex items-start gap-4 p-5 pl-7">
-                  <div className={cn(
-                    "w-10 h-10 rounded-full flex items-center justify-center shrink-0 border",
-                    item.feedback_type === 'thumbs_up'
-                      ? "bg-emerald-50 dark:bg-emerald-500/10 border-emerald-100 dark:border-emerald-500/20 text-emerald-600 dark:text-emerald-400"
-                      : "bg-rose-50 dark:bg-rose-500/10 border-rose-100 dark:border-rose-500/20 text-rose-600 dark:text-rose-400"
-                  )}>
-                    {item.feedback_type === 'thumbs_up' ? <ThumbsUp className="w-5 h-5" /> : <ThumbsDown className="w-5 h-5" />}
-                  </div>
+                  <div className="flex items-start gap-4 p-5 pl-7">
+                    <div
+                      className={cn(
+                        "w-10 h-10 rounded-full flex items-center justify-center shrink-0 border",
+                        isUp
+                          ? "bg-emerald-50 dark:bg-emerald-500/10 border-emerald-100 dark:border-emerald-500/20 text-emerald-600 dark:text-emerald-400"
+                          : isDown
+                            ? "bg-rose-50 dark:bg-rose-500/10 border-rose-100 dark:border-rose-500/20 text-rose-600 dark:text-rose-400"
+                            : "bg-slate-50 dark:bg-slate-800/60 border-slate-100 dark:border-slate-800 text-slate-600 dark:text-slate-300"
+                      )}
+                    >
+                      {isUp ? (
+                        <ThumbsUp className="w-5 h-5" />
+                      ) : isDown ? (
+                        <ThumbsDown className="w-5 h-5" />
+                      ) : (
+                        <Star className="w-5 h-5" />
+                      )}
+                    </div>
 
-                  <div className="flex-1 min-w-0 pt-0.5">
-                    <div className="flex items-center justify-between mb-2">
-                      <div className="flex items-center gap-2">
-                        <span className="text-xs font-mono text-slate-400 dark:text-slate-500">{item.id.slice(0, 8)}</span>
-                        <span className="text-xs font-medium text-slate-300 dark:text-slate-600">·</span>
+                    <div className="flex-1 min-w-0 pt-0.5">
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs font-mono text-slate-400 dark:text-slate-500">{item.id.slice(0, 8)}</span>
+                          <span className="text-xs font-medium text-slate-300 dark:text-slate-600">·</span>
                         <span className="text-xs text-slate-500 dark:text-slate-400">{formatDate(item.created_at)}</span>
                       </div>
                       <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -244,12 +274,12 @@ export default function FeedbackTriagePage() {
                       </div>
                     </div>
 
-                    <h3 className="text-base font-bold text-slate-800 dark:text-slate-100 mb-2 truncate pr-4">{item.user_comment || "用户未留言"}</h3>
-                    <div className="bg-slate-50 dark:bg-slate-800/50 rounded-lg p-3 border border-slate-100 dark:border-slate-800/50">
-                      <p className="text-sm text-slate-600 dark:text-slate-300 line-clamp-2 font-medium leading-relaxed">
-                        {item.target_response}
-                      </p>
-                    </div>
+	                    <h3 className="text-base font-bold text-slate-800 dark:text-slate-100 mb-2 truncate pr-4">{item.reason || "用户未填写原因"}</h3>
+	                    <div className="bg-slate-50 dark:bg-slate-800/50 rounded-lg p-3 border border-slate-100 dark:border-slate-800/50">
+	                      <p className="text-sm text-slate-600 dark:text-slate-300 line-clamp-2 font-medium leading-relaxed">
+	                        {item.message_content || "（无消息内容）"}
+	                      </p>
+	                    </div>
 
                     {Array.isArray(item.tags) && item.tags.length > 0 && (
                       <div className="mt-3 flex flex-wrap gap-2">
@@ -261,9 +291,10 @@ export default function FeedbackTriagePage() {
                       </div>
                     )}
                   </div>
+                  </div>
                 </div>
-              </div>
-            ))}
+              )
+            })}
 
             {!filtered.length && (
               <div className="flex flex-col items-center justify-center py-20 text-center">

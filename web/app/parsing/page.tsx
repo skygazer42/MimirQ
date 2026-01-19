@@ -748,7 +748,7 @@ export default function ParsingPage() {
       if (added > 0) toast.success(`已加入队列：${added} 个文件`)
       if (skipped > 0) toast.warning(`已跳过 ${skipped} 个不支持的文件`)
     },
-    [parserBackend, activeFolderId, folders, createFolder, addParsedFile]
+    [parserBackend, activeFolderId, folders, createFolder, addParsedFile, generateId]
   )
 
   const currentFolderId = activeFolderId || ROOT_FOLDER_ID
@@ -1506,13 +1506,24 @@ export default function ParsingPage() {
                 {/* File List */}
                 <div className="flex-1 overflow-y-auto p-2 custom-scrollbar bg-white">
                   <div className="min-h-full rounded-2xl border border-slate-200/70 bg-white p-2">
-                    {directFolders.length === 0 && visibleQueueFiles.length === 0 && visibleLibraryOnlyFiles.length === 0 ? (
+                    {!isLibraryLoaded ? (
+                      <div className="h-full flex flex-col items-center justify-center text-slate-400">
+                        <div className="w-14 h-14 bg-gradient-to-br from-slate-100/70 to-white rounded-2xl flex items-center justify-center mb-3 shadow-sm">
+                          <Loader2 className="w-6 h-6 text-slate-300 animate-spin" />
+                        </div>
+                        <p className="text-sm font-medium text-slate-500">正在加载文档库…</p>
+                        <p className="text-xs text-slate-400 mt-1">首次进入或刷新时会稍等片刻</p>
+                      </div>
+                    ) : directFolders.length === 0 && visibleQueueFiles.length === 0 && visibleLibraryOnlyFiles.length === 0 ? (
                       <div className="h-full flex flex-col items-center justify-center text-slate-400">
                         <div className="w-14 h-14 bg-gradient-to-br from-slate-100/70 to-white rounded-2xl flex items-center justify-center mb-3 shadow-sm">
                           <FolderOpen className="w-6 h-6 text-slate-300" />
                         </div>
                         <p className="text-sm font-medium text-slate-500">暂无文件</p>
                         <p className="text-xs text-slate-400 mt-1">拖拽文件到此处或点击上方按钮添加</p>
+                        {isQueueRehydrating ? (
+                          <p className="text-[11px] text-slate-400 mt-3">正在恢复队列…</p>
+                        ) : null}
                       </div>
                     ) : (
                       <div className="space-y-1">
