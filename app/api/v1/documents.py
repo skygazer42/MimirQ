@@ -26,6 +26,9 @@ from app.api.schemas.document import (
     ParsedSegment,
     ManualDocumentCreate,
     DocumentPipelineOptions,
+    DocumentUserMetadataPatchRequest,
+    DocumentBatchUserMetadataPatchRequest,
+    DocumentBatchUserMetadataPatchResponse,
     ChunkPreviewParams,
     ChunkPreviewItem,
     ChunkPreviewResponse,
@@ -463,6 +466,50 @@ def _compute_pipeline_hash(doc_metadata: dict) -> str:
     }
     raw = json.dumps(relevant, sort_keys=True, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
     return hashlib.sha256(raw).hexdigest()[:16]
+
+
+def _apply_user_metadata_patch(*, current: dict, patch: dict, replace: bool) -> dict:
+    if replace:
+        next_user = dict(patch or {})
+    else:
+        next_user = dict(current or {})
+        for key, value in (patch or {}).items():
+            if value is None:
+                next_user.pop(key, None)
+            else:
+                next_user[key] = value
+
+    # Best-effort normalization for common fields.
+    tags = next_user.get("tags")
+    if isinstance(tags, str):
+        tags = [t.strip() for t in tags.split(",")]
+    if isinstance(tags, list):
+        cleaned: list[str] = []
+        seen: set[str] = set()
+        for raw in tags:
+            if not isinstance(raw, str):
+                continue
+            val = raw.strip()
+            if not val:
+                continue
+            key = val.lower()
+            if key in seen:
+                continue
+            seen.add(key)
+            cleaned.append(val[:64])
+        next_user["tags"] = cleaned[:50]
+    elif tags is None and "tags" in next_user and not replace:
+        next_user.pop("tags", None)
+
+    notes = next_user.get("notes")
+    if isinstance(notes, str):
+        val = notes.strip()
+        if not val:
+            next_user.pop("notes", None)
+        else:
+            next_user["notes"] = val[:20_000]
+
+    return next_user
 
 
 def _validate_filename(filename: str) -> None:
@@ -1258,6 +1305,108 @@ async def get_document(
     return document
 
 
+@router.patch("/{document_id}/metadata", response_model=DocumentDetail)
+async def patch_document_user_metadata(
+    document_id: uuid.UUID,
+    payload: DocumentUserMetadataPatchRequest,
+    tenant_id: UUID = Depends(get_tenant_id),
+    account_id: str = Depends(get_current_account_id),
+    db: Session = Depends(get_db),
+):
+    """
+    Patch `documents.metadata.user` for user-editable document metadata.
+    """
+    DatasetService.ensure_member(db, tenant_id, account_id)
+
+    document = (
+        db.query(DBDocument)
+        .filter(DBDocument.id == document_id, DBDocument.tenant_id == tenant_id)
+        .first()
+    )
+    if not document:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    if document.dataset_id:
+        ds = DatasetService.get_dataset(db, tenant_id, document.dataset_id)
+        DatasetService.assert_dataset_writable(db, ds, account_id)
+
+    meta = dict(document.doc_metadata or {})
+    current_user = meta.get("user") if isinstance(meta.get("user"), dict) else {}
+    patch = payload.patch if isinstance(payload.patch, dict) else {}
+    next_user = _apply_user_metadata_patch(current=current_user, patch=patch, replace=payload.replace)
+
+    meta["user"] = next_user
+    document.doc_metadata = meta
+    db.commit()
+    db.refresh(document)
+    return document
+
+
+@router.post("/batch/metadata", response_model=DocumentBatchUserMetadataPatchResponse)
+async def batch_patch_document_user_metadata(
+    payload: DocumentBatchUserMetadataPatchRequest,
+    tenant_id: UUID = Depends(get_tenant_id),
+    account_id: str = Depends(get_current_account_id),
+    db: Session = Depends(get_db),
+):
+    """
+    Batch patch `documents.metadata.user`.
+
+    For any documents the caller cannot write, they will be returned in `denied`.
+    """
+    DatasetService.ensure_member(db, tenant_id, account_id)
+
+    ids = list(payload.document_ids or [])
+    if not ids:
+        return {"updated": 0, "not_found": [], "denied": []}
+
+    documents = (
+        db.query(DBDocument)
+        .filter(DBDocument.tenant_id == tenant_id, DBDocument.id.in_(ids))
+        .all()
+    )
+    found_map = {d.id: d for d in documents}
+    not_found = [doc_id for doc_id in ids if doc_id not in found_map]
+
+    dataset_ids = {d.dataset_id for d in documents if d.dataset_id is not None}
+    dataset_map: dict[UUID, Dataset] = {}
+    if dataset_ids:
+        rows = (
+            db.query(Dataset)
+            .filter(Dataset.tenant_id == tenant_id, Dataset.id.in_(sorted(dataset_ids)))
+            .all()
+        )
+        dataset_map = {ds.id: ds for ds in rows}
+
+    denied: list[UUID] = []
+    updated = 0
+
+    patch = payload.patch if isinstance(payload.patch, dict) else {}
+    for doc in documents:
+        if doc.dataset_id:
+            ds = dataset_map.get(doc.dataset_id)
+            if ds is None:
+                denied.append(doc.id)
+                continue
+            try:
+                DatasetService.assert_dataset_writable(db, ds, account_id)
+            except HTTPException:
+                denied.append(doc.id)
+                continue
+
+        meta = dict(doc.doc_metadata or {})
+        current_user = meta.get("user") if isinstance(meta.get("user"), dict) else {}
+        next_user = _apply_user_metadata_patch(current=current_user, patch=patch, replace=payload.replace)
+        meta["user"] = next_user
+        doc.doc_metadata = meta
+        updated += 1
+
+    if updated:
+        db.commit()
+
+    return {"updated": updated, "not_found": not_found, "denied": denied}
+
+
 @router.get("/{document_id}/download")
 async def download_document(
     document_id: uuid.UUID,
@@ -1422,6 +1571,111 @@ async def cancel_document_processing(
                         await job.abort(timeout=0.2)
         except Exception as exc:  # noqa: BLE001
             logger.warning("Failed to abort tasks %s for document %s: %s", task_ids, document_id, str(exc)[:200])
+
+    return {
+        "id": document.id,
+        "status": document.status,
+        "processing_progress": document.processing_progress,
+        "current_stage": document.current_stage,
+        "error_message": document.error_message,
+    }
+
+
+@router.post("/{document_id}/retry", response_model=DocumentStatus)
+async def retry_document_processing(
+    document_id: uuid.UUID,
+    background_tasks: BackgroundTasks,
+    force: bool = False,
+    tenant_id: UUID = Depends(get_tenant_id),
+    account_id: str = Depends(get_current_account_id),
+    db: Session = Depends(get_db),
+):
+    """
+    Retry a failed/cancelled document processing task.
+
+    Notes:
+    - This will delete existing chunks (DB) and indexes (vector/BM25/KG) before reprocessing.
+    - Use `force=true` to allow retrying completed documents.
+    """
+    DatasetService.ensure_member(db, tenant_id, account_id)
+
+    document = (
+        db.query(DBDocument)
+        .filter(DBDocument.id == document_id, DBDocument.tenant_id == tenant_id)
+        .first()
+    )
+    if not document:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    if document.dataset_id:
+        ds = DatasetService.get_dataset(db, tenant_id, document.dataset_id)
+        DatasetService.assert_dataset_writable(db, ds, account_id)
+
+    current_status = str(document.status or "").lower()
+    if current_status in {"pending", "processing"}:
+        raise HTTPException(status_code=409, detail=f"Cannot retry a {current_status} document")
+    if current_status == "completed" and not force:
+        raise HTTPException(status_code=409, detail="Document is already completed (use force=true to reprocess)")
+
+    raw_path = str(document.file_path or "").strip()
+    if not raw_path or raw_path.startswith("manual://"):
+        raise HTTPException(status_code=409, detail="Document file is not reprocessable")
+    file_path = Path(raw_path)
+    if not file_path.exists() or not file_path.is_file():
+        raise HTTPException(status_code=404, detail="Document file not found")
+
+    # Reset indexes (vector/BM25/KG) + DB chunks to avoid duplicates on re-run.
+    with contextlib.suppress(Exception):
+        Indexer(db).delete_all(tenant_id=tenant_id, document_id=document_id, commit=False)
+    with contextlib.suppress(Exception):
+        db.query(DocumentChunk).filter(
+            DocumentChunk.document_id == document_id,
+            DocumentChunk.tenant_id == tenant_id,
+        ).delete(synchronize_session=False)
+
+    meta = dict(document.doc_metadata or {})
+    meta.pop("cancel_requested", None)
+    meta.pop("task_id", None)
+    meta.pop("kg_task_id", None)
+    meta.pop("img_ids", None)
+
+    pipeline_hash = str(meta.get("pipeline_hash") or "").strip()
+    if not pipeline_hash:
+        pipeline_hash = _compute_pipeline_hash(meta)
+        meta["pipeline_hash"] = pipeline_hash
+
+    document.doc_metadata = meta
+    document.status = "pending"
+    document.processing_progress = 0
+    document.current_stage = "queued"
+    document.error_message = None
+    document.chunk_count = 0
+    document.total_characters = 0
+    db.commit()
+    db.refresh(document)
+
+    job_id = f"doc:{tenant_id}:{document_id}:{pipeline_hash}"
+    task_id = await enqueue_document_processing(
+        tenant_id=tenant_id,
+        document_id=document_id,
+        requested_by=account_id,
+        job_id=job_id,
+    )
+    if task_id:
+        meta = dict(document.doc_metadata or {})
+        meta["task_id"] = task_id
+        document.doc_metadata = meta
+        db.commit()
+        db.refresh(document)
+    else:
+        background_tasks.add_task(
+            document_processor.process_document,
+            file_path,
+            document_id,
+            tenant_id,
+            meta.get("parser_backend"),
+            meta.get("chunk_strategy"),
+        )
 
     return {
         "id": document.id,
