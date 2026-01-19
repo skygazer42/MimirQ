@@ -198,8 +198,8 @@ export const ChatMessageItem = memo(function ChatMessageItem({
         className={cn(
           'max-w-3xl px-6 py-4 shadow-sm relative text-[15px] transition-all duration-300',
           isUser
-            ? 'bg-primary text-primary-foreground rounded-2xl rounded-tr-sm shadow-md shadow-primary/10'
-            : 'bg-card text-foreground border border-border/60 rounded-2xl rounded-tl-sm hover:shadow-md hover:border-border/80'
+            ? 'bg-primary text-primary-foreground rounded-2xl rounded-tr-sm shadow-2xl shadow-primary/25 border border-primary/20 backdrop-blur-sm'
+            : 'glass-card text-foreground border-white/10 rounded-2xl rounded-tl-sm hover:shadow-lg hover:shadow-cyan-500/10'
         )}
       >
         {/* 思维链 / 步骤展示 */}

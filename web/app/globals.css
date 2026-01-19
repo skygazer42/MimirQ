@@ -5,49 +5,53 @@
 @layer base {
   :root {
     /* Base - Modern Clean Light (Ice/Slate based) */
-    --background: 210 40% 98%; /* Very faint cool white */
-    --foreground: 222.2 84% 4.9%; /* Deepest Blue-Black */
-    
+    --background: 210 40% 98%;
+    /* Very faint cool white */
+    --foreground: 222.2 84% 4.9%;
+    /* Deepest Blue-Black */
+
     /* Cards - White with subtle elevation */
     --card: 0 0% 100%;
     --card-foreground: 222.2 84% 4.9%;
-    
+
     --popover: 0 0% 100%;
     --popover-foreground: 222.2 84% 4.9%;
-    
-    /* Primary - Vibrant Indigo (Enterprise Intelligence) */
-    --primary: 249 90% 60%; /* Vivid Violet/Indigo */
-    --primary-foreground: 210 40% 98%;
-    
+
+    /* Primary - Cyber Cyan (Future Tech) */
+    --primary: 190 90% 50%;
+    /* Vivid Cyan */
+    --primary-foreground: 222.2 47.4% 11.2%;
+
     /* Secondary - Soft Cool Gray */
     --secondary: 210 40% 96.1%;
     --secondary-foreground: 222.2 47.4% 11.2%;
-    
+
     /* Muted - For background/disabled text */
     --muted: 210 40% 96.1%;
     --muted-foreground: 215.4 16.3% 46.9%;
-    
+
     /* Accent - For hovers */
     --accent: 210 40% 96.1%;
     --accent-foreground: 222.2 47.4% 11.2%;
-    
+
     /* Destructive - Refined Red */
     --destructive: 0 84.2% 60.2%;
     --destructive-foreground: 210 40% 98%;
-    
+
     /* Borders & Inputs - Subtle Cool Gray */
     --border: 214.3 31.8% 91.4%;
     --input: 214.3 31.8% 91.4%;
-    --ring: 249 90% 60%; /* Primary color ring */
-    
+    --ring: 249 90% 60%;
+    /* Primary color ring */
+
     /* Radius - Consistent Curves */
     --radius: 0.75rem;
-    
+
     /* Sidebar - Slightly distinct from main background */
-    --sidebar-background: 0 0% 100%; 
+    --sidebar-background: 0 0% 100%;
     --sidebar-foreground: 222.2 84% 4.9%;
     --sidebar-border: 214.3 31.8% 91.4%;
-    
+
     /* Custom Shadows for depth */
     --shadow-soft: 0 2px 10px rgba(0, 0, 0, 0.05);
     --shadow-strong: 0 10px 30px rgba(0, 0, 0, 0.08);
@@ -57,44 +61,46 @@
     /* Base - Deep Space Void (Not pure black) */
     --background: 222 47% 11%;
     --foreground: 210 40% 98%;
-    
+
     /* Cards - Layered Dark (Slightly lighter than BG) */
     --card: 217 33% 17%;
     --card-foreground: 210 40% 98%;
-    
+
     --popover: 217 33% 17%;
     --popover-foreground: 210 40% 98%;
-    
-    /* Primary - Luminous Violet/Indigo */
-    --primary: 249 90% 68%; /* Brighter for dark mode */
-    --primary-foreground: 210 40% 98%;
-    
+
+    /* Primary - Neon Cyan */
+    --primary: 190 90% 60%;
+    /* Brighter Cyan for dark mode */
+    --primary-foreground: 222.2 47.4% 11.2%;
+
     /* Secondary - Deep Gray/Blue */
-    --secondary: 217 33% 17%; /* Same as card */
+    --secondary: 217 33% 17%;
+    /* Same as card */
     --secondary-foreground: 210 40% 98%;
-    
+
     /* Muted - Subtle */
     --muted: 217 33% 17%;
     --muted-foreground: 215 20% 65%;
-    
+
     /* Accent - Lighter interaction layer */
-    --accent: 217 33% 20%; 
+    --accent: 217 33% 20%;
     --accent-foreground: 210 40% 98%;
-    
+
     /* Destructive */
     --destructive: 0 62.8% 30.6%;
     --destructive-foreground: 210 40% 98%;
-    
+
     /* Borders & Inputs */
     --border: 217 33% 20%;
     --input: 217 33% 20%;
-    --ring: 249 90% 68%;
+    --ring: 190 90% 60%;
 
     /* Sidebar - Darker than main content to recede */
-    --sidebar-background: 222 47% 10%; 
+    --sidebar-background: 222 47% 10%;
     --sidebar-foreground: 210 40% 98%;
     --sidebar-border: 217 33% 17%;
-    
+
     /* Shadows */
     --shadow-soft: 0 2px 10px rgba(0, 0, 0, 0.3);
     --shadow-strong: 0 10px 30px rgba(0, 0, 0, 0.5);
@@ -105,42 +111,52 @@
   * {
     @apply border-border;
   }
+
   body {
     @apply bg-background text-foreground antialiased selection:bg-primary/20 selection:text-primary;
-    font-feature-settings: "rlig" 1, "calt" 1, "ss01" 1; /* Smart OpenType features */
+    font-feature-settings: "rlig" 1, "calt" 1, "ss01" 1;
+    /* Smart OpenType features */
   }
-  
-  h1, h2, h3, h4, h5, h6 {
+
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
     @apply tracking-tight font-semibold;
   }
 }
 
 @layer utilities {
   .glass {
-    @apply bg-white/70 dark:bg-black/40 backdrop-blur-xl border border-white/20 dark:border-white/5;
+    @apply bg-white/70 dark:bg-black/40 backdrop-blur-xl border border-white/20 dark:border-cyan-500/10;
   }
-  
+
   .glass-card {
     @apply bg-card/60 dark:bg-card/40 backdrop-blur-md border border-border/50 shadow-sm transition-all hover:border-primary/20 hover:shadow-md;
   }
-  
+
   .text-gradient {
-    @apply bg-clip-text text-transparent bg-gradient-to-r from-primary via-purple-500 to-pink-500;
+    @apply bg-clip-text text-transparent bg-gradient-to-r from-cyan-400 via-blue-500 to-purple-500;
   }
-  
+
   .border-gradient {
     @apply border-transparent bg-origin-border bg-clip-border;
-    background-image: linear-gradient(to right, hsl(var(--background)), hsl(var(--background))), linear-gradient(to right, hsl(var(--primary)), orchid); 
+    background-image: linear-gradient(to right, hsl(var(--background)), hsl(var(--background))), linear-gradient(to right, hsl(var(--primary)), orchid);
   }
 
   /* Hide scrollbar for Chrome, Safari and Opera */
   .no-scrollbar::-webkit-scrollbar {
     display: none;
   }
+
   /* Hide scrollbar for IE, Edge and Firefox */
   .no-scrollbar {
-    -ms-overflow-style: none;  /* IE and Edge */
-    scrollbar-width: none;  /* Firefox */
+    -ms-overflow-style: none;
+    /* IE and Edge */
+    scrollbar-width: none;
+    /* Firefox */
   }
 }
 
@@ -164,8 +180,15 @@
 
 /* Typing Cursor Animation */
 @keyframes blink {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0; }
+
+  0%,
+  100% {
+    opacity: 1;
+  }
+
+  50% {
+    opacity: 0;
+  }
 }
 
 .typing-cursor {

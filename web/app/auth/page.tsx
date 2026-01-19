@@ -56,15 +56,15 @@ export default function AuthPage() {
 
             {/* 光效装饰 */}
             <div className="absolute top-[-20%] left-[-10%] w-[500px] h-[500px] bg-primary/20 rounded-full blur-[120px] animate-pulse-subtle pointer-events-none" />
-            <div className="absolute bottom-[-20%] right-[-10%] w-[500px] h-[500px] bg-purple-500/20 rounded-full blur-[120px] animate-pulse-subtle pointer-events-none" style={{ animationDelay: '1s' }} />
+            <div className="absolute bottom-[-20%] right-[-10%] w-[500px] h-[500px] bg-blue-600/20 rounded-full blur-[120px] animate-pulse-subtle pointer-events-none" style={{ animationDelay: '1s' }} />
 
             <div className="relative z-10 w-full max-w-md p-6 animate-fade-in-up">
                 {/* Logo / Brand */}
                 <div className="flex flex-col items-center mb-8 space-y-4">
                     <div className="relative group">
-                        <div className="absolute -inset-1 bg-gradient-to-r from-cyan-400 to-primary rounded-xl blur opacity-40 group-hover:opacity-75 transition duration-500"></div>
-                        <div className="relative w-16 h-16 bg-slate-950 rounded-xl flex items-center justify-center border border-white/10 shadow-2xl">
-                            <Sparkles className="w-8 h-8 text-cyan-400 animate-pulse" />
+                        <div className="absolute -inset-1 bg-gradient-to-r from-primary to-blue-500 rounded-xl blur opacity-40 group-hover:opacity-75 transition duration-500"></div>
+                        <div className="relative w-16 h-16 glass rounded-xl flex items-center justify-center border border-white/10 shadow-glow">
+                            <Sparkles className="w-8 h-8 text-primary animate-pulse" />
                         </div>
                     </div>
                     <div className="text-center">
@@ -142,7 +142,7 @@ export default function AuthPage() {
                             <div className="space-y-2 animate-fade-in">
                                 <Label htmlFor="identifier" className="text-xs text-slate-300">账号</Label>
                                 <div className="relative group">
-                                    <User className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-500 group-focus-within:text-cyan-400 transition-colors" />
+                                    <User className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-500 group-focus-within:text-primary transition-colors" />
                                     <Input
                                         id="identifier"
                                         placeholder="输入邮箱或用户名"
@@ -200,7 +200,7 @@ export default function AuthPage() {
 
                         <Button
                             type="submit"
-                            className="w-full h-11 bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white font-semibold rounded-xl shadow-lg shadow-cyan-500/20 transition-all duration-300 hover:scale-[1.02] active:scale-[0.98]"
+                            className="w-full h-11 bg-primary hover:bg-primary/90 text-primary-foreground font-semibold rounded-xl shadow-lg shadow-primary/20 transition-all duration-300 hover:scale-[1.02] active:scale-[0.98]"
                             disabled={isSubmitting}
                         >
                             {isSubmitting ? (
