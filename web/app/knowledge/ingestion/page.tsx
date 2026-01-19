@@ -13,6 +13,7 @@ import {
 import { toast } from 'sonner'
 
 import { Navbar } from '@/components/navbar'
+import { PageHeader } from '@/components/ui/page-header'
 import { DocumentViewerPanel } from '@/components/document-viewer-panel'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -154,57 +155,54 @@ export default function IngestionMonitorPage() {
           isOpen ? 'mr-0 md:mr-[40vw] xl:mr-[40vw] lg:mr-[500px]' : 'mr-0'
         )}
       >
-        <header className="px-8 pt-8 pb-6 flex-shrink-0">
-          <div className="flex items-start justify-between gap-4">
-            <div>
-              <h1 className="text-3xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-primary to-blue-400 tracking-tight flex items-center gap-3">
-                <Search className="w-8 h-8 text-primary animate-pulse-subtle" />
-                入库监控中心
-              </h1>
-              <p className="text-sm text-muted-foreground mt-2 max-w-2xl">
-                SYSTEM_STATUS: <span className="text-primary">ONLINE</span> <span className="opacity-50 mx-2">{'//'}</span> 实时追踪解析、切块、向量化与索引构建进度。
-              </p>
-            </div>
-
-            <div className="flex items-center gap-3">
-              <Button
-                variant="outline"
-                className="gap-2 border-primary/20 hover:bg-primary/10 hover:text-primary transition-all duration-300 group"
-                onClick={() => refetch()}
-              >
-                <RefreshCw className={cn('h-4 w-4 transition-transform group-hover:rotate-180', isFetching ? 'animate-spin' : '')} />
-                刷新状态
-              </Button>
-              <div className="flex items-center gap-3 rounded-full border border-white/10 bg-white/5 backdrop-blur-md px-4 py-2 hover:border-primary/30 transition-colors">
-                <span className="text-xs font-medium text-muted-foreground">自动同步</span>
-                <Switch
-                  checked={autoRefresh}
-                  onCheckedChange={setAutoRefresh}
-                  className="data-[state=checked]:bg-primary"
-                />
-              </div>
+        <PageHeader
+          title="入库监控中心"
+          icon={Search}
+          iconColor="text-primary"
+          description={
+            <span>
+              SYSTEM_STATUS: <span className="text-primary">ONLINE</span> <span className="opacity-50 mx-2">{'//'}</span> 实时追踪解析、切块、向量化与索引构建进度。
+            </span>
+          }
+        >
+          <div className="flex items-center gap-3">
+            <Button
+              variant="outline"
+              className="gap-2 border-primary/20 hover:bg-primary/10 hover:text-primary transition-all duration-300 group"
+              onClick={() => refetch()}
+            >
+              <RefreshCw className={cn('h-4 w-4 transition-transform group-hover:rotate-180', isFetching ? 'animate-spin' : '')} />
+              刷新状态
+            </Button>
+            <div className="flex items-center gap-3 rounded-full border border-white/10 bg-white/5 backdrop-blur-md px-4 py-2 hover:border-primary/30 transition-colors">
+              <span className="text-xs font-medium text-muted-foreground">自动同步</span>
+              <Switch
+                checked={autoRefresh}
+                onCheckedChange={setAutoRefresh}
+                className="data-[state=checked]:bg-primary"
+              />
             </div>
           </div>
+        </PageHeader>
 
-          <div className="mt-8 grid grid-cols-2 md:grid-cols-5 gap-4">
-            {[
-              { label: '等待队列', value: stats.pending, color: 'text-primary', border: 'border-primary/20', bg: 'from-primary/5 to-transparent' },
-              { label: '正在处理', value: stats.processing, color: 'text-blue-400', border: 'border-blue-500/20', bg: 'from-blue-500/5 to-transparent' },
-              { label: '已完成', value: stats.completed, color: 'text-emerald-400', border: 'border-emerald-500/20', bg: 'from-emerald-500/5 to-transparent' },
-              { label: '失败任务', value: stats.failed, color: 'text-red-400', border: 'border-red-500/20', bg: 'from-red-500/5 to-transparent' },
-              { label: '总存储量', value: formatFileSize(stats.totalSize), color: 'text-purple-400', border: 'border-purple-500/20', bg: 'from-purple-500/5 to-transparent' },
-            ].map((stat, idx) => (
-              <div key={idx} className={cn("relative overflow-hidden rounded-2xl border bg-gradient-to-br backdrop-blur-sm p-5 transition-all duration-300 hover:scale-105 hover:shadow-lg", stat.border, stat.bg)}>
-                <div className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-1">{stat.label}</div>
-                <div className={cn("text-2xl font-black tracking-tight", stat.color)}>{stat.value}</div>
-                {/* Decorative corner */}
-                <div className={cn("absolute top-0 right-0 w-8 h-8 opacity-20", stat.color)}>
-                  <svg viewBox="0 0 24 24" fill="currentColor"><path d="M0 0h24v24H0z" fill="none" /><path d="M21 3H3v18h18V3zm-2 16H5V5h14v14z" opacity=".3" /><path d="M21 3h-8v2h8v8h2V5c0-1.1-.9-2-2-2z" /></svg>
-                </div>
+        <div className="px-8 pb-4 grid grid-cols-2 md:grid-cols-5 gap-4">
+          {[
+            { label: '等待队列', value: stats.pending, color: 'text-primary', border: 'border-primary/20', bg: 'from-primary/5 to-transparent' },
+            { label: '正在处理', value: stats.processing, color: 'text-blue-400', border: 'border-blue-500/20', bg: 'from-blue-500/5 to-transparent' },
+            { label: '已完成', value: stats.completed, color: 'text-emerald-400', border: 'border-emerald-500/20', bg: 'from-emerald-500/5 to-transparent' },
+            { label: '失败任务', value: stats.failed, color: 'text-red-400', border: 'border-red-500/20', bg: 'from-red-500/5 to-transparent' },
+            { label: '总存储量', value: formatFileSize(stats.totalSize), color: 'text-purple-400', border: 'border-purple-500/20', bg: 'from-purple-500/5 to-transparent' },
+          ].map((stat, idx) => (
+            <div key={idx} className={cn("relative overflow-hidden rounded-2xl border bg-gradient-to-br backdrop-blur-sm p-4 transition-all duration-300 hover:scale-105 hover:shadow-lg", stat.border, stat.bg)}>
+              <div className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-1">{stat.label}</div>
+              <div className={cn("text-2xl font-black tracking-tight", stat.color)}>{stat.value}</div>
+              {/* Decorative corner */}
+              <div className={cn("absolute top-0 right-0 w-8 h-8 opacity-20", stat.color)}>
+                <svg viewBox="0 0 24 24" fill="currentColor"><path d="M0 0h24v24H0z" fill="none" /><path d="M21 3H3v18h18V3zm-2 16H5V5h14v14z" opacity=".3" /><path d="M21 3h-8v2h8v8h2V5c0-1.1-.9-2-2-2z" /></svg>
               </div>
-            ))}
-          </div>
-        </header>
+            </div>
+          ))}
+        </div>
 
         <div className="px-8 pb-6 flex-shrink-0 z-10">
           <div className="flex flex-col md:flex-row md:items-center gap-4 bg-white/5 backdrop-blur-md border border-white/10 p-2 rounded-2xl">

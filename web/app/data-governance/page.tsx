@@ -18,10 +18,16 @@ const DataGovernancePanel = dynamic(
 
 export default function DataGovernancePage() {
   return (
-    <div className="flex h-screen overflow-hidden bg-gray-50">
+    <div className="flex h-screen overflow-hidden bg-slate-950 font-sans selection:bg-cyan-500/20 selection:text-cyan-400">
+      {/* Ambient Background */}
+      <div className="fixed inset-0 z-0 pointer-events-none">
+        <div className="absolute top-[-20%] left-[-10%] w-[800px] h-[800px] bg-cyan-500/5 rounded-full blur-[120px] animate-pulse-subtle" />
+        <div className="absolute bottom-[-10%] right-[-20%] w-[600px] h-[600px] bg-blue-600/5 rounded-full blur-[120px] animate-pulse-subtle" style={{ animationDelay: '2s' }} />
+      </div>
+
       <Navbar />
 
-      <main className="flex-1 flex flex-col overflow-hidden min-h-0">
+      <main className="relative z-10 flex-1 flex flex-col overflow-hidden min-h-0">
         <DataGovernancePanel />
       </main>
     </div>
