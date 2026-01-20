@@ -1,4 +1,5 @@
 from pathlib import Path
+import re
 from threading import Lock
 from typing import Any, List
 
@@ -56,32 +57,47 @@ class DeepDocParser:
 
         docs: List[Document] = []
 
-        def _clean_text(val: Any) -> str:
-            if not isinstance(val, str):
-                return ""
-            text = val
-            if hasattr(parser, "remove_tag"):
-                try:
-                    text = parser.remove_tag(text)
-                except Exception:
-                    text = val
-            return (text or "").strip()
+        pos_tag_re = re.compile(r"@@[0-9-]+\t[0-9.\t]+##")
+
+        def _normalize_section(section: Any) -> str:
+            """
+            Preserve DeepDoc position tags (`@@...##`) when present.
+
+            Notes:
+            - Some DeepDoc variants return tuples like (text, tag) or (text, type, tag).
+            - Do NOT call `parser.remove_tag()` here; the parsing workspace preview relies on tags
+              to locate blocks back to the PDF.
+            """
+            if isinstance(section, tuple):
+                head = section[0] if section else ""
+                text = str(head or "").strip()
+                if not text:
+                    return ""
+
+                tag = ""
+                for item in reversed(section[1:]):
+                    if isinstance(item, str) and "@@" in item and "##" in item and pos_tag_re.search(item):
+                        tag = item.strip()
+                        break
+                if tag and tag not in text:
+                    text = f"{text}{tag}"
+                return text
+
+            if isinstance(section, str):
+                return section.strip()
+            return str(section or "").strip()
 
         # 1) Merge text sections into one doc (for downstream chunker).
         text_parts: List[str] = []
         if isinstance(sections, str):
-            cleaned = _clean_text(sections)
-            if cleaned:
-                text_parts.append(cleaned)
+            normalized = _normalize_section(sections)
+            if normalized:
+                text_parts.append(normalized)
         elif isinstance(sections, list):
             for item in sections:
-                # Some variants return (text, tag) tuples.
-                if isinstance(item, tuple) and item:
-                    cleaned = _clean_text(item[0])
-                else:
-                    cleaned = _clean_text(item)
-                if cleaned:
-                    text_parts.append(cleaned)
+                normalized = _normalize_section(item)
+                if normalized:
+                    text_parts.append(normalized)
 
         merged_text = "\n\n".join(text_parts).strip()
         if merged_text:
