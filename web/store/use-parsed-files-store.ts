@@ -21,6 +21,7 @@ export interface ParsedFileData {
   parsedAt: string
   parser: string
   parserBackend?: string
+  durationSec?: number
   folderId?: string
   /**
    * UI status for the document library.

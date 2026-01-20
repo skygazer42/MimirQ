@@ -248,37 +248,40 @@ export default function ParsingPage() {
     }
   }
 
-  const syncLibraryFromServer = useCallback(async () => {
-    try {
-      const { items } = await parsingApi.listDocuments({ skip: 0, limit: 500 })
-      const current = useParsedFiles.getState().files || []
-      const byId = new Map(current.map((f) => [f.id, f]))
+	  const syncLibraryFromServer = useCallback(async () => {
+	    try {
+	      const { items } = await parsingApi.listDocuments({ skip: 0, limit: 500 })
+	      const current = useParsedFiles.getState().files || []
+	      const byId = new Map(current.map((f) => [f.id, f]))
 
-      const next = items.map((doc) => {
-        const id = String(doc.id || '').trim()
-        const existing = byId.get(id)
-        const meta = (doc.metadata || {}) as Record<string, any>
-        const backendFromServer = String(meta?.parser_backend || meta?.parser_backend_requested || 'auto')
-        const preferredBackend = backendFromServer !== 'auto' ? backendFromServer : (existing?.parserBackend || backendFromServer)
-        const resolved = resolveParserBackendForFilename(doc.filename || existing?.filename || 'document', preferredBackend)
-        const backend = resolved.backend
-        const status = mapBackendStatusToLibraryStatus(doc.status)
+	      const next = items.map((doc) => {
+	        const id = String(doc.id || '').trim()
+	        const existing = byId.get(id)
+	        const meta = (doc.metadata || {}) as Record<string, any>
+	        const rawDuration = meta?.parse_duration_sec
+	        const durationSec = Number.isFinite(Number(rawDuration)) ? Number(rawDuration) : existing?.durationSec
+	        const backendFromServer = String(meta?.parser_backend || meta?.parser_backend_requested || 'auto')
+	        const preferredBackend = backendFromServer !== 'auto' ? backendFromServer : (existing?.parserBackend || backendFromServer)
+	        const resolved = resolveParserBackendForFilename(doc.filename || existing?.filename || 'document', preferredBackend)
+	        const backend = resolved.backend
+	        const status = mapBackendStatusToLibraryStatus(doc.status)
 
-        return {
-          id,
-          filename: doc.filename || existing?.filename || 'document',
-          fileType: doc.file_type || existing?.fileType || '',
-          fileSize: Number(doc.file_size || existing?.fileSize || 0),
-          markdownContent: existing?.markdownContent || '',
-          originalMarkdownContent: existing?.originalMarkdownContent || '',
-          parsedAt: String(doc.updated_at || doc.created_at || existing?.parsedAt || new Date().toISOString()),
-          parser: getParserLabel(backend),
-          parserBackend: backend,
-          folderId: existing?.folderId || ROOT_FOLDER_ID,
-          status,
-          error: status === 'error' ? String(doc.error_message || existing?.error || '解析失败') : undefined,
-        }
-      })
+	        return {
+	          id,
+	          filename: doc.filename || existing?.filename || 'document',
+	          fileType: doc.file_type || existing?.fileType || '',
+	          fileSize: Number(doc.file_size || existing?.fileSize || 0),
+	          markdownContent: existing?.markdownContent || '',
+	          originalMarkdownContent: existing?.originalMarkdownContent || '',
+	          parsedAt: String(doc.updated_at || doc.created_at || existing?.parsedAt || new Date().toISOString()),
+	          parser: getParserLabel(backend),
+	          parserBackend: backend,
+	          durationSec,
+	          folderId: existing?.folderId || ROOT_FOLDER_ID,
+	          status,
+	          error: status === 'error' ? String(doc.error_message || existing?.error || '解析失败') : undefined,
+	        }
+	      })
 
       setParsedFiles(next)
     } catch (err) {
@@ -328,22 +331,25 @@ export default function ParsingPage() {
           // ignore
         }
 
-        try {
-          const remote = await parsingApi.getContent(id)
-          if (cancelled) return
-          const markdown = (remote?.markdown_content || '').trim()
-          const original = (remote?.original_markdown_content || '').trim()
-          if (!markdown && !original) return
-          updateParsedFile(id, {
-            markdownContent: markdown || original,
-            originalMarkdownContent: original || markdown,
-            status: file.status || 'parsed',
-            parser: getParserLabel(remote?.parser_backend || 'auto'),
-            parserBackend: String(remote?.parser_backend || 'auto'),
-          })
-        } catch {
-          // ignore
-        }
+	        try {
+	          const remote = await parsingApi.getContent(id)
+	          if (cancelled) return
+	          const markdown = (remote?.markdown_content || '').trim()
+	          const original = (remote?.original_markdown_content || '').trim()
+	          const rawDuration = remote?.parse_duration_sec
+	          const durationSec = Number.isFinite(Number(rawDuration)) ? Number(rawDuration) : undefined
+	          if (!markdown && !original) return
+	          updateParsedFile(id, {
+	            markdownContent: markdown || original,
+	            originalMarkdownContent: original || markdown,
+	            status: file.status || 'parsed',
+	            parser: getParserLabel(remote?.parser_backend || 'auto'),
+	            parserBackend: String(remote?.parser_backend || 'auto'),
+	            durationSec,
+	          })
+	        } catch {
+	          // ignore
+	        }
       })()
 
     return () => {
@@ -470,10 +476,12 @@ export default function ParsingPage() {
       const label = getParserLabel(backend)
       const folderId = libEntry.folderId || ROOT_FOLDER_ID
       const parsedAtTs = Date.parse(libEntry.parsedAt || '')
-      const createdAt = Number.isFinite(parsedAtTs) ? parsedAtTs : Date.now()
-      const queueId = generateId()
-      const autoParse = Boolean(options.autoParse)
-      const select = options.select ?? true
+	      const createdAt = Number.isFinite(parsedAtTs) ? parsedAtTs : Date.now()
+	      const queueId = generateId()
+	      const autoParse = Boolean(options.autoParse)
+	      const select = options.select ?? true
+	      const restoredDurationSec =
+	        !autoParse && Number.isFinite(Number(libEntry.durationSec)) ? Number(libEntry.durationSec) : undefined
 
       const libStatus = (libEntry.status || 'parsed') as FileStatus
 
@@ -544,18 +552,19 @@ export default function ParsingPage() {
         status = 'pending'
       }
 
-      const queueItem: ParsedFile = {
-        id: queueId,
-        file: sourceFile,
-        folderId,
-        name: sourceFile.name,
-        size: sourceFile.size,
-        status,
-        markdownContent,
-        error: errorMessage,
-        parserBackend: backend,
-        parserLabel: label,
-        libraryId: id,
+	      const queueItem: ParsedFile = {
+	        id: queueId,
+	        file: sourceFile,
+	        folderId,
+	        name: sourceFile.name,
+	        size: sourceFile.size,
+	        status,
+	        duration: restoredDurationSec,
+	        markdownContent,
+	        error: errorMessage,
+	        parserBackend: backend,
+	        parserLabel: label,
+	        libraryId: id,
         createdAt,
         runs,
         activeRunId,
@@ -1213,11 +1222,14 @@ export default function ParsingPage() {
       const rawMarkdown = (data.original_markdown_content || data.markdown_content || '').toString()
       const resolvedBackend = data.parser_backend || requestedBackend
       const resolvedLabel = getParserLabel(resolvedBackend)
-      const duration = ((Date.now() - startTime) / 1000).toFixed(1)
-      const parsed = extractBlocksFromMarkdown(rawMarkdown)
-      const markdownContent = (data.markdown_content || parsed.cleanedMarkdown).toString()
-      const blocks = parsed.blocks.filter((block) => (block.positions || []).length > 0)
-      const runId = `${resolvedBackend}-${Date.now()}`
+	      const fallbackDurationSec = Number.parseFloat(((Date.now() - startTime) / 1000).toFixed(1))
+	      const parsed = extractBlocksFromMarkdown(rawMarkdown)
+	      const markdownContent = (data.markdown_content || parsed.cleanedMarkdown).toString()
+	      const blocks = parsed.blocks.filter((block) => (block.positions || []).length > 0)
+	      const durationSec = Number.isFinite(Number(data.parse_duration_sec))
+	        ? Number(data.parse_duration_sec)
+	        : fallbackDurationSec
+	      const runId = `${resolvedBackend}-${Date.now()}`
       const run = {
         id: runId,
         parserBackend: resolvedBackend,
@@ -1238,22 +1250,22 @@ export default function ParsingPage() {
         blockCount: blocks.length,
       }
 
-      setFiles((prev) =>
-        prev.map((f) =>
-          f.id === fileId
-            ? {
-              ...f,
-              status: 'parsed' as FileStatus,
-              markdownContent,
-              parserBackend: resolvedBackend,
-              parserLabel: resolvedLabel,
-              parser: resolvedLabel,
-              progress: 100,
-              duration: parseFloat(duration),
-              stats,
-              runs: [...(f.runs || []), run],
-              activeRunId: runId,
-            }
+	      setFiles((prev) =>
+	        prev.map((f) =>
+	          f.id === fileId
+	            ? {
+	              ...f,
+	              status: 'parsed' as FileStatus,
+	              markdownContent,
+	              parserBackend: resolvedBackend,
+	              parserLabel: resolvedLabel,
+	              parser: resolvedLabel,
+	              progress: 100,
+	              duration: durationSec,
+	              stats,
+	              runs: [...(f.runs || []), run],
+	              activeRunId: runId,
+	            }
             : f
         )
       )
@@ -1263,19 +1275,20 @@ export default function ParsingPage() {
       setRightPanelMode(blocks.length ? 'blocks' : 'markdown')
 
       // Sync persisted library entry (backend + local store cache).
-      updateParsedFile(libraryId, {
-        filename: file.file.name,
-        fileType: file.file.name.split('.').pop()?.toLowerCase() || '',
-        fileSize: file.file.size,
-        markdownContent,
-        originalMarkdownContent: rawMarkdown,
-        parser: resolvedLabel,
-        parserBackend: resolvedBackend,
-        folderId: file.folderId,
-        parsedAt: new Date().toISOString(),
-        status: 'parsed',
-        error: undefined,
-      })
+	      updateParsedFile(libraryId, {
+	        filename: file.file.name,
+	        fileType: file.file.name.split('.').pop()?.toLowerCase() || '',
+	        fileSize: file.file.size,
+	        markdownContent,
+	        originalMarkdownContent: rawMarkdown,
+	        parser: resolvedLabel,
+	        parserBackend: resolvedBackend,
+	        durationSec,
+	        folderId: file.folderId,
+	        parsedAt: new Date().toISOString(),
+	        status: 'parsed',
+	        error: undefined,
+	      })
     } catch (err: any) {
       if (controller.signal.aborted) return
       if (parseControllersRef.current.get(fileId) !== controller) return
@@ -1727,20 +1740,21 @@ export default function ParsingPage() {
                           )
                         })}
                         {/* Persisted library entries (with Cyber/Glass theme) */}
-                        {visibleLibraryOnlyFiles.map((f) => (
-                          <FileQueueItem
-                            key={f.id}
-                            file={{
-                              id: f.id,
-                              name: f.filename,
-                              size: f.fileSize,
-                              status: f.status || 'parsed',
-                              parser: f.parser,
-                              folderPathLabel: f.folderId && f.folderId !== ROOT_FOLDER_ID ? folderPathById[f.folderId] : undefined
-                            }}
-                            isActive={activeLibraryFileId === f.id}
-                            onClick={() => {
-                              setActiveFileId(null)
+	                        {visibleLibraryOnlyFiles.map((f) => (
+	                          <FileQueueItem
+	                            key={f.id}
+	                            file={{
+	                              id: f.id,
+	                              name: f.filename,
+	                              size: f.fileSize,
+	                              status: f.status || 'parsed',
+	                              parser: f.parser,
+	                              duration: f.durationSec,
+	                              folderPathLabel: f.folderId && f.folderId !== ROOT_FOLDER_ID ? folderPathById[f.folderId] : undefined
+	                            }}
+	                            isActive={activeLibraryFileId === f.id}
+	                            onClick={() => {
+	                              setActiveFileId(null)
                               setActiveLibraryFileId(f.id)
                             }}
                             onRemove={() => removeFile(f.id)}
@@ -2036,13 +2050,17 @@ export default function ParsingPage() {
                               value={activeFile.stats.imageCount || 0}
                               color="red"
                             />
-                            <StatCard
-                              icon={Clock}
-                              label="耗时"
-                              value={`${activeFile.duration}s`}
-                              subValue={activeFile.parserLabel}
-                              color="gray"
-                            />
+	                            <StatCard
+	                              icon={Clock}
+	                              label="耗时"
+	                              value={
+	                                typeof activeFile.duration === 'number' && Number.isFinite(activeFile.duration)
+	                                  ? `${activeFile.duration}s`
+	                                  : '-'
+	                              }
+	                              subValue={activeFile.parserLabel}
+	                              color="gray"
+	                            />
                           </StatsGrid>
                         </div>
                       )}
