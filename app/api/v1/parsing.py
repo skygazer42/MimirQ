@@ -42,6 +42,7 @@ from app.parsing.subprocess_runner import SubprocessCancelled, SubprocessWorkerE
 from app.services.dataset_service import DatasetService
 from app.storage.object.minio import is_minio_uri, minio_service, parse_minio_uri
 from app.rag.core.logging import get_logger
+from app.core.env import is_production_env
 
 logger = get_logger("api.parsing")
 
@@ -447,23 +448,35 @@ async def parse_workspace_document(
         db.commit()
         raise HTTPException(status_code=499, detail="Client closed request")
     except SubprocessWorkerError as exc:
-        msg = str(exc)[:200]
+        err_type = (exc.details or {}).get("type")
+        msg = (str(exc) or "").strip()
+        if not msg:
+            details = exc.details or {}
+            msg = str(details.get("message") or details.get("type") or exc.__class__.__name__).strip()
+        msg = msg[:200]
         logger.error("Subprocess worker failed during workspace parse: %s", msg)
         doc.status = "failed"
         doc.processing_progress = 0
         doc.current_stage = "failed"
         doc.error_message = msg
         db.commit()
-        raise HTTPException(status_code=500, detail="Failed to parse document")
+        status_code = 400 if err_type == "ValueError" else 500
+        prefix = "Invalid input" if status_code == 400 else "Failed to parse document"
+        detail = prefix if is_production_env() else f"{prefix}: {msg}"
+        raise HTTPException(status_code=status_code, detail=detail)
     except Exception as exc:  # noqa: BLE001
-        msg = str(exc)[:200]
+        msg = (str(exc) or "").strip()
+        if not msg:
+            msg = exc.__class__.__name__
+        msg = msg[:200]
         logger.error("Unexpected error during workspace parse: %s", msg)
         doc.status = "failed"
         doc.processing_progress = 0
         doc.current_stage = "failed"
         doc.error_message = msg
         db.commit()
-        raise HTTPException(status_code=500, detail="Failed to parse document")
+        detail = "Failed to parse document" if is_production_env() else f"Failed to parse document: {msg}"
+        raise HTTPException(status_code=500, detail=detail)
     finally:
         if temp_path is not None:
             with contextlib.suppress(Exception):
