@@ -436,6 +436,7 @@ export interface ParsingContentResponse {
   parser_backend: string
   markdown_content: string
   original_markdown_content: string
+  parse_duration_sec?: number | null
 }
 
 export interface ParsingContentUpdateRequest {

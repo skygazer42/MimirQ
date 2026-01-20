@@ -18,6 +18,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import re
+import time
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -58,6 +59,7 @@ class ParsingContentResponse(BaseModel):
     parser_backend: str = Field(default="auto")
     markdown_content: str = Field(default="")
     original_markdown_content: str = Field(default="")
+    parse_duration_sec: Optional[float] = Field(default=None)
 
 
 class ParsingContentUpdateRequest(BaseModel):
@@ -368,6 +370,7 @@ async def parse_workspace_document(
         raise HTTPException(status_code=400, detail=str(exc))
 
     try:
+        t0 = time.perf_counter()
         parsed = await run_subprocess_worker(
             tenant_id=tenant_id,
             payload={
@@ -380,6 +383,7 @@ async def parse_workspace_document(
             disconnect_check=request.is_disconnected,
             timeout_sec=float(getattr(settings, "TASK_JOB_TIMEOUT_SEC", 60 * 30) or 60 * 30),
         )
+        duration_sec = max(0.0, time.perf_counter() - t0)
         documents = [
             str(item.get("page_content") or "")
             for item in (parsed.get("documents") or [])
@@ -421,6 +425,7 @@ async def parse_workspace_document(
         next_meta["parser_backend_requested"] = requested_backend
         next_meta["parser_backend"] = resolved_backend
         next_meta["parsed_at"] = datetime.now(timezone.utc).isoformat()
+        next_meta["parse_duration_sec"] = round(float(duration_sec), 3)
         doc.doc_metadata = next_meta
 
         db.commit()
@@ -431,6 +436,7 @@ async def parse_workspace_document(
             parser_backend=resolved_backend,
             markdown_content=markdown,
             original_markdown_content=original_markdown,
+            parse_duration_sec=round(float(duration_sec), 3),
         )
     except SubprocessCancelled:
         # Client disconnected; stop work early.
@@ -474,8 +480,15 @@ async def get_parsing_content(
     doc = _get_workspace_document(db, tenant_id=tenant_id, account_id=account_id, document_id=document_id)
     meta = doc.doc_metadata or {}
     parser_backend = ""
+    duration_sec: Optional[float] = None
     if isinstance(meta, dict):
         parser_backend = str(meta.get("parser_backend") or meta.get("parser_backend_requested") or "auto")
+        raw_duration = meta.get("parse_duration_sec")
+        try:
+            if raw_duration is not None:
+                duration_sec = float(raw_duration)
+        except Exception:
+            duration_sec = None
 
     row = (
         db.query(DocumentParsedContent)
@@ -487,6 +500,7 @@ async def get_parsing_content(
         parser_backend=str(parser_backend or "auto"),
         markdown_content=(row.markdown_content if row else ""),
         original_markdown_content=(row.original_markdown_content if row else ""),
+        parse_duration_sec=duration_sec,
     )
 
 
@@ -548,14 +562,22 @@ async def update_parsing_content(
     db.refresh(doc)
 
     parser_backend = "auto"
+    duration_sec: Optional[float] = None
     if isinstance(next_meta, dict):
         parser_backend = str(next_meta.get("parser_backend") or next_meta.get("parser_backend_requested") or "auto")
+        raw_duration = next_meta.get("parse_duration_sec")
+        try:
+            if raw_duration is not None:
+                duration_sec = float(raw_duration)
+        except Exception:
+            duration_sec = None
 
     return ParsingContentResponse(
         document_id=doc.id,
         parser_backend=parser_backend,
         markdown_content=markdown,
         original_markdown_content=original,
+        parse_duration_sec=duration_sec,
     )
 
 

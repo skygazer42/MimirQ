@@ -103,9 +103,9 @@ export function FileQueueItem({
             {file.chunkStrategyLabel && (
               <span className="text-slate-500 dark:text-slate-400">· {file.chunkStrategyLabel}</span>
             )}
-            {file.duration && (
+            {typeof file.duration === 'number' && Number.isFinite(file.duration) ? (
               <span className="text-slate-500 dark:text-slate-400">· {file.duration}s</span>
-            )}
+            ) : null}
           </div>
         )
       case 'error':
