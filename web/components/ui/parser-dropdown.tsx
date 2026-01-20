@@ -54,9 +54,10 @@ interface ParserDropdownProps {
   onChange: (value: string) => void
   className?: string
   filename?: string
+  compact?: boolean
 }
 
-export function ParserDropdown({ value, onChange, className, filename }: ParserDropdownProps) {
+export function ParserDropdown({ value, onChange, className, filename, compact = false }: ParserDropdownProps) {
   const [isOpen, setIsOpen] = useState(false)
   const dropdownRef = useRef<HTMLDivElement>(null)
   const { capabilities, loading, error, refresh, parserBackendAvailable } = usePipelineCapabilities()
@@ -103,7 +104,8 @@ export function ParserDropdown({ value, onChange, className, filename }: ParserD
         type="button"
         onClick={() => setIsOpen(!isOpen)}
         className={cn(
-          'w-full flex items-center gap-3 px-3 py-2.5 rounded-xl border transition-all',
+          'w-full flex items-center gap-3 px-3 border transition-all',
+          compact ? 'py-2 rounded-full' : 'py-2.5 rounded-2xl',
           'bg-card hover:bg-muted',
           isOpen
             ? 'border-sky-300/60 ring-2 ring-sky-500/10'
@@ -124,7 +126,9 @@ export function ParserDropdown({ value, onChange, className, filename }: ParserD
               </span>
             )}
           </div>
-          <p className="text-xs text-muted-foreground truncate">{selectedOption.description}</p>
+          {!compact && (
+            <p className="text-xs text-muted-foreground truncate">{selectedOption.description}</p>
+          )}
         </div>
         <ChevronDown
           className={cn(
@@ -136,7 +140,7 @@ export function ParserDropdown({ value, onChange, className, filename }: ParserD
 
       {/* 下拉菜单 */}
       {isOpen && (
-        <div className="absolute z-50 w-full mt-2 bg-card border border-border rounded-xl shadow-lg overflow-hidden">
+        <div className="absolute z-50 w-full mt-2 bg-card border border-border rounded-2xl shadow-xl overflow-hidden">
           {(loading || error) && (
             <div
               className={cn(
