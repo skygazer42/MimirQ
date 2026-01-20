@@ -2,8 +2,8 @@
 
 import { useQuery } from '@tanstack/react-query'
 import { documentApi } from '@/lib/api-client'
-import { Loader2, AlertCircle, X, ChevronUp, ChevronDown, Ban, RotateCcw, ArrowUpRight, Minus } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { Loader2, AlertCircle, X, Ban, RotateCcw, ArrowUpRight, Settings2 } from 'lucide-react'
+import { useState } from 'react'
 import { cn } from '@/lib/utils'
 import { Button } from './ui/button'
 import { ScrollArea } from './ui/scroll-area'
@@ -11,29 +11,10 @@ import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
 import { formatApiError } from '@/lib/api-errors'
 
-const MINIMIZED_KEY = 'mimirq_task_center_minimized'
-
 export function TaskCenter() {
   const [isOpen, setIsOpen] = useState(false)
-  const [isMinimized, setIsMinimized] = useState(false)
   const [acting, setActing] = useState<{ id: string; action: 'cancel' | 'retry' } | null>(null)
   const router = useRouter()
-
-  useEffect(() => {
-    try {
-      setIsMinimized(window.localStorage.getItem(MINIMIZED_KEY) === '1')
-    } catch {
-      // ignore
-    }
-  }, [])
-
-  useEffect(() => {
-    try {
-      window.localStorage.setItem(MINIMIZED_KEY, isMinimized ? '1' : '0')
-    } catch {
-      // ignore
-    }
-  }, [isMinimized])
   
   // Poll for active tasks globally
   const { data: documents = [], refetch } = useQuery({
@@ -51,8 +32,10 @@ export function TaskCenter() {
   const failedTasks = documents.filter(d => d.status === 'failed')
   
   const totalActive = activeTasks.length
+  const totalFailed = failedTasks.length
+  const totalCount = totalActive + totalFailed
   
-  if (totalActive === 0 && failedTasks.length === 0) return null
+  if (totalCount === 0) return null
 
   const handleCancel = async (id: string) => {
     if (acting) return
@@ -83,11 +66,18 @@ export function TaskCenter() {
   }
 
   return (
-    <div className="fixed bottom-4 right-20 z-50 flex flex-col items-end">
+    <div className="fixed bottom-4 right-4 z-50 flex flex-col items-end">
         {isOpen && (
             <div className="mb-2 w-80 bg-background border border-border rounded-xl shadow-2xl overflow-hidden animate-in slide-in-from-bottom-5 fade-in">
                 <div className="p-3 border-b border-border bg-muted/50 flex justify-between items-center">
-                    <h4 className="text-xs font-semibold">任务列表 ({totalActive})</h4>
+                    <div className="flex items-baseline gap-2">
+                      <h4 className="text-sm font-semibold leading-none">任务中心</h4>
+                      <div className="text-xs text-muted-foreground">
+                        {totalActive > 0 && <span>进行中 {totalActive}</span>}
+                        {totalActive > 0 && totalFailed > 0 && <span className="mx-1">·</span>}
+                        {totalFailed > 0 && <span className="text-destructive">失败 {totalFailed}</span>}
+                      </div>
+                    </div>
                     <div className="flex items-center gap-1">
                       <Button
                         variant="ghost"
@@ -105,16 +95,10 @@ export function TaskCenter() {
                         variant="ghost"
                         size="icon"
                         className="h-6 w-6"
-                        onClick={() => {
-                          setIsOpen(false)
-                          setIsMinimized(true)
-                        }}
-                        aria-label="折叠任务中心"
-                        title="折叠"
+                        onClick={() => setIsOpen(false)}
+                        aria-label="关闭任务中心"
+                        title="关闭"
                       >
-                        <Minus className="h-3 w-3" />
-                      </Button>
-                      <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => setIsOpen(false)}>
                           <X className="h-3 w-3" />
                       </Button>
                     </div>
@@ -125,18 +109,19 @@ export function TaskCenter() {
                             <div key={doc.id} className="flex items-center gap-3 p-2 bg-secondary/30 rounded-lg">
                                 <Loader2 className="h-4 w-4 animate-spin text-primary" />
                                 <div className="flex-1 min-w-0">
-                                    <p className="text-xs font-medium truncate">{doc.filename}</p>
+                                    <p className="text-sm font-medium truncate leading-snug">{doc.filename}</p>
                                     <div className="w-full h-1 bg-secondary mt-1.5 rounded-full overflow-hidden">
                                         <div className="h-full bg-primary transition-all duration-500" style={{ width: `${doc.processing_progress}%` }} />
                                     </div>
                                 </div>
-                                <span className="text-[10px] text-muted-foreground">{doc.processing_progress}%</span>
+                                <span className="text-xs tabular-nums text-muted-foreground">{doc.processing_progress}%</span>
                                 <Button
                                   variant="ghost"
                                   size="icon"
                                   className="h-7 w-7"
                                   disabled={acting?.id === doc.id}
                                   onClick={() => handleCancel(doc.id)}
+                                  aria-label="取消任务"
                                   title="取消"
                                 >
                                   <Ban className="h-3.5 w-3.5" />
@@ -147,8 +132,8 @@ export function TaskCenter() {
                             <div key={doc.id} className="flex items-center gap-3 p-2 bg-destructive/10 rounded-lg">
                                 <AlertCircle className="h-4 w-4 text-destructive" />
                                 <div className="flex-1 min-w-0">
-                                    <p className="text-xs font-medium truncate text-destructive">{doc.filename}</p>
-                                    <p className="text-[10px] text-destructive/80 truncate">处理失败</p>
+                                    <p className="text-sm font-medium truncate text-destructive leading-snug">{doc.filename}</p>
+                                    <p className="text-xs text-destructive/80 truncate">处理失败</p>
                                 </div>
                                 <Button
                                   variant="ghost"
@@ -156,6 +141,7 @@ export function TaskCenter() {
                                   className="h-7 w-7"
                                   disabled={acting?.id === doc.id}
                                   onClick={() => handleRetry(doc.id)}
+                                  aria-label="重试任务"
                                   title="重试"
                                 >
                                   <RotateCcw className="h-3.5 w-3.5" />
@@ -167,65 +153,35 @@ export function TaskCenter() {
             </div>
         )}
 
-        {isMinimized ? (
-          <Button
-            variant="outline"
-            size="icon"
-            className="h-11 w-11 rounded-full shadow-lg bg-background"
-            onClick={() => {
-              setIsMinimized(false)
-              setIsOpen(true)
-            }}
-            aria-label="展开任务中心"
-            title="展开任务中心"
+        <Button
+          variant="outline"
+          size="icon"
+          className={cn(
+            "relative rounded-full h-12 w-12 shadow-2xl bg-background/80 backdrop-blur-md border-primary/20 hover:border-primary transition-all duration-300",
+            isOpen && "bg-primary/10"
+          )}
+          onClick={() => setIsOpen(v => !v)}
+          aria-label="任务中心"
+          title="任务中心"
+        >
+          <Settings2 className="h-6 w-6 text-primary" />
+          <span
+            className={cn(
+              "absolute -top-2 -right-2 inline-flex min-w-5 h-5 items-center justify-center rounded-full text-[10px] px-1 tabular-nums",
+              totalFailed > 0 && totalActive === 0
+                ? "bg-destructive text-destructive-foreground"
+                : "bg-primary text-primary-foreground"
+            )}
           >
-            <div className="relative">
-              <Loader2 className={cn('h-4 w-4', totalActive > 0 && 'animate-spin')} />
-              {(totalActive > 0 || failedTasks.length > 0) && (
-                <span className="absolute -top-2 -right-2 inline-flex min-w-5 h-5 items-center justify-center rounded-full bg-primary text-primary-foreground text-[10px] px-1">
-                  {totalActive + failedTasks.length}
-                </span>
-              )}
-            </div>
-          </Button>
-        ) : (
-          <div className="flex items-center gap-2">
-            <Button 
-                onClick={() => setIsOpen(!isOpen)}
-                className={cn(
-                    "rounded-full shadow-lg transition-all duration-300 gap-2 pr-4",
-                    isOpen ? "bg-primary text-primary-foreground" : "bg-background border border-border hover:bg-muted"
-                )}
-            >
-                <div className="relative">
-                    <Loader2 className={cn("h-4 w-4", totalActive > 0 && "animate-spin")} />
-                    {totalActive > 0 && (
-                        <span className="absolute -top-1 -right-1 flex h-2 w-2">
-                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-sky-400 opacity-75"></span>
-                            <span className="relative inline-flex rounded-full h-2 w-2 bg-sky-500"></span>
-                        </span>
-                    )}
-                </div>
-                <span className="text-xs font-medium">
-                    {totalActive > 0 ? `${totalActive} 个任务进行中` : '任务完成'}
-                </span>
-                {isOpen ? <ChevronDown className="h-3 w-3" /> : <ChevronUp className="h-3 w-3" />}
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-11 w-11 rounded-full shadow-lg bg-background border border-border hover:bg-muted"
-              onClick={() => {
-                setIsOpen(false)
-                setIsMinimized(true)
-              }}
-              aria-label="折叠任务中心"
-              title="折叠"
-            >
-              <Minus className="h-4 w-4" />
-            </Button>
-          </div>
-        )}
+            {totalCount}
+          </span>
+          {totalActive > 0 && (
+            <span className="absolute -top-1 -left-1 flex h-2 w-2">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-sky-400 opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-2 w-2 bg-sky-500"></span>
+            </span>
+          )}
+        </Button>
     </div>
   )
 }
