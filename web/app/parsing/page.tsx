@@ -79,6 +79,8 @@ const ZIP_ALLOWED_EXTENSIONS = new Set([
   'md',
   'doc',
   'docx',
+  'ppt',
+  'pptx',
   'xls',
   'xlsx',
   'csv',
@@ -1795,7 +1797,7 @@ export default function ParsingPage() {
                   ref={fileInputRef}
                   type="file"
                   multiple
-                  accept=".pdf,.txt,.md,.doc,.docx,.xls,.xlsx,.csv,.html,.json,.zip"
+                  accept=".pdf,.txt,.md,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.csv,.html,.json,.zip"
                   className="hidden"
                   onChange={handleFileSelect}
                 />
@@ -1810,7 +1812,7 @@ export default function ParsingPage() {
                 <input
                   ref={rebindInputRef}
                   type="file"
-                  accept=".pdf,.txt,.md,.doc,.docx,.xls,.xlsx,.csv,.html,.json"
+                  accept=".pdf,.txt,.md,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.csv,.html,.json"
                   className="hidden"
                   onChange={handleRebindFileSelect}
                 />

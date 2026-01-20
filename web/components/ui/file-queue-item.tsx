@@ -6,6 +6,7 @@ import {
   FileSpreadsheet,
   FileType,
   File,
+  Presentation,
   Loader2,
   CheckCircle,
   XCircle,
@@ -20,6 +21,8 @@ const FILE_TYPE_CONFIG: Record<
   { icon: typeof FileText; color: string; bg: string }
 > = {
   pdf: { icon: FileText, color: 'text-red-600 dark:text-red-400', bg: 'bg-red-50 dark:bg-red-900/20' },
+  pptx: { icon: Presentation, color: 'text-orange-700 dark:text-orange-400', bg: 'bg-orange-50 dark:bg-orange-900/20' },
+  ppt: { icon: Presentation, color: 'text-orange-700 dark:text-orange-400', bg: 'bg-orange-50 dark:bg-orange-900/20' },
   xlsx: { icon: FileSpreadsheet, color: 'text-emerald-700 dark:text-emerald-400', bg: 'bg-emerald-50 dark:bg-emerald-900/20' },
   xls: { icon: FileSpreadsheet, color: 'text-emerald-700 dark:text-emerald-400', bg: 'bg-emerald-50 dark:bg-emerald-900/20' },
   docx: { icon: FileType, color: 'text-blue-700 dark:text-blue-400', bg: 'bg-blue-50 dark:bg-blue-900/20' },

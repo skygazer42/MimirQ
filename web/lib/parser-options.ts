@@ -126,5 +126,22 @@ export function getParserOption(value?: string) {
 }
 
 export function getParserLabel(value?: string) {
-  return getParserOption(value).label
+  const normalized = normalizeParserValue(value)
+  const direct = PARSER_BACKEND_OPTIONS.find((option) => option.value === normalized)?.label
+  if (direct) return direct
+
+  // Backends that may be returned by the server but are not selectable in the PDF-focused dropdown.
+  const extraLabels: Record<string, string> = {
+    pandoc: 'Pandoc',
+    excel: 'Excel',
+    docx: 'DOCX',
+    html: 'HTML',
+    csv: 'CSV',
+    json: 'JSON',
+    text: 'Text',
+    markdown: 'Markdown',
+  }
+  if (extraLabels[normalized]) return extraLabels[normalized]
+
+  return (value || '').toString().trim() || 'Auto'
 }

@@ -11,6 +11,7 @@ import {
   FileType,
   FileSpreadsheet,
   FileCode,
+  Presentation,
   Search,
   Settings,
   Upload,
@@ -109,6 +110,15 @@ function getFileTypeStyle(doc: Pick<Document, 'filename' | 'file_type'>): FileTy
         color: 'text-indigo-600 dark:text-indigo-400',
         bg: 'bg-indigo-50 dark:bg-indigo-900/20',
         border: 'border-indigo-200/60 dark:border-indigo-500/30',
+      }
+    case 'ppt':
+    case 'pptx':
+      return {
+        icon: Presentation,
+        label: ext.toUpperCase(),
+        color: 'text-rose-700 dark:text-rose-300',
+        bg: 'bg-rose-50 dark:bg-rose-900/20',
+        border: 'border-rose-200/60 dark:border-rose-500/30',
       }
     case 'xlsx':
     case 'xls':
@@ -354,7 +364,7 @@ export default function KnowledgePage() {
                 <input
                   type="file"
                   multiple
-                  accept=".pdf,.txt,.md,.doc,.docx,.xls,.xlsx,.csv,.html,.json"
+                  accept=".pdf,.txt,.md,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.csv,.html,.json"
                   className="hidden"
                   onChange={handleFileUpload}
                 />
@@ -914,7 +924,7 @@ function EmptyState({ onUpload }: { onUpload: (e: React.ChangeEvent<HTMLInputEle
         <input
           type="file"
           multiple
-          accept=".pdf,.txt,.md,.doc,.docx,.xls,.xlsx,.csv,.html,.json"
+          accept=".pdf,.txt,.md,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.csv,.html,.json"
           className="hidden"
           onChange={onUpload}
         />
