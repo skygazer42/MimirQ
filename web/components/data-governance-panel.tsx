@@ -790,7 +790,7 @@ export function DataGovernancePanel() {
                   <input
                     type="file"
                     multiple
-                    accept=".pdf,.txt,.md,.doc,.docx,.xls,.xlsx,.csv,.html,.json,.zip"
+                    accept=".pdf,.txt,.md,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.csv,.html,.json,.zip"
                     className="hidden"
                     id="file-upload"
                     onChange={handleFileSelect}

@@ -70,6 +70,18 @@ export function resolveParserBackendForFilename(filename: string, requestedBacke
     return { backend: 'auto', changed: backend !== 'auto', reason: `backend '${backend}' is not supported for doc` }
   }
 
+  if (ext === '.pptx') {
+    const allowed = new Set(['auto', 'markitdown', 'pandoc'])
+    if (allowed.has(backend)) return { backend, changed: false }
+    return { backend: 'auto', changed: backend !== 'auto', reason: `backend '${backend}' is not supported for pptx` }
+  }
+
+  if (ext === '.ppt') {
+    const allowed = new Set(['auto', 'markitdown', 'pandoc'])
+    if (allowed.has(backend)) return { backend, changed: false }
+    return { backend: 'auto', changed: backend !== 'auto', reason: `backend '${backend}' is not supported for ppt` }
+  }
+
   if (ext === '.xlsx' || ext === '.xls') {
     const allowed = new Set(['auto', 'markitdown', 'pandoc', 'excel'])
     if (allowed.has(backend)) return { backend, changed: false }
@@ -92,6 +104,18 @@ export function resolveParserBackendForFilename(filename: string, requestedBacke
     const allowed = new Set(['auto', 'markitdown', 'pandoc', 'json'])
     if (allowed.has(backend)) return { backend, changed: false }
     return { backend: 'auto', changed: backend !== 'auto', reason: `backend '${backend}' is not supported for json` }
+  }
+
+  if (ext === '.md') {
+    const allowed = new Set(['auto'])
+    if (allowed.has(backend)) return { backend, changed: false }
+    return { backend: 'auto', changed: backend !== 'auto', reason: `backend '${backend}' is not supported for markdown` }
+  }
+
+  if (ext === '.txt') {
+    const allowed = new Set(['auto'])
+    if (allowed.has(backend)) return { backend, changed: false }
+    return { backend: 'auto', changed: backend !== 'auto', reason: `backend '${backend}' is not supported for text` }
   }
 
   // Text-like/unknown formats: backend is ignored or auto-selected server-side; keep it permissive.

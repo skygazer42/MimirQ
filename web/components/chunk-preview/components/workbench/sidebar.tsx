@@ -106,7 +106,7 @@ export function Sidebar() {
             <input
               id="add-file-input"
               type="file"
-              accept=".pdf,.txt,.md,.doc,.docx,.xls,.xlsx,.csv,.html,.json"
+              accept=".pdf,.txt,.md,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.csv,.html,.json"
               multiple
               className="hidden"
               onChange={(e) => {
