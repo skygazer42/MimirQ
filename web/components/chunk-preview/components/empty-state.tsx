@@ -11,6 +11,7 @@ import {
   FileUp,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { UPLOAD_ACCEPT } from '@/lib/upload-extensions'
 import { useChunkPreview } from '@/components/chunk-preview/context'
 
 export function EmptyState() {
@@ -66,7 +67,7 @@ export function EmptyState() {
             <input
               id="chunk-file-input"
               type="file"
-              accept=".pdf,.txt,.md,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.csv,.html,.json"
+              accept={UPLOAD_ACCEPT}
               multiple
               className="hidden"
               onChange={(e) => {

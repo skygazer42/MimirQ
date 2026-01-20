@@ -24,6 +24,7 @@ import { usePipelineOptions } from '@/contexts/pipeline-options-context'
 import { getParserLabel } from '@/lib/parser-options'
 import { cn } from '@/lib/utils'
 import { formatApiError } from '@/lib/api-errors'
+import { UPLOAD_ACCEPT } from '@/lib/upload-extensions'
 import { PipelineOptionsPanel } from '@/components/pipeline-options-panel'
 import { ParserDropdown } from '@/components/ui/parser-dropdown'
 import { resolveParserBackendForFilename } from '@/lib/parser-compat'
@@ -328,7 +329,7 @@ export function ManualUploadDialog({ onUploaded }: ManualUploadDialogProps) {
                 <input 
                   ref={fileInputRef}
                   type="file" 
-                  accept=".pdf,.txt,.md,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.csv,.html,.json" 
+                  accept={UPLOAD_ACCEPT}
                   className="hidden" 
                   onChange={handleFileChange} 
                 />

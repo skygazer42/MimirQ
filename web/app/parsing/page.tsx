@@ -54,6 +54,7 @@ import { DocumentFolderTree, getFileIcon } from '@/components/document-library/f
 import { extractZipFiles, isZipFile } from '@/lib/zip'
 import { PdfViewer } from '@/components/parsing/pdf-viewer'
 import { extractBlocksFromMarkdown, ParsingBlock } from '@/lib/parsing-positions'
+import { UPLOAD_ACCEPT, UPLOAD_ACCEPT_WITH_ZIP, ZIP_ALLOWED_EXTENSIONS } from '@/lib/upload-extensions'
 import { toast } from 'sonner'
 import {
   deleteDocContentFromCache,
@@ -72,21 +73,6 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
-
-const ZIP_ALLOWED_EXTENSIONS = new Set([
-  'pdf',
-  'txt',
-  'md',
-  'doc',
-  'docx',
-  'ppt',
-  'pptx',
-  'xls',
-  'xlsx',
-  'csv',
-  'html',
-  'json',
-])
 
 
 interface ParseRun {
@@ -1797,7 +1783,7 @@ export default function ParsingPage() {
                   ref={fileInputRef}
                   type="file"
                   multiple
-                  accept=".pdf,.txt,.md,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.csv,.html,.json,.zip"
+                  accept={UPLOAD_ACCEPT_WITH_ZIP}
                   className="hidden"
                   onChange={handleFileSelect}
                 />
@@ -1812,7 +1798,7 @@ export default function ParsingPage() {
                 <input
                   ref={rebindInputRef}
                   type="file"
-                  accept=".pdf,.txt,.md,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.csv,.html,.json"
+                  accept={UPLOAD_ACCEPT}
                   className="hidden"
                   onChange={handleRebindFileSelect}
                 />

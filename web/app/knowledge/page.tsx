@@ -49,6 +49,7 @@ import {
 import { useDocuments } from '@/hooks/use-documents'
 import { formatFileSize, formatDate, cn } from '@/lib/utils'
 import { formatApiError } from '@/lib/api-errors'
+import { UPLOAD_ACCEPT } from '@/lib/upload-extensions'
 import { StatCard, StatsGrid } from '@/components/ui/stats-card'
 import { DocumentDetailDialog } from '@/components/document-detail-dialog'
 import { getParserLabel } from '@/lib/parser-options'
@@ -364,7 +365,7 @@ export default function KnowledgePage() {
                 <input
                   type="file"
                   multiple
-                  accept=".pdf,.txt,.md,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.csv,.html,.json"
+                  accept={UPLOAD_ACCEPT}
                   className="hidden"
                   onChange={handleFileUpload}
                 />
@@ -924,7 +925,7 @@ function EmptyState({ onUpload }: { onUpload: (e: React.ChangeEvent<HTMLInputEle
         <input
           type="file"
           multiple
-          accept=".pdf,.txt,.md,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.csv,.html,.json"
+          accept={UPLOAD_ACCEPT}
           className="hidden"
           onChange={onUpload}
         />
