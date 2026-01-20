@@ -20,6 +20,7 @@ export interface ParsedFileData {
   originalMarkdownContent?: string
   parsedAt: string
   parser: string
+  parserBackend?: string
   folderId?: string
   /**
    * UI status for the document library.

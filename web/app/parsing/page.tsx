@@ -241,7 +241,10 @@ export default function ParsingPage() {
         const id = String(doc.id || '').trim()
         const existing = byId.get(id)
         const meta = (doc.metadata || {}) as Record<string, any>
-        const backend = String(meta?.parser_backend || meta?.parser_backend_requested || 'auto')
+        const backendFromServer = String(meta?.parser_backend || meta?.parser_backend_requested || 'auto')
+        const preferredBackend = backendFromServer !== 'auto' ? backendFromServer : (existing?.parserBackend || backendFromServer)
+        const resolved = resolveParserBackendForFilename(doc.filename || existing?.filename || 'document', preferredBackend)
+        const backend = resolved.backend
         const status = mapBackendStatusToLibraryStatus(doc.status)
 
         return {
@@ -253,6 +256,7 @@ export default function ParsingPage() {
           originalMarkdownContent: existing?.originalMarkdownContent || '',
           parsedAt: String(doc.updated_at || doc.created_at || existing?.parsedAt || new Date().toISOString()),
           parser: getParserLabel(backend),
+          parserBackend: backend,
           folderId: existing?.folderId || ROOT_FOLDER_ID,
           status,
           error: status === 'error' ? String(doc.error_message || existing?.error || '解析失败') : undefined,
@@ -318,6 +322,7 @@ export default function ParsingPage() {
             originalMarkdownContent: original || markdown,
             status: file.status || 'parsed',
             parser: getParserLabel(remote?.parser_backend || 'auto'),
+            parserBackend: String(remote?.parser_backend || 'auto'),
           })
         } catch {
           // ignore
@@ -436,7 +441,8 @@ export default function ParsingPage() {
         return null
       }
 
-      const resolved = resolveParserBackendForFilename(sourceFile.name, parserBackend)
+      const preferredBackend = libEntry.parserBackend || parserBackend
+      const resolved = resolveParserBackendForFilename(sourceFile.name, preferredBackend)
       const backend = resolved.backend
       const label = getParserLabel(backend)
       const folderId = libEntry.folderId || ROOT_FOLDER_ID
@@ -467,6 +473,7 @@ export default function ParsingPage() {
           status: 'pending',
           error: undefined,
           parser: label,
+          parserBackend: backend,
         })
       } else if (libStatus === 'parsed') {
         try {
@@ -791,6 +798,8 @@ export default function ParsingPage() {
           const libId = String(doc.id || '').trim()
           if (!libId) throw new Error('Missing document id from backend')
 
+          const requestedBackend = String((doc.metadata as any)?.parser_backend_requested || q.parserBackend || 'auto')
+
           upsertParsedFile({
             id: libId,
             filename: doc.filename || q.name,
@@ -799,7 +808,8 @@ export default function ParsingPage() {
             markdownContent: '',
             originalMarkdownContent: '',
             parsedAt: String(doc.updated_at || doc.created_at || new Date().toISOString()),
-            parser: getParserLabel(String((doc.metadata as any)?.parser_backend_requested || q.parserBackend || 'auto')),
+            parser: getParserLabel(requestedBackend),
+            parserBackend: requestedBackend,
             folderId: q.folderId,
             status: mapBackendStatusToLibraryStatus(doc.status),
             error: doc.error_message || undefined,
@@ -1106,7 +1116,12 @@ export default function ParsingPage() {
       )
     )
     if (file.libraryId) {
-      updateParsedFile(file.libraryId, { status: 'parsing', error: undefined, parser: requestedLabel })
+      updateParsedFile(file.libraryId, {
+        status: 'parsing',
+        error: undefined,
+        parser: requestedLabel,
+        parserBackend: requestedBackend,
+      })
     }
 
     const progressInterval = setInterval(() => {
@@ -1144,6 +1159,7 @@ export default function ParsingPage() {
           originalMarkdownContent: '',
           parsedAt: String(created.updated_at || created.created_at || new Date().toISOString()),
           parser: requestedLabel,
+          parserBackend: requestedBackend,
           folderId: file.folderId,
           status: mapBackendStatusToLibraryStatus(created.status),
           error: created.error_message || undefined,
@@ -1156,7 +1172,13 @@ export default function ParsingPage() {
       if (parseControllersRef.current.get(fileId) !== controller) return
       if (!fileIdSetRef.current.has(fileId)) return
 
-      updateParsedFile(libraryId, { status: 'parsing', error: undefined, parser: requestedLabel, folderId: file.folderId })
+      updateParsedFile(libraryId, {
+        status: 'parsing',
+        error: undefined,
+        parser: requestedLabel,
+        parserBackend: requestedBackend,
+        folderId: file.folderId,
+      })
 
       const data = await parsingApi.parse(libraryId, { parser_backend: requestedBackend, signal: controller.signal })
       if (controller.signal.aborted) return
@@ -1225,6 +1247,7 @@ export default function ParsingPage() {
         markdownContent,
         originalMarkdownContent: rawMarkdown,
         parser: resolvedLabel,
+        parserBackend: resolvedBackend,
         folderId: file.folderId,
         parsedAt: new Date().toISOString(),
         status: 'parsed',
@@ -1248,7 +1271,7 @@ export default function ParsingPage() {
         )
       )
       if (libraryId) {
-        updateParsedFile(libraryId, { status: 'error', error: errorMessage })
+        updateParsedFile(libraryId, { status: 'error', error: errorMessage, parserBackend: requestedBackend })
       }
     } finally {
       if (parseControllersRef.current.get(fileId) === controller) {
@@ -1837,6 +1860,28 @@ export default function ParsingPage() {
                           </div>
                         </div>
                         <div className="flex items-center gap-2 flex-shrink-0">
+                          {activeLibraryFile.status && activeLibraryFile.status !== 'parsed' ? (
+                            <div className="flex items-center gap-2 mr-1">
+                              <span className="text-xs font-medium text-muted-foreground">解析方式</span>
+                              <ParserDropdown
+                                value={
+                                  resolveParserBackendForFilename(
+                                    activeLibraryFile.filename,
+                                    activeLibraryFile.parserBackend || parserBackend
+                                  ).backend
+                                }
+                                filename={activeLibraryFile.filename}
+                                onChange={(backend) => {
+                                  const resolved = resolveParserBackendForFilename(activeLibraryFile.filename, backend)
+                                  updateParsedFile(activeLibraryFile.id, {
+                                    parserBackend: resolved.backend,
+                                    parser: getParserLabel(resolved.backend),
+                                  })
+                                }}
+                                className="w-56"
+                              />
+                            </div>
+                          ) : null}
                           {activeLibrarySourceStatus === 'available' ? (
                             <>
                               <Button
@@ -2105,6 +2150,7 @@ export default function ParsingPage() {
                               <span className="text-xs font-medium text-muted-foreground">解析方式</span>
                               <ParserDropdown
                                 value={activeFile.parserBackend}
+                                filename={activeFile.file.name}
                                 onChange={(backend) =>
                                   setQueueFileParserBackend({
                                     fileId: activeFile.id,
@@ -2122,6 +2168,7 @@ export default function ParsingPage() {
                               <span className="text-xs font-medium text-muted-foreground">解析方式</span>
                               <ParserDropdown
                                 value={activeFile.parserBackend}
+                                filename={activeFile.file.name}
                                 onChange={(backend) =>
                                   setQueueFileParserBackend({
                                     fileId: activeFile.id,

@@ -21,6 +21,7 @@ import {
 import { cn } from '@/lib/utils'
 import { PARSER_BACKEND_OPTIONS, getParserOption } from '@/lib/parser-options'
 import { usePipelineCapabilities } from '@/contexts/pipeline-capabilities-context'
+import { resolveParserBackendForFilename } from '@/lib/parser-compat'
 
 // 图标映射
 const ICON_MAP = {
@@ -52,9 +53,10 @@ interface ParserDropdownProps {
   value: string
   onChange: (value: string) => void
   className?: string
+  filename?: string
 }
 
-export function ParserDropdown({ value, onChange, className }: ParserDropdownProps) {
+export function ParserDropdown({ value, onChange, className, filename }: ParserDropdownProps) {
   const [isOpen, setIsOpen] = useState(false)
   const dropdownRef = useRef<HTMLDivElement>(null)
   const { capabilities, loading, error, refresh, parserBackendAvailable } = usePipelineCapabilities()
@@ -173,9 +175,16 @@ export function ParserDropdown({ value, onChange, className }: ParserDropdownPro
               const color = COLOR_MAP[option.icon]
               const isSelected = option.value === selectedOption.value
               const availability = parserBackendAvailable(option.value)
-              const isDisabled = option.value !== 'auto' && option.value !== 'basic' && availability !== true
+              const isDisabledByFile =
+                Boolean(filename) &&
+                option.value !== 'auto' &&
+                resolveParserBackendForFilename(filename || '', option.value).backend !== option.value
+              const isDisabledByCapabilities = option.value !== 'auto' && option.value !== 'basic' && availability !== true
+              const isDisabled = isDisabledByFile || isDisabledByCapabilities
               const notes = parserNotesByName.get(normalizeBackendName(option.value))
-              const disabledTitle = notes || '后端未启用该解析器（可到“设置”开启/配置）'
+              const disabledTitle = isDisabledByFile
+                ? '该文件类型不支持此解析器'
+                : (notes || '后端未启用该解析器（可到“设置”开启/配置）')
 
               return (
                 <button
