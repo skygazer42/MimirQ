@@ -30,6 +30,7 @@ export function PdfViewer({
   showAllBoxes = true,
 }: PdfViewerProps) {
   const containerRef = useRef<HTMLDivElement | null>(null)
+  const contentRef = useRef<HTMLDivElement | null>(null)
   const canvasRefs = useRef<Map<number, HTMLCanvasElement>>(new Map())
   const pageRefs = useRef<Map<number, HTMLDivElement>>(new Map())
   const [pdfDoc, setPdfDoc] = useState<PDFDocumentProxy | null>(null)
@@ -88,13 +89,18 @@ export function PdfViewer({
   }, [file, reloadTick])
 
   useEffect(() => {
-    const container = containerRef.current
+    // Important: measure the actual content width (max-w-4xl) instead of the scroll container width,
+    // otherwise the computed scale will not match the rendered canvas and overlays will drift.
+    const container = contentRef.current
     if (!container || !pdfDoc) return
 
     let raf = 0
     const updateScale = () => {
       if (!container || !pdfDoc) return
-      const width = container.clientWidth
+      // Prefer the first page container width (clientWidth excludes borders),
+      // so the scale matches the canvas CSS size exactly.
+      const firstPage = pageRefs.current.get(0)
+      const width = (firstPage?.clientWidth || container.clientWidth) ?? 0
       if (!width) return
       pdfDoc.getPage(1).then((page) => {
         const viewport = page.getViewport({ scale: 1 })
@@ -270,7 +276,7 @@ export function PdfViewer({
 
   return (
     <div ref={containerRef} className="h-full overflow-y-auto px-4 py-6">
-      <div className="mx-auto flex w-full max-w-4xl flex-col gap-6">
+      <div ref={contentRef} className="mx-auto flex w-full max-w-4xl flex-col gap-6">
         {Array.from({ length: pageCount }).map((_, index) => {
           const pageBoxes = boxesByPage.get(index) || []
           const isRendered = renderedPages.has(index)
@@ -281,7 +287,7 @@ export function PdfViewer({
                 if (el) pageRefs.current.set(index, el)
               }}
               data-page-index={index}
-              className="relative rounded-xl border border-gray-200 bg-white shadow-sm"
+              className="relative rounded-xl bg-white shadow-sm ring-1 ring-border/60"
             >
               <canvas
                 ref={(el) => {

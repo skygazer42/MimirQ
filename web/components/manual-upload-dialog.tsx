@@ -26,6 +26,7 @@ import { cn } from '@/lib/utils'
 import { formatApiError } from '@/lib/api-errors'
 import { PipelineOptionsPanel } from '@/components/pipeline-options-panel'
 import { ParserDropdown } from '@/components/ui/parser-dropdown'
+import { resolveParserBackendForFilename } from '@/lib/parser-compat'
 
 interface ManualUploadDialogProps {
   onUploaded?: () => void
@@ -47,6 +48,10 @@ export function ManualUploadDialog({ onUploaded }: ManualUploadDialogProps) {
   const [chunkOverlap, setChunkOverlap] = useState(pipelineOptions.chunk_overlap ?? 200)
   const [delimiter, setDelimiter] = useState('## ')
   const { parserBackend, setParserBackend } = useParserBackendPreference()
+  const effectiveParserBackend = useMemo(() => {
+    if (!file) return parserBackend
+    return resolveParserBackendForFilename(file.name, parserBackend).backend
+  }, [file, parserBackend])
   const fileInputRef = useRef<HTMLInputElement>(null)
   const previewAbortRef = useRef<AbortController | null>(null)
 
@@ -306,7 +311,11 @@ export function ManualUploadDialog({ onUploaded }: ManualUploadDialogProps) {
 
               <div className="space-y-2">
                 <div className="text-xs font-medium text-gray-500">解析器</div>
-                <ParserDropdown value={parserBackend} onChange={setParserBackend} />
+                <ParserDropdown
+                  value={effectiveParserBackend}
+                  filename={file?.name}
+                  onChange={setParserBackend}
+                />
               </div>
               
               <div 
