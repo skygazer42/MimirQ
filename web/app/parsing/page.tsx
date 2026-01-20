@@ -231,6 +231,21 @@ export default function ParsingPage() {
     return 'pending'
   }, [])
 
+  const getLibraryStatusBadge = (status?: FileStatus) => {
+    const s = (status || 'pending') as FileStatus
+    switch (s) {
+      case 'parsed':
+        return { label: '已解析', cls: 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/20' }
+      case 'parsing':
+        return { label: '解析中', cls: 'bg-sky-500/10 text-sky-700 dark:text-sky-300 border-sky-500/20' }
+      case 'error':
+        return { label: '失败', cls: 'bg-red-500/10 text-red-700 dark:text-red-300 border-red-500/20' }
+      case 'pending':
+      default:
+        return { label: '待解析', cls: 'bg-amber-500/10 text-amber-700 dark:text-amber-300 border-amber-500/20' }
+    }
+  }
+
   const syncLibraryFromServer = useCallback(async () => {
     try {
       const { items } = await parsingApi.listDocuments({ skip: 0, limit: 500 })
@@ -1820,20 +1835,38 @@ export default function ParsingPage() {
                   {/* Library-only selection (no File object in current session) */}
                   {!activeFile && activeLibraryFile ? (
                     <div className="flex-1 flex flex-col min-h-0">
-                      <div className="flex items-center justify-between px-6 py-3 border-b border-border/60 bg-muted/20 dark:bg-muted/40">
-                        <div className="min-w-0">
-                          <div className="flex items-center gap-2">
-                            <span className="font-medium text-foreground dark:text-foreground truncate max-w-[420px]">
-                              {activeLibraryFile.filename}
-                            </span>
-                            <span className="text-[10px] text-muted-foreground dark:text-muted-foreground bg-muted/60 dark:bg-muted/60 px-2 py-0.5 rounded">
-                              文档库
-                            </span>
-                            {activeLibraryFile.status && (
-                              <span className="text-[10px] text-muted-foreground dark:text-muted-foreground bg-card/70 dark:bg-muted/60 border border-border dark:border-border px-2 py-0.5 rounded">
-                                {activeLibraryFile.status}
+                      <div className="px-6 py-3 border-b border-border/60 bg-muted/20 dark:bg-muted/40">
+                        <div className="flex items-start justify-between gap-4">
+                          <div className="min-w-0">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <span className="font-semibold text-foreground dark:text-foreground truncate max-w-[560px]">
+                                {activeLibraryFile.filename}
                               </span>
-                            )}
+                              <span className="text-[10px] text-muted-foreground dark:text-muted-foreground bg-muted/60 dark:bg-muted/60 px-2 py-0.5 rounded-full">
+                                文档库
+                              </span>
+                              {activeLibraryFile.status ? (
+                                <span
+                                  className={cn(
+                                    'text-[10px] font-medium px-2 py-0.5 rounded-full border',
+                                    getLibraryStatusBadge(activeLibraryFile.status).cls
+                                  )}
+                                  title={activeLibraryFile.status}
+                                >
+                                  {getLibraryStatusBadge(activeLibraryFile.status).label}
+                                </span>
+                              ) : null}
+                            </div>
+                            <div className="mt-1 text-[11px] text-muted-foreground dark:text-muted-foreground">
+                              {activeLibrarySourceStatus === 'available'
+                                ? '源文件已保存在服务器：可恢复 PDF 预览/继续解析（刷新/重启后仍可用）。'
+                                : activeLibrarySourceStatus === 'missing'
+                                  ? '该条目的源文件暂不可用：仅可查看 Markdown；可稍后重试下载或重新上传替换。'
+                                  : '正在检查源文件缓存…'}
+                            </div>
+                          </div>
+
+                          <div className="flex items-center gap-1.5 flex-shrink-0">
                             <Button
                               variant="ghost"
                               size="sm"
@@ -1850,18 +1883,20 @@ export default function ParsingPage() {
                             >
                               复制名称
                             </Button>
-                          </div>
-                          <div className="mt-0.5 text-[11px] text-muted-foreground dark:text-muted-foreground">
-                            {activeLibrarySourceStatus === 'available'
-                              ? '源文件已保存在服务器：可恢复 PDF 预览/继续解析（刷新/重启后仍可用）。'
-                              : activeLibrarySourceStatus === 'missing'
-                                ? '该条目的源文件暂不可用：仅可查看 Markdown；可稍后重试下载或重新上传替换。'
-                                : '正在检查源文件缓存…'}
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-7 px-2 text-[11px] text-muted-foreground dark:text-muted-foreground hover:bg-muted dark:hover:bg-muted"
+                              onClick={() => setActiveLibraryFileId(null)}
+                            >
+                              关闭
+                            </Button>
                           </div>
                         </div>
-                        <div className="flex items-center gap-2 flex-shrink-0">
+
+                        <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                           {activeLibraryFile.status && activeLibraryFile.status !== 'parsed' ? (
-                            <div className="flex items-center gap-2 mr-1">
+                            <div className="flex items-center gap-2 min-w-0">
                               <span className="text-xs font-medium text-muted-foreground">解析方式</span>
                               <ParserDropdown
                                 value={
@@ -1878,71 +1913,66 @@ export default function ParsingPage() {
                                     parser: getParserLabel(resolved.backend),
                                   })
                                 }}
-                                className="w-56"
+                                className="w-full sm:w-72"
                               />
                             </div>
-                          ) : null}
-                          {activeLibrarySourceStatus === 'available' ? (
-                            <>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                className="h-7 px-2 text-[11px] text-muted-foreground dark:text-muted-foreground hover:bg-muted dark:hover:bg-muted"
-                                onClick={() => restoreLibraryFileFromCache(activeLibraryFile.id, false)}
-                                title="从服务器下载源文件到队列（用于 PDF 预览或继续解析）"
-                              >
-                                <Paperclip className="w-3.5 h-3.5 mr-1" />
-                                恢复源文件
-                              </Button>
-                              {activeLibraryFile.status && activeLibraryFile.status !== 'parsed' ? (
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  className="h-7 px-2 text-[11px] text-muted-foreground dark:text-muted-foreground hover:bg-muted dark:hover:bg-muted"
-                                  onClick={() => restoreLibraryFileFromCache(activeLibraryFile.id, true)}
-                                  title="恢复并开始解析"
-                                >
-                                  <Play className="w-3.5 h-3.5 mr-1" />
-                                  继续解析
-                                </Button>
-                              ) : null}
-                            </>
                           ) : (
-                            <>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                className="h-7 px-2 text-[11px] text-muted-foreground dark:text-muted-foreground hover:bg-muted dark:hover:bg-muted"
-                                onClick={() => requestRebindForLibraryFile(activeLibraryFile.id, false)}
-                                title="重新上传源文件以替换服务器上的源文件"
-                              >
-                                <Paperclip className="w-3.5 h-3.5 mr-1" />
-                                重新上传
-                              </Button>
-                              {activeLibraryFile.status && activeLibraryFile.status !== 'parsed' ? (
+                            <div className="text-xs text-muted-foreground">
+                              解析方式：<span className="text-foreground/80 dark:text-muted-foreground font-medium">{activeLibraryFile.parser || '-'}</span>
+                            </div>
+                          )}
+
+                          <div className="flex flex-wrap items-center gap-2 justify-end">
+                            {activeLibrarySourceStatus === 'available' ? (
+                              <>
                                 <Button
                                   variant="ghost"
                                   size="sm"
                                   className="h-7 px-2 text-[11px] text-muted-foreground dark:text-muted-foreground hover:bg-muted dark:hover:bg-muted"
-                                  onClick={() => requestRebindForLibraryFile(activeLibraryFile.id, true)}
-                                  title="重新上传并开始解析"
+                                  onClick={() => restoreLibraryFileFromCache(activeLibraryFile.id, false)}
+                                  title="从服务器下载源文件到队列（用于 PDF 预览或继续解析）"
                                 >
-                                  <Play className="w-3.5 h-3.5 mr-1" />
-                                  上传并解析
+                                  <Paperclip className="w-3.5 h-3.5 mr-1" />
+                                  恢复源文件
                                 </Button>
-                              ) : null}
-                            </>
-                          )}
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="text-muted-foreground dark:text-muted-foreground hover:bg-muted dark:hover:bg-muted"
-                            onClick={() => {
-                              setActiveLibraryFileId(null)
-                            }}
-                          >
-                            关闭
-                          </Button>
+                                {activeLibraryFile.status && activeLibraryFile.status !== 'parsed' ? (
+                                  <Button
+                                    size="sm"
+                                    className="h-7 px-2 text-[11px] gap-1.5 bg-sky-600 hover:bg-sky-700"
+                                    onClick={() => restoreLibraryFileFromCache(activeLibraryFile.id, true)}
+                                    title="恢复并开始解析"
+                                  >
+                                    <Play className="w-3.5 h-3.5" />
+                                    继续解析
+                                  </Button>
+                                ) : null}
+                              </>
+                            ) : (
+                              <>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-7 px-2 text-[11px] text-muted-foreground dark:text-muted-foreground hover:bg-muted dark:hover:bg-muted"
+                                  onClick={() => requestRebindForLibraryFile(activeLibraryFile.id, false)}
+                                  title="重新上传源文件以替换服务器上的源文件"
+                                >
+                                  <Paperclip className="w-3.5 h-3.5 mr-1" />
+                                  重新上传
+                                </Button>
+                                {activeLibraryFile.status && activeLibraryFile.status !== 'parsed' ? (
+                                  <Button
+                                    size="sm"
+                                    className="h-7 px-2 text-[11px] gap-1.5 bg-sky-600 hover:bg-sky-700"
+                                    onClick={() => requestRebindForLibraryFile(activeLibraryFile.id, true)}
+                                    title="重新上传并开始解析"
+                                  >
+                                    <Play className="w-3.5 h-3.5" />
+                                    上传并解析
+                                  </Button>
+                                ) : null}
+                              </>
+                            )}
+                          </div>
                         </div>
                       </div>
 
