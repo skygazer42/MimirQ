@@ -4,9 +4,10 @@
 'use client'
 
 import { useEffect, useMemo, useRef, useState, useCallback } from 'react'
-import { Loader2 } from 'lucide-react'
+import { AlertCircle, Loader2, RotateCcw } from 'lucide-react'
 import type { PDFDocumentProxy } from 'pdfjs-dist'
 import { ParsingBlock, ParsingPosition } from '@/lib/parsing-positions'
+import { Button } from '@/components/ui/button'
 
 type Box = {
   blockId: string
@@ -35,9 +36,15 @@ export function PdfViewer({
   const [pageCount, setPageCount] = useState(0)
   const [scale, setScale] = useState(1)
   const [isLoading, setIsLoading] = useState(false)
+  const [loadError, setLoadError] = useState<string | null>(null)
+  const [reloadTick, setReloadTick] = useState(0)
   const [renderedPages, setRenderedPages] = useState<Set<number>>(new Set())
   const renderingPagesRef = useRef<Set<number>>(new Set())
   const renderGenRef = useRef(0)
+
+  const retryLoad = useCallback(() => {
+    setReloadTick((prev) => prev + 1)
+  }, [])
 
   useEffect(() => {
     let cancelled = false
@@ -47,10 +54,12 @@ export function PdfViewer({
         setPdfDoc(null)
         setPageCount(0)
         setRenderedPages(new Set())
+        setLoadError(null)
         return
       }
 
       setIsLoading(true)
+      setLoadError(null)
       try {
         const data = await file.arrayBuffer()
         const pdfjsLib = await import('pdfjs-dist')
@@ -63,8 +72,10 @@ export function PdfViewer({
         setPdfDoc(doc)
         setPageCount(doc.numPages)
         setRenderedPages(new Set())
-      } catch {
+      } catch (err) {
         if (!cancelled) {
+          const message = err instanceof Error ? err.message : String(err || '')
+          setLoadError(message || 'PDF 加载失败')
           setPdfDoc(null)
           setPageCount(0)
           setRenderedPages(new Set())
@@ -78,7 +89,7 @@ export function PdfViewer({
     return () => {
       cancelled = true
     }
-  }, [file])
+  }, [file, reloadTick])
 
   useEffect(() => {
     const container = containerRef.current
@@ -138,8 +149,8 @@ export function PdfViewer({
         const canvas = canvasRefs.current.get(pageIndex)
         if (!canvas) return
 
-        canvas.width = viewport.width
-        canvas.height = viewport.height
+        canvas.width = Math.ceil(viewport.width)
+        canvas.height = Math.ceil(viewport.height)
         await page.render({ canvas, viewport }).promise
         if (renderGenRef.current !== gen) return
 
@@ -232,11 +243,31 @@ export function PdfViewer({
     )
   }
 
-  if (isLoading || !pdfDoc) {
+  if (isLoading) {
     return (
       <div className="flex h-full items-center justify-center text-gray-400">
         <Loader2 className="mr-2 h-4 w-4 animate-spin" />
         正在加载 PDF...
+      </div>
+    )
+  }
+
+  if (loadError || !pdfDoc) {
+    return (
+      <div className="flex h-full items-center justify-center px-6">
+        <div className="max-w-md rounded-2xl border border-border/60 bg-card p-5 text-center shadow-sm">
+          <div className="mx-auto mb-3 flex h-10 w-10 items-center justify-center rounded-xl bg-red-500/10 text-red-600 dark:text-red-400">
+            <AlertCircle className="h-5 w-5" />
+          </div>
+          <div className="text-sm font-semibold text-foreground">PDF 加载失败</div>
+          <div className="mt-1 text-xs text-muted-foreground">{loadError || '请重试，或重新上传该文件。'}</div>
+          <div className="mt-4 flex justify-center gap-2">
+            <Button variant="outline" size="sm" className="gap-1.5" onClick={retryLoad}>
+              <RotateCcw className="h-4 w-4" />
+              重试
+            </Button>
+          </div>
+        </div>
       </div>
     )
   }

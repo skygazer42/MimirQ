@@ -34,6 +34,7 @@ import {
   FolderUp,
   Plus,
   Settings2,
+  MoreVertical,
 } from 'lucide-react'
 import { Navbar } from '@/components/navbar'
 import { Button } from '@/components/ui/button'
@@ -67,6 +68,7 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
@@ -400,6 +402,9 @@ export default function ParsingPage() {
   }, [folders])
 
   const activeFolderPathLabel = folderPathById[activeFolderId || ROOT_FOLDER_ID] || '根目录'
+  const activeLibraryFolderId = activeLibraryFile?.folderId || ROOT_FOLDER_ID
+  const activeLibraryFolderPathLabel = folderPathById[activeLibraryFolderId] || '根目录'
+  const activeLibraryFolderName = (activeLibraryFolderPathLabel.split('/').pop() || '').trim() || activeLibraryFolderPathLabel
 
   const requestUploadToFolder = useCallback(
     (folderId: string) => {
@@ -1835,15 +1840,20 @@ export default function ParsingPage() {
                   {/* Library-only selection (no File object in current session) */}
                   {!activeFile && activeLibraryFile ? (
                     <div className="flex-1 flex flex-col min-h-0">
-                      <div className="px-6 py-3 border-b border-border/60 bg-muted/20 dark:bg-muted/40">
-                        <div className="flex items-start justify-between gap-4">
-                          <div className="min-w-0">
-                            <div className="flex flex-wrap items-center gap-2">
-                              <span className="font-semibold text-foreground dark:text-foreground truncate max-w-[560px]">
-                                {activeLibraryFile.filename}
-                              </span>
-                              <span className="text-[10px] text-muted-foreground dark:text-muted-foreground bg-muted/60 dark:bg-muted/60 px-2 py-0.5 rounded-full">
-                                文档库
+	                      <div className="px-6 py-2 border-b border-border/60 bg-card/60 dark:bg-background/40 backdrop-blur-sm">
+	                        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+	                          <div className="min-w-0">
+	                            <div className="flex flex-wrap items-center gap-2">
+	                              <span className="inline-flex max-w-[560px] min-w-0 items-center gap-2 rounded-xl border border-border/60 bg-background/70 dark:bg-background/20 px-2.5 py-1 text-sm font-semibold tracking-tight text-foreground">
+	                                {getFileIcon(activeLibraryFile.filename, 'w-7 h-7 rounded-lg')}
+	                                <span className="min-w-0 truncate">{activeLibraryFile.filename}</span>
+	                              </span>
+	                              <span
+	                                className="inline-flex items-center gap-1 text-[10px] text-muted-foreground dark:text-muted-foreground bg-muted/60 dark:bg-muted/60 px-2 py-0.5 rounded-full"
+	                                title={activeLibraryFolderPathLabel}
+                              >
+                                <FolderOpen className="h-3 w-3" />
+                                {activeLibraryFolderName}
                               </span>
                               {activeLibraryFile.status ? (
                                 <span
@@ -1857,50 +1867,13 @@ export default function ParsingPage() {
                                 </span>
                               ) : null}
                             </div>
-                            <div className="mt-1 text-[11px] text-muted-foreground dark:text-muted-foreground">
-                              {activeLibrarySourceStatus === 'available'
-                                ? '源文件已保存在服务器：可恢复 PDF 预览/继续解析（刷新/重启后仍可用）。'
-                                : activeLibrarySourceStatus === 'missing'
-                                  ? '该条目的源文件暂不可用：仅可查看 Markdown；可稍后重试下载或重新上传替换。'
-                                  : '正在检查源文件缓存…'}
-                            </div>
-                          </div>
+	                          </div>
 
-                          <div className="flex items-center gap-1.5 flex-shrink-0">
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              className="h-7 px-2 text-[11px] text-muted-foreground dark:text-muted-foreground hover:bg-muted dark:hover:bg-muted"
-                              onClick={async () => {
-                                try {
-                                  await navigator.clipboard.writeText(activeLibraryFile.filename)
-                                  toast.success('已复制文件名')
-                                } catch {
-                                  toast.error('复制失败')
-                                }
-                              }}
-                              title="复制文件名"
-                            >
-                              复制名称
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              className="h-7 px-2 text-[11px] text-muted-foreground dark:text-muted-foreground hover:bg-muted dark:hover:bg-muted"
-                              onClick={() => setActiveLibraryFileId(null)}
-                            >
-                              关闭
-                            </Button>
-                          </div>
-                        </div>
-
-                        <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                          {activeLibraryFile.status && activeLibraryFile.status !== 'parsed' ? (
-                            <div className="flex items-center gap-2 min-w-0">
-                              <span className="text-xs font-medium text-muted-foreground">解析方式</span>
-                              <ParserDropdown
-                                value={
-                                  resolveParserBackendForFilename(
+	                          <div className="flex flex-wrap items-center gap-2 justify-end">
+	                            {activeLibraryFile.status && activeLibraryFile.status !== 'parsed' ? (
+	                              <ParserDropdown
+	                                value={
+	                                  resolveParserBackendForFilename(
                                     activeLibraryFile.filename,
                                     activeLibraryFile.parserBackend || parserBackend
                                   ).backend
@@ -1910,68 +1883,103 @@ export default function ParsingPage() {
                                   const resolved = resolveParserBackendForFilename(activeLibraryFile.filename, backend)
                                   updateParsedFile(activeLibraryFile.id, {
                                     parserBackend: resolved.backend,
-                                    parser: getParserLabel(resolved.backend),
-                                  })
-                                }}
-                                className="w-full sm:w-72"
-                              />
-                            </div>
-                          ) : (
-                            <div className="text-xs text-muted-foreground">
-                              解析方式：<span className="text-foreground/80 dark:text-muted-foreground font-medium">{activeLibraryFile.parser || '-'}</span>
-                            </div>
-                          )}
-
-                          <div className="flex flex-wrap items-center gap-2 justify-end">
-                            {activeLibrarySourceStatus === 'available' ? (
-                              <>
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  className="h-7 px-2 text-[11px] text-muted-foreground dark:text-muted-foreground hover:bg-muted dark:hover:bg-muted"
-                                  onClick={() => restoreLibraryFileFromCache(activeLibraryFile.id, false)}
-                                  title="从服务器下载源文件到队列（用于 PDF 预览或继续解析）"
-                                >
-                                  <Paperclip className="w-3.5 h-3.5 mr-1" />
-                                  恢复源文件
-                                </Button>
-                                {activeLibraryFile.status && activeLibraryFile.status !== 'parsed' ? (
-                                  <Button
-                                    size="sm"
-                                    className="h-7 px-2 text-[11px] gap-1.5 bg-sky-600 hover:bg-sky-700"
-                                    onClick={() => restoreLibraryFileFromCache(activeLibraryFile.id, true)}
-                                    title="恢复并开始解析"
-                                  >
-                                    <Play className="w-3.5 h-3.5" />
-                                    继续解析
-                                  </Button>
-                                ) : null}
-                              </>
-                            ) : (
-                              <>
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  className="h-7 px-2 text-[11px] text-muted-foreground dark:text-muted-foreground hover:bg-muted dark:hover:bg-muted"
-                                  onClick={() => requestRebindForLibraryFile(activeLibraryFile.id, false)}
-                                  title="重新上传源文件以替换服务器上的源文件"
-                                >
-                                  <Paperclip className="w-3.5 h-3.5 mr-1" />
-                                  重新上传
-                                </Button>
-                                {activeLibraryFile.status && activeLibraryFile.status !== 'parsed' ? (
-                                  <Button
-                                    size="sm"
-                                    className="h-7 px-2 text-[11px] gap-1.5 bg-sky-600 hover:bg-sky-700"
-                                    onClick={() => requestRebindForLibraryFile(activeLibraryFile.id, true)}
-                                    title="重新上传并开始解析"
-                                  >
-                                    <Play className="w-3.5 h-3.5" />
-                                    上传并解析
-                                  </Button>
-                                ) : null}
-                              </>
+	                                    parser: getParserLabel(resolved.backend),
+	                                  })
+	                                }}
+	                                className="w-full sm:w-64"
+	                                compact
+	                              />
+	                            ) : (
+	                              <span className="text-xs text-muted-foreground">
+	                                解析方式：<span className="text-foreground/80 dark:text-muted-foreground font-medium">{activeLibraryFile.parser || '-'}</span>
+                              </span>
                             )}
+
+	                            {activeLibrarySourceStatus === 'available' ? (
+	                              <Button
+	                                variant="outline"
+	                                size="sm"
+	                                className="h-8 px-3 text-[11px] gap-1.5 rounded-full"
+	                                onClick={() => restoreLibraryFileFromCache(activeLibraryFile.id, false)}
+	                                title="从服务器下载源文件到队列（用于 PDF 预览或继续解析）"
+	                              >
+	                                <Paperclip className="w-3.5 h-3.5" />
+                                恢复源文件
+                              </Button>
+                            ) : (
+	                              <Button
+	                                variant="outline"
+	                                size="sm"
+	                                className="h-8 px-3 text-[11px] gap-1.5 rounded-full"
+	                                onClick={() => requestRebindForLibraryFile(activeLibraryFile.id, false)}
+	                                title="重新上传源文件以替换服务器上的源文件"
+	                              >
+	                                <Paperclip className="w-3.5 h-3.5" />
+                                重新上传
+                              </Button>
+                            )}
+
+                            {activeLibraryFile.status && activeLibraryFile.status !== 'parsed' ? (
+	                              activeLibrarySourceStatus === 'available' ? (
+	                                <Button
+	                                  size="sm"
+	                                  className="h-8 px-3 text-[11px] gap-1.5 rounded-full bg-sky-600 hover:bg-sky-700"
+	                                  onClick={() => restoreLibraryFileFromCache(activeLibraryFile.id, true)}
+	                                  title="恢复并开始解析"
+	                                >
+	                                  <Play className="w-3.5 h-3.5" />
+                                  继续解析
+                                </Button>
+	                              ) : (
+	                                <Button
+	                                  size="sm"
+	                                  className="h-8 px-3 text-[11px] gap-1.5 rounded-full bg-sky-600 hover:bg-sky-700"
+	                                  onClick={() => requestRebindForLibraryFile(activeLibraryFile.id, true)}
+	                                  title="重新上传并开始解析"
+	                                >
+	                                  <Play className="w-3.5 h-3.5" />
+                                  上传并解析
+                                </Button>
+                              )
+                            ) : null}
+
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button
+                                  variant="outline"
+                                  size="icon"
+                                  className="h-8 w-8 rounded-full"
+                                  aria-label="更多操作"
+                                  title="更多"
+                                >
+                                  <MoreVertical className="h-4 w-4" />
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end" className="w-44">
+                                <DropdownMenuItem
+                                  className="gap-2 cursor-pointer"
+                                  onClick={async () => {
+                                    try {
+                                      await navigator.clipboard.writeText(activeLibraryFile.filename)
+                                      toast.success('已复制文件名')
+                                    } catch {
+                                      toast.error('复制失败')
+                                    }
+                                  }}
+                                >
+                                  <Copy className="h-4 w-4 text-muted-foreground" />
+                                  复制文件名
+                                </DropdownMenuItem>
+                                <DropdownMenuSeparator />
+                                <DropdownMenuItem
+                                  className="gap-2 cursor-pointer"
+                                  onClick={() => setActiveLibraryFileId(null)}
+                                >
+                                  <X className="h-4 w-4 text-muted-foreground" />
+                                  关闭
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
                           </div>
                         </div>
                       </div>
