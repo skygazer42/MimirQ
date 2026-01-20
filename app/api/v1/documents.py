@@ -71,8 +71,9 @@ logger = get_logger("api.documents")
 
 router = APIRouter()
 
-# Safe filename characters: letters, digits, CJK, spaces, dots, underscores, hyphens.
-SAFE_FILENAME_PATTERN = re.compile(r'^[a-zA-Z0-9\u4e00-\u9fff\u3040-\u30ff\uac00-\ud7af._\-\s]+$')
+# Filename validation:
+# - We store uploads by UUID on disk/MinIO, so we don't need a strict character allowlist.
+# - Still reject path separators / control characters to prevent path traversal and header issues.
 UUID_PATTERN = r"(?:[0-9a-fA-F]{32}|[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})"
 PREVIEW_IMAGE_REF_RE = re.compile(rf"(?:https?://[^\s)\"']+)?/api/v1/documents/image/({UUID_PATTERN})")
 MINIO_IMAGE_REF_RE = re.compile(r"(?:https?://[^\s)\"']+)?/api/v1/documents/image-url/([^\s)\"']+)")
@@ -518,7 +519,12 @@ def _validate_filename(filename: str) -> None:
         raise HTTPException(status_code=400, detail="Filename is required")
     if len(filename) > 255:
         raise HTTPException(status_code=400, detail="Filename too long (max 255 characters)")
-    if not SAFE_FILENAME_PATTERN.match(filename):
+    # Disallow path separators and control characters (CR/LF/TAB/NUL etc).
+    if "/" in filename or "\\" in filename:
+        raise HTTPException(status_code=400, detail="Filename contains invalid characters")
+    if "\x7f" in filename or any(ord(ch) < 32 for ch in filename):
+        raise HTTPException(status_code=400, detail="Filename contains invalid characters")
+    if filename.strip() in {".", ".."}:
         raise HTTPException(status_code=400, detail="Filename contains invalid characters")
 
 
