@@ -92,7 +92,9 @@ class ParserFactory:
         ".htm",
         ".json",
     }
-    SUPPORTED_NON_PDF_BACKENDS = {"auto", "markitdown", "pandoc", "excel", "docx", "html", "csv", "json"}
+    # Non-PDF formats are primarily handled by general converters (MarkItDown/Pandoc),
+    # but some advanced backends (e.g. DeepDoc/Docling) can also handle DOCX when enabled.
+    SUPPORTED_NON_PDF_BACKENDS = {"auto", "markitdown", "pandoc", "excel", "docx", "html", "csv", "json", "deepdoc", "docling"}
 
     def __init__(self):
         self._basic_pdf_parser: Optional[PDFParser] = None
@@ -205,6 +207,16 @@ class ParserFactory:
                 raise ValueError("csv backend supports only .csv")
             if normalized == "json" and file_ext != ".json":
                 raise ValueError("json backend supports only .json")
+            if normalized == "docling":
+                if file_ext not in {".docx"}:
+                    raise ValueError("docling backend currently supports only .docx (non-PDF)")
+                if not getattr(settings, "DOCLING_ENABLED", False):
+                    raise ValueError(
+                        "Docling parser is not enabled. "
+                        "Please set DOCLING_ENABLED=True."
+                    )
+            if normalized == "deepdoc" and file_ext not in {".docx"}:
+                raise ValueError("deepdoc backend currently supports only .docx (non-PDF)")
             return normalized
 
         if normalized not in self.SUPPORTED_PDF_BACKENDS:
@@ -340,7 +352,11 @@ class ParserFactory:
             elif file_ext == ".md":
                 parser = self.parsers[".md"]
             elif file_ext in self.SUPPORTED_NON_PDF_EXTENSIONS:
-                if backend == "markitdown":
+                if backend in {"deepdoc", "docling"}:
+                    # These parsers are initialized in the PDF backend factory, but can also
+                    # handle certain non-PDF formats (e.g. DOCX) when explicitly requested.
+                    parser = self._get_pdf_parser(backend)
+                elif backend == "markitdown":
                     parser = self._get_markitdown_parser()
                 elif backend == "pandoc":
                     parser = self._get_pandoc_parser()
@@ -442,6 +458,39 @@ class ParserFactory:
                     str(fallback_exc)[:200],
                 )
                 return None, backend
+
+        # DOCX advanced backends (optional); fall back to Pandoc/MarkItDown/DocxParser.
+        if file_ext == ".docx" and backend in {"docling", "deepdoc"}:
+            logger.warning(
+                "[parse] DOCX backend '%s' failed for %s: %s; falling back to office converters",
+                backend,
+                str(file_path.name),
+                str(error)[:200],
+            )
+            try:
+                if bool(getattr(settings, "PANDOC_ENABLED", False)):
+                    return self._get_pandoc_parser().parse(file_path), "pandoc"
+            except Exception as fallback_exc:
+                logger.warning(
+                    "[parse] Pandoc fallback also failed for %s: %s",
+                    str(file_path.name),
+                    str(fallback_exc)[:200],
+                )
+
+            try:
+                return self._get_markitdown_parser().parse(file_path), "markitdown"
+            except Exception as fallback_exc:
+                logger.warning(
+                    "[parse] MarkItDown fallback also failed for %s: %s",
+                    str(file_path.name),
+                    str(fallback_exc)[:200],
+                )
+                try:
+                    from app.parsing.parsers.docx_parser import DocxParser
+
+                    return DocxParser().parse(file_path), "docx"
+                except Exception:
+                    return None, backend
 
         # MarkItDown is a great general converter, but some inputs may fail.
         if backend == "markitdown":

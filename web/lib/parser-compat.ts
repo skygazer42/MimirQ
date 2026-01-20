@@ -58,7 +58,8 @@ export function resolveParserBackendForFilename(filename: string, requestedBacke
   }
 
   if (ext === '.docx') {
-    const allowed = new Set(['auto', 'markitdown', 'pandoc', 'docx'])
+    // Docx supports general converters and some "advanced" parsers (when enabled server-side).
+    const allowed = new Set(['auto', 'markitdown', 'pandoc', 'docx', 'docling', 'deepdoc'])
     if (allowed.has(backend)) return { backend, changed: false }
     return { backend: 'auto', changed: backend !== 'auto', reason: `backend '${backend}' is not supported for docx` }
   }
