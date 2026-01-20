@@ -31,6 +31,7 @@ import { LottieAnimation, LOTTIE_URLS } from '@/components/ui/lottie-animation'
 import { PipelineVisualizer } from '@/components/ui/pipeline-visualizer'
 import { Magnetic } from '@/components/ui/magnetic'
 import { TiltCard } from '@/components/ui/tilt-card'
+import { UPLOAD_ACCEPT } from '@/lib/upload-extensions'
 
 export function Sidebar() {
   const { documents, isLoading, uploadDocument, cancelDocument, deleteDocument, loadDocuments } = useDocuments()
@@ -133,7 +134,7 @@ export function Sidebar() {
                 id="file-upload"
                 type="file"
                 multiple
-                accept=".pdf,.txt,.md,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.csv,.html,.json"
+                accept={UPLOAD_ACCEPT}
                 className="hidden"
                 onChange={handleFileUpload}
               />

@@ -75,6 +75,7 @@ import { MarkdownToc } from '@/components/markdown/markdown-toc'
 import { DocumentFolderTree, getFileIcon } from '@/components/document-library/folder-tree'
 import { extractMarkdownHeadings } from '@/lib/markdown'
 import { extractZipFiles, isZipFile } from '@/lib/zip'
+import { UPLOAD_ACCEPT_WITH_ZIP, ZIP_ALLOWED_EXTENSIONS } from '@/lib/upload-extensions'
 
 // 工作流步骤
 const WORKFLOW_STEPS = [
@@ -93,19 +94,6 @@ const GOVERNANCE_TABS = [
 ] as const
 
 type GovernanceTab = typeof GOVERNANCE_TABS[number]['id']
-
-const ZIP_ALLOWED_EXTENSIONS = new Set([
-  'pdf',
-  'txt',
-  'md',
-  'doc',
-  'docx',
-  'xls',
-  'xlsx',
-  'csv',
-  'html',
-  'json',
-])
 
 // 文件治理状态
 interface FileGovernanceState {
@@ -790,7 +778,7 @@ export function DataGovernancePanel() {
                   <input
                     type="file"
                     multiple
-                    accept=".pdf,.txt,.md,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.csv,.html,.json,.zip"
+                    accept={UPLOAD_ACCEPT_WITH_ZIP}
                     className="hidden"
                     id="file-upload"
                     onChange={handleFileSelect}

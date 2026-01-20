@@ -149,8 +149,20 @@ class Settings(BaseSettings):
     ALLOWED_EXTENSIONS: str = ".pdf,.txt,.md,.rst,.adoc,.asciidoc,.tex,.yaml,.yml,.toml,.sql,.log,.conf,.ini,.cfg,.env,.properties,.patch,.diff,.srt,.vtt,.mk,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.csv,.html,.htm,.json,.jsonl,.ndjson,.xml,.rss,.atom,.graphql,.gql,.proto,.tf,.hcl"
 
     @property
-    def allowed_extensions_list(self):
-        return [ext.strip() for ext in self.ALLOWED_EXTENSIONS.split(",") if ext.strip()]
+    def allowed_extensions_list(self) -> list[str]:
+        raw = [ext.strip().lower() for ext in str(self.ALLOWED_EXTENSIONS or "").split(",")]
+        normalized: list[str] = []
+        seen: set[str] = set()
+        for ext in raw:
+            if not ext:
+                continue
+            if not ext.startswith("."):
+                ext = f".{ext}"
+            if ext in seen:
+                continue
+            seen.add(ext)
+            normalized.append(ext)
+        return normalized
 
     MINERU_API_TOKEN: str = ""
     MINERU_API_BASE: str = "https://mineru.net/api/v4"

@@ -24,6 +24,7 @@ import { ParserDropdown } from '@/components/ui/parser-dropdown'
 import { PipelineOptionsPanel } from '@/components/pipeline-options-panel'
 import { getChunkStrategyOption, getChunkStrategyLabel } from '@/lib/chunk-strategies'
 import { usePipelineCapabilities } from '@/contexts/pipeline-capabilities-context'
+import { UPLOAD_ACCEPT } from '@/lib/upload-extensions'
 
 export function Sidebar() {
   const {
@@ -106,7 +107,7 @@ export function Sidebar() {
             <input
               id="add-file-input"
               type="file"
-              accept=".pdf,.txt,.md,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.csv,.html,.json"
+              accept={UPLOAD_ACCEPT}
               multiple
               className="hidden"
               onChange={(e) => {
