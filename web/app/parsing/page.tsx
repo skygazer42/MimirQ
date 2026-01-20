@@ -33,6 +33,7 @@ import {
   Paperclip,
   FolderUp,
   Plus,
+  Settings2,
 } from 'lucide-react'
 import { Navbar } from '@/components/navbar'
 import { Button } from '@/components/ui/button'
@@ -68,6 +69,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 
 const ZIP_ALLOWED_EXTENSIONS = new Set([
   'pdf',
@@ -785,7 +787,7 @@ export default function ParsingPage() {
 
       for (const q of queued) {
         try {
-          const doc = await parsingApi.upload(q.file)
+          const doc = await parsingApi.upload(q.file, { parser_backend: q.parserBackend })
           const libId = String(doc.id || '').trim()
           if (!libId) throw new Error('Missing document id from backend')
 
@@ -1550,6 +1552,32 @@ export default function ParsingPage() {
                         解析
                       </Button>
                     )}
+
+                    <Popover>
+                      <PopoverTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7 text-muted-foreground dark:text-muted-foreground hover:bg-muted dark:hover:bg-muted rounded-lg"
+                          title="默认解析方式"
+                          aria-label="默认解析方式"
+                        >
+                          <Settings2 className="w-4 h-4" />
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent align="end" className="w-80 p-3">
+                        <div className="space-y-2">
+                          <div className="flex items-center justify-between">
+                            <div className="text-sm font-semibold">默认解析方式</div>
+                            <div className="text-xs text-muted-foreground">新上传默认</div>
+                          </div>
+                          <ParserDropdown value={parserBackend} onChange={setParserBackend} />
+                          <p className="text-xs text-muted-foreground leading-snug">
+                            选中文件后，也可以在右侧顶部对单个文件单独修改。
+                          </p>
+                        </div>
+                      </PopoverContent>
+                    </Popover>
 
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
