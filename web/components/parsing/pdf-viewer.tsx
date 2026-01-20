@@ -61,12 +61,8 @@ export function PdfViewer({
       setIsLoading(true)
       setLoadError(null)
       try {
-        const data = await file.arrayBuffer()
-        const pdfjsLib = await import('pdfjs-dist')
-        pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
-          'pdfjs-dist/build/pdf.worker.min.mjs',
-          import.meta.url
-        ).toString()
+        const data = new Uint8Array(await file.arrayBuffer())
+        const pdfjsLib = await import('pdfjs-dist/webpack.mjs')
         const doc = await pdfjsLib.getDocument({ data }).promise
         if (cancelled) return
         setPdfDoc(doc)
