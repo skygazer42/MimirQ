@@ -191,19 +191,21 @@ export default function ParsingPage() {
 
   // 解析器设置
   const { parserBackend, setParserBackend } = useParserBackendPreference()
-
-  useEffect(() => {
-    setFiles((prev) =>
-      prev.map((f) => {
-        if (f.status !== 'pending' && f.status !== 'error') return f
-        const resolved = resolveParserBackendForFilename(f.name, parserBackend)
-        const nextBackend = resolved.backend
-        const nextLabel = getParserLabel(nextBackend)
-        if (f.parserBackend === nextBackend && f.parserLabel === nextLabel) return f
-        return { ...f, parserBackend: nextBackend, parserLabel: nextLabel }
-      })
-    )
-  }, [parserBackend])
+  const setQueueFileParserBackend = useCallback(
+    (params: { fileId: string; filename: string; backend: string }) => {
+      const resolved = resolveParserBackendForFilename(params.filename, params.backend)
+      const nextBackend = resolved.backend
+      const nextLabel = getParserLabel(nextBackend)
+      setFiles((prev) =>
+        prev.map((f) =>
+          f.id === params.fileId ? { ...f, parserBackend: nextBackend, parserLabel: nextLabel } : f
+        )
+      )
+      // Remember the last selection as a default for subsequent uploads/parses.
+      setParserBackend(params.backend)
+    },
+    [setParserBackend]
+  )
 
   // 共享存储
   const addParsedFile = useParsedFiles((state) => state.addParsedFile)
@@ -755,6 +757,7 @@ export default function ParsingPage() {
           continue
         }
 
+        const resolvedParser = resolveParserBackendForFilename(file.name, parserBackend)
         queued.push({
           id: generateId(),
           file,
@@ -764,8 +767,8 @@ export default function ParsingPage() {
           status: 'pending' as FileStatus,
           markdownContent: null,
           error: undefined,
-          parserBackend: resolveParserBackendForFilename(file.name, parserBackend).backend,
-          parserLabel: getParserLabel(resolveParserBackendForFilename(file.name, parserBackend).backend),
+          parserBackend: resolvedParser.backend,
+          parserLabel: getParserLabel(resolvedParser.backend),
           createdAt: now,
         })
         added += 1
@@ -782,7 +785,7 @@ export default function ParsingPage() {
 
       for (const q of queued) {
         try {
-          const doc = await parsingApi.upload(q.file, { parser_backend: q.parserBackend })
+          const doc = await parsingApi.upload(q.file)
           const libId = String(doc.id || '').trim()
           if (!libId) throw new Error('Missing document id from backend')
 
@@ -1079,7 +1082,7 @@ export default function ParsingPage() {
     const controller = new AbortController()
     parseControllersRef.current.set(fileId, controller)
 
-    const resolvedRequested = resolveParserBackendForFilename(file.file.name, parserBackend)
+    const resolvedRequested = resolveParserBackendForFilename(file.file.name, file.parserBackend || parserBackend)
     const requestedBackend = resolvedRequested.backend
     const requestedLabel = getParserLabel(requestedBackend)
 
@@ -1480,20 +1483,6 @@ export default function ParsingPage() {
               </Button>
 
               <div className={cn("flex-1 flex flex-col min-h-0 w-full overflow-hidden", isSidebarCollapsed && "invisible")}>
-                {/* 解析器选择 */}
-                <div className="p-4 border-b border-border/60">
-                  <div className="flex items-center justify-between mb-3">
-                    <span className="text-xs font-semibold text-muted-foreground dark:text-muted-foreground uppercase tracking-wider">解析方式</span>
-                  </div>
-                  <ParserDropdown
-                    value={parserBackend}
-                    onChange={setParserBackend}
-                  />
-                  <p className="mt-2 text-[11px] text-muted-foreground dark:text-muted-foreground leading-relaxed">
-                    修改解析方式会同步更新「等待解析 / 失败」的队列文件
-                  </p>
-                </div>
-
                 {/* Folder Navigation */}
                 <div className="flex-none h-1/3 min-h-[200px] overflow-y-auto p-2 border-b border-border/60 custom-scrollbar bg-card dark:bg-background/40">
                   <div className="h-full rounded-2xl border border-border/60 bg-card dark:bg-background/40 p-2">
@@ -2084,6 +2073,40 @@ export default function ParsingPage() {
                           )}
 
                           {activeFile.status === 'pending' && (
+                            <div className="flex items-center gap-2 mr-2">
+                              <span className="text-xs font-medium text-muted-foreground">解析方式</span>
+                              <ParserDropdown
+                                value={activeFile.parserBackend}
+                                onChange={(backend) =>
+                                  setQueueFileParserBackend({
+                                    fileId: activeFile.id,
+                                    filename: activeFile.file.name,
+                                    backend,
+                                  })
+                                }
+                                className="w-56"
+                              />
+                            </div>
+                          )}
+
+                          {activeFile.status === 'error' && (
+                            <div className="flex items-center gap-2 mr-2">
+                              <span className="text-xs font-medium text-muted-foreground">解析方式</span>
+                              <ParserDropdown
+                                value={activeFile.parserBackend}
+                                onChange={(backend) =>
+                                  setQueueFileParserBackend({
+                                    fileId: activeFile.id,
+                                    filename: activeFile.file.name,
+                                    backend,
+                                  })
+                                }
+                                className="w-56"
+                              />
+                            </div>
+                          )}
+
+                          {activeFile.status === 'pending' && (
                             <Button onClick={() => parseFile(activeFile.id)} className="gap-2 bg-sky-600 hover:bg-sky-700">
                               <Sparkles className="w-4 h-4" />
                               开始解析
@@ -2109,7 +2132,7 @@ export default function ParsingPage() {
                               </div>
                               <p className="text-foreground/80 dark:text-muted-foreground mb-2">准备就绪</p>
                               <p className="text-muted-foreground dark:text-muted-foreground text-sm">
-                                点击上方按钮，使用 {activeFile.parserLabel} 解析
+                                先在上方选择解析方式（当前：{activeFile.parserLabel}），再点击开始解析
                               </p>
                             </div>
                           </div>
