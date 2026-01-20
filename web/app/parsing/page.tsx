@@ -372,7 +372,10 @@ export default function ParsingPage() {
 
   const activeMarkdown =
     activeRun?.cleanedMarkdown || activeFile?.markdownContent || activeLibraryFile?.markdownContent || ''
-  const activeBlocks = activeRun?.blocks || []
+  const activeBlocksWithPositions = useMemo(
+    () => (activeRun?.blocks || []).filter((block) => (block.positions || []).length > 0),
+    [activeRun?.blocks]
+  )
   const isPdf = Boolean(activeFile?.file?.name?.toLowerCase().endsWith('.pdf'))
 
   const tocEnabled = useMemo(
@@ -502,7 +505,7 @@ export default function ParsingPage() {
           if (raw) {
             const parsed = extractBlocksFromMarkdown(raw)
             markdownContent = parsed.cleanedMarkdown
-            blocks = parsed.blocks
+            blocks = parsed.blocks.filter((block) => (block.positions || []).length > 0)
             const runId = `restored-${Date.now()}`
             runs = [
               {
@@ -1213,7 +1216,7 @@ export default function ParsingPage() {
       const duration = ((Date.now() - startTime) / 1000).toFixed(1)
       const parsed = extractBlocksFromMarkdown(rawMarkdown)
       const markdownContent = (data.markdown_content || parsed.cleanedMarkdown).toString()
-      const blocks = parsed.blocks
+      const blocks = parsed.blocks.filter((block) => (block.positions || []).length > 0)
       const runId = `${resolvedBackend}-${Date.now()}`
       const run = {
         id: runId,
@@ -2101,7 +2104,7 @@ export default function ParsingPage() {
                               ) : (
                                 // 预览模式按钮
                                 <>
-                                  {activeBlocks.length > 0 && (
+                                  {activeBlocksWithPositions.length > 0 && (
                                     <div className="flex items-center bg-muted dark:bg-muted rounded-lg p-0.5 mr-2">
                                       <button
                                         onClick={() => setRightPanelMode('blocks')}
@@ -2298,16 +2301,16 @@ export default function ParsingPage() {
                                   <div className="w-full lg:w-1/2 border-b lg:border-b-0 lg:border-r border-border/70 dark:border-border/60 bg-muted/70 dark:bg-background/40">
                                     <PdfViewer
                                       file={activeFile.file}
-                                      blocks={activeBlocks}
+                                      blocks={activeBlocksWithPositions}
                                       activeBlockId={activeBlockId}
                                       hoveredBlockId={hoveredBlockId}
                                     />
                                   </div>
                                 ) : null}
                                 <div className={isPdf ? 'w-full lg:w-1/2' : 'w-full'}>
-                                  {rightPanelMode === 'blocks' && activeBlocks.length > 0 ? (
+                                  {rightPanelMode === 'blocks' && activeBlocksWithPositions.length > 0 ? (
                                     <div className="h-full overflow-y-auto p-6 space-y-4">
-                                      {activeBlocks
+                                      {activeBlocksWithPositions
                                         .filter((block) => (block.text || '').trim().length > 0)
                                         .map((block, idx) => {
                                           const pageIndex = block.positions?.[0]?.pages?.[0]
