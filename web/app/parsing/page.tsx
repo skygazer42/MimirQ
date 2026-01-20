@@ -2230,7 +2230,7 @@ export default function ParsingPage() {
 
                           {activeFile.status === 'pending' && (
                             <Button onClick={() => parseFile(activeFile.id)} className="gap-2 bg-sky-600 hover:bg-sky-700">
-                              <Sparkles className="w-4 h-4" />
+                              <Sparkles className="w-4 h-4 text-sky-200" />
                               开始解析
                             </Button>
                           )}
