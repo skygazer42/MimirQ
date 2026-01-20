@@ -46,8 +46,9 @@ logger = get_logger("api.parsing")
 
 router = APIRouter()
 
-# Safe filename characters: letters, digits, CJK, spaces, dots, underscores, hyphens.
-SAFE_FILENAME_PATTERN = re.compile(r"^[a-zA-Z0-9\u4e00-\u9fff\u3040-\u30ff\uac00-\ud7af._\-\s]+$")
+# Filename validation:
+# - Workspace uploads are persisted by UUID (local/MinIO), so we don't need a strict allowlist.
+# - Still reject path separators / control characters to prevent path traversal and header issues.
 
 POSITION_TAG_RE = re.compile(r"@@([0-9-]+)\t([0-9.]+)\t([0-9.]+)\t([0-9.]+)\t([0-9.]+)##")
 
@@ -69,7 +70,12 @@ def _validate_filename(filename: str) -> None:
         raise HTTPException(status_code=400, detail="Filename is required")
     if len(filename) > 255:
         raise HTTPException(status_code=400, detail="Filename too long (max 255 characters)")
-    if not SAFE_FILENAME_PATTERN.match(filename):
+    # Disallow path separators and control characters (CR/LF/TAB/NUL etc).
+    if "/" in filename or "\\" in filename:
+        raise HTTPException(status_code=400, detail="Filename contains invalid characters")
+    if "\x7f" in filename or any(ord(ch) < 32 for ch in filename):
+        raise HTTPException(status_code=400, detail="Filename contains invalid characters")
+    if filename.strip() in {".", ".."}:
         raise HTTPException(status_code=400, detail="Filename contains invalid characters")
 
 
