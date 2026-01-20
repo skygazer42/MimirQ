@@ -7,7 +7,6 @@ import { PipelineCapabilitiesProvider } from "@/contexts/pipeline-capabilities-c
 import { ThemeProvider } from "@/components/theme-provider"
 import { SonnerToaster } from "@/components/sonner-toaster"
 import { CommandMenu } from "@/components/command-menu"
-import { ThemeCustomizer } from "@/components/theme-customizer"
 import { FluidCursor } from "@/components/ui/fluid-cursor"
 import { TaskCenter } from "@/components/task-center"
 import { QueryProvider } from "@/components/providers/query-provider"
@@ -37,7 +36,6 @@ export default function RootLayout({
           <QueryProvider>
             <SonnerToaster />
             <CommandMenu />
-            <ThemeCustomizer />
             <FluidCursor />
             <TaskCenter />
             <PipelineCapabilitiesProvider>

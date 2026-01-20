@@ -65,18 +65,28 @@ class ParsingContentUpdateRequest(BaseModel):
     original_markdown_content: Optional[str] = None
 
 
-def _validate_filename(filename: str) -> None:
+def _sanitize_filename(filename: str) -> str:
+    """
+    Return a safe filename for storage/display.
+
+    Notes:
+    - Some clients send Windows-style paths (e.g. `C:\\fakepath\\a.pdf`) in multipart metadata.
+      We intentionally keep only the basename.
+    - We still reject control characters to prevent header issues.
+    """
     if not filename:
         raise HTTPException(status_code=400, detail="Filename is required")
-    if len(filename) > 255:
+
+    cleaned = filename.replace("\\", "/").rsplit("/", 1)[-1].strip()
+    if not cleaned:
+        raise HTTPException(status_code=400, detail="Filename is required")
+    if len(cleaned) > 255:
         raise HTTPException(status_code=400, detail="Filename too long (max 255 characters)")
-    # Disallow path separators and control characters (CR/LF/TAB/NUL etc).
-    if "/" in filename or "\\" in filename:
+    if "\x7f" in cleaned or any(ord(ch) < 32 for ch in cleaned):
         raise HTTPException(status_code=400, detail="Filename contains invalid characters")
-    if "\x7f" in filename or any(ord(ch) < 32 for ch in filename):
+    if cleaned in {".", ".."}:
         raise HTTPException(status_code=400, detail="Filename contains invalid characters")
-    if filename.strip() in {".", ".."}:
-        raise HTTPException(status_code=400, detail="Filename contains invalid characters")
+    return cleaned
 
 
 def _strip_position_tags(markdown: str) -> str:
@@ -201,7 +211,7 @@ async def upload_parsing_document(
     Upload a source file into the parsing workspace (no parsing yet).
     """
     DatasetService.ensure_member(db, tenant_id, account_id)
-    _validate_filename(file.filename)
+    file.filename = _sanitize_filename(file.filename)
 
     file_ext = Path(file.filename).suffix.lower()
     if file_ext not in settings.allowed_extensions_list:
