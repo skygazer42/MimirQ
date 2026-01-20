@@ -8,6 +8,9 @@ import { useCallback, useMemo, useState } from 'react'
 import {
   Database,
   FileText,
+  FileType,
+  FileSpreadsheet,
+  FileCode,
   Search,
   Settings,
   Upload,
@@ -59,6 +62,114 @@ import { useChunkStrategyPreference } from '@/contexts/chunk-strategy-context'
 // Tab 类型
 type TabType = 'documents' | 'retrieval' | 'settings'
 type ViewMode = 'grid' | 'list'
+
+type FileTypeStyle = {
+  icon: typeof FileText
+  label: string
+  color: string
+  bg: string
+  border: string
+}
+
+function getFileTypeStyle(doc: Pick<Document, 'filename' | 'file_type'>): FileTypeStyle {
+  const explicit = String(doc.file_type || '').trim().toLowerCase()
+  const fromName = String(doc.filename || '')
+    .trim()
+    .split('.')
+    .pop()
+    ?.toLowerCase()
+    ?.trim() || ''
+  const ext = explicit || fromName
+
+  const base = {
+    border: 'border-slate-200 dark:border-slate-700/60',
+  }
+
+  switch (ext) {
+    case 'pdf':
+      return {
+        icon: FileText,
+        label: 'PDF',
+        color: 'text-red-600 dark:text-red-400',
+        bg: 'bg-red-50 dark:bg-red-900/20',
+        border: 'border-red-200/60 dark:border-red-500/30',
+      }
+    case 'docx':
+      return {
+        icon: FileType,
+        label: 'DOCX',
+        color: 'text-blue-600 dark:text-blue-400',
+        bg: 'bg-blue-50 dark:bg-blue-900/20',
+        border: 'border-blue-200/60 dark:border-blue-500/30',
+      }
+    case 'doc':
+      return {
+        icon: FileType,
+        label: 'DOC',
+        color: 'text-indigo-600 dark:text-indigo-400',
+        bg: 'bg-indigo-50 dark:bg-indigo-900/20',
+        border: 'border-indigo-200/60 dark:border-indigo-500/30',
+      }
+    case 'xlsx':
+    case 'xls':
+      return {
+        icon: FileSpreadsheet,
+        label: ext.toUpperCase(),
+        color: 'text-emerald-700 dark:text-emerald-300',
+        bg: 'bg-emerald-50 dark:bg-emerald-900/20',
+        border: 'border-emerald-200/60 dark:border-emerald-500/30',
+      }
+    case 'csv':
+      return {
+        icon: FileSpreadsheet,
+        label: 'CSV',
+        color: 'text-teal-700 dark:text-teal-300',
+        bg: 'bg-teal-50 dark:bg-teal-900/20',
+        border: 'border-teal-200/60 dark:border-teal-500/30',
+      }
+    case 'md':
+      return {
+        icon: FileCode,
+        label: 'MD',
+        color: 'text-purple-700 dark:text-purple-300',
+        bg: 'bg-purple-50 dark:bg-purple-900/20',
+        border: 'border-purple-200/60 dark:border-purple-500/30',
+      }
+    case 'txt':
+      return {
+        icon: FileText,
+        label: 'TXT',
+        color: 'text-slate-600 dark:text-slate-300',
+        bg: 'bg-slate-50 dark:bg-slate-800/60',
+        border: base.border,
+      }
+    case 'json':
+      return {
+        icon: FileCode,
+        label: 'JSON',
+        color: 'text-amber-700 dark:text-amber-300',
+        bg: 'bg-amber-50 dark:bg-amber-900/20',
+        border: 'border-amber-200/60 dark:border-amber-500/30',
+      }
+    case 'html':
+    case 'htm':
+      return {
+        icon: FileCode,
+        label: 'HTML',
+        color: 'text-orange-700 dark:text-orange-300',
+        bg: 'bg-orange-50 dark:bg-orange-900/20',
+        border: 'border-orange-200/60 dark:border-orange-500/30',
+      }
+    default:
+      return {
+        icon: FileIcon,
+        label: ext ? ext.toUpperCase() : 'FILE',
+        color: 'text-slate-600 dark:text-slate-300',
+        bg: 'bg-slate-50 dark:bg-slate-800/60',
+        border: base.border,
+      }
+  }
+}
 
 export default function KnowledgePage() {
   const { documents, isLoading, uploadDocument, deleteDocument, loadDocuments } = useDocuments()
@@ -407,13 +518,28 @@ export default function KnowledgePage() {
                           {documents.map((doc) => {
                              const status = getStatusConfig(doc.status)
                              const StatusIcon = status.icon
+                             const fileType = getFileTypeStyle(doc)
+                             const TypeIcon = fileType.icon
                              return (
                             <tr key={doc.id} className="hover:bg-sky-50/30 dark:hover:bg-sky-900/10 transition-colors group">
                               <td className="px-6 py-4 font-medium text-slate-900 dark:text-slate-100 flex items-center gap-3">
-                                <div className="p-2 bg-sky-50 dark:bg-sky-900/20 text-sky-600 dark:text-sky-400 rounded-lg">
-                                  <FileText className="w-4 h-4" />
+                                <div className={cn("p-2 rounded-lg border", fileType.bg, fileType.border, fileType.color)}>
+                                  <TypeIcon className="w-4 h-4" />
                                 </div>
-                                <span className="truncate max-w-[200px]" title={doc.filename}>{doc.filename}</span>
+                                <div className="min-w-0 flex items-center gap-2">
+                                  <span className="truncate max-w-[200px]" title={doc.filename}>{doc.filename}</span>
+                                  <span
+                                    className={cn(
+                                      "inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide",
+                                      fileType.bg,
+                                      fileType.border,
+                                      fileType.color
+                                    )}
+                                    title={fileType.label}
+                                  >
+                                    {fileType.label}
+                                  </span>
+                                </div>
                               </td>
                               <td className="px-6 py-4">
                                 <div className={cn("inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium border", status.bg, status.color, status.border)}>
@@ -677,6 +803,8 @@ function DocumentCard({ doc, getStatusConfig, onDelete }: { doc: Document, getSt
   const status = getStatusConfig(doc.status)
   const StatusIcon = status.icon
   const parserLabel = doc.metadata?.parser_backend ? getParserLabel(doc.metadata.parser_backend as string) : null
+  const fileType = getFileTypeStyle(doc)
+  const TypeIcon = fileType.icon
 
   return (
     <div className="group relative bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm hover:shadow-md hover:border-sky-300 dark:hover:border-sky-600 transition-all duration-300 flex flex-col overflow-hidden">
@@ -685,11 +813,17 @@ function DocumentCard({ doc, getStatusConfig, onDelete }: { doc: Document, getSt
       
       <div className="p-5 flex-1 flex flex-col">
         <div className="flex items-start justify-between mb-4">
-          <div className="w-12 h-12 rounded-xl bg-sky-50 dark:bg-sky-900/20 text-sky-600 dark:text-sky-400 flex items-center justify-center">
-            <FileText className="w-6 h-6" />
+          <div className={cn("w-12 h-12 rounded-xl flex items-center justify-center border", fileType.bg, fileType.border, fileType.color)}>
+            <TypeIcon className="w-6 h-6" />
           </div>
-          <div className={cn("px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider border", status.bg, status.color, status.border)}>
-             {status.label}
+          <div className="flex items-center gap-2">
+            <div className={cn("px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider border", fileType.bg, fileType.color, fileType.border)}>
+              {fileType.label}
+            </div>
+            <div className={cn("inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider border", status.bg, status.color, status.border)}>
+              <StatusIcon className={cn("w-3 h-3", status.spin && "animate-spin")} />
+              {status.label}
+            </div>
           </div>
         </div>
 
@@ -708,7 +842,7 @@ function DocumentCard({ doc, getStatusConfig, onDelete }: { doc: Document, getSt
           </div>
            <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
             <span>时间</span>
-            <span>{formatDate(doc.created_at).split(' ')[0]}</span>
+            <span>{formatDate(doc.created_at)}</span>
           </div>
         </div>
       </div>

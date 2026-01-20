@@ -10,31 +10,86 @@ class DeepDocParser:
     """Bridge DeepDoc's parser so we can reuse it inside our pipeline."""
 
     def __init__(self):
-        self._parser_cls = DeepDocPdfParser
-        self._parser = None
+        self._pdf_parser_cls = DeepDocPdfParser
+        self._pdf_parser = None
+        self._docx_parser = None
         self._lock = Lock()
 
-    def _ensure_parser(self):
-        if self._parser is None:
-            self._parser = self._parser_cls()
-        return self._parser
+    def _ensure_pdf_parser(self):
+        if self._pdf_parser is None:
+            self._pdf_parser = self._pdf_parser_cls()
+        return self._pdf_parser
+
+    def _ensure_docx_parser(self):
+        if self._docx_parser is None:
+            from app.deepdoc.parser import DocxParser as DeepDocDocxParser
+
+            self._docx_parser = DeepDocDocxParser()
+        return self._docx_parser
 
     def parse(self, file_path: Path) -> List[Document]:
         """
-        Run DeepDoc on the provided PDF and normalize the output into LangChain
+        Run DeepDoc on the provided document and normalize the output into LangChain
         Document objects.
 
         Notes:
-        - DeepDoc (RAGFlowPdfParser) returns `(sections, tables)` where sections
-          are text blocks (often tagged with positions) and tables/figures may
-          include cropped PIL images.
-        - We merge text sections into one Document for downstream chunking.
-        - We emit separate "image" Documents for tables/figures so the
-          downstream pipeline can upload their `metadata["image"]` to MinIO and
-          bind `img_id` to the resulting chunk.
+        - PDF: DeepDoc returns `(sections, media)` where sections are text blocks
+          (often tagged with positions) and tables/figures may include cropped PIL images.
+          We merge text sections into one Document and emit separate "image" Documents.
+        - DOCX: DeepDoc returns `(paragraphs, tables)`; we join paragraphs + tables into one Document.
         """
+        ext = file_path.suffix.lower()
+
+        if ext == ".docx":
+            with self._lock:
+                parser = self._ensure_docx_parser()
+                try:
+                    sections, tables = parser(str(file_path))
+                except Exception as exc:  # pragma: no cover - passthrough
+                    raise RuntimeError(f"DeepDoc failed to parse {file_path}") from exc
+
+            parts: List[str] = []
+            if isinstance(sections, list):
+                for item in sections:
+                    if isinstance(item, tuple):
+                        text = str((item[0] if item else "") or "").strip()
+                    else:
+                        text = str(item or "").strip()
+                    if text:
+                        parts.append(text)
+            else:
+                text = str(sections or "").strip()
+                if text:
+                    parts.append(text)
+
+            if isinstance(tables, list):
+                for tb in tables:
+                    if isinstance(tb, list):
+                        joined = "\n".join(str(x).strip() for x in tb if str(x).strip()).strip()
+                        if joined:
+                            parts.append(joined)
+                    else:
+                        text = str(tb or "").strip()
+                        if text:
+                            parts.append(text)
+
+            merged_text = "\n\n".join(parts).strip()
+            return [
+                Document(
+                    page_content=merged_text,
+                    metadata={
+                        "source": file_path.name,
+                        "file_type": "docx",
+                        "parser_backend": "deepdoc",
+                    },
+                )
+            ]
+
+        if ext != ".pdf":
+            raise ValueError(f"DeepDoc parser supports only .pdf/.docx, got: {ext or '(no ext)'}")
+
         with self._lock:
-            parser = self._ensure_parser()
+            parser = self._ensure_pdf_parser()
             try:
                 sections, media = parser(
                     str(file_path),
