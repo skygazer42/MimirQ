@@ -135,6 +135,7 @@ export function getParserLabel(value?: string) {
     pandoc: 'Pandoc',
     excel: 'Excel',
     docx: 'DOCX',
+    pptx: 'PPTX',
     html: 'HTML',
     csv: 'CSV',
     json: 'JSON',

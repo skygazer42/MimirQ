@@ -2,6 +2,7 @@ import asyncio
 import json
 import os
 import signal
+import subprocess
 import sys
 import time
 import uuid
@@ -34,11 +35,14 @@ def _get_subprocess_workdir(*, tenant_id: UUID) -> Path:
     return (root / str(tenant_id) / ".subprocess").resolve(strict=False)
 
 
-async def _terminate_process_group(process: asyncio.subprocess.Process, *, grace_sec: float = 2.0) -> None:
-    if process.returncode is not None:
+async def _terminate_process_group(process: Any, *, grace_sec: float = 2.0) -> None:
+    # The default asyncio event loop on Windows (SelectorEventLoop) does not support
+    # asyncio subprocess APIs. In that case we fall back to `subprocess.Popen` and
+    # this helper must handle both process types.
+    if getattr(process, "returncode", None) is not None:
         return
 
-    pid = process.pid
+    pid = getattr(process, "pid", None)
     if pid is None:
         return
 
@@ -46,15 +50,22 @@ async def _terminate_process_group(process: asyncio.subprocess.Process, *, grace
         if os.name == "posix":
             os.killpg(pid, signal.SIGTERM)
         else:  # pragma: no cover
-            process.terminate()
+            terminate = getattr(process, "terminate", None)
+            if callable(terminate):
+                terminate()
     except ProcessLookupError:
         return
     except Exception as exc:  # noqa: BLE001
         logger.warning("Failed to terminate subprocess %s: %s", pid, str(exc)[:200])
 
     try:
-        await asyncio.wait_for(process.wait(), timeout=grace_sec)
+        if isinstance(process, asyncio.subprocess.Process):
+            await asyncio.wait_for(process.wait(), timeout=grace_sec)
+        else:  # Popen-like
+            await asyncio.to_thread(getattr(process, "wait"), grace_sec)
         return
+    except subprocess.TimeoutExpired:
+        pass
     except asyncio.TimeoutError:
         pass
     except Exception:
@@ -64,14 +75,19 @@ async def _terminate_process_group(process: asyncio.subprocess.Process, *, grace
         if os.name == "posix":
             os.killpg(pid, signal.SIGKILL)
         else:  # pragma: no cover
-            process.kill()
+            kill = getattr(process, "kill", None)
+            if callable(kill):
+                kill()
     except ProcessLookupError:
         return
     except Exception as exc:  # noqa: BLE001
         logger.warning("Failed to kill subprocess %s: %s", pid, str(exc)[:200])
 
     try:
-        await process.wait()
+        if isinstance(process, asyncio.subprocess.Process):
+            await process.wait()
+        else:  # Popen-like
+            await asyncio.to_thread(getattr(process, "wait"))
     except Exception:
         return
 
@@ -132,28 +148,73 @@ async def run_subprocess_worker(
         payload_path.write_text(payload_json, encoding="utf-8")
 
     log_file = None
-    process: asyncio.subprocess.Process | None = None
+    process: Any = None
     try:
         log_file = log_path.open("wb")
-        process = await asyncio.create_subprocess_exec(
-            sys.executable,
-            "-m",
-            "app.parsing.subprocess_worker",
-            str(payload_path),
-            str(result_path),
-            stdout=log_file,
-            stderr=log_file,
-            start_new_session=True,
-        )
+        try:
+            process = await asyncio.create_subprocess_exec(
+                sys.executable,
+                "-m",
+                "app.parsing.subprocess_worker",
+                str(payload_path),
+                str(result_path),
+                stdout=log_file,
+                stderr=log_file,
+                start_new_session=True,
+            )
+        except NotImplementedError:
+            # WindowsSelectorEventLoopPolicy cannot spawn asyncio subprocesses.
+            logger.warning(
+                "asyncio subprocess API not available on this event loop (%s); falling back to subprocess.Popen",
+                asyncio.get_running_loop().__class__.__name__,
+            )
+            process = subprocess.Popen(  # noqa: S603
+                [
+                    sys.executable,
+                    "-m",
+                    "app.parsing.subprocess_worker",
+                    str(payload_path),
+                    str(result_path),
+                ],
+                stdout=log_file,
+                stderr=log_file,
+                start_new_session=True,
+            )
 
         start = time.monotonic()
         max_log_bytes = int(getattr(settings, "SUBPROCESS_LOG_MAX_BYTES", 0) or 0)
-        while process.returncode is None:
+        while True:
+            poll = getattr(process, "poll", None)
+            if callable(poll):
+                poll()
+            if getattr(process, "returncode", None) is not None:
+                break
             try:
-                if disconnect_check is not None and await disconnect_check():
+                disconnected = False
+                if disconnect_check is not None:
+                    try:
+                        disconnected = bool(await disconnect_check())
+                    except asyncio.CancelledError:
+                        raise
+                    except Exception as exc:  # noqa: BLE001
+                        logger.debug("disconnect_check failed (ignored): %s", str(exc)[:200])
+                        disconnected = False
+
+                if disconnected:
                     await _terminate_process_group(process)
                     raise SubprocessCancelled("client_disconnected")
-                if cancel_check is not None and await cancel_check():
+
+                cancel_requested = False
+                if cancel_check is not None:
+                    try:
+                        cancel_requested = bool(await cancel_check())
+                    except asyncio.CancelledError:
+                        raise
+                    except Exception as exc:  # noqa: BLE001
+                        logger.debug("cancel_check failed (ignored): %s", str(exc)[:200])
+                        cancel_requested = False
+
+                if cancel_requested:
                     await _terminate_process_group(process)
                     raise SubprocessCancelled("cancel_requested")
                 if max_log_bytes > 0:
@@ -179,7 +240,7 @@ async def run_subprocess_worker(
 
         if not result_path.exists():
             raise SubprocessWorkerError(
-                f"worker_did_not_write_result (exit_code={process.returncode})",
+                f"worker_did_not_write_result (exit_code={getattr(process, 'returncode', None)})",
                 log_tail=_read_log_tail(log_path),
             )
 

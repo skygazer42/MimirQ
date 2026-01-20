@@ -62,6 +62,7 @@ from app.api.dependencies.auth import get_current_account_id
 from app.rag.kg.pipeline import extract_events
 from sqlalchemy import or_, and_
 from app.rag.core.logging import get_logger
+from app.core.env import is_production_env
 from app.rag.preprocessing.processor import governance_processor
 from app.api.utils.upload import save_upload_file
 from app.tasks.queue import enqueue_document_processing
@@ -2307,15 +2308,28 @@ async def preview_document(
         if err_type == "ValueError":
             raise HTTPException(status_code=400, detail=f"Invalid input: {str(e)[:100]}")
         logger.error("Subprocess worker failed during preview: %s", str(e)[:200])
-        raise HTTPException(status_code=500, detail="Failed to parse document")
+        msg = (str(e) or "").strip()
+        if not msg:
+            details = e.details or {}
+            msg = str(details.get("message") or details.get("type") or e.__class__.__name__).strip()
+        msg = msg[:200]
+        detail = "Failed to parse document" if is_production_env() else f"Failed to parse document: {msg}"
+        raise HTTPException(status_code=500, detail=detail)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=f"Invalid input: {str(e)[:100]}")
     except IOError as e:
         logger.error("File read error during preview: %s", str(e)[:200])
         raise HTTPException(status_code=500, detail="File read error")
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error("Unexpected error during document preview: %s", str(e)[:200])
-        raise HTTPException(status_code=500, detail="Failed to parse document")
+        msg = (str(e) or "").strip()
+        if not msg:
+            msg = e.__class__.__name__
+        msg = msg[:200]
+        detail = "Failed to parse document" if is_production_env() else f"Failed to parse document: {msg}"
+        raise HTTPException(status_code=500, detail=detail)
     finally:
         try:
             if run_dir.exists():
@@ -2840,11 +2854,25 @@ async def preview_chunking(
         if err_type == "ValueError":
             raise HTTPException(status_code=400, detail=str(e))
         logger.error("Subprocess worker failed during chunk preview: %s", str(e)[:200])
-        raise HTTPException(status_code=500, detail="Failed to preview chunking")
+        msg = (str(e) or "").strip()
+        if not msg:
+            details = e.details or {}
+            msg = str(details.get("message") or details.get("type") or e.__class__.__name__).strip()
+        msg = msg[:200]
+        detail = "Failed to preview chunking" if is_production_env() else f"Failed to preview chunking: {msg}"
+        raise HTTPException(status_code=500, detail=detail)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+    except HTTPException:
+        raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to preview chunking: {str(e)}")
+        logger.error("Unexpected error during chunk preview: %s", str(e)[:200])
+        msg = (str(e) or "").strip()
+        if not msg:
+            msg = e.__class__.__name__
+        msg = msg[:200]
+        detail = "Failed to preview chunking" if is_production_env() else f"Failed to preview chunking: {msg}"
+        raise HTTPException(status_code=500, detail=detail)
     finally:
         try:
             if run_dir.exists():

@@ -94,7 +94,7 @@ class ParserFactory:
     }
     # Non-PDF formats are primarily handled by general converters (MarkItDown/Pandoc),
     # but some advanced backends (e.g. DeepDoc/Docling) can also handle DOCX when enabled.
-    SUPPORTED_NON_PDF_BACKENDS = {"auto", "markitdown", "pandoc", "excel", "docx", "html", "csv", "json", "deepdoc", "docling"}
+    SUPPORTED_NON_PDF_BACKENDS = {"auto", "markitdown", "pandoc", "excel", "docx", "pptx", "html", "csv", "json", "deepdoc", "docling"}
 
     def __init__(self):
         self._basic_pdf_parser: Optional[PDFParser] = None
@@ -201,6 +201,8 @@ class ParserFactory:
                 raise ValueError("excel backend supports only .xls/.xlsx")
             if normalized == "docx" and file_ext not in {".docx"}:
                 raise ValueError("docx backend supports only .docx")
+            if normalized == "pptx" and file_ext not in {".pptx"}:
+                raise ValueError("pptx backend supports only .pptx")
             if normalized == "html" and file_ext not in {".html", ".htm"}:
                 raise ValueError("html backend supports only .html/.htm")
             if normalized == "csv" and file_ext != ".csv":
@@ -347,8 +349,10 @@ class ParserFactory:
         try:
             if file_ext == ".pdf":
                 parser = self._get_pdf_parser(backend)
-            elif file_ext == ".txt":
-                parser = self.parsers[".txt"]
+            elif file_ext in self.PLAIN_TEXT_EXTENSIONS:
+                # Text-like formats (rst/yaml/toml/sql/log/conf/patch/diff/srt/vtt/xml/jsonl/ndjson/etc.).
+                # Keep this lightweight and deterministic (no Pandoc/MarkItDown needed).
+                parser = self.parsers[file_ext]
             elif file_ext == ".md":
                 parser = self.parsers[".md"]
             elif file_ext in self.SUPPORTED_NON_PDF_EXTENSIONS:
@@ -368,6 +372,10 @@ class ParserFactory:
                     from app.parsing.parsers.docx_parser import DocxParser
 
                     parser = DocxParser()
+                elif backend == "pptx":
+                    from app.parsing.parsers.pptx_parser import PptxParser
+
+                    parser = PptxParser()
                 elif backend == "html":
                     from app.parsing.parsers.html_parser import HtmlParser
 
@@ -508,6 +516,9 @@ class ParserFactory:
                 if file_ext == ".pptx":
                     if bool(getattr(settings, "PANDOC_ENABLED", False)):
                         return self._get_pandoc_parser().parse(file_path), "pandoc"
+                    from app.parsing.parsers.pptx_parser import PptxParser
+
+                    return PptxParser().parse(file_path), "pptx"
                 if file_ext in {".xlsx", ".xls"}:
                     from app.parsing.parsers.excel_parser import ExcelParser
 
