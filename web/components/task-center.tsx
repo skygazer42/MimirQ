@@ -5,6 +5,7 @@ import { documentApi } from '@/lib/api-client'
 import { Loader2, AlertCircle, X, Ban, RotateCcw, ArrowUpRight, Settings2 } from 'lucide-react'
 import { useState } from 'react'
 import { cn } from '@/lib/utils'
+import type { Document } from '@/types'
 import { Button } from './ui/button'
 import { ScrollArea } from './ui/scroll-area'
 import { useRouter } from 'next/navigation'
@@ -17,7 +18,7 @@ export function TaskCenter() {
   const router = useRouter()
   
   // Poll for active tasks globally
-  const { data: documents = [], refetch } = useQuery({
+  const { data: documents = [], refetch } = useQuery<Document[]>({
     queryKey: ['documents'],
     queryFn: async () => {
       const res = await documentApi.list({ limit: 100 })
@@ -36,6 +37,31 @@ export function TaskCenter() {
   const totalCount = totalActive + totalFailed
   
   if (totalCount === 0) return null
+
+  const getStageLabel = (doc: Document) => {
+    const stage = String(doc.current_stage || '').trim().toLowerCase()
+    const stageMap: Record<string, string> = {
+      queued: '排队中',
+      parsing: '解析中',
+      chunking: '切片中',
+      embedding: '向量化',
+      indexing: '索引中',
+      completed: '已完成',
+      failed: '失败',
+      cancelled: '已取消',
+    }
+    if (stage) return stageMap[stage] || String(doc.current_stage)
+    if (doc.status === 'pending') return '排队中'
+    if (doc.status === 'processing') return '处理中'
+    if (doc.status === 'failed') return '失败'
+    return ''
+  }
+
+  const clampProgress = (progress: unknown) => {
+    const value = Number(progress)
+    if (!Number.isFinite(value)) return 0
+    return Math.max(0, Math.min(100, Math.round(value)))
+  }
 
   const handleCancel = async (id: string) => {
     if (acting) return
@@ -68,21 +94,28 @@ export function TaskCenter() {
   return (
     <div className="fixed bottom-4 right-4 z-50 flex flex-col items-end">
         {isOpen && (
-            <div className="mb-2 w-80 bg-background border border-border rounded-xl shadow-2xl overflow-hidden animate-in slide-in-from-bottom-5 fade-in">
-                <div className="p-3 border-b border-border bg-muted/50 flex justify-between items-center">
-                    <div className="flex items-baseline gap-2">
-                      <h4 className="text-sm font-semibold leading-none">任务中心</h4>
-                      <div className="text-xs text-muted-foreground">
-                        {totalActive > 0 && <span>进行中 {totalActive}</span>}
-                        {totalActive > 0 && totalFailed > 0 && <span className="mx-1">·</span>}
-                        {totalFailed > 0 && <span className="text-destructive">失败 {totalFailed}</span>}
+            <div className="mb-2 w-[26rem] bg-background/85 backdrop-blur-md border border-border/60 rounded-2xl shadow-2xl ring-1 ring-border/40 overflow-hidden animate-in slide-in-from-bottom-5 fade-in">
+                <div className="px-4 py-3 border-b border-border/60 bg-muted/30 flex justify-between items-center">
+                    <div className="min-w-0">
+                      <h4 className="text-sm font-semibold leading-none tracking-tight">任务中心</h4>
+                      <div className="mt-2 flex items-center gap-2">
+                        {totalActive > 0 && (
+                          <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 text-primary px-2 py-0.5 text-xs font-medium">
+                            进行中 <span className="tabular-nums">{totalActive}</span>
+                          </span>
+                        )}
+                        {totalFailed > 0 && (
+                          <span className="inline-flex items-center gap-1 rounded-full bg-destructive/10 text-destructive px-2 py-0.5 text-xs font-medium">
+                            失败 <span className="tabular-nums">{totalFailed}</span>
+                          </span>
+                        )}
                       </div>
                     </div>
                     <div className="flex items-center gap-1">
                       <Button
                         variant="ghost"
                         size="sm"
-                        className="h-7 px-2 text-xs gap-1"
+                        className="h-8 px-2.5 text-xs gap-1"
                         onClick={() => {
                           router.push('/knowledge/ingestion')
                           setIsOpen(false)
@@ -103,51 +136,105 @@ export function TaskCenter() {
                       </Button>
                     </div>
                 </div>
-                <ScrollArea className="h-48">
-                    <div className="p-2 space-y-2">
-                        {activeTasks.map(doc => (
-                            <div key={doc.id} className="flex items-center gap-3 p-2 bg-secondary/30 rounded-lg">
-                                <Loader2 className="h-4 w-4 animate-spin text-primary" />
-                                <div className="flex-1 min-w-0">
-                                    <p className="text-sm font-medium truncate leading-snug">{doc.filename}</p>
-                                    <div className="w-full h-1 bg-secondary mt-1.5 rounded-full overflow-hidden">
-                                        <div className="h-full bg-primary transition-all duration-500" style={{ width: `${doc.processing_progress}%` }} />
+                <ScrollArea className="max-h-80">
+                    <div className="p-3 space-y-4">
+                        {totalActive > 0 && (
+                          <div className="space-y-2">
+                            <div className="flex items-center justify-between px-1">
+                              <span className="text-xs font-semibold text-muted-foreground">进行中</span>
+                              <span className="text-xs tabular-nums text-muted-foreground">{totalActive}</span>
+                            </div>
+                            <div className="space-y-2">
+                              {activeTasks.map(doc => {
+                                const progress = clampProgress(doc.processing_progress)
+                                const stageLabel = getStageLabel(doc)
+                                return (
+                                  <div
+                                    key={doc.id}
+                                    className="group flex items-start gap-3 p-3 rounded-xl border border-border/50 bg-background/50 hover:bg-muted/20 transition-colors"
+                                  >
+                                    <div className="mt-0.5 flex h-9 w-9 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                                      <Loader2 className="h-4 w-4 animate-spin" />
                                     </div>
-                                </div>
-                                <span className="text-xs tabular-nums text-muted-foreground">{doc.processing_progress}%</span>
-                                <Button
-                                  variant="ghost"
-                                  size="icon"
-                                  className="h-7 w-7"
-                                  disabled={acting?.id === doc.id}
-                                  onClick={() => handleCancel(doc.id)}
-                                  aria-label="取消任务"
-                                  title="取消"
-                                >
-                                  <Ban className="h-3.5 w-3.5" />
-                                </Button>
+                                    <div className="flex-1 min-w-0">
+                                      <div className="flex items-start justify-between gap-2">
+                                        <p className="text-sm font-medium truncate leading-snug" title={doc.filename}>
+                                          {doc.filename}
+                                        </p>
+                                        <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
+                                          {progress}%
+                                        </span>
+                                      </div>
+                                      <div className="mt-1 text-xs text-muted-foreground truncate">
+                                        {stageLabel}
+                                      </div>
+                                      <div className="mt-2 w-full h-1.5 bg-secondary rounded-full overflow-hidden">
+                                        <div
+                                          className="h-full bg-primary transition-all duration-500"
+                                          style={{ width: `${progress}%` }}
+                                        />
+                                      </div>
+                                    </div>
+                                    <Button
+                                      variant="ghost"
+                                      size="icon"
+                                      className="mt-0.5 h-8 w-8 rounded-lg text-muted-foreground hover:text-foreground"
+                                      disabled={acting?.id === doc.id}
+                                      onClick={() => handleCancel(doc.id)}
+                                      aria-label="取消任务"
+                                      title="取消"
+                                    >
+                                      <Ban className="h-4 w-4" />
+                                    </Button>
+                                  </div>
+                                )
+                              })}
                             </div>
-                        ))}
-                        {failedTasks.map(doc => (
-                            <div key={doc.id} className="flex items-center gap-3 p-2 bg-destructive/10 rounded-lg">
-                                <AlertCircle className="h-4 w-4 text-destructive" />
-                                <div className="flex-1 min-w-0">
-                                    <p className="text-sm font-medium truncate text-destructive leading-snug">{doc.filename}</p>
-                                    <p className="text-xs text-destructive/80 truncate">处理失败</p>
-                                </div>
-                                <Button
-                                  variant="ghost"
-                                  size="icon"
-                                  className="h-7 w-7"
-                                  disabled={acting?.id === doc.id}
-                                  onClick={() => handleRetry(doc.id)}
-                                  aria-label="重试任务"
-                                  title="重试"
-                                >
-                                  <RotateCcw className="h-3.5 w-3.5" />
-                                </Button>
+                          </div>
+                        )}
+
+                        {totalFailed > 0 && (
+                          <div className="space-y-2">
+                            <div className="flex items-center justify-between px-1">
+                              <span className="text-xs font-semibold text-muted-foreground">失败</span>
+                              <span className="text-xs tabular-nums text-muted-foreground">{totalFailed}</span>
                             </div>
-                        ))}
+                            <div className="space-y-2">
+                              {failedTasks.map(doc => (
+                                <div
+                                  key={doc.id}
+                                  className="group flex items-start gap-3 p-3 rounded-xl border border-destructive/20 bg-destructive/5 hover:bg-destructive/10 transition-colors"
+                                >
+                                  <div className="mt-0.5 flex h-9 w-9 items-center justify-center rounded-lg bg-destructive/10 text-destructive">
+                                    <AlertCircle className="h-4 w-4" />
+                                  </div>
+                                  <div className="flex-1 min-w-0">
+                                    <p className="text-sm font-medium truncate text-destructive leading-snug" title={doc.filename}>
+                                      {doc.filename}
+                                    </p>
+                                    <p
+                                      className="mt-1 text-xs text-destructive/80 truncate"
+                                      title={doc.error_message || '处理失败'}
+                                    >
+                                      {doc.error_message || '处理失败'}
+                                    </p>
+                                  </div>
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="mt-0.5 h-8 w-8 rounded-lg text-destructive/80 hover:text-destructive"
+                                    disabled={acting?.id === doc.id}
+                                    onClick={() => handleRetry(doc.id)}
+                                    aria-label="重试任务"
+                                    title="重试"
+                                  >
+                                    <RotateCcw className="h-4 w-4" />
+                                  </Button>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
                     </div>
                 </ScrollArea>
             </div>
@@ -157,14 +244,14 @@ export function TaskCenter() {
           variant="outline"
           size="icon"
           className={cn(
-            "relative rounded-full h-12 w-12 shadow-2xl bg-background/80 backdrop-blur-md border-primary/20 hover:border-primary transition-all duration-300",
+            "group relative rounded-full h-12 w-12 shadow-2xl bg-background/80 backdrop-blur-md border-primary/20 hover:border-primary transition-all duration-300",
             isOpen && "bg-primary/10"
           )}
           onClick={() => setIsOpen(v => !v)}
           aria-label="任务中心"
           title="任务中心"
         >
-          <Settings2 className="h-6 w-6 text-primary" />
+          <Settings2 className="h-6 w-6 text-primary transition-transform duration-300 group-hover:rotate-90" />
           <span
             className={cn(
               "absolute -top-2 -right-2 inline-flex min-w-5 h-5 items-center justify-center rounded-full text-[10px] px-1 tabular-nums",
