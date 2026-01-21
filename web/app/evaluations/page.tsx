@@ -9,6 +9,7 @@
 import { Suspense, useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { AppFrame } from '@/components/app-frame'
+import { PageBody } from '@/components/ui/page-body'
 import { Button } from '@/components/ui/button'
 import { StatCard, StatsGrid } from '@/components/ui/stats-card'
 import { evaluationApi, chatApi } from '@/lib/api-client'
@@ -215,12 +216,12 @@ function EvaluationsPageContent() {
   }, [runStatus])
 
   return (
-    <main id="main-content" tabIndex={-1} className="flex-1 flex flex-col overflow-hidden relative">
+    <div className="flex-1 flex flex-col overflow-hidden relative">
       {activeTab === 'conversation' && (
         <>
           <div className="absolute top-0 left-0 right-0 h-64 bg-gradient-to-b from-sky-50/50 dark:from-sky-900/10 to-transparent pointer-events-none" />
 
-          <header className="px-8 py-6 flex-shrink-0 z-10">
+          <header className="px-6 md:px-8 py-6 flex-shrink-0 z-10">
             {/* Tab 切换 */}
             <div className="flex items-center gap-2 mb-6">
               <button
@@ -369,7 +370,7 @@ function EvaluationsPageContent() {
         </header>
 
         {/* 内容区 */}
-        <div className="flex-1 overflow-y-auto px-8 pb-8">
+        <PageBody>
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             {/* 运行列表 */}
             <div className="lg:col-span-1">
@@ -519,12 +520,12 @@ function EvaluationsPageContent() {
               </div>
             </div>
           </div>
-        </div>
+        </PageBody>
         </>
       )}
 
       {/* 回归测试 Tab */}
       {activeTab === 'regression' && <RegressionTestTab />}
-    </main>
+    </div>
   )
 }

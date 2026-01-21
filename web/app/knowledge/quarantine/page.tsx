@@ -17,6 +17,7 @@ import { toast } from 'sonner'
 import { AppFrame } from '@/components/app-frame'
 import { PageHeader } from '@/components/ui/page-header'
 import { PageHeaderBar } from '@/components/ui/page-header-bar'
+import { PageBody } from '@/components/ui/page-body'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Switch } from '@/components/ui/switch'
@@ -293,10 +294,10 @@ export default function QuarantineQueuePage() {
             iconColor="text-amber-600 dark:text-amber-400"
             className="!pt-6 !pb-6"
             description={
-              <span className="flex items-center gap-2 text-slate-500 dark:text-slate-400">
-                <span className="font-bold text-slate-700 dark:text-slate-200">QUARANTINE</span>
+              <span className="flex items-center gap-2 text-muted-foreground">
+                <span className="font-bold text-foreground">QUARANTINE</span>
                 <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-50 dark:bg-amber-500/10 text-amber-700 dark:text-amber-300 border border-amber-100 dark:border-amber-500/20 uppercase tracking-wider">Review</span>
-                <span className="text-slate-300 dark:text-slate-600">|</span>
+                <span className="text-muted-foreground/60">|</span>
                 聚合命中规则，抽样预览原文，一键放行/重试/删除。
               </span>
             }
@@ -304,47 +305,47 @@ export default function QuarantineQueuePage() {
             <div className="flex items-center gap-3">
               <Button
                 variant="outline"
-                className="gap-2 bg-white/50 dark:bg-slate-900/50 border-slate-200 dark:border-slate-800 hover:bg-white dark:hover:bg-slate-800 hover:border-slate-300 dark:hover:border-slate-700 text-slate-600 dark:text-slate-300 rounded-full transition-all duration-300 shadow-sm"
+                className="group gap-2 rounded-full bg-background/60"
                 onClick={() => refetch()}
               >
-                <RefreshCw className={cn('h-3.5 w-3.5 transition-transform', isFetching ? 'animate-spin' : '')} />
+                <RefreshCw className={cn('h-3.5 w-3.5 transition-transform group-hover:rotate-180', isFetching ? 'animate-spin' : '')} />
                 刷新
               </Button>
-              <div className="flex items-center gap-3 rounded-full border border-slate-200 dark:border-slate-800 bg-white/50 dark:bg-slate-900/50 backdrop-blur-md px-4 py-1.5 hover:border-slate-300 dark:hover:border-slate-700 transition-colors shadow-sm">
-                <span className="text-xs font-bold text-slate-500 dark:text-slate-400">自动同步</span>
+              <div className="flex items-center gap-3 rounded-full border border-border/60 bg-background/60 backdrop-blur-md px-4 py-1.5 hover:border-primary/20 transition-colors shadow-sm">
+                <span className="text-xs font-bold text-muted-foreground">自动同步</span>
                 <Switch checked={autoRefresh} onCheckedChange={setAutoRefresh} className="scale-75 data-[state=checked]:bg-sky-500" />
               </div>
             </div>
           </PageHeader>
         </PageHeaderBar>
 
-        <div className="px-8 pt-4 pb-2 flex flex-wrap items-center gap-2">
-          <Badge variant="secondary" className="bg-white/70 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800">
+        <div className="px-6 md:px-8 pt-4 pb-2 flex flex-wrap items-center gap-2">
+          <Badge variant="secondary" className="bg-background/60 border border-border/60">
             总隔离 {stats.total}
           </Badge>
-          <Badge variant="secondary" className="bg-white/70 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800">
+          <Badge variant="secondary" className="bg-background/60 border border-border/60">
             未处理 {stats.unreviewed}
           </Badge>
-          <Badge variant="secondary" className="bg-white/70 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800">
+          <Badge variant="secondary" className="bg-background/60 border border-border/60">
             已处理 {stats.reviewed}
           </Badge>
         </div>
 
-        <div className="px-8 pb-4 flex-shrink-0 z-10">
-          <div className="flex flex-col lg:flex-row lg:items-center gap-3 bg-white/80 dark:bg-slate-900/80 backdrop-blur-xl border border-slate-200 dark:border-slate-800 shadow-lg shadow-slate-200/50 dark:shadow-none rounded-2xl p-3 transition-all duration-300">
+        <div className="px-6 md:px-8 pb-4 flex-shrink-0 z-10">
+          <div className="flex flex-col lg:flex-row lg:items-center gap-3 bg-background/70 backdrop-blur-xl border border-border/60 shadow-soft rounded-2xl p-3 transition-all duration-300 hover:shadow-strong hover:border-primary/20">
             <div className="relative flex-1 group">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 dark:text-slate-500 group-hover:text-sky-500 dark:group-hover:text-sky-400 transition-colors" />
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground group-hover:text-sky-500 dark:group-hover:text-sky-400 transition-colors" />
               <Input
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 placeholder="搜索文件名..."
-                className="pl-9 bg-transparent border-0 focus-visible:ring-0 text-slate-700 dark:text-slate-200 placeholder:text-slate-400 dark:placeholder:text-slate-600 h-10 rounded-xl"
+                className="pl-9 bg-transparent border-0 focus-visible:ring-0 text-foreground placeholder:text-muted-foreground h-10 rounded-xl"
               />
             </div>
 
             <div className="flex items-center gap-3">
-              <div className="flex items-center gap-2 rounded-xl border border-slate-200 dark:border-slate-800 bg-white/60 dark:bg-slate-950/40 px-3 py-2">
-                <span className="text-xs font-bold text-slate-500 dark:text-slate-400">隐藏已处理</span>
+              <div className="flex items-center gap-2 rounded-xl border border-border/60 bg-background/60 px-3 py-2">
+                <span className="text-xs font-bold text-muted-foreground">隐藏已处理</span>
                 <Switch checked={hideReviewed} onCheckedChange={setHideReviewed} className="scale-75 data-[state=checked]:bg-amber-500" />
               </div>
             </div>
@@ -352,7 +353,7 @@ export default function QuarantineQueuePage() {
         </div>
 
         {/* Reason chips */}
-        <div className="px-8 pb-4 flex flex-wrap items-center gap-2">
+        <div className="px-6 md:px-8 pb-4 flex flex-wrap items-center gap-2">
           <button
             type="button"
             onClick={() => setSelectedReason('all')}
@@ -360,7 +361,7 @@ export default function QuarantineQueuePage() {
               'px-3 py-1.5 rounded-full border text-xs font-bold transition-colors',
               selectedReason === 'all'
                 ? 'bg-sky-600 text-white border-sky-600'
-                : 'bg-white/60 dark:bg-slate-900/60 border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-300 hover:bg-white dark:hover:bg-slate-800'
+                : 'bg-background/60 border-border/60 text-muted-foreground hover:bg-accent hover:text-foreground'
             )}
           >
             全部原因
@@ -374,13 +375,13 @@ export default function QuarantineQueuePage() {
                 'px-3 py-1.5 rounded-full border text-xs font-bold transition-colors flex items-center gap-2',
                 selectedReason === reason
                   ? 'bg-amber-600 text-white border-amber-600'
-                  : 'bg-white/60 dark:bg-slate-900/60 border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-300 hover:bg-white dark:hover:bg-slate-800'
+                  : 'bg-background/60 border-border/60 text-muted-foreground hover:bg-accent hover:text-foreground'
               )}
             >
               <span>{reasonLabel(reason)}</span>
               <span className={cn(
                 'px-1.5 py-0.5 rounded-full text-[10px] font-black',
-                selectedReason === reason ? 'bg-white/20 text-white' : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300'
+                selectedReason === reason ? 'bg-white/20 text-white' : 'bg-muted text-muted-foreground'
               )}>
                 {reasonCounts[reason] || 0}
               </span>
@@ -388,16 +389,16 @@ export default function QuarantineQueuePage() {
           ))}
         </div>
 
-        <section className="flex-1 overflow-y-auto px-8 pb-10 z-10 custom-scrollbar">
+        <PageBody className="pb-10 z-10">
           <div className="grid grid-cols-1 xl:grid-cols-[1.2fr_0.8fr] gap-4">
             <div className="space-y-2">
               {!filtered.length ? (
-                <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white/70 dark:bg-slate-900/60 p-10 text-center text-slate-500 dark:text-slate-400">
+                <div className="rounded-2xl border border-border bg-card/60 p-10 text-center text-muted-foreground">
                   当前筛选条件下没有隔离文档
                 </div>
               ) : (
-                <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white/70 dark:bg-slate-900/60 overflow-hidden">
-                  <div className="divide-y divide-slate-200/70 dark:divide-slate-800/70">
+                <div className="rounded-2xl border border-border bg-card/60 overflow-hidden">
+                  <div className="divide-y divide-border/60">
                     {filtered.map((doc) => {
                       const active = doc.id === selectedId
                       const reasons = getDropReasons(doc)
@@ -414,10 +415,10 @@ export default function QuarantineQueuePage() {
                             if (e.key === 'Enter' || e.key === ' ') setSelectedId(doc.id)
                           }}
                           className={cn(
-                            'group p-4 flex items-start justify-between gap-4 transition-colors cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-400',
+                            'group p-4 flex items-start justify-between gap-4 transition-colors cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-ring',
                             active
                               ? 'bg-sky-50/70 dark:bg-sky-500/10'
-                              : 'hover:bg-slate-50 dark:hover:bg-slate-900'
+                              : 'hover:bg-accent'
                           )}
                         >
                           <div className="min-w-0 flex-1">
@@ -432,16 +433,16 @@ export default function QuarantineQueuePage() {
                                   已处理
                                 </span>
                               )}
-                              <span className="text-[10px] font-mono text-slate-400 dark:text-slate-500">ID: {doc.id.slice(0, 8)}</span>
+                              <span className="text-[10px] font-mono text-muted-foreground">ID: {doc.id.slice(0, 8)}</span>
                             </div>
-                            <div className="mt-2 font-bold text-slate-800 dark:text-slate-100 truncate">
+                            <div className="mt-2 font-bold text-foreground truncate">
                               {doc.filename}
                             </div>
-                            <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
+                            <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
                               <span className="font-mono">{formatDate(doc.updated_at)}</span>
-                              <span className="text-slate-300 dark:text-slate-600">·</span>
+                              <span className="text-muted-foreground/60">·</span>
                               <span>{formatFileSize(doc.file_size)}</span>
-                              <span className="text-slate-300 dark:text-slate-600">·</span>
+                              <span className="text-muted-foreground/60">·</span>
                               <span>{doc.chunk_count ?? 0} 切片</span>
                             </div>
                             {reasons.length > 0 && (
@@ -456,7 +457,7 @@ export default function QuarantineQueuePage() {
                                   </Badge>
                                 ))}
                                 {reasons.length > 6 && (
-                                  <Badge variant="secondary" className="bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
+                                  <Badge variant="secondary" className="bg-muted border border-border/60">
                                     +{reasons.length - 6}
                                   </Badge>
                                 )}
@@ -502,15 +503,15 @@ export default function QuarantineQueuePage() {
               )}
             </div>
 
-            <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white/70 dark:bg-slate-900/60 p-5 h-fit">
+            <div className="rounded-2xl border border-border bg-card/60 p-5 h-fit">
               {!selected ? (
-                <div className="text-sm text-slate-500 dark:text-slate-400">选择一条隔离记录查看详情</div>
+                <div className="text-sm text-muted-foreground">选择一条隔离记录查看详情</div>
               ) : (
                 <div className="space-y-4">
                   <div className="min-w-0">
-                    <div className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Selected</div>
-                    <div className="mt-1 font-bold text-slate-900 dark:text-slate-100 truncate">{selected.filename}</div>
-                    <div className="mt-2 flex flex-wrap gap-2 text-xs text-slate-500 dark:text-slate-400">
+                    <div className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Selected</div>
+                    <div className="mt-1 font-bold text-foreground truncate">{selected.filename}</div>
+                    <div className="mt-2 flex flex-wrap gap-2 text-xs text-muted-foreground">
                       <span className="font-mono">{formatDate(selected.updated_at)}</span>
                       <span>·</span>
                       <span>{formatFileSize(selected.file_size)}</span>
@@ -529,8 +530,8 @@ export default function QuarantineQueuePage() {
                   )}
 
                   {getDropReasons(selected).length > 0 && (
-                    <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white/50 dark:bg-slate-950/30 p-4">
-                      <div className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">命中规则</div>
+                    <div className="rounded-xl border border-border bg-muted/30 p-4">
+                      <div className="text-xs font-bold text-muted-foreground uppercase tracking-wider">命中规则</div>
                       <div className="mt-2 flex flex-wrap gap-1.5">
                         {getDropReasons(selected).map((r) => (
                           <Badge
@@ -623,7 +624,7 @@ export default function QuarantineQueuePage() {
               )}
             </div>
           </div>
-        </section>
+        </PageBody>
 
       <IngestionDetailDialog open={detailOpen} onOpenChange={setDetailOpen} documentId={detailDocumentId} />
 

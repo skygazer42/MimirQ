@@ -6,6 +6,7 @@ import { Layers, Loader2, Pencil, Plus, RefreshCw, Trash2 } from 'lucide-react'
 
 import { AppFrame } from '@/components/app-frame'
 import { PageHeader } from '@/components/ui/page-header'
+import { PageBody } from '@/components/ui/page-body'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
@@ -239,7 +240,7 @@ export default function DatasetsPage() {
           </div>
         </PageHeader>
 
-        <section className="flex-1 overflow-y-auto px-8 pb-8 custom-scrollbar">
+        <PageBody>
           <div className="bg-card border border-border rounded-3xl overflow-hidden shadow-sm min-h-[500px] flex flex-col">
             <div className="px-6 py-4 border-b border-border/60 flex items-center justify-between bg-muted/20 dark:bg-slate-900/40">
               <div className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Dataset Registry</div>
@@ -314,7 +315,7 @@ export default function DatasetsPage() {
               </div>
             )}
           </div>
-        </section>
+        </PageBody>
 
         <Dialog open={editOpen} onOpenChange={(open) => {
           setEditOpen(open)

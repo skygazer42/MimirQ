@@ -58,10 +58,10 @@ export function StatCard({
         <Icon className="w-4 h-4" />
       </div>
       <div className="min-w-0 flex-1">
-        <p className="text-xs text-slate-500 dark:text-slate-400 truncate font-medium">{label}</p>
+        <p className="text-xs text-muted-foreground truncate font-medium">{label}</p>
         <p className="text-lg font-bold leading-tight truncate">{value}</p>
         {subValue && (
-          <p className="text-xs text-slate-400 dark:text-slate-500 truncate">{subValue}</p>
+          <p className="text-xs text-muted-foreground/80 truncate">{subValue}</p>
         )}
       </div>
     </div>

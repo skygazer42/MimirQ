@@ -10,6 +10,7 @@ import { authApi } from '@/lib/api-client'
 import { setAuthSession } from '@/lib/auth-storage'
 import { formatApiError } from '@/lib/api-errors'
 import { ParticleBackground } from '@/components/ui/particle-background'
+import { FullScreenFrame } from '@/components/full-screen-frame'
 import { cn } from '@/lib/utils'
 
 type Mode = 'login' | 'register'
@@ -50,7 +51,10 @@ export default function AuthPage() {
     }
 
     return (
-        <div className="relative min-h-screen w-full flex items-center justify-center overflow-hidden bg-gradient-to-br from-slate-900 via-slate-950 to-black text-white selection:bg-primary selection:text-white">
+        <FullScreenFrame
+            showBackground={false}
+            className="w-full overflow-hidden bg-gradient-to-br from-slate-900 via-slate-950 to-black !text-white selection:bg-primary selection:text-white"
+        >
             {/* 3D 粒子背景 */}
             <ParticleBackground />
 
@@ -224,6 +228,6 @@ export default function AuthPage() {
                     </p>
                 </div>
             </div>
-        </div>
+        </FullScreenFrame>
     )
 }

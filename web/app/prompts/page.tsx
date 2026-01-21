@@ -24,10 +24,13 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { promptTemplateApi, PromptTemplate, PromptTemplateCreate } from '@/lib/api-client'
-import { Plus, Edit, Trash2, Copy, Check, X, Eye, Search, Filter } from 'lucide-react'
+import { Plus, Edit, Trash2, Copy, Check, X, Eye, Search, Filter, Wand2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { KgExtractPromptSettings } from '@/components/kg-extract-prompt-settings'
 import { AppFrame } from '@/components/app-frame'
+import { PageHeader } from '@/components/ui/page-header'
+import { PageBody } from '@/components/ui/page-body'
+import { PageContainer } from '@/components/ui/page-container'
 
 export default function PromptsPage() {
   const [templates, setTemplates] = useState<PromptTemplate[]>([])
@@ -249,65 +252,67 @@ export default function PromptsPage() {
   }
 
   return (
-    <AppFrame mainClassName="overflow-y-auto">
-        <div className="container mx-auto py-8">
-      <div className="flex justify-between items-center mb-6">
-        <div>
-          <h1 className="text-3xl font-bold">提示词模板管理</h1>
-          <p className="text-muted-foreground mt-2">
-            创建和管理您的 RAG 对话提示词模板
-          </p>
-        </div>
-        <Button onClick={handleCreate}>
-          <Plus className="w-4 h-4 mr-2" />
+    <AppFrame>
+      <PageHeader
+        title="提示词模板"
+        badge="PROMPTS"
+        icon={Wand2}
+        iconColor="text-indigo-600 dark:text-indigo-400"
+        description="创建和管理您的 RAG 对话提示词模板"
+        className="mx-auto w-full max-w-6xl"
+      >
+        <Button onClick={handleCreate} className="gap-2">
+          <Plus className="w-4 h-4" />
           创建模板
         </Button>
-      </div>
+      </PageHeader>
 
-      <div className="mb-6">
-        <KgExtractPromptSettings templates={templates} />
-      </div>
+      <PageBody>
+        <PageContainer>
+          <div className="mb-6">
+            <KgExtractPromptSettings templates={templates} />
+          </div>
 
-      {/* Filters & Search */}
-      <div className="mb-6 flex flex-col sm:flex-row gap-4">
-        <div className="flex-1 relative">
-          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-          <Input
-            placeholder="搜索模板名称、描述、内容或标签..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="pl-10"
-          />
-        </div>
-        <Select value={categoryFilter} onValueChange={setCategoryFilter}>
-          <SelectTrigger className="w-[180px]">
-            <Filter className="w-4 h-4 mr-2" />
-            <SelectValue placeholder="筛选分类" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">所有分类</SelectItem>
-            {categories.map((cat) => (
-              <SelectItem key={cat} value={cat}>
-                {cat}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        <Select value={statusFilter} onValueChange={setStatusFilter}>
-          <SelectTrigger className="w-[180px]">
-            <SelectValue placeholder="筛选状态" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">所有状态</SelectItem>
-            <SelectItem value="active">已启用</SelectItem>
-            <SelectItem value="inactive">已停用</SelectItem>
-          </SelectContent>
-        </Select>
-      </div>
+          {/* Filters & Search */}
+          <div className="mb-6 flex flex-col sm:flex-row gap-4">
+            <div className="flex-1 relative">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+              <Input
+                placeholder="搜索模板名称、描述、内容或标签..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="pl-10"
+              />
+            </div>
+            <Select value={categoryFilter} onValueChange={setCategoryFilter}>
+              <SelectTrigger className="w-[180px]">
+                <Filter className="w-4 h-4 mr-2" />
+                <SelectValue placeholder="筛选分类" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">所有分类</SelectItem>
+                {categories.map((cat) => (
+                  <SelectItem key={cat} value={cat}>
+                    {cat}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Select value={statusFilter} onValueChange={setStatusFilter}>
+              <SelectTrigger className="w-[180px]">
+                <SelectValue placeholder="筛选状态" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">所有状态</SelectItem>
+                <SelectItem value="active">已启用</SelectItem>
+                <SelectItem value="inactive">已停用</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
 
       {/* Batch Actions */}
       {selectedIds.size > 0 && (
-        <div className="mb-4 p-4 bg-muted dark:bg-muted rounded-lg flex items-center justify-between">
+        <div className="mb-4 p-4 bg-muted rounded-lg flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Checkbox checked={true} onCheckedChange={handleSelectAll} />
             <span className="text-sm font-medium">已选择 {selectedIds.size} 个模板</span>
@@ -558,7 +563,7 @@ export default function PromptsPage() {
 
               <div>
                 <Label className="text-sm font-medium">模板内容</Label>
-                <div className="mt-2 p-4 bg-muted dark:bg-muted/60 rounded-lg">
+                <div className="mt-2 p-4 bg-muted/60 rounded-lg">
                   <pre className="text-sm whitespace-pre-wrap font-mono">
                     {previewTemplate.content}
                   </pre>
@@ -682,7 +687,8 @@ export default function PromptsPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-        </div>
+        </PageContainer>
+      </PageBody>
     </AppFrame>
   )
 }

@@ -158,15 +158,21 @@ export function DocumentViewerPanel() {
         </div>
         
         <div className="flex items-center gap-1">
-            <Button variant="ghost" size="icon" asChild title="下载原文件">
+            <Button variant="ghost" size="icon" asChild title="下载原文件" aria-label="下载原文件">
               <a href={downloadUrl || "#"} target="_blank" rel="noopener noreferrer">
                 <Download className="h-4 w-4" />
               </a>
             </Button>
-            <Button variant="ghost" size="icon" onClick={() => setIsExpanded(!isExpanded)} title={isExpanded ? "收起" : "展开"}>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => setIsExpanded(!isExpanded)}
+              title={isExpanded ? "收起" : "展开"}
+              aria-label={isExpanded ? "收起" : "展开"}
+            >
                 {isExpanded ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
             </Button>
-            <Button variant="ghost" size="icon" onClick={closeDocument}>
+            <Button variant="ghost" size="icon" onClick={closeDocument} aria-label="关闭">
                 <X className="h-4 w-4" />
             </Button>
         </div>
@@ -192,7 +198,7 @@ export function DocumentViewerPanel() {
                 </TabsList>
             </div>
 
-            <TabsContent value="preview" className="flex-1 m-0 h-full bg-slate-100 dark:bg-slate-900 relative">
+            <TabsContent value="preview" className="flex-1 m-0 h-full bg-muted/30 dark:bg-muted/20 relative">
                 {isLoading && !doc ? (
                   <div className="flex items-center justify-center h-full text-muted-foreground">
                     <Loader2 className="h-8 w-8 animate-spin" />
@@ -233,7 +239,7 @@ export function DocumentViewerPanel() {
                 )}
             </TabsContent>
 
-            <TabsContent value="chunks" className="flex-1 m-0 h-full overflow-hidden flex flex-col bg-slate-50/50 dark:bg-slate-950/50">
+            <TabsContent value="chunks" className="flex-1 m-0 h-full overflow-hidden flex flex-col bg-muted/20 dark:bg-muted/10">
                  <div className="p-4 border-b border-border bg-background/60 backdrop-blur-sm">
                    <div className="flex flex-col sm:flex-row sm:items-center gap-2">
                      <input
