@@ -7,7 +7,6 @@ import { useState, useEffect, useRef, Suspense, useCallback, useDeferredValue, u
 import { useRouter, useSearchParams } from 'next/navigation'
 import {
   MessageSquare,
-  Search,
   Trash2,
   Send,
   Loader2,
@@ -19,6 +18,11 @@ import {
 import { AppFrame } from '@/components/app-frame'
 import { ChatMessageItem } from '@/components/chat/message-item'
 import { Button } from '@/components/ui/button'
+import { IconButton } from '@/components/ui/icon-button'
+import { SearchInput } from '@/components/ui/search-input'
+import { EmptyState } from '@/components/ui/empty-state'
+import { PageLoading } from '@/components/ui/page-loading'
+import { PageScaffold } from '@/components/ui/page-scaffold'
 import { chatApi } from '@/lib/api-client'
 import { cn } from '@/lib/utils'
 import type { Conversation, Message } from '@/types'
@@ -37,9 +41,7 @@ const LOAD_MORE_STEP = 40
 function HistoryPageLoading() {
   return (
     <AppFrame>
-      <div className="flex-1 flex items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin text-sky-500" />
-      </div>
+      <PageLoading message="正在加载历史记录..." srMessage="Loading history" />
     </AppFrame>
   )
 }
@@ -172,155 +174,173 @@ function HistoryPageContent() {
 
   return (
     <AppFrame mainClassName="overflow-hidden">
-        {/* 侧边栏 - 对话列表 */}
-        <div className="w-80 border-r border-border flex flex-col bg-card/50 backdrop-blur-sm">
-          {/* 头部 */}
-          <div className="p-4 border-b border-border">
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
-              <input
-                type="text"
-                placeholder="搜索对话..."
+      <PageScaffold
+        title="问答历史"
+        description="查看与管理历史对话，并快速回到对话继续交流"
+        icon={History}
+        iconColor="text-sky-600 dark:text-sky-400"
+        size="full"
+        bodyClassName="px-0 pb-0 overflow-hidden"
+        bodyContainerClassName="h-full"
+        actions={
+          <Button
+            variant="outline"
+            size="sm"
+            className="gap-2"
+            onClick={() => router.push('/', { scroll: false })}
+          >
+            <Plus className="h-4 w-4" />
+            新建对话
+          </Button>
+        }
+      >
+        <div className="flex h-full min-h-0 overflow-hidden">
+          {/* 侧边栏 - 对话列表 */}
+          <div className="w-80 border-r border-border flex flex-col bg-card/50 backdrop-blur-sm">
+            {/* 头部 */}
+            <div className="p-4 border-b border-border">
+              <SearchInput
                 value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pl-9 pr-4 py-2 text-sm bg-background/80 border border-border rounded-xl shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background transition"
+                onValueChange={setSearchQuery}
+                placeholder="搜索对话..."
+                inputClassName="rounded-xl bg-background/80 shadow-sm"
               />
+            </div>
+
+            {/* 对话列表 */}
+            <div className="flex-1 overflow-y-auto custom-scrollbar">
+              {isLoadingList ? (
+                <div className="flex items-center justify-center py-8">
+                  <Loader2 className="h-6 w-6 animate-spin motion-reduce:animate-none text-muted-foreground" />
+                </div>
+              ) : filteredConversations.length === 0 ? (
+                <div className="text-center py-12 px-4 text-muted-foreground text-sm">
+                  <MessageSquare className="h-8 w-8 mx-auto mb-3 opacity-20" />
+                  <p>{searchQuery ? '没有找到匹配的对话' : '暂无对话记录'}</p>
+                </div>
+              ) : (
+                groupOrder.map((group) => {
+                  const convs = groupedConversations[group]
+                  if (!convs || convs.length === 0) return null
+
+                  return (
+                    <div key={group}>
+                      <div className="px-4 py-2 text-[10px] font-bold text-muted-foreground uppercase tracking-wider sticky top-0 bg-card/80 backdrop-blur-sm z-10 border-b border-border/60">
+                        {group}
+                      </div>
+                      {convs.map((conversation) => (
+                        <ConversationItem
+                          key={conversation.id}
+                          conversation={conversation}
+                          isSelected={selectedConversation?.id === conversation.id}
+                          onSelect={() => handleSelectConversation(conversation)}
+                          onDelete={() => setShowDeleteConfirm(conversation.id)}
+                          showDeleteConfirm={showDeleteConfirm === conversation.id}
+                          onConfirmDelete={() => handleDeleteConversation(conversation.id)}
+                          onCancelDelete={() => setShowDeleteConfirm(null)}
+                        />
+                      ))}
+                    </div>
+                  )
+                })
+              )}
             </div>
           </div>
 
-          {/* 对话列表 */}
-          <div className="flex-1 overflow-y-auto custom-scrollbar">
-            {isLoadingList ? (
-              <div className="flex items-center justify-center py-8">
-                <Loader2 className="h-6 w-6 animate-spin text-sky-500" />
-              </div>
-            ) : filteredConversations.length === 0 ? (
-              <div className="text-center py-12 px-4 text-slate-500 text-sm">
-                <MessageSquare className="h-8 w-8 mx-auto mb-3 opacity-20" />
-                <p>{searchQuery ? '没有找到匹配的对话' : '暂无对话记录'}</p>
-              </div>
-            ) : (
-              groupOrder.map((group) => {
-                const convs = groupedConversations[group]
-                if (!convs || convs.length === 0) return null
-                
-                return (
-                  <div key={group}>
-                    <div className="px-4 py-2 text-[10px] font-bold text-muted-foreground uppercase tracking-wider sticky top-0 bg-card/80 backdrop-blur-sm z-10 border-b border-border/60">
-                      {group}
+          {/* 主区域 - 对话详情 */}
+          <div className="flex-1 flex flex-col bg-background">
+            {selectedConversation ? (
+              <>
+                {/* 对话头部 */}
+                <div className="px-6 py-4 border-b border-border flex items-center justify-between bg-background/70 backdrop-blur-md">
+                  <div className="flex items-center gap-4">
+                    <div className="w-10 h-10 bg-gradient-to-br from-sky-500 to-teal-600 rounded-xl flex items-center justify-center shadow-md shadow-sky-200 dark:shadow-none">
+                      <MessageSquare className="h-5 w-5 text-white" />
                     </div>
-                    {convs.map((conversation) => (
-                      <ConversationItem
-                        key={conversation.id}
-                        conversation={conversation}
-                        isSelected={selectedConversation?.id === conversation.id}
-                        onSelect={() => handleSelectConversation(conversation)}
-                        onDelete={() => setShowDeleteConfirm(conversation.id)}
-                        showDeleteConfirm={showDeleteConfirm === conversation.id}
-                        onConfirmDelete={() => handleDeleteConversation(conversation.id)}
-                        onCancelDelete={() => setShowDeleteConfirm(null)}
-                      />
-                    ))}
+                    <div>
+                      <h2 className="font-bold text-foreground tracking-tight">
+                        {selectedConversation.title || '未命名对话'}
+                      </h2>
+                      <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mt-0.5">
+                        {selectedConversation.message_count} 条消息 · {formatDate(selectedConversation.created_at)}
+                      </p>
+                    </div>
                   </div>
-                )
-              })
+                  <div className="flex items-center gap-3">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={handleEvaluateConversation}
+                      className="gap-2 rounded-xl hover:bg-muted/50"
+                    >
+                      <BarChart3 className="h-3.5 w-3.5" />
+                      RAGAS 评测
+                    </Button>
+                    <Button
+                      size="sm"
+                      onClick={handleContinueChat}
+                      className="gap-2 rounded-xl bg-primary hover:bg-primary/90 text-primary-foreground"
+                    >
+                      <Send className="h-3.5 w-3.5" />
+                      继续对话
+                    </Button>
+                  </div>
+                </div>
+
+                {/* 消息列表 */}
+                <div className="flex-1 overflow-y-auto custom-scrollbar px-6 py-8">
+                  {isLoadingMessages ? (
+                    <div className="flex items-center justify-center h-full">
+                      <Loader2 className="h-8 w-8 animate-spin motion-reduce:animate-none text-muted-foreground" />
+                    </div>
+                  ) : messages.length === 0 ? (
+                    <div className="flex flex-col items-center justify-center h-full text-muted-foreground">
+                      <MessageSquare className="h-12 w-12 mb-4 opacity-10" />
+                      <p>暂无消息记录</p>
+                    </div>
+                  ) : (
+                    <div className="max-w-3xl mx-auto space-y-10">
+                      {hiddenMessageCount > 0 && (
+                        <div className="flex justify-center">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() =>
+                              setVisibleCount((count) => Math.min(messages.length, count + LOAD_MORE_STEP))
+                            }
+                            className="rounded-full text-xs"
+                          >
+                            显示更早消息（{hiddenMessageCount}）
+                          </Button>
+                        </div>
+                      )}
+                      {visibleMessages.map((message) => (
+                        <ChatMessageItem key={message.id} message={message} />
+                      ))}
+                      <div ref={messagesEndRef} className="h-4" />
+                    </div>
+                  )}
+                </div>
+              </>
+            ) : (
+              <div className="flex-1 p-6">
+                <EmptyState
+                  icon={History}
+                  iconClassName="text-sky-600 dark:text-sky-400"
+                  title="还没有选择对话"
+                  description={
+                    <>
+                      在这里您可以查看过去的对话记录。<br />
+                      点击左侧列表开始回顾，或新建一个对话继续交流。
+                    </>
+                  }
+                  className="min-h-full border-0 bg-transparent shadow-none"
+                />
+              </div>
             )}
           </div>
         </div>
-
-        {/* 主区域 - 对话详情 */}
-        <div className="flex-1 flex flex-col bg-background">
-          {selectedConversation ? (
-            <>
-              {/* 对话头部 */}
-              <div className="px-6 py-4 border-b border-border flex items-center justify-between bg-background/70 backdrop-blur-md sticky top-0 z-10">
-                <div className="flex items-center gap-4">
-                  <div className="w-10 h-10 bg-gradient-to-br from-sky-500 to-teal-600 rounded-xl flex items-center justify-center shadow-md shadow-sky-200 dark:shadow-none">
-                    <MessageSquare className="h-5 w-5 text-white" />
-                  </div>
-                  <div>
-                    <h2 className="font-bold text-foreground tracking-tight">
-                      {selectedConversation.title || '未命名对话'}
-                    </h2>
-                    <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mt-0.5">
-                      {selectedConversation.message_count} 条消息 · {formatDate(selectedConversation.created_at)}
-                    </p>
-                  </div>
-                </div>
-                <div className="flex items-center gap-3">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={handleEvaluateConversation}
-                    className="gap-2 rounded-xl hover:bg-muted/50"
-                  >
-                    <BarChart3 className="h-3.5 w-3.5" />
-                    RAGAS 评测
-                  </Button>
-                  <Button
-                    size="sm"
-                    onClick={handleContinueChat}
-                    className="gap-2 rounded-xl bg-primary hover:bg-primary/90 text-primary-foreground"
-                  >
-                    <Send className="h-3.5 w-3.5" />
-                    继续对话
-                  </Button>
-                </div>
-              </div>
-
-              {/* 消息列表 */}
-              <div className="flex-1 overflow-y-auto custom-scrollbar px-6 py-8">
-                {isLoadingMessages ? (
-                  <div className="flex items-center justify-center h-full">
-                    <Loader2 className="h-8 w-8 animate-spin text-sky-500" />
-                  </div>
-                ) : messages.length === 0 ? (
-                  <div className="flex flex-col items-center justify-center h-full text-slate-400">
-                    <MessageSquare className="h-12 w-12 mb-4 opacity-10" />
-                    <p>暂无消息记录</p>
-                  </div>
-                ) : (
-                  <div className="max-w-3xl mx-auto space-y-10">
-                    {hiddenMessageCount > 0 && (
-                      <div className="flex justify-center">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() =>
-                            setVisibleCount((count) => Math.min(messages.length, count + LOAD_MORE_STEP))
-                          }
-                          className="rounded-full text-xs"
-                        >
-                          显示更早消息（{hiddenMessageCount}）
-                        </Button>
-                      </div>
-                    )}
-                    {visibleMessages.map((message) => (
-                      <ChatMessageItem key={message.id} message={message} />
-                    ))}
-                    <div ref={messagesEndRef} className="h-4" />
-                  </div>
-                )}
-              </div>
-            </>
-          ) : (
-            /* 空状态 */
-            <div className="flex-1 flex flex-col items-center justify-center text-center px-8">
-              <div className="relative mb-8">
-                <div className="absolute -inset-4 bg-gradient-to-r from-sky-500 to-teal-600 rounded-full blur-2xl opacity-10 animate-pulse"></div>
-                <div className="relative p-6 bg-white dark:bg-slate-900 rounded-3xl shadow-xl ring-1 ring-slate-200 dark:ring-slate-800">
-                  <History className="h-12 w-12 text-sky-600 dark:text-sky-400" />
-                </div>
-              </div>
-              <h2 className="text-3xl font-bold text-slate-900 dark:text-white mb-4 tracking-tight">
-                问答历史
-              </h2>
-              <p className="text-slate-500 dark:text-slate-400 max-w-md text-lg leading-relaxed">
-                在这里您可以查看过去的对话记录，<br />点击左侧列表开始回顾。
-              </p>
-            </div>
-          )}
-        </div>
+      </PageScaffold>
     </AppFrame>
   )
 }
@@ -383,32 +403,35 @@ function ConversationItem({
         <div className="flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity flex items-center">
           {showDeleteConfirm ? (
             <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
-              <button
-                onClick={onConfirmDelete}
+              <IconButton
                 aria-label="确认删除对话"
-                className="p-1.5 text-red-600 hover:bg-red-100 dark:hover:bg-red-900/30 rounded-lg transition-colors"
+                title="确认删除对话"
+                className="h-7 w-7 text-red-600 hover:bg-red-100 hover:text-red-600 dark:hover:bg-red-900/30"
+                onClick={onConfirmDelete}
               >
                 <Trash2 className="h-3.5 w-3.5" />
-              </button>
-              <button
-                onClick={onCancelDelete}
+              </IconButton>
+              <IconButton
                 aria-label="取消删除"
-                className="p-1.5 text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-lg transition-colors"
+                title="取消删除"
+                className="h-7 w-7 text-muted-foreground hover:bg-muted"
+                onClick={onCancelDelete}
               >
                 <X className="h-3.5 w-3.5" />
-              </button>
+              </IconButton>
             </div>
           ) : (
-            <button
+            <IconButton
               onClick={(e) => {
                 e.stopPropagation()
                 onDelete()
               }}
               aria-label="删除对话"
-              className="p-1.5 text-slate-400 hover:text-red-500 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-lg transition-colors"
+              title="删除对话"
+              className="h-7 w-7 hover:bg-muted hover:text-red-500"
             >
               <Trash2 className="h-3.5 w-3.5" />
-            </button>
+            </IconButton>
           )}
         </div>
       </div>

@@ -33,7 +33,7 @@ const METRIC_OPTIONS = [
   { key: 'context_precision', label: 'Context Precision（无参考）' },
 ] as const
 
-export function RegressionTestTab() {
+export function RegressionTestTab({ embedded = false }: { embedded?: boolean }) {
   const [showGenerationDialog, setShowGenerationDialog] = useState(false)
   const [isRunning, setIsRunning] = useState(false)
   const [selectedCaseIds, setSelectedCaseIds] = useState<string[]>([])
@@ -166,57 +166,88 @@ export function RegressionTestTab() {
   )
 
   return (
-    <div className="flex-1 flex flex-col overflow-hidden">
-      {/* 头部操作栏 */}
-      <header className="px-8 py-6 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900">
-        <div className="flex items-center justify-between mb-4">
-          <div>
-            <h2 className="text-xl font-semibold text-slate-900 dark:text-white">
-              回归测试
-            </h2>
-            <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
-              管理测试用例，批量运行回归测试，跟踪性能变化
-            </p>
-          </div>
-          <div className="flex items-center gap-2">
-            <Button
-              variant="outline"
-              className="gap-2"
-              onClick={() => setShowGenerationDialog(true)}
-            >
+    <div className={cn("flex-1 flex flex-col overflow-hidden", embedded && "overflow-visible")}>
+      {/* Inline header (when embedded in a parent PageScaffold) */}
+      {embedded ? (
+        <div className="mb-6 space-y-4">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <h2 className="text-lg font-semibold text-foreground">回归测试</h2>
+              <p className="text-sm text-muted-foreground mt-1">
+                管理测试用例，批量运行回归测试，跟踪性能变化
+              </p>
+            </div>
+            <Button variant="outline" size="sm" className="gap-2" onClick={() => setShowGenerationDialog(true)}>
               <Sparkles className="w-4 h-4" />
               AI 生成问题
             </Button>
           </div>
-        </div>
 
-        {/* 指标选择 */}
-        <div className="bg-slate-50 dark:bg-slate-800/50 rounded-xl p-4">
-          <div className="text-xs font-medium text-slate-600 dark:text-slate-400 mb-2">
-            评测指标
-          </div>
-          <div className="flex flex-wrap gap-2">
-            {METRIC_OPTIONS.map((m) => (
-              <label key={m.key} className="flex items-center gap-2 text-sm">
-                <input
-                  type="checkbox"
-                  className="h-4 w-4 rounded border-slate-300"
-                  checked={metricKeys.includes(m.key)}
-                  onChange={(e) => {
-                    setMetricKeys((prev) =>
-                      e.target.checked ? [...prev, m.key] : prev.filter((x) => x !== m.key)
-                    )
-                  }}
-                />
-                <span className="text-slate-700 dark:text-slate-300">{m.label}</span>
-              </label>
-            ))}
+          {/* 指标选择 */}
+          <div className="rounded-2xl border border-border bg-card/60 backdrop-blur-sm p-4">
+            <div className="text-xs font-medium text-muted-foreground mb-2">评测指标</div>
+            <div className="flex flex-wrap gap-3">
+              {METRIC_OPTIONS.map((m) => (
+                <label key={m.key} className="flex items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    className="h-4 w-4 rounded border-slate-300"
+                    checked={metricKeys.includes(m.key)}
+                    onChange={(e) => {
+                      setMetricKeys((prev) =>
+                        e.target.checked ? [...prev, m.key] : prev.filter((x) => x !== m.key)
+                      )
+                    }}
+                  />
+                  <span className="text-foreground/90">{m.label}</span>
+                </label>
+              ))}
+            </div>
           </div>
         </div>
-      </header>
+      ) : (
+        <header className="px-8 py-6 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900">
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <h2 className="text-xl font-semibold text-slate-900 dark:text-white">回归测试</h2>
+              <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
+                管理测试用例，批量运行回归测试，跟踪性能变化
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              <Button variant="outline" className="gap-2" onClick={() => setShowGenerationDialog(true)}>
+                <Sparkles className="w-4 h-4" />
+                AI 生成问题
+              </Button>
+            </div>
+          </div>
+
+          {/* 指标选择 */}
+          <div className="bg-slate-50 dark:bg-slate-800/50 rounded-xl p-4">
+            <div className="text-xs font-medium text-slate-600 dark:text-slate-400 mb-2">评测指标</div>
+            <div className="flex flex-wrap gap-2">
+              {METRIC_OPTIONS.map((m) => (
+                <label key={m.key} className="flex items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    className="h-4 w-4 rounded border-slate-300"
+                    checked={metricKeys.includes(m.key)}
+                    onChange={(e) => {
+                      setMetricKeys((prev) =>
+                        e.target.checked ? [...prev, m.key] : prev.filter((x) => x !== m.key)
+                      )
+                    }}
+                  />
+                  <span className="text-slate-700 dark:text-slate-300">{m.label}</span>
+                </label>
+              ))}
+            </div>
+          </div>
+        </header>
+      )}
 
       {/* 主内容区 */}
-      <div className="flex-1 overflow-hidden flex gap-6 p-6">
+      <div className={cn("flex-1 overflow-hidden flex gap-6 p-6", embedded && "p-0")}>
         {/* 左侧：测试用例管理 */}
         <div className="w-1/3 flex flex-col bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800">
           <TestCaseManager

@@ -9,8 +9,9 @@
 import { Suspense, useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { AppFrame } from '@/components/app-frame'
-import { PageBody } from '@/components/ui/page-body'
+import { PageLoading } from '@/components/ui/page-loading'
 import { Button } from '@/components/ui/button'
+import { PageScaffold } from '@/components/ui/page-scaffold'
 import { StatCard, StatsGrid } from '@/components/ui/stats-card'
 import { evaluationApi, chatApi } from '@/lib/api-client'
 import type { Conversation } from '@/types'
@@ -48,9 +49,7 @@ export default function EvaluationsPage() {
 
 function EvaluationsLoading() {
   return (
-    <div className="flex-1 flex items-center justify-center">
-      <Loader2 className="h-8 w-8 animate-spin motion-reduce:animate-none text-muted-foreground" />
-    </div>
+    <PageLoading message="正在加载评测数据..." srMessage="Loading evaluations" />
   )
 }
 
