@@ -83,7 +83,10 @@ These options skip low-value documents before indexing.
 - `governance_drop_low_density`: drops garbled/noisy text.
   - `governance_drop_low_density_threshold`
 
-When triggered, the document will be marked as failed with reason `filtered_by_governance`.
+When triggered, the document will be marked as failed with reason `filtered_by_governance` by default.
+You can optionally quarantine instead of failing:
+- `governance_quarantine_on_drop` (per-upload pipeline override)
+- `GOVERNANCE_QUARANTINE_ON_DROP` (env default)
 
 ## HTML XPath Extraction
 For HTML/HTM, you can optionally extract specific nodes before conversion:

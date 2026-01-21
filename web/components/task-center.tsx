@@ -30,7 +30,7 @@ export function TaskCenter() {
   })
 
   const activeTasks = documents.filter(d => d.status === 'processing' || d.status === 'pending')
-  const failedTasks = documents.filter(d => d.status === 'failed')
+  const failedTasks = documents.filter(d => d.status === 'failed' || d.status === 'quarantined')
   
   const totalActive = activeTasks.length
   const totalFailed = failedTasks.length
@@ -49,11 +49,13 @@ export function TaskCenter() {
       completed: '已完成',
       failed: '失败',
       cancelled: '已取消',
+      quarantined: '已隔离',
     }
     if (stage) return stageMap[stage] || String(doc.current_stage)
     if (doc.status === 'pending') return '排队中'
     if (doc.status === 'processing') return '处理中'
     if (doc.status === 'failed') return '失败'
+    if (doc.status === 'quarantined') return '已隔离'
     return ''
   }
 
@@ -196,42 +198,64 @@ export function TaskCenter() {
                         {totalFailed > 0 && (
                           <div className="space-y-2">
                             <div className="flex items-center justify-between px-1">
-                              <span className="text-xs font-semibold text-muted-foreground">失败</span>
+                              <span className="text-xs font-semibold text-muted-foreground">失败/隔离</span>
                               <span className="text-xs tabular-nums text-muted-foreground">{totalFailed}</span>
                             </div>
                             <div className="space-y-2">
-                              {failedTasks.map(doc => (
-                                <div
-                                  key={doc.id}
-                                  className="group flex items-start gap-3 p-3 rounded-xl border border-destructive/20 bg-destructive/5 hover:bg-destructive/10 transition-colors"
-                                >
-                                  <div className="mt-0.5 flex h-9 w-9 items-center justify-center rounded-lg bg-destructive/10 text-destructive">
-                                    <AlertCircle className="h-4 w-4" />
-                                  </div>
-                                  <div className="flex-1 min-w-0">
-                                    <p className="text-sm font-medium truncate text-destructive leading-snug" title={doc.filename}>
-                                      {doc.filename}
-                                    </p>
-                                    <p
-                                      className="mt-1 text-xs text-destructive/80 truncate"
-                                      title={doc.error_message || '处理失败'}
+                              {failedTasks.map((doc) => {
+                                const isQuarantine = doc.status === 'quarantined'
+                                const containerClass = cn(
+                                  "group flex items-start gap-3 p-3 rounded-xl transition-colors",
+                                  isQuarantine
+                                    ? "border border-amber-500/20 bg-amber-500/5 hover:bg-amber-500/10"
+                                    : "border border-destructive/20 bg-destructive/5 hover:bg-destructive/10"
+                                )
+                                const iconClass = cn(
+                                  "mt-0.5 flex h-9 w-9 items-center justify-center rounded-lg",
+                                  isQuarantine ? "bg-amber-500/10 text-amber-600" : "bg-destructive/10 text-destructive"
+                                )
+                                const titleClass = cn(
+                                  "text-sm font-medium truncate leading-snug",
+                                  isQuarantine ? "text-amber-700 dark:text-amber-300" : "text-destructive"
+                                )
+                                const messageClass = cn(
+                                  "mt-1 text-xs truncate",
+                                  isQuarantine ? "text-amber-700/80 dark:text-amber-300/80" : "text-destructive/80"
+                                )
+                                const retryClass = cn(
+                                  "mt-0.5 h-8 w-8 rounded-lg",
+                                  isQuarantine
+                                    ? "text-amber-700/80 hover:text-amber-700 dark:text-amber-300/80 dark:hover:text-amber-300"
+                                    : "text-destructive/80 hover:text-destructive"
+                                )
+
+                                return (
+                                  <div key={doc.id} className={containerClass}>
+                                    <div className={iconClass}>
+                                      <AlertCircle className="h-4 w-4" />
+                                    </div>
+                                    <div className="flex-1 min-w-0">
+                                      <p className={titleClass} title={doc.filename}>
+                                        {doc.filename}
+                                      </p>
+                                      <p className={messageClass} title={doc.error_message || (isQuarantine ? '已隔离' : '处理失败')}>
+                                        {doc.error_message || (isQuarantine ? '已隔离' : '处理失败')}
+                                      </p>
+                                    </div>
+                                    <Button
+                                      variant="ghost"
+                                      size="icon"
+                                      className={retryClass}
+                                      disabled={acting?.id === doc.id}
+                                      onClick={() => handleRetry(doc.id)}
+                                      aria-label="重试任务"
+                                      title="重试"
                                     >
-                                      {doc.error_message || '处理失败'}
-                                    </p>
+                                      <RotateCcw className="h-4 w-4" />
+                                    </Button>
                                   </div>
-                                  <Button
-                                    variant="ghost"
-                                    size="icon"
-                                    className="mt-0.5 h-8 w-8 rounded-lg text-destructive/80 hover:text-destructive"
-                                    disabled={acting?.id === doc.id}
-                                    onClick={() => handleRetry(doc.id)}
-                                    aria-label="重试任务"
-                                    title="重试"
-                                  >
-                                    <RotateCcw className="h-4 w-4" />
-                                  </Button>
-                                </div>
-                              ))}
+                                )
+                              })}
                             </div>
                           </div>
                         )}

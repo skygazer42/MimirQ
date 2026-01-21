@@ -54,6 +54,10 @@ class DocumentPipelineOptions(BaseModel):
     governance_drop_outline_max_heading_ratio: Optional[float] = Field(default=None, ge=0.0, le=1.0, description="Heading-like paragraph ratio threshold")
     governance_drop_low_density: Optional[bool] = None
     governance_drop_low_density_threshold: Optional[float] = Field(default=None, ge=0.0, le=1.0, description="Alnum/CJK density threshold")
+    governance_quarantine_on_drop: Optional[bool] = Field(
+        default=None,
+        description="When governance drop filters trigger, mark document as quarantined instead of failed",
+    )
     governance_unwrap_max_line_length: Optional[int] = Field(default=None, ge=40, le=400, description="max line length")
     governance_noise_min_chars: Optional[int] = Field(default=None, ge=1, le=20, description="noise min chars")
     governance_noise_ratio_threshold: Optional[float] = Field(default=None, ge=0.0, le=1.0, description="noise ratio threshold")
