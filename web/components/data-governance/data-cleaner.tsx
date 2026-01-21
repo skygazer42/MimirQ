@@ -87,9 +87,29 @@ export function DataCleaner({ content, cleanedContent = '', onClean }: DataClean
         unwrap_lines: options.governance_unwrap_lines,
         remove_boilerplate: options.governance_remove_boilerplate,
         remove_images: options.governance_remove_images,
+        extract_frontmatter: options.governance_extract_frontmatter,
+        strip_frontmatter: options.governance_strip_frontmatter,
+        detect_language: options.governance_detect_language,
+        language_min_chars: options.governance_language_min_chars,
+        normalize_urls: options.governance_normalize_urls,
+        normalize_urls_strip_tracking: options.governance_normalize_urls_strip_tracking,
+        drop_duplicate_paragraphs: options.governance_drop_duplicate_paragraphs,
+        drop_duplicate_paragraphs_min_occurrences: options.governance_drop_duplicate_paragraphs_min_occurrences,
+        drop_duplicate_paragraphs_min_chars: options.governance_drop_duplicate_paragraphs_min_chars,
+        drop_duplicate_paragraphs_max_chars: options.governance_drop_duplicate_paragraphs_max_chars,
+        trim_references: options.governance_trim_references,
+        extract_keywords: options.governance_extract_keywords,
+        keywords_provider: options.governance_keywords_provider,
+        keywords_top_k: options.governance_keywords_top_k,
+        keywords_max_chars: options.governance_keywords_max_chars,
+        normalize_tables: options.governance_normalize_tables,
+        strip_code_line_numbers: options.governance_strip_code_line_numbers,
         pii_anonymize: options.governance_pii_anonymize,
         pii_mode: options.governance_pii_mode,
         pii_mask: options.governance_pii_mask,
+        secrets_redact: options.governance_secrets_redact,
+        secrets_mode: options.governance_secrets_mode,
+        secrets_mask: options.governance_secrets_mask,
         max_blank_lines: options.governance_max_blank_lines,
         drop_outline_only: options.governance_drop_outline_only,
         drop_outline_min_content_chars: options.governance_drop_outline_min_content_chars,
@@ -103,22 +123,53 @@ export function DataCleaner({ content, cleanedContent = '', onClean }: DataClean
       }
 
       const res = await pipelineApi.cleanPreview(req)
+      const info: string[] = []
       if (typeof res.input_lines === 'number' && typeof res.output_lines === 'number') {
         const removed = typeof res.removed_lines === 'number' ? res.removed_lines : 0
         const added = typeof res.added_lines === 'number' ? res.added_lines : 0
         const changedLines = typeof res.changed_lines === 'number' ? res.changed_lines : 0
         const inChars = typeof res.input_chars === 'number' ? res.input_chars : content.length
         const outChars = typeof res.output_chars === 'number' ? res.output_chars : (res.markdown || '').length
-        setBackendInfo(
-          `清洗统计：行 ${res.input_lines} → ${res.output_lines}（- ${removed} / + ${added} / ~ ${changedLines}），字符 ${inChars} → ${outChars}`
-        )
+        info.push(`清洗统计：行 ${res.input_lines} → ${res.output_lines}（- ${removed} / + ${added} / ~ ${changedLines}），字符 ${inChars} → ${outChars}`)
       }
+
+      if (typeof res.urls_changed === 'number' && res.urls_changed > 0) {
+        info.push(`URL 规范化：变更 ${res.urls_changed} 处`)
+      }
+      if (typeof res.paragraphs_dropped === 'number' && res.paragraphs_dropped > 0) {
+        info.push(`段落重复块去重：移除 ${res.paragraphs_dropped} 段`)
+      }
+      if (typeof res.references_removed_lines === 'number' && res.references_removed_lines > 0) {
+        info.push(`参考文献裁剪：移除 ${res.references_removed_lines} 行`)
+      }
+
+      if (res.title) info.push(`标题：${res.title}`)
+      if (Array.isArray(res.tags) && res.tags.length) info.push(`标签：${res.tags.slice(0, 12).join('，')}${res.tags.length > 12 ? '…' : ''}`)
+      if (res.language) {
+        const conf = typeof res.language_confidence === 'number' ? res.language_confidence : null
+        info.push(`语言：${res.language}${conf !== null ? `（${conf.toFixed(2)}）` : ''}`)
+      }
+      if (Array.isArray(res.keywords) && res.keywords.length) {
+        info.push(`关键词：${res.keywords.slice(0, 12).join('，')}${res.keywords.length > 12 ? '…' : ''}`)
+      }
+      if (res.frontmatter && typeof res.frontmatter === 'object') {
+        const keys = Object.keys(res.frontmatter || {})
+        if (keys.length) info.push(`Frontmatter：${keys.slice(0, 8).join('，')}${keys.length > 8 ? '…' : ''}`)
+      }
+
       if (res.pii_hits && Object.keys(res.pii_hits).length > 0) {
         const summary = Object.entries(res.pii_hits)
           .map(([k, v]) => `${k}=${v}`)
           .join('，')
-        setBackendInfo((prev) => (prev ? `${prev}\n已匿名化敏感信息：${summary}` : `已匿名化敏感信息：${summary}`))
+        info.push(`已匿名化隐私信息：${summary}`)
       }
+      if (res.secrets_hits && Object.keys(res.secrets_hits).length > 0) {
+        const summary = Object.entries(res.secrets_hits)
+          .map(([k, v]) => `${k}=${v}`)
+          .join('，')
+        info.push(`已脱敏密钥/Token：${summary}`)
+      }
+      setBackendInfo(info.length ? info.join('\n') : null)
 
       if (res.dropped) {
         setBackendError(`清洗后文档被过滤：${res.drop_reason || '质量过滤触发'}`)
