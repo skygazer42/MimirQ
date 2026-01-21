@@ -27,7 +27,7 @@ export default function DataGovernancePage() {
 
       <Navbar />
 
-      <main className="relative z-10 flex-1 flex flex-col overflow-hidden min-h-0">
+      <main id="main-content" tabIndex={-1} className="relative z-10 flex-1 flex flex-col overflow-hidden min-h-0">
         <DataGovernancePanel />
       </main>
     </div>

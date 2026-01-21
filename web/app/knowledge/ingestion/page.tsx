@@ -156,6 +156,8 @@ export default function IngestionMonitorPage() {
       <Navbar />
 
       <main
+        id="main-content"
+        tabIndex={-1}
         className={cn(
           'relative z-10 flex-1 flex flex-col overflow-hidden transition-all duration-300 ease-[cubic-bezier(0.32,0.72,0,1)]',
           isOpen ? 'mr-0 md:mr-[40vw] xl:mr-[40vw] lg:mr-[500px]' : 'mr-0'

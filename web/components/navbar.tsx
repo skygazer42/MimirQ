@@ -202,21 +202,29 @@ export function Navbar({
       )}
 
       <nav
+        aria-label="主导航"
         className={cn(
-          'flex-shrink-0 bg-white dark:bg-slate-950 border-r border-slate-100 dark:border-slate-800 flex flex-col transition-all duration-300 ease-in-out z-50',
+          'peer flex-shrink-0 bg-background border-r border-border flex flex-col transition-all duration-300 ease-in-out z-50',
           'fixed inset-y-0 left-0 md:relative', // Mobile: fixed, Desktop: relative
           isSidebarOpen ? 'w-[280px] translate-x-0' : 'w-[280px] -translate-x-full md:w-0 md:translate-x-0 md:overflow-hidden'
         )}
       >
+        {/* Skip link (keyboard accessibility) */}
+        <a
+          href="#main-content"
+          className="sr-only focus:not-sr-only focus:fixed focus:top-4 focus:left-4 focus:z-[60] focus:rounded-lg focus:bg-background focus:px-3 focus:py-2 focus:text-foreground focus:shadow-strong focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 focus:ring-offset-background"
+        >
+          跳到主要内容
+        </a>
         {/* Logo 区域 */}
-        <div className="h-16 px-6 border-b border-slate-50 dark:border-slate-800 flex items-center gap-3">
+        <div className="h-16 px-6 border-b border-border flex items-center gap-3">
           <Link href="/" className="flex items-center gap-3 group">
             <div className="w-8 h-8 bg-gradient-to-br from-primary to-primary/80 rounded-xl flex items-center justify-center shadow-sm group-hover:shadow-lg group-hover:shadow-primary/30 transition-all duration-300 group-hover:scale-105">
               <span className="text-primary-foreground font-bold text-lg">M</span>
             </div>
             <div className="flex flex-col">
-              <span className="font-bold text-slate-900 dark:text-slate-100 leading-none tracking-tight">MimirQ</span>
-              <span className="text-[10px] text-slate-500 dark:text-slate-400 font-medium tracking-wide mt-1">智能知识库</span>
+              <span className="font-bold text-foreground leading-none tracking-tight">MimirQ</span>
+              <span className="text-[10px] text-muted-foreground font-medium tracking-wide mt-1">智能知识库</span>
             </div>
           </Link>
         </div>
@@ -227,9 +235,9 @@ export function Navbar({
             className={cn(
               "w-full justify-start gap-2 h-11 rounded-2xl font-semibold transition-all duration-300",
               // Softer, more neutral “glass” look to match the page theme.
-              "bg-white/70 dark:bg-slate-900/60 backdrop-blur-xl",
-              "border border-slate-200/70 dark:border-slate-700/70",
-              "text-slate-900 dark:text-slate-100",
+              "bg-card/70 backdrop-blur-xl",
+              "border border-border/70",
+              "text-foreground",
               // Subtle tint + lift on hover (keeps brand feel without being too blue).
               "hover:bg-gradient-to-r hover:from-sky-50/80 hover:via-white hover:to-teal-50/70",
               "dark:hover:from-sky-950/30 dark:hover:via-slate-900/40 dark:hover:to-teal-950/25",
@@ -249,7 +257,7 @@ export function Navbar({
         {/* 导航菜单 */}
         <div className="flex-1 px-3 py-2 overflow-y-auto">
           <div className="space-y-1">
-            <p className="px-3 text-xs font-semibold text-slate-400 dark:text-slate-500 mb-2 uppercase tracking-wider">菜单</p>
+            <p className="px-3 text-xs font-semibold text-muted-foreground mb-2 uppercase tracking-wider">菜单</p>
             {menuItems.map((item) => {
               const Icon = item.icon
               const isActive = pathname === item.href
@@ -264,11 +272,11 @@ export function Navbar({
                     className={cn(
                       'flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-200 group',
                       isActive
-                        ? 'bg-slate-100 dark:bg-slate-800/50 text-slate-900 dark:text-slate-100 font-medium'
-                        : 'text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800/50 hover:text-slate-900 dark:hover:text-slate-100'
+                        ? 'bg-muted text-foreground font-medium'
+                        : 'text-muted-foreground hover:bg-muted/50 hover:text-foreground'
                     )}
                   >
-                    <Icon className={cn("h-4 w-4 transition-colors", isActive ? "text-slate-900 dark:text-slate-100" : "text-slate-400 dark:text-slate-500 group-hover:text-slate-600 dark:group-hover:text-slate-300")} />
+                    <Icon className={cn("h-4 w-4 transition-colors", isActive ? "text-foreground" : "text-muted-foreground/70 group-hover:text-foreground")} />
                     <span className="text-sm">{item.label}</span>
                   </Link>
                 </div>
@@ -278,23 +286,23 @@ export function Navbar({
         </div>
 
         {/* 底部信息 */}
-        <div className="p-4 border-t border-slate-100 dark:border-slate-800 bg-slate-50/30 dark:bg-slate-900/20">
+        <div className="p-4 border-t border-border bg-background/60">
           <div className="flex items-center gap-2">
-            <div className="flex-1 flex items-center gap-3 p-2 rounded-xl hover:bg-white dark:hover:bg-slate-800/80 hover:shadow-md hover:shadow-slate-200/50 dark:hover:shadow-none transition-all duration-300 border border-transparent hover:border-slate-200 dark:hover:border-slate-700 group cursor-pointer">
+            <div className="flex-1 flex items-center gap-3 p-2 rounded-xl hover:bg-accent transition-all duration-200 border border-transparent hover:border-border group cursor-pointer">
               <div className="relative w-10 h-10 flex-shrink-0">
-                <div className="absolute inset-0 bg-gradient-to-tr from-slate-100 to-slate-50 dark:from-slate-800 dark:to-slate-700 rounded-xl border border-slate-200 dark:border-slate-600 shadow-sm group-hover:border-primary/30 transition-colors" />
-                <div className="absolute inset-0 flex items-center justify-center text-slate-500 dark:text-slate-400 group-hover:text-primary transition-colors">
+                <div className="absolute inset-0 bg-gradient-to-tr from-muted to-background rounded-xl border border-border shadow-sm group-hover:border-primary/30 transition-colors" />
+                <div className="absolute inset-0 flex items-center justify-center text-muted-foreground group-hover:text-primary transition-colors">
                   <User className="h-5 w-5" />
                 </div>
                 {isAuthenticated && (
-                  <div className="absolute -right-0.5 -bottom-0.5 w-3 h-3 bg-green-500 border-2 border-white dark:border-slate-900 rounded-full" />
+                  <div className="absolute -right-0.5 -bottom-0.5 w-3 h-3 bg-green-500 border-2 border-background rounded-full" />
                 )}
               </div>
               <div className="flex-1 min-w-0">
-                <p className="text-sm font-semibold text-slate-700 dark:text-slate-200 truncate group-hover:text-primary transition-colors">
+                <p className="text-sm font-semibold text-foreground truncate group-hover:text-primary transition-colors">
                   {user?.username || user?.email || (isDevMode ? '开发模式' : '未登录')}
                 </p>
-                <p className="text-[11px] text-slate-400 dark:text-slate-500 truncate leading-tight mt-0.5">
+                <p className="text-[11px] text-muted-foreground truncate leading-tight mt-0.5">
                   {isAuthenticated ? user?.email || '在线' : '本地开发环境'}
                 </p>
               </div>
@@ -303,7 +311,7 @@ export function Navbar({
               <Button
                 variant="ghost"
                 size="icon"
-                className="h-8 w-8 rounded-lg hover:bg-white dark:hover:bg-slate-800 hover:text-red-500 transition-colors"
+                className="h-8 w-8 rounded-lg hover:bg-accent hover:text-red-500 transition-colors"
                 onClick={() => {
                   if (isAuthenticated) {
                     logout()
@@ -312,6 +320,7 @@ export function Navbar({
                   router.push('/auth')
                 }}
                 title={isAuthenticated ? '退出登录' : '登录 / 注册'}
+                aria-label={isAuthenticated ? '退出登录' : '登录 / 注册'}
               >
                 {isAuthenticated ? (
                   <LogOut className="h-4 w-4" />
@@ -323,13 +332,13 @@ export function Navbar({
             </div>
           </div>
 
-          <div className="mt-2 flex items-center gap-2 text-xs text-slate-400 dark:text-slate-500">
+          <div className="mt-2 flex items-center gap-2 text-xs text-muted-foreground">
             <span
               className={cn(
                 'inline-block h-2 w-2 rounded-full',
                 backendOk === true && 'bg-green-500',
                 backendOk === false && 'bg-red-500',
-                backendOk === null && 'bg-slate-300 dark:bg-slate-600'
+                backendOk === null && 'bg-muted-foreground/40'
               )}
             />
             <span>
@@ -346,8 +355,10 @@ export function Navbar({
         aria-label={isSidebarOpen ? '收起侧边栏' : '展开侧边栏'}
         title={isSidebarOpen ? '收起侧边栏' : '展开侧边栏'}
         className={cn(
-          'fixed bottom-4 z-50 h-10 w-10 rounded-xl shadow-sm bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-500 hover:text-primary transition-all duration-300 ease-in-out',
-          isSidebarOpen ? 'left-[260px] opacity-0 group-hover:opacity-100 hover:opacity-100' : 'left-4 opacity-100'
+          'fixed bottom-4 z-50 h-11 w-11 rounded-xl shadow-soft bg-background border border-border text-muted-foreground hover:text-primary hover:bg-muted transition-all duration-200 ease-in-out sm:h-10 sm:w-10',
+          isSidebarOpen
+            ? 'left-[260px] opacity-0 pointer-events-none md:peer-hover:opacity-100 md:peer-hover:pointer-events-auto md:peer-focus-within:opacity-100 md:peer-focus-within:pointer-events-auto md:hover:opacity-100 md:hover:pointer-events-auto'
+            : 'left-4 opacity-100'
         )}
         onClick={() => setSidebarOpen(!isSidebarOpen)}
       >

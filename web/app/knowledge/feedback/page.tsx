@@ -124,7 +124,7 @@ export default function FeedbackTriagePage() {
     <div className="flex min-h-screen overflow-hidden bg-slate-50 dark:bg-slate-950 font-sans selection:bg-indigo-100 dark:selection:bg-indigo-900 selection:text-indigo-900 dark:selection:text-indigo-100">
       <Navbar />
 
-      <main className="relative z-10 flex-1 flex flex-col overflow-hidden transition-all duration-300">
+      <main id="main-content" tabIndex={-1} className="relative z-10 flex-1 flex flex-col overflow-hidden transition-all duration-300">
         {/* Background Texture - Dark mode adjusted */}
         <div className="fixed inset-0 z-0 pointer-events-none opacity-60 dark:opacity-20 mix-blend-multiply dark:mix-blend-normal"
           style={{ backgroundImage: 'radial-gradient(#cbd5e1 1px, transparent 1px)', backgroundSize: '32px 32px' }} />

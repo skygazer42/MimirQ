@@ -311,7 +311,7 @@ export default function KnowledgePage() {
     <div className="flex h-screen overflow-hidden bg-slate-50/50 dark:bg-slate-950 transition-colors duration-300">
       <Navbar />
 
-      <main className="flex-1 flex flex-col overflow-hidden relative">
+      <main id="main-content" tabIndex={-1} className="flex-1 flex flex-col overflow-hidden relative">
         {/* 背景装饰 */}
         <div className="absolute top-0 left-0 right-0 h-64 bg-gradient-to-b from-sky-50/50 dark:from-sky-900/10 to-transparent pointer-events-none" />
 

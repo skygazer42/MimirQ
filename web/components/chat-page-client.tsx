@@ -33,6 +33,8 @@ export function ChatPageClient({
     <div className="flex h-screen overflow-hidden bg-background">
       <Navbar />
       <main 
+        id="main-content"
+        tabIndex={-1}
         className={cn(
             "flex-1 flex flex-col overflow-hidden transition-all duration-300 ease-in-out",
             isOpen ? "mr-0 md:mr-[40vw] xl:mr-[40vw] lg:mr-[500px]" : "mr-0"
