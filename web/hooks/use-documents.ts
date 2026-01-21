@@ -69,8 +69,8 @@ export function useDocuments() {
             )
           )
 
-          // 如果处理完成或失败，停止轮询
-          if (status.status === 'completed' || status.status === 'failed' || status.status === 'cancelled') {
+          // 如果处理完成/失败/隔离，停止轮询
+          if (status.status === 'completed' || status.status === 'failed' || status.status === 'cancelled' || status.status === 'quarantined') {
             pollTimersRef.current.delete(documentId)
 
             // 重新加载完整的文档信息

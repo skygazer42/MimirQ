@@ -185,6 +185,11 @@ export function PipelineOptionsPanel(props: PipelineOptionsPanelProps) {
       label: '丢弃低密度文本',
       hint: '乱码/符号占比过高将被过滤',
     },
+    {
+      key: 'governance_quarantine_on_drop',
+      label: '隔离而非失败',
+      hint: '触发质量过滤时标记 quarantined，便于人工复核',
+    },
   ] as const
 
   const governanceNumbers = [

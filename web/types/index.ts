@@ -13,7 +13,7 @@ export interface Document {
   filename: string
   file_type: string
   file_size: number
-  status: 'pending' | 'processing' | 'completed' | 'failed' | 'cancelled'
+  status: 'pending' | 'processing' | 'completed' | 'failed' | 'cancelled' | 'quarantined'
   processing_progress: number
   chunk_count: number
   total_characters: number
@@ -109,6 +109,7 @@ export interface DocumentPipelineOptions {
   governance_drop_outline_max_heading_ratio?: number
   governance_drop_low_density?: boolean
   governance_drop_low_density_threshold?: number
+  governance_quarantine_on_drop?: boolean
   governance_unwrap_max_line_length?: number
   governance_noise_min_chars?: number
   governance_noise_ratio_threshold?: number
