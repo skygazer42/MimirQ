@@ -24,6 +24,7 @@ import {
   Wand2,
   ShieldCheck,
   AlertTriangle,
+  Grid3X3,
   User,
   LogIn,
   LogOut,
@@ -47,6 +48,11 @@ const menuItems = [
     icon: Database,
     label: '知识库',
     href: '/knowledge',
+  },
+  {
+    icon: Grid3X3,
+    label: 'RAG 可视化',
+    href: '/knowledge/similarity',
   },
   {
     icon: History,

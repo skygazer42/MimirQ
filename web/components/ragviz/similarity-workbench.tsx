@@ -17,11 +17,10 @@ import {
   Database,
   Download,
   Eye,
-  Funnel,
+  Filter,
   Grid3X3,
   Lock,
   RefreshCw,
-  SlidersHorizontal,
 } from 'lucide-react'
 import { toast } from 'sonner'
 
@@ -41,6 +40,9 @@ export function RagvizSimilarityWorkbench() {
   const [yMaxItems, setYMaxItems] = useState<number>(30)
   const [isCalculating, setIsCalculating] = useState(false)
   const [calcProgress, setCalcProgress] = useState<{ done: number; total: number } | null>(null)
+  const [colorScheme, setColorScheme] = useState<ColorSchemeKey>('viridis')
+  const [tempSimilarityRange, setTempSimilarityRange] = useState<{ min: number; max: number }>({ min: 0, max: 1 })
+  const [tempTopK, setTempTopK] = useState<{ value: number; axis: 'x' | 'y' }>({ value: 0, axis: 'x' })
 
   const [leftTopPanel, setLeftTopPanel] = useState<LeftTopPanel>('dataSource')
   const [leftBottomPanel] = useState<LeftBottomPanel>('chartControl')
@@ -54,6 +56,7 @@ export function RagvizSimilarityWorkbench() {
 
   const leftSidebarRef = useRef<HTMLDivElement>(null)
   const rightSidebarRef = useRef<HTMLDivElement>(null)
+  const importInputRef = useRef<HTMLInputElement>(null)
 
   const [results, setResults] = useState<SimilarityMatrixEntry[]>([])
   const [matrixButtons, setMatrixButtons] = useState<MatrixButtonState[]>([])
@@ -61,6 +64,7 @@ export function RagvizSimilarityWorkbench() {
   const [subtractIndex, setSubtractIndex] = useState<number | null>(null)
   const [activeFilterIndices, setActiveFilterIndices] = useState<number[]>([])
   const [exclusiveIndex, setExclusiveIndex] = useState<number | null>(null)
+  const [exportIndex, setExportIndex] = useState<number>(0)
 
   const loadCollections = async () => {
     setCollectionsError('')
@@ -106,6 +110,12 @@ export function RagvizSimilarityWorkbench() {
     setIsCalculating(true)
     setCalcProgress({ done: 0, total })
     setResults([])
+    setMatrixButtons([])
+    setPrimaryIndex(null)
+    setSubtractIndex(null)
+    setActiveFilterIndices([])
+    setExclusiveIndex(null)
+    setExportIndex(0)
 
     const nextResults: SimilarityMatrixEntry[] = []
     let done = 0
@@ -145,6 +155,7 @@ export function RagvizSimilarityWorkbench() {
     }
 
     setResults(nextResults)
+    initializeMatrixState(nextResults)
     setIsCalculating(false)
     setCalcProgress(null)
     if (nextResults.length > 0) {
@@ -152,28 +163,285 @@ export function RagvizSimilarityWorkbench() {
     }
   }
 
-  // Initialize matrix states after a new calculation/import.
-  useEffect(() => {
-    if (results.length === 0) {
+  const initializeMatrixState = (entries: SimilarityMatrixEntry[]) => {
+    if (entries.length === 0) {
       setMatrixButtons([])
       setPrimaryIndex(null)
       setSubtractIndex(null)
       setActiveFilterIndices([])
       setExclusiveIndex(null)
+      setExportIndex(0)
       return
     }
 
-    const init: MatrixButtonState[] = results.map(() => ({ applyData: false, applyFilter: false, exclusive: false }))
+    const init: MatrixButtonState[] = entries.map(() => ({ applyData: false, applyFilter: false, exclusive: false }))
     init[0] = { applyData: true, applyFilter: true, exclusive: true }
     setMatrixButtons(init)
     setPrimaryIndex(0)
     setSubtractIndex(null)
     setActiveFilterIndices([0])
     setExclusiveIndex(0)
-  }, [results])
+    setExportIndex(0)
+  }
+
+  const downloadJson = (filename: string, data: any) => {
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json;charset=utf-8' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = filename
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
+  const exportOne = () => {
+    if (results.length === 0) return
+    const idx = Math.max(0, Math.min(exportIndex, results.length - 1))
+    const entry = results[idx]
+    const payload = { version: 1, entries: [entry] }
+    const safe = `matrix_${idx + 1}`.replace(/[^\w.-]+/g, '_')
+    downloadJson(`${safe}.json`, payload)
+  }
+
+  const exportAll = () => {
+    if (results.length === 0) return
+    const payload = { version: 1, entries: results }
+    downloadJson(`matrices_all.json`, payload)
+  }
+
+  const parseImportedPayload = (raw: any): SimilarityMatrixEntry[] => {
+    if (!raw) return []
+    const entries = Array.isArray(raw) ? raw : Array.isArray(raw.entries) ? raw.entries : [raw]
+    const out: SimilarityMatrixEntry[] = []
+    for (const e of entries) {
+      const result: RagvizSimilarityMatrixResult | undefined = e?.result
+      if (!result || !Array.isArray(result.matrix)) continue
+      const xCollectionId = String(e?.xCollectionId || e?.xCollection || result.metadata?.x_collection || '')
+      const yCollectionId = String(e?.yCollectionId || e?.yCollection || result.metadata?.y_collection || '')
+      const xCollectionLabel = String(e?.xCollectionLabel || xCollectionId || 'X')
+      const yCollectionLabel = String(e?.yCollectionLabel || yCollectionId || 'Y')
+      const visualConfig: VisualConfig =
+        e?.visualConfig && e.visualConfig.displayFields
+          ? e.visualConfig
+          : createDefaultVisualConfig(result.x_available_fields || [], result.y_available_fields || [])
+
+      out.push({
+        xCollectionId,
+        yCollectionId,
+        xCollectionLabel,
+        yCollectionLabel,
+        result,
+        visualConfig,
+      })
+    }
+    return out
+  }
+
+  const importFiles = async (files: FileList | null) => {
+    if (!files || files.length === 0) return
+    const imported: SimilarityMatrixEntry[] = []
+    for (const file of Array.from(files)) {
+      try {
+        const text = await file.text()
+        const json = JSON.parse(text)
+        imported.push(...parseImportedPayload(json))
+      } catch (e: any) {
+        toast.error(`导入失败：${file.name}（${e?.message || 'JSON 解析错误'}）`)
+      }
+    }
+
+    if (imported.length === 0) {
+      toast.warning('未找到可导入的矩阵数据')
+      return
+    }
+
+    setResults((prev) => {
+      if (prev.length === 0) return imported
+      return [...prev, ...imported]
+    })
+    setMatrixButtons((prev) => {
+      const appended = imported.map(() => ({ applyData: false, applyFilter: false, exclusive: false }))
+      return prev.length === 0 ? appended : [...prev, ...appended]
+    })
+    if (results.length === 0) {
+      initializeMatrixState(imported)
+    }
+
+    toast.success(`已导入 ${imported.length} 个矩阵`)
+  }
 
   const primaryEntry = primaryIndex !== null ? results[primaryIndex] : null
   const subtractEntry = subtractIndex !== null ? results[subtractIndex] : null
+  const isDifferenceMode = Boolean(primaryEntry && subtractEntry)
+  const rangeBounds = useMemo(() => (isDifferenceMode ? { min: -1, max: 1 } : { min: 0, max: 1 }), [isDifferenceMode])
+
+  useEffect(() => {
+    // Match Kumi: entering difference mode resets sliders to [-1, 1].
+    if (isDifferenceMode) {
+      setTempSimilarityRange({ min: -1, max: 1 })
+      setTempTopK({ value: 0, axis: 'x' })
+    } else {
+      setTempSimilarityRange({ min: 0, max: 1 })
+      setTempTopK({ value: 0, axis: 'x' })
+    }
+  }, [isDifferenceMode])
+
+  const displayMatrix = useMemo(() => {
+    if (!primaryEntry) return null
+    const a = primaryEntry.result.matrix
+    if (!subtractEntry) return a
+    const b = subtractEntry.result.matrix
+    if (a.length !== b.length || (a[0]?.length || 0) !== (b[0]?.length || 0)) return a
+    return a.map((row, i) => row.map((val, j) => val - b[i][j]))
+  }, [primaryEntry, subtractEntry])
+
+  const displayLabels = useMemo(() => {
+    if (!primaryEntry) return null
+    const xField = primaryEntry.visualConfig.displayFields.xField
+    const yField = primaryEntry.visualConfig.displayFields.yField
+    const xLabels = generateUniqueLabels(primaryEntry.result.x_data, xField)
+    const yLabels = generateUniqueLabels(primaryEntry.result.y_data, yField)
+    return { xLabels, yLabels }
+  }, [primaryEntry])
+
+  const activeVisualConfig: VisualConfig | null = useMemo(() => {
+    if (exclusiveIndex === null) return null
+    return results[exclusiveIndex]?.visualConfig || null
+  }, [exclusiveIndex, results])
+
+  const uiSimilarityRange = exclusiveIndex !== null && activeVisualConfig ? activeVisualConfig.similarityRange : tempSimilarityRange
+  const uiTopK = exclusiveIndex !== null && activeVisualConfig ? activeVisualConfig.filters.topK : tempTopK
+
+  const effectiveMask = useMemo(() => {
+    if (!displayMatrix || !primaryEntry) return null
+
+    // Exclusive mode: only use the editing matrix config.
+    if (exclusiveIndex !== null && activeVisualConfig) {
+      return computeFinalMask(displayMatrix, activeVisualConfig.similarityRange, activeVisualConfig.filters.topK)
+    }
+
+    // Apply-filter mode: OR masks of selected matrices (based on their own configs),
+    // then AND with temporary filter (applied on the displayed matrix).
+    let mask: boolean[][] | null = null
+    const primaryShape = matrixShape(primaryEntry)
+
+    const filterMasks = activeFilterIndices
+      .map((idx) => {
+        const entry = results[idx]
+        if (!entry) return null
+        const shape = matrixShape(entry)
+        if (shape.rows !== primaryShape.rows || shape.cols !== primaryShape.cols) return null
+        return computeFinalMask(entry.result.matrix, entry.visualConfig.similarityRange, entry.visualConfig.filters.topK)
+      })
+      .filter(Boolean) as boolean[][][]
+
+    if (filterMasks.length > 0) {
+      mask = combineWithOR(filterMasks)
+    }
+
+    const tempMask = computeFinalMask(displayMatrix, tempSimilarityRange, tempTopK)
+    return mask ? combineWithAND(mask, tempMask) : tempMask
+  }, [
+    activeFilterIndices,
+    activeVisualConfig,
+    displayMatrix,
+    exclusiveIndex,
+    primaryEntry,
+    results,
+    tempSimilarityRange,
+    tempTopK,
+  ])
+
+  const maskedMatrix = useMemo(() => {
+    if (!displayMatrix) return null
+    if (!effectiveMask) return displayMatrix as Array<Array<number | null>>
+    return applyMask(displayMatrix, effectiveMask)
+  }, [displayMatrix, effectiveMask])
+
+  const topKAxisForStats: 'x' | 'y' | 'none' = useMemo(() => {
+    const topK = uiTopK
+    if (!topK || !topK.value) return 'none'
+    return topK.axis
+  }, [uiTopK])
+
+  const normalStats = useMemo(() => {
+    if (!effectiveMask) return null
+    return calculateNormalModeStatistics(effectiveMask, topKAxisForStats)
+  }, [effectiveMask, topKAxisForStats])
+
+  const differenceStats = useMemo(() => {
+    if (!primaryEntry || !subtractEntry) return null
+
+    const groundTruthMask = computeFinalMask(
+      primaryEntry.result.matrix,
+      primaryEntry.visualConfig.similarityRange,
+      primaryEntry.visualConfig.filters.topK
+    )
+
+    const subtractMask = computeFinalMask(
+      subtractEntry.result.matrix,
+      subtractEntry.visualConfig.similarityRange,
+      subtractEntry.visualConfig.filters.topK
+    )
+
+    if (!displayMatrix) return null
+    const tempMask = computeFinalMask(displayMatrix, tempSimilarityRange, tempTopK)
+    const isTempDefault = tempSimilarityRange.min === -1 && tempSimilarityRange.max === 1 && tempTopK.value === 0
+    const currentMask = isTempDefault ? subtractMask : tempMask
+
+    return calculateDifferenceModeStatistics(groundTruthMask, currentMask)
+  }, [displayMatrix, primaryEntry, subtractEntry, tempSimilarityRange, tempTopK])
+
+  const updateDisplayFields = (xField: string, yField: string) => {
+    if (primaryIndex === null) return
+    const target = exclusiveIndex !== null ? exclusiveIndex : primaryIndex
+    setResults((prev) =>
+      prev.map((entry, idx) => {
+        if (idx !== target) return entry
+        return {
+          ...entry,
+          visualConfig: {
+            ...entry.visualConfig,
+            displayFields: { xField, yField },
+          },
+        }
+      })
+    )
+  }
+
+  const updateSimilarityRange = (range: { min: number; max: number }) => {
+    const clamp = (v: number) => Math.max(rangeBounds.min, Math.min(rangeBounds.max, v))
+    const min = clamp(range.min)
+    const max = clamp(range.max)
+    const next = { min: Math.min(min, max), max: Math.max(min, max) }
+
+    if (exclusiveIndex !== null) {
+      setResults((prev) =>
+        prev.map((entry, idx) => {
+          if (idx !== exclusiveIndex) return entry
+          return { ...entry, visualConfig: { ...entry.visualConfig, similarityRange: next } }
+        })
+      )
+      return
+    }
+    setTempSimilarityRange(next)
+  }
+
+  const updateTopK = (nextTopK: { value: number; axis: 'x' | 'y' }) => {
+    const shape = primaryEntry ? matrixShape(primaryEntry) : { rows: 0, cols: 0 }
+    const max = nextTopK.axis === 'x' ? shape.cols : shape.rows
+    const clamped = { ...nextTopK, value: Math.max(0, Math.min(Number(nextTopK.value) || 0, max)) }
+    if (exclusiveIndex !== null) {
+      setResults((prev) =>
+        prev.map((entry, idx) => {
+          if (idx !== exclusiveIndex) return entry
+          return { ...entry, visualConfig: { ...entry.visualConfig, filters: { topK: clamped } } }
+        })
+      )
+      return
+    }
+    setTempTopK(clamped)
+  }
 
   const matrixShape = (entry: SimilarityMatrixEntry | null) => {
     const m = entry?.result?.matrix || []
@@ -469,7 +737,61 @@ export function RagvizSimilarityWorkbench() {
                 </Panel>
               ) : (
                 <Panel title="结果操作">
-                  <p className="text-xs text-muted-foreground">导入/导出 JSON（后续实现）。</p>
+                  <div className="space-y-3">
+                    <p className="text-xs text-muted-foreground">
+                      支持导入/导出当前矩阵数据（用于复现、分享、离线分析）。
+                    </p>
+
+                    <div className="space-y-2">
+                      <div className="text-xs font-medium text-foreground/80">选择要导出的图表</div>
+                      <select
+                        className="w-full h-9 rounded-md border border-border bg-background px-2 text-sm outline-none focus:ring-2 focus:ring-primary/30"
+                        value={String(exportIndex)}
+                        onChange={(e) => setExportIndex(Number(e.target.value) || 0)}
+                        disabled={results.length === 0}
+                      >
+                        {results.length === 0 ? (
+                          <option value="0">请先计算相似度</option>
+                        ) : (
+                          results.map((r, idx) => (
+                            <option key={`${r.xCollectionId}__${r.yCollectionId}__${idx}`} value={idx}>
+                              {idx + 1}. {r.xCollectionLabel} vs {r.yCollectionLabel}
+                            </option>
+                          ))
+                        )}
+                      </select>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2">
+                      <Button variant="outline" onClick={exportOne} disabled={results.length === 0}>
+                        导出JSON
+                      </Button>
+                      <Button variant="outline" onClick={exportAll} disabled={results.length === 0}>
+                        导出所有JSON
+                      </Button>
+                    </div>
+
+                    <Button
+                      variant="default"
+                      onClick={() => importInputRef.current?.click()}
+                      className="w-full"
+                    >
+                      导入JSON
+                    </Button>
+
+                    <input
+                      ref={importInputRef}
+                      type="file"
+                      accept=".json"
+                      multiple
+                      className="hidden"
+                      onChange={(e) => {
+                        void importFiles(e.target.files)
+                        // Reset so selecting the same file again still triggers onChange.
+                        e.currentTarget.value = ''
+                      }}
+                    />
+                  </div>
                 </Panel>
               )}
             </div>
@@ -542,7 +864,7 @@ export function RagvizSimilarityWorkbench() {
                                 title="应用筛选器"
                                 onClick={() => toggleApplyFilter(idx)}
                               >
-                                <Funnel className="h-4 w-4" />
+                                <Filter className="h-4 w-4" />
                               </Button>
                               <Button
                                 variant={btn?.exclusive ? 'default' : 'outline'}
@@ -572,15 +894,37 @@ export function RagvizSimilarityWorkbench() {
             <div className="text-sm font-semibold">Collection × Collection 相似度热力图</div>
             <div className="flex items-center gap-2">
               <span className="text-xs text-muted-foreground">配色方案：</span>
-              <div className="flex items-center gap-2">
-                <div className="h-3 w-6 rounded bg-gradient-to-r from-indigo-600 via-emerald-500 to-yellow-400" />
-                <div className="h-3 w-6 rounded bg-gradient-to-r from-fuchsia-500 via-orange-500 to-yellow-300" />
-                <div className="h-3 w-6 rounded bg-gradient-to-r from-slate-800 via-sky-500 to-emerald-300" />
+              <div className="flex items-center gap-1">
+                {COLOR_SCHEMES.map((scheme) => (
+                  <button
+                    key={scheme.key}
+                    type="button"
+                    className={cn(
+                      'h-3 w-7 rounded border transition',
+                      scheme.key === colorScheme ? 'border-primary' : 'border-border hover:border-primary/50'
+                    )}
+                    title={scheme.label}
+                    onClick={() => setColorScheme(scheme.key)}
+                    style={{ backgroundImage: scheme.preview }}
+                  />
+                ))}
               </div>
             </div>
           </div>
           <div className="flex-1 overflow-hidden flex items-center justify-center">
-            <div className="text-sm text-muted-foreground">热力图渲染（Plotly）将在下一步接入。</div>
+            {primaryEntry && displayMatrix && displayLabels ? (
+              <div className="h-full w-full">
+                <PlotlyHeatmap
+                  matrix={maskedMatrix || displayMatrix}
+                  xLabels={displayLabels.xLabels}
+                  yLabels={displayLabels.yLabels}
+                  colorScheme={colorScheme}
+                  isDifference={isDifferenceMode}
+                />
+              </div>
+            ) : (
+              <div className="text-sm text-muted-foreground">请先计算相似度矩阵并选择“应用数据”。</div>
+            )}
           </div>
         </div>
       </div>
@@ -601,7 +945,7 @@ export function RagvizSimilarityWorkbench() {
               active={rightBottomPanel === 'filters'}
               title="筛选器控制"
               onClick={() => setRightBottomPanel((prev) => (prev === 'filters' ? null : 'filters'))}
-              icon={<Funnel className="h-4 w-4" />}
+              icon={<Filter className="h-4 w-4" />}
             />
           </div>
         </div>
@@ -620,7 +964,40 @@ export function RagvizSimilarityWorkbench() {
             <div className="p-3 border-b border-border" style={rightTopStyle}>
               {rightTopPanel === 'statistics' ? (
                 <Panel title="统计信息">
-                  <p className="text-xs text-muted-foreground">TP/TN/FP/FN 与对角线统计将在后续实现。</p>
+                  {!primaryEntry || !effectiveMask ? (
+                    <p className="text-xs text-muted-foreground">请先选择一个主图矩阵。</p>
+                  ) : isDifferenceMode && differenceStats ? (
+                    <StatsGrid>
+                      <StatsItem label="True Positive" value={differenceStats.truePositive} tone="success" />
+                      <StatsItem label="True Negative" value={differenceStats.trueNegative} tone="muted" />
+                      <StatsItem label="False Positive" value={differenceStats.falsePositive} tone="warning" />
+                      <StatsItem label="False Negative" value={differenceStats.falseNegative} tone="danger" />
+                      <StatsItem
+                        label="上下文召回率"
+                        value={`${(differenceStats.contextRecall * 100).toFixed(2)}%`}
+                        tone="info"
+                      />
+                      <StatsItem
+                        label="上下文精度"
+                        value={`${(differenceStats.contextPrecision * 100).toFixed(2)}%`}
+                        tone="info"
+                      />
+                    </StatsGrid>
+                  ) : normalStats ? (
+                    <StatsGrid>
+                      <StatsItem label="当前显示对比数" value={`${normalStats.currentDisplayCount} / ${normalStats.totalCount}`} />
+                      <StatsItem label="斜对角线对比数" value={`${normalStats.diagonalTrueCount} / ${normalStats.diagonalTotalCount}`} />
+                      {normalStats.topKAxis !== 'none' ? (
+                        <StatsItem
+                          label={`缺失匹配(${normalStats.topKAxis === 'x' ? '横轴' : '纵轴'})`}
+                          value={normalStats.missingMatchCount}
+                          tone={normalStats.missingMatchCount > 0 ? 'warning' : 'muted'}
+                        />
+                      ) : null}
+                    </StatsGrid>
+                  ) : (
+                    <p className="text-xs text-muted-foreground">暂无统计数据</p>
+                  )}
                 </Panel>
               ) : (
                 <div className="h-full" />
@@ -635,7 +1012,144 @@ export function RagvizSimilarityWorkbench() {
             <div className="p-3 overflow-auto">
               {rightBottomPanel === 'filters' ? (
                 <Panel title="筛选器控制">
-                  <p className="text-xs text-muted-foreground">阈值与 Top-K 控件将在后续实现。</p>
+                  {!primaryEntry ? (
+                    <p className="text-xs text-muted-foreground">请先选择一个主图矩阵。</p>
+                  ) : (
+                    <div className="space-y-5">
+                      <div className="space-y-2">
+                        <div className="text-xs font-medium text-foreground/80">横坐标显示字段</div>
+                        <select
+                          className="w-full h-9 rounded-md border border-border bg-background px-2 text-sm outline-none focus:ring-2 focus:ring-primary/30"
+                          value={primaryEntry.visualConfig.displayFields.xField}
+                          onChange={(e) =>
+                            updateDisplayFields(e.target.value, primaryEntry.visualConfig.displayFields.yField)
+                          }
+                        >
+                          {primaryEntry.result.x_available_fields.map((f) => (
+                            <option key={f} value={f}>
+                              {f}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <div className="space-y-2">
+                        <div className="text-xs font-medium text-foreground/80">纵坐标显示字段</div>
+                        <select
+                          className="w-full h-9 rounded-md border border-border bg-background px-2 text-sm outline-none focus:ring-2 focus:ring-primary/30"
+                          value={primaryEntry.visualConfig.displayFields.yField}
+                          onChange={(e) =>
+                            updateDisplayFields(primaryEntry.visualConfig.displayFields.xField, e.target.value)
+                          }
+                        >
+                          {primaryEntry.result.y_available_fields.map((f) => (
+                            <option key={f} value={f}>
+                              {f}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <div className="space-y-2">
+                        <div className="text-xs font-medium text-foreground/80">相似度阈值范围</div>
+                        <div className="space-y-2">
+                          <div className="flex items-center gap-2">
+                            <input
+                              type="range"
+                              min={rangeBounds.min}
+                              max={rangeBounds.max}
+                              step={0.01}
+                              value={uiSimilarityRange.min}
+                              onChange={(e) =>
+                                updateSimilarityRange({ min: Number(e.target.value), max: uiSimilarityRange.max })
+                              }
+                              className="flex-1"
+                            />
+                            <input
+                              type="number"
+                              min={rangeBounds.min}
+                              max={rangeBounds.max}
+                              step={0.01}
+                              value={uiSimilarityRange.min}
+                              onChange={(e) =>
+                                updateSimilarityRange({ min: Number(e.target.value), max: uiSimilarityRange.max })
+                              }
+                              className="w-20 h-9 rounded-md border border-border bg-background px-2 text-sm"
+                            />
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <input
+                              type="range"
+                              min={rangeBounds.min}
+                              max={rangeBounds.max}
+                              step={0.01}
+                              value={uiSimilarityRange.max}
+                              onChange={(e) =>
+                                updateSimilarityRange({ min: uiSimilarityRange.min, max: Number(e.target.value) })
+                              }
+                              className="flex-1"
+                            />
+                            <input
+                              type="number"
+                              min={rangeBounds.min}
+                              max={rangeBounds.max}
+                              step={0.01}
+                              value={uiSimilarityRange.max}
+                              onChange={(e) =>
+                                updateSimilarityRange({ min: uiSimilarityRange.min, max: Number(e.target.value) })
+                              }
+                              className="w-20 h-9 rounded-md border border-border bg-background px-2 text-sm"
+                            />
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="space-y-2">
+                        <div className="text-xs font-medium text-foreground/80">Top-K 筛选</div>
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="range"
+                            min={0}
+                            max={Math.max(0, uiTopK.axis === 'x' ? matrixShape(primaryEntry).cols : matrixShape(primaryEntry).rows)}
+                            step={1}
+                            value={uiTopK.value}
+                            onChange={(e) => updateTopK({ ...uiTopK, value: Number(e.target.value) })}
+                            className="flex-1"
+                          />
+                          <input
+                            type="number"
+                            min={0}
+                            max={Math.max(0, uiTopK.axis === 'x' ? matrixShape(primaryEntry).cols : matrixShape(primaryEntry).rows)}
+                            step={1}
+                            value={uiTopK.value}
+                            onChange={(e) => updateTopK({ ...uiTopK, value: Number(e.target.value) })}
+                            className="w-20 h-9 rounded-md border border-border bg-background px-2 text-sm"
+                          />
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Button
+                            variant={uiTopK.axis === 'x' ? 'default' : 'outline'}
+                            size="sm"
+                            onClick={() => updateTopK({ ...uiTopK, axis: 'x' })}
+                            className="flex-1"
+                          >
+                            横轴Top-K
+                          </Button>
+                          <Button
+                            variant={uiTopK.axis === 'y' ? 'default' : 'outline'}
+                            size="sm"
+                            onClick={() => updateTopK({ ...uiTopK, axis: 'y' })}
+                            className="flex-1"
+                          >
+                            纵轴Top-K
+                          </Button>
+                        </div>
+                        <p className="text-[11px] text-muted-foreground">
+                          当前：Top-{uiTopK.value}（{uiTopK.value === 0 ? '显示全部' : uiTopK.axis === 'x' ? '按行取 Top-K' : '按列取 Top-K'}）
+                        </p>
+                      </div>
+                    </div>
+                  )}
                 </Panel>
               ) : (
                 <div />
@@ -828,4 +1342,335 @@ type SimilarityMatrixEntry = {
   yCollectionLabel: string
   result: RagvizSimilarityMatrixResult
   visualConfig: VisualConfig
+}
+
+type MatrixButtonState = {
+  applyData: boolean
+  applyFilter: boolean
+  exclusive: boolean
+}
+
+type ColorSchemeKey = 'viridis' | 'plasma' | 'cividis' | 'YlGnBu' | 'hot'
+
+const COLOR_SCHEMES: Array<{ key: ColorSchemeKey; label: string; preview: string }> = [
+  { key: 'viridis', label: 'Viridis', preview: 'linear-gradient(90deg,#440154,#21908d,#fde725)' },
+  { key: 'plasma', label: 'Plasma', preview: 'linear-gradient(90deg,#0d0887,#cc4678,#f0f921)' },
+  { key: 'cividis', label: 'Cividis', preview: 'linear-gradient(90deg,#00204c,#5f7d7f,#fee838)' },
+  { key: 'YlGnBu', label: 'YlGnBu', preview: 'linear-gradient(90deg,#ffffcc,#1d91c0,#081d58)' },
+  { key: 'hot', label: 'Hot', preview: 'linear-gradient(90deg,#000000,#ff0000,#ffff00)' },
+]
+
+function toPlotlyColorScale(key: ColorSchemeKey) {
+  const mapping: Record<ColorSchemeKey, string> = {
+    viridis: 'Viridis',
+    plasma: 'Plasma',
+    cividis: 'Cividis',
+    YlGnBu: 'YlGnBu',
+    hot: 'Hot',
+  }
+  return mapping[key]
+}
+
+function generateUniqueLabels(items: Record<string, any>[], field: string) {
+  const counts = new Map<string, number>()
+  return items.map((item) => {
+    const raw = String((item && field ? item[field] : '') ?? '').trim()
+    const key = raw || '(empty)'
+    const next = (counts.get(key) || 0) + 1
+    counts.set(key, next)
+    return next === 1 ? key : `${key} (${next})`
+  })
+}
+
+function PlotlyHeatmap({
+  matrix,
+  xLabels,
+  yLabels,
+  colorScheme,
+  isDifference,
+}: {
+  matrix: Array<Array<number | null>>
+  xLabels: string[]
+  yLabels: string[]
+  colorScheme: ColorSchemeKey
+  isDifference: boolean
+}) {
+  const containerRef = useRef<HTMLDivElement>(null)
+  const [plotly, setPlotly] = useState<any>(null)
+
+  useEffect(() => {
+    let cancelled = false
+    ;(async () => {
+      try {
+        const mod: any = await import('plotly.js-dist-min')
+        const Plotly = mod?.default || mod
+        if (!cancelled) setPlotly(() => Plotly)
+      } catch (e) {
+        if (!cancelled) setPlotly(null)
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!plotly || !containerRef.current) return
+
+    const zmin = isDifference ? -1 : 0
+    const zmax = isDifference ? 1 : 1
+    const colorscale = isDifference ? 'RdBu' : toPlotlyColorScale(colorScheme)
+
+    const trace: any = {
+      type: 'heatmap',
+      z: matrix,
+      x: xLabels,
+      y: yLabels,
+      colorscale,
+      zmin,
+      zmax,
+      hovertemplate: 'x=%{x}<br>y=%{y}<br>value=%{z:.4f}<extra></extra>',
+    }
+
+    const layout: any = {
+      margin: { l: 120, r: 30, t: 30, b: 120 },
+      xaxis: { automargin: true, tickangle: 45 },
+      yaxis: { automargin: true, autorange: 'reversed' },
+      paper_bgcolor: 'transparent',
+      plot_bgcolor: 'transparent',
+    }
+
+    const config: any = {
+      responsive: true,
+      displaylogo: false,
+    }
+
+    plotly.react(containerRef.current, [trace], layout, config)
+  }, [plotly, matrix, xLabels, yLabels, colorScheme, isDifference])
+
+  useEffect(() => {
+    if (!plotly || !containerRef.current) return
+    return () => {
+      try {
+        plotly.purge(containerRef.current)
+      } catch {
+        // ignore
+      }
+    }
+  }, [plotly])
+
+  return <div ref={containerRef} className="h-full w-full" />
+}
+
+function computeThresholdMask(matrix: number[][], minSim: number, maxSim: number) {
+  const min = Math.min(minSim, maxSim)
+  const max = Math.max(minSim, maxSim)
+  return matrix.map((row) => row.map((val) => Number.isFinite(val) && val >= min && val <= max))
+}
+
+function computeTopKMask(matrix: number[][], topK: number, axis: 'x' | 'y') {
+  const rows = matrix.length
+  const cols = rows > 0 ? (matrix[0]?.length || 0) : 0
+  if (rows === 0 || cols === 0) return []
+  if (!topK || topK <= 0) return matrix.map((row) => row.map(() => true))
+
+  const k = axis === 'x' ? Math.min(topK, cols) : Math.min(topK, rows)
+  const mask: boolean[][] = Array.from({ length: rows }, () => Array.from({ length: cols }, () => false))
+
+  if (axis === 'x') {
+    for (let i = 0; i < rows; i++) {
+      const scored = matrix[i]
+        .map((v, j) => ({ j, v }))
+        .filter((x) => Number.isFinite(x.v))
+        .sort((a, b) => b.v - a.v)
+        .slice(0, k)
+      for (const { j } of scored) mask[i][j] = true
+    }
+    return mask
+  }
+
+  for (let j = 0; j < cols; j++) {
+    const scored = []
+    for (let i = 0; i < rows; i++) {
+      const v = matrix[i][j]
+      if (!Number.isFinite(v)) continue
+      scored.push({ i, v })
+    }
+    scored.sort((a, b) => b.v - a.v)
+    for (const { i } of scored.slice(0, k)) mask[i][j] = true
+  }
+  return mask
+}
+
+function combineWithAND(a: boolean[][], b: boolean[][]) {
+  const rows = Math.min(a.length, b.length)
+  const cols = rows > 0 ? Math.min(a[0]?.length || 0, b[0]?.length || 0) : 0
+  const out: boolean[][] = Array.from({ length: rows }, () => Array.from({ length: cols }, () => false))
+  for (let i = 0; i < rows; i++) {
+    for (let j = 0; j < cols; j++) out[i][j] = Boolean(a[i][j] && b[i][j])
+  }
+  return out
+}
+
+function combineWithOR(masks: boolean[][][]) {
+  if (masks.length === 0) return []
+  const rows = masks[0].length
+  const cols = rows > 0 ? masks[0][0].length : 0
+  const out: boolean[][] = Array.from({ length: rows }, () => Array.from({ length: cols }, () => false))
+  for (const mask of masks) {
+    for (let i = 0; i < rows; i++) {
+      for (let j = 0; j < cols; j++) out[i][j] = out[i][j] || Boolean(mask[i][j])
+    }
+  }
+  return out
+}
+
+function computeFinalMask(
+  matrix: number[][],
+  range: { min: number; max: number },
+  topK: { value: number; axis: 'x' | 'y' }
+) {
+  const thresholdMask = computeThresholdMask(matrix, range.min, range.max)
+  const topKMask = computeTopKMask(matrix, topK.value, topK.axis)
+  return combineWithAND(thresholdMask, topKMask)
+}
+
+function applyMask(matrix: number[][], mask: boolean[][]): Array<Array<number | null>> {
+  const rows = Math.min(matrix.length, mask.length)
+  const cols = rows > 0 ? Math.min(matrix[0]?.length || 0, mask[0]?.length || 0) : 0
+  const out: Array<Array<number | null>> = Array.from({ length: rows }, () => Array.from({ length: cols }, () => null))
+  for (let i = 0; i < rows; i++) {
+    for (let j = 0; j < cols; j++) {
+      out[i][j] = mask[i][j] ? matrix[i][j] : null
+    }
+  }
+  return out
+}
+
+type NormalModeStats = {
+  totalCount: number
+  currentDisplayCount: number
+  diagonalTrueCount: number
+  diagonalTotalCount: number
+  missingMatchCount: number
+  topKAxis: 'x' | 'y' | 'none'
+}
+
+function calculateNormalModeStatistics(finalMask: boolean[][], topKAxis: 'x' | 'y' | 'none'): NormalModeStats {
+  const rows = finalMask.length
+  const cols = rows > 0 ? (finalMask[0]?.length || 0) : 0
+  const totalCount = rows * cols
+
+  let currentDisplayCount = 0
+  for (let i = 0; i < rows; i++) {
+    for (let j = 0; j < cols; j++) if (finalMask[i][j]) currentDisplayCount++
+  }
+
+  const diagonalTotalCount = Math.min(rows, cols)
+  let diagonalTrueCount = 0
+  for (let i = 0; i < diagonalTotalCount; i++) if (finalMask[i][i]) diagonalTrueCount++
+
+  let missingMatchCount = 0
+  if (topKAxis === 'x') {
+    for (let i = 0; i < rows; i++) {
+      let hasTrue = false
+      for (let j = 0; j < cols; j++) {
+        if (finalMask[i][j]) {
+          hasTrue = true
+          break
+        }
+      }
+      if (!hasTrue) missingMatchCount++
+    }
+  } else if (topKAxis === 'y') {
+    for (let j = 0; j < cols; j++) {
+      let hasTrue = false
+      for (let i = 0; i < rows; i++) {
+        if (finalMask[i][j]) {
+          hasTrue = true
+          break
+        }
+      }
+      if (!hasTrue) missingMatchCount++
+    }
+  }
+
+  return {
+    totalCount,
+    currentDisplayCount,
+    diagonalTrueCount,
+    diagonalTotalCount,
+    missingMatchCount,
+    topKAxis,
+  }
+}
+
+type DifferenceModeStats = {
+  truePositive: number
+  trueNegative: number
+  falsePositive: number
+  falseNegative: number
+  contextRecall: number
+  contextPrecision: number
+}
+
+function calculateDifferenceModeStatistics(groundTruthMask: boolean[][], currentMask: boolean[][]): DifferenceModeStats {
+  const rows = Math.min(groundTruthMask.length, currentMask.length)
+  const cols =
+    rows > 0 ? Math.min(groundTruthMask[0]?.length || 0, currentMask[0]?.length || 0) : 0
+
+  let truePositive = 0
+  let trueNegative = 0
+  let falsePositive = 0
+  let falseNegative = 0
+
+  for (let i = 0; i < rows; i++) {
+    for (let j = 0; j < cols; j++) {
+      const gt = Boolean(groundTruthMask[i][j])
+      const cur = Boolean(currentMask[i][j])
+      if (gt && cur) truePositive++
+      else if (!gt && !cur) trueNegative++
+      else if (!gt && cur) falsePositive++
+      else falseNegative++
+    }
+  }
+
+  const contextRecall = truePositive + falseNegative > 0 ? truePositive / (truePositive + falseNegative) : 0
+  const contextPrecision = truePositive + falsePositive > 0 ? truePositive / (truePositive + falsePositive) : 0
+
+  return { truePositive, trueNegative, falsePositive, falseNegative, contextRecall, contextPrecision }
+}
+
+function StatsGrid({ children }: { children: ReactNode }) {
+  return <div className="grid grid-cols-2 gap-2">{children}</div>
+}
+
+function StatsItem({
+  label,
+  value,
+  tone = 'default',
+}: {
+  label: string
+  value: ReactNode
+  tone?: 'default' | 'muted' | 'info' | 'success' | 'warning' | 'danger'
+}) {
+  const toneClass =
+    tone === 'success'
+      ? 'bg-emerald-50 text-emerald-700 border-emerald-100 dark:bg-emerald-900/15 dark:text-emerald-200 dark:border-emerald-900/30'
+      : tone === 'warning'
+        ? 'bg-amber-50 text-amber-800 border-amber-100 dark:bg-amber-900/15 dark:text-amber-200 dark:border-amber-900/30'
+        : tone === 'danger'
+          ? 'bg-rose-50 text-rose-700 border-rose-100 dark:bg-rose-900/15 dark:text-rose-200 dark:border-rose-900/30'
+          : tone === 'info'
+            ? 'bg-sky-50 text-sky-700 border-sky-100 dark:bg-sky-900/15 dark:text-sky-200 dark:border-sky-900/30'
+            : tone === 'muted'
+              ? 'bg-muted text-muted-foreground border-border'
+              : 'bg-card text-foreground border-border'
+
+  return (
+    <div className={cn('rounded-lg border p-2', toneClass)}>
+      <div className="text-[11px] font-medium opacity-90">{label}</div>
+      <div className="text-sm font-semibold mt-1">{value}</div>
+    </div>
+  )
 }
