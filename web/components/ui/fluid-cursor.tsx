@@ -86,7 +86,7 @@ export function FluidCursor() {
       x: 0,
       y: 0,
       backgroundColor: "transparent",
-      border: "2px solid var(--primary)",
+      border: "2px solid hsl(var(--primary))",
       borderRadius: "50%",
       opacity: 0.5,
       mixBlendMode: "normal" as const,
@@ -96,8 +96,8 @@ export function FluidCursor() {
       width: 48,
       x: -8,
       y: -8,
-      backgroundColor: "rgba(var(--primary), 0.1)",
-      border: "1px solid var(--primary)",
+      backgroundColor: "hsl(var(--primary) / 0.12)",
+      border: "1px solid hsl(var(--primary))",
       borderRadius: "50%",
       opacity: 0.8,
       mixBlendMode: "normal" as const,
@@ -108,7 +108,7 @@ export function FluidCursor() {
       x: 0,
       y: 0,
       backgroundColor: "transparent",
-      border: "2px dashed var(--primary)", // Dashed ring for input
+      border: "2px dashed hsl(var(--primary))", // Dashed ring for input
       borderRadius: "50%",
       opacity: 0.5,
       mixBlendMode: "normal" as const,

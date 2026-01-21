@@ -1,0 +1,62 @@
+'use client'
+
+import * as React from "react"
+import { Search, X } from "lucide-react"
+
+import { IconButton } from "@/components/ui/icon-button"
+import { Input } from "@/components/ui/input"
+import { cn } from "@/lib/utils"
+
+export type SearchInputProps = Omit<
+  React.InputHTMLAttributes<HTMLInputElement>,
+  "type" | "value" | "onChange"
+> & {
+  value: string
+  onValueChange: (next: string) => void
+  containerClassName?: string
+  inputClassName?: string
+  onClear?: () => void
+}
+
+export function SearchInput({
+  value,
+  onValueChange,
+  containerClassName,
+  inputClassName,
+  onClear,
+  placeholder = "搜索…",
+  ...props
+}: SearchInputProps) {
+  const inputRef = React.useRef<HTMLInputElement>(null)
+
+  return (
+    <div className={cn("relative", containerClassName)}>
+      <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground/70" />
+      <Input
+        ref={inputRef}
+        type="search"
+        value={value}
+        onChange={(e) => onValueChange(e.target.value)}
+        placeholder={placeholder}
+        className={cn("pl-9 pr-10", inputClassName)}
+        {...props}
+      />
+      {value ? (
+        <IconButton
+          aria-label="清除搜索"
+          tabIndex={-1}
+          type="button"
+          className="absolute right-1.5 top-1/2 h-8 w-8 -translate-y-1/2"
+          onClick={() => {
+            onValueChange("")
+            onClear?.()
+            inputRef.current?.focus()
+          }}
+        >
+          <X className="h-4 w-4" />
+        </IconButton>
+      ) : null}
+    </div>
+  )
+}
+
