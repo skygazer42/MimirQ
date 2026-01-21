@@ -950,3 +950,59 @@ export interface RegressionRunDetail {
   run: RegressionRun
   items: RegressionItem[]
 }
+
+// ==================== RAGViz（相似度热力图） ====================
+
+export interface RagvizSimilarityCollection {
+  id: string
+  label: string
+  kind: string
+  count: number
+  meta?: Record<string, any>
+}
+
+export interface RagvizSimilarityCollectionsResponse {
+  success: boolean
+  collections: RagvizSimilarityCollection[]
+  count: number
+}
+
+export interface RagvizSimilarityRequest {
+  x_collection: string
+  y_collection: string
+  x_max_items?: number
+  y_max_items?: number
+  max_items?: number
+}
+
+export interface RagvizSimilarityStats {
+  total_pairs: number
+  avg_similarity: number
+  min_similarity: number
+  max_similarity: number
+  std_similarity: number
+  high_similarity_count: number
+  medium_similarity_count: number
+  low_similarity_count: number
+  compute_time: number
+}
+
+export interface RagvizSimilarityMatrixResult {
+  matrix: number[][]
+  x_data: Record<string, any>[]
+  y_data: Record<string, any>[]
+  x_available_fields: string[]
+  y_available_fields: string[]
+  stats: RagvizSimilarityStats
+  metadata: Record<string, any>
+}
+
+export interface RagvizSimilarityCalculateResponse {
+  success: boolean
+  result?: RagvizSimilarityMatrixResult
+  message?: string
+  error?: string
+  error_type?: string
+  x_collection?: string
+  y_collection?: string
+}
