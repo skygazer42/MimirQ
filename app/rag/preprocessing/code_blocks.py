@@ -23,7 +23,9 @@ class CodeLineNumberStripResult:
 
 
 _CODE_FENCE_RE = re.compile(r"^\s*```")
-_LINE_NUMBER_RE = re.compile(r"^(?P<prefix>[ \t]*)(?P<num>\d{1,5})(?P<sep>[:.)]?)\s+(?P<body>\S.*)$")
+# Capture the whitespace after the line number so we can preserve indentation
+# (drop the first separator space, keep remaining indent).
+_LINE_NUMBER_RE = re.compile(r"^(?P<prefix>[ \t]*)(?P<num>\d{1,5})(?P<sep>[:.)]?)(?P<ws>[ \t]+)(?P<body>\S.*)$")
 
 
 def _should_strip_line_numbers(code_lines: list[str]) -> bool:
@@ -84,7 +86,8 @@ def strip_fenced_code_line_numbers(text: str) -> CodeLineNumberStripResult:
             if not m:
                 out.append(ln)
                 continue
-            out.append(f"{m.group('prefix')}{m.group('body')}")
+            ws = m.group("ws") or ""
+            out.append(f"{m.group('prefix')}{ws[1:]}{m.group('body')}")
             lines_stripped += 1
             changed_any = True
         if changed_any:
@@ -128,4 +131,3 @@ __all__ = [
     "CodeLineNumberStripResult",
     "strip_fenced_code_line_numbers",
 ]
-
