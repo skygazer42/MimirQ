@@ -8,6 +8,7 @@ import type {
   DocumentUserMetadataPatchRequest,
   DocumentBatchUserMetadataPatchRequest,
   DocumentBatchUserMetadataPatchResponse,
+  DocumentPipelinePatchRequest,
   Conversation,
   Message,
   ChatRequest,
@@ -305,6 +306,17 @@ export const documentApi = {
     payload: DocumentUserMetadataPatchRequest
   ): Promise<Document> {
     const { data } = await apiClient.patch(`/documents/${documentId}/metadata`, payload)
+    return data
+  },
+
+  /**
+   * 更新文档的 pipeline 配置（metadata.pipeline）
+   */
+  async patchPipeline(
+    documentId: string,
+    payload: DocumentPipelinePatchRequest
+  ): Promise<Document> {
+    const { data } = await apiClient.patch(`/documents/${documentId}/pipeline`, payload)
     return data
   },
 

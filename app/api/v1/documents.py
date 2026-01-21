@@ -3,6 +3,7 @@ Document management API.
 """
 import asyncio
 import contextlib
+from dataclasses import asdict
 import hashlib
 import json
 import re
@@ -26,6 +27,7 @@ from app.api.schemas.document import (
     ParsedSegment,
     ManualDocumentCreate,
     DocumentPipelineOptions,
+    DocumentPipelinePatchRequest,
     DocumentUserMetadataPatchRequest,
     DocumentBatchUserMetadataPatchRequest,
     DocumentBatchUserMetadataPatchResponse,
@@ -48,6 +50,7 @@ from app.services.indexer import Indexer
 from app.services.pipeline_config import (
     build_indexing_options,
     build_pipeline_metadata,
+    parse_pipeline_from_metadata,
     resolve_pipeline_effective,
 )
 from app.services.mineru_service import mineru_service
@@ -1361,6 +1364,58 @@ async def get_document(
         # accidental lazy-loading when include_chunks=false.
         setattr(document, "chunks_loaded", document.chunks)
 
+    return document
+
+
+@router.patch("/{document_id}/pipeline", response_model=DocumentDetail)
+async def patch_document_pipeline(
+    document_id: uuid.UUID,
+    payload: DocumentPipelinePatchRequest,
+    tenant_id: UUID = Depends(get_tenant_id),
+    account_id: str = Depends(get_current_account_id),
+    db: Session = Depends(get_db),
+):
+    """
+    Patch `documents.metadata.pipeline` for document-level pipeline overrides.
+    """
+    DatasetService.ensure_member(db, tenant_id, account_id)
+
+    document = (
+        db.query(DBDocument)
+        .filter(DBDocument.id == document_id, DBDocument.tenant_id == tenant_id)
+        .first()
+    )
+    if not document:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    if document.dataset_id:
+        ds = DatasetService.get_dataset(db, tenant_id, document.dataset_id)
+        DatasetService.assert_dataset_writable(db, ds, account_id)
+
+    current_status = str(document.status or "").lower()
+    if current_status in {"pending", "processing"}:
+        raise HTTPException(status_code=409, detail=f"Cannot edit pipeline for a {current_status} document")
+
+    meta = dict(document.doc_metadata or {})
+    current_opts = parse_pipeline_from_metadata(meta)
+    base = {} if bool(payload.replace) else asdict(current_opts)
+
+    patch = payload.patch or DocumentPipelineOptions()
+    for field in getattr(patch, "model_fields_set", set()):
+        base[field] = getattr(patch, field)
+
+    next_opts = PipelineOptions(**base)
+    pipeline_metadata = build_pipeline_metadata(next_opts)
+    if pipeline_metadata:
+        meta["pipeline"] = pipeline_metadata
+    else:
+        meta.pop("pipeline", None)
+
+    meta["pipeline_hash"] = _compute_pipeline_hash(meta)
+
+    document.doc_metadata = meta
+    db.commit()
+    db.refresh(document)
     return document
 
 
