@@ -38,6 +38,7 @@ import {
 } from 'lucide-react'
 import { AppFrame } from '@/components/app-frame'
 import { Button } from '@/components/ui/button'
+import { PageScaffold } from '@/components/ui/page-scaffold'
 import { documentApi, parsingApi } from '@/lib/api-client'
 import { formatApiError } from '@/lib/api-errors'
 import { formatFileSize, cn } from '@/lib/utils'
@@ -1483,23 +1484,32 @@ export default function ParsingPage() {
 
   return (
     <AppFrame>
-          {/* 顶部标题栏 */}
-          <header className="flex-shrink-0 bg-card/80 dark:bg-background/70 border-b border-border/60 px-6 py-4 h-16 flex items-center justify-between z-20 shadow-sm dark:shadow-none relative backdrop-blur">
-            <div className="flex items-center gap-4">
-              <div className="w-9 h-9 rounded-xl flex items-center justify-center bg-card ring-1 ring-border/60 shadow-sm dark:shadow-none">
-                <Sparkles className="w-5 h-5 text-foreground/80 dark:text-muted-foreground" />
-              </div>
-              <div>
-                <h1 className="text-3xl font-bold text-foreground leading-tight">文档解析工作台</h1>
-                <p className="text-xs text-muted-foreground dark:text-muted-foreground leading-none mt-1">
-                  上传文件并转换为 Markdown 格式，为数据治理做准备
-                </p>
-              </div>
+      <PageScaffold
+        showHeader={false}
+        title="文档解析工作台"
+        description="上传文件并转换为 Markdown 格式，为数据治理做准备"
+        icon={Sparkles}
+        size="full"
+        bodyClassName="px-0 pb-0 overflow-hidden"
+        bodyContainerClassName="flex h-full min-h-0 flex-col"
+      >
+        {/* 顶部标题栏 */}
+        <header className="flex-shrink-0 bg-card/80 dark:bg-background/70 border-b border-border/60 px-6 py-4 h-16 flex items-center justify-between z-20 shadow-sm dark:shadow-none relative backdrop-blur">
+          <div className="flex items-center gap-4">
+            <div className="w-9 h-9 rounded-xl flex items-center justify-center bg-card ring-1 ring-border/60 shadow-sm dark:shadow-none">
+              <Sparkles className="w-5 h-5 text-foreground/80 dark:text-muted-foreground" />
             </div>
-            <div className="absolute inset-x-6 bottom-0 h-px bg-gradient-to-r from-transparent via-slate-200/70 dark:via-slate-800/60 to-transparent" />
-          </header>
+            <div>
+              <h1 className="text-3xl font-bold text-foreground leading-tight">文档解析工作台</h1>
+              <p className="text-xs text-muted-foreground dark:text-muted-foreground leading-none mt-1">
+                上传文件并转换为 Markdown 格式，为数据治理做准备
+              </p>
+            </div>
+          </div>
+          <div className="absolute inset-x-6 bottom-0 h-px bg-gradient-to-r from-transparent via-slate-200/70 dark:via-slate-800/60 to-transparent" />
+        </header>
 
-          <div className="flex-1 flex overflow-hidden min-h-0">
+        <div className="flex-1 flex overflow-hidden min-h-0">
             {/* 左侧：文件列表面板 */}
             <aside
               className={cn(
@@ -1518,6 +1528,7 @@ export default function ParsingPage() {
                 )}
                 onClick={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
                 title={isSidebarCollapsed ? "展开侧边栏" : "收起侧边栏"}
+                aria-label={isSidebarCollapsed ? "展开侧边栏" : "收起侧边栏"}
               >
                 {isSidebarCollapsed ? <PanelRightOpen className="w-3 h-3" /> : <PanelRightClose className="w-3 h-3" />}
               </Button>
@@ -1623,6 +1634,8 @@ export default function ParsingPage() {
                           variant="ghost"
                           size="icon"
                           className="h-7 w-7 text-muted-foreground dark:text-muted-foreground hover:bg-muted dark:hover:bg-muted rounded-lg"
+                          aria-label="上传操作"
+                          title="上传操作"
                         >
                           <Plus className="w-4 h-4" />
                         </Button>
@@ -2397,6 +2410,7 @@ export default function ParsingPage() {
               )}
             </div>
           </div>
+      </PageScaffold>
     </AppFrame>
   )
 }

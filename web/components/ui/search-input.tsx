@@ -18,22 +18,35 @@ export type SearchInputProps = Omit<
   onClear?: () => void
 }
 
-export function SearchInput({
-  value,
-  onValueChange,
-  containerClassName,
-  inputClassName,
-  onClear,
-  placeholder = "搜索…",
-  ...props
-}: SearchInputProps) {
-  const inputRef = React.useRef<HTMLInputElement>(null)
+export const SearchInput = React.forwardRef<HTMLInputElement, SearchInputProps>(function SearchInput(
+  {
+    value,
+    onValueChange,
+    containerClassName,
+    inputClassName,
+    onClear,
+    placeholder = "搜索…",
+    ...props
+  },
+  forwardedRef
+) {
+  const inputRef = React.useRef<HTMLInputElement | null>(null)
+
+  const setRefs = (node: HTMLInputElement | null) => {
+    inputRef.current = node
+    if (!forwardedRef) return
+    if (typeof forwardedRef === "function") {
+      forwardedRef(node)
+      return
+    }
+    ;(forwardedRef as React.MutableRefObject<HTMLInputElement | null>).current = node
+  }
 
   return (
     <div className={cn("relative", containerClassName)}>
       <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground/70" />
       <Input
-        ref={inputRef}
+        ref={setRefs}
         type="search"
         value={value}
         onChange={(e) => onValueChange(e.target.value)}
@@ -44,7 +57,6 @@ export function SearchInput({
       {value ? (
         <IconButton
           aria-label="清除搜索"
-          tabIndex={-1}
           type="button"
           className="absolute right-1.5 top-1/2 h-8 w-8 -translate-y-1/2"
           onClick={() => {
@@ -58,5 +70,6 @@ export function SearchInput({
       ) : null}
     </div>
   )
-}
+})
 
+SearchInput.displayName = "SearchInput"

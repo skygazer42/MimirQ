@@ -18,6 +18,7 @@ type PageScaffoldProps = {
   toolbar?: React.ReactNode
   children: React.ReactNode
   size?: ComponentProps<typeof PageContainer>["size"]
+  showHeader?: boolean
   headerClassName?: string
   topClassName?: string
   toolbarClassName?: string
@@ -37,6 +38,7 @@ export function PageScaffold({
   toolbar,
   children,
   size = "6xl",
+  showHeader = true,
   headerClassName,
   topClassName,
   toolbarClassName,
@@ -46,20 +48,22 @@ export function PageScaffold({
 }: PageScaffoldProps) {
   return (
     <>
-      <div className="px-6 md:px-8 pt-6 md:pt-8 pb-5 md:pb-6 flex-shrink-0 relative z-10">
-        <PageContainer size={size}>
-          <PageHeader
-            title={title}
-            description={description}
-            icon={icon}
-            iconColor={iconColor}
-            badge={badge}
-            className={cn("p-0", headerClassName)}
-          >
-            {actions}
-          </PageHeader>
-        </PageContainer>
-      </div>
+      {showHeader ? (
+        <div className="px-6 md:px-8 pt-6 md:pt-8 pb-5 md:pb-6 flex-shrink-0 relative z-10">
+          <PageContainer size={size}>
+            <PageHeader
+              title={title}
+              description={description}
+              icon={icon}
+              iconColor={iconColor}
+              badge={badge}
+              className={cn("p-0", headerClassName)}
+            >
+              {actions}
+            </PageHeader>
+          </PageContainer>
+        </div>
+      ) : null}
 
       {top ? (
         <div className={cn("px-6 md:px-8 pb-6 flex-shrink-0 relative z-10", topClassName)}>
