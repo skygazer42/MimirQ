@@ -80,6 +80,22 @@ class DocumentPipelineOptions(BaseModel):
     entity_vector_enabled: Optional[bool] = None
 
 
+class DocumentPipelinePatchRequest(BaseModel):
+    """
+    Patch `documents.metadata.pipeline` (document-level pipeline overrides).
+
+    - When `replace=false` (default), apply only fields provided in `patch`.
+      - Any field explicitly set to `null` will clear that override (revert to defaults).
+    - When `replace=true`, replace the whole pipeline override with `patch`.
+    """
+
+    patch: DocumentPipelineOptions = Field(
+        default_factory=DocumentPipelineOptions,
+        description="Pipeline patch; null values clear overrides (when field is present).",
+    )
+    replace: bool = Field(default=False, description="Replace entire pipeline override instead of patching")
+
+
 class DocumentUserMetadataPatchRequest(BaseModel):
     """
     Patch `documents.metadata.user` (user-editable metadata namespace).

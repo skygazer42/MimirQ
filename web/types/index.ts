@@ -132,6 +132,11 @@ export interface DocumentPipelineOptions {
   entity_vector_enabled?: boolean
 }
 
+export interface DocumentPipelinePatchRequest {
+  patch: DocumentPipelineOptions
+  replace?: boolean
+}
+
 export interface Citation {
   document_id: string
   document_name: string
