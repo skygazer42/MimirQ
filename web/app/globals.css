@@ -159,6 +159,18 @@
     scrollbar-width: none;
     /* Firefox */
   }
+
+  /* Consistent scroll area behavior across panels (Firefox + modern browsers). */
+  .custom-scrollbar {
+    scrollbar-width: thin;
+    scrollbar-color: hsl(var(--muted-foreground) / 0.35) transparent;
+    scrollbar-gutter: stable;
+    overscroll-behavior: contain;
+  }
+
+  html.dark .custom-scrollbar {
+    scrollbar-color: hsl(var(--muted-foreground) / 0.45) transparent;
+  }
 }
 
 /* Custom Scrollbar - Sleek & Thin */

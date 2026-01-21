@@ -7,6 +7,9 @@ import { useState, useEffect, useMemo } from 'react'
 import { AppFrame } from '@/components/app-frame'
 import { ModelProviderCard } from '@/components/model-provider-card'
 import { ModelConfigDialog } from '@/components/model-config-dialog'
+import { PageHeader } from '@/components/ui/page-header'
+import { PageBody } from '@/components/ui/page-body'
+import { PageContainer } from '@/components/ui/page-container'
 import { MODEL_PROVIDERS } from '@/types/models'
 import type { ModelProvider, ProviderConfig, ProviderCategory } from '@/types/models'
 import {
@@ -410,58 +413,58 @@ export default function SettingsPage() {
   }
 
   return (
-    <AppFrame mainClassName="overflow-y-auto">
-        <div className="max-w-6xl mx-auto px-8 py-10">
-          {/* 页面头部 */}
-          <div className="flex items-center justify-between mb-10">
-            <div className="flex items-center gap-4">
-              <div className="p-3 bg-card border border-border rounded-xl shadow-sm">
-                <Settings2 className="h-6 w-6 text-foreground/80" />
-              </div>
-              <div>
-                <h1 className="text-3xl font-bold text-foreground tracking-tight">设置与配置</h1>
-                <p className="text-sm text-muted-foreground mt-1">
-                  管理功能开关、模型接入及系统参数
-                </p>
-              </div>
-            </div>
-
-            {/* 保存按钮 */}
-            <div className="flex items-center gap-3">
-              {saveMessage && (
-                <div className={cn(
-                  "flex items-center gap-2 px-3 py-1.5 rounded-full text-sm",
-                  saveMessage.type === 'success'
-                    ? 'bg-green-50 text-green-600 dark:bg-green-500/10 dark:text-green-300'
-                    : 'bg-red-50 text-red-600 dark:bg-red-500/10 dark:text-red-300'
-                )}>
-                  {saveMessage.type === 'success' ? <CheckCircle2 className="w-4 h-4" /> : <XCircle className="w-4 h-4" />}
-                  {saveMessage.text}
-                </div>
+    <AppFrame>
+      <PageHeader
+        title="设置与配置"
+        badge="SETTINGS"
+        icon={Settings2}
+        iconColor="text-sky-600 dark:text-sky-400"
+        description="管理功能开关、模型接入及系统参数"
+        className="mx-auto w-full max-w-6xl"
+      >
+        <>
+          {saveMessage && (
+            <div
+              className={cn(
+                "flex items-center gap-2 px-3 py-1.5 rounded-full text-sm",
+                saveMessage.type === "success"
+                  ? "bg-green-50 text-green-600 dark:bg-green-500/10 dark:text-green-300"
+                  : "bg-red-50 text-red-600 dark:bg-red-500/10 dark:text-red-300"
               )}
-              <Button
-                variant="outline"
-                onClick={loadSettings}
-                disabled={loading}
-                className="gap-2"
-              >
-                <RefreshCw className={cn("w-4 h-4", loading && "animate-spin")} />
-                刷新
-              </Button>
-              <Button
-                onClick={saveSettings}
-                disabled={!hasChanges || saving}
-                className={cn(
-                  "gap-2",
-                  hasChanges ? "bg-blue-600 hover:bg-blue-700" : "bg-muted text-muted-foreground"
-                )}
-              >
-                <Save className={cn("w-4 h-4", saving && "animate-pulse")} />
-                {saving ? '保存中...' : '保存配置'}
-              </Button>
+            >
+              {saveMessage.type === "success" ? (
+                <CheckCircle2 className="w-4 h-4" />
+              ) : (
+                <XCircle className="w-4 h-4" />
+              )}
+              {saveMessage.text}
             </div>
-          </div>
+          )}
+          <Button
+            variant="outline"
+            onClick={loadSettings}
+            disabled={loading}
+            className="gap-2"
+          >
+            <RefreshCw className={cn("w-4 h-4", loading && "animate-spin")} />
+            刷新
+          </Button>
+          <Button
+            onClick={saveSettings}
+            disabled={!hasChanges || saving}
+            className={cn(
+              "gap-2",
+              hasChanges ? "bg-blue-600 hover:bg-blue-700" : "bg-muted text-muted-foreground"
+            )}
+          >
+            <Save className={cn("w-4 h-4", saving && "animate-pulse")} />
+            {saving ? "保存中..." : "保存配置"}
+          </Button>
+        </>
+      </PageHeader>
 
+      <PageBody>
+        <PageContainer>
           {loading ? (
             <div className="flex items-center justify-center h-64">
               <RefreshCw className="w-8 h-8 animate-spin text-muted-foreground" />
@@ -1252,15 +1255,16 @@ export default function SettingsPage() {
               </section>
             </div>
           )}
-        </div>
+        </PageContainer>
+      </PageBody>
 
-        {/* 配置对话框 */}
-        <ModelConfigDialog
-          provider={selectedProvider}
-          open={dialogOpen}
-          onClose={() => setDialogOpen(false)}
-          onSave={handleSaveConfig}
-        />
+      {/* 配置对话框 */}
+      <ModelConfigDialog
+        provider={selectedProvider}
+        open={dialogOpen}
+        onClose={() => setDialogOpen(false)}
+        onSave={handleSaveConfig}
+      />
     </AppFrame>
   )
 }

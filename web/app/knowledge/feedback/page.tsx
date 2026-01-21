@@ -9,6 +9,7 @@ import { toast } from 'sonner'
 import { AppFrame } from '@/components/app-frame'
 import { PageHeader } from '@/components/ui/page-header'
 import { PageHeaderBar } from '@/components/ui/page-header-bar'
+import { PageBody } from '@/components/ui/page-body'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
@@ -151,7 +152,7 @@ export default function FeedbackTriagePage() {
           </PageHeader>
         </PageHeaderBar>
 
-        <div className="px-8 pb-4 grid grid-cols-2 lg:grid-cols-4 gap-4 mt-4">
+        <div className="px-6 md:px-8 pb-4 grid grid-cols-2 lg:grid-cols-4 gap-4 mt-4">
           {[
             { label: '总反馈量', value: stats.total, icon: MessageSquare, color: 'text-indigo-600 dark:text-indigo-400', bg: 'bg-indigo-50 dark:bg-indigo-500/10', border: 'hover:border-indigo-200 dark:hover:border-indigo-800' },
             { label: '点赞 (Like)', value: stats.upvotes, icon: ThumbsUp, color: 'text-emerald-600 dark:text-emerald-400', bg: 'bg-emerald-50 dark:bg-emerald-500/10', border: 'hover:border-emerald-200 dark:hover:border-emerald-800' },
@@ -177,7 +178,7 @@ export default function FeedbackTriagePage() {
           ))}
         </div>
 
-        <div className="px-8 pb-6 flex-shrink-0 z-10 sticky top-[88px] my-2">
+        <div className="px-6 md:px-8 pb-6 flex-shrink-0 z-10 sticky top-[88px] my-2">
           <div className="flex flex-col md:flex-row md:items-center gap-0 bg-white/80 dark:bg-slate-900/80 backdrop-blur-xl border border-slate-200 dark:border-slate-800 shadow-lg shadow-slate-200/50 dark:shadow-none rounded-full p-1.5 transition-all duration-300 max-w-4xl mx-auto md:mx-0">
             <div className="relative flex-1 group pl-2">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 dark:text-slate-500 group-hover:text-indigo-500 dark:group-hover:text-indigo-400 transition-colors" />
@@ -204,7 +205,7 @@ export default function FeedbackTriagePage() {
           </div>
         </div>
 
-        <section className="flex-1 overflow-y-auto px-8 pb-10 z-10 custom-scrollbar">
+        <PageBody className="pb-10 z-10">
           <div className="space-y-3">
             {filtered.map((item) => {
               const kind = classifyFeedback(item.rating)
@@ -296,7 +297,7 @@ export default function FeedbackTriagePage() {
               </div>
             )}
           </div>
-        </section>
+        </PageBody>
 
         <Dialog open={Boolean(detail)} onOpenChange={(o) => (!o ? setDetail(null) : null)}>
           <DialogContent className="max-w-3xl bg-[#fafafa] dark:bg-slate-950 border-slate-200 dark:border-slate-800 shadow-2xl sm:rounded-[2rem] p-0 overflow-hidden outline-none">

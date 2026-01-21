@@ -28,7 +28,7 @@ const PageLoading = ({
       role="status"
       aria-live="polite"
       className={cn(
-        "flex-1 flex items-center justify-center bg-background",
+        "flex-1 flex items-center justify-center",
         className
       )}
     >

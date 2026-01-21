@@ -4,6 +4,10 @@
 import { AppFrame } from '@/components/app-frame'
 import { ProviderIcon } from '@/components/provider-icon'
 import { Card, CardContent } from '@/components/ui/card'
+import { PageHeader } from '@/components/ui/page-header'
+import { PageBody } from '@/components/ui/page-body'
+import { PageContainer } from '@/components/ui/page-container'
+import { Grid3X3 } from 'lucide-react'
 
 const providers = [
   { id: 'openai', name: 'OpenAI', color: '#10A37F' },
@@ -24,14 +28,18 @@ const providers = [
 
 export default function LogosPreviewPage() {
   return (
-    <AppFrame mainClassName="overflow-y-auto">
-      <div className="max-w-6xl mx-auto px-6 md:px-8 py-8">
-        <h1 className="text-3xl md:text-4xl font-bold text-foreground mb-2">
-          品牌 Logo 预览
-        </h1>
-        <p className="text-muted-foreground mb-8">
-          查看所有模型提供商的图标展示与适配效果
-        </p>
+    <AppFrame>
+      <PageHeader
+        title="品牌 Logo 预览"
+        badge="LOGOS"
+        icon={Grid3X3}
+        iconColor="text-cyan-600 dark:text-cyan-400"
+        description="查看所有模型提供商的图标展示与适配效果"
+        className="mx-auto w-full max-w-6xl"
+      />
+
+      <PageBody>
+        <PageContainer>
 
         {/* Logo 网格 */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-12">
@@ -173,19 +181,20 @@ export default function LogosPreviewPage() {
         {/* 说明 */}
         <Card className="mt-6 rounded-xl border border-border bg-card shadow-soft">
           <CardContent className="p-6">
-          <h3 className="text-lg font-semibold text-foreground mb-2">
-            使用说明
-          </h3>
-          <ul className="text-sm text-muted-foreground space-y-1">
-            <li>• 所有 Logo 使用 SVG 格式,支持任意缩放</li>
-            <li>• 图标路径: <code className="bg-muted px-1 rounded">/public/logos/</code></li>
-            <li>• 组件: <code className="bg-muted px-1 rounded">&lt;ProviderIcon providerId=&quot;openai&quot; /&gt;</code></li>
-            <li>• 建议尺寸: 24px (小)、32px (中)、48px (大)</li>
-            <li>• 如需替换,访问 <code className="bg-muted px-1 rounded">/public/logos/README.md</code> 查看指南</li>
-          </ul>
+            <h3 className="text-lg font-semibold text-foreground mb-2">
+              使用说明
+            </h3>
+            <ul className="text-sm text-muted-foreground space-y-1">
+              <li>• 所有 Logo 使用 SVG 格式,支持任意缩放</li>
+              <li>• 图标路径: <code className="bg-muted px-1 rounded">/public/logos/</code></li>
+              <li>• 组件: <code className="bg-muted px-1 rounded">&lt;ProviderIcon providerId=&quot;openai&quot; /&gt;</code></li>
+              <li>• 建议尺寸: 24px (小)、32px (中)、48px (大)</li>
+              <li>• 如需替换,访问 <code className="bg-muted px-1 rounded">/public/logos/README.md</code> 查看指南</li>
+            </ul>
           </CardContent>
         </Card>
-      </div>
+        </PageContainer>
+      </PageBody>
     </AppFrame>
   )
 }

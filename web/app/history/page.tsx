@@ -173,9 +173,9 @@ function HistoryPageContent() {
   return (
     <AppFrame mainClassName="overflow-hidden">
         {/* 侧边栏 - 对话列表 */}
-        <div className="w-80 border-r border-slate-200 dark:border-slate-800 flex flex-col bg-slate-50/50 dark:bg-slate-900/50">
+        <div className="w-80 border-r border-border flex flex-col bg-card/50 backdrop-blur-sm">
           {/* 头部 */}
-          <div className="p-4 border-b border-slate-200 dark:border-slate-800">
+          <div className="p-4 border-b border-border">
             <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
               <input
@@ -183,13 +183,13 @@ function HistoryPageContent() {
                 placeholder="搜索对话..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pl-9 pr-4 py-2 text-sm bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-transparent transition-all"
+                className="w-full pl-9 pr-4 py-2 text-sm bg-background/80 border border-border rounded-xl shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background transition"
               />
             </div>
           </div>
 
           {/* 对话列表 */}
-          <div className="flex-1 overflow-y-auto">
+          <div className="flex-1 overflow-y-auto custom-scrollbar">
             {isLoadingList ? (
               <div className="flex items-center justify-center py-8">
                 <Loader2 className="h-6 w-6 animate-spin text-sky-500" />
@@ -206,7 +206,7 @@ function HistoryPageContent() {
                 
                 return (
                   <div key={group}>
-                    <div className="px-4 py-2 text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider sticky top-0 bg-slate-50/90 dark:bg-slate-900/90 backdrop-blur-sm z-10">
+                    <div className="px-4 py-2 text-[10px] font-bold text-muted-foreground uppercase tracking-wider sticky top-0 bg-card/80 backdrop-blur-sm z-10 border-b border-border/60">
                       {group}
                     </div>
                     {convs.map((conversation) => (
@@ -229,20 +229,20 @@ function HistoryPageContent() {
         </div>
 
         {/* 主区域 - 对话详情 */}
-        <div className="flex-1 flex flex-col bg-white dark:bg-slate-950">
+        <div className="flex-1 flex flex-col bg-background">
           {selectedConversation ? (
             <>
               {/* 对话头部 */}
-              <div className="px-6 py-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between bg-white/80 dark:bg-slate-950/80 backdrop-blur-md sticky top-0 z-10">
+              <div className="px-6 py-4 border-b border-border flex items-center justify-between bg-background/70 backdrop-blur-md sticky top-0 z-10">
                 <div className="flex items-center gap-4">
                   <div className="w-10 h-10 bg-gradient-to-br from-sky-500 to-teal-600 rounded-xl flex items-center justify-center shadow-md shadow-sky-200 dark:shadow-none">
                     <MessageSquare className="h-5 w-5 text-white" />
                   </div>
                   <div>
-                    <h2 className="font-bold text-slate-900 dark:text-white tracking-tight">
+                    <h2 className="font-bold text-foreground tracking-tight">
                       {selectedConversation.title || '未命名对话'}
                     </h2>
-                    <p className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest mt-0.5">
+                    <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mt-0.5">
                       {selectedConversation.message_count} 条消息 · {formatDate(selectedConversation.created_at)}
                     </p>
                   </div>
@@ -252,7 +252,7 @@ function HistoryPageContent() {
                     variant="outline"
                     size="sm"
                     onClick={handleEvaluateConversation}
-                    className="gap-2 rounded-xl border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800"
+                    className="gap-2 rounded-xl hover:bg-muted/50"
                   >
                     <BarChart3 className="h-3.5 w-3.5" />
                     RAGAS 评测
@@ -260,7 +260,7 @@ function HistoryPageContent() {
                   <Button
                     size="sm"
                     onClick={handleContinueChat}
-                    className="gap-2 rounded-xl bg-slate-900 dark:bg-sky-600 hover:bg-slate-800 dark:hover:bg-sky-700 text-white"
+                    className="gap-2 rounded-xl bg-primary hover:bg-primary/90 text-primary-foreground"
                   >
                     <Send className="h-3.5 w-3.5" />
                     继续对话
@@ -269,7 +269,7 @@ function HistoryPageContent() {
               </div>
 
               {/* 消息列表 */}
-              <div className="flex-1 overflow-y-auto px-6 py-8">
+              <div className="flex-1 overflow-y-auto custom-scrollbar px-6 py-8">
                 {isLoadingMessages ? (
                   <div className="flex items-center justify-center h-full">
                     <Loader2 className="h-8 w-8 animate-spin text-sky-500" />
@@ -345,13 +345,21 @@ function ConversationItem({
 }) {
   return (
     <div
+      role="button"
+      tabIndex={0}
       className={cn(
-        'group px-4 py-4 cursor-pointer transition-all border-l-4 relative',
+        'group px-4 py-4 cursor-pointer transition-all border-l-4 relative focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background',
         isSelected 
           ? 'bg-sky-50/50 dark:bg-sky-900/20 border-l-sky-600' 
           : 'border-l-transparent hover:bg-slate-100/50 dark:hover:bg-slate-800/50'
       )}
       onClick={onSelect}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault()
+          onSelect()
+        }
+      }}
     >
       <div className="flex items-start justify-between gap-3">
         <div className="flex-1 min-w-0">
@@ -377,12 +385,14 @@ function ConversationItem({
             <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
               <button
                 onClick={onConfirmDelete}
+                aria-label="确认删除对话"
                 className="p-1.5 text-red-600 hover:bg-red-100 dark:hover:bg-red-900/30 rounded-lg transition-colors"
               >
                 <Trash2 className="h-3.5 w-3.5" />
               </button>
               <button
                 onClick={onCancelDelete}
+                aria-label="取消删除"
                 className="p-1.5 text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-lg transition-colors"
               >
                 <X className="h-3.5 w-3.5" />
@@ -394,6 +404,7 @@ function ConversationItem({
                 e.stopPropagation()
                 onDelete()
               }}
+              aria-label="删除对话"
               className="p-1.5 text-slate-400 hover:text-red-500 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-lg transition-colors"
             >
               <Trash2 className="h-3.5 w-3.5" />
