@@ -16,7 +16,7 @@ import {
   X,
   Plus
 } from 'lucide-react'
-import { Navbar } from '@/components/navbar'
+import { AppFrame } from '@/components/app-frame'
 import { ChatMessageItem } from '@/components/chat/message-item'
 import { Button } from '@/components/ui/button'
 import { chatApi } from '@/lib/api-client'
@@ -36,12 +36,11 @@ const LOAD_MORE_STEP = 40
 
 function HistoryPageLoading() {
   return (
-    <div className="flex h-screen overflow-hidden bg-white dark:bg-slate-950">
-      <Navbar />
-      <main id="main-content" tabIndex={-1} className="flex-1 flex items-center justify-center">
+    <AppFrame>
+      <div className="flex-1 flex items-center justify-center">
         <Loader2 className="h-8 w-8 animate-spin text-sky-500" />
-      </main>
-    </div>
+      </div>
+    </AppFrame>
   )
 }
 
@@ -172,10 +171,7 @@ function HistoryPageContent() {
   )
 
   return (
-    <div className="flex h-screen overflow-hidden bg-white dark:bg-slate-950 transition-colors duration-300">
-      <Navbar />
-
-      <main id="main-content" tabIndex={-1} className="flex-1 flex overflow-hidden">
+    <AppFrame mainClassName="overflow-hidden">
         {/* 侧边栏 - 对话列表 */}
         <div className="w-80 border-r border-slate-200 dark:border-slate-800 flex flex-col bg-slate-50/50 dark:bg-slate-900/50">
           {/* 头部 */}
@@ -325,8 +321,7 @@ function HistoryPageContent() {
             </div>
           )}
         </div>
-      </main>
-    </div>
+    </AppFrame>
   )
 }
 

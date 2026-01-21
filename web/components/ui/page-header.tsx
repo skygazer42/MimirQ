@@ -34,7 +34,7 @@ export function PageHeader({
     badge
 }: PageHeaderProps) {
     return (
-        <header className={cn("px-8 pt-8 pb-6 flex-shrink-0 relative z-10", className)}>
+        <header className={cn("px-6 md:px-8 pt-6 md:pt-8 pb-5 md:pb-6 flex-shrink-0 relative z-10", className)}>
             <div className="flex items-start justify-between gap-4">
                 <div className="flex items-start gap-5">
                     {/* Icon Container with Glass Effect */}
@@ -47,7 +47,7 @@ export function PageHeader({
                     </div>
 
                     <div className="pt-1">
-                        <h1 className="text-3xl font-bold text-foreground tracking-tight flex items-center gap-3">
+                        <h1 className="text-2xl md:text-3xl font-bold text-foreground tracking-tight flex items-center gap-3">
                             {title}
                             {badge && (
                                 <span className={cn(

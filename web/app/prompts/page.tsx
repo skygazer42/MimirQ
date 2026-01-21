@@ -27,7 +27,7 @@ import { promptTemplateApi, PromptTemplate, PromptTemplateCreate } from '@/lib/a
 import { Plus, Edit, Trash2, Copy, Check, X, Eye, Search, Filter } from 'lucide-react'
 import { toast } from 'sonner'
 import { KgExtractPromptSettings } from '@/components/kg-extract-prompt-settings'
-import { Navbar } from '@/components/navbar'
+import { AppFrame } from '@/components/app-frame'
 
 export default function PromptsPage() {
   const [templates, setTemplates] = useState<PromptTemplate[]>([])
@@ -249,9 +249,7 @@ export default function PromptsPage() {
   }
 
   return (
-    <div className="flex h-screen overflow-hidden bg-background">
-      <Navbar />
-      <main id="main-content" tabIndex={-1} className="flex-1 overflow-y-auto">
+    <AppFrame mainClassName="overflow-y-auto">
         <div className="container mx-auto py-8">
       <div className="flex justify-between items-center mb-6">
         <div>
@@ -685,7 +683,6 @@ export default function PromptsPage() {
         </DialogContent>
       </Dialog>
         </div>
-      </main>
-    </div>
+    </AppFrame>
   )
 }

@@ -8,7 +8,7 @@
 import { useState, useRef, useEffect, useCallback, useDeferredValue, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
-import { Navbar } from '@/components/navbar'
+import { AppFrame } from '@/components/app-frame'
 import { Button } from '@/components/ui/button'
 import { 
   Upload, 
@@ -608,10 +608,7 @@ export default function GraphPage() {
   }
 
   return (
-    <div className="flex h-screen overflow-hidden bg-background">
-      <Navbar />
-      
-      <main id="main-content" tabIndex={-1} className="flex-1 flex flex-col transition-all duration-300 relative">
+    <AppFrame mainClassName="transition-all duration-300">
         {/* Header */}
         <header className="absolute top-0 left-0 right-0 z-20 h-16 px-6 flex items-center justify-between bg-card/80 backdrop-blur-md border-b border-border/50 pointer-events-none">
           <div className="flex items-center gap-3 pointer-events-auto">
@@ -1096,7 +1093,6 @@ export default function GraphPage() {
             )}
           </div>
         </div>
-      </main>
-    </div>
+    </AppFrame>
   )
 }

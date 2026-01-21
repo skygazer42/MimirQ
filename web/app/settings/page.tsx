@@ -4,7 +4,7 @@
 'use client'
 
 import { useState, useEffect, useMemo } from 'react'
-import { Navbar } from '@/components/navbar'
+import { AppFrame } from '@/components/app-frame'
 import { ModelProviderCard } from '@/components/model-provider-card'
 import { ModelConfigDialog } from '@/components/model-config-dialog'
 import { MODEL_PROVIDERS } from '@/types/models'
@@ -410,9 +410,7 @@ export default function SettingsPage() {
   }
 
   return (
-    <div className="flex h-screen overflow-hidden bg-muted/50">
-      <Navbar />
-      <main id="main-content" tabIndex={-1} className="flex-1 overflow-y-auto">
+    <AppFrame mainClassName="overflow-y-auto">
         <div className="max-w-6xl mx-auto px-8 py-10">
           {/* 页面头部 */}
           <div className="flex items-center justify-between mb-10">
@@ -1255,16 +1253,15 @@ export default function SettingsPage() {
             </div>
           )}
         </div>
-      </main>
 
-      {/* 配置对话框 */}
-      <ModelConfigDialog
-        provider={selectedProvider}
-        open={dialogOpen}
-        onClose={() => setDialogOpen(false)}
-        onSave={handleSaveConfig}
-      />
-    </div>
+        {/* 配置对话框 */}
+        <ModelConfigDialog
+          provider={selectedProvider}
+          open={dialogOpen}
+          onClose={() => setDialogOpen(false)}
+          onSave={handleSaveConfig}
+        />
+    </AppFrame>
   )
 }
 

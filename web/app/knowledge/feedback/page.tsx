@@ -6,8 +6,9 @@ import { useRouter } from 'next/navigation'
 import { Star, RefreshCw, Search, ArrowUpRight, Copy, MessageSquare, Loader2, ThumbsUp, ThumbsDown, ArrowRight } from 'lucide-react'
 import { toast } from 'sonner'
 
-import { Navbar } from '@/components/navbar'
+import { AppFrame } from '@/components/app-frame'
 import { PageHeader } from '@/components/ui/page-header'
+import { PageHeaderBar } from '@/components/ui/page-header-bar'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
@@ -121,18 +122,8 @@ export default function FeedbackTriagePage() {
   }
 
   return (
-    <div className="flex min-h-screen overflow-hidden bg-slate-50 dark:bg-slate-950 font-sans selection:bg-indigo-100 dark:selection:bg-indigo-900 selection:text-indigo-900 dark:selection:text-indigo-100">
-      <Navbar />
-
-      <main id="main-content" tabIndex={-1} className="relative z-10 flex-1 flex flex-col overflow-hidden transition-all duration-300">
-        {/* Background Texture - Dark mode adjusted */}
-        <div className="fixed inset-0 z-0 pointer-events-none opacity-60 dark:opacity-20 mix-blend-multiply dark:mix-blend-normal"
-          style={{ backgroundImage: 'radial-gradient(#cbd5e1 1px, transparent 1px)', backgroundSize: '32px 32px' }} />
-
-        <div className="fixed top-0 right-0 w-[600px] h-[600px] bg-indigo-200/20 dark:bg-indigo-900/10 rounded-full blur-[100px] pointer-events-none" />
-        <div className="fixed bottom-0 left-0 w-[600px] h-[600px] bg-sky-200/20 dark:bg-sky-900/10 rounded-full blur-[100px] pointer-events-none" />
-
-        <div className="sticky top-0 z-20 backdrop-blur-md bg-white/70 dark:bg-slate-950/70 border-b border-slate-200/50 dark:border-slate-800/50 transition-all duration-300">
+    <AppFrame mainClassName="transition-all duration-300">
+        <PageHeaderBar className="transition-all duration-300">
           <PageHeader
             title="反馈分析中心"
             icon={MessageSquare}
@@ -158,7 +149,7 @@ export default function FeedbackTriagePage() {
               </Button>
             </div>
           </PageHeader>
-        </div>
+        </PageHeaderBar>
 
         <div className="px-8 pb-4 grid grid-cols-2 lg:grid-cols-4 gap-4 mt-4">
           {[
@@ -399,7 +390,6 @@ export default function FeedbackTriagePage() {
             )}
           </DialogContent>
         </Dialog>
-      </main>
-    </div>
+    </AppFrame>
   )
 }

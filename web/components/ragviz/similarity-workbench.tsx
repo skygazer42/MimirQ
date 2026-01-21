@@ -1450,9 +1450,10 @@ function PlotlyHeatmap({
 
   useEffect(() => {
     if (!plotly || !containerRef.current) return
+    const el = containerRef.current
     return () => {
       try {
-        plotly.purge(containerRef.current)
+        plotly.purge(el)
       } catch {
         // ignore
       }

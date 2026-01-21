@@ -14,8 +14,9 @@ import {
 } from 'lucide-react'
 import { toast } from 'sonner'
 
-import { Navbar } from '@/components/navbar'
+import { AppFrame } from '@/components/app-frame'
 import { PageHeader } from '@/components/ui/page-header'
+import { PageHeaderBar } from '@/components/ui/page-header-bar'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Switch } from '@/components/ui/switch'
@@ -94,7 +95,7 @@ function reasonLabel(reason: string): string {
 }
 
 export default function QuarantineQueuePage() {
-  const { isOpen, openDocument } = useDocumentView()
+  const { openDocument } = useDocumentView()
   const [autoRefresh, setAutoRefresh] = useState(true)
   const [search, setSearch] = useState('')
   const [selectedReason, setSelectedReason] = useState<DropReason | 'all'>('all')
@@ -280,25 +281,12 @@ export default function QuarantineQueuePage() {
   }, [markReviewed, refetch, tunePatch, tuneTarget])
 
   return (
-    <div className="flex min-h-screen overflow-hidden bg-slate-50 dark:bg-slate-950 font-sans selection:bg-slate-200 dark:selection:bg-slate-800 selection:text-slate-900 dark:selection:text-slate-100">
-      {/* Premium Texture Background */}
-      <div className="fixed inset-0 z-0 opacity-40 dark:opacity-20 pointer-events-none" style={{ backgroundImage: 'radial-gradient(#cbd5e1 1px, transparent 1px)', backgroundSize: '32px 32px' }} />
-
-      {/* Soft Ambient Light */}
-      <div className="fixed top-0 left-1/4 w-[800px] h-[800px] bg-amber-200/15 dark:bg-amber-900/10 rounded-full blur-[120px] pointer-events-none mix-blend-multiply dark:mix-blend-normal" />
-      <div className="fixed bottom-0 right-1/4 w-[600px] h-[600px] bg-sky-200/15 dark:bg-sky-900/10 rounded-full blur-[100px] pointer-events-none mix-blend-multiply dark:mix-blend-normal" />
-
-      <Navbar />
-
-      <main
-        id="main-content"
-        tabIndex={-1}
-        className={cn(
-          'relative z-10 flex-1 flex flex-col overflow-hidden transition-all duration-300 ease-[cubic-bezier(0.32,0.72,0,1)]',
-          isOpen ? 'mr-0 md:mr-[40vw] xl:mr-[40vw] lg:mr-[500px]' : 'mr-0'
-        )}
-      >
-        <div className="sticky top-0 z-20 backdrop-blur-md bg-white/70 dark:bg-slate-950/70 border-b border-slate-200/50 dark:border-slate-800/50 transition-all duration-300">
+    <AppFrame
+      rightPanel={<DocumentViewerPanel />}
+      withDocumentViewerPadding
+      mainClassName="transition-all duration-300 ease-out-expo"
+    >
+        <PageHeaderBar className="transition-all duration-300">
           <PageHeader
             title="隔离审核队列"
             icon={AlertTriangle}
@@ -328,7 +316,7 @@ export default function QuarantineQueuePage() {
               </div>
             </div>
           </PageHeader>
-        </div>
+        </PageHeaderBar>
 
         <div className="px-8 pt-4 pb-2 flex flex-wrap items-center gap-2">
           <Badge variant="secondary" className="bg-white/70 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800">
@@ -636,9 +624,7 @@ export default function QuarantineQueuePage() {
             </div>
           </div>
         </section>
-      </main>
 
-      {isOpen && <DocumentViewerPanel />}
       <IngestionDetailDialog open={detailOpen} onOpenChange={setDetailOpen} documentId={detailDocumentId} />
 
       <Dialog open={tuneOpen} onOpenChange={(v) => setTuneOpen(v)}>
@@ -820,6 +806,6 @@ export default function QuarantineQueuePage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </div>
+    </AppFrame>
   )
 }
