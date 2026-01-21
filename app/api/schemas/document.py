@@ -21,6 +21,21 @@ class DocumentPipelineOptions(BaseModel):
         default=None,
         description="Image removal mode: none | decorative | all",
     )
+    governance_extract_frontmatter: Optional[bool] = Field(default=None, description="Extract Markdown YAML frontmatter for metadata enrichment")
+    governance_strip_frontmatter: Optional[bool] = Field(default=None, description="Strip Markdown YAML frontmatter from content after extraction")
+    governance_detect_language: Optional[bool] = Field(default=None, description="Detect primary language/script (zh/en/mixed) for metadata enrichment")
+    governance_language_min_chars: Optional[int] = Field(default=None, ge=0, le=200_000, description="Min alnum/CJK chars before language detection triggers")
+    governance_normalize_urls: Optional[bool] = Field(default=None, description="Normalize URLs (e.g., strip tracking parameters) for consistency/dedup")
+    governance_normalize_urls_strip_tracking: Optional[bool] = Field(default=None, description="When normalizing URLs, strip common tracking parameters (utm_*, gclid, fbclid, etc.)")
+    governance_drop_duplicate_paragraphs: Optional[bool] = Field(default=None, description="Drop paragraphs repeated many times within a document (best-effort)")
+    governance_drop_duplicate_paragraphs_min_occurrences: Optional[int] = Field(default=None, ge=2, le=100, description="Min repeat occurrences to drop a paragraph")
+    governance_drop_duplicate_paragraphs_min_chars: Optional[int] = Field(default=None, ge=0, le=50_000, description="Min paragraph chars to consider for dedup")
+    governance_drop_duplicate_paragraphs_max_chars: Optional[int] = Field(default=None, ge=0, le=200_000, description="Max paragraph chars to consider for dedup (0 disables cap)")
+    governance_trim_references: Optional[bool] = Field(default=None, description="Trim trailing reference/bibliography sections (best-effort)")
+    governance_extract_keywords: Optional[bool] = Field(default=None, description="Extract document-level keywords for metadata enrichment (best-effort)")
+    governance_keywords_provider: Optional[str] = Field(default=None, description="Keyword provider: auto / jieba / jieba_textrank / hanlp / simple")
+    governance_keywords_top_k: Optional[int] = Field(default=None, ge=1, le=100, description="Max keywords to extract")
+    governance_keywords_max_chars: Optional[int] = Field(default=None, ge=0, le=2_000_000, description="Max chars used for keyword extraction (truncate when exceeded)")
     governance_normalize_tables: Optional[bool] = Field(default=None, description="Normalize markdown tables (whitespace/column alignment)")
     governance_strip_code_line_numbers: Optional[bool] = Field(default=None, description="Strip leading line numbers inside fenced code blocks")
     governance_pii_anonymize: Optional[bool] = None

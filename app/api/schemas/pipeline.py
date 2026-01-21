@@ -3,7 +3,7 @@ Document processing pipeline schemas.
 Defines data models for document parsing, chunking, and other pipeline operations.
 """
 
-from typing import List, Literal, Optional
+from typing import Any, List, Literal, Optional
 from uuid import UUID
 from pydantic import BaseModel, Field
 
@@ -89,6 +89,27 @@ class CleanPreviewRequest(BaseModel):
     # - decorative: remove likely decorative images (logos/qrcodes/banners)
     # - all: remove all image tags/refs
     remove_images: Literal["none", "decorative", "all"] = "none"
+    # Frontmatter extraction (Markdown only):
+    extract_frontmatter: bool = False
+    strip_frontmatter: bool = False
+    # Language detection (metadata only):
+    detect_language: bool = False
+    language_min_chars: int = Field(default=40, ge=0, le=200_000)
+    # URL normalization:
+    normalize_urls: bool = False
+    normalize_urls_strip_tracking: bool = True
+    # Paragraph-level duplicate dropping:
+    drop_duplicate_paragraphs: bool = False
+    drop_duplicate_paragraphs_min_occurrences: int = Field(default=3, ge=2, le=100)
+    drop_duplicate_paragraphs_min_chars: int = Field(default=40, ge=0, le=50_000)
+    drop_duplicate_paragraphs_max_chars: int = Field(default=1200, ge=0, le=200_000)
+    # Trim trailing references/bibliography section:
+    trim_references: bool = False
+    # Keyword extraction (metadata only):
+    extract_keywords: bool = False
+    keywords_provider: str = Field(default="auto")
+    keywords_top_k: int = Field(default=10, ge=1, le=100)
+    keywords_max_chars: int = Field(default=20000, ge=0, le=200_000)
     # Optional normalization:
     normalize_tables: bool = False
     # Remove leading line numbers within fenced code blocks (best-effort heuristic).
@@ -121,6 +142,16 @@ class CleanPreviewResponse(BaseModel):
     drop_reason: Optional[str] = None
     pii_hits: Optional[dict[str, int]] = None
     secrets_hits: Optional[dict[str, int]] = None
+    # Optional extracted metadata (preview only; not persisted).
+    frontmatter: Optional[dict[str, Any]] = None
+    title: Optional[str] = None
+    tags: Optional[List[str]] = None
+    language: Optional[str] = None
+    language_confidence: Optional[float] = None
+    keywords: Optional[List[str]] = None
+    urls_changed: int = 0
+    paragraphs_dropped: int = 0
+    references_removed_lines: int = 0
     # High-level diff/stats to help tune governance parameters.
     input_chars: int = 0
     output_chars: int = 0

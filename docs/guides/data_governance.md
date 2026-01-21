@@ -24,6 +24,23 @@ via the frontend “启用自定义管线 / 数据治理清洗” options.
 ### Code Block Line Numbers
 - `governance_strip_code_line_numbers`: Best-effort removal of leading line numbers inside fenced code blocks.
 
+### Markdown Frontmatter (Metadata)
+- `governance_extract_frontmatter`: Extract YAML frontmatter (`--- ... ---`) for metadata enrichment.
+- `governance_strip_frontmatter`: Remove the frontmatter block from the indexed content after extraction.
+
+### URL Normalization
+- `governance_normalize_urls`: Normalize URLs for consistency/dedup (best-effort).
+- `governance_normalize_urls_strip_tracking`: Strip common tracking params like `utm_*`, `gclid`, `fbclid`.
+
+### Paragraph Duplicate Drop
+- `governance_drop_duplicate_paragraphs`: Drop paragraphs that repeat many times inside a document (best-effort).
+  - `governance_drop_duplicate_paragraphs_min_occurrences`
+  - `governance_drop_duplicate_paragraphs_min_chars`
+  - `governance_drop_duplicate_paragraphs_max_chars`
+
+### References Trimming
+- `governance_trim_references`: Trim trailing bibliography/reference sections (best-effort).
+
 ### PII Anonymization
 - `governance_pii_anonymize`: Replace sensitive patterns (email/phone/CN ID/credit card/IP).
 - `governance_pii_mode`:
@@ -35,6 +52,17 @@ via the frontend “启用自定义管线 / 数据治理清洗” options.
 - `governance_secrets_mode`:
   - `mask`: replace with `governance_secrets_mask` (default `[SECRET]`)
   - `token`: replace with stable tokens like `[SECRET_OPENAI_1]`
+
+### Metadata Enrichment (Language / Keywords)
+- `governance_detect_language`: Detect document language/script (zh/en/mixed) and store into document metadata.
+  - `governance_language_min_chars`
+- `governance_extract_keywords`: Extract document-level keywords and store into document metadata.
+  - `governance_keywords_provider`
+  - `governance_keywords_top_k`
+  - `governance_keywords_max_chars`
+
+When enabled, extracted fields are persisted in `documents.metadata.governance_enrichment`:
+- `title`, `tags`, `language`, `language_confidence`, `keywords`, `keywords_provider`, `frontmatter`
 
 ### Segmentation (Blank Lines)
 Chunking often treats blank lines as paragraph boundaries.
