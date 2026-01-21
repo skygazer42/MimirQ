@@ -20,9 +20,14 @@ class PipelineOptions:
     governance_remove_common_lines: Optional[bool] = None
     governance_remove_boilerplate: Optional[bool] = None
     governance_remove_images: Optional[str] = None
+    governance_normalize_tables: Optional[bool] = None
+    governance_strip_code_line_numbers: Optional[bool] = None
     governance_pii_anonymize: Optional[bool] = None
     governance_pii_mode: Optional[str] = None
     governance_pii_mask: Optional[str] = None
+    governance_secrets_redact: Optional[bool] = None
+    governance_secrets_mode: Optional[str] = None
+    governance_secrets_mask: Optional[str] = None
     governance_max_blank_lines: Optional[int] = None
     governance_html_xpath: Optional[str] = None
     governance_drop_outline_only: Optional[bool] = None
@@ -35,6 +40,14 @@ class PipelineOptions:
     governance_noise_ratio_threshold: Optional[float] = None
     governance_common_lines_min_docs: Optional[int] = None
     governance_common_lines_min_ratio: Optional[float] = None
+    parse_fallback_enabled: Optional[bool] = None
+    parse_fallback_min_content_chars: Optional[int] = None
+    parse_fallback_max_retries: Optional[int] = None
+    persist_parsed_content: Optional[bool] = None
+    persist_parsed_content_max_chars: Optional[int] = None
+    near_dedup_enabled: Optional[bool] = None
+    near_dedup_hamming_threshold: Optional[int] = None
+    near_dedup_max_bucket_size: Optional[int] = None
     chunk_size: Optional[int] = None
     chunk_overlap: Optional[int] = None
     chunk_vector_enabled: Optional[bool] = None
@@ -53,9 +66,14 @@ class PipelineEffective:
     governance_remove_common_lines: bool
     governance_remove_boilerplate: bool
     governance_remove_images: str
+    governance_normalize_tables: bool
+    governance_strip_code_line_numbers: bool
     governance_pii_anonymize: bool
     governance_pii_mode: str
     governance_pii_mask: str
+    governance_secrets_redact: bool
+    governance_secrets_mode: str
+    governance_secrets_mask: str
     governance_max_blank_lines: int
     governance_html_xpath: str
     governance_drop_outline_only: bool
@@ -68,6 +86,14 @@ class PipelineEffective:
     governance_noise_ratio_threshold: float
     governance_common_lines_min_docs: int
     governance_common_lines_min_ratio: float
+    parse_fallback_enabled: bool
+    parse_fallback_min_content_chars: int
+    parse_fallback_max_retries: int
+    persist_parsed_content: bool
+    persist_parsed_content_max_chars: int
+    near_dedup_enabled: bool
+    near_dedup_hamming_threshold: int
+    near_dedup_max_bucket_size: int
     chunk_size: int
     chunk_overlap: int
     chunk_vector_enabled: bool
@@ -81,4 +107,3 @@ __all__ = [
     "PipelineEffective",
     "PipelineOptions",
 ]
-

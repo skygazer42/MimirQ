@@ -236,6 +236,7 @@ class Indexer:
         commit: bool = True,
         options: Optional[IndexingOptions] = None,
     ) -> PersistChunksResult:
+        source = str(default_source or "").strip() or "unknown"
         total_characters = sum(len(c.content or "") for c in chunks)
         normalized_chunks: List[ChunkInput] = []
         vector_docs: List[Dict[str, Any]] = []
@@ -245,6 +246,7 @@ class Indexer:
             meta.setdefault("index_kind", IndexKind.CHUNK.value)
             meta.setdefault("tenant_id", str(tenant_id))
             meta.setdefault("document_id", str(document_id))
+            meta.setdefault("source", source)
             meta = _ensure_chunk_metadata(meta, content=c.content or "", document_id=document_id, chunk_index=idx)
             # Ensure every chunk has a stable UUID for cross-system linking.
             chunk_id = _safe_uuid(meta.get("chunk_id")) or uuid.uuid4()
@@ -318,6 +320,7 @@ class Indexer:
         Returns:
             Persistence result.
         """
+        source = str(default_source or "").strip() or "unknown"
         total_characters = sum(len(c.content or "") for c in chunks)
         normalized_chunks: List[ChunkInput] = []
         vector_docs: List[Dict[str, Any]] = []
@@ -328,6 +331,7 @@ class Indexer:
             meta.setdefault("index_kind", IndexKind.CHUNK.value)
             meta.setdefault("tenant_id", str(tenant_id))
             meta.setdefault("document_id", str(document_id))
+            meta.setdefault("source", source)
             chunk_id = _safe_uuid(meta.get("chunk_id")) or uuid.uuid4()
             meta["chunk_id"] = str(chunk_id)
             chunk_ids.append(chunk_id)

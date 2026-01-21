@@ -389,6 +389,35 @@ class Settings(BaseSettings):
     GOVERNANCE_NOISE_RATIO_THRESHOLD: float = 0.2
     GOVERNANCE_COMMON_LINES_MIN_DOCS: int = 3
     GOVERNANCE_COMMON_LINES_MIN_RATIO: float = 0.35
+    # Optional governance extensions (safe defaults; can be overridden per-dataset/document pipeline config).
+    GOVERNANCE_REMOVE_BOILERPLATE: bool = False
+    GOVERNANCE_REMOVE_IMAGES: str = "none"  # none | decorative | all
+    GOVERNANCE_NORMALIZE_TABLES: bool = False
+    GOVERNANCE_STRIP_CODE_LINE_NUMBERS: bool = False
+    GOVERNANCE_PII_ANONYMIZE: bool = False
+    GOVERNANCE_PII_MODE: str = "mask"  # mask | token
+    GOVERNANCE_PII_MASK: str = "[REDACTED]"
+    GOVERNANCE_SECRETS_REDACT: bool = False
+    GOVERNANCE_SECRETS_MODE: str = "mask"  # mask | token
+    GOVERNANCE_SECRETS_MASK: str = "[SECRET]"
+    GOVERNANCE_MAX_BLANK_LINES: int = 1
+    GOVERNANCE_HTML_XPATH: str = ""
+    GOVERNANCE_DROP_OUTLINE_ONLY: bool = False
+    GOVERNANCE_DROP_OUTLINE_MIN_CONTENT_CHARS: int = 200
+    GOVERNANCE_DROP_OUTLINE_MAX_HEADING_RATIO: float = 0.85
+    GOVERNANCE_DROP_LOW_DENSITY: bool = False
+    GOVERNANCE_DROP_LOW_DENSITY_THRESHOLD: float = 0.12
+    # Parsing fallback (PDF only): retry with a different backend when output quality is low.
+    PARSE_FALLBACK_ENABLED: bool = False
+    PARSE_FALLBACK_MIN_CONTENT_CHARS: int = 120
+    PARSE_FALLBACK_MAX_RETRIES: int = 1
+    # Persist parsed markdown (raw+clean) for audit/debug.
+    PERSIST_PARSED_CONTENT: bool = False
+    PERSIST_PARSED_CONTENT_MAX_CHARS: int = 200_000
+    # Cross-document near-duplicate chunk drop (SimHash; best-effort).
+    NEAR_DEDUP_ENABLED: bool = False
+    NEAR_DEDUP_HAMMING_THRESHOLD: int = 3
+    NEAR_DEDUP_MAX_BUCKET_SIZE: int = 256
     # Reranker (optional: use LLM to rerank candidates for better quality).
     ENABLE_RERANKER: bool = False
     RERANKER_PROVIDER: str = "llm"  # llm | pc | none

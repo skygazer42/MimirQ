@@ -21,12 +21,17 @@ class DocumentPipelineOptions(BaseModel):
         default=None,
         description="Image removal mode: none | decorative | all",
     )
+    governance_normalize_tables: Optional[bool] = Field(default=None, description="Normalize markdown tables (whitespace/column alignment)")
+    governance_strip_code_line_numbers: Optional[bool] = Field(default=None, description="Strip leading line numbers inside fenced code blocks")
     governance_pii_anonymize: Optional[bool] = None
     governance_pii_mode: Optional[str] = Field(
         default=None,
         description="PII anonymization mode: mask | token",
     )
     governance_pii_mask: Optional[str] = Field(default=None, description="PII replacement string (mask mode)")
+    governance_secrets_redact: Optional[bool] = Field(default=None, description="Redact common secrets/tokens (API keys, private keys, bearer tokens)")
+    governance_secrets_mode: Optional[str] = Field(default=None, description="Secrets redaction mode: mask | token")
+    governance_secrets_mask: Optional[str] = Field(default=None, description="Secrets replacement string (mask mode)")
     governance_max_blank_lines: Optional[int] = Field(default=None, ge=0, le=10, description="Max consecutive blank lines")
     governance_html_xpath: Optional[str] = Field(default=None, description="XPath for HTML extraction (HTML/HTM)")
     governance_drop_outline_only: Optional[bool] = None
@@ -39,6 +44,14 @@ class DocumentPipelineOptions(BaseModel):
     governance_noise_ratio_threshold: Optional[float] = Field(default=None, ge=0.0, le=1.0, description="noise ratio threshold")
     governance_common_lines_min_docs: Optional[int] = Field(default=None, ge=2, le=50, description="common line min docs")
     governance_common_lines_min_ratio: Optional[float] = Field(default=None, ge=0.0, le=1.0, description="common line ratio")
+    parse_fallback_enabled: Optional[bool] = Field(default=None, description="Retry parsing with an alternative backend when output quality is low (PDF only)")
+    parse_fallback_min_content_chars: Optional[int] = Field(default=None, ge=0, le=200_000, description="Min alnum/CJK chars to consider parse successful")
+    parse_fallback_max_retries: Optional[int] = Field(default=None, ge=0, le=3, description="Max parse fallback retries")
+    persist_parsed_content: Optional[bool] = Field(default=None, description="Persist parsed markdown (raw+clean) into document_parsed_contents")
+    persist_parsed_content_max_chars: Optional[int] = Field(default=None, ge=0, le=2_000_000, description="Max chars to persist (truncate when exceeded)")
+    near_dedup_enabled: Optional[bool] = Field(default=None, description="Enable cross-document near-duplicate chunk dropping (SimHash)")
+    near_dedup_hamming_threshold: Optional[int] = Field(default=None, ge=0, le=64, description="Near-dup Hamming distance threshold")
+    near_dedup_max_bucket_size: Optional[int] = Field(default=None, ge=8, le=100_000, description="Max bucket size for near-dup index")
     chunk_size: Optional[int] = Field(default=None, ge=100, le=4000, description="Chunk size")
     chunk_overlap: Optional[int] = Field(default=None, ge=0, le=1000, description="Overlap size")
     chunk_vector_enabled: Optional[bool] = None
