@@ -18,7 +18,16 @@ from app.rag.preprocessing.images import strip_images
 from app.rag.preprocessing.pii_anonymizer import anonymize_pii
 from app.rag.preprocessing.secrets import redact_secrets
 from app.rag.preprocessing.code_blocks import strip_fenced_code_line_numbers
+from app.rag.preprocessing.frontmatter import (
+    extract_markdown_frontmatter as extract_markdown_frontmatter_fn,
+    extract_markdown_title as extract_markdown_title_fn,
+)
+from app.rag.preprocessing.keyword import extract_keywords as extract_keywords_fn
+from app.rag.preprocessing.language import detect_language as detect_language_fn
+from app.rag.preprocessing.paragraph_dedup import drop_duplicate_paragraphs as drop_duplicate_paragraphs_fn
+from app.rag.preprocessing.references import trim_references_section as trim_references_section_fn
 from app.rag.preprocessing.tables import normalize_markdown_tables
+from app.rag.preprocessing.urls import normalize_urls as normalize_urls_fn
 from app.rag.preprocessing.rules import DEFAULT_MARKDOWN_RULES
 from app.rag.preprocessing.quality_filters import drop_if_low_density, drop_if_outline_only
 
@@ -36,6 +45,16 @@ class GovernanceStats:
     drop_reasons: dict[str, int] = field(default_factory=dict)
     pii_hits: dict[str, int] = field(default_factory=dict)
     secrets_hits: dict[str, int] = field(default_factory=dict)
+    frontmatter_docs: int = 0
+    frontmatter_stripped_docs: int = 0
+    paragraphs_dropped: int = 0
+    references_removed_lines: int = 0
+    urls_changed: int = 0
+    keywords_docs: int = 0
+    keywords_total: int = 0
+    languages: dict[str, int] = field(default_factory=dict)
+    titles_docs: int = 0
+    tags_docs: int = 0
 
 
 class GovernanceProcessor:
@@ -49,6 +68,21 @@ class GovernanceProcessor:
         documents: Sequence[Document],
         *,
         rules: Optional[Iterable[RegexRule]] = None,
+        extract_frontmatter: bool = False,
+        strip_frontmatter: bool = False,
+        detect_language: bool = False,
+        language_min_chars: int = 40,
+        normalize_urls: bool = False,
+        normalize_urls_strip_tracking: bool = True,
+        drop_duplicate_paragraphs: bool = False,
+        drop_duplicate_paragraphs_min_occurrences: int = 3,
+        drop_duplicate_paragraphs_min_chars: int = 40,
+        drop_duplicate_paragraphs_max_chars: int = 1200,
+        trim_references: bool = False,
+        extract_keywords: bool = False,
+        keywords_provider: str = "auto",
+        keywords_top_k: int = 10,
+        keywords_max_chars: int = 20_000,
         remove_toc_lines: bool = True,
         remove_noise_lines: bool = True,
         unwrap_lines: bool = True,
@@ -103,11 +137,83 @@ class GovernanceProcessor:
         drop_reasons: dict[str, int] = {}
         pii_hits_total: dict[str, int] = {}
         secrets_hits_total: dict[str, int] = {}
+        frontmatter_docs = 0
+        frontmatter_stripped_docs = 0
+        paragraphs_dropped_total = 0
+        references_removed_total = 0
+        urls_changed_total = 0
+        keywords_docs = 0
+        keywords_total = 0
+        languages: dict[str, int] = {}
+        titles_docs = 0
+        tags_docs = 0
 
         for doc in documents:
+            original_text = doc.page_content or ""
+            working_text = original_text
+
+            frontmatter_present = False
+            frontmatter_end_char: int | None = None
+            frontmatter_data: dict[str, object] | None = None
+            frontmatter_changed = False
+            title: str | None = None
+            tags: list[str] | None = None
+
+            if extract_frontmatter or strip_frontmatter:
+                try:
+                    fm = extract_markdown_frontmatter_fn(original_text, strip=bool(strip_frontmatter))
+                except Exception:
+                    fm = None
+                if fm is not None:
+                    frontmatter_present = True
+                    frontmatter_end_char = int(getattr(fm, "end_char", 0) or 0)
+                    frontmatter_changed = bool(getattr(fm, "changed", False))
+                    if strip_frontmatter:
+                        working_text = getattr(fm, "stripped_text", original_text) or ""
+
+                    data = getattr(fm, "data", None)
+                    if isinstance(data, dict) and data:
+                        frontmatter_data = dict(data)
+                        raw_title = frontmatter_data.get("title")
+                        if isinstance(raw_title, str) and raw_title.strip():
+                            title = raw_title.strip()[:200]
+
+                        raw_tags = (
+                            frontmatter_data.get("tags")
+                            or frontmatter_data.get("tag")
+                            or frontmatter_data.get("categories")
+                            or frontmatter_data.get("category")
+                            or frontmatter_data.get("keywords")
+                        )
+                        if isinstance(raw_tags, list):
+                            cleaned_tags: list[str] = []
+                            seen_tags: set[str] = set()
+                            for item in raw_tags:
+                                if item is None:
+                                    continue
+                                s = str(item).strip()
+                                if not s:
+                                    continue
+                                key = s.casefold()
+                                if key in seen_tags:
+                                    continue
+                                seen_tags.add(key)
+                                cleaned_tags.append(s[:64])
+                            if cleaned_tags:
+                                tags = cleaned_tags[:50]
+                        elif isinstance(raw_tags, str) and raw_tags.strip():
+                            parts = [p.strip() for p in raw_tags.replace(";", ",").split(",") if p.strip()]
+                            if parts:
+                                tags = parts[:50]
+
+            if frontmatter_present:
+                frontmatter_docs += 1
+            if frontmatter_changed:
+                frontmatter_stripped_docs += 1
+
             local_common_lines = (
                 build_repeated_line_signatures(
-                    doc.page_content or "",
+                    working_text or "",
                     min_occurrences=common_lines_min_docs,
                     max_line_length=unwrap_max_line_length,
                 )
@@ -116,7 +222,7 @@ class GovernanceProcessor:
             )
             common_lines = (global_common_lines | local_common_lines) if remove_common_lines else None
             result = clean_markdown(
-                doc.page_content or "",
+                working_text or "",
                 rules=active_rules,
                 common_lines=common_lines,
                 remove_toc_lines=remove_toc_lines,
@@ -131,7 +237,7 @@ class GovernanceProcessor:
             )
             applied_total += int(result.applied_rules or 0)
             text = result.markdown
-            changed_any = bool(result.changed)
+            changed_any = bool(result.changed) or bool(frontmatter_changed)
 
             table_rows_changed = 0
             table_count = 0
@@ -182,6 +288,46 @@ class GovernanceProcessor:
                 for k, v in secrets_hits.items():
                     secrets_hits_total[k] = secrets_hits_total.get(k, 0) + int(v)
 
+            paragraphs_dropped = 0
+            references_removed_lines = 0
+            urls_changed = 0
+
+            if drop_duplicate_paragraphs:
+                try:
+                    para = drop_duplicate_paragraphs_fn(
+                        text,
+                        min_occurrences=int(drop_duplicate_paragraphs_min_occurrences or 0),
+                        min_paragraph_chars=int(drop_duplicate_paragraphs_min_chars or 0),
+                        max_paragraph_chars=int(drop_duplicate_paragraphs_max_chars or 0),
+                    )
+                    text = para.text
+                    paragraphs_dropped = int(getattr(para, "paragraphs_dropped", 0) or 0)
+                    changed_any = changed_any or bool(getattr(para, "changed", False))
+                except Exception:
+                    pass
+
+            if trim_references:
+                try:
+                    ref = trim_references_section_fn(text)
+                    text = ref.text
+                    references_removed_lines = int(getattr(ref, "removed_lines", 0) or 0)
+                    changed_any = changed_any or bool(getattr(ref, "changed", False))
+                except Exception:
+                    pass
+
+            if normalize_urls:
+                try:
+                    url = normalize_urls_fn(text, strip_tracking=bool(normalize_urls_strip_tracking))
+                    text = url.text
+                    urls_changed = int(getattr(url, "urls_changed", 0) or 0)
+                    changed_any = changed_any or bool(getattr(url, "changed", False))
+                except Exception:
+                    pass
+
+            paragraphs_dropped_total += int(paragraphs_dropped or 0)
+            references_removed_total += int(references_removed_lines or 0)
+            urls_changed_total += int(urls_changed or 0)
+
             drop_reason: str | None = None
             if drop_outline_only:
                 decision = drop_if_outline_only(
@@ -204,6 +350,47 @@ class GovernanceProcessor:
                 # Skip this document to avoid producing empty/noisy chunks.
                 continue
 
+            if title is None:
+                try:
+                    title = extract_markdown_title_fn(text)
+                except Exception:
+                    title = None
+
+            lang_val: str | None = None
+            lang_conf: float | None = None
+            if detect_language:
+                try:
+                    lang = detect_language_fn(text, min_chars=int(language_min_chars or 0))
+                    lang_val = str(getattr(lang, "language", "") or "").strip() or None
+                    lang_conf = float(getattr(lang, "confidence", 0.0) or 0.0)
+                except Exception:
+                    lang_val = None
+                    lang_conf = None
+
+            keywords: list[str] | None = None
+            if extract_keywords:
+                try:
+                    max_chars = max(0, int(keywords_max_chars or 0))
+                    snippet = text[:max_chars] if max_chars > 0 else text
+                    kws = extract_keywords_fn(
+                        snippet,
+                        provider=str(keywords_provider or "auto"),
+                        top_k=int(keywords_top_k or 10),
+                    )
+                    keywords = list(kws) if kws else None
+                except Exception:
+                    keywords = None
+
+            if title:
+                titles_docs += 1
+            if tags:
+                tags_docs += 1
+            if lang_val:
+                languages[lang_val] = languages.get(lang_val, 0) + 1
+            if keywords:
+                keywords_docs += 1
+                keywords_total += len(keywords)
+
             if changed_any:
                 changed += 1
             meta = dict(doc.metadata or {})
@@ -211,6 +398,30 @@ class GovernanceProcessor:
             meta["governance_applied"] = True
             meta["governance_rules_applied"] = int(result.applied_rules or 0)
             meta["governance_changed"] = bool(changed_any)
+            if frontmatter_present:
+                meta["frontmatter_present"] = True
+                if frontmatter_end_char and int(frontmatter_end_char) > 0:
+                    meta["frontmatter_end_char"] = int(frontmatter_end_char)
+                if strip_frontmatter:
+                    meta["frontmatter_stripped"] = True
+                if frontmatter_data:
+                    meta["document_frontmatter"] = frontmatter_data
+            if title:
+                meta["document_title"] = str(title)
+            if tags:
+                meta["document_tags"] = tags
+            if lang_val:
+                meta["document_language"] = lang_val
+                meta["document_language_confidence"] = round(float(lang_conf or 0.0), 3)
+            if keywords:
+                meta["document_keywords"] = keywords
+                meta["document_keywords_provider"] = str(keywords_provider or "auto")
+            if paragraphs_dropped:
+                meta["governance_paragraphs_dropped"] = int(paragraphs_dropped)
+            if references_removed_lines:
+                meta["governance_references_removed_lines"] = int(references_removed_lines)
+            if urls_changed:
+                meta["governance_urls_changed"] = int(urls_changed)
             if boilerplate is not None:
                 meta["governance_boilerplate_removed_sections"] = int(boilerplate.removed_sections or 0)
                 meta["governance_boilerplate_removed_lines"] = int(boilerplate.removed_lines or 0)
@@ -253,6 +464,16 @@ class GovernanceProcessor:
             drop_reasons=drop_reasons,
             pii_hits=pii_hits_total,
             secrets_hits=secrets_hits_total,
+            frontmatter_docs=int(frontmatter_docs),
+            frontmatter_stripped_docs=int(frontmatter_stripped_docs),
+            paragraphs_dropped=int(paragraphs_dropped_total),
+            references_removed_lines=int(references_removed_total),
+            urls_changed=int(urls_changed_total),
+            keywords_docs=int(keywords_docs),
+            keywords_total=int(keywords_total),
+            languages=languages,
+            titles_docs=int(titles_docs),
+            tags_docs=int(tags_docs),
         )
 
 
