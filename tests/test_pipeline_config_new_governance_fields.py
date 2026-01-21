@@ -19,6 +19,7 @@ def test_pipeline_metadata_roundtrip_new_governance_fields():
         governance_keywords_provider="simple",
         governance_keywords_top_k=12,
         governance_keywords_max_chars=12345,
+        governance_quarantine_on_drop=True,
     )
     meta = build_pipeline_metadata(opts)
     parsed = parse_pipeline_from_metadata({"pipeline": meta})
@@ -38,10 +39,17 @@ def test_pipeline_metadata_roundtrip_new_governance_fields():
     assert parsed.governance_keywords_provider == "simple"
     assert parsed.governance_keywords_top_k == 12
     assert parsed.governance_keywords_max_chars == 12345
+    assert parsed.governance_quarantine_on_drop is True
 
 
 def test_resolve_pipeline_options_uses_overrides_for_new_fields():
-    eff = resolve_pipeline_options(PipelineOptions(governance_extract_frontmatter=True, governance_keywords_provider="simple"))
+    eff = resolve_pipeline_options(
+        PipelineOptions(
+            governance_extract_frontmatter=True,
+            governance_keywords_provider="simple",
+            governance_quarantine_on_drop=True,
+        )
+    )
     assert eff.governance_extract_frontmatter is True
     assert eff.governance_keywords_provider == "simple"
-
+    assert eff.governance_quarantine_on_drop is True

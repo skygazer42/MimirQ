@@ -19,6 +19,7 @@ import {
   Loader2,
   CheckCircle,
   XCircle,
+  AlertTriangle,
   Clock,
   Trash2,
   RefreshCw,
@@ -203,6 +204,7 @@ export default function KnowledgePage() {
     let completedDocs = 0
     let processingDocs = 0
     let failedDocs = 0
+    let quarantinedDocs = 0
     let totalChunks = 0
     let totalSize = 0
 
@@ -214,6 +216,8 @@ export default function KnowledgePage() {
         completedDocs += 1
       } else if (doc.status === 'failed') {
         failedDocs += 1
+      } else if (doc.status === 'quarantined') {
+        quarantinedDocs += 1
       } else if (doc.status === 'processing' || doc.status === 'pending') {
         processingDocs += 1
       }
@@ -224,9 +228,10 @@ export default function KnowledgePage() {
       completedDocs,
       processingDocs,
       failedDocs,
+      quarantinedDocs,
       totalChunks,
       totalSize,
-      showExtraCard: processingDocs > 0 || failedDocs > 0,
+      showExtraCard: processingDocs > 0 || failedDocs > 0 || quarantinedDocs > 0,
     }
   }, [documents])
 
@@ -235,6 +240,7 @@ export default function KnowledgePage() {
     completedDocs,
     processingDocs,
     failedDocs,
+    quarantinedDocs,
     totalChunks,
     totalSize,
     showExtraCard,
@@ -405,10 +411,10 @@ export default function KnowledgePage() {
             />
             {showExtraCard && (
               <StatCard
-                icon={failedDocs > 0 ? XCircle : Loader2}
-                label={failedDocs > 0 ? '需关注' : '处理中'}
-                value={failedDocs > 0 ? failedDocs : processingDocs}
-                color={failedDocs > 0 ? 'red' : 'sky'}
+                icon={(failedDocs + quarantinedDocs) > 0 ? (failedDocs > 0 ? XCircle : AlertTriangle) : Loader2}
+                label={(failedDocs + quarantinedDocs) > 0 ? '需关注' : '处理中'}
+                value={(failedDocs + quarantinedDocs) > 0 ? (failedDocs + quarantinedDocs) : processingDocs}
+                color={(failedDocs + quarantinedDocs) > 0 ? (failedDocs > 0 ? 'red' : 'amber') : 'sky'}
                 className="bg-white/80 dark:bg-slate-900/80 backdrop-blur-sm border-slate-200 dark:border-slate-800 shadow-sm"
               />
             )}

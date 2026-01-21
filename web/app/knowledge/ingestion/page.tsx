@@ -34,6 +34,7 @@ const STATUS_LABEL: Record<StatusFilter, string> = {
   processing: '处理中',
   completed: '已完成',
   failed: '失败',
+  quarantined: '已隔离',
   cancelled: '已取消',
 }
 
@@ -44,6 +45,8 @@ function StatusPill({ status }: { status: Document['status'] }) {
         return { icon: CheckCircle2, cls: 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-500/20' }
       case 'failed':
         return { icon: AlertCircle, cls: 'bg-red-500/10 text-red-700 dark:text-red-400 border-red-500/20' }
+      case 'quarantined':
+        return { icon: AlertCircle, cls: 'bg-amber-500/10 text-amber-700 dark:text-amber-300 border-amber-500/20' }
       case 'cancelled':
         return { icon: AlertCircle, cls: 'bg-slate-500/10 text-slate-700 dark:text-slate-300 border-slate-500/20' }
       case 'pending':
@@ -98,6 +101,7 @@ export default function IngestionMonitorPage() {
     let processing = 0
     let completed = 0
     let failed = 0
+    let quarantined = 0
     let cancelled = 0
     let totalSize = 0
 
@@ -107,10 +111,11 @@ export default function IngestionMonitorPage() {
       else if (d.status === 'processing') processing += 1
       else if (d.status === 'completed') completed += 1
       else if (d.status === 'failed') failed += 1
+      else if (d.status === 'quarantined') quarantined += 1
       else if (d.status === 'cancelled') cancelled += 1
     }
 
-    return { pending, processing, completed, failed, cancelled, totalSize }
+    return { pending, processing, completed, failed, quarantined, cancelled, totalSize }
   }, [documents])
 
   const handleCancel = async (docId: string) => {
@@ -197,7 +202,7 @@ export default function IngestionMonitorPage() {
             { label: '等待队列', value: stats.pending, icon: Clock, color: 'text-amber-600 dark:text-amber-400', bg: 'bg-amber-50 dark:bg-amber-500/10', border: 'group-hover:border-amber-200 dark:group-hover:border-amber-800' },
             { label: '正在处理', value: stats.processing, icon: Loader2, color: 'text-sky-600 dark:text-sky-400', bg: 'bg-sky-50 dark:bg-sky-500/10', border: 'group-hover:border-sky-200 dark:group-hover:border-sky-800', spin: true },
             { label: '已完成', value: stats.completed, icon: CheckCircle2, color: 'text-emerald-600 dark:text-emerald-400', bg: 'bg-emerald-50 dark:bg-emerald-500/10', border: 'group-hover:border-emerald-200 dark:group-hover:border-emerald-800' },
-            { label: '失败任务', value: stats.failed, icon: AlertCircle, color: 'text-red-600 dark:text-red-400', bg: 'bg-red-50 dark:bg-red-500/10', border: 'group-hover:border-red-200 dark:group-hover:border-red-800' },
+            { label: '失败/隔离', value: stats.failed + stats.quarantined, icon: AlertCircle, color: 'text-red-600 dark:text-red-400', bg: 'bg-red-50 dark:bg-red-500/10', border: 'group-hover:border-red-200 dark:group-hover:border-red-800' },
             { label: '总存储量', value: formatFileSize(stats.totalSize), icon: Search, color: 'text-indigo-600 dark:text-indigo-400', bg: 'bg-indigo-50 dark:bg-indigo-500/10', border: 'group-hover:border-indigo-200 dark:group-hover:border-indigo-800' },
           ].map((stat, idx) => (
             <div key={idx} className={cn(
@@ -244,6 +249,7 @@ export default function IngestionMonitorPage() {
                 <SelectItem value="processing">处理中</SelectItem>
                 <SelectItem value="completed">已完成</SelectItem>
                 <SelectItem value="failed">失败</SelectItem>
+                <SelectItem value="quarantined">已隔离</SelectItem>
                 <SelectItem value="cancelled">已取消</SelectItem>
               </SelectContent>
             </Select>
@@ -275,7 +281,9 @@ export default function IngestionMonitorPage() {
                 <div className={cn("absolute left-0 top-0 bottom-0 w-1",
                   doc.status === 'processing' ? "bg-sky-500" :
                     doc.status === 'completed' ? "bg-emerald-500" :
-                      doc.status === 'failed' ? "bg-red-500" : "bg-slate-200 dark:bg-slate-700"
+                      doc.status === 'failed' ? "bg-red-500" :
+                        doc.status === 'quarantined' ? "bg-amber-500" :
+                          "bg-slate-200 dark:bg-slate-700"
                 )} />
 
                 <div className="flex items-center justify-between gap-6 p-5 relative z-10 pl-6">
@@ -342,7 +350,7 @@ export default function IngestionMonitorPage() {
                         </Button>
                       )}
 
-                      {(doc.status === 'failed' || doc.status === 'cancelled') && (
+                      {(doc.status === 'failed' || doc.status === 'cancelled' || doc.status === 'quarantined') && (
                         <Button
                           size="sm"
                           variant="ghost"
@@ -369,6 +377,7 @@ export default function IngestionMonitorPage() {
                           className={cn(
                             "h-full transition-all duration-500 relative rounded-full",
                             doc.status === 'failed' ? "bg-red-400" :
+                              doc.status === 'quarantined' ? "bg-amber-400" :
                               doc.status === 'completed' ? "bg-emerald-400" :
                                 "bg-sky-500"
                           )}
@@ -382,14 +391,35 @@ export default function IngestionMonitorPage() {
                 </div>
 
                 {/* Error Message Panel */}
-                {doc.status === 'failed' && doc.error_message && (
-                  <div className="mx-6 mb-5 mt-0 rounded-xl border border-red-200 dark:border-red-500/30 bg-red-50/50 dark:bg-red-500/10 p-4 flex items-start gap-4">
-                    <div className="p-2 bg-red-100 dark:bg-red-900/30 rounded-full">
-                      <AlertCircle className="w-4 h-4 text-red-500 dark:text-red-400 flex-shrink-0" />
+                {(doc.status === 'failed' || doc.status === 'quarantined') && doc.error_message && (
+                  <div className={cn(
+                    "mx-6 mb-5 mt-0 rounded-xl border p-4 flex items-start gap-4",
+                    doc.status === 'quarantined'
+                      ? "border-amber-200 dark:border-amber-500/30 bg-amber-50/50 dark:bg-amber-500/10"
+                      : "border-red-200 dark:border-red-500/30 bg-red-50/50 dark:bg-red-500/10"
+                  )}>
+                    <div className={cn(
+                      "p-2 rounded-full",
+                      doc.status === 'quarantined' ? "bg-amber-100 dark:bg-amber-900/30" : "bg-red-100 dark:bg-red-900/30"
+                    )}>
+                      <AlertCircle className={cn(
+                        "w-4 h-4 flex-shrink-0",
+                        doc.status === 'quarantined' ? "text-amber-600 dark:text-amber-300" : "text-red-500 dark:text-red-400"
+                      )} />
                     </div>
                     <div className="space-y-1">
-                      <div className="text-xs font-bold text-red-600 dark:text-red-400 uppercase tracking-wider">Error Log</div>
-                      <div className="text-xs font-mono text-red-600/80 dark:text-red-400/80 break-all leading-relaxed">{doc.error_message}</div>
+                      <div className={cn(
+                        "text-xs font-bold uppercase tracking-wider",
+                        doc.status === 'quarantined' ? "text-amber-700 dark:text-amber-300" : "text-red-600 dark:text-red-400"
+                      )}>
+                        {doc.status === 'quarantined' ? 'Quarantined' : 'Error Log'}
+                      </div>
+                      <div className={cn(
+                        "text-xs font-mono break-all leading-relaxed",
+                        doc.status === 'quarantined' ? "text-amber-700/80 dark:text-amber-300/80" : "text-red-600/80 dark:text-red-400/80"
+                      )}>
+                        {doc.error_message}
+                      </div>
                     </div>
                   </div>
                 )}

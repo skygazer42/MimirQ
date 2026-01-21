@@ -324,9 +324,16 @@ function DocumentCard({
           )}
 
           {/* 错误信息 */}
-          {document.status === 'failed' && (
-            <p className="text-[10px] text-destructive mt-1 font-medium bg-destructive/5 px-1.5 py-0.5 rounded inline-block">
-              处理失败
+          {(document.status === 'failed' || document.status === 'quarantined') && (
+            <p
+              className={cn(
+                'text-[10px] mt-1 font-medium px-1.5 py-0.5 rounded inline-block',
+                document.status === 'quarantined'
+                  ? 'text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-500/10 border border-amber-100 dark:border-amber-500/20'
+                  : 'text-destructive bg-destructive/5'
+              )}
+            >
+              {document.status === 'quarantined' ? '已隔离' : '处理失败'}
             </p>
           )}
         </div>

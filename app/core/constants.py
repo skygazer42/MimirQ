@@ -93,11 +93,12 @@ class DocumentStatus:
     PROCESSING = "processing"
     COMPLETED = "completed"
     FAILED = "failed"
+    QUARANTINED = "quarantined"
     CANCELLED = "cancelled"
 
     # Terminal states
     TERMINAL_STATES: FrozenSet[str] = frozenset({
-        "completed", "failed", "cancelled"
+        "completed", "failed", "quarantined", "cancelled"
     })
 
     # Active states
