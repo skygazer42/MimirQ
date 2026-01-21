@@ -47,6 +47,9 @@ from app.rag.preprocessing.rules import DEFAULT_MARKDOWN_RULES
 from app.rag.preprocessing.boilerplate import remove_markdown_boilerplate
 from app.rag.preprocessing.images import strip_images
 from app.rag.preprocessing.pii_anonymizer import anonymize_pii
+from app.rag.preprocessing.secrets import redact_secrets
+from app.rag.preprocessing.tables import normalize_markdown_tables
+from app.rag.preprocessing.code_blocks import strip_fenced_code_line_numbers
 from app.rag.preprocessing.quality_filters import drop_if_low_density, drop_if_outline_only
 from app.rag.preprocessing.html_xpath import extract_text_from_html
 from app.services.dataset_service import DatasetService
@@ -539,6 +542,13 @@ async def clean_preview(
     )
 
     text = result.markdown
+
+    if body.normalize_tables:
+        text = normalize_markdown_tables(text).text
+
+    if body.strip_code_line_numbers:
+        text = strip_fenced_code_line_numbers(text).text
+
     if body.remove_boilerplate:
         text = remove_markdown_boilerplate(text).text
 
@@ -546,10 +556,16 @@ async def clean_preview(
         text = strip_images(text, mode=str(body.remove_images).strip().lower()).text  # type: ignore[arg-type]
 
     pii_hits: dict[str, int] | None = None
+    secrets_hits: dict[str, int] | None = None
     if body.pii_anonymize:
         pii = anonymize_pii(text, enabled=True, mode=str(body.pii_mode or "mask"), mask=str(body.pii_mask or "[REDACTED]"))  # type: ignore[arg-type]
         text = pii.text
         pii_hits = pii.hits or {}
+
+    if body.secrets_redact:
+        sec = redact_secrets(text, enabled=True, mode=str(body.secrets_mode or "mask"), mask=str(body.secrets_mask or "[SECRET]"))  # type: ignore[arg-type]
+        text = sec.text
+        secrets_hits = sec.hits or {}
 
     if body.drop_outline_only:
         decision = drop_if_outline_only(
@@ -566,6 +582,7 @@ async def clean_preview(
                 dropped=True,
                 drop_reason=decision.reason or "outline_only",
                 pii_hits=pii_hits,
+                secrets_hits=secrets_hits,
                 input_chars=len(original_input),
                 output_chars=0,
                 input_lines=len((original_input or "").splitlines()),
@@ -586,6 +603,7 @@ async def clean_preview(
                 dropped=True,
                 drop_reason=decision.reason or "low_density",
                 pii_hits=pii_hits,
+                secrets_hits=secrets_hits,
                 input_chars=len(original_input),
                 output_chars=0,
                 input_lines=len((original_input or "").splitlines()),
@@ -603,6 +621,7 @@ async def clean_preview(
         dropped=False,
         drop_reason=None,
         pii_hits=pii_hits,
+        secrets_hits=secrets_hits,
         input_chars=len(original_input),
         output_chars=len(text or ""),
         input_lines=len((original_input or "").splitlines()),
