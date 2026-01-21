@@ -23,6 +23,7 @@ import {
   Star,
   Wand2,
   ShieldCheck,
+  AlertTriangle,
   User,
   LogIn,
   LogOut,
@@ -81,6 +82,11 @@ const menuItems = [
     icon: Activity,
     label: '入库监控',
     href: '/knowledge/ingestion',
+  },
+  {
+    icon: AlertTriangle,
+    label: '隔离队列',
+    href: '/knowledge/quarantine',
   },
   {
     icon: Star,
