@@ -28,10 +28,10 @@ GOVERNANCE_RULESET_VERSION = "1"
 
 @dataclass(frozen=True)
 class GovernanceStats:
-    version: str = GOVERNANCE_RULESET_VERSION
     documents: int
     changed: int
     applied_rules: int
+    version: str = GOVERNANCE_RULESET_VERSION
     dropped: int = 0
     drop_reasons: dict[str, int] = field(default_factory=dict)
     pii_hits: dict[str, int] = field(default_factory=dict)

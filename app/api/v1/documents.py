@@ -62,7 +62,6 @@ from app.api.dependencies.auth import get_current_account_id
 from app.rag.kg.pipeline import extract_events
 from sqlalchemy import or_, and_
 from app.rag.core.logging import get_logger
-from app.core.env import is_production_env
 from app.rag.preprocessing.processor import governance_processor
 from app.api.utils.upload import save_upload_file
 from app.tasks.queue import enqueue_document_processing
