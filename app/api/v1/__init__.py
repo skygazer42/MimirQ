@@ -16,6 +16,7 @@ from app.api.v1 import (
     feedback,
     pipeline,
     rag,
+    ragviz,
 )
 from app.rag.kg.api import routes as kg
 
@@ -35,3 +36,4 @@ router.include_router(prompt_templates.router, prefix="/prompt-templates", tags=
 router.include_router(feedback.router, prefix="/feedback", tags=["Feedback"])
 router.include_router(pipeline.router, prefix="/pipeline", tags=["Pipeline"])
 router.include_router(rag.router, prefix="/rag", tags=["RAG"])
+router.include_router(ragviz.router, prefix="/ragviz", tags=["RAG Visualization (RAGViz)"])

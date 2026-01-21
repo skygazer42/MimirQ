@@ -72,6 +72,9 @@ import type {
   RegisterRequest,
   UserProfile,
   ZipWithImagesResponse,
+  RagvizSimilarityCollectionsResponse,
+  RagvizSimilarityRequest,
+  RagvizSimilarityCalculateResponse,
 } from '@/types'
 import type { MetaResponse } from '@/types/backend'
 import { extractBackendMessage, extractBackendRequestId, withRequestId } from '@/lib/api-errors'
@@ -1336,6 +1339,20 @@ export const promptTemplateApi = {
 
   async createVersion(templateId: string, params: PromptTemplateNewVersion): Promise<PromptTemplate> {
     const { data } = await apiClient.post(`/prompt-templates/${templateId}/versions`, params)
+    return data
+  },
+}
+
+// ==================== RAGViz (Similarity Heatmap) API ====================
+
+export const ragvizApi = {
+  async listSimilarityCollections(): Promise<RagvizSimilarityCollectionsResponse> {
+    const { data } = await apiClient.get('/ragviz/similarity/collections')
+    return data
+  },
+
+  async calculateSimilarityMatrix(params: RagvizSimilarityRequest): Promise<RagvizSimilarityCalculateResponse> {
+    const { data } = await apiClient.post('/ragviz/similarity/calculate', params)
     return data
   },
 }
