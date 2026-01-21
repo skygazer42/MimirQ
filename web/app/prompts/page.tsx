@@ -251,7 +251,7 @@ export default function PromptsPage() {
   return (
     <div className="flex h-screen overflow-hidden bg-background">
       <Navbar />
-      <main className="flex-1 overflow-y-auto">
+      <main id="main-content" tabIndex={-1} className="flex-1 overflow-y-auto">
         <div className="container mx-auto py-8">
       <div className="flex justify-between items-center mb-6">
         <div>

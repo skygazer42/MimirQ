@@ -1,13 +1,14 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { motion, useMotionValue, useSpring } from "framer-motion"
+import { motion, useMotionValue, useReducedMotion, useSpring } from "framer-motion"
 import { usePathname } from "next/navigation"
 
 export function FluidCursor() {
   const [variant, setVariant] = useState<"default" | "pointer" | "text" | "hidden">("default")
   const cursorX = useMotionValue(-100)
   const cursorY = useMotionValue(-100)
+  const shouldReduceMotion = useReducedMotion()
 
   // Slower spring for "follower" effect
   const springConfig = { damping: 25, stiffness: 300 }
@@ -16,7 +17,18 @@ export function FluidCursor() {
 
   const pathname = usePathname()
 
+  // Only render/attach listeners on desktop pointers.
+  const [isDesktop, setIsDesktop] = useState(false)
   useEffect(() => {
+    if (typeof window === "undefined") return
+    if (window.matchMedia("(pointer: fine)").matches) {
+      setIsDesktop(true)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (shouldReduceMotion) return
+    if (!isDesktop) return
     // IMPORTANT: Do NOT hide default cursor. User feedback indicated visibility issues.
     // document.body.style.cursor = 'none' 
 
@@ -64,7 +76,7 @@ export function FluidCursor() {
       document.body.style.cursor = ''
       document.body.classList.remove('custom-cursor-enabled')
     }
-  }, [pathname, cursorX, cursorY])
+  }, [pathname, cursorX, cursorY, isDesktop, shouldReduceMotion])
 
   // Variants for Framer Motion
   const variants = {
@@ -106,19 +118,12 @@ export function FluidCursor() {
     }
   }
 
-  // Only render on desktop
-  const [isDesktop, setIsDesktop] = useState(false)
-  useEffect(() => {
-    if (window.matchMedia("(pointer: fine)").matches) {
-      setIsDesktop(true)
-    }
-  }, [])
-
-  if (!isDesktop) return null
+  if (shouldReduceMotion || !isDesktop) return null
 
   return (
     <motion.div
       className="fixed top-0 left-0 z-[9999] pointer-events-none"
+      aria-hidden="true"
       style={{
         translateX: cursorXSpring,
         translateY: cursorYSpring,

@@ -442,7 +442,7 @@ export function ChatArea({
               onKeyUp={handleKeyUp}
               placeholder="问点什么... (Shift + Enter 换行)"
               autoFocus
-              className="w-full px-6 py-5 pr-20 resize-none outline-none rounded-[2rem] max-h-48 bg-transparent text-sm leading-relaxed placeholder:text-muted-foreground/40 scrollbar-hide text-foreground/90 font-medium tracking-wide"
+              className="w-full px-6 py-5 pr-20 resize-none outline-none rounded-[2rem] max-h-48 bg-transparent text-sm leading-relaxed placeholder:text-muted-foreground/40 no-scrollbar text-foreground/90 font-medium tracking-wide"
               rows={1}
             />
 

@@ -46,6 +46,7 @@
 
     /* Radius - Consistent Curves */
     --radius: 0.75rem;
+    --radius-xl: 1rem;
 
     /* Sidebar - Slightly distinct from main background */
     --sidebar-background: 0 0% 100%;

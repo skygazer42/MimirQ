@@ -412,7 +412,7 @@ export default function SettingsPage() {
   return (
     <div className="flex h-screen overflow-hidden bg-muted/50">
       <Navbar />
-      <main className="flex-1 overflow-y-auto">
+      <main id="main-content" tabIndex={-1} className="flex-1 overflow-y-auto">
         <div className="max-w-6xl mx-auto px-8 py-10">
           {/* 页面头部 */}
           <div className="flex items-center justify-between mb-10">

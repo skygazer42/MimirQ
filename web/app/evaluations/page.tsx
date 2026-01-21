@@ -216,7 +216,7 @@ function EvaluationsPageContent() {
   }, [runStatus])
 
   return (
-    <main className="flex-1 flex flex-col overflow-hidden relative">
+    <main id="main-content" tabIndex={-1} className="flex-1 flex flex-col overflow-hidden relative">
       {activeTab === 'conversation' && (
         <>
           <div className="absolute top-0 left-0 right-0 h-64 bg-gradient-to-b from-sky-50/50 dark:from-sky-900/10 to-transparent pointer-events-none" />

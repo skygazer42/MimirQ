@@ -28,13 +28,13 @@ const PageLoading = ({
       role="status"
       aria-live="polite"
       className={cn(
-        "flex-1 flex items-center justify-center bg-gray-50 dark:bg-slate-950",
+        "flex-1 flex items-center justify-center bg-background",
         className
       )}
     >
-      <div className="flex items-center gap-3 text-slate-500 dark:text-slate-400 font-medium">
+      <div className="flex items-center gap-3 text-muted-foreground font-medium">
         <div
-          className="h-6 w-6 animate-spin rounded-full border-2 border-slate-200 dark:border-slate-800 border-t-blue-600 dark:border-t-blue-500"
+          className="h-6 w-6 animate-spin motion-reduce:animate-none rounded-full border-2 border-border border-t-primary"
           aria-hidden="true"
         />
         <span>{message}</span>

@@ -20,7 +20,7 @@ import {
 } from 'lucide-react'
 import { useDocuments } from '@/hooks/use-documents'
 import { useLocalSearch } from '@/hooks/use-local-search'
-import { formatFileSize, formatDate, getFileIcon } from '@/lib/utils'
+import { formatFileSize, formatDate } from '@/lib/utils'
 import { cn } from '@/lib/utils'
 import type { Document } from '@/types'
 import { ManualUploadDialog } from '@/components/manual-upload-dialog'
@@ -31,6 +31,7 @@ import { LottieAnimation, LOTTIE_URLS } from '@/components/ui/lottie-animation'
 import { PipelineVisualizer } from '@/components/ui/pipeline-visualizer'
 import { Magnetic } from '@/components/ui/magnetic'
 import { TiltCard } from '@/components/ui/tilt-card'
+import { FileTypeIcon } from '@/components/ui/file-type-icon'
 import { UPLOAD_ACCEPT } from '@/lib/upload-extensions'
 
 export function Sidebar() {
@@ -118,6 +119,7 @@ export function Sidebar() {
             {term && (
               <button
                 onClick={() => setTerm('')}
+                aria-label="清除搜索"
                 className="absolute right-2 top-1/2 -translate-y-1/2 p-1 hover:bg-secondary rounded-md"
               >
                 <X className="h-3 w-3 text-muted-foreground" />
@@ -153,6 +155,7 @@ export function Sidebar() {
             </p>
             <button
               onClick={() => setSelectedDocIds([])}
+              aria-label="清除已选"
               className="p-1 hover:bg-background rounded-sm transition-colors"
             >
               <X className="h-3 w-3 text-muted-foreground" />
@@ -164,7 +167,7 @@ export function Sidebar() {
       {/* 文档列表 - 优化滚动体验 (虚拟列表 + 本地搜索) */}
       <div
         ref={parentRef}
-        className="flex-1 overflow-y-auto p-4 scrollbar-hide"
+        className="flex-1 overflow-y-auto p-4 no-scrollbar"
       >
         {isLoading && documents.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-40 gap-3">
@@ -265,10 +268,10 @@ function DocumentCard({
       <div className="flex items-start gap-3">
         {/* 文件图标容器 */}
         <div className={cn(
-          "p-2 rounded-lg transition-colors text-xl",
+          "p-2 rounded-lg transition-colors flex items-center justify-center",
           isSelected ? "bg-primary/10 text-primary" : "bg-secondary text-muted-foreground group-hover:text-foreground"
         )}>
-          {getFileIcon(document.file_type)}
+          <FileTypeIcon type={document.file_type} className="h-5 w-5" />
         </div>
 
         {/* 文档信息 */}
@@ -345,7 +348,11 @@ function DocumentCard({
         isHovered ? "opacity-100 translate-x-0" : "opacity-0 translate-x-2 pointer-events-none"
       )}>
         <DocumentDetailDialog document={document} trigger={
-          <button className="p-1.5 bg-background/80 backdrop-blur border shadow-sm rounded-md hover:bg-primary hover:text-primary-foreground transition-colors" title="查看详情">
+          <button
+            className="p-1.5 bg-background/80 backdrop-blur border shadow-sm rounded-md hover:bg-primary hover:text-primary-foreground transition-colors"
+            title="查看详情"
+            aria-label="查看详情"
+          >
             <FileText className="h-3.5 w-3.5" />
           </button>
         } />
@@ -358,6 +365,7 @@ function DocumentCard({
             }}
             className="p-1.5 bg-background/80 backdrop-blur border shadow-sm rounded-md hover:bg-amber-100 hover:text-amber-600 transition-colors"
             title="取消处理"
+            aria-label="取消处理"
           >
             <X className="h-3.5 w-3.5" />
           </button>
@@ -369,6 +377,7 @@ function DocumentCard({
             }}
             className="p-1.5 bg-background/80 backdrop-blur border shadow-sm rounded-md hover:bg-destructive hover:text-destructive-foreground transition-colors"
             title="删除文档"
+            aria-label="删除文档"
           >
             <Trash2 className="h-3.5 w-3.5" />
           </button>

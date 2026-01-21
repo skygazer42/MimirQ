@@ -611,7 +611,7 @@ export default function GraphPage() {
     <div className="flex h-screen overflow-hidden bg-background">
       <Navbar />
       
-      <main className="flex-1 flex flex-col transition-all duration-300 relative">
+      <main id="main-content" tabIndex={-1} className="flex-1 flex flex-col transition-all duration-300 relative">
         {/* Header */}
         <header className="absolute top-0 left-0 right-0 z-20 h-16 px-6 flex items-center justify-between bg-card/80 backdrop-blur-md border-b border-border/50 pointer-events-none">
           <div className="flex items-center gap-3 pointer-events-auto">

@@ -45,15 +45,3 @@ export function formatDate(dateString: string): string {
   return '刚刚'
 }
 
-/**
- * 获取文件图标
- */
-export function getFileIcon(fileType: string): string {
-  const icons: Record<string, string> = {
-    pdf: '📄',
-    md: '📝',
-    txt: '📃',
-  }
-
-  return icons[fileType] || '📁'
-}

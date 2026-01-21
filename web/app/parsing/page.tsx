@@ -1491,7 +1491,7 @@ export default function ParsingPage() {
       <div className="relative z-10 flex h-full w-full">
         <Navbar />
 
-        <main className="flex-1 flex flex-col overflow-hidden min-h-0">
+        <main id="main-content" tabIndex={-1} className="flex-1 flex flex-col overflow-hidden min-h-0">
           {/* 顶部标题栏 */}
           <header className="flex-shrink-0 bg-card/80 dark:bg-background/70 border-b border-border/60 px-6 py-4 h-16 flex items-center justify-between z-20 shadow-sm dark:shadow-none relative backdrop-blur">
             <div className="flex items-center gap-4">

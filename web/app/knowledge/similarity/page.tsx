@@ -5,7 +5,7 @@ export default function KnowledgeSimilarityPage() {
   return (
     <div className="flex h-screen overflow-hidden bg-background">
       <Navbar />
-      <main className="flex-1 overflow-hidden">
+      <main id="main-content" tabIndex={-1} className="flex-1 overflow-hidden">
         <RagvizSimilarityWorkbench />
       </main>
     </div>

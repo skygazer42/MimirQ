@@ -189,7 +189,7 @@ export default function DatasetsPage() {
 
       <Navbar />
 
-      <main className="relative z-10 flex-1 flex flex-col overflow-hidden">
+      <main id="main-content" tabIndex={-1} className="relative z-10 flex-1 flex flex-col overflow-hidden">
 
         <PageHeader
           title="数据集"
