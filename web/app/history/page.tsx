@@ -400,7 +400,7 @@ function ConversationItem({
         </div>
 
         {/* 删除按钮 */}
-        <div className="flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity flex items-center">
+        <div className="flex-shrink-0 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity flex items-center">
           {showDeleteConfirm ? (
             <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
               <IconButton

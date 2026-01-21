@@ -15,10 +15,11 @@ export type IconButtonProps = Omit<ButtonProps, "size"> &
     variant?: ButtonProps["variant"]
   }
 
-export function IconButton({ className, variant = "ghost", ...props }: IconButtonProps) {
+export function IconButton({ className, variant = "ghost", type, ...props }: IconButtonProps) {
   return (
     <Button
       {...props}
+      type={type ?? "button"}
       variant={variant}
       size="icon"
       className={cn(
@@ -28,4 +29,3 @@ export function IconButton({ className, variant = "ghost", ...props }: IconButto
     />
   )
 }
-

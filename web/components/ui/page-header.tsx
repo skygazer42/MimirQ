@@ -47,7 +47,7 @@ export function PageHeader({
                     </div>
 
                     <div className="pt-1">
-                        <h1 className="text-2xl md:text-3xl font-bold text-foreground tracking-tight flex items-center gap-3">
+                        <h1 className="text-2xl md:text-3xl font-bold text-foreground tracking-tight leading-tight flex items-center gap-3">
                             {title}
                             {badge && (
                                 <span className={cn(
@@ -59,7 +59,7 @@ export function PageHeader({
                             )}
                         </h1>
                         {description && (
-                            <div className="text-sm text-muted-foreground mt-2 leading-relaxed max-w-2xl flex items-center gap-2">
+                            <div className="mt-2 max-w-[65ch] text-sm leading-relaxed text-muted-foreground">
                                 {description}
                             </div>
                         )}

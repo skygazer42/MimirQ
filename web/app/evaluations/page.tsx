@@ -216,56 +216,20 @@ function EvaluationsPageContent() {
 
   return (
     <div className="flex-1 flex flex-col overflow-hidden relative">
-      {activeTab === 'conversation' && (
-        <>
-          <div className="absolute top-0 left-0 right-0 h-64 bg-gradient-to-b from-sky-50/50 dark:from-sky-900/10 to-transparent pointer-events-none" />
+      <div className="absolute top-0 left-0 right-0 h-64 bg-gradient-to-b from-sky-50/50 dark:from-sky-900/10 to-transparent pointer-events-none" />
 
-          <header className="px-6 md:px-8 py-6 flex-shrink-0 z-10">
-            {/* Tab 切换 */}
-            <div className="flex items-center gap-2 mb-6">
-              <button
-                onClick={() => setActiveTab('conversation')}
-                className={cn(
-                  'flex items-center gap-2 px-4 py-2 rounded-lg transition text-sm font-medium',
-                  isActiveTab('conversation')
-                    ? 'bg-white dark:bg-slate-900 text-sky-600 dark:text-sky-400 shadow-sm border border-slate-200 dark:border-slate-800'
-                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
-                )}
-              >
-                <MessageSquare className="w-4 h-4" />
-                对话评测
-              </button>
-              <button
-                onClick={() => setActiveTab('regression')}
-                className={cn(
-                  'flex items-center gap-2 px-4 py-2 rounded-lg transition text-sm font-medium',
-                  isActiveTab('regression')
-                    ? 'bg-white dark:bg-slate-900 text-sky-600 dark:text-sky-400 shadow-sm border border-slate-200 dark:border-slate-800'
-                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
-                )}
-              >
-                <TestTube2 className="w-4 h-4" />
-                回归测试
-              </button>
-            </div>
-          <div className="flex items-center justify-between mb-6">
-            <div className="flex items-center gap-4">
-              <div className="w-12 h-12 bg-white dark:bg-slate-900 rounded-2xl flex items-center justify-center shadow-sm border border-slate-100 dark:border-slate-800">
-                <BarChart3 className="w-6 h-6 text-sky-600 dark:text-sky-400" />
-              </div>
-              <div>
-                <h1 className="text-3xl font-bold text-foreground tracking-tight">
-                  RAGAS 评测
-                </h1>
-                <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
-                  基于对话记录与引用上下文，评估 RAG 链路质量
-                </p>
-              </div>
-            </div>
-
+      <PageScaffold
+        title="RAGAS 评测"
+        description="基于对话记录与引用上下文，评估 RAG 链路质量"
+        icon={BarChart3}
+        iconColor="text-sky-600 dark:text-sky-400"
+        size="7xl"
+        actions={
+          activeTab === 'conversation' ? (
             <div className="flex items-center gap-2">
               <Button
                 variant="outline"
+                size="sm"
                 className="gap-2 rounded-xl"
                 onClick={() => {
                   setIsLoading(true)
@@ -276,22 +240,56 @@ function EvaluationsPageContent() {
                 刷新
               </Button>
               <Button
-                className="gap-2 bg-sky-600 hover:bg-sky-700 text-white shadow-lg shadow-sky-200 dark:shadow-sky-900/20 rounded-xl"
+                size="sm"
+                className="gap-2 rounded-xl"
                 disabled={isStarting || !selectedConversationId}
                 onClick={handleStart}
               >
                 {isStarting ? (
-                  <Loader2 className="w-4 h-4 animate-spin" />
+                  <Loader2 className="w-4 h-4 animate-spin motion-reduce:animate-none" />
                 ) : (
                   <PlayCircle className="w-4 h-4" />
                 )}
                 开始评测
               </Button>
             </div>
+          ) : null
+        }
+        toolbar={
+          <div className="flex items-center gap-2">
+            <Button
+              type="button"
+              size="sm"
+              variant={isActiveTab('conversation') ? 'outline' : 'ghost'}
+              onClick={() => setActiveTab('conversation')}
+              className={cn(
+                'gap-2 rounded-lg',
+                isActiveTab('conversation') && 'bg-background/70 text-sky-600 dark:text-sky-400'
+              )}
+            >
+              <MessageSquare className="w-4 h-4" />
+              对话评测
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant={isActiveTab('regression') ? 'outline' : 'ghost'}
+              onClick={() => setActiveTab('regression')}
+              className={cn(
+                'gap-2 rounded-lg',
+                isActiveTab('regression') && 'bg-background/70 text-sky-600 dark:text-sky-400'
+              )}
+            >
+              <TestTube2 className="w-4 h-4" />
+              回归测试
+            </Button>
           </div>
-
-          {/* 配置区 */}
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        }
+      >
+        {activeTab === 'conversation' ? (
+          <div className="space-y-6">
+            {/* 配置区 */}
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
             <div className="bg-white/80 dark:bg-slate-900/80 backdrop-blur-sm border border-slate-200 dark:border-slate-800 rounded-2xl p-4">
               <div className="text-sm font-semibold text-slate-800 dark:text-slate-200 mb-3">
                 选择对话
@@ -366,11 +364,8 @@ function EvaluationsPageContent() {
               </div>
             </div>
           </div>
-        </header>
-
-        {/* 内容区 */}
-        <PageBody>
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            {/* 内容区 */}
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             {/* 运行列表 */}
             <div className="lg:col-span-1">
               <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl overflow-hidden">
@@ -519,12 +514,11 @@ function EvaluationsPageContent() {
               </div>
             </div>
           </div>
-        </PageBody>
-        </>
-      )}
-
-      {/* 回归测试 Tab */}
-      {activeTab === 'regression' && <RegressionTestTab />}
+          </div>
+        ) : (
+          <RegressionTestTab embedded />
+        )}
+      </PageScaffold>
     </div>
   )
 }

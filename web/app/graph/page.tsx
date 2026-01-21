@@ -10,6 +10,10 @@ import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
 import { AppFrame } from '@/components/app-frame'
 import { Button } from '@/components/ui/button'
+import { EmptyState } from '@/components/ui/empty-state'
+import { IconButton } from '@/components/ui/icon-button'
+import { PageScaffold } from '@/components/ui/page-scaffold'
+import { SearchInput } from '@/components/ui/search-input'
 import { 
   Upload, 
   Share2, 
@@ -24,7 +28,6 @@ import {
   BarChart3,
   Database,
   Filter,
-  Search,
   Layers,
   FileCode,
   MessageSquare,
@@ -588,10 +591,6 @@ export default function GraphPage() {
     }
   }
 
-  const handleSearchChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    setSearchTerm(e.target.value)
-  }, [])
-
   const handleChatWithNode = () => {
     if (!selectedNode?.label) return
     const prompt = `请告诉我关于 ${selectedNode.label} 的信息`
@@ -609,8 +608,17 @@ export default function GraphPage() {
 
   return (
     <AppFrame mainClassName="transition-all duration-300">
-        {/* Header */}
-        <header className="absolute top-0 left-0 right-0 z-20 h-16 px-6 flex items-center justify-between bg-card/80 backdrop-blur-md border-b border-border/50 pointer-events-none">
+      <PageScaffold
+        showHeader={false}
+        title="知识图谱"
+        description="知识图谱可视化与分析"
+        icon={Share2}
+        size="full"
+        bodyClassName="px-0 pb-0 overflow-hidden"
+        bodyContainerClassName="flex h-full min-h-0 flex-col"
+      >
+         {/* Header */}
+         <header className="absolute top-0 left-0 right-0 z-20 h-16 px-6 flex items-center justify-between bg-card/80 backdrop-blur-md border-b border-border/50 pointer-events-none">
           <div className="flex items-center gap-3 pointer-events-auto">
             <div className="p-2 bg-gradient-to-br from-sky-500 to-teal-600 rounded-lg shadow-sm">
               <Share2 className="w-5 h-5 text-white" />
@@ -623,59 +631,73 @@ export default function GraphPage() {
           {/* Centered Search Bar */}
           {graphData.nodes.length > 0 && !isPathMode && !isConnectMode && !isExplainMode && (
             <div className="pointer-events-auto absolute left-1/2 -translate-x-1/2 top-1/2 -translate-y-1/2 w-full max-w-md">
-              <div className="relative group">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground group-focus-within:text-sky-500 dark:group-focus-within:text-sky-300 transition-colors" />
-                <input 
+              <div className="relative">
+                <SearchInput
                   ref={searchInputRef}
-                  type="text" 
                   value={searchTerm}
-                  onChange={handleSearchChange}
+                  onValueChange={setSearchTerm}
                   placeholder="搜索实体节点... (Ctrl+F)"
-                  className="w-full h-10 pl-10 pr-4 bg-muted/50 border border-border rounded-full text-sm focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500 transition-all backdrop-blur-sm shadow-sm"
+                  aria-label="搜索实体节点"
+                  inputClassName="h-10 rounded-full bg-muted/50 backdrop-blur-sm shadow-sm pr-16"
                 />
                 {searchTerm && (
-                   <div className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">
-                     {highlightedNodeIds.size} 匹配
-                   </div>
+                  <div className="pointer-events-none absolute right-11 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">
+                    {highlightedNodeIds.size} 匹配
+                  </div>
                 )}
               </div>
             </div>
           )}
 
           {/* Status Banners */}
-          {isPathMode && (
-             <div className="pointer-events-auto absolute left-1/2 -translate-x-1/2 top-1/2 -translate-y-1/2 flex items-center gap-2 px-4 py-2 bg-sky-600 text-white rounded-full shadow-lg animate-in fade-in slide-in-from-top-4">
-                <Route className="w-4 h-4" />
-                <span className="text-sm font-medium">
-                  {!pathStartNode ? "请点击选择【起点】" : !pathEndNode ? "请点击选择【终点】" : "路径分析完成"}
-                </span>
-                <button onClick={resetPathMode} className="ml-2 hover:bg-sky-500/10 dark:hover:bg-sky-500/20 rounded-full p-0.5">
-                  <X className="w-4 h-4" />
-                </button>
-             </div>
-          )}
-           {isConnectMode && (
-             <div className="pointer-events-auto absolute left-1/2 -translate-x-1/2 top-1/2 -translate-y-1/2 flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-full shadow-lg animate-in fade-in slide-in-from-top-4">
-                <LinkIcon className="w-4 h-4" />
-                <span className="text-sm font-medium">
-                   正在连接: {connectSourceNode?.label} ... 请点击目标节点
-                </span>
-                <button onClick={resetConnectMode} className="ml-2 hover:bg-emerald-500/10 dark:hover:bg-emerald-500/20 rounded-full p-0.5">
-                  <X className="w-4 h-4" />
-                </button>
-             </div>
-          )}
-          {isExplainMode && (
-             <div className="pointer-events-auto absolute left-1/2 -translate-x-1/2 top-1/2 -translate-y-1/2 flex items-center gap-2 px-4 py-2 bg-teal-600 text-white rounded-full shadow-lg animate-in fade-in slide-in-from-top-4">
-                <Lightbulb className="w-4 h-4" />
-                <span className="text-sm font-medium">
-                   推理路径演示中... ({currentStepIndex + 1}/{explainSteps.length})
-                </span>
-                <button onClick={resetExplainMode} className="ml-2 hover:bg-teal-500/10 dark:hover:bg-teal-500/20 rounded-full p-0.5">
-                  <X className="w-4 h-4" />
-                </button>
-             </div>
-          )}
+           {isPathMode && (
+              <div className="pointer-events-auto absolute left-1/2 -translate-x-1/2 top-1/2 -translate-y-1/2 flex items-center gap-2 px-4 py-2 bg-sky-600 text-white rounded-full shadow-lg animate-in fade-in slide-in-from-top-4">
+                 <Route className="w-4 h-4" />
+                 <span className="text-sm font-medium">
+                   {!pathStartNode ? "请点击选择【起点】" : !pathEndNode ? "请点击选择【终点】" : "路径分析完成"}
+                 </span>
+                 <IconButton
+                   aria-label="退出路径分析"
+                   title="退出路径分析"
+                   onClick={resetPathMode}
+                   className="ml-2 h-7 w-7 rounded-full text-white/90 hover:text-white hover:bg-white/10"
+                 >
+                   <X className="w-4 h-4" />
+                 </IconButton>
+              </div>
+           )}
+            {isConnectMode && (
+              <div className="pointer-events-auto absolute left-1/2 -translate-x-1/2 top-1/2 -translate-y-1/2 flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-full shadow-lg animate-in fade-in slide-in-from-top-4">
+                 <LinkIcon className="w-4 h-4" />
+                 <span className="text-sm font-medium">
+                    正在连接: {connectSourceNode?.label} ... 请点击目标节点
+                 </span>
+                 <IconButton
+                   aria-label="退出连接模式"
+                   title="退出连接模式"
+                   onClick={resetConnectMode}
+                   className="ml-2 h-7 w-7 rounded-full text-white/90 hover:text-white hover:bg-white/10"
+                 >
+                   <X className="w-4 h-4" />
+                 </IconButton>
+              </div>
+           )}
+           {isExplainMode && (
+              <div className="pointer-events-auto absolute left-1/2 -translate-x-1/2 top-1/2 -translate-y-1/2 flex items-center gap-2 px-4 py-2 bg-teal-600 text-white rounded-full shadow-lg animate-in fade-in slide-in-from-top-4">
+                 <Lightbulb className="w-4 h-4" />
+                 <span className="text-sm font-medium">
+                    推理路径演示中... ({currentStepIndex + 1}/{explainSteps.length})
+                 </span>
+                 <IconButton
+                   aria-label="退出推理演示"
+                   title="退出推理演示"
+                   onClick={resetExplainMode}
+                   className="ml-2 h-7 w-7 rounded-full text-white/90 hover:text-white hover:bg-white/10"
+                 >
+                   <X className="w-4 h-4" />
+                 </IconButton>
+              </div>
+           )}
 
            <div className="flex items-center gap-3 pointer-events-auto">
               {fileName && (
@@ -786,33 +808,40 @@ export default function GraphPage() {
                 layoutMode={layoutMode}
                 />
             )
-          ) : (
-            <div className="absolute inset-0 flex flex-col items-center justify-center z-10">
-              <div className="w-32 h-32 bg-card rounded-full shadow-xl shadow-sky-500/20 dark:shadow-sky-500/10 flex items-center justify-center mb-8 animate-in zoom-in-50 duration-500">
-                <div className="w-24 h-24 bg-sky-500/10 dark:bg-sky-500/20 rounded-full flex items-center justify-center">
-                   <Share2 className="w-10 h-10 text-sky-500 dark:text-sky-300" />
-                </div>
-              </div>
-              <h3 className="text-2xl font-bold text-foreground mb-3 tracking-tight">探索知识网络</h3>
-              <p className="max-w-md text-center text-muted-foreground mb-10 leading-relaxed">
-                连接知识孤岛，发现潜在关联。
-                <br/>支持实时数据加载、搜索与深度分析。
-              </p>
-              <div className="flex gap-4">
-                 <Button size="lg" variant="outline" onClick={() => loadInitialData('mock')} disabled={isLoading} className="border-border hover:bg-muted hover:text-foreground">
+           ) : (
+             <div className="absolute inset-0 z-10 flex items-center justify-center p-6">
+               <EmptyState
+                 icon={Share2}
+                 iconClassName="text-sky-500 dark:text-sky-300"
+                 title="探索知识网络"
+                 description={
+                   <>
+                     连接知识孤岛，发现潜在关联。<br />
+                     支持实时数据加载、搜索与深度分析。
+                   </>
+                 }
+                 className="w-full max-w-2xl bg-card/70 backdrop-blur-md border-border"
+               >
+                 <Button
+                   size="lg"
+                   variant="outline"
+                   onClick={() => loadInitialData('mock')}
+                   disabled={isLoading}
+                   className="border-border hover:bg-muted hover:text-foreground"
+                 >
                    {isLoading ? '加载中...' : '加载示例数据'}
                  </Button>
-                 <Button 
-                    size="lg" 
-                    className="bg-sky-600 hover:bg-sky-700 shadow-xl shadow-sky-500/20 dark:shadow-sky-500/10"
-                    onClick={triggerFileUpload}
-                  >
-                    <Upload className="w-5 h-5 mr-2" />
-                    开始上传
-                  </Button>
-              </div>
-            </div>
-          )}
+                 <Button
+                   size="lg"
+                   className="bg-sky-600 hover:bg-sky-700 shadow-xl shadow-sky-500/20 dark:shadow-sky-500/10"
+                   onClick={triggerFileUpload}
+                 >
+                   <Upload className="w-5 h-5" />
+                   开始上传
+                 </Button>
+               </EmptyState>
+             </div>
+           )}
 
           {/* Explainability Panel (Bottom Left) */}
           {isExplainMode && (
@@ -1093,6 +1122,7 @@ export default function GraphPage() {
             )}
           </div>
         </div>
+      </PageScaffold>
     </AppFrame>
   )
 }
