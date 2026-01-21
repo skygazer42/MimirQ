@@ -787,6 +787,21 @@ class DocumentProcessorService:
                 "remove_common_lines": pipeline_effective.governance_remove_common_lines,
                 "remove_boilerplate": pipeline_effective.governance_remove_boilerplate,
                 "remove_images": pipeline_effective.governance_remove_images,
+                "extract_frontmatter": pipeline_effective.governance_extract_frontmatter,
+                "strip_frontmatter": pipeline_effective.governance_strip_frontmatter,
+                "detect_language": pipeline_effective.governance_detect_language,
+                "language_min_chars": pipeline_effective.governance_language_min_chars,
+                "normalize_urls": pipeline_effective.governance_normalize_urls,
+                "normalize_urls_strip_tracking": pipeline_effective.governance_normalize_urls_strip_tracking,
+                "drop_duplicate_paragraphs": pipeline_effective.governance_drop_duplicate_paragraphs,
+                "drop_duplicate_paragraphs_min_occurrences": pipeline_effective.governance_drop_duplicate_paragraphs_min_occurrences,
+                "drop_duplicate_paragraphs_min_chars": pipeline_effective.governance_drop_duplicate_paragraphs_min_chars,
+                "drop_duplicate_paragraphs_max_chars": pipeline_effective.governance_drop_duplicate_paragraphs_max_chars,
+                "trim_references": pipeline_effective.governance_trim_references,
+                "extract_keywords": pipeline_effective.governance_extract_keywords,
+                "keywords_provider": pipeline_effective.governance_keywords_provider,
+                "keywords_top_k": pipeline_effective.governance_keywords_top_k,
+                "keywords_max_chars": pipeline_effective.governance_keywords_max_chars,
                 "normalize_tables": pipeline_effective.governance_normalize_tables,
                 "strip_code_line_numbers": pipeline_effective.governance_strip_code_line_numbers,
                 "pii_anonymize": pipeline_effective.governance_pii_anonymize,
@@ -1048,6 +1063,18 @@ class DocumentProcessorService:
                         "parser_backend": resolved_backend,
                         "chunk_strategy": resolved_chunk_strategy,
                     }
+
+                if bool(pipeline_effective.governance_enabled) and chunks:
+                    try:
+                        self._record_governance_enrichment_metadata(
+                            db,
+                            tenant_id=tenant_id,
+                            document_id=document_id,
+                            items=chunks,
+                        )
+                    except Exception as exc:  # noqa: BLE001
+                        logger.warning("Failed to record governance enrichment: %s", str(exc)[:200])
+                    self._strip_doc_enrichment_fields(chunks)
             else:
                 with metrics_span("ingest.normalize"):
                     parsed_documents = normalize_stage.run(items=parsed_documents or [])
@@ -1116,6 +1143,19 @@ class DocumentProcessorService:
                         "parser_backend": resolved_backend,
                         "chunk_strategy": resolved_chunk_strategy,
                     }
+
+                if bool(pipeline_effective.governance_enabled) and parsed_documents:
+                    try:
+                        self._record_governance_enrichment_metadata(
+                            db,
+                            tenant_id=tenant_id,
+                            document_id=document_id,
+                            items=parsed_documents,
+                        )
+                    except Exception as exc:  # noqa: BLE001
+                        logger.warning("Failed to record governance enrichment: %s", str(exc)[:200])
+                    # Avoid propagating large per-doc fields to all chunks.
+                    self._strip_doc_enrichment_fields(parsed_documents)
 
                 await raise_if_cancelled()
 
@@ -1928,6 +1968,131 @@ class DocumentProcessorService:
         db_doc.doc_metadata = metadata
         db.commit()
         db.refresh(db_doc)
+
+    def _record_governance_enrichment_metadata(
+        self,
+        db: Session,
+        *,
+        tenant_id: UUID,
+        document_id: UUID,
+        items: list[Document] | None,
+    ) -> None:
+        if not items:
+            return
+
+        db_doc = (
+            db.query(DBDocument)
+            .filter(DBDocument.id == document_id, DBDocument.tenant_id == tenant_id)
+            .first()
+        )
+        if not db_doc:
+            return
+
+        title: str | None = None
+        tags: set[str] = set()
+        keywords: set[str] = set()
+        keywords_provider: str | None = None
+        frontmatter: dict | None = None
+
+        lang_counts: dict[str, int] = {}
+        conf_sum = 0.0
+        conf_n = 0
+
+        for d in items:
+            meta = d.metadata or {}
+
+            if frontmatter is None:
+                fm = meta.get("document_frontmatter")
+                if isinstance(fm, dict) and fm:
+                    frontmatter = fm
+
+            if title is None:
+                raw_title = meta.get("document_title")
+                if isinstance(raw_title, str) and raw_title.strip():
+                    title = raw_title.strip()[:200]
+
+            raw_tags = meta.get("document_tags")
+            if isinstance(raw_tags, list):
+                for item in raw_tags:
+                    if not isinstance(item, str):
+                        continue
+                    val = item.strip()
+                    if val:
+                        tags.add(val[:64])
+
+            raw_kws = meta.get("document_keywords")
+            if isinstance(raw_kws, list):
+                for item in raw_kws:
+                    if not isinstance(item, str):
+                        continue
+                    val = item.strip()
+                    if val:
+                        keywords.add(val[:64])
+
+            if keywords_provider is None:
+                raw_provider = meta.get("document_keywords_provider")
+                if isinstance(raw_provider, str) and raw_provider.strip():
+                    keywords_provider = raw_provider.strip()[:50]
+
+            raw_lang = meta.get("document_language")
+            if isinstance(raw_lang, str) and raw_lang.strip():
+                lang = raw_lang.strip()
+                lang_counts[lang] = lang_counts.get(lang, 0) + 1
+                raw_conf = meta.get("document_language_confidence")
+                if isinstance(raw_conf, (int, float)):
+                    conf_sum += float(raw_conf)
+                    conf_n += 1
+
+        language: str | None = None
+        if lang_counts:
+            language = sorted(lang_counts.items(), key=lambda kv: (-kv[1], kv[0]))[0][0]
+
+        enrichment: dict[str, object] = {}
+        if title:
+            enrichment["title"] = title
+        if tags:
+            enrichment["tags"] = sorted(tags)
+        if language:
+            enrichment["language"] = language
+            if conf_n > 0:
+                enrichment["language_confidence"] = round(conf_sum / conf_n, 3)
+        if keywords:
+            enrichment["keywords"] = sorted(keywords)
+            enrichment["keywords_provider"] = keywords_provider or "auto"
+        if frontmatter:
+            enrichment["frontmatter"] = frontmatter
+
+        if not enrichment:
+            return
+
+        metadata = dict(db_doc.doc_metadata or {})
+        existing = metadata.get("governance_enrichment")
+        merged: dict[str, object] = dict(existing) if isinstance(existing, dict) else {}
+        merged.update(enrichment)
+        metadata["governance_enrichment"] = merged
+        db_doc.doc_metadata = metadata
+        db.commit()
+        db.refresh(db_doc)
+
+    @staticmethod
+    def _strip_doc_enrichment_fields(items: list[Document] | None) -> None:
+        if not items:
+            return
+        to_drop = {
+            "document_frontmatter",
+            "document_tags",
+            "document_keywords",
+            "document_keywords_provider",
+        }
+        for d in items:
+            meta = dict(d.metadata or {})
+            changed = False
+            for k in to_drop:
+                if k in meta:
+                    meta.pop(k, None)
+                    changed = True
+            if changed:
+                d.metadata = meta
 
     def _record_auto_chunking_metadata(
         self,

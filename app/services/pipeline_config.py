@@ -100,6 +100,21 @@ def parse_pipeline_from_metadata(metadata: Dict[str, Any]) -> PipelineOptions:
         governance_remove_common_lines=_coerce_bool(governance.get("remove_common_lines")),
         governance_remove_boilerplate=_coerce_bool(governance.get("remove_boilerplate")),
         governance_remove_images=_coerce_str(governance.get("remove_images")),
+        governance_extract_frontmatter=_coerce_bool(governance.get("extract_frontmatter")),
+        governance_strip_frontmatter=_coerce_bool(governance.get("strip_frontmatter")),
+        governance_detect_language=_coerce_bool(governance.get("detect_language")),
+        governance_language_min_chars=_coerce_int(governance.get("language_min_chars")),
+        governance_normalize_urls=_coerce_bool(governance.get("normalize_urls")),
+        governance_normalize_urls_strip_tracking=_coerce_bool(governance.get("normalize_urls_strip_tracking")),
+        governance_drop_duplicate_paragraphs=_coerce_bool(governance.get("drop_duplicate_paragraphs")),
+        governance_drop_duplicate_paragraphs_min_occurrences=_coerce_int(governance.get("drop_duplicate_paragraphs_min_occurrences")),
+        governance_drop_duplicate_paragraphs_min_chars=_coerce_int(governance.get("drop_duplicate_paragraphs_min_chars")),
+        governance_drop_duplicate_paragraphs_max_chars=_coerce_int(governance.get("drop_duplicate_paragraphs_max_chars")),
+        governance_trim_references=_coerce_bool(governance.get("trim_references")),
+        governance_extract_keywords=_coerce_bool(governance.get("extract_keywords")),
+        governance_keywords_provider=_coerce_str(governance.get("keywords_provider")),
+        governance_keywords_top_k=_coerce_int(governance.get("keywords_top_k")),
+        governance_keywords_max_chars=_coerce_int(governance.get("keywords_max_chars")),
         governance_normalize_tables=_coerce_bool(governance.get("normalize_tables")),
         governance_strip_code_line_numbers=_coerce_bool(governance.get("strip_code_line_numbers")),
         governance_pii_anonymize=_coerce_bool(governance.get("pii_anonymize")),
@@ -173,6 +188,36 @@ def build_pipeline_metadata(options: PipelineOptions) -> Optional[Dict[str, Any]
         governance["remove_boilerplate"] = bool(options.governance_remove_boilerplate)
     if options.governance_remove_images is not None:
         governance["remove_images"] = str(options.governance_remove_images)
+    if options.governance_extract_frontmatter is not None:
+        governance["extract_frontmatter"] = bool(options.governance_extract_frontmatter)
+    if options.governance_strip_frontmatter is not None:
+        governance["strip_frontmatter"] = bool(options.governance_strip_frontmatter)
+    if options.governance_detect_language is not None:
+        governance["detect_language"] = bool(options.governance_detect_language)
+    if options.governance_language_min_chars is not None:
+        governance["language_min_chars"] = int(options.governance_language_min_chars)
+    if options.governance_normalize_urls is not None:
+        governance["normalize_urls"] = bool(options.governance_normalize_urls)
+    if options.governance_normalize_urls_strip_tracking is not None:
+        governance["normalize_urls_strip_tracking"] = bool(options.governance_normalize_urls_strip_tracking)
+    if options.governance_drop_duplicate_paragraphs is not None:
+        governance["drop_duplicate_paragraphs"] = bool(options.governance_drop_duplicate_paragraphs)
+    if options.governance_drop_duplicate_paragraphs_min_occurrences is not None:
+        governance["drop_duplicate_paragraphs_min_occurrences"] = int(options.governance_drop_duplicate_paragraphs_min_occurrences)
+    if options.governance_drop_duplicate_paragraphs_min_chars is not None:
+        governance["drop_duplicate_paragraphs_min_chars"] = int(options.governance_drop_duplicate_paragraphs_min_chars)
+    if options.governance_drop_duplicate_paragraphs_max_chars is not None:
+        governance["drop_duplicate_paragraphs_max_chars"] = int(options.governance_drop_duplicate_paragraphs_max_chars)
+    if options.governance_trim_references is not None:
+        governance["trim_references"] = bool(options.governance_trim_references)
+    if options.governance_extract_keywords is not None:
+        governance["extract_keywords"] = bool(options.governance_extract_keywords)
+    if options.governance_keywords_provider is not None:
+        governance["keywords_provider"] = str(options.governance_keywords_provider)
+    if options.governance_keywords_top_k is not None:
+        governance["keywords_top_k"] = int(options.governance_keywords_top_k)
+    if options.governance_keywords_max_chars is not None:
+        governance["keywords_max_chars"] = int(options.governance_keywords_max_chars)
     if options.governance_normalize_tables is not None:
         governance["normalize_tables"] = bool(options.governance_normalize_tables)
     if options.governance_strip_code_line_numbers is not None:
@@ -299,6 +344,81 @@ def resolve_pipeline_options(options: PipelineOptions) -> PipelineEffective:
         getattr(settings, "GOVERNANCE_REMOVE_IMAGES", "none")
         if options.governance_remove_images is None
         else str(options.governance_remove_images or "none")
+    )
+    governance_extract_frontmatter = (
+        getattr(settings, "GOVERNANCE_EXTRACT_FRONTMATTER", False)
+        if options.governance_extract_frontmatter is None
+        else bool(options.governance_extract_frontmatter)
+    )
+    governance_strip_frontmatter = (
+        getattr(settings, "GOVERNANCE_STRIP_FRONTMATTER", False)
+        if options.governance_strip_frontmatter is None
+        else bool(options.governance_strip_frontmatter)
+    )
+    governance_detect_language = (
+        getattr(settings, "GOVERNANCE_DETECT_LANGUAGE", False)
+        if options.governance_detect_language is None
+        else bool(options.governance_detect_language)
+    )
+    governance_language_min_chars = (
+        options.governance_language_min_chars
+        if options.governance_language_min_chars is not None
+        else int(getattr(settings, "GOVERNANCE_LANGUAGE_MIN_CHARS", 40) or 40)
+    )
+    governance_normalize_urls = (
+        getattr(settings, "GOVERNANCE_NORMALIZE_URLS", False)
+        if options.governance_normalize_urls is None
+        else bool(options.governance_normalize_urls)
+    )
+    governance_normalize_urls_strip_tracking = (
+        getattr(settings, "GOVERNANCE_NORMALIZE_URLS_STRIP_TRACKING", True)
+        if options.governance_normalize_urls_strip_tracking is None
+        else bool(options.governance_normalize_urls_strip_tracking)
+    )
+    governance_drop_duplicate_paragraphs = (
+        getattr(settings, "GOVERNANCE_DROP_DUPLICATE_PARAGRAPHS", False)
+        if options.governance_drop_duplicate_paragraphs is None
+        else bool(options.governance_drop_duplicate_paragraphs)
+    )
+    governance_drop_duplicate_paragraphs_min_occurrences = (
+        options.governance_drop_duplicate_paragraphs_min_occurrences
+        if options.governance_drop_duplicate_paragraphs_min_occurrences is not None
+        else int(getattr(settings, "GOVERNANCE_DROP_DUPLICATE_PARAGRAPHS_MIN_OCCURRENCES", 3) or 3)
+    )
+    governance_drop_duplicate_paragraphs_min_chars = (
+        options.governance_drop_duplicate_paragraphs_min_chars
+        if options.governance_drop_duplicate_paragraphs_min_chars is not None
+        else int(getattr(settings, "GOVERNANCE_DROP_DUPLICATE_PARAGRAPHS_MIN_CHARS", 40) or 40)
+    )
+    governance_drop_duplicate_paragraphs_max_chars = (
+        options.governance_drop_duplicate_paragraphs_max_chars
+        if options.governance_drop_duplicate_paragraphs_max_chars is not None
+        else int(getattr(settings, "GOVERNANCE_DROP_DUPLICATE_PARAGRAPHS_MAX_CHARS", 1200) or 1200)
+    )
+    governance_trim_references = (
+        getattr(settings, "GOVERNANCE_TRIM_REFERENCES", False)
+        if options.governance_trim_references is None
+        else bool(options.governance_trim_references)
+    )
+    governance_extract_keywords = (
+        getattr(settings, "GOVERNANCE_EXTRACT_KEYWORDS", False)
+        if options.governance_extract_keywords is None
+        else bool(options.governance_extract_keywords)
+    )
+    governance_keywords_provider = (
+        getattr(settings, "GOVERNANCE_KEYWORDS_PROVIDER", "auto")
+        if options.governance_keywords_provider is None
+        else str(options.governance_keywords_provider or "auto")
+    )
+    governance_keywords_top_k = (
+        options.governance_keywords_top_k
+        if options.governance_keywords_top_k is not None
+        else int(getattr(settings, "GOVERNANCE_KEYWORDS_TOP_K", 10) or 10)
+    )
+    governance_keywords_max_chars = (
+        options.governance_keywords_max_chars
+        if options.governance_keywords_max_chars is not None
+        else int(getattr(settings, "GOVERNANCE_KEYWORDS_MAX_CHARS", 20_000) or 20_000)
     )
     governance_normalize_tables = (
         getattr(settings, "GOVERNANCE_NORMALIZE_TABLES", False)
@@ -451,6 +571,21 @@ def resolve_pipeline_options(options: PipelineOptions) -> PipelineEffective:
         governance_remove_common_lines=governance_remove_common_lines,
         governance_remove_boilerplate=governance_remove_boilerplate,
         governance_remove_images=str(governance_remove_images or "none"),
+        governance_extract_frontmatter=bool(governance_extract_frontmatter),
+        governance_strip_frontmatter=bool(governance_strip_frontmatter),
+        governance_detect_language=bool(governance_detect_language),
+        governance_language_min_chars=int(governance_language_min_chars),
+        governance_normalize_urls=bool(governance_normalize_urls),
+        governance_normalize_urls_strip_tracking=bool(governance_normalize_urls_strip_tracking),
+        governance_drop_duplicate_paragraphs=bool(governance_drop_duplicate_paragraphs),
+        governance_drop_duplicate_paragraphs_min_occurrences=int(governance_drop_duplicate_paragraphs_min_occurrences),
+        governance_drop_duplicate_paragraphs_min_chars=int(governance_drop_duplicate_paragraphs_min_chars),
+        governance_drop_duplicate_paragraphs_max_chars=int(governance_drop_duplicate_paragraphs_max_chars),
+        governance_trim_references=bool(governance_trim_references),
+        governance_extract_keywords=bool(governance_extract_keywords),
+        governance_keywords_provider=str(governance_keywords_provider or "auto"),
+        governance_keywords_top_k=int(governance_keywords_top_k),
+        governance_keywords_max_chars=int(governance_keywords_max_chars),
         governance_normalize_tables=bool(governance_normalize_tables),
         governance_strip_code_line_numbers=bool(governance_strip_code_line_numbers),
         governance_pii_anonymize=bool(governance_pii_anonymize),

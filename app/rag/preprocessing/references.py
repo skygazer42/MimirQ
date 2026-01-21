@@ -33,6 +33,7 @@ _HEADING_TEXTS = frozenset(
 )
 _MD_HEADING_RE = re.compile(r"^\s*#{1,6}\s+(?P<title>.+?)\s*$")
 _CITATION_LINE_RE = re.compile(r"^\s*(?:\[\d{1,4}\]|\d{1,4}[.)]|\u3010\d{1,4}\u3011)\s+")
+_CITATION_TOKEN_RE = re.compile(r"(?:^|\s)(?:\[\d{1,4}\]|\d{1,4}[.)]|\u3010\d{1,4}\u3011)\s+")
 
 
 def trim_references_section(
@@ -52,6 +53,7 @@ def trim_references_section(
         return ReferencesTrimResult(text=original, removed_lines=0, changed=False)
 
     candidate_idx: int | None = None
+    min_lines_eff = max(0, int(min_lines_after or 0))
     for idx, ln in enumerate(lines):
         stripped = (ln or "").strip()
         if not stripped:
@@ -66,8 +68,13 @@ def trim_references_section(
             # Must be near the end and have enough content after it to matter.
             if (idx / max(1, n)) < float(min_position_ratio or 0.0):
                 continue
-            if (n - idx - 1) < max(0, int(min_lines_after or 0)):
-                continue
+            remaining = n - idx - 1
+            if remaining < min_lines_eff:
+                # unwrap_lines in cleaning can collapse reference lists into a single long line;
+                # accept if we still see enough citation markers after the heading.
+                tail_text = "\n".join(lines[idx + 1 :])
+                if sum(1 for _ in _CITATION_TOKEN_RE.finditer(tail_text)) < min_lines_eff:
+                    continue
             candidate_idx = idx
             break
 
@@ -96,4 +103,3 @@ __all__ = [
     "ReferencesTrimResult",
     "trim_references_section",
 ]
-

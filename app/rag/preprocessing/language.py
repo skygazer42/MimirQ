@@ -48,20 +48,25 @@ def detect_language(text: str, *, min_chars: int = 40) -> LanguageDetectResult:
 
     ratio_cjk = cjk / total
     ratio_latin = latin / total
-    dominant = max(ratio_cjk, ratio_latin)
 
-    if ratio_cjk >= 0.6:
+    if cjk > 0 and latin > 0 and ratio_cjk >= 0.25 and ratio_latin >= 0.25:
+        lang = "mixed"
+        confidence = 1.0 - abs(ratio_cjk - ratio_latin)
+    elif ratio_cjk >= 0.6:
         lang = "zh"
+        confidence = ratio_cjk
     elif ratio_latin >= 0.6:
         lang = "en"
+        confidence = ratio_latin
     else:
         lang = "mixed" if (cjk > 0 and latin > 0) else ("zh" if cjk > 0 else "en")
+        confidence = max(ratio_cjk, ratio_latin)
 
     return LanguageDetectResult(
         language=str(lang),
         cjk_chars=int(cjk),
         latin_chars=int(latin),
-        confidence=float(max(0.0, min(1.0, dominant))),
+        confidence=float(max(0.0, min(1.0, confidence))),
     )
 
 
@@ -69,4 +74,3 @@ __all__ = [
     "LanguageDetectResult",
     "detect_language",
 ]
-

@@ -50,6 +50,12 @@ from app.rag.preprocessing.pii_anonymizer import anonymize_pii
 from app.rag.preprocessing.secrets import redact_secrets
 from app.rag.preprocessing.tables import normalize_markdown_tables
 from app.rag.preprocessing.code_blocks import strip_fenced_code_line_numbers
+from app.rag.preprocessing.frontmatter import extract_markdown_frontmatter, extract_markdown_title
+from app.rag.preprocessing.keyword import extract_keywords as extract_keywords_preview
+from app.rag.preprocessing.language import detect_language
+from app.rag.preprocessing.paragraph_dedup import drop_duplicate_paragraphs
+from app.rag.preprocessing.references import trim_references_section
+from app.rag.preprocessing.urls import normalize_urls
 from app.rag.preprocessing.quality_filters import drop_if_low_density, drop_if_outline_only
 from app.rag.preprocessing.html_xpath import extract_text_from_html
 from app.services.dataset_service import DatasetService
@@ -508,6 +514,52 @@ async def clean_preview(
             raise HTTPException(status_code=400, detail=f"Invalid XPath: {extracted.xpath_error}")
         input_text = extracted.text or ""
 
+    frontmatter: dict | None = None
+    title: str | None = None
+    tags: list[str] | None = None
+    if body.extract_frontmatter or body.strip_frontmatter:
+        try:
+            fm = extract_markdown_frontmatter(input_text, strip=bool(body.strip_frontmatter))
+        except Exception:
+            fm = None
+        if fm is not None:
+            data = getattr(fm, "data", None)
+            if isinstance(data, dict) and data:
+                frontmatter = dict(data)
+                raw_title = frontmatter.get("title")
+                if isinstance(raw_title, str) and raw_title.strip():
+                    title = raw_title.strip()[:200]
+                raw_tags = (
+                    frontmatter.get("tags")
+                    or frontmatter.get("tag")
+                    or frontmatter.get("categories")
+                    or frontmatter.get("category")
+                    or frontmatter.get("keywords")
+                )
+                if isinstance(raw_tags, list):
+                    cleaned: list[str] = []
+                    seen: set[str] = set()
+                    for item in raw_tags:
+                        if item is None:
+                            continue
+                        s = str(item).strip()
+                        if not s:
+                            continue
+                        key = s.casefold()
+                        if key in seen:
+                            continue
+                        seen.add(key)
+                        cleaned.append(s[:64])
+                    if cleaned:
+                        tags = cleaned[:50]
+                elif isinstance(raw_tags, str) and raw_tags.strip():
+                    parts = [p.strip() for p in raw_tags.replace(";", ",").split(",") if p.strip()]
+                    if parts:
+                        tags = parts[:50]
+
+            if body.strip_frontmatter:
+                input_text = getattr(fm, "stripped_text", input_text) or ""
+
     if body.rules:
         rules = [RegexRule(pattern=r.pattern, repl=r.repl, flags=r.flags) for r in body.rules]
     elif body.use_default_rules:
@@ -567,6 +619,39 @@ async def clean_preview(
         text = sec.text
         secrets_hits = sec.hits or {}
 
+    paragraphs_dropped = 0
+    references_removed_lines = 0
+    urls_changed = 0
+
+    if body.drop_duplicate_paragraphs:
+        try:
+            para = drop_duplicate_paragraphs(
+                text,
+                min_occurrences=int(body.drop_duplicate_paragraphs_min_occurrences or 0),
+                min_paragraph_chars=int(body.drop_duplicate_paragraphs_min_chars or 0),
+                max_paragraph_chars=int(body.drop_duplicate_paragraphs_max_chars or 0),
+            )
+            text = para.text
+            paragraphs_dropped = int(getattr(para, "paragraphs_dropped", 0) or 0)
+        except Exception:
+            pass
+
+    if body.trim_references:
+        try:
+            ref = trim_references_section(text)
+            text = ref.text
+            references_removed_lines = int(getattr(ref, "removed_lines", 0) or 0)
+        except Exception:
+            pass
+
+    if body.normalize_urls:
+        try:
+            url = normalize_urls(text, strip_tracking=bool(body.normalize_urls_strip_tracking))
+            text = url.text
+            urls_changed = int(getattr(url, "urls_changed", 0) or 0)
+        except Exception:
+            pass
+
     if body.drop_outline_only:
         decision = drop_if_outline_only(
             text,
@@ -583,6 +668,12 @@ async def clean_preview(
                 drop_reason=decision.reason or "outline_only",
                 pii_hits=pii_hits,
                 secrets_hits=secrets_hits,
+                frontmatter=frontmatter,
+                title=title,
+                tags=tags,
+                urls_changed=int(urls_changed),
+                paragraphs_dropped=int(paragraphs_dropped),
+                references_removed_lines=int(references_removed_lines),
                 input_chars=len(original_input),
                 output_chars=0,
                 input_lines=len((original_input or "").splitlines()),
@@ -604,6 +695,12 @@ async def clean_preview(
                 drop_reason=decision.reason or "low_density",
                 pii_hits=pii_hits,
                 secrets_hits=secrets_hits,
+                frontmatter=frontmatter,
+                title=title,
+                tags=tags,
+                urls_changed=int(urls_changed),
+                paragraphs_dropped=int(paragraphs_dropped),
+                references_removed_lines=int(references_removed_lines),
                 input_chars=len(original_input),
                 output_chars=0,
                 input_lines=len((original_input or "").splitlines()),
@@ -612,6 +709,37 @@ async def clean_preview(
                 removed_lines=removed,
                 changed_lines=changed_lines,
             )
+
+    if title is None:
+        try:
+            title = extract_markdown_title(text)
+        except Exception:
+            title = None
+
+    language: str | None = None
+    language_confidence: float | None = None
+    if body.detect_language:
+        try:
+            lang = detect_language(text, min_chars=int(body.language_min_chars or 0))
+            language = str(getattr(lang, "language", "") or "").strip() or None
+            language_confidence = float(getattr(lang, "confidence", 0.0) or 0.0)
+        except Exception:
+            language = None
+            language_confidence = None
+
+    keywords: list[str] | None = None
+    if body.extract_keywords:
+        try:
+            max_chars = max(0, int(body.keywords_max_chars or 0))
+            snippet = text[:max_chars] if max_chars > 0 else text
+            kws = extract_keywords_preview(
+                snippet,
+                provider=str(body.keywords_provider or "auto"),
+                top_k=int(body.keywords_top_k or 10),
+            )
+            keywords = list(kws) if kws else None
+        except Exception:
+            keywords = None
 
     added, removed, changed_lines = _line_diff_stats(original_input, text)
     return CleanPreviewResponse(
@@ -622,6 +750,15 @@ async def clean_preview(
         drop_reason=None,
         pii_hits=pii_hits,
         secrets_hits=secrets_hits,
+        frontmatter=frontmatter,
+        title=title,
+        tags=tags,
+        language=language,
+        language_confidence=language_confidence,
+        keywords=keywords,
+        urls_changed=int(urls_changed),
+        paragraphs_dropped=int(paragraphs_dropped),
+        references_removed_lines=int(references_removed_lines),
         input_chars=len(original_input),
         output_chars=len(text or ""),
         input_lines=len((original_input or "").splitlines()),
