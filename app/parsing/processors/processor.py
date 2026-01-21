@@ -18,7 +18,7 @@ import time
 import uuid
 from app.core.config import settings
 from app.core.database import SessionLocal
-from app.models.document import Document as DBDocument, DocumentChunk
+from app.models.document import Document as DBDocument, DocumentChunk, DocumentParsedContent
 from app.models.dataset import Dataset
 from app.rag.chunking.factory import chunker_factory
 from app.storage.object.minio import minio_service
@@ -31,8 +31,11 @@ from app.services.pipeline_config import (
 )
 from app.rag.preprocessing.processor import governance_processor, GovernanceStats
 from app.rag.preprocessing.normalization import normalize_text
+from app.rag.preprocessing.simhash import simhash64, simhash64_hex
+from app.rag.preprocessing.near_dedup import add_simhashes, find_near_duplicate, with_near_dedup_index
 from app.rag.kg.pipeline import extract_events
 from app.parsing.routing import route_pdf_backend
+from app.parsing.quality.text_quality import score_parsed_text_quality
 from app.parsing.subprocess_runner import SubprocessCancelled, SubprocessWorkerError, run_subprocess_worker
 from app.rag.core.logging import get_logger
 from app.rag.core.metadata import normalize_image_metadata
@@ -358,6 +361,19 @@ class ParsingStage:
             for item in (parsed.get("documents") or [])
             if isinstance(item, dict)
         ]
+
+        # Attach lightweight parsed-text quality metrics for observability/tuning.
+        try:
+            joined = "\n\n".join([(d.page_content or "") for d in documents])
+            quality = score_parsed_text_quality(joined).to_dict()
+            meta = dict(db_document.doc_metadata or {})
+            meta["parsed_text_quality"] = quality
+            db_document.doc_metadata = meta
+            db.commit()
+            db.refresh(db_document)
+        except Exception:
+            pass
+
         resolved_backend = str(parsed.get("resolved_backend") or effective_parser_backend or parser_backend or "auto")
         self._svc._record_processing_metadata(
             db,
@@ -543,6 +559,7 @@ class ChunkAssetStage:
         img_ids: List[str] = []
         for idx, chunk in enumerate(chunks):
             meta = dict(chunk.metadata or {})
+            meta.setdefault("dataset_id", str(dataset_id))
             meta["document_id"] = str(document_id)
             meta["chunk_index"] = idx
             meta["parser_backend"] = resolved_backend
@@ -554,6 +571,13 @@ class ChunkAssetStage:
             if not isinstance(meta.get("content_hash"), str) or not str(meta.get("content_hash") or "").strip():
                 meta["content_hash"] = hashlib.sha256(content_norm.strip().encode("utf-8", "ignore")).hexdigest()
                 meta.setdefault("content_hash_algo", "sha256")
+            if not isinstance(meta.get("simhash64"), str) or not str(meta.get("simhash64") or "").strip():
+                try:
+                    meta["simhash64"] = simhash64_hex(simhash64(content_norm))
+                    meta.setdefault("simhash_algo", "simhash64_sha1")
+                except Exception:
+                    # Best-effort only.
+                    pass
             chunk.metadata = meta
 
             img_id = self._svc._extract_and_upload_image_to_minio(
@@ -581,6 +605,7 @@ class IndexStage:
         tenant_id: UUID,
         document_id: UUID,
         file_path: Path,
+        default_source: str,
         chunks: List[Document],
         options,
     ) -> IndexResult:
@@ -604,7 +629,7 @@ class IndexStage:
         persist_result = Indexer(db).upsert(
             tenant_id=tenant_id,
             records=records,
-            default_source=str(file_path.name),
+            default_source=str(default_source or "").strip() or str(file_path.name),
             commit=False,
             options=options,
         ).chunk_result
@@ -762,9 +787,14 @@ class DocumentProcessorService:
                 "remove_common_lines": pipeline_effective.governance_remove_common_lines,
                 "remove_boilerplate": pipeline_effective.governance_remove_boilerplate,
                 "remove_images": pipeline_effective.governance_remove_images,
+                "normalize_tables": pipeline_effective.governance_normalize_tables,
+                "strip_code_line_numbers": pipeline_effective.governance_strip_code_line_numbers,
                 "pii_anonymize": pipeline_effective.governance_pii_anonymize,
                 "pii_mode": pipeline_effective.governance_pii_mode,
                 "pii_mask": pipeline_effective.governance_pii_mask,
+                "secrets_redact": pipeline_effective.governance_secrets_redact,
+                "secrets_mode": pipeline_effective.governance_secrets_mode,
+                "secrets_mask": pipeline_effective.governance_secrets_mask,
                 "max_blank_lines": pipeline_effective.governance_max_blank_lines,
                 "drop_outline_only": pipeline_effective.governance_drop_outline_only,
                 "drop_outline_min_content_chars": pipeline_effective.governance_drop_outline_min_content_chars,
@@ -809,6 +839,121 @@ class DocumentProcessorService:
                 )
 
             await raise_if_cancelled(force=True)
+
+            # Optional: retry parsing with an alternative backend when output quality is obviously low.
+            if (
+                bool(getattr(pipeline_effective, "parse_fallback_enabled", False))
+                and file_path.suffix.lower() == ".pdf"
+                and (str(parser_backend or "").strip().lower() in {"", "auto"})
+                and parsed.documents is not None
+            ):
+                try:
+                    min_chars = max(0, int(getattr(pipeline_effective, "parse_fallback_min_content_chars", 0) or 0))
+                    max_retries = max(0, int(getattr(pipeline_effective, "parse_fallback_max_retries", 0) or 0))
+                    if min_chars > 0 and max_retries > 0:
+                        joined = "\n\n".join([(d.page_content or "") for d in (parsed.documents or [])])
+                        q0 = score_parsed_text_quality(joined)
+                        if int(getattr(q0, "content_chars", 0) or 0) < min_chars:
+                            from app.parsing.utils.cli import resolve_cli_command
+
+                            def _magicpdf_available() -> bool:
+                                if not bool(getattr(settings, "MAGIC_PDF_ENABLED", False)):
+                                    return False
+                                cli = (getattr(settings, "MAGIC_PDF_CLI", "") or "magic-pdf").strip() or "magic-pdf"
+                                return bool(resolve_cli_command(cli))
+
+                            candidates: list[str] = []
+                            current = str(parsed.resolved_backend or "").strip().lower()
+
+                            if settings.MINERU_ENABLED and (settings.MINERU_API_TOKEN or settings.MINERU_LOCAL_SERVER_URL):
+                                candidates.append("mineru")
+                            if bool(getattr(settings, "DEEPSEEK_OCR_ENABLED", False)) and bool(
+                                (getattr(settings, "SILICONFLOW_API_KEY", "") or "").strip()
+                            ):
+                                candidates.append("deepseek_ocr")
+                            if bool(getattr(settings, "ETL4LLM_ENABLED", False)) and bool(
+                                (getattr(settings, "ETL4LLM_API_URL", "") or "").strip()
+                            ):
+                                candidates.append("etl4llm")
+                            if settings.DEEPDOC_ENABLED:
+                                candidates.append("deepdoc")
+                            if getattr(settings, "DOCLING_ENABLED", False):
+                                candidates.append("docling")
+                            if _magicpdf_available():
+                                candidates.append("magicpdf")
+                            if settings.MARKITDOWN_ENABLED:
+                                candidates.append("markitdown")
+                            candidates.append("basic")
+
+                            # Remove current backend and keep order.
+                            filtered: list[str] = []
+                            for c in candidates:
+                                c_norm = (c or "").strip().lower()
+                                if not c_norm or c_norm == current:
+                                    continue
+                                if c_norm not in filtered:
+                                    filtered.append(c_norm)
+
+                            attempts: list[dict[str, object]] = []
+                            retries_left = max_retries
+                            for candidate in filtered:
+                                if retries_left <= 0:
+                                    break
+                                retries_left -= 1
+                                try:
+                                    with metrics_span("ingest.parse_fallback", backend=candidate):
+                                        alt = await parsing_stage.run(
+                                            db=db,
+                                            db_document=db_document,
+                                            file_path=file_path,
+                                            document_id=document_id,
+                                            tenant_id=tenant_id,
+                                            dataset_id=dataset_id,
+                                            parser_backend=candidate,
+                                            chunk_strategy=chunk_strategy,
+                                            html_xpath=None,
+                                        )
+                                except Exception as exc:  # noqa: BLE001
+                                    attempts.append(
+                                        {
+                                            "from": current,
+                                            "to": candidate,
+                                            "quality_before": q0.to_dict(),
+                                            "error": str(exc)[:200],
+                                            "accepted": False,
+                                        }
+                                    )
+                                    continue
+                                if alt.documents is None:
+                                    continue
+                                joined_alt = "\n\n".join([(d.page_content or "") for d in (alt.documents or [])])
+                                q1 = score_parsed_text_quality(joined_alt)
+                                attempts.append(
+                                    {
+                                        "from": current,
+                                        "to": candidate,
+                                        "quality_before": q0.to_dict(),
+                                        "quality_after": q1.to_dict(),
+                                        "accepted": bool(int(q1.content_chars) >= min_chars),
+                                    }
+                                )
+                                if int(q1.content_chars) >= min_chars:
+                                    parsed = alt
+                                    break
+
+                            if attempts:
+                                meta = dict(db_document.doc_metadata or {})
+                                meta["parse_fallback"] = {
+                                    "enabled": True,
+                                    "attempts": attempts,
+                                    "min_content_chars": int(min_chars),
+                                    "max_retries": int(max_retries),
+                                }
+                                db_document.doc_metadata = meta
+                                db.commit()
+                                db.refresh(db_document)
+                except Exception as exc:  # noqa: BLE001
+                    logger.warning("Parse fallback failed (ignored): %s", str(exc)[:200])
 
             resolved_backend = parsed.resolved_backend
             resolved_chunk_strategy = parsed.resolved_chunk_strategy
@@ -906,6 +1051,7 @@ class DocumentProcessorService:
             else:
                 with metrics_span("ingest.normalize"):
                     parsed_documents = normalize_stage.run(items=parsed_documents or [])
+                parsed_documents_before_governance = parsed_documents
                 with metrics_span("ingest.governance", enabled=bool(pipeline_effective.governance_enabled)):
                     gov = governance_stage.run(
                         items=parsed_documents,
@@ -914,6 +1060,27 @@ class DocumentProcessorService:
                     )
                 parsed_documents = gov.items
                 governance_stats = gov.stats
+
+                # Optional: persist parsed markdown (raw+clean) for audit/debug.
+                if bool(getattr(pipeline_effective, "persist_parsed_content", False)):
+                    try:
+                        original_md = "\n\n".join([(d.page_content or "") for d in (parsed_documents_before_governance or [])]).strip()
+                        cleaned_md = "\n\n".join([(d.page_content or "") for d in (parsed_documents or [])]).strip()
+                        persist_meta = self._persist_parsed_content(
+                            db,
+                            tenant_id=tenant_id,
+                            document_id=document_id,
+                            original_markdown=original_md,
+                            cleaned_markdown=cleaned_md,
+                            max_chars=int(getattr(pipeline_effective, "persist_parsed_content_max_chars", 0) or 0),
+                        )
+                        meta = dict(db_document.doc_metadata or {})
+                        meta["parsed_content_persisted"] = persist_meta
+                        db_document.doc_metadata = meta
+                        db.commit()
+                        db.refresh(db_document)
+                    except Exception as exc:  # noqa: BLE001
+                        logger.warning("Failed to persist parsed content: %s", str(exc)[:200])
 
                 if (
                     bool(pipeline_effective.governance_enabled)
@@ -1027,6 +1194,102 @@ class DocumentProcessorService:
                             "duplicates_dropped": int(deduped.duplicates_dropped),
                         }
                     )
+
+            # Optional cross-document near-duplicate drop (SimHash bucket index; best-effort).
+            near_dedup_dropped = 0
+            if bool(getattr(pipeline_effective, "near_dedup_enabled", False)) and chunks:
+                try:
+                    threshold = max(0, int(getattr(pipeline_effective, "near_dedup_hamming_threshold", 0) or 0))
+                    max_bucket_size = max(0, int(getattr(pipeline_effective, "near_dedup_max_bucket_size", 0) or 0))
+                    # Safety: keep the index per-tenant per-dataset to avoid unintended cross-pollution.
+                    safe_dataset = re.sub(r"[^A-Za-z0-9._-]+", "_", str(dataset_id or tenant_id))
+                    index_path = Path(settings.UPLOAD_DIR) / str(tenant_id) / ".mimirq_dedup" / f"{safe_dataset}.json"
+
+                    kept_chunks: list[Document] = []
+                    kept_hashes: list[str] = []
+                    sample_match: dict[str, Any] | None = None
+
+                    def update_fn(buckets: dict[str, list[str]]):
+                        nonlocal near_dedup_dropped, sample_match
+                        for c in chunks:
+                            meta = c.metadata if isinstance(getattr(c, "metadata", None), dict) else {}
+                            if _chunk_has_asset(meta):
+                                kept_chunks.append(c)
+                                continue
+
+                            content_norm = normalize_text(c.page_content or "", normalize_line_endings=True, remove_control_chars=True)
+                            sh_hex = str(meta.get("simhash64") or "").strip().lower()
+                            if not sh_hex:
+                                sh_hex = simhash64_hex(simhash64(content_norm))
+                                meta = dict(meta)
+                                meta["simhash64"] = sh_hex
+                                meta.setdefault("simhash_algo", "simhash64_sha1")
+                                c.metadata = meta
+
+                            match = find_near_duplicate(
+                                buckets=buckets,
+                                simhash64_hex=sh_hex,
+                                hamming_threshold=threshold,
+                                max_bucket_size=max_bucket_size,
+                            )
+                            if match is not None:
+                                near_dedup_dropped += 1
+                                if sample_match is None:
+                                    sample_match = {
+                                        "simhash64": sh_hex,
+                                        "matched_simhash64": match.simhash64,
+                                        "distance": int(match.distance),
+                                    }
+                                continue
+
+                            kept_chunks.append(c)
+                            kept_hashes.append(sh_hex)
+
+                        if kept_hashes:
+                            add_simhashes(buckets=buckets, simhashes=kept_hashes, max_bucket_size=max_bucket_size)
+                        return buckets
+
+                    with metrics_span("ingest.near_dedup", enabled=True, threshold=threshold):
+                        with_near_dedup_index(path=index_path, fn=update_fn)
+
+                    if near_dedup_dropped > 0:
+                        original_chunks_for_fallback = list(chunks)
+                        chunks = kept_chunks
+                        if not chunks:
+                            # Avoid indexing an empty document: keep the longest chunk.
+                            longest = max(
+                                original_chunks_for_fallback,
+                                key=lambda d: len((d.page_content or "").strip()),
+                                default=None,
+                            )
+                            if longest is not None:
+                                chunks = [longest]
+                        logger.info(
+                            "Dropped %s near-duplicate chunks for document %s (threshold=%s)",
+                            int(near_dedup_dropped),
+                            document_id,
+                            int(threshold),
+                        )
+                        log_metrics(
+                            {
+                                "event": "ingest.near_dedup",
+                                "dropped": int(near_dedup_dropped),
+                                "threshold": int(threshold),
+                            }
+                        )
+                        meta = dict(db_document.doc_metadata or {})
+                        meta["near_dedup"] = {
+                            "enabled": True,
+                            "dropped": int(near_dedup_dropped),
+                            "threshold": int(threshold),
+                            "max_bucket_size": int(max_bucket_size),
+                            "sample_match": sample_match,
+                        }
+                        db_document.doc_metadata = meta
+                        db.commit()
+                        db.refresh(db_document)
+                except Exception as exc:  # noqa: BLE001
+                    logger.warning("Near-dup stage failed (ignored): %s", str(exc)[:200])
 
             # Guardrail: cap chunk count per document (0 disables).
             max_chunks_per_document = max(0, int(getattr(settings, "MAX_CHUNKS_PER_DOCUMENT", 0) or 0))
@@ -1171,6 +1434,7 @@ class DocumentProcessorService:
                     tenant_id=tenant_id,
                     document_id=document_id,
                     file_path=file_path,
+                    default_source=str(getattr(db_document, "filename", "") or "").strip() or str(file_path.name),
                     chunks=chunks,
                     options=index_options,
                 )
@@ -1553,6 +1817,64 @@ class DocumentProcessorService:
         db.commit()
         db.refresh(db_doc)
 
+    def _persist_parsed_content(
+        self,
+        db: Session,
+        *,
+        tenant_id: UUID,
+        document_id: UUID,
+        original_markdown: str,
+        cleaned_markdown: str,
+        max_chars: int,
+    ) -> dict[str, Any]:
+        """
+        Persist parsed markdown content for audit/debug purposes.
+
+        This stores two versions:
+        - original_markdown_content: parsed output after normalize stage (pre-governance)
+        - markdown_content: parsed output after governance cleaning
+        """
+        def _truncate(text: str) -> tuple[str, bool, int, int]:
+            raw = text or ""
+            raw_len = len(raw)
+            if max_chars <= 0 or raw_len <= max_chars:
+                return raw, False, raw_len, raw_len
+            marker = "\n\n...[TRUNCATED]..."
+            keep = max(0, max_chars - len(marker))
+            truncated = raw[:keep] + marker
+            return truncated, True, raw_len, len(truncated)
+
+        max_chars_eff = max(0, int(max_chars or 0))
+        orig_trunc, orig_is_trunc, orig_raw_len, orig_stored_len = _truncate(original_markdown)
+        clean_trunc, clean_is_trunc, clean_raw_len, clean_stored_len = _truncate(cleaned_markdown)
+
+        rec = (
+            db.query(DocumentParsedContent)
+            .filter(DocumentParsedContent.document_id == document_id, DocumentParsedContent.tenant_id == tenant_id)
+            .first()
+        )
+        if rec is None:
+            rec = DocumentParsedContent(
+                tenant_id=tenant_id,
+                document_id=document_id,
+                markdown_content=clean_trunc,
+                original_markdown_content=orig_trunc,
+            )
+            db.add(rec)
+        else:
+            rec.markdown_content = clean_trunc
+            rec.original_markdown_content = orig_trunc
+
+        db.commit()
+        db.refresh(rec)
+
+        return {
+            "enabled": True,
+            "max_chars": int(max_chars_eff),
+            "original": {"raw_len": int(orig_raw_len), "stored_len": int(orig_stored_len), "truncated": bool(orig_is_trunc)},
+            "cleaned": {"raw_len": int(clean_raw_len), "stored_len": int(clean_stored_len), "truncated": bool(clean_is_trunc)},
+        }
+
     def _record_governance_metadata(
         self,
         db: Session,
@@ -1571,6 +1893,7 @@ class DocumentProcessorService:
 
         metadata = dict(db_doc.doc_metadata or {})
         metadata["governance_enabled"] = True
+        metadata["governance_version"] = str(getattr(stats, "version", None) or metadata.get("governance_version") or "1")
         metadata["governance_documents"] = int(stats.documents)
         metadata["governance_changed_documents"] = int(stats.changed)
         metadata["governance_rules_applied"] = int(stats.applied_rules)
@@ -1578,6 +1901,12 @@ class DocumentProcessorService:
         reasons = getattr(stats, "drop_reasons", None)
         if isinstance(reasons, dict) and reasons:
             metadata["governance_drop_reasons"] = {str(k): int(v) for k, v in reasons.items()}
+        pii_hits = getattr(stats, "pii_hits", None)
+        if isinstance(pii_hits, dict) and pii_hits:
+            metadata["governance_pii_hits"] = {str(k): int(v) for k, v in pii_hits.items()}
+        secrets_hits = getattr(stats, "secrets_hits", None)
+        if isinstance(secrets_hits, dict) and secrets_hits:
+            metadata["governance_secrets_hits"] = {str(k): int(v) for k, v in secrets_hits.items()}
 
         db_doc.doc_metadata = metadata
         db.commit()

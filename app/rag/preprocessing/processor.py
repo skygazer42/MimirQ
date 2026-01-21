@@ -16,17 +16,26 @@ from app.rag.preprocessing.cleaning import (
 from app.rag.preprocessing.boilerplate import remove_markdown_boilerplate
 from app.rag.preprocessing.images import strip_images
 from app.rag.preprocessing.pii_anonymizer import anonymize_pii
+from app.rag.preprocessing.secrets import redact_secrets
+from app.rag.preprocessing.code_blocks import strip_fenced_code_line_numbers
+from app.rag.preprocessing.tables import normalize_markdown_tables
 from app.rag.preprocessing.rules import DEFAULT_MARKDOWN_RULES
 from app.rag.preprocessing.quality_filters import drop_if_low_density, drop_if_outline_only
 
 
+GOVERNANCE_RULESET_VERSION = "1"
+
+
 @dataclass(frozen=True)
 class GovernanceStats:
+    version: str = GOVERNANCE_RULESET_VERSION
     documents: int
     changed: int
     applied_rules: int
     dropped: int = 0
     drop_reasons: dict[str, int] = field(default_factory=dict)
+    pii_hits: dict[str, int] = field(default_factory=dict)
+    secrets_hits: dict[str, int] = field(default_factory=dict)
 
 
 class GovernanceProcessor:
@@ -46,9 +55,14 @@ class GovernanceProcessor:
         remove_common_lines: bool = True,
         remove_boilerplate: bool = False,
         remove_images: str = "none",
+        normalize_tables: bool = False,
+        strip_code_line_numbers: bool = False,
         pii_anonymize: bool = False,
         pii_mode: str = "mask",
         pii_mask: str = "[REDACTED]",
+        secrets_redact: bool = False,
+        secrets_mode: str = "mask",
+        secrets_mask: str = "[SECRET]",
         max_blank_lines: int = 1,
         drop_outline_only: bool = False,
         drop_outline_min_content_chars: int = 200,
@@ -87,6 +101,8 @@ class GovernanceProcessor:
         applied_total = 0
         dropped = 0
         drop_reasons: dict[str, int] = {}
+        pii_hits_total: dict[str, int] = {}
+        secrets_hits_total: dict[str, int] = {}
 
         for doc in documents:
             local_common_lines = (
@@ -117,6 +133,24 @@ class GovernanceProcessor:
             text = result.markdown
             changed_any = bool(result.changed)
 
+            table_rows_changed = 0
+            table_count = 0
+            if normalize_tables:
+                tbl = normalize_markdown_tables(text)
+                text = tbl.text
+                table_count = int(tbl.tables or 0)
+                table_rows_changed = int(tbl.rows_changed or 0)
+                changed_any = changed_any or bool(tbl.changed)
+
+            code_blocks_changed = 0
+            code_lines_stripped = 0
+            if strip_code_line_numbers:
+                code = strip_fenced_code_line_numbers(text)
+                text = code.text
+                code_blocks_changed = int(code.blocks_changed or 0)
+                code_lines_stripped = int(code.lines_stripped or 0)
+                changed_any = changed_any or bool(code.changed)
+
             boilerplate = None
             if remove_boilerplate:
                 boilerplate = remove_markdown_boilerplate(text)
@@ -136,6 +170,17 @@ class GovernanceProcessor:
                 text = pii.text
                 pii_hits = dict(pii.hits or {})
                 changed_any = changed_any or bool(pii.changed)
+                for k, v in pii_hits.items():
+                    pii_hits_total[k] = pii_hits_total.get(k, 0) + int(v)
+
+            secrets_hits: dict[str, int] = {}
+            if secrets_redact:
+                sec = redact_secrets(text, enabled=True, mode=str(secrets_mode or "mask"), mask=str(secrets_mask or "[SECRET]"))  # type: ignore[arg-type]
+                text = sec.text
+                secrets_hits = dict(sec.hits or {})
+                changed_any = changed_any or bool(sec.changed)
+                for k, v in secrets_hits.items():
+                    secrets_hits_total[k] = secrets_hits_total.get(k, 0) + int(v)
 
             drop_reason: str | None = None
             if drop_outline_only:
@@ -162,6 +207,7 @@ class GovernanceProcessor:
             if changed_any:
                 changed += 1
             meta = dict(doc.metadata or {})
+            meta["governance_version"] = GOVERNANCE_RULESET_VERSION
             meta["governance_applied"] = True
             meta["governance_rules_applied"] = int(result.applied_rules or 0)
             meta["governance_changed"] = bool(changed_any)
@@ -172,6 +218,31 @@ class GovernanceProcessor:
                 meta["governance_images_removed"] = int(images_removed)
             if pii_hits:
                 meta["governance_pii_hits"] = pii_hits
+            if secrets_hits:
+                meta["governance_secrets_hits"] = secrets_hits
+            if table_count:
+                meta["governance_tables_normalized"] = int(table_count)
+                meta["governance_table_rows_changed"] = int(table_rows_changed)
+            if code_lines_stripped:
+                meta["governance_code_blocks_changed"] = int(code_blocks_changed)
+                meta["governance_code_lines_stripped"] = int(code_lines_stripped)
+
+            # Always attach lightweight quality metrics for observability/tuning.
+            try:
+                density_metrics = drop_if_low_density(text, threshold=-1.0).metrics or {}
+                outline_metrics = drop_if_outline_only(text, min_content_chars=0, max_heading_ratio=2.0).metrics or {}
+                meta["governance_quality"] = {
+                    "density": float(density_metrics.get("density") or 0.0),
+                    "chars_non_space": int(density_metrics.get("chars_non_space") or 0),
+                    "chars_alnum_cjk": int(density_metrics.get("chars_alnum_cjk") or 0),
+                    "heading_ratio": float(outline_metrics.get("heading_ratio") or 0.0),
+                    "lines_total": int(outline_metrics.get("lines_total") or 0),
+                    "lines_outline": int(outline_metrics.get("lines_outline") or 0),
+                    "content_chars": int(outline_metrics.get("content_chars") or 0),
+                }
+            except Exception:
+                # Best-effort only; never fail ingestion due to metrics.
+                pass
             cleaned.append(Document(page_content=text, metadata=meta, id=getattr(doc, "id", None)))
 
         return cleaned, GovernanceStats(
@@ -180,6 +251,8 @@ class GovernanceProcessor:
             applied_rules=applied_total,
             dropped=dropped,
             drop_reasons=drop_reasons,
+            pii_hits=pii_hits_total,
+            secrets_hits=secrets_hits_total,
         )
 
 

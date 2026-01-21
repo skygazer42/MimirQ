@@ -88,6 +88,9 @@ def parse_pipeline_from_metadata(metadata: Dict[str, Any]) -> PipelineOptions:
     governance = pipeline.get("governance")
     if not isinstance(governance, dict):
         governance = {}
+    dedup = pipeline.get("dedup")
+    if not isinstance(dedup, dict):
+        dedup = {}
 
     return PipelineOptions(
         governance_enabled=_coerce_bool(pipeline.get("governance_enabled")),
@@ -97,9 +100,14 @@ def parse_pipeline_from_metadata(metadata: Dict[str, Any]) -> PipelineOptions:
         governance_remove_common_lines=_coerce_bool(governance.get("remove_common_lines")),
         governance_remove_boilerplate=_coerce_bool(governance.get("remove_boilerplate")),
         governance_remove_images=_coerce_str(governance.get("remove_images")),
+        governance_normalize_tables=_coerce_bool(governance.get("normalize_tables")),
+        governance_strip_code_line_numbers=_coerce_bool(governance.get("strip_code_line_numbers")),
         governance_pii_anonymize=_coerce_bool(governance.get("pii_anonymize")),
         governance_pii_mode=_coerce_str(governance.get("pii_mode")),
         governance_pii_mask=_coerce_str(governance.get("pii_mask")),
+        governance_secrets_redact=_coerce_bool(governance.get("secrets_redact")),
+        governance_secrets_mode=_coerce_str(governance.get("secrets_mode")),
+        governance_secrets_mask=_coerce_str(governance.get("secrets_mask")),
         governance_max_blank_lines=_coerce_int(governance.get("max_blank_lines")),
         governance_html_xpath=_coerce_str(governance.get("html_xpath")),
         governance_drop_outline_only=_coerce_bool(governance.get("drop_outline_only")),
@@ -112,6 +120,14 @@ def parse_pipeline_from_metadata(metadata: Dict[str, Any]) -> PipelineOptions:
         governance_noise_ratio_threshold=_coerce_float(governance.get("noise_ratio_threshold")),
         governance_common_lines_min_docs=_coerce_int(governance.get("common_lines_min_docs")),
         governance_common_lines_min_ratio=_coerce_float(governance.get("common_lines_min_ratio")),
+        parse_fallback_enabled=_coerce_bool(pipeline.get("parse_fallback_enabled")),
+        parse_fallback_min_content_chars=_coerce_int(pipeline.get("parse_fallback_min_content_chars")),
+        parse_fallback_max_retries=_coerce_int(pipeline.get("parse_fallback_max_retries")),
+        persist_parsed_content=_coerce_bool(pipeline.get("persist_parsed_content")),
+        persist_parsed_content_max_chars=_coerce_int(pipeline.get("persist_parsed_content_max_chars")),
+        near_dedup_enabled=_coerce_bool(dedup.get("enabled")),
+        near_dedup_hamming_threshold=_coerce_int(dedup.get("hamming_threshold")),
+        near_dedup_max_bucket_size=_coerce_int(dedup.get("max_bucket_size")),
         chunk_size=_coerce_int(pipeline.get("chunk_size")),
         chunk_overlap=_coerce_int(pipeline.get("chunk_overlap")),
         chunk_vector_enabled=_coerce_bool(index.get("chunk_vector_enabled")),
@@ -129,6 +145,16 @@ def build_pipeline_metadata(options: PipelineOptions) -> Optional[Dict[str, Any]
     pipeline: Dict[str, Any] = {}
     if options.governance_enabled is not None:
         pipeline["governance_enabled"] = bool(options.governance_enabled)
+    if options.parse_fallback_enabled is not None:
+        pipeline["parse_fallback_enabled"] = bool(options.parse_fallback_enabled)
+    if options.parse_fallback_min_content_chars is not None:
+        pipeline["parse_fallback_min_content_chars"] = int(options.parse_fallback_min_content_chars)
+    if options.parse_fallback_max_retries is not None:
+        pipeline["parse_fallback_max_retries"] = int(options.parse_fallback_max_retries)
+    if options.persist_parsed_content is not None:
+        pipeline["persist_parsed_content"] = bool(options.persist_parsed_content)
+    if options.persist_parsed_content_max_chars is not None:
+        pipeline["persist_parsed_content_max_chars"] = int(options.persist_parsed_content_max_chars)
     if options.chunk_size is not None:
         pipeline["chunk_size"] = int(options.chunk_size)
     if options.chunk_overlap is not None:
@@ -147,12 +173,22 @@ def build_pipeline_metadata(options: PipelineOptions) -> Optional[Dict[str, Any]
         governance["remove_boilerplate"] = bool(options.governance_remove_boilerplate)
     if options.governance_remove_images is not None:
         governance["remove_images"] = str(options.governance_remove_images)
+    if options.governance_normalize_tables is not None:
+        governance["normalize_tables"] = bool(options.governance_normalize_tables)
+    if options.governance_strip_code_line_numbers is not None:
+        governance["strip_code_line_numbers"] = bool(options.governance_strip_code_line_numbers)
     if options.governance_pii_anonymize is not None:
         governance["pii_anonymize"] = bool(options.governance_pii_anonymize)
     if options.governance_pii_mode is not None:
         governance["pii_mode"] = str(options.governance_pii_mode)
     if options.governance_pii_mask is not None:
         governance["pii_mask"] = str(options.governance_pii_mask)
+    if options.governance_secrets_redact is not None:
+        governance["secrets_redact"] = bool(options.governance_secrets_redact)
+    if options.governance_secrets_mode is not None:
+        governance["secrets_mode"] = str(options.governance_secrets_mode)
+    if options.governance_secrets_mask is not None:
+        governance["secrets_mask"] = str(options.governance_secrets_mask)
     if options.governance_max_blank_lines is not None:
         governance["max_blank_lines"] = int(options.governance_max_blank_lines)
     if options.governance_html_xpath is not None:
@@ -179,6 +215,16 @@ def build_pipeline_metadata(options: PipelineOptions) -> Optional[Dict[str, Any]
         governance["common_lines_min_ratio"] = float(options.governance_common_lines_min_ratio)
     if governance:
         pipeline["governance"] = governance
+
+    dedup: Dict[str, Any] = {}
+    if options.near_dedup_enabled is not None:
+        dedup["enabled"] = bool(options.near_dedup_enabled)
+    if options.near_dedup_hamming_threshold is not None:
+        dedup["hamming_threshold"] = int(options.near_dedup_hamming_threshold)
+    if options.near_dedup_max_bucket_size is not None:
+        dedup["max_bucket_size"] = int(options.near_dedup_max_bucket_size)
+    if dedup:
+        pipeline["dedup"] = dedup
 
     index: Dict[str, Any] = {}
     if options.chunk_vector_enabled is not None:
@@ -254,6 +300,16 @@ def resolve_pipeline_options(options: PipelineOptions) -> PipelineEffective:
         if options.governance_remove_images is None
         else str(options.governance_remove_images or "none")
     )
+    governance_normalize_tables = (
+        getattr(settings, "GOVERNANCE_NORMALIZE_TABLES", False)
+        if options.governance_normalize_tables is None
+        else bool(options.governance_normalize_tables)
+    )
+    governance_strip_code_line_numbers = (
+        getattr(settings, "GOVERNANCE_STRIP_CODE_LINE_NUMBERS", False)
+        if options.governance_strip_code_line_numbers is None
+        else bool(options.governance_strip_code_line_numbers)
+    )
     governance_pii_anonymize = (
         getattr(settings, "GOVERNANCE_PII_ANONYMIZE", False)
         if options.governance_pii_anonymize is None
@@ -268,6 +324,21 @@ def resolve_pipeline_options(options: PipelineOptions) -> PipelineEffective:
         getattr(settings, "GOVERNANCE_PII_MASK", "[REDACTED]")
         if options.governance_pii_mask is None
         else str(options.governance_pii_mask or "[REDACTED]")
+    )
+    governance_secrets_redact = (
+        getattr(settings, "GOVERNANCE_SECRETS_REDACT", False)
+        if options.governance_secrets_redact is None
+        else bool(options.governance_secrets_redact)
+    )
+    governance_secrets_mode = (
+        getattr(settings, "GOVERNANCE_SECRETS_MODE", "mask")
+        if options.governance_secrets_mode is None
+        else str(options.governance_secrets_mode or "mask")
+    )
+    governance_secrets_mask = (
+        getattr(settings, "GOVERNANCE_SECRETS_MASK", "[SECRET]")
+        if options.governance_secrets_mask is None
+        else str(options.governance_secrets_mask or "[SECRET]")
     )
     governance_max_blank_lines = (
         options.governance_max_blank_lines
@@ -329,6 +400,46 @@ def resolve_pipeline_options(options: PipelineOptions) -> PipelineEffective:
         if options.governance_common_lines_min_ratio is not None
         else settings.GOVERNANCE_COMMON_LINES_MIN_RATIO
     )
+    parse_fallback_enabled = (
+        getattr(settings, "PARSE_FALLBACK_ENABLED", False)
+        if options.parse_fallback_enabled is None
+        else bool(options.parse_fallback_enabled)
+    )
+    parse_fallback_min_content_chars = (
+        options.parse_fallback_min_content_chars
+        if options.parse_fallback_min_content_chars is not None
+        else int(getattr(settings, "PARSE_FALLBACK_MIN_CONTENT_CHARS", 120) or 120)
+    )
+    parse_fallback_max_retries = (
+        options.parse_fallback_max_retries
+        if options.parse_fallback_max_retries is not None
+        else int(getattr(settings, "PARSE_FALLBACK_MAX_RETRIES", 1) or 1)
+    )
+    persist_parsed_content = (
+        getattr(settings, "PERSIST_PARSED_CONTENT", False)
+        if options.persist_parsed_content is None
+        else bool(options.persist_parsed_content)
+    )
+    persist_parsed_content_max_chars = (
+        options.persist_parsed_content_max_chars
+        if options.persist_parsed_content_max_chars is not None
+        else int(getattr(settings, "PERSIST_PARSED_CONTENT_MAX_CHARS", 200_000) or 200_000)
+    )
+    near_dedup_enabled = (
+        getattr(settings, "NEAR_DEDUP_ENABLED", False)
+        if options.near_dedup_enabled is None
+        else bool(options.near_dedup_enabled)
+    )
+    near_dedup_hamming_threshold = (
+        options.near_dedup_hamming_threshold
+        if options.near_dedup_hamming_threshold is not None
+        else int(getattr(settings, "NEAR_DEDUP_HAMMING_THRESHOLD", 3) or 3)
+    )
+    near_dedup_max_bucket_size = (
+        options.near_dedup_max_bucket_size
+        if options.near_dedup_max_bucket_size is not None
+        else int(getattr(settings, "NEAR_DEDUP_MAX_BUCKET_SIZE", 256) or 256)
+    )
     chunk_size = options.chunk_size if options.chunk_size is not None else settings.CHUNK_SIZE
     chunk_overlap = options.chunk_overlap if options.chunk_overlap is not None else settings.CHUNK_OVERLAP
 
@@ -340,9 +451,14 @@ def resolve_pipeline_options(options: PipelineOptions) -> PipelineEffective:
         governance_remove_common_lines=governance_remove_common_lines,
         governance_remove_boilerplate=governance_remove_boilerplate,
         governance_remove_images=str(governance_remove_images or "none"),
+        governance_normalize_tables=bool(governance_normalize_tables),
+        governance_strip_code_line_numbers=bool(governance_strip_code_line_numbers),
         governance_pii_anonymize=bool(governance_pii_anonymize),
         governance_pii_mode=str(governance_pii_mode or "mask"),
         governance_pii_mask=str(governance_pii_mask or "[REDACTED]"),
+        governance_secrets_redact=bool(governance_secrets_redact),
+        governance_secrets_mode=str(governance_secrets_mode or "mask"),
+        governance_secrets_mask=str(governance_secrets_mask or "[SECRET]"),
         governance_max_blank_lines=int(governance_max_blank_lines),
         governance_html_xpath=str(governance_html_xpath or ""),
         governance_drop_outline_only=bool(governance_drop_outline_only),
@@ -355,6 +471,14 @@ def resolve_pipeline_options(options: PipelineOptions) -> PipelineEffective:
         governance_noise_ratio_threshold=float(governance_noise_ratio_threshold),
         governance_common_lines_min_docs=int(governance_common_lines_min_docs),
         governance_common_lines_min_ratio=float(governance_common_lines_min_ratio),
+        parse_fallback_enabled=bool(parse_fallback_enabled),
+        parse_fallback_min_content_chars=int(parse_fallback_min_content_chars),
+        parse_fallback_max_retries=int(parse_fallback_max_retries),
+        persist_parsed_content=bool(persist_parsed_content),
+        persist_parsed_content_max_chars=int(persist_parsed_content_max_chars),
+        near_dedup_enabled=bool(near_dedup_enabled),
+        near_dedup_hamming_threshold=int(near_dedup_hamming_threshold),
+        near_dedup_max_bucket_size=int(near_dedup_max_bucket_size),
         chunk_size=int(chunk_size),
         chunk_overlap=int(chunk_overlap),
         chunk_vector_enabled=_resolve_flag(settings.CHUNK_VECTOR_ENABLED, options.chunk_vector_enabled),
