@@ -16,9 +16,12 @@ import {
   BarChart3,
   Database,
   Download,
+  Eye,
   Funnel,
   Grid3X3,
+  Lock,
   RefreshCw,
+  SlidersHorizontal,
 } from 'lucide-react'
 import { toast } from 'sonner'
 
@@ -53,6 +56,11 @@ export function RagvizSimilarityWorkbench() {
   const rightSidebarRef = useRef<HTMLDivElement>(null)
 
   const [results, setResults] = useState<SimilarityMatrixEntry[]>([])
+  const [matrixButtons, setMatrixButtons] = useState<MatrixButtonState[]>([])
+  const [primaryIndex, setPrimaryIndex] = useState<number | null>(null)
+  const [subtractIndex, setSubtractIndex] = useState<number | null>(null)
+  const [activeFilterIndices, setActiveFilterIndices] = useState<number[]>([])
+  const [exclusiveIndex, setExclusiveIndex] = useState<number | null>(null)
 
   const loadCollections = async () => {
     setCollectionsError('')
@@ -142,6 +150,155 @@ export function RagvizSimilarityWorkbench() {
     if (nextResults.length > 0) {
       toast.success(`成功计算 ${nextResults.length} 个相似度矩阵`)
     }
+  }
+
+  // Initialize matrix states after a new calculation/import.
+  useEffect(() => {
+    if (results.length === 0) {
+      setMatrixButtons([])
+      setPrimaryIndex(null)
+      setSubtractIndex(null)
+      setActiveFilterIndices([])
+      setExclusiveIndex(null)
+      return
+    }
+
+    const init: MatrixButtonState[] = results.map(() => ({ applyData: false, applyFilter: false, exclusive: false }))
+    init[0] = { applyData: true, applyFilter: true, exclusive: true }
+    setMatrixButtons(init)
+    setPrimaryIndex(0)
+    setSubtractIndex(null)
+    setActiveFilterIndices([0])
+    setExclusiveIndex(0)
+  }, [results])
+
+  const primaryEntry = primaryIndex !== null ? results[primaryIndex] : null
+  const subtractEntry = subtractIndex !== null ? results[subtractIndex] : null
+
+  const matrixShape = (entry: SimilarityMatrixEntry | null) => {
+    const m = entry?.result?.matrix || []
+    const rows = m.length
+    const cols = rows > 0 ? (m[0]?.length || 0) : 0
+    return { rows, cols }
+  }
+
+  const sameShape = (a: SimilarityMatrixEntry | null, b: SimilarityMatrixEntry | null) => {
+    const sa = matrixShape(a)
+    const sb = matrixShape(b)
+    return sa.rows === sb.rows && sa.cols === sb.cols
+  }
+
+  const enterExclusiveMode = (index: number) => {
+    setExclusiveIndex(index)
+    setPrimaryIndex(index)
+    setSubtractIndex(null)
+    setActiveFilterIndices([index])
+
+    setMatrixButtons((prev) =>
+      prev.map((s, i) => ({
+        applyData: i === index,
+        applyFilter: i === index,
+        exclusive: i === index,
+      }))
+    )
+  }
+
+  const exitExclusiveMode = () => {
+    setExclusiveIndex(null)
+    setMatrixButtons((prev) => prev.map((s) => ({ ...s, exclusive: false })))
+  }
+
+  const toggleApplyData = (index: number) => {
+    if (index < 0 || index >= results.length) return
+
+    // If enabling data on a different matrix while exclusive is active, exit exclusive first.
+    if (exclusiveIndex !== null && exclusiveIndex !== index) {
+      exitExclusiveMode()
+    }
+
+    setMatrixButtons((prev) => {
+      const next = [...prev]
+      const current = next[index]
+      if (!current) return prev
+
+      if (current.applyData) {
+        // Turning off.
+        if (index === subtractIndex) {
+          next[index] = { ...current, applyData: false }
+          setSubtractIndex(null)
+        } else if (index === primaryIndex) {
+          next[index] = { ...current, applyData: false }
+          setPrimaryIndex(null)
+          setSubtractIndex(null)
+        } else {
+          next[index] = { ...current, applyData: false }
+        }
+        return next
+      }
+
+      // Turning on: ensure shape consistency.
+      if (primaryIndex !== null) {
+        const primary = results[primaryIndex]
+        const candidate = results[index]
+        if (!sameShape(primary, candidate)) {
+          toast.warning('矩阵大小不一致，无法用于差值/展示')
+          return prev
+        }
+      }
+
+      if (primaryIndex === null) {
+        // No primary -> set as primary.
+        setPrimaryIndex(index)
+        setSubtractIndex(null)
+        return next.map((s, i) => ({ ...s, applyData: i === index }))
+      }
+
+      if (primaryIndex === index) {
+        return prev
+      }
+
+      if (subtractIndex === null) {
+        setSubtractIndex(index)
+        return next.map((s, i) => ({ ...s, applyData: i === primaryIndex || i === index }))
+      }
+
+      // Replace subtract.
+      const old = subtractIndex
+      setSubtractIndex(index)
+      return next.map((s, i) => ({ ...s, applyData: i === primaryIndex || i === index ? true : false }))
+    })
+  }
+
+  const toggleApplyFilter = (index: number) => {
+    if (index < 0 || index >= results.length) return
+
+    if (exclusiveIndex !== null && exclusiveIndex !== index) {
+      exitExclusiveMode()
+    }
+
+    if (primaryIndex === null) {
+      toast.error('请先选择一个“应用数据”的矩阵作为主图')
+      return
+    }
+
+    const primary = results[primaryIndex]
+    const candidate = results[index]
+    if (!sameShape(primary, candidate)) {
+      toast.warning('矩阵大小不一致，无法合并筛选器')
+      return
+    }
+
+    setMatrixButtons((prev) => {
+      const next = [...prev]
+      const cur = next[index]
+      if (!cur) return prev
+      next[index] = { ...cur, applyFilter: !cur.applyFilter }
+      return next
+    })
+
+    setActiveFilterIndices((prev) => {
+      return prev.includes(index) ? prev.filter((i) => i !== index) : [...prev, index]
+    })
   }
 
   // Persist UI layout.
@@ -324,7 +481,84 @@ export function RagvizSimilarityWorkbench() {
 
             <div className="p-3 overflow-auto">
               <Panel title="图表选择与控制">
-                <p className="text-xs text-muted-foreground">矩阵列表与按钮状态（后续实现）。</p>
+                {results.length === 0 ? (
+                  <p className="text-xs text-muted-foreground">请先在“数据源配置”里计算相似度矩阵。</p>
+                ) : (
+                  <div className="space-y-2">
+                    <p className="text-[11px] text-muted-foreground">
+                      提示：应用数据=显示/差值；应用筛选器=合并筛选条件(可多选)；独占模式=锁定编辑该图
+                    </p>
+                    <div className="space-y-2">
+                      {results.map((entry, idx) => {
+                        const btn = matrixButtons[idx]
+                        const isPrimary = primaryIndex === idx
+                        const isSubtract = subtractIndex === idx
+                        const isExclusive = exclusiveIndex === idx
+
+                        return (
+                          <div
+                            key={`${entry.xCollectionId}__${entry.yCollectionId}__${idx}`}
+                            className={cn(
+                              'flex items-center gap-2 rounded-lg border p-2',
+                              isPrimary ? 'border-primary/50 bg-primary/5' : 'border-border bg-background'
+                            )}
+                          >
+                            <div className="flex-1 min-w-0">
+                              <div className="text-xs font-medium truncate">
+                                {entry.xCollectionLabel} <span className="text-muted-foreground">vs</span> {entry.yCollectionLabel}
+                              </div>
+                              <div className="text-[11px] text-muted-foreground flex items-center gap-2">
+                                <span>
+                                  {matrixShape(entry).rows}×{matrixShape(entry).cols}
+                                </span>
+                                {isPrimary ? (
+                                  <span className="px-1.5 py-0.5 rounded bg-primary/10 text-primary">主</span>
+                                ) : null}
+                                {isSubtract ? (
+                                  <span className="px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-700 dark:text-amber-300">
+                                    减
+                                  </span>
+                                ) : null}
+                                {isExclusive ? (
+                                  <span className="px-1.5 py-0.5 rounded bg-sky-500/10 text-sky-700 dark:text-sky-300">
+                                    独占
+                                  </span>
+                                ) : null}
+                              </div>
+                            </div>
+
+                            <div className="flex items-center gap-1">
+                              <Button
+                                variant={btn?.applyData ? 'default' : 'outline'}
+                                size="icon"
+                                title="应用数据"
+                                onClick={() => toggleApplyData(idx)}
+                              >
+                                <Eye className="h-4 w-4" />
+                              </Button>
+                              <Button
+                                variant={btn?.applyFilter ? 'default' : 'outline'}
+                                size="icon"
+                                title="应用筛选器"
+                                onClick={() => toggleApplyFilter(idx)}
+                              >
+                                <Funnel className="h-4 w-4" />
+                              </Button>
+                              <Button
+                                variant={btn?.exclusive ? 'default' : 'outline'}
+                                size="icon"
+                                title="独占模式"
+                                onClick={() => (btn?.exclusive ? exitExclusiveMode() : enterExclusiveMode(idx))}
+                              >
+                                <Lock className="h-4 w-4" />
+                              </Button>
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </div>
+                )}
               </Panel>
             </div>
           </div>
