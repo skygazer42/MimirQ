@@ -1394,6 +1394,23 @@ class DocumentProcessorService:
                     resolved_chunk_strategy=resolved_chunk_strategy,
                 )
             chunks = chunk_asset.chunks
+            # Ensure stable traceability metadata exists on each chunk (used by citations/filtering).
+            pipeline_hash = str((db_document.doc_metadata or {}).get("pipeline_hash") or "").strip()
+            file_type = str(getattr(db_document, "file_type", "") or "").strip().lower() or str(file_path.suffix.lstrip(".")).lower()
+            governance_version = (
+                str(getattr(governance_stats, "version", "") or "").strip()
+                if governance_stats is not None
+                else ""
+            )
+            for c in chunks:
+                meta = dict(c.metadata or {})
+                if pipeline_hash:
+                    meta.setdefault("pipeline_hash", pipeline_hash)
+                if file_type:
+                    meta.setdefault("file_type", file_type)
+                if governance_version:
+                    meta.setdefault("governance_version", governance_version)
+                c.metadata = meta
             for iid in chunk_asset.img_ids:
                 if isinstance(iid, str) and iid.strip():
                     document_img_ids.add(iid)
