@@ -20,6 +20,21 @@ class PipelineOptions:
     governance_remove_common_lines: Optional[bool] = None
     governance_remove_boilerplate: Optional[bool] = None
     governance_remove_images: Optional[str] = None
+    governance_extract_frontmatter: Optional[bool] = None
+    governance_strip_frontmatter: Optional[bool] = None
+    governance_detect_language: Optional[bool] = None
+    governance_language_min_chars: Optional[int] = None
+    governance_normalize_urls: Optional[bool] = None
+    governance_normalize_urls_strip_tracking: Optional[bool] = None
+    governance_drop_duplicate_paragraphs: Optional[bool] = None
+    governance_drop_duplicate_paragraphs_min_occurrences: Optional[int] = None
+    governance_drop_duplicate_paragraphs_min_chars: Optional[int] = None
+    governance_drop_duplicate_paragraphs_max_chars: Optional[int] = None
+    governance_trim_references: Optional[bool] = None
+    governance_extract_keywords: Optional[bool] = None
+    governance_keywords_provider: Optional[str] = None
+    governance_keywords_top_k: Optional[int] = None
+    governance_keywords_max_chars: Optional[int] = None
     governance_normalize_tables: Optional[bool] = None
     governance_strip_code_line_numbers: Optional[bool] = None
     governance_pii_anonymize: Optional[bool] = None
@@ -66,6 +81,21 @@ class PipelineEffective:
     governance_remove_common_lines: bool
     governance_remove_boilerplate: bool
     governance_remove_images: str
+    governance_extract_frontmatter: bool
+    governance_strip_frontmatter: bool
+    governance_detect_language: bool
+    governance_language_min_chars: int
+    governance_normalize_urls: bool
+    governance_normalize_urls_strip_tracking: bool
+    governance_drop_duplicate_paragraphs: bool
+    governance_drop_duplicate_paragraphs_min_occurrences: int
+    governance_drop_duplicate_paragraphs_min_chars: int
+    governance_drop_duplicate_paragraphs_max_chars: int
+    governance_trim_references: bool
+    governance_extract_keywords: bool
+    governance_keywords_provider: str
+    governance_keywords_top_k: int
+    governance_keywords_max_chars: int
     governance_normalize_tables: bool
     governance_strip_code_line_numbers: bool
     governance_pii_anonymize: bool
