@@ -1036,28 +1036,31 @@ class DocumentProcessorService:
                     and int(getattr(governance_stats, "dropped", 0) or 0) > 0
                 ):
                     self._record_governance_metadata(db, tenant_id, document_id, governance_stats)
+                    quarantined = bool(getattr(pipeline_effective, "governance_quarantine_on_drop", False))
                     reasons = getattr(governance_stats, "drop_reasons", {}) or {}
                     reason_str = ", ".join([f"{k}:{v}" for k, v in sorted(reasons.items())]) if isinstance(reasons, dict) else ""
                     msg = (
-                        "Document filtered by governance rules"
+                        ("Document quarantined by governance rules" if quarantined else "Document filtered by governance rules")
                         + (f" ({reason_str})" if reason_str else "")
                         + ". You can disable outline/low-density filters or relax thresholds."
                     )
                     logger.warning("%s document_id=%s", msg, document_id)
+                    status = "quarantined" if quarantined else "failed"
+                    reason = "quarantined_by_governance" if quarantined else "filtered_by_governance"
                     await self._update_status(
                         db,
                         tenant_id,
                         document_id,
-                        "failed",
+                        status,
                         0,
-                        "failed",
+                        status,
                         chunk_count=0,
                         total_characters=0,
                         error_message=msg,
                     )
                     return {
-                        "status": "failed",
-                        "reason": "filtered_by_governance",
+                        "status": status,
+                        "reason": reason,
                         "chunk_count": 0,
                         "total_characters": 0,
                         "parser_backend": resolved_backend,
@@ -1116,28 +1119,31 @@ class DocumentProcessorService:
                     and int(getattr(governance_stats, "dropped", 0) or 0) > 0
                 ):
                     self._record_governance_metadata(db, tenant_id, document_id, governance_stats)
+                    quarantined = bool(getattr(pipeline_effective, "governance_quarantine_on_drop", False))
                     reasons = getattr(governance_stats, "drop_reasons", {}) or {}
                     reason_str = ", ".join([f"{k}:{v}" for k, v in sorted(reasons.items())]) if isinstance(reasons, dict) else ""
                     msg = (
-                        "Document filtered by governance rules"
+                        ("Document quarantined by governance rules" if quarantined else "Document filtered by governance rules")
                         + (f" ({reason_str})" if reason_str else "")
                         + ". You can disable outline/low-density filters or relax thresholds."
                     )
                     logger.warning("%s document_id=%s", msg, document_id)
+                    status = "quarantined" if quarantined else "failed"
+                    reason = "quarantined_by_governance" if quarantined else "filtered_by_governance"
                     await self._update_status(
                         db,
                         tenant_id,
                         document_id,
-                        "failed",
+                        status,
                         0,
-                        "failed",
+                        status,
                         chunk_count=0,
                         total_characters=0,
                         error_message=msg,
                     )
                     return {
-                        "status": "failed",
-                        "reason": "filtered_by_governance",
+                        "status": status,
+                        "reason": reason,
                         "chunk_count": 0,
                         "total_characters": 0,
                         "parser_backend": resolved_backend,

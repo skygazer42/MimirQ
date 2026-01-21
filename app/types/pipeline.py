@@ -37,6 +37,7 @@ class PipelineOptions:
     governance_keywords_max_chars: Optional[int] = None
     governance_normalize_tables: Optional[bool] = None
     governance_strip_code_line_numbers: Optional[bool] = None
+    governance_quarantine_on_drop: Optional[bool] = None
     governance_pii_anonymize: Optional[bool] = None
     governance_pii_mode: Optional[str] = None
     governance_pii_mask: Optional[str] = None
@@ -98,6 +99,7 @@ class PipelineEffective:
     governance_keywords_max_chars: int
     governance_normalize_tables: bool
     governance_strip_code_line_numbers: bool
+    governance_quarantine_on_drop: bool
     governance_pii_anonymize: bool
     governance_pii_mode: str
     governance_pii_mask: str
