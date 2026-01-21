@@ -538,6 +538,26 @@ def _sanitize_filename(filename: str) -> str:
     return cleaned
 
 
+def _parse_pipeline_json(pipeline: Optional[str]) -> Optional[DocumentPipelineOptions]:
+    """
+    Parse JSON-encoded pipeline options from multipart/form-data.
+
+    Frontend uploads use `FormData`, so we accept pipeline config as a JSON string.
+    """
+    raw = (pipeline or "").strip()
+    if not raw or raw.lower() in {"null", "none", "undefined"}:
+        return None
+    max_len = int(getattr(settings, "PIPELINE_FORM_JSON_MAX_CHARS", 200_000) or 200_000)
+    if max_len > 0 and len(raw) > max_len:
+        raise HTTPException(status_code=400, detail="pipeline is too large")
+    try:
+        return DocumentPipelineOptions.model_validate_json(raw)
+    except Exception as exc:  # noqa: BLE001
+        msg = (str(exc) or exc.__class__.__name__)[:200]
+        detail = "Invalid pipeline JSON" if is_production_env() else f"Invalid pipeline JSON: {msg}"
+        raise HTTPException(status_code=400, detail=detail)
+
+
 def _to_pipeline_options(
     *,
     pipeline: Optional[DocumentPipelineOptions] = None,
@@ -559,26 +579,42 @@ def _to_pipeline_options(
     event_vector_enabled: Optional[bool] = None,
     entity_vector_enabled: Optional[bool] = None,
 ) -> PipelineOptions:
+    overrides = {
+        "governance_enabled": governance_enabled,
+        "governance_remove_toc_lines": governance_remove_toc_lines,
+        "governance_remove_noise_lines": governance_remove_noise_lines,
+        "governance_unwrap_lines": governance_unwrap_lines,
+        "governance_remove_common_lines": governance_remove_common_lines,
+        "governance_unwrap_max_line_length": governance_unwrap_max_line_length,
+        "governance_noise_min_chars": governance_noise_min_chars,
+        "governance_noise_ratio_threshold": governance_noise_ratio_threshold,
+        "governance_common_lines_min_docs": governance_common_lines_min_docs,
+        "governance_common_lines_min_ratio": governance_common_lines_min_ratio,
+        "chunk_size": chunk_size,
+        "chunk_overlap": chunk_overlap,
+        "chunk_vector_enabled": chunk_vector_enabled,
+        "bm25_index_enabled": bm25_index_enabled,
+        "kg_enabled": kg_enabled,
+        "event_vector_enabled": event_vector_enabled,
+        "entity_vector_enabled": entity_vector_enabled,
+    }
+    overrides = {k: v for k, v in overrides.items() if v is not None}
     if pipeline is None:
-        pipeline = DocumentPipelineOptions(
-            governance_enabled=governance_enabled,
-            governance_remove_toc_lines=governance_remove_toc_lines,
-            governance_remove_noise_lines=governance_remove_noise_lines,
-            governance_unwrap_lines=governance_unwrap_lines,
-            governance_remove_common_lines=governance_remove_common_lines,
-            governance_unwrap_max_line_length=governance_unwrap_max_line_length,
-            governance_noise_min_chars=governance_noise_min_chars,
-            governance_noise_ratio_threshold=governance_noise_ratio_threshold,
-            governance_common_lines_min_docs=governance_common_lines_min_docs,
-            governance_common_lines_min_ratio=governance_common_lines_min_ratio,
-            chunk_size=chunk_size,
-            chunk_overlap=chunk_overlap,
-            chunk_vector_enabled=chunk_vector_enabled,
-            bm25_index_enabled=bm25_index_enabled,
-            kg_enabled=kg_enabled,
-            event_vector_enabled=event_vector_enabled,
-            entity_vector_enabled=entity_vector_enabled,
-        )
+        pipeline = DocumentPipelineOptions(**overrides) if overrides else None
+    elif overrides:
+        # Explicit form fields override JSON pipeline (backward compatible).
+        try:
+            merged = pipeline.model_dump()
+            merged.update(overrides)
+            pipeline = DocumentPipelineOptions(**merged)
+        except Exception as exc:  # noqa: BLE001
+            msg = (str(exc) or exc.__class__.__name__)[:200]
+            detail = "Invalid pipeline options" if is_production_env() else f"Invalid pipeline options: {msg}"
+            raise HTTPException(status_code=400, detail=detail)
+
+    if pipeline is None:
+        return PipelineOptions()
+
     data = pipeline.model_dump(exclude_none=True)
     return PipelineOptions(**data) if data else PipelineOptions()
 
@@ -819,6 +855,7 @@ async def upload_document(
     file: UploadFile = File(...),
     parser_backend: str = Form(default=settings.DEFAULT_PARSER_BACKEND),
     chunk_strategy: str = Form(default=settings.DEFAULT_CHUNK_STRATEGY),
+    pipeline: Optional[str] = Form(default=None),
     governance_enabled: Optional[bool] = Form(default=None),
     governance_remove_toc_lines: Optional[bool] = Form(default=None),
     governance_remove_noise_lines: Optional[bool] = Form(default=None),
@@ -873,7 +910,9 @@ async def upload_document(
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
 
+    pipeline_parsed = _parse_pipeline_json(pipeline)
     pipeline_options = _to_pipeline_options(
+        pipeline=pipeline_parsed,
         governance_enabled=governance_enabled,
         governance_remove_toc_lines=governance_remove_toc_lines,
         governance_remove_noise_lines=governance_remove_noise_lines,
@@ -979,6 +1018,7 @@ async def upload_documents_batch(
     files: List[UploadFile] = File(...),
     parser_backend: str = Form(default=settings.DEFAULT_PARSER_BACKEND),
     chunk_strategy: str = Form(default=settings.DEFAULT_CHUNK_STRATEGY),
+    pipeline: Optional[str] = Form(default=None),
     governance_enabled: Optional[bool] = Form(default=None),
     governance_remove_toc_lines: Optional[bool] = Form(default=None),
     governance_remove_noise_lines: Optional[bool] = Form(default=None),
@@ -1028,6 +1068,8 @@ async def upload_documents_batch(
     # Cap concurrency.
     max_concurrent = min(max_concurrent, 10)  # Max 10 concurrent.
     semaphore = asyncio.Semaphore(max_concurrent)
+
+    pipeline_parsed = _parse_pipeline_json(pipeline)
     
     async def process_single_file(file: UploadFile) -> dict:
         """Handle upload for a single file."""
@@ -1054,6 +1096,7 @@ async def upload_documents_batch(
                 resolved_chunk_strategy = chunker_factory.resolve_strategy(chunk_strategy)
                 
                 pipeline_options = _to_pipeline_options(
+                    pipeline=pipeline_parsed,
                     governance_enabled=governance_enabled,
                     governance_remove_toc_lines=governance_remove_toc_lines,
                     governance_remove_noise_lines=governance_remove_noise_lines,
@@ -2169,6 +2212,7 @@ async def preview_document(
     parser_backend: str = Form(default=settings.DEFAULT_PARSER_BACKEND),
     chunk_strategy: str = Form(default=settings.DEFAULT_CHUNK_STRATEGY),
     dataset_id: Optional[str] = Form(default=None),
+    pipeline: Optional[str] = Form(default=None),
     governance_enabled: Optional[bool] = Form(default=None),
     governance_remove_toc_lines: Optional[bool] = Form(default=None),
     governance_remove_noise_lines: Optional[bool] = Form(default=None),
@@ -2252,6 +2296,7 @@ async def preview_document(
                 dataset_meta = {}
 
         pipeline_options = _to_pipeline_options(
+            pipeline=_parse_pipeline_json(pipeline),
             governance_enabled=governance_enabled,
             governance_remove_toc_lines=governance_remove_toc_lines,
             governance_remove_noise_lines=governance_remove_noise_lines,
@@ -2269,33 +2314,51 @@ async def preview_document(
             request_overrides=pipeline_options,
         )
         if pipeline_effective.governance_enabled:
+            governance_kwargs = {
+                "remove_toc_lines": pipeline_effective.governance_remove_toc_lines,
+                "remove_noise_lines": pipeline_effective.governance_remove_noise_lines,
+                "unwrap_lines": pipeline_effective.governance_unwrap_lines,
+                "remove_common_lines": pipeline_effective.governance_remove_common_lines,
+                "remove_boilerplate": pipeline_effective.governance_remove_boilerplate,
+                "remove_images": pipeline_effective.governance_remove_images,
+                "extract_frontmatter": pipeline_effective.governance_extract_frontmatter,
+                "strip_frontmatter": pipeline_effective.governance_strip_frontmatter,
+                "detect_language": pipeline_effective.governance_detect_language,
+                "language_min_chars": pipeline_effective.governance_language_min_chars,
+                "normalize_urls": pipeline_effective.governance_normalize_urls,
+                "normalize_urls_strip_tracking": pipeline_effective.governance_normalize_urls_strip_tracking,
+                "drop_duplicate_paragraphs": pipeline_effective.governance_drop_duplicate_paragraphs,
+                "drop_duplicate_paragraphs_min_occurrences": pipeline_effective.governance_drop_duplicate_paragraphs_min_occurrences,
+                "drop_duplicate_paragraphs_min_chars": pipeline_effective.governance_drop_duplicate_paragraphs_min_chars,
+                "drop_duplicate_paragraphs_max_chars": pipeline_effective.governance_drop_duplicate_paragraphs_max_chars,
+                "trim_references": pipeline_effective.governance_trim_references,
+                "extract_keywords": pipeline_effective.governance_extract_keywords,
+                "keywords_provider": pipeline_effective.governance_keywords_provider,
+                "keywords_top_k": pipeline_effective.governance_keywords_top_k,
+                "keywords_max_chars": pipeline_effective.governance_keywords_max_chars,
+                "normalize_tables": pipeline_effective.governance_normalize_tables,
+                "strip_code_line_numbers": pipeline_effective.governance_strip_code_line_numbers,
+                "pii_anonymize": pipeline_effective.governance_pii_anonymize,
+                "pii_mode": pipeline_effective.governance_pii_mode,
+                "pii_mask": pipeline_effective.governance_pii_mask,
+                "secrets_redact": pipeline_effective.governance_secrets_redact,
+                "secrets_mode": pipeline_effective.governance_secrets_mode,
+                "secrets_mask": pipeline_effective.governance_secrets_mask,
+                "max_blank_lines": pipeline_effective.governance_max_blank_lines,
+                "drop_outline_only": pipeline_effective.governance_drop_outline_only,
+                "drop_outline_min_content_chars": pipeline_effective.governance_drop_outline_min_content_chars,
+                "drop_outline_max_heading_ratio": pipeline_effective.governance_drop_outline_max_heading_ratio,
+                "drop_low_density": pipeline_effective.governance_drop_low_density,
+                "drop_low_density_threshold": pipeline_effective.governance_drop_low_density_threshold,
+                "unwrap_max_line_length": pipeline_effective.governance_unwrap_max_line_length,
+                "noise_min_chars": pipeline_effective.governance_noise_min_chars,
+                "noise_ratio_threshold": pipeline_effective.governance_noise_ratio_threshold,
+                "common_lines_min_docs": pipeline_effective.governance_common_lines_min_docs,
+                "common_lines_min_ratio": pipeline_effective.governance_common_lines_min_ratio,
+            }
             documents, _stats = governance_processor.clean_documents(
                 documents,
-                remove_toc_lines=pipeline_effective.governance_remove_toc_lines,
-                remove_noise_lines=pipeline_effective.governance_remove_noise_lines,
-                unwrap_lines=pipeline_effective.governance_unwrap_lines,
-                remove_common_lines=pipeline_effective.governance_remove_common_lines,
-                remove_boilerplate=pipeline_effective.governance_remove_boilerplate,
-                remove_images=pipeline_effective.governance_remove_images,
-                normalize_tables=pipeline_effective.governance_normalize_tables,
-                strip_code_line_numbers=pipeline_effective.governance_strip_code_line_numbers,
-                unwrap_max_line_length=pipeline_effective.governance_unwrap_max_line_length,
-                noise_min_chars=pipeline_effective.governance_noise_min_chars,
-                noise_ratio_threshold=pipeline_effective.governance_noise_ratio_threshold,
-                common_lines_min_docs=pipeline_effective.governance_common_lines_min_docs,
-                common_lines_min_ratio=pipeline_effective.governance_common_lines_min_ratio,
-                pii_anonymize=pipeline_effective.governance_pii_anonymize,
-                pii_mode=pipeline_effective.governance_pii_mode,
-                pii_mask=pipeline_effective.governance_pii_mask,
-                secrets_redact=pipeline_effective.governance_secrets_redact,
-                secrets_mode=pipeline_effective.governance_secrets_mode,
-                secrets_mask=pipeline_effective.governance_secrets_mask,
-                max_blank_lines=pipeline_effective.governance_max_blank_lines,
-                drop_outline_only=pipeline_effective.governance_drop_outline_only,
-                drop_outline_min_content_chars=pipeline_effective.governance_drop_outline_min_content_chars,
-                drop_outline_max_heading_ratio=pipeline_effective.governance_drop_outline_max_heading_ratio,
-                drop_low_density=pipeline_effective.governance_drop_low_density,
-                drop_low_density_threshold=pipeline_effective.governance_drop_low_density_threshold,
+                **governance_kwargs,
             )
 
         segments: List[ParsedSegment] = []
@@ -2576,6 +2639,7 @@ async def preview_chunking(
     parser_backend: str = Form(default=settings.DEFAULT_PARSER_BACKEND),
     chunk_strategy: str = Form(default=settings.DEFAULT_CHUNK_STRATEGY),
     dataset_id: Optional[str] = Form(default=None),
+    pipeline: Optional[str] = Form(default=None),
     governance_enabled: Optional[bool] = Form(default=None),
     governance_remove_toc_lines: Optional[bool] = Form(default=None),
     governance_remove_noise_lines: Optional[bool] = Form(default=None),
@@ -2650,6 +2714,7 @@ async def preview_chunking(
             except Exception:
                 dataset_meta = {}
         pipeline_options = _to_pipeline_options(
+            pipeline=_parse_pipeline_json(pipeline),
             governance_enabled=governance_enabled,
             governance_remove_toc_lines=governance_remove_toc_lines,
             governance_remove_noise_lines=governance_remove_noise_lines,
@@ -2671,6 +2736,37 @@ async def preview_chunking(
             "remove_noise_lines": pipeline_effective.governance_remove_noise_lines,
             "unwrap_lines": pipeline_effective.governance_unwrap_lines,
             "remove_common_lines": pipeline_effective.governance_remove_common_lines,
+            "remove_boilerplate": pipeline_effective.governance_remove_boilerplate,
+            "remove_images": pipeline_effective.governance_remove_images,
+            "extract_frontmatter": pipeline_effective.governance_extract_frontmatter,
+            "strip_frontmatter": pipeline_effective.governance_strip_frontmatter,
+            "detect_language": pipeline_effective.governance_detect_language,
+            "language_min_chars": pipeline_effective.governance_language_min_chars,
+            "normalize_urls": pipeline_effective.governance_normalize_urls,
+            "normalize_urls_strip_tracking": pipeline_effective.governance_normalize_urls_strip_tracking,
+            "drop_duplicate_paragraphs": pipeline_effective.governance_drop_duplicate_paragraphs,
+            "drop_duplicate_paragraphs_min_occurrences": pipeline_effective.governance_drop_duplicate_paragraphs_min_occurrences,
+            "drop_duplicate_paragraphs_min_chars": pipeline_effective.governance_drop_duplicate_paragraphs_min_chars,
+            "drop_duplicate_paragraphs_max_chars": pipeline_effective.governance_drop_duplicate_paragraphs_max_chars,
+            "trim_references": pipeline_effective.governance_trim_references,
+            "extract_keywords": pipeline_effective.governance_extract_keywords,
+            "keywords_provider": pipeline_effective.governance_keywords_provider,
+            "keywords_top_k": pipeline_effective.governance_keywords_top_k,
+            "keywords_max_chars": pipeline_effective.governance_keywords_max_chars,
+            "normalize_tables": pipeline_effective.governance_normalize_tables,
+            "strip_code_line_numbers": pipeline_effective.governance_strip_code_line_numbers,
+            "pii_anonymize": pipeline_effective.governance_pii_anonymize,
+            "pii_mode": pipeline_effective.governance_pii_mode,
+            "pii_mask": pipeline_effective.governance_pii_mask,
+            "secrets_redact": pipeline_effective.governance_secrets_redact,
+            "secrets_mode": pipeline_effective.governance_secrets_mode,
+            "secrets_mask": pipeline_effective.governance_secrets_mask,
+            "max_blank_lines": pipeline_effective.governance_max_blank_lines,
+            "drop_outline_only": pipeline_effective.governance_drop_outline_only,
+            "drop_outline_min_content_chars": pipeline_effective.governance_drop_outline_min_content_chars,
+            "drop_outline_max_heading_ratio": pipeline_effective.governance_drop_outline_max_heading_ratio,
+            "drop_low_density": pipeline_effective.governance_drop_low_density,
+            "drop_low_density_threshold": pipeline_effective.governance_drop_low_density_threshold,
             "unwrap_max_line_length": pipeline_effective.governance_unwrap_max_line_length,
             "noise_min_chars": pipeline_effective.governance_noise_min_chars,
             "noise_ratio_threshold": pipeline_effective.governance_noise_ratio_threshold,

@@ -29,6 +29,7 @@ export function PipelineOptionsPanel(props: PipelineOptionsPanelProps) {
   const kgEnabled = !!options.kg_enabled
   const governanceEnabled = !!options.governance_enabled
   const governanceDisabled = !enabled || !governanceEnabled
+  const pipelineDisabled = !enabled
 
   const titleClasses = compact ? 'text-xs' : 'text-sm'
   const descClasses = compact ? 'text-[10px]' : 'text-xs'
@@ -94,6 +95,17 @@ export function PipelineOptionsPanel(props: PipelineOptionsPanelProps) {
 
   const governanceToggles = [
     {
+      key: 'governance_extract_frontmatter',
+      label: '提取 Frontmatter',
+      hint: '读取 Markdown YAML frontmatter 作为元数据',
+    },
+    {
+      key: 'governance_strip_frontmatter',
+      label: '剥离 Frontmatter',
+      hint: '提取后从正文中删除 frontmatter',
+      dependsOn: 'governance_extract_frontmatter',
+    },
+    {
       key: 'governance_remove_toc_lines',
       label: '清理目录行',
       hint: '移除目录/索引类噪声',
@@ -119,9 +131,49 @@ export function PipelineOptionsPanel(props: PipelineOptionsPanelProps) {
       hint: '删除免责声明/致谢/版权等低价值内容',
     },
     {
+      key: 'governance_normalize_urls',
+      label: '规范化 URL',
+      hint: '去追踪参、统一 URL 格式以便去重',
+    },
+    {
+      key: 'governance_trim_references',
+      label: '裁剪参考文献',
+      hint: '裁剪文末 References/Bibliography（保守）',
+    },
+    {
+      key: 'governance_drop_duplicate_paragraphs',
+      label: '段落重复块去重',
+      hint: '删除文内重复出现多次的段落块',
+    },
+    {
+      key: 'governance_normalize_tables',
+      label: '规范化表格',
+      hint: '对 Markdown pipe 表格做对齐/裁剪',
+    },
+    {
+      key: 'governance_strip_code_line_numbers',
+      label: '移除代码行号',
+      hint: '对 fenced code 内的行号做最佳努力去除',
+    },
+    {
+      key: 'governance_detect_language',
+      label: '检测语言',
+      hint: '识别 zh/en/mixed 写入元数据',
+    },
+    {
+      key: 'governance_extract_keywords',
+      label: '抽取关键词',
+      hint: '提取文档级关键词写入元数据',
+    },
+    {
       key: 'governance_pii_anonymize',
       label: '匿名化隐私信息',
       hint: '邮箱/电话/身份证/卡号等脱敏',
+    },
+    {
+      key: 'governance_secrets_redact',
+      label: '脱敏密钥/Token',
+      hint: 'API Key/私钥/Bearer token 等脱敏',
     },
     {
       key: 'governance_drop_outline_only',
@@ -136,6 +188,15 @@ export function PipelineOptionsPanel(props: PipelineOptionsPanelProps) {
   ] as const
 
   const governanceNumbers = [
+    {
+      key: 'governance_language_min_chars',
+      label: '语言最小字符',
+      hint: '内容太短时不做语言检测',
+      min: 0,
+      max: 200000,
+      step: 10,
+      dependsOn: 'governance_detect_language',
+    },
     {
       key: 'governance_max_blank_lines',
       label: '最大空行数',
@@ -185,6 +246,33 @@ export function PipelineOptionsPanel(props: PipelineOptionsPanelProps) {
       step: 1,
     },
     {
+      key: 'governance_drop_duplicate_paragraphs_min_occurrences',
+      label: '段落去重次数',
+      hint: '重复次数达到该值才移除',
+      min: 2,
+      max: 100,
+      step: 1,
+      dependsOn: 'governance_drop_duplicate_paragraphs',
+    },
+    {
+      key: 'governance_drop_duplicate_paragraphs_min_chars',
+      label: '段落最小字符',
+      hint: '太短的段落不参与去重',
+      min: 0,
+      max: 50000,
+      step: 10,
+      dependsOn: 'governance_drop_duplicate_paragraphs',
+    },
+    {
+      key: 'governance_drop_duplicate_paragraphs_max_chars',
+      label: '段落最大字符',
+      hint: '过长段落不参与去重（0 表示不限制）',
+      min: 0,
+      max: 200000,
+      step: 50,
+      dependsOn: 'governance_drop_duplicate_paragraphs',
+    },
+    {
       key: 'governance_drop_outline_min_content_chars',
       label: '大纲最小内容量',
       hint: '少于该值才触发过滤',
@@ -207,6 +295,72 @@ export function PipelineOptionsPanel(props: PipelineOptionsPanelProps) {
       min: 0,
       max: 1,
       step: 0.02,
+    },
+  ] as const
+
+  const pipelineToggles = [
+    {
+      key: 'parse_fallback_enabled',
+      label: '解析回退',
+      hint: '解析质量差时尝试其他后端（PDF）',
+    },
+    {
+      key: 'persist_parsed_content',
+      label: '持久化解析结果',
+      hint: '保存 raw+clean markdown 便于审计/回溯',
+    },
+    {
+      key: 'near_dedup_enabled',
+      label: '跨文档近重复去重',
+      hint: 'SimHash 去除跨文档重复 chunks',
+    },
+  ] as const
+
+  const pipelineNumbers = [
+    {
+      key: 'parse_fallback_min_content_chars',
+      label: '回退最小内容',
+      hint: '少于该值认为解析失败',
+      min: 0,
+      max: 200000,
+      step: 10,
+      dependsOn: 'parse_fallback_enabled',
+    },
+    {
+      key: 'parse_fallback_max_retries',
+      label: '回退重试次数',
+      hint: '最多尝试次数',
+      min: 0,
+      max: 3,
+      step: 1,
+      dependsOn: 'parse_fallback_enabled',
+    },
+    {
+      key: 'persist_parsed_content_max_chars',
+      label: '持久化最大字符',
+      hint: '过大时截断保存',
+      min: 0,
+      max: 2000000,
+      step: 1000,
+      dependsOn: 'persist_parsed_content',
+    },
+    {
+      key: 'near_dedup_hamming_threshold',
+      label: '近重复阈值',
+      hint: 'SimHash 汉明距离阈值',
+      min: 0,
+      max: 64,
+      step: 1,
+      dependsOn: 'near_dedup_enabled',
+    },
+    {
+      key: 'near_dedup_max_bucket_size',
+      label: '去重桶最大值',
+      hint: '控制索引体积与误判风险',
+      min: 8,
+      max: 100000,
+      step: 8,
+      dependsOn: 'near_dedup_enabled',
     },
   ] as const
 
@@ -290,28 +444,35 @@ export function PipelineOptionsPanel(props: PipelineOptionsPanelProps) {
                       <ChevronDown className="h-3 w-3 transition-transform group-open/details:rotate-180" />
                     </summary>
                     <div className="p-3 pt-0 space-y-4 bg-muted/30">
-                      <div className="space-y-3 pt-2">
-                        {governanceToggles.map((item) => {
-                          const checked = !!options[item.key as keyof typeof options]
-                          return (
-                            <div key={item.key} className="flex items-center justify-between gap-3">
-                              <div className="flex-1 min-w-0">
-                                <div className={cn("font-medium text-foreground/80 truncate", titleClasses)}>
-                                  {item.label}
+                      <div className="space-y-2 pt-2">
+                        <div className={cn("text-xs font-semibold text-foreground/70", compact && "text-[10px]")}>
+                          治理清洗
+                        </div>
+                        <div className="space-y-3">
+                          {governanceToggles.map((item) => {
+                            const checked = !!options[item.key as keyof typeof options]
+                            const dependsOn = (item as any).dependsOn as (keyof typeof options) | undefined
+                            const disabled = governanceDisabled || (dependsOn ? !options[dependsOn] : false)
+                            return (
+                              <div key={item.key} className="flex items-center justify-between gap-3">
+                                <div className="flex-1 min-w-0">
+                                  <div className={cn("font-medium text-foreground/80 truncate", titleClasses)}>
+                                    {item.label}
+                                  </div>
+                                  <p className={cn("text-muted-foreground truncate", descClasses)}>
+                                    {item.hint}
+                                  </p>
                                 </div>
-                                <p className={cn("text-muted-foreground truncate", descClasses)}>
-                                  {item.hint}
-                                </p>
+                                <Switch
+                                  checked={checked}
+                                  onCheckedChange={(value) => handleChecked(item.key as keyof typeof options, value)}
+                                  disabled={disabled}
+                                  className="scale-75 origin-right"
+                                />
                               </div>
-                              <Switch
-                                checked={checked}
-                                onCheckedChange={(value) => handleChecked(item.key as keyof typeof options, value)}
-                                disabled={governanceDisabled}
-                                className="scale-75 origin-right"
-                              />
-                            </div>
-                          )
-                        })}
+                            )
+                          })}
+                        </div>
                       </div>
 
                       {/* Image removal */}
@@ -332,6 +493,26 @@ export function PipelineOptionsPanel(props: PipelineOptionsPanelProps) {
                           </SelectContent>
                         </Select>
                       </div>
+
+                      {/* URL tracking params */}
+                      {!governanceDisabled && options.governance_normalize_urls && (
+                        <div className="flex items-center justify-between gap-3">
+                          <div className="flex-1 min-w-0">
+                            <div className={cn("font-medium text-foreground/80 truncate", titleClasses)}>
+                              去追踪参数
+                            </div>
+                            <p className={cn("text-muted-foreground truncate", descClasses)}>
+                              移除 utm_* / gclid / fbclid 等
+                            </p>
+                          </div>
+                          <Switch
+                            checked={!!options.governance_normalize_urls_strip_tracking}
+                            onCheckedChange={(value) => handleChecked('governance_normalize_urls_strip_tracking' as any, value)}
+                            disabled={governanceDisabled}
+                            className="scale-75 origin-right"
+                          />
+                        </div>
+                      )}
 
                       {/* PII settings */}
                       {!governanceDisabled && options.governance_pii_anonymize && (
@@ -362,6 +543,82 @@ export function PipelineOptionsPanel(props: PipelineOptionsPanelProps) {
                         </div>
                       )}
 
+                      {/* Secrets settings */}
+                      {!governanceDisabled && options.governance_secrets_redact && (
+                        <div className="space-y-1.5">
+                          <label className={cn("text-xs font-medium text-muted-foreground block", compact && "text-[10px]")}>密钥脱敏配置</label>
+                          <div className="grid grid-cols-2 gap-2">
+                            <Select
+                              value={(options.governance_secrets_mode as string) || 'mask'}
+                              onValueChange={(v) => updateOption('governance_secrets_mode', v as any)}
+                              disabled={governanceDisabled}
+                            >
+                              <SelectTrigger className={cn("h-8 text-xs bg-card", compact && "h-7")}>
+                                <SelectValue placeholder="模式" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="mask">掩码替换</SelectItem>
+                                <SelectItem value="token">占位符</SelectItem>
+                              </SelectContent>
+                            </Select>
+                            <Input
+                              value={options.governance_secrets_mask || ''}
+                              disabled={governanceDisabled || (options.governance_secrets_mode as string) === 'token'}
+                              onChange={(e) => updateOption('governance_secrets_mask', e.currentTarget.value as any)}
+                              placeholder="[SECRET]"
+                              className={cn("h-8 text-xs bg-card", compact && "h-7")}
+                            />
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Keyword settings */}
+                      {!governanceDisabled && options.governance_extract_keywords && (
+                        <div className="space-y-2">
+                          <label className={cn("text-xs font-medium text-muted-foreground block", compact && "text-[10px]")}>关键词抽取配置</label>
+                          <div className="grid grid-cols-2 gap-2">
+                            <Select
+                              value={(options.governance_keywords_provider as string) || 'auto'}
+                              onValueChange={(v) => updateOption('governance_keywords_provider', v as any)}
+                              disabled={governanceDisabled}
+                            >
+                              <SelectTrigger className={cn("h-8 text-xs bg-card", compact && "h-7")}>
+                                <SelectValue placeholder="Provider" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="auto">auto</SelectItem>
+                                <SelectItem value="jieba">jieba</SelectItem>
+                                <SelectItem value="jieba_textrank">jieba_textrank</SelectItem>
+                                <SelectItem value="hanlp">hanlp</SelectItem>
+                                <SelectItem value="simple">simple</SelectItem>
+                              </SelectContent>
+                            </Select>
+                            <Input
+                              type="number"
+                              value={typeof options.governance_keywords_top_k === 'number' ? options.governance_keywords_top_k : ''}
+                              min={1}
+                              max={100}
+                              step={1}
+                              disabled={governanceDisabled}
+                              onChange={(e) => handleNumberChange('governance_keywords_top_k' as any, e.currentTarget.valueAsNumber)}
+                              className={cn("h-8 text-xs bg-card", compact && "h-7")}
+                              placeholder="Top K"
+                            />
+                          </div>
+                          <Input
+                            type="number"
+                            value={typeof options.governance_keywords_max_chars === 'number' ? options.governance_keywords_max_chars : ''}
+                            min={0}
+                            max={2000000}
+                            step={1000}
+                            disabled={governanceDisabled}
+                            onChange={(e) => handleNumberChange('governance_keywords_max_chars' as any, e.currentTarget.valueAsNumber)}
+                            className={cn("h-8 text-xs bg-card", compact && "h-7")}
+                            placeholder="关键词抽取最大字符"
+                          />
+                        </div>
+                      )}
+
                       {/* HTML XPath */}
                       <div className="space-y-1.5">
                         <div className="flex justify-between">
@@ -379,11 +636,13 @@ export function PipelineOptionsPanel(props: PipelineOptionsPanelProps) {
                       <div className="grid gap-3 pt-1">
                         {governanceNumbers.map((item) => {
                           const value = options[item.key as keyof typeof options]
+                          const dependsOn = (item as any).dependsOn as (keyof typeof options) | undefined
                           const shouldHide =
                             (item.key === 'governance_drop_outline_min_content_chars' || item.key === 'governance_drop_outline_max_heading_ratio') &&
                             !options.governance_drop_outline_only
                           const shouldHideLowDensity = item.key === 'governance_drop_low_density_threshold' && !options.governance_drop_low_density
-                          if (shouldHide || shouldHideLowDensity) return null
+                          const shouldHideDepends = dependsOn ? !options[dependsOn] : false
+                          if (shouldHide || shouldHideLowDensity || shouldHideDepends) return null
                           return (
                             <label key={item.key} className="flex items-center justify-between gap-2">
                               <span className={cn("text-xs text-muted-foreground truncate flex-1", compact && "text-[10px]")} title={item.hint}>{item.label}</span>
@@ -403,6 +662,62 @@ export function PipelineOptionsPanel(props: PipelineOptionsPanelProps) {
                             </label>
                           )
                         })}
+                      </div>
+
+                      <div className="pt-2 border-t border-border/60 space-y-2">
+                        <div className={cn("text-xs font-semibold text-foreground/70", compact && "text-[10px]")}>
+                          解析与去重
+                        </div>
+                        <div className="space-y-3">
+                          {pipelineToggles.map((item) => {
+                            const checked = !!options[item.key as keyof typeof options]
+                            return (
+                              <div key={item.key} className="flex items-center justify-between gap-3">
+                                <div className="flex-1 min-w-0">
+                                  <div className={cn("font-medium text-foreground/80 truncate", titleClasses)}>
+                                    {item.label}
+                                  </div>
+                                  <p className={cn("text-muted-foreground truncate", descClasses)}>
+                                    {item.hint}
+                                  </p>
+                                </div>
+                                <Switch
+                                  checked={checked}
+                                  onCheckedChange={(value) => handleChecked(item.key as keyof typeof options, value)}
+                                  disabled={pipelineDisabled}
+                                  className="scale-75 origin-right"
+                                />
+                              </div>
+                            )
+                          })}
+                        </div>
+
+                        <div className="grid gap-3 pt-1">
+                          {pipelineNumbers.map((item) => {
+                            const value = options[item.key as keyof typeof options]
+                            const dependsOn = (item as any).dependsOn as (keyof typeof options) | undefined
+                            const shouldHide = dependsOn ? !options[dependsOn] : false
+                            if (shouldHide) return null
+                            return (
+                              <label key={item.key} className="flex items-center justify-between gap-2">
+                                <span className={cn("text-xs text-muted-foreground truncate flex-1", compact && "text-[10px]")} title={item.hint}>{item.label}</span>
+                                <Input
+                                  type="number"
+                                  value={typeof value === 'number' ? value : ''}
+                                  min={(item as any).min}
+                                  max={(item as any).max}
+                                  step={(item as any).step}
+                                  disabled={pipelineDisabled}
+                                  onChange={(e) => handleNumberChange(item.key as keyof typeof options, e.currentTarget.valueAsNumber)}
+                                  className={cn(
+                                    "h-7 w-16 text-right text-xs bg-card px-1",
+                                    compact && "h-6"
+                                  )}
+                                />
+                              </label>
+                            )
+                          })}
+                        </div>
                       </div>
                     </div>
                   </details>

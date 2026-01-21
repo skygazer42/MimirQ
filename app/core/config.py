@@ -134,6 +134,8 @@ class Settings(BaseSettings):
 
     UPLOAD_DIR: str = "./uploads"
     MAX_FILE_SIZE: int = 50_000_000
+    # Max JSON size (chars) for `pipeline` form field on multipart endpoints (documents upload/preview).
+    PIPELINE_FORM_JSON_MAX_CHARS: int = 200_000
     # ZIP extraction safety limits (for Markdown+images archives).
     ZIP_MAX_FILES: int = 2000
     ZIP_MAX_TOTAL_UNCOMPRESSED_BYTES: int = 500_000_000

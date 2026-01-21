@@ -7,6 +7,10 @@ MimirQ provides an optional governance stage between parsing and chunking:
 Governance is intentionally conservative by default. You can enable it per upload
 via the frontend “启用自定义管线 / 数据治理清洗” options.
 
+## Upload API Notes
+- For multipart endpoints (e.g. `/api/v1/documents/upload`, `/api/v1/documents/preview`, `/api/v1/documents/chunk-preview`), pipeline overrides are sent as a JSON string form field named `pipeline`.
+- You can cap the payload size via `PIPELINE_FORM_JSON_MAX_CHARS`.
+
 ## Governance Options
 
 ### Boilerplate Removal

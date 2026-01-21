@@ -79,9 +79,29 @@ export interface DocumentPipelineOptions {
   governance_remove_common_lines?: boolean
   governance_remove_boilerplate?: boolean
   governance_remove_images?: 'none' | 'decorative' | 'all' | string
+  governance_extract_frontmatter?: boolean
+  governance_strip_frontmatter?: boolean
+  governance_detect_language?: boolean
+  governance_language_min_chars?: number
+  governance_normalize_urls?: boolean
+  governance_normalize_urls_strip_tracking?: boolean
+  governance_drop_duplicate_paragraphs?: boolean
+  governance_drop_duplicate_paragraphs_min_occurrences?: number
+  governance_drop_duplicate_paragraphs_min_chars?: number
+  governance_drop_duplicate_paragraphs_max_chars?: number
+  governance_trim_references?: boolean
+  governance_extract_keywords?: boolean
+  governance_keywords_provider?: string
+  governance_keywords_top_k?: number
+  governance_keywords_max_chars?: number
+  governance_normalize_tables?: boolean
+  governance_strip_code_line_numbers?: boolean
   governance_pii_anonymize?: boolean
   governance_pii_mode?: 'mask' | 'token' | string
   governance_pii_mask?: string
+  governance_secrets_redact?: boolean
+  governance_secrets_mode?: 'mask' | 'token' | string
+  governance_secrets_mask?: string
   governance_max_blank_lines?: number
   governance_html_xpath?: string
   governance_drop_outline_only?: boolean
@@ -94,6 +114,14 @@ export interface DocumentPipelineOptions {
   governance_noise_ratio_threshold?: number
   governance_common_lines_min_docs?: number
   governance_common_lines_min_ratio?: number
+  parse_fallback_enabled?: boolean
+  parse_fallback_min_content_chars?: number
+  parse_fallback_max_retries?: number
+  persist_parsed_content?: boolean
+  persist_parsed_content_max_chars?: number
+  near_dedup_enabled?: boolean
+  near_dedup_hamming_threshold?: number
+  near_dedup_max_bucket_size?: number
   chunk_size?: number
   chunk_overlap?: number
   chunk_vector_enabled?: boolean
@@ -212,9 +240,29 @@ export interface CleanPreviewRequest {
   unwrap_lines?: boolean
   remove_boilerplate?: boolean
   remove_images?: 'none' | 'decorative' | 'all' | string
+  extract_frontmatter?: boolean
+  strip_frontmatter?: boolean
+  detect_language?: boolean
+  language_min_chars?: number
+  normalize_urls?: boolean
+  normalize_urls_strip_tracking?: boolean
+  drop_duplicate_paragraphs?: boolean
+  drop_duplicate_paragraphs_min_occurrences?: number
+  drop_duplicate_paragraphs_min_chars?: number
+  drop_duplicate_paragraphs_max_chars?: number
+  trim_references?: boolean
+  extract_keywords?: boolean
+  keywords_provider?: string
+  keywords_top_k?: number
+  keywords_max_chars?: number
+  normalize_tables?: boolean
+  strip_code_line_numbers?: boolean
   pii_anonymize?: boolean
   pii_mode?: 'mask' | 'token' | string
   pii_mask?: string
+  secrets_redact?: boolean
+  secrets_mode?: 'mask' | 'token' | string
+  secrets_mask?: string
   drop_outline_only?: boolean
   drop_outline_min_content_chars?: number
   drop_outline_max_heading_ratio?: number
@@ -233,6 +281,16 @@ export interface CleanPreviewResponse {
   dropped?: boolean
   drop_reason?: string | null
   pii_hits?: Record<string, number> | null
+  secrets_hits?: Record<string, number> | null
+  frontmatter?: Record<string, any> | null
+  title?: string | null
+  tags?: string[] | null
+  language?: string | null
+  language_confidence?: number | null
+  keywords?: string[] | null
+  urls_changed?: number
+  paragraphs_dropped?: number
+  references_removed_lines?: number
   input_chars?: number
   output_chars?: number
   input_lines?: number
