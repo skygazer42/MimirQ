@@ -2450,6 +2450,7 @@ async def create_document_with_manual_chunks(
             metadata = {
                 "source": request.filename,
                 "file_type": request.file_type.lower(),
+                "dataset_id": str(dataset.id),
                 "page": chunk.page_number,
                 "document_id": str(document_id),
                 "chunk_index": idx,
