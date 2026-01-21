@@ -1,7 +1,7 @@
 'use client'
 
 import dynamic from 'next/dynamic'
-import { Navbar } from '@/components/navbar'
+import { AppFrame } from '@/components/app-frame'
 import { PageLoading } from '@/components/ui/page-loading'
 
 const ChunkPreview = dynamic(
@@ -14,12 +14,8 @@ const ChunkPreview = dynamic(
 
 export default function ChunkPreviewPage() {
   return (
-    <div className="flex h-screen overflow-hidden bg-background">
-      <Navbar />
-
-      <main id="main-content" tabIndex={-1} className="flex-1 flex flex-col overflow-hidden min-h-0">
-        <ChunkPreview />
-      </main>
-    </div>
+    <AppFrame>
+      <ChunkPreview />
+    </AppFrame>
   )
 }

@@ -37,7 +37,7 @@ import {
   Zap,
   Filter
 } from 'lucide-react'
-import { Navbar } from '@/components/navbar'
+import { AppFrame } from '@/components/app-frame'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -308,10 +308,7 @@ export default function KnowledgePage() {
   }
 
   return (
-    <div className="flex h-screen overflow-hidden bg-slate-50/50 dark:bg-slate-950 transition-colors duration-300">
-      <Navbar />
-
-      <main id="main-content" tabIndex={-1} className="flex-1 flex flex-col overflow-hidden relative">
+    <AppFrame>
         {/* 背景装饰 */}
         <div className="absolute top-0 left-0 right-0 h-64 bg-gradient-to-b from-sky-50/50 dark:from-sky-900/10 to-transparent pointer-events-none" />
 
@@ -810,8 +807,7 @@ export default function KnowledgePage() {
             </div>
           )}
         </div>
-      </main>
-    </div>
+    </AppFrame>
   )
 }
 

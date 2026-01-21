@@ -8,7 +8,7 @@
 
 import { Suspense, useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
-import { Navbar } from '@/components/navbar'
+import { AppFrame } from '@/components/app-frame'
 import { Button } from '@/components/ui/button'
 import { StatCard, StatsGrid } from '@/components/ui/stats-card'
 import { evaluationApi, chatApi } from '@/lib/api-client'
@@ -37,19 +37,18 @@ const METRIC_OPTIONS = [
 
 export default function EvaluationsPage() {
   return (
-    <div className="flex h-screen overflow-hidden bg-slate-50/50 dark:bg-slate-950 transition-colors duration-300">
-      <Navbar />
+    <AppFrame>
       <Suspense fallback={<EvaluationsLoading />}>
         <EvaluationsPageContent />
       </Suspense>
-    </div>
+    </AppFrame>
   )
 }
 
 function EvaluationsLoading() {
   return (
     <div className="flex-1 flex items-center justify-center">
-      <Loader2 className="h-8 w-8 animate-spin text-slate-400" />
+      <Loader2 className="h-8 w-8 animate-spin motion-reduce:animate-none text-muted-foreground" />
     </div>
   )
 }

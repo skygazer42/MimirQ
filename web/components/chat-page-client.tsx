@@ -2,12 +2,10 @@
 
 import { useCallback } from 'react'
 import { useRouter } from 'next/navigation'
-import { cn } from '@/lib/utils'
 
-import { Navbar } from '@/components/navbar'
+import { AppFrame } from '@/components/app-frame'
 import { ChatArea } from '@/components/chat-area'
 import { DocumentViewerPanel } from '@/components/document-viewer-panel'
-import { useDocumentView } from '@/store/document-view'
 
 export function ChatPageClient({
   initialConversationId,
@@ -17,7 +15,6 @@ export function ChatPageClient({
   initialPrompt?: string
 }) {
   const router = useRouter()
-  const { isOpen } = useDocumentView()
 
   const handleConversationId = useCallback(
     (conversationId: string) => {
@@ -30,23 +27,16 @@ export function ChatPageClient({
   )
 
   return (
-    <div className="flex h-screen overflow-hidden bg-background">
-      <Navbar />
-      <main 
-        id="main-content"
-        tabIndex={-1}
-        className={cn(
-            "flex-1 flex flex-col overflow-hidden transition-all duration-300 ease-in-out",
-            isOpen ? "mr-0 md:mr-[40vw] xl:mr-[40vw] lg:mr-[500px]" : "mr-0"
-        )}
-      >
-        <ChatArea
-          initialConversationId={initialConversationId}
-          initialPrompt={initialPrompt}
-          onConversationId={handleConversationId}
-        />
-      </main>
-      <DocumentViewerPanel />
-    </div>
+    <AppFrame
+      rightPanel={<DocumentViewerPanel />}
+      withDocumentViewerPadding
+      mainClassName="transition-all duration-300 ease-in-out"
+    >
+      <ChatArea
+        initialConversationId={initialConversationId}
+        initialPrompt={initialPrompt}
+        onConversationId={handleConversationId}
+      />
+    </AppFrame>
   )
 }

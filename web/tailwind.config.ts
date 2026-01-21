@@ -23,6 +23,10 @@ const config = {
         sans: ["var(--font-sans)", ...defaultTheme.fontFamily.sans],
         mono: ["var(--font-mono)", ...defaultTheme.fontFamily.mono],
       },
+      transitionTimingFunction: {
+        // Used for right-panel layout shifts (document viewer) without Tailwind arbitrary-value warnings.
+        "out-expo": "cubic-bezier(0.32, 0.72, 0, 1)",
+      },
       colors: {
         border: "hsl(var(--border))",
         input: "hsl(var(--input))",

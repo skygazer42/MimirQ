@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
 import { Layers, Loader2, Pencil, Plus, RefreshCw, Trash2 } from 'lucide-react'
 
-import { Navbar } from '@/components/navbar'
+import { AppFrame } from '@/components/app-frame'
 import { PageHeader } from '@/components/ui/page-header'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -179,19 +179,8 @@ export default function DatasetsPage() {
   }
 
   return (
-    <div className="flex min-h-screen overflow-hidden bg-background font-sans selection:bg-cyan-500/20 selection:text-cyan-700 dark:selection:text-cyan-300">
-      {/* Light Ambient Background */}
-      <div className="fixed inset-0 z-0 pointer-events-none bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-white via-slate-50 to-slate-100 dark:from-slate-950 dark:via-slate-950 dark:to-slate-900" />
-      <div className="fixed inset-0 z-0 pointer-events-none">
-        <div className="absolute top-[-10%] right-[-10%] w-[800px] h-[800px] bg-cyan-500/5 dark:bg-cyan-500/10 rounded-full blur-[100px] animate-pulse-subtle" />
-        <div className="absolute bottom-[-10%] left-[-10%] w-[600px] h-[600px] bg-blue-600/5 dark:bg-indigo-500/10 rounded-full blur-[120px] animate-pulse-subtle" style={{ animationDelay: '2s' }} />
-      </div>
-
-      <Navbar />
-
-      <main id="main-content" tabIndex={-1} className="relative z-10 flex-1 flex flex-col overflow-hidden">
-
-        <PageHeader
+    <AppFrame>
+      <PageHeader
           title="数据集"
           badge="Archive"
           icon={Layers}
@@ -354,8 +343,7 @@ export default function DatasetsPage() {
             </DialogFooter>
           </DialogContent>
         </Dialog>
-      </main>
-    </div>
+    </AppFrame>
   )
 }
 

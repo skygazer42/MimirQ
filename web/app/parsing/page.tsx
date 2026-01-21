@@ -36,7 +36,7 @@ import {
   Settings2,
   MoreVertical,
 } from 'lucide-react'
-import { Navbar } from '@/components/navbar'
+import { AppFrame } from '@/components/app-frame'
 import { Button } from '@/components/ui/button'
 import { documentApi, parsingApi } from '@/lib/api-client'
 import { formatApiError } from '@/lib/api-errors'
@@ -1482,16 +1482,7 @@ export default function ParsingPage() {
   const queueCountLabel = visibleQueueFiles.length === 0 ? '0' : `${parsedCount}/${visibleQueueFiles.length}`
 
   return (
-    <div className="relative flex h-screen overflow-hidden bg-background text-foreground">
-      <div className="absolute inset-0 pointer-events-none">
-        {/* Softer, more neutral background for “Apple Notes” vibe */}
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(14,165,233,0.07),transparent_55%),radial-gradient(circle_at_top_right,rgba(16,185,129,0.05),transparent_50%)] dark:bg-[radial-gradient(circle_at_top_left,rgba(14,165,233,0.16),transparent_55%),radial-gradient(circle_at_top_right,rgba(16,185,129,0.10),transparent_50%)]" />
-        <div className="absolute inset-0 opacity-[0.04] dark:opacity-[0.08] bg-[radial-gradient(#0f172a_1px,transparent_1px)] dark:bg-[radial-gradient(rgba(148,163,184,0.22)_1px,transparent_1px)] [background-size:18px_18px]" />
-      </div>
-      <div className="relative z-10 flex h-full w-full">
-        <Navbar />
-
-        <main id="main-content" tabIndex={-1} className="flex-1 flex flex-col overflow-hidden min-h-0">
+    <AppFrame>
           {/* 顶部标题栏 */}
           <header className="flex-shrink-0 bg-card/80 dark:bg-background/70 border-b border-border/60 px-6 py-4 h-16 flex items-center justify-between z-20 shadow-sm dark:shadow-none relative backdrop-blur">
             <div className="flex items-center gap-4">
@@ -2406,8 +2397,6 @@ export default function ParsingPage() {
               )}
             </div>
           </div>
-        </main>
-      </div>
-    </div>
+    </AppFrame>
   )
 }

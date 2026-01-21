@@ -41,8 +41,8 @@
     /* Borders & Inputs - Subtle Cool Gray */
     --border: 214.3 31.8% 91.4%;
     --input: 214.3 31.8% 91.4%;
-    --ring: 249 90% 60%;
-    /* Primary color ring */
+    --ring: 190 90% 50%;
+    /* Match primary for consistent focus rings */
 
     /* Radius - Consistent Curves */
     --radius: 0.75rem;

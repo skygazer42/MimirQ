@@ -12,8 +12,9 @@ import {
 } from 'lucide-react'
 import { toast } from 'sonner'
 
-import { Navbar } from '@/components/navbar'
+import { AppFrame } from '@/components/app-frame'
 import { PageHeader } from '@/components/ui/page-header'
+import { PageHeaderBar } from '@/components/ui/page-header-bar'
 import { DocumentViewerPanel } from '@/components/document-viewer-panel'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -67,7 +68,7 @@ function StatusPill({ status }: { status: Document['status'] }) {
 }
 
 export default function IngestionMonitorPage() {
-  const { isOpen, openDocument } = useDocumentView()
+  const { openDocument } = useDocumentView()
   const [autoRefresh, setAutoRefresh] = useState(true)
   const [status, setStatus] = useState<StatusFilter>('all')
   const [search, setSearch] = useState('')
@@ -145,25 +146,12 @@ export default function IngestionMonitorPage() {
   }
 
   return (
-    <div className="flex min-h-screen overflow-hidden bg-slate-50 dark:bg-slate-950 font-sans selection:bg-slate-200 dark:selection:bg-slate-800 selection:text-slate-900 dark:selection:text-slate-100">
-      {/* Premium Texture Background - Dark mode reduced opacity */}
-      <div className="fixed inset-0 z-0 opacity-40 dark:opacity-20 pointer-events-none" style={{ backgroundImage: 'radial-gradient(#cbd5e1 1px, transparent 1px)', backgroundSize: '32px 32px' }} />
-
-      {/* Soft Ambient Light - Dark mode darker/adjusted */}
-      <div className="fixed top-0 left-1/4 w-[800px] h-[800px] bg-sky-200/20 dark:bg-sky-900/10 rounded-full blur-[120px] pointer-events-none mix-blend-multiply dark:mix-blend-normal" />
-      <div className="fixed bottom-0 right-1/4 w-[600px] h-[600px] bg-indigo-200/20 dark:bg-indigo-900/10 rounded-full blur-[100px] pointer-events-none mix-blend-multiply dark:mix-blend-normal" />
-
-      <Navbar />
-
-      <main
-        id="main-content"
-        tabIndex={-1}
-        className={cn(
-          'relative z-10 flex-1 flex flex-col overflow-hidden transition-all duration-300 ease-[cubic-bezier(0.32,0.72,0,1)]',
-          isOpen ? 'mr-0 md:mr-[40vw] xl:mr-[40vw] lg:mr-[500px]' : 'mr-0'
-        )}
-      >
-        <div className="sticky top-0 z-20 backdrop-blur-md bg-white/70 dark:bg-slate-950/70 border-b border-slate-200/50 dark:border-slate-800/50 transition-all duration-300">
+    <AppFrame
+      rightPanel={<DocumentViewerPanel />}
+      withDocumentViewerPadding
+      mainClassName="transition-all duration-300 ease-out-expo"
+    >
+        <PageHeaderBar className="transition-all duration-300">
           <PageHeader
             title="入库监控中心"
             icon={Search}
@@ -197,7 +185,7 @@ export default function IngestionMonitorPage() {
               </div>
             </div>
           </PageHeader>
-        </div>
+        </PageHeaderBar>
 
         <div className="px-8 pb-4 grid grid-cols-2 lg:grid-cols-5 gap-4 mt-4">
           {[
@@ -438,9 +426,6 @@ export default function IngestionMonitorPage() {
             )}
           </div>
         </section>
-      </main>
-
-      <DocumentViewerPanel />
       <IngestionDetailDialog
         open={detailOpen}
         onOpenChange={(next) => {
@@ -449,6 +434,6 @@ export default function IngestionMonitorPage() {
         }}
         documentId={detailDocumentId}
       />
-    </div>
+    </AppFrame>
   )
 }
