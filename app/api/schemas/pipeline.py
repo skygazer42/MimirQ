@@ -89,10 +89,18 @@ class CleanPreviewRequest(BaseModel):
     # - decorative: remove likely decorative images (logos/qrcodes/banners)
     # - all: remove all image tags/refs
     remove_images: Literal["none", "decorative", "all"] = "none"
+    # Optional normalization:
+    normalize_tables: bool = False
+    # Remove leading line numbers within fenced code blocks (best-effort heuristic).
+    strip_code_line_numbers: bool = False
     # PII anonymization (independent of global PII middleware):
     pii_anonymize: bool = False
     pii_mode: Literal["mask", "token"] = "mask"
     pii_mask: str = Field(default="[REDACTED]", min_length=1, max_length=64)
+    # Secrets/token redaction (API keys, private keys, bearer tokens...):
+    secrets_redact: bool = False
+    secrets_mode: Literal["mask", "token"] = "mask"
+    secrets_mask: str = Field(default="[SECRET]", min_length=1, max_length=64)
     # Document-level filters:
     drop_outline_only: bool = False
     drop_outline_min_content_chars: int = Field(default=200, ge=0, le=200_000)
@@ -112,6 +120,7 @@ class CleanPreviewResponse(BaseModel):
     dropped: bool = False
     drop_reason: Optional[str] = None
     pii_hits: Optional[dict[str, int]] = None
+    secrets_hits: Optional[dict[str, int]] = None
     # High-level diff/stats to help tune governance parameters.
     input_chars: int = 0
     output_chars: int = 0
