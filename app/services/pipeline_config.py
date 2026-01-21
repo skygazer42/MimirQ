@@ -117,6 +117,7 @@ def parse_pipeline_from_metadata(metadata: Dict[str, Any]) -> PipelineOptions:
         governance_keywords_max_chars=_coerce_int(governance.get("keywords_max_chars")),
         governance_normalize_tables=_coerce_bool(governance.get("normalize_tables")),
         governance_strip_code_line_numbers=_coerce_bool(governance.get("strip_code_line_numbers")),
+        governance_quarantine_on_drop=_coerce_bool(governance.get("quarantine_on_drop")),
         governance_pii_anonymize=_coerce_bool(governance.get("pii_anonymize")),
         governance_pii_mode=_coerce_str(governance.get("pii_mode")),
         governance_pii_mask=_coerce_str(governance.get("pii_mask")),
@@ -222,6 +223,8 @@ def build_pipeline_metadata(options: PipelineOptions) -> Optional[Dict[str, Any]
         governance["normalize_tables"] = bool(options.governance_normalize_tables)
     if options.governance_strip_code_line_numbers is not None:
         governance["strip_code_line_numbers"] = bool(options.governance_strip_code_line_numbers)
+    if options.governance_quarantine_on_drop is not None:
+        governance["quarantine_on_drop"] = bool(options.governance_quarantine_on_drop)
     if options.governance_pii_anonymize is not None:
         governance["pii_anonymize"] = bool(options.governance_pii_anonymize)
     if options.governance_pii_mode is not None:
@@ -430,6 +433,11 @@ def resolve_pipeline_options(options: PipelineOptions) -> PipelineEffective:
         if options.governance_strip_code_line_numbers is None
         else bool(options.governance_strip_code_line_numbers)
     )
+    governance_quarantine_on_drop = (
+        getattr(settings, "GOVERNANCE_QUARANTINE_ON_DROP", False)
+        if options.governance_quarantine_on_drop is None
+        else bool(options.governance_quarantine_on_drop)
+    )
     governance_pii_anonymize = (
         getattr(settings, "GOVERNANCE_PII_ANONYMIZE", False)
         if options.governance_pii_anonymize is None
@@ -588,6 +596,7 @@ def resolve_pipeline_options(options: PipelineOptions) -> PipelineEffective:
         governance_keywords_max_chars=int(governance_keywords_max_chars),
         governance_normalize_tables=bool(governance_normalize_tables),
         governance_strip_code_line_numbers=bool(governance_strip_code_line_numbers),
+        governance_quarantine_on_drop=bool(governance_quarantine_on_drop),
         governance_pii_anonymize=bool(governance_pii_anonymize),
         governance_pii_mode=str(governance_pii_mode or "mask"),
         governance_pii_mask=str(governance_pii_mask or "[REDACTED]"),

@@ -424,6 +424,8 @@ class Settings(BaseSettings):
     GOVERNANCE_DROP_OUTLINE_MAX_HEADING_RATIO: float = 0.85
     GOVERNANCE_DROP_LOW_DENSITY: bool = False
     GOVERNANCE_DROP_LOW_DENSITY_THRESHOLD: float = 0.12
+    # When governance drop filters trigger, mark document as "quarantined" instead of "failed".
+    GOVERNANCE_QUARANTINE_ON_DROP: bool = False
     # Parsing fallback (PDF only): retry with a different backend when output quality is low.
     PARSE_FALLBACK_ENABLED: bool = False
     PARSE_FALLBACK_MIN_CONTENT_CHARS: int = 120
