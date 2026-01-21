@@ -34,6 +34,7 @@ function inferStage(doc: Document): string {
 function statusBadgeVariant(status: Document['status']): 'default' | 'secondary' | 'destructive' | 'outline' {
   if (status === 'completed') return 'default'
   if (status === 'failed') return 'destructive'
+  if (status === 'quarantined') return 'secondary'
   if (status === 'cancelled') return 'secondary'
   if (status === 'processing' || status === 'pending') return 'outline'
   return 'secondary'
@@ -93,7 +94,7 @@ export function IngestionDetailDialog({
   }, [doc])
 
   const canCancel = Boolean(doc && (doc.status === 'pending' || doc.status === 'processing'))
-  const canRetry = Boolean(doc && (doc.status === 'failed' || doc.status === 'cancelled'))
+  const canRetry = Boolean(doc && (doc.status === 'failed' || doc.status === 'cancelled' || doc.status === 'quarantined'))
   const canForceRetry = Boolean(doc && doc.status === 'completed')
 
   const handleCancel = async () => {
@@ -177,7 +178,7 @@ export function IngestionDetailDialog({
                   {STAGES.map((s, idx) => {
                     const isDone = doc.status === 'completed' ? true : idx < activeIndex
                     const isActive = doc.status !== 'completed' && idx === activeIndex
-                    const isFailed = doc.status === 'failed' && isActive
+                    const isFailed = (doc.status === 'failed' || doc.status === 'quarantined') && isActive
                     const Icon = isDone ? CheckCircle2 : isFailed ? AlertCircle : null
                     return (
                       <div key={s.key} className="flex flex-col items-center gap-3 group">
@@ -186,7 +187,7 @@ export function IngestionDetailDialog({
                             'h-10 w-10 rounded-full border-2 flex items-center justify-center transition-all duration-300',
                             isDone && 'bg-emerald-50 border-emerald-500 text-emerald-600 shadow-[0_0_10px_rgba(16,185,129,0.2)]',
                             isActive && !isFailed && 'bg-sky-50 border-sky-500 text-sky-600 shadow-[0_0_10px_rgba(14,165,233,0.3)] scale-110',
-                            isFailed && 'bg-red-50 border-red-500 text-red-600 shadow-[0_0_10px_rgba(239,68,68,0.3)]',
+                            isFailed && (doc.status === 'quarantined' ? 'bg-amber-50 border-amber-500 text-amber-700 shadow-[0_0_10px_rgba(245,158,11,0.25)]' : 'bg-red-50 border-red-500 text-red-600 shadow-[0_0_10px_rgba(239,68,68,0.3)]'),
                             !isDone && !isActive && 'bg-slate-50 border-slate-200 text-slate-300'
                           )}
                         >
@@ -213,13 +214,22 @@ export function IngestionDetailDialog({
               </div>
             </div>
 
-            {doc.status === 'failed' && doc.error_message && (
-              <div className="rounded-2xl border border-red-200 bg-red-50 p-5 shadow-inner">
-                <div className="text-sm font-bold text-red-700 flex items-center gap-2 mb-2">
+            {(doc.status === 'failed' || doc.status === 'quarantined') && doc.error_message && (
+              <div className={cn(
+                "rounded-2xl border p-5 shadow-inner",
+                doc.status === 'quarantined' ? "border-amber-200 bg-amber-50" : "border-red-200 bg-red-50"
+              )}>
+                <div className={cn(
+                  "text-sm font-bold flex items-center gap-2 mb-2",
+                  doc.status === 'quarantined' ? "text-amber-700" : "text-red-700"
+                )}>
                   <AlertCircle className="w-4 h-4" />
-                  错误信息
+                  {doc.status === 'quarantined' ? '隔离原因' : '错误信息'}
                 </div>
-                <pre className="whitespace-pre-wrap break-words rounded-xl bg-white border border-red-100 p-4 text-xs font-mono text-red-600 leading-relaxed shadow-sm">
+                <pre className={cn(
+                  "whitespace-pre-wrap break-words rounded-xl bg-white border p-4 text-xs font-mono leading-relaxed shadow-sm",
+                  doc.status === 'quarantined' ? "border-amber-100 text-amber-700" : "border-red-100 text-red-600"
+                )}>
                   {doc.error_message}
                 </pre>
               </div>
