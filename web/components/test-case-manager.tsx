@@ -272,11 +272,11 @@ export function TestCaseManager({
 
       {/* 用例列表 */}
       <div className="flex-1 overflow-y-auto">
-        {isLoading ? (
-          <div className="flex items-center justify-center py-8">
-            <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-          </div>
-        ) : filteredCases.length === 0 ? (
+	        {isLoading ? (
+	          <div className="flex items-center justify-center py-8">
+	            <Loader2 className="h-6 w-6 animate-spin motion-reduce:animate-none text-muted-foreground" />
+	          </div>
+	        ) : filteredCases.length === 0 ? (
           <div className="text-center py-8 text-muted-foreground">
             {searchQuery ? '没有找到匹配的用例' : '暂无测试用例'}
           </div>

@@ -504,9 +504,9 @@ export default function KnowledgePage() {
           }
           bodyClassName="pt-6 scroll-smooth"
         >
-          {/* 文档列表 */}
-          {activeTab === 'documents' && (
-            <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
+	          {/* 文档列表 */}
+	          {activeTab === 'documents' && (
+	            <div className="animate-in fade-in slide-in-from-bottom-4 duration-500 motion-reduce:animate-none motion-reduce:transition-none">
               {isLoading && documents.length === 0 ? (
                 <div className="flex flex-col items-center justify-center h-64 text-muted-foreground">
                   <Loader2 className="w-8 h-8 animate-spin motion-reduce:animate-none mb-3" />
@@ -638,9 +638,9 @@ export default function KnowledgePage() {
             </div>
           )}
 
-          {/* 检索测试 */}
-          {activeTab === 'retrieval' && (
-            <div className="max-w-4xl mx-auto animate-in fade-in slide-in-from-bottom-2 duration-500">
+	          {/* 检索测试 */}
+	          {activeTab === 'retrieval' && (
+	            <div className="max-w-4xl mx-auto animate-in fade-in slide-in-from-bottom-2 duration-500 motion-reduce:animate-none motion-reduce:transition-none">
               <Panel padding="none" className="rounded-2xl p-8 text-center relative overflow-hidden">
                 <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-primary via-primary/60 to-primary/20" />
                 
@@ -686,8 +686,8 @@ export default function KnowledgePage() {
                   </div>
                 )}
 
-                {searchResults.length > 0 && (
-                  <div className="text-left space-y-4 animate-in fade-in slide-in-from-bottom-4">
+	                {searchResults.length > 0 && (
+	                  <div className="text-left space-y-4 animate-in fade-in slide-in-from-bottom-4 motion-reduce:animate-none motion-reduce:transition-none">
                     <div className="flex items-center justify-between px-2">
                       <h4 className="text-sm font-semibold text-foreground">召回结果</h4>
                       <span className="text-xs text-muted-foreground bg-muted/60 border border-border/60 px-2 py-1 rounded-full">
@@ -747,9 +747,9 @@ export default function KnowledgePage() {
             </div>
           )}
 
-          {/* 设置 */}
-          {activeTab === 'settings' && (
-            <div className="max-w-3xl mx-auto animate-in fade-in slide-in-from-bottom-2 duration-500">
+	          {/* 设置 */}
+	          {activeTab === 'settings' && (
+	            <div className="max-w-3xl mx-auto animate-in fade-in slide-in-from-bottom-2 duration-500 motion-reduce:animate-none motion-reduce:transition-none">
               <Panel padding="none" className="rounded-xl overflow-hidden">
                 <div className="p-6 border-b border-border/60 bg-muted/20">
                   <h3 className="text-lg font-bold text-foreground">知识库参数配置</h3>

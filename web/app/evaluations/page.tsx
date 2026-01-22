@@ -221,9 +221,9 @@ function EvaluationsPageContent() {
                   Promise.all([loadConversations(), loadRuns()]).finally(() => setIsLoading(false))
                 }}
               >
-                <RefreshCw className={cn('w-4 h-4', isLoading && 'animate-spin')} />
-                刷新
-              </Button>
+	                <RefreshCw className={cn('w-4 h-4', isLoading && 'animate-spin motion-reduce:animate-none')} />
+	                刷新
+	              </Button>
               <Button
                 size="sm"
                 className="gap-2 rounded-xl"

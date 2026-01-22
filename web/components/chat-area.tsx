@@ -447,45 +447,48 @@ export function ChatArea({
             />
 
             <div className="absolute right-2 bottom-2 flex items-center gap-2">
-              <Magnetic strength={0.4}>
-                <Button
-                  size="icon"
-                  variant="ghost"
-                  onClick={() => setVoiceModeOpen(true)}
-                  className="rounded-full h-10 w-10 text-muted-foreground hover:text-foreground hover:bg-muted"
-                  title="语音模式"
-                >
-                  <Mic className="h-5 w-5" />
-                </Button>
-              </Magnetic>
+	              <Magnetic strength={0.4}>
+	                <Button
+	                  size="icon"
+	                  variant="ghost"
+	                  onClick={() => setVoiceModeOpen(true)}
+	                  className="rounded-full h-10 w-10 text-muted-foreground hover:text-foreground hover:bg-muted"
+	                  title="语音模式"
+	                  aria-label="语音模式"
+	                >
+	                  <Mic className="h-5 w-5" />
+	                </Button>
+	              </Magnetic>
 
               {isLoading ? (
                 <Magnetic strength={0.2}>
-                  <Button
-                    size="icon"
-                    onClick={stopGeneration}
-                    className="rounded-full h-9 w-9 bg-destructive/10 text-destructive hover:bg-destructive/20 hover:text-destructive shadow-sm"
-                    title="停止生成"
-                  >
-                    <StopCircle className="h-4 w-4" />
-                  </Button>
+	                  <Button
+	                    size="icon"
+	                    onClick={stopGeneration}
+	                    className="rounded-full h-9 w-9 bg-destructive/10 text-destructive hover:bg-destructive/20 hover:text-destructive shadow-sm"
+	                    title="停止生成"
+	                    aria-label="停止生成"
+	                  >
+	                    <StopCircle className="h-4 w-4" />
+	                  </Button>
                 </Magnetic>
               ) : (
                 <Magnetic strength={0.5}>
-                  <Button
-                    size="icon"
-                    onClick={handleSend}
-                    disabled={!inputValue.trim()}
+	                  <Button
+	                    size="icon"
+	                    onClick={handleSend}
+	                    disabled={!inputValue.trim()}
                     className={cn(
                       "rounded-full h-9 w-9 transition-all duration-300 shadow-sm",
                       inputValue.trim()
                         ? "bg-primary text-primary-foreground hover:bg-primary/90 motion-safe:hover:scale-105 hover:shadow-md"
                         : "bg-secondary text-muted-foreground cursor-not-allowed"
-                    )}
-                    title="发送"
-                  >
-                    <Send className="h-4 w-4" />
-                  </Button>
+	                    )}
+	                    title="发送"
+	                    aria-label="发送"
+	                  >
+	                    <Send className="h-4 w-4" />
+	                  </Button>
                 </Magnetic>
               )}
             </div>

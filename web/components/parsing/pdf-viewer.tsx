@@ -249,14 +249,14 @@ export function PdfViewer({
     )
   }
 
-  if (isLoading) {
-	    return (
-	      <div className="flex h-full items-center justify-center text-muted-foreground">
-	        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-	        正在加载 PDF...
-	      </div>
-	    )
-	  }
+	  if (isLoading) {
+		    return (
+		      <div className="flex h-full items-center justify-center text-muted-foreground">
+		        <Loader2 className="mr-2 h-4 w-4 animate-spin motion-reduce:animate-none" />
+		        正在加载 PDF...
+		      </div>
+		    )
+		  }
 
   if (loadError || !pdfDoc) {
 	    return (
@@ -299,12 +299,12 @@ export function PdfViewer({
                 }}
                 className="block h-auto w-full rounded-xl"
               />
-	              {!isRendered ? (
-	                <div className="absolute inset-0 flex items-center justify-center text-xs text-muted-foreground bg-background/60 rounded-xl">
-	                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-	                  渲染中...
-	                </div>
-	              ) : null}
+		              {!isRendered ? (
+		                <div className="absolute inset-0 flex items-center justify-center text-xs text-muted-foreground bg-background/60 rounded-xl">
+		                  <Loader2 className="mr-2 h-4 w-4 animate-spin motion-reduce:animate-none" />
+		                  渲染中...
+		                </div>
+		              ) : null}
               <div className="pointer-events-none absolute inset-0">
                 {pageBoxes.map((box, boxIndex) => {
                   if (!showAllBoxes && box.blockId !== activeBlockId && box.blockId !== hoveredBlockId) {

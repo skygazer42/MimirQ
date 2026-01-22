@@ -139,11 +139,18 @@ export function TopBar() {
           重置
         </Button>
 
-        {onClose && (
-          <Button variant="ghost" size="sm" onClick={onClose} className="text-muted-foreground hover:text-foreground/80 h-9 w-9 p-0 rounded-full hover:bg-muted">
-            <X className="w-4 h-4" />
-          </Button>
-        )}
+	        {onClose && (
+	          <Button
+	            variant="ghost"
+	            size="sm"
+	            onClick={onClose}
+	            className="text-muted-foreground hover:text-foreground/80 h-9 w-9 p-0 rounded-full hover:bg-muted"
+	            aria-label="关闭"
+	            title="关闭"
+	          >
+	            <X className="w-4 h-4" />
+	          </Button>
+	        )}
 
         <Button
           onClick={submitChunks}
@@ -155,9 +162,9 @@ export function TopBar() {
               : 'bg-primary text-primary-foreground hover:bg-primary/90 shadow-primary/20'
           )}
         >
-          {isSubmitting ? (
-            <Loader2 className="w-3.5 h-3.5 animate-spin mr-2" />
-          ) : submitSuccess ? (
+	          {isSubmitting ? (
+	            <Loader2 className="w-3.5 h-3.5 animate-spin motion-reduce:animate-none mr-2" />
+	          ) : submitSuccess ? (
             <Check className="w-3.5 h-3.5 mr-2" />
           ) : (
             <Save className="w-3.5 h-3.5 mr-2" />

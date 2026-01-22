@@ -142,9 +142,9 @@ export default function FeedbackTriagePage() {
 	            className="gap-2 bg-card/60 border-border hover:bg-card hover:border-border/80 text-muted-foreground hover:text-foreground rounded-full transition-colors duration-200 motion-reduce:transition-none shadow-sm"
 	            onClick={() => refetch()}
 	          >
-	            <RefreshCw className={cn('h-3.5 w-3.5', isFetching ? 'animate-spin' : '')} />
-	            刷新数据
-	          </Button>
+		            <RefreshCw className={cn('h-3.5 w-3.5', isFetching ? 'animate-spin motion-reduce:animate-none' : '')} />
+		            刷新数据
+		          </Button>
         }
         top={
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mt-4">
@@ -209,17 +209,25 @@ export default function FeedbackTriagePage() {
               const kind = classifyFeedback(item.rating)
               const isUp = kind === 'thumbs_up'
               const isDown = kind === 'thumbs_down'
-              return (
-                <div
-                  key={item.id}
-                  role="button"
-                  tabIndex={0}
-                  onClick={() => setDetail(item)}
-	                  className={cn(
-	                    'group w-full text-left rounded-xl border transition-all duration-300 relative overflow-hidden',
-	                    'bg-card border-border hover:border-indigo-200 dark:hover:border-indigo-800 hover:shadow-[0_8px_30px_rgba(0,0,0,0.04)] hover:-translate-y-0.5'
-	                  )}
-	                >
+	              return (
+	                <div
+	                  key={item.id}
+	                  role="button"
+	                  tabIndex={0}
+	                  onClick={() => setDetail(item)}
+	                  onKeyDown={(e) => {
+	                    if (e.currentTarget !== e.target) return
+	                    if (e.key === 'Enter' || e.key === ' ') {
+	                      e.preventDefault()
+	                      setDetail(item)
+	                    }
+	                  }}
+	                  aria-label={`查看反馈详情：${item.reason || '用户未填写原因'}`}
+		                  className={cn(
+		                    'group w-full text-left rounded-xl border transition-all duration-300 relative overflow-hidden cursor-pointer focus-ring motion-reduce:transition-none',
+		                    'bg-card border-border hover:border-indigo-200 dark:hover:border-indigo-800 hover:shadow-[0_8px_30px_rgba(0,0,0,0.04)] hover:-translate-y-0.5'
+		                  )}
+		                >
                   <div
                     className={cn(
                       "absolute left-0 top-0 bottom-0 w-1 transition-colors",

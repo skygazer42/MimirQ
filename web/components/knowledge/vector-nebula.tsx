@@ -107,7 +107,7 @@ export function VectorNebula() {
         {/* Legend / Info Overlay */}
         <div className="absolute top-4 left-4 p-4 bg-background/80 backdrop-blur-md border border-border rounded-xl shadow-lg max-w-xs">
             <h3 className="font-bold text-lg mb-2 flex items-center gap-2">
-                <div className="w-2 h-2 rounded-full bg-primary/60 animate-pulse" />
+                <div className="w-2 h-2 rounded-full bg-primary/60 animate-pulse motion-reduce:animate-none" />
                 语义星云
             </h3>
             <p className="text-xs text-muted-foreground mb-4">

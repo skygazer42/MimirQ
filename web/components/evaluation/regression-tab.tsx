@@ -157,13 +157,13 @@ export function RegressionTestTab({ embedded = false }: { embedded?: boolean }) 
         <XCircle className="w-3.5 h-3.5" />
         失败
       </span>
-    ) : (
-      <span className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-semibold bg-info/10 text-info border border-info/20">
-        <Loader2 className="w-3.5 h-3.5 animate-spin" />
-        运行中
-      </span>
-    )
-  )
+	    ) : (
+	      <span className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-semibold bg-info/10 text-info border border-info/20">
+	        <Loader2 className="w-3.5 h-3.5 animate-spin motion-reduce:animate-none" />
+	        运行中
+	      </span>
+	    )
+	  )
 
   return (
     <div className={cn("flex-1 flex flex-col overflow-hidden", embedded && "overflow-visible")}>
@@ -271,11 +271,11 @@ export function RegressionTestTab({ embedded = false }: { embedded?: boolean }) 
               </div>
             </div>
 	            <div className="max-h-40 overflow-y-auto">
-	              {isLoadingRuns ? (
-	                <div className="flex items-center justify-center py-8">
-	                  <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
-	                </div>
-	              ) : runs.length === 0 ? (
+		              {isLoadingRuns ? (
+		                <div className="flex items-center justify-center py-8">
+		                  <Loader2 className="w-6 h-6 animate-spin motion-reduce:animate-none text-muted-foreground" />
+		                </div>
+		              ) : runs.length === 0 ? (
 	                <div className="text-center py-8 text-muted-foreground text-sm">
 	                  暂无运行记录
 	                </div>

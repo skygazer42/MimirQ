@@ -60,7 +60,7 @@ function StatusPill({ status }: { status: Document['status'] }) {
   const Icon = cfg.icon
   return (
     <span className={cn('inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-xs font-medium', cfg.cls)}>
-      <Icon className={cn('h-3.5 w-3.5', status === 'processing' ? 'animate-spin' : '')} />
+      <Icon className={cn('h-3.5 w-3.5', status === 'processing' ? 'animate-spin motion-reduce:animate-none' : '')} />
       {STATUS_LABEL[status]}
     </span>
   )
@@ -171,7 +171,7 @@ export default function IngestionMonitorPage() {
               className="group gap-2 rounded-full bg-background/60"
               onClick={() => refetch()}
             >
-              <RefreshCw className={cn('h-3.5 w-3.5', isFetching ? 'animate-spin' : '')} />
+              <RefreshCw className={cn('h-3.5 w-3.5', isFetching ? 'animate-spin motion-reduce:animate-none' : '')} />
               刷新状态
             </Button>
             <div className="flex items-center gap-3 rounded-full border border-border/60 bg-background/60 backdrop-blur-md px-4 py-1.5 hover:border-primary/20 transition-colors shadow-sm">
@@ -203,7 +203,7 @@ export default function IngestionMonitorPage() {
                 <div className="p-5 flex flex-col justify-between h-full relative z-10">
                   <div className="flex items-center justify-between mb-4">
                     <div className={cn("p-2 rounded-lg transition-colors", stat.bg)}>
-                      <stat.icon className={cn("w-5 h-5", stat.color, stat.spin && "animate-spin")} />
+                      <stat.icon className={cn("w-5 h-5", stat.color, stat.spin && "animate-spin motion-reduce:animate-none")} />
                     </div>
                     <div className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">{stat.label}</div>
                   </div>
@@ -249,20 +249,29 @@ export default function IngestionMonitorPage() {
         bodyClassName="pb-10 z-10"
       >
           <div className="space-y-3">
-            {filtered.map((doc) => (
-              <div
-                key={doc.id}
-                role="button"
-                tabIndex={0}
-                onClick={() => {
-                  setDetailDocumentId(doc.id)
-                  setDetailOpen(true)
-                }}
-                className={cn(
-                  'group w-full text-left rounded-xl border transition-all duration-300 relative overflow-hidden',
-                  'bg-card border-border hover:border-primary/30 hover:shadow-strong hover:-translate-y-0.5'
-                )}
-              >
+	            {filtered.map((doc) => (
+	              <div
+	                key={doc.id}
+	                role="button"
+	                tabIndex={0}
+	                aria-label={`查看入库详情：${doc.filename}`}
+	                onClick={() => {
+	                  setDetailDocumentId(doc.id)
+	                  setDetailOpen(true)
+	                }}
+	                onKeyDown={(e) => {
+	                  if (e.currentTarget !== e.target) return
+	                  if (e.key === 'Enter' || e.key === ' ') {
+	                    e.preventDefault()
+	                    setDetailDocumentId(doc.id)
+	                    setDetailOpen(true)
+	                  }
+	                }}
+	                className={cn(
+	                  'group w-full text-left rounded-xl border transition-all duration-300 relative overflow-hidden cursor-pointer focus-ring motion-reduce:transition-none',
+	                  'bg-card border-border hover:border-primary/30 hover:shadow-strong hover:-translate-y-0.5'
+	                )}
+	              >
                 {/* Progress Background Mesh for Processing */}
                 {doc.status === 'processing' && (
                   <div className="absolute inset-0 z-0 opacity-[0.03] dark:opacity-[0.05] pointer-events-none bg-[url('/noise.svg')] mix-blend-multiply dark:mix-blend-overlay" />
@@ -303,7 +312,7 @@ export default function IngestionMonitorPage() {
                       </div>
                       {doc.current_stage && (
                         <div className="flex items-center gap-1.5 text-sky-600 dark:text-sky-400 font-bold bg-sky-50 dark:bg-sky-500/10 px-2 py-0.5 rounded-full border border-sky-100 dark:border-sky-500/20 text-[10px] uppercase tracking-wider">
-                          <div className="w-1.5 h-1.5 rounded-full bg-sky-500 animate-pulse" />
+                          <div className="w-1.5 h-1.5 rounded-full bg-sky-500 animate-pulse motion-reduce:animate-none" />
                           {doc.current_stage}
                         </div>
                       )}
@@ -337,7 +346,7 @@ export default function IngestionMonitorPage() {
                             handleCancel(doc.id)
                           }}
                         >
-                          {acting?.id === doc.id && acting.action === 'cancel' ? <Loader2 className="w-3 h-3 animate-spin" /> : '终止'}
+                          {acting?.id === doc.id && acting.action === 'cancel' ? <Loader2 className="w-3 h-3 animate-spin motion-reduce:animate-none" /> : '终止'}
                         </Button>
                       )}
 
@@ -352,7 +361,7 @@ export default function IngestionMonitorPage() {
                             handleRetry(doc.id)
                           }}
                         >
-                          {acting?.id === doc.id && acting.action === 'retry' ? <Loader2 className="w-3 h-3 animate-spin" /> : '重试'}
+                          {acting?.id === doc.id && acting.action === 'retry' ? <Loader2 className="w-3 h-3 animate-spin motion-reduce:animate-none" /> : '重试'}
                         </Button>
                       )}
                     </div>
@@ -374,7 +383,7 @@ export default function IngestionMonitorPage() {
                           )}
                           style={{ width: `${Math.max(0, Math.min(100, doc.processing_progress || 0))}%` }}
                         >
-                          {doc.status === 'processing' && <div className="absolute inset-0 bg-foreground/20 animate-pulse" />}
+                          {doc.status === 'processing' && <div className="absolute inset-0 bg-foreground/20 animate-pulse motion-reduce:animate-none" />}
                         </div>
                       </div>
                     </div>

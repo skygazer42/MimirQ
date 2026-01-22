@@ -1660,7 +1660,7 @@ export default function ParsingPage() {
                     {!isLibraryLoaded ? (
                       <div className="h-full flex flex-col items-center justify-center text-muted-foreground">
                         <div className="w-14 h-14 bg-gradient-to-br from-slate-100/70 to-white rounded-2xl flex items-center justify-center mb-3 shadow-sm">
-                          <Loader2 className="w-6 h-6 text-muted-foreground animate-spin" />
+	                          <Loader2 className="w-6 h-6 text-muted-foreground animate-spin motion-reduce:animate-none" />
                         </div>
                         <p className="text-sm font-medium text-muted-foreground dark:text-muted-foreground">正在加载文档库…</p>
                         <p className="text-xs text-muted-foreground dark:text-muted-foreground mt-1">首次进入或刷新时会稍等片刻</p>
@@ -2268,7 +2268,7 @@ export default function ParsingPage() {
                           <div className="flex items-center justify-center h-full">
                             <div className="text-center">
                               <div className="relative">
-                                <Loader2 className="w-12 h-12 animate-spin text-sky-700 dark:text-sky-300 mx-auto" />
+	                                <Loader2 className="w-12 h-12 animate-spin motion-reduce:animate-none text-sky-700 dark:text-sky-300 mx-auto" />
                                 <div className="absolute inset-0 flex items-center justify-center">
                                   <span className="text-xs font-medium text-sky-700 dark:text-sky-200">
                                     {Math.round(activeFile.progress || 0)}%

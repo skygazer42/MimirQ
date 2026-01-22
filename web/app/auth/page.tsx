@@ -212,12 +212,12 @@ export default function AuthPage() {
                             className="w-full h-11 bg-primary hover:bg-primary/90 text-primary-foreground font-semibold rounded-xl shadow-lg shadow-primary/20 transition-colors duration-200 motion-reduce:transition-none motion-safe:hover:scale-[1.02] motion-safe:active:scale-[0.98]"
                             disabled={isSubmitting}
                         >
-                            {isSubmitting ? (
-                                <>
-                                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                                    处理中...
-                                </>
-                            ) : (
+	                            {isSubmitting ? (
+	                                <>
+	                                    <Loader2 className="mr-2 h-4 w-4 animate-spin motion-reduce:animate-none" />
+	                                    处理中...
+	                                </>
+	                            ) : (
                                 <>
                                     {mode === 'login' ? '登 录' : '创建账户'}
                                     <ArrowRight className="ml-2 h-4 w-4 opacity-70" />

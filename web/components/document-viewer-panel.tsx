@@ -199,11 +199,11 @@ export function DocumentViewerPanel() {
             </div>
 
             <TabsContent value="preview" className="flex-1 m-0 h-full bg-muted/30 dark:bg-muted/20 relative">
-                {isLoading && !doc ? (
-                  <div className="flex items-center justify-center h-full text-muted-foreground">
-                    <Loader2 className="h-8 w-8 animate-spin" />
-                  </div>
-                ) : canInlinePreview && fileUrl ? (
+	                {isLoading && !doc ? (
+	                  <div className="flex items-center justify-center h-full text-muted-foreground">
+	                    <Loader2 className="h-8 w-8 animate-spin motion-reduce:animate-none" />
+	                  </div>
+	                ) : canInlinePreview && fileUrl ? (
                   <iframe
                     src={`${fileUrl}#toolbar=0`}
                     className="w-full h-full border-none"

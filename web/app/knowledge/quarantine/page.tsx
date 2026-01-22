@@ -307,7 +307,7 @@ export default function QuarantineQueuePage() {
               className="group gap-2 rounded-full bg-background/60"
               onClick={() => refetch()}
             >
-              <RefreshCw className={cn('h-3.5 w-3.5', isFetching ? 'animate-spin' : '')} />
+              <RefreshCw className={cn('h-3.5 w-3.5', isFetching ? 'animate-spin motion-reduce:animate-none' : '')} />
               刷新
             </Button>
             <div className="flex items-center gap-3 rounded-full border border-border/60 bg-background/60 backdrop-blur-md px-4 py-1.5 hover:border-primary/20 transition-colors shadow-sm">
@@ -554,7 +554,7 @@ export default function QuarantineQueuePage() {
 	                      onClick={() => handleRelease(selected)}
 	                      title="按命中规则自动关闭对应过滤器，然后重试入库"
 	                    >
-                      <RotateCcw className={cn('h-4 w-4 mr-1', acting?.id === selected.id && acting.action === 'release' ? 'animate-spin' : '')} />
+                      <RotateCcw className={cn('h-4 w-4 mr-1', acting?.id === selected.id && acting.action === 'release' ? 'animate-spin motion-reduce:animate-none' : '')} />
                       放行并重试
                     </Button>
                     <Button
@@ -564,7 +564,7 @@ export default function QuarantineQueuePage() {
                       disabled={acting?.id === selected.id}
                       onClick={() => handleRetry(selected)}
                     >
-                      <RotateCcw className={cn('h-4 w-4 mr-1', acting?.id === selected.id && acting.action === 'retry' ? 'animate-spin' : '')} />
+                      <RotateCcw className={cn('h-4 w-4 mr-1', acting?.id === selected.id && acting.action === 'retry' ? 'animate-spin motion-reduce:animate-none' : '')} />
                       直接重试
                     </Button>
                     <Button
@@ -606,7 +606,7 @@ export default function QuarantineQueuePage() {
                       disabled={acting?.id === selected.id}
                       onClick={() => handleMarkReviewedOnly(selected)}
                     >
-                      <CheckCircle2 className={cn('h-4 w-4 mr-1', acting?.id === selected.id && acting.action === 'review' ? 'animate-spin' : '')} />
+                      <CheckCircle2 className={cn('h-4 w-4 mr-1', acting?.id === selected.id && acting.action === 'review' ? 'animate-spin motion-reduce:animate-none' : '')} />
                       标记已处理
                     </Button>
                     <Button
@@ -792,7 +792,7 @@ export default function QuarantineQueuePage() {
               onClick={() => saveTune({ retryAfterSave: false })}
               disabled={acting?.action === 'tune'}
             >
-              <Settings2 className={cn('h-4 w-4 mr-1', acting?.action === 'tune' ? 'animate-spin' : '')} />
+              <Settings2 className={cn('h-4 w-4 mr-1', acting?.action === 'tune' ? 'animate-spin motion-reduce:animate-none' : '')} />
               保存配置
             </Button>
 	            <Button
@@ -802,7 +802,7 @@ export default function QuarantineQueuePage() {
 	              onClick={() => saveTune({ retryAfterSave: true })}
 	              disabled={acting?.action === 'tune'}
 	            >
-              <RotateCcw className={cn('h-4 w-4 mr-1', acting?.action === 'tune' ? 'animate-spin' : '')} />
+              <RotateCcw className={cn('h-4 w-4 mr-1', acting?.action === 'tune' ? 'animate-spin motion-reduce:animate-none' : '')} />
               保存并重试
             </Button>
           </DialogFooter>

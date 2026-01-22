@@ -95,8 +95,8 @@ export function TaskCenter() {
 
   return (
     <div className="fixed bottom-4 right-4 z-50 flex flex-col items-end">
-        {isOpen && (
-            <div className="mb-2 w-[26rem] bg-background/85 backdrop-blur-md border border-border/60 rounded-2xl shadow-2xl ring-1 ring-border/40 overflow-hidden animate-in slide-in-from-bottom-5 fade-in">
+	        {isOpen && (
+	            <div className="mb-2 w-[26rem] bg-background/85 backdrop-blur-md border border-border/60 rounded-2xl shadow-2xl ring-1 ring-border/40 overflow-hidden animate-in slide-in-from-bottom-5 fade-in motion-reduce:animate-none motion-reduce:transition-none">
                 <div className="px-4 py-3 border-b border-border/60 bg-muted/30 flex justify-between items-center">
                     <div className="min-w-0">
                       <h4 className="text-sm font-semibold leading-none tracking-tight">任务中心</h4>
@@ -155,9 +155,9 @@ export function TaskCenter() {
                                     key={doc.id}
                                     className="group flex items-start gap-3 p-3 rounded-xl border border-border/50 bg-background/50 hover:bg-muted/20 transition-colors"
                                   >
-                                    <div className="mt-0.5 flex h-9 w-9 items-center justify-center rounded-lg bg-primary/10 text-primary">
-                                      <Loader2 className="h-4 w-4 animate-spin" />
-                                    </div>
+	                                    <div className="mt-0.5 flex h-9 w-9 items-center justify-center rounded-lg bg-primary/10 text-primary">
+	                                      <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" />
+	                                    </div>
                                     <div className="flex-1 min-w-0">
                                       <div className="flex items-start justify-between gap-2">
                                         <p className="text-sm font-medium truncate leading-snug" title={doc.filename}>

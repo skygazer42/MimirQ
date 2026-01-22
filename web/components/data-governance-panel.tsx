@@ -724,12 +724,12 @@ export function DataGovernancePanel() {
             badge="Governance"
             icon={ShieldCheck}
             iconColor="text-sky-400"
-            description={
-              <span className="flex items-center gap-2">
-                <span className="w-1.5 h-1.5 rounded-full bg-sky-500/10 dark:bg-sky-500/20 animate-pulse" />
-                智能文档清洗、标注与结构化处理中心
-              </span>
-            }
+	            description={
+	              <span className="flex items-center gap-2">
+	                <span className="w-1.5 h-1.5 rounded-full bg-sky-500/10 dark:bg-sky-500/20 animate-pulse motion-reduce:animate-none" />
+	                智能文档清洗、标注与结构化处理中心
+	              </span>
+	            }
           />
         </div>
 
@@ -750,13 +750,13 @@ export function DataGovernancePanel() {
             <div className="absolute inset-0 bg-gradient-to-b from-transparent via-sky-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-700 pointer-events-none" />
 
             <div className="relative z-10 flex flex-col items-center">
-              <div className="w-24 h-24 mb-8 rounded-full bg-sky-500/10 dark:bg-sky-500/20 border border-sky-500/20 flex items-center justify-center animate-pulse-subtle shadow-[0_0_30px_-5px_rgba(14,165,233,0.2)]">
-                {uploading ? (
-                  <Sparkles className="w-10 h-10 text-sky-400 animate-spin" />
-                ) : (
-                  <Upload className="w-10 h-10 text-sky-400 group-hover:scale-110 transition-transform duration-300" />
-                )}
-              </div>
+	              <div className="w-24 h-24 mb-8 rounded-full bg-sky-500/10 dark:bg-sky-500/20 border border-sky-500/20 flex items-center justify-center motion-safe:animate-pulse-subtle shadow-[0_0_30px_-5px_rgba(14,165,233,0.2)]">
+	                {uploading ? (
+	                  <Sparkles className="w-10 h-10 text-sky-400 animate-spin motion-reduce:animate-none" />
+	                ) : (
+	                  <Upload className="w-10 h-10 text-sky-400 group-hover:scale-110 transition-transform duration-300" />
+	                )}
+	              </div>
 
               <h3 className="text-3xl font-bold text-foreground mb-4 tracking-tight">
                 {uploading ? '正在解析文档...' : '拖拽文档至全息工作台'}
@@ -836,12 +836,12 @@ export function DataGovernancePanel() {
           badge="Workbench"
           icon={ShieldCheck}
           iconColor="text-sky-400"
-          description={
-            <span className="flex items-center gap-2">
-              <span className="w-1.5 h-1.5 rounded-full bg-sky-500/10 dark:bg-sky-500/20 animate-pulse" />
-              智能文档结构化处理与质量修复
-            </span>
-          }
+	          description={
+	            <span className="flex items-center gap-2">
+	              <span className="w-1.5 h-1.5 rounded-full bg-sky-500/10 dark:bg-sky-500/20 animate-pulse motion-reduce:animate-none" />
+	              智能文档结构化处理与质量修复
+	            </span>
+	          }
         >
           <div className="flex items-center gap-3">
             <Button
@@ -890,16 +890,17 @@ export function DataGovernancePanel() {
           style={{ width: isSidebarCollapsed ? 0 : sidebarWidth }}
         >
           {/* 折叠/展开按钮 */}
-          <Button
-            variant="ghost"
-            size="icon"
+	          <Button
+	            variant="ghost"
+	            size="icon"
             className={cn(
               "absolute -right-3 top-3 z-30 h-6 w-6 rounded-full border border-border bg-card shadow-sm text-muted-foreground hover:text-muted-foreground hover:bg-muted transition-opacity opacity-0 group-hover/sidebar:opacity-100",
               isSidebarCollapsed && "opacity-100 -right-8 translate-x-2"
             )}
-            onClick={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
-            title={isSidebarCollapsed ? "展开侧边栏" : "收起侧边栏"}
-          >
+	            onClick={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
+	            title={isSidebarCollapsed ? "展开侧边栏" : "收起侧边栏"}
+	            aria-label={isSidebarCollapsed ? "展开侧边栏" : "收起侧边栏"}
+	          >
             {isSidebarCollapsed ? <PanelRightOpen className="w-3 h-3" /> : <PanelRightClose className="w-3 h-3" />}
           </Button>
 
@@ -1116,32 +1117,43 @@ export function DataGovernancePanel() {
 
                   <div className="w-px h-3 bg-border mx-1" />
 
-                  <Button variant="ghost" size="icon" className="h-7 w-7 rounded-full text-muted-foreground hover:text-foreground/80 hover:bg-muted" onClick={() => setPreviewFormat(prev => prev === 'rendered' ? 'markdown' : 'rendered')} title={previewFormat === 'rendered' ? "查看源码" : "查看渲染"}>
-                    {previewFormat === 'rendered' ? <Hash className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
-                  </Button>
+	                  <Button
+	                    variant="ghost"
+	                    size="icon"
+	                    className="h-7 w-7 rounded-full text-muted-foreground hover:text-foreground/80 hover:bg-muted"
+	                    onClick={() => setPreviewFormat(prev => prev === 'rendered' ? 'markdown' : 'rendered')}
+	                    title={previewFormat === 'rendered' ? "查看源码" : "查看渲染"}
+	                    aria-label={previewFormat === 'rendered' ? "查看源码" : "查看渲染"}
+	                  >
+	                    {previewFormat === 'rendered' ? <Hash className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+	                  </Button>
                 </div>
 
                 {/* 左侧收起按钮 (如果左侧收起) */}
                 {isSidebarCollapsed && (
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={() => setIsSidebarCollapsed(false)}
-                    className="absolute left-4 top-4 z-20 h-8 w-8 bg-card/80 border border-border shadow-sm rounded-lg text-muted-foreground hover:text-sky-600 dark:text-sky-300 hover:bg-card backdrop-blur-md transition-all"
-                  >
-                    <PanelRightOpen className="w-4 h-4" />
-                  </Button>
+	                  <Button
+	                    variant="ghost"
+	                    size="icon"
+	                    onClick={() => setIsSidebarCollapsed(false)}
+	                    className="absolute left-4 top-4 z-20 h-8 w-8 bg-card/80 border border-border shadow-sm rounded-lg text-muted-foreground hover:text-sky-600 dark:text-sky-300 hover:bg-card backdrop-blur-md transition-all"
+	                    aria-label="展开侧边栏"
+	                    title="展开侧边栏"
+	                  >
+	                    <PanelRightOpen className="w-4 h-4" />
+	                  </Button>
                 )}
 
                 {isPanelCollapsed && (
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={() => setIsPanelCollapsed(false)}
-                    className="absolute right-4 top-4 z-20 h-8 w-8 bg-card/80 border border-border shadow-sm rounded-lg text-muted-foreground hover:text-sky-600 dark:text-sky-300 hover:bg-card backdrop-blur-md transition-all"
-                  >
-                    <PanelRightClose className="w-4 h-4 rotate-180" />
-                  </Button>
+	                  <Button
+	                    variant="ghost"
+	                    size="icon"
+	                    onClick={() => setIsPanelCollapsed(false)}
+	                    className="absolute right-4 top-4 z-20 h-8 w-8 bg-card/80 border border-border shadow-sm rounded-lg text-muted-foreground hover:text-sky-600 dark:text-sky-300 hover:bg-card backdrop-blur-md transition-all"
+	                    aria-label="展开右侧面板"
+	                    title="展开右侧面板"
+	                  >
+	                    <PanelRightClose className="w-4 h-4 rotate-180" />
+	                  </Button>
                 )}
 
                 {/* 内容区域 */}
