@@ -241,48 +241,48 @@ export const ChatMessageItem = memo(function ChatMessageItem({
     }
   }, [canRate, message.id, ratingSending])
 
-  return (
-    <div
-      className={cn(
-        'flex gap-4 px-2 group animate-in fade-in slide-in-from-bottom-2 duration-500',
-        isUser ? 'justify-end' : 'justify-start'
-      )}
-    >
+	  return (
+	    <div
+	      className={cn(
+	        'flex gap-4 px-2 group animate-in fade-in slide-in-from-bottom-2 duration-500 motion-reduce:animate-none',
+	        isUser ? 'justify-end' : 'justify-start'
+	      )}
+	    >
       {!isUser && (
         <div className="flex-shrink-0 w-8 h-8 rounded-xl bg-background border border-border flex items-center justify-center shadow-sm mt-0.5">
           <Bot className="h-4 w-4 text-primary" />
         </div>
       )}
 
-      <div
-        className={cn(
-          'max-w-3xl px-6 py-4 shadow-sm relative text-[15px] transition-all duration-300',
-          isUser
-            ? 'bg-primary text-primary-foreground rounded-2xl rounded-tr-sm shadow-2xl shadow-primary/25 border border-primary/20 backdrop-blur-sm'
-            : 'glass-card text-foreground border-white/10 rounded-2xl rounded-tl-sm hover:shadow-lg hover:shadow-cyan-500/10'
-        )}
-      >
+	      <div
+	        className={cn(
+	          'max-w-3xl px-6 py-4 shadow-sm relative text-[15px] transition-all duration-300 motion-reduce:transition-none',
+	          isUser
+	            ? 'bg-primary text-primary-foreground rounded-2xl rounded-tr-sm shadow-2xl shadow-primary/25 border border-primary/20 backdrop-blur-sm'
+	            : 'glass-card text-foreground rounded-2xl rounded-tl-sm hover:shadow-lg hover:shadow-primary/10'
+	        )}
+	      >
         {/* 思维链 / 步骤展示 */}
-        {!isUser && message.steps && message.steps.length > 0 && (
-          <div className="mb-4 space-y-2 animate-fade-in">
-            <div className="flex items-center gap-2 text-[10px] font-bold text-primary/70 uppercase tracking-widest">
-              <div className="relative flex h-2 w-2">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75"></span>
-                <span className="relative inline-flex rounded-full h-2 w-2 bg-primary"></span>
-              </div>
-              思考路径
-            </div>
-            <div className="pl-4 border-l border-primary/20 space-y-1">
+	        {!isUser && message.steps && message.steps.length > 0 && (
+	          <div className="mb-4 space-y-2 motion-safe:animate-fade-in">
+	            <div className="flex items-center gap-2 text-[10px] font-bold text-primary/70 uppercase tracking-widest">
+	              <div className="relative flex h-2 w-2">
+	                <span className="motion-safe:animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75"></span>
+	                <span className="relative inline-flex rounded-full h-2 w-2 bg-primary"></span>
+	              </div>
+	              思考路径
+	            </div>
+	            <div className="pl-4 border-l border-primary/20 space-y-1">
               {message.steps.map((step, idx) => (
-                <div
-                  key={idx}
-                  className={cn(
-                    "text-xs transition-opacity duration-500",
-                    idx === message.steps!.length - 1 ? "text-foreground font-medium animate-pulse" : "text-muted-foreground/60"
-                  )}
-                >
-                  {step}
-                </div>
+	                <div
+	                  key={idx}
+	                  className={cn(
+	                    "text-xs transition-opacity duration-500 motion-reduce:transition-none",
+	                    idx === message.steps!.length - 1 ? "text-foreground font-medium motion-safe:animate-pulse" : "text-muted-foreground/60"
+	                  )}
+	                >
+	                  {step}
+	                </div>
               ))}
             </div>
           </div>
@@ -305,36 +305,36 @@ export const ChatMessageItem = memo(function ChatMessageItem({
               <BarChart3 className="h-3.5 w-3.5" />
             </button>
 
-            <Dialog open={diagOpen} onOpenChange={setDiagOpen}>
-              <DialogContent className="max-w-4xl border-cyan-500/20 bg-slate-950/95 shadow-[0_0_50px_-10px_rgba(6,182,212,0.15)] backdrop-blur-xl p-0 overflow-hidden sm:rounded-[2rem]">
-                {/* Decorative HUD Elements */}
-                <div className="absolute top-0 left-0 w-20 h-20 border-l-2 border-t-2 border-cyan-500/30 rounded-tl-3xl pointer-events-none" />
-                <div className="absolute top-0 right-0 w-20 h-20 border-r-2 border-t-2 border-cyan-500/30 rounded-tr-3xl pointer-events-none" />
-                <div className="absolute bottom-0 left-0 w-20 h-20 border-l-2 border-b-2 border-cyan-500/30 rounded-bl-3xl pointer-events-none" />
-                <div className="absolute bottom-0 right-0 w-20 h-20 border-r-2 border-b-2 border-cyan-500/30 rounded-br-3xl pointer-events-none" />
-                <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-cyan-500/50 to-transparent" />
-                <div className="absolute inset-x-0 bottom-0 h-px bg-gradient-to-r from-transparent via-cyan-500/50 to-transparent" />
-
-                <DialogHeader className="px-8 pt-8 pb-4 relative z-10 border-b border-cyan-500/10 bg-cyan-950/20">
-                  <DialogTitle className="flex items-center justify-between gap-3">
-                    <div className="flex items-center gap-3">
-                      <div className="p-2 rounded-lg bg-cyan-500/10 border border-cyan-500/20 text-cyan-400">
-                        <BarChart3 className="w-5 h-5" />
-                      </div>
-                      <div>
-                        <span className="block text-lg font-bold text-cyan-50 tracking-wide">SYSTEM_DIAGNOSTICS</span>
-                        <span className="block text-[10px] font-mono text-cyan-500/60 uppercase tracking-widest">Retrieval & Generation Telemetry</span>
-                      </div>
-                    </div>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={handleCopyDiagnostics}
-                      className="bg-cyan-950/50 border-cyan-500/30 text-cyan-400 hover:bg-cyan-500/20 hover:text-cyan-300 hover:border-cyan-500/50 uppercase text-[10px] font-mono tracking-wider"
-                    >
-                      <Copy className="w-3.5 h-3.5 mr-2" />
-                      Copy JSON payload
-                    </Button>
+	            <Dialog open={diagOpen} onOpenChange={setDiagOpen}>
+	              <DialogContent className="max-w-4xl border-primary/20 bg-background/95 shadow-[0_0_50px_-10px_hsl(var(--primary)/0.15)] backdrop-blur-xl p-0 overflow-hidden sm:rounded-[2rem]">
+	                {/* Decorative HUD Elements */}
+	                <div className="absolute top-0 left-0 w-20 h-20 border-l-2 border-t-2 border-primary/30 rounded-tl-3xl pointer-events-none" />
+	                <div className="absolute top-0 right-0 w-20 h-20 border-r-2 border-t-2 border-primary/30 rounded-tr-3xl pointer-events-none" />
+	                <div className="absolute bottom-0 left-0 w-20 h-20 border-l-2 border-b-2 border-primary/30 rounded-bl-3xl pointer-events-none" />
+	                <div className="absolute bottom-0 right-0 w-20 h-20 border-r-2 border-b-2 border-primary/30 rounded-br-3xl pointer-events-none" />
+	                <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-primary/50 to-transparent" />
+	                <div className="absolute inset-x-0 bottom-0 h-px bg-gradient-to-r from-transparent via-primary/50 to-transparent" />
+	
+	                <DialogHeader className="px-8 pt-8 pb-4 relative z-10 border-b border-border/60 bg-primary/5">
+	                  <DialogTitle className="flex items-center justify-between gap-3">
+	                    <div className="flex items-center gap-3">
+	                      <div className="p-2 rounded-lg bg-primary/10 border border-primary/20 text-primary">
+	                        <BarChart3 className="w-5 h-5" />
+	                      </div>
+	                      <div>
+	                        <span className="block text-lg font-bold text-foreground tracking-wide">SYSTEM_DIAGNOSTICS</span>
+	                        <span className="block text-[10px] font-mono text-muted-foreground/70 uppercase tracking-widest">Retrieval & Generation Telemetry</span>
+	                      </div>
+	                    </div>
+	                    <Button
+	                      size="sm"
+	                      variant="outline"
+	                      onClick={handleCopyDiagnostics}
+	                      className="bg-background/50 border-primary/30 text-primary hover:bg-primary/15 hover:border-primary/50 uppercase text-[10px] font-mono tracking-wider"
+	                    >
+	                      <Copy className="w-3.5 h-3.5 mr-2" />
+	                      Copy JSON payload
+	                    </Button>
                   </DialogTitle>
                 </DialogHeader>
 
@@ -346,96 +346,96 @@ export const ChatMessageItem = memo(function ChatMessageItem({
                     {/* Left Column: Metadata & Metrics */}
                     <div className="md:col-span-4 space-y-6">
                       {/* Message Info */}
-                      <div className="rounded-xl border border-cyan-500/20 bg-cyan-950/10 overflow-hidden">
-                        <div className="px-4 py-2 bg-cyan-500/5 border-b border-cyan-500/10 flex items-center justify-between">
-                          <span className="text-[10px] bg-clip-text text-transparent bg-gradient-to-r from-cyan-400 to-blue-400 font-black uppercase tracking-widest">Meta Info</span>
-                          <div className="flex gap-1">
-                            <div className="w-1.5 h-1.5 rounded-full bg-cyan-500/40" />
-                            <div className="w-1.5 h-1.5 rounded-full bg-cyan-500/20" />
-                          </div>
-                        </div>
-                        <div className="p-4 space-y-4">
-                          <div>
-                            <div className="text-[10px] text-cyan-500/50 uppercase tracking-wider mb-1">Message ID</div>
-                            <div className="font-mono text-xs text-cyan-100 break-all bg-black/40 p-2 rounded border border-cyan-500/10 select-all">{message.id}</div>
-                          </div>
-                        </div>
-                      </div>
+	                      <div className="rounded-xl border border-border/60 bg-background/40 overflow-hidden">
+	                        <div className="px-4 py-2 bg-primary/5 border-b border-border/60 flex items-center justify-between">
+	                          <span className="text-[10px] bg-clip-text text-transparent bg-gradient-to-r from-primary to-info font-black uppercase tracking-widest">Meta Info</span>
+	                          <div className="flex gap-1">
+	                            <div className="w-1.5 h-1.5 rounded-full bg-primary/40" />
+	                            <div className="w-1.5 h-1.5 rounded-full bg-primary/20" />
+	                          </div>
+	                        </div>
+	                        <div className="p-4 space-y-4">
+	                          <div>
+	                            <div className="text-[10px] text-muted-foreground/70 uppercase tracking-wider mb-1">Message ID</div>
+	                            <div className="font-mono text-xs text-foreground break-all bg-background/60 p-2 rounded border border-border/60 select-all">{message.id}</div>
+	                          </div>
+	                        </div>
+	                      </div>
 
-                      {/* Metrics */}
-                      <div className="rounded-xl border border-blue-500/20 bg-blue-950/10 overflow-hidden">
-                        <div className="px-4 py-2 bg-blue-500/5 border-b border-blue-500/10 flex items-center justify-between">
-                          <span className="text-[10px] bg-clip-text text-transparent bg-gradient-to-r from-blue-400 to-indigo-400 font-black uppercase tracking-widest">Performance</span>
-                        </div>
-                        <div className="p-2 grid grid-cols-1 gap-2">
-                          {metricEntries.length ? metricEntries.map((e) => (
-                            <div key={e.k} className="flex items-center justify-between p-2 rounded bg-blue-500/5 border border-blue-500/10">
-                              <span className="text-[10px] text-blue-400/80 uppercase tracking-wider">{e.k.replace(/_/g, ' ')}</span>
-                              <span className="font-mono text-xs text-blue-100">{String(e.v)}</span>
-                            </div>
-                          )) : (
-                            <div className="p-4 text-center text-xs text-blue-400/50">No metrics recorded</div>
-                          )}
-                        </div>
-                      </div>
+	                      {/* Metrics */}
+	                      <div className="rounded-xl border border-info/20 bg-info/10 overflow-hidden">
+	                        <div className="px-4 py-2 bg-info/5 border-b border-info/10 flex items-center justify-between">
+	                          <span className="text-[10px] bg-clip-text text-transparent bg-gradient-to-r from-info to-primary font-black uppercase tracking-widest">Performance</span>
+	                        </div>
+	                        <div className="p-2 grid grid-cols-1 gap-2">
+	                          {metricEntries.length ? metricEntries.map((e) => (
+	                            <div key={e.k} className="flex items-center justify-between p-2 rounded bg-info/5 border border-info/10">
+	                              <span className="text-[10px] text-info/80 uppercase tracking-wider">{e.k.replace(/_/g, ' ')}</span>
+	                              <span className="font-mono text-xs text-foreground">{String(e.v)}</span>
+	                            </div>
+	                          )) : (
+	                            <div className="p-4 text-center text-xs text-info/60">No metrics recorded</div>
+	                          )}
+	                        </div>
+	                      </div>
                     </div>
 
                     {/* Right Column: Citations Table */}
                     <div className="md:col-span-8 space-y-6">
-                      <div className="rounded-xl border border-emerald-500/20 bg-emerald-950/10 overflow-hidden min-h-[300px] flex flex-col">
-                        <div className="px-4 py-2 bg-emerald-500/5 border-b border-emerald-500/10 flex items-center justify-between">
-                          <span className="text-[10px] bg-clip-text text-transparent bg-gradient-to-r from-emerald-400 to-teal-400 font-black uppercase tracking-widest">Citation Reliability Analysis</span>
-                          <span className="text-[10px] px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-400 font-mono">{citationRows.length} Sources</span>
-                        </div>
+	                      <div className="rounded-xl border border-success/20 bg-success/10 overflow-hidden min-h-[300px] flex flex-col">
+	                        <div className="px-4 py-2 bg-success/5 border-b border-success/10 flex items-center justify-between">
+	                          <span className="text-[10px] bg-clip-text text-transparent bg-gradient-to-r from-success to-info font-black uppercase tracking-widest">Citation Reliability Analysis</span>
+	                          <span className="text-[10px] px-2 py-0.5 rounded bg-success/20 text-success font-mono">{citationRows.length} Sources</span>
+	                        </div>
 
                         {citationRows.length ? (
                           <div className="overflow-x-auto flex-1">
                             <table className="w-full text-xs text-left">
                               <thead>
-                                <tr className="border-b border-emerald-500/10 text-emerald-500/60 uppercase tracking-wider text-[10px]">
-                                  <th className="px-4 py-3 font-medium">#</th>
-                                  <th className="px-4 py-3 font-medium">Document / Source</th>
-                                  <th className="px-4 py-3 font-medium text-right">Page</th>
-                                  <th className="px-4 py-3 font-medium text-right text-emerald-400">Score</th>
-                                  <th className="px-4 py-3 font-medium text-right">Vector</th>
-                                  <th className="px-4 py-3 font-medium text-right">BM25</th>
-                                  <th className="px-4 py-3 font-medium text-right">Rerank</th>
-                                </tr>
-                              </thead>
-                              <tbody className="divide-y divide-emerald-500/10">
-                                {citationRows.map((c, idx) => (
-                                  <tr key={`${c.document_id}-${c.chunk_id || c.page_number || idx}`} className="hover:bg-emerald-500/5 transition-colors group">
-                                    <td className="px-4 py-2.5 font-mono text-emerald-500/50">{idx + 1}</td>
-                                    <td className="px-4 py-2.5">
-                                      <div className="max-w-[200px] truncate text-emerald-100 font-medium group-hover:text-emerald-300 transition-colors" title={c.document_name}>{c.document_name}</div>
-                                    </td>
-                                    <td className="px-4 py-2.5 text-emerald-500/70 text-right font-mono">{c.page_number ?? '-'}</td>
-                                    <td className="px-4 py-2.5 text-right font-mono text-emerald-400 font-bold shadow-[0_0_10px_-4px_rgba(16,185,129,0.3)]">{Number.isFinite(c.relevance_score) ? c.relevance_score.toFixed(3) : '-'}</td>
-                                    <td className="px-4 py-2.5 text-right font-mono text-emerald-500/60">{c.vector_score != null ? Number(c.vector_score).toFixed(3) : '-'}</td>
-                                    <td className="px-4 py-2.5 text-right font-mono text-emerald-500/60">{c.bm25_score != null ? Number(c.bm25_score).toFixed(3) : '-'}</td>
-                                    <td className="px-4 py-2.5 text-right font-mono text-emerald-500/60">{c.rerank_score != null ? Number(c.rerank_score).toFixed(3) : '-'}</td>
-                                  </tr>
-                                ))}
-                              </tbody>
-                            </table>
-                          </div>
-                        ) : (
-                          <div className="flex-1 flex items-center justify-center p-8 text-emerald-500/30 text-xs uppercase tracking-widest">
-                            No citations recorded for this response
-                          </div>
-                        )}
+	                                <tr className="border-b border-success/10 text-success/60 uppercase tracking-wider text-[10px]">
+	                                  <th className="px-4 py-3 font-medium">#</th>
+	                                  <th className="px-4 py-3 font-medium">Document / Source</th>
+	                                  <th className="px-4 py-3 font-medium text-right">Page</th>
+	                                  <th className="px-4 py-3 font-medium text-right text-success">Score</th>
+	                                  <th className="px-4 py-3 font-medium text-right">Vector</th>
+	                                  <th className="px-4 py-3 font-medium text-right">BM25</th>
+	                                  <th className="px-4 py-3 font-medium text-right">Rerank</th>
+	                                </tr>
+	                              </thead>
+	                              <tbody className="divide-y divide-success/10">
+	                                {citationRows.map((c, idx) => (
+	                                  <tr key={`${c.document_id}-${c.chunk_id || c.page_number || idx}`} className="hover:bg-success/5 transition-colors motion-reduce:transition-none group">
+	                                    <td className="px-4 py-2.5 font-mono text-success/50">{idx + 1}</td>
+	                                    <td className="px-4 py-2.5">
+	                                      <div className="max-w-[200px] truncate text-foreground font-medium group-hover:text-success transition-colors motion-reduce:transition-none" title={c.document_name}>{c.document_name}</div>
+	                                    </td>
+	                                    <td className="px-4 py-2.5 text-success/70 text-right font-mono">{c.page_number ?? '-'}</td>
+	                                    <td className="px-4 py-2.5 text-right font-mono text-success font-bold shadow-[0_0_10px_-4px_hsl(var(--success)/0.35)]">{Number.isFinite(c.relevance_score) ? c.relevance_score.toFixed(3) : '-'}</td>
+	                                    <td className="px-4 py-2.5 text-right font-mono text-success/60">{c.vector_score != null ? Number(c.vector_score).toFixed(3) : '-'}</td>
+	                                    <td className="px-4 py-2.5 text-right font-mono text-success/60">{c.bm25_score != null ? Number(c.bm25_score).toFixed(3) : '-'}</td>
+	                                    <td className="px-4 py-2.5 text-right font-mono text-success/60">{c.rerank_score != null ? Number(c.rerank_score).toFixed(3) : '-'}</td>
+	                                  </tr>
+	                                ))}
+	                              </tbody>
+	                            </table>
+	                          </div>
+	                        ) : (
+	                          <div className="flex-1 flex items-center justify-center p-8 text-success/40 text-xs uppercase tracking-widest">
+	                            No citations recorded for this response
+	                          </div>
+	                        )}
                       </div>
 
-                      {/* Raw Data Toggle */}
-                      <div className="rounded-xl border border-slate-700/50 bg-black/40">
-                        <div className="px-4 py-2 border-b border-slate-700/50 bg-white/5 flex items-center gap-2">
-                          <div className="w-2 h-2 rounded-full bg-slate-500" />
-                          <span className="text-[10px] text-slate-400 uppercase tracking-widest">Raw Payload Payload</span>
-                        </div>
-                        <pre className="p-4 text-[10px] font-mono text-slate-400 overflow-auto max-h-40 custom-scrollbar opacity-70 hover:opacity-100 transition-opacity">
-                          {JSON.stringify({ message_metadata: message.message_metadata || null }, null, 2)}
-                        </pre>
-                      </div>
+	                      {/* Raw Data Toggle */}
+	                      <div className="rounded-xl border border-border/60 bg-background/40">
+	                        <div className="px-4 py-2 border-b border-border/60 bg-secondary/30 flex items-center gap-2">
+	                          <div className="w-2 h-2 rounded-full bg-muted-foreground/60" />
+	                          <span className="text-[10px] text-muted-foreground uppercase tracking-widest">Raw Payload</span>
+	                        </div>
+	                        <pre className="p-4 text-[10px] font-mono text-muted-foreground overflow-auto max-h-40 custom-scrollbar opacity-70 hover:opacity-100 transition-opacity motion-reduce:transition-none">
+	                          {JSON.stringify({ message_metadata: message.message_metadata || null }, null, 2)}
+	                        </pre>
+	                      </div>
                     </div>
 
                   </div>
@@ -450,15 +450,15 @@ export const ChatMessageItem = memo(function ChatMessageItem({
           onClick={handleCopy}
           aria-label={copied ? 'Copied' : 'Copy message'}
           title={copied ? 'Copied' : 'Copy'}
-          className={cn(
-            'absolute bottom-2 right-2 z-10 rounded-md p-1.5 transition-all duration-200',
-            'opacity-0 group-hover:opacity-100 scale-90 group-hover:scale-100',
-            'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60',
-            isUser
-              ? 'text-primary-foreground/70 hover:text-primary-foreground hover:bg-white/10'
-              : 'text-muted-foreground hover:text-foreground hover:bg-secondary'
-          )}
-        >
+	          className={cn(
+	            'absolute bottom-2 right-2 z-10 rounded-md p-1.5 transition-all duration-200',
+	            'opacity-0 group-hover:opacity-100 scale-90 group-hover:scale-100',
+	            'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60',
+	            isUser
+	              ? 'text-primary-foreground/80 hover:text-primary-foreground hover:bg-primary-foreground/10'
+	              : 'text-muted-foreground hover:text-foreground hover:bg-secondary'
+	          )}
+	        >
           {copied ? (
             <Check className="h-3.5 w-3.5" />
           ) : (
@@ -467,15 +467,15 @@ export const ChatMessageItem = memo(function ChatMessageItem({
         </button>
 
         <div
-          className={cn(
-            'prose max-w-none break-words leading-relaxed dark:prose-invert',
-            isUser ? 'prose-invert' : 'prose-neutral',
-            'prose-p:my-2 prose-p:leading-7',
-            'prose-pre:bg-secondary/50 prose-pre:border prose-pre:border-border/50 prose-pre:text-foreground prose-pre:rounded-xl prose-pre:p-4 prose-pre:my-3',
-            'prose-code:bg-secondary/50 prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded-md prose-code:text-sm font-mono text-primary prose-code:before:content-none prose-code:after:content-none',
-            isUser && 'prose-code:bg-white/20 prose-code:text-white'
-          )}
-        >
+	          className={cn(
+	            'prose max-w-none break-words leading-relaxed dark:prose-invert',
+	            isUser ? 'prose-invert' : 'prose-neutral',
+	            'prose-p:my-2 prose-p:leading-7',
+	            'prose-pre:bg-secondary/50 prose-pre:border prose-pre:border-border/50 prose-pre:text-foreground prose-pre:rounded-xl prose-pre:p-4 prose-pre:my-3',
+	            'prose-code:bg-secondary/50 prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded-md prose-code:text-sm font-mono text-primary prose-code:before:content-none prose-code:after:content-none',
+	            isUser && 'prose-code:bg-primary-foreground/10 prose-code:text-primary-foreground'
+	          )}
+	        >
           {isUser ? (
             <div className="whitespace-pre-wrap font-normal tracking-wide">{message.content}</div>
           ) : isStreaming ? (
