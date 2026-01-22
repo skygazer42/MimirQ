@@ -12,6 +12,7 @@ import { AppFrame } from '@/components/app-frame'
 import { Button } from '@/components/ui/button'
 import { EmptyState } from '@/components/ui/empty-state'
 import { IconButton } from '@/components/ui/icon-button'
+import { Kbd } from '@/components/ui/kbd'
 import { PageScaffold } from '@/components/ui/page-scaffold'
 import { SearchInput } from '@/components/ui/search-input'
 import { 
@@ -636,15 +637,17 @@ export default function GraphPage() {
                   ref={searchInputRef}
                   value={searchTerm}
                   onValueChange={setSearchTerm}
-                  placeholder="搜索实体节点... (Ctrl+F)"
+                  placeholder="搜索实体节点..."
                   aria-label="搜索实体节点"
                   inputClassName="h-10 rounded-full bg-muted/50 backdrop-blur-sm shadow-sm pr-16"
                 />
-                {searchTerm && (
-                  <div className="pointer-events-none absolute right-11 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">
-                    {highlightedNodeIds.size} 匹配
-                  </div>
-                )}
+                <div className="pointer-events-none absolute right-11 top-1/2 -translate-y-1/2 flex items-center gap-2 text-xs text-muted-foreground">
+                  {searchTerm ? <span>{highlightedNodeIds.size} 匹配</span> : null}
+                  <span className="flex items-center gap-1">
+                    <Kbd className="h-5 px-1.5">Ctrl</Kbd>
+                    <Kbd className="h-5 px-1.5">F</Kbd>
+                  </span>
+                </div>
               </div>
             </div>
           )}
@@ -1068,11 +1071,15 @@ export default function GraphPage() {
                           </div>
                         ))}
                          {selectedNode.source && (
-                          <div className="bg-blue-50/50 rounded-xl p-3 border border-blue-100">
-                            <span className="block text-xs font-medium text-blue-500 mb-1 capitalize">Source Document</span>
-                            <span className="block text-sm text-blue-700 break-words underline cursor-pointer" onClick={handleViewSource}>
+                          <div className="rounded-xl border border-info/25 bg-info/10 p-3">
+                            <span className="block text-xs font-medium text-info mb-1 capitalize">Source Document</span>
+                            <button
+                              type="button"
+                              onClick={handleViewSource}
+                              className="block w-full text-left text-sm text-info break-words underline underline-offset-4 hover:text-info/80 rounded-md focus-ring"
+                            >
                               {selectedNode.source}
-                            </span>
+                            </button>
                           </div>
                         )}
                     </div>

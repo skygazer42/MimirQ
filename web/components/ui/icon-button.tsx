@@ -8,13 +8,23 @@ type IconButtonProps = Omit<ButtonProps, "children" | "size"> & {
   children: React.ReactNode
 }
 
-export function IconButton({ label, className, children, ...props }: IconButtonProps) {
+export function IconButton({
+  label,
+  className,
+  children,
+  asChild = false,
+  type,
+  ...props
+}: IconButtonProps) {
   return (
     <Button
       {...props}
+      asChild={asChild}
       size="icon"
       aria-label={label}
       title={label}
+      // Icon buttons are rarely "submit" and can cause accidental form submits.
+      type={asChild ? undefined : (type ?? "button")}
       className={cn("shrink-0", className)}
     >
       {children}
@@ -22,4 +32,3 @@ export function IconButton({ label, className, children, ...props }: IconButtonP
     </Button>
   )
 }
-

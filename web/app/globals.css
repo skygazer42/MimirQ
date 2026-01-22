@@ -4,6 +4,11 @@
 
 @layer base {
   :root {
+    /* Typography - System font stack (avoids build-time Google Fonts fetch) */
+    --font-sans: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial,
+      "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol";
+    --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+
     /* Base - Modern Clean Light (Ice/Slate based) */
     --background: 210 40% 98%;
     /* Very faint cool white */
@@ -146,6 +151,10 @@
 }
 
 @layer utilities {
+  .focus-ring {
+    @apply focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background;
+  }
+
   .glass {
     @apply bg-white/70 dark:bg-black/40 backdrop-blur-xl border border-white/20 dark:border-cyan-500/10;
   }

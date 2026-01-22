@@ -10,18 +10,23 @@ import { Suspense, useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { AppFrame } from '@/components/app-frame'
 import { PageLoading } from '@/components/ui/page-loading'
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
+import { Checkbox } from '@/components/ui/checkbox'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Panel } from '@/components/ui/panel'
 import { PageScaffold } from '@/components/ui/page-scaffold'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { StatusBadge } from '@/components/ui/status-badge'
 import { StatCard, StatsGrid } from '@/components/ui/stats-card'
 import { evaluationApi, chatApi } from '@/lib/api-client'
 import type { Conversation } from '@/types'
 import {
   BarChart3,
-  CheckCircle,
   Loader2,
   PlayCircle,
   RefreshCw,
-  XCircle,
   MessageSquare,
   TestTube2,
 } from 'lucide-react'
@@ -189,29 +194,9 @@ function EvaluationsPageContent() {
   const runStatus = runDetail?.run?.status
   const statusBadge = useMemo(() => {
     if (!runStatus) return null
-    const base = 'inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-semibold'
-    if (runStatus === 'completed') {
-      return (
-        <span className={cn(base, 'bg-emerald-50 text-emerald-700 border border-emerald-100')}>
-          <CheckCircle className="w-3.5 h-3.5" />
-          已完成
-        </span>
-      )
-    }
-    if (runStatus === 'failed') {
-      return (
-        <span className={cn(base, 'bg-red-50 text-red-700 border border-red-100')}>
-          <XCircle className="w-3.5 h-3.5" />
-          失败
-        </span>
-      )
-    }
-    return (
-      <span className={cn(base, 'bg-sky-50 text-sky-700 border border-sky-100')}>
-        <Loader2 className="w-3.5 h-3.5 animate-spin" />
-        运行中
-      </span>
-    )
+    const status = runStatus === 'completed' ? 'completed' : runStatus === 'failed' ? 'failed' : 'processing'
+    const label = runStatus === 'completed' ? '已完成' : runStatus === 'failed' ? '失败' : '运行中'
+    return <StatusBadge status={status} label={label} dense />
   }, [runStatus])
 
   return (
@@ -290,148 +275,146 @@ function EvaluationsPageContent() {
           <div className="space-y-6">
             {/* 配置区 */}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-            <div className="bg-white/80 dark:bg-slate-900/80 backdrop-blur-sm border border-slate-200 dark:border-slate-800 rounded-2xl p-4">
-              <div className="text-sm font-semibold text-slate-800 dark:text-slate-200 mb-3">
-                选择对话
-              </div>
-              <select
-                value={selectedConversationId}
-                onChange={(e) => setSelectedConversationId(e.target.value)}
-                className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950 text-sm"
-              >
-                {conversations.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.title || c.id}
-                  </option>
-                ))}
-              </select>
-              <div className="mt-3 text-xs text-slate-500 dark:text-slate-400">
-                评测会从该对话中抽取「用户→助手」轮次，并通过引用 chunk 还原检索上下文。
-              </div>
-            </div>
+              <Panel variant="glass" className="rounded-2xl">
+                <div className="text-sm font-semibold text-foreground mb-3">
+                  选择对话
+                </div>
+                <Select value={selectedConversationId} onValueChange={setSelectedConversationId}>
+                  <SelectTrigger className="w-full rounded-xl">
+                    <SelectValue placeholder="选择对话" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {conversations.map((c) => (
+                      <SelectItem key={c.id} value={c.id}>
+                        {c.title || c.id}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <div className="mt-3 text-xs text-muted-foreground">
+                  评测会从该对话中抽取「用户→助手」轮次，并通过引用 chunk 还原检索上下文。
+                </div>
+              </Panel>
 
-            <div className="bg-white/80 dark:bg-slate-900/80 backdrop-blur-sm border border-slate-200 dark:border-slate-800 rounded-2xl p-4">
-              <div className="text-sm font-semibold text-slate-800 dark:text-slate-200 mb-3">
-                指标选择
-              </div>
-              <div className="space-y-2">
-                {METRIC_OPTIONS.map((m) => (
-                  <label key={m.key} className="flex items-center gap-2 text-sm">
-                    <input
-                      type="checkbox"
-                      className="h-4 w-4 rounded border-slate-300"
-                      checked={metricKeys.includes(m.key)}
-                      onChange={(e) => {
-                        setMetricKeys((prev) =>
-                          e.target.checked ? [...prev, m.key] : prev.filter((x) => x !== m.key)
-                        )
-                      }}
+              <Panel variant="glass" className="rounded-2xl">
+                <div className="text-sm font-semibold text-foreground mb-3">
+                  指标选择
+                </div>
+                <div className="space-y-2">
+                  {METRIC_OPTIONS.map((m) => (
+                    <label key={m.key} className="flex items-center gap-2 text-sm">
+                      <Checkbox
+                        checked={metricKeys.includes(m.key)}
+                        onCheckedChange={(v) => {
+                          setMetricKeys((prev) =>
+                            v === true ? [...prev, m.key] : prev.filter((x) => x !== m.key)
+                          )
+                        }}
+                      />
+                      <span className="text-foreground">{m.label}</span>
+                    </label>
+                  ))}
+                </div>
+                <div className="mt-3 text-xs text-muted-foreground">
+                  指标越多，耗时与 token/cost 越高。
+                </div>
+              </Panel>
+
+              <Panel variant="glass" className="rounded-2xl">
+                <div className="text-sm font-semibold text-foreground mb-3">
+                  评测范围
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="grid gap-1.5">
+                    <Label htmlFor="max-turns" className="text-sm text-muted-foreground">
+                      最近轮次
+                    </Label>
+                    <Input
+                      id="max-turns"
+                      type="number"
+                      min={1}
+                      max={200}
+                      value={maxTurns}
+                      onChange={(e) => setMaxTurns(Number(e.target.value))}
+                      className="rounded-xl"
                     />
-                    <span className="text-slate-700 dark:text-slate-300">{m.label}</span>
+                  </div>
+                  <label className="flex items-center gap-2 text-sm mt-7">
+                    <Checkbox
+                      checked={skipEmptyContexts}
+                      onCheckedChange={(v) => setSkipEmptyContexts(v === true)}
+                    />
+                    <span className="text-foreground">跳过无引用轮次</span>
                   </label>
-                ))}
-              </div>
-              <div className="mt-3 text-xs text-slate-500 dark:text-slate-400">
-                指标越多，耗时与 token/cost 越高。
-              </div>
+                </div>
+              </Panel>
             </div>
-
-            <div className="bg-white/80 dark:bg-slate-900/80 backdrop-blur-sm border border-slate-200 dark:border-slate-800 rounded-2xl p-4">
-              <div className="text-sm font-semibold text-slate-800 dark:text-slate-200 mb-3">
-                评测范围
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <label className="text-sm text-slate-600 dark:text-slate-300">
-                  最近轮次
-                  <input
-                    type="number"
-                    min={1}
-                    max={200}
-                    value={maxTurns}
-                    onChange={(e) => setMaxTurns(Number(e.target.value))}
-                    className="mt-1 w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950 text-sm"
-                  />
-                </label>
-                <label className="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-300 mt-6">
-                  <input
-                    type="checkbox"
-                    className="h-4 w-4 rounded border-slate-300"
-                    checked={skipEmptyContexts}
-                    onChange={(e) => setSkipEmptyContexts(e.target.checked)}
-                  />
-                  跳过无引用轮次
-                </label>
-              </div>
-            </div>
-          </div>
             {/* 内容区 */}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             {/* 运行列表 */}
             <div className="lg:col-span-1">
-              <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl overflow-hidden">
-                <div className="p-4 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
-                  <div className="text-sm font-semibold text-slate-800 dark:text-slate-200">
+              <Panel padding="none" className="rounded-2xl overflow-hidden">
+                <div className="p-4 border-b border-border/60 flex items-center justify-between bg-muted/20">
+                  <div className="text-sm font-semibold text-foreground">
                     运行记录
                   </div>
-                  <div className="text-xs text-slate-500">
+                  <div className="text-xs text-muted-foreground">
                     {runs.length} 条
                   </div>
                 </div>
-                <div className="max-h-[520px] overflow-y-auto">
+                <div className="max-h-[520px] overflow-y-auto custom-scrollbar">
                   {runs.length === 0 ? (
-                    <div className="p-6 text-sm text-slate-500">暂无评测记录</div>
+                    <div className="p-6 text-sm text-muted-foreground">暂无评测记录</div>
                   ) : (
-                    runs.map((r: any) => (
-                      <button
-                        key={r.id}
-                        onClick={() => setSelectedRunId(r.id)}
-                        className={cn(
-                          'w-full text-left p-4 border-b border-slate-100 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/40 transition',
-                          selectedRunId === r.id && 'bg-sky-50/60 dark:bg-sky-900/10'
-                        )}
-                      >
-                        <div className="flex items-center justify-between gap-2">
-                          <div className="text-sm font-medium text-slate-800 dark:text-slate-200 truncate">
-                            {r.conversation_id ? `对话 ${String(r.conversation_id).slice(0, 8)}…` : r.id}
+                    runs.map((r: any) => {
+                      const runStatus = r?.status
+                      const badgeStatus = runStatus === 'completed' ? 'completed' : runStatus === 'failed' ? 'failed' : 'processing'
+                      const badgeLabel = runStatus === 'completed' ? '已完成' : runStatus === 'failed' ? '失败' : '运行中'
+                      return (
+                        <button
+                          key={r.id}
+                          type="button"
+                          onClick={() => setSelectedRunId(r.id)}
+                          className={cn(
+                            'w-full text-left p-4 border-b border-border/60 hover:bg-muted/30 transition-colors focus-ring',
+                            selectedRunId === r.id && 'bg-primary/10'
+                          )}
+                        >
+                          <div className="flex items-center justify-between gap-2">
+                            <div className="text-sm font-medium text-foreground truncate">
+                              {r.conversation_id ? `对话 ${String(r.conversation_id).slice(0, 8)}…` : r.id}
+                            </div>
+                            <StatusBadge status={badgeStatus} label={badgeLabel} dense />
                           </div>
-                          <span
-                            className={cn(
-                              'text-[11px] px-2 py-0.5 rounded-full border',
-                              r.status === 'completed'
-                                ? 'bg-emerald-50 text-emerald-700 border-emerald-100'
-                                : r.status === 'failed'
-                                ? 'bg-red-50 text-red-700 border-red-100'
-                                : 'bg-sky-50 text-sky-700 border-sky-100'
-                            )}
-                          >
-                            {r.status}
-                          </span>
-                        </div>
-                        <div className="mt-2 text-xs text-slate-500 dark:text-slate-400">
-                          {new Date(r.created_at).toLocaleString()}
-                        </div>
-                      </button>
-                    ))
+                          <div className="mt-2 text-xs text-muted-foreground">
+                            {new Date(r.created_at).toLocaleString()}
+                          </div>
+                        </button>
+                      )
+                    })
                   )}
                 </div>
-              </div>
+              </Panel>
             </div>
 
             {/* 运行详情 */}
             <div className="lg:col-span-2 space-y-4">
-              <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4">
+              <Panel className="rounded-2xl">
                 <div className="flex items-center justify-between">
-                  <div className="text-sm font-semibold text-slate-800 dark:text-slate-200">
+                  <div className="text-sm font-semibold text-foreground">
                     运行详情
                   </div>
                   {statusBadge}
                 </div>
 
-                {runDetail?.run?.error_message && (
-                  <div className="mt-3 text-sm text-red-600">
-                    {runDetail.run.error_message}
-                  </div>
-                )}
+                {runDetail?.run?.error_message ? (
+                  <Alert variant="destructive" className="mt-3">
+                    <AlertTitle>评测失败</AlertTitle>
+                    <AlertDescription className="text-foreground/80">
+                      {runDetail.run.error_message}
+                    </AlertDescription>
+                  </Alert>
+                ) : null}
 
                 {displayMetrics.length > 0 ? (
                   <div className="mt-4">
@@ -443,35 +426,34 @@ function EvaluationsPageContent() {
                           label={m.key}
                           value={m.value.toFixed(3)}
                           color="sky"
-                          className="bg-white/80 dark:bg-slate-900/80 border-slate-200 dark:border-slate-800 shadow-sm"
                         />
                       ))}
                     </StatsGrid>
-                    <div className="mt-3 text-xs text-slate-500 dark:text-slate-400">
+                    <div className="mt-3 text-xs text-muted-foreground">
                       items: {summary.items ?? '-'} · tokens: {summary.total_tokens ?? '-'} · cost: {summary.total_cost ?? '-'}
                     </div>
                   </div>
                 ) : (
-                  <div className="mt-4 text-sm text-slate-500">
+                  <div className="mt-4 text-sm text-muted-foreground">
                     {selectedRunId ? '暂无分数（可能仍在运行中）' : '请选择一个评测运行'}
                   </div>
                 )}
-              </div>
+              </Panel>
 
               {/* 明细表 */}
-              <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl overflow-hidden">
-                <div className="p-4 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
-                  <div className="text-sm font-semibold text-slate-800 dark:text-slate-200">
+              <Panel padding="none" className="rounded-2xl overflow-hidden">
+                <div className="p-4 border-b border-border/60 flex items-center justify-between bg-muted/20">
+                  <div className="text-sm font-semibold text-foreground">
                     逐轮明细
                   </div>
-                  <div className="text-xs text-slate-500">
+                  <div className="text-xs text-muted-foreground">
                     {runDetail?.items?.length || 0} 条
                   </div>
                 </div>
 
                 <div className="overflow-x-auto">
                   <table className="w-full text-sm">
-                    <thead className="bg-slate-50 dark:bg-slate-800/40 text-slate-600 dark:text-slate-300">
+                    <thead className="bg-muted/30 text-muted-foreground">
                       <tr>
                         <th className="text-left px-4 py-3 w-16">#</th>
                         <th className="text-left px-4 py-3">问题</th>
@@ -483,17 +465,17 @@ function EvaluationsPageContent() {
                         ))}
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                    <tbody className="divide-y divide-border/60">
                       {(runDetail?.items || []).map((it: any) => (
-                        <tr key={it.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/30">
-                          <td className="px-4 py-3 text-slate-500">{it.turn_index}</td>
+                        <tr key={it.id} className="hover:bg-muted/20">
+                          <td className="px-4 py-3 text-muted-foreground">{it.turn_index}</td>
                           <td className="px-4 py-3 align-top">
-                            <div className="line-clamp-3 text-slate-800 dark:text-slate-200">
+                            <div className="line-clamp-3 text-foreground">
                               {it.user_input}
                             </div>
                           </td>
                           <td className="px-4 py-3 align-top">
-                            <div className="line-clamp-3 text-slate-700 dark:text-slate-300">
+                            <div className="line-clamp-3 text-foreground/90">
                               {it.response}
                             </div>
                           </td>
@@ -501,7 +483,7 @@ function EvaluationsPageContent() {
                             const v = it.scores?.[k]
                             const isNum = typeof v === 'number' && !Number.isNaN(v)
                             return (
-                              <td key={k} className="px-4 py-3 text-slate-700 dark:text-slate-300">
+                              <td key={k} className="px-4 py-3 text-foreground/90">
                                 {isNum ? v.toFixed(3) : '-'}
                               </td>
                             )
@@ -511,7 +493,7 @@ function EvaluationsPageContent() {
                     </tbody>
                   </table>
                 </div>
-              </div>
+              </Panel>
             </div>
           </div>
           </div>

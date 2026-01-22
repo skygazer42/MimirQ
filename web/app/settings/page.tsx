@@ -38,6 +38,7 @@ import { ParserDropdown } from '@/components/ui/parser-dropdown'
 import { ChunkStrategyDropdown } from '@/components/ui/chunk-strategy-dropdown'
 import { PipelineOptionsPanel } from '@/components/pipeline-options-panel'
 import { Panel } from '@/components/ui/panel'
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { useParserBackendPreference } from '@/contexts/parser-backend-context'
 import { useChunkStrategyPreference } from '@/contexts/chunk-strategy-context'
 import { usePipelineCapabilities } from '@/contexts/pipeline-capabilities-context'
@@ -419,25 +420,30 @@ export default function SettingsPage() {
         icon={Settings2}
         iconColor="text-sky-600 dark:text-sky-400"
         description="管理功能开关、模型接入及系统参数"
+        top={
+          saveMessage ? (
+            <Alert
+              variant={saveMessage.type === 'success' ? 'success' : 'destructive'}
+              className="shadow-soft/40"
+            >
+              {saveMessage.type === 'success' ? (
+                <CheckCircle2 className="h-4 w-4" />
+              ) : (
+                <XCircle className="h-4 w-4" />
+              )}
+              <div>
+                <AlertTitle>
+                  {saveMessage.type === 'success' ? '保存成功' : '保存失败'}
+                </AlertTitle>
+                <AlertDescription className="text-foreground/80">
+                  {saveMessage.text}
+                </AlertDescription>
+              </div>
+            </Alert>
+          ) : null
+        }
         actions={
           <>
-            {saveMessage && (
-              <div
-                className={cn(
-                  "flex items-center gap-2 px-3 py-1.5 rounded-full text-sm",
-                  saveMessage.type === "success"
-                    ? "bg-green-50 text-green-600 dark:bg-green-500/10 dark:text-green-300"
-                    : "bg-red-50 text-red-600 dark:bg-red-500/10 dark:text-red-300"
-                )}
-              >
-                {saveMessage.type === "success" ? (
-                  <CheckCircle2 className="w-4 h-4" />
-                ) : (
-                  <XCircle className="w-4 h-4" />
-                )}
-                {saveMessage.text}
-              </div>
-            )}
             <Button
               variant="outline"
               onClick={loadSettings}
