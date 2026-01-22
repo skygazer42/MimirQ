@@ -142,11 +142,11 @@ export function IngestionDetailDialog({
           </DialogTitle>
         </DialogHeader>
 
-        {isLoading && (
-          <div className="py-20 flex items-center justify-center text-slate-400">
-            <Loader2 className="h-8 w-8 animate-spin" />
-          </div>
-        )}
+	        {isLoading && (
+	          <div className="py-20 flex items-center justify-center text-slate-400">
+	            <Loader2 className="h-8 w-8 animate-spin motion-reduce:animate-none" />
+	          </div>
+	        )}
 
         {isError && !isLoading && (
           <div className="m-8 rounded-xl border border-red-200 bg-red-50 p-6 text-sm text-red-700 relative z-10">

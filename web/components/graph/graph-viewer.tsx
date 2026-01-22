@@ -232,14 +232,14 @@ export const GraphViewer = forwardRef<GraphViewerRef, GraphViewerProps>(({
     <div ref={containerRef} className="w-full h-full relative bg-slate-50/50">
       {(!mounted || width === 0 || height === 0) ? (
         <div className="absolute inset-0 flex items-center justify-center text-slate-400">
-           {mounted ? (
-              <div className="flex flex-col items-center gap-2">
-                 <Loader2 className="w-6 h-6 animate-spin text-sky-500" />
-                 <span className="text-xs">Initializing Layout... ({Math.round(width)}x{Math.round(height)})</span>
-              </div>
-           ) : (
-              <Loader2 className="w-8 h-8 animate-spin" />
-           )}
+	           {mounted ? (
+	              <div className="flex flex-col items-center gap-2">
+	                 <Loader2 className="w-6 h-6 animate-spin motion-reduce:animate-none text-sky-500" />
+	                 <span className="text-xs">Initializing Layout... ({Math.round(width)}x{Math.round(height)})</span>
+	              </div>
+	           ) : (
+	              <Loader2 className="w-8 h-8 animate-spin motion-reduce:animate-none" />
+	           )}
         </div>
       ) : (
         <ForceGraph2DNoSSR

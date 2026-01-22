@@ -757,10 +757,10 @@ export default function GraphPage() {
  
              <div className="h-6 w-px bg-muted mx-1 hidden sm:block"></div>
  
-             <Button variant="ghost" size="sm" onClick={() => loadInitialData('live')} disabled={isLoading} className="text-muted-foreground hover:text-sky-600 dark:hover:text-sky-300 hover:bg-sky-500/10 dark:hover:bg-sky-500/20">
-               <RefreshCw className={cn("w-4 h-4 mr-2", isLoading && "animate-spin")} />
-              {isLoading ? '加载中...' : '刷新'}
-            </Button>
+	             <Button variant="ghost" size="sm" onClick={() => loadInitialData('live')} disabled={isLoading} className="text-muted-foreground hover:text-sky-600 dark:hover:text-sky-300 hover:bg-sky-500/10 dark:hover:bg-sky-500/20">
+	               <RefreshCw className={cn("w-4 h-4 mr-2", isLoading && "animate-spin motion-reduce:animate-none")} />
+	              {isLoading ? '加载中...' : '刷新'}
+	            </Button>
 
             <Button 
               size="sm" 
@@ -843,13 +843,13 @@ export default function GraphPage() {
              </div>
            )}
 
-          {/* Explainability Panel (Bottom Left) */}
-          {isExplainMode && (
-            <div className="absolute bottom-8 left-8 z-20 w-80 bg-card/95 backdrop-blur-md rounded-2xl shadow-2xl border border-teal-500/30 animate-in slide-in-from-bottom-10 fade-in duration-500 overflow-hidden">
-               <div className="p-4 border-b border-teal-500/20 bg-teal-500/10 flex items-center gap-2">
-                 <Lightbulb className="w-4 h-4 text-teal-600 dark:text-teal-300" />
-                 <h3 className="font-bold text-foreground text-sm">RAG 推理过程</h3>
-               </div>
+	          {/* Explainability Panel (Bottom Left) */}
+	          {isExplainMode && (
+	            <div className="absolute bottom-8 left-8 z-20 w-80 bg-card/95 backdrop-blur-md rounded-2xl shadow-2xl border border-teal-500/30 animate-in slide-in-from-bottom-10 fade-in duration-500 motion-reduce:animate-none motion-reduce:transition-none overflow-hidden">
+	               <div className="p-4 border-b border-teal-500/20 bg-teal-500/10 flex items-center gap-2">
+	                 <Lightbulb className="w-4 h-4 text-teal-600 dark:text-teal-300" />
+	                 <h3 className="font-bold text-foreground text-sm">RAG 推理过程</h3>
+	               </div>
                <div className="p-4 space-y-4 max-h-[300px] overflow-y-auto">
                  {explainSteps.map((step, idx) => {
                    const node = graphData.nodes.find(n => n.id === step.node)
@@ -857,9 +857,9 @@ export default function GraphPage() {
                    const isDone = idx < currentStepIndex
                    
                    return (
-                     <div key={idx} className={cn("relative pl-4 border-l-2 transition-all duration-500", 
-                        isActive ? "border-teal-500" : isDone ? "border-teal-500/30" : "border-border opacity-50"
-                     )}>
+	                     <div key={idx} className={cn("relative pl-4 border-l-2 transition-all duration-500 motion-reduce:transition-none", 
+	                        isActive ? "border-teal-500" : isDone ? "border-teal-500/30" : "border-border opacity-50"
+	                     )}>
                         <div className={cn("absolute -left-[5px] top-0 w-2 h-2 rounded-full transition-colors", 
                            isActive ? "bg-teal-500" : isDone ? "bg-teal-500/20" : "bg-muted"
                         )}></div>
@@ -880,73 +880,78 @@ export default function GraphPage() {
           <div className="absolute bottom-8 right-8 z-10 flex flex-col gap-3">
              {/* Main Zoom Controls */}
              <div className="flex flex-col gap-1 bg-card/90 backdrop-blur-sm p-1.5 rounded-2xl shadow-xl shadow-black/10 dark:shadow-black/30 border border-border/50">
-                <Button variant="ghost" size="icon" onClick={() => graphRef.current?.zoomIn()} className="rounded-xl hover:bg-sky-500/10 dark:hover:bg-sky-500/20 hover:text-sky-600 dark:hover:text-sky-300" title="放大">
-                  <ZoomIn className="w-5 h-5" />
-                </Button>
-                <Button variant="ghost" size="icon" onClick={() => graphRef.current?.zoomOut()} className="rounded-xl hover:bg-sky-500/10 dark:hover:bg-sky-500/20 hover:text-sky-600 dark:hover:text-sky-300" title="缩小">
-                  <ZoomOut className="w-5 h-5" />
-                </Button>
+	               <Button variant="ghost" size="icon" onClick={() => graphRef.current?.zoomIn()} className="rounded-xl hover:bg-sky-500/10 dark:hover:bg-sky-500/20 hover:text-sky-600 dark:hover:text-sky-300" title="放大" aria-label="放大">
+	                  <ZoomIn className="w-5 h-5" />
+	                </Button>
+	                <Button variant="ghost" size="icon" onClick={() => graphRef.current?.zoomOut()} className="rounded-xl hover:bg-sky-500/10 dark:hover:bg-sky-500/20 hover:text-sky-600 dark:hover:text-sky-300" title="缩小" aria-label="缩小">
+	                  <ZoomOut className="w-5 h-5" />
+	                </Button>
                 <div className="h-px bg-muted mx-2 my-0.5"></div>
-                <Button variant="ghost" size="icon" onClick={() => graphRef.current?.zoomToFit()} className="rounded-xl hover:bg-sky-500/10 dark:hover:bg-sky-500/20 hover:text-sky-600 dark:hover:text-sky-300" title="适应屏幕">
-                  <Maximize className="w-5 h-5" />
-                </Button>
+	                <Button variant="ghost" size="icon" onClick={() => graphRef.current?.zoomToFit()} className="rounded-xl hover:bg-sky-500/10 dark:hover:bg-sky-500/20 hover:text-sky-600 dark:hover:text-sky-300" title="适应屏幕" aria-label="适应屏幕">
+	                  <Maximize className="w-5 h-5" />
+	                </Button>
              </div>
              
              {/* View Options */}
              <div className="bg-card/90 backdrop-blur-sm p-1.5 rounded-2xl shadow-xl shadow-black/10 dark:shadow-black/30 border border-border/50 flex flex-col gap-1">
-                <Button 
-                   variant="ghost" 
-                   size="icon" 
-                   onClick={() => setViewMode(viewMode === '3d' ? '2d' : '3d')}
+	                <Button 
+	                   variant="ghost" 
+	                   size="icon" 
+	                   onClick={() => setViewMode(viewMode === '3d' ? '2d' : '3d')}
                    className={cn(
                      "rounded-xl hover:bg-violet-50 hover:text-violet-600 transition-colors", 
                      viewMode === '3d' && "bg-violet-100 text-violet-600 ring-2 ring-violet-500/20"
-                   )}
-                   title={viewMode === '3d' ? "切换至 2D 平面" : "切换至 3D 空间"}
-                >
+	                   )}
+	                   title={viewMode === '3d' ? "切换至 2D 平面" : "切换至 3D 空间"}
+	                   aria-label={viewMode === '3d' ? "切换至 2D 平面" : "切换至 3D 空间"}
+	                >
                   {viewMode === '3d' ? <Box className="w-5 h-5" /> : <BoxSelect className="w-5 h-5" />}
                 </Button>
-                <Button 
-                   variant="ghost" 
-                   size="icon" 
-                   onClick={startExplainMode}
+	                <Button 
+	                   variant="ghost" 
+	                   size="icon" 
+	                   onClick={startExplainMode}
                    className={cn(
                      "rounded-xl hover:bg-teal-500/10 dark:hover:bg-teal-500/20 hover:text-teal-600 dark:hover:text-teal-300 transition-colors", 
                      isExplainMode && "bg-teal-500/20 dark:bg-teal-500/30 text-teal-600 dark:text-teal-300 ring-2 ring-teal-500/20"
-                   )}
-                   title="推理演示 (Explain)"
-                >
+	                   )}
+	                   title="推理演示 (Explain)"
+	                   aria-label="推理演示"
+	                >
                   <PlayCircle className="w-5 h-5" />
                 </Button>
-                <Button 
-                   variant="ghost" 
-                   size="icon" 
-                   onClick={cycleLayoutMode}
-                   className="rounded-xl hover:bg-sky-500/10 dark:hover:bg-sky-500/20 hover:text-sky-600 dark:hover:text-sky-300" 
-                   title={`切换布局: ${getLayoutLabel()}`}
-                >
+	                <Button 
+	                   variant="ghost" 
+	                   size="icon" 
+	                   onClick={cycleLayoutMode}
+	                   className="rounded-xl hover:bg-sky-500/10 dark:hover:bg-sky-500/20 hover:text-sky-600 dark:hover:text-sky-300" 
+	                   title={`切换布局: ${getLayoutLabel()}`}
+	                   aria-label={`切换布局：${getLayoutLabel()}`}
+	                >
                   <Layout className="w-5 h-5" />
                   <span className="sr-only">{getLayoutLabel()}</span>
                 </Button>
-                <Button 
-                   variant="ghost" 
-                   size="icon" 
-                   onClick={togglePathMode}
+	                <Button 
+	                   variant="ghost" 
+	                   size="icon" 
+	                   onClick={togglePathMode}
                    className={cn(
                      "rounded-xl hover:bg-amber-50 hover:text-amber-600 transition-colors", 
                      isPathMode && "bg-amber-100 text-amber-600 ring-2 ring-amber-500/20"
-                   )}
-                   title="路径发现 (Shortest Path)"
-                >
+	                   )}
+	                   title="路径发现 (Shortest Path)"
+	                   aria-label="路径发现"
+	                >
                   <Route className="w-5 h-5" />
                 </Button>
-                <Button 
-                  variant="ghost" 
-                  size="icon" 
-                  onClick={() => setShowEdgeLabels(!showEdgeLabels)} 
-                  className={cn("rounded-xl hover:bg-sky-500/10 dark:hover:bg-sky-500/20 hover:text-sky-600 dark:hover:text-sky-300", showEdgeLabels && "bg-sky-500/10 dark:bg-sky-500/20 text-sky-600 dark:text-sky-300")} 
-                  title="显示/隐藏连线标签"
-                >
+	                <Button 
+	                  variant="ghost" 
+	                  size="icon" 
+	                  onClick={() => setShowEdgeLabels(!showEdgeLabels)} 
+	                  className={cn("rounded-xl hover:bg-sky-500/10 dark:hover:bg-sky-500/20 hover:text-sky-600 dark:hover:text-sky-300", showEdgeLabels && "bg-sky-500/10 dark:bg-sky-500/20 text-sky-600 dark:text-sky-300")} 
+	                  title="显示/隐藏连线标签"
+	                  aria-label="显示或隐藏连线标签"
+	                >
                   <Type className="w-5 h-5" />
                 </Button>
              </div>
@@ -967,12 +972,14 @@ export default function GraphPage() {
                       ID: {selectedNode.id}
                     </span>
                   </div>
-                  <button 
-                    onClick={() => setIsDetailOpen(false)}
-                    className="text-muted-foreground hover:text-muted-foreground hover:bg-muted rounded-lg p-1 transition-colors"
-                  >
-                    <X className="w-5 h-5" />
-                  </button>
+	                  <button 
+	                    type="button"
+	                    onClick={() => setIsDetailOpen(false)}
+	                    aria-label="关闭详情面板"
+	                    className="text-muted-foreground hover:text-muted-foreground hover:bg-muted rounded-lg p-1 transition-colors"
+	                  >
+	                    <X className="w-5 h-5" />
+	                  </button>
                 </div>
                 
                 <div className="flex-1 overflow-y-auto p-5 space-y-6">

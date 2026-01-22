@@ -188,9 +188,9 @@ export default function DatasetsPage() {
         icon={Layers}
         iconColor="text-primary"
         description={
-          <span className="flex items-center gap-2">
-            <span className="w-1.5 h-1.5 rounded-full bg-primary/50 animate-pulse" />
-            管理知识库集合与访问权限
+	          <span className="flex items-center gap-2">
+	            <span className="w-1.5 h-1.5 rounded-full bg-primary/50 animate-pulse motion-reduce:animate-none" />
+	            管理知识库集合与访问权限
             <span className="ml-4 text-xs font-mono text-primary/70 uppercase tracking-widest">
               Total Archives: <span className="text-primary font-bold">{total}</span>
             </span>
@@ -203,10 +203,10 @@ export default function DatasetsPage() {
               className="gap-2 rounded-lg bg-card/60 backdrop-blur-md font-mono text-xs uppercase tracking-wider"
               onClick={() => load()}
               disabled={isLoading}
-            >
-              <RefreshCw className={cn('w-3.5 h-3.5', isLoading && 'animate-spin')} />
-              Sync
-            </Button>
+	            >
+	              <RefreshCw className={cn('w-3.5 h-3.5', isLoading && 'animate-spin motion-reduce:animate-none')} />
+	              Sync
+	            </Button>
 
             <Dialog
               open={createOpen}
@@ -248,12 +248,12 @@ export default function DatasetsPage() {
         <div className="bg-card border border-border rounded-3xl overflow-hidden shadow-sm min-h-[500px] flex flex-col">
             <div className="px-6 py-4 border-b border-border/60 flex items-center justify-between bg-muted/20">
               <div className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Dataset Registry</div>
-              {isLoading && (
-                <div className="flex items-center gap-2 text-xs text-muted-foreground font-mono">
-                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                  LOADING_ARCHIVES...
-                </div>
-              )}
+	              {isLoading && (
+	                <div className="flex items-center gap-2 text-xs text-muted-foreground font-mono">
+	                  <Loader2 className="w-3.5 h-3.5 animate-spin motion-reduce:animate-none" />
+	                  LOADING_ARCHIVES...
+	                </div>
+	              )}
             </div>
 
             {items.length === 0 && !isLoading ? (

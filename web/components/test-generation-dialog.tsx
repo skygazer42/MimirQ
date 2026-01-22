@@ -235,12 +235,14 @@ export function TestGenerationDialog({
               </p>
             </div>
           </div>
-          <button
-            onClick={handleClose}
-            className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
-          >
-            <X className="w-5 h-5" />
-          </button>
+	          <button
+	            type="button"
+	            onClick={handleClose}
+	            aria-label="关闭"
+	            className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+	          >
+	            <X className="w-5 h-5" />
+	          </button>
         </div>
 
         {/* 步骤 1: 选择来源 */}
@@ -318,7 +320,7 @@ export function TestGenerationDialog({
                     <div className="border border-slate-200 dark:border-slate-700 rounded-lg max-h-64 overflow-y-auto">
                       {isLoadingData ? (
                         <div className="flex items-center justify-center py-8">
-                          <Loader2 className="w-6 h-6 animate-spin text-slate-400" />
+                          <Loader2 className="w-6 h-6 animate-spin motion-reduce:animate-none text-slate-400" />
                         </div>
                       ) : documents.length === 0 ? (
                         <div className="text-center py-8 text-slate-500 text-sm">
@@ -360,7 +362,7 @@ export function TestGenerationDialog({
                   <div className="border border-slate-200 dark:border-slate-700 rounded-lg max-h-64 overflow-y-auto">
                     {isLoadingData ? (
                       <div className="flex items-center justify-center py-8">
-                        <Loader2 className="w-6 h-6 animate-spin text-slate-400" />
+                        <Loader2 className="w-6 h-6 animate-spin motion-reduce:animate-none text-slate-400" />
                       </div>
                     ) : conversations.length === 0 ? (
                       <div className="text-center py-8 text-slate-500 text-sm">
@@ -532,13 +534,15 @@ export function TestGenerationDialog({
                                 {q.metadata.question_type}
                               </span>
                             )}
-                          </div>
-                          <button
-                            onClick={() => handleDeleteQuestion(index)}
-                            className="text-slate-400 hover:text-red-600 transition"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
+	                          </div>
+	                          <button
+	                            type="button"
+	                            onClick={() => handleDeleteQuestion(index)}
+	                            aria-label={`删除问题 ${index + 1}`}
+	                            className="text-slate-400 hover:text-red-600 transition"
+	                          >
+	                            <Trash2 className="w-4 h-4" />
+	                          </button>
                         </div>
                       </div>
                     ))}
@@ -580,7 +584,7 @@ export function TestGenerationDialog({
                 <Button onClick={handleGenerate} disabled={isGenerating}>
                   {isGenerating ? (
                     <>
-                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin motion-reduce:animate-none" />
                       生成中...
                     </>
                   ) : (

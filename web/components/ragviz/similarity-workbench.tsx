@@ -689,12 +689,12 @@ export function RagvizSimilarityWorkbench() {
 
           <div className="flex flex-col overflow-hidden">
             <div className="p-3 border-b border-border" style={leftTopStyle}>
-              {leftTopPanel === 'dataSource' ? (
-                <Panel title="数据源配置" rightSlot={
-                  <Button variant="ghost" size="icon" onClick={loadCollections} disabled={collectionsLoading} title="刷新">
-                    <RefreshCw className={cn('h-4 w-4', collectionsLoading && 'animate-spin')} />
-                  </Button>
-                }>
+	              {leftTopPanel === 'dataSource' ? (
+	                <Panel title="数据源配置" rightSlot={
+	                  <Button variant="ghost" size="icon" onClick={loadCollections} disabled={collectionsLoading} title="刷新" aria-label="刷新">
+	                    <RefreshCw className={cn('h-4 w-4', collectionsLoading && 'animate-spin motion-reduce:animate-none')} />
+	                  </Button>
+	                }>
                   <p className="text-xs text-muted-foreground">选择横/纵坐标 collections，计算相似度矩阵（Kumi 风格）。</p>
                   {collectionsError ? (
                     <p className="text-xs text-destructive mt-2">{collectionsError}</p>
@@ -850,30 +850,33 @@ export function RagvizSimilarityWorkbench() {
                             </div>
 
                             <div className="flex items-center gap-1">
-                              <Button
-                                variant={btn?.applyData ? 'default' : 'outline'}
-                                size="icon"
-                                title="应用数据"
-                                onClick={() => toggleApplyData(idx)}
-                              >
-                                <Eye className="h-4 w-4" />
-                              </Button>
-                              <Button
-                                variant={btn?.applyFilter ? 'default' : 'outline'}
-                                size="icon"
-                                title="应用筛选器"
-                                onClick={() => toggleApplyFilter(idx)}
-                              >
-                                <Filter className="h-4 w-4" />
-                              </Button>
-                              <Button
-                                variant={btn?.exclusive ? 'default' : 'outline'}
-                                size="icon"
-                                title="独占模式"
-                                onClick={() => (btn?.exclusive ? exitExclusiveMode() : enterExclusiveMode(idx))}
-                              >
-                                <Lock className="h-4 w-4" />
-                              </Button>
+	                              <Button
+	                                variant={btn?.applyData ? 'default' : 'outline'}
+	                                size="icon"
+	                                title="应用数据"
+	                                aria-label="应用数据"
+	                                onClick={() => toggleApplyData(idx)}
+	                              >
+	                                <Eye className="h-4 w-4" />
+	                              </Button>
+	                              <Button
+	                                variant={btn?.applyFilter ? 'default' : 'outline'}
+	                                size="icon"
+	                                title="应用筛选器"
+	                                aria-label="应用筛选器"
+	                                onClick={() => toggleApplyFilter(idx)}
+	                              >
+	                                <Filter className="h-4 w-4" />
+	                              </Button>
+	                              <Button
+	                                variant={btn?.exclusive ? 'default' : 'outline'}
+	                                size="icon"
+	                                title="独占模式"
+	                                aria-label="独占模式"
+	                                onClick={() => (btn?.exclusive ? exitExclusiveMode() : enterExclusiveMode(idx))}
+	                              >
+	                                <Lock className="h-4 w-4" />
+	                              </Button>
                             </div>
                           </div>
                         )
@@ -1244,26 +1247,28 @@ function CollectionSelectorBlock({
               ))}
             </select>
 
-            {idx === 0 ? (
-              <Button
-                type="button"
-                variant="outline"
-                size="icon"
-                title="添加"
-                onClick={() => onChange([...selections, ''])}
-              >
-                +
-              </Button>
-            ) : (
-              <Button
-                type="button"
-                variant="outline"
-                size="icon"
-                title="删除"
-                onClick={() => onChange(selections.filter((_, i) => i !== idx))}
-              >
-                -
-              </Button>
+	            {idx === 0 ? (
+	              <Button
+	                type="button"
+	                variant="outline"
+	                size="icon"
+	                title="添加"
+	                aria-label="添加"
+	                onClick={() => onChange([...selections, ''])}
+	              >
+	                +
+	              </Button>
+	            ) : (
+	              <Button
+	                type="button"
+	                variant="outline"
+	                size="icon"
+	                title="删除"
+	                aria-label="删除"
+	                onClick={() => onChange(selections.filter((_, i) => i !== idx))}
+	              >
+	                -
+	              </Button>
             )}
           </div>
         ))}

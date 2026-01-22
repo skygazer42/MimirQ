@@ -144,23 +144,25 @@ export function VoiceModeOverlay({ isOpen, onClose, onSend }: VoiceModeOverlayPr
 	                        )}
 	                    </div>
 
-	                    <div className="flex gap-4">
-	                        <Button
-	                            size="icon"
-	                            className="h-16 w-16 rounded-full glass hover:bg-accent/30 hover:border-primary/30 transition-colors duration-200 motion-reduce:transition-none"
-	                            onClick={toggleListening}
-	                        >
-	                            {isListening ? <Mic className="h-8 w-8 text-primary" /> : <MicOff className="h-8 w-8 text-muted-foreground" />}
-	                        </Button>
-	                        <Button
-	                            size="icon"
-	                            variant="ghost"
-	                            className="h-16 w-16 rounded-full hover:bg-accent/40 text-muted-foreground hover:text-foreground transition-colors duration-200 motion-reduce:transition-none"
-	                            onClick={onClose}
-	                        >
-	                            <X className="h-8 w-8" />
-	                        </Button>
-	                    </div>
+		                    <div className="flex gap-4">
+		                        <Button
+		                            size="icon"
+		                            className="h-16 w-16 rounded-full glass hover:bg-accent/30 hover:border-primary/30 transition-colors duration-200 motion-reduce:transition-none"
+		                            onClick={toggleListening}
+		                            aria-label={isListening ? "停止语音输入" : "开始语音输入"}
+		                        >
+		                            {isListening ? <Mic className="h-8 w-8 text-primary" /> : <MicOff className="h-8 w-8 text-muted-foreground" />}
+		                        </Button>
+		                        <Button
+		                            size="icon"
+		                            variant="ghost"
+		                            className="h-16 w-16 rounded-full hover:bg-accent/40 text-muted-foreground hover:text-foreground transition-colors duration-200 motion-reduce:transition-none"
+		                            onClick={onClose}
+		                            aria-label="关闭语音模式"
+		                        >
+		                            <X className="h-8 w-8" />
+		                        </Button>
+		                    </div>
 	                </div>
 	            </motion.div>
 	        </AnimatePresence>
