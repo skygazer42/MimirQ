@@ -3,10 +3,10 @@ import { AppBackground } from "@/components/ui/app-background"
 
 export default function Loading() {
   return (
-    <div className="relative flex min-h-screen overflow-hidden bg-background" role="status" aria-live="polite">
+    <div className="relative flex h-dvh overflow-hidden bg-background" role="status" aria-live="polite">
       <AppBackground />
 
-      <div className="relative z-10 flex min-h-screen w-full overflow-hidden">
+      <div className="relative z-10 flex h-full w-full overflow-hidden">
         {/* Left navigation skeleton (desktop only) */}
         <aside className="hidden md:flex w-[280px] flex-col border-r border-border p-4">
           <div className="flex items-center gap-3 pb-4">
@@ -31,7 +31,7 @@ export default function Loading() {
         </aside>
 
         {/* Main content skeleton */}
-        <main id="main-content" tabIndex={-1} className="flex-1 overflow-y-auto p-6">
+        <main id="main-content" tabIndex={-1} className="flex-1 min-h-0 overflow-y-auto p-6">
           <div className="max-w-5xl space-y-6">
             <div className="space-y-3">
               <Skeleton className="h-7 w-56" />
@@ -56,4 +56,3 @@ export default function Loading() {
     </div>
   )
 }
-
