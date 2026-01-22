@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react"
 import { X, Mic, MicOff } from "lucide-react"
-import { motion, AnimatePresence } from "framer-motion"
+import { motion, AnimatePresence, useReducedMotion } from "framer-motion"
 import { Button } from "@/components/ui/button"
 
 interface VoiceModeOverlayProps {
@@ -12,9 +12,10 @@ interface VoiceModeOverlayProps {
 }
 
 export function VoiceModeOverlay({ isOpen, onClose, onSend }: VoiceModeOverlayProps) {
-    const [isListening, setIsListening] = useState(false)
-    const [transcript, setTranscript] = useState("")
-    const canvasRef = useRef<HTMLCanvasElement>(null)
+	    const [isListening, setIsListening] = useState(false)
+	    const [transcript, setTranscript] = useState("")
+	    const canvasRef = useRef<HTMLCanvasElement>(null)
+	    const reduceMotion = useReducedMotion()
 
     // Speech Recognition Setup
     const recognitionRef = useRef<any>(null)
@@ -45,53 +46,70 @@ export function VoiceModeOverlay({ isOpen, onClose, onSend }: VoiceModeOverlayPr
         }
     }, [onSend])
 
-    // Canvas Animation
-    useEffect(() => {
-        if (!isOpen || !canvasRef.current) return
+	    // Canvas Animation
+	    useEffect(() => {
+	        if (!isOpen || !canvasRef.current) return
 
-        const canvas = canvasRef.current
-        const ctx = canvas.getContext('2d')
-        if (!ctx) return
+	        const canvas = canvasRef.current
+	        const ctx = canvas.getContext('2d')
+	        if (!ctx) return
 
-        let animationFrameId: number
-        let phase = 0
+	        let animationFrameId: number | null = null
+	        let phase = 0
 
-        const render = () => {
-            phase += 0.1
-            const width = canvas.width = window.innerWidth
-            const height = canvas.height = window.innerHeight
+	        const root = document.documentElement
+	        const styles = getComputedStyle(root)
+	        const bgVar = styles.getPropertyValue('--background').trim()
+	        const fgVar = styles.getPropertyValue('--foreground').trim()
+	        const primaryVar = styles.getPropertyValue('--primary').trim()
 
-            ctx.fillStyle = '#000000'
-            ctx.fillRect(0, 0, width, height)
+	        const bgColor = bgVar ? `hsl(${bgVar})` : '#000'
+	        const fgColor = fgVar ? `hsl(${fgVar} / 0.75)` : '#ffffff'
+	        const primaryColor = primaryVar ? `hsl(${primaryVar})` : '#0ea5e9'
+	        const primaryColorMuted = primaryVar ? `hsl(${primaryVar} / 0.3)` : 'rgba(14, 165, 233, 0.3)'
 
-            // Draw Wave
-            ctx.beginPath()
-            ctx.lineWidth = 4
-            ctx.strokeStyle = isListening ? '#0ea5e9' : '#ffffff'
+	        const render = () => {
+	            if (!reduceMotion) phase += 0.1
+	            const width = canvas.width = window.innerWidth
+	            const height = canvas.height = window.innerHeight
 
-            const cy = height / 2
-            const cx = width / 2
+	            ctx.fillStyle = bgColor
+	            ctx.fillRect(0, 0, width, height)
 
-            // Simple circle wave
-            const radius = 100 + Math.sin(phase) * 10 + (isListening ? Math.random() * 20 : 0)
+	            // Draw Wave
+	            ctx.beginPath()
+	            ctx.lineWidth = 4
+	            ctx.strokeStyle = isListening ? primaryColor : fgColor
 
-            ctx.arc(cx, cy, radius, 0, 2 * Math.PI)
-            ctx.stroke()
+	            const cy = height / 2
+	            const cx = width / 2
 
-            // Ripple
-            if (isListening) {
-                ctx.beginPath()
-                ctx.strokeStyle = `rgba(14, 165, 233, 0.3)`
-                ctx.arc(cx, cy, radius + 30, 0, 2 * Math.PI)
-                ctx.stroke()
-            }
+	            // Simple circle wave
+	            const radius = 100 + Math.sin(phase) * 10 + (isListening && !reduceMotion ? Math.random() * 20 : 0)
 
-            animationFrameId = window.requestAnimationFrame(render)
-        }
+	            ctx.arc(cx, cy, radius, 0, 2 * Math.PI)
+	            ctx.stroke()
 
-        render()
-        return () => window.cancelAnimationFrame(animationFrameId)
-    }, [isOpen, isListening])
+	            // Ripple
+	            if (isListening) {
+	                ctx.beginPath()
+	                ctx.strokeStyle = primaryColorMuted
+	                ctx.arc(cx, cy, radius + 30, 0, 2 * Math.PI)
+	                ctx.stroke()
+	            }
+
+	            if (!reduceMotion) {
+	                animationFrameId = window.requestAnimationFrame(render)
+	            }
+	        }
+
+	        render()
+	        return () => {
+	            if (animationFrameId != null) {
+	                window.cancelAnimationFrame(animationFrameId)
+	            }
+	        }
+	    }, [isOpen, isListening, reduceMotion])
 
     const toggleListening = () => {
         if (isListening) {
@@ -107,44 +125,44 @@ export function VoiceModeOverlay({ isOpen, onClose, onSend }: VoiceModeOverlayPr
 
     if (!isOpen) return null
 
-    return (
-        <AnimatePresence>
-            <motion.div
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                className="fixed inset-0 z-[100] bg-black flex flex-col items-center justify-center"
-            >
-                <canvas ref={canvasRef} className="absolute inset-0" />
+	    return (
+	        <AnimatePresence>
+	            <motion.div
+	                initial={reduceMotion ? false : { opacity: 0 }}
+	                animate={{ opacity: 1 }}
+	                exit={reduceMotion ? undefined : { opacity: 0 }}
+	                className="fixed inset-0 z-[100] bg-background text-foreground flex flex-col items-center justify-center"
+	            >
+	                <canvas ref={canvasRef} className="absolute inset-0" aria-hidden="true" />
 
-                <div className="relative z-10 flex flex-col items-center gap-8">
-                    <div className="h-20 flex items-center justify-center">
-                        {transcript && (
-                            <p className="text-white/80 text-xl font-medium text-center max-w-xl animate-fade-in-up">
-                                &quot;{transcript}&quot;
-                            </p>
-                        )}
-                    </div>
+	                <div className="relative z-10 flex flex-col items-center gap-8">
+	                    <div className="h-20 flex items-center justify-center">
+	                        {transcript && (
+	                            <p className="text-foreground/80 text-xl font-medium text-center max-w-xl motion-safe:animate-fade-in-up">
+	                                &quot;{transcript}&quot;
+	                            </p>
+	                        )}
+	                    </div>
 
-                    <div className="flex gap-4">
-                        <Button
-                            size="icon"
-                            className="h-16 w-16 rounded-full bg-white/10 hover:bg-white/20 backdrop-blur-md border border-white/20"
-                            onClick={toggleListening}
-                        >
-                            {isListening ? <Mic className="h-8 w-8 text-sky-400" /> : <MicOff className="h-8 w-8 text-white/50" />}
-                        </Button>
-                        <Button
-                            size="icon"
-                            variant="ghost"
-                            className="h-16 w-16 rounded-full hover:bg-white/10 text-white/50"
-                            onClick={onClose}
-                        >
-                            <X className="h-8 w-8" />
-                        </Button>
-                    </div>
-                </div>
-            </motion.div>
-        </AnimatePresence>
-    )
+	                    <div className="flex gap-4">
+	                        <Button
+	                            size="icon"
+	                            className="h-16 w-16 rounded-full glass hover:bg-accent/30 hover:border-primary/30 transition-colors duration-200 motion-reduce:transition-none"
+	                            onClick={toggleListening}
+	                        >
+	                            {isListening ? <Mic className="h-8 w-8 text-primary" /> : <MicOff className="h-8 w-8 text-muted-foreground" />}
+	                        </Button>
+	                        <Button
+	                            size="icon"
+	                            variant="ghost"
+	                            className="h-16 w-16 rounded-full hover:bg-accent/40 text-muted-foreground hover:text-foreground transition-colors duration-200 motion-reduce:transition-none"
+	                            onClick={onClose}
+	                        >
+	                            <X className="h-8 w-8" />
+	                        </Button>
+	                    </div>
+	                </div>
+	            </motion.div>
+	        </AnimatePresence>
+	    )
 }
