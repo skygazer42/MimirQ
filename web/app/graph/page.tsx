@@ -620,14 +620,14 @@ export default function GraphPage() {
       >
          {/* Header */}
          <header className="absolute top-0 left-0 right-0 z-20 h-16 px-6 flex items-center justify-between bg-card/80 backdrop-blur-md border-b border-border/50 pointer-events-none">
-          <div className="flex items-center gap-3 pointer-events-auto">
-            <div className="p-2 bg-gradient-to-br from-sky-500 to-teal-600 rounded-lg shadow-sm">
-              <Share2 className="w-5 h-5 text-white" />
-            </div>
-            <div>
-              <h1 className="text-3xl font-bold text-foreground tracking-tight">知识图谱</h1>
-            </div>
-          </div>
+	          <div className="flex items-center gap-3 pointer-events-auto">
+	            <div className="p-2 bg-gradient-to-br from-sky-500 to-teal-600 rounded-lg shadow-sm">
+	              <Share2 className="w-5 h-5 text-background dark:text-foreground" />
+	            </div>
+	            <div>
+	              <h1 className="text-3xl font-bold text-foreground tracking-tight">知识图谱</h1>
+	            </div>
+	          </div>
           
           {/* Centered Search Bar */}
           {graphData.nodes.length > 0 && !isPathMode && !isConnectMode && !isExplainMode && (
@@ -652,52 +652,52 @@ export default function GraphPage() {
             </div>
           )}
 
-          {/* Status Banners */}
-           {isPathMode && (
-              <div className="pointer-events-auto absolute left-1/2 -translate-x-1/2 top-1/2 -translate-y-1/2 flex items-center gap-2 px-4 py-2 bg-sky-600 text-white rounded-full shadow-lg animate-in fade-in slide-in-from-top-4">
-                 <Route className="w-4 h-4" />
-                 <span className="text-sm font-medium">
-                   {!pathStartNode ? "请点击选择【起点】" : !pathEndNode ? "请点击选择【终点】" : "路径分析完成"}
-                 </span>
-                 <IconButton
-                   label="退出路径分析"
-                   onClick={resetPathMode}
-                   className="ml-2 h-7 w-7 rounded-full text-white/90 hover:text-white hover:bg-white/10"
-                 >
-                   <X className="w-4 h-4" />
-                 </IconButton>
-              </div>
-           )}
-            {isConnectMode && (
-              <div className="pointer-events-auto absolute left-1/2 -translate-x-1/2 top-1/2 -translate-y-1/2 flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-full shadow-lg animate-in fade-in slide-in-from-top-4">
-                 <LinkIcon className="w-4 h-4" />
-                 <span className="text-sm font-medium">
-                    正在连接: {connectSourceNode?.label} ... 请点击目标节点
-                 </span>
-                 <IconButton
-                   label="退出连接模式"
-                   onClick={resetConnectMode}
-                   className="ml-2 h-7 w-7 rounded-full text-white/90 hover:text-white hover:bg-white/10"
-                 >
-                   <X className="w-4 h-4" />
-                 </IconButton>
-              </div>
-           )}
-           {isExplainMode && (
-              <div className="pointer-events-auto absolute left-1/2 -translate-x-1/2 top-1/2 -translate-y-1/2 flex items-center gap-2 px-4 py-2 bg-teal-600 text-white rounded-full shadow-lg animate-in fade-in slide-in-from-top-4">
-                 <Lightbulb className="w-4 h-4" />
-                 <span className="text-sm font-medium">
-                    推理路径演示中... ({currentStepIndex + 1}/{explainSteps.length})
-                 </span>
-                 <IconButton
-                   label="退出推理演示"
-                   onClick={resetExplainMode}
-                   className="ml-2 h-7 w-7 rounded-full text-white/90 hover:text-white hover:bg-white/10"
-                 >
-                   <X className="w-4 h-4" />
-                 </IconButton>
-              </div>
-           )}
+	          {/* Status Banners */}
+	           {isPathMode && (
+	              <div className="pointer-events-auto absolute left-1/2 -translate-x-1/2 top-1/2 -translate-y-1/2 flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-full shadow-lg animate-in fade-in slide-in-from-top-4 motion-reduce:animate-none">
+	                 <Route className="w-4 h-4" />
+	                 <span className="text-sm font-medium">
+	                   {!pathStartNode ? "请点击选择【起点】" : !pathEndNode ? "请点击选择【终点】" : "路径分析完成"}
+	                 </span>
+	                 <IconButton
+	                   label="退出路径分析"
+	                   onClick={resetPathMode}
+	                   className="ml-2 h-7 w-7 rounded-full text-primary-foreground/80 hover:text-primary-foreground hover:bg-primary-foreground/10"
+	                 >
+	                   <X className="w-4 h-4" />
+	                 </IconButton>
+	              </div>
+	           )}
+	            {isConnectMode && (
+	              <div className="pointer-events-auto absolute left-1/2 -translate-x-1/2 top-1/2 -translate-y-1/2 flex items-center gap-2 px-4 py-2 bg-success text-success-foreground rounded-full shadow-lg animate-in fade-in slide-in-from-top-4 motion-reduce:animate-none">
+	                 <LinkIcon className="w-4 h-4" />
+	                 <span className="text-sm font-medium">
+	                    正在连接: {connectSourceNode?.label} ... 请点击目标节点
+	                 </span>
+	                 <IconButton
+	                   label="退出连接模式"
+	                   onClick={resetConnectMode}
+	                   className="ml-2 h-7 w-7 rounded-full text-success-foreground/80 hover:text-success-foreground hover:bg-success-foreground/10"
+	                 >
+	                   <X className="w-4 h-4" />
+	                 </IconButton>
+	              </div>
+	           )}
+	           {isExplainMode && (
+	              <div className="pointer-events-auto absolute left-1/2 -translate-x-1/2 top-1/2 -translate-y-1/2 flex items-center gap-2 px-4 py-2 bg-info text-info-foreground rounded-full shadow-lg animate-in fade-in slide-in-from-top-4 motion-reduce:animate-none">
+	                 <Lightbulb className="w-4 h-4" />
+	                 <span className="text-sm font-medium">
+	                    推理路径演示中... ({currentStepIndex + 1}/{explainSteps.length})
+	                 </span>
+	                 <IconButton
+	                   label="退出推理演示"
+	                   onClick={resetExplainMode}
+	                   className="ml-2 h-7 w-7 rounded-full text-info-foreground/80 hover:text-info-foreground hover:bg-info-foreground/10"
+	                 >
+	                   <X className="w-4 h-4" />
+	                 </IconButton>
+	              </div>
+	           )}
 
            <div className="flex items-center gap-3 pointer-events-auto">
               {fileName && (
@@ -977,14 +977,15 @@ export default function GraphPage() {
                 
                 <div className="flex-1 overflow-y-auto p-5 space-y-6">
                   {/* Deep Linking Actions */}
-                  <div className="grid grid-cols-2 gap-3">
-                    <Button 
-                      onClick={handleChatWithNode}
-                      className="w-full bg-sky-600 hover:bg-sky-700 text-white shadow-md shadow-sky-500/20 dark:shadow-sky-500/10"
-                    >
-                      <MessageSquare className="w-4 h-4 mr-2" />
-                      对话
-                    </Button>
+	                  <div className="grid grid-cols-2 gap-3">
+	                    <Button 
+	                      variant="info"
+	                      onClick={handleChatWithNode}
+	                      className="w-full"
+	                    >
+	                      <MessageSquare className="w-4 h-4 mr-2" />
+	                      对话
+	                    </Button>
                     <Button 
                       variant="outline" 
                       onClick={handleViewSource}

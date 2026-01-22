@@ -138,10 +138,10 @@ export function FileQueueItem({
   return (
     <div
       className={cn(
-        'group p-3 rounded-xl border transition-all cursor-pointer',
+        'group p-3 rounded-xl border transition-all cursor-pointer motion-reduce:transition-none',
         isActive
-          ? 'bg-sky-50 dark:bg-sky-950/30 border-sky-200 dark:border-sky-900/40 shadow-sm dark:shadow-none'
-          : 'bg-white dark:bg-slate-950/40 border-slate-200 dark:border-slate-800 hover:border-sky-200 dark:hover:border-sky-900/40 hover:bg-slate-50 dark:hover:bg-slate-950/60'
+          ? 'bg-info/10 border-info/25 shadow-sm dark:shadow-none'
+          : 'bg-card border-border hover:border-info/25 hover:bg-muted/40'
       )}
       onClick={onClick}
     >

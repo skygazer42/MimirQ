@@ -10,6 +10,7 @@
     "start": "next start -H 0.0.0.0 -p 3000",
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
+    "ui-check": "node scripts/check-design-tokens.mjs",
     "api-check": "node scripts/check-api-contract.mjs && node scripts/check-api-coverage.mjs",
     "openapi:export": "python3 ../scripts/export_openapi.py --out openapi.json",
     "openapi-types": "pnpm run openapi:export && pnpm run gen:api-types",

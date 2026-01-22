@@ -25,6 +25,7 @@ export function CinematicTypewriter({
   isStreaming = false,
   className,
 }: CinematicTypewriterProps) {
+  const [reduceMotion, setReduceMotion] = useState(false)
   const [displayedContent, setDisplayedContent] = useState("")
   const [isTyping, setIsTyping] = useState(false)
   const indexRef = useRef(0)
@@ -32,25 +33,25 @@ export function CinematicTypewriter({
 
   // Markdown 组件配置
   const markdownComponents = useMemo(() => ({
-    p: ({ children }: { children?: React.ReactNode }) => <p className="mb-3 last:mb-0 leading-relaxed animate-fade-in">{children}</p>,
+    p: ({ children }: { children?: React.ReactNode }) => <p className="mb-3 last:mb-0 leading-relaxed motion-safe:animate-fade-in">{children}</p>,
     ul: ({ children }: { children?: React.ReactNode }) => (
-      <ul className="list-disc pl-5 mb-3 space-y-1.5 marker:text-muted-foreground/60 animate-fade-in">{children}</ul>
+      <ul className="list-disc pl-5 mb-3 space-y-1.5 marker:text-muted-foreground/60 motion-safe:animate-fade-in">{children}</ul>
     ),
     ol: ({ children }: { children?: React.ReactNode }) => (
-      <ol className="list-decimal pl-5 mb-3 space-y-1.5 marker:text-muted-foreground/60 animate-fade-in">{children}</ol>
+      <ol className="list-decimal pl-5 mb-3 space-y-1.5 marker:text-muted-foreground/60 motion-safe:animate-fade-in">{children}</ol>
     ),
     code: ({ className, children, ...props }: any) => {
       const match = /language-(\w+)/.exec(className || '')
       return match ? (
-        <div className="relative group rounded-lg overflow-hidden my-4 border border-border/50 shadow-sm animate-fade-in-up">
+        <div className="relative group rounded-lg overflow-hidden my-4 border border-border/50 shadow-sm motion-safe:animate-fade-in-up">
           {/* Mac 风格窗口头 */}
-          <div className="flex items-center px-4 py-2 bg-slate-950/50 border-b border-white/10">
+          <div className="flex items-center px-4 py-2 bg-secondary/30 border-b border-border/60">
             <div className="flex gap-1.5">
-              <div className="w-2.5 h-2.5 rounded-full bg-red-500/80" />
-              <div className="w-2.5 h-2.5 rounded-full bg-yellow-500/80" />
-              <div className="w-2.5 h-2.5 rounded-full bg-green-500/80" />
+              <div className="w-2.5 h-2.5 rounded-full bg-destructive/80" />
+              <div className="w-2.5 h-2.5 rounded-full bg-warning/80" />
+              <div className="w-2.5 h-2.5 rounded-full bg-success/80" />
             </div>
-            <span className="ml-4 text-[10px] font-mono text-slate-400 uppercase">{match[1]}</span>
+            <span className="ml-4 text-[10px] font-mono text-muted-foreground uppercase">{match[1]}</span>
           </div>
           <SyntaxHighlighter
             {...props}
@@ -60,7 +61,7 @@ export function CinematicTypewriter({
             customStyle={{
               margin: 0,
               borderRadius: 0,
-              background: 'rgba(2, 6, 23, 0.5)', // slate-950/50
+              background: 'transparent',
               fontSize: '0.85em',
             }}
           >
@@ -76,12 +77,53 @@ export function CinematicTypewriter({
   }), [])
 
   useEffect(() => {
+    if (typeof window === 'undefined') return
+    const media = window.matchMedia('(prefers-reduced-motion: reduce)')
+    const update = () => setReduceMotion(Boolean(media.matches))
+    update()
+    if (typeof media.addEventListener === 'function') {
+      media.addEventListener('change', update)
+      return () => media.removeEventListener('change', update)
+    }
+    // Safari < 14
+    media.addListener(update)
+    return () => media.removeListener(update)
+  }, [])
+
+  useEffect(() => {
+    if (reduceMotion) {
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current)
+        timeoutRef.current = null
+      }
+      indexRef.current = content.length
+      if (displayedContent !== content) {
+        setDisplayedContent(content)
+      }
+      setIsTyping(false)
+      if (!isStreaming) onComplete?.()
+      return
+    }
+
+    // If the parent swapped in a new message (not an append), reset typing state.
+    if (displayedContent && !content.startsWith(displayedContent)) {
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current)
+        timeoutRef.current = null
+      }
+      indexRef.current = 0
+      setDisplayedContent("")
+      setIsTyping(false)
+      return
+    }
+
     // 如果已经不再 streaming 且显示内容已追上，直接完成
     if (!isStreaming && indexRef.current >= content.length) {
       if (displayedContent !== content) {
         setDisplayedContent(content)
       }
       setIsTyping(false)
+      timeoutRef.current = null
       onComplete?.()
       return
     }
@@ -92,6 +134,7 @@ export function CinematicTypewriter({
       if (indexRef.current >= content.length) {
         if (!isStreaming) {
           setIsTyping(false)
+          timeoutRef.current = null
           onComplete?.()
         } else {
           // Wait for more content from stream
@@ -124,7 +167,7 @@ export function CinematicTypewriter({
     return () => {
       // Cleanup is tricky with self-scheduling loop, usually handled by ref check
     }
-  }, [content, isStreaming, onComplete, displayedContent])
+  }, [content, isStreaming, onComplete, displayedContent, reduceMotion])
 
   // 组件卸载时清理
   useEffect(() => {
@@ -143,8 +186,8 @@ export function CinematicTypewriter({
       </ReactMarkdown>
 
       {/* 电影感光标 */}
-      {isTyping && (
-        <span className="inline-block w-1.5 h-5 ml-0.5 align-middle bg-primary animate-blink shadow-[0_0_8px_rgba(var(--primary),0.8)] rounded-full" />
+      {isTyping && !reduceMotion && (
+        <span className="inline-block w-1.5 h-5 ml-0.5 align-middle bg-primary motion-safe:animate-blink shadow-[0_0_8px_hsl(var(--primary)/0.55)] rounded-full" />
       )}
     </div>
   )

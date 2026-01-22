@@ -234,33 +234,37 @@ export function PdfViewer({
     const pageIndex = block?.positions?.[0]?.pages?.[0]
     if (pageIndex == null) return
     const el = pageRefs.current.get(pageIndex)
-    el?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    const reduceMotion =
+      typeof window !== 'undefined' &&
+      typeof window.matchMedia === 'function' &&
+      window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    el?.scrollIntoView({ behavior: reduceMotion ? 'auto' : 'smooth', block: 'center' })
   }, [activeBlockId, blocks])
 
   if (!file) {
     return (
-      <div className="flex h-full items-center justify-center text-sm text-gray-400">
+      <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
         未选择 PDF
       </div>
     )
   }
 
   if (isLoading) {
-    return (
-      <div className="flex h-full items-center justify-center text-gray-400">
-        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-        正在加载 PDF...
-      </div>
-    )
-  }
+	    return (
+	      <div className="flex h-full items-center justify-center text-muted-foreground">
+	        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+	        正在加载 PDF...
+	      </div>
+	    )
+	  }
 
   if (loadError || !pdfDoc) {
-    return (
-      <div className="flex h-full items-center justify-center px-6">
-        <div className="max-w-md rounded-2xl border border-border/60 bg-card p-5 text-center shadow-sm">
-          <div className="mx-auto mb-3 flex h-10 w-10 items-center justify-center rounded-xl bg-red-500/10 text-red-600 dark:text-red-400">
-            <AlertCircle className="h-5 w-5" />
-          </div>
+	    return (
+	      <div className="flex h-full items-center justify-center px-6">
+	        <div className="max-w-md rounded-2xl border border-border/60 bg-card p-5 text-center shadow-sm">
+	          <div className="mx-auto mb-3 flex h-10 w-10 items-center justify-center rounded-xl bg-destructive/10 text-destructive">
+	            <AlertCircle className="h-5 w-5" />
+	          </div>
           <div className="text-sm font-semibold text-foreground">PDF 加载失败</div>
           <div className="mt-1 text-xs text-muted-foreground">{loadError || '请重试，或重新上传该文件。'}</div>
           <div className="mt-4 flex justify-center gap-2">
@@ -280,27 +284,27 @@ export function PdfViewer({
         {Array.from({ length: pageCount }).map((_, index) => {
           const pageBoxes = boxesByPage.get(index) || []
           const isRendered = renderedPages.has(index)
-          return (
-            <div
-              key={`page-${index}`}
+	          return (
+	            <div
+	              key={`page-${index}`}
               ref={(el) => {
                 if (el) pageRefs.current.set(index, el)
               }}
               data-page-index={index}
-              className="relative rounded-xl bg-white shadow-sm ring-1 ring-border/60"
-            >
+	              className="relative rounded-xl bg-card shadow-sm ring-1 ring-border/60"
+	            >
               <canvas
                 ref={(el) => {
                   if (el) canvasRefs.current.set(index, el)
                 }}
                 className="block h-auto w-full rounded-xl"
               />
-              {!isRendered ? (
-                <div className="absolute inset-0 flex items-center justify-center text-xs text-slate-400 bg-white/60 rounded-xl">
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  渲染中...
-                </div>
-              ) : null}
+	              {!isRendered ? (
+	                <div className="absolute inset-0 flex items-center justify-center text-xs text-muted-foreground bg-background/60 rounded-xl">
+	                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+	                  渲染中...
+	                </div>
+	              ) : null}
               <div className="pointer-events-none absolute inset-0">
                 {pageBoxes.map((box, boxIndex) => {
                   if (!showAllBoxes && box.blockId !== activeBlockId && box.blockId !== hoveredBlockId) {
@@ -313,12 +317,12 @@ export function PdfViewer({
                   const height = Math.abs(bottom - top) * scale
                   const isActive = box.blockId === activeBlockId
                   const isHovered = box.blockId === hoveredBlockId
-                  const baseColor = isActive ? 'border-amber-500 bg-amber-200/20' : 'border-sky-400/60'
-                  const hoverColor = isHovered ? 'border-sky-500 bg-sky-200/20' : ''
-                  return (
-                    <div
-                      key={`box-${index}-${boxIndex}`}
-                      className={`absolute rounded border ${baseColor} ${hoverColor}`}
+	                  const baseColor = isActive ? 'border-warning bg-warning/10' : 'border-primary/60'
+	                  const hoverColor = isHovered ? 'border-primary bg-primary/10' : ''
+	                  return (
+	                    <div
+	                      key={`box-${index}-${boxIndex}`}
+	                      className={`absolute rounded border ${baseColor} ${hoverColor}`}
                       style={{ left: x, top: y, width, height }}
                     />
                   )

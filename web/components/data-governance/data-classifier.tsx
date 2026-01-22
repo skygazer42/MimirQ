@@ -20,6 +20,7 @@ import {
   FileText,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 import { cn } from '@/lib/utils'
 
 interface DataClassifierProps {
@@ -31,14 +32,62 @@ interface DataClassifierProps {
 
 // 预设分类
 const PRESET_CATEGORIES = [
-  { id: 'technical', label: '技术文档', icon: FileText, color: 'blue', keywords: ['api', 'sdk', '开发', '代码', '配置'] },
-  { id: 'product', label: '产品文档', icon: FileText, color: 'green', keywords: ['产品', '功能', '特性', '版本', '发布'] },
-  { id: 'business', label: '业务文档', icon: Folder, color: 'purple', keywords: ['业务', '流程', '规范', '制度'] },
-  { id: 'legal', label: '法律文档', icon: Folder, color: 'red', keywords: ['合同', '协议', '法律', '条款', '合规'] },
-  { id: 'hr', label: '人事文档', icon: Folder, color: 'orange', keywords: ['人事', '招聘', '员工', '薪酬', '培训'] },
-  { id: 'finance', label: '财务文档', icon: Folder, color: 'yellow', keywords: ['财务', '报表', '预算', '发票', '费用'] },
-  { id: 'other', label: '其他', icon: Folder, color: 'gray', keywords: [] },
+  { id: 'technical', label: '技术文档', icon: FileText, tone: 'info', keywords: ['api', 'sdk', '开发', '代码', '配置'] },
+  { id: 'product', label: '产品文档', icon: FileText, tone: 'success', keywords: ['产品', '功能', '特性', '版本', '发布'] },
+  { id: 'business', label: '业务文档', icon: Folder, tone: 'primary', keywords: ['业务', '流程', '规范', '制度'] },
+  { id: 'legal', label: '法律文档', icon: Folder, tone: 'destructive', keywords: ['合同', '协议', '法律', '条款', '合规'] },
+  { id: 'hr', label: '人事文档', icon: Folder, tone: 'warning', keywords: ['人事', '招聘', '员工', '薪酬', '培训'] },
+  { id: 'finance', label: '财务文档', icon: Folder, tone: 'warning', keywords: ['财务', '报表', '预算', '发票', '费用'] },
+  { id: 'other', label: '其他', icon: Folder, tone: 'neutral', keywords: [] },
 ] as const
+
+type CategoryTone = typeof PRESET_CATEGORIES[number]['tone']
+
+const CATEGORY_TONE_STYLES: Record<
+  CategoryTone,
+  { selected: string; iconWrap: string; icon: string; text: string }
+> = {
+  info: {
+    selected: 'bg-info/10 border-info/30 ring-1 ring-info/20',
+    iconWrap: 'bg-info/10',
+    icon: 'text-info',
+    text: 'text-info',
+  },
+  success: {
+    selected: 'bg-success/10 border-success/30 ring-1 ring-success/20',
+    iconWrap: 'bg-success/10',
+    icon: 'text-success',
+    text: 'text-success',
+  },
+  warning: {
+    selected: 'bg-warning/10 border-warning/30 ring-1 ring-warning/20',
+    iconWrap: 'bg-warning/10',
+    icon: 'text-warning',
+    text: 'text-warning',
+  },
+  destructive: {
+    selected: 'bg-destructive/10 border-destructive/30 ring-1 ring-destructive/20',
+    iconWrap: 'bg-destructive/10',
+    icon: 'text-destructive',
+    text: 'text-destructive',
+  },
+  primary: {
+    selected: 'bg-primary/10 border-primary/30 ring-1 ring-primary/20',
+    iconWrap: 'bg-primary/10',
+    icon: 'text-primary',
+    text: 'text-primary',
+  },
+  neutral: {
+    selected: 'bg-muted border-border ring-1 ring-border/60',
+    iconWrap: 'bg-muted',
+    icon: 'text-muted-foreground',
+    text: 'text-foreground',
+  },
+}
+
+function getCategoryToneStyles(tone: CategoryTone) {
+  return CATEGORY_TONE_STYLES[tone]
+}
 
 // 推荐标签
 const SUGGESTED_TAGS = [
@@ -129,7 +178,7 @@ export function DataClassifier({ content, initialCategory = null, initialTags = 
       {/* 标题 */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <FolderTree className="w-5 h-5 text-orange-600" />
+          <FolderTree className="w-5 h-5 text-primary" />
           <h3 className="font-bold text-foreground">分类归档</h3>
         </div>
         <Button
@@ -141,7 +190,7 @@ export function DataClassifier({ content, initialCategory = null, initialTags = 
         >
           {isAutoClassifying ? (
             <>
-              <div className="w-3.5 h-3.5 border-2 border-border border-t-orange-500 rounded-full animate-spin" />
+              <div className="w-3.5 h-3.5 border-2 border-muted-foreground/30 border-t-primary rounded-full motion-safe:animate-spin motion-reduce:animate-none" />
               分析中...
             </>
           ) : (
@@ -160,6 +209,7 @@ export function DataClassifier({ content, initialCategory = null, initialTags = 
           {PRESET_CATEGORIES.map((category) => {
             const Icon = category.icon
             const isSelected = selectedCategory === category.label
+            const tone = getCategoryToneStyles(category.tone)
 
             return (
               <button
@@ -168,30 +218,24 @@ export function DataClassifier({ content, initialCategory = null, initialTags = 
                 className={cn(
                   "flex items-center gap-2 p-3 rounded-xl border text-left transition-all",
                   isSelected
-                    ? `bg-${category.color}-50 border-${category.color}-300 ring-1 ring-${category.color}-200`
+                    ? tone.selected
                     : "bg-muted border-border hover:bg-muted"
                 )}
               >
                 <div className={cn(
                   "w-8 h-8 rounded-lg flex items-center justify-center",
-                  category.color === 'blue' && "bg-blue-100",
-                  category.color === 'green' && "bg-green-100",
-                  category.color === 'purple' && "bg-teal-100",
-                  category.color === 'red' && "bg-red-100",
-                  category.color === 'orange' && "bg-orange-100",
-                  category.color === 'yellow' && "bg-yellow-100",
-                  category.color === 'gray' && "bg-muted",
+                  tone.iconWrap,
                 )}>
-                  <Icon className={cn("w-4 h-4", `text-${category.color}-600`)} />
+                  <Icon className={cn("w-4 h-4", tone.icon)} />
                 </div>
                 <span className={cn(
                   "text-sm font-medium",
-                  isSelected ? `text-${category.color}-900` : "text-foreground/80"
+                  isSelected ? tone.text : "text-foreground/80"
                 )}>
                   {category.label}
                 </span>
                 {isSelected && (
-                  <Check className={cn("w-4 h-4 ml-auto", `text-${category.color}-600`)} />
+                  <Check className={cn("w-4 h-4 ml-auto", tone.icon)} />
                 )}
               </button>
             )
@@ -209,13 +253,13 @@ export function DataClassifier({ content, initialCategory = null, initialTags = 
             {tags.map((tag) => (
               <span
                 key={tag}
-                className="inline-flex items-center gap-1 px-2.5 py-1 bg-orange-100 text-orange-700 text-sm rounded-lg"
+                className="inline-flex items-center gap-1 px-2.5 py-1 bg-secondary/60 text-foreground border border-border/60 text-sm rounded-lg"
               >
                 <Tag className="w-3 h-3" />
                 {tag}
                 <button
                   onClick={() => handleRemoveTag(tag)}
-                  className="ml-1 hover:text-orange-900"
+                  className="ml-1 text-muted-foreground hover:text-destructive"
                 >
                   <X className="w-3 h-3" />
                 </button>
@@ -226,7 +270,7 @@ export function DataClassifier({ content, initialCategory = null, initialTags = 
 
         {/* 添加标签输入 */}
         <div className="flex gap-2">
-          <input
+          <Input
             type="text"
             placeholder="输入新标签..."
             value={newTag}
@@ -237,13 +281,12 @@ export function DataClassifier({ content, initialCategory = null, initialTags = 
                 handleAddTag(newTag)
               }
             }}
-            className="flex-1 px-3 py-2 text-sm border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent"
+            className="flex-1"
           />
           <Button
             onClick={() => handleAddTag(newTag)}
             disabled={!newTag || tags.includes(newTag)}
             size="sm"
-            className="bg-orange-600 hover:bg-orange-700"
           >
             <Plus className="w-4 h-4" />
           </Button>
@@ -253,7 +296,7 @@ export function DataClassifier({ content, initialCategory = null, initialTags = 
         {(suggestedTags.length > 0 || SUGGESTED_TAGS.length > 0) && (
           <div className="space-y-2">
             {suggestedTags.length > 0 && (
-              <div className="flex items-center gap-2 text-xs text-orange-600">
+              <div className="flex items-center gap-2 text-xs text-info">
                 <Sparkles className="w-3.5 h-3.5" />
                 <span>AI 推荐标签</span>
               </div>
@@ -270,12 +313,12 @@ export function DataClassifier({ content, initialCategory = null, initialTags = 
                     onClick={() => !isAdded && handleAddTag(tag)}
                     disabled={isAdded}
                     className={cn(
-                      "inline-flex items-center gap-1 px-2 py-1 text-xs rounded-lg transition-all",
+                      "inline-flex items-center gap-1 px-2 py-1 text-xs rounded-lg border transition-colors duration-200 motion-reduce:transition-none",
                       isAdded
-                        ? "bg-orange-500 text-white"
+                        ? "bg-primary/15 text-primary border-primary/20 cursor-default"
                         : isRecommended
-                          ? "bg-orange-100 text-orange-700 hover:bg-orange-200"
-                          : "bg-muted text-muted-foreground hover:bg-border",
+                          ? "bg-info/10 text-info border-info/20 hover:bg-info/15"
+                          : "bg-muted text-muted-foreground border-border hover:bg-accent/40 hover:text-foreground",
                       )}
                   >
                     {isRecommended && !isAdded && <Sparkles className="w-3 h-3" />}
@@ -299,21 +342,21 @@ export function DataClassifier({ content, initialCategory = null, initialTags = 
 
       {/* 分类信息摘要 */}
       {(selectedCategory || tags.length > 0) && (
-        <div className="bg-gradient-to-r from-orange-500/10 to-amber-500/10 border border-orange-500/30 rounded-xl p-4">
+        <div className="bg-gradient-to-r from-primary/10 to-info/10 border border-primary/20 rounded-xl p-4">
           <div className="flex items-center gap-2 mb-3">
-            <Check className="w-4 h-4 text-orange-600" />
-            <span className="text-sm font-medium text-orange-900">归档信息</span>
+            <Check className="w-4 h-4 text-success" />
+            <span className="text-sm font-medium text-foreground">归档信息</span>
           </div>
-          <div className="space-y-1 text-sm text-orange-800">
+          <div className="space-y-1 text-sm text-foreground/80">
             {selectedCategory && (
               <div className="flex items-center gap-2">
-                <span className="text-orange-600">分类:</span>
+                <span className="text-muted-foreground">分类:</span>
                 <span className="font-medium">{selectedCategory}</span>
               </div>
             )}
             {tags.length > 0 && (
               <div className="flex items-center gap-2">
-                <span className="text-orange-600">标签:</span>
+                <span className="text-muted-foreground">标签:</span>
                 <span className="font-medium">{tags.join(', ')}</span>
               </div>
             )}

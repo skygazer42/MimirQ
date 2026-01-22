@@ -21,6 +21,7 @@ import type {
   Dataset,
 } from '@/types'
 import { Button } from '@/components/ui/button'
+import { Switch } from '@/components/ui/switch'
 import {
   X,
   Sparkles,
@@ -216,15 +217,15 @@ export function TestGenerationDialog({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-      <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-xl w-full max-w-4xl max-h-[90vh] flex flex-col">
+      <div className="bg-card rounded-2xl border border-border shadow-xl w-full max-w-4xl max-h-[90vh] flex flex-col">
         {/* 头部 */}
         <div className="flex items-center justify-between p-6 border-b border-slate-200 dark:border-slate-800">
           <div className="flex items-center gap-3">
             <div className="p-2 bg-gradient-to-br from-sky-500 to-purple-600 rounded-lg">
-              <Sparkles className="w-5 h-5 text-white" />
+              <Sparkles className="w-5 h-5 text-background dark:text-foreground" />
             </div>
             <div>
-              <h2 className="text-lg font-semibold text-slate-900 dark:text-white">
+              <h2 className="text-lg font-semibold text-foreground">
                 AI 生成测试问题
               </h2>
               <p className="text-xs text-slate-500 dark:text-slate-400">
@@ -258,7 +259,7 @@ export function TestGenerationDialog({
                   )}
                 >
                   <FileText className="w-6 h-6 mb-2 text-sky-600" />
-                  <div className="font-medium text-slate-900 dark:text-white mb-1">
+                  <div className="font-medium text-foreground mb-1">
                     从文档生成
                   </div>
                   <div className="text-xs text-slate-600 dark:text-slate-400">
@@ -276,7 +277,7 @@ export function TestGenerationDialog({
                   )}
                 >
                   <MessageSquare className="w-6 h-6 mb-2 text-purple-600" />
-                  <div className="font-medium text-slate-900 dark:text-white mb-1">
+                  <div className="font-medium text-foreground mb-1">
                     从对话生成
                   </div>
                   <div className="text-xs text-slate-600 dark:text-slate-400">
@@ -297,7 +298,7 @@ export function TestGenerationDialog({
                       <select
                         value={selectedDatasetId}
                         onChange={(e) => setSelectedDatasetId(e.target.value)}
-                        className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950 text-sm"
+                        className="w-full px-3 py-2 rounded-lg border border-input bg-background text-sm text-foreground shadow-sm"
                       >
                         <option value="">所有知识库</option>
                         {datasets.map((ds) => (
@@ -470,7 +471,7 @@ export function TestGenerationDialog({
               )}
 
               {/* 自动保存 */}
-              <div className="flex items-center justify-between p-4 rounded-lg bg-slate-50 dark:bg-slate-800/50">
+              <div className="flex items-center justify-between p-4 rounded-lg bg-muted/40">
                 <div>
                   <div className="text-sm font-medium text-slate-700 dark:text-slate-300">
                     自动保存为测试用例
@@ -479,20 +480,7 @@ export function TestGenerationDialog({
                     生成后自动保存到用例库，可直接运行测试
                   </div>
                 </div>
-                <button
-                  onClick={() => setAutoSave(!autoSave)}
-                  className={cn(
-                    'relative inline-flex h-6 w-11 items-center rounded-full transition',
-                    autoSave ? 'bg-sky-600' : 'bg-slate-300 dark:bg-slate-600'
-                  )}
-                >
-                  <span
-                    className={cn(
-                      'inline-block h-4 w-4 transform rounded-full bg-white transition',
-                      autoSave ? 'translate-x-6' : 'translate-x-1'
-                    )}
-                  />
-                </button>
+                <Switch checked={autoSave} onCheckedChange={setAutoSave} />
               </div>
 
               {/* 错误提示 */}
@@ -525,10 +513,10 @@ export function TestGenerationDialog({
                   {/* 问题列表 */}
                   <div className="space-y-3">
                     {generatedQuestions.map((q, index) => (
-                      <div
-                        key={index}
-                        className="p-4 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950"
-                      >
+	                      <div
+	                        key={index}
+	                        className="p-4 rounded-lg border border-border bg-card"
+	                      >
                         <div className="flex items-start justify-between gap-3">
                           <div className="flex-1 min-w-0">
                             <div className="text-sm font-medium text-slate-800 dark:text-slate-200 mb-1">
@@ -622,4 +610,3 @@ export function TestGenerationDialog({
     </div>
   )
 }
-
