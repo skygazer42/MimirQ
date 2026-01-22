@@ -7,9 +7,7 @@ import { useState, useEffect, useMemo } from 'react'
 import { AppFrame } from '@/components/app-frame'
 import { ModelProviderCard } from '@/components/model-provider-card'
 import { ModelConfigDialog } from '@/components/model-config-dialog'
-import { PageHeader } from '@/components/ui/page-header'
-import { PageBody } from '@/components/ui/page-body'
-import { PageContainer } from '@/components/ui/page-container'
+import { PageScaffold } from '@/components/ui/page-scaffold'
 import { MODEL_PROVIDERS } from '@/types/models'
 import type { ModelProvider, ProviderConfig, ProviderCategory } from '@/types/models'
 import {
@@ -39,6 +37,7 @@ import { extractBackendMessage, withRequestId } from '@/lib/api-errors'
 import { ParserDropdown } from '@/components/ui/parser-dropdown'
 import { ChunkStrategyDropdown } from '@/components/ui/chunk-strategy-dropdown'
 import { PipelineOptionsPanel } from '@/components/pipeline-options-panel'
+import { Panel } from '@/components/ui/panel'
 import { useParserBackendPreference } from '@/contexts/parser-backend-context'
 import { useChunkStrategyPreference } from '@/contexts/chunk-strategy-context'
 import { usePipelineCapabilities } from '@/contexts/pipeline-capabilities-context'
@@ -414,58 +413,55 @@ export default function SettingsPage() {
 
   return (
     <AppFrame>
-      <PageHeader
+      <PageScaffold
         title="设置与配置"
         badge="SETTINGS"
         icon={Settings2}
         iconColor="text-sky-600 dark:text-sky-400"
         description="管理功能开关、模型接入及系统参数"
-        className="mx-auto w-full max-w-6xl"
-      >
-        <>
-          {saveMessage && (
-            <div
+        actions={
+          <>
+            {saveMessage && (
+              <div
+                className={cn(
+                  "flex items-center gap-2 px-3 py-1.5 rounded-full text-sm",
+                  saveMessage.type === "success"
+                    ? "bg-green-50 text-green-600 dark:bg-green-500/10 dark:text-green-300"
+                    : "bg-red-50 text-red-600 dark:bg-red-500/10 dark:text-red-300"
+                )}
+              >
+                {saveMessage.type === "success" ? (
+                  <CheckCircle2 className="w-4 h-4" />
+                ) : (
+                  <XCircle className="w-4 h-4" />
+                )}
+                {saveMessage.text}
+              </div>
+            )}
+            <Button
+              variant="outline"
+              onClick={loadSettings}
+              disabled={loading}
+              className="gap-2"
+            >
+              <RefreshCw className={cn("w-4 h-4", loading && "animate-spin")} />
+              刷新
+            </Button>
+            <Button
+              onClick={saveSettings}
+              disabled={!hasChanges || saving}
               className={cn(
-                "flex items-center gap-2 px-3 py-1.5 rounded-full text-sm",
-                saveMessage.type === "success"
-                  ? "bg-green-50 text-green-600 dark:bg-green-500/10 dark:text-green-300"
-                  : "bg-red-50 text-red-600 dark:bg-red-500/10 dark:text-red-300"
+                "gap-2",
+                hasChanges ? "bg-blue-600 hover:bg-blue-700" : "bg-muted text-muted-foreground"
               )}
             >
-              {saveMessage.type === "success" ? (
-                <CheckCircle2 className="w-4 h-4" />
-              ) : (
-                <XCircle className="w-4 h-4" />
-              )}
-              {saveMessage.text}
-            </div>
-          )}
-          <Button
-            variant="outline"
-            onClick={loadSettings}
-            disabled={loading}
-            className="gap-2"
-          >
-            <RefreshCw className={cn("w-4 h-4", loading && "animate-spin")} />
-            刷新
-          </Button>
-          <Button
-            onClick={saveSettings}
-            disabled={!hasChanges || saving}
-            className={cn(
-              "gap-2",
-              hasChanges ? "bg-blue-600 hover:bg-blue-700" : "bg-muted text-muted-foreground"
-            )}
-          >
-            <Save className={cn("w-4 h-4", saving && "animate-pulse")} />
-            {saving ? "保存中..." : "保存配置"}
-          </Button>
-        </>
-      </PageHeader>
-
-      <PageBody>
-        <PageContainer>
-          {loading ? (
+              <Save className={cn("w-4 h-4", saving && "animate-pulse")} />
+              {saving ? "保存中..." : "保存配置"}
+            </Button>
+          </>
+        }
+      >
+        {loading ? (
             <div className="flex items-center justify-center h-64">
               <RefreshCw className="w-8 h-8 animate-spin text-muted-foreground" />
             </div>
@@ -483,7 +479,7 @@ export default function SettingsPage() {
                   </div>
                 </div>
 
-                <div className="bg-card rounded-xl p-6 border border-border shadow-sm space-y-6">
+                <Panel className="space-y-6" padding="lg">
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <div className="space-y-2">
                       <div className="text-sm font-medium text-foreground/80">解析方式</div>
@@ -499,7 +495,7 @@ export default function SettingsPage() {
                     <div className="text-sm font-medium text-foreground/80 mb-3">入库管线</div>
                     <PipelineOptionsPanel />
                   </div>
-                </div>
+                </Panel>
               </section>
 
               {/* 功能开关区域 */}
@@ -1255,8 +1251,7 @@ export default function SettingsPage() {
               </section>
             </div>
           )}
-        </PageContainer>
-      </PageBody>
+      </PageScaffold>
 
       {/* 配置对话框 */}
       <ModelConfigDialog

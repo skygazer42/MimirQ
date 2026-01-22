@@ -404,16 +404,14 @@ function ConversationItem({
           {showDeleteConfirm ? (
             <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
               <IconButton
-                aria-label="确认删除对话"
-                title="确认删除对话"
+                label="确认删除对话"
                 className="h-7 w-7 text-red-600 hover:bg-red-100 hover:text-red-600 dark:hover:bg-red-900/30"
                 onClick={onConfirmDelete}
               >
                 <Trash2 className="h-3.5 w-3.5" />
               </IconButton>
               <IconButton
-                aria-label="取消删除"
-                title="取消删除"
+                label="取消删除"
                 className="h-7 w-7 text-muted-foreground hover:bg-muted"
                 onClick={onCancelDelete}
               >
@@ -426,8 +424,7 @@ function ConversationItem({
                 e.stopPropagation()
                 onDelete()
               }}
-              aria-label="删除对话"
-              title="删除对话"
+              label="删除对话"
               className="h-7 w-7 hover:bg-muted hover:text-red-500"
             >
               <Trash2 className="h-3.5 w-3.5" />

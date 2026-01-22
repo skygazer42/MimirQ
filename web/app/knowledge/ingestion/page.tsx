@@ -13,10 +13,8 @@ import {
 import { toast } from 'sonner'
 
 import { AppFrame } from '@/components/app-frame'
-import { PageHeader } from '@/components/ui/page-header'
-import { PageHeaderBar } from '@/components/ui/page-header-bar'
 import { DocumentViewerPanel } from '@/components/document-viewer-panel'
-import { PageBody } from '@/components/ui/page-body'
+import { PageScaffold } from '@/components/ui/page-scaffold'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
@@ -152,71 +150,73 @@ export default function IngestionMonitorPage() {
       withDocumentViewerPadding
       mainClassName="transition-all duration-300 ease-out-expo"
     >
-        <PageHeaderBar className="transition-all duration-300">
-          <PageHeader
-            title="入库监控中心"
-            icon={Search}
-            iconColor="text-sky-500 dark:text-sky-400"
-            className="!pt-6 !pb-6"
-            description={
-              <span className="flex items-center gap-2 text-muted-foreground">
-                <span className="font-bold text-foreground">SYSTEM_STATUS</span>
-                <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-100 dark:border-emerald-500/20 uppercase tracking-wider">Online</span>
-                <span className="text-muted-foreground/60">|</span>
-                实时追踪解析、切块、向量化与索引构建进度。
-              </span>
-            }
-          >
-            <div className="flex items-center gap-3">
-              <Button
-                variant="outline"
-                className="group gap-2 rounded-full bg-background/60"
-                onClick={() => refetch()}
+      <PageScaffold
+        title="入库监控中心"
+        icon={Search}
+        iconColor="text-sky-500 dark:text-sky-400"
+        description={
+          <span className="flex items-center gap-2 text-muted-foreground">
+            <span className="font-bold text-foreground">SYSTEM_STATUS</span>
+            <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-100 dark:border-emerald-500/20 uppercase tracking-wider">
+              Online
+            </span>
+            <span className="text-muted-foreground/60">|</span>
+            实时追踪解析、切块、向量化与索引构建进度。
+          </span>
+        }
+        actions={
+          <>
+            <Button
+              variant="outline"
+              className="group gap-2 rounded-full bg-background/60"
+              onClick={() => refetch()}
+            >
+              <RefreshCw className={cn('h-3.5 w-3.5', isFetching ? 'animate-spin' : '')} />
+              刷新状态
+            </Button>
+            <div className="flex items-center gap-3 rounded-full border border-border/60 bg-background/60 backdrop-blur-md px-4 py-1.5 hover:border-primary/20 transition-colors shadow-sm">
+              <span className="text-xs font-bold text-muted-foreground">自动同步</span>
+              <Switch
+                checked={autoRefresh}
+                onCheckedChange={setAutoRefresh}
+                className="scale-75 data-[state=checked]:bg-sky-500"
+              />
+            </div>
+          </>
+        }
+        top={
+          <div className="grid grid-cols-2 lg:grid-cols-5 gap-4 mt-4">
+            {[
+              { label: '等待队列', value: stats.pending, icon: Clock, color: 'text-amber-600 dark:text-amber-400', bg: 'bg-amber-50 dark:bg-amber-500/10', border: 'group-hover:border-amber-200 dark:group-hover:border-amber-800' },
+              { label: '正在处理', value: stats.processing, icon: Loader2, color: 'text-sky-600 dark:text-sky-400', bg: 'bg-sky-50 dark:bg-sky-500/10', border: 'group-hover:border-sky-200 dark:group-hover:border-sky-800', spin: true },
+              { label: '已完成', value: stats.completed, icon: CheckCircle2, color: 'text-emerald-600 dark:text-emerald-400', bg: 'bg-emerald-50 dark:bg-emerald-500/10', border: 'group-hover:border-emerald-200 dark:group-hover:border-emerald-800' },
+              { label: '失败/隔离', value: stats.failed + stats.quarantined, icon: AlertCircle, color: 'text-red-600 dark:text-red-400', bg: 'bg-red-50 dark:bg-red-500/10', border: 'group-hover:border-red-200 dark:group-hover:border-red-800' },
+              { label: '总存储量', value: formatFileSize(stats.totalSize), icon: Search, color: 'text-indigo-600 dark:text-indigo-400', bg: 'bg-indigo-50 dark:bg-indigo-500/10', border: 'group-hover:border-indigo-200 dark:group-hover:border-indigo-800' },
+            ].map((stat, idx) => (
+              <div
+                key={idx}
+                className={cn(
+                  "group relative overflow-hidden rounded-2xl bg-card border border-border shadow-soft hover:shadow-strong transition-all duration-300 hover:-translate-y-1",
+                  stat.border
+                )}
               >
-                <RefreshCw className={cn('h-3.5 w-3.5 transition-transform group-hover:rotate-180', isFetching ? 'animate-spin' : '')} />
-                刷新状态
-              </Button>
-              <div className="flex items-center gap-3 rounded-full border border-border/60 bg-background/60 backdrop-blur-md px-4 py-1.5 hover:border-primary/20 transition-colors shadow-sm">
-                <span className="text-xs font-bold text-muted-foreground">自动同步</span>
-                <Switch
-                  checked={autoRefresh}
-                  onCheckedChange={setAutoRefresh}
-                  className="scale-75 data-[state=checked]:bg-sky-500"
-                />
-              </div>
-            </div>
-          </PageHeader>
-        </PageHeaderBar>
-
-        <div className="px-6 md:px-8 pb-4 grid grid-cols-2 lg:grid-cols-5 gap-4 mt-4">
-          {[
-            { label: '等待队列', value: stats.pending, icon: Clock, color: 'text-amber-600 dark:text-amber-400', bg: 'bg-amber-50 dark:bg-amber-500/10', border: 'group-hover:border-amber-200 dark:group-hover:border-amber-800' },
-            { label: '正在处理', value: stats.processing, icon: Loader2, color: 'text-sky-600 dark:text-sky-400', bg: 'bg-sky-50 dark:bg-sky-500/10', border: 'group-hover:border-sky-200 dark:group-hover:border-sky-800', spin: true },
-            { label: '已完成', value: stats.completed, icon: CheckCircle2, color: 'text-emerald-600 dark:text-emerald-400', bg: 'bg-emerald-50 dark:bg-emerald-500/10', border: 'group-hover:border-emerald-200 dark:group-hover:border-emerald-800' },
-            { label: '失败/隔离', value: stats.failed + stats.quarantined, icon: AlertCircle, color: 'text-red-600 dark:text-red-400', bg: 'bg-red-50 dark:bg-red-500/10', border: 'group-hover:border-red-200 dark:group-hover:border-red-800' },
-            { label: '总存储量', value: formatFileSize(stats.totalSize), icon: Search, color: 'text-indigo-600 dark:text-indigo-400', bg: 'bg-indigo-50 dark:bg-indigo-500/10', border: 'group-hover:border-indigo-200 dark:group-hover:border-indigo-800' },
-          ].map((stat, idx) => (
-            <div key={idx} className={cn(
-              "group relative overflow-hidden rounded-2xl bg-card border border-border shadow-soft hover:shadow-strong transition-all duration-300 hover:-translate-y-1",
-              stat.border
-            )}>
-              <div className="p-5 flex flex-col justify-between h-full relative z-10">
-                <div className="flex items-center justify-between mb-4">
-                  <div className={cn("p-2 rounded-lg transition-colors", stat.bg)}>
-                    <stat.icon className={cn("w-5 h-5", stat.color, stat.spin && "animate-spin")} />
+                <div className="p-5 flex flex-col justify-between h-full relative z-10">
+                  <div className="flex items-center justify-between mb-4">
+                    <div className={cn("p-2 rounded-lg transition-colors", stat.bg)}>
+                      <stat.icon className={cn("w-5 h-5", stat.color, stat.spin && "animate-spin")} />
+                    </div>
+                    <div className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">{stat.label}</div>
                   </div>
-                  <div className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">{stat.label}</div>
-                </div>
-                <div className="flex items-baseline gap-1">
-                  <span className={cn("text-3xl font-black tracking-tight", stat.color)}>{stat.value}</span>
-                  {idx === 4 && <span className="text-xs font-medium text-muted-foreground">Total</span>}
+                  <div className="flex items-baseline gap-1">
+                    <span className={cn("text-3xl font-black tracking-tight", stat.color)}>{stat.value}</span>
+                    {idx === 4 && <span className="text-xs font-medium text-muted-foreground">Total</span>}
+                  </div>
                 </div>
               </div>
-            </div>
-          ))}
-        </div>
-
-        <div className="px-6 md:px-8 pb-6 flex-shrink-0 z-10 sticky top-[88px] my-2">
+            ))}
+          </div>
+        }
+        toolbar={
           <div className="flex flex-col md:flex-row md:items-center gap-0 bg-background/70 backdrop-blur-xl border border-border/60 shadow-soft rounded-full p-1.5 transition-all duration-300 hover:shadow-strong hover:border-primary/30 max-w-4xl mx-auto md:mx-0">
             <div className="relative flex-1 group pl-2">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground group-hover:text-sky-500 dark:group-hover:text-sky-400 transition-colors" />
@@ -245,9 +245,9 @@ export default function IngestionMonitorPage() {
               </SelectContent>
             </Select>
           </div>
-        </div>
-
-        <PageBody className="pb-10 z-10">
+        }
+        bodyClassName="pb-10 z-10"
+      >
           <div className="space-y-3">
             {filtered.map((doc) => (
               <div
@@ -426,7 +426,7 @@ export default function IngestionMonitorPage() {
               </div>
             )}
           </div>
-        </PageBody>
+      </PageScaffold>
       <IngestionDetailDialog
         open={detailOpen}
         onOpenChange={(next) => {

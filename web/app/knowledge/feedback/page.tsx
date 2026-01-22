@@ -7,9 +7,7 @@ import { Star, RefreshCw, Search, ArrowUpRight, Copy, MessageSquare, Loader2, Th
 import { toast } from 'sonner'
 
 import { AppFrame } from '@/components/app-frame'
-import { PageHeader } from '@/components/ui/page-header'
-import { PageHeaderBar } from '@/components/ui/page-header-bar'
-import { PageBody } from '@/components/ui/page-body'
+import { PageScaffold } from '@/components/ui/page-scaffold'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
@@ -124,61 +122,61 @@ export default function FeedbackTriagePage() {
 
   return (
     <AppFrame mainClassName="transition-all duration-300">
-        <PageHeaderBar className="transition-all duration-300">
-          <PageHeader
-            title="反馈分析中心"
-            icon={MessageSquare}
-            iconColor="text-indigo-500 dark:text-indigo-400"
-            className="!pt-6 !pb-6"
-            description={
-              <span className="flex items-center gap-2 text-slate-500 dark:text-slate-400">
-                <span className="font-bold text-slate-700 dark:text-slate-200">TRIAGE_MODE</span>
-                <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border border-indigo-100 dark:border-indigo-500/20 uppercase tracking-wider">Active</span>
-                <span className="text-slate-300 dark:text-slate-600">|</span>
-                用户反馈实时监控与优化分析。
-              </span>
-            }
+      <PageScaffold
+        title="反馈分析中心"
+        icon={MessageSquare}
+        iconColor="text-indigo-500 dark:text-indigo-400"
+        description={
+          <span className="flex items-center gap-2 text-slate-500 dark:text-slate-400">
+            <span className="font-bold text-slate-700 dark:text-slate-200">TRIAGE_MODE</span>
+            <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border border-indigo-100 dark:border-indigo-500/20 uppercase tracking-wider">
+              Active
+            </span>
+            <span className="text-slate-300 dark:text-slate-600">|</span>
+            用户反馈实时监控与优化分析。
+          </span>
+        }
+        actions={
+          <Button
+            variant="outline"
+            className="gap-2 bg-white/50 dark:bg-slate-900/50 border-slate-200 dark:border-slate-800 hover:bg-white dark:hover:bg-slate-800 hover:border-slate-300 dark:hover:border-slate-700 text-slate-600 dark:text-slate-300 rounded-full transition-all duration-300 shadow-sm"
+            onClick={() => refetch()}
           >
-            <div className="flex items-center gap-3">
-              <Button
-                variant="outline"
-                className="gap-2 bg-white/50 dark:bg-slate-900/50 border-slate-200 dark:border-slate-800 hover:bg-white dark:hover:bg-slate-800 hover:border-slate-300 dark:hover:border-slate-700 text-slate-600 dark:text-slate-300 rounded-full transition-all duration-300 shadow-sm"
-                onClick={() => refetch()}
+            <RefreshCw className={cn('h-3.5 w-3.5', isFetching ? 'animate-spin' : '')} />
+            刷新数据
+          </Button>
+        }
+        top={
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mt-4">
+            {[
+              { label: '总反馈量', value: stats.total, icon: MessageSquare, color: 'text-indigo-600 dark:text-indigo-400', bg: 'bg-indigo-50 dark:bg-indigo-500/10', border: 'hover:border-indigo-200 dark:hover:border-indigo-800' },
+              { label: '点赞 (Like)', value: stats.upvotes, icon: ThumbsUp, color: 'text-emerald-600 dark:text-emerald-400', bg: 'bg-emerald-50 dark:bg-emerald-500/10', border: 'hover:border-emerald-200 dark:hover:border-emerald-800' },
+              { label: '点踩 (Dislike)', value: stats.downvotes, icon: ThumbsDown, color: 'text-rose-600 dark:text-rose-400', bg: 'bg-rose-50 dark:bg-rose-500/10', border: 'hover:border-rose-200 dark:hover:border-rose-800' },
+              { label: '平均响应', value: '~1.2s', icon: Loader2, color: 'text-sky-600 dark:text-sky-400', bg: 'bg-sky-50 dark:bg-sky-500/10', border: 'hover:border-sky-200 dark:hover:border-sky-800' },
+            ].map((stat, idx) => (
+              <div
+                key={idx}
+                className={cn(
+                  "group relative overflow-hidden rounded-2xl bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 shadow-[0_2px_20px_rgba(0,0,0,0.04)] dark:shadow-none hover:shadow-[0_8px_30px_rgba(0,0,0,0.08)] transition-all duration-300 hover:-translate-y-1",
+                  stat.border
+                )}
               >
-                <RefreshCw className={cn('h-3.5 w-3.5 transition-transform group-hover:rotate-180', isFetching ? 'animate-spin' : '')} />
-                刷新数据
-              </Button>
-            </div>
-          </PageHeader>
-        </PageHeaderBar>
-
-        <div className="px-6 md:px-8 pb-4 grid grid-cols-2 lg:grid-cols-4 gap-4 mt-4">
-          {[
-            { label: '总反馈量', value: stats.total, icon: MessageSquare, color: 'text-indigo-600 dark:text-indigo-400', bg: 'bg-indigo-50 dark:bg-indigo-500/10', border: 'hover:border-indigo-200 dark:hover:border-indigo-800' },
-            { label: '点赞 (Like)', value: stats.upvotes, icon: ThumbsUp, color: 'text-emerald-600 dark:text-emerald-400', bg: 'bg-emerald-50 dark:bg-emerald-500/10', border: 'hover:border-emerald-200 dark:hover:border-emerald-800' },
-            { label: '点踩 (Dislike)', value: stats.downvotes, icon: ThumbsDown, color: 'text-rose-600 dark:text-rose-400', bg: 'bg-rose-50 dark:bg-rose-500/10', border: 'hover:border-rose-200 dark:hover:border-rose-800' },
-            { label: '平均响应', value: '~1.2s', icon: Loader2, color: 'text-sky-600 dark:text-sky-400', bg: 'bg-sky-50 dark:bg-sky-500/10', border: 'hover:border-sky-200 dark:hover:border-sky-800' },
-          ].map((stat, idx) => (
-            <div key={idx} className={cn(
-              "group relative overflow-hidden rounded-2xl bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 shadow-[0_2px_20px_rgba(0,0,0,0.04)] dark:shadow-none hover:shadow-[0_8px_30px_rgba(0,0,0,0.08)] transition-all duration-300 hover:-translate-y-1",
-              stat.border
-            )}>
-              <div className="p-5 flex flex-col justify-between h-full relative z-10">
-                <div className="flex items-center justify-between mb-4">
-                  <div className={cn("p-2 rounded-lg transition-colors", stat.bg)}>
-                    <stat.icon className={cn("w-5 h-5", stat.color)} />
+                <div className="p-5 flex flex-col justify-between h-full relative z-10">
+                  <div className="flex items-center justify-between mb-4">
+                    <div className={cn("p-2 rounded-lg transition-colors", stat.bg)}>
+                      <stat.icon className={cn("w-5 h-5", stat.color)} />
+                    </div>
+                    <div className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-slate-500">{stat.label}</div>
                   </div>
-                  <div className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-slate-500">{stat.label}</div>
-                </div>
-                <div className="flex items-baseline gap-1">
-                  <span className={cn("text-3xl font-black tracking-tight", stat.color)}>{stat.value}</span>
+                  <div className="flex items-baseline gap-1">
+                    <span className={cn("text-3xl font-black tracking-tight", stat.color)}>{stat.value}</span>
+                  </div>
                 </div>
               </div>
-            </div>
-          ))}
-        </div>
-
-        <div className="px-6 md:px-8 pb-6 flex-shrink-0 z-10 sticky top-[88px] my-2">
+            ))}
+          </div>
+        }
+        toolbar={
           <div className="flex flex-col md:flex-row md:items-center gap-0 bg-white/80 dark:bg-slate-900/80 backdrop-blur-xl border border-slate-200 dark:border-slate-800 shadow-lg shadow-slate-200/50 dark:shadow-none rounded-full p-1.5 transition-all duration-300 max-w-4xl mx-auto md:mx-0">
             <div className="relative flex-1 group pl-2">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 dark:text-slate-500 group-hover:text-indigo-500 dark:group-hover:text-indigo-400 transition-colors" />
@@ -203,10 +201,10 @@ export default function FeedbackTriagePage() {
               </SelectContent>
             </Select>
           </div>
-        </div>
-
-        <PageBody className="pb-10 z-10">
-          <div className="space-y-3">
+        }
+        bodyClassName="pb-10 z-10"
+      >
+        <div className="space-y-3">
             {filtered.map((item) => {
               const kind = classifyFeedback(item.rating)
               const isUp = kind === 'thumbs_up'
@@ -297,7 +295,7 @@ export default function FeedbackTriagePage() {
               </div>
             )}
           </div>
-        </PageBody>
+      </PageScaffold>
 
         <Dialog open={Boolean(detail)} onOpenChange={(o) => (!o ? setDetail(null) : null)}>
           <DialogContent className="max-w-3xl bg-[#fafafa] dark:bg-slate-950 border-slate-200 dark:border-slate-800 shadow-2xl sm:rounded-[2rem] p-0 overflow-hidden outline-none">

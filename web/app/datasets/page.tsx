@@ -5,8 +5,7 @@ import { toast } from 'sonner'
 import { Layers, Loader2, Pencil, Plus, RefreshCw, Trash2 } from 'lucide-react'
 
 import { AppFrame } from '@/components/app-frame'
-import { PageHeader } from '@/components/ui/page-header'
-import { PageBody } from '@/components/ui/page-body'
+import { PageScaffold } from '@/components/ui/page-scaffold'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
@@ -181,21 +180,21 @@ export default function DatasetsPage() {
 
   return (
     <AppFrame>
-      <PageHeader
-          title="数据集"
-          badge="Archive"
-          icon={Layers}
-          iconColor="text-cyan-600 dark:text-cyan-400"
-          description={
-            <span className="flex items-center gap-2">
-              <span className="w-1.5 h-1.5 rounded-full bg-cyan-500/50 animate-pulse" />
-              管理知识库集合与访问权限
-              <span className="ml-4 text-xs font-mono text-cyan-700/60 dark:text-cyan-300/60 uppercase tracking-widest">
-                Total Archives: <span className="text-cyan-600 dark:text-cyan-400 font-bold">{total}</span>
-              </span>
+      <PageScaffold
+        title="数据集"
+        badge="Archive"
+        icon={Layers}
+        iconColor="text-cyan-600 dark:text-cyan-400"
+        description={
+          <span className="flex items-center gap-2">
+            <span className="w-1.5 h-1.5 rounded-full bg-cyan-500/50 animate-pulse" />
+            管理知识库集合与访问权限
+            <span className="ml-4 text-xs font-mono text-cyan-700/60 dark:text-cyan-300/60 uppercase tracking-widest">
+              Total Archives: <span className="text-cyan-600 dark:text-cyan-400 font-bold">{total}</span>
             </span>
-          }
-        >
+          </span>
+        }
+        actions={
           <div className="flex items-center gap-3">
             <Button
               variant="outline"
@@ -207,10 +206,13 @@ export default function DatasetsPage() {
               Sync
             </Button>
 
-            <Dialog open={createOpen} onOpenChange={(open) => {
-              setCreateOpen(open)
-              if (open) resetForm()
-            }}>
+            <Dialog
+              open={createOpen}
+              onOpenChange={(open) => {
+                setCreateOpen(open)
+                if (open) resetForm()
+              }}
+            >
               <DialogTrigger asChild>
                 <Button className="gap-2 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-white shadow-[0_0_20px_-5px_rgba(6,182,212,0.4)] border border-cyan-400/20 font-medium">
                   <Plus className="w-4 h-4" />
@@ -233,15 +235,16 @@ export default function DatasetsPage() {
                   >
                     取消
                   </Button>
-                  <Button onClick={handleCreate} disabled={!canSubmit} className="bg-cyan-600 hover:bg-cyan-500 text-white">确认创建</Button>
+                  <Button onClick={handleCreate} disabled={!canSubmit} className="bg-cyan-600 hover:bg-cyan-500 text-white">
+                    确认创建
+                  </Button>
                 </DialogFooter>
               </DialogContent>
             </Dialog>
           </div>
-        </PageHeader>
-
-        <PageBody>
-          <div className="bg-card border border-border rounded-3xl overflow-hidden shadow-sm min-h-[500px] flex flex-col">
+        }
+      >
+        <div className="bg-card border border-border rounded-3xl overflow-hidden shadow-sm min-h-[500px] flex flex-col">
             <div className="px-6 py-4 border-b border-border/60 flex items-center justify-between bg-muted/20 dark:bg-slate-900/40">
               <div className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Dataset Registry</div>
               {isLoading && (
@@ -315,7 +318,7 @@ export default function DatasetsPage() {
               </div>
             )}
           </div>
-        </PageBody>
+      </PageScaffold>
 
         <Dialog open={editOpen} onOpenChange={(open) => {
           setEditOpen(open)

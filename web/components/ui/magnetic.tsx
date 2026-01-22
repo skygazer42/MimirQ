@@ -1,7 +1,7 @@
 "use client"
 
-import React, { useRef, useState } from "react"
-import { motion, useMotionValue, useSpring, useTransform } from "framer-motion"
+import React, { useRef } from "react"
+import { motion, useMotionValue, useReducedMotion, useSpring } from "framer-motion"
 
 interface MagneticProps {
   children: React.ReactElement
@@ -10,6 +10,7 @@ interface MagneticProps {
 
 export function Magnetic({ children, strength = 0.5 }: MagneticProps) {
   const ref = useRef<HTMLDivElement>(null)
+  const shouldReduceMotion = useReducedMotion()
   
   const x = useMotionValue(0)
   const y = useMotionValue(0)
@@ -42,9 +43,9 @@ export function Magnetic({ children, strength = 0.5 }: MagneticProps) {
   return (
     <motion.div
       ref={ref}
-      onMouseMove={handleMouseMove}
-      onMouseLeave={handleMouseLeave}
-      style={{ x: springX, y: springY }}
+      onMouseMove={shouldReduceMotion ? undefined : handleMouseMove}
+      onMouseLeave={shouldReduceMotion ? undefined : handleMouseLeave}
+      style={shouldReduceMotion ? undefined : { x: springX, y: springY }}
       className="inline-block"
     >
       {children}

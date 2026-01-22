@@ -38,9 +38,7 @@ import {
   Filter
 } from 'lucide-react'
 import { AppFrame } from '@/components/app-frame'
-import { PageBody } from '@/components/ui/page-body'
-import { PageHeader } from '@/components/ui/page-header'
-import { PageHeaderBar } from '@/components/ui/page-header-bar'
+import { PageScaffold } from '@/components/ui/page-scaffold'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -315,191 +313,186 @@ export default function KnowledgePage() {
         {/* 背景装饰 */}
         <div className="absolute top-0 left-0 right-0 h-64 bg-gradient-to-b from-sky-50/50 dark:from-sky-900/10 to-transparent pointer-events-none" />
 
-        {/* 页面标题 */}
-        <PageHeader
+        <PageScaffold
           title="知识库管理"
           icon={Database}
           iconColor="text-sky-600 dark:text-sky-400"
           description="管理您的文档资产，构建专属知识大脑"
-          className="flex-shrink-0 z-10"
-        >
-          <Dialog>
-            <DialogTrigger asChild>
-              <Button
-                variant="outline"
-                className="gap-2 border-border bg-background/60 hover:bg-background text-muted-foreground"
-              >
-                <Sliders className="w-4 h-4" />
-                管线配置
-              </Button>
-            </DialogTrigger>
-            <DialogContent className="max-w-2xl">
-              <DialogHeader>
-                <DialogTitle>入库管线配置</DialogTitle>
-                <DialogDescription>仅影响新上传文档，可随时调整</DialogDescription>
-              </DialogHeader>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <div className="text-sm font-medium text-foreground/80">解析方式</div>
-                  <ParserDropdown value={parserBackend} onChange={setParserBackend} />
-                </div>
-                <div className="space-y-2">
-                  <div className="text-sm font-medium text-foreground/80">切块策略</div>
-                  <ChunkStrategyDropdown value={chunkStrategy} onChange={setChunkStrategy} />
-                </div>
-              </div>
-              <PipelineOptionsPanel />
-            </DialogContent>
-          </Dialog>
-          <label>
-            <Button
-              className="gap-2 bg-sky-600 hover:bg-sky-700 text-white shadow-lg shadow-sky-200 dark:shadow-sky-900/20 hover:shadow-sky-300 transition-all rounded-xl"
-              size="lg"
-              asChild
-            >
-              <span>
-                <Upload className="w-4 h-4" />
-                上传文档
-              </span>
-            </Button>
-            <input
-              type="file"
-              multiple
-              accept={UPLOAD_ACCEPT}
-              className="hidden"
-              onChange={handleFileUpload}
-            />
-          </label>
-        </PageHeader>
-
-        {/* 统计卡片区 */}
-        <div className="px-6 md:px-8 pb-6 flex-shrink-0 z-10">
-          <StatsGrid className={showExtraCard ? "lg:grid-cols-5" : "lg:grid-cols-4"}>
-            <StatCard
-              icon={FileStack}
-              label="文档总数"
-              value={totalDocs}
-              color="sky"
-              className="bg-white/80 dark:bg-slate-900/80 backdrop-blur-sm border-slate-200 dark:border-slate-800 shadow-sm"
-            />
-            <StatCard
-              icon={CheckCircle}
-              label="已就绪"
-              value={completedDocs}
-              color="green"
-              className="bg-white/80 dark:bg-slate-900/80 backdrop-blur-sm border-slate-200 dark:border-slate-800 shadow-sm"
-            />
-            <StatCard
-              icon={Layers}
-              label="知识分块"
-              value={totalChunks.toLocaleString()}
-              color="teal"
-              className="bg-white/80 dark:bg-slate-900/80 backdrop-blur-sm border-slate-200 dark:border-slate-800 shadow-sm"
-            />
-            <StatCard
-              icon={HardDrive}
-              label="存储占用"
-              value={formatFileSize(totalSize)}
-              color="orange"
-              className="bg-white/80 dark:bg-slate-900/80 backdrop-blur-sm border-slate-200 dark:border-slate-800 shadow-sm"
-            />
-            {showExtraCard && (
+          actions={
+            <>
+              <Dialog>
+                <DialogTrigger asChild>
+                  <Button
+                    variant="outline"
+                    className="gap-2 border-border bg-background/60 hover:bg-background text-muted-foreground"
+                  >
+                    <Sliders className="w-4 h-4" />
+                    管线配置
+                  </Button>
+                </DialogTrigger>
+                <DialogContent className="max-w-2xl">
+                  <DialogHeader>
+                    <DialogTitle>入库管线配置</DialogTitle>
+                    <DialogDescription>仅影响新上传文档，可随时调整</DialogDescription>
+                  </DialogHeader>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <div className="text-sm font-medium text-foreground/80">解析方式</div>
+                      <ParserDropdown value={parserBackend} onChange={setParserBackend} />
+                    </div>
+                    <div className="space-y-2">
+                      <div className="text-sm font-medium text-foreground/80">切块策略</div>
+                      <ChunkStrategyDropdown value={chunkStrategy} onChange={setChunkStrategy} />
+                    </div>
+                  </div>
+                  <PipelineOptionsPanel />
+                </DialogContent>
+              </Dialog>
+              <label>
+                <Button
+                  className="gap-2 bg-sky-600 hover:bg-sky-700 text-white shadow-lg shadow-sky-200 dark:shadow-sky-900/20 hover:shadow-sky-300 transition-all rounded-xl"
+                  size="lg"
+                  asChild
+                >
+                  <span>
+                    <Upload className="w-4 h-4" />
+                    上传文档
+                  </span>
+                </Button>
+                <input
+                  type="file"
+                  multiple
+                  accept={UPLOAD_ACCEPT}
+                  className="hidden"
+                  onChange={handleFileUpload}
+                />
+              </label>
+            </>
+          }
+          top={
+            <StatsGrid className={showExtraCard ? "lg:grid-cols-5" : "lg:grid-cols-4"}>
               <StatCard
-                icon={(failedDocs + quarantinedDocs) > 0 ? (failedDocs > 0 ? XCircle : AlertTriangle) : Loader2}
-                label={(failedDocs + quarantinedDocs) > 0 ? '需关注' : '处理中'}
-                value={(failedDocs + quarantinedDocs) > 0 ? (failedDocs + quarantinedDocs) : processingDocs}
-                color={(failedDocs + quarantinedDocs) > 0 ? (failedDocs > 0 ? 'red' : 'amber') : 'sky'}
+                icon={FileStack}
+                label="文档总数"
+                value={totalDocs}
+                color="sky"
                 className="bg-white/80 dark:bg-slate-900/80 backdrop-blur-sm border-slate-200 dark:border-slate-800 shadow-sm"
               />
-            )}
-          </StatsGrid>
-        </div>
-
-        {/* 导航栏 & 工具栏 */}
-        <PageHeaderBar className="z-20">
-          <div className="px-6 md:px-8 flex items-center justify-between">
-            <div className="flex gap-1 -mb-px">
-              {[
-                { key: 'documents' as TabType, label: '文档列表', icon: FileText },
-                { key: 'retrieval' as TabType, label: '检索测试', icon: Zap },
-                { key: 'settings' as TabType, label: '配置', icon: Settings },
-              ].map((tab) => (
-                <button
-                  key={tab.key}
-                  onClick={() => setActiveTab(tab.key)}
-                  className={cn(
-                    'flex items-center gap-2 px-5 py-4 text-sm font-medium border-b-2 transition-all',
-                    activeTab === tab.key
-                      ? 'text-sky-600 dark:text-sky-400 border-sky-600 dark:border-sky-400 bg-sky-50/50 dark:bg-sky-500/10'
-                      : 'text-slate-500 dark:text-slate-400 border-transparent hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800'
-                  )}
-                >
-                  <tab.icon
-                    className={cn(
-                      "w-4 h-4",
-                      activeTab === tab.key ? "text-sky-500 dark:text-sky-400" : "text-slate-400 dark:text-slate-500"
-                    )}
-                  />
-                  {tab.label}
-                </button>
-              ))}
-            </div>
-
-            {activeTab === 'documents' && (
-              <div className="flex items-center gap-2 py-2">
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => loadDocuments()}
-                  className="text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"
-                  title="刷新列表"
-                  aria-label="刷新列表"
-                >
-                  <RefreshCw className="w-4 h-4" />
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => window.open('/chunk-preview', '_blank')}
-                  className="text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"
-                  title="预览分块"
-                  aria-label="预览分块"
-                >
-                  <Eye className="w-4 h-4" />
-                </Button>
-                <div className="bg-slate-100 dark:bg-slate-800 p-1 rounded-lg flex gap-1">
+              <StatCard
+                icon={CheckCircle}
+                label="已就绪"
+                value={completedDocs}
+                color="green"
+                className="bg-white/80 dark:bg-slate-900/80 backdrop-blur-sm border-slate-200 dark:border-slate-800 shadow-sm"
+              />
+              <StatCard
+                icon={Layers}
+                label="知识分块"
+                value={totalChunks.toLocaleString()}
+                color="teal"
+                className="bg-white/80 dark:bg-slate-900/80 backdrop-blur-sm border-slate-200 dark:border-slate-800 shadow-sm"
+              />
+              <StatCard
+                icon={HardDrive}
+                label="存储占用"
+                value={formatFileSize(totalSize)}
+                color="orange"
+                className="bg-white/80 dark:bg-slate-900/80 backdrop-blur-sm border-slate-200 dark:border-slate-800 shadow-sm"
+              />
+              {showExtraCard && (
+                <StatCard
+                  icon={(failedDocs + quarantinedDocs) > 0 ? (failedDocs > 0 ? XCircle : AlertTriangle) : Loader2}
+                  label={(failedDocs + quarantinedDocs) > 0 ? '需关注' : '处理中'}
+                  value={(failedDocs + quarantinedDocs) > 0 ? (failedDocs + quarantinedDocs) : processingDocs}
+                  color={(failedDocs + quarantinedDocs) > 0 ? (failedDocs > 0 ? 'red' : 'amber') : 'sky'}
+                  className="bg-white/80 dark:bg-slate-900/80 backdrop-blur-sm border-slate-200 dark:border-slate-800 shadow-sm"
+                />
+              )}
+            </StatsGrid>
+          }
+          toolbar={
+            <div className="flex items-center justify-between">
+              <div className="flex gap-1 -mb-px">
+                {[
+                  { key: 'documents' as TabType, label: '文档列表', icon: FileText },
+                  { key: 'retrieval' as TabType, label: '检索测试', icon: Zap },
+                  { key: 'settings' as TabType, label: '配置', icon: Settings },
+                ].map((tab) => (
                   <button
-                    aria-label="网格视图"
-                    onClick={() => setViewMode('grid')}
+                    key={tab.key}
+                    onClick={() => setActiveTab(tab.key)}
                     className={cn(
-                      "p-1.5 rounded-md transition-all",
-                      viewMode === 'grid'
-                        ? "bg-white dark:bg-slate-700 shadow-sm text-sky-600 dark:text-sky-400"
-                        : "text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300"
+                      'flex items-center gap-2 px-5 py-4 text-sm font-medium border-b-2 transition-all',
+                      activeTab === tab.key
+                        ? 'text-sky-600 dark:text-sky-400 border-sky-600 dark:border-sky-400 bg-sky-50/50 dark:bg-sky-500/10'
+                        : 'text-slate-500 dark:text-slate-400 border-transparent hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800'
                     )}
                   >
-                    <LayoutGrid className="w-4 h-4" />
+                    <tab.icon
+                      className={cn(
+                        "w-4 h-4",
+                        activeTab === tab.key ? "text-sky-500 dark:text-sky-400" : "text-slate-400 dark:text-slate-500"
+                      )}
+                    />
+                    {tab.label}
                   </button>
-                  <button
-                    aria-label="列表视图"
-                    onClick={() => setViewMode('list')}
-                    className={cn(
-                      "p-1.5 rounded-md transition-all",
-                      viewMode === 'list'
-                        ? "bg-white dark:bg-slate-700 shadow-sm text-sky-600 dark:text-sky-400"
-                        : "text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300"
-                    )}
-                  >
-                    <ListIcon className="w-4 h-4" />
-                  </button>
-                </div>
+                ))}
               </div>
-            )}
-          </div>
-        </PageHeaderBar>
 
-        {/* 内容区域 */}
-        <PageBody className="pt-6 scroll-smooth">
+              {activeTab === 'documents' && (
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => loadDocuments()}
+                    className="text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"
+                    title="刷新列表"
+                    aria-label="刷新列表"
+                  >
+                    <RefreshCw className="w-4 h-4" />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => window.open('/chunk-preview', '_blank')}
+                    className="text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"
+                    title="预览分块"
+                    aria-label="预览分块"
+                  >
+                    <Eye className="w-4 h-4" />
+                  </Button>
+                  <div className="bg-slate-100 dark:bg-slate-800 p-1 rounded-lg flex gap-1">
+                    <button
+                      aria-label="网格视图"
+                      onClick={() => setViewMode('grid')}
+                      className={cn(
+                        "p-1.5 rounded-md transition-all",
+                        viewMode === 'grid'
+                          ? "bg-white dark:bg-slate-700 shadow-sm text-sky-600 dark:text-sky-400"
+                          : "text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300"
+                      )}
+                    >
+                      <LayoutGrid className="w-4 h-4" />
+                    </button>
+                    <button
+                      aria-label="列表视图"
+                      onClick={() => setViewMode('list')}
+                      className={cn(
+                        "p-1.5 rounded-md transition-all",
+                        viewMode === 'list'
+                          ? "bg-white dark:bg-slate-700 shadow-sm text-sky-600 dark:text-sky-400"
+                          : "text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300"
+                      )}
+                    >
+                      <ListIcon className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          }
+          bodyClassName="pt-6 scroll-smooth"
+        >
           {/* 文档列表 */}
           {activeTab === 'documents' && (
             <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
@@ -814,7 +807,7 @@ export default function KnowledgePage() {
               </div>
             </div>
           )}
-        </PageBody>
+        </PageScaffold>
     </AppFrame>
   )
 }

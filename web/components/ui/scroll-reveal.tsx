@@ -1,6 +1,6 @@
 "use client"
 
-import { motion } from "framer-motion"
+import { motion, useReducedMotion } from "framer-motion"
 import { ReactNode } from "react"
 
 interface ScrollRevealProps {
@@ -11,6 +11,7 @@ interface ScrollRevealProps {
 }
 
 export function ScrollReveal({ children, className, direction = "up", delay = 0 }: ScrollRevealProps) {
+  const shouldReduceMotion = useReducedMotion()
   const variants = {
     hidden: {
       opacity: 0,
@@ -28,6 +29,10 @@ export function ScrollReveal({ children, className, direction = "up", delay = 0 
         delay,
       },
     },
+  }
+
+  if (shouldReduceMotion) {
+    return <div className={className}>{children}</div>
   }
 
   return (

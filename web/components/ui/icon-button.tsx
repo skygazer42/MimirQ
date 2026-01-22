@@ -3,29 +3,23 @@ import * as React from "react"
 import { Button, type ButtonProps } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 
-type A11yLabel =
-  | { "aria-label": string; "aria-labelledby"?: never }
-  | { "aria-label"?: never; "aria-labelledby": string }
+type IconButtonProps = Omit<ButtonProps, "children" | "size"> & {
+  label: string
+  children: React.ReactNode
+}
 
-export type IconButtonProps = Omit<ButtonProps, "size"> &
-  A11yLabel & {
-    /**
-     * Defaults to `ghost` because icon-only actions are usually secondary.
-     */
-    variant?: ButtonProps["variant"]
-  }
-
-export function IconButton({ className, variant = "ghost", type, ...props }: IconButtonProps) {
+export function IconButton({ label, className, children, ...props }: IconButtonProps) {
   return (
     <Button
       {...props}
-      type={type ?? "button"}
-      variant={variant}
       size="icon"
-      className={cn(
-        "rounded-lg text-muted-foreground hover:text-foreground",
-        className
-      )}
-    />
+      aria-label={label}
+      title={label}
+      className={cn("shrink-0", className)}
+    >
+      {children}
+      <span className="sr-only">{label}</span>
+    </Button>
   )
 }
+
