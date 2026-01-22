@@ -29,6 +29,7 @@ import { toast } from 'sonner'
 import { KgExtractPromptSettings } from '@/components/kg-extract-prompt-settings'
 import { AppFrame } from '@/components/app-frame'
 import { PageScaffold } from '@/components/ui/page-scaffold'
+import { cn } from '@/lib/utils'
 
 export default function PromptsPage() {
   const [templates, setTemplates] = useState<PromptTemplate[]>([])
@@ -360,9 +361,21 @@ export default function PromptsPage() {
             {filteredTemplates.map((template) => (
               <Card
                 key={template.id}
-                className={`relative cursor-pointer transition-colors hover:border-primary ${
-                  selectedIds.has(template.id) ? 'border-primary bg-muted/50 dark:bg-muted/60' : ''
-                }`}
+                role="button"
+                tabIndex={0}
+                aria-label={`预览模板：${template.name}`}
+                onClick={() => handlePreview(template)}
+                onKeyDown={(e) => {
+                  if (e.currentTarget !== e.target) return
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault()
+                    handlePreview(template)
+                  }
+                }}
+                className={cn(
+                  "relative cursor-pointer transition-colors hover:border-primary focus-ring",
+                  selectedIds.has(template.id) && "border-primary bg-muted/50 dark:bg-muted/60"
+                )}
               >
                 <CardHeader>
                   <div className="flex items-start gap-3">
@@ -371,19 +384,19 @@ export default function PromptsPage() {
                       onCheckedChange={() => handleSelectOne(template.id)}
                       onClick={(e) => e.stopPropagation()}
                     />
-                    <div className="flex-1" onClick={() => handlePreview(template)}>
+                    <div className="flex-1">
                       <CardTitle className="flex items-center gap-2 flex-wrap">
                         <span className="truncate">{template.name}</span>
                         {template.is_system && (
                           <Badge variant="secondary">系统</Badge>
                         )}
                         {template.is_active ? (
-                          <Badge variant="default" className="bg-green-600">
+                          <Badge variant="success">
                             <Check className="w-3 h-3 mr-1" />
                             启用
                           </Badge>
                         ) : (
-                          <Badge variant="secondary">
+                          <Badge variant="soft">
                             <X className="w-3 h-3 mr-1" />
                             停用
                           </Badge>
@@ -400,7 +413,7 @@ export default function PromptsPage() {
                     </div>
                   </div>
                 </CardHeader>
-                <CardContent onClick={() => handlePreview(template)}>
+                <CardContent>
                   <div className="space-y-3">
                     <div>
                       <p className="text-sm font-medium mb-1">支持的变量:</p>
@@ -495,12 +508,12 @@ export default function PromptsPage() {
               {previewTemplate?.name}
               {previewTemplate?.is_system && <Badge variant="secondary">系统</Badge>}
               {previewTemplate?.is_active ? (
-                <Badge variant="default" className="bg-green-600">
+                <Badge variant="success">
                   <Check className="w-3 h-3 mr-1" />
                   启用
                 </Badge>
               ) : (
-                <Badge variant="secondary">
+                <Badge variant="soft">
                   <X className="w-3 h-3 mr-1" />
                   停用
                 </Badge>

@@ -32,6 +32,7 @@ import {
   PanelLeftOpen,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { StatusBadge } from '@/components/ui/status-badge'
 import { cn } from '@/lib/utils'
 import { ModeToggle } from '@/components/mode-toggle'
 import { healthApi } from '@/lib/api-client'
@@ -194,25 +195,27 @@ export function Navbar({
   return (
     <>
       {/* Mobile Overlay */}
-      {isSidebarOpen && (
-        <div 
-            className="fixed inset-0 bg-black/50 z-40 md:hidden backdrop-blur-sm transition-opacity"
-            onClick={() => setSidebarOpen(false)}
+      {isSidebarOpen ? (
+        <button
+          type="button"
+          aria-label="关闭侧边栏"
+          className="fixed inset-0 z-40 bg-black/50 backdrop-blur-sm transition-opacity md:hidden border-0 p-0 focus:outline-none"
+          onClick={() => setSidebarOpen(false)}
         />
-      )}
+      ) : null}
 
       <nav
         aria-label="主导航"
         className={cn(
-          'peer flex-shrink-0 bg-background border-r border-border flex flex-col transition-all duration-300 ease-in-out z-50',
+          'peer flex-shrink-0 bg-sidebar text-sidebar-foreground border-r border-sidebar-border flex flex-col transition-all duration-300 ease-in-out z-50',
           'fixed inset-y-0 left-0 md:relative', // Mobile: fixed, Desktop: relative
           isSidebarOpen ? 'w-[280px] translate-x-0' : 'w-[280px] -translate-x-full md:w-0 md:translate-x-0 md:overflow-hidden'
         )}
       >
         {/* Logo 区域 */}
-        <div className="h-16 px-6 border-b border-border flex items-center gap-3">
-          <Link href="/" className="flex items-center gap-3 group">
-            <div className="w-8 h-8 bg-gradient-to-br from-primary to-primary/80 rounded-xl flex items-center justify-center shadow-sm group-hover:shadow-lg group-hover:shadow-primary/30 transition-all duration-300 group-hover:scale-105">
+        <div className="h-16 px-6 border-b border-sidebar-border flex items-center gap-3">
+          <Link href="/" className="flex items-center gap-3 group rounded-xl focus-ring">
+            <div className="w-8 h-8 bg-gradient-to-br from-primary to-primary/80 rounded-xl flex items-center justify-center shadow-sm group-hover:shadow-lg group-hover:shadow-primary/30 transition-all duration-300 motion-safe:group-hover:scale-105">
               <span className="text-primary-foreground font-bold text-lg">M</span>
             </div>
             <div className="flex flex-col">
@@ -235,7 +238,7 @@ export function Navbar({
               "hover:bg-gradient-to-r hover:from-sky-50/80 hover:via-white hover:to-teal-50/70",
               "dark:hover:from-sky-950/30 dark:hover:via-slate-900/40 dark:hover:to-teal-950/25",
               "shadow-sm hover:shadow-md hover:shadow-sky-500/10",
-              "hover:-translate-y-0.5 active:translate-y-0"
+              "motion-safe:hover:-translate-y-0.5 motion-safe:active:translate-y-0"
             )}
             onClick={() => {
               router.push('/')
@@ -248,7 +251,7 @@ export function Navbar({
         </div>
 
         {/* 导航菜单 */}
-        <div className="flex-1 px-3 py-2 overflow-y-auto">
+        <div className="flex-1 px-3 py-2 overflow-y-auto custom-scrollbar">
           <div className="space-y-1">
             <p className="px-3 text-xs font-semibold text-muted-foreground mb-2 uppercase tracking-wider">菜单</p>
             {menuItems.map((item) => {
@@ -263,7 +266,7 @@ export function Navbar({
                     onClick={closeSidebarOnMobile}
                     aria-current={isActive ? 'page' : undefined}
                     className={cn(
-                      'flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-200 group',
+                      'flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-200 group focus-ring',
                       isActive
                         ? 'bg-muted text-foreground font-medium'
                         : 'text-muted-foreground hover:bg-muted/50 hover:text-foreground'
@@ -279,9 +282,22 @@ export function Navbar({
         </div>
 
         {/* 底部信息 */}
-        <div className="p-4 border-t border-border bg-background/60">
+        <div className="p-4 border-t border-sidebar-border bg-background/60">
           <div className="flex items-center gap-2">
-            <div className="flex-1 flex items-center gap-3 p-2 rounded-xl hover:bg-accent transition-all duration-200 border border-transparent hover:border-border group cursor-pointer">
+            <button
+              type="button"
+              aria-label={isAuthenticated ? "打开设置" : "前往登录 / 注册"}
+              title={isAuthenticated ? "打开设置" : "前往登录 / 注册"}
+              className="flex-1 flex items-center gap-3 p-2 rounded-xl hover:bg-accent transition-all duration-200 border border-transparent hover:border-border group text-left focus-ring"
+              onClick={() => {
+                if (isAuthenticated) {
+                  router.push('/settings')
+                } else {
+                  router.push('/auth')
+                }
+                closeSidebarOnMobile()
+              }}
+            >
               <div className="relative w-10 h-10 flex-shrink-0">
                 <div className="absolute inset-0 bg-gradient-to-tr from-muted to-background rounded-xl border border-border shadow-sm group-hover:border-primary/30 transition-colors" />
                 <div className="absolute inset-0 flex items-center justify-center text-muted-foreground group-hover:text-primary transition-colors">
@@ -299,7 +315,7 @@ export function Navbar({
                   {isAuthenticated ? user?.email || '在线' : '本地开发环境'}
                 </p>
               </div>
-            </div>
+            </button>
             <div className="flex flex-col gap-1">
               <Button
                 variant="ghost"
@@ -325,18 +341,12 @@ export function Navbar({
             </div>
           </div>
 
-          <div className="mt-2 flex items-center gap-2 text-xs text-muted-foreground">
-            <span
-              className={cn(
-                'inline-block h-2 w-2 rounded-full',
-                backendOk === true && 'bg-green-500',
-                backendOk === false && 'bg-red-500',
-                backendOk === null && 'bg-muted-foreground/40'
-              )}
+          <div className="mt-3 flex items-center justify-between gap-2">
+            <StatusBadge
+              status={backendOk === true ? "completed" : backendOk === false ? "failed" : "processing"}
+              label={`Backend：${backendOk === true ? "OK" : backendOk === false ? "Down" : "..."}`}
+              dense
             />
-            <span>
-              Backend：{backendOk === true ? 'OK' : backendOk === false ? 'Down' : '...'}
-            </span>
           </div>
         </div>
       </nav>

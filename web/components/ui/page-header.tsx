@@ -39,8 +39,8 @@ export function PageHeader({
                 <div className="flex items-start gap-5">
                     {/* Icon Container with Glass Effect */}
                     <div className="relative group">
-                        <div className={cn("absolute inset-0 blur-xl opacity-20 rounded-2xl transition-opacity group-hover:opacity-40", toGlowBgClasses(iconColor))} />
-                        <div className="relative w-14 h-14 rounded-2xl flex items-center justify-center bg-card border border-border shadow-sm dark:shadow-none transition-transform duration-500 group-hover:scale-105 group-hover:shadow-[0_0_30px_-10px_rgba(14,165,233,0.1)]">
+                    <div className={cn("absolute inset-0 blur-xl opacity-20 rounded-2xl transition-opacity group-hover:opacity-40", toGlowBgClasses(iconColor))} />
+                        <div className="relative w-14 h-14 rounded-2xl flex items-center justify-center bg-card border border-border shadow-sm dark:shadow-none transition-transform duration-500 motion-safe:group-hover:scale-105 group-hover:shadow-[0_0_30px_-10px_rgba(14,165,233,0.1)]">
                             <div className={cn("absolute inset-0 rounded-2xl opacity-50 bg-gradient-to-br from-card/90 to-transparent dark:from-card/50")} />
                             <Icon className={cn("w-7 h-7 relative z-10 transition-colors duration-300", iconColor)} />
                         </div>

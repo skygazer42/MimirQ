@@ -326,7 +326,7 @@ function HistoryPageContent() {
               <div className="flex-1 p-6">
                 <EmptyState
                   icon={History}
-                  iconClassName="text-sky-600 dark:text-sky-400"
+                  iconClassName="text-primary"
                   title="还没有选择对话"
                   description={
                     <>
@@ -368,10 +368,10 @@ function ConversationItem({
       role="button"
       tabIndex={0}
       className={cn(
-        'group px-4 py-4 cursor-pointer transition-all border-l-4 relative focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background',
+        'group px-4 py-4 cursor-pointer transition-colors border-l-4 relative focus-ring',
         isSelected 
-          ? 'bg-sky-50/50 dark:bg-sky-900/20 border-l-sky-600' 
-          : 'border-l-transparent hover:bg-slate-100/50 dark:hover:bg-slate-800/50'
+          ? 'bg-primary/10 border-l-primary' 
+          : 'border-l-transparent hover:bg-muted/30'
       )}
       onClick={onSelect}
       onKeyDown={(e) => {
@@ -385,15 +385,15 @@ function ConversationItem({
         <div className="flex-1 min-w-0">
           <h3 className={cn(
             'font-bold truncate text-[14px] tracking-tight',
-            isSelected ? 'text-sky-900 dark:text-sky-300' : 'text-slate-700 dark:text-slate-300'
+            isSelected ? 'text-primary' : 'text-foreground'
           )}>
             {conversation.title || '未命名对话'}
           </h3>
-          <p className="text-xs text-slate-500 dark:text-slate-400 truncate mt-1 leading-relaxed opacity-70">
+          <p className="text-xs text-muted-foreground truncate mt-1 leading-relaxed opacity-70">
             {conversation.last_message || '暂无消息'}
           </p>
           <div className="flex items-center gap-2 mt-2">
-            <span className="text-[9px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded">
+            <span className="text-[9px] font-bold text-muted-foreground uppercase tracking-widest bg-muted/60 px-1.5 py-0.5 rounded">
               {formatRelativeTime(conversation.updated_at)}
             </span>
           </div>
@@ -405,14 +405,14 @@ function ConversationItem({
             <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
               <IconButton
                 label="确认删除对话"
-                className="h-7 w-7 text-red-600 hover:bg-red-100 hover:text-red-600 dark:hover:bg-red-900/30"
+                className="text-destructive hover:bg-destructive/10 hover:text-destructive"
                 onClick={onConfirmDelete}
               >
                 <Trash2 className="h-3.5 w-3.5" />
               </IconButton>
               <IconButton
                 label="取消删除"
-                className="h-7 w-7 text-muted-foreground hover:bg-muted"
+                className="text-muted-foreground hover:bg-muted"
                 onClick={onCancelDelete}
               >
                 <X className="h-3.5 w-3.5" />
@@ -425,7 +425,7 @@ function ConversationItem({
                 onDelete()
               }}
               label="删除对话"
-              className="h-7 w-7 hover:bg-muted hover:text-red-500"
+              className="hover:bg-muted hover:text-destructive"
             >
               <Trash2 className="h-3.5 w-3.5" />
             </IconButton>

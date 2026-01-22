@@ -1,5 +1,4 @@
 import type { Metadata } from 'next'
-import { Fira_Code, Fira_Sans } from 'next/font/google'
 import './globals.css'
 import { ParserBackendProvider } from "@/contexts/parser-backend-context"
 import { ChunkStrategyProvider } from "@/contexts/chunk-strategy-context"
@@ -11,20 +10,6 @@ import { CommandMenu } from "@/components/command-menu"
 import { FluidCursor } from "@/components/ui/fluid-cursor"
 import { TaskCenter } from "@/components/task-center"
 import { QueryProvider } from "@/components/providers/query-provider"
-
-const fontSans = Fira_Sans({
-  subsets: ['latin'],
-  weight: ['400', '500', '600', '700'],
-  display: 'swap',
-  variable: '--font-sans',
-})
-
-const fontMono = Fira_Code({
-  subsets: ['latin'],
-  weight: ['400', '500', '600', '700'],
-  display: 'swap',
-  variable: '--font-mono',
-})
 
 export const metadata: Metadata = {
   title: "MimirQ - AI 知识库助手",
@@ -41,7 +26,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="zh-CN" suppressHydrationWarning>
-      <body className={`${fontSans.variable} ${fontMono.variable} font-sans`}>
+      <body className="font-sans">
         <ThemeProvider
           attribute="class"
           defaultTheme="system"
