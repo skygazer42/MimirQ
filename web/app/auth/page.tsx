@@ -53,43 +53,46 @@ export default function AuthPage() {
     return (
         <FullScreenFrame
             showBackground={false}
-            className="w-full overflow-hidden bg-gradient-to-br from-slate-900 via-slate-950 to-black !text-white selection:bg-primary selection:text-white"
+            className="relative w-full overflow-hidden bg-gradient-to-br from-background via-background to-card text-foreground"
         >
             {/* 3D 粒子背景 */}
             <ParticleBackground />
 
             {/* 光效装饰 */}
-            <div className="absolute top-[-20%] left-[-10%] w-[500px] h-[500px] bg-primary/20 rounded-full blur-[120px] animate-pulse-subtle pointer-events-none" />
-            <div className="absolute bottom-[-20%] right-[-10%] w-[500px] h-[500px] bg-blue-600/20 rounded-full blur-[120px] animate-pulse-subtle pointer-events-none" style={{ animationDelay: '1s' }} />
+            <div className="pointer-events-none absolute inset-0 bg-hero-glow opacity-40 motion-reduce:opacity-25" />
+            <div className="absolute top-[-20%] left-[-10%] w-[500px] h-[500px] bg-primary/20 rounded-full blur-[120px] motion-safe:animate-pulse-subtle pointer-events-none" />
+            <div className="absolute bottom-[-20%] right-[-10%] w-[500px] h-[500px] bg-info/15 rounded-full blur-[120px] motion-safe:animate-pulse-subtle pointer-events-none" style={{ animationDelay: '1s' }} />
 
-            <div className="relative z-10 w-full max-w-md p-6 animate-fade-in-up">
+            <div className="relative z-10 w-full max-w-md p-6 motion-safe:animate-fade-in-up">
                 {/* Logo / Brand */}
                 <div className="flex flex-col items-center mb-8 space-y-4">
                     <div className="relative group">
-                        <div className="absolute -inset-1 bg-gradient-to-r from-primary to-blue-500 rounded-xl blur opacity-40 group-hover:opacity-75 transition duration-500"></div>
-                        <div className="relative w-16 h-16 glass rounded-xl flex items-center justify-center border border-white/10 shadow-glow">
-                            <Sparkles className="w-8 h-8 text-primary animate-pulse" />
+                        <div className="absolute -inset-1 bg-gradient-to-r from-primary to-info rounded-xl blur opacity-40 group-hover:opacity-75 transition duration-500 motion-reduce:transition-none"></div>
+                        <div className="relative w-16 h-16 glass rounded-xl flex items-center justify-center border border-border/60 shadow-glow">
+                            <Sparkles className="w-8 h-8 text-primary motion-safe:animate-pulse" />
                         </div>
                     </div>
                     <div className="text-center">
-                        <h1 className="text-3xl font-bold tracking-tight bg-clip-text text-transparent bg-gradient-to-b from-white to-white/60">
+                        <h1 className="text-3xl font-bold tracking-tight bg-clip-text text-transparent bg-gradient-to-b from-foreground to-muted-foreground">
                             MimirQ
                         </h1>
-                        <p className="text-sm text-slate-400 mt-2 font-medium tracking-wide">
+                        <p className="text-sm text-muted-foreground mt-2 font-medium tracking-wide">
                             下一代智能知识库平台
                         </p>
                     </div>
                 </div>
 
                 {/* 玻璃拟态卡片 */}
-                <div className="backdrop-blur-xl bg-white/5 border border-white/10 rounded-3xl p-8 shadow-2xl ring-1 ring-white/5">
+                <div className="glass rounded-3xl p-8 shadow-strong ring-1 ring-border/40">
                     {/* Tab Switcher */}
-                    <div className="flex p-1 bg-black/20 rounded-xl mb-8 border border-white/5">
+                    <div className="flex p-1 bg-background/40 rounded-xl mb-8 border border-border/50">
                         <button
                             type="button"
                             className={cn(
-                                "flex-1 py-2 text-sm font-medium rounded-lg transition-all duration-300",
-                                mode === 'login' ? "bg-white/10 text-white shadow-sm" : "text-slate-400 hover:text-white"
+                                "focus-ring flex-1 py-2 text-sm font-medium rounded-lg transition-colors duration-200 motion-reduce:transition-none",
+                                mode === 'login'
+                                    ? "bg-card/60 text-foreground shadow-sm"
+                                    : "text-muted-foreground hover:text-foreground hover:bg-accent/40"
                             )}
                             onClick={() => setMode('login')}
                         >
@@ -98,8 +101,10 @@ export default function AuthPage() {
                         <button
                             type="button"
                             className={cn(
-                                "flex-1 py-2 text-sm font-medium rounded-lg transition-all duration-300",
-                                mode === 'register' ? "bg-white/10 text-white shadow-sm" : "text-slate-400 hover:text-white"
+                                "focus-ring flex-1 py-2 text-sm font-medium rounded-lg transition-colors duration-200 motion-reduce:transition-none",
+                                mode === 'register'
+                                    ? "bg-card/60 text-foreground shadow-sm"
+                                    : "text-muted-foreground hover:text-foreground hover:bg-accent/40"
                             )}
                             onClick={() => setMode('register')}
                         >
@@ -109,16 +114,16 @@ export default function AuthPage() {
 
                     <form onSubmit={handleSubmit} className="space-y-5">
                         {mode === 'register' && (
-                            <div className="space-y-4 animate-fade-in">
+                            <div className="space-y-4 motion-safe:animate-fade-in">
                                 <div className="space-y-2">
-                                    <Label htmlFor="email" className="text-xs text-slate-300">邮箱地址</Label>
+                                    <Label htmlFor="email" className="text-xs text-muted-foreground">邮箱地址</Label>
                                     <div className="relative group">
-                                        <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-500 group-focus-within:text-cyan-400 transition-colors" />
+                                        <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground group-focus-within:text-primary transition-colors motion-reduce:transition-none" />
                                         <Input
                                             id="email"
                                             type="email"
                                             placeholder="name@example.com"
-                                            className="pl-10 bg-black/20 border-white/10 text-white placeholder:text-slate-600 focus:border-cyan-500/50 focus:ring-cyan-500/20"
+                                            className="pl-10 bg-background/50"
                                             value={email}
                                             onChange={(e) => setEmail(e.target.value)}
                                             required
@@ -126,13 +131,13 @@ export default function AuthPage() {
                                     </div>
                                 </div>
                                 <div className="space-y-2">
-                                    <Label htmlFor="username" className="text-xs text-slate-300">用户名</Label>
+                                    <Label htmlFor="username" className="text-xs text-muted-foreground">用户名</Label>
                                     <div className="relative group">
-                                        <User className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-500 group-focus-within:text-cyan-400 transition-colors" />
+                                        <User className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground group-focus-within:text-primary transition-colors motion-reduce:transition-none" />
                                         <Input
                                             id="username"
                                             placeholder="设置用户名"
-                                            className="pl-10 bg-black/20 border-white/10 text-white placeholder:text-slate-600 focus:border-cyan-500/50 focus:ring-cyan-500/20"
+                                            className="pl-10 bg-background/50"
                                             value={username}
                                             onChange={(e) => setUsername(e.target.value)}
                                             required
@@ -143,14 +148,14 @@ export default function AuthPage() {
                         )}
 
                         {mode === 'login' && (
-                            <div className="space-y-2 animate-fade-in">
-                                <Label htmlFor="identifier" className="text-xs text-slate-300">账号</Label>
+                            <div className="space-y-2 motion-safe:animate-fade-in">
+                                <Label htmlFor="identifier" className="text-xs text-muted-foreground">账号</Label>
                                 <div className="relative group">
-                                    <User className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-500 group-focus-within:text-primary transition-colors" />
+                                    <User className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground group-focus-within:text-primary transition-colors motion-reduce:transition-none" />
                                     <Input
                                         id="identifier"
                                         placeholder="输入邮箱或用户名"
-                                        className="pl-10 bg-black/20 border-white/10 text-white placeholder:text-slate-600 focus:border-cyan-500/50 focus:ring-cyan-500/20 h-11"
+                                        className="pl-10 bg-background/50"
                                         value={identifier}
                                         onChange={(e) => setIdentifier(e.target.value)}
                                         required
@@ -160,16 +165,16 @@ export default function AuthPage() {
                         )}
 
                         <div className="space-y-2">
-                            <Label htmlFor="password" className="text-xs text-slate-300">
+                            <Label htmlFor="password" className="text-xs text-muted-foreground">
                                 {mode === 'login' ? '密码' : '设置密码'}
                             </Label>
                             <div className="relative group">
-                                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-500 group-focus-within:text-cyan-400 transition-colors" />
+                                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground group-focus-within:text-primary transition-colors motion-reduce:transition-none" />
                                 <Input
                                     id="password"
                                     type="password"
                                     placeholder="••••••••"
-                                    className="pl-10 bg-black/20 border-white/10 text-white placeholder:text-slate-600 focus:border-cyan-500/50 focus:ring-cyan-500/20 h-11"
+                                    className="pl-10 bg-background/50"
                                     value={password}
                                     onChange={(e) => setPassword(e.target.value)}
                                     required
@@ -178,15 +183,15 @@ export default function AuthPage() {
                         </div>
 
                         {mode === 'register' && (
-                            <div className="space-y-2 animate-fade-in">
-                                <Label htmlFor="confirmPassword" className="text-xs text-slate-300">确认密码</Label>
+                            <div className="space-y-2 motion-safe:animate-fade-in">
+                                <Label htmlFor="confirmPassword" className="text-xs text-muted-foreground">确认密码</Label>
                                 <div className="relative group">
-                                    <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-500 group-focus-within:text-cyan-400 transition-colors" />
+                                    <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground group-focus-within:text-primary transition-colors motion-reduce:transition-none" />
                                     <Input
                                         id="confirmPassword"
                                         type="password"
                                         placeholder="••••••••"
-                                        className="pl-10 bg-black/20 border-white/10 text-white placeholder:text-slate-600 focus:border-cyan-500/50 focus:ring-cyan-500/20"
+                                        className="pl-10 bg-background/50"
                                         value={confirmPassword}
                                         onChange={(e) => setConfirmPassword(e.target.value)}
                                         required
@@ -196,15 +201,15 @@ export default function AuthPage() {
                         )}
 
                         {error && (
-                            <div className="rounded-lg border border-red-500/20 bg-red-500/10 p-3 flex items-start gap-2 animate-fade-in">
-                                <div className="w-1 h-1 mt-2 rounded-full bg-red-500 shrink-0" />
-                                <p className="text-xs text-red-200">{error}</p>
+                            <div className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 flex items-start gap-2 motion-safe:animate-fade-in">
+                                <div className="w-1 h-1 mt-2 rounded-full bg-destructive shrink-0" />
+                                <p className="text-xs text-destructive">{error}</p>
                             </div>
                         )}
 
                         <Button
                             type="submit"
-                            className="w-full h-11 bg-primary hover:bg-primary/90 text-primary-foreground font-semibold rounded-xl shadow-lg shadow-primary/20 transition-all duration-300 hover:scale-[1.02] active:scale-[0.98]"
+                            className="w-full h-11 bg-primary hover:bg-primary/90 text-primary-foreground font-semibold rounded-xl shadow-lg shadow-primary/20 transition-colors duration-200 motion-reduce:transition-none motion-safe:hover:scale-[1.02] motion-safe:active:scale-[0.98]"
                             disabled={isSubmitting}
                         >
                             {isSubmitting ? (
@@ -223,8 +228,14 @@ export default function AuthPage() {
                 </div>
 
                 <div className="mt-8 text-center">
-                    <p className="text-xs text-slate-500">
-                        遇到问题？ <a href="#" className="text-slate-400 hover:text-white underline underline-offset-4 transition-colors">联系管理员</a>
+                    <p className="text-xs text-muted-foreground">
+                        遇到问题？{" "}
+                        <a
+                            href="#"
+                            className="focus-ring text-foreground/80 hover:text-foreground underline underline-offset-4 transition-colors motion-reduce:transition-none"
+                        >
+                            联系管理员
+                        </a>
                     </p>
                 </div>
             </div>
