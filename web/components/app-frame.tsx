@@ -33,7 +33,7 @@ export function AppFrame({
       : undefined
 
   return (
-    <div className={cn("relative min-h-screen bg-background text-foreground", className)}>
+    <div className={cn("relative h-dvh overflow-hidden bg-background text-foreground", className)}>
       <a
         href="#main-content"
         className="sr-only focus:not-sr-only focus:fixed focus:top-4 focus:left-4 focus:z-[60] focus:rounded-lg focus:bg-background focus:px-3 focus:py-2 focus:text-foreground focus:shadow-strong focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 focus:ring-offset-background"
@@ -41,7 +41,7 @@ export function AppFrame({
         跳到主要内容
       </a>
       {showBackground && <AppBackground />}
-      <div className="relative z-10 flex min-h-screen overflow-hidden">
+      <div className="relative z-10 flex h-full overflow-hidden">
         {showNavbar && <Navbar />}
         <main
           id="main-content"

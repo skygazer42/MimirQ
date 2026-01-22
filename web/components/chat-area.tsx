@@ -238,7 +238,7 @@ export function ChatArea({
   }, [handleSend])
 
   return (
-    <div className="flex-1 flex flex-col bg-background h-screen relative transition-colors duration-300">
+    <div className="flex-1 min-h-0 flex flex-col bg-background relative transition-colors duration-300">
       <div
         ref={scrollContainerRef}
         onScroll={updateAutoScroll}
