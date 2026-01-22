@@ -9,7 +9,9 @@ import {
   TextCursorInput,
   Loader2,
   Info,
+  AlertTriangle,
 } from 'lucide-react'
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import { pipelineApi, promptTemplateApi, PromptTemplate } from '@/lib/api-client'
@@ -213,7 +215,7 @@ export function DataCleaner({ content, cleanedContent = '', onClean }: DataClean
       {/* 标题 */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <Wrench className="w-5 h-5 text-sky-600" />
+          <Wrench className="w-5 h-5 text-primary" />
           <h3 className="font-bold text-foreground">智能清洗配置</h3>
         </div>
         <div className="flex items-center gap-2">
@@ -231,8 +233,8 @@ export function DataCleaner({ content, cleanedContent = '', onClean }: DataClean
       </div>
 
       {/* 嵌入 Pipeline Options Panel */}
-      <div className="border border-sky-100 rounded-xl overflow-hidden">
-        <div className="bg-sky-50 px-4 py-2 border-b border-sky-100 text-xs font-medium text-sky-700">
+      <div className="border border-border/60 rounded-xl overflow-hidden">
+        <div className="bg-muted/30 px-4 py-2 border-b border-border/60 text-xs font-medium text-muted-foreground">
           规则配置
         </div>
         <div className="p-4 bg-card">
@@ -241,14 +243,22 @@ export function DataCleaner({ content, cleanedContent = '', onClean }: DataClean
       </div>
 
       {backendError && (
-        <div className="bg-amber-500/10 dark:bg-amber-500/20 border border-amber-500/30 rounded-xl p-3 text-xs text-amber-700 dark:text-amber-300">
-          {backendError}
-        </div>
+        <Alert variant="warning">
+          <AlertTriangle className="h-4 w-4" />
+          <div>
+            <AlertTitle>清洗提示</AlertTitle>
+            <AlertDescription className="text-foreground/80">{backendError}</AlertDescription>
+          </div>
+        </Alert>
       )}
       {backendInfo && (
-        <div className="bg-sky-50 border border-sky-200 rounded-xl p-3 text-xs text-sky-700">
-          {backendInfo}
-        </div>
+        <Alert variant="info">
+          <Info className="h-4 w-4" />
+          <div>
+            <AlertTitle>清洗信息</AlertTitle>
+            <AlertDescription className="text-foreground/80">{backendInfo}</AlertDescription>
+          </div>
+        </Alert>
       )}
 
       {/* 操作按钮 */}
@@ -257,7 +267,7 @@ export function DataCleaner({ content, cleanedContent = '', onClean }: DataClean
           onClick={handleReset}
           variant="outline"
           size="sm"
-          className="flex-1 gap-1.5 border-sky-200 text-sky-700 hover:bg-sky-50"
+          className="flex-1 gap-1.5"
         >
           <Undo className="w-3.5 h-3.5" />
           重置内容
@@ -265,10 +275,10 @@ export function DataCleaner({ content, cleanedContent = '', onClean }: DataClean
         <Button
           onClick={handleApply}
           disabled={isApplying}
-          className="flex-1 gap-2 bg-sky-600 hover:bg-sky-700 text-white"
+          className="flex-1 gap-2"
         >
           {isApplying ? (
-            <Loader2 className="w-4 h-4 animate-spin" />
+            <Loader2 className="w-4 h-4 animate-spin motion-reduce:animate-none" />
           ) : (
             <Sparkles className="w-4 h-4" />
           )}
@@ -280,14 +290,13 @@ export function DataCleaner({ content, cleanedContent = '', onClean }: DataClean
       <div className="border border-border rounded-xl p-4 bg-card">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <Sparkles className="w-4 h-4 text-teal-600" />
+            <Sparkles className="w-4 h-4 text-primary" />
             <span className="text-sm font-medium text-foreground">LLM 深度清洗</span>
           </div>
           <Button
             variant={llmEnabled ? 'default' : 'outline'}
             size="sm"
             onClick={() => setLlmEnabled((v) => !v)}
-            className={cn(llmEnabled ? 'bg-teal-600 hover:bg-teal-700' : '')}
           >
             {llmEnabled ? '已启用' : '启用'}
           </Button>

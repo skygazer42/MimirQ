@@ -1,18 +1,19 @@
 "use client"
 
-import { useEffect, useRef, useState, useMemo } from "react"
+import { useEffect, useRef, useState } from "react"
 import dynamic from "next/dynamic"
 import { useTheme } from "next-themes"
-import { Loader2, Info } from "lucide-react"
+import { Loader2 } from "lucide-react"
 import * as THREE from "three"
-import { useDocumentView } from "@/store/document-view"
+
+import { getCssHslColor } from "@/lib/css-vars"
 
 // Dynamic import
 const ForceGraph3D = dynamic(() => import("react-force-graph-3d"), {
   ssr: false,
   loading: () => (
-    <div className="flex items-center justify-center h-full w-full bg-slate-950">
-      <Loader2 className="h-8 w-8 text-cyan-500 animate-spin" />
+    <div className="flex items-center justify-center h-full w-full bg-background">
+      <Loader2 className="h-8 w-8 text-primary animate-spin motion-reduce:animate-none" />
     </div>
   ),
 })
@@ -48,10 +49,9 @@ function generateMockData() {
 }
 
 export function VectorNebula() {
-  const { theme } = useTheme()
+  const { resolvedTheme } = useTheme()
   const fgRef = useRef<any>()
   const [data, setData] = useState<any>({ nodes: [], links: [] })
-  const { openDocument } = useDocumentView()
 
   useEffect(() => {
     // Simulate async loading
@@ -60,8 +60,8 @@ export function VectorNebula() {
     }, 500)
   }, [])
 
-  const isDark = theme === 'dark'
-  const bgColor = isDark ? "#020617" : "#ffffff"
+  const isDark = resolvedTheme === "dark"
+  const bgColor = getCssHslColor("--background", isDark ? "#020617" : "#ffffff")
 
   return (
     <div className="relative w-full h-full">
@@ -107,7 +107,7 @@ export function VectorNebula() {
         {/* Legend / Info Overlay */}
         <div className="absolute top-4 left-4 p-4 bg-background/80 backdrop-blur-md border border-border rounded-xl shadow-lg max-w-xs">
             <h3 className="font-bold text-lg mb-2 flex items-center gap-2">
-                <div className="w-2 h-2 rounded-full bg-cyan-500 animate-pulse" />
+                <div className="w-2 h-2 rounded-full bg-primary/60 animate-pulse" />
                 语义星云
             </h3>
             <p className="text-xs text-muted-foreground mb-4">

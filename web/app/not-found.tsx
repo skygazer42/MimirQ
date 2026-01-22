@@ -9,7 +9,7 @@ export default function NotFound() {
     <FullScreenFrame>
       <Card className="w-full max-w-lg rounded-3xl shadow-strong">
         <CardContent className="p-8 text-center">
-          <div className="mx-auto mb-5 flex h-14 w-14 items-center justify-center rounded-2xl bg-sky-500/10 text-sky-700 dark:text-sky-300">
+          <div className="mx-auto mb-5 flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/10 text-primary">
             <Compass className="h-6 w-6" />
           </div>
           <h1 className="text-xl font-semibold text-foreground">页面不存在</h1>
