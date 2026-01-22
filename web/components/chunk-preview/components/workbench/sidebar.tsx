@@ -87,22 +87,22 @@ export function Sidebar() {
   }
 
   return (
-    <aside className="w-80 bg-card/80 border-r border-border/60 flex flex-col flex-shrink-0 z-10 backdrop-blur shadow-[inset_-1px_0_0_rgba(255,255,255,0.35)] dark:shadow-[inset_-1px_0_0_rgba(15,23,42,0.4)]">
+    <aside className="w-80 bg-card/80 border-r border-border/60 flex flex-col flex-shrink-0 z-10 backdrop-blur">
       <div className="p-6 flex-1 overflow-y-auto">
         {/* 文件列表 */}
         <div className="mb-8 pb-8 border-b border-border/60">
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-2">
-              <Folder className="w-4 h-4 text-sky-600 dark:text-sky-300" />
+              <Folder className="w-4 h-4 text-primary" />
               <h2 className="text-xs font-bold text-foreground uppercase tracking-wider">文件列表 ({fileList.length})</h2>
             </div>
             <Button
               variant="ghost"
               size="sm"
               onClick={() => document.getElementById('add-file-input')?.click()}
-              className="h-6 w-6 p-0 hover:bg-sky-500/10 dark:hover:bg-sky-500/20"
+              className="h-6 w-6 p-0 hover:bg-primary/10"
             >
-              <Upload className="w-3.5 h-3.5 text-sky-600 dark:text-sky-300" />
+              <Upload className="w-3.5 h-3.5 text-primary" />
             </Button>
             <input
               id="add-file-input"
@@ -139,13 +139,13 @@ export function Sidebar() {
                 className={cn(
                   'group flex items-center justify-between p-2 rounded-lg text-xs cursor-pointer transition-colors border',
                   isActive
-                    ? 'bg-card border-sky-300/40 dark:border-sky-500/40 shadow-sm ring-1 ring-sky-500/20'
-                    : 'bg-transparent border-transparent hover:bg-sky-500/10 dark:hover:bg-sky-500/20 hover:border-sky-300/40 dark:hover:border-sky-500/40'
+                    ? 'bg-card border-primary/25 shadow-sm ring-1 ring-ring/15'
+                    : 'bg-transparent border-transparent hover:bg-primary/10 hover:border-primary/20'
                 )}
               >
                 <div className="flex items-center gap-2 min-w-0 flex-1">
                   <FileIcon
-                    className={cn('w-3.5 h-3.5 flex-shrink-0', isActive ? 'text-sky-600 dark:text-sky-300' : 'text-muted-foreground')}
+                    className={cn('w-3.5 h-3.5 flex-shrink-0', isActive ? 'text-primary' : 'text-muted-foreground')}
                   />
                   <span className={cn('truncate font-medium', isActive ? 'text-foreground' : 'text-muted-foreground')}>
                     {f.displayName}
@@ -157,22 +157,23 @@ export function Sidebar() {
                     <span className="text-[10px] text-muted-foreground mr-1">{displayTime}</span>
                   )}
                   {f.originalFileType && (
-                    <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-sky-500/20 dark:bg-sky-500/30 text-sky-600 dark:text-sky-300">
+                    <span className="text-[10px] font-mono px-1.5 py-0.5 rounded border border-border/60 bg-muted/60 text-muted-foreground">
                       {String(f.originalFileType).toUpperCase()}
                     </span>
                   )}
-                  {processedStatus[f.id] === 'success' && <Check className="w-3.5 h-3.5 text-green-500 dark:text-green-300" />}
-                  {processedStatus[f.id] === 'error' && <AlertCircle className="w-3.5 h-3.5 text-red-500 dark:text-red-300" />}
+                  {processedStatus[f.id] === 'success' && <Check className="w-3.5 h-3.5 text-success" />}
+                  {processedStatus[f.id] === 'error' && <AlertCircle className="w-3.5 h-3.5 text-destructive" />}
 
-                  <div
+                  <button
+                    type="button"
                     onClick={(e) => {
                       e.stopPropagation()
                       removeFile(fileIndex)
                     }}
-                    className="opacity-0 group-hover:opacity-100 p-1 hover:bg-red-500/10 hover:text-red-600 dark:hover:text-red-300 rounded transition-all"
+                    className="opacity-0 group-hover:opacity-100 p-1 hover:bg-destructive/10 hover:text-destructive rounded transition-all focus-ring"
                   >
                     <Trash2 className="w-3 h-3" />
-                  </div>
+                  </button>
                 </div>
               </div>
               )
@@ -181,7 +182,7 @@ export function Sidebar() {
         </div>
 
         <div className="flex items-center gap-2 mb-6">
-          <Settings className="w-4 h-4 text-sky-600 dark:text-sky-300" />
+          <Settings className="w-4 h-4 text-primary" />
           <h2 className="text-xs font-bold text-foreground uppercase tracking-wider">配置参数</h2>
         </div>
 
@@ -196,7 +197,7 @@ export function Sidebar() {
                 type="checkbox"
                 checked={autoPreviewEnabled}
                 onChange={(e) => toggleAutoPreview(e.target.checked)}
-                className="h-3.5 w-3.5 rounded border-sky-300/40 dark:border-sky-500/40 text-sky-600 dark:text-sky-300 focus:ring-sky-500/20"
+                className="h-3.5 w-3.5 rounded border-border/60 text-primary focus:ring-2 focus:ring-ring/20 focus:ring-offset-2 focus:ring-offset-background"
               />
               {autoPreviewEnabled ? '开启' : '关闭'}
             </label>
@@ -212,7 +213,7 @@ export function Sidebar() {
             <label className="text-xs font-medium text-muted-foreground">解析器</label>
             <ParserDropdown value={parserBackend} onChange={setParserBackend} />
             {parserAvailable === false && (
-              <div className="text-[10px] text-sky-600 dark:text-sky-300 bg-sky-500/10 dark:bg-sky-500/20 border border-sky-500/30 rounded-lg px-2 py-1">
+              <div className="text-[10px] text-warning bg-warning/10 border border-warning/25 rounded-lg px-2 py-1">
                 当前解析器不可用，建议切换为 {capabilities?.default_parser_backend || 'auto'}。
               </div>
             )}
@@ -230,7 +231,7 @@ export function Sidebar() {
             <div className="space-y-4">
               <div className="flex justify-between items-center">
                 <label className="text-xs font-medium text-muted-foreground">{isTokenStrategy ? 'Token 上限' : '块大小 (Chars)'}</label>
-                <span className="text-xs font-mono font-medium text-sky-600 dark:text-sky-300 bg-sky-500/10 dark:bg-sky-500/20 px-2 py-0.5 rounded">{chunkSize}</span>
+                <span className="text-xs font-mono font-medium text-primary bg-primary/10 px-2 py-0.5 rounded">{chunkSize}</span>
               </div>
               <input
                 type="range"
@@ -239,7 +240,7 @@ export function Sidebar() {
                 step={isTokenStrategy ? 50 : 100}
                 value={chunkSize}
                 onChange={(e) => updateSettings({ chunkSize: Number(e.target.value) })}
-                className="w-full h-1.5 bg-sky-500/20 dark:bg-sky-500/30 rounded-full appearance-none cursor-pointer accent-sky-500 hover:accent-sky-600 transition-colors"
+                className="w-full h-1.5 bg-muted/60 rounded-full appearance-none cursor-pointer accent-primary transition-colors"
               />
               <div className="flex justify-between text-[10px] text-muted-foreground font-mono">
                 <span>{isTokenStrategy ? 50 : 100}</span>
@@ -252,7 +253,7 @@ export function Sidebar() {
             <div className="space-y-4">
               <div className="flex justify-between items-center">
                 <label className="text-xs font-medium text-muted-foreground">{isTokenStrategy ? 'Token 重叠' : '重叠 (Chars)'}</label>
-                <span className="text-xs font-mono font-medium text-sky-600 dark:text-sky-300 bg-sky-500/10 dark:bg-sky-500/20 px-2 py-0.5 rounded">{chunkOverlap}</span>
+                <span className="text-xs font-mono font-medium text-primary bg-primary/10 px-2 py-0.5 rounded">{chunkOverlap}</span>
               </div>
               <input
                 type="range"
@@ -261,7 +262,7 @@ export function Sidebar() {
                 step={isTokenStrategy ? 25 : 50}
                 value={chunkOverlap}
                 onChange={(e) => updateSettings({ chunkOverlap: Number(e.target.value) })}
-                className="w-full h-1.5 bg-sky-500/20 dark:bg-sky-500/30 rounded-full appearance-none cursor-pointer accent-sky-500 hover:accent-sky-600 transition-colors"
+                className="w-full h-1.5 bg-muted/60 rounded-full appearance-none cursor-pointer accent-primary transition-colors"
               />
             </div>
           )}
@@ -274,10 +275,10 @@ export function Sidebar() {
           <Button
             onClick={() => runPreview()}
             disabled={isLoading}
-            className="w-full bg-gradient-to-r from-sky-500 to-blue-600 hover:from-sky-600 hover:to-blue-700 text-white h-11 rounded-xl shadow-md shadow-sky-500/20 dark:shadow-sky-500/10 transition-all hover:scale-[1.02] active:scale-[0.98] border border-transparent"
+            className="w-full h-11 rounded-xl shadow-glow border border-primary/20"
           >
             {isLoading ? (
-              <Loader2 className="w-4 h-4 animate-spin mr-2" />
+              <Loader2 className="w-4 h-4 animate-spin motion-reduce:animate-none mr-2" />
             ) : (
               <Sparkles className="w-4 h-4 mr-2" />
             )}
@@ -289,7 +290,7 @@ export function Sidebar() {
         {previewData && (
           <div className="mt-8 pt-8 border-t border-border/60">
             <div className="flex items-center gap-2 mb-4">
-              <BarChart3 className="w-4 h-4 text-sky-600 dark:text-sky-300" />
+              <BarChart3 className="w-4 h-4 text-primary" />
               <h2 className="text-xs font-bold text-foreground uppercase tracking-wider">分析结果</h2>
             </div>
 
@@ -317,7 +318,7 @@ export function Sidebar() {
         {runHistory.length > 0 && (
           <div className="mt-8 pt-8 border-t border-border/60">
             <div className="flex items-center gap-2 mb-4">
-              <Sparkles className="w-4 h-4 text-sky-600 dark:text-sky-300" />
+              <Sparkles className="w-4 h-4 text-primary" />
               <h2 className="text-xs font-bold text-foreground uppercase tracking-wider">最近预览</h2>
             </div>
             <div className="space-y-2 max-h-[180px] overflow-y-auto custom-scrollbar pr-1">
@@ -331,11 +332,11 @@ export function Sidebar() {
                     <span>{new Date(item.createdAt).toLocaleString([], { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })}</span>
                   </div>
                   <div className="mt-1 flex flex-wrap gap-2">
-                    <span className="px-2 py-0.5 rounded-full bg-sky-500/20 dark:bg-sky-500/30">Chunks: {item.totalChunks}</span>
-                    <span className="px-2 py-0.5 rounded-full bg-sky-500/20 dark:bg-sky-500/30">耗时: {item.durationMs}ms</span>
-                    <span className="px-2 py-0.5 rounded-full bg-sky-500/20 dark:bg-sky-500/30">{item.strategy}</span>
+                    <span className="px-2 py-0.5 rounded-full border border-border/60 bg-muted/60">Chunks: {item.totalChunks}</span>
+                    <span className="px-2 py-0.5 rounded-full border border-border/60 bg-muted/60">耗时: {item.durationMs}ms</span>
+                    <span className="px-2 py-0.5 rounded-full border border-border/60 bg-muted/60">{item.strategy}</span>
                     {item.cacheHit && (
-                      <span className="px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-100">缓存</span>
+                      <span className="px-2 py-0.5 rounded-full bg-success/10 text-success border border-success/25">缓存</span>
                     )}
                   </div>
                 </div>

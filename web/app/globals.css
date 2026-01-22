@@ -156,7 +156,8 @@
   }
 
   .glass {
-    @apply bg-white/70 dark:bg-black/40 backdrop-blur-xl border border-white/20 dark:border-cyan-500/10;
+    /* Token-based glass surface (works in light/dark and avoids hard-coded white/black). */
+    @apply bg-card/60 dark:bg-card/40 backdrop-blur-xl border border-border/60;
   }
 
   .glass-card {

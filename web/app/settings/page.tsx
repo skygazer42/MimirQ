@@ -377,39 +377,40 @@ export default function SettingsPage() {
   }, [providers])
 
   const getColorClasses = (color: string) => {
-    const colors: Record<string, { bg: string; border: string; text: string; iconBg: string }> = {
-      teal: {
-        bg: 'bg-purple-50 dark:bg-purple-500/10',
-        border: 'border-purple-200 dark:border-purple-500/30',
-        text: 'text-purple-600 dark:text-purple-300',
-        iconBg: 'bg-purple-100 dark:bg-purple-500/20',
+    const styles: Record<string, { bg: string; border: string; text: string; iconBg: string }> = {
+      primary: {
+        bg: 'bg-primary/10',
+        border: 'border-primary/25',
+        text: 'text-primary',
+        iconBg: 'bg-primary/15',
       },
-      blue: {
-        bg: 'bg-blue-50 dark:bg-blue-500/10',
-        border: 'border-blue-200 dark:border-blue-500/30',
-        text: 'text-blue-600 dark:text-blue-300',
-        iconBg: 'bg-blue-100 dark:bg-blue-500/20',
+      info: {
+        bg: 'bg-info/10',
+        border: 'border-info/25',
+        text: 'text-info',
+        iconBg: 'bg-info/15',
       },
-      green: {
-        bg: 'bg-green-50 dark:bg-green-500/10',
-        border: 'border-green-200 dark:border-green-500/30',
-        text: 'text-green-600 dark:text-green-300',
-        iconBg: 'bg-green-100 dark:bg-green-500/20',
+      success: {
+        bg: 'bg-success/10',
+        border: 'border-success/25',
+        text: 'text-success',
+        iconBg: 'bg-success/15',
       },
-      orange: {
-        bg: 'bg-orange-50 dark:bg-orange-500/10',
-        border: 'border-orange-200 dark:border-orange-500/30',
-        text: 'text-orange-600 dark:text-orange-300',
-        iconBg: 'bg-orange-100 dark:bg-orange-500/20',
-      },
-      cyan: {
-        bg: 'bg-cyan-50 dark:bg-cyan-500/10',
-        border: 'border-cyan-200 dark:border-cyan-500/30',
-        text: 'text-cyan-600 dark:text-cyan-300',
-        iconBg: 'bg-cyan-100 dark:bg-cyan-500/20',
+      warning: {
+        bg: 'bg-warning/10',
+        border: 'border-warning/25',
+        text: 'text-warning',
+        iconBg: 'bg-warning/15',
       },
     }
-    return colors[color] || colors.blue
+
+    const key =
+      color === 'green' ? 'success' :
+      color === 'orange' ? 'warning' :
+      color === 'cyan' ? 'primary' :
+      'info'
+
+    return styles[key] || styles.info
   }
 
   return (
@@ -418,7 +419,7 @@ export default function SettingsPage() {
         title="设置与配置"
         badge="SETTINGS"
         icon={Settings2}
-        iconColor="text-sky-600 dark:text-sky-400"
+        iconColor="text-primary"
         description="管理功能开关、模型接入及系统参数"
         top={
           saveMessage ? (
@@ -450,18 +451,15 @@ export default function SettingsPage() {
               disabled={loading}
               className="gap-2"
             >
-              <RefreshCw className={cn("w-4 h-4", loading && "animate-spin")} />
+              <RefreshCw className={cn("w-4 h-4", loading && "animate-spin motion-reduce:animate-none")} />
               刷新
             </Button>
             <Button
               onClick={saveSettings}
               disabled={!hasChanges || saving}
-              className={cn(
-                "gap-2",
-                hasChanges ? "bg-blue-600 hover:bg-blue-700" : "bg-muted text-muted-foreground"
-              )}
+              className="gap-2"
             >
-              <Save className={cn("w-4 h-4", saving && "animate-pulse")} />
+              <Save className={cn("w-4 h-4", saving && "animate-pulse motion-reduce:animate-none")} />
               {saving ? "保存中..." : "保存配置"}
             </Button>
           </>
@@ -469,7 +467,7 @@ export default function SettingsPage() {
       >
         {loading ? (
             <div className="flex items-center justify-center h-64">
-              <RefreshCw className="w-8 h-8 animate-spin text-muted-foreground" />
+              <RefreshCw className="w-8 h-8 animate-spin motion-reduce:animate-none text-muted-foreground" />
             </div>
           ) : (
             <div className="space-y-12">
@@ -477,7 +475,7 @@ export default function SettingsPage() {
               <section>
                 <div className="flex items-center justify-between mb-6">
                   <h2 className="text-lg font-semibold text-foreground flex items-center gap-2">
-                    <Sliders className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+                    <Sliders className="h-5 w-5 text-primary" />
                     前端偏好（本地）
                   </h2>
                   <div className="flex items-center gap-2 px-3 py-1 bg-muted text-muted-foreground rounded-full text-xs font-medium border border-border">
@@ -842,7 +840,7 @@ export default function SettingsPage() {
               {status && (
                 <section>
                   <h2 className="text-lg font-semibold text-foreground mb-6 flex items-center gap-2">
-                    <Database className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+                    <Database className="h-5 w-5 text-primary" />
                     系统状态
                   </h2>
 
@@ -925,10 +923,10 @@ export default function SettingsPage() {
               <section>
                 <div className="flex items-center justify-between mb-6">
                   <h2 className="text-lg font-semibold text-foreground flex items-center gap-2">
-                    <Server className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+                    <Server className="h-5 w-5 text-primary" />
                     模型服务商
                   </h2>
-                  <div className="flex items-center gap-2 px-3 py-1 bg-blue-50 text-blue-700 rounded-full text-xs font-medium border border-blue-100 dark:bg-blue-500/10 dark:text-blue-300 dark:border-blue-500/30">
+                  <div className="flex items-center gap-2 px-3 py-1 bg-primary/10 text-primary rounded-full text-xs font-medium border border-primary/20">
                     <Lightbulb className="h-3 w-3" />
                     <span>点击卡片配置 API Key</span>
                   </div>
@@ -971,7 +969,7 @@ export default function SettingsPage() {
               {/* RAG 参数设置 */}
               <section>
                 <h2 className="text-lg font-semibold text-foreground mb-6 flex items-center gap-2">
-                    <Sliders className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+                    <Sliders className="h-5 w-5 text-primary" />
                   RAG 参数
                 </h2>
 
@@ -993,7 +991,7 @@ export default function SettingsPage() {
                           const rag = { ...(settings?.rag ?? {}), ...(editedSettings.rag ?? {}), retrieval_top_k: parseInt(e.target.value) }
                           setEditedSettings(prev => ({ ...prev, rag: rag as any }))
                         }}
-                        className="w-full h-2 bg-muted rounded-lg appearance-none cursor-pointer accent-blue-600"
+                        className="w-full h-2 bg-muted rounded-lg appearance-none cursor-pointer accent-primary"
                       />
                       <p className="text-xs text-muted-foreground mt-2">
                         每次检索返回的最相关文档片段数量
@@ -1017,7 +1015,7 @@ export default function SettingsPage() {
                           const rag = { ...(settings?.rag ?? {}), ...(editedSettings.rag ?? {}), similarity_threshold: parseFloat(e.target.value) }
                           setEditedSettings(prev => ({ ...prev, rag: rag as any }))
                         }}
-                        className="w-full h-2 bg-muted rounded-lg appearance-none cursor-pointer accent-blue-600"
+                        className="w-full h-2 bg-muted rounded-lg appearance-none cursor-pointer accent-primary"
                       />
                       <p className="text-xs text-muted-foreground mt-2">
                         过滤掉相关性得分低于此值的片段
@@ -1041,7 +1039,7 @@ export default function SettingsPage() {
                           const rag = { ...(settings?.rag ?? {}), ...(editedSettings.rag ?? {}), chunk_size: parseInt(e.target.value) }
                           setEditedSettings(prev => ({ ...prev, rag: rag as any }))
                         }}
-                        className="w-full h-2 bg-muted rounded-lg appearance-none cursor-pointer accent-blue-600"
+                        className="w-full h-2 bg-muted rounded-lg appearance-none cursor-pointer accent-primary"
                       />
                       <p className="text-xs text-muted-foreground mt-2">
                         文档分块的目标字符数
@@ -1055,10 +1053,10 @@ export default function SettingsPage() {
               <section>
                 <div className="flex items-center justify-between mb-6">
                   <h2 className="text-lg font-semibold text-foreground flex items-center gap-2">
-                    <Eye className="h-5 w-5 text-sky-600 dark:text-sky-400" />
+                    <Eye className="h-5 w-5 text-primary" />
                     观测与调试
                   </h2>
-                  <div className="flex items-center gap-2 px-3 py-1 bg-sky-50 text-sky-700 rounded-full text-xs font-medium border border-sky-100 dark:bg-sky-500/10 dark:text-sky-300 dark:border-sky-500/30">
+                  <div className="flex items-center gap-2 px-3 py-1 bg-primary/10 text-primary rounded-full text-xs font-medium border border-primary/20">
                     <span>保存后通常可立即生效</span>
                   </div>
                 </div>
@@ -1086,7 +1084,7 @@ export default function SettingsPage() {
                         className="shrink-0"
                       >
                         {((editedSettings.observability?.tool_call_log_enabled ?? settings?.observability?.tool_call_log_enabled) ?? DEFAULT_OBSERVABILITY.tool_call_log_enabled) ? (
-                          <ToggleRight className="w-10 h-10 text-sky-600 dark:text-sky-400" />
+                          <ToggleRight className="w-10 h-10 text-primary" />
                         ) : (
                           <ToggleLeft className="w-10 h-10 text-muted-foreground hover:text-muted-foreground" />
                         )}
@@ -1100,7 +1098,7 @@ export default function SettingsPage() {
                             type="checkbox"
                             checked={((editedSettings.observability?.tool_call_log_include_preview ?? settings?.observability?.tool_call_log_include_preview) ?? DEFAULT_OBSERVABILITY.tool_call_log_include_preview)}
                             onChange={(e) => updateObservability({ tool_call_log_include_preview: e.target.checked })}
-                            className="h-4 w-4 accent-sky-600"
+                            className="h-4 w-4 accent-primary"
                           />
                           <span className="text-sm text-foreground/80">包含结果 preview</span>
                         </div>
@@ -1140,7 +1138,7 @@ export default function SettingsPage() {
                         className="shrink-0"
                       >
                         {((editedSettings.observability?.agent_log_enabled ?? settings?.observability?.agent_log_enabled) ?? DEFAULT_OBSERVABILITY.agent_log_enabled) ? (
-                          <ToggleRight className="w-10 h-10 text-sky-600 dark:text-sky-400" />
+                          <ToggleRight className="w-10 h-10 text-primary" />
                         ) : (
                           <ToggleLeft className="w-10 h-10 text-muted-foreground hover:text-muted-foreground" />
                         )}
@@ -1154,7 +1152,7 @@ export default function SettingsPage() {
                             type="checkbox"
                             checked={((editedSettings.observability?.agent_log_include_execution_path ?? settings?.observability?.agent_log_include_execution_path) ?? DEFAULT_OBSERVABILITY.agent_log_include_execution_path)}
                             onChange={(e) => updateObservability({ agent_log_include_execution_path: e.target.checked })}
-                            className="h-4 w-4 accent-sky-600"
+                            className="h-4 w-4 accent-primary"
                           />
                           <span className="text-sm text-foreground/80">包含 execution path</span>
                         </div>
@@ -1194,7 +1192,7 @@ export default function SettingsPage() {
                         className="shrink-0"
                       >
                         {((editedSettings.safety?.pii_redaction_enabled ?? settings?.safety?.pii_redaction_enabled) ?? DEFAULT_SAFETY.pii_redaction_enabled) ? (
-                          <ToggleRight className="w-10 h-10 text-sky-600 dark:text-sky-400" />
+                          <ToggleRight className="w-10 h-10 text-primary" />
                         ) : (
                           <ToggleLeft className="w-10 h-10 text-muted-foreground hover:text-muted-foreground" />
                         )}
@@ -1246,7 +1244,7 @@ export default function SettingsPage() {
                         className="shrink-0"
                       >
                         {((editedSettings.langgraph?.use_subgraphs ?? settings?.langgraph?.use_subgraphs) ?? DEFAULT_LANGGRAPH.use_subgraphs) ? (
-                          <ToggleRight className="w-10 h-10 text-sky-600 dark:text-sky-400" />
+                          <ToggleRight className="w-10 h-10 text-primary" />
                         ) : (
                           <ToggleLeft className="w-10 h-10 text-muted-foreground hover:text-muted-foreground" />
                         )}
