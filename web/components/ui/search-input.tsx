@@ -56,7 +56,7 @@ export const SearchInput = React.forwardRef<HTMLInputElement, SearchInputProps>(
       />
       {value ? (
         <IconButton
-          aria-label="清除搜索"
+          label="清除搜索"
           type="button"
           className="absolute right-1.5 top-1/2 h-8 w-8 -translate-y-1/2"
           onClick={() => {

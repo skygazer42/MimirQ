@@ -15,13 +15,12 @@ import {
 import { toast } from 'sonner'
 
 import { AppFrame } from '@/components/app-frame'
-import { PageHeader } from '@/components/ui/page-header'
-import { PageHeaderBar } from '@/components/ui/page-header-bar'
-import { PageBody } from '@/components/ui/page-body'
+import { PageScaffold } from '@/components/ui/page-scaffold'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Switch } from '@/components/ui/switch'
 import { Badge } from '@/components/ui/badge'
+import { Panel } from '@/components/ui/panel'
 import { cn, formatDate, formatFileSize } from '@/lib/utils'
 import { documentApi } from '@/lib/api-client'
 import { formatApiError } from '@/lib/api-errors'
@@ -287,117 +286,117 @@ export default function QuarantineQueuePage() {
       withDocumentViewerPadding
       mainClassName="transition-all duration-300 ease-out-expo"
     >
-        <PageHeaderBar className="transition-all duration-300">
-          <PageHeader
-            title="隔离审核队列"
-            icon={AlertTriangle}
-            iconColor="text-amber-600 dark:text-amber-400"
-            className="!pt-6 !pb-6"
-            description={
-              <span className="flex items-center gap-2 text-muted-foreground">
-                <span className="font-bold text-foreground">QUARANTINE</span>
-                <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-50 dark:bg-amber-500/10 text-amber-700 dark:text-amber-300 border border-amber-100 dark:border-amber-500/20 uppercase tracking-wider">Review</span>
-                <span className="text-muted-foreground/60">|</span>
-                聚合命中规则，抽样预览原文，一键放行/重试/删除。
-              </span>
-            }
-          >
-            <div className="flex items-center gap-3">
-              <Button
-                variant="outline"
-                className="group gap-2 rounded-full bg-background/60"
-                onClick={() => refetch()}
+      <PageScaffold
+        title="隔离审核队列"
+        icon={AlertTriangle}
+        iconColor="text-amber-600 dark:text-amber-400"
+        description={
+          <span className="flex items-center gap-2 text-muted-foreground">
+            <span className="font-bold text-foreground">QUARANTINE</span>
+            <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-50 dark:bg-amber-500/10 text-amber-700 dark:text-amber-300 border border-amber-100 dark:border-amber-500/20 uppercase tracking-wider">
+              Review
+            </span>
+            <span className="text-muted-foreground/60">|</span>
+            聚合命中规则，抽样预览原文，一键放行/重试/删除。
+          </span>
+        }
+        actions={
+          <>
+            <Button
+              variant="outline"
+              className="group gap-2 rounded-full bg-background/60"
+              onClick={() => refetch()}
+            >
+              <RefreshCw className={cn('h-3.5 w-3.5', isFetching ? 'animate-spin' : '')} />
+              刷新
+            </Button>
+            <div className="flex items-center gap-3 rounded-full border border-border/60 bg-background/60 backdrop-blur-md px-4 py-1.5 hover:border-primary/20 transition-colors shadow-sm">
+              <span className="text-xs font-bold text-muted-foreground">自动同步</span>
+              <Switch checked={autoRefresh} onCheckedChange={setAutoRefresh} className="scale-75 data-[state=checked]:bg-sky-500" />
+            </div>
+          </>
+        }
+        top={
+          <div className="pt-4 pb-2 flex flex-wrap items-center gap-2">
+            <Badge variant="secondary" className="bg-background/60 border border-border/60">
+              总隔离 {stats.total}
+            </Badge>
+            <Badge variant="secondary" className="bg-background/60 border border-border/60">
+              未处理 {stats.unreviewed}
+            </Badge>
+            <Badge variant="secondary" className="bg-background/60 border border-border/60">
+              已处理 {stats.reviewed}
+            </Badge>
+          </div>
+        }
+        toolbar={
+          <div className="space-y-3">
+            <div className="flex flex-col lg:flex-row lg:items-center gap-3 bg-background/70 backdrop-blur-xl border border-border/60 shadow-soft rounded-2xl p-3 transition-all duration-300 hover:shadow-strong hover:border-primary/20">
+              <div className="relative flex-1 group">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground group-hover:text-sky-500 dark:group-hover:text-sky-400 transition-colors" />
+                <Input
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  placeholder="搜索文件名..."
+                  className="pl-9 bg-transparent border-0 focus-visible:ring-0 text-foreground placeholder:text-muted-foreground h-10 rounded-xl"
+                />
+              </div>
+
+              <div className="flex items-center gap-3">
+                <div className="flex items-center gap-2 rounded-xl border border-border/60 bg-background/60 px-3 py-2">
+                  <span className="text-xs font-bold text-muted-foreground">隐藏已处理</span>
+                  <Switch checked={hideReviewed} onCheckedChange={setHideReviewed} className="scale-75 data-[state=checked]:bg-amber-500" />
+                </div>
+              </div>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setSelectedReason('all')}
+                className={cn(
+                  'px-3 py-1.5 rounded-full border text-xs font-bold transition-colors',
+                  selectedReason === 'all'
+                    ? 'bg-sky-600 text-white border-sky-600'
+                    : 'bg-background/60 border-border/60 text-muted-foreground hover:bg-accent hover:text-foreground'
+                )}
               >
-                <RefreshCw className={cn('h-3.5 w-3.5 transition-transform group-hover:rotate-180', isFetching ? 'animate-spin' : '')} />
-                刷新
-              </Button>
-              <div className="flex items-center gap-3 rounded-full border border-border/60 bg-background/60 backdrop-blur-md px-4 py-1.5 hover:border-primary/20 transition-colors shadow-sm">
-                <span className="text-xs font-bold text-muted-foreground">自动同步</span>
-                <Switch checked={autoRefresh} onCheckedChange={setAutoRefresh} className="scale-75 data-[state=checked]:bg-sky-500" />
-              </div>
-            </div>
-          </PageHeader>
-        </PageHeaderBar>
-
-        <div className="px-6 md:px-8 pt-4 pb-2 flex flex-wrap items-center gap-2">
-          <Badge variant="secondary" className="bg-background/60 border border-border/60">
-            总隔离 {stats.total}
-          </Badge>
-          <Badge variant="secondary" className="bg-background/60 border border-border/60">
-            未处理 {stats.unreviewed}
-          </Badge>
-          <Badge variant="secondary" className="bg-background/60 border border-border/60">
-            已处理 {stats.reviewed}
-          </Badge>
-        </div>
-
-        <div className="px-6 md:px-8 pb-4 flex-shrink-0 z-10">
-          <div className="flex flex-col lg:flex-row lg:items-center gap-3 bg-background/70 backdrop-blur-xl border border-border/60 shadow-soft rounded-2xl p-3 transition-all duration-300 hover:shadow-strong hover:border-primary/20">
-            <div className="relative flex-1 group">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground group-hover:text-sky-500 dark:group-hover:text-sky-400 transition-colors" />
-              <Input
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder="搜索文件名..."
-                className="pl-9 bg-transparent border-0 focus-visible:ring-0 text-foreground placeholder:text-muted-foreground h-10 rounded-xl"
-              />
-            </div>
-
-            <div className="flex items-center gap-3">
-              <div className="flex items-center gap-2 rounded-xl border border-border/60 bg-background/60 px-3 py-2">
-                <span className="text-xs font-bold text-muted-foreground">隐藏已处理</span>
-                <Switch checked={hideReviewed} onCheckedChange={setHideReviewed} className="scale-75 data-[state=checked]:bg-amber-500" />
-              </div>
+                全部原因
+              </button>
+              {sortedReasons.map((reason) => (
+                <button
+                  key={reason}
+                  type="button"
+                  onClick={() => setSelectedReason(reason)}
+                  className={cn(
+                    'px-3 py-1.5 rounded-full border text-xs font-bold transition-colors flex items-center gap-2',
+                    selectedReason === reason
+                      ? 'bg-amber-600 text-white border-amber-600'
+                      : 'bg-background/60 border-border/60 text-muted-foreground hover:bg-accent hover:text-foreground'
+                  )}
+                >
+                  <span>{reasonLabel(reason)}</span>
+                  <span className={cn(
+                    'px-1.5 py-0.5 rounded-full text-[10px] font-black',
+                    selectedReason === reason ? 'bg-white/20 text-white' : 'bg-muted text-muted-foreground'
+                  )}>
+                    {reasonCounts[reason] || 0}
+                  </span>
+                </button>
+              ))}
             </div>
           </div>
-        </div>
-
-        {/* Reason chips */}
-        <div className="px-6 md:px-8 pb-4 flex flex-wrap items-center gap-2">
-          <button
-            type="button"
-            onClick={() => setSelectedReason('all')}
-            className={cn(
-              'px-3 py-1.5 rounded-full border text-xs font-bold transition-colors',
-              selectedReason === 'all'
-                ? 'bg-sky-600 text-white border-sky-600'
-                : 'bg-background/60 border-border/60 text-muted-foreground hover:bg-accent hover:text-foreground'
-            )}
-          >
-            全部原因
-          </button>
-          {sortedReasons.map((reason) => (
-            <button
-              key={reason}
-              type="button"
-              onClick={() => setSelectedReason(reason)}
-              className={cn(
-                'px-3 py-1.5 rounded-full border text-xs font-bold transition-colors flex items-center gap-2',
-                selectedReason === reason
-                  ? 'bg-amber-600 text-white border-amber-600'
-                  : 'bg-background/60 border-border/60 text-muted-foreground hover:bg-accent hover:text-foreground'
-              )}
-            >
-              <span>{reasonLabel(reason)}</span>
-              <span className={cn(
-                'px-1.5 py-0.5 rounded-full text-[10px] font-black',
-                selectedReason === reason ? 'bg-white/20 text-white' : 'bg-muted text-muted-foreground'
-              )}>
-                {reasonCounts[reason] || 0}
-              </span>
-            </button>
-          ))}
-        </div>
-
-        <PageBody className="pb-10 z-10">
+        }
+        bodyClassName="pb-10 z-10"
+      >
           <div className="grid grid-cols-1 xl:grid-cols-[1.2fr_0.8fr] gap-4">
             <div className="space-y-2">
               {!filtered.length ? (
-                <div className="rounded-2xl border border-border bg-card/60 p-10 text-center text-muted-foreground">
+                <Panel variant="glass" className="rounded-2xl p-10 text-center text-muted-foreground">
                   当前筛选条件下没有隔离文档
-                </div>
+                </Panel>
               ) : (
-                <div className="rounded-2xl border border-border bg-card/60 overflow-hidden">
+                <Panel variant="glass" padding="none" className="rounded-2xl overflow-hidden">
                   <div className="divide-y divide-border/60">
                     {filtered.map((doc) => {
                       const active = doc.id === selectedId
@@ -499,11 +498,11 @@ export default function QuarantineQueuePage() {
                       )
                     })}
                   </div>
-                </div>
+                </Panel>
               )}
             </div>
 
-            <div className="rounded-2xl border border-border bg-card/60 p-5 h-fit">
+            <Panel variant="glass" className="rounded-2xl p-5 h-fit">
               {!selected ? (
                 <div className="text-sm text-muted-foreground">选择一条隔离记录查看详情</div>
               ) : (
@@ -622,9 +621,9 @@ export default function QuarantineQueuePage() {
                   </div>
                 </div>
               )}
-            </div>
+            </Panel>
           </div>
-        </PageBody>
+      </PageScaffold>
 
       <IngestionDetailDialog open={detailOpen} onOpenChange={setDetailOpen} documentId={detailDocumentId} />
 

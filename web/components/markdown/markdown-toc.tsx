@@ -5,8 +5,7 @@ import { useMemo } from 'react'
 import { cn } from '@/lib/utils'
 import { extractMarkdownHeadings, flashElementId, scrollToElementId } from '@/lib/markdown'
 
-const FLASH_CLASS =
-  'bg-indigo-50 dark:bg-indigo-900/20 ring-1 ring-indigo-200 dark:ring-indigo-700 rounded-md transition-colors'
+const FLASH_CLASS = 'bg-primary/10 ring-1 ring-primary/25 rounded-md transition-colors'
 
 export function MarkdownToc({
   markdown,
@@ -43,7 +42,7 @@ export function MarkdownToc({
 
   return (
     <nav className={cn('text-sm', className)} aria-label="Table of contents">
-      <div className="text-xs font-semibold text-slate-500 dark:text-slate-400 tracking-wide uppercase">
+      <div className="text-xs font-semibold text-muted-foreground tracking-wide uppercase">
         {title}
       </div>
       <ul className="mt-2 space-y-1">
@@ -54,7 +53,7 @@ export function MarkdownToc({
               onClick={() => navigate(h.id)}
               className={cn(
                 'w-full text-left text-[13px] leading-5 truncate',
-                'text-slate-600 dark:text-slate-300 hover:text-indigo-600 dark:hover:text-indigo-400'
+                'text-muted-foreground hover:text-primary'
               )}
               style={{ paddingLeft: `${Math.max(0, h.level - 1) * 12}px` }}
               title={h.text}
@@ -67,4 +66,3 @@ export function MarkdownToc({
     </nav>
   )
 }
-

@@ -657,8 +657,7 @@ export default function GraphPage() {
                    {!pathStartNode ? "请点击选择【起点】" : !pathEndNode ? "请点击选择【终点】" : "路径分析完成"}
                  </span>
                  <IconButton
-                   aria-label="退出路径分析"
-                   title="退出路径分析"
+                   label="退出路径分析"
                    onClick={resetPathMode}
                    className="ml-2 h-7 w-7 rounded-full text-white/90 hover:text-white hover:bg-white/10"
                  >
@@ -673,8 +672,7 @@ export default function GraphPage() {
                     正在连接: {connectSourceNode?.label} ... 请点击目标节点
                  </span>
                  <IconButton
-                   aria-label="退出连接模式"
-                   title="退出连接模式"
+                   label="退出连接模式"
                    onClick={resetConnectMode}
                    className="ml-2 h-7 w-7 rounded-full text-white/90 hover:text-white hover:bg-white/10"
                  >
@@ -689,8 +687,7 @@ export default function GraphPage() {
                     推理路径演示中... ({currentStepIndex + 1}/{explainSteps.length})
                  </span>
                  <IconButton
-                   aria-label="退出推理演示"
-                   title="退出推理演示"
+                   label="退出推理演示"
                    onClick={resetExplainMode}
                    className="ml-2 h-7 w-7 rounded-full text-white/90 hover:text-white hover:bg-white/10"
                  >

@@ -4,9 +4,7 @@
 import { AppFrame } from '@/components/app-frame'
 import { ProviderIcon } from '@/components/provider-icon'
 import { Card, CardContent } from '@/components/ui/card'
-import { PageHeader } from '@/components/ui/page-header'
-import { PageBody } from '@/components/ui/page-body'
-import { PageContainer } from '@/components/ui/page-container'
+import { PageScaffold } from '@/components/ui/page-scaffold'
 import { Grid3X3 } from 'lucide-react'
 
 const providers = [
@@ -29,17 +27,13 @@ const providers = [
 export default function LogosPreviewPage() {
   return (
     <AppFrame>
-      <PageHeader
+      <PageScaffold
         title="品牌 Logo 预览"
         badge="LOGOS"
         icon={Grid3X3}
         iconColor="text-cyan-600 dark:text-cyan-400"
         description="查看所有模型提供商的图标展示与适配效果"
-        className="mx-auto w-full max-w-6xl"
-      />
-
-      <PageBody>
-        <PageContainer>
+      >
 
         {/* Logo 网格 */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-12">
@@ -193,8 +187,7 @@ export default function LogosPreviewPage() {
             </ul>
           </CardContent>
         </Card>
-        </PageContainer>
-      </PageBody>
+      </PageScaffold>
     </AppFrame>
   )
 }

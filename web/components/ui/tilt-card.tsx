@@ -1,7 +1,7 @@
 "use client"
 
 import React, { useRef } from "react"
-import { motion, useMotionValue, useSpring, useTransform } from "framer-motion"
+import { motion, useMotionValue, useReducedMotion, useSpring, useTransform } from "framer-motion"
 import { cn } from "@/lib/utils"
 
 interface TiltCardProps {
@@ -14,6 +14,7 @@ interface TiltCardProps {
 
 export function TiltCard({ children, className, onClick, onMouseEnter, onMouseLeave }: TiltCardProps) {
   const ref = useRef<HTMLDivElement>(null)
+  const shouldReduceMotion = useReducedMotion()
 
   const x = useMotionValue(0)
   const y = useMotionValue(0)
@@ -58,13 +59,12 @@ export function TiltCard({ children, className, onClick, onMouseEnter, onMouseLe
   return (
     <motion.div
       ref={ref}
-      onMouseMove={handleMouseMove}
+      onMouseMove={shouldReduceMotion ? undefined : handleMouseMove}
       onMouseEnter={onMouseEnter}
-      onMouseLeave={handleMouseLeave}
+      onMouseLeave={shouldReduceMotion ? onMouseLeave : handleMouseLeave}
       onClick={onClick}
       style={{
-        rotateX,
-        rotateY,
+        ...(shouldReduceMotion ? {} : { rotateX, rotateY }),
         transformStyle: "preserve-3d",
       }}
       className={cn("relative transition-all duration-200 ease-out will-change-transform perspective-1000", className)}
@@ -75,12 +75,14 @@ export function TiltCard({ children, className, onClick, onMouseEnter, onMouseLe
       </div>
 
       {/* Sheen Effect */}
-      <motion.div 
-        className="absolute inset-0 z-20 pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity duration-500 rounded-xl mix-blend-overlay"
-        style={{
-            background: `radial-gradient(circle at ${sheenX} ${sheenY}, rgba(255,255,255,0.3) 0%, transparent 60%)`
-        }}
-      />
+      {!shouldReduceMotion && (
+        <motion.div
+          className="absolute inset-0 z-20 pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity duration-500 rounded-xl mix-blend-overlay"
+          style={{
+            background: `radial-gradient(circle at ${sheenX} ${sheenY}, rgba(255,255,255,0.3) 0%, transparent 60%)`,
+          }}
+        />
+      )}
     </motion.div>
   )
 }

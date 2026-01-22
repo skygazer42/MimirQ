@@ -718,18 +718,20 @@ export function DataGovernancePanel() {
   if (isLoaded && files.length === 0) {
     return (
       <div className="flex-1 flex flex-col min-h-0">
-        <PageHeader
-          title="数据治理工作台"
-          badge="Governance"
-          icon={ShieldCheck}
-          iconColor="text-sky-400"
-          description={
-            <span className="flex items-center gap-2">
-              <span className="w-1.5 h-1.5 rounded-full bg-sky-500/10 dark:bg-sky-500/20 animate-pulse" />
-              智能文档清洗、标注与结构化处理中心
-            </span>
-          }
-        />
+        <div className="px-6 md:px-8 pt-6 md:pt-8 pb-5 md:pb-6 flex-shrink-0 relative z-10">
+          <PageHeader
+            title="数据治理工作台"
+            badge="Governance"
+            icon={ShieldCheck}
+            iconColor="text-sky-400"
+            description={
+              <span className="flex items-center gap-2">
+                <span className="w-1.5 h-1.5 rounded-full bg-sky-500/10 dark:bg-sky-500/20 animate-pulse" />
+                智能文档清洗、标注与结构化处理中心
+              </span>
+            }
+          />
+        </div>
 
         <div className="flex-1 flex items-center justify-center p-6 relative">
           <div
@@ -828,51 +830,53 @@ export function DataGovernancePanel() {
 
   return (
     <div className="flex-1 flex flex-col bg-background text-foreground min-h-0">
-      <PageHeader
-        title="数据治理工作台"
-        badge="Workbench"
-        icon={ShieldCheck}
-        iconColor="text-sky-400"
-        description={
-          <span className="flex items-center gap-2">
-            <span className="w-1.5 h-1.5 rounded-full bg-sky-500/10 dark:bg-sky-500/20 animate-pulse" />
-            智能文档结构化处理与质量修复
-          </span>
-        }
-      >
-        <div className="flex items-center gap-3">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleReset}
-            disabled={!governanceState || !governanceState.isModified}
-            className="gap-1.5 h-8 text-xs"
-          >
-            <RotateCcw className="w-3.5 h-3.5" />
-            重置
-          </Button>
-          <Button
-            size="sm"
-            onClick={handleSave}
-            disabled={!governanceState}
-            className="gap-2 h-8 text-xs bg-sky-600 hover:bg-sky-500/10 dark:bg-sky-500/20 text-white shadow-[0_0_20px_-5px_rgba(14,165,233,0.4)] border border-sky-400/20"
-          >
-            <Save className="w-3.5 h-3.5" />
-            保存
-          </Button>
-          <div className="w-px h-4 bg-border dark:bg-card/10 mx-1" />
-          <Button
-            variant="default"
-            size="sm"
-            onClick={handlePushToChunkPreview}
-            disabled={!isLoaded || files.length === 0}
-            className="gap-2 h-8 text-xs bg-indigo-600 hover:bg-indigo-500 text-white shadow-[0_0_20px_-5px_rgba(99,102,241,0.4)] border border-indigo-400/20"
-          >
-            <Layers className="w-3.5 h-3.5" />
-            推送切块预览
-          </Button>
-        </div>
-      </PageHeader>
+      <div className="px-6 md:px-8 pt-6 md:pt-8 pb-5 md:pb-6 flex-shrink-0 relative z-10">
+        <PageHeader
+          title="数据治理工作台"
+          badge="Workbench"
+          icon={ShieldCheck}
+          iconColor="text-sky-400"
+          description={
+            <span className="flex items-center gap-2">
+              <span className="w-1.5 h-1.5 rounded-full bg-sky-500/10 dark:bg-sky-500/20 animate-pulse" />
+              智能文档结构化处理与质量修复
+            </span>
+          }
+        >
+          <div className="flex items-center gap-3">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleReset}
+              disabled={!governanceState || !governanceState.isModified}
+              className="gap-1.5 h-8 text-xs"
+            >
+              <RotateCcw className="w-3.5 h-3.5" />
+              重置
+            </Button>
+            <Button
+              size="sm"
+              onClick={handleSave}
+              disabled={!governanceState}
+              className="gap-2 h-8 text-xs bg-sky-600 hover:bg-sky-500/10 dark:bg-sky-500/20 text-white shadow-[0_0_20px_-5px_rgba(14,165,233,0.4)] border border-sky-400/20"
+            >
+              <Save className="w-3.5 h-3.5" />
+              保存
+            </Button>
+            <div className="w-px h-4 bg-border dark:bg-card/10 mx-1" />
+            <Button
+              variant="default"
+              size="sm"
+              onClick={handlePushToChunkPreview}
+              disabled={!isLoaded || files.length === 0}
+              className="gap-2 h-8 text-xs bg-indigo-600 hover:bg-indigo-500 text-white shadow-[0_0_20px_-5px_rgba(99,102,241,0.4)] border border-indigo-400/20"
+            >
+              <Layers className="w-3.5 h-3.5" />
+              推送切块预览
+            </Button>
+          </div>
+        </PageHeader>
+      </div>
 
       <div className="flex-1 flex overflow-hidden min-h-0 relative bg-background">
         {/* 左侧文件列表 */}

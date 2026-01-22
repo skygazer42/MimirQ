@@ -209,13 +209,6 @@ export function Navbar({
           isSidebarOpen ? 'w-[280px] translate-x-0' : 'w-[280px] -translate-x-full md:w-0 md:translate-x-0 md:overflow-hidden'
         )}
       >
-        {/* Skip link (keyboard accessibility) */}
-        <a
-          href="#main-content"
-          className="sr-only focus:not-sr-only focus:fixed focus:top-4 focus:left-4 focus:z-[60] focus:rounded-lg focus:bg-background focus:px-3 focus:py-2 focus:text-foreground focus:shadow-strong focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 focus:ring-offset-background"
-        >
-          跳到主要内容
-        </a>
         {/* Logo 区域 */}
         <div className="h-16 px-6 border-b border-border flex items-center gap-3">
           <Link href="/" className="flex items-center gap-3 group">

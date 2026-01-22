@@ -28,9 +28,7 @@ import { Plus, Edit, Trash2, Copy, Check, X, Eye, Search, Filter, Wand2 } from '
 import { toast } from 'sonner'
 import { KgExtractPromptSettings } from '@/components/kg-extract-prompt-settings'
 import { AppFrame } from '@/components/app-frame'
-import { PageHeader } from '@/components/ui/page-header'
-import { PageBody } from '@/components/ui/page-body'
-import { PageContainer } from '@/components/ui/page-container'
+import { PageScaffold } from '@/components/ui/page-scaffold'
 
 export default function PromptsPage() {
   const [templates, setTemplates] = useState<PromptTemplate[]>([])
@@ -253,25 +251,22 @@ export default function PromptsPage() {
 
   return (
     <AppFrame>
-      <PageHeader
+      <PageScaffold
         title="提示词模板"
         badge="PROMPTS"
         icon={Wand2}
         iconColor="text-indigo-600 dark:text-indigo-400"
         description="创建和管理您的 RAG 对话提示词模板"
-        className="mx-auto w-full max-w-6xl"
+        actions={
+          <Button onClick={handleCreate} className="gap-2">
+            <Plus className="w-4 h-4" />
+            创建模板
+          </Button>
+        }
       >
-        <Button onClick={handleCreate} className="gap-2">
-          <Plus className="w-4 h-4" />
-          创建模板
-        </Button>
-      </PageHeader>
-
-      <PageBody>
-        <PageContainer>
-          <div className="mb-6">
-            <KgExtractPromptSettings templates={templates} />
-          </div>
+        <div className="mb-6">
+          <KgExtractPromptSettings templates={templates} />
+        </div>
 
           {/* Filters & Search */}
           <div className="mb-6 flex flex-col sm:flex-row gap-4">
@@ -687,8 +682,7 @@ export default function PromptsPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-        </PageContainer>
-      </PageBody>
+      </PageScaffold>
     </AppFrame>
   )
 }

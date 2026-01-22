@@ -13,8 +13,7 @@ import { API_BASE_URL, toAbsoluteBackendUrl } from '@/lib/env'
 import { extractMarkdownHeadings, flashElementId, scrollToElementId } from '@/lib/markdown'
 import { getAccessToken, getTenantId } from '@/lib/auth-storage'
 
-const FLASH_CLASS =
-  'bg-indigo-50 dark:bg-indigo-900/20 ring-1 ring-indigo-200 dark:ring-indigo-700 rounded-md transition-colors'
+const FLASH_CLASS = 'bg-primary/10 ring-1 ring-primary/25 rounded-md transition-colors'
 
 const MARKDOWN_SANITIZE_SCHEMA: RehypeSanitizeOptions = {
   ...defaultSchema,
@@ -158,7 +157,7 @@ export function MarkdownRenderer({
                 scrollToElementId(id)
                 flashElementId(id, FLASH_CLASS)
               }}
-              className="ml-2 no-underline text-slate-400 hover:text-slate-600 opacity-0 group-hover:opacity-100"
+              className="ml-2 no-underline text-muted-foreground/60 hover:text-primary opacity-0 group-hover:opacity-100"
               aria-label="Jump to section"
             >
               #
@@ -198,7 +197,7 @@ export function MarkdownRenderer({
                     scrollToElementId(decoded)
                     flashElementId(decoded, FLASH_CLASS)
                   }}
-                  className="underline decoration-slate-300 underline-offset-2 hover:decoration-slate-500"
+                  className="underline decoration-border/70 underline-offset-2 hover:decoration-border"
                 >
                   {children}
                 </a>
@@ -210,7 +209,7 @@ export function MarkdownRenderer({
                 href={rawHref}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="underline decoration-slate-300 underline-offset-2 hover:decoration-slate-500"
+                className="underline decoration-border/70 underline-offset-2 hover:decoration-border"
               >
                 {children}
               </a>
@@ -232,7 +231,7 @@ export function MarkdownRenderer({
                 width={1200}
                 height={800}
                 unoptimized
-                className="my-2 w-full h-auto max-h-96 object-contain rounded-lg border border-slate-200/70 dark:border-slate-700 bg-white dark:bg-slate-900"
+                className="my-2 w-full h-auto max-h-96 object-contain rounded-lg border border-border/70 bg-card shadow-sm"
               />
             )
           },
@@ -250,4 +249,3 @@ export function MarkdownRenderer({
     </div>
   )
 }
-

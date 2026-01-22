@@ -1,12 +1,12 @@
 "use client"
 
 import * as React from "react"
-import { Check, Moon, Sun, Settings2, RefreshCw } from "lucide-react"
+import { Moon, Sun, Settings2, RefreshCw } from "lucide-react"
 import { useTheme } from "next-themes"
 import chroma from "chroma-js"
 
 import { cn } from "@/lib/utils"
-import { Button } from "@/components/ui/button"
+import { IconButton } from "@/components/ui/icon-button"
 import {
   Popover,
   PopoverContent,
@@ -64,9 +64,13 @@ export function ThemeCustomizer() {
   return (
     <Popover>
       <PopoverTrigger asChild>
-        <Button variant="outline" size="icon" className="fixed bottom-4 right-4 z-50 rounded-full h-12 w-12 shadow-2xl bg-background/80 backdrop-blur-md border-primary/20 hover:border-primary transition-all duration-300 hover:rotate-90">
+        <IconButton
+          label="打开主题定制"
+          variant="outline"
+          className="fixed bottom-4 right-4 z-50 rounded-full h-12 w-12 shadow-2xl bg-background/80 backdrop-blur-md border-primary/20 hover:border-primary transition-all duration-300 hover:rotate-90"
+        >
           <Settings2 className="h-6 w-6 text-primary" />
-        </Button>
+        </IconButton>
       </PopoverTrigger>
       <PopoverContent className="w-80 p-4" align="end" sideOffset={10}>
         <div className="space-y-4">
@@ -77,9 +81,13 @@ export function ThemeCustomizer() {
                 自定义界面颜色与风格
               </p>
             </div>
-            <Button variant="ghost" size="icon" onClick={() => setColor(PRESET_COLORS[0].value)}>
+            <IconButton
+              label="重置主色调"
+              variant="ghost"
+              onClick={() => setColor(PRESET_COLORS[0].value)}
+            >
                 <RefreshCw className="h-4 w-4" />
-            </Button>
+            </IconButton>
           </div>
           
           <div className="space-y-2">
@@ -89,6 +97,8 @@ export function ThemeCustomizer() {
                 <button
                   key={preset.name}
                   onClick={() => setColor(preset.value)}
+                  aria-label={`选择主色调：${preset.name}`}
+                  title={preset.name}
                   className={cn(
                     "flex h-8 w-full items-center justify-center rounded-md border border-muted bg-popover hover:bg-accent hover:text-accent-foreground transition-all",
                     color === preset.value && "border-primary ring-2 ring-primary/20"
