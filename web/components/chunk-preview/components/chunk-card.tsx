@@ -20,8 +20,8 @@ export function ChunkCard({ chunk, index, isHovered, onMouseEnter, onMouseLeave 
       className={cn(
         'group relative bg-card/85 p-4 rounded-xl border transition-all duration-200 cursor-default backdrop-blur',
         isHovered
-          ? 'border-sky-400/70 shadow-lg shadow-sky-500/10 ring-1 ring-sky-500/20 -translate-y-0.5 z-10'
-          : 'border-border hover:border-sky-300/50 hover:shadow-md hover:shadow-sky-500/10'
+          ? 'border-primary/35 shadow-lg shadow-primary/10 ring-1 ring-ring/15 motion-safe:-translate-y-0.5 z-10'
+          : 'border-border hover:border-primary/25 hover:shadow-md hover:shadow-primary/10'
       )}
       onMouseEnter={onMouseEnter}
       onMouseLeave={onMouseLeave}
@@ -32,8 +32,8 @@ export function ChunkCard({ chunk, index, isHovered, onMouseEnter, onMouseLeave 
             className={cn(
               'text-[10px] font-mono font-bold px-1.5 py-0.5 rounded',
               isHovered
-                ? 'bg-sky-500/20 text-sky-700 dark:text-sky-300'
-                : 'bg-sky-500/10 text-sky-700 dark:text-sky-300'
+                ? 'bg-primary/15 text-primary'
+                : 'bg-primary/10 text-primary'
             )}
           >
             #{index + 1}

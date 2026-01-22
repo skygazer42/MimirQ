@@ -46,14 +46,15 @@ export function OriginalPreview() {
     if (previewMode !== 'raw') return
     const el = highlightRef.current
     if (!el) return
-    el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    const prefersReducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches
+    el.scrollIntoView({ behavior: prefersReducedMotion ? 'auto' : 'smooth', block: 'center' })
   }, [hoveredChunkIndex, previewMode])
 
   return (
-    <div className="flex-1 flex flex-col min-w-0 border-r border-border/60 bg-card/85 backdrop-blur shadow-[inset_-1px_0_0_rgba(255,255,255,0.35)] dark:shadow-[inset_-1px_0_0_rgba(15,23,42,0.4)]">
+    <div className="flex-1 flex flex-col min-w-0 border-r border-border/60 bg-card/85 backdrop-blur">
       <div className="h-10 border-b border-border/60 bg-card/80 flex items-center justify-between px-4 shrink-0 backdrop-blur">
-        <span className="text-xs font-semibold text-sky-600 dark:text-sky-300 flex items-center gap-2">
-          <FileText className="w-3.5 h-3.5 text-sky-600 dark:text-sky-300" />
+        <span className="text-xs font-semibold text-primary flex items-center gap-2">
+          <FileText className="w-3.5 h-3.5 text-primary" />
           原文内容
         </span>
         <div className="flex items-center gap-2">
@@ -81,7 +82,7 @@ export function OriginalPreview() {
               previewMode === 'rendered' ? (
                 <div className="mx-auto w-full max-w-6xl flex gap-8">
                   <div className="min-w-0 flex-1">
-                    <div className="prose prose-slate dark:prose-invert max-w-none prose-headings:text-foreground prose-p:text-muted-foreground prose-a:text-sky-600 dark:prose-a:text-sky-300 prose-code:text-sky-600 dark:prose-code:text-sky-300 prose-code:bg-sky-500/10 dark:prose-code:bg-slate-800 prose-code:px-1 prose-code:py-0.5 prose-code:rounded prose-pre:bg-slate-900">
+                    <div className="prose prose-slate dark:prose-invert max-w-none prose-headings:text-foreground prose-p:text-muted-foreground prose-a:text-primary prose-code:text-primary prose-code:bg-primary/10 dark:prose-code:bg-muted prose-code:px-1 prose-code:py-0.5 prose-code:rounded prose-pre:bg-muted">
                       <MarkdownRenderer markdown={previewData.original_text} autoScrollToHash />
                     </div>
                     <p className="mt-4 text-[11px] text-muted-foreground">
@@ -103,7 +104,7 @@ export function OriginalPreview() {
                       <span className="opacity-40">{getHighlightedText.before}</span>
                       <mark
                         ref={highlightRef}
-                        className="bg-sky-500/20 dark:bg-sky-500/30 text-foreground rounded px-0.5 py-0.5 mx-0.5 shadow-sm font-medium"
+                        className="bg-primary/15 text-foreground rounded px-0.5 py-0.5 mx-0.5 shadow-sm font-medium"
                       >
                         {getHighlightedText.highlighted}
                       </mark>
@@ -123,7 +124,7 @@ export function OriginalPreview() {
             )
           ) : isLoading ? (
             <div className="h-full flex flex-col items-center justify-center text-muted-foreground gap-2">
-              <Loader2 className="w-8 h-8 animate-spin opacity-20" />
+              <Loader2 className="w-8 h-8 animate-spin motion-reduce:animate-none opacity-20" />
               <p className="text-xs">加载中...</p>
             </div>
           ) : error ? (

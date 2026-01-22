@@ -641,46 +641,46 @@ export default function KnowledgePage() {
           {/* 检索测试 */}
           {activeTab === 'retrieval' && (
             <div className="max-w-4xl mx-auto animate-in fade-in slide-in-from-bottom-2 duration-500">
-              <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm p-8 text-center relative overflow-hidden">
-                <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-sky-500 via-teal-500 to-pink-500" />
+              <Panel padding="none" className="rounded-2xl p-8 text-center relative overflow-hidden">
+                <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-primary via-primary/60 to-primary/20" />
                 
                 <div className="mb-8">
-                  <div className="w-16 h-16 bg-sky-50 dark:bg-sky-900/20 text-sky-600 dark:text-sky-400 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-sm">
+                  <div className="w-16 h-16 bg-primary/10 text-primary rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-soft">
                     <Sparkles className="w-8 h-8" />
                   </div>
-                  <h3 className="text-xl font-bold text-slate-900 dark:text-white">语义检索测试</h3>
-                  <p className="text-slate-500 dark:text-slate-400 mt-2">
+                  <h3 className="text-xl font-bold text-foreground">语义检索测试</h3>
+                  <p className="text-muted-foreground mt-2">
                     输入您的问题，模拟 RAG 系统的检索召回过程
                   </p>
                 </div>
 
                 <div className="max-w-2xl mx-auto relative mb-10">
                   <div className={cn(
-                    "flex items-center bg-white dark:bg-slate-800 border-2 border-slate-100 dark:border-slate-700 rounded-2xl p-2 shadow-sm transition-all duration-300",
-                    "focus-within:border-sky-500 dark:focus-within:border-sky-500 focus-within:ring-4 focus-within:ring-sky-50/50 dark:focus-within:ring-sky-900/20 focus-within:shadow-md"
+                    "flex items-center bg-background/60 border-2 border-border/60 rounded-2xl p-2 shadow-soft transition-all duration-300",
+                    "focus-within:border-primary/60 focus-within:ring-4 focus-within:ring-ring/15 focus-within:shadow-strong/10"
                   )}>
-                    <Search className="w-5 h-5 text-slate-400 ml-3" />
+                    <Search className="w-5 h-5 text-muted-foreground ml-3" />
                     <input
                       type="text"
                       value={searchQuery}
                       onChange={(e) => setSearchQuery(e.target.value)}
                       onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
                       placeholder="例如：MimirQ 支持哪些文档格式？"
-                      className="flex-1 px-4 py-3 bg-transparent outline-none text-slate-900 dark:text-white placeholder:text-slate-400 text-lg"
+                      className="flex-1 px-4 py-3 bg-transparent outline-none text-foreground placeholder:text-muted-foreground/60 text-lg"
                     />
                     <Button
                       onClick={handleSearch}
                       disabled={isSearching || !searchQuery.trim()}
-                      className="rounded-xl px-6 h-12 text-base font-medium bg-sky-600 hover:bg-sky-700 shadow-lg shadow-sky-200 dark:shadow-sky-900/20"
+                      className="rounded-xl px-6 h-12 text-base font-medium shadow-glow border border-primary/20"
                     >
-                      {isSearching ? <Loader2 className="w-5 h-5 animate-spin" /> : "开始检索"}
+                      {isSearching ? <Loader2 className="w-5 h-5 animate-spin motion-reduce:animate-none" /> : "开始检索"}
                     </Button>
                   </div>
                 </div>
 
                 {searchError && (
                   <div className="max-w-2xl mx-auto mb-6 text-left">
-                    <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl p-4 text-sm text-red-700 dark:text-red-300">
+                    <div className="rounded-xl border border-destructive/25 bg-destructive/10 p-4 text-sm text-destructive">
                       {searchError}
                     </div>
                   </div>
@@ -689,20 +689,20 @@ export default function KnowledgePage() {
                 {searchResults.length > 0 && (
                   <div className="text-left space-y-4 animate-in fade-in slide-in-from-bottom-4">
                     <div className="flex items-center justify-between px-2">
-                      <h4 className="text-sm font-semibold text-slate-900 dark:text-white">召回结果</h4>
-                      <span className="text-xs text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-800 px-2 py-1 rounded-full">
+                      <h4 className="text-sm font-semibold text-foreground">召回结果</h4>
+                      <span className="text-xs text-muted-foreground bg-muted/60 border border-border/60 px-2 py-1 rounded-full">
                         Top {searchResults.length}
                       </span>
                     </div>
 
                     {searchQueryForRetrieval && searchQueryForRetrieval !== searchQuery.trim() && (
-                      <div className="px-2 text-xs text-slate-500 dark:text-slate-400">
+                      <div className="px-2 text-xs text-muted-foreground">
                         实际检索 Query：<span className="font-mono">{searchQueryForRetrieval}</span>
                       </div>
                     )}
 
                     {searchMetrics && (
-                      <div className="px-2 text-xs text-slate-500 dark:text-slate-400">
+                      <div className="px-2 text-xs text-muted-foreground">
                         Metrics：<span className="font-mono">{JSON.stringify(searchMetrics)}</span>
                       </div>
                     )}
@@ -710,30 +710,30 @@ export default function KnowledgePage() {
                     {searchResults.map((result, index) => (
                       <div
                         key={`${result.document_id}-${index}`}
-                        className="group p-5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl hover:border-sky-300 dark:hover:border-sky-600 hover:shadow-md hover:shadow-sky-50 dark:hover:shadow-sky-900/10 transition-all duration-300 relative overflow-hidden"
+                        className="group p-5 bg-card border border-border/60 rounded-xl hover:border-primary/30 hover:shadow-strong/10 transition-all duration-300 relative overflow-hidden"
                       >
-                         <div className="absolute left-0 top-0 bottom-0 w-1 bg-sky-500 opacity-0 group-hover:opacity-100 transition-opacity" />
+                         <div className="absolute left-0 top-0 bottom-0 w-1 bg-primary/80 opacity-0 group-hover:opacity-100 transition-opacity" />
                         <div className="flex items-start gap-4">
-                          <div className="flex-shrink-0 w-8 h-8 rounded-lg bg-sky-50 dark:bg-sky-900/20 text-sky-600 dark:text-sky-400 flex items-center justify-center font-bold text-sm">
+                          <div className="flex-shrink-0 w-8 h-8 rounded-lg bg-primary/10 text-primary flex items-center justify-center font-bold text-sm">
                             {index + 1}
                           </div>
                           <div className="flex-1">
-                            <p className="text-slate-800 dark:text-slate-200 leading-relaxed text-sm mb-3">
+                            <p className="text-foreground/90 leading-relaxed text-sm mb-3">
                               {result.chunk_content}
                             </p>
                             <div className="flex items-center gap-3 text-xs">
-                              <span className="flex items-center gap-1 text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-800 px-2 py-1 rounded-md">
+                              <span className="flex items-center gap-1 text-muted-foreground bg-muted/60 border border-border/60 px-2 py-1 rounded-md">
                                 <FileIcon className="w-3 h-3" />
                                 {result.document_name}
                               </span>
-                              <span className="text-slate-300 dark:text-slate-600">|</span>
-                              <span className="font-medium text-sky-600 dark:text-sky-400">
+                              <span className="text-muted-foreground/40">|</span>
+                              <span className="font-medium text-primary">
                                 相似度 {(result.relevance_score * 100).toFixed(0)}%
                               </span>
                               {typeof result.page_number === 'number' && (
                                 <>
-                                  <span className="text-slate-300 dark:text-slate-600">|</span>
-                                  <span className="text-slate-500 dark:text-slate-400">P.{result.page_number}</span>
+                                  <span className="text-muted-foreground/40">|</span>
+                                  <span className="text-muted-foreground">P.{result.page_number}</span>
                                 </>
                               )}
                             </div>
@@ -743,17 +743,17 @@ export default function KnowledgePage() {
                     ))}
                   </div>
                 )}
-              </div>
+              </Panel>
             </div>
           )}
 
           {/* 设置 */}
           {activeTab === 'settings' && (
             <div className="max-w-3xl mx-auto animate-in fade-in slide-in-from-bottom-2 duration-500">
-              <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
-                <div className="p-6 border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/50">
-                  <h3 className="text-lg font-bold text-slate-900 dark:text-white">知识库参数配置</h3>
-                  <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
+              <Panel padding="none" className="rounded-xl overflow-hidden">
+                <div className="p-6 border-b border-border/60 bg-muted/20">
+                  <h3 className="text-lg font-bold text-foreground">知识库参数配置</h3>
+                  <p className="text-sm text-muted-foreground mt-1">
                     调整 Embedding 模型、检索策略及相似度阈值
                   </p>
                 </div>
@@ -761,7 +761,7 @@ export default function KnowledgePage() {
                 <div className="p-8 space-y-8">
                   {/* Embedding 模型 */}
                   <div className="space-y-3">
-                    <label className="text-sm font-semibold text-slate-900 dark:text-slate-200">
+                    <label className="text-sm font-semibold text-foreground">
                       Embedding 模型
                     </label>
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
@@ -770,21 +770,21 @@ export default function KnowledgePage() {
                           <input type="radio" name="model" id={model} className="peer sr-only" defaultChecked={model === 'text-embedding-v3'} />
                           <label
                             htmlFor={model}
-                            className="flex flex-col p-4 border-2 border-slate-100 dark:border-slate-800 rounded-xl cursor-pointer transition-all hover:border-slate-300 dark:hover:border-slate-600 peer-checked:border-sky-500 dark:peer-checked:border-sky-500 peer-checked:bg-sky-50/30 dark:peer-checked:bg-sky-900/10"
+                            className="flex flex-col p-4 border-2 border-border/60 rounded-xl cursor-pointer transition-colors hover:border-border peer-checked:border-primary peer-checked:bg-primary/10"
                           >
-                            <span className="font-medium text-sm text-slate-900 dark:text-white">{model}</span>
-                            <span className="text-xs text-slate-500 dark:text-slate-400 mt-1">768 维 / 中英支持</span>
+                            <span className="font-medium text-sm text-foreground">{model}</span>
+                            <span className="text-xs text-muted-foreground mt-1">768 维 / 中英支持</span>
                           </label>
                         </div>
                       ))}
                     </div>
                   </div>
 
-                  <div className="h-px bg-slate-100 dark:bg-slate-800" />
+                  <div className="h-px bg-border/60" />
 
                   {/* 检索模式 */}
                   <div className="space-y-3">
-                     <label className="text-sm font-semibold text-slate-900 dark:text-slate-200">
+                    <label className="text-sm font-semibold text-foreground">
                       检索模式
                     </label>
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -797,13 +797,13 @@ export default function KnowledgePage() {
                           <input type="radio" name="retrieval_mode" id={mode.value} className="peer sr-only" defaultChecked={mode.value === 'hybrid'} />
                           <label
                             htmlFor={mode.value}
-                            className="flex flex-col p-4 border-2 border-slate-100 dark:border-slate-800 rounded-xl cursor-pointer transition-all hover:border-slate-300 dark:hover:border-slate-600 peer-checked:border-sky-500 dark:peer-checked:border-sky-500 peer-checked:bg-sky-50/30 dark:peer-checked:bg-sky-900/10 h-full"
+                            className="flex flex-col p-4 border-2 border-border/60 rounded-xl cursor-pointer transition-colors hover:border-border peer-checked:border-primary peer-checked:bg-primary/10 h-full"
                           >
                             <div className="flex items-center gap-2 mb-2">
-                              <mode.icon className="w-4 h-4 text-sky-600 dark:text-sky-400" />
-                              <span className="font-medium text-sm text-slate-900 dark:text-white">{mode.label}</span>
+                              <mode.icon className="w-4 h-4 text-primary" />
+                              <span className="font-medium text-sm text-foreground">{mode.label}</span>
                             </div>
-                            <span className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
+                            <span className="text-xs text-muted-foreground leading-relaxed">
                               {mode.desc}
                             </span>
                           </label>
@@ -812,41 +812,41 @@ export default function KnowledgePage() {
                     </div>
                   </div>
 
-                  <div className="h-px bg-slate-100 dark:bg-slate-800" />
+                  <div className="h-px bg-border/60" />
 
                   {/* 阈值参数 */}
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                     <div className="space-y-3">
                       <div className="flex justify-between">
-                         <label className="text-sm font-semibold text-slate-900 dark:text-slate-200">召回数量 (Top K)</label>
-                         <span className="text-sm font-mono text-sky-600 dark:text-sky-400">5</span>
+                         <label className="text-sm font-semibold text-foreground">召回数量 (Top K)</label>
+                         <span className="text-sm font-mono text-primary">5</span>
                       </div>
-                      <input type="range" min="1" max="20" defaultValue="5" className="w-full h-2 bg-slate-100 dark:bg-slate-800 rounded-lg appearance-none cursor-pointer accent-sky-600" />
-                      <p className="text-xs text-slate-500 dark:text-slate-400">
+                      <input type="range" min="1" max="20" defaultValue="5" className="w-full h-2 bg-muted rounded-lg appearance-none cursor-pointer accent-primary" />
+                      <p className="text-xs text-muted-foreground">
                         单次检索返回的最大片段数，建议 3-8 之间
                       </p>
                     </div>
 
                     <div className="space-y-3">
                       <div className="flex justify-between">
-                         <label className="text-sm font-semibold text-slate-900 dark:text-slate-200">相似度阈值</label>
-                         <span className="text-sm font-mono text-sky-600 dark:text-sky-400">0.7</span>
+                         <label className="text-sm font-semibold text-foreground">相似度阈值</label>
+                         <span className="text-sm font-mono text-primary">0.7</span>
                       </div>
-                      <input type="range" min="0" max="1" step="0.1" defaultValue="0.7" className="w-full h-2 bg-slate-100 dark:bg-slate-800 rounded-lg appearance-none cursor-pointer accent-sky-600" />
-                      <p className="text-xs text-slate-500 dark:text-slate-400">
+                      <input type="range" min="0" max="1" step="0.1" defaultValue="0.7" className="w-full h-2 bg-muted rounded-lg appearance-none cursor-pointer accent-primary" />
+                      <p className="text-xs text-muted-foreground">
                         过滤低相关度的结果，值越大匹配越精准
                       </p>
                     </div>
                   </div>
                 </div>
 
-                <div className="p-6 bg-slate-50 dark:bg-slate-900 border-t border-slate-100 dark:border-slate-800 flex justify-end">
-                   <Button className="gap-2 bg-slate-900 dark:bg-white text-white dark:text-slate-900 hover:bg-slate-800 dark:hover:bg-slate-100">
+                <div className="p-6 bg-muted/20 border-t border-border/60 flex justify-end">
+                   <Button className="gap-2">
                       <Settings className="w-4 h-4" />
                       保存所有更改
                     </Button>
                 </div>
-              </div>
+              </Panel>
             </div>
           )}
         </PageScaffold>

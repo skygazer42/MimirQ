@@ -84,16 +84,16 @@ export function Sidebar() {
         return <AlertCircle className="h-4 w-4 text-destructive" />
       case 'processing':
       case 'pending':
-        return <Loader2 className="h-4 w-4 text-primary animate-spin" />
+        return <Loader2 className="h-4 w-4 text-primary animate-spin motion-reduce:animate-none" />
       default:
         return <Clock className="h-4 w-4 text-muted-foreground" />
     }
   }
 
   return (
-    <aside className="w-80 h-screen glass border-r border-white/10 flex flex-col shadow-[1px_0_30px_rgba(0,0,0,0.03)] transition-all duration-300 relative z-20">
+    <aside className="w-80 h-screen glass border-r border-border/60 flex flex-col shadow-strong transition-all duration-300 relative z-20">
       {/* 头部 - 增加空间感 */}
-      <div className="p-6 border-b border-white/10">
+      <div className="p-6 border-b border-border/60">
         <div className="flex items-center justify-between mb-6">
           <div className="flex items-center gap-2">
             <div className="h-8 w-8 rounded-lg bg-primary/10 flex items-center justify-center">
@@ -114,13 +114,13 @@ export function Sidebar() {
               value={term}
               onChange={(e) => setTerm(e.target.value)}
               placeholder="快速搜索文档..."
-              className="w-full h-9 pl-9 pr-3 bg-white/5 border border-white/10 focus:bg-white/10 focus:border-primary/30 rounded-lg text-xs outline-none transition-all placeholder:text-muted-foreground/50"
+              className="w-full h-9 pl-9 pr-3 bg-background/50 border border-border/60 focus:bg-background/70 focus:border-primary/40 rounded-lg text-xs outline-none transition-colors placeholder:text-muted-foreground/60 focus-ring"
             />
             {term && (
               <button
                 onClick={() => setTerm('')}
                 aria-label="清除搜索"
-                className="absolute right-2 top-1/2 -translate-y-1/2 p-1 hover:bg-secondary rounded-md"
+                className="absolute right-2 top-1/2 -translate-y-1/2 p-1 hover:bg-secondary rounded-md focus-ring"
               >
                 <X className="h-3 w-3 text-muted-foreground" />
               </button>
@@ -128,7 +128,7 @@ export function Sidebar() {
           </div>
 
           <Magnetic strength={0.3}>
-            <label htmlFor="file-upload" className="group relative overflow-hidden flex items-center justify-center gap-2 w-full px-4 py-3 bg-primary text-primary-foreground rounded-xl shadow-md shadow-primary/20 hover:shadow-lg hover:shadow-primary/30 hover:-translate-y-0.5 active:translate-y-0 cursor-pointer transition-all duration-300">
+            <label htmlFor="file-upload" className="group relative overflow-hidden flex items-center justify-center gap-2 w-full px-4 py-3 bg-primary text-primary-foreground rounded-xl shadow-md shadow-primary/20 hover:shadow-lg hover:shadow-primary/30 motion-safe:hover:-translate-y-0.5 motion-safe:active:translate-y-0 cursor-pointer transition-all duration-300">
               <div className="absolute inset-0 bg-gradient-to-tr from-white/0 via-white/10 to-white/0 opacity-0 group-hover:opacity-100 transition-opacity" />
               <Upload className="h-4 w-4" />
               <span className="text-sm font-medium">上传文档</span>
@@ -171,8 +171,8 @@ export function Sidebar() {
       >
         {isLoading && documents.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-40 gap-3">
-            <Loader2 className="h-8 w-8 animate-spin text-primary/30" />
-            <p className="text-sm text-muted-foreground animate-pulse">加载中...</p>
+            <Loader2 className="h-8 w-8 animate-spin motion-reduce:animate-none text-primary/30" />
+            <p className="text-sm text-muted-foreground animate-pulse motion-reduce:animate-none">加载中...</p>
           </div>
         ) : results.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-64 text-muted-foreground/50 gap-4">
@@ -254,12 +254,12 @@ function DocumentCard({
   const chunkStrategyLabel = chunkStrategyValue ? getChunkStrategyLabel(chunkStrategyValue) : null
 
   return (
-    <TiltCard
+      <TiltCard
       className={cn(
-        'group relative p-3 rounded-xl border cursor-pointer animate-fade-in-up h-full transition-all duration-300',
+        'group relative p-3 rounded-xl border cursor-pointer motion-safe:animate-fade-in-up h-full transition-all duration-300',
         isSelected
           ? 'bg-primary/10 border-primary/40 shadow-glow'
-          : 'bg-white/5 hover:bg-white/10 border-white/5 hover:border-white/20 hover:shadow-lg hover:shadow-black/5'
+          : 'bg-background/40 hover:bg-background/60 border-border/60 hover:border-primary/20 hover:shadow-soft'
       )}
       onClick={onSelect}
       onMouseEnter={() => setIsHovered(true)}
@@ -314,7 +314,7 @@ function DocumentCard({
 
           {/* 属性标签 */}
           {document.status === 'completed' && isHovered && (
-            <div className="mt-2 flex flex-wrap gap-1 animate-fade-in">
+            <div className="mt-2 flex flex-wrap gap-1 motion-safe:animate-fade-in">
               <span className="text-[10px] px-1.5 py-0.5 bg-secondary/80 rounded text-muted-foreground">
                 {document.chunk_count} 片段
               </span>
@@ -345,7 +345,7 @@ function DocumentCard({
       {/* 悬浮操作栏 */}
       <div className={cn(
         "absolute right-2 top-2 flex flex-col gap-1 transition-all duration-200",
-        isHovered ? "opacity-100 translate-x-0" : "opacity-0 translate-x-2 pointer-events-none"
+        isHovered ? "opacity-100 motion-safe:translate-x-0" : "opacity-0 motion-safe:translate-x-2 pointer-events-none"
       )}>
         <DocumentDetailDialog document={document} trigger={
           <button
