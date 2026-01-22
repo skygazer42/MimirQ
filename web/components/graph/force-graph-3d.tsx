@@ -3,16 +3,17 @@
 import { useEffect, useRef, useState, useCallback } from "react"
 import dynamic from "next/dynamic"
 import { useTheme } from "next-themes"
-import * as THREE from "three"
 import SpriteText from "three-spritetext"
 import { Loader2 } from "lucide-react"
+
+import { getCssHslColor } from "@/lib/css-vars"
 
 // Dynamic import to avoid SSR issues with Three.js
 const ForceGraph3D = dynamic(() => import("react-force-graph-3d"), {
   ssr: false,
   loading: () => (
-    <div className="flex items-center justify-center h-full w-full bg-slate-950">
-      <Loader2 className="h-8 w-8 text-cyan-500 animate-spin" />
+    <div className="flex items-center justify-center h-full w-full bg-background">
+      <Loader2 className="h-8 w-8 text-primary animate-spin motion-reduce:animate-none" />
     </div>
   ),
 })
@@ -44,7 +45,7 @@ interface ForceGraph3DProps {
 }
 
 export function KnowledgeGraph3D({ data, onNodeClick, width, height }: ForceGraph3DProps) {
-  const { theme } = useTheme()
+  const { resolvedTheme } = useTheme()
   const fgRef = useRef<any>()
   const [mounted, setMounted] = useState(false)
 
@@ -71,9 +72,11 @@ export function KnowledgeGraph3D({ data, onNodeClick, width, height }: ForceGrap
 
   if (!mounted) return null
 
-  const isDark = theme === 'dark'
-  const bgColor = isDark ? "#020617" : "#ffffff" // slate-950 or white
-  const linkColor = isDark ? "rgba(255,255,255,0.2)" : "rgba(0,0,0,0.2)"
+  const isDark = resolvedTheme === "dark"
+  const bgColor = getCssHslColor("--background", isDark ? "#020617" : "#ffffff")
+  const primaryColor = getCssHslColor("--primary", isDark ? "#0ea5e9" : "#0284c7")
+  const mutedFgColor = getCssHslColor("--muted-foreground", isDark ? "#94a3b8" : "#475569")
+  const linkColor = isDark ? "rgba(255,255,255,0.18)" : "rgba(0,0,0,0.18)"
 
   return (
     <ForceGraph3D
@@ -86,7 +89,7 @@ export function KnowledgeGraph3D({ data, onNodeClick, width, height }: ForceGrap
       
       // Node Styling
       nodeLabel="label"
-      nodeColor={(node: any) => node.color || (isDark ? "#0ea5e9" : "#0284c7")}
+      nodeColor={(node: any) => node.color || primaryColor}
       nodeRelSize={6}
       nodeOpacity={0.9}
       nodeResolution={16}
@@ -104,7 +107,7 @@ export function KnowledgeGraph3D({ data, onNodeClick, width, height }: ForceGrap
       // Custom Objects (Text Sprites)
       nodeThreeObject={(node: any) => {
         const sprite = new SpriteText(node.label)
-        sprite.color = isDark ? "#fff" : "#333"
+        sprite.color = mutedFgColor
         sprite.textHeight = 4
         // Adjust text position
         sprite.position.y = 8 

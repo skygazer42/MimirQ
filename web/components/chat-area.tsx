@@ -452,7 +452,7 @@ export function ChatArea({
                   size="icon"
                   variant="ghost"
                   onClick={() => setVoiceModeOpen(true)}
-                  className="rounded-full h-10 w-10 text-slate-400 hover:text-slate-600 hover:bg-slate-100 dark:hover:bg-slate-800"
+                  className="rounded-full h-10 w-10 text-muted-foreground hover:text-foreground hover:bg-muted"
                   title="语音模式"
                 >
                   <Mic className="h-5 w-5" />
@@ -479,7 +479,7 @@ export function ChatArea({
                     className={cn(
                       "rounded-full h-9 w-9 transition-all duration-300 shadow-sm",
                       inputValue.trim()
-                        ? "bg-primary text-primary-foreground hover:bg-primary/90 hover:scale-105 hover:shadow-md"
+                        ? "bg-primary text-primary-foreground hover:bg-primary/90 motion-safe:hover:scale-105 hover:shadow-md"
                         : "bg-secondary text-muted-foreground cursor-not-allowed"
                     )}
                     title="发送"
@@ -491,7 +491,7 @@ export function ChatArea({
             </div>
           </div>
 
-          <p className="text-[10px] text-slate-400 dark:text-slate-500 text-center font-medium tracking-wide opacity-0 group-hover:opacity-100 transition-opacity duration-500">
+          <p className="text-[10px] text-muted-foreground/70 text-center font-medium tracking-wide opacity-0 group-hover:opacity-100 transition-opacity duration-500">
             POWERED BY MIMIRQ AI
           </p>
         </div>
@@ -550,8 +550,8 @@ function WelcomeScreen() {
 
 function FeatureCard({ icon: Icon, title, desc }: { icon: any, title: string, desc: string }) {
   return (
-    <div className="p-5 rounded-2xl glass border border-white/5 hover:border-primary/30 hover:bg-white/5 transition-all duration-300 cursor-default text-left group hover:-translate-y-1 hover:shadow-lg hover:shadow-primary/5">
-      <Icon className="h-6 w-6 text-primary/80 mb-3 group-hover:text-primary group-hover:scale-110 transition-all duration-300" />
+    <div className="p-5 rounded-2xl glass border border-white/5 hover:border-primary/30 hover:bg-white/5 transition-all duration-300 cursor-default text-left group motion-safe:hover:-translate-y-1 hover:shadow-lg hover:shadow-primary/5">
+      <Icon className="h-6 w-6 text-primary/80 mb-3 group-hover:text-primary motion-safe:group-hover:scale-110 transition-all duration-300" />
       <h3 className="text-sm font-semibold text-foreground/90 mb-1.5">{title}</h3>
       <p className="text-xs text-muted-foreground leading-relaxed">{desc}</p>
     </div>

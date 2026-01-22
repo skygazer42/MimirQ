@@ -39,7 +39,11 @@ import {
 } from 'lucide-react'
 import { AppFrame } from '@/components/app-frame'
 import { PageScaffold } from '@/components/ui/page-scaffold'
+import { EmptyState } from '@/components/ui/empty-state'
 import { Button } from '@/components/ui/button'
+import { IconButton } from '@/components/ui/icon-button'
+import { Panel } from '@/components/ui/panel'
+import { StatusBadge, type StatusBadgeStatus } from '@/components/ui/status-badge'
 import {
   Dialog,
   DialogContent,
@@ -86,7 +90,7 @@ function getFileTypeStyle(doc: Pick<Document, 'filename' | 'file_type'>): FileTy
   const ext = explicit || fromName
 
   const base = {
-    border: 'border-slate-200 dark:border-slate-700/60',
+    border: 'border-border/60',
   }
 
   switch (ext) {
@@ -152,8 +156,8 @@ function getFileTypeStyle(doc: Pick<Document, 'filename' | 'file_type'>): FileTy
       return {
         icon: FileText,
         label: 'TXT',
-        color: 'text-slate-600 dark:text-slate-300',
-        bg: 'bg-slate-50 dark:bg-slate-800/60',
+        color: 'text-muted-foreground',
+        bg: 'bg-muted/40',
         border: base.border,
       }
     case 'json':
@@ -177,8 +181,8 @@ function getFileTypeStyle(doc: Pick<Document, 'filename' | 'file_type'>): FileTy
       return {
         icon: FileIcon,
         label: ext ? ext.toUpperCase() : 'FILE',
-        color: 'text-slate-600 dark:text-slate-300',
-        bg: 'bg-slate-50 dark:bg-slate-800/60',
+        color: 'text-muted-foreground',
+        bg: 'bg-muted/40',
         border: base.border,
       }
   }
@@ -293,30 +297,41 @@ export default function KnowledgePage() {
     }
   }, [searchQuery])
 
-  // 获取状态配置
-  const getStatusConfig = (status: string) => {
+  const getStatusBadge = (status: string): { status: StatusBadgeStatus; label: string } => {
     switch (status) {
-      case 'completed':
-        return { icon: CheckCircle, color: 'text-emerald-500', bg: 'bg-emerald-50 dark:bg-emerald-500/10', border: 'border-emerald-100 dark:border-emerald-500/20', label: '已就绪' }
-      case 'failed':
-        return { icon: XCircle, color: 'text-red-500', bg: 'bg-red-50 dark:bg-red-500/10', border: 'border-red-100 dark:border-red-500/20', label: '失败' }
-      case 'processing':
-      case 'pending':
-        return { icon: Loader2, color: 'text-sky-500', bg: 'bg-sky-50 dark:bg-sky-500/10', border: 'border-sky-100 dark:border-sky-500/20', label: '处理中', spin: true }
+      case "completed":
+        return { status: "completed", label: "已就绪" }
+      case "failed":
+        return { status: "failed", label: "失败" }
+      case "quarantined":
+        return { status: "quarantined", label: "已隔离" }
+      case "processing":
+        return { status: "processing", label: "处理中" }
+      case "pending":
+        return { status: "pending", label: "等待" }
       default:
-        return { icon: Clock, color: 'text-slate-400', bg: 'bg-slate-50 dark:bg-slate-800', border: 'border-slate-100 dark:border-slate-700', label: '等待' }
+        return { status: "pending", label: "等待" }
     }
+  }
+
+  const statusBarClassName = (status: StatusBadgeStatus) => {
+    if (status === "completed") return "bg-success"
+    if (status === "failed") return "bg-destructive"
+    if (status === "quarantined") return "bg-warning"
+    if (status === "processing") return "bg-info"
+    if (status === "pending") return "bg-muted-foreground/40"
+    return "bg-muted-foreground/40"
   }
 
   return (
     <AppFrame>
         {/* 背景装饰 */}
-        <div className="absolute top-0 left-0 right-0 h-64 bg-gradient-to-b from-sky-50/50 dark:from-sky-900/10 to-transparent pointer-events-none" />
+        <div className="absolute top-0 left-0 right-0 h-64 bg-gradient-to-b from-primary/10 to-transparent pointer-events-none" />
 
         <PageScaffold
           title="知识库管理"
           icon={Database}
-          iconColor="text-sky-600 dark:text-sky-400"
+          iconColor="text-primary"
           description="管理您的文档资产，构建专属知识大脑"
           actions={
             <>
@@ -350,7 +365,7 @@ export default function KnowledgePage() {
               </Dialog>
               <label>
                 <Button
-                  className="gap-2 bg-sky-600 hover:bg-sky-700 text-white shadow-lg shadow-sky-200 dark:shadow-sky-900/20 hover:shadow-sky-300 transition-all rounded-xl"
+                  className="gap-2 rounded-xl shadow-glow border border-primary/20"
                   size="lg"
                   asChild
                 >
@@ -376,28 +391,28 @@ export default function KnowledgePage() {
                 label="文档总数"
                 value={totalDocs}
                 color="sky"
-                className="bg-white/80 dark:bg-slate-900/80 backdrop-blur-sm border-slate-200 dark:border-slate-800 shadow-sm"
+                className="bg-card/60 backdrop-blur-md border-border/60 shadow-soft"
               />
               <StatCard
                 icon={CheckCircle}
                 label="已就绪"
                 value={completedDocs}
                 color="green"
-                className="bg-white/80 dark:bg-slate-900/80 backdrop-blur-sm border-slate-200 dark:border-slate-800 shadow-sm"
+                className="bg-card/60 backdrop-blur-md border-border/60 shadow-soft"
               />
               <StatCard
                 icon={Layers}
                 label="知识分块"
                 value={totalChunks.toLocaleString()}
                 color="teal"
-                className="bg-white/80 dark:bg-slate-900/80 backdrop-blur-sm border-slate-200 dark:border-slate-800 shadow-sm"
+                className="bg-card/60 backdrop-blur-md border-border/60 shadow-soft"
               />
               <StatCard
                 icon={HardDrive}
                 label="存储占用"
                 value={formatFileSize(totalSize)}
                 color="orange"
-                className="bg-white/80 dark:bg-slate-900/80 backdrop-blur-sm border-slate-200 dark:border-slate-800 shadow-sm"
+                className="bg-card/60 backdrop-blur-md border-border/60 shadow-soft"
               />
               {showExtraCard && (
                 <StatCard
@@ -405,7 +420,7 @@ export default function KnowledgePage() {
                   label={(failedDocs + quarantinedDocs) > 0 ? '需关注' : '处理中'}
                   value={(failedDocs + quarantinedDocs) > 0 ? (failedDocs + quarantinedDocs) : processingDocs}
                   color={(failedDocs + quarantinedDocs) > 0 ? (failedDocs > 0 ? 'red' : 'amber') : 'sky'}
-                  className="bg-white/80 dark:bg-slate-900/80 backdrop-blur-sm border-slate-200 dark:border-slate-800 shadow-sm"
+                  className="bg-card/60 backdrop-blur-md border-border/60 shadow-soft"
                 />
               )}
             </StatsGrid>
@@ -422,16 +437,16 @@ export default function KnowledgePage() {
                     key={tab.key}
                     onClick={() => setActiveTab(tab.key)}
                     className={cn(
-                      'flex items-center gap-2 px-5 py-4 text-sm font-medium border-b-2 transition-all',
+                      'flex items-center gap-2 px-5 py-4 text-sm font-medium border-b-2 transition-colors focus-ring',
                       activeTab === tab.key
-                        ? 'text-sky-600 dark:text-sky-400 border-sky-600 dark:border-sky-400 bg-sky-50/50 dark:bg-sky-500/10'
-                        : 'text-slate-500 dark:text-slate-400 border-transparent hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800'
+                        ? 'text-primary border-primary bg-primary/10'
+                        : 'text-muted-foreground border-transparent hover:text-foreground hover:bg-muted/30'
                     )}
                   >
                     <tab.icon
                       className={cn(
                         "w-4 h-4",
-                        activeTab === tab.key ? "text-sky-500 dark:text-sky-400" : "text-slate-400 dark:text-slate-500"
+                        activeTab === tab.key ? "text-primary" : "text-muted-foreground"
                       )}
                     />
                     {tab.label}
@@ -441,35 +456,31 @@ export default function KnowledgePage() {
 
               {activeTab === 'documents' && (
                 <div className="flex items-center gap-2">
-                  <Button
+                  <IconButton
+                    label="刷新列表"
                     variant="ghost"
-                    size="sm"
                     onClick={() => loadDocuments()}
-                    className="text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"
-                    title="刷新列表"
-                    aria-label="刷新列表"
+                    className="h-9 w-9 text-muted-foreground hover:text-foreground"
                   >
                     <RefreshCw className="w-4 h-4" />
-                  </Button>
-                  <Button
+                  </IconButton>
+                  <IconButton
+                    label="预览分块"
                     variant="ghost"
-                    size="sm"
                     onClick={() => window.open('/chunk-preview', '_blank')}
-                    className="text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"
-                    title="预览分块"
-                    aria-label="预览分块"
+                    className="h-9 w-9 text-muted-foreground hover:text-foreground"
                   >
                     <Eye className="w-4 h-4" />
-                  </Button>
-                  <div className="bg-slate-100 dark:bg-slate-800 p-1 rounded-lg flex gap-1">
+                  </IconButton>
+                  <div className="bg-muted/40 border border-border/60 p-1 rounded-lg flex gap-1">
                     <button
                       aria-label="网格视图"
                       onClick={() => setViewMode('grid')}
                       className={cn(
-                        "p-1.5 rounded-md transition-all",
+                        "p-1.5 rounded-md transition-colors focus-ring",
                         viewMode === 'grid'
-                          ? "bg-white dark:bg-slate-700 shadow-sm text-sky-600 dark:text-sky-400"
-                          : "text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300"
+                          ? "bg-background shadow-soft text-primary"
+                          : "text-muted-foreground hover:text-foreground hover:bg-muted/40"
                       )}
                     >
                       <LayoutGrid className="w-4 h-4" />
@@ -478,10 +489,10 @@ export default function KnowledgePage() {
                       aria-label="列表视图"
                       onClick={() => setViewMode('list')}
                       className={cn(
-                        "p-1.5 rounded-md transition-all",
+                        "p-1.5 rounded-md transition-colors focus-ring",
                         viewMode === 'list'
-                          ? "bg-white dark:bg-slate-700 shadow-sm text-sky-600 dark:text-sky-400"
-                          : "text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300"
+                          ? "bg-background shadow-soft text-primary"
+                          : "text-muted-foreground hover:text-foreground hover:bg-muted/40"
                       )}
                     >
                       <ListIcon className="w-4 h-4" />
@@ -497,29 +508,62 @@ export default function KnowledgePage() {
           {activeTab === 'documents' && (
             <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
               {isLoading && documents.length === 0 ? (
-                <div className="flex flex-col items-center justify-center h-64 text-slate-400 dark:text-slate-500">
-                  <Loader2 className="w-8 h-8 animate-spin mb-3" />
+                <div className="flex flex-col items-center justify-center h-64 text-muted-foreground">
+                  <Loader2 className="w-8 h-8 animate-spin motion-reduce:animate-none mb-3" />
                   <p className="text-sm">正在加载文档库...</p>
                 </div>
               ) : documents.length === 0 ? (
-                <EmptyState onUpload={handleFileUpload} />
+                <div className="py-10">
+                  <EmptyState
+                    icon={Upload}
+                    title="知识库空空如也"
+                    description={
+                      <span className="text-muted-foreground">
+                        上传您的第一份文档，MimirQ 将自动解析并构建专属知识索引。
+                        <br />
+                        支持 PDF, TXT, Markdown, Excel, Word 等常见格式。
+                      </span>
+                    }
+                    className="bg-transparent shadow-none"
+                  >
+                    <label>
+                      <Button size="lg" className="gap-2 rounded-xl shadow-glow" asChild>
+                        <span>
+                          <Upload className="w-5 h-5" />
+                          立即上传文档
+                        </span>
+                      </Button>
+                      <input
+                        type="file"
+                        multiple
+                        accept={UPLOAD_ACCEPT}
+                        className="hidden"
+                        onChange={handleFileUpload}
+                      />
+                    </label>
+                  </EmptyState>
+                </div>
               ) : (
                 <>
                   {viewMode === 'grid' ? (
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-5">
-                      {documents.map((doc) => (
-                        <DocumentCard
-                          key={doc.id}
-                          doc={doc}
-                          getStatusConfig={getStatusConfig}
-                          onDelete={deleteDocument}
-                        />
-                      ))}
+                      {documents.map((doc) => {
+                        const badge = getStatusBadge(doc.status)
+                        return (
+                          <DocumentCard
+                            key={doc.id}
+                            doc={doc}
+                            statusBadge={badge}
+                            statusBarClassName={statusBarClassName(badge.status)}
+                            onDelete={deleteDocument}
+                          />
+                        )
+                      })}
                     </div>
                   ) : (
-                    <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
+                    <Panel padding="none" className="rounded-xl overflow-hidden">
                       <table className="w-full text-sm text-left">
-                        <thead className="text-xs text-slate-500 dark:text-slate-400 uppercase bg-slate-50/80 dark:bg-slate-800/50 border-b border-slate-100 dark:border-slate-800">
+                        <thead className="text-xs text-muted-foreground uppercase bg-muted/30 border-b border-border/60">
                           <tr>
                             <th className="px-6 py-4 font-medium">文档名称</th>
                             <th className="px-6 py-4 font-medium">状态</th>
@@ -529,15 +573,14 @@ export default function KnowledgePage() {
                             <th className="px-6 py-4 font-medium text-right">操作</th>
                           </tr>
                         </thead>
-                        <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                        <tbody className="divide-y divide-border/60">
                           {documents.map((doc) => {
-                             const status = getStatusConfig(doc.status)
-                             const StatusIcon = status.icon
+                             const badge = getStatusBadge(doc.status)
                              const fileType = getFileTypeStyle(doc)
                              const TypeIcon = fileType.icon
                              return (
-                            <tr key={doc.id} className="hover:bg-sky-50/30 dark:hover:bg-sky-900/10 transition-colors group">
-                              <td className="px-6 py-4 font-medium text-slate-900 dark:text-slate-100 flex items-center gap-3">
+                            <tr key={doc.id} className="hover:bg-muted/20 transition-colors group">
+                              <td className="px-6 py-4 font-medium text-foreground flex items-center gap-3">
                                 <div className={cn("p-2 rounded-lg border", fileType.bg, fileType.border, fileType.color)}>
                                   <TypeIcon className="w-4 h-4" />
                                 </div>
@@ -557,39 +600,38 @@ export default function KnowledgePage() {
                                 </div>
                               </td>
                               <td className="px-6 py-4">
-                                <div className={cn("inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium border", status.bg, status.color, status.border)}>
-                                  <StatusIcon className={cn("w-3 h-3", status.spin && "animate-spin")} />
-                                  {status.label}
-                                </div>
+                                <StatusBadge status={badge.status} label={badge.label} />
                               </td>
-                              <td className="px-6 py-4 text-slate-600 dark:text-slate-400">{doc.chunk_count || '-'}</td>
-                              <td className="px-6 py-4 text-slate-500 dark:text-slate-500 font-mono text-xs">{formatFileSize(doc.file_size)}</td>
-                              <td className="px-6 py-4 text-slate-500 dark:text-slate-500">{formatDate(doc.created_at)}</td>
+                              <td className="px-6 py-4 text-muted-foreground">{doc.chunk_count || '-'}</td>
+                              <td className="px-6 py-4 text-muted-foreground font-mono text-xs">{formatFileSize(doc.file_size)}</td>
+                              <td className="px-6 py-4 text-muted-foreground">{formatDate(doc.created_at)}</td>
                               <td className="px-6 py-4 text-right flex items-center justify-end gap-2">
                                 <DocumentDetailDialog 
                                   document={doc} 
                                   trigger={
-                                    <button
-                                      className="text-slate-400 hover:text-sky-600 hover:bg-sky-50 dark:hover:bg-sky-900/20 transition-colors p-2 rounded-lg opacity-0 group-hover:opacity-100"
-                                      title="预览内容"
+                                    <IconButton
+                                      label="预览内容"
+                                      variant="ghost"
+                                      className="h-9 w-9 text-muted-foreground hover:text-primary hover:bg-muted opacity-0 group-hover:opacity-100"
                                     >
                                       <Eye className="w-4 h-4" />
-                                    </button>
+                                    </IconButton>
                                   }
                                 />
-                                <button
+                                <IconButton
+                                  label="删除文档"
+                                  variant="ghost"
+                                  className="h-9 w-9 text-muted-foreground hover:text-destructive hover:bg-destructive/10 opacity-0 group-hover:opacity-100"
                                   onClick={() => deleteDocument(doc.id)}
-                                  className="text-slate-400 hover:text-red-500 transition-colors p-2 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg opacity-0 group-hover:opacity-100"
-                                  title="删除文档"
                                 >
                                   <Trash2 className="w-4 h-4" />
-                                </button>
+                                </IconButton>
                               </td>
                             </tr>
                           )})}
                         </tbody>
                       </table>
-                    </div>
+                    </Panel>
                   )}
                 </>
               )}
@@ -813,17 +855,28 @@ export default function KnowledgePage() {
 }
 
 // 文档卡片组件
-function DocumentCard({ doc, getStatusConfig, onDelete }: { doc: Document, getStatusConfig: any, onDelete: (id: string) => void }) {
-  const status = getStatusConfig(doc.status)
-  const StatusIcon = status.icon
+function DocumentCard({
+  doc,
+  statusBadge,
+  statusBarClassName,
+  onDelete,
+}: {
+  doc: Document
+  statusBadge: { status: StatusBadgeStatus; label: string }
+  statusBarClassName: string
+  onDelete: (id: string) => void
+}) {
   const parserLabel = doc.metadata?.parser_backend ? getParserLabel(doc.metadata.parser_backend as string) : null
   const fileType = getFileTypeStyle(doc)
   const TypeIcon = fileType.icon
 
   return (
-    <div className="group relative bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm hover:shadow-md hover:border-sky-300 dark:hover:border-sky-600 transition-all duration-300 flex flex-col overflow-hidden">
+    <Panel
+      padding="none"
+      className="group relative rounded-2xl overflow-hidden transition-all duration-300 hover:shadow-strong/20 hover:border-primary/30"
+    >
       {/* 顶部装饰条 */}
-      <div className={cn("h-1.5 w-full", status.bg.replace('bg-', 'bg-').replace('50', '500').replace('/10', ''))} />
+      <div className={cn("h-1.5 w-full", statusBarClassName)} />
       
       <div className="p-5 flex-1 flex flex-col">
         <div className="flex items-start justify-between mb-4">
@@ -834,27 +887,24 @@ function DocumentCard({ doc, getStatusConfig, onDelete }: { doc: Document, getSt
             <div className={cn("px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider border", fileType.bg, fileType.color, fileType.border)}>
               {fileType.label}
             </div>
-            <div className={cn("inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider border", status.bg, status.color, status.border)}>
-              <StatusIcon className={cn("w-3 h-3", status.spin && "animate-spin")} />
-              {status.label}
-            </div>
+            <StatusBadge status={statusBadge.status} label={statusBadge.label} dense />
           </div>
         </div>
 
-        <h3 className="font-semibold text-slate-900 dark:text-white line-clamp-2 mb-2 min-h-[2.5rem]" title={doc.filename}>
+        <h3 className="font-semibold text-foreground line-clamp-2 mb-2 min-h-[2.5rem]" title={doc.filename}>
           {doc.filename}
         </h3>
 
         <div className="space-y-2 mt-auto">
-          <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
+          <div className="flex items-center justify-between text-xs text-muted-foreground">
             <span>大小</span>
             <span className="font-mono">{formatFileSize(doc.file_size)}</span>
           </div>
-          <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
+          <div className="flex items-center justify-between text-xs text-muted-foreground">
             <span>分块</span>
             <span className="font-mono">{doc.chunk_count || '-'}</span>
           </div>
-           <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
+           <div className="flex items-center justify-between text-xs text-muted-foreground">
             <span>时间</span>
             <span>{formatDate(doc.created_at)}</span>
           </div>
@@ -862,80 +912,47 @@ function DocumentCard({ doc, getStatusConfig, onDelete }: { doc: Document, getSt
       </div>
       
       {/* 底部操作栏 - Hover 显示 */}
-      <div className="px-5 py-3 border-t border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/50 flex items-center justify-between opacity-100 lg:opacity-0 lg:group-hover:opacity-100 transition-opacity">
-         <span className="text-[10px] text-slate-400 dark:text-slate-500 font-medium truncate max-w-[80px]">
+      <div className="px-5 py-3 border-t border-border/60 bg-muted/20 flex items-center justify-between opacity-100 lg:opacity-0 lg:group-hover:opacity-100 transition-opacity">
+         <span className="text-[10px] text-muted-foreground font-medium truncate max-w-[80px]">
            {parserLabel || 'Auto'}
          </span>
          <div className="flex items-center gap-1">
            <DocumentDetailDialog 
              document={doc}
              trigger={
-               <button 
-                 className="p-1.5 text-slate-400 dark:text-slate-500 hover:text-sky-600 dark:hover:text-sky-400 hover:bg-sky-50 dark:hover:bg-sky-900/20 rounded-md transition-colors"
-                 title="预览内容"
+               <IconButton
+                 label="预览内容"
+                 variant="ghost"
+                 className="h-8 w-8 text-muted-foreground hover:text-primary hover:bg-muted"
                  onClick={(e) => e.stopPropagation()}
                >
                  <Eye className="w-4 h-4" />
-               </button>
+               </IconButton>
              }
            />
-           <button 
-             className="p-1.5 text-slate-400 dark:text-slate-500 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-md transition-colors"
+           <IconButton
+             label="删除文档"
+             variant="ghost"
+             className="h-8 w-8 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
              onClick={(e) => {
                e.stopPropagation()
                onDelete(doc.id)
              }}
-             title="删除文档"
            >
              <Trash2 className="w-4 h-4" />
-           </button>
+           </IconButton>
          </div>
       </div>
 
        {/* 进度条 (处理中) */}
-       {doc.status === 'processing' && (
-          <div className="absolute bottom-0 left-0 right-0 h-1 bg-slate-100 dark:bg-slate-800">
+       {statusBadge.status === 'processing' && (
+          <div className="absolute bottom-0 left-0 right-0 h-1 bg-muted">
             <div 
-              className="h-full bg-sky-500 animate-pulse" 
+              className="h-full bg-primary/70 animate-pulse motion-reduce:animate-none" 
               style={{ width: `${doc.processing_progress || 60}%` }} 
             />
           </div>
         )}
-    </div>
-  )
-}
-
-// 空状态组件
-function EmptyState({ onUpload }: { onUpload: (e: React.ChangeEvent<HTMLInputElement>) => void }) {
-  return (
-    <div className="flex flex-col items-center justify-center min-h-[400px] border-2 border-dashed border-slate-200 dark:border-slate-800 rounded-3xl bg-slate-50/50 dark:bg-slate-900/50 hover:bg-sky-50/30 dark:hover:bg-sky-900/10 hover:border-sky-200 dark:hover:border-sky-800 transition-all group">
-      <div className="w-20 h-20 bg-white dark:bg-slate-800 rounded-full shadow-sm flex items-center justify-center mb-6 group-hover:scale-110 transition-transform duration-300">
-        <div className="w-16 h-16 bg-sky-50 dark:bg-sky-900/20 rounded-full flex items-center justify-center">
-          <Upload className="w-8 h-8 text-sky-600 dark:text-sky-400" />
-        </div>
-      </div>
-      <h3 className="text-xl font-bold text-slate-900 dark:text-white mb-2">知识库空空如也</h3>
-      <p className="text-slate-500 dark:text-slate-400 max-w-md text-center mb-8">
-        上传您的第一份文档，MimirQ 将自动解析并构建专属知识索引
-      </p>
-      <label>
-        <Button size="lg" className="gap-2 bg-sky-600 hover:bg-sky-700 shadow-lg shadow-sky-200 dark:shadow-sky-900/20 text-white" asChild>
-          <span>
-            <Upload className="w-5 h-5" />
-            立即上传文档
-          </span>
-        </Button>
-        <input
-          type="file"
-          multiple
-          accept={UPLOAD_ACCEPT}
-          className="hidden"
-          onChange={onUpload}
-        />
-      </label>
-      <p className="text-xs text-slate-400 dark:text-slate-500 mt-4">
-        支持 PDF, TXT, Markdown, Excel, Word 等常见格式
-      </p>
-    </div>
+    </Panel>
   )
 }
