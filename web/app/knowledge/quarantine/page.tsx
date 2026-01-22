@@ -357,7 +357,7 @@ export default function QuarantineQueuePage() {
                 className={cn(
                   'px-3 py-1.5 rounded-full border text-xs font-bold transition-colors',
                   selectedReason === 'all'
-                    ? 'bg-sky-600 text-white border-sky-600'
+                    ? 'bg-primary text-primary-foreground border-primary'
                     : 'bg-background/60 border-border/60 text-muted-foreground hover:bg-accent hover:text-foreground'
                 )}
               >
@@ -371,14 +371,14 @@ export default function QuarantineQueuePage() {
                   className={cn(
                     'px-3 py-1.5 rounded-full border text-xs font-bold transition-colors flex items-center gap-2',
                     selectedReason === reason
-                      ? 'bg-amber-600 text-white border-amber-600'
+                      ? 'bg-warning text-warning-foreground border-warning'
                       : 'bg-background/60 border-border/60 text-muted-foreground hover:bg-accent hover:text-foreground'
                   )}
                 >
                   <span>{reasonLabel(reason)}</span>
                   <span className={cn(
                     'px-1.5 py-0.5 rounded-full text-[10px] font-black',
-                    selectedReason === reason ? 'bg-white/20 text-white' : 'bg-muted text-muted-foreground'
+                    selectedReason === reason ? 'bg-warning-foreground/10 text-warning-foreground' : 'bg-muted text-muted-foreground'
                   )}>
                     {reasonCounts[reason] || 0}
                   </span>
@@ -545,14 +545,15 @@ export default function QuarantineQueuePage() {
                     </div>
                   )}
 
-                  <div className="flex flex-wrap gap-2">
-                    <Button
-                      size="sm"
-                      className="rounded-xl bg-amber-600 hover:bg-amber-700 text-white"
-                      disabled={acting?.id === selected.id}
-                      onClick={() => handleRelease(selected)}
-                      title="按命中规则自动关闭对应过滤器，然后重试入库"
-                    >
+	                  <div className="flex flex-wrap gap-2">
+	                    <Button
+	                      size="sm"
+	                      variant="warning"
+	                      className="rounded-xl"
+	                      disabled={acting?.id === selected.id}
+	                      onClick={() => handleRelease(selected)}
+	                      title="按命中规则自动关闭对应过滤器，然后重试入库"
+	                    >
                       <RotateCcw className={cn('h-4 w-4 mr-1', acting?.id === selected.id && acting.action === 'release' ? 'animate-spin' : '')} />
                       放行并重试
                     </Button>
@@ -640,16 +641,16 @@ export default function QuarantineQueuePage() {
           </DialogHeader>
 
           <div className="space-y-5">
-            <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-950/30 p-4">
-              <div className="flex items-start justify-between gap-4">
-                <div>
-                  <div className="text-sm font-bold text-slate-900 dark:text-slate-100">
-                    推荐预设
-                  </div>
-                  <div className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                    关闭对应质量过滤器，让更多内容进入切块（仍建议人工抽检）。
-                  </div>
-                </div>
+	            <div className="rounded-xl border border-border bg-muted/40 p-4">
+	              <div className="flex items-start justify-between gap-4">
+	                <div>
+	                  <div className="text-sm font-bold text-foreground">
+	                    推荐预设
+	                  </div>
+	                  <div className="mt-1 text-xs text-muted-foreground">
+	                    关闭对应质量过滤器，让更多内容进入切块（仍建议人工抽检）。
+	                  </div>
+	                </div>
                 <div className="flex items-center gap-2">
                   <Button
                     type="button"
@@ -676,26 +677,26 @@ export default function QuarantineQueuePage() {
                   </Button>
                 </div>
               </div>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white/60 dark:bg-slate-950/30 p-4 space-y-3">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <div className="text-sm font-bold">大纲过滤</div>
-                    <div className="text-xs text-slate-500 dark:text-slate-400">outline_only</div>
-                  </div>
-                  <Switch
-                    checked={Boolean(tunePatch.governance_drop_outline_only)}
-                    onCheckedChange={(v) => setTunePatch((p) => ({ ...p, governance_drop_outline_only: v }))}
-                    className="data-[state=checked]:bg-amber-500"
-                  />
-                </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="space-y-1.5">
-                    <Label className="text-xs text-slate-500 dark:text-slate-400">最小内容字符</Label>
-                    <Input
-                      type="number"
+	            </div>
+	
+	            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+	              <div className="rounded-xl border border-border bg-card/60 p-4 space-y-3">
+	                <div className="flex items-center justify-between">
+	                  <div>
+	                    <div className="text-sm font-bold">大纲过滤</div>
+	                    <div className="text-xs text-muted-foreground">outline_only</div>
+	                  </div>
+	                  <Switch
+	                    checked={Boolean(tunePatch.governance_drop_outline_only)}
+	                    onCheckedChange={(v) => setTunePatch((p) => ({ ...p, governance_drop_outline_only: v }))}
+	                    className="data-[state=checked]:bg-warning"
+	                  />
+	                </div>
+	                <div className="grid grid-cols-2 gap-3">
+	                  <div className="space-y-1.5">
+	                    <Label className="text-xs text-muted-foreground">最小内容字符</Label>
+	                    <Input
+	                      type="number"
                       min={0}
                       max={200000}
                       value={typeof tunePatch.governance_drop_outline_min_content_chars === 'number' ? tunePatch.governance_drop_outline_min_content_chars : ''}
@@ -705,11 +706,11 @@ export default function QuarantineQueuePage() {
                       }}
                       className="h-9 rounded-lg"
                     />
-                  </div>
-                  <div className="space-y-1.5">
-                    <Label className="text-xs text-slate-500 dark:text-slate-400">标题占比阈值</Label>
-                    <Input
-                      type="number"
+	                  </div>
+	                  <div className="space-y-1.5">
+	                    <Label className="text-xs text-muted-foreground">标题占比阈值</Label>
+	                    <Input
+	                      type="number"
                       min={0}
                       max={1}
                       step={0.01}
@@ -721,26 +722,26 @@ export default function QuarantineQueuePage() {
                       }}
                       className="h-9 rounded-lg"
                     />
-                  </div>
-                </div>
-              </div>
-
-              <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white/60 dark:bg-slate-950/30 p-4 space-y-3">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <div className="text-sm font-bold">低密度过滤</div>
-                    <div className="text-xs text-slate-500 dark:text-slate-400">low_density</div>
-                  </div>
-                  <Switch
-                    checked={Boolean(tunePatch.governance_drop_low_density)}
-                    onCheckedChange={(v) => setTunePatch((p) => ({ ...p, governance_drop_low_density: v }))}
-                    className="data-[state=checked]:bg-amber-500"
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <Label className="text-xs text-slate-500 dark:text-slate-400">密度阈值</Label>
-                  <Input
-                    type="number"
+	                  </div>
+	                </div>
+	              </div>
+	
+	              <div className="rounded-xl border border-border bg-card/60 p-4 space-y-3">
+	                <div className="flex items-center justify-between">
+	                  <div>
+	                    <div className="text-sm font-bold">低密度过滤</div>
+	                    <div className="text-xs text-muted-foreground">low_density</div>
+	                  </div>
+	                  <Switch
+	                    checked={Boolean(tunePatch.governance_drop_low_density)}
+	                    onCheckedChange={(v) => setTunePatch((p) => ({ ...p, governance_drop_low_density: v }))}
+	                    className="data-[state=checked]:bg-warning"
+	                  />
+	                </div>
+	                <div className="space-y-1.5">
+	                  <Label className="text-xs text-muted-foreground">密度阈值</Label>
+	                  <Input
+	                    type="number"
                     min={0}
                     max={1}
                     step={0.01}
@@ -752,26 +753,26 @@ export default function QuarantineQueuePage() {
                     }}
                     className="h-9 rounded-lg"
                   />
-                </div>
-              </div>
-            </div>
-
-            <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white/60 dark:bg-slate-950/30 p-4 space-y-3">
-              <div className="flex items-center justify-between">
-                <div>
-                  <div className="text-sm font-bold">隔离策略</div>
-                  <div className="text-xs text-slate-500 dark:text-slate-400">quarantine_on_drop</div>
-                </div>
-                <Switch
-                  checked={Boolean(tunePatch.governance_quarantine_on_drop)}
-                  onCheckedChange={(v) => setTunePatch((p) => ({ ...p, governance_quarantine_on_drop: v }))}
-                  className="data-[state=checked]:bg-sky-500"
-                />
-              </div>
-              <div className="text-xs text-slate-500 dark:text-slate-400">
-                开启后：触发质量过滤时标记为 quarantined（而非 failed），便于人工复核。
-              </div>
-            </div>
+	                </div>
+	              </div>
+	            </div>
+	
+	            <div className="rounded-xl border border-border bg-card/60 p-4 space-y-3">
+	              <div className="flex items-center justify-between">
+	                <div>
+	                  <div className="text-sm font-bold">隔离策略</div>
+	                  <div className="text-xs text-muted-foreground">quarantine_on_drop</div>
+	                </div>
+	                <Switch
+	                  checked={Boolean(tunePatch.governance_quarantine_on_drop)}
+	                  onCheckedChange={(v) => setTunePatch((p) => ({ ...p, governance_quarantine_on_drop: v }))}
+	                  className="data-[state=checked]:bg-primary"
+	                />
+	              </div>
+	              <div className="text-xs text-muted-foreground">
+	                开启后：触发质量过滤时标记为 quarantined（而非 failed），便于人工复核。
+	              </div>
+	            </div>
           </div>
 
           <DialogFooter className="gap-2 sm:gap-2">
@@ -794,12 +795,13 @@ export default function QuarantineQueuePage() {
               <Settings2 className={cn('h-4 w-4 mr-1', acting?.action === 'tune' ? 'animate-spin' : '')} />
               保存配置
             </Button>
-            <Button
-              type="button"
-              className="rounded-xl bg-amber-600 hover:bg-amber-700 text-white"
-              onClick={() => saveTune({ retryAfterSave: true })}
-              disabled={acting?.action === 'tune'}
-            >
+	            <Button
+	              type="button"
+	              variant="warning"
+	              className="rounded-xl"
+	              onClick={() => saveTune({ retryAfterSave: true })}
+	              disabled={acting?.action === 'tune'}
+	            >
               <RotateCcw className={cn('h-4 w-4 mr-1', acting?.action === 'tune' ? 'animate-spin' : '')} />
               保存并重试
             </Button>

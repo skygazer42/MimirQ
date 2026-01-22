@@ -229,10 +229,10 @@ export function QualityChecker({ content, initialScore = 0, initialIssues = [], 
 
   // 获取分数等级
   const scoreGrade = useMemo(() => {
-    if (score >= 90) return { label: '优秀', color: 'green', bg: 'bg-green-500/10 dark:bg-green-500/20', text: 'text-green-700 dark:text-green-300' }
-    if (score >= 75) return { label: '良好', color: 'blue', bg: 'bg-blue-500/10 dark:bg-blue-500/20', text: 'text-blue-700 dark:text-blue-300' }
-    if (score >= 60) return { label: '及格', color: 'yellow', bg: 'bg-yellow-500/10 dark:bg-yellow-500/20', text: 'text-yellow-700 dark:text-yellow-300' }
-    return { label: '较差', color: 'red', bg: 'bg-red-500/10 dark:bg-red-500/20', text: 'text-red-700 dark:text-red-300' }
+    if (score >= 90) return { label: '优秀', tone: 'success' as const, badge: 'bg-success/10 text-success border border-success/20' }
+    if (score >= 75) return { label: '良好', tone: 'info' as const, badge: 'bg-info/10 text-info border border-info/20' }
+    if (score >= 60) return { label: '及格', tone: 'warning' as const, badge: 'bg-warning/10 text-warning border border-warning/20' }
+    return { label: '较差', tone: 'destructive' as const, badge: 'bg-destructive/10 text-destructive border border-destructive/20' }
   }, [score])
 
   // 初始自动扫描
@@ -248,7 +248,7 @@ export function QualityChecker({ content, initialScore = 0, initialIssues = [], 
       <div className="space-y-4">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <ScanLine className="w-5 h-5 text-blue-600" />
+            <ScanLine className="w-5 h-5 text-info" />
             <h3 className="font-bold text-foreground">质量检测</h3>
           </div>
           <Button
@@ -259,7 +259,7 @@ export function QualityChecker({ content, initialScore = 0, initialIssues = [], 
           >
             {isScanning ? (
               <>
-                <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                <div className="w-4 h-4 border-2 border-primary-foreground/30 border-t-primary-foreground rounded-full motion-safe:animate-spin motion-reduce:animate-none" />
                 扫描中 {scanProgress}%
               </>
             ) : (
@@ -275,10 +275,10 @@ export function QualityChecker({ content, initialScore = 0, initialIssues = [], 
         {score > 0 && (
           <div className={cn(
             "p-4 rounded-xl border-2 bg-gradient-to-br",
-            scoreGrade.color === 'green' && "from-green-500/10 to-emerald-500/10 border-green-500/30",
-            scoreGrade.color === 'blue' && "from-blue-500/10 to-indigo-500/10 border-blue-500/30",
-            scoreGrade.color === 'yellow' && "from-yellow-500/10 to-amber-500/10 border-yellow-500/30",
-            scoreGrade.color === 'red' && "from-red-500/10 to-orange-500/10 border-red-500/30",
+            scoreGrade.tone === 'success' && "from-success/15 to-success/5 border-success/30",
+            scoreGrade.tone === 'info' && "from-info/15 to-info/5 border-info/30",
+            scoreGrade.tone === 'warning' && "from-warning/15 to-warning/5 border-warning/30",
+            scoreGrade.tone === 'destructive' && "from-destructive/15 to-destructive/5 border-destructive/30",
           )}>
             <div className="flex items-center justify-between">
               <div>
@@ -286,19 +286,25 @@ export function QualityChecker({ content, initialScore = 0, initialIssues = [], 
                 <div className="flex items-baseline gap-2">
                   <span className="text-4xl font-bold text-foreground">{score}</span>
                   <span className="text-sm text-muted-foreground">/ 100</span>
-                  <span className={cn("text-xs px-2 py-0.5 rounded-full font-medium", scoreGrade.bg, scoreGrade.text)}>
+                  <span className={cn("text-xs px-2 py-0.5 rounded-full font-medium", scoreGrade.badge)}>
                     {scoreGrade.label}
                   </span>
                 </div>
               </div>
               <div className={cn(
                 "w-16 h-16 rounded-full flex items-center justify-center border-4",
-                scoreGrade.color === 'green' && "border-green-500/30 bg-green-500/10 dark:bg-green-500/20",
-                scoreGrade.color === 'blue' && "border-blue-500/30 bg-blue-500/10 dark:bg-blue-500/20",
-                scoreGrade.color === 'yellow' && "border-yellow-500/30 bg-yellow-500/10 dark:bg-yellow-500/20",
-                scoreGrade.color === 'red' && "border-red-500/30 bg-red-500/10 dark:bg-red-500/20",
+                scoreGrade.tone === 'success' && "border-success/30 bg-success/10",
+                scoreGrade.tone === 'info' && "border-info/30 bg-info/10",
+                scoreGrade.tone === 'warning' && "border-warning/30 bg-warning/10",
+                scoreGrade.tone === 'destructive' && "border-destructive/30 bg-destructive/10",
               )}>
-                <span className={cn("text-2xl font-bold", scoreGrade.text)}>
+                <span className={cn(
+                  "text-2xl font-bold",
+                  scoreGrade.tone === 'success' && "text-success",
+                  scoreGrade.tone === 'info' && "text-info",
+                  scoreGrade.tone === 'warning' && "text-warning",
+                  scoreGrade.tone === 'destructive' && "text-destructive",
+                )}>
                   {score}
                 </span>
               </div>
@@ -321,7 +327,7 @@ export function QualityChecker({ content, initialScore = 0, initialIssues = [], 
             >
               <button
                 onClick={() => toggleExpanded(item.id)}
-                className="w-full flex items-center justify-between p-3 hover:bg-muted transition-colors"
+                className="w-full flex items-center justify-between p-3 hover:bg-muted transition-colors motion-reduce:transition-none"
               >
                 <div className="flex items-center gap-3">
                   <div className="w-8 h-8 rounded-lg bg-muted flex items-center justify-center">
@@ -329,7 +335,7 @@ export function QualityChecker({ content, initialScore = 0, initialIssues = [], 
                   </div>
                   <span className="text-sm font-medium text-foreground/80">{item.label}</span>
                   {item.id === 'issues' && issueCount > 0 && (
-                    <span className="text-xs bg-red-500/10 dark:bg-red-500/20 text-red-600 px-1.5 py-0.5 rounded-full">
+                    <span className="text-xs bg-destructive/10 text-destructive px-1.5 py-0.5 rounded-full">
                       {issueCount}
                     </span>
                   )}
@@ -384,7 +390,7 @@ export function QualityChecker({ content, initialScore = 0, initialIssues = [], 
                   {item.id === 'issues' && (
                     <div className="space-y-2">
                       {issues.length === 0 ? (
-                        <div className="flex items-center gap-2 text-sm text-green-600 py-2">
+                        <div className="flex items-center gap-2 text-sm text-success py-2">
                           <CheckCircle className="w-4 h-4" />
                           未发现明显问题
                         </div>
@@ -394,19 +400,19 @@ export function QualityChecker({ content, initialScore = 0, initialIssues = [], 
                             key={issue.id}
                             className={cn(
                               "flex items-start gap-2 p-3 rounded-lg",
-                              issue.type === 'error' && "bg-red-500/10 dark:bg-red-500/20 border border-red-500/30",
-                              issue.type === 'warning' && "bg-yellow-500/10 dark:bg-yellow-500/20 border border-yellow-500/30",
-                              issue.type === 'info' && "bg-blue-500/10 dark:bg-blue-500/20 border border-blue-500/30",
+                              issue.type === 'error' && "bg-destructive/10 border border-destructive/20",
+                              issue.type === 'warning' && "bg-warning/10 border border-warning/20",
+                              issue.type === 'info' && "bg-info/10 border border-info/20",
                             )}
                           >
-                            {issue.type === 'error' && <AlertTriangle className="w-4 h-4 text-red-500 flex-shrink-0 mt-0.5" />}
-                            {issue.type === 'warning' && <AlertTriangle className="w-4 h-4 text-yellow-600 flex-shrink-0 mt-0.5" />}
-                            {issue.type === 'info' && <Info className="w-4 h-4 text-blue-500 flex-shrink-0 mt-0.5" />}
+                            {issue.type === 'error' && <AlertTriangle className="w-4 h-4 text-destructive flex-shrink-0 mt-0.5" />}
+                            {issue.type === 'warning' && <AlertTriangle className="w-4 h-4 text-warning flex-shrink-0 mt-0.5" />}
+                            {issue.type === 'info' && <Info className="w-4 h-4 text-info flex-shrink-0 mt-0.5" />}
                             <span className={cn(
                               "text-sm",
-                              issue.type === 'error' && "text-red-700 dark:text-red-300",
-                              issue.type === 'warning' && "text-yellow-700 dark:text-yellow-300",
-                              issue.type === 'info' && "text-blue-700 dark:text-blue-300",
+                              issue.type === 'error' && "text-destructive",
+                              issue.type === 'warning' && "text-warning",
+                              issue.type === 'info' && "text-info",
                             )}>
                               {issue.message}
                             </span>

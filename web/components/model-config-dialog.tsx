@@ -3,16 +3,18 @@
  */
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useEffect, useId, useState } from 'react'
 import { Eye, EyeOff, AlertCircle, CheckCircle2, FlaskConical, Save, ChevronRight } from 'lucide-react'
 import {
   Dialog,
   DialogContent,
   DialogFooter,
-  DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Alert, AlertDescription } from '@/components/ui/alert'
 import { ProviderIcon } from '@/components/provider-icon'
 import { cn } from '@/lib/utils'
 import { settingsApi } from '@/lib/api-client'
@@ -32,6 +34,7 @@ export function ModelConfigDialog({
   onClose,
   onSave,
 }: ModelConfigDialogProps) {
+  const idPrefix = useId()
   const [config, setConfig] = useState<ProviderConfig>({
     apiKey: '',
     apiBase: '',
@@ -47,6 +50,11 @@ export function ModelConfigDialog({
     message: string
   } | null>(null)
   const [showAdvanced, setShowAdvanced] = useState(false)
+  const apiKeyId = `${idPrefix}-apiKey`
+  const apiBaseId = `${idPrefix}-apiBase`
+  const modelId = `${idPrefix}-model`
+  const temperatureId = `${idPrefix}-temperature`
+  const maxTokensId = `${idPrefix}-maxTokens`
 
   useEffect(() => {
     const modelOptions = provider
@@ -148,15 +156,15 @@ export function ModelConfigDialog({
     <Dialog open={open} onOpenChange={onClose}>
       <DialogContent className="sm:max-w-[550px] p-0 overflow-hidden gap-0 rounded-2xl border-0 shadow-2xl">
         {/* 头部 */}
-        <div className="bg-gray-50/50 border-b border-gray-100 p-6 flex items-start gap-4">
-          <div className="w-14 h-14 rounded-xl bg-white border border-gray-100 flex items-center justify-center shadow-sm flex-shrink-0">
+        <div className="bg-muted/40 border-b border-border p-6 flex items-start gap-4">
+          <div className="w-14 h-14 rounded-xl bg-card border border-border flex items-center justify-center shadow-sm flex-shrink-0">
             <ProviderIcon providerId={provider.id} className="w-9 h-9 object-contain" />
           </div>
           <div>
-            <DialogTitle className="text-xl font-bold text-gray-900 mb-1">
+            <DialogTitle className="text-xl font-semibold text-foreground mb-1">
               配置 {provider.name}
             </DialogTitle>
-            <p className="text-sm text-gray-500 leading-tight">
+            <p className="text-sm text-muted-foreground leading-tight">
               {provider.description}
             </p>
           </div>
@@ -165,64 +173,65 @@ export function ModelConfigDialog({
         <div className="p-6 space-y-6">
           {/* API Key */}
           <div className="space-y-2">
-            <label className="text-sm font-semibold text-gray-700 flex justify-between">
-              API Key <span className="text-red-500 ml-1">*</span>
+            <div className="flex items-center justify-between gap-3">
+              <Label htmlFor={apiKeyId} className="text-sm font-medium text-foreground">
+                API Key <span className="text-destructive ml-1">*</span>
+              </Label>
               <a
                 href={getProviderDocsUrl(provider.id)}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-xs font-normal text-blue-600 hover:text-blue-700 hover:underline"
+                className="text-xs font-medium text-primary hover:underline"
               >
-                获取 Key →
+                获取 Key <span aria-hidden>→</span>
               </a>
-            </label>
-            <div className="relative group">
-              <input
+            </div>
+            <div className="relative">
+              <Input
+                id={apiKeyId}
                 type={showApiKey ? 'text' : 'password'}
                 value={config.apiKey}
-                onChange={(e) =>
-                  setConfig({ ...config, apiKey: e.target.value })
-                }
+                onChange={(e) => setConfig({ ...config, apiKey: e.target.value })}
                 placeholder={`输入 ${provider.name} API Key`}
-                className="w-full pl-4 pr-10 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-blue-100 focus:border-blue-400 outline-none transition-all text-sm font-mono"
+                className="pr-10 font-mono"
               />
               <button
                 type="button"
                 onClick={() => setShowApiKey(!showApiKey)}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 p-1 rounded-md hover:bg-gray-100 transition-colors"
+                aria-label={showApiKey ? '隐藏 API Key' : '显示 API Key'}
+                title={showApiKey ? '隐藏 API Key' : '显示 API Key'}
+                className="absolute right-2 top-1/2 -translate-y-1/2 rounded-md p-1 text-muted-foreground hover:text-foreground hover:bg-accent/50 transition-colors motion-reduce:transition-none focus-ring"
               >
-                {showApiKey ? (
-                  <EyeOff className="h-4 w-4" />
-                ) : (
-                  <Eye className="h-4 w-4" />
-                )}
+                {showApiKey ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
               </button>
             </div>
           </div>
 
           {/* API Base URL */}
           <div className="space-y-2">
-            <label className="text-sm font-semibold text-gray-700">
+            <Label htmlFor={apiBaseId} className="text-sm font-medium text-foreground">
               API Base URL
-            </label>
-            <input
+            </Label>
+            <Input
+              id={apiBaseId}
               type="text"
               value={config.apiBase}
-              onChange={(e) =>
-                setConfig({ ...config, apiBase: e.target.value })
-              }
+              onChange={(e) => setConfig({ ...config, apiBase: e.target.value })}
               placeholder="https://api.example.com/v1"
-              className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-blue-100 focus:border-blue-400 outline-none transition-all text-sm font-mono text-gray-600"
+              className="font-mono"
             />
           </div>
 
           {/* Model */}
           <div className="space-y-2">
-            <label className="text-sm font-semibold text-gray-700">模型</label>
+            <Label htmlFor={modelId} className="text-sm font-medium text-foreground">
+              模型
+            </Label>
             <select
+              id={modelId}
               value={config.model || ''}
               onChange={(e) => setConfig({ ...config, model: e.target.value })}
-              className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-blue-100 focus:border-blue-400 outline-none transition-all text-sm"
+              className="flex h-11 w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground shadow-sm ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 sm:h-10"
             >
               {provider.models
                 .filter((m) => {
@@ -242,34 +251,41 @@ export function ModelConfigDialog({
           {/* 高级设置开关 */}
           <div>
             <button
+              type="button"
               onClick={() => setShowAdvanced(!showAdvanced)}
-              className="flex items-center gap-2 text-sm font-medium text-gray-500 hover:text-gray-900 transition-colors group"
+              className="flex items-center gap-2 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors motion-reduce:transition-none group"
             >
               <ChevronRight className={cn("h-4 w-4 transition-transform", showAdvanced && "rotate-90")} />
               高级设置
             </button>
             
             {showAdvanced && (
-              <div className="mt-4 grid grid-cols-2 gap-4 animate-in slide-in-from-top-2 duration-200">
+              <div className="mt-4 grid grid-cols-2 gap-4 motion-safe:animate-in motion-safe:slide-in-from-top-2 motion-safe:duration-200">
                 <div className="space-y-1.5">
-                  <label className="text-xs font-medium text-gray-500">Temperature</label>
-                  <input
+                  <Label htmlFor={temperatureId} className="text-xs font-medium text-muted-foreground">
+                    Temperature
+                  </Label>
+                  <Input
+                    id={temperatureId}
                     type="number"
                     step="0.1"
                     min="0"
                     max="2"
                     value={config.temperature}
                     onChange={(e) => setConfig({ ...config, temperature: parseFloat(e.target.value) })}
-                    className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:bg-white focus:border-blue-400 outline-none"
+                    className="h-9 text-sm"
                   />
                 </div>
                 <div className="space-y-1.5">
-                  <label className="text-xs font-medium text-gray-500">Max Tokens</label>
-                  <input
+                  <Label htmlFor={maxTokensId} className="text-xs font-medium text-muted-foreground">
+                    Max Tokens
+                  </Label>
+                  <Input
+                    id={maxTokensId}
                     type="number"
                     value={config.maxTokens}
                     onChange={(e) => setConfig({ ...config, maxTokens: parseInt(e.target.value) })}
-                    className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:bg-white focus:border-blue-400 outline-none"
+                    className="h-9 text-sm"
                   />
                 </div>
               </div>
@@ -278,34 +294,34 @@ export function ModelConfigDialog({
 
           {/* 测试结果 */}
           {testResult && (
-            <div
-              className={cn(
-                'flex items-center gap-3 p-3 rounded-xl border animate-in fade-in zoom-in-95 duration-200',
-                testResult.success
-                  ? 'bg-green-50/50 border-green-100 text-green-700'
-                  : 'bg-red-50/50 border-red-100 text-red-700'
-              )}
+            <Alert
+              variant={testResult.success ? "success" : "destructive"}
+              className="animate-in fade-in zoom-in-95 duration-200 motion-reduce:animate-none"
             >
               {testResult.success ? (
-                <CheckCircle2 className="h-5 w-5 flex-shrink-0" />
+                <CheckCircle2 className="h-5 w-5" />
               ) : (
-                <AlertCircle className="h-5 w-5 flex-shrink-0" />
+                <AlertCircle className="h-5 w-5" />
               )}
-              <span className="text-sm font-medium">{testResult.message}</span>
-            </div>
+              <div>
+                <AlertDescription className="text-foreground font-medium">
+                  {testResult.message}
+                </AlertDescription>
+              </div>
+            </Alert>
           )}
         </div>
 
-        <DialogFooter className="p-6 pt-2 bg-white">
+        <DialogFooter className="p-6 pt-2 bg-card">
           <div className="flex gap-3 w-full">
             <Button
               variant="outline"
               onClick={handleTest}
               disabled={!config.apiKey || !config.model || isTesting}
-              className="flex-1 rounded-xl h-11 border-gray-200 hover:bg-gray-50 hover:text-gray-900"
+              className="flex-1 rounded-xl h-11"
             >
               {isTesting ? (
-                <span className="animate-pulse">测试中...</span>
+                <span className="animate-pulse motion-reduce:animate-none">测试中...</span>
               ) : (
                 <>
                   <FlaskConical className="h-4 w-4 mr-2" />
@@ -316,7 +332,7 @@ export function ModelConfigDialog({
             <Button 
               onClick={handleSave} 
               disabled={!config.apiKey || !config.model}
-              className="flex-1 rounded-xl h-11 bg-blue-600 hover:bg-blue-700 shadow-lg shadow-blue-100"
+              className="flex-1 rounded-xl h-11"
             >
               <Save className="h-4 w-4 mr-2" />
               保存配置

@@ -148,17 +148,17 @@ export function RegressionTestTab({ embedded = false }: { embedded?: boolean }) 
   const runStatus = runDetail?.run?.status
   const statusBadge = !runStatus ? null : (
     runStatus === 'completed' ? (
-      <span className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-100">
+      <span className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-semibold bg-success/10 text-success border border-success/20">
         <CheckCircle2 className="w-3.5 h-3.5" />
         已完成
       </span>
     ) : runStatus === 'failed' ? (
-      <span className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-semibold bg-red-50 text-red-700 border border-red-100">
+      <span className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-semibold bg-destructive/10 text-destructive border border-destructive/20">
         <XCircle className="w-3.5 h-3.5" />
         失败
       </span>
     ) : (
-      <span className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-semibold bg-sky-50 text-sky-700 border border-sky-100">
+      <span className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-semibold bg-info/10 text-info border border-info/20">
         <Loader2 className="w-3.5 h-3.5 animate-spin" />
         运行中
       </span>
@@ -191,7 +191,7 @@ export function RegressionTestTab({ embedded = false }: { embedded?: boolean }) 
                 <label key={m.key} className="flex items-center gap-2 text-sm">
                   <input
                     type="checkbox"
-                    className="h-4 w-4 rounded border-slate-300"
+                    className="h-4 w-4 rounded border-border"
                     checked={metricKeys.includes(m.key)}
                     onChange={(e) => {
                       setMetricKeys((prev) =>
@@ -206,11 +206,11 @@ export function RegressionTestTab({ embedded = false }: { embedded?: boolean }) 
           </div>
         </div>
       ) : (
-        <header className="px-8 py-6 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900">
+        <header className="px-8 py-6 border-b border-border bg-card">
           <div className="flex items-center justify-between mb-4">
             <div>
-              <h2 className="text-xl font-semibold text-slate-900 dark:text-white">回归测试</h2>
-              <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
+              <h2 className="text-xl font-semibold text-foreground">回归测试</h2>
+              <p className="text-sm text-muted-foreground mt-1">
                 管理测试用例，批量运行回归测试，跟踪性能变化
               </p>
             </div>
@@ -223,14 +223,14 @@ export function RegressionTestTab({ embedded = false }: { embedded?: boolean }) 
           </div>
 
           {/* 指标选择 */}
-          <div className="bg-slate-50 dark:bg-slate-800/50 rounded-xl p-4">
-            <div className="text-xs font-medium text-slate-600 dark:text-slate-400 mb-2">评测指标</div>
+          <div className="bg-muted/40 rounded-xl p-4">
+            <div className="text-xs font-medium text-muted-foreground mb-2">评测指标</div>
             <div className="flex flex-wrap gap-2">
               {METRIC_OPTIONS.map((m) => (
                 <label key={m.key} className="flex items-center gap-2 text-sm">
                   <input
                     type="checkbox"
-                    className="h-4 w-4 rounded border-slate-300"
+                    className="h-4 w-4 rounded border-border"
                     checked={metricKeys.includes(m.key)}
                     onChange={(e) => {
                       setMetricKeys((prev) =>
@@ -238,7 +238,7 @@ export function RegressionTestTab({ embedded = false }: { embedded?: boolean }) 
                       )
                     }}
                   />
-                  <span className="text-slate-700 dark:text-slate-300">{m.label}</span>
+                  <span className="text-foreground/80">{m.label}</span>
                 </label>
               ))}
             </div>
@@ -249,7 +249,7 @@ export function RegressionTestTab({ embedded = false }: { embedded?: boolean }) 
       {/* 主内容区 */}
       <div className={cn("flex-1 overflow-hidden flex gap-6 p-6", embedded && "p-0")}>
         {/* 左侧：测试用例管理 */}
-        <div className="w-1/3 flex flex-col bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800">
+        <div className="w-1/3 flex flex-col bg-card rounded-2xl border border-border">
           <TestCaseManager
             onRunTests={handleRunTests}
             onCaseSelected={(caseId) => {
@@ -261,128 +261,128 @@ export function RegressionTestTab({ embedded = false }: { embedded?: boolean }) 
         {/* 右侧：运行结果 */}
         <div className="flex-1 flex flex-col gap-4">
           {/* 运行历史列表 */}
-          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl overflow-hidden">
-            <div className="p-4 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
-              <div className="text-sm font-semibold text-slate-800 dark:text-slate-200">
+          <div className="bg-card border border-border rounded-2xl overflow-hidden">
+            <div className="p-4 border-b border-border flex items-center justify-between">
+              <div className="text-sm font-semibold text-foreground">
                 运行历史
               </div>
-              <div className="text-xs text-slate-500">
+              <div className="text-xs text-muted-foreground">
                 {runs.length} 次
               </div>
             </div>
-            <div className="max-h-40 overflow-y-auto">
-              {isLoadingRuns ? (
-                <div className="flex items-center justify-center py-8">
-                  <Loader2 className="w-6 h-6 animate-spin text-slate-400" />
-                </div>
-              ) : runs.length === 0 ? (
-                <div className="text-center py-8 text-slate-500 text-sm">
-                  暂无运行记录
-                </div>
-              ) : (
-                runs.map((run) => (
-                  <button
+	            <div className="max-h-40 overflow-y-auto">
+	              {isLoadingRuns ? (
+	                <div className="flex items-center justify-center py-8">
+	                  <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+	                </div>
+	              ) : runs.length === 0 ? (
+	                <div className="text-center py-8 text-muted-foreground text-sm">
+	                  暂无运行记录
+	                </div>
+	              ) : (
+	                runs.map((run) => (
+	                  <button
                     key={run.id}
-                    onClick={() => setSelectedRunId(run.id)}
-                    className={cn(
-                      'w-full text-left p-4 border-b border-slate-100 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/40 transition',
-                      selectedRunId === run.id && 'bg-sky-50/60 dark:bg-sky-900/10'
-                    )}
-                  >
-                    <div className="flex items-center justify-between gap-2">
-                      <div className="text-sm font-medium text-slate-800 dark:text-slate-200 truncate">
-                        运行 {run.id.slice(0, 8)}
-                      </div>
-                      <span
-                        className={cn(
-                          'text-[11px] px-2 py-0.5 rounded-full border',
-                          run.status === 'completed'
-                            ? 'bg-emerald-50 text-emerald-700 border-emerald-100'
-                            : run.status === 'failed'
-                            ? 'bg-red-50 text-red-700 border-red-100'
-                            : 'bg-sky-50 text-sky-700 border-sky-100'
-                        )}
-                      >
-                        {run.status}
-                      </span>
-                    </div>
-                    <div className="mt-2 text-xs text-slate-500 dark:text-slate-400">
-                      {new Date(run.created_at).toLocaleString()}
-                    </div>
-                  </button>
-                ))
-              )}
-            </div>
-          </div>
+	                    onClick={() => setSelectedRunId(run.id)}
+	                    className={cn(
+	                      'w-full text-left p-4 border-b border-border hover:bg-muted/50 transition-colors motion-reduce:transition-none',
+	                      selectedRunId === run.id && 'bg-primary/10'
+	                    )}
+	                  >
+	                    <div className="flex items-center justify-between gap-2">
+	                      <div className="text-sm font-medium text-foreground truncate">
+	                        运行 {run.id.slice(0, 8)}
+	                      </div>
+	                      <span
+	                        className={cn(
+	                          'text-[11px] px-2 py-0.5 rounded-full border',
+	                          run.status === 'completed'
+	                            ? 'bg-success/10 text-success border-success/20'
+	                            : run.status === 'failed'
+	                            ? 'bg-destructive/10 text-destructive border-destructive/20'
+	                            : 'bg-info/10 text-info border-info/20'
+	                        )}
+	                      >
+	                        {run.status}
+	                      </span>
+	                    </div>
+	                    <div className="mt-2 text-xs text-muted-foreground">
+	                      {new Date(run.created_at).toLocaleString()}
+	                    </div>
+	                  </button>
+	                ))
+	              )}
+	            </div>
+	          </div>
 
-          {/* 运行详情 */}
-          <div className="flex-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 overflow-y-auto">
-            <div className="flex items-center justify-between mb-4">
-              <div className="text-sm font-semibold text-slate-800 dark:text-slate-200">
-                运行详情
-              </div>
-              {statusBadge}
-            </div>
+	          {/* 运行详情 */}
+	          <div className="flex-1 bg-card border border-border rounded-2xl p-4 overflow-y-auto">
+	            <div className="flex items-center justify-between mb-4">
+	              <div className="text-sm font-semibold text-foreground">
+	                运行详情
+	              </div>
+	              {statusBadge}
+	            </div>
 
-            {runDetail?.run?.error_message && (
-              <div className="mt-3 text-sm text-red-600 p-3 bg-red-50 rounded-lg">
-                {runDetail.run.error_message}
-              </div>
-            )}
+	            {runDetail?.run?.error_message && (
+	              <div className="mt-3 text-sm text-destructive p-3 bg-destructive/10 border border-destructive/20 rounded-lg">
+	                {runDetail.run.error_message}
+	              </div>
+	            )}
 
-            {displayMetrics.length > 0 ? (
-              <div className="mt-4">
-                <StatsGrid className="lg:grid-cols-3">
-                  {displayMetrics.map((m) => (
-                    <StatCard
-                      key={m.key}
-                      icon={BarChart3}
-                      label={m.key}
-                      value={m.value.toFixed(3)}
-                      color="sky"
-                      className="bg-white/80 dark:bg-slate-900/80 border-slate-200 dark:border-slate-800 shadow-sm"
-                    />
-                  ))}
-                </StatsGrid>
-                <div className="mt-3 text-xs text-slate-500 dark:text-slate-400">
-                  items: {summary.items ?? '-'} · tokens: {summary.total_tokens ?? '-'} · cost: {summary.total_cost ?? '-'}
-                </div>
-              </div>
-            ) : (
-              <div className="mt-4 text-sm text-slate-500">
-                {selectedRunId ? '暂无分数（可能仍在运行中）' : '请选择一个运行记录'}
-              </div>
-            )}
+	            {displayMetrics.length > 0 ? (
+	              <div className="mt-4">
+	                <StatsGrid className="lg:grid-cols-3">
+	                  {displayMetrics.map((m) => (
+	                    <StatCard
+	                      key={m.key}
+	                      icon={BarChart3}
+	                      label={m.key}
+	                      value={m.value.toFixed(3)}
+	                      color="sky"
+	                      className="shadow-sm"
+	                    />
+	                  ))}
+	                </StatsGrid>
+	                <div className="mt-3 text-xs text-muted-foreground">
+	                  items: {summary.items ?? '-'} · tokens: {summary.total_tokens ?? '-'} · cost: {summary.total_cost ?? '-'}
+	                </div>
+	              </div>
+	            ) : (
+	              <div className="mt-4 text-sm text-muted-foreground">
+	                {selectedRunId ? '暂无分数（可能仍在运行中）' : '请选择一个运行记录'}
+	              </div>
+	            )}
 
-            {/* 明细列表 */}
-            {runDetail?.items && runDetail.items.length > 0 && (
-              <div className="mt-6">
-                <div className="text-sm font-semibold text-slate-800 dark:text-slate-200 mb-3">
-                  测试明细 ({runDetail.items.length})
-                </div>
-                <div className="space-y-2">
-                  {runDetail.items.map((item: any, index: number) => (
-                    <div
-                      key={item.id}
-                      className="p-3 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50"
-                    >
-                      <div className="text-sm font-medium text-slate-800 dark:text-slate-200 mb-1">
-                        {index + 1}. {item.question}
-                      </div>
-                      <div className="text-xs text-slate-600 dark:text-slate-400 mt-2">
-                        <span className="font-medium">回答:</span> {item.response?.slice(0, 100)}...
-                      </div>
-                      {item.scores && Object.keys(item.scores).length > 0 && (
-                        <div className="flex gap-2 mt-2">
-                          {Object.entries(item.scores).map(([k, v]: [string, any]) => (
-                            <span
-                              key={k}
-                              className="text-[10px] px-2 py-0.5 rounded-full bg-sky-100 dark:bg-sky-900/30 text-sky-700 dark:text-sky-300"
-                            >
-                              {k}: {typeof v === 'number' ? v.toFixed(2) : v}
-                            </span>
-                          ))}
-                        </div>
+	            {/* 明细列表 */}
+	            {runDetail?.items && runDetail.items.length > 0 && (
+	              <div className="mt-6">
+	                <div className="text-sm font-semibold text-foreground mb-3">
+	                  测试明细 ({runDetail.items.length})
+	                </div>
+	                <div className="space-y-2">
+	                  {runDetail.items.map((item: any, index: number) => (
+	                    <div
+	                      key={item.id}
+	                      className="p-3 rounded-lg border border-border bg-muted/40"
+	                    >
+	                      <div className="text-sm font-medium text-foreground mb-1">
+	                        {index + 1}. {item.question}
+	                      </div>
+	                      <div className="text-xs text-muted-foreground mt-2">
+	                        <span className="font-medium">回答:</span> {item.response?.slice(0, 100)}...
+	                      </div>
+	                      {item.scores && Object.keys(item.scores).length > 0 && (
+	                        <div className="flex gap-2 mt-2">
+	                          {Object.entries(item.scores).map(([k, v]: [string, any]) => (
+	                            <span
+	                              key={k}
+	                              className="text-[10px] px-2 py-0.5 rounded-full bg-info/10 text-info border border-info/20"
+	                            >
+	                              {k}: {typeof v === 'number' ? v.toFixed(2) : v}
+	                            </span>
+	                          ))}
+	                        </div>
                       )}
                     </div>
                   ))}
@@ -402,4 +402,3 @@ export function RegressionTestTab({ embedded = false }: { embedded?: boolean }) 
     </div>
   )
 }
-

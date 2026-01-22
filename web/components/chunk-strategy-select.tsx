@@ -37,18 +37,18 @@ export function ChunkStrategySelect({
   return (
     <div
       className={cn(
-        'flex flex-col gap-1 rounded-lg border border-gray-200 bg-white p-3',
+        'flex flex-col gap-1 rounded-lg border border-border bg-card p-3',
         !compact && 'shadow-sm',
         className
       )}
     >
-      <div className="flex items-center justify-between text-xs text-gray-500">
-        <span className="font-medium text-gray-700 flex items-center gap-1">
+      <div className="flex items-center justify-between text-xs text-muted-foreground">
+        <span className="font-medium text-foreground flex items-center gap-1">
           <Layers className="w-3.5 h-3.5" />
           {label}
         </span>
         {currentOption.badge && (
-          <span className="px-1.5 py-0.5 text-xs bg-indigo-100 text-indigo-700 rounded">
+          <span className="px-1.5 py-0.5 text-[10px] bg-primary/10 text-primary rounded border border-primary/20 font-semibold">
             {currentOption.badge}
           </span>
         )}
@@ -57,7 +57,7 @@ export function ChunkStrategySelect({
         value={currentValue}
         onChange={(e) => handleChange(e.target.value)}
         className={cn(
-          'mt-1 w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-200',
+          'mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground shadow-sm ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 motion-reduce:transition-none',
           compact && 'py-1.5 text-xs'
         )}
       >
@@ -97,7 +97,7 @@ export function ChunkStrategySelect({
         </optgroup>
       </select>
       {!compact && (
-        <p className="text-xs text-gray-500 leading-tight">{currentOption.description}</p>
+        <p className="text-xs text-muted-foreground leading-tight">{currentOption.description}</p>
       )}
     </div>
   )

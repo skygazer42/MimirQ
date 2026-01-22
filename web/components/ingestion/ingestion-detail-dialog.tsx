@@ -131,7 +131,7 @@ export function IngestionDetailDialog({
         {/* Paper Texture Overlay */}
         <div className="absolute inset-0 opacity-50 pointer-events-none mix-blend-multiply" style={{ backgroundImage: 'url("data:image/svg+xml,%3Csvg width=\'100\' height=\'100\' viewBox=\'0 0 100 100\' xmlns=\'http://www.w3.org/200\'%3E%3Cfilter id=\'noise\'%3E%3CfeTurbulence type=\'fractalNoise\' baseFrequency=\'0.8\' numOctaves=\'4\' stitchTiles=\'stitch\'/%3E%3C/filter%3E%3Crect width=\'100\' height=\'100\' filter=\'url(%23noise)\' opacity=\'0.08\'/%3E%3C/svg%3E")', backgroundSize: '200px 200px' }} />
 
-        <DialogHeader className="px-8 pt-8 pb-6 border-b border-slate-200/60 bg-white relative z-10">
+        <DialogHeader className="px-8 pt-8 pb-6 border-b border-border/60 bg-card relative z-10">
           <DialogTitle className="flex items-center justify-between gap-3">
             <span className="truncate text-xl font-bold tracking-tight text-slate-900">{doc?.filename || '入库详情'}</span>
             {doc && (
@@ -156,7 +156,12 @@ export function IngestionDetailDialog({
             </div>
             <p>无法获取文档详情，请重试。</p>
             <div className="mt-4">
-              <Button size="sm" variant="outline" className="bg-white border-red-200 text-red-700 hover:bg-red-50" onClick={() => refetch()}>
+              <Button
+                size="sm"
+                variant="outline"
+                className="bg-card border-destructive/30 text-destructive hover:bg-destructive/10"
+                onClick={() => refetch()}
+              >
                 重新加载
               </Button>
             </div>
@@ -167,7 +172,7 @@ export function IngestionDetailDialog({
           <div className="p-8 space-y-8 max-h-[70vh] overflow-y-auto custom-scrollbar relative z-10">
 
             {/* Pipeline Stage Card */}
-            <div className="rounded-2xl border border-slate-200 bg-white shadow-sm p-6 relative overflow-hidden">
+            <div className="rounded-2xl border border-border bg-card shadow-sm p-6 relative overflow-hidden">
               <div className="flex items-center justify-between gap-3 mb-6">
                 <div className="text-sm font-bold text-slate-900 uppercase tracking-wider">Processing Pipeline</div>
                 <div className="text-xs font-mono text-slate-500 bg-slate-100 px-2 py-1 rounded-md">Progress: {doc.processing_progress ?? 0}%</div>
@@ -226,12 +231,12 @@ export function IngestionDetailDialog({
                   <AlertCircle className="w-4 h-4" />
                   {doc.status === 'quarantined' ? '隔离原因' : '错误信息'}
                 </div>
-                <pre className={cn(
-                  "whitespace-pre-wrap break-words rounded-xl bg-white border p-4 text-xs font-mono leading-relaxed shadow-sm",
-                  doc.status === 'quarantined' ? "border-amber-100 text-amber-700" : "border-red-100 text-red-600"
-                )}>
-                  {doc.error_message}
-                </pre>
+	                <pre className={cn(
+	                  "whitespace-pre-wrap break-words rounded-xl bg-card border p-4 text-xs font-mono leading-relaxed shadow-sm",
+	                  doc.status === 'quarantined' ? "border-amber-100 text-amber-700" : "border-red-100 text-red-600"
+	                )}>
+	                  {doc.error_message}
+	                </pre>
               </div>
             )}
 
@@ -240,7 +245,7 @@ export function IngestionDetailDialog({
               <div className="text-sm font-bold text-slate-900 uppercase tracking-wider mb-4">Runtime Details</div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {runtime.map((item) => (
-                  <div key={item.k} className="bg-white rounded-xl border border-slate-100 p-3 shadow-sm hover:shadow-md transition-shadow duration-200">
+                  <div key={item.k} className="bg-card rounded-xl border border-border p-3 shadow-sm hover:shadow-md transition-shadow duration-200 motion-reduce:transition-none">
                     <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">{item.k}</div>
                     <div className="text-xs font-mono text-slate-700 break-words font-medium">{item.v}</div>
                   </div>

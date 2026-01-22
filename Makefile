@@ -1,4 +1,4 @@
-.PHONY: help up up-web up-etl4llm up-marker up-paddlevl up-mineru up-olmocr up-dev up-dev-web up-prod up-prod-web infra-up infra-up-etl4llm infra-up-marker infra-up-paddlevl infra-up-mineru infra-up-olmocr infra-ps infra-down down ps logs restart backend web test api-check api-smoke typecheck lint-py audit-py audit-web audit openapi-export openapi-types openapi-check db-upgrade db-revision verify parser-status clean doctor
+.PHONY: help up up-web up-etl4llm up-marker up-paddlevl up-mineru up-olmocr up-dev up-dev-web up-prod up-prod-web infra-up infra-up-etl4llm infra-up-marker infra-up-paddlevl infra-up-mineru infra-up-olmocr infra-ps infra-down down ps logs restart backend web test api-check api-smoke typecheck ui-check lint-py audit-py audit-web audit openapi-export openapi-types openapi-check db-upgrade db-revision verify parser-status clean doctor
 
 PY := python3
 ifeq ($(OS),Windows_NT)
@@ -42,6 +42,7 @@ help:
 	@echo "  make api-check - verify web routes exist in backend"
 	@echo "  make api-smoke - smoke-test all OpenAPI endpoints (docker backend)"
 	@echo "  make typecheck - run web TypeScript typecheck"
+	@echo "  make ui-check  - verify web UI design tokens (no hard-coded white/cyan etc)"
 	@echo "  make lint-py   - run Python lint (ruff)"
 	@echo "  make audit-py  - audit Python deps (pip-audit)"
 	@echo "  make audit-web - audit web deps (pnpm audit)"
@@ -147,6 +148,9 @@ api-smoke:
 typecheck:
 	cd web && pnpm run typecheck
 
+ui-check:
+	cd web && pnpm run ui-check
+
 lint-py:
 	$(PY) -m ruff check app tests scripts main.py
 
@@ -181,6 +185,7 @@ verify:
 	@$(MAKE) lint-py
 	@$(MAKE) api-check
 	cd web && pnpm run lint
+	cd web && pnpm run ui-check
 	cd web && pnpm run typecheck
 	PYTHONPYCACHEPREFIX=/tmp/mimirq-pycache $(PY) -m compileall -q app
 

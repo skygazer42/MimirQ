@@ -252,14 +252,14 @@ function HistoryPageContent() {
             {selectedConversation ? (
               <>
                 {/* 对话头部 */}
-                <div className="px-6 py-4 border-b border-border flex items-center justify-between bg-background/70 backdrop-blur-md">
-                  <div className="flex items-center gap-4">
-                    <div className="w-10 h-10 bg-gradient-to-br from-sky-500 to-teal-600 rounded-xl flex items-center justify-center shadow-md shadow-sky-200 dark:shadow-none">
-                      <MessageSquare className="h-5 w-5 text-white" />
-                    </div>
-                    <div>
-                      <h2 className="font-bold text-foreground tracking-tight">
-                        {selectedConversation.title || '未命名对话'}
+	                <div className="px-6 py-4 border-b border-border flex items-center justify-between bg-background/70 backdrop-blur-md">
+	                  <div className="flex items-center gap-4">
+	                    <div className="w-10 h-10 bg-gradient-to-br from-sky-500 to-teal-600 rounded-xl flex items-center justify-center shadow-md shadow-sky-200 dark:shadow-none">
+	                      <MessageSquare className="h-5 w-5 text-background dark:text-foreground" />
+	                    </div>
+	                    <div>
+	                      <h2 className="font-bold text-foreground tracking-tight">
+	                        {selectedConversation.title || '未命名对话'}
                       </h2>
                       <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mt-0.5">
                         {selectedConversation.message_count} 条消息 · {formatDate(selectedConversation.created_at)}

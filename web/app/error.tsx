@@ -22,7 +22,7 @@ export default function Error({
     <FullScreenFrame>
       <Card className="w-full max-w-lg rounded-3xl shadow-strong">
         <CardContent className="p-8 text-center">
-          <div className="mx-auto mb-5 flex h-14 w-14 items-center justify-center rounded-2xl bg-amber-500/10 text-amber-700 dark:text-amber-300">
+          <div className="mx-auto mb-5 flex h-14 w-14 items-center justify-center rounded-2xl bg-warning/10 text-warning">
             <AlertTriangle className="h-6 w-6" />
           </div>
           <h1 className="text-xl font-semibold text-foreground">页面加载失败</h1>

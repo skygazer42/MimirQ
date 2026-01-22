@@ -136,15 +136,15 @@ export default function FeedbackTriagePage() {
             用户反馈实时监控与优化分析。
           </span>
         }
-        actions={
-          <Button
-            variant="outline"
-            className="gap-2 bg-white/50 dark:bg-slate-900/50 border-slate-200 dark:border-slate-800 hover:bg-white dark:hover:bg-slate-800 hover:border-slate-300 dark:hover:border-slate-700 text-slate-600 dark:text-slate-300 rounded-full transition-all duration-300 shadow-sm"
-            onClick={() => refetch()}
-          >
-            <RefreshCw className={cn('h-3.5 w-3.5', isFetching ? 'animate-spin' : '')} />
-            刷新数据
-          </Button>
+	        actions={
+	          <Button
+	            variant="outline"
+	            className="gap-2 bg-card/60 border-border hover:bg-card hover:border-border/80 text-muted-foreground hover:text-foreground rounded-full transition-colors duration-200 motion-reduce:transition-none shadow-sm"
+	            onClick={() => refetch()}
+	          >
+	            <RefreshCw className={cn('h-3.5 w-3.5', isFetching ? 'animate-spin' : '')} />
+	            刷新数据
+	          </Button>
         }
         top={
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mt-4">
@@ -153,14 +153,14 @@ export default function FeedbackTriagePage() {
               { label: '点赞 (Like)', value: stats.upvotes, icon: ThumbsUp, color: 'text-emerald-600 dark:text-emerald-400', bg: 'bg-emerald-50 dark:bg-emerald-500/10', border: 'hover:border-emerald-200 dark:hover:border-emerald-800' },
               { label: '点踩 (Dislike)', value: stats.downvotes, icon: ThumbsDown, color: 'text-rose-600 dark:text-rose-400', bg: 'bg-rose-50 dark:bg-rose-500/10', border: 'hover:border-rose-200 dark:hover:border-rose-800' },
               { label: '平均响应', value: '~1.2s', icon: Loader2, color: 'text-sky-600 dark:text-sky-400', bg: 'bg-sky-50 dark:bg-sky-500/10', border: 'hover:border-sky-200 dark:hover:border-sky-800' },
-            ].map((stat, idx) => (
-              <div
-                key={idx}
-                className={cn(
-                  "group relative overflow-hidden rounded-2xl bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 shadow-[0_2px_20px_rgba(0,0,0,0.04)] dark:shadow-none hover:shadow-[0_8px_30px_rgba(0,0,0,0.08)] transition-all duration-300 hover:-translate-y-1",
-                  stat.border
-                )}
-              >
+	            ].map((stat, idx) => (
+	              <div
+	                key={idx}
+	                className={cn(
+	                  "group relative overflow-hidden rounded-2xl bg-card border border-border shadow-[0_2px_20px_rgba(0,0,0,0.04)] dark:shadow-none hover:shadow-[0_8px_30px_rgba(0,0,0,0.08)] transition-all duration-300 hover:-translate-y-1",
+	                  stat.border
+	                )}
+	              >
                 <div className="p-5 flex flex-col justify-between h-full relative z-10">
                   <div className="flex items-center justify-between mb-4">
                     <div className={cn("p-2 rounded-lg transition-colors", stat.bg)}>
@@ -175,12 +175,12 @@ export default function FeedbackTriagePage() {
               </div>
             ))}
           </div>
-        }
-        toolbar={
-          <div className="flex flex-col md:flex-row md:items-center gap-0 bg-white/80 dark:bg-slate-900/80 backdrop-blur-xl border border-slate-200 dark:border-slate-800 shadow-lg shadow-slate-200/50 dark:shadow-none rounded-full p-1.5 transition-all duration-300 max-w-4xl mx-auto md:mx-0">
-            <div className="relative flex-1 group pl-2">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 dark:text-slate-500 group-hover:text-indigo-500 dark:group-hover:text-indigo-400 transition-colors" />
-              <Input
+	        }
+	        toolbar={
+	          <div className="flex flex-col md:flex-row md:items-center gap-0 bg-card/80 backdrop-blur-xl border border-border shadow-soft rounded-full p-1.5 transition-all duration-300 motion-reduce:transition-none max-w-4xl mx-auto md:mx-0">
+	            <div className="relative flex-1 group pl-2">
+	              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 dark:text-slate-500 group-hover:text-indigo-500 dark:group-hover:text-indigo-400 transition-colors" />
+	              <Input
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 placeholder="搜索反馈内容..."
@@ -215,11 +215,11 @@ export default function FeedbackTriagePage() {
                   role="button"
                   tabIndex={0}
                   onClick={() => setDetail(item)}
-                  className={cn(
-                    'group w-full text-left rounded-xl border transition-all duration-300 relative overflow-hidden',
-                    'bg-white dark:bg-slate-900 border-slate-100 dark:border-slate-800 hover:border-indigo-200 dark:hover:border-indigo-800 hover:shadow-[0_8px_30px_rgba(0,0,0,0.04)] hover:-translate-y-0.5'
-                  )}
-                >
+	                  className={cn(
+	                    'group w-full text-left rounded-xl border transition-all duration-300 relative overflow-hidden',
+	                    'bg-card border-border hover:border-indigo-200 dark:hover:border-indigo-800 hover:shadow-[0_8px_30px_rgba(0,0,0,0.04)] hover:-translate-y-0.5'
+	                  )}
+	                >
                   <div
                     className={cn(
                       "absolute left-0 top-0 bottom-0 w-1 transition-colors",
@@ -302,28 +302,28 @@ export default function FeedbackTriagePage() {
             {/* Paper Texture Overlay */}
             <div className="absolute inset-0 opacity-50 dark:opacity-10 pointer-events-none mix-blend-multiply dark:mix-blend-overlay" style={{ backgroundImage: 'url("data:image/svg+xml,%3Csvg width=\'100\' height=\'100\' viewBox=\'0 0 100 100\' xmlns=\'http://www.w3.org/200\'%3E%3Cfilter id=\'noise\'%3E%3CfeTurbulence type=\'fractalNoise\' baseFrequency=\'0.8\' numOctaves=\'4\' stitchTiles=\'stitch\'/%3E%3C/filter%3E%3Crect width=\'100\' height=\'100\' filter=\'url(%23noise)\' opacity=\'0.08\'/%3E%3C/svg%3E")', backgroundSize: '200px 200px' }} />
 
-            <DialogHeader className="px-8 pt-8 pb-4 border-b border-slate-200/60 dark:border-slate-800/60 bg-white dark:bg-slate-900 relative z-10">
-              <DialogTitle className="flex items-center justify-between gap-3">
-                <div className="flex items-center gap-3">
-                  <span className="text-lg font-bold tracking-tight text-slate-900 dark:text-slate-100">反馈详情报告</span>
-                </div>
-                {detail && (
-                  <Button size="sm" variant="outline" className="border-slate-200 dark:border-slate-800 text-xs bg-white dark:bg-slate-900" onClick={() => copyDetail(detail)}>
-                    <Copy className="h-3.5 w-3.5 mr-2" />
-                    Copy JSON
-                  </Button>
-                )}
-              </DialogTitle>
-            </DialogHeader>
+	            <DialogHeader className="px-8 pt-8 pb-4 border-b border-border/60 bg-card relative z-10">
+	              <DialogTitle className="flex items-center justify-between gap-3">
+	                <div className="flex items-center gap-3">
+	                  <span className="text-lg font-bold tracking-tight text-slate-900 dark:text-slate-100">反馈详情报告</span>
+	                </div>
+	                {detail && (
+	                  <Button size="sm" variant="outline" className="border-border/80 text-xs bg-card" onClick={() => copyDetail(detail)}>
+	                    <Copy className="h-3.5 w-3.5 mr-2" />
+	                    Copy JSON
+	                  </Button>
+	                )}
+	              </DialogTitle>
+	            </DialogHeader>
 
             {detail && (
               <div className="p-8 space-y-8 max-h-[70vh] overflow-y-auto custom-scrollbar relative z-10">
 
                 {/* Meta Card */}
-                <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-6 flex flex-col md:flex-row md:items-center justify-between gap-4 shadow-sm">
-                  <div>
-                    <div className="text-sm font-bold text-slate-900 dark:text-slate-100 mb-1">{detail.conversation_title || `对话 ${detail.conversation_id}`}</div>
-                    <div className="text-xs text-slate-500 dark:text-slate-400 font-mono flex items-center gap-3">
+	                <div className="rounded-2xl border border-border bg-card p-6 flex flex-col md:flex-row md:items-center justify-between gap-4 shadow-sm">
+	                  <div>
+	                    <div className="text-sm font-bold text-slate-900 dark:text-slate-100 mb-1">{detail.conversation_title || `对话 ${detail.conversation_id}`}</div>
+	                    <div className="text-xs text-slate-500 dark:text-slate-400 font-mono flex items-center gap-3">
                       <span>ID: {detail.id.slice(0, 8)}</span>
                       <span className="w-1 h-1 rounded-full bg-slate-300 dark:bg-slate-600" />
                       <span>Msg: {detail.message_id.slice(0, 8)}</span>
@@ -383,10 +383,10 @@ export default function FeedbackTriagePage() {
                     跳转至对话上下文
                     <ArrowUpRight className="h-3.5 w-3.5" />
                   </Button>
-                  <Button onClick={() => setDetail(null)} className="rounded-full bg-indigo-600 hover:bg-indigo-700 text-white shadow-lg shadow-indigo-200 dark:shadow-none">关闭面板</Button>
-                </div>
-              </div>
-            )}
+	                  <Button onClick={() => setDetail(null)} className="rounded-full">关闭面板</Button>
+	                </div>
+	              </div>
+	            )}
           </DialogContent>
         </Dialog>
     </AppFrame>

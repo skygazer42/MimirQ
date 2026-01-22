@@ -789,7 +789,7 @@ export function DataGovernancePanel() {
                   <label
                     htmlFor="file-upload"
                     className={cn(
-                      "flex items-center gap-3 px-8 py-4 bg-sky-600 hover:bg-sky-500/10 dark:bg-sky-500/20 text-white rounded-xl font-bold shadow-lg shadow-sky-900/20 hover:shadow-sky-500/30 hover:-translate-y-0.5 transition-all cursor-pointer border border-sky-400/20",
+                      "flex items-center gap-3 px-8 py-4 rounded-xl font-bold shadow-lg hover:-translate-y-0.5 transition-all motion-reduce:transition-none cursor-pointer border bg-info text-info-foreground hover:bg-info/90 border-info/25 dark:bg-info/20 dark:text-foreground dark:hover:bg-info/30",
                       uploading && "opacity-50 cursor-not-allowed"
                     )}
                   >
@@ -855,10 +855,11 @@ export function DataGovernancePanel() {
               重置
             </Button>
             <Button
+              variant="info"
               size="sm"
               onClick={handleSave}
               disabled={!governanceState}
-              className="gap-2 h-8 text-xs bg-sky-600 hover:bg-sky-500/10 dark:bg-sky-500/20 text-white shadow-[0_0_20px_-5px_rgba(14,165,233,0.4)] border border-sky-400/20"
+              className="gap-2 h-8 text-xs"
             >
               <Save className="w-3.5 h-3.5" />
               保存
@@ -869,7 +870,7 @@ export function DataGovernancePanel() {
               size="sm"
               onClick={handlePushToChunkPreview}
               disabled={!isLoaded || files.length === 0}
-              className="gap-2 h-8 text-xs bg-indigo-600 hover:bg-indigo-500 text-white shadow-[0_0_20px_-5px_rgba(99,102,241,0.4)] border border-indigo-400/20"
+              className="gap-2 h-8 text-xs"
             >
               <Layers className="w-3.5 h-3.5" />
               推送切块预览
