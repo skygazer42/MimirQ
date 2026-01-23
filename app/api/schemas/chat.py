@@ -70,6 +70,8 @@ class ConversationSchema(OrmModel):
 class ConversationDetail(BaseModel):
     """Conversation detail."""
     conversation_id: UUID
+    returned: int = 0
+    has_more: bool = False
     messages: List[MessageSchema]
 
 

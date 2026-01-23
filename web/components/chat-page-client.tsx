@@ -6,18 +6,24 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import { AppFrame } from '@/components/app-frame'
 import { ChatArea } from '@/components/chat-area'
 import { DocumentViewerPanel } from '@/components/document-viewer-panel'
+import { useDocumentView } from '@/store/document-view'
 
 export function ChatPageClient({
   initialConversationId,
   initialPrompt,
   initialOpenRagSettings,
+  initialDocumentId,
+  initialChunkId,
 }: {
   initialConversationId?: string
   initialPrompt?: string
   initialOpenRagSettings?: boolean
+  initialDocumentId?: string
+  initialChunkId?: string
 }) {
   const router = useRouter()
   const searchParams = useSearchParams()
+  const { openDocument } = useDocumentView()
 
   const handleConversationId = useCallback(
     (conversationId: string) => {
@@ -38,6 +44,14 @@ export function ChatPageClient({
     const qs = params.toString()
     router.replace(qs ? `/?${qs}` : '/')
   }, [initialOpenRagSettings, router, searchParams])
+
+  // Deep link: open document viewer from query params (used by "copy link" actions).
+  useEffect(() => {
+    const docId = (initialDocumentId || '').trim()
+    if (!docId) return
+    const chunkId = (initialChunkId || '').trim() || undefined
+    openDocument(docId, chunkId)
+  }, [initialDocumentId, initialChunkId, openDocument])
 
   return (
     <AppFrame

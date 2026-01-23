@@ -10,6 +10,8 @@ export default function Home({
     conversation?: string
     prompt?: string
     rag?: string
+    doc?: string
+    chunk?: string
   }
 }) {
   return (
@@ -17,6 +19,8 @@ export default function Home({
       initialConversationId={searchParams?.conversation}
       initialPrompt={searchParams?.prompt}
       initialOpenRagSettings={searchParams?.rag === '1' || searchParams?.rag === 'true'}
+      initialDocumentId={searchParams?.doc}
+      initialChunkId={searchParams?.chunk}
     />
   )
 }

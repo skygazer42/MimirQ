@@ -692,7 +692,7 @@ export const chatApi = {
   async listConversations(params?: {
     skip?: number
     limit?: number
-  }): Promise<{ total: number; items: Conversation[] }> {
+  }): Promise<{ total: number; returned?: number; has_more?: boolean; items: Conversation[] }> {
     const { data } = await apiClient.get('/chat/conversations', { params })
     return data
   },
@@ -700,8 +700,11 @@ export const chatApi = {
   /**
    * 获取对话消息
    */
-  async getMessages(conversationId: string): Promise<{ conversation_id: string; messages: Message[] }> {
-    const { data } = await apiClient.get(`/chat/conversations/${conversationId}/messages`)
+  async getMessages(
+    conversationId: string,
+    params?: { limit?: number; before?: string }
+  ): Promise<{ conversation_id: string; messages: Message[]; returned?: number; has_more?: boolean }> {
+    const { data } = await apiClient.get(`/chat/conversations/${conversationId}/messages`, { params })
     return data
   },
 

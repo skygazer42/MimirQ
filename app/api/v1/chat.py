@@ -12,7 +12,7 @@ from typing import Optional, List
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
 from fastapi.encoders import jsonable_encoder
-from sqlalchemy import func
+from sqlalchemy import func, and_, or_
 from sqlalchemy.orm import Session
 from langchain_core.documents import Document
 from langchain_community.retrievers.bm25 import BM25Retriever
@@ -660,11 +660,13 @@ async def list_conversations(
 @router.get("/conversations/{conversation_id}/messages", response_model=ConversationDetail)
 async def get_conversation_messages(
     conversation_id: UUID,
+    limit: Optional[int] = Query(default=None, ge=1, le=500),
+    before: Optional[UUID] = Query(default=None),
     tenant_id: UUID = Depends(get_tenant_id),
     account_id: str = Depends(get_current_account_id),
     db: Session = Depends(get_db)
 ):
-    """Fetch conversation history."""
+    """Fetch conversation history (paged)."""
     DatasetService.ensure_member(db, tenant_id, account_id)
     conversation = db.query(Conversation).filter(
         Conversation.id == conversation_id,
@@ -676,14 +678,61 @@ async def get_conversation_messages(
 
     _ensure_conversation_access(db, tenant_id, account_id, conversation)
 
-    messages = db.query(Message).filter(
+    if before is not None and limit is None:
+        raise HTTPException(status_code=400, detail="limit is required when before is set")
+
+    query = db.query(Message).filter(
         Message.conversation_id == conversation_id,
-        Message.tenant_id == tenant_id
-    ).order_by(Message.created_at.asc()).all()
+        Message.tenant_id == tenant_id,
+    )
+
+    # Backwards compatible behavior: no limit => return all messages.
+    if limit is None:
+        messages = query.order_by(Message.created_at.asc()).all()
+        return {
+            "conversation_id": conversation_id,
+            "returned": len(messages),
+            "has_more": False,
+            "messages": messages,
+        }
+
+    # Cursor pagination: request messages strictly older than the "before" message.
+    if before is not None:
+        before_msg = (
+            db.query(Message)
+            .filter(
+                Message.id == before,
+                Message.conversation_id == conversation_id,
+                Message.tenant_id == tenant_id,
+            )
+            .first()
+        )
+        if before_msg is None:
+            raise HTTPException(status_code=404, detail="Message cursor not found")
+        query = query.filter(
+            or_(
+                Message.created_at < before_msg.created_at,
+                and_(Message.created_at == before_msg.created_at, Message.id < before_msg.id),
+            )
+        )
+
+    # Fetch latest-first for cheap paging, then reverse for display order.
+    rows = (
+        query.order_by(Message.created_at.desc(), Message.id.desc())
+        .limit(limit + 1)
+        .all()
+    )
+    has_more = len(rows) > limit
+    if has_more:
+        rows = rows[:limit]
+
+    messages = list(reversed(rows))
 
     return {
         "conversation_id": conversation_id,
-        "messages": messages
+        "returned": len(messages),
+        "has_more": has_more,
+        "messages": messages,
     }
 
 

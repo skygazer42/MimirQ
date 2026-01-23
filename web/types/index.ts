@@ -480,11 +480,15 @@ export interface Conversation {
 
 export interface ConversationListResponse {
   total: number
+  returned?: number
+  has_more?: boolean
   items: Conversation[]
 }
 
 export interface ConversationDetail {
   conversation_id: string
+  returned?: number
+  has_more?: boolean
   messages: Message[]
 }
 

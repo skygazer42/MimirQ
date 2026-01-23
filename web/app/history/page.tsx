@@ -3,7 +3,7 @@
  */
 'use client'
 
-import { useState, useEffect, useRef, Suspense, useCallback, useDeferredValue, useMemo } from 'react'
+import { useState, useEffect, useLayoutEffect, useRef, Suspense, useCallback, useDeferredValue, useMemo } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import {
   MessageSquare,
@@ -26,6 +26,8 @@ import { PageLoading } from '@/components/ui/page-loading'
 import { PageScaffold } from '@/components/ui/page-scaffold'
 import { chatApi } from '@/lib/api-client'
 import { cn } from '@/lib/utils'
+import { formatApiError } from '@/lib/api-errors'
+import { toast } from 'sonner'
 import type { Conversation, Message } from '@/types'
 
 export default function HistoryPage() {
@@ -57,11 +59,14 @@ function HistoryPageContent() {
   const [messages, setMessages] = useState<Message[]>([])
   const [isLoadingList, setIsLoadingList] = useState(true)
   const [isLoadingMessages, setIsLoadingMessages] = useState(false)
+  const [hasMoreMessages, setHasMoreMessages] = useState(false)
+  const [isLoadingOlder, setIsLoadingOlder] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
   const [showDeleteConfirm, setShowDeleteConfirm] = useState<string | null>(null)
-  const [visibleCount, setVisibleCount] = useState(DEFAULT_VISIBLE_MESSAGES)
 
+  const messagesContainerRef = useRef<HTMLDivElement>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
+  const pendingPrependScrollRef = useRef<{ top: number; height: number } | null>(null)
   const deferredSearchQuery = useDeferredValue(searchQuery)
 
   // define handlers first to avoid ReferenceError
@@ -72,6 +77,7 @@ function HistoryPageContent() {
       setConversations(result.items || [])
     } catch (error) {
       console.error('Failed to load conversations:', error)
+      toast.error(formatApiError(error, '加载对话列表失败'))
     } finally {
       setIsLoadingList(false)
     }
@@ -82,17 +88,24 @@ function HistoryPageContent() {
 
     setSelectedConversation(conversation)
     setMessages([])
+    setHasMoreMessages(false)
     setIsLoadingMessages(true)
 
     // 更新 URL
     router.push(`/history?id=${conversation.id}`, { scroll: false })
 
     try {
-      const result = await chatApi.getMessages(conversation.id)
+      const result = await chatApi.getMessages(conversation.id, { limit: DEFAULT_VISIBLE_MESSAGES })
       setMessages(result.messages || [])
+      setHasMoreMessages(Boolean(result.has_more))
+      window.requestAnimationFrame(() => {
+        messagesEndRef.current?.scrollIntoView({ behavior: 'auto' })
+      })
     } catch (error) {
       console.error('Failed to load messages:', error)
+      toast.error(formatApiError(error, '加载对话消息失败'))
       setMessages([])
+      setHasMoreMessages(false)
     } finally {
       setIsLoadingMessages(false)
     }
@@ -113,14 +126,19 @@ function HistoryPageContent() {
     }
   }, [conversationId, conversations, handleSelectConversation, selectedConversation?.id])
 
-  // 自动滚动到底部
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+  // Preserve scroll position when prepending older messages.
+  useLayoutEffect(() => {
+    const pending = pendingPrependScrollRef.current
+    if (!pending) return
+    const el = messagesContainerRef.current
+    if (!el) {
+      pendingPrependScrollRef.current = null
+      return
+    }
+    const nextHeight = el.scrollHeight
+    el.scrollTop = pending.top + (nextHeight - pending.height)
+    pendingPrependScrollRef.current = null
   }, [messages])
-
-  useEffect(() => {
-    setVisibleCount(DEFAULT_VISIBLE_MESSAGES)
-  }, [selectedConversation?.id])
 
   const handleDeleteConversation = async (conversationId: string) => {
     try {
@@ -167,11 +185,36 @@ function HistoryPageContent() {
     [filteredConversations]
   )
   const groupOrder = ['今天', '昨天', '最近7天', '最近30天', '更早']
-  const hiddenMessageCount = Math.max(0, messages.length - visibleCount)
-  const visibleMessages = useMemo(
-    () => messages.slice(-visibleCount),
-    [messages, visibleCount]
-  )
+  const oldestMessageId = messages[0]?.id
+
+  const loadOlderMessages = useCallback(async () => {
+    if (!selectedConversation) return
+    if (!hasMoreMessages) return
+    if (isLoadingMessages || isLoadingOlder) return
+    if (!oldestMessageId) return
+
+    const el = messagesContainerRef.current
+    if (el) {
+      pendingPrependScrollRef.current = { top: el.scrollTop, height: el.scrollHeight }
+    }
+
+    setIsLoadingOlder(true)
+    try {
+      const result = await chatApi.getMessages(selectedConversation.id, { limit: LOAD_MORE_STEP, before: oldestMessageId })
+      const older = result.messages || []
+      setMessages((prev) => {
+        const seen = new Set(prev.map((m) => m.id))
+        const prefix = older.filter((m) => !seen.has(m.id))
+        return prefix.length ? [...prefix, ...prev] : prev
+      })
+      setHasMoreMessages(Boolean(result.has_more))
+    } catch (error) {
+      console.error('Failed to load older messages:', error)
+      toast.error(formatApiError(error, '加载更早消息失败'))
+    } finally {
+      setIsLoadingOlder(false)
+    }
+  }, [selectedConversation, hasMoreMessages, isLoadingMessages, isLoadingOlder, oldestMessageId])
 
   return (
     <AppFrame rightPanel={<DocumentViewerPanel />} withDocumentViewerPadding mainClassName="overflow-hidden">
@@ -289,7 +332,7 @@ function HistoryPageContent() {
                 </div>
 
                 {/* 消息列表 */}
-                <div className="flex-1 overflow-y-auto overscroll-contain no-scrollbar px-6 py-8">
+                <div ref={messagesContainerRef} className="flex-1 overflow-y-auto overscroll-contain no-scrollbar px-6 py-8">
                   {isLoadingMessages ? (
                     <div className="flex items-center justify-center h-full">
                       <Loader2 className="h-8 w-8 animate-spin motion-reduce:animate-none text-muted-foreground" />
@@ -301,21 +344,20 @@ function HistoryPageContent() {
                     </div>
                   ) : (
                     <div className="max-w-3xl mx-auto space-y-10">
-                      {hiddenMessageCount > 0 && (
+                      {hasMoreMessages ? (
                         <div className="flex justify-center">
                           <Button
                             variant="outline"
                             size="sm"
-                            onClick={() =>
-                              setVisibleCount((count) => Math.min(messages.length, count + LOAD_MORE_STEP))
-                            }
+                            onClick={loadOlderMessages}
+                            disabled={isLoadingOlder}
                             className="rounded-full text-xs"
                           >
-                            显示更早消息（{hiddenMessageCount}）
+                            {isLoadingOlder ? '加载中…' : '加载更早消息'}
                           </Button>
                         </div>
-                      )}
-                      {visibleMessages.map((message) => (
+                      ) : null}
+                      {messages.map((message) => (
                         <ChatMessageItem key={message.id} message={message} />
                       ))}
                       <div ref={messagesEndRef} className="h-4" />
