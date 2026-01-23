@@ -7,6 +7,7 @@ from app.models.tenant import Tenant, TenantMember
 from app.rag.kg.models import KgEntity, KgSourceEvent, KgEventEntity
 from app.models.dataset import Dataset, DatasetPermission, DatasetPermissionEnum
 from app.models.evaluation import RagasEvaluationRun, RagasEvaluationItem
+from app.models.governance_profile import GovernanceProfile
 from app.models.prompt_template import PromptTemplate
 from app.models.user import User
 
@@ -25,6 +26,7 @@ __all__ = [
     "KgEventEntity",
     "RagasEvaluationRun",
     "RagasEvaluationItem",
+    "GovernanceProfile",
     "PromptTemplate",
     "User",
 ]

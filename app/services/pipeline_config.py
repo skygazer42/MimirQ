@@ -6,6 +6,7 @@ Provides parsing, building, and resolution for pipeline configuration.
 
 from dataclasses import asdict
 from typing import Any, Dict, Optional
+import re
 
 from app.types.indexing import IndexingOptions
 from app.types.pipeline import PipelineEffective, PipelineOptions
@@ -54,6 +55,69 @@ def _coerce_str(value: Any) -> Optional[str]:
     return None
 
 
+_ALLOWED_RE_FLAG_BITS = int(re.IGNORECASE | re.MULTILINE | re.DOTALL)
+_REGEX_RULES_MAX = 60
+_REGEX_PATTERN_MAX = 600
+_REGEX_REPL_MAX = 2000
+_SUSPICIOUS_NESTED_QUANTIFIER_RE = re.compile(r"\([^)]*[+*][^)]*\)[+*]")
+
+
+def _sanitize_regex_rules(value: Any) -> Optional[list[dict]]:
+    """
+    Best-effort validation for user-provided regex rules stored in metadata.
+
+    Security:
+    - Reject nested quantifiers (common ReDoS footgun)
+    - Restrict flags to IGNORECASE/MULTILINE/DOTALL
+    - Cap rule count and pattern length
+    """
+    if value is None:
+        return None
+    if not isinstance(value, list):
+        return None
+
+    out: list[dict] = []
+    for item in value:
+        if not isinstance(item, dict):
+            continue
+        pattern = item.get("pattern")
+        if not isinstance(pattern, str):
+            continue
+        pattern = pattern.strip()
+        if not pattern:
+            continue
+        if len(pattern) > _REGEX_PATTERN_MAX:
+            continue
+        if _SUSPICIOUS_NESTED_QUANTIFIER_RE.search(pattern):
+            continue
+
+        repl = item.get("repl", "")
+        if repl is None:
+            repl = ""
+        if not isinstance(repl, str):
+            repl = str(repl)
+        if len(repl) > _REGEX_REPL_MAX:
+            repl = repl[:_REGEX_REPL_MAX]
+
+        flags = item.get("flags", 0)
+        try:
+            flags_int = int(flags)
+        except Exception:
+            continue
+        if flags_int < 0 or (flags_int & ~_ALLOWED_RE_FLAG_BITS):
+            continue
+        try:
+            re.compile(pattern, flags=flags_int)
+        except re.error:
+            continue
+
+        out.append({"pattern": pattern, "repl": repl, "flags": flags_int})
+        if len(out) >= _REGEX_RULES_MAX:
+            break
+
+    return out or None
+
+
 def _resolve_flag(default: bool, override: Optional[bool]) -> bool:
     return bool(default) and override is not False
 
@@ -100,6 +164,7 @@ def parse_pipeline_from_metadata(metadata: Dict[str, Any]) -> PipelineOptions:
         governance_remove_common_lines=_coerce_bool(governance.get("remove_common_lines")),
         governance_remove_boilerplate=_coerce_bool(governance.get("remove_boilerplate")),
         governance_remove_images=_coerce_str(governance.get("remove_images")),
+        governance_regex_rules=_sanitize_regex_rules(governance.get("regex_rules")),
         governance_extract_frontmatter=_coerce_bool(governance.get("extract_frontmatter")),
         governance_strip_frontmatter=_coerce_bool(governance.get("strip_frontmatter")),
         governance_detect_language=_coerce_bool(governance.get("detect_language")),
@@ -189,6 +254,10 @@ def build_pipeline_metadata(options: PipelineOptions) -> Optional[Dict[str, Any]
         governance["remove_boilerplate"] = bool(options.governance_remove_boilerplate)
     if options.governance_remove_images is not None:
         governance["remove_images"] = str(options.governance_remove_images)
+    if options.governance_regex_rules is not None:
+        sanitized = _sanitize_regex_rules(options.governance_regex_rules)
+        if sanitized:
+            governance["regex_rules"] = sanitized
     if options.governance_extract_frontmatter is not None:
         governance["extract_frontmatter"] = bool(options.governance_extract_frontmatter)
     if options.governance_strip_frontmatter is not None:
@@ -348,6 +417,7 @@ def resolve_pipeline_options(options: PipelineOptions) -> PipelineEffective:
         if options.governance_remove_images is None
         else str(options.governance_remove_images or "none")
     )
+    governance_regex_rules = _sanitize_regex_rules(options.governance_regex_rules) or []
     governance_extract_frontmatter = (
         getattr(settings, "GOVERNANCE_EXTRACT_FRONTMATTER", False)
         if options.governance_extract_frontmatter is None
@@ -579,6 +649,7 @@ def resolve_pipeline_options(options: PipelineOptions) -> PipelineEffective:
         governance_remove_common_lines=governance_remove_common_lines,
         governance_remove_boilerplate=governance_remove_boilerplate,
         governance_remove_images=str(governance_remove_images or "none"),
+        governance_regex_rules=list(governance_regex_rules or []),
         governance_extract_frontmatter=bool(governance_extract_frontmatter),
         governance_strip_frontmatter=bool(governance_strip_frontmatter),
         governance_detect_language=bool(governance_detect_language),

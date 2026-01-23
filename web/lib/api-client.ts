@@ -52,6 +52,13 @@ import type {
   LLMCleanPreviewRequest,
   LLMCleanPreviewResponse,
   PipelineCapabilitiesResponse,
+  GovernanceAnalyzeRequest,
+  GovernanceAnalyzeResponse,
+  GovernanceProfileListResponse,
+  GovernanceProfileOut,
+  GovernanceProfileCreate,
+  GovernanceProfileUpdate,
+  GovernanceProfileImportResponse,
   PipelineChunkPreviewRequest,
   PipelineChunkPreviewResponse,
   PipelineParsePreviewResponse,
@@ -576,6 +583,56 @@ export const pipelineApi = {
   async getCapabilities(): Promise<PipelineCapabilitiesResponse> {
     const { data } = await apiClient.get('/pipeline/capabilities')
     return data
+  },
+
+  async governanceAnalyze(params: GovernanceAnalyzeRequest): Promise<GovernanceAnalyzeResponse> {
+    const { data } = await apiClient.post('/pipeline/governance-analyze', params)
+    return data
+  },
+
+  async listGovernanceProfiles(params?: {
+    q?: string
+    include_builtin?: boolean
+    limit?: number
+  }): Promise<GovernanceProfileListResponse> {
+    const { data } = await apiClient.get('/pipeline/governance-profiles', { params })
+    return data
+  },
+
+  async getGovernanceProfile(profileRef: string): Promise<GovernanceProfileOut> {
+    const { data } = await apiClient.get(`/pipeline/governance-profiles/${encodeURIComponent(profileRef)}`)
+    return data
+  },
+
+  async createGovernanceProfile(payload: GovernanceProfileCreate): Promise<GovernanceProfileOut> {
+    const { data } = await apiClient.post('/pipeline/governance-profiles', payload)
+    return data
+  },
+
+  async updateGovernanceProfile(profileRef: string, payload: GovernanceProfileUpdate): Promise<GovernanceProfileOut> {
+    const { data } = await apiClient.patch(`/pipeline/governance-profiles/${encodeURIComponent(profileRef)}`, payload)
+    return data
+  },
+
+  async deleteGovernanceProfile(profileRef: string): Promise<void> {
+    await apiClient.delete(`/pipeline/governance-profiles/${encodeURIComponent(profileRef)}`)
+  },
+
+  async importGovernanceProfiles(file: File, overwrite = false): Promise<GovernanceProfileImportResponse> {
+    const formData = new FormData()
+    formData.append('file', file)
+    formData.append('overwrite', overwrite ? 'true' : 'false')
+    const { data } = await apiClient.post('/pipeline/governance-profiles/import', formData, {
+      timeout: API_LONG_TIMEOUT_MS,
+    })
+    return data
+  },
+
+  async exportGovernanceProfile(profileRef: string): Promise<Blob> {
+    const { data } = await apiClient.get(`/pipeline/governance-profiles/${encodeURIComponent(profileRef)}/export`, {
+      responseType: 'blob',
+    })
+    return data as Blob
   },
 
   async parsePreview(

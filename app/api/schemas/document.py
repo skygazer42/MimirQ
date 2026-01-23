@@ -9,6 +9,14 @@ from uuid import UUID
 from .base import OrmModel
 
 
+class GovernanceRegexRule(BaseModel):
+    """Declarative regex cleanup rule (no executable code)."""
+
+    pattern: str = Field(..., min_length=1, max_length=600)
+    repl: str = Field(default="", max_length=2000)
+    flags: int = Field(default=0, ge=0, le=10_000)
+
+
 class DocumentPipelineOptions(BaseModel):
     """Per-document pipeline options."""
     governance_enabled: Optional[bool] = None
@@ -20,6 +28,11 @@ class DocumentPipelineOptions(BaseModel):
     governance_remove_images: Optional[str] = Field(
         default=None,
         description="Image removal mode: none | decorative | all",
+    )
+    governance_regex_rules: Optional[List[GovernanceRegexRule]] = Field(
+        default=None,
+        description="Additional regex cleanup rules (stored in metadata.pipeline.governance.regex_rules).",
+        max_length=60,
     )
     governance_extract_frontmatter: Optional[bool] = Field(default=None, description="Extract Markdown YAML frontmatter for metadata enrichment")
     governance_strip_frontmatter: Optional[bool] = Field(default=None, description="Strip Markdown YAML frontmatter from content after extraction")

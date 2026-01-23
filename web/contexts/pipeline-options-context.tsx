@@ -13,6 +13,7 @@ const DEFAULT_OPTIONS: DocumentPipelineOptions = {
   governance_remove_common_lines: true,
   governance_remove_boilerplate: false,
   governance_remove_images: 'none',
+  governance_regex_rules: [],
   governance_extract_frontmatter: false,
   governance_strip_frontmatter: false,
   governance_detect_language: false,
@@ -127,6 +128,21 @@ const normalizeSecretsMode = (value: unknown): 'mask' | 'token' => {
   return 'mask'
 }
 
+const normalizeRegexRules = (value: unknown): Array<{ pattern: string; repl?: string; flags?: number }> => {
+  if (!Array.isArray(value)) return []
+  const out: Array<{ pattern: string; repl?: string; flags?: number }> = []
+  for (const item of value) {
+    if (!item || typeof item !== 'object') continue
+    const pattern = typeof (item as any).pattern === 'string' ? String((item as any).pattern).trim() : ''
+    if (!pattern) continue
+    const repl = typeof (item as any).repl === 'string' ? String((item as any).repl) : ''
+    const flags = typeof (item as any).flags === 'number' ? (item as any).flags : 0
+    out.push({ pattern, repl, flags })
+    if (out.length >= 60) break
+  }
+  return out
+}
+
 const normalizeOptions = (raw: any): DocumentPipelineOptions => {
   if (!raw || typeof raw !== 'object') return { ...DEFAULT_OPTIONS }
   return {
@@ -137,6 +153,7 @@ const normalizeOptions = (raw: any): DocumentPipelineOptions => {
     governance_remove_common_lines: toBool(raw.governance_remove_common_lines) ?? DEFAULT_OPTIONS.governance_remove_common_lines,
     governance_remove_boilerplate: toBool(raw.governance_remove_boilerplate) ?? DEFAULT_OPTIONS.governance_remove_boilerplate,
     governance_remove_images: normalizeImageMode(raw.governance_remove_images) ?? DEFAULT_OPTIONS.governance_remove_images,
+    governance_regex_rules: normalizeRegexRules(raw.governance_regex_rules) ?? DEFAULT_OPTIONS.governance_regex_rules,
     governance_extract_frontmatter: toBool(raw.governance_extract_frontmatter) ?? DEFAULT_OPTIONS.governance_extract_frontmatter,
     governance_strip_frontmatter: toBool(raw.governance_strip_frontmatter) ?? DEFAULT_OPTIONS.governance_strip_frontmatter,
     governance_detect_language: toBool(raw.governance_detect_language) ?? DEFAULT_OPTIONS.governance_detect_language,

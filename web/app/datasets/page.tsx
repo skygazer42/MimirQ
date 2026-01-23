@@ -21,6 +21,7 @@ import { formatApiError } from '@/lib/api-errors'
 import { cn } from '@/lib/utils'
 import type { Dataset, PermissionEnum, DocumentPipelineOptions } from '@/types'
 import { PipelineOptionsPanel } from '@/components/pipeline-options-panel'
+import { GovernanceProfileSelector } from '@/components/governance-profile-selector'
 import { usePipelineOptions } from '@/contexts/pipeline-options-context'
 
 type DatasetFormState = {
@@ -434,6 +435,21 @@ function DatasetForm({
         </div>
         {form.pipelineEnabled && (
           <div className="p-4 bg-card/60">
+            <div className="mb-4">
+              <div className="text-xs font-medium text-muted-foreground mb-2">治理预设（Profiles/脚本）</div>
+              <GovernanceProfileSelector
+                compact={true}
+                onApplyPatch={(patch) => {
+                  setForm({
+                    ...form,
+                    pipelineOptions: {
+                      ...form.pipelineOptions,
+                      ...(patch || {}),
+                    },
+                  })
+                }}
+              />
+            </div>
             <PipelineOptionsPanel
               compact={true}
               hideEnabledToggle={true}

@@ -20,6 +20,8 @@ class PipelineOptions:
     governance_remove_common_lines: Optional[bool] = None
     governance_remove_boilerplate: Optional[bool] = None
     governance_remove_images: Optional[str] = None
+    # Additional regex cleanup rules stored in metadata.pipeline.governance.regex_rules (best-effort).
+    governance_regex_rules: Optional[list[dict]] = None
     governance_extract_frontmatter: Optional[bool] = None
     governance_strip_frontmatter: Optional[bool] = None
     governance_detect_language: Optional[bool] = None
@@ -82,6 +84,7 @@ class PipelineEffective:
     governance_remove_common_lines: bool
     governance_remove_boilerplate: bool
     governance_remove_images: str
+    governance_regex_rules: list[dict]
     governance_extract_frontmatter: bool
     governance_strip_frontmatter: bool
     governance_detect_language: bool
