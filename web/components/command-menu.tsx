@@ -131,7 +131,43 @@ export function CommandMenu() {
         </CommandGroup>
         
         <CommandSeparator />
-        
+
+        {query.trim().length >= 2 ? (
+          <>
+            <CommandGroup heading="文档">
+              {docLoading ? (
+                <CommandItem disabled value="doc:loading">
+                  <FileText className="mr-2 h-4 w-4" />
+                  <span>搜索中…</span>
+                </CommandItem>
+              ) : docResults.length ? (
+                docResults.map((doc) => (
+                  <CommandItem
+                    key={doc.id}
+                    value={doc.filename}
+                    onSelect={() =>
+                      runCommand(() => {
+                        openDocument(doc.id)
+                        router.push("/")
+                      })
+                    }
+                  >
+                    <FileText className="mr-2 h-4 w-4" />
+                    <span className="truncate">{doc.filename}</span>
+                  </CommandItem>
+                ))
+              ) : (
+                <CommandItem disabled value="doc:empty">
+                  <FileText className="mr-2 h-4 w-4" />
+                  <span>未找到文档</span>
+                </CommandItem>
+              )}
+            </CommandGroup>
+
+            <CommandSeparator />
+          </>
+        ) : null}
+
         <CommandGroup heading="操作">
            <CommandItem onSelect={() => runCommand(() => router.push('/knowledge'))}>
             <Upload className="mr-2 h-4 w-4" />

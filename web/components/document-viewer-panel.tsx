@@ -55,6 +55,9 @@ export function DocumentViewerPanel() {
   const [isLoading, setIsLoading] = React.useState(false)
   const [chunksLoaded, setChunksLoaded] = React.useState(false)
   const [chunksLoading, setChunksLoading] = React.useState(false)
+  const [loadAllChunks, setLoadAllChunks] = React.useState(false)
+  const [highlightChunk, setHighlightChunkState] = React.useState<DocumentChunk | null>(null)
+  const [highlightChunkLoading, setHighlightChunkLoading] = React.useState(false)
   const [isExpanded, setIsExpanded] = React.useState(false)
   const chunksListRef = React.useRef<HTMLDivElement>(null)
   const chunkSearchRef = React.useRef<HTMLInputElement>(null)
@@ -74,6 +77,11 @@ export function DocumentViewerPanel() {
     setDoc(null)
     setChunks([])
     setChunksLoaded(false)
+    setLoadAllChunks(false)
+    setHighlightChunkState(null)
+    setHighlightChunkLoading(false)
+    setChunkQuery("")
+    setMatchCursor(0)
     setIsLoading(true)
     documentApi.get(documentId, { includeChunks: false })
       .then(data => {
@@ -83,11 +91,44 @@ export function DocumentViewerPanel() {
       .finally(() => setIsLoading(false))
   }, [documentId])
 
+  // If a citation requests a highlight, fetch just that chunk first (fast path).
+  React.useEffect(() => {
+    if (!documentId) return
+    if (!highlightChunkId) {
+      setHighlightChunkState(null)
+      setHighlightChunkLoading(false)
+      return
+    }
+
+    let cancelled = false
+    setHighlightChunkLoading(true)
+    documentApi
+      .getChunk(documentId, highlightChunkId)
+      .then((data) => {
+        if (cancelled) return
+        setHighlightChunkState(data)
+      })
+      .catch((err) => {
+        if (cancelled) return
+        console.error(err)
+        setHighlightChunkState(null)
+      })
+      .finally(() => {
+        if (cancelled) return
+        setHighlightChunkLoading(false)
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [documentId, highlightChunkId])
+
   // Load chunks on demand (when user opens the "chunks" tab or a citation requests a highlight).
   React.useEffect(() => {
     if (!documentId) return
     if (chunksLoaded || chunksLoading) return
-    if (!(activeTab === "chunks" || Boolean(highlightChunkId))) return
+    const shouldLoadAll = activeTab === "chunks" && (loadAllChunks || !highlightChunkId)
+    if (!shouldLoadAll) return
 
     setChunksLoading(true)
     let cancelled = false
@@ -115,7 +156,7 @@ export function DocumentViewerPanel() {
     return () => {
       cancelled = true
     }
-  }, [documentId, activeTab, highlightChunkId, chunksLoaded, chunksLoading])
+  }, [documentId, activeTab, highlightChunkId, loadAllChunks, chunksLoaded, chunksLoading])
 
   const highlightIndex = React.useMemo(() => {
     if (!highlightChunkId) return -1
@@ -320,8 +361,14 @@ export function DocumentViewerPanel() {
                        onKeyDown={(e) => {
                          if (e.key === "Enter") jumpToMatch(matchCursor)
                        }}
-                       placeholder={chunksLoading && !chunksLoaded ? "切片加载中…" : "搜索切片内容…"}
-                       disabled={chunksLoading && !chunksLoaded}
+                       placeholder={
+                         chunksLoading && !chunksLoaded
+                           ? "切片加载中…"
+                           : highlightChunkId && !loadAllChunks && !chunksLoaded
+                             ? "已定位引用切片（加载全部后可搜索）"
+                             : "搜索切片内容…"
+                       }
+                       disabled={(chunksLoading && !chunksLoaded) || (highlightChunkId && !loadAllChunks && !chunksLoaded)}
                        className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                      />
                      <div className="flex items-center gap-2">
@@ -354,6 +401,63 @@ export function DocumentViewerPanel() {
                        </Button>
                      </div>
                    </div>
+
+                   {highlightChunkId && !loadAllChunks && !chunksLoaded ? (
+                     <div className="mt-3 rounded-xl border border-border/60 bg-background/60 p-4">
+                       <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-3">
+                         <div className="min-w-0">
+                           <div className="text-xs font-semibold text-foreground">引用切片</div>
+                           <div className="mt-1 text-[11px] text-muted-foreground">
+                             为避免一次性加载大量切片，先展示命中内容；需要全文切片可点击「加载全部切片」。
+                           </div>
+                         </div>
+                         <div className="flex items-center gap-2 justify-end">
+                           <Button
+                             type="button"
+                             size="sm"
+                             variant="outline"
+                             onClick={() => setHighlightChunk(null)}
+                             disabled={highlightChunkLoading}
+                           >
+                             清除定位
+                           </Button>
+                           <Button
+                             type="button"
+                             size="sm"
+                             onClick={() => setLoadAllChunks(true)}
+                             disabled={chunksLoading}
+                           >
+                             加载全部切片
+                           </Button>
+                         </div>
+                       </div>
+
+                       <div className="mt-3">
+                         {highlightChunkLoading ? (
+                           <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                             <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" />
+                             <span>加载命中切片…</span>
+                           </div>
+                         ) : highlightChunk ? (
+                           <div className="rounded-xl border border-border bg-background p-4">
+                             <div className="flex items-center justify-between mb-2">
+                               <span className="text-xs font-mono font-medium text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
+                                 #{highlightChunk.chunk_index}
+                               </span>
+                               {highlightChunk.page_number ? (
+                                 <span className="text-xs text-muted-foreground">P.{highlightChunk.page_number}</span>
+                               ) : null}
+                             </div>
+                             <p className="text-sm leading-relaxed text-foreground/90 font-mono whitespace-pre-wrap">
+                               {highlightChunk.content}
+                             </p>
+                           </div>
+                         ) : (
+                           <div className="text-xs text-muted-foreground">未找到命中切片（可能已被删除或无权限）</div>
+                         )}
+                       </div>
+                     </div>
+                   ) : null}
                  </div>
                  <div className="flex-1 overflow-y-auto overscroll-contain p-4 scroll-smooth no-scrollbar" ref={chunksListRef}>
                     {chunksLoading && chunks.length === 0 ? (

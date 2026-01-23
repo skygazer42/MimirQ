@@ -17,6 +17,7 @@ import {
 } from 'lucide-react'
 import { AppFrame } from '@/components/app-frame'
 import { ChatMessageItem } from '@/components/chat/message-item'
+import { DocumentViewerPanel } from '@/components/document-viewer-panel'
 import { Button } from '@/components/ui/button'
 import { IconButton } from '@/components/ui/icon-button'
 import { SearchInput } from '@/components/ui/search-input'
@@ -40,7 +41,7 @@ const LOAD_MORE_STEP = 40
 
 function HistoryPageLoading() {
   return (
-    <AppFrame>
+    <AppFrame rightPanel={<DocumentViewerPanel />} withDocumentViewerPadding>
       <PageLoading message="正在加载历史记录..." srMessage="Loading history" />
     </AppFrame>
   )
@@ -173,7 +174,7 @@ function HistoryPageContent() {
   )
 
   return (
-    <AppFrame mainClassName="overflow-hidden">
+    <AppFrame rightPanel={<DocumentViewerPanel />} withDocumentViewerPadding mainClassName="overflow-hidden">
       <PageScaffold
         title="问答历史"
         description="查看与管理历史对话，并快速回到对话继续交流"

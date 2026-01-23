@@ -275,6 +275,14 @@ export const documentApi = {
   },
 
   /**
+   * 获取单个切片（用于引用/定位，避免一次性拉全量）
+   */
+  async getChunk(documentId: string, chunkId: string): Promise<DocumentChunk> {
+    const { data } = await apiClient.get(`/documents/${documentId}/chunks/${chunkId}`)
+    return data
+  },
+
+  /**
    * 下载/预览原始文件（返回 Blob）
    */
   async download(documentId: string, params?: { inline?: boolean }): Promise<Blob> {
