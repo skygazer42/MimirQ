@@ -125,6 +125,20 @@ class DocumentBatchUserMetadataPatchResponse(BaseModel):
     denied: List[UUID] = Field(default_factory=list)
 
 
+class DocumentBatchDeleteRequest(BaseModel):
+    """Batch delete documents."""
+
+    document_ids: List[UUID] = Field(..., min_length=1, max_length=200)
+
+
+class DocumentBatchDeleteResponse(BaseModel):
+    """Batch delete result."""
+
+    deleted: int
+    not_found: List[UUID] = Field(default_factory=list)
+    denied: List[UUID] = Field(default_factory=list)
+
+
 class DocumentChunkSchema(OrmModel):
     """Document chunk."""
     id: UUID

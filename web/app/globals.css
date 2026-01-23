@@ -134,6 +134,12 @@
     @apply border-border;
   }
 
+  html,
+  body {
+    /* Prevent scroll chaining to the window; all pages use internal scroll containers. */
+    overscroll-behavior: none;
+  }
+
   body {
     @apply bg-background text-foreground antialiased selection:bg-primary/20 selection:text-primary;
     font-feature-settings: "rlig" 1, "calt" 1, "ss01" 1;

@@ -11,11 +11,43 @@ import { useChunkStrategyPreference } from '@/contexts/chunk-strategy-context'
 import { usePipelineOptions } from '@/contexts/pipeline-options-context'
 import { formatApiError } from '@/lib/api-errors'
 
+export type DocumentListParams = {
+  skip?: number
+  limit?: number
+  status?: string
+  dataset_id?: string
+  q?: string
+  order_by?: string
+  order_dir?: string
+}
+
+function matchesDocumentListParams(doc: Document, params: DocumentListParams): boolean {
+  const status = String(params.status || '').trim()
+  if (status && status !== 'all') {
+    const normalized = status.toLowerCase()
+    if (normalized === 'processing') {
+      if (!(doc.status === 'pending' || doc.status === 'processing')) return false
+    } else if (doc.status !== normalized) {
+      return false
+    }
+  }
+
+  const datasetId = String(params.dataset_id || '').trim()
+  if (datasetId && String(doc.dataset_id || '') !== datasetId) return false
+
+  const q = String(params.q || '').trim().toLowerCase()
+  if (q && !String(doc.filename || '').toLowerCase().includes(q)) return false
+
+  return true
+}
+
 export function useDocuments() {
   const [documents, setDocuments] = useState<Document[]>([])
+  const [total, setTotal] = useState(0)
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const pollTimersRef = useRef<Map<string, number>>(new Map())
+  const lastListParamsRef = useRef<DocumentListParams>({ limit: 100 })
   const { parserBackend } = useParserBackendPreference()
   const { chunkStrategy } = useChunkStrategyPreference()
   const { enabled: pipelineOverridesEnabled, options: pipelineOptions } = usePipelineOptions()
@@ -23,13 +55,16 @@ export function useDocuments() {
   /**
    * 加载文档列表
    */
-  const loadDocuments = useCallback(async () => {
+  const loadDocuments = useCallback(async (params?: DocumentListParams) => {
     setIsLoading(true)
     setError(null)
 
     try {
-      const response = await documentApi.list({ limit: 100 })
-      setDocuments(response.items)
+      const effective: DocumentListParams = { ...lastListParamsRef.current, ...(params || {}) }
+      lastListParamsRef.current = effective
+      const response = await documentApi.list(effective)
+      setDocuments(response.items || [])
+      setTotal(Number(response.total) || 0)
     } catch (err: any) {
       setError(formatApiError(err, 'Failed to load documents'))
       console.error('Load documents error:', err)
@@ -114,7 +149,11 @@ export function useDocuments() {
           chunk_strategy: chunkStrategy,
           pipeline: pipelineOverridesEnabled ? pipelineOptions : undefined,
         })
-        setDocuments((prev) => [newDoc, ...prev])
+        const params = lastListParamsRef.current
+        if (matchesDocumentListParams(newDoc, params)) {
+          setDocuments((prev) => [newDoc, ...prev])
+          setTotal((prev) => prev + 1)
+        }
 
         // 轮询检查处理状态
         pollDocumentStatus(newDoc.id)
@@ -171,6 +210,7 @@ export function useDocuments() {
     try {
       await documentApi.delete(documentId)
       setDocuments((prev) => prev.filter((doc) => doc.id !== documentId))
+      setTotal((prev) => Math.max(0, prev - 1))
     } catch (err: any) {
       setError(formatApiError(err, 'Failed to delete document'))
       console.error('Delete error:', err)
@@ -194,6 +234,7 @@ export function useDocuments() {
 
   return {
     documents,
+    total,
     isLoading,
     error,
     loadDocuments,

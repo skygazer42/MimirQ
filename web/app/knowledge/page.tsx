@@ -4,7 +4,8 @@
  * 知识库管理页面
  * 优化版：卡片视图、视觉增强、交互优化、深色模式适配
  */
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
 import {
   Database,
   FileText,
@@ -60,18 +61,21 @@ import { UPLOAD_ACCEPT } from '@/lib/upload-extensions'
 import { StatCard, StatsGrid } from '@/components/ui/stats-card'
 import { DocumentDetailDialog } from '@/components/document-detail-dialog'
 import { getParserLabel } from '@/lib/parser-options'
-import type { Citation, Document } from '@/types'
-import { ragApi } from '@/lib/api-client'
+import type { Citation, Dataset, Document } from '@/types'
+import { datasetApi, documentApi, ragApi } from '@/lib/api-client'
 import { PipelineOptionsPanel } from '@/components/pipeline-options-panel'
 import { ParserDropdown } from '@/components/ui/parser-dropdown'
 import { ChunkStrategyDropdown } from '@/components/ui/chunk-strategy-dropdown'
 import { useParserBackendPreference } from '@/contexts/parser-backend-context'
 import { useChunkStrategyPreference } from '@/contexts/chunk-strategy-context'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 
 // Tab 类型
 type TabType = 'documents' | 'retrieval' | 'settings'
 type ViewMode = 'grid' | 'list'
 type DocStatusFilter = 'all' | 'completed' | 'processing' | 'failed' | 'quarantined'
+type DocSortKey = 'created_at' | 'filename' | 'file_size'
+type DocSortDir = 'asc' | 'desc'
 
 type FileTypeStyle = {
   icon: typeof FileText
@@ -191,14 +195,114 @@ function getFileTypeStyle(doc: Pick<Document, 'filename' | 'file_type'>): FileTy
 }
 
 export default function KnowledgePage() {
-  const { documents, isLoading, uploadDocument, deleteDocument, loadDocuments } = useDocuments()
+  const router = useRouter()
+  const searchParams = useSearchParams()
+  const lastUrlRef = useRef<string | null>(null)
+  const didInitFromUrlRef = useRef(false)
+
+  const { documents, total, isLoading, uploadDocument, deleteDocument, loadDocuments } = useDocuments()
   const [activeTab, setActiveTab] = useState<TabType>('documents')
   const [viewMode, setViewMode] = useState<ViewMode>('grid')
-  const [selectedDocId, setSelectedDocId] = useState<string | null>(null)
   const { parserBackend, setParserBackend } = useParserBackendPreference()
   const { chunkStrategy, setChunkStrategy } = useChunkStrategyPreference()
   const [docFilter, setDocFilter] = useState('')
   const [statusFilter, setStatusFilter] = useState<DocStatusFilter>('all')
+  const [sortKey, setSortKey] = useState<DocSortKey>('created_at')
+  const [sortDir, setSortDir] = useState<DocSortDir>('desc')
+  const [selectedDocIds, setSelectedDocIds] = useState<string[]>([])
+  const [batchDeleteOpen, setBatchDeleteOpen] = useState(false)
+  const [batchDeleting, setBatchDeleting] = useState(false)
+  const DATASET_ALL = '__all__'
+  const [datasets, setDatasets] = useState<Dataset[]>([])
+  const [datasetScope, setDatasetScope] = useState<string>(DATASET_ALL)
+  const [datasetsLoading, setDatasetsLoading] = useState(false)
+  const selectedDatasetId = datasetScope === DATASET_ALL ? undefined : datasetScope
+
+  // Init UI state from URL so filters are shareable/bookmarkable.
+  useEffect(() => {
+    if (didInitFromUrlRef.current) return
+    didInitFromUrlRef.current = true
+
+    const params = new URLSearchParams(searchParams?.toString?.() || '')
+
+    const tab = params.get('tab')
+    if (tab === 'documents' || tab === 'retrieval' || tab === 'settings') setActiveTab(tab)
+
+    const view = params.get('view')
+    if (view === 'grid' || view === 'list') setViewMode(view)
+
+    const q = params.get('q')
+    if (typeof q === 'string' && q.trim()) setDocFilter(q)
+
+    const status = params.get('status')
+    if (status === 'all' || status === 'completed' || status === 'processing' || status === 'failed' || status === 'quarantined') {
+      setStatusFilter(status)
+    }
+
+    const dataset = params.get('dataset')
+    if (dataset && dataset.trim()) setDatasetScope(dataset)
+
+    const orderBy = params.get('order_by')
+    if (orderBy === 'created_at' || orderBy === 'filename' || orderBy === 'file_size') setSortKey(orderBy)
+
+    const orderDir = params.get('order_dir')
+    if (orderDir === 'asc' || orderDir === 'desc') setSortDir(orderDir)
+  }, [searchParams])
+
+  // Keep URL in sync (avoid window scroll; AppFrame handles internal scroll only).
+  useEffect(() => {
+    if (!didInitFromUrlRef.current) return
+    const params = new URLSearchParams()
+    if (activeTab !== 'documents') params.set('tab', activeTab)
+    if (viewMode !== 'grid') params.set('view', viewMode)
+    if (docFilter.trim()) params.set('q', docFilter.trim())
+    if (statusFilter !== 'all') params.set('status', statusFilter)
+    if (datasetScope !== DATASET_ALL) params.set('dataset', datasetScope)
+    if (sortKey !== 'created_at') params.set('order_by', sortKey)
+    if (sortDir !== 'desc') params.set('order_dir', sortDir)
+    const qs = params.toString()
+    const nextUrl = qs ? `/knowledge?${qs}` : '/knowledge'
+    if (lastUrlRef.current === nextUrl) return
+    lastUrlRef.current = nextUrl
+    router.replace(nextUrl, { scroll: false })
+  }, [activeTab, viewMode, docFilter, statusFilter, datasetScope, sortKey, sortDir, router])
+
+  // Load datasets for filtering (best-effort).
+  useEffect(() => {
+    let alive = true
+    setDatasetsLoading(true)
+    datasetApi
+      .list({ limit: 200 })
+      .then((res) => {
+        if (!alive) return
+        setDatasets(res.items || [])
+      })
+      .catch((err) => {
+        console.error('Failed to load datasets:', err)
+      })
+      .finally(() => {
+        if (!alive) return
+        setDatasetsLoading(false)
+      })
+    return () => {
+      alive = false
+    }
+  }, [])
+
+  // Server-side filtering for large knowledge bases (debounced).
+  useEffect(() => {
+    if (activeTab !== 'documents') return
+    const t = window.setTimeout(() => {
+      loadDocuments({
+        limit: 200,
+        q: docFilter.trim() || undefined,
+        dataset_id: selectedDatasetId,
+        order_by: sortKey,
+        order_dir: sortDir,
+      })
+    }, 250)
+    return () => window.clearTimeout(t)
+  }, [activeTab, docFilter, selectedDatasetId, sortKey, sortDir, loadDocuments])
 
   // 检索测试状态
   const [searchQuery, setSearchQuery] = useState('')
@@ -209,7 +313,7 @@ export default function KnowledgePage() {
   const [isSearching, setIsSearching] = useState(false)
 
   const stats = useMemo(() => {
-    const totalDocs = documents.length
+    const totalDocs = total || documents.length
     let completedDocs = 0
     let processingDocs = 0
     let failedDocs = 0
@@ -242,7 +346,7 @@ export default function KnowledgePage() {
       totalSize,
       showExtraCard: processingDocs > 0 || failedDocs > 0 || quarantinedDocs > 0,
     }
-  }, [documents])
+  }, [documents, total])
 
   const {
     totalDocs,
@@ -262,10 +366,59 @@ export default function KnowledgePage() {
       if (statusFilter === 'failed' && doc.status !== 'failed') return false
       if (statusFilter === 'quarantined' && doc.status !== 'quarantined') return false
       if (statusFilter === 'processing' && !(doc.status === 'processing' || doc.status === 'pending')) return false
+      if (selectedDatasetId && String(doc.dataset_id || '') !== selectedDatasetId) return false
       if (term && !String(doc.filename || '').toLowerCase().includes(term)) return false
       return true
     })
-  }, [documents, docFilter, statusFilter])
+  }, [documents, docFilter, statusFilter, selectedDatasetId])
+
+  const selectedSet = useMemo(() => new Set(selectedDocIds), [selectedDocIds])
+  const allVisibleSelected = filteredDocuments.length > 0 && filteredDocuments.every((d) => selectedSet.has(d.id))
+
+  const toggleDocSelection = useCallback((docId: string) => {
+    setSelectedDocIds((prev) => (prev.includes(docId) ? prev.filter((id) => id !== docId) : [...prev, docId]))
+  }, [])
+
+  const toggleSelectAllVisible = useCallback(() => {
+    setSelectedDocIds((prev) => {
+      if (allVisibleSelected) return []
+      const next = new Set(prev)
+      for (const doc of filteredDocuments) next.add(doc.id)
+      return Array.from(next)
+    })
+  }, [allVisibleSelected, filteredDocuments])
+
+  // Keep selection in sync when the visible list changes.
+  useEffect(() => {
+    const valid = new Set(documents.map((d) => d.id))
+    setSelectedDocIds((prev) => {
+      const next = prev.filter((id) => valid.has(id))
+      return next.length === prev.length ? prev : next
+    })
+  }, [documents])
+
+  useEffect(() => {
+    if (activeTab !== 'documents') setSelectedDocIds([])
+  }, [activeTab])
+
+  const confirmBatchDelete = useCallback(async () => {
+    const ids = [...selectedDocIds]
+    if (ids.length === 0) return
+    setBatchDeleting(true)
+    try {
+      const res = await documentApi.batchDelete(ids)
+      if (res?.denied?.length || res?.not_found?.length) {
+        console.warn('Batch delete partial result:', res)
+      }
+      setSelectedDocIds([])
+      await loadDocuments()
+    } catch (err) {
+      console.error('Batch delete failed:', err)
+    } finally {
+      setBatchDeleting(false)
+      setBatchDeleteOpen(false)
+    }
+  }, [selectedDocIds, loadDocuments])
 
   // 处理文件上传
   const handleFileUpload = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -563,24 +716,68 @@ export default function KnowledgePage() {
                 <>
                   {/* Filters */}
                   <div className="mb-5 flex flex-col lg:flex-row lg:items-center gap-3 justify-between">
-                    <div className="relative w-full lg:max-w-sm">
-                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                      <input
-                        value={docFilter}
-                        onChange={(e) => setDocFilter(e.target.value)}
-                        placeholder="搜索文档名称…"
-                        className="w-full h-10 pl-9 pr-10 rounded-xl border border-border/60 bg-background/60 backdrop-blur-sm text-sm outline-none transition-colors placeholder:text-muted-foreground/60 focus:bg-background focus:border-primary/40 focus-ring"
-                      />
-                      {docFilter.trim() ? (
-                        <button
-                          type="button"
-                          onClick={() => setDocFilter('')}
-                          aria-label="清除搜索"
-                          className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded-md hover:bg-muted/40 focus-ring"
+                    <div className="flex w-full lg:max-w-2xl flex-col sm:flex-row gap-3">
+                      <div className="relative w-full">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                        <input
+                          value={docFilter}
+                          onChange={(e) => setDocFilter(e.target.value)}
+                          placeholder="搜索文档名称…"
+                          className="w-full h-10 pl-9 pr-10 rounded-xl border border-border/60 bg-background/60 backdrop-blur-sm text-sm outline-none transition-colors placeholder:text-muted-foreground/60 focus:bg-background focus:border-primary/40 focus-ring"
+                        />
+                        {docFilter.trim() ? (
+                          <button
+                            type="button"
+                            onClick={() => setDocFilter('')}
+                            aria-label="清除搜索"
+                            className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded-md hover:bg-muted/40 focus-ring"
+                          >
+                            <X className="h-4 w-4 text-muted-foreground" />
+                          </button>
+                        ) : null}
+                      </div>
+
+                      <Select value={datasetScope} onValueChange={setDatasetScope}>
+                        <SelectTrigger
+                          className="h-10 w-full sm:w-[220px] rounded-xl border-border/60 bg-background/60 backdrop-blur-sm"
+                          disabled={datasetsLoading}
+                          aria-label="筛选数据集"
                         >
-                          <X className="h-4 w-4 text-muted-foreground" />
-                        </button>
-                      ) : null}
+                          <SelectValue placeholder={datasetsLoading ? '加载数据集…' : '全部数据集'} />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value={DATASET_ALL}>全部数据集</SelectItem>
+                          {datasets.map((ds) => (
+                            <SelectItem key={ds.id} value={ds.id}>
+                              {ds.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+
+                      <Select
+                        value={`${sortKey}:${sortDir}`}
+                        onValueChange={(value) => {
+                          const [k, d] = String(value || '').split(':')
+                          if (k === 'created_at' || k === 'filename' || k === 'file_size') setSortKey(k)
+                          if (d === 'asc' || d === 'desc') setSortDir(d)
+                        }}
+                      >
+                        <SelectTrigger
+                          className="h-10 w-full sm:w-[200px] rounded-xl border-border/60 bg-background/60 backdrop-blur-sm"
+                          aria-label="排序"
+                        >
+                          <SelectValue placeholder="排序" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="created_at:desc">最新上传</SelectItem>
+                          <SelectItem value="created_at:asc">最早上传</SelectItem>
+                          <SelectItem value="filename:asc">文件名 A-Z</SelectItem>
+                          <SelectItem value="filename:desc">文件名 Z-A</SelectItem>
+                          <SelectItem value="file_size:desc">大小 从大到小</SelectItem>
+                          <SelectItem value="file_size:asc">大小 从小到大</SelectItem>
+                        </SelectContent>
+                      </Select>
                     </div>
 
                     <div className="flex flex-wrap items-center gap-2">
@@ -611,6 +808,64 @@ export default function KnowledgePage() {
                       ))}
                     </div>
                   </div>
+
+                  {/* Bulk actions */}
+                  {selectedDocIds.length > 0 ? (
+                    <div className="mb-4 flex flex-col md:flex-row md:items-center md:justify-between gap-3 rounded-xl border border-border/60 bg-background/60 backdrop-blur-sm px-4 py-3">
+                      <div className="text-sm text-foreground">
+                        已选 <span className="font-mono tabular-nums">{selectedDocIds.length}</span> 项
+                      </div>
+                      <div className="flex flex-wrap items-center gap-2 justify-end">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className="rounded-xl"
+                          onClick={toggleSelectAllVisible}
+                        >
+                          {allVisibleSelected ? '取消全选' : '全选当前列表'}
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className="rounded-xl"
+                          onClick={() => setSelectedDocIds([])}
+                        >
+                          清除选择
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="destructive"
+                          size="sm"
+                          className="rounded-xl"
+                          onClick={() => setBatchDeleteOpen(true)}
+                          disabled={batchDeleting}
+                        >
+                          批量删除
+                        </Button>
+                      </div>
+                    </div>
+                  ) : null}
+
+                  <Dialog open={batchDeleteOpen} onOpenChange={setBatchDeleteOpen}>
+                    <DialogContent className="max-w-md">
+                      <DialogHeader>
+                        <DialogTitle>确认删除</DialogTitle>
+                        <DialogDescription>
+                          将删除已选中的 <span className="font-mono tabular-nums">{selectedDocIds.length}</span> 份文档，此操作不可撤销。
+                        </DialogDescription>
+                      </DialogHeader>
+                      <div className="flex items-center justify-end gap-2">
+                        <Button type="button" variant="outline" onClick={() => setBatchDeleteOpen(false)} disabled={batchDeleting}>
+                          取消
+                        </Button>
+                        <Button type="button" variant="destructive" onClick={confirmBatchDelete} disabled={batchDeleting || selectedDocIds.length === 0}>
+                          {batchDeleting ? '删除中…' : '确认删除'}
+                        </Button>
+                      </div>
+                    </DialogContent>
+                  </Dialog>
 
                   {filteredDocuments.length === 0 ? (
                     <div className="py-10">
@@ -648,6 +903,8 @@ export default function KnowledgePage() {
                             statusBadge={badge}
                             statusBarClassName={statusBarClassName(badge.status)}
                             onDelete={deleteDocument}
+                            selected={selectedSet.has(doc.id)}
+                            onToggleSelect={() => toggleDocSelection(doc.id)}
                           />
                         )
                       })}
@@ -657,6 +914,15 @@ export default function KnowledgePage() {
                       <table className="w-full text-sm text-left">
                         <thead className="text-xs text-muted-foreground uppercase bg-muted/30 border-b border-border/60">
                           <tr>
+                            <th className="px-4 py-4 font-medium w-10">
+                              <input
+                                type="checkbox"
+                                className="h-4 w-4 rounded border-border/60 text-primary focus-ring"
+                                checked={allVisibleSelected}
+                                onChange={toggleSelectAllVisible}
+                                aria-label="全选当前列表"
+                              />
+                            </th>
                             <th className="px-6 py-4 font-medium">文档名称</th>
                             <th className="px-6 py-4 font-medium">状态</th>
                             <th className="px-6 py-4 font-medium">分块</th>
@@ -672,6 +938,15 @@ export default function KnowledgePage() {
                             const TypeIcon = fileType.icon
                             return (
                               <tr key={doc.id} className="hover:bg-muted/20 transition-colors group">
+                                <td className="px-4 py-4 align-top">
+                                  <input
+                                    type="checkbox"
+                                    className="h-4 w-4 rounded border-border/60 text-primary focus-ring"
+                                    checked={selectedSet.has(doc.id)}
+                                    onChange={() => toggleDocSelection(doc.id)}
+                                    aria-label={`选择文档 ${doc.filename}`}
+                                  />
+                                </td>
                                 <td className="px-6 py-4 font-medium text-foreground flex items-center gap-3">
                                   <div className={cn("p-2 rounded-lg border", fileType.bg, fileType.border, fileType.color)}>
                                     <TypeIcon className="w-4 h-4" />
@@ -953,11 +1228,15 @@ function DocumentCard({
   statusBadge,
   statusBarClassName,
   onDelete,
+  selected,
+  onToggleSelect,
 }: {
   doc: Document
   statusBadge: { status: StatusBadgeStatus; label: string }
   statusBarClassName: string
   onDelete: (id: string) => void
+  selected: boolean
+  onToggleSelect: () => void
 }) {
   const parserLabel = doc.metadata?.parser_backend ? getParserLabel(doc.metadata.parser_backend as string) : null
   const fileType = getFileTypeStyle(doc)
@@ -970,6 +1249,22 @@ function DocumentCard({
     >
       {/* 顶部装饰条 */}
       <div className={cn("h-1.5 w-full", statusBarClassName)} />
+
+      {/* Bulk select checkbox */}
+      <div
+        className={cn(
+          "absolute top-3 left-3 z-10 rounded-lg border border-border/60 bg-background/70 backdrop-blur-sm p-1 transition-opacity",
+          selected ? "opacity-100" : "opacity-100 lg:opacity-0 lg:group-hover:opacity-100"
+        )}
+      >
+        <input
+          type="checkbox"
+          className="h-4 w-4 rounded border-border/60 text-primary focus-ring"
+          checked={selected}
+          onChange={onToggleSelect}
+          aria-label={`选择文档 ${doc.filename}`}
+        />
+      </div>
       
       <div className="p-5 flex-1 flex flex-col">
         <div className="flex items-start justify-between mb-4">
