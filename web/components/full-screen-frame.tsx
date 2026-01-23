@@ -15,16 +15,15 @@ export function FullScreenFrame({
   showBackground = true,
 }: FullScreenFrameProps) {
   return (
-    <div className={cn("relative min-h-screen bg-background text-foreground", className)}>
+    <div className={cn("relative h-dvh overflow-y-auto overscroll-contain no-scrollbar bg-background text-foreground", className)}>
       {showBackground && <AppBackground />}
       <main
         id="main-content"
         tabIndex={-1}
-        className={cn("relative z-10 flex min-h-screen items-center justify-center px-6 py-10", mainClassName)}
+        className={cn("relative z-10 flex min-h-full items-center justify-center px-6 py-10", mainClassName)}
       >
         {children}
       </main>
     </div>
   )
 }
-

@@ -238,6 +238,9 @@ export const documentApi = {
     limit?: number
     status?: string
     dataset_id?: string
+    q?: string
+    order_by?: string
+    order_dir?: 'asc' | 'desc' | string
   }): Promise<{ total: number; items: Document[] }> {
     const { data } = await apiClient.get('/documents/', { params })
     return data
@@ -311,6 +314,14 @@ export const documentApi = {
    */
   async delete(documentId: string): Promise<void> {
     await apiClient.delete(`/documents/${documentId}`)
+  },
+
+  /**
+   * 批量删除文档
+   */
+  async batchDelete(document_ids: string[]): Promise<{ deleted: number; not_found: string[]; denied: string[] }> {
+    const { data } = await apiClient.post('/documents/batch-delete', { document_ids })
+    return data
   },
 
   /**

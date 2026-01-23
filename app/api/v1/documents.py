@@ -12,7 +12,7 @@ import mimetypes
 from fastapi import APIRouter, Depends, UploadFile, File, HTTPException, BackgroundTasks, Form, Request, Query
 from fastapi import Response
 from sqlalchemy.orm import Session, selectinload
-from typing import List, Optional
+from typing import List, Optional, Literal
 from uuid import UUID
 from pathlib import Path
 import uuid
@@ -32,6 +32,8 @@ from app.api.schemas.document import (
     DocumentUserMetadataPatchRequest,
     DocumentBatchUserMetadataPatchRequest,
     DocumentBatchUserMetadataPatchResponse,
+    DocumentBatchDeleteRequest,
+    DocumentBatchDeleteResponse,
     ChunkPreviewParams,
     ChunkPreviewItem,
     ChunkPreviewResponse,
@@ -1257,6 +1259,8 @@ async def list_documents(
     status: Optional[str] = None,
     dataset_id: Optional[UUID] = None,
     q: Optional[str] = Query(default=None, max_length=200),
+    order_by: Literal["created_at", "filename", "file_size"] = Query(default="created_at"),
+    order_dir: Literal["asc", "desc"] = Query(default="desc"),
     tenant_id: UUID = Depends(get_tenant_id),
     account_id: str = Depends(get_current_account_id),
     db: Session = Depends(get_db)
@@ -1318,7 +1322,12 @@ async def list_documents(
 
     # Status filter.
     if status and status != 'all':
-        query = query.filter(DBDocument.status == status)
+        normalized = str(status).strip().lower()
+        if normalized == "processing":
+            # UI "processing" includes pending + processing.
+            query = query.filter(DBDocument.status.in_(["pending", "processing"]))
+        else:
+            query = query.filter(DBDocument.status == status)
 
     # Quick filename filter (case-insensitive).
     if q:
@@ -1329,8 +1338,22 @@ async def list_documents(
     # Total count.
     total = query.count()
 
-    # Pagination.
-    documents = query.order_by(DBDocument.created_at.desc()).offset(skip).limit(limit).all()
+    # Sort.
+    sort_col = {
+        "created_at": DBDocument.created_at,
+        "filename": DBDocument.filename,
+        "file_size": DBDocument.file_size,
+    }.get(order_by, DBDocument.created_at)
+
+    sort_expr = sort_col.asc() if order_dir == "asc" else sort_col.desc()
+
+    # Stable tie-breaker keeps pagination deterministic.
+    documents = (
+        query.order_by(sort_expr, DBDocument.id.asc())
+        .offset(skip)
+        .limit(limit)
+        .all()
+    )
 
     return {
         "total": total,
@@ -2133,6 +2156,43 @@ async def delete_document(
 
     # 5. Remove chunks from BM25 index (in-memory).
     return None
+
+
+@router.post("/batch-delete", response_model=DocumentBatchDeleteResponse)
+async def batch_delete_documents(
+    payload: DocumentBatchDeleteRequest,
+    tenant_id: UUID = Depends(get_tenant_id),
+    account_id: str = Depends(get_current_account_id),
+    db: Session = Depends(get_db),
+):
+    """
+    Batch delete documents (best-effort per id).
+    """
+    DatasetService.ensure_member(db, tenant_id, account_id)
+
+    deleted = 0
+    not_found: list[UUID] = []
+    denied: list[UUID] = []
+
+    for document_id in payload.document_ids:
+        try:
+            await delete_document(
+                document_id=document_id,
+                tenant_id=tenant_id,
+                account_id=account_id,
+                db=db,
+            )
+            deleted += 1
+        except HTTPException as exc:
+            if exc.status_code == 404:
+                not_found.append(document_id)
+                continue
+            if exc.status_code in (401, 403):
+                denied.append(document_id)
+                continue
+            raise
+
+    return {"deleted": deleted, "not_found": not_found, "denied": denied}
 
 
 @router.get("/image/{image_id}")

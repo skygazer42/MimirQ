@@ -91,7 +91,7 @@ export function Sidebar() {
   }
 
   return (
-    <aside className="w-80 h-screen glass border-r border-border/60 flex flex-col shadow-strong transition-all duration-300 relative z-20">
+    <aside className="w-80 h-dvh glass border-r border-border/60 flex flex-col shadow-strong transition-all duration-300 relative z-20">
       {/* 头部 - 增加空间感 */}
       <div className="p-6 border-b border-border/60">
         <div className="flex items-center justify-between mb-6">

@@ -25,8 +25,9 @@ export default function RootLayout({
   children: React.ReactNode
 }>) {
   return (
-    <html lang="zh-CN" suppressHydrationWarning>
-      <body className="font-sans">
+    <html lang="zh-CN" suppressHydrationWarning className="h-full">
+      {/* Lock window scrolling: the app uses panel-internal scrolling for better UX. */}
+      <body className="font-sans h-dvh overflow-hidden">
         <ThemeProvider
           attribute="class"
           defaultTheme="system"

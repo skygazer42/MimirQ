@@ -16,6 +16,10 @@ import {
 } from "lucide-react"
 import { useTheme } from "next-themes"
 
+import type { Document } from "@/types"
+import { documentApi } from "@/lib/api-client"
+import { useDocumentView } from "@/store/document-view"
+
 import {
   CommandDialog,
   CommandEmpty,
@@ -28,8 +32,13 @@ import {
 
 export function CommandMenu() {
   const [open, setOpen] = React.useState(false)
+  const [query, setQuery] = React.useState("")
+  const [docResults, setDocResults] = React.useState<Document[]>([])
+  const [docLoading, setDocLoading] = React.useState(false)
+  const requestSeqRef = React.useRef(0)
   const router = useRouter()
   const { setTheme } = useTheme()
+  const { openDocument } = useDocumentView()
 
   React.useEffect(() => {
     const down = (e: KeyboardEvent) => {
