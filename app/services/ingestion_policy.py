@@ -48,6 +48,9 @@ ALLOWED_PREPROCESS_STEP_IDS: set[str] = {
     "text.strip_bom",
     "text.normalize_newlines",
     "text.trim_trailing_whitespace",
+    "text.remove_zero_width",
+    "text.remove_control_chars",
+    "text.normalize_unicode_nfkc",
     # HTML-only (applied when ext in .html/.htm)
     "html.strip_scripts_styles",
     "html.strip_comments",
@@ -354,4 +357,3 @@ def export_policy_json(policy: IngestionPolicy) -> bytes:
     normalized = validate_and_normalize_ingestion_policy(policy)
     obj = normalized.model_dump()
     return json.dumps(obj, ensure_ascii=False, indent=2).encode("utf-8")
-

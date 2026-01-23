@@ -74,3 +74,31 @@ def test_preprocess_file_respects_size_cap(tmp_path):  # noqa: ANN001
     assert res.changed is False
     assert any("text_too_large_skipped" in w for w in (res.warnings or []))
 
+
+def test_preprocess_file_new_text_steps(tmp_path):  # noqa: ANN001
+    from pathlib import Path
+
+    from app.parsing.preprocess.file_preprocessor import preprocess_file
+
+    src = tmp_path / "a.txt"
+    # Includes: zero-width space, soft hyphen, NUL control char, and full-width Latin letters.
+    raw = ("A\u200bB\u00adC\x00\nＡＢＣ\n").encode("utf-8", errors="replace")
+    src.write_bytes(raw)
+
+    res = preprocess_file(
+        input_path=Path(src),
+        steps=[
+            {"id": "text.remove_zero_width", "params": {}},
+            {"id": "text.remove_control_chars", "params": {}},
+            {"id": "text.normalize_unicode_nfkc", "params": {}},
+        ],
+        max_text_bytes=50_000,
+    )
+
+    assert res.changed is True
+    out = Path(res.output_path).read_text("utf-8", errors="replace")
+    assert "\u200b" not in out
+    assert "\u00ad" not in out
+    assert "\x00" not in out
+    # NFKC should normalize full-width letters to ASCII.
+    assert "ABC" in out
