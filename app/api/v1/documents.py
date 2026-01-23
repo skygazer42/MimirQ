@@ -22,6 +22,7 @@ from app.models.document import Document as DBDocument, DocumentChunk
 from app.api.schemas.document import (
     DocumentList,
     DocumentDetail,
+    DocumentChunkSchema,
     DocumentChunkList,
     DocumentStatus,
     DocumentParsePreview,
@@ -1440,6 +1441,46 @@ async def list_document_chunks(
     total = query.count()
     items = query.order_by(DocumentChunk.chunk_index.asc()).offset(skip).limit(limit).all()
     return {"total": total, "items": items}
+
+
+@router.get("/{document_id}/chunks/{chunk_id}", response_model=DocumentChunkSchema)
+async def get_document_chunk(
+    document_id: uuid.UUID,
+    chunk_id: uuid.UUID,
+    tenant_id: UUID = Depends(get_tenant_id),
+    account_id: str = Depends(get_current_account_id),
+    db: Session = Depends(get_db),
+):
+    """
+    Get a single chunk for a document.
+    """
+    DatasetService.ensure_member(db, tenant_id, account_id)
+
+    document = (
+        db.query(DBDocument)
+        .filter(DBDocument.id == document_id, DBDocument.tenant_id == tenant_id)
+        .first()
+    )
+    if not document:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    if document.dataset_id:
+        ds = DatasetService.get_dataset(db, tenant_id, document.dataset_id)
+        DatasetService.assert_dataset_readable(db, ds, account_id)
+
+    chunk = (
+        db.query(DocumentChunk)
+        .filter(
+            DocumentChunk.tenant_id == tenant_id,
+            DocumentChunk.document_id == document_id,
+            DocumentChunk.id == chunk_id,
+        )
+        .first()
+    )
+    if not chunk:
+        raise HTTPException(status_code=404, detail="Chunk not found")
+
+    return chunk
 
 
 @router.patch("/{document_id}/pipeline", response_model=DocumentDetail)
