@@ -355,7 +355,7 @@ export function DataCleaner({ content, cleanedContent = '', onClean }: DataClean
             <TextCursorInput className="w-4 h-4 text-muted-foreground" />
           </button>
           {previewDiff && (
-            <div className="p-4 border-t border-border bg-muted max-h-80 overflow-y-auto space-y-3">
+            <div className="p-4 border-t border-border bg-muted max-h-80 overflow-y-auto overscroll-contain no-scrollbar space-y-3">
               {lastPreview?.issues?.length ? (
                 <div className="rounded-lg border border-border/60 bg-background/40 p-3">
                   <div className="text-xs font-medium text-muted-foreground mb-2">检测到的问题（Best-effort）</div>

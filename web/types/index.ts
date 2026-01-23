@@ -529,6 +529,77 @@ export interface ZipWithImagesResponse {
   document_id: string
 }
 
+// ==================== 入库策略（解析前预处理）相关类型 ====================
+
+export interface IngestionPreprocessStep {
+  id: string
+  params?: Record<string, any>
+}
+
+export interface IngestionPreprocessConfig {
+  enabled: boolean
+  steps: IngestionPreprocessStep[]
+}
+
+export interface IngestionRuleMatch {
+  extensions: string[]
+  filename_regex?: string | null
+}
+
+export interface IngestionRule {
+  id: string
+  name: string
+  enabled: boolean
+  match: IngestionRuleMatch
+  preprocess: IngestionPreprocessConfig
+  parser_backend?: string | null
+  chunk_strategy?: string | null
+  governance_profile_ref?: string | null
+  pipeline_patch?: Record<string, any>
+}
+
+export interface IngestionPolicy {
+  version: string
+  rules: IngestionRule[]
+}
+
+export interface IngestionPolicyImportResponse {
+  replaced: boolean
+  rule_count: number
+}
+
+export interface PreprocessStepLog {
+  id: string
+  applied: boolean
+  changed: boolean
+  note?: string
+}
+
+export interface PreprocessSummary {
+  changed: boolean
+  size_before: number
+  size_after: number
+  steps: PreprocessStepLog[]
+  warnings: string[]
+}
+
+export interface IngestionPreviewRule {
+  matched: boolean
+  rule_id?: string | null
+  rule_name?: string | null
+  governance_profile_ref?: string | null
+  preprocess_steps: IngestionPreprocessStep[]
+  parser_backend: string
+  chunk_strategy: string
+}
+
+export interface IngestionPreviewResponse {
+  rule: IngestionPreviewRule
+  preprocess: PreprocessSummary
+  parse: PipelineParsePreviewResponse
+  clean: CleanPreviewResponse
+}
+
 // ==================== 数据集相关类型 ====================
 
 export interface Dataset {

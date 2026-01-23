@@ -1,0 +1,693 @@
+'use client'
+
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useParams, useRouter } from 'next/navigation'
+import { toast } from 'sonner'
+import { ArrowLeft, Download, FileUp, Loader2, Plus, RefreshCw, Save, Settings2, Sparkles, Trash2 } from 'lucide-react'
+
+import { AppFrame } from '@/components/app-frame'
+import { PageScaffold } from '@/components/ui/page-scaffold'
+import { Panel } from '@/components/ui/panel'
+import { Button } from '@/components/ui/button'
+import { Badge } from '@/components/ui/badge'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Switch } from '@/components/ui/switch'
+import { Textarea } from '@/components/ui/textarea'
+import { Checkbox } from '@/components/ui/checkbox'
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+
+import { datasetApi, pipelineApi } from '@/lib/api-client'
+import { formatApiError } from '@/lib/api-errors'
+import { cn } from '@/lib/utils'
+import { usePipelineCapabilities } from '@/contexts/pipeline-capabilities-context'
+import type { Dataset, GovernanceProfileSummary, IngestionPolicy, IngestionRule, IngestionPreviewResponse } from '@/types'
+
+const NONE = '__none__'
+
+const PREPROCESS_STEP_CATALOG: Array<{ id: string; label: string; desc: string }> = [
+  { id: 'text.reencode_utf8', label: '文本编码修复 → UTF-8', desc: '修复乱码/编码不一致（GBK/Windows-1252 等）' },
+  { id: 'text.strip_bom', label: '移除 BOM', desc: '修复 UTF-8 BOM 导致的首行异常' },
+  { id: 'text.normalize_newlines', label: '统一换行符', desc: 'CRLF/CR → LF，减少解析噪声' },
+  { id: 'text.trim_trailing_whitespace', label: '去掉行尾空格', desc: '减少 diff 抖动与无意义字符' },
+  { id: 'html.strip_scripts_styles', label: 'HTML：移除 script/style', desc: '减少网页样板/脚本注入噪声' },
+  { id: 'html.strip_comments', label: 'HTML：移除注释', desc: '减少抓取页面的注释噪声' },
+]
+
+const PARSER_BACKEND_OPTIONS: Array<{ value: string; label: string }> = [
+  { value: 'auto', label: 'auto（自动路由）' },
+  { value: 'basic', label: 'basic（PDF 基础）' },
+  { value: 'mineru', label: 'mineru（PDF/图片增强）' },
+  { value: 'deepdoc', label: 'deepdoc（PDF OCR）' },
+  { value: 'deepseek_ocr', label: 'deepseek_ocr（PDF OCR）' },
+  { value: 'etl4llm', label: 'etl4llm（PDF/通用）' },
+  { value: 'markitdown', label: 'markitdown（Office/HTML/通用）' },
+  { value: 'pandoc', label: 'pandoc（Office/HTML）' },
+  { value: 'docling', label: 'docling（PDF/DOCX）' },
+  { value: 'magicpdf', label: 'magicpdf（PDF）' },
+  { value: 'excel', label: 'excel（.xls/.xlsx）' },
+  { value: 'docx', label: 'docx（.docx）' },
+  { value: 'pptx', label: 'pptx（.pptx）' },
+  { value: 'html', label: 'html（.html/.htm）' },
+  { value: 'csv', label: 'csv（.csv）' },
+  { value: 'json', label: 'json（.json）' },
+  { value: 'text', label: 'text（纯文本）' },
+  { value: 'markdown', label: 'markdown（.md）' },
+]
+
+function downloadBlob(blob: Blob, filename: string) {
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = filename
+  document.body.appendChild(a)
+  a.click()
+  a.remove()
+  URL.revokeObjectURL(url)
+}
+
+function safeIdFromNow() {
+  return `rule-${Date.now().toString(36)}`
+}
+
+function parseExtensions(text: string): string[] {
+  return (text || '')
+    .split(/[,\\n\\s]+/g)
+    .map((s) => s.trim().toLowerCase())
+    .filter(Boolean)
+    .map((s) => (s.startsWith('.') ? s : `.${s}`))
+}
+
+type RuleDraft = {
+  id: string
+  name: string
+  enabled: boolean
+  extensionsText: string
+  filenameRegex: string
+  preprocessEnabled: boolean
+  preprocessStepIds: string[]
+  parserBackend: string
+  chunkStrategy: string
+  governanceProfileRef: string
+  pipelinePatchJson: string
+}
+
+function ruleToDraft(rule: IngestionRule): RuleDraft {
+  const extensions = Array.isArray(rule.match?.extensions) ? rule.match.extensions : []
+  const steps = Array.isArray(rule.preprocess?.steps) ? rule.preprocess.steps : []
+  return {
+    id: rule.id || safeIdFromNow(),
+    name: rule.name || '新规则',
+    enabled: !!rule.enabled,
+    extensionsText: extensions.join(', '),
+    filenameRegex: String(rule.match?.filename_regex || ''),
+    preprocessEnabled: !!rule.preprocess?.enabled,
+    preprocessStepIds: steps.map((s) => String(s.id || '')).filter(Boolean),
+    parserBackend: rule.parser_backend || '',
+    chunkStrategy: rule.chunk_strategy || '',
+    governanceProfileRef: rule.governance_profile_ref || '',
+    pipelinePatchJson: rule.pipeline_patch ? JSON.stringify(rule.pipeline_patch, null, 2) : '',
+  }
+}
+
+function draftToRule(d: RuleDraft): IngestionRule {
+  let patch: Record<string, any> | undefined
+  const raw = (d.pipelinePatchJson || '').trim()
+  if (raw) {
+    patch = JSON.parse(raw)
+  }
+  return {
+    id: d.id.trim(),
+    name: d.name.trim(),
+    enabled: !!d.enabled,
+    match: {
+      extensions: parseExtensions(d.extensionsText),
+      filename_regex: d.filenameRegex.trim() ? d.filenameRegex.trim() : null,
+    },
+    preprocess: {
+      enabled: !!d.preprocessEnabled,
+      steps: d.preprocessEnabled
+        ? d.preprocessStepIds.map((id) => ({ id, params: {} }))
+        : [],
+    },
+    parser_backend: d.parserBackend.trim() ? d.parserBackend.trim() : null,
+    chunk_strategy: d.chunkStrategy.trim() ? d.chunkStrategy.trim() : null,
+    governance_profile_ref: d.governanceProfileRef.trim() ? d.governanceProfileRef.trim() : null,
+    pipeline_patch: patch,
+  }
+}
+
+export default function DatasetIngestionPolicyPage() {
+  const router = useRouter()
+  const params = useParams<{ id: string }>()
+  const datasetId = String(params?.id || '')
+  const { capabilities } = usePipelineCapabilities()
+
+  const [dataset, setDataset] = useState<Dataset | null>(null)
+  const [policy, setPolicy] = useState<IngestionPolicy | null>(null)
+  const [profiles, setProfiles] = useState<GovernanceProfileSummary[]>([])
+  const [loading, setLoading] = useState(false)
+  const [saving, setSaving] = useState(false)
+
+  const [editorOpen, setEditorOpen] = useState(false)
+  const [editingIndex, setEditingIndex] = useState<number | null>(null)
+  const [draft, setDraft] = useState<RuleDraft>({
+    id: safeIdFromNow(),
+    name: '新规则',
+    enabled: true,
+    extensionsText: '.pdf',
+    filenameRegex: '',
+    preprocessEnabled: true,
+    preprocessStepIds: ['text.reencode_utf8', 'text.strip_bom', 'text.normalize_newlines'],
+    parserBackend: 'auto',
+    chunkStrategy: '',
+    governanceProfileRef: '',
+    pipelinePatchJson: '',
+  })
+
+  const [previewFile, setPreviewFile] = useState<File | null>(null)
+  const [previewing, setPreviewing] = useState(false)
+  const [preview, setPreview] = useState<IngestionPreviewResponse | null>(null)
+
+  const importInputRef = useRef<HTMLInputElement | null>(null)
+
+  const chunkStrategyOptions = useMemo(() => {
+    const items = (capabilities?.chunk_strategies || []).map((s) => String(s.name || '').trim()).filter(Boolean)
+    const uniq = Array.from(new Set(items))
+    return uniq.length ? uniq : ['langchain_recursive', 'ragflow_naive', 'ragflow_book', 'ragflow_laws', 'ragflow_email']
+  }, [capabilities])
+
+  const load = useCallback(async () => {
+    if (!datasetId) return
+    setLoading(true)
+    try {
+      const [ds, pol] = await Promise.all([
+        datasetApi.get(datasetId),
+        datasetApi.getIngestionPolicy(datasetId),
+      ])
+      setDataset(ds)
+      setPolicy(pol)
+    } catch (e: any) {
+      console.error('Failed to load dataset ingestion policy', e)
+      toast.error(formatApiError(e, '加载入库策略失败'))
+    } finally {
+      setLoading(false)
+    }
+  }, [datasetId])
+
+  const loadProfiles = useCallback(async () => {
+    try {
+      const res = await pipelineApi.listGovernanceProfiles({ include_builtin: true, limit: 200 })
+      setProfiles(res.items || [])
+    } catch (e) {
+      console.error('Failed to load governance profiles', e)
+      setProfiles([])
+    }
+  }, [])
+
+  useEffect(() => {
+    load()
+    loadProfiles()
+  }, [load, loadProfiles])
+
+  const rules = useMemo(() => policy?.rules || [], [policy])
+
+  const openCreate = useCallback(() => {
+    setEditingIndex(null)
+    setDraft({
+      id: safeIdFromNow(),
+      name: '新规则',
+      enabled: true,
+      extensionsText: '.pdf',
+      filenameRegex: '',
+      preprocessEnabled: true,
+      preprocessStepIds: ['text.reencode_utf8', 'text.strip_bom', 'text.normalize_newlines'],
+      parserBackend: 'auto',
+      chunkStrategy: '',
+      governanceProfileRef: '',
+      pipelinePatchJson: '',
+    })
+    setEditorOpen(true)
+  }, [])
+
+  const openEdit = useCallback((idx: number) => {
+    const r = rules[idx]
+    if (!r) return
+    setEditingIndex(idx)
+    setDraft(ruleToDraft(r))
+    setEditorOpen(true)
+  }, [rules])
+
+  const applyDraft = useCallback(() => {
+    try {
+      const rule = draftToRule(draft)
+      const next: IngestionPolicy = policy || { version: '1', rules: [] }
+      const newRules = [...(next.rules || [])]
+      if (editingIndex == null) newRules.unshift(rule)
+      else newRules.splice(editingIndex, 1, rule)
+      setPolicy({ version: '1', rules: newRules })
+      setEditorOpen(false)
+    } catch (e: any) {
+      toast.error(`规则保存失败：${String(e?.message || e)}`)
+    }
+  }, [draft, editingIndex, policy])
+
+  const removeRule = useCallback((idx: number) => {
+    const next: IngestionPolicy = policy || { version: '1', rules: [] }
+    const newRules = [...(next.rules || [])]
+    newRules.splice(idx, 1)
+    setPolicy({ version: '1', rules: newRules })
+  }, [policy])
+
+  const moveRule = useCallback((idx: number, dir: -1 | 1) => {
+    const next: IngestionPolicy = policy || { version: '1', rules: [] }
+    const newRules = [...(next.rules || [])]
+    const j = idx + dir
+    if (j < 0 || j >= newRules.length) return
+    const tmp = newRules[idx]
+    newRules[idx] = newRules[j]
+    newRules[j] = tmp
+    setPolicy({ version: '1', rules: newRules })
+  }, [policy])
+
+  const savePolicy = useCallback(async () => {
+    if (!datasetId || !policy) return
+    setSaving(true)
+    try {
+      await datasetApi.updateIngestionPolicy(datasetId, policy)
+      toast.success('已保存入库策略')
+      await load()
+    } catch (e: any) {
+      console.error('Failed to save ingestion policy', e)
+      toast.error(formatApiError(e, '保存失败（请检查规则ID/扩展名/正则/patch JSON）'))
+    } finally {
+      setSaving(false)
+    }
+  }, [datasetId, policy, load])
+
+  const handleExport = useCallback(async () => {
+    if (!datasetId) return
+    try {
+      const blob = await datasetApi.exportIngestionPolicy(datasetId)
+      const safe = (dataset?.name || datasetId).replace(/[^a-zA-Z0-9_.-]+/g, '_').slice(0, 64)
+      downloadBlob(blob, `${safe}.ingestion-policy.json`)
+    } catch (e: any) {
+      console.error('Failed to export ingestion policy', e)
+      toast.error(formatApiError(e, '导出失败'))
+    }
+  }, [datasetId, dataset])
+
+  const handleImportFile = useCallback(async (file: File | null) => {
+    if (!file || !datasetId) return
+    try {
+      const res = await datasetApi.importIngestionPolicy(datasetId, file, true)
+      toast.success(`导入成功：规则 ${res.rule_count}`)
+      await load()
+    } catch (e: any) {
+      console.error('Failed to import ingestion policy', e)
+      toast.error(formatApiError(e, '导入失败（请检查脚本格式/正则是否安全）'))
+    } finally {
+      if (importInputRef.current) importInputRef.current.value = ''
+    }
+  }, [datasetId, load])
+
+  const runPreview = useCallback(async () => {
+    if (!previewFile || !datasetId) return
+    setPreviewing(true)
+    setPreview(null)
+    try {
+      const res = await pipelineApi.ingestionPreview(previewFile, { dataset_id: datasetId, diff_max_lines: 2000 })
+      setPreview(res)
+      toast.success('预览已生成')
+    } catch (e: any) {
+      console.error('Failed to run ingestion preview', e)
+      toast.error(formatApiError(e, '预览失败'))
+    } finally {
+      setPreviewing(false)
+    }
+  }, [previewFile, datasetId])
+
+  return (
+    <AppFrame>
+      <PageScaffold
+        title="入库策略（解析前预处理）"
+        description={
+          <span className="text-muted-foreground">
+            数据集：<span className="text-foreground font-medium">{dataset?.name || datasetId}</span> · 按文件类型配置“预处理→解析→治理”
+          </span>
+        }
+        icon={Settings2}
+        actions={
+          <div className="flex items-center gap-2">
+            <Button variant="outline" onClick={() => router.push('/datasets')} className="gap-2">
+              <ArrowLeft className="w-4 h-4" />
+              返回
+            </Button>
+            <Button variant="outline" onClick={load} disabled={loading} className="gap-2">
+              <RefreshCw className={cn('w-4 h-4', loading && 'animate-spin motion-reduce:animate-none')} />
+              刷新
+            </Button>
+            <Button variant="outline" onClick={handleExport} className="gap-2">
+              <Download className="w-4 h-4" />
+              导出脚本
+            </Button>
+            <Button variant="outline" onClick={() => importInputRef.current?.click()} className="gap-2">
+              <FileUp className="w-4 h-4" />
+              导入脚本
+            </Button>
+            <Button onClick={savePolicy} disabled={saving || !policy} className="gap-2">
+              {saving ? <Loader2 className="w-4 h-4 animate-spin motion-reduce:animate-none" /> : <Save className="w-4 h-4" />}
+              保存
+            </Button>
+          </div>
+        }
+      >
+        <div className="space-y-6">
+          <Panel variant="glass" className="overflow-hidden">
+            <div className="px-5 py-4 border-b border-border/60 flex items-center justify-between">
+              <div className="min-w-0">
+                <div className="text-sm font-semibold">规则列表</div>
+                <div className="text-xs text-muted-foreground mt-1">
+                  从上到下匹配，命中后应用：预处理步骤 / 解析后端 / chunk 策略 / 治理预设 / pipeline_patch
+                </div>
+              </div>
+              <Button onClick={openCreate} className="gap-2">
+                <Plus className="w-4 h-4" />
+                新增规则
+              </Button>
+            </div>
+
+            <div className="divide-y divide-border/60">
+              {(rules || []).length === 0 ? (
+                <div className="p-6 text-sm text-muted-foreground">
+                  暂无规则。建议先添加：PDF / HTML / 纯文本 三条规则，分别选择治理预设并开启“文本编码修复”。
+                </div>
+              ) : (
+                (rules || []).map((r, idx) => (
+                  <div key={r.id} className="p-5 flex items-start justify-between gap-6 hover:bg-muted/20 transition-colors">
+                    <div className="min-w-0 flex-1 space-y-2">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2">
+                            <span className="font-semibold truncate">{r.name}</span>
+                            <Badge variant={r.enabled ? 'soft' : 'outline'} className="text-[10px] font-mono uppercase tracking-wider">
+                              {r.enabled ? 'enabled' : 'disabled'}
+                            </Badge>
+                            <span className="text-xs text-muted-foreground font-mono">#{idx + 1}</span>
+                          </div>
+                          <div className="text-xs text-muted-foreground mt-1">
+                            ext: {(r.match?.extensions || []).join(', ') || '（任意）'}
+                            {r.match?.filename_regex ? ` · filename_regex: ${r.match.filename_regex}` : ''}
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2 flex-shrink-0">
+                          <Button variant="outline" size="sm" onClick={() => moveRule(idx, -1)} disabled={idx === 0}>
+                            ↑
+                          </Button>
+                          <Button variant="outline" size="sm" onClick={() => moveRule(idx, 1)} disabled={idx === rules.length - 1}>
+                            ↓
+                          </Button>
+                          <Button variant="outline" size="sm" onClick={() => openEdit(idx)}>
+                            编辑
+                          </Button>
+                          <Button variant="destructive" size="sm" className="gap-2" onClick={() => removeRule(idx)}>
+                            <Trash2 className="w-4 h-4" />
+                            删除
+                          </Button>
+                        </div>
+                      </div>
+
+                      <div className="flex flex-wrap items-center gap-2 text-xs">
+                        <Badge variant="outline" className="font-mono">
+                          preprocess: {r.preprocess?.enabled ? (r.preprocess?.steps || []).length : 0}
+                        </Badge>
+                        {r.parser_backend ? <Badge variant="outline" className="font-mono">parser: {r.parser_backend}</Badge> : null}
+                        {r.chunk_strategy ? <Badge variant="outline" className="font-mono">chunk: {r.chunk_strategy}</Badge> : null}
+                        {r.governance_profile_ref ? <Badge variant="outline" className="font-mono">profile: {r.governance_profile_ref}</Badge> : null}
+                        {r.pipeline_patch && Object.keys(r.pipeline_patch || {}).length > 0 ? (
+                          <Badge variant="outline" className="font-mono">patch: {Object.keys(r.pipeline_patch || {}).length}</Badge>
+                        ) : null}
+                      </div>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </Panel>
+
+          <Panel variant="glass" className="overflow-hidden">
+            <div className="px-5 py-4 border-b border-border/60 flex items-center justify-between">
+              <div className="min-w-0">
+                <div className="text-sm font-semibold flex items-center gap-2">
+                  <Sparkles className="w-4 h-4 text-primary" />
+                  入库预览（样例文件）
+                </div>
+                <div className="text-xs text-muted-foreground mt-1">
+                  上传一个样例文件，后端会按当前数据集策略执行：匹配规则 → 预处理 → 解析 → 治理 diff/问题。
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <Input
+                  type="file"
+                  className="max-w-[260px]"
+                  onChange={(e) => setPreviewFile(e.target.files?.[0] || null)}
+                />
+                <Button onClick={runPreview} disabled={!previewFile || previewing} className="gap-2">
+                  {previewing ? <Loader2 className="w-4 h-4 animate-spin motion-reduce:animate-none" /> : <Sparkles className="w-4 h-4" />}
+                  生成预览
+                </Button>
+              </div>
+            </div>
+
+            {preview ? (
+              <div className="p-5 space-y-4">
+                <div className="flex flex-wrap items-center gap-2 text-xs">
+                  <Badge variant={preview.rule?.matched ? 'soft' : 'outline'} className="font-mono">
+                    matched: {preview.rule?.matched ? 'true' : 'false'}
+                  </Badge>
+                  {preview.rule?.rule_name ? <Badge variant="outline" className="font-mono">{preview.rule.rule_name}</Badge> : null}
+                  <Badge variant="outline" className="font-mono">parser: {preview.rule?.parser_backend}</Badge>
+                  {preview.rule?.chunk_strategy ? <Badge variant="outline" className="font-mono">chunk: {preview.rule.chunk_strategy}</Badge> : null}
+                  {preview.rule?.governance_profile_ref ? <Badge variant="outline" className="font-mono">profile: {preview.rule.governance_profile_ref}</Badge> : null}
+                  <Badge variant="outline" className="font-mono">preprocess_changed: {String(preview.preprocess?.changed)}</Badge>
+                </div>
+
+                {Array.isArray(preview.clean?.issues) && preview.clean.issues.length > 0 ? (
+                  <Panel variant="muted" className="p-4">
+                    <div className="text-sm font-semibold mb-2">后端检测到的问题（issues）</div>
+                    <div className="space-y-2">
+                      {preview.clean.issues.slice(0, 8).map((it, i) => (
+                        <div key={`${it.code}-${i}`} className="text-xs">
+                          <span className="font-mono text-muted-foreground">{it.severity}</span>{' '}
+                          <span className="font-mono">{it.code}</span> · {it.message}
+                          {it.count ? <span className="text-muted-foreground"> ×{it.count}</span> : null}
+                        </div>
+                      ))}
+                      {preview.clean.issues.length > 8 ? (
+                        <div className="text-xs text-muted-foreground">… 还有 {preview.clean.issues.length - 8} 条</div>
+                      ) : null}
+                    </div>
+                  </Panel>
+                ) : null}
+
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                  <Panel variant="muted" className="p-0 overflow-hidden">
+                    <div className="px-4 py-3 border-b border-border/60 text-sm font-semibold">解析后 Markdown（raw）</div>
+                    <pre className="p-4 text-xs leading-relaxed whitespace-pre-wrap overflow-y-auto max-h-[360px] no-scrollbar">
+                      {preview.parse?.markdown || ''}
+                    </pre>
+                  </Panel>
+                  <Panel variant="muted" className="p-0 overflow-hidden">
+                    <div className="px-4 py-3 border-b border-border/60 text-sm font-semibold">治理后 Markdown（clean）</div>
+                    <pre className="p-4 text-xs leading-relaxed whitespace-pre-wrap overflow-y-auto max-h-[360px] no-scrollbar">
+                      {preview.clean?.markdown || ''}
+                    </pre>
+                  </Panel>
+                </div>
+
+                {preview.clean?.diff_unified ? (
+                  <Panel variant="muted" className="p-0 overflow-hidden">
+                    <div className="px-4 py-3 border-b border-border/60 text-sm font-semibold">Unified Diff（后端）</div>
+                    <pre className="p-4 text-xs leading-relaxed whitespace-pre overflow-y-auto max-h-[320px] no-scrollbar font-mono">
+                      {preview.clean.diff_unified}
+                    </pre>
+                  </Panel>
+                ) : null}
+              </div>
+            ) : (
+              <div className="p-6 text-sm text-muted-foreground">
+                选择一个样例文件后点击“生成预览”。建议：网页 HTML、PDF、以及带表格的 DOCX/CSV 各试一次。
+              </div>
+            )}
+          </Panel>
+        </div>
+
+        <Dialog open={editorOpen} onOpenChange={setEditorOpen}>
+          <DialogContent className="max-w-3xl border-border bg-background/95 backdrop-blur-xl shadow-strong sm:rounded-2xl">
+            <DialogHeader>
+              <DialogTitle className="text-xl font-bold text-foreground">{editingIndex == null ? '新增规则' : '编辑规则'}</DialogTitle>
+              <DialogDescription className="text-muted-foreground">
+                提示：规则从上到下匹配。扩展名支持 .pdf / pdf 两种写法；filename_regex 为可选。
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <Label>规则 ID（唯一）</Label>
+                  <Input value={draft.id} onChange={(e) => setDraft({ ...draft, id: e.target.value })} />
+                </div>
+                <div className="space-y-2">
+                  <Label>规则名称</Label>
+                  <Input value={draft.name} onChange={(e) => setDraft({ ...draft, name: e.target.value })} />
+                </div>
+                <div className="flex items-center justify-between rounded-xl border border-border/60 p-3">
+                  <div>
+                    <div className="text-sm font-semibold">启用规则</div>
+                    <div className="text-xs text-muted-foreground">禁用后不会被匹配</div>
+                  </div>
+                  <Switch checked={draft.enabled} onCheckedChange={(v) => setDraft({ ...draft, enabled: v })} />
+                </div>
+                <div className="space-y-2">
+                  <Label>匹配扩展名（逗号分隔，空=任意）</Label>
+                  <Input
+                    value={draft.extensionsText}
+                    onChange={(e) => setDraft({ ...draft, extensionsText: e.target.value })}
+                    placeholder=".pdf, .docx, .html"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>filename_regex（可选）</Label>
+                  <Input
+                    value={draft.filenameRegex}
+                    onChange={(e) => setDraft({ ...draft, filenameRegex: e.target.value })}
+                    placeholder="例如：(?i)invoice|发票"
+                  />
+                </div>
+
+                <Panel variant="muted" className="p-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <div className="text-sm font-semibold">解析前预处理</div>
+                      <div className="text-xs text-muted-foreground">在解析前对原始文件做修复/清洗</div>
+                    </div>
+                    <Switch checked={draft.preprocessEnabled} onCheckedChange={(v) => setDraft({ ...draft, preprocessEnabled: v })} />
+                  </div>
+                  <div className={cn('mt-3 space-y-2', !draft.preprocessEnabled && 'opacity-50 pointer-events-none')}>
+                    {PREPROCESS_STEP_CATALOG.map((s) => {
+                      const checked = draft.preprocessStepIds.includes(s.id)
+                      return (
+                        <label key={s.id} className="flex items-start gap-3 rounded-lg border border-border/60 p-3 hover:bg-muted/30 transition-colors cursor-pointer">
+                          <Checkbox
+                            checked={checked}
+                            onCheckedChange={(v) => {
+                              const next = new Set(draft.preprocessStepIds)
+                              if (v) next.add(s.id)
+                              else next.delete(s.id)
+                              setDraft({ ...draft, preprocessStepIds: Array.from(next) })
+                            }}
+                          />
+                          <div className="min-w-0">
+                            <div className="text-sm font-medium">{s.label}</div>
+                            <div className="text-xs text-muted-foreground">{s.desc}</div>
+                            <div className="text-[11px] text-muted-foreground font-mono mt-1">{s.id}</div>
+                          </div>
+                        </label>
+                      )
+                    })}
+                  </div>
+                </Panel>
+              </div>
+
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <Label>解析后端（可选覆盖）</Label>
+                  <Select value={draft.parserBackend || NONE} onValueChange={(v) => setDraft({ ...draft, parserBackend: v === NONE ? '' : v })}>
+                    <SelectTrigger className="w-full">
+                      <SelectValue placeholder="不覆盖（使用默认/手动选择）" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value={NONE}>不覆盖</SelectItem>
+                      {PARSER_BACKEND_OPTIONS.map((o) => (
+                        <SelectItem key={o.value} value={o.value}>
+                          {o.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <div className="text-xs text-muted-foreground">
+                    建议：PDF 默认 auto；网页/Office 可选 pandoc 或 markitdown（按你环境可用性）。
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label>Chunk 策略（可选覆盖）</Label>
+                  <Select value={draft.chunkStrategy || NONE} onValueChange={(v) => setDraft({ ...draft, chunkStrategy: v === NONE ? '' : v })}>
+                    <SelectTrigger className="w-full">
+                      <SelectValue placeholder="不覆盖" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value={NONE}>不覆盖</SelectItem>
+                      {chunkStrategyOptions.map((name) => (
+                        <SelectItem key={name} value={name}>
+                          {name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-2">
+                  <Label>治理预设（Profiles/脚本，可选）</Label>
+                  <Select value={draft.governanceProfileRef || NONE} onValueChange={(v) => setDraft({ ...draft, governanceProfileRef: v === NONE ? '' : v })}>
+                    <SelectTrigger className="w-full">
+                      <SelectValue placeholder="不使用预设" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value={NONE}>不使用预设</SelectItem>
+                      {profiles.map((p) => (
+                        <SelectItem key={p.key || p.id || p.name} value={p.key || (p.id as any)}>
+                          {p.is_system ? '内置' : '自定义'} · {p.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <div className="text-xs text-muted-foreground">
+                    预设会注入 pipeline_patch + regex_rules（后端同样做安全校验）。
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label>高级：pipeline_patch（JSON，可选）</Label>
+	                  <Textarea
+	                    value={draft.pipelinePatchJson}
+	                    onChange={(e) => setDraft({ ...draft, pipelinePatchJson: e.target.value })}
+	                    placeholder={`{\n  "governance_enabled": true,\n  "governance_remove_boilerplate": true\n}`}
+	                    className="min-h-[220px] font-mono text-xs"
+	                  />
+                  <div className="text-xs text-muted-foreground">
+                    仅允许 DocumentPipelineOptions 的字段；未知字段会被后端拒绝。
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <DialogFooter className="mt-4">
+              <Button variant="ghost" onClick={() => setEditorOpen(false)}>取消</Button>
+              <Button onClick={applyDraft}>保存规则</Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        <input
+          ref={importInputRef}
+          type="file"
+          accept="application/json,.json"
+          className="hidden"
+          onChange={(e) => handleImportFile(e.target.files?.[0] || null)}
+        />
+      </PageScaffold>
+    </AppFrame>
+  )
+}

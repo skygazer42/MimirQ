@@ -3,6 +3,8 @@ Document processing pipeline schemas.
 Defines data models for document parsing, chunking, and other pipeline operations.
 """
 
+from __future__ import annotations
+
 from typing import Any, Dict, List, Literal, Optional
 from uuid import UUID
 from pydantic import BaseModel, Field
@@ -36,6 +38,38 @@ class ParsePreviewResponse(BaseModel):
     pdf_quality: Optional[PDFQualityScore] = None
     markdown: str
     images: List[ImageInfo] = Field(default_factory=list)
+
+
+class PreprocessStepLog(BaseModel):
+    id: str
+    applied: bool
+    changed: bool
+    note: str = ""
+
+
+class PreprocessSummary(BaseModel):
+    changed: bool = False
+    size_before: int = 0
+    size_after: int = 0
+    steps: List[PreprocessStepLog] = Field(default_factory=list)
+    warnings: List[str] = Field(default_factory=list)
+
+
+class IngestionPreviewRule(BaseModel):
+    matched: bool = False
+    rule_id: Optional[str] = None
+    rule_name: Optional[str] = None
+    governance_profile_ref: Optional[str] = None
+    preprocess_steps: List[Dict[str, Any]] = Field(default_factory=list)
+    parser_backend: str = "auto"
+    chunk_strategy: str = ""
+
+
+class IngestionPreviewResponse(BaseModel):
+    rule: IngestionPreviewRule
+    preprocess: PreprocessSummary
+    parse: ParsePreviewResponse
+    clean: CleanPreviewResponse
 
 
 class ChunkItem(BaseModel):

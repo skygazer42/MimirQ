@@ -21,6 +21,7 @@ from app.api.dependencies.tenant import get_tenant_id
 from app.core.database import get_db
 from app.api.schemas.pipeline import (
     ParsePreviewResponse,
+    IngestionPreviewResponse,
     ChunkPreviewRequest,
     ChunkPreviewResponse,
     CleanPreviewRequest,
@@ -80,6 +81,10 @@ from app.rag.llm.factory import create_llm_client
 from app.rag.llm.models import LLMMessage, LLMRole
 from app.api.utils.upload import save_upload_file
 from app.models.governance_profile import GovernanceProfile as DBGovernanceProfile
+from app.parsing.preprocess.file_preprocessor import preprocess_file
+from app.services.ingestion_policy import match_ingestion_rule, parse_ingestion_policy_from_metadata
+from app.services.pipeline_config import resolve_pipeline_effective
+from app.types.pipeline import PipelineOptions
 from app.services.governance_profiles import (
     builtin_profile_to_out,
     get_builtin_governance_profiles,
@@ -905,6 +910,201 @@ async def parse_preview(
             timeout_sec=float(getattr(settings, "TASK_JOB_TIMEOUT_SEC", 60 * 30) or 60 * 30),
         )
         return result
+    except SubprocessCancelled:
+        raise HTTPException(status_code=499, detail="Client closed request")
+    except SubprocessWorkerError as e:
+        err_type = (e.details or {}).get("type")
+        if err_type == "ValueError":
+            raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=500, detail="Failed to parse preview")
+    finally:
+        shutil.rmtree(run_dir, ignore_errors=True)
+
+
+@router.post("/ingestion-preview", response_model=IngestionPreviewResponse)
+async def ingestion_preview(
+    request: Request,
+    file: UploadFile = File(...),
+    dataset_id: UUID = Form(...),
+    parser_backend: str | None = Form(default=None),
+    chunk_strategy: str | None = Form(default=None),
+    diff_max_lines: int = Form(default=2000),
+    tenant_id: UUID = Depends(get_tenant_id),
+    account_id: str = Depends(get_current_account_id),
+    db: Session = Depends(get_db),
+):
+    """
+    One-shot ingestion preview for a dataset:
+    - match dataset ingestion policy
+    - preprocess file (before parsing)
+    - parse to Markdown (preview)
+    - run governance clean preview (issues + unified diff)
+    """
+    DatasetService.ensure_member(db, tenant_id, account_id)
+
+    dataset = DatasetService.get_dataset(db, tenant_id, dataset_id)
+    DatasetService.assert_dataset_readable(db, dataset, account_id)
+
+    file_ext = Path(file.filename).suffix.lower()
+    if file_ext not in settings.allowed_extensions_list:
+        raise HTTPException(status_code=400, detail=f"Unsupported file type. Allowed: {settings.allowed_extensions_list}")
+
+    preview_dir = Path(settings.UPLOAD_DIR) / str(tenant_id) / "preview"
+    preview_dir.mkdir(parents=True, exist_ok=True)
+    run_dir = preview_dir / uuid.uuid4().hex
+    run_dir.mkdir(parents=True, exist_ok=True)
+    temp_path = run_dir / f"input{file_ext}"
+
+    pre_summary: dict[str, object] = {"changed": False, "size_before": 0, "size_after": 0, "steps": [], "warnings": []}
+
+    try:
+        await save_upload_file(file, temp_path, max_bytes=settings.MAX_FILE_SIZE)
+
+        dataset_meta = getattr(dataset, "dataset_metadata", None)
+        dataset_meta = dataset_meta if isinstance(dataset_meta, dict) else {}
+        policy = parse_ingestion_policy_from_metadata(dataset_meta) or None
+        matched_rule = match_ingestion_rule(policy, filename=file.filename, file_ext=file_ext)
+
+        default_pb = (getattr(settings, "DEFAULT_PARSER_BACKEND", "auto") or "auto").strip().lower() or "auto"
+        default_cs = (getattr(settings, "DEFAULT_CHUNK_STRATEGY", "langchain_recursive") or "langchain_recursive").strip().lower()
+
+        base_pb = (parser_backend or default_pb).strip().lower() or default_pb
+        base_cs = (chunk_strategy or default_cs).strip().lower() or default_cs
+
+        parser_backend_choice = base_pb
+        chunk_strategy_choice = base_cs
+        preprocess_steps: list[dict] = []
+        governance_profile_ref: str | None = None
+        patch_dict: dict[str, object] = {}
+
+        if matched_rule is not None:
+            if base_pb in {"", "auto", default_pb} and matched_rule.parser_backend:
+                parser_backend_choice = str(matched_rule.parser_backend)
+            if base_cs in {"", default_cs} and matched_rule.chunk_strategy:
+                chunk_strategy_choice = str(matched_rule.chunk_strategy)
+
+            pp = getattr(matched_rule, "preprocess", None)
+            steps = getattr(pp, "steps", None) if pp is not None and bool(getattr(pp, "enabled", True)) else None
+            if isinstance(steps, list) and steps:
+                preprocess_steps = [
+                    {
+                        "id": str(getattr(s, "id", "") or "").strip(),
+                        "params": dict(getattr(s, "params", {}) or {}),
+                    }
+                    for s in steps
+                ]
+
+            governance_profile_ref = getattr(matched_rule, "governance_profile_ref", None)
+            if isinstance(governance_profile_ref, str) and governance_profile_ref.strip():
+                prof = _resolve_profile_ref(db=db, tenant_id=tenant_id, profile_ref=governance_profile_ref.strip())
+                patch_dict.update(dict(prof.payload.pipeline_patch or {}))
+                rules = [r.model_dump() for r in (prof.payload.regex_rules or [])]
+                if rules:
+                    patch_dict["governance_regex_rules"] = rules
+            patch_dict.update(dict(getattr(matched_rule, "pipeline_patch", None) or {}))
+
+        # Preprocess file (before parsing).
+        parse_path = temp_path
+        if preprocess_steps:
+            pre = preprocess_file(input_path=temp_path, steps=preprocess_steps)
+            pre_summary = {
+                "changed": bool(pre.changed),
+                "size_before": int(pre.size_before),
+                "size_after": int(pre.size_after),
+                "steps": [{"id": s.id, "applied": s.applied, "changed": s.changed, "note": s.note} for s in (pre.steps or [])],
+                "warnings": list(pre.warnings or []),
+            }
+            if bool(pre.changed):
+                parse_path = Path(str(pre.output_path))
+
+        # Compute effective governance options (dataset defaults + rule/profile patches).
+        patch_opts = PipelineOptions(**patch_dict) if patch_dict else PipelineOptions()
+        effective = resolve_pipeline_effective(dataset_metadata=dataset_meta, document_metadata={}, request_overrides=patch_opts)
+
+        # Parse preview via subprocess worker.
+        parsed = await run_subprocess_worker(
+            tenant_id=tenant_id,
+            payload={
+                "action": "pipeline_parse_preview",
+                "tenant_id": str(tenant_id),
+                "file_path": str(parse_path),
+                "parser_backend": parser_backend_choice,
+            },
+            disconnect_check=request.is_disconnected,
+            timeout_sec=float(getattr(settings, "TASK_JOB_TIMEOUT_SEC", 60 * 30) or 60 * 30),
+        )
+
+        # Governance clean preview (issues + diff).
+        clean_body = CleanPreviewRequest(
+            markdown=str(parsed.get("markdown") or ""),
+            rules=[RegexRuleModel(**r) for r in (getattr(effective, "governance_regex_rules", None) or [])],
+            use_default_rules=True,
+            include_diff=True,
+            diff_max_lines=int(diff_max_lines or 0),
+            input_format="markdown",
+            html_xpath=None,
+            normalize_line_endings=True,
+            trim_trailing_spaces=True,
+            collapse_blank_lines=True,
+            max_blank_lines=int(getattr(effective, "governance_max_blank_lines", 1) or 1),
+            remove_control_chars=True,
+            remove_toc_lines=bool(getattr(effective, "governance_remove_toc_lines", True)),
+            remove_noise_lines=bool(getattr(effective, "governance_remove_noise_lines", True)),
+            remove_common_lines=bool(getattr(effective, "governance_remove_common_lines", True)),
+            unwrap_lines=bool(getattr(effective, "governance_unwrap_lines", True)),
+            remove_boilerplate=bool(getattr(effective, "governance_remove_boilerplate", False)),
+            remove_images=str(getattr(effective, "governance_remove_images", "none") or "none"),  # type: ignore[arg-type]
+            extract_frontmatter=bool(getattr(effective, "governance_extract_frontmatter", False)),
+            strip_frontmatter=bool(getattr(effective, "governance_strip_frontmatter", False)),
+            detect_language=bool(getattr(effective, "governance_detect_language", False)),
+            language_min_chars=int(getattr(effective, "governance_language_min_chars", 40) or 40),
+            normalize_urls=bool(getattr(effective, "governance_normalize_urls", False)),
+            normalize_urls_strip_tracking=bool(getattr(effective, "governance_normalize_urls_strip_tracking", True)),
+            drop_duplicate_paragraphs=bool(getattr(effective, "governance_drop_duplicate_paragraphs", False)),
+            drop_duplicate_paragraphs_min_occurrences=int(getattr(effective, "governance_drop_duplicate_paragraphs_min_occurrences", 3) or 3),
+            drop_duplicate_paragraphs_min_chars=int(getattr(effective, "governance_drop_duplicate_paragraphs_min_chars", 40) or 40),
+            drop_duplicate_paragraphs_max_chars=int(getattr(effective, "governance_drop_duplicate_paragraphs_max_chars", 1200) or 1200),
+            trim_references=bool(getattr(effective, "governance_trim_references", False)),
+            extract_keywords=bool(getattr(effective, "governance_extract_keywords", False)),
+            keywords_provider=str(getattr(effective, "governance_keywords_provider", "auto") or "auto"),
+            keywords_top_k=int(getattr(effective, "governance_keywords_top_k", 10) or 10),
+            keywords_max_chars=int(getattr(effective, "governance_keywords_max_chars", 20000) or 20000),
+            normalize_tables=bool(getattr(effective, "governance_normalize_tables", False)),
+            strip_code_line_numbers=bool(getattr(effective, "governance_strip_code_line_numbers", False)),
+            pii_anonymize=bool(getattr(effective, "governance_pii_anonymize", False)),
+            pii_mode=str(getattr(effective, "governance_pii_mode", "mask") or "mask"),  # type: ignore[arg-type]
+            pii_mask=str(getattr(effective, "governance_pii_mask", "[REDACTED]") or "[REDACTED]"),
+            secrets_redact=bool(getattr(effective, "governance_secrets_redact", False)),
+            secrets_mode=str(getattr(effective, "governance_secrets_mode", "mask") or "mask"),  # type: ignore[arg-type]
+            secrets_mask=str(getattr(effective, "governance_secrets_mask", "[SECRET]") or "[SECRET]"),
+            drop_outline_only=bool(getattr(effective, "governance_drop_outline_only", False)),
+            drop_outline_min_content_chars=int(getattr(effective, "governance_drop_outline_min_content_chars", 200) or 200),
+            drop_outline_max_heading_ratio=float(getattr(effective, "governance_drop_outline_max_heading_ratio", 0.85) or 0.85),
+            drop_low_density=bool(getattr(effective, "governance_drop_low_density", False)),
+            drop_low_density_threshold=float(getattr(effective, "governance_drop_low_density_threshold", 0.12) or 0.12),
+            unwrap_max_line_length=int(getattr(effective, "governance_unwrap_max_line_length", 120) or 120),
+            noise_min_chars=int(getattr(effective, "governance_noise_min_chars", 2) or 2),
+            noise_ratio_threshold=float(getattr(effective, "governance_noise_ratio_threshold", 0.2) or 0.2),
+            common_lines_min_occurrences=int(getattr(effective, "governance_common_lines_min_docs", 3) or 3),
+        )
+        cleaned = await clean_preview(body=clean_body, tenant_id=tenant_id, account_id=account_id, db=db)
+
+        rule_out = {
+            "matched": matched_rule is not None,
+            "rule_id": matched_rule.id if matched_rule is not None else None,
+            "rule_name": matched_rule.name if matched_rule is not None else None,
+            "governance_profile_ref": governance_profile_ref.strip() if isinstance(governance_profile_ref, str) and governance_profile_ref.strip() else None,
+            "preprocess_steps": preprocess_steps,
+            "parser_backend": str(parser_backend_choice or "auto"),
+            "chunk_strategy": str(chunk_strategy_choice or ""),
+        }
+
+        return {
+            "rule": rule_out,
+            "preprocess": pre_summary,
+            "parse": parsed,
+            "clean": cleaned,
+        }
     except SubprocessCancelled:
         raise HTTPException(status_code=499, detail="Client closed request")
     except SubprocessWorkerError as e:

@@ -2,7 +2,10 @@
 Dataset management API.
 Supports dataset creation, query, update, deletion, and permission management.
 """
-from fastapi import APIRouter, Depends, Query
+import json
+import re
+
+from fastapi import APIRouter, Depends, Query, UploadFile, File, Form, HTTPException, Response
 from sqlalchemy.orm import Session
 from uuid import UUID
 
@@ -11,10 +14,16 @@ from app.api.dependencies.tenant import get_tenant_id
 from app.api.dependencies.auth import get_current_account_id
 from app.api.schemas.dataset import DatasetCreate, DatasetUpdate, DatasetOut, DatasetListResponse
 from app.api.schemas.document import DocumentPipelineOptions
+from app.api.schemas.ingestion_policy import IngestionPolicy, IngestionPolicyImportResponse
 from app.models.dataset import DatasetPermissionEnum, DatasetPermission
 from app.services.dataset_service import DatasetService, DatasetPermissionService
 from app.models.dataset import Dataset
 from app.services.pipeline_config import build_pipeline_metadata, parse_pipeline_from_metadata
+from app.services.ingestion_policy import (
+    export_policy_json,
+    parse_ingestion_policy_from_metadata,
+    validate_and_normalize_ingestion_policy,
+)
 from app.types.pipeline import PipelineOptions
 
 router = APIRouter()
@@ -215,3 +224,103 @@ def delete_dataset(
     db.delete(dataset)
     db.commit()
     return None
+
+
+@router.get("/{dataset_id}/ingestion-policy", response_model=IngestionPolicy)
+def get_dataset_ingestion_policy(
+    dataset_id: UUID,
+    tenant_id: UUID = Depends(get_tenant_id),
+    account_id: str = Depends(get_current_account_id),
+    db: Session = Depends(get_db),
+):
+    dataset = DatasetService.get_dataset(db, tenant_id, dataset_id)
+    DatasetService.assert_dataset_readable(db, dataset, account_id)
+    meta = getattr(dataset, "dataset_metadata", None)
+    policy = parse_ingestion_policy_from_metadata(meta if isinstance(meta, dict) else {}) or IngestionPolicy(version="1", rules=[])
+    return policy
+
+
+@router.put("/{dataset_id}/ingestion-policy", response_model=IngestionPolicy)
+def put_dataset_ingestion_policy(
+    dataset_id: UUID,
+    payload: IngestionPolicy,
+    tenant_id: UUID = Depends(get_tenant_id),
+    account_id: str = Depends(get_current_account_id),
+    db: Session = Depends(get_db),
+):
+    dataset = DatasetService.get_dataset(db, tenant_id, dataset_id)
+    DatasetService.assert_dataset_writable(db, dataset, account_id)
+
+    normalized = validate_and_normalize_ingestion_policy(payload)
+    meta = dict(getattr(dataset, "dataset_metadata", None) or {})
+    if normalized.rules:
+        meta["ingestion_policy"] = normalized.model_dump()
+    else:
+        meta.pop("ingestion_policy", None)
+    dataset.dataset_metadata = meta
+    db.commit()
+    db.refresh(dataset)
+    return normalized
+
+
+@router.post("/{dataset_id}/ingestion-policy/import", response_model=IngestionPolicyImportResponse)
+async def import_dataset_ingestion_policy(
+    dataset_id: UUID,
+    file: UploadFile = File(...),
+    replace: bool = Form(default=True),
+    tenant_id: UUID = Depends(get_tenant_id),
+    account_id: str = Depends(get_current_account_id),
+    db: Session = Depends(get_db),
+):
+    dataset = DatasetService.get_dataset(db, tenant_id, dataset_id)
+    DatasetService.assert_dataset_writable(db, dataset, account_id)
+
+    max_bytes = 256 * 1024
+    raw = await file.read(max_bytes + 1)
+    if len(raw) > max_bytes:
+        raise HTTPException(status_code=400, detail="policy file too large (max 256KB)")
+    try:
+        obj = json.loads(raw.decode("utf-8"))
+    except Exception:
+        raise HTTPException(status_code=400, detail="invalid JSON (expect UTF-8)")
+
+    try:
+        model = IngestionPolicy(**obj)
+        normalized = validate_and_normalize_ingestion_policy(model)
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=f"invalid ingestion policy: {str(exc)[:200]}")
+
+    meta = dict(getattr(dataset, "dataset_metadata", None) or {})
+    if not replace and "ingestion_policy" in meta:
+        # Best-effort: do not merge in v1 (explicit by design).
+        raise HTTPException(status_code=409, detail="ingestion_policy already exists; set replace=true to overwrite")
+    if normalized.rules:
+        meta["ingestion_policy"] = normalized.model_dump()
+    else:
+        meta.pop("ingestion_policy", None)
+    dataset.dataset_metadata = meta
+    db.commit()
+    db.refresh(dataset)
+    return IngestionPolicyImportResponse(replaced=True, rule_count=len(normalized.rules))
+
+
+@router.get("/{dataset_id}/ingestion-policy/export")
+def export_dataset_ingestion_policy(
+    dataset_id: UUID,
+    tenant_id: UUID = Depends(get_tenant_id),
+    account_id: str = Depends(get_current_account_id),
+    db: Session = Depends(get_db),
+):
+    dataset = DatasetService.get_dataset(db, tenant_id, dataset_id)
+    DatasetService.assert_dataset_readable(db, dataset, account_id)
+    meta = getattr(dataset, "dataset_metadata", None)
+    policy = parse_ingestion_policy_from_metadata(meta if isinstance(meta, dict) else {}) or IngestionPolicy(version="1", rules=[])
+
+    content = export_policy_json(policy)
+    safe = re.sub(r"[^a-zA-Z0-9_.-]+", "_", str(getattr(dataset, "name", "") or "dataset"))[:64]
+    filename = f"{safe}.ingestion-policy.json"
+    return Response(
+        content=content,
+        media_type="application/json",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )

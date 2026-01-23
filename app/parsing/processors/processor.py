@@ -38,6 +38,7 @@ from app.rag.kg.pipeline import extract_events
 from app.parsing.routing import route_pdf_backend
 from app.parsing.quality.text_quality import score_parsed_text_quality
 from app.parsing.subprocess_runner import SubprocessCancelled, SubprocessWorkerError, run_subprocess_worker
+from app.parsing.preprocess.file_preprocessor import preprocess_file
 from app.rag.core.logging import get_logger
 from app.rag.core.metadata import normalize_image_metadata
 from app.services.metrics_logger import log_metrics, metrics_span, set_metrics_context
@@ -730,6 +731,7 @@ class DocumentProcessorService:
             db = SessionLocal()
             owns_db = True
 
+        preprocessed_temp_path: Path | None = None
         try:
             cancel_check = self._build_cancel_check(db=db, tenant_id=tenant_id, document_id=document_id)
 
@@ -781,6 +783,33 @@ class DocumentProcessorService:
             )
             index_options = build_indexing_options(pipeline_effective)
             self._record_pipeline_effective(db, tenant_id, document_id, pipeline_effective)
+
+            # Optional: file-level preprocessing before parsing (configured via ingestion policy).
+            try:
+                meta = db_document.doc_metadata or {}
+                ingestion = meta.get("ingestion") if isinstance(meta, dict) else None
+                preprocess_cfg = ingestion.get("preprocess") if isinstance(ingestion, dict) else None
+                steps = preprocess_cfg.get("steps") if isinstance(preprocess_cfg, dict) else None
+                if isinstance(steps, list) and steps:
+                    with metrics_span("ingest.preprocess", file_ext=file_path.suffix.lower()):
+                        result = preprocess_file(input_path=file_path, steps=steps)
+                    # Persist a lightweight audit record for debugging/tuning (best-effort).
+                    try:
+                        next_meta = dict(db_document.doc_metadata or {})
+                        next_meta["preprocess"] = result.to_dict()
+                        db_document.doc_metadata = next_meta
+                        db.commit()
+                        db.refresh(db_document)
+                    except Exception:
+                        pass
+                    if bool(getattr(result, "changed", False)):
+                        out_path = Path(str(getattr(result, "output_path", "") or "")).resolve(strict=False)
+                        preprocessed_temp_path = out_path
+                        file_path = out_path
+            except Exception as exc:  # noqa: BLE001
+                # Fail closed: when preprocessing is enabled, it is part of ingestion correctness.
+                raise RuntimeError(f"preprocess_failed: {str(exc)[:200]}") from exc
+
             extra_rules = list(getattr(pipeline_effective, "governance_regex_rules", None) or [])
             combined_rules = build_governance_rules(extra_rules) if extra_rules else None
             governance_kwargs = {
@@ -1678,6 +1707,11 @@ class DocumentProcessorService:
             )
             raise
         finally:
+            if preprocessed_temp_path is not None:
+                try:
+                    preprocessed_temp_path.unlink(missing_ok=True)
+                except Exception:
+                    pass
             if owns_db:
                 db.close()
 
