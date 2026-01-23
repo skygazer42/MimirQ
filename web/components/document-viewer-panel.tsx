@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { X, Maximize2, Minimize2, FileText, Loader2, Download } from "lucide-react"
+import { X, Maximize2, Minimize2, FileText, Loader2, Download, Copy, Link2 } from "lucide-react"
 import { useVirtualizer } from "@tanstack/react-virtual"
 import { cn } from "@/lib/utils"
 import { useDocumentView } from "@/store/document-view"
@@ -12,6 +12,7 @@ import { API_V1_BASE_URL } from "@/lib/env"
 import type { Document, DocumentChunk } from "@/types"
 import { getAccessToken, getTenantId } from "@/lib/auth-storage"
 import { FloatingMenu } from "@/components/document-viewer/floating-menu"
+import { toast } from "sonner"
 
 function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
@@ -232,6 +233,48 @@ export function DocumentViewerPanel() {
     return url.toString()
   }, [documentId])
 
+  const buildChunkLink = React.useCallback((chunkId: string) => {
+    if (!documentId) return ""
+    try {
+      const url = new URL("/", window.location.origin)
+      url.searchParams.set("doc", documentId)
+      url.searchParams.set("chunk", chunkId)
+      return url.toString()
+    } catch {
+      return ""
+    }
+  }, [documentId])
+
+  const copyText = React.useCallback(async (text: string, okMsg: string) => {
+    const value = (text || "").trim()
+    if (!value) return
+
+    let ok = false
+    try {
+      await navigator.clipboard.writeText(value)
+      ok = true
+    } catch {
+      try {
+        const textarea = document.createElement("textarea")
+        textarea.value = value
+        textarea.setAttribute("readonly", "")
+        textarea.style.position = "fixed"
+        textarea.style.left = "0"
+        textarea.style.top = "0"
+        textarea.style.opacity = "0"
+        document.body.appendChild(textarea)
+        textarea.focus()
+        textarea.select()
+        ok = document.execCommand("copy")
+        document.body.removeChild(textarea)
+      } catch {
+        ok = false
+      }
+    }
+
+    if (ok) toast.success(okMsg)
+  }, [])
+
   const canInlinePreview = (doc?.file_type || "").toLowerCase() === "pdf"
 
   const jumpToMatch = React.useCallback((nextIndex: number) => {
@@ -444,9 +487,35 @@ export function DocumentViewerPanel() {
                                <span className="text-xs font-mono font-medium text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
                                  #{highlightChunk.chunk_index}
                                </span>
-                               {highlightChunk.page_number ? (
-                                 <span className="text-xs text-muted-foreground">P.{highlightChunk.page_number}</span>
-                               ) : null}
+                               <div className="flex items-center gap-2">
+                                 {highlightChunk.page_number != null ? (
+                                   <span className="text-xs text-muted-foreground">P.{highlightChunk.page_number}</span>
+                                 ) : null}
+                                 <div className="flex items-center gap-1">
+                                   <Button
+                                     type="button"
+                                     variant="ghost"
+                                     size="icon"
+                                     className="h-7 w-7"
+                                     onClick={() => copyText(highlightChunk.content, \"已复制切片内容\")}
+                                     aria-label="复制切片内容"
+                                     title="复制切片内容"
+                                   >
+                                     <Copy className="h-4 w-4" />
+                                   </Button>
+                                   <Button
+                                     type="button"
+                                     variant="ghost"
+                                     size="icon"
+                                     className="h-7 w-7"
+                                     onClick={() => copyText(buildChunkLink(highlightChunk.id), \"已复制定位链接\")}
+                                     aria-label="复制定位链接"
+                                     title="复制定位链接"
+                                   >
+                                     <Link2 className="h-4 w-4" />
+                                   </Button>
+                                 </div>
+                               </div>
                              </div>
                              <p className="text-sm leading-relaxed text-foreground/90 font-mono whitespace-pre-wrap">
                                {highlightChunk.content}
@@ -495,7 +564,7 @@ export function DocumentViewerPanel() {
                               <div
                                 id={`chunk-${chunk.id}`}
                                 className={cn(
-                                  "p-4 rounded-xl border transition-all duration-300",
+                                  "group p-4 rounded-xl border transition-all duration-300",
                                   highlightChunkId === chunk.id
                                     ? "bg-primary/5 border-primary shadow-[0_0_0_1px_rgba(var(--primary),0.2)] ring-1 ring-primary/20"
                                     : "bg-background border-border hover:border-primary/30 hover:shadow-sm"
@@ -505,9 +574,35 @@ export function DocumentViewerPanel() {
                                   <span className="text-xs font-mono font-medium text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
                                     #{chunk.chunk_index}
                                   </span>
-                                  {chunk.page_number && (
-                                    <span className="text-xs text-muted-foreground">P.{chunk.page_number}</span>
-                                  )}
+                                  <div className="flex items-center gap-2">
+                                    {chunk.page_number != null ? (
+                                      <span className="text-xs text-muted-foreground">P.{chunk.page_number}</span>
+                                    ) : null}
+                                    <div className="flex items-center gap-1 opacity-100 lg:opacity-0 lg:group-hover:opacity-100 transition-opacity">
+                                      <Button
+                                        type="button"
+                                        variant="ghost"
+                                        size="icon"
+                                        className="h-7 w-7"
+                                        onClick={() => copyText(chunk.content, "已复制切片内容")}
+                                        aria-label="复制切片内容"
+                                        title="复制切片内容"
+                                      >
+                                        <Copy className="h-4 w-4" />
+                                      </Button>
+                                      <Button
+                                        type="button"
+                                        variant="ghost"
+                                        size="icon"
+                                        className="h-7 w-7"
+                                        onClick={() => copyText(buildChunkLink(chunk.id), "已复制定位链接")}
+                                        aria-label="复制定位链接"
+                                        title="复制定位链接"
+                                      >
+                                        <Link2 className="h-4 w-4" />
+                                      </Button>
+                                    </div>
+                                  </div>
                                 </div>
                                 <p className="text-sm leading-relaxed text-foreground/90 font-mono whitespace-pre-wrap">
                                   {highlightText(chunk.content, chunkQuery)}
