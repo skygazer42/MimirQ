@@ -279,7 +279,7 @@ export function PdfViewer({
   }
 
   return (
-    <div ref={containerRef} className="h-full overflow-y-auto px-4 py-6">
+    <div ref={containerRef} className="h-full overflow-y-auto overscroll-contain no-scrollbar px-4 py-6">
       <div ref={contentRef} className="mx-auto flex w-full max-w-4xl flex-col gap-6">
         {Array.from({ length: pageCount }).map((_, index) => {
           const pageBoxes = boxesByPage.get(index) || []

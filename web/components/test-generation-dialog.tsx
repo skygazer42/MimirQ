@@ -247,7 +247,7 @@ export function TestGenerationDialog({
 
         {/* 步骤 1: 选择来源 */}
         {step === 'select_source' && (
-          <div className="flex-1 overflow-y-auto p-6">
+          <div className="flex-1 overflow-y-auto overscroll-contain no-scrollbar p-6">
             <div className="space-y-4">
               {/* 来源类型选择 */}
               <div className="grid grid-cols-2 gap-4">
@@ -317,7 +317,7 @@ export function TestGenerationDialog({
                     <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
                       选择文档
                     </label>
-                    <div className="border border-slate-200 dark:border-slate-700 rounded-lg max-h-64 overflow-y-auto">
+                    <div className="border border-slate-200 dark:border-slate-700 rounded-lg max-h-64 overflow-y-auto overscroll-contain no-scrollbar">
                       {isLoadingData ? (
                         <div className="flex items-center justify-center py-8">
                           <Loader2 className="w-6 h-6 animate-spin motion-reduce:animate-none text-slate-400" />
@@ -359,7 +359,7 @@ export function TestGenerationDialog({
                   <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
                     选择对话
                   </label>
-                  <div className="border border-slate-200 dark:border-slate-700 rounded-lg max-h-64 overflow-y-auto">
+                  <div className="border border-slate-200 dark:border-slate-700 rounded-lg max-h-64 overflow-y-auto overscroll-contain no-scrollbar">
                     {isLoadingData ? (
                       <div className="flex items-center justify-center py-8">
                         <Loader2 className="w-6 h-6 animate-spin motion-reduce:animate-none text-slate-400" />
@@ -399,7 +399,7 @@ export function TestGenerationDialog({
 
         {/* 步骤 2: 配置参数 */}
         {step === 'configure' && (
-          <div className="flex-1 overflow-y-auto p-6">
+          <div className="flex-1 overflow-y-auto overscroll-contain no-scrollbar p-6">
             <div className="space-y-6">
               {/* 生成数量 */}
               <div>
@@ -498,7 +498,7 @@ export function TestGenerationDialog({
 
         {/* 步骤 3: 预览结果 */}
         {step === 'preview' && (
-          <div className="flex-1 overflow-y-auto p-6">
+          <div className="flex-1 overflow-y-auto overscroll-contain no-scrollbar p-6">
             <div className="space-y-4">
               {generatedQuestions.length === 0 ? (
                 <div className="text-center py-8 text-slate-500">

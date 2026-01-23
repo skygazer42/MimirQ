@@ -75,7 +75,7 @@ export function OriginalPreview() {
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto p-4 scroll-smooth">
+      <div className="flex-1 overflow-y-auto overscroll-contain no-scrollbar p-4 scroll-smooth">
         <div className="min-h-full rounded-2xl border border-border/60 bg-card/70 p-6 shadow-sm backdrop-blur ring-1 ring-border/40">
           {previewData ? (
             previewData.original_text ? (
@@ -91,7 +91,7 @@ export function OriginalPreview() {
                   </div>
                   {tocEnabled && (
                     <aside className="hidden xl:block w-64 shrink-0">
-                      <div className="sticky top-6 max-h-[calc(100vh-220px)] overflow-y-auto rounded-xl border border-border/60 bg-card p-3">
+                      <div className="sticky top-6 max-h-[calc(100vh-220px)] overflow-y-auto overscroll-contain no-scrollbar rounded-xl border border-border/60 bg-card p-3">
                         <MarkdownToc markdown={previewData.original_text} />
                       </div>
                     </aside>

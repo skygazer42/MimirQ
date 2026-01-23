@@ -89,6 +89,18 @@ export default function GraphPage() {
   const [isConnectMode, setIsConnectMode] = useState(false)
   const [connectSourceNode, setConnectSourceNode] = useState<any | null>(null)
 
+  const detailScrollRef = useRef<HTMLDivElement>(null)
+  const selectedNodeId = selectedNode?.id as string | undefined
+
+  // Reset the detail panel scroll when switching nodes so it doesn't appear "half scrolled".
+  useEffect(() => {
+    if (!isDetailOpen || !selectedNodeId) return
+    const raf = window.requestAnimationFrame(() => {
+      detailScrollRef.current?.scrollTo({ top: 0, left: 0, behavior: 'auto' })
+    })
+    return () => window.cancelAnimationFrame(raf)
+  }, [isDetailOpen, selectedNodeId])
+
   // Explainability State
   const [isExplainMode, setIsExplainMode] = useState(false)
   const [explainSteps, setExplainSteps] = useState<{node: string, reason: string}[]>([])
@@ -850,7 +862,7 @@ export default function GraphPage() {
 	                 <Lightbulb className="w-4 h-4 text-teal-600 dark:text-teal-300" />
 	                 <h3 className="font-bold text-foreground text-sm">RAG 推理过程</h3>
 	               </div>
-               <div className="p-4 space-y-4 max-h-[300px] overflow-y-auto">
+               <div className="p-4 space-y-4 max-h-[300px] overflow-y-auto overscroll-contain no-scrollbar">
                  {explainSteps.map((step, idx) => {
                    const node = graphData.nodes.find(n => n.id === step.node)
                    const isActive = idx === currentStepIndex
@@ -982,7 +994,7 @@ export default function GraphPage() {
 	                  </button>
                 </div>
                 
-                <div className="flex-1 overflow-y-auto p-5 space-y-6">
+                <div ref={detailScrollRef} className="flex-1 overflow-y-auto overscroll-contain no-scrollbar p-5 space-y-6">
                   {/* Deep Linking Actions */}
 	                  <div className="grid grid-cols-2 gap-3">
 	                    <Button 

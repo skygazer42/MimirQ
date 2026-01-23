@@ -52,7 +52,7 @@ export function ChunkList() {
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto p-4 custom-scrollbar">
+      <div className="flex-1 overflow-y-auto overscroll-contain no-scrollbar p-4">
         <div className="min-h-full rounded-2xl border border-border/60 bg-card/70 p-3 shadow-sm backdrop-blur ring-1 ring-border/40 space-y-3">
           {previewData?.chunks ? (
             filteredChunks.length > 0 ? (

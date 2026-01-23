@@ -801,7 +801,7 @@ export function RagvizSimilarityWorkbench() {
               onMouseDown={(e) => startResizeSplit('left', e)}
             />
 
-            <div className="p-3 overflow-auto">
+            <div className="p-3 overflow-auto overscroll-contain no-scrollbar">
               <Panel title="图表选择与控制">
                 {results.length === 0 ? (
                   <p className="text-xs text-muted-foreground">请先在“数据源配置”里计算相似度矩阵。</p>
@@ -1012,7 +1012,7 @@ export function RagvizSimilarityWorkbench() {
               onMouseDown={(e) => startResizeSplit('right', e)}
             />
 
-            <div className="p-3 overflow-auto">
+            <div className="p-3 overflow-auto overscroll-contain no-scrollbar">
               {rightBottomPanel === 'filters' ? (
                 <Panel title="筛选器控制">
                   {!primaryEntry ? (

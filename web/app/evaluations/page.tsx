@@ -362,7 +362,7 @@ function EvaluationsPageContent() {
                     {runs.length} 条
                   </div>
                 </div>
-                <div className="max-h-[520px] overflow-y-auto custom-scrollbar">
+                <div className="max-h-[520px] overflow-y-auto overscroll-contain no-scrollbar">
                   {runs.length === 0 ? (
                     <div className="p-6 text-sm text-muted-foreground">暂无评测记录</div>
                   ) : (

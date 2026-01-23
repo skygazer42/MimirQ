@@ -277,7 +277,7 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Doc
               ) : null}
             </div>
 
-            <div className="custom-scrollbar h-full overflow-y-auto p-4">
+            <div className="h-full overflow-y-auto overscroll-contain no-scrollbar p-4">
               {isLoading ? (
                 <div className="flex h-full flex-col items-center justify-center gap-3 text-muted-foreground">
                   <Loader2 className="h-8 w-8 animate-spin motion-reduce:animate-none" />

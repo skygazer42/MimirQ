@@ -379,7 +379,7 @@ export function ChatArea({
                   </PopoverTrigger>
                   <PopoverContent className="w-64 p-2" align="start">
                     <div className="text-xs font-medium text-muted-foreground mb-2 px-2">选择 Prompt 模板</div>
-                    <div className="max-h-60 overflow-y-auto space-y-1">
+                    <div className="max-h-60 overflow-y-auto overscroll-contain no-scrollbar space-y-1">
                       <div
                         className={cn("px-2 py-1.5 rounded-md cursor-pointer text-sm hover:bg-secondary transition-colors", !promptTemplateId && "bg-secondary/50 font-medium text-primary")}
                         onClick={() => setPromptTemplateId('')}
