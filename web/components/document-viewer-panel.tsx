@@ -407,11 +407,11 @@ export function DocumentViewerPanel() {
                        placeholder={
                          chunksLoading && !chunksLoaded
                            ? "切片加载中…"
-                           : highlightChunkId && !loadAllChunks && !chunksLoaded
+                           : Boolean(highlightChunkId) && !loadAllChunks && !chunksLoaded
                              ? "已定位引用切片（加载全部后可搜索）"
                              : "搜索切片内容…"
                        }
-                       disabled={(chunksLoading && !chunksLoaded) || (highlightChunkId && !loadAllChunks && !chunksLoaded)}
+                       disabled={(chunksLoading && !chunksLoaded) || (Boolean(highlightChunkId) && !loadAllChunks && !chunksLoaded)}
                        className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                      />
                      <div className="flex items-center gap-2">
@@ -497,7 +497,7 @@ export function DocumentViewerPanel() {
                                      variant="ghost"
                                      size="icon"
                                      className="h-7 w-7"
-                                     onClick={() => copyText(highlightChunk.content, \"已复制切片内容\")}
+                                     onClick={() => copyText(highlightChunk.content, "已复制切片内容")}
                                      aria-label="复制切片内容"
                                      title="复制切片内容"
                                    >
@@ -508,7 +508,7 @@ export function DocumentViewerPanel() {
                                      variant="ghost"
                                      size="icon"
                                      className="h-7 w-7"
-                                     onClick={() => copyText(buildChunkLink(highlightChunk.id), \"已复制定位链接\")}
+                                     onClick={() => copyText(buildChunkLink(highlightChunk.id), "已复制定位链接")}
                                      aria-label="复制定位链接"
                                      title="复制定位链接"
                                    >

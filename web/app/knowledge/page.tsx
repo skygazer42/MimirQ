@@ -57,6 +57,7 @@ import {
 import { useDocuments } from '@/hooks/use-documents'
 import { formatFileSize, formatDate, cn } from '@/lib/utils'
 import { formatApiError } from '@/lib/api-errors'
+import { toast } from 'sonner'
 import { UPLOAD_ACCEPT } from '@/lib/upload-extensions'
 import { StatCard, StatsGrid } from '@/components/ui/stats-card'
 import { DocumentDetailDialog } from '@/components/document-detail-dialog'
@@ -414,6 +415,7 @@ export default function KnowledgePage() {
       await loadDocuments()
     } catch (err) {
       console.error('Batch delete failed:', err)
+      toast.error(formatApiError(err, '批量删除失败'))
     } finally {
       setBatchDeleting(false)
       setBatchDeleteOpen(false)
