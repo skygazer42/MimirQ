@@ -38,84 +38,60 @@ import { ModeToggle } from '@/components/mode-toggle'
 import { healthApi } from '@/lib/api-client'
 import { useAuth } from '@/hooks/use-auth'
 
-// 导航菜单配置
-const menuItems = [
+type MenuItem = {
+  icon: React.ComponentType<{ className?: string }>
+  label: string
+  href: string
+}
+
+// 导航信息架构：按「核心 → 入库流程 → 知识库管理 → 分析工具 → 系统」分组，降低认知负担。
+const menuSections: Array<{ title: string; items: MenuItem[] }> = [
   {
-    icon: MessageSquare,
-    label: '对话',
-    href: '/',
+    title: '核心',
+    items: [
+      { icon: MessageSquare, label: '对话', href: '/' },
+      { icon: History, label: '问答历史', href: '/history' },
+    ],
   },
   {
-    icon: Database,
-    label: '知识库',
-    href: '/knowledge',
+    title: '入库流程',
+    items: [
+      { icon: FileText, label: '文档解析', href: '/parsing' },
+      { icon: ShieldCheck, label: '数据治理', href: '/data-governance' },
+      { icon: Scissors, label: '切块预览', href: '/chunk-preview' },
+    ],
   },
   {
-    icon: Grid3X3,
-    label: 'RAG 可视化',
-    href: '/knowledge/similarity',
+    title: '知识库管理',
+    items: [
+      { icon: Layers, label: '数据集', href: '/datasets' },
+      { icon: Database, label: '知识库', href: '/knowledge' },
+      { icon: Activity, label: '入库监控', href: '/knowledge/ingestion' },
+      { icon: AlertTriangle, label: '隔离队列', href: '/knowledge/quarantine' },
+      { icon: Star, label: '反馈质检', href: '/knowledge/feedback' },
+    ],
   },
   {
-    icon: History,
-    label: '问答历史',
-    href: '/history',
+    title: '分析工具',
+    items: [
+      { icon: Grid3X3, label: 'RAG 可视化', href: '/knowledge/similarity' },
+      { icon: Share2, label: '知识图谱', href: '/graph' },
+      { icon: BarChart3, label: 'RAGAS 评测', href: '/evaluations' },
+      { icon: Wand2, label: '提示词', href: '/prompts' },
+    ],
   },
   {
-    icon: FileText,
-    label: '文档解析',
-    href: '/parsing',
-  },
-  {
-    icon: ShieldCheck,
-    label: '数据治理',
-    href: '/data-governance',
-  },
-  {
-    icon: Scissors,
-    label: '切块预览',
-    href: '/chunk-preview',
-  },
-  {
-    icon: Share2,
-    label: '知识图谱',
-    href: '/graph',
-  },
-  {
-    icon: BarChart3,
-    label: 'RAGAS 评测',
-    href: '/evaluations',
-  },
-  {
-    icon: Activity,
-    label: '入库监控',
-    href: '/knowledge/ingestion',
-  },
-  {
-    icon: AlertTriangle,
-    label: '隔离队列',
-    href: '/knowledge/quarantine',
-  },
-  {
-    icon: Star,
-    label: '反馈质检',
-    href: '/knowledge/feedback',
-  },
-  {
-    icon: Layers,
-    label: '数据集',
-    href: '/datasets',
-  },
-  {
-    icon: Wand2,
-    label: '提示词',
-    href: '/prompts',
-  },
-  {
-    icon: Settings,
-    label: '设置',
-    href: '/settings',
+    title: '系统',
+    items: [{ icon: Settings, label: '设置', href: '/settings' }],
   },
 ]
+
+const menuItems: MenuItem[] = menuSections.flatMap((s) => s.items)
+
+function isActiveRoute(pathname: string, href: string) {
+  if (href === '/') return pathname === '/'
+  return pathname === href || pathname.startsWith(`${href}/`)
+}
 
 export function Navbar({
   isSidebarOpen: externalIsOpen,
@@ -253,32 +229,38 @@ export function Navbar({
         {/* 导航菜单 */}
         {/* Allow internal scroll so items are never clipped on short viewports. */}
         <div className="flex-1 min-h-0 px-3 py-2 overflow-y-auto overscroll-contain no-scrollbar">
-          <div className="space-y-1">
-            <p className="px-3 text-xs font-semibold text-muted-foreground mb-2 uppercase tracking-wider">菜单</p>
-            {menuItems.map((item) => {
-              const Icon = item.icon
-              const isActive = pathname === item.href
+          <div className="space-y-4">
+            {menuSections.map((section) => (
+              <div key={section.title} className="space-y-1">
+                <p className="px-3 text-[11px] font-semibold text-muted-foreground mb-2 uppercase tracking-wider">
+                  {section.title}
+                </p>
+                {section.items.map((item) => {
+                  const Icon = item.icon
+                  const isActive = isActiveRoute(pathname, item.href)
 
-              return (
-                <div key={item.href}>
-                  <Link
-                    href={item.href}
-                    prefetch
-                    onClick={closeSidebarOnMobile}
-                    aria-current={isActive ? 'page' : undefined}
-                    className={cn(
-                      'flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-200 group focus-ring',
-                      isActive
-                        ? 'bg-muted text-foreground font-medium'
-                        : 'text-muted-foreground hover:bg-muted/50 hover:text-foreground'
-                    )}
-                  >
-                    <Icon className={cn("h-4 w-4 transition-colors", isActive ? "text-foreground" : "text-muted-foreground/70 group-hover:text-foreground")} />
-                    <span className="text-sm">{item.label}</span>
-                  </Link>
-                </div>
-              )
-            })}
+                  return (
+                    <div key={item.href}>
+                      <Link
+                        href={item.href}
+                        prefetch
+                        onClick={closeSidebarOnMobile}
+                        aria-current={isActive ? 'page' : undefined}
+                        className={cn(
+                          'flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-200 group focus-ring',
+                          isActive
+                            ? 'bg-muted text-foreground font-medium'
+                            : 'text-muted-foreground hover:bg-muted/50 hover:text-foreground'
+                        )}
+                      >
+                        <Icon className={cn("h-4 w-4 transition-colors", isActive ? "text-foreground" : "text-muted-foreground/70 group-hover:text-foreground")} />
+                        <span className="text-sm">{item.label}</span>
+                      </Link>
+                    </div>
+                  )
+                })}
+              </div>
+            ))}
           </div>
         </div>
 

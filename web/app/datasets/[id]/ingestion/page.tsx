@@ -56,6 +56,185 @@ const PARSER_BACKEND_OPTIONS: Array<{ value: string; label: string }> = [
   { value: 'markdown', label: 'markdown（.md）' },
 ]
 
+type IngestionPolicyTemplate = {
+  key: string
+  name: string
+  description: string
+  tags: string[]
+  // The id will be generated when applying the template.
+  rules: Array<Omit<IngestionRule, 'id'>>
+}
+
+const INGESTION_POLICY_TEMPLATES: IngestionPolicyTemplate[] = [
+  {
+    key: 'recommended:kb_general',
+    name: '推荐：通用知识库（HTML / PDF / Office / Text）',
+    description: '覆盖最常见入库来源，默认搭配内置治理预设；规则可再按需微调与调序。',
+    tags: ['HTML', 'PDF', 'Office', 'MD/TXT', 'builtin profiles'],
+    rules: [
+      {
+        name: '网页 HTML（去样板/去导航）',
+        enabled: true,
+        match: { extensions: ['.html', '.htm'], filename_regex: null },
+        preprocess: {
+          enabled: true,
+          steps: [
+            { id: 'html.strip_scripts_styles', params: {} },
+            { id: 'html.strip_comments', params: {} },
+            { id: 'text.normalize_newlines', params: {} },
+            { id: 'text.trim_trailing_whitespace', params: {} },
+          ],
+        },
+        parser_backend: 'auto',
+        chunk_strategy: null,
+        governance_profile_ref: 'builtin:html_web',
+        pipeline_patch: {},
+      },
+      {
+        name: 'PDF 文本版（修复断行/页眉页脚）',
+        enabled: true,
+        match: { extensions: ['.pdf'], filename_regex: null },
+        preprocess: { enabled: false, steps: [] },
+        parser_backend: 'auto',
+        chunk_strategy: null,
+        governance_profile_ref: 'builtin:pdf_text',
+        pipeline_patch: {},
+      },
+      {
+        name: 'Office（DOCX/PPTX/XLSX）',
+        enabled: true,
+        match: { extensions: ['.docx', '.pptx', '.xls', '.xlsx'], filename_regex: null },
+        preprocess: { enabled: false, steps: [] },
+        parser_backend: 'markitdown',
+        chunk_strategy: null,
+        governance_profile_ref: 'builtin:kb_default',
+        pipeline_patch: {},
+      },
+      {
+        name: 'Markdown / 纯文本（保守清洗）',
+        enabled: true,
+        match: { extensions: ['.md', '.txt', '.log'], filename_regex: null },
+        preprocess: {
+          enabled: true,
+          steps: [
+            { id: 'text.reencode_utf8', params: {} },
+            { id: 'text.strip_bom', params: {} },
+            { id: 'text.normalize_newlines', params: {} },
+            { id: 'text.trim_trailing_whitespace', params: {} },
+          ],
+        },
+        parser_backend: 'auto',
+        chunk_strategy: null,
+        governance_profile_ref: 'builtin:kb_default',
+        pipeline_patch: {},
+      },
+    ],
+  },
+  {
+    key: 'recommended:pdf_ocr_first',
+    name: 'PDF：扫描/OCR 优先（文件名命中 scan/ocr/扫描）',
+    description: '先匹配可能是扫描/OCR 的 PDF（更强容错），否则走文本版 PDF 规则。',
+    tags: ['PDF', 'OCR', 'two-step'],
+    rules: [
+      {
+        name: 'PDF 扫描/OCR（优先）',
+        enabled: true,
+        match: { extensions: ['.pdf'], filename_regex: '(?i)(scan|ocr|扫描|影印|图片)' },
+        preprocess: { enabled: false, steps: [] },
+        parser_backend: 'deepdoc',
+        chunk_strategy: null,
+        governance_profile_ref: 'builtin:pdf_scanned_ocr',
+        pipeline_patch: {},
+      },
+      {
+        name: 'PDF 文本（默认）',
+        enabled: true,
+        match: { extensions: ['.pdf'], filename_regex: null },
+        preprocess: { enabled: false, steps: [] },
+        parser_backend: 'auto',
+        chunk_strategy: null,
+        governance_profile_ref: 'builtin:pdf_text',
+        pipeline_patch: {},
+      },
+    ],
+  },
+  {
+    key: 'recommended:web_scrape',
+    name: '网页抓取（HTML）',
+    description: '适用于抓取/复制网页：去样板/去导航/去追踪参，保留正文信息密度。',
+    tags: ['HTML', 'boilerplate'],
+    rules: [
+      {
+        name: '网页 HTML（抓取）',
+        enabled: true,
+        match: { extensions: ['.html', '.htm'], filename_regex: null },
+        preprocess: {
+          enabled: true,
+          steps: [
+            { id: 'html.strip_scripts_styles', params: {} },
+            { id: 'html.strip_comments', params: {} },
+            { id: 'text.normalize_newlines', params: {} },
+          ],
+        },
+        parser_backend: 'auto',
+        chunk_strategy: null,
+        governance_profile_ref: 'builtin:html_web',
+        pipeline_patch: {},
+      },
+    ],
+  },
+  {
+    key: 'recommended:wiki_longform',
+    name: '长文/Wiki/手册（去重+参考文献）',
+    description: '适用于 Wiki/手册类长文：去重重复段落、保守裁剪 References、修复断行。',
+    tags: ['Markdown', 'longform'],
+    rules: [
+      {
+        name: '长文/Wiki（Markdown）',
+        enabled: true,
+        match: { extensions: ['.md'], filename_regex: null },
+        preprocess: {
+          enabled: true,
+          steps: [
+            { id: 'text.strip_bom', params: {} },
+            { id: 'text.normalize_newlines', params: {} },
+            { id: 'text.trim_trailing_whitespace', params: {} },
+          ],
+        },
+        parser_backend: 'markdown',
+        chunk_strategy: null,
+        governance_profile_ref: 'builtin:wiki_longform',
+        pipeline_patch: {},
+      },
+    ],
+  },
+  {
+    key: 'recommended:pii_compliance',
+    name: '合规脱敏（PII/密钥）',
+    description: '适用于可能包含邮箱/电话/Token 的文档：启用匿名化与密钥脱敏（mask）。',
+    tags: ['PII', 'secrets'],
+    rules: [
+      {
+        name: '合规脱敏（文本类）',
+        enabled: true,
+        match: { extensions: ['.md', '.txt', '.log', '.html', '.htm', '.csv', '.json'], filename_regex: null },
+        preprocess: {
+          enabled: true,
+          steps: [
+            { id: 'text.reencode_utf8', params: {} },
+            { id: 'text.strip_bom', params: {} },
+            { id: 'text.normalize_newlines', params: {} },
+          ],
+        },
+        parser_backend: 'auto',
+        chunk_strategy: null,
+        governance_profile_ref: 'builtin:legal_compliance',
+        pipeline_patch: {},
+      },
+    ],
+  },
+]
+
 function downloadBlob(blob: Blob, filename: string) {
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')
@@ -69,6 +248,11 @@ function downloadBlob(blob: Blob, filename: string) {
 
 function safeIdFromNow() {
   return `rule-${Date.now().toString(36)}`
+}
+
+function generateTemplateRuleIds(count: number) {
+  const base = `tpl-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`
+  return Array.from({ length: count }).map((_, i) => `${base}-${(i + 1).toString(36)}`)
 }
 
 function parseExtensions(text: string): string[] {
@@ -151,6 +335,7 @@ export default function DatasetIngestionPolicyPage() {
   const [saving, setSaving] = useState(false)
 
   const [editorOpen, setEditorOpen] = useState(false)
+  const [templatesOpen, setTemplatesOpen] = useState(false)
   const [editingIndex, setEditingIndex] = useState<number | null>(null)
   const [draft, setDraft] = useState<RuleDraft>({
     id: safeIdFromNow(),
@@ -271,6 +456,30 @@ export default function DatasetIngestionPolicyPage() {
     setPolicy({ version: '1', rules: newRules })
   }, [policy])
 
+  const applyTemplate = useCallback((tpl: IngestionPolicyTemplate, mode: 'prepend' | 'append' | 'replace') => {
+    const next: IngestionPolicy = policy || { version: '1', rules: [] }
+    const existing = [...(next.rules || [])]
+    const ids = generateTemplateRuleIds(tpl.rules.length)
+    const newRules: IngestionRule[] = tpl.rules.map((r, i) => ({ ...r, id: ids[i] }))
+
+    const merged =
+      mode === 'replace'
+        ? newRules
+        : mode === 'append'
+          ? [...existing, ...newRules]
+          : [...newRules, ...existing]
+
+    setPolicy({ version: '1', rules: merged })
+    setTemplatesOpen(false)
+    toast.success(`已应用模板：${tpl.name}（${newRules.length} 条规则）`)
+
+    // Bring the user back to the top to see the newly inserted rules.
+    window.requestAnimationFrame(() => {
+      const sc = document.querySelector<HTMLElement>('[data-page-scroll-container=\"true\"]')
+      sc?.scrollTo({ top: 0, left: 0, behavior: 'smooth' })
+    })
+  }, [policy])
+
   const savePolicy = useCallback(async () => {
     if (!datasetId || !policy) return
     setSaving(true)
@@ -372,10 +581,16 @@ export default function DatasetIngestionPolicyPage() {
                   从上到下匹配，命中后应用：预处理步骤 / 解析后端 / chunk 策略 / 治理预设 / pipeline_patch
                 </div>
               </div>
-              <Button onClick={openCreate} className="gap-2">
-                <Plus className="w-4 h-4" />
-                新增规则
-              </Button>
+              <div className="flex items-center gap-2">
+                <Button variant="outline" onClick={() => setTemplatesOpen(true)} className="gap-2">
+                  <Sparkles className="w-4 h-4" />
+                  从模板添加
+                </Button>
+                <Button onClick={openCreate} className="gap-2">
+                  <Plus className="w-4 h-4" />
+                  新增规则
+                </Button>
+              </div>
             </div>
 
             <div className="divide-y divide-border/60">
@@ -676,6 +891,60 @@ export default function DatasetIngestionPolicyPage() {
             <DialogFooter className="mt-4">
               <Button variant="ghost" onClick={() => setEditorOpen(false)}>取消</Button>
               <Button onClick={applyDraft}>保存规则</Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        <Dialog open={templatesOpen} onOpenChange={setTemplatesOpen}>
+          <DialogContent className="max-w-3xl border-border bg-background/95 backdrop-blur-xl shadow-strong sm:rounded-2xl">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <Sparkles className="w-4 h-4 text-primary" />
+                入库策略模板
+              </DialogTitle>
+              <DialogDescription>
+                一键生成常用规则组合（可追加/替换）。注意：规则按从上到下命中，必要时请调整顺序。
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="space-y-3">
+              {INGESTION_POLICY_TEMPLATES.map((tpl) => (
+                <div key={tpl.key} className="rounded-xl border border-border/60 p-4 hover:bg-muted/20 transition-colors">
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="min-w-0">
+                      <div className="font-semibold">{tpl.name}</div>
+                      <div className="text-xs text-muted-foreground mt-1">{tpl.description}</div>
+                      <div className="mt-2 flex flex-wrap gap-2">
+                        {tpl.tags.map((t) => (
+                          <Badge key={t} variant="outline" className="text-[10px] font-mono">
+                            {t}
+                          </Badge>
+                        ))}
+                        <Badge variant="soft" className="text-[10px] font-mono">
+                          rules: {tpl.rules.length}
+                        </Badge>
+                      </div>
+                    </div>
+                    <div className="flex flex-col gap-2 flex-shrink-0">
+                      <Button size="sm" onClick={() => applyTemplate(tpl, 'prepend')}>
+                        追加到顶部
+                      </Button>
+                      <Button size="sm" variant="outline" onClick={() => applyTemplate(tpl, 'append')}>
+                        追加到底部
+                      </Button>
+                      <Button size="sm" variant="destructive" onClick={() => applyTemplate(tpl, 'replace')}>
+                        替换当前策略
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <DialogFooter className="mt-2">
+              <Button variant="ghost" onClick={() => setTemplatesOpen(false)}>
+                关闭
+              </Button>
             </DialogFooter>
           </DialogContent>
         </Dialog>
