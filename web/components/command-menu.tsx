@@ -52,6 +52,46 @@ export function CommandMenu() {
     return () => document.removeEventListener("keydown", down)
   }, [])
 
+  // Server-backed document search for large knowledge bases.
+  React.useEffect(() => {
+    if (!open) {
+      setQuery("")
+      setDocResults([])
+      setDocLoading(false)
+      requestSeqRef.current += 1
+      return
+    }
+
+    const q = query.trim()
+    if (q.length < 2) {
+      setDocResults([])
+      setDocLoading(false)
+      requestSeqRef.current += 1
+      return
+    }
+
+    const seq = ++requestSeqRef.current
+    setDocLoading(true)
+    const t = window.setTimeout(() => {
+      documentApi
+        .list({ q, limit: 8, order_by: "created_at", order_dir: "desc" })
+        .then((res) => {
+          if (seq !== requestSeqRef.current) return
+          setDocResults(res.items || [])
+        })
+        .catch(() => {
+          if (seq !== requestSeqRef.current) return
+          setDocResults([])
+        })
+        .finally(() => {
+          if (seq !== requestSeqRef.current) return
+          setDocLoading(false)
+        })
+    }, 220)
+
+    return () => window.clearTimeout(t)
+  }, [open, query])
+
   const runCommand = React.useCallback((command: () => unknown) => {
     setOpen(false)
     command()
