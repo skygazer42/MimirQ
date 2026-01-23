@@ -81,6 +81,8 @@
       { "id": "text.reencode_utf8", "params": {} },
       { "id": "text.strip_bom", "params": {} },
       { "id": "text.normalize_newlines", "params": {} },
+      { "id": "text.remove_zero_width", "params": {} },
+      { "id": "text.remove_control_chars", "params": {} },
       { "id": "html.strip_scripts_styles", "params": {} },
       { "id": "html.strip_comments", "params": {} }
     ]
@@ -102,12 +104,41 @@
 - `text.strip_bom`
 - `text.normalize_newlines`
 - `text.trim_trailing_whitespace`
+- `text.remove_zero_width`（零宽字符/软连字符）
+- `text.remove_control_chars`（\\x00 等控制字符；保留 TAB/LF/CR）
+- `text.normalize_unicode_nfkc`（全角/半角归一；谨慎启用）
 - `html.strip_scripts_styles`
 - `html.strip_comments`
 
 说明：
 - v1 不支持 step params（统一要求 `{}`），以保证可控性与安全性。
 - 非文本类文件（如 PDF/DOCX）会跳过预处理（后续可迭代加入更多安全步骤）。
+
+---
+
+## 4.1 内置治理预设（Governance Profiles，部分）
+
+治理预设用于“解析后 Markdown 清洗”，会注入 `pipeline_patch + regex_rules`：
+- `builtin:kb_default`：通用保守清洗（去噪/去目录/断行修复/去重页眉页脚）
+- `builtin:html_web`：网页抓取/复制（去样板/去追踪参/段落去重）
+- `builtin:html_xpath_main`：网页 XPath 优先抽正文（默认 `//main`，未命中则回退）
+- `builtin:pdf_text`：文本 PDF（断行修复/页眉页脚/表格规范化）
+- `builtin:pdf_scanned_ocr`：扫描/OCR PDF（更强容错 + parse fallback）
+- `builtin:structured_data`：CSV/JSON/日志型（保留行边界，轻量去噪）
+- `builtin:code_repo`：代码仓库（保留格式 + secrets 脱敏）
+- `builtin:metadata_enrich`：抽取 frontmatter/语言/关键词（best-effort）
+- `builtin:quality_gate_quarantine`：低质量/大纲-only/低密度 → 隔离队列
+- `builtin:legal_compliance`：PII/密钥脱敏
+- `builtin:wiki_longform`：长文/Wiki（去重 + 参考文献裁剪）
+
+前端页面的规则编辑器里可以直接选择这些预设，也可以额外叠加 `pipeline_patch` 做细粒度覆盖。
+
+---
+
+## 4.2 前端“入库策略模板”
+
+数据集“入库策略”页提供“一键模板”，用于快速生成常见规则组合（HTML/PDF/OCR/结构化数据/代码仓库/法律合同等）。  
+模板只是起点：最终仍建议你根据数据源特点 **调整规则顺序** 与 **微调预处理/治理选项**。
 
 ---
 
@@ -118,4 +149,3 @@
 - filename_regex 做了基础 ReDoS 风险形态拦截（例如 `(.*)+`）。
 - pipeline_patch 字段严格白名单（DocumentPipelineOptions）。
 - 预处理有最大文本字节上限（避免大文件导致 OOM）。
-

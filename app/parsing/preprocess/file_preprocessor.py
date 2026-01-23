@@ -19,12 +19,15 @@ from typing import Any, Dict, List, Optional
 import hashlib
 import os
 import re
+import unicodedata
 import uuid
 
 
 TEXT_LIKE_EXTS = {
     ".txt",
     ".md",
+    ".rst",
+    ".adoc",
     ".csv",
     ".json",
     ".html",
@@ -39,6 +42,23 @@ TEXT_LIKE_EXTS = {
     ".conf",
     ".env",
     ".properties",
+    # Common code/text formats (safe to preprocess as text).
+    ".py",
+    ".js",
+    ".ts",
+    ".tsx",
+    ".java",
+    ".go",
+    ".rs",
+    ".c",
+    ".cpp",
+    ".h",
+    ".hpp",
+    ".cs",
+    ".php",
+    ".rb",
+    ".sh",
+    ".sql",
 }
 
 
@@ -251,6 +271,27 @@ def preprocess_file(
             applied = True
             # Trim spaces/tabs at EOL (keep newlines).
             new = re.sub(r"[\\t ]+\\n", "\n", text)
+            if new != text:
+                text = new
+                changed = True
+        elif sid == "text.remove_zero_width":
+            applied = True
+            # Remove common zero-width / soft-hyphen artifacts from scraped/PDF-origin text.
+            new = re.sub(r"[\u200b\u200c\u200d\u2060\u00ad\ufeff]", "", text)
+            if new != text:
+                text = new
+                changed = True
+        elif sid == "text.remove_control_chars":
+            applied = True
+            # Drop ASCII control chars except TAB/LF/CR (CR can be normalized later).
+            new = re.sub(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]", "", text)
+            if new != text:
+                text = new
+                changed = True
+        elif sid == "text.normalize_unicode_nfkc":
+            applied = True
+            # Normalize full-width forms / compatibility characters (best-effort).
+            new = unicodedata.normalize("NFKC", text)
             if new != text:
                 text = new
                 changed = True
