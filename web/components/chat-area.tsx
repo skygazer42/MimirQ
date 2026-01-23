@@ -242,7 +242,7 @@ export function ChatArea({
       <div
         ref={scrollContainerRef}
         onScroll={updateAutoScroll}
-        className="flex-1 overflow-y-auto px-4 pb-4 scroll-smooth scrollbar-thin scrollbar-thumb-secondary/50 scrollbar-track-transparent"
+        className="flex-1 overflow-y-auto overscroll-contain px-4 pb-4 scroll-smooth no-scrollbar"
         role="log"
         aria-live="polite"
         aria-busy={isLoading}

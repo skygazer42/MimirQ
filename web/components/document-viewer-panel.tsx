@@ -282,7 +282,7 @@ export function DocumentViewerPanel() {
                      </div>
                    </div>
                  </div>
-                 <div className="flex-1 overflow-y-auto p-4 space-y-4 scroll-smooth" ref={chunksListRef}>
+                 <div className="flex-1 overflow-y-auto overscroll-contain p-4 space-y-4 scroll-smooth no-scrollbar" ref={chunksListRef}>
                     {chunks.map((chunk) => (
                         <div 
                             key={chunk.id} 
