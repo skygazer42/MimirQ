@@ -72,6 +72,7 @@ from app.rag.kg.pipeline import extract_events
 from sqlalchemy import or_, and_, func
 from app.rag.core.logging import get_logger
 from app.rag.preprocessing.processor import governance_processor
+from app.rag.preprocessing.rules import build_governance_rules
 from app.api.utils.upload import save_upload_file
 from app.tasks.queue import enqueue_document_processing
 
@@ -2680,7 +2681,10 @@ async def preview_document(
             request_overrides=pipeline_options,
         )
         if pipeline_effective.governance_enabled:
+            extra_rules = list(getattr(pipeline_effective, "governance_regex_rules", None) or [])
+            combined_rules = build_governance_rules(extra_rules) if extra_rules else None
             governance_kwargs = {
+                **({"rules": combined_rules} if combined_rules else {}),
                 "remove_toc_lines": pipeline_effective.governance_remove_toc_lines,
                 "remove_noise_lines": pipeline_effective.governance_remove_noise_lines,
                 "unwrap_lines": pipeline_effective.governance_unwrap_lines,
@@ -3097,7 +3101,10 @@ async def preview_chunking(
             document_metadata={},
             request_overrides=pipeline_options,
         )
+        extra_rules = list(getattr(pipeline_effective, "governance_regex_rules", None) or [])
+        combined_rules = build_governance_rules(extra_rules) if extra_rules else None
         governance_kwargs = {
+            **({"rules": combined_rules} if combined_rules else {}),
             "remove_toc_lines": pipeline_effective.governance_remove_toc_lines,
             "remove_noise_lines": pipeline_effective.governance_remove_noise_lines,
             "unwrap_lines": pipeline_effective.governance_unwrap_lines,

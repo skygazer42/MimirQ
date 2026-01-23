@@ -98,6 +98,7 @@ export interface DocumentPipelineOptions {
   governance_remove_common_lines?: boolean
   governance_remove_boilerplate?: boolean
   governance_remove_images?: 'none' | 'decorative' | 'all' | string
+  governance_regex_rules?: RegexRuleModel[]
   governance_extract_frontmatter?: boolean
   governance_strip_frontmatter?: boolean
   governance_detect_language?: boolean
@@ -252,6 +253,8 @@ export interface CleanPreviewRequest {
   markdown: string
   rules?: RegexRuleModel[]
   use_default_rules?: boolean
+  include_diff?: boolean
+  diff_max_lines?: number
   input_format?: 'markdown' | 'html'
   html_xpath?: string
   normalize_line_endings?: boolean
@@ -323,10 +326,94 @@ export interface CleanPreviewResponse {
   added_lines?: number
   removed_lines?: number
   changed_lines?: number
+  diff_unified?: string | null
+  diff_truncated?: boolean
+  issues?: GovernanceIssue[]
+  suggested_pipeline_patch?: DocumentPipelineOptions
 }
 
 export interface CleanRulesResponse {
   rules: RegexRuleModel[]
+}
+
+export interface GovernanceIssue {
+  code: string
+  severity: 'info' | 'warning' | 'error'
+  message: string
+  count?: number
+  samples?: string[]
+  suggested_pipeline_patch?: DocumentPipelineOptions
+}
+
+export interface GovernanceAnalyzeRequest {
+  markdown: string
+  input_format?: 'markdown' | 'html'
+  html_xpath?: string
+  remove_images?: 'none' | 'decorative' | 'all'
+  remove_control_chars?: boolean
+  unwrap_lines?: boolean
+  remove_common_lines?: boolean
+  remove_boilerplate?: boolean
+  normalize_tables?: boolean
+  normalize_urls?: boolean
+  normalize_urls_strip_tracking?: boolean
+  drop_outline_only?: boolean
+  drop_outline_min_content_chars?: number
+  drop_outline_max_heading_ratio?: number
+  drop_low_density?: boolean
+  drop_low_density_threshold?: number
+}
+
+export interface GovernanceAnalyzeResponse {
+  input_chars?: number
+  input_lines?: number
+  issues?: GovernanceIssue[]
+  suggested_pipeline_patch?: DocumentPipelineOptions
+}
+
+export interface GovernanceProfilePayload {
+  version: string
+  input_formats: Array<'markdown' | 'html'>
+  pipeline_patch: DocumentPipelineOptions
+  regex_rules: RegexRuleModel[]
+}
+
+export interface GovernanceProfileSummary {
+  id?: string | null
+  key: string
+  name: string
+  description?: string | null
+  is_system: boolean
+}
+
+export interface GovernanceProfileListResponse {
+  total: number
+  items: GovernanceProfileSummary[]
+}
+
+export interface GovernanceProfileOut extends GovernanceProfileSummary {
+  payload: GovernanceProfilePayload
+  created_at?: string | null
+  updated_at?: string | null
+}
+
+export interface GovernanceProfileCreate {
+  name: string
+  description?: string
+  key?: string
+  payload: GovernanceProfilePayload
+}
+
+export interface GovernanceProfileUpdate {
+  name?: string
+  description?: string
+  payload?: GovernanceProfilePayload
+}
+
+export interface GovernanceProfileImportResponse {
+  created: number
+  updated: number
+  items: GovernanceProfileSummary[]
 }
 
 export interface LLMCleanPreviewRequest {

@@ -9,9 +9,11 @@ import shutil
 import uuid
 import zipfile
 from uuid import UUID
-from difflib import SequenceMatcher
+from difflib import SequenceMatcher, unified_diff
+import json
+import re
 
-from fastapi import APIRouter, UploadFile, File, Form, HTTPException, Depends, Request
+from fastapi import APIRouter, UploadFile, File, Form, HTTPException, Depends, Request, Response
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
@@ -24,6 +26,9 @@ from app.api.schemas.pipeline import (
     CleanPreviewRequest,
     CleanPreviewResponse,
     CleanRulesResponse,
+    GovernanceAnalyzeRequest,
+    GovernanceAnalyzeResponse,
+    GovernanceIssue,
     RegexRuleModel,
     KeywordExtractRequest,
     KeywordExtractResponse,
@@ -33,6 +38,15 @@ from app.api.schemas.pipeline import (
     ParserBackendInfo,
     ChunkStrategyInfo,
     ZipWithImagesResponse,
+)
+from app.api.schemas.governance_profile import (
+    GovernanceProfileCreate,
+    GovernanceProfileImportResponse,
+    GovernanceProfileListResponse,
+    GovernanceProfileOut,
+    GovernanceProfileSummary,
+    GovernanceProfileUpdate,
+    GovernanceProfilePayload,
 )
 from app.parsing.backends import normalize_parser_backend
 from app.parsing.factory import ParserFactory
@@ -57,6 +71,7 @@ from app.rag.preprocessing.paragraph_dedup import drop_duplicate_paragraphs
 from app.rag.preprocessing.references import trim_references_section
 from app.rag.preprocessing.urls import normalize_urls
 from app.rag.preprocessing.quality_filters import drop_if_low_density, drop_if_outline_only
+from app.rag.preprocessing.diagnostics import analyze_governance
 from app.rag.preprocessing.html_xpath import extract_text_from_html
 from app.services.dataset_service import DatasetService
 from app.services.prompt_resolver import resolve_prompt_template
@@ -64,8 +79,85 @@ from app.rag.core.errors import ConfigError
 from app.rag.llm.factory import create_llm_client
 from app.rag.llm.models import LLMMessage, LLMRole
 from app.api.utils.upload import save_upload_file
+from app.models.governance_profile import GovernanceProfile as DBGovernanceProfile
+from app.services.governance_profiles import (
+    builtin_profile_to_out,
+    get_builtin_governance_profiles,
+    validate_and_normalize_payload,
+    validate_profile_key,
+)
 
 router = APIRouter()
+
+_BUILTIN_GOVERNANCE_PROFILES = get_builtin_governance_profiles()
+_BUILTIN_GOVERNANCE_BY_KEY = {p.key: p for p in _BUILTIN_GOVERNANCE_PROFILES}
+
+
+def _profile_key_for_row(row: DBGovernanceProfile) -> str:
+    raw = str(getattr(row, "key", "") or "").strip()
+    if raw:
+        return raw
+    return f"custom:{str(row.id)}"
+
+
+def _profile_summary_from_row(row: DBGovernanceProfile) -> GovernanceProfileSummary:
+    return GovernanceProfileSummary(
+        id=row.id,
+        key=_profile_key_for_row(row),
+        name=str(getattr(row, "name", "") or ""),
+        description=getattr(row, "description", None),
+        is_system=bool(getattr(row, "is_system", False)),
+    )
+
+
+def _profile_out_from_row(row: DBGovernanceProfile) -> GovernanceProfileOut:
+    payload_raw = getattr(row, "payload", None)
+    if not isinstance(payload_raw, dict):
+        payload_raw = {}
+    payload = GovernanceProfilePayload(**payload_raw)
+    return GovernanceProfileOut(
+        id=row.id,
+        key=_profile_key_for_row(row),
+        name=str(getattr(row, "name", "") or ""),
+        description=getattr(row, "description", None),
+        is_system=bool(getattr(row, "is_system", False)),
+        payload=payload,
+        created_at=getattr(row, "created_at", None),
+        updated_at=getattr(row, "updated_at", None),
+    )
+
+
+def _resolve_profile_ref(
+    *,
+    db: Session,
+    tenant_id: UUID,
+    profile_ref: str,
+) -> GovernanceProfileOut:
+    ref = str(profile_ref or "").strip()
+    if not ref:
+        raise HTTPException(status_code=400, detail="profile_ref is required")
+
+    if ref in _BUILTIN_GOVERNANCE_BY_KEY:
+        return builtin_profile_to_out(_BUILTIN_GOVERNANCE_BY_KEY[ref])
+
+    # Allow UUID lookup.
+    try:
+        ref_uuid = UUID(ref)
+    except Exception:
+        ref_uuid = None
+
+    q = db.query(DBGovernanceProfile).filter(DBGovernanceProfile.tenant_id == tenant_id)
+    if ref_uuid is not None:
+        row = q.filter(DBGovernanceProfile.id == ref_uuid).first()
+        if row is not None:
+            return _profile_out_from_row(row)
+    # Allow key lookup (tenant-scoped).
+    row = q.filter(DBGovernanceProfile.key == ref).first()
+    if row is not None:
+        return _profile_out_from_row(row)
+
+    raise HTTPException(status_code=404, detail="Governance profile not found")
+
 
 def _line_diff_stats(before: str, after: str) -> tuple[int, int, int]:
     """
@@ -89,6 +181,33 @@ def _line_diff_stats(before: str, after: str) -> tuple[int, int, int]:
             # Count replaced region as changed (best-effort).
             changed += max(i2 - i1, j2 - j1)
     return added, removed, changed
+
+def _unified_diff_text(before: str, after: str, *, max_lines: int) -> tuple[str | None, bool]:
+    """
+    Build a unified diff for UI preview (best-effort).
+
+    Returns: (diff_text_or_none, truncated)
+    """
+    cap = max(0, int(max_lines or 0))
+    if cap == 0:
+        return None, False
+
+    diff_lines = list(
+        unified_diff(
+            (before or "").splitlines(),
+            (after or "").splitlines(),
+            fromfile="before",
+            tofile="after",
+            lineterm="",
+        )
+    )
+    if not diff_lines:
+        return "", False
+    if len(diff_lines) > cap:
+        hidden = len(diff_lines) - cap
+        diff_lines = diff_lines[:cap] + [f"... (truncated, {hidden} more lines)"]
+        return "\n".join(diff_lines), True
+    return "\n".join(diff_lines), False
 
 def _check_python_import(module_name: str, *, attr: str | None = None) -> tuple[bool, str | None]:
     try:
@@ -422,6 +541,328 @@ async def get_pipeline_capabilities(
     )
 
 
+@router.get("/governance-profiles", response_model=GovernanceProfileListResponse)
+async def list_governance_profiles(
+    q: str | None = None,
+    include_builtin: bool = True,
+    limit: int = 200,
+    tenant_id: UUID = Depends(get_tenant_id),
+    account_id: str = Depends(get_current_account_id),
+    db: Session = Depends(get_db),
+):
+    """
+    List governance profiles (built-in + tenant custom profiles).
+
+    Notes:
+    - Built-in profiles are shipped in code (read-only).
+    - Custom profiles are stored in DB (tenant-scoped).
+    """
+    DatasetService.ensure_member(db, tenant_id, account_id)
+
+    query = (q or "").strip().lower()
+    items: list[GovernanceProfileSummary] = []
+    builtin_count = 0
+
+    if include_builtin:
+        for p in _BUILTIN_GOVERNANCE_PROFILES:
+            if query and query not in (p.name.lower() + " " + p.description.lower()):
+                continue
+            items.append(
+                GovernanceProfileSummary(
+                    id=None,
+                    key=p.key,
+                    name=p.name,
+                    description=p.description,
+                    is_system=True,
+                )
+            )
+        builtin_count = len(items)
+
+    q_db = db.query(DBGovernanceProfile).filter(DBGovernanceProfile.tenant_id == tenant_id)
+    if query:
+        like = f"%{query}%"
+        # Avoid depending on database-specific full-text features.
+        q_db = q_db.filter(
+            (DBGovernanceProfile.name.ilike(like))
+            | (DBGovernanceProfile.description.ilike(like))
+            | (DBGovernanceProfile.key.ilike(like))
+        )
+
+    total_custom = int(q_db.count() or 0)
+    rows = q_db.order_by(DBGovernanceProfile.updated_at.desc()).limit(min(int(limit or 200), 200)).all()
+    items.extend([_profile_summary_from_row(r) for r in rows])
+
+    return GovernanceProfileListResponse(total=(builtin_count + total_custom), items=items)
+
+
+@router.post("/governance-profiles", response_model=GovernanceProfileOut, status_code=201)
+async def create_governance_profile(
+    body: GovernanceProfileCreate,
+    tenant_id: UUID = Depends(get_tenant_id),
+    account_id: str = Depends(get_current_account_id),
+    db: Session = Depends(get_db),
+):
+    DatasetService.ensure_member(db, tenant_id, account_id)
+
+    name = str(body.name or "").strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="name is required")
+
+    try:
+        key = validate_profile_key(body.key)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    if key:
+        exists = (
+            db.query(DBGovernanceProfile.id)
+            .filter(DBGovernanceProfile.tenant_id == tenant_id, DBGovernanceProfile.key == key)
+            .first()
+        )
+        if exists:
+            raise HTTPException(status_code=409, detail="profile key already exists")
+
+    try:
+        payload = validate_and_normalize_payload(body.payload)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    row = DBGovernanceProfile(
+        tenant_id=tenant_id,
+        key=key,
+        name=name[:200],
+        description=(str(body.description).strip()[:2000] if body.description is not None else None),
+        is_system=False,
+        payload=payload.model_dump(),
+    )
+    db.add(row)
+    db.commit()
+    db.refresh(row)
+    return _profile_out_from_row(row)
+
+
+@router.get("/governance-profiles/{profile_ref}", response_model=GovernanceProfileOut)
+async def get_governance_profile(
+    profile_ref: str,
+    tenant_id: UUID = Depends(get_tenant_id),
+    account_id: str = Depends(get_current_account_id),
+    db: Session = Depends(get_db),
+):
+    DatasetService.ensure_member(db, tenant_id, account_id)
+    return _resolve_profile_ref(db=db, tenant_id=tenant_id, profile_ref=profile_ref)
+
+
+@router.patch("/governance-profiles/{profile_ref}", response_model=GovernanceProfileOut)
+async def update_governance_profile(
+    profile_ref: str,
+    body: GovernanceProfileUpdate,
+    tenant_id: UUID = Depends(get_tenant_id),
+    account_id: str = Depends(get_current_account_id),
+    db: Session = Depends(get_db),
+):
+    DatasetService.ensure_member(db, tenant_id, account_id)
+
+    ref = str(profile_ref or "").strip()
+    if ref in _BUILTIN_GOVERNANCE_BY_KEY:
+        raise HTTPException(status_code=403, detail="built-in profiles are read-only")
+
+    # Resolve custom profile row by UUID or key.
+    try:
+        ref_uuid = UUID(ref)
+    except Exception:
+        ref_uuid = None
+
+    q = db.query(DBGovernanceProfile).filter(DBGovernanceProfile.tenant_id == tenant_id)
+    row = q.filter(DBGovernanceProfile.id == ref_uuid).first() if ref_uuid else q.filter(DBGovernanceProfile.key == ref).first()
+    if row is None:
+        raise HTTPException(status_code=404, detail="Governance profile not found")
+
+    if body.name is not None:
+        name = str(body.name or "").strip()
+        if not name:
+            raise HTTPException(status_code=400, detail="name must not be empty")
+        row.name = name[:200]
+
+    if body.description is not None:
+        desc = str(body.description or "").strip()
+        row.description = desc[:2000] if desc else None
+
+    if body.payload is not None:
+        try:
+            payload = validate_and_normalize_payload(body.payload)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        row.payload = payload.model_dump()
+
+    db.commit()
+    db.refresh(row)
+    return _profile_out_from_row(row)
+
+
+@router.delete("/governance-profiles/{profile_ref}", status_code=204)
+async def delete_governance_profile(
+    profile_ref: str,
+    tenant_id: UUID = Depends(get_tenant_id),
+    account_id: str = Depends(get_current_account_id),
+    db: Session = Depends(get_db),
+):
+    DatasetService.ensure_member(db, tenant_id, account_id)
+
+    ref = str(profile_ref or "").strip()
+    if ref in _BUILTIN_GOVERNANCE_BY_KEY:
+        raise HTTPException(status_code=403, detail="built-in profiles are read-only")
+
+    try:
+        ref_uuid = UUID(ref)
+    except Exception:
+        ref_uuid = None
+
+    q = db.query(DBGovernanceProfile).filter(DBGovernanceProfile.tenant_id == tenant_id)
+    row = q.filter(DBGovernanceProfile.id == ref_uuid).first() if ref_uuid else q.filter(DBGovernanceProfile.key == ref).first()
+    if row is None:
+        raise HTTPException(status_code=404, detail="Governance profile not found")
+
+    db.delete(row)
+    db.commit()
+    return None
+
+
+@router.post("/governance-profiles/import", response_model=GovernanceProfileImportResponse)
+async def import_governance_profiles(
+    file: UploadFile = File(...),
+    overwrite: bool = Form(default=False),
+    tenant_id: UUID = Depends(get_tenant_id),
+    account_id: str = Depends(get_current_account_id),
+    db: Session = Depends(get_db),
+):
+    """
+    Import governance profile scripts (JSON).
+
+    Security:
+    - Only declarative JSON is accepted (no executable code).
+    - Strong validation on regex rules and option keys is applied server-side.
+    """
+    DatasetService.ensure_member(db, tenant_id, account_id)
+
+    max_bytes = 256 * 1024
+    raw = await file.read(max_bytes + 1)
+    if len(raw) > max_bytes:
+        raise HTTPException(status_code=413, detail=f"Profile script too large (max={max_bytes} bytes)")
+
+    try:
+        data = json.loads(raw.decode("utf-8"))
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid JSON file")
+
+    if isinstance(data, dict) and isinstance(data.get("profiles"), list):
+        raw_profiles = data.get("profiles") or []
+    else:
+        raw_profiles = [data]
+
+    created = 0
+    updated = 0
+    out_items: list[GovernanceProfileSummary] = []
+
+    for item in raw_profiles:
+        if not isinstance(item, dict):
+            raise HTTPException(status_code=400, detail="Invalid profile item (expected object)")
+
+        unknown_item_keys = set(item.keys()) - {"name", "description", "key", "payload"}
+        if unknown_item_keys:
+            unknown_sorted = ", ".join(sorted(map(str, unknown_item_keys))[:20])
+            raise HTTPException(status_code=400, detail=f"Unknown profile fields: {unknown_sorted}")
+
+        name = str(item.get("name") or "").strip()
+        if not name:
+            raise HTTPException(status_code=400, detail="Profile name is required")
+
+        raw_key = item.get("key")
+        try:
+            key = validate_profile_key(raw_key)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+        payload_raw = item.get("payload")
+        if not isinstance(payload_raw, dict):
+            raise HTTPException(status_code=400, detail="payload is required and must be an object")
+
+        unknown_payload_keys = set(payload_raw.keys()) - {"version", "input_formats", "pipeline_patch", "regex_rules"}
+        if unknown_payload_keys:
+            unknown_sorted = ", ".join(sorted(map(str, unknown_payload_keys))[:20])
+            raise HTTPException(status_code=400, detail=f"Unknown payload fields: {unknown_sorted}")
+
+        try:
+            payload = GovernanceProfilePayload(**payload_raw)
+            payload = validate_and_normalize_payload(payload)
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=f"Invalid payload: {str(exc)[:200]}") from exc
+
+        description = item.get("description")
+        desc = str(description or "").strip()[:2000] if description is not None else None
+
+        existing = None
+        if key:
+            existing = (
+                db.query(DBGovernanceProfile)
+                .filter(DBGovernanceProfile.tenant_id == tenant_id, DBGovernanceProfile.key == key)
+                .first()
+            )
+
+        if existing is not None:
+            if not overwrite:
+                raise HTTPException(status_code=409, detail=f"Profile key already exists: {key}")
+            existing.name = name[:200]
+            existing.description = desc
+            existing.payload = payload.model_dump()
+            updated += 1
+            out_items.append(_profile_summary_from_row(existing))
+        else:
+            row = DBGovernanceProfile(
+                tenant_id=tenant_id,
+                key=key,
+                name=name[:200],
+                description=desc,
+                is_system=False,
+                payload=payload.model_dump(),
+            )
+            db.add(row)
+            db.flush()
+            created += 1
+            out_items.append(_profile_summary_from_row(row))
+
+    db.commit()
+    return GovernanceProfileImportResponse(created=created, updated=updated, items=out_items)
+
+
+@router.get("/governance-profiles/{profile_ref}/export")
+async def export_governance_profile(
+    profile_ref: str,
+    tenant_id: UUID = Depends(get_tenant_id),
+    account_id: str = Depends(get_current_account_id),
+    db: Session = Depends(get_db),
+):
+    DatasetService.ensure_member(db, tenant_id, account_id)
+    profile = _resolve_profile_ref(db=db, tenant_id=tenant_id, profile_ref=profile_ref)
+
+    payload = profile.payload.model_dump()
+    export_obj = {
+        "name": profile.name,
+        "description": profile.description,
+        "key": profile.key,
+        "payload": payload,
+    }
+
+    # Best-effort safe filename.
+    safe_key = re.sub(r"[^a-zA-Z0-9_.-]+", "_", str(profile.key or "profile"))[:64]
+    filename = f"{safe_key}.governance-profile.json"
+    content = json.dumps(export_obj, ensure_ascii=False, indent=2).encode("utf-8")
+    return Response(
+        content=content,
+        media_type="application/json",
+        headers={"Content-Disposition": f'attachment; filename=\"{filename}\"'},
+    )
+
+
 @router.post("/parse-preview", response_model=ParsePreviewResponse)
 async def parse_preview(
     request: Request,
@@ -501,11 +942,11 @@ async def clean_preview(
     Preview governance-style cleaning for Markdown (no persistence) to compare before/after.
     """
     DatasetService.ensure_member(db, tenant_id, account_id)
-    original_input = body.markdown or ""
+    raw_input = body.markdown or ""
 
-    input_text = original_input
+    input_text = raw_input
     if body.input_format == "html":
-        html = original_input
+        html = raw_input
         # Optional image stripping before XPath extraction.
         if str(body.remove_images or "none").strip().lower() in {"decorative", "all"}:
             html = strip_images(html, mode=str(body.remove_images).strip().lower()).text  # type: ignore[arg-type]
@@ -560,15 +1001,51 @@ async def clean_preview(
             if body.strip_frontmatter:
                 input_text = getattr(fm, "stripped_text", input_text) or ""
 
-    if body.rules:
-        rules = [RegexRule(pattern=r.pattern, repl=r.repl, flags=r.flags) for r in body.rules]
-    elif body.use_default_rules:
-        rules = DEFAULT_MARKDOWN_RULES
-    else:
-        rules = []
+    baseline_text = input_text or ""
+
+    analysis_opts = {
+        "remove_control_chars": bool(body.remove_control_chars),
+        "unwrap_lines": bool(body.unwrap_lines),
+        "remove_common_lines": bool(body.remove_common_lines),
+        "remove_boilerplate": bool(body.remove_boilerplate),
+        "normalize_tables": bool(body.normalize_tables),
+        "normalize_urls": bool(body.normalize_urls),
+        "normalize_urls_strip_tracking": bool(body.normalize_urls_strip_tracking),
+        "remove_images": str(body.remove_images or "none"),
+        "drop_outline_only": bool(body.drop_outline_only),
+        "drop_outline_min_content_chars": int(body.drop_outline_min_content_chars or 0),
+        "drop_outline_max_heading_ratio": float(body.drop_outline_max_heading_ratio or 0.0),
+        "drop_low_density": bool(body.drop_low_density),
+        "drop_low_density_threshold": float(body.drop_low_density_threshold or 0.0),
+    }
+
+    def _analyze(after_text: str) -> tuple[list[GovernanceIssue], dict[str, object]]:
+        issues, patch = analyze_governance(
+            baseline_text,
+            after_text,
+            input_format=str(body.input_format or "markdown"),
+            options=analysis_opts,
+        )
+        out: list[GovernanceIssue] = []
+        for it in issues:
+            out.append(
+                GovernanceIssue(
+                    code=str(it.code),
+                    severity=it.severity,  # type: ignore[arg-type]
+                    message=str(it.message),
+                    count=int(getattr(it, "count", 0) or 0),
+                    samples=list(getattr(it, "samples", None) or []),
+                    suggested_pipeline_patch=dict(getattr(it, "suggested_pipeline_patch", None) or {}),
+                )
+            )
+        return out, dict(patch or {})
+
+    custom_rules = [RegexRule(pattern=r.pattern, repl=r.repl, flags=r.flags) for r in (body.rules or [])]
+    base_rules = list(DEFAULT_MARKDOWN_RULES) if body.use_default_rules else []
+    rules = base_rules + custom_rules
     common_lines = (
         build_repeated_line_signatures(
-            input_text or "",
+            baseline_text,
             min_occurrences=body.common_lines_min_occurrences,
             max_line_length=body.unwrap_max_line_length,
         )
@@ -576,7 +1053,7 @@ async def clean_preview(
         else None
     )
     result = clean_markdown(
-        input_text,
+        baseline_text,
         rules=rules,
         normalize_line_endings=body.normalize_line_endings,
         trim_trailing_spaces=body.trim_trailing_spaces,
@@ -659,7 +1136,11 @@ async def clean_preview(
             max_heading_ratio=float(body.drop_outline_max_heading_ratio or 0.0),
         )
         if decision.dropped:
-            added, removed, changed_lines = _line_diff_stats(original_input, "")
+            added, removed, changed_lines = _line_diff_stats(baseline_text, "")
+            diff_unified, diff_truncated = (None, False)
+            if body.include_diff:
+                diff_unified, diff_truncated = _unified_diff_text(baseline_text, "", max_lines=body.diff_max_lines)
+            issues_out, suggested_patch = _analyze("")
             return CleanPreviewResponse(
                 markdown="",
                 applied_rules=result.applied_rules,
@@ -674,19 +1155,27 @@ async def clean_preview(
                 urls_changed=int(urls_changed),
                 paragraphs_dropped=int(paragraphs_dropped),
                 references_removed_lines=int(references_removed_lines),
-                input_chars=len(original_input),
+                input_chars=len(baseline_text),
                 output_chars=0,
-                input_lines=len((original_input or "").splitlines()),
+                input_lines=len((baseline_text or "").splitlines()),
                 output_lines=0,
                 added_lines=added,
                 removed_lines=removed,
                 changed_lines=changed_lines,
+                diff_unified=diff_unified,
+                diff_truncated=bool(diff_truncated),
+                issues=issues_out,
+                suggested_pipeline_patch=suggested_patch,
             )
 
     if body.drop_low_density:
         decision = drop_if_low_density(text, threshold=float(body.drop_low_density_threshold or 0.0))
         if decision.dropped:
-            added, removed, changed_lines = _line_diff_stats(original_input, "")
+            added, removed, changed_lines = _line_diff_stats(baseline_text, "")
+            diff_unified, diff_truncated = (None, False)
+            if body.include_diff:
+                diff_unified, diff_truncated = _unified_diff_text(baseline_text, "", max_lines=body.diff_max_lines)
+            issues_out, suggested_patch = _analyze("")
             return CleanPreviewResponse(
                 markdown="",
                 applied_rules=result.applied_rules,
@@ -701,13 +1190,17 @@ async def clean_preview(
                 urls_changed=int(urls_changed),
                 paragraphs_dropped=int(paragraphs_dropped),
                 references_removed_lines=int(references_removed_lines),
-                input_chars=len(original_input),
+                input_chars=len(baseline_text),
                 output_chars=0,
-                input_lines=len((original_input or "").splitlines()),
+                input_lines=len((baseline_text or "").splitlines()),
                 output_lines=0,
                 added_lines=added,
                 removed_lines=removed,
                 changed_lines=changed_lines,
+                diff_unified=diff_unified,
+                diff_truncated=bool(diff_truncated),
+                issues=issues_out,
+                suggested_pipeline_patch=suggested_patch,
             )
 
     if title is None:
@@ -741,11 +1234,15 @@ async def clean_preview(
         except Exception:
             keywords = None
 
-    added, removed, changed_lines = _line_diff_stats(original_input, text)
+    diff_unified, diff_truncated = (None, False)
+    if body.include_diff:
+        diff_unified, diff_truncated = _unified_diff_text(baseline_text, text, max_lines=body.diff_max_lines)
+    added, removed, changed_lines = _line_diff_stats(baseline_text, text)
+    issues_out, suggested_patch = _analyze(text)
     return CleanPreviewResponse(
         markdown=text,
         applied_rules=result.applied_rules,
-        changed=bool(text != original_input),
+        changed=bool(text != baseline_text),
         dropped=False,
         drop_reason=None,
         pii_hits=pii_hits,
@@ -759,13 +1256,86 @@ async def clean_preview(
         urls_changed=int(urls_changed),
         paragraphs_dropped=int(paragraphs_dropped),
         references_removed_lines=int(references_removed_lines),
-        input_chars=len(original_input),
+        input_chars=len(baseline_text),
         output_chars=len(text or ""),
-        input_lines=len((original_input or "").splitlines()),
+        input_lines=len((baseline_text or "").splitlines()),
         output_lines=len((text or "").splitlines()),
         added_lines=added,
         removed_lines=removed,
         changed_lines=changed_lines,
+        diff_unified=diff_unified,
+        diff_truncated=bool(diff_truncated),
+        issues=issues_out,
+        suggested_pipeline_patch=suggested_patch,
+    )
+
+
+@router.post("/governance-analyze", response_model=GovernanceAnalyzeResponse)
+async def governance_analyze(
+    body: GovernanceAnalyzeRequest,
+    tenant_id: UUID = Depends(get_tenant_id),
+    account_id: str = Depends(get_current_account_id),
+    db: Session = Depends(get_db),
+):
+    """
+    Analyze a text for governance issues without performing cleaning/persistence.
+
+    This is intended for "quality check" UI flows to recommend治理配置/预设。
+    """
+    DatasetService.ensure_member(db, tenant_id, account_id)
+
+    raw_input = body.markdown or ""
+    input_text = raw_input
+    if body.input_format == "html":
+        html = raw_input
+        if str(body.remove_images or "none").strip().lower() in {"decorative", "all"}:
+            html = strip_images(html, mode=str(body.remove_images).strip().lower()).text  # type: ignore[arg-type]
+        extracted = extract_text_from_html(html, xpath=body.html_xpath)
+        if body.html_xpath and extracted.xpath_error and extracted.xpath_error.startswith("xpath_failed:"):
+            raise HTTPException(status_code=400, detail=f"Invalid XPath: {extracted.xpath_error}")
+        input_text = extracted.text or ""
+
+    analysis_opts = {
+        "remove_control_chars": bool(body.remove_control_chars),
+        "unwrap_lines": bool(body.unwrap_lines),
+        "remove_common_lines": bool(body.remove_common_lines),
+        "remove_boilerplate": bool(body.remove_boilerplate),
+        "normalize_tables": bool(body.normalize_tables),
+        "normalize_urls": bool(body.normalize_urls),
+        "normalize_urls_strip_tracking": bool(body.normalize_urls_strip_tracking),
+        "remove_images": str(body.remove_images or "none"),
+        "drop_outline_only": bool(body.drop_outline_only),
+        "drop_outline_min_content_chars": int(body.drop_outline_min_content_chars or 0),
+        "drop_outline_max_heading_ratio": float(body.drop_outline_max_heading_ratio or 0.0),
+        "drop_low_density": bool(body.drop_low_density),
+        "drop_low_density_threshold": float(body.drop_low_density_threshold or 0.0),
+    }
+
+    issues, patch = analyze_governance(
+        input_text or "",
+        "",
+        input_format=str(body.input_format or "markdown"),
+        options=analysis_opts,
+    )
+    out_issues: list[GovernanceIssue] = []
+    for it in issues:
+        out_issues.append(
+            GovernanceIssue(
+                code=str(it.code),
+                severity=it.severity,  # type: ignore[arg-type]
+                message=str(it.message),
+                count=int(getattr(it, "count", 0) or 0),
+                samples=list(getattr(it, "samples", None) or []),
+                suggested_pipeline_patch=dict(getattr(it, "suggested_pipeline_patch", None) or {}),
+            )
+        )
+
+    base = input_text or ""
+    return GovernanceAnalyzeResponse(
+        input_chars=len(base),
+        input_lines=len(base.splitlines()),
+        issues=out_issues,
+        suggested_pipeline_patch=dict(patch or {}),
     )
 
 

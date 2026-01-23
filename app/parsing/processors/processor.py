@@ -30,6 +30,7 @@ from app.services.pipeline_config import (
     resolve_pipeline_effective,
 )
 from app.rag.preprocessing.processor import governance_processor, GovernanceStats
+from app.rag.preprocessing.rules import build_governance_rules
 from app.rag.preprocessing.normalization import normalize_text
 from app.rag.preprocessing.simhash import simhash64, simhash64_hex
 from app.rag.preprocessing.near_dedup import add_simhashes, find_near_duplicate, with_near_dedup_index
@@ -780,7 +781,10 @@ class DocumentProcessorService:
             )
             index_options = build_indexing_options(pipeline_effective)
             self._record_pipeline_effective(db, tenant_id, document_id, pipeline_effective)
+            extra_rules = list(getattr(pipeline_effective, "governance_regex_rules", None) or [])
+            combined_rules = build_governance_rules(extra_rules) if extra_rules else None
             governance_kwargs = {
+                **({"rules": combined_rules} if combined_rules else {}),
                 "remove_toc_lines": pipeline_effective.governance_remove_toc_lines,
                 "remove_noise_lines": pipeline_effective.governance_remove_noise_lines,
                 "unwrap_lines": pipeline_effective.governance_unwrap_lines,

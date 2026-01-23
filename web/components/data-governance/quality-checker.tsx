@@ -21,6 +21,7 @@ import {
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
+import { pipelineApi } from '@/lib/api-client'
 
 interface QualityIssue {
   id: string
@@ -50,6 +51,7 @@ export function QualityChecker({ content, initialScore = 0, initialIssues = [], 
   const [isScanning, setIsScanning] = useState(false)
   const [score, setScore] = useState(initialScore)
   const [issues, setIssues] = useState<QualityIssue[]>(initialIssues)
+  const [backendScanEnabled, setBackendScanEnabled] = useState(false)
   const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set(['chars']))
   const [scanProgress, setScanProgress] = useState(0)
 
@@ -193,6 +195,38 @@ export function QualityChecker({ content, initialScore = 0, initialIssues = [], 
       })
     }
 
+    // 6. 后端治理诊断（可选）
+    if (backendScanEnabled) {
+      try {
+        const res = await pipelineApi.governanceAnalyze({
+          markdown: content,
+          input_format: formatInfo.format === 'HTML' ? 'html' : 'markdown',
+        })
+        const backendIssues = res.issues || []
+        for (const it of backendIssues.slice(0, 10)) {
+          detectedIssues.push({
+            id: `backend:${it.code}`,
+            type: it.severity === 'error' ? 'error' : it.severity === 'warning' ? 'warning' : 'info',
+            message: `后端检测：${it.message}${typeof it.count === 'number' && it.count > 0 ? `（${it.count}）` : ''}`,
+          })
+        }
+        if (res.suggested_pipeline_patch && Object.keys(res.suggested_pipeline_patch).length > 0) {
+          detectedIssues.push({
+            id: 'backend:suggested-patch',
+            type: 'info',
+            message: `后端建议：可优化治理配置（${Object.keys(res.suggested_pipeline_patch).length} 项）`,
+          })
+        }
+      } catch (e) {
+        console.error('Backend governance analyze failed', e)
+        detectedIssues.push({
+          id: 'backend:failed',
+          type: 'info',
+          message: '后端检测失败（可忽略）',
+        })
+      }
+    }
+
     setIssues(detectedIssues)
 
     // 计算质量分数
@@ -212,7 +246,7 @@ export function QualityChecker({ content, initialScore = 0, initialIssues = [], 
 
     setIsScanning(false)
     onComplete({ score: calculatedScore, issues: detectedIssues })
-  }, [content, onComplete])
+  }, [content, onComplete, backendScanEnabled, formatInfo.format])
 
   // 切换展开
   const toggleExpanded = useCallback((id: string) => {
@@ -251,24 +285,33 @@ export function QualityChecker({ content, initialScore = 0, initialIssues = [], 
             <ScanLine className="w-5 h-5 text-info" />
             <h3 className="font-bold text-foreground">质量检测</h3>
           </div>
-          <Button
-            onClick={handleScan}
-            disabled={isScanning}
-            size="sm"
-            className="gap-2"
-          >
-            {isScanning ? (
-              <>
-                <div className="w-4 h-4 border-2 border-primary-foreground/30 border-t-primary-foreground rounded-full motion-safe:animate-spin motion-reduce:animate-none" />
-                扫描中 {scanProgress}%
-              </>
-            ) : (
-              <>
-                <Play className="w-4 h-4" />
-                重新扫描
-              </>
-            )}
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              variant={backendScanEnabled ? 'default' : 'outline'}
+              size="sm"
+              onClick={() => setBackendScanEnabled((v) => !v)}
+            >
+              {backendScanEnabled ? '后端检测：开' : '后端检测：关'}
+            </Button>
+            <Button
+              onClick={handleScan}
+              disabled={isScanning}
+              size="sm"
+              className="gap-2"
+            >
+              {isScanning ? (
+                <>
+                  <div className="w-4 h-4 border-2 border-primary-foreground/30 border-t-primary-foreground rounded-full motion-safe:animate-spin motion-reduce:animate-none" />
+                  扫描中 {scanProgress}%
+                </>
+              ) : (
+                <>
+                  <Play className="w-4 h-4" />
+                  重新扫描
+                </>
+              )}
+            </Button>
+          </div>
         </div>
 
         {/* 质量分数卡片 */}

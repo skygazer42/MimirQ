@@ -3,7 +3,7 @@ Document processing pipeline schemas.
 Defines data models for document parsing, chunking, and other pipeline operations.
 """
 
-from typing import Any, List, Literal, Optional
+from typing import Any, Dict, List, Literal, Optional
 from uuid import UUID
 from pydantic import BaseModel, Field
 
@@ -64,10 +64,25 @@ class RegexRuleModel(BaseModel):
     flags: int = 0
 
 
+class GovernanceIssue(BaseModel):
+    code: str = Field(..., min_length=1, max_length=100)
+    severity: Literal["info", "warning", "error"] = "info"
+    message: str = Field(..., min_length=1, max_length=400)
+    count: int = Field(default=0, ge=0, le=10_000_000)
+    samples: List[str] = Field(default_factory=list, description="Best-effort samples (may be truncated)")
+    suggested_pipeline_patch: Dict[str, Any] = Field(
+        default_factory=dict,
+        description="Best-effort suggested pipeline patch (DocumentPipelineOptions shape).",
+    )
+
+
 class CleanPreviewRequest(BaseModel):
     markdown: str
     rules: List[RegexRuleModel] = Field(default_factory=list)
     use_default_rules: bool = True
+    # When enabled, return a unified diff (text) between input and output (best-effort, may be truncated).
+    include_diff: bool = False
+    diff_max_lines: int = Field(default=2000, ge=0, le=20000)
     # How to interpret `markdown` input (some governance steps can operate on raw HTML).
     input_format: Literal["markdown", "html"] = "markdown"
     # When input_format=html, optionally extract specific nodes via XPath before converting to text.
@@ -160,6 +175,10 @@ class CleanPreviewResponse(BaseModel):
     added_lines: int = 0
     removed_lines: int = 0
     changed_lines: int = 0
+    diff_unified: Optional[str] = None
+    diff_truncated: bool = False
+    issues: List[GovernanceIssue] = Field(default_factory=list)
+    suggested_pipeline_patch: Dict[str, Any] = Field(default_factory=dict)
 
 
 class CleanRulesResponse(BaseModel):
@@ -217,6 +236,34 @@ class PipelineCapabilitiesResponse(BaseModel):
     default_chunk_strategy: str
     pdf_backends: List[ParserBackendInfo] = Field(default_factory=list)
     chunk_strategies: List[ChunkStrategyInfo] = Field(default_factory=list)
+
+
+class GovernanceAnalyzeRequest(BaseModel):
+    markdown: str
+    input_format: Literal["markdown", "html"] = "markdown"
+    html_xpath: Optional[str] = None
+    remove_images: Literal["none", "decorative", "all"] = "none"
+
+    # Current (or intended) governance toggles; used to generate non-redundant suggestions.
+    remove_control_chars: bool = True
+    unwrap_lines: bool = True
+    remove_common_lines: bool = True
+    remove_boilerplate: bool = False
+    normalize_tables: bool = False
+    normalize_urls: bool = False
+    normalize_urls_strip_tracking: bool = True
+    drop_outline_only: bool = False
+    drop_outline_min_content_chars: int = Field(default=200, ge=0, le=200_000)
+    drop_outline_max_heading_ratio: float = Field(default=0.85, ge=0.0, le=1.0)
+    drop_low_density: bool = False
+    drop_low_density_threshold: float = Field(default=0.12, ge=0.0, le=1.0)
+
+
+class GovernanceAnalyzeResponse(BaseModel):
+    input_chars: int = 0
+    input_lines: int = 0
+    issues: List[GovernanceIssue] = Field(default_factory=list)
+    suggested_pipeline_patch: Dict[str, Any] = Field(default_factory=dict)
 
 
 class ZipImageInfo(BaseModel):

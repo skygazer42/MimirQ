@@ -16,7 +16,7 @@ import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import { pipelineApi, promptTemplateApi, PromptTemplate } from '@/lib/api-client'
 import { formatApiError } from '@/lib/api-errors'
-import type { CleanPreviewRequest, LLMCleanPreviewRequest } from '@/types'
+import type { CleanPreviewRequest, CleanPreviewResponse, LLMCleanPreviewRequest } from '@/types'
 import {
   Select,
   SelectContent,
@@ -26,6 +26,7 @@ import {
 } from '@/components/ui/select'
 import { usePipelineOptions } from '@/contexts/pipeline-options-context'
 import { PipelineOptionsPanel } from '@/components/pipeline-options-panel'
+import { GovernanceProfileSelector } from '@/components/governance-profile-selector'
 
 const SELECT_DEFAULT_VALUE = '__mimirq_default__'
 
@@ -36,11 +37,12 @@ interface DataCleanerProps {
 }
 
 export function DataCleaner({ content, cleanedContent = '', onClean }: DataCleanerProps) {
-  const { options } = usePipelineOptions()
+  const { options, updateOption, setEnabled } = usePipelineOptions()
   const [previewDiff, setPreviewDiff] = useState(false)
   const [isApplying, setIsApplying] = useState(false)
   const [backendError, setBackendError] = useState<string | null>(null)
   const [backendInfo, setBackendInfo] = useState<string | null>(null)
+  const [lastPreview, setLastPreview] = useState<CleanPreviewResponse | null>(null)
   const [inputFormat, setInputFormat] = useState<'markdown' | 'html'>('markdown')
   const [llmEnabled, setLlmEnabled] = useState(false)
   const [promptTemplates, setPromptTemplates] = useState<PromptTemplate[]>([])
@@ -76,7 +78,9 @@ export function DataCleaner({ content, cleanedContent = '', onClean }: DataClean
       const req: CleanPreviewRequest = {
         markdown: content,
         use_default_rules: true, // 默认开启基础规则
-        rules: [],
+        rules: Array.isArray(options.governance_regex_rules) ? options.governance_regex_rules : [],
+        include_diff: true,
+        diff_max_lines: 2000,
         input_format: inputFormat,
         html_xpath: inputFormat === 'html' ? (options.governance_html_xpath || undefined) : undefined,
         normalize_line_endings: true,
@@ -125,6 +129,7 @@ export function DataCleaner({ content, cleanedContent = '', onClean }: DataClean
       }
 
       const res = await pipelineApi.cleanPreview(req)
+      setLastPreview(res)
       const info: string[] = []
       if (typeof res.input_lines === 'number' && typeof res.output_lines === 'number') {
         const removed = typeof res.removed_lines === 'number' ? res.removed_lines : 0
@@ -205,6 +210,13 @@ export function DataCleaner({ content, cleanedContent = '', onClean }: DataClean
     }
   }, [content, options, onClean, llmEnabled, promptTemplateId, inputFormat])
 
+  const applyPipelinePatch = useCallback((patch: Record<string, any>) => {
+    setEnabled(true)
+    for (const [key, value] of Object.entries(patch || {})) {
+      updateOption(key as any, value as any)
+    }
+  }, [setEnabled, updateOption])
+
   // 重置
   const handleReset = useCallback(() => {
     onClean(content)
@@ -238,7 +250,13 @@ export function DataCleaner({ content, cleanedContent = '', onClean }: DataClean
           规则配置
         </div>
         <div className="p-4 bg-card">
-           <PipelineOptionsPanel compact={false} />
+          <div className="space-y-4">
+            <div className="rounded-lg border border-border/60 p-3 bg-background/40">
+              <div className="text-xs font-medium text-muted-foreground mb-2">治理预设（Profiles/脚本）</div>
+              <GovernanceProfileSelector compact={true} onApplyPatch={applyPipelinePatch} />
+            </div>
+            <PipelineOptionsPanel compact={false} />
+          </div>
         </div>
       </div>
 
@@ -337,8 +355,63 @@ export function DataCleaner({ content, cleanedContent = '', onClean }: DataClean
             <TextCursorInput className="w-4 h-4 text-muted-foreground" />
           </button>
           {previewDiff && (
-            <div className="p-4 border-t border-border bg-muted max-h-60 overflow-y-auto">
-               <p className="text-xs text-muted-foreground mb-2">对比功能开发中...</p>
+            <div className="p-4 border-t border-border bg-muted max-h-80 overflow-y-auto space-y-3">
+              {lastPreview?.issues?.length ? (
+                <div className="rounded-lg border border-border/60 bg-background/40 p-3">
+                  <div className="text-xs font-medium text-muted-foreground mb-2">检测到的问题（Best-effort）</div>
+                  <div className="space-y-2">
+                    {lastPreview.issues.slice(0, 8).map((it) => (
+                      <div key={it.code} className="text-xs text-foreground/80">
+                        <span className={cn(
+                          'mr-2 inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-medium',
+                          it.severity === 'error'
+                            ? 'bg-destructive/10 text-destructive'
+                            : it.severity === 'warning'
+                              ? 'bg-warning/10 text-warning'
+                              : 'bg-info/10 text-info'
+                        )}>
+                          {it.severity.toUpperCase()}
+                        </span>
+                        {it.message}
+                        {typeof it.count === 'number' && it.count > 0 ? `（${it.count}）` : ''}
+                      </div>
+                    ))}
+                  </div>
+
+                  {lastPreview.suggested_pipeline_patch && Object.keys(lastPreview.suggested_pipeline_patch).length > 0 && (
+                    <div className="mt-3 flex items-center justify-between gap-2">
+                      <div className="text-[11px] text-muted-foreground">
+                        已生成治理建议，可一键应用到当前配置（会覆盖对应字段）。
+                      </div>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => applyPipelinePatch(lastPreview.suggested_pipeline_patch as any)}
+                      >
+                        应用建议
+                      </Button>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <p className="text-xs text-muted-foreground">暂无明显问题提示。</p>
+              )}
+
+              {typeof lastPreview?.diff_unified === 'string' && lastPreview.diff_unified.trim() ? (
+                <div className="rounded-lg border border-border/60 bg-background/40 overflow-hidden">
+                  <div className="px-3 py-2 border-b border-border/60 text-xs font-medium text-muted-foreground flex items-center justify-between">
+                    <span>Unified Diff</span>
+                    {lastPreview.diff_truncated ? (
+                      <span className="text-[11px] text-muted-foreground">已截断</span>
+                    ) : null}
+                  </div>
+                  <pre className="p-3 text-[11px] leading-relaxed font-mono whitespace-pre overflow-x-auto">
+{lastPreview.diff_unified}
+                  </pre>
+                </div>
+              ) : (
+                <p className="text-xs text-muted-foreground">暂无差异可显示（或尚未执行清洗）。</p>
+              )}
             </div>
           )}
       </div>
