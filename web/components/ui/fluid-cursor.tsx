@@ -21,8 +21,18 @@ export function FluidCursor() {
   const [isDesktop, setIsDesktop] = useState(false)
   useEffect(() => {
     if (typeof window === "undefined") return
-    if (window.matchMedia("(pointer: fine)").matches) {
-      setIsDesktop(true)
+    const mq = window.matchMedia("(pointer: fine)")
+    const update = () => setIsDesktop(mq.matches)
+    update()
+
+    // Keep in sync on hybrid devices / pointer changes.
+    try {
+      mq.addEventListener("change", update)
+      return () => mq.removeEventListener("change", update)
+    } catch {
+      // Safari < 14
+      mq.addListener(update)
+      return () => mq.removeListener(update)
     }
   }, [])
 

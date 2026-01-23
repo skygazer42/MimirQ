@@ -21,9 +21,11 @@ from app.core.database import get_db
 from app.models.document import Document as DBDocument, DocumentChunk
 from app.api.schemas.document import (
     DocumentList,
+    DocumentStats,
     DocumentDetail,
     DocumentChunkSchema,
     DocumentChunkList,
+    DocumentChunkMatchList,
     DocumentStatus,
     DocumentParsePreview,
     ParsedSegment,
@@ -67,7 +69,7 @@ from fastapi.responses import FileResponse, RedirectResponse, StreamingResponse
 from app.api.dependencies.tenant import get_tenant_id
 from app.api.dependencies.auth import get_current_account_id
 from app.rag.kg.pipeline import extract_events
-from sqlalchemy import or_, and_
+from sqlalchemy import or_, and_, func
 from app.rag.core.logging import get_logger
 from app.rag.preprocessing.processor import governance_processor
 from app.api.utils.upload import save_upload_file
@@ -1362,6 +1364,92 @@ async def list_documents(
     }
 
 
+@router.get("/stats", response_model=DocumentStats)
+async def get_document_stats(
+    dataset_id: Optional[UUID] = None,
+    q: Optional[str] = Query(default=None, max_length=200),
+    tenant_id: UUID = Depends(get_tenant_id),
+    account_id: str = Depends(get_current_account_id),
+    db: Session = Depends(get_db),
+):
+    """
+    Document stats for knowledge-base dashboards.
+
+    Notes:
+    - Enforces the same dataset permission semantics as `list_documents`.
+    - Supports lightweight filename search via `q`.
+    """
+    DatasetService.ensure_member(db, tenant_id, account_id)
+
+    query = db.query(DBDocument).filter(DBDocument.tenant_id == tenant_id)
+
+    if dataset_id:
+        dataset = DatasetService.get_dataset(db, tenant_id, dataset_id)
+        DatasetService.assert_dataset_readable(db, dataset, account_id)
+        query = query.filter(DBDocument.dataset_id == dataset_id)
+    else:
+        partial_member_subq = (
+            db.query(DatasetPermission.dataset_id)
+            .filter(
+                DatasetPermission.tenant_id == tenant_id,
+                DatasetPermission.account_id == account_id,
+            )
+            .subquery()
+        )
+
+        allowed_dataset_filter = or_(
+            Dataset.owner_id == account_id,
+            Dataset.permission == DatasetPermissionEnum.ALL_TEAM_MEMBERS,
+            and_(
+                Dataset.permission == DatasetPermissionEnum.PARTIAL_MEMBERS,
+                Dataset.id.in_(partial_member_subq),
+            ),
+        )
+
+        allowed_dataset_ids_subq = (
+            db.query(Dataset.id)
+            .filter(
+                Dataset.tenant_id == tenant_id,
+                allowed_dataset_filter,
+            )
+            .subquery()
+        )
+
+        query = query.filter(
+            or_(
+                DBDocument.dataset_id.is_(None),
+                DBDocument.dataset_id.in_(allowed_dataset_ids_subq),
+            )
+        )
+
+    if q:
+        term = q.strip()
+        if term:
+            query = query.filter(DBDocument.filename.ilike(f"%{term}%"))
+
+    status_rows = (
+        query.with_entities(DBDocument.status, func.count(DBDocument.id))
+        .group_by(DBDocument.status)
+        .all()
+    )
+    by_status = {str(status): int(count) for status, count in status_rows if status is not None}
+    total = int(sum(by_status.values()))
+
+    sums = query.with_entities(
+        func.coalesce(func.sum(DBDocument.chunk_count), 0),
+        func.coalesce(func.sum(DBDocument.file_size), 0),
+    ).one()
+    total_chunks = int(sums[0] or 0)
+    total_size = int(sums[1] or 0)
+
+    return {
+        "total": total,
+        "by_status": by_status,
+        "total_chunks": total_chunks,
+        "total_size": total_size,
+    }
+
+
 @router.get("/{document_id}", response_model=DocumentDetail)
 async def get_document(
     document_id: uuid.UUID,
@@ -1441,6 +1529,72 @@ async def list_document_chunks(
     total = query.count()
     items = query.order_by(DocumentChunk.chunk_index.asc()).offset(skip).limit(limit).all()
     return {"total": total, "items": items}
+
+
+@router.get("/{document_id}/chunks/matches", response_model=DocumentChunkMatchList)
+async def list_document_chunk_matches(
+    document_id: uuid.UUID,
+    q: str = Query(..., max_length=200, description="Case-insensitive substring match against chunk content"),
+    limit: int = Query(default=2000, ge=1, le=5000, description="Max returned matches (may be truncated)"),
+    tenant_id: UUID = Depends(get_tenant_id),
+    account_id: str = Depends(get_current_account_id),
+    db: Session = Depends(get_db),
+):
+    """
+    List chunk matches for a document (lightweight payload).
+
+    This is optimized for "find in document" UX where the frontend only needs:
+    - chunk id (for navigation / deep link)
+    - chunk_index/page_number (for display)
+
+    Notes:
+    - Enforces the same dataset permission semantics as `list_document_chunks`.
+    - Returns at most `limit` matches; `truncated=true` indicates there are more.
+    """
+    DatasetService.ensure_member(db, tenant_id, account_id)
+
+    document = (
+        db.query(DBDocument)
+        .filter(DBDocument.id == document_id, DBDocument.tenant_id == tenant_id)
+        .first()
+    )
+    if not document:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    if document.dataset_id:
+        ds = DatasetService.get_dataset(db, tenant_id, document.dataset_id)
+        DatasetService.assert_dataset_readable(db, ds, account_id)
+
+    term = (q or "").strip()
+    if not term:
+        return {"total": 0, "truncated": False, "items": []}
+
+    query = (
+        db.query(DocumentChunk)
+        .filter(
+            DocumentChunk.tenant_id == tenant_id,
+            DocumentChunk.document_id == document_id,
+            DocumentChunk.content.ilike(f"%{term}%"),
+        )
+        .order_by(DocumentChunk.chunk_index.asc())
+    )
+
+    total = int(query.count())
+    rows = (
+        query.with_entities(DocumentChunk.id, DocumentChunk.chunk_index, DocumentChunk.page_number)
+        .limit(limit)
+        .all()
+    )
+    items = [
+        {"id": str(row[0]), "chunk_index": int(row[1]), "page_number": row[2] if row[2] is None else int(row[2])}
+        for row in rows
+    ]
+
+    return {
+        "total": total,
+        "truncated": total > len(items),
+        "items": items,
+    }
 
 
 @router.get("/{document_id}/chunks/{chunk_id}", response_model=DocumentChunkSchema)
@@ -2280,7 +2434,8 @@ async def get_image(
             continue
         if file_path.exists() and file_path.is_file():
             max_age = max(0, int(getattr(settings, "ASSET_CACHE_MAX_AGE_SEC", 0) or 0))
-            cache_control = f"private, max-age={max_age}" if max_age > 0 else "no-cache"
+            # UUID-based image IDs are immutable (content changes -> new UUID), so allow stronger caching.
+            cache_control = f"private, max-age={max_age}, immutable" if max_age > 0 else "no-cache"
             try:
                 st = file_path.stat()
             except Exception:
@@ -2404,6 +2559,9 @@ async def get_image_url(
                 "Cache-Control": "no-store",
                 "Pragma": "no-cache",
                 "Expires": "0",
+                # Reduce risk of leaking any auth query params via referrers.
+                "Referrer-Policy": "no-referrer",
+                "X-Content-Type-Options": "nosniff",
             },
         )
     except Exception as e:

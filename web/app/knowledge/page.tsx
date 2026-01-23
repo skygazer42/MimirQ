@@ -62,7 +62,7 @@ import { UPLOAD_ACCEPT } from '@/lib/upload-extensions'
 import { StatCard, StatsGrid } from '@/components/ui/stats-card'
 import { DocumentDetailDialog } from '@/components/document-detail-dialog'
 import { getParserLabel } from '@/lib/parser-options'
-import type { Citation, Dataset, Document } from '@/types'
+import type { Citation, Dataset, Document, DocumentStats } from '@/types'
 import { datasetApi, documentApi, ragApi } from '@/lib/api-client'
 import { PipelineOptionsPanel } from '@/components/pipeline-options-panel'
 import { ParserDropdown } from '@/components/ui/parser-dropdown'
@@ -218,6 +218,9 @@ export default function KnowledgePage() {
   const [datasetScope, setDatasetScope] = useState<string>(DATASET_ALL)
   const [datasetsLoading, setDatasetsLoading] = useState(false)
   const selectedDatasetId = datasetScope === DATASET_ALL ? undefined : datasetScope
+  const [docStats, setDocStats] = useState<DocumentStats | null>(null)
+  const [docStatsLoading, setDocStatsLoading] = useState(false)
+  const docStatsSeqRef = useRef(0)
 
   // Init UI state from URL so filters are shareable/bookmarkable.
   useEffect(() => {
@@ -268,6 +271,15 @@ export default function KnowledgePage() {
     router.replace(nextUrl, { scroll: false })
   }, [activeTab, viewMode, docFilter, statusFilter, datasetScope, sortKey, sortDir, router])
 
+  // PageBody is an internal scroll container; on tab switches keep the top anchored.
+  useEffect(() => {
+    const id = window.requestAnimationFrame(() => {
+      const el = document.querySelector<HTMLElement>('[data-page-scroll-container="true"]')
+      el?.scrollTo({ top: 0, left: 0, behavior: 'auto' })
+    })
+    return () => window.cancelAnimationFrame(id)
+  }, [activeTab])
+
   // Load datasets for filtering (best-effort).
   useEffect(() => {
     let alive = true
@@ -296,6 +308,7 @@ export default function KnowledgePage() {
     const t = window.setTimeout(() => {
       loadDocuments({
         limit: 200,
+        status: statusFilter !== 'all' ? statusFilter : undefined,
         q: docFilter.trim() || undefined,
         dataset_id: selectedDatasetId,
         order_by: sortKey,
@@ -303,7 +316,34 @@ export default function KnowledgePage() {
       })
     }, 250)
     return () => window.clearTimeout(t)
-  }, [activeTab, docFilter, selectedDatasetId, sortKey, sortDir, loadDocuments])
+  }, [activeTab, statusFilter, docFilter, selectedDatasetId, sortKey, sortDir, loadDocuments])
+
+  // Accurate dashboard stats (server aggregated) - avoids "only 200 items loaded" bias.
+  useEffect(() => {
+    if (activeTab !== 'documents') return
+    const seq = ++docStatsSeqRef.current
+    setDocStatsLoading(true)
+
+    const t = window.setTimeout(() => {
+      documentApi
+        .stats({ q: docFilter.trim() || undefined, dataset_id: selectedDatasetId })
+        .then((res) => {
+          if (seq !== docStatsSeqRef.current) return
+          setDocStats(res)
+        })
+        .catch((err) => {
+          if (seq !== docStatsSeqRef.current) return
+          console.error('Failed to load document stats:', err)
+          setDocStats(null)
+        })
+        .finally(() => {
+          if (seq !== docStatsSeqRef.current) return
+          setDocStatsLoading(false)
+        })
+    }, 250)
+
+    return () => window.clearTimeout(t)
+  }, [activeTab, docFilter, selectedDatasetId])
 
   // 检索测试状态
   const [searchQuery, setSearchQuery] = useState('')
@@ -313,65 +353,21 @@ export default function KnowledgePage() {
   const [searchError, setSearchError] = useState<string | null>(null)
   const [isSearching, setIsSearching] = useState(false)
 
-  const stats = useMemo(() => {
-    const totalDocs = total || documents.length
-    let completedDocs = 0
-    let processingDocs = 0
-    let failedDocs = 0
-    let quarantinedDocs = 0
-    let totalChunks = 0
-    let totalSize = 0
+  const totalDocs = docStats?.total ?? total ?? documents.length
+  const byStatus = docStats?.by_status || {}
+  const completedDocsValue: string | number = docStats ? Number(byStatus.completed || 0) : (docStatsLoading ? '…' : '—')
+  const processingDocsCount = docStats ? Number(byStatus.pending || 0) + Number(byStatus.processing || 0) : 0
+  const failedDocsCount = docStats ? Number(byStatus.failed || 0) : 0
+  const quarantinedDocsCount = docStats ? Number(byStatus.quarantined || 0) : 0
+  const processingDocsValue: string | number = docStats ? processingDocsCount : (docStatsLoading ? '…' : '—')
+  const failedDocsValue: string | number = docStats ? failedDocsCount : (docStatsLoading ? '…' : '—')
+  const quarantinedDocsValue: string | number = docStats ? quarantinedDocsCount : (docStatsLoading ? '…' : '—')
+  const totalChunksValue: string | number = docStats ? Number(docStats.total_chunks || 0).toLocaleString() : (docStatsLoading ? '…' : '—')
+  const totalSizeValue: string | number = docStats ? formatFileSize(Number(docStats.total_size || 0)) : (docStatsLoading ? '…' : '—')
+  const showExtraCard = docStats ? (processingDocsCount > 0 || failedDocsCount > 0 || quarantinedDocsCount > 0) : false
 
-    for (const doc of documents) {
-      totalChunks += doc.chunk_count || 0
-      totalSize += doc.file_size || 0
-
-      if (doc.status === 'completed') {
-        completedDocs += 1
-      } else if (doc.status === 'failed') {
-        failedDocs += 1
-      } else if (doc.status === 'quarantined') {
-        quarantinedDocs += 1
-      } else if (doc.status === 'processing' || doc.status === 'pending') {
-        processingDocs += 1
-      }
-    }
-
-    return {
-      totalDocs,
-      completedDocs,
-      processingDocs,
-      failedDocs,
-      quarantinedDocs,
-      totalChunks,
-      totalSize,
-      showExtraCard: processingDocs > 0 || failedDocs > 0 || quarantinedDocs > 0,
-    }
-  }, [documents, total])
-
-  const {
-    totalDocs,
-    completedDocs,
-    processingDocs,
-    failedDocs,
-    quarantinedDocs,
-    totalChunks,
-    totalSize,
-    showExtraCard,
-  } = stats
-
-  const filteredDocuments = useMemo(() => {
-    const term = docFilter.trim().toLowerCase()
-    return documents.filter((doc) => {
-      if (statusFilter === 'completed' && doc.status !== 'completed') return false
-      if (statusFilter === 'failed' && doc.status !== 'failed') return false
-      if (statusFilter === 'quarantined' && doc.status !== 'quarantined') return false
-      if (statusFilter === 'processing' && !(doc.status === 'processing' || doc.status === 'pending')) return false
-      if (selectedDatasetId && String(doc.dataset_id || '') !== selectedDatasetId) return false
-      if (term && !String(doc.filename || '').toLowerCase().includes(term)) return false
-      return true
-    })
-  }, [documents, docFilter, statusFilter, selectedDatasetId])
+  // The backend already applies q/status/dataset filters; keep UI list consistent with server results.
+  const filteredDocuments = useMemo(() => documents, [documents])
 
   const selectedSet = useMemo(() => new Set(selectedDocIds), [selectedDocIds])
   const allVisibleSelected = filteredDocuments.length > 0 && filteredDocuments.every((d) => selectedSet.has(d.id))
@@ -567,30 +563,30 @@ export default function KnowledgePage() {
               <StatCard
                 icon={CheckCircle}
                 label="已就绪"
-                value={completedDocs}
+                value={completedDocsValue}
                 color="green"
                 className="bg-card/60 backdrop-blur-md border-border/60 shadow-soft"
               />
               <StatCard
                 icon={Layers}
                 label="知识分块"
-                value={totalChunks.toLocaleString()}
+                value={totalChunksValue}
                 color="teal"
                 className="bg-card/60 backdrop-blur-md border-border/60 shadow-soft"
               />
               <StatCard
                 icon={HardDrive}
                 label="存储占用"
-                value={formatFileSize(totalSize)}
+                value={totalSizeValue}
                 color="orange"
                 className="bg-card/60 backdrop-blur-md border-border/60 shadow-soft"
               />
               {showExtraCard && (
                 <StatCard
-                  icon={(failedDocs + quarantinedDocs) > 0 ? (failedDocs > 0 ? XCircle : AlertTriangle) : Loader2}
-                  label={(failedDocs + quarantinedDocs) > 0 ? '需关注' : '处理中'}
-                  value={(failedDocs + quarantinedDocs) > 0 ? (failedDocs + quarantinedDocs) : processingDocs}
-                  color={(failedDocs + quarantinedDocs) > 0 ? (failedDocs > 0 ? 'red' : 'amber') : 'sky'}
+                  icon={(failedDocsCount + quarantinedDocsCount) > 0 ? (failedDocsCount > 0 ? XCircle : AlertTriangle) : Loader2}
+                  label={(failedDocsCount + quarantinedDocsCount) > 0 ? '需关注' : '处理中'}
+                  value={(failedDocsCount + quarantinedDocsCount) > 0 ? (failedDocsCount + quarantinedDocsCount) : processingDocsCount}
+                  color={(failedDocsCount + quarantinedDocsCount) > 0 ? (failedDocsCount > 0 ? 'red' : 'amber') : 'sky'}
                   className="bg-card/60 backdrop-blur-md border-border/60 shadow-soft"
                 />
               )}
@@ -786,10 +782,10 @@ export default function KnowledgePage() {
                       {(
                         [
                           { key: 'all', label: '全部', count: totalDocs },
-                          { key: 'completed', label: '已就绪', count: completedDocs },
-                          { key: 'processing', label: '处理中', count: processingDocs },
-                          { key: 'failed', label: '失败', count: failedDocs },
-                          { key: 'quarantined', label: '隔离', count: quarantinedDocs },
+                          { key: 'completed', label: '已就绪', count: completedDocsValue },
+                          { key: 'processing', label: '处理中', count: processingDocsValue },
+                          { key: 'failed', label: '失败', count: failedDocsValue },
+                          { key: 'quarantined', label: '隔离', count: quarantinedDocsValue },
                         ] as const
                       ).map((item) => (
                         <button
