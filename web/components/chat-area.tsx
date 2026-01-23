@@ -3,8 +3,8 @@
  */
 'use client'
 
-import { useState, useRef, useEffect, useCallback, useMemo } from 'react'
-import { Send, StopCircle, Sparkles, Database, Wand2, Settings2, Bot, Mic } from 'lucide-react'
+import { useState, useRef, useEffect, useCallback, useMemo, useLayoutEffect } from 'react'
+import { Send, StopCircle, Sparkles, Database, Wand2, Settings2, Bot, Mic, ArrowDown } from 'lucide-react'
 import { toast } from 'sonner'
 import { useChat } from '@/hooks/use-chat'
 import { Button } from '@/components/ui/button'
@@ -37,16 +37,18 @@ const LOAD_MORE_STEP = 40
 export function ChatArea({
   initialConversationId,
   initialPrompt,
+  initialOpenRagSettings,
   onConversationId,
 }: {
   initialConversationId?: string
   initialPrompt?: string
+  initialOpenRagSettings?: boolean
   onConversationId?: (conversationId: string) => void
 } = {}) {
   const [inputValue, setInputValue] = useState(() => (initialPrompt || '').trim())
   const [promptTemplateId, setPromptTemplateId] = useState<string>('')
   const [promptTemplates, setPromptTemplates] = useState<PromptTemplate[]>([])
-  const [showRagSettings, setShowRagSettings] = useState(false)
+  const [showRagSettings, setShowRagSettings] = useState(Boolean(initialOpenRagSettings))
   const [ragConfig, setRagConfig] = useState<{
     top_k: number
     score_threshold: number
@@ -67,7 +69,10 @@ export function ChatArea({
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const prevInitialConversationIdRef = useRef<string | undefined>(initialConversationId)
   const autoScrollRef = useRef(true)
+  const [isNearBottom, setIsNearBottom] = useState(true)
   const scrollRafRef = useRef<number | null>(null)
+  const scrollEventRafRef = useRef<number | null>(null)
+  const pendingPrependScrollRef = useRef<{ top: number; height: number } | null>(null)
   const ragSettingsId = 'rag-settings-panel'
 
   // Slash Menu State
@@ -169,8 +174,18 @@ export function ChatArea({
     const el = scrollContainerRef.current
     if (!el) return
     const distanceToBottom = el.scrollHeight - el.scrollTop - el.clientHeight
-    autoScrollRef.current = distanceToBottom < 160
+    const nearBottom = distanceToBottom < 160
+    autoScrollRef.current = nearBottom
+    setIsNearBottom((prev) => (prev === nearBottom ? prev : nearBottom))
   }, [])
+
+  const handleScroll = useCallback(() => {
+    if (scrollEventRafRef.current != null) return
+    scrollEventRafRef.current = window.requestAnimationFrame(() => {
+      scrollEventRafRef.current = null
+      updateAutoScroll()
+    })
+  }, [updateAutoScroll])
 
   const scheduleScrollToBottom = useCallback((behavior: ScrollBehavior) => {
     if (!autoScrollRef.current) return
@@ -181,11 +196,42 @@ export function ChatArea({
     })
   }, [])
 
+  const jumpToBottom = useCallback(() => {
+    autoScrollRef.current = true
+    setIsNearBottom(true)
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }, [])
+
+  const handleLoadMore = useCallback(() => {
+    const el = scrollContainerRef.current
+    if (el) {
+      pendingPrependScrollRef.current = { top: el.scrollTop, height: el.scrollHeight }
+    }
+    setVisibleCount((count) => Math.min(messages.length, count + LOAD_MORE_STEP))
+  }, [messages.length])
+
+  // Preserve scroll position when revealing older messages.
+  useLayoutEffect(() => {
+    const pending = pendingPrependScrollRef.current
+    if (!pending) return
+    const el = scrollContainerRef.current
+    if (!el) {
+      pendingPrependScrollRef.current = null
+      return
+    }
+    const delta = el.scrollHeight - pending.height
+    el.scrollTop = pending.top + delta
+    pendingPrependScrollRef.current = null
+    updateAutoScroll()
+  }, [visibleCount, updateAutoScroll])
+
   useEffect(() => {
+    if (messages.length === 0) return
     scheduleScrollToBottom('smooth')
   }, [messages.length, scheduleScrollToBottom])
 
   useEffect(() => {
+    if (!currentResponse) return
     scheduleScrollToBottom('auto')
   }, [currentResponse, scheduleScrollToBottom])
 
@@ -195,6 +241,10 @@ export function ChatArea({
       if (scrollRafRef.current != null) {
         window.cancelAnimationFrame(scrollRafRef.current)
         scrollRafRef.current = null
+      }
+      if (scrollEventRafRef.current != null) {
+        window.cancelAnimationFrame(scrollEventRafRef.current)
+        scrollEventRafRef.current = null
       }
     }
   }, [updateAutoScroll])
@@ -211,6 +261,10 @@ export function ChatArea({
     if (!p) return
     setInputValue((prev) => (prev.trim() ? prev : p))
   }, [initialPrompt])
+
+  useEffect(() => {
+    if (initialOpenRagSettings) setShowRagSettings(true)
+  }, [initialOpenRagSettings])
 
   const selectedPromptTemplate = useMemo(
     () => promptTemplates.find((template) => template.id === promptTemplateId),
@@ -241,7 +295,7 @@ export function ChatArea({
     <div className="flex-1 min-h-0 flex flex-col bg-background relative transition-colors duration-300">
       <div
         ref={scrollContainerRef}
-        onScroll={updateAutoScroll}
+        onScroll={handleScroll}
         className="flex-1 overflow-y-auto overscroll-contain px-4 pb-4 scroll-smooth no-scrollbar"
         role="log"
         aria-live="polite"
@@ -259,7 +313,7 @@ export function ChatArea({
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={() => setVisibleCount((count) => Math.min(messages.length, count + LOAD_MORE_STEP))}
+                onClick={handleLoadMore}
                 className="rounded-full text-xs text-muted-foreground hover:bg-secondary"
               >
                 显示更早消息（{hiddenCount}）
@@ -292,6 +346,23 @@ export function ChatArea({
           <div ref={messagesEndRef} className="h-4" />
         </div>
       </div>
+
+      {!isNearBottom && (messages.length > 0 || Boolean(currentResponse)) && (
+        <div className="absolute right-6 bottom-24 z-20">
+          <Button
+            type="button"
+            size="sm"
+            variant="secondary"
+            onClick={jumpToBottom}
+            className="rounded-full shadow-md border border-border/60"
+            aria-label="回到最新消息"
+            title="回到最新消息"
+          >
+            <ArrowDown className="h-4 w-4 mr-1" />
+            回到最新
+          </Button>
+        </div>
+      )}
 
       <div className="px-4 pb-6 pt-2 z-10">
         <div className="max-w-3xl mx-auto space-y-4">

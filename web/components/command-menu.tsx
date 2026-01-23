@@ -3,22 +3,16 @@
 import * as React from "react"
 import { useRouter } from "next/navigation"
 import {
-  Calculator,
-  Calendar,
-  CreditCard,
-  Settings,
-  Smile,
-  User,
-  FileText,
   Upload,
   Moon,
   Sun,
   Laptop,
   MessageSquare,
-  Search,
   Database,
   Home,
-  Bot
+  FileText,
+  History,
+  Settings,
 } from "lucide-react"
 import { useTheme } from "next-themes"
 
@@ -30,7 +24,6 @@ import {
   CommandItem,
   CommandList,
   CommandSeparator,
-  CommandShortcut,
 } from "@/components/ui/command"
 
 export function CommandMenu() {
@@ -61,41 +54,43 @@ export function CommandMenu() {
       <CommandList>
         <CommandEmpty>未找到相关结果</CommandEmpty>
         
-        <CommandGroup heading="建议">
+        <CommandGroup heading="导航">
           <CommandItem onSelect={() => runCommand(() => router.push('/'))}>
             <Home className="mr-2 h-4 w-4" />
-            <span>回到首页</span>
+            <span>对话</span>
           </CommandItem>
-          <CommandItem onSelect={() => runCommand(() => router.push('/chat'))}>
+          <CommandItem onSelect={() => runCommand(() => router.push('/'))}>
             <MessageSquare className="mr-2 h-4 w-4" />
             <span>新对话</span>
-            <CommandShortcut>⌘C</CommandShortcut>
           </CommandItem>
-          <CommandItem onSelect={() => runCommand(() => router.push('/documents'))}>
+          <CommandItem onSelect={() => runCommand(() => router.push('/knowledge'))}>
             <Database className="mr-2 h-4 w-4" />
-            <span>知识库管理</span>
-            <CommandShortcut>⌘D</CommandShortcut>
+            <span>知识库</span>
+          </CommandItem>
+          <CommandItem onSelect={() => runCommand(() => router.push('/parsing'))}>
+            <FileText className="mr-2 h-4 w-4" />
+            <span>文档解析</span>
+          </CommandItem>
+          <CommandItem onSelect={() => runCommand(() => router.push('/history'))}>
+            <History className="mr-2 h-4 w-4" />
+            <span>问答历史</span>
+          </CommandItem>
+          <CommandItem onSelect={() => runCommand(() => router.push('/settings'))}>
+            <Settings className="mr-2 h-4 w-4" />
+            <span>设置</span>
           </CommandItem>
         </CommandGroup>
         
         <CommandSeparator />
         
         <CommandGroup heading="操作">
-           <CommandItem onSelect={() => runCommand(() => {
-               // 这里可以触发上传弹窗，如果有一个全局状态控制的话
-               // 暂时先跳转到文档页
-               router.push('/documents')
-           })}>
+           <CommandItem onSelect={() => runCommand(() => router.push('/knowledge'))}>
             <Upload className="mr-2 h-4 w-4" />
             <span>上传文档</span>
-            <CommandShortcut>⌘U</CommandShortcut>
           </CommandItem>
-          <CommandItem onSelect={() => runCommand(() => {
-             // 触发 RAG 设置
-          })}>
+          <CommandItem onSelect={() => runCommand(() => router.push('/?rag=1'))}>
             <Settings className="mr-2 h-4 w-4" />
             <span>RAG 设置</span>
-            <CommandShortcut>⌘S</CommandShortcut>
           </CommandItem>
         </CommandGroup>
         

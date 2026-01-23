@@ -35,7 +35,8 @@ import {
   Sparkles,
   Send,
   Zap,
-  Filter
+  Filter,
+  X,
 } from 'lucide-react'
 import { AppFrame } from '@/components/app-frame'
 import { PageScaffold } from '@/components/ui/page-scaffold'
@@ -70,6 +71,7 @@ import { useChunkStrategyPreference } from '@/contexts/chunk-strategy-context'
 // Tab 类型
 type TabType = 'documents' | 'retrieval' | 'settings'
 type ViewMode = 'grid' | 'list'
+type DocStatusFilter = 'all' | 'completed' | 'processing' | 'failed' | 'quarantined'
 
 type FileTypeStyle = {
   icon: typeof FileText
@@ -195,6 +197,8 @@ export default function KnowledgePage() {
   const [selectedDocId, setSelectedDocId] = useState<string | null>(null)
   const { parserBackend, setParserBackend } = useParserBackendPreference()
   const { chunkStrategy, setChunkStrategy } = useChunkStrategyPreference()
+  const [docFilter, setDocFilter] = useState('')
+  const [statusFilter, setStatusFilter] = useState<DocStatusFilter>('all')
 
   // 检索测试状态
   const [searchQuery, setSearchQuery] = useState('')
@@ -250,6 +254,18 @@ export default function KnowledgePage() {
     totalSize,
     showExtraCard,
   } = stats
+
+  const filteredDocuments = useMemo(() => {
+    const term = docFilter.trim().toLowerCase()
+    return documents.filter((doc) => {
+      if (statusFilter === 'completed' && doc.status !== 'completed') return false
+      if (statusFilter === 'failed' && doc.status !== 'failed') return false
+      if (statusFilter === 'quarantined' && doc.status !== 'quarantined') return false
+      if (statusFilter === 'processing' && !(doc.status === 'processing' || doc.status === 'pending')) return false
+      if (term && !String(doc.filename || '').toLowerCase().includes(term)) return false
+      return true
+    })
+  }, [documents, docFilter, statusFilter])
 
   // 处理文件上传
   const handleFileUpload = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -545,9 +561,85 @@ export default function KnowledgePage() {
                 </div>
               ) : (
                 <>
-                  {viewMode === 'grid' ? (
+                  {/* Filters */}
+                  <div className="mb-5 flex flex-col lg:flex-row lg:items-center gap-3 justify-between">
+                    <div className="relative w-full lg:max-w-sm">
+                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                      <input
+                        value={docFilter}
+                        onChange={(e) => setDocFilter(e.target.value)}
+                        placeholder="搜索文档名称…"
+                        className="w-full h-10 pl-9 pr-10 rounded-xl border border-border/60 bg-background/60 backdrop-blur-sm text-sm outline-none transition-colors placeholder:text-muted-foreground/60 focus:bg-background focus:border-primary/40 focus-ring"
+                      />
+                      {docFilter.trim() ? (
+                        <button
+                          type="button"
+                          onClick={() => setDocFilter('')}
+                          aria-label="清除搜索"
+                          className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded-md hover:bg-muted/40 focus-ring"
+                        >
+                          <X className="h-4 w-4 text-muted-foreground" />
+                        </button>
+                      ) : null}
+                    </div>
+
+                    <div className="flex flex-wrap items-center gap-2">
+                      {(
+                        [
+                          { key: 'all', label: '全部', count: totalDocs },
+                          { key: 'completed', label: '已就绪', count: completedDocs },
+                          { key: 'processing', label: '处理中', count: processingDocs },
+                          { key: 'failed', label: '失败', count: failedDocs },
+                          { key: 'quarantined', label: '隔离', count: quarantinedDocs },
+                        ] as const
+                      ).map((item) => (
+                        <button
+                          key={item.key}
+                          type="button"
+                          onClick={() => setStatusFilter(item.key)}
+                          className={cn(
+                            "h-9 px-3 rounded-full border text-xs font-semibold tracking-wide transition-colors focus-ring",
+                            statusFilter === item.key
+                              ? "bg-primary/10 border-primary/40 text-primary"
+                              : "bg-background/60 border-border/60 text-muted-foreground hover:text-foreground hover:bg-muted/30"
+                          )}
+                          aria-pressed={statusFilter === item.key}
+                        >
+                          {item.label}
+                          <span className="ml-1 tabular-nums text-[11px] opacity-80">{item.count}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {filteredDocuments.length === 0 ? (
+                    <div className="py-10">
+                      <EmptyState
+                        icon={Filter}
+                        title="未找到匹配的文档"
+                        description={
+                          <span className="text-muted-foreground">
+                            尝试调整筛选条件，或清空筛选后重新查看全部文档。
+                          </span>
+                        }
+                        className="bg-transparent shadow-none"
+                      >
+                        <Button
+                          type="button"
+                          variant="outline"
+                          className="rounded-xl"
+                          onClick={() => {
+                            setDocFilter('')
+                            setStatusFilter('all')
+                          }}
+                        >
+                          清空筛选
+                        </Button>
+                      </EmptyState>
+                    </div>
+                  ) : viewMode === 'grid' ? (
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-5">
-                      {documents.map((doc) => {
+                      {filteredDocuments.map((doc) => {
                         const badge = getStatusBadge(doc.status)
                         return (
                           <DocumentCard
@@ -574,61 +666,62 @@ export default function KnowledgePage() {
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-border/60">
-                          {documents.map((doc) => {
-                             const badge = getStatusBadge(doc.status)
-                             const fileType = getFileTypeStyle(doc)
-                             const TypeIcon = fileType.icon
-                             return (
-                            <tr key={doc.id} className="hover:bg-muted/20 transition-colors group">
-                              <td className="px-6 py-4 font-medium text-foreground flex items-center gap-3">
-                                <div className={cn("p-2 rounded-lg border", fileType.bg, fileType.border, fileType.color)}>
-                                  <TypeIcon className="w-4 h-4" />
-                                </div>
-                                <div className="min-w-0 flex items-center gap-2">
-                                  <span className="truncate max-w-[200px]" title={doc.filename}>{doc.filename}</span>
-                                  <span
-                                    className={cn(
-                                      "inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide",
-                                      fileType.bg,
-                                      fileType.border,
-                                      fileType.color
-                                    )}
-                                    title={fileType.label}
-                                  >
-                                    {fileType.label}
-                                  </span>
-                                </div>
-                              </td>
-                              <td className="px-6 py-4">
-                                <StatusBadge status={badge.status} label={badge.label} />
-                              </td>
-                              <td className="px-6 py-4 text-muted-foreground">{doc.chunk_count || '-'}</td>
-                              <td className="px-6 py-4 text-muted-foreground font-mono text-xs">{formatFileSize(doc.file_size)}</td>
-                              <td className="px-6 py-4 text-muted-foreground">{formatDate(doc.created_at)}</td>
-                              <td className="px-6 py-4 text-right flex items-center justify-end gap-2">
-                                <DocumentDetailDialog 
-                                  document={doc} 
-                                  trigger={
-                                    <IconButton
-                                      label="预览内容"
-                                      variant="ghost"
-                                      className="h-9 w-9 text-muted-foreground hover:text-primary hover:bg-muted opacity-0 group-hover:opacity-100"
+                          {filteredDocuments.map((doc) => {
+                            const badge = getStatusBadge(doc.status)
+                            const fileType = getFileTypeStyle(doc)
+                            const TypeIcon = fileType.icon
+                            return (
+                              <tr key={doc.id} className="hover:bg-muted/20 transition-colors group">
+                                <td className="px-6 py-4 font-medium text-foreground flex items-center gap-3">
+                                  <div className={cn("p-2 rounded-lg border", fileType.bg, fileType.border, fileType.color)}>
+                                    <TypeIcon className="w-4 h-4" />
+                                  </div>
+                                  <div className="min-w-0 flex items-center gap-2">
+                                    <span className="truncate max-w-[200px]" title={doc.filename}>{doc.filename}</span>
+                                    <span
+                                      className={cn(
+                                        "inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide",
+                                        fileType.bg,
+                                        fileType.border,
+                                        fileType.color
+                                      )}
+                                      title={fileType.label}
                                     >
-                                      <Eye className="w-4 h-4" />
-                                    </IconButton>
-                                  }
-                                />
-                                <IconButton
-                                  label="删除文档"
-                                  variant="ghost"
-                                  className="h-9 w-9 text-muted-foreground hover:text-destructive hover:bg-destructive/10 opacity-0 group-hover:opacity-100"
-                                  onClick={() => deleteDocument(doc.id)}
-                                >
-                                  <Trash2 className="w-4 h-4" />
-                                </IconButton>
-                              </td>
-                            </tr>
-                          )})}
+                                      {fileType.label}
+                                    </span>
+                                  </div>
+                                </td>
+                                <td className="px-6 py-4">
+                                  <StatusBadge status={badge.status} label={badge.label} />
+                                </td>
+                                <td className="px-6 py-4 text-muted-foreground">{doc.chunk_count || '-'}</td>
+                                <td className="px-6 py-4 text-muted-foreground font-mono text-xs">{formatFileSize(doc.file_size)}</td>
+                                <td className="px-6 py-4 text-muted-foreground">{formatDate(doc.created_at)}</td>
+                                <td className="px-6 py-4 text-right flex items-center justify-end gap-2">
+                                  <DocumentDetailDialog 
+                                    document={doc} 
+                                    trigger={
+                                      <IconButton
+                                        label="预览内容"
+                                        variant="ghost"
+                                        className="h-9 w-9 text-muted-foreground hover:text-primary hover:bg-muted opacity-0 group-hover:opacity-100"
+                                      >
+                                        <Eye className="w-4 h-4" />
+                                      </IconButton>
+                                    }
+                                  />
+                                  <IconButton
+                                    label="删除文档"
+                                    variant="ghost"
+                                    className="h-9 w-9 text-muted-foreground hover:text-destructive hover:bg-destructive/10 opacity-0 group-hover:opacity-100"
+                                    onClick={() => deleteDocument(doc.id)}
+                                  >
+                                    <Trash2 className="w-4 h-4" />
+                                  </IconButton>
+                                </td>
+                              </tr>
+                            )
+                          })}
                         </tbody>
                       </table>
                     </Panel>

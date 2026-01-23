@@ -4,6 +4,7 @@
 import axios, { AxiosHeaders } from 'axios'
 import type {
   Document,
+  DocumentChunk,
   DocumentStatus,
   DocumentUserMetadataPatchRequest,
   DocumentBatchUserMetadataPatchRequest,
@@ -256,6 +257,17 @@ export const documentApi = {
     const { data } = await apiClient.get(`/documents/${documentId}`, {
       params,
     })
+    return data
+  },
+
+  /**
+   * 获取文档切片列表（分页）
+   */
+  async listChunks(
+    documentId: string,
+    params?: { skip?: number; limit?: number; q?: string }
+  ): Promise<{ total: number; items: DocumentChunk[] }> {
+    const { data } = await apiClient.get(`/documents/${documentId}/chunks`, { params })
     return data
   },
 

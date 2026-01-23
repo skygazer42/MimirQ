@@ -208,7 +208,7 @@ function HistoryPageContent() {
             </div>
 
             {/* 对话列表 */}
-            <div className="flex-1 overflow-y-auto custom-scrollbar">
+            <div className="flex-1 overflow-y-auto overscroll-contain no-scrollbar">
               {isLoadingList ? (
                 <div className="flex items-center justify-center py-8">
                   <Loader2 className="h-6 w-6 animate-spin motion-reduce:animate-none text-muted-foreground" />
@@ -288,7 +288,7 @@ function HistoryPageContent() {
                 </div>
 
                 {/* 消息列表 */}
-                <div className="flex-1 overflow-y-auto custom-scrollbar px-6 py-8">
+                <div className="flex-1 overflow-y-auto overscroll-contain no-scrollbar px-6 py-8">
                   {isLoadingMessages ? (
                     <div className="flex items-center justify-center h-full">
                       <Loader2 className="h-8 w-8 animate-spin motion-reduce:animate-none text-muted-foreground" />

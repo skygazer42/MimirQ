@@ -2,6 +2,7 @@
 
 import * as React from "react"
 import { X, Maximize2, Minimize2, FileText, Loader2, Download } from "lucide-react"
+import { useVirtualizer } from "@tanstack/react-virtual"
 import { cn } from "@/lib/utils"
 import { useDocumentView } from "@/store/document-view"
 import { Button } from "@/components/ui/button"
@@ -52,37 +53,107 @@ export function DocumentViewerPanel() {
   const [doc, setDoc] = React.useState<Document | null>(null)
   const [chunks, setChunks] = React.useState<DocumentChunk[]>([])
   const [isLoading, setIsLoading] = React.useState(false)
+  const [chunksLoaded, setChunksLoaded] = React.useState(false)
+  const [chunksLoading, setChunksLoading] = React.useState(false)
   const [isExpanded, setIsExpanded] = React.useState(false)
   const chunksListRef = React.useRef<HTMLDivElement>(null)
+  const chunkSearchRef = React.useRef<HTMLInputElement>(null)
   const [chunkQuery, setChunkQuery] = React.useState("")
   const [matchCursor, setMatchCursor] = React.useState(0)
 
-  // Load document metadata and chunks
+  const rowVirtualizer = useVirtualizer({
+    count: chunks.length,
+    getScrollElement: () => chunksListRef.current,
+    estimateSize: () => 220,
+    overscan: 8,
+  })
+
+  // Load document metadata (lazy-load chunks separately).
   React.useEffect(() => {
     if (!documentId) return
+    setDoc(null)
+    setChunks([])
+    setChunksLoaded(false)
     setIsLoading(true)
-    documentApi.get(documentId, { includeChunks: true })
+    documentApi.get(documentId, { includeChunks: false })
       .then(data => {
         setDoc(data)
-        setChunks(data.chunks || [])
       })
       .catch(console.error)
       .finally(() => setIsLoading(false))
   }, [documentId])
 
+  // Load chunks on demand (when user opens the "chunks" tab or a citation requests a highlight).
+  React.useEffect(() => {
+    if (!documentId) return
+    if (chunksLoaded || chunksLoading) return
+    if (!(activeTab === "chunks" || Boolean(highlightChunkId))) return
+
+    setChunksLoading(true)
+    let cancelled = false
+    ;(async () => {
+      const pageSize = 2000
+      const all: DocumentChunk[] = []
+      let total = 0
+
+      for (let skip = 0; skip < 50_000; skip += pageSize) {
+        const res = await documentApi.listChunks(documentId, { skip, limit: pageSize })
+        if (cancelled) return
+        total = res.total || 0
+        all.push(...(res.items || []))
+        setChunks([...all])
+        if (!res.items?.length || (total > 0 && all.length >= total)) break
+      }
+
+      if (!cancelled) setChunksLoaded(true)
+    })()
+      .catch(console.error)
+      .finally(() => {
+        if (!cancelled) setChunksLoading(false)
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [documentId, activeTab, highlightChunkId, chunksLoaded, chunksLoading])
+
+  const highlightIndex = React.useMemo(() => {
+    if (!highlightChunkId) return -1
+    return chunks.findIndex((c) => c.id === highlightChunkId)
+  }, [chunks, highlightChunkId])
+
+  // Keyboard UX: Esc closes (or clears search first); Cmd/Ctrl+F focuses chunk search.
+  React.useEffect(() => {
+    if (!isOpen) return
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        if (activeTab === "chunks" && chunkQuery.trim()) {
+          e.preventDefault()
+          setChunkQuery("")
+          return
+        }
+        e.preventDefault()
+        closeDocument()
+        return
+      }
+      const isFind = (e.key === "f" || e.key === "F") && (e.metaKey || e.ctrlKey)
+      if (isFind && activeTab === "chunks") {
+        e.preventDefault()
+        chunkSearchRef.current?.focus()
+        chunkSearchRef.current?.select()
+      }
+    }
+    window.addEventListener("keydown", onKeyDown)
+    return () => window.removeEventListener("keydown", onKeyDown)
+  }, [isOpen, activeTab, chunkQuery, closeDocument])
+
   // Scroll to highlighted chunk
   React.useEffect(() => {
     if (!highlightChunkId || activeTab !== 'chunks') return
-    // Simple timeout to allow rendering
-    setTimeout(() => {
-        const el = document.getElementById(`chunk-${highlightChunkId}`)
-        if (el) {
-            el.scrollIntoView({ behavior: 'smooth', block: 'center' })
-            el.classList.add('bg-primary/10')
-            setTimeout(() => el.classList.remove('bg-primary/10'), 2000)
-        }
-    }, 100)
-  }, [highlightChunkId, activeTab, chunks])
+    if (highlightIndex < 0) return
+    // Virtual list: scroll by index (ensures the row is rendered).
+    rowVirtualizer.scrollToIndex(highlightIndex, { align: "center" })
+  }, [highlightChunkId, activeTab, highlightIndex, rowVirtualizer])
 
   const matchChunkIds = React.useMemo(() => {
     const q = chunkQuery.trim().toLowerCase()
@@ -138,7 +209,7 @@ export function DocumentViewerPanel() {
     <div 
         className={cn(
             "fixed inset-y-0 right-0 z-50 flex flex-col bg-background border-l border-border shadow-2xl transition-all duration-300 ease-in-out",
-            isExpanded ? "w-full md:w-[80vw]" : "w-full md:w-[40vw] md:min-w-[500px]"
+           isExpanded ? "w-full md:w-[80vw]" : "w-full md:w-[40vw] md:min-w-[500px]"
         )}
     >
       {/* Header */}
@@ -152,7 +223,7 @@ export function DocumentViewerPanel() {
                     {doc?.filename || '加载中...'}
                 </h3>
                 <span className="text-xs text-muted-foreground">
-                    {chunks.length} 个切片
+                    {(doc?.chunk_count ?? chunks.length)} 个切片
                 </span>
             </div>
         </div>
@@ -243,12 +314,14 @@ export function DocumentViewerPanel() {
                  <div className="p-4 border-b border-border bg-background/60 backdrop-blur-sm">
                    <div className="flex flex-col sm:flex-row sm:items-center gap-2">
                      <input
+                       ref={chunkSearchRef}
                        value={chunkQuery}
                        onChange={(e) => setChunkQuery(e.target.value)}
                        onKeyDown={(e) => {
                          if (e.key === "Enter") jumpToMatch(matchCursor)
                        }}
-                       placeholder="搜索切片内容…"
+                       placeholder={chunksLoading && !chunksLoaded ? "切片加载中…" : "搜索切片内容…"}
+                       disabled={chunksLoading && !chunksLoaded}
                        className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                      />
                      <div className="flex items-center gap-2">
@@ -282,33 +355,68 @@ export function DocumentViewerPanel() {
                      </div>
                    </div>
                  </div>
-                 <div className="flex-1 overflow-y-auto overscroll-contain p-4 space-y-4 scroll-smooth no-scrollbar" ref={chunksListRef}>
-                    {chunks.map((chunk) => (
-                        <div 
-                            key={chunk.id} 
-                            id={`chunk-${chunk.id}`}
-                            className={cn(
-                                "p-4 rounded-xl border transition-all duration-300",
-                                highlightChunkId === chunk.id 
-                                    ? "bg-primary/5 border-primary shadow-[0_0_0_1px_rgba(var(--primary),0.2)] ring-1 ring-primary/20" 
+                 <div className="flex-1 overflow-y-auto overscroll-contain p-4 scroll-smooth no-scrollbar" ref={chunksListRef}>
+                    {chunksLoading && chunks.length === 0 ? (
+                      <div className="flex items-center justify-center py-10 text-muted-foreground">
+                        <Loader2 className="h-6 w-6 animate-spin motion-reduce:animate-none" />
+                      </div>
+                    ) : null}
+
+                    {chunks.length > 0 ? (
+                      <div
+                        style={{
+                          height: `${rowVirtualizer.getTotalSize()}px`,
+                          width: "100%",
+                          position: "relative",
+                        }}
+                      >
+                        {rowVirtualizer.getVirtualItems().map((virtualRow) => {
+                          const chunk = chunks[virtualRow.index]
+                          if (!chunk) return null
+
+                          return (
+                            <div
+                              key={virtualRow.key}
+                              data-index={virtualRow.index}
+                              ref={rowVirtualizer.measureElement}
+                              style={{
+                                position: "absolute",
+                                top: 0,
+                                left: 0,
+                                width: "100%",
+                                transform: `translateY(${virtualRow.start}px)`,
+                              }}
+                              className="pb-4"
+                            >
+                              <div
+                                id={`chunk-${chunk.id}`}
+                                className={cn(
+                                  "p-4 rounded-xl border transition-all duration-300",
+                                  highlightChunkId === chunk.id
+                                    ? "bg-primary/5 border-primary shadow-[0_0_0_1px_rgba(var(--primary),0.2)] ring-1 ring-primary/20"
                                     : "bg-background border-border hover:border-primary/30 hover:shadow-sm"
-                            )}
-                        >
-                            <div className="flex items-center justify-between mb-2">
-                                <span className="text-xs font-mono font-medium text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
-                                    #{chunk.chunk_index}
-                                </span>
-                                {chunk.page_number && (
-                                    <span className="text-xs text-muted-foreground">P.{chunk.page_number}</span>
                                 )}
+                              >
+                                <div className="flex items-center justify-between mb-2">
+                                  <span className="text-xs font-mono font-medium text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
+                                    #{chunk.chunk_index}
+                                  </span>
+                                  {chunk.page_number && (
+                                    <span className="text-xs text-muted-foreground">P.{chunk.page_number}</span>
+                                  )}
+                                </div>
+                                <p className="text-sm leading-relaxed text-foreground/90 font-mono whitespace-pre-wrap">
+                                  {highlightText(chunk.content, chunkQuery)}
+                                </p>
+                              </div>
                             </div>
-                            <p className="text-sm leading-relaxed text-foreground/90 font-mono whitespace-pre-wrap">
-                                {highlightText(chunk.content, chunkQuery)}
-                            </p>
-                        </div>
-                    ))}
-                    {chunks.length === 0 && !isLoading && (
-                        <div className="text-center py-10 text-muted-foreground">暂无切片数据</div>
+                          )
+                        })}
+                      </div>
+                    ) : null}
+
+                    {chunksLoaded && !chunksLoading && chunks.length === 0 && (
+                      <div className="text-center py-10 text-muted-foreground">暂无切片数据</div>
                     )}
                  </div>
             </TabsContent>

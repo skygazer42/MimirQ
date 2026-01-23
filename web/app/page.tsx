@@ -9,12 +9,14 @@ export default function Home({
   searchParams?: {
     conversation?: string
     prompt?: string
+    rag?: string
   }
 }) {
   return (
     <ChatPageClient
       initialConversationId={searchParams?.conversation}
       initialPrompt={searchParams?.prompt}
+      initialOpenRagSettings={searchParams?.rag === '1' || searchParams?.rag === 'true'}
     />
   )
 }

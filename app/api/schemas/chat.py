@@ -76,6 +76,8 @@ class ConversationDetail(BaseModel):
 class ConversationList(BaseModel):
     """Conversation list."""
     total: int
+    returned: int = 0
+    has_more: bool = False
     items: List[ConversationSchema]
 
 
