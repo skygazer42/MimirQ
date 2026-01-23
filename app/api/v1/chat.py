@@ -247,6 +247,10 @@ async def stream_chat(
             account_id=account_id,
         )
 
+        # Send an immediate SSE frame so clients/proxies don't see an idle connection.
+        yield ": keepalive\n\n"
+        yield f"data: {json.dumps({'request_id': str(request_id), 'type': 'event', 'data': {'message': '开始处理…'}}, ensure_ascii=False)}\n\n"
+
         # LangGraph path: stream stage events (custom) + state snapshots (values).
         if request.rag_config.use_graph:
             try:
@@ -551,39 +555,54 @@ async def list_conversations(
     query = db.query(Conversation).filter(Conversation.tenant_id == tenant_id)
     total = query.count()
 
-    conversations_raw = query.order_by(
-        Conversation.updated_at.desc()
-    ).offset(skip).limit(limit).all()
+    # Fill the page with accessible conversations (avoid returning <limit when some are filtered).
+    ordered = query.order_by(Conversation.updated_at.desc())
+    batch_size = max(50, int(limit))
+    raw_offset = int(skip)
+    conversations: list[Conversation] = []
 
-    doc_ids_by_conversation_id: dict[UUID, list[UUID]] = {}
-    all_doc_ids: set[UUID] = set()
-    for conv in conversations_raw:
-        doc_ids = list(getattr(conv, "document_ids", None) or [])
-        doc_ids_by_conversation_id[conv.id] = doc_ids
-        all_doc_ids.update(doc_ids)
+    while len(conversations) < limit:
+        batch = ordered.offset(raw_offset).limit(batch_size).all()
+        if not batch:
+            break
+        raw_offset += len(batch)
 
-    allowed_doc_ids: set[UUID] = set()
-    missing_doc_ids: set[UUID] = set()
-    if all_doc_ids:
-        allowed_doc_ids, missing_doc_ids = get_allowed_document_id_sets(
-            db,
-            tenant_id,
-            account_id,
-            list(all_doc_ids),
-            check_member=False,
-        )
+        doc_ids_by_conversation_id: dict[UUID, list[UUID]] = {}
+        all_doc_ids: set[UUID] = set()
+        for conv in batch:
+            doc_ids = list(getattr(conv, "document_ids", None) or [])
+            doc_ids_by_conversation_id[conv.id] = doc_ids
+            all_doc_ids.update(doc_ids)
 
-    conversations = []
-    for conv in conversations_raw:
-        doc_ids = doc_ids_by_conversation_id.get(conv.id) or []
-        if not doc_ids:
-            conversations.append(conv)
-            continue
-        doc_id_set = set(doc_ids)
-        if doc_id_set & missing_doc_ids:
-            continue
-        if doc_id_set & allowed_doc_ids:
-            conversations.append(conv)
+        allowed_doc_ids: set[UUID] = set()
+        missing_doc_ids: set[UUID] = set()
+        if all_doc_ids:
+            allowed_doc_ids, missing_doc_ids = get_allowed_document_id_sets(
+                db,
+                tenant_id,
+                account_id,
+                list(all_doc_ids),
+                check_member=False,
+            )
+
+        for conv in batch:
+            if len(conversations) >= limit:
+                break
+            doc_ids = doc_ids_by_conversation_id.get(conv.id) or []
+            if not doc_ids:
+                conversations.append(conv)
+                continue
+            doc_id_set = set(doc_ids)
+            if doc_id_set & missing_doc_ids:
+                continue
+            if doc_id_set & allowed_doc_ids:
+                conversations.append(conv)
+
+        if raw_offset >= total:
+            break
+        # If we got a short batch, no more rows remain.
+        if len(batch) < batch_size:
+            break
 
     result_items = []
     last_message_by_conversation_id: dict[UUID, Message] = {}
@@ -632,7 +651,9 @@ async def list_conversations(
 
     return {
         "total": total,
-        "items": result_items
+        "returned": len(result_items),
+        "has_more": raw_offset < total,
+        "items": result_items,
     }
 
 

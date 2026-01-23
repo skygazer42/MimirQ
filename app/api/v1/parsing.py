@@ -25,7 +25,7 @@ from pathlib import Path
 from typing import Optional
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile, Query
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
@@ -173,8 +173,8 @@ def _get_workspace_document(db: Session, *, tenant_id: UUID, account_id: str, do
 
 @router.get("/documents", response_model=DocumentList)
 async def list_parsing_documents(
-    skip: int = 0,
-    limit: int = 200,
+    skip: int = Query(default=0, ge=0),
+    limit: int = Query(default=200, ge=1, le=200),
     status: Optional[str] = None,
     tenant_id: UUID = Depends(get_tenant_id),
     account_id: str = Depends(get_current_account_id),

@@ -251,8 +251,8 @@ export function Navbar({
         </div>
 
         {/* 导航菜单 */}
-        {/* Keep the main sidebar fixed (no independent scrolling). */}
-        <div className="flex-1 min-h-0 px-3 py-2 overflow-hidden">
+        {/* Allow internal scroll so items are never clipped on short viewports. */}
+        <div className="flex-1 min-h-0 px-3 py-2 overflow-y-auto overscroll-contain no-scrollbar">
           <div className="space-y-1">
             <p className="px-3 text-xs font-semibold text-muted-foreground mb-2 uppercase tracking-wider">菜单</p>
             {menuItems.map((item) => {

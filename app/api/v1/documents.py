@@ -9,7 +9,7 @@ import json
 import re
 import shutil
 import mimetypes
-from fastapi import APIRouter, Depends, UploadFile, File, HTTPException, BackgroundTasks, Form, Request
+from fastapi import APIRouter, Depends, UploadFile, File, HTTPException, BackgroundTasks, Form, Request, Query
 from fastapi import Response
 from sqlalchemy.orm import Session, selectinload
 from typing import List, Optional
@@ -22,6 +22,7 @@ from app.models.document import Document as DBDocument, DocumentChunk
 from app.api.schemas.document import (
     DocumentList,
     DocumentDetail,
+    DocumentChunkList,
     DocumentStatus,
     DocumentParsePreview,
     ParsedSegment,
@@ -1251,10 +1252,11 @@ async def upload_documents_batch(
 
 @router.get("/", response_model=DocumentList)
 async def list_documents(
-    skip: int = 0,
-    limit: int = 20,
+    skip: int = Query(default=0, ge=0),
+    limit: int = Query(default=20, ge=1, le=200),
     status: Optional[str] = None,
     dataset_id: Optional[UUID] = None,
+    q: Optional[str] = Query(default=None, max_length=200),
     tenant_id: UUID = Depends(get_tenant_id),
     account_id: str = Depends(get_current_account_id),
     db: Session = Depends(get_db)
@@ -1318,6 +1320,12 @@ async def list_documents(
     if status and status != 'all':
         query = query.filter(DBDocument.status == status)
 
+    # Quick filename filter (case-insensitive).
+    if q:
+        term = q.strip()
+        if term:
+            query = query.filter(DBDocument.filename.ilike(f"%{term}%"))
+
     # Total count.
     total = query.count()
 
@@ -1365,6 +1373,50 @@ async def get_document(
         setattr(document, "chunks_loaded", document.chunks)
 
     return document
+
+
+@router.get("/{document_id}/chunks", response_model=DocumentChunkList)
+async def list_document_chunks(
+    document_id: uuid.UUID,
+    skip: int = Query(default=0, ge=0),
+    limit: int = Query(default=500, ge=1, le=2000),
+    q: Optional[str] = Query(default=None, max_length=200),
+    tenant_id: UUID = Depends(get_tenant_id),
+    account_id: str = Depends(get_current_account_id),
+    db: Session = Depends(get_db),
+):
+    """
+    List document chunks (paged).
+
+    This is preferred over `include_chunks=true` for large documents to avoid huge payloads.
+    """
+    DatasetService.ensure_member(db, tenant_id, account_id)
+
+    document = (
+        db.query(DBDocument)
+        .filter(DBDocument.id == document_id, DBDocument.tenant_id == tenant_id)
+        .first()
+    )
+    if not document:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    if document.dataset_id:
+        ds = DatasetService.get_dataset(db, tenant_id, document.dataset_id)
+        DatasetService.assert_dataset_readable(db, ds, account_id)
+
+    query = db.query(DocumentChunk).filter(
+        DocumentChunk.tenant_id == tenant_id,
+        DocumentChunk.document_id == document_id,
+    )
+
+    if q:
+        term = q.strip()
+        if term:
+            query = query.filter(DocumentChunk.content.ilike(f"%{term}%"))
+
+    total = query.count()
+    items = query.order_by(DocumentChunk.chunk_index.asc()).offset(skip).limit(limit).all()
+    return {"total": total, "items": items}
 
 
 @router.patch("/{document_id}/pipeline", response_model=DocumentDetail)

@@ -232,6 +232,12 @@ class DocumentList(BaseModel):
     items: List[DocumentDetail]
 
 
+class DocumentChunkList(BaseModel):
+    """Paged document chunks."""
+    total: int
+    items: List[DocumentChunkSchema]
+
+
 class DocumentStatus(OrmModel):
     """Document processing status."""
     id: UUID
