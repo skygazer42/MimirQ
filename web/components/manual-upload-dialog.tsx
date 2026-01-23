@@ -288,9 +288,9 @@ export function ManualUploadDialog({ onUploaded }: ManualUploadDialogProps) {
           )}
         </div>
 
-        <div className="min-h-0 flex overflow-hidden">
+          <div className="min-h-0 flex overflow-hidden">
           {/* 左侧：配置区 */}
-          <div className="w-[400px] flex-shrink-0 bg-card border-r border-border p-6 flex flex-col gap-6 overflow-y-auto custom-scrollbar">
+          <div className="w-[400px] flex-shrink-0 bg-card border-r border-border p-6 flex flex-col gap-6 overflow-y-auto overscroll-contain no-scrollbar">
             
             {/* 1. 文件上传 */}
             <div className="space-y-3">
@@ -497,7 +497,7 @@ export function ManualUploadDialog({ onUploaded }: ManualUploadDialogProps) {
                )}
             </div>
 
-            <div className="flex-1 overflow-y-auto pr-2 space-y-3 custom-scrollbar">
+            <div className="flex-1 overflow-y-auto overscroll-contain no-scrollbar pr-2 space-y-3">
               {!preview ? (
                 <div className="h-full flex flex-col items-center justify-center text-muted-foreground">
                   <Scissors className="h-12 w-12 mb-3 opacity-20" />

@@ -338,7 +338,7 @@ export const ChatMessageItem = memo(function ChatMessageItem({
                   </DialogTitle>
                 </DialogHeader>
 
-                <div className="p-8 space-y-6 max-h-[70vh] overflow-y-auto custom-scrollbar relative z-10">
+                <div className="p-8 space-y-6 max-h-[70vh] overflow-y-auto overscroll-contain no-scrollbar relative z-10">
 
                   {/* Grid Layout */}
                   <div className="grid grid-cols-1 md:grid-cols-12 gap-6">

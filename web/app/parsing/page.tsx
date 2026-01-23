@@ -1535,7 +1535,7 @@ export default function ParsingPage() {
 
               <div className={cn("flex-1 flex flex-col min-h-0 w-full overflow-hidden", isSidebarCollapsed && "invisible")}>
                 {/* Folder Navigation */}
-                <div className="flex-none h-1/3 min-h-[200px] overflow-y-auto p-2 border-b border-border/60 custom-scrollbar bg-card dark:bg-background/40">
+                <div className="flex-none h-1/3 min-h-[200px] overflow-y-auto overscroll-contain no-scrollbar p-2 border-b border-border/60 bg-card dark:bg-background/40">
                   <div className="h-full rounded-2xl border border-border/60 bg-card dark:bg-background/40 p-2">
                     <DocumentFolderTree
                       onRequestUpload={requestUploadToFolder}
@@ -1655,7 +1655,7 @@ export default function ParsingPage() {
                 </div>
 
                 {/* File List */}
-                <div className="flex-1 overflow-y-auto p-2 custom-scrollbar bg-card dark:bg-background/40">
+                <div className="flex-1 overflow-y-auto overscroll-contain no-scrollbar p-2 bg-card dark:bg-background/40">
                   <div className="min-h-full rounded-2xl border border-border/60 bg-card dark:bg-background/40 p-2">
                     {!isLibraryLoaded ? (
                       <div className="h-full flex flex-col items-center justify-center text-muted-foreground">
@@ -1995,7 +1995,7 @@ export default function ParsingPage() {
 
                       <div className="flex-1 overflow-hidden min-h-0">
                         {activeMarkdown ? (
-                          <div className="h-full overflow-y-auto px-6 py-6">
+                          <div className="h-full overflow-y-auto overscroll-contain no-scrollbar px-6 py-6">
                             <MarkdownRenderer markdown={activeMarkdown} />
                           </div>
                         ) : (
@@ -2249,7 +2249,7 @@ export default function ParsingPage() {
                       </div>
 
                       {/* 内容区 */}
-                      <div className="flex-1 overflow-y-auto">
+                      <div className="flex-1 overflow-y-auto overscroll-contain no-scrollbar">
                         {activeFile.status === 'pending' && (
                           <div className="flex items-center justify-center h-full">
                             <div className="text-center">
@@ -2319,7 +2319,7 @@ export default function ParsingPage() {
                                 ) : null}
                                 <div className={isPdf ? 'w-full lg:w-1/2' : 'w-full'}>
                                   {rightPanelMode === 'blocks' && activeBlocksWithPositions.length > 0 ? (
-                                    <div className="h-full overflow-y-auto p-6 space-y-4">
+                                    <div className="h-full overflow-y-auto overscroll-contain no-scrollbar p-6 space-y-4">
                                       {activeBlocksWithPositions
                                         .filter((block) => (block.text || '').trim().length > 0)
                                         .map((block, idx) => {
@@ -2351,7 +2351,7 @@ export default function ParsingPage() {
                                         })}
                                     </div>
                                   ) : (
-                                    <div className="h-full overflow-y-auto p-6">
+                                    <div className="h-full overflow-y-auto overscroll-contain no-scrollbar p-6">
                                       {previewMode === 'rendered' ? (
                                         <div className="flex gap-8">
                                           <div className="min-w-0 flex-1 prose prose-slate dark:prose-invert max-w-none prose-headings:text-foreground dark:prose-headings:text-foreground prose-p:text-foreground/80 dark:prose-p:text-muted-foreground prose-a:text-sky-700 dark:prose-a:text-sky-300 prose-code:text-sky-700 dark:prose-code:text-sky-300 prose-code:bg-sky-500/10 dark:prose-code:bg-muted prose-code:px-1 prose-code:py-0.5 prose-code:rounded prose-pre:bg-slate-900 prose-table:border-collapse prose-th:bg-sky-500/10 dark:prose-th:bg-sky-500/20 prose-th:border prose-th:border-sky-200 dark:prose-th:border-sky-500/30 prose-th:p-2 prose-td:border prose-td:border-sky-200 dark:prose-td:border-sky-500/30 prose-td:p-2">
@@ -2359,7 +2359,7 @@ export default function ParsingPage() {
                                           </div>
                                           {tocEnabled && (
                                             <aside className="hidden xl:block w-64 shrink-0">
-                                              <div className="sticky top-6 max-h-[calc(100vh-220px)] overflow-y-auto rounded-xl border border-border/70 dark:border-border/60 bg-muted/40 dark:bg-background/40 p-3">
+                                              <div className="sticky top-6 max-h-[calc(100vh-220px)] overflow-y-auto overscroll-contain no-scrollbar rounded-xl border border-border/70 dark:border-border/60 bg-muted/40 dark:bg-background/40 p-3">
                                                 <MarkdownToc markdown={activeMarkdown} />
                                               </div>
                                             </aside>

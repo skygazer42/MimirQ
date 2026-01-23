@@ -271,7 +271,7 @@ export function TestCaseManager({
       )}
 
       {/* 用例列表 */}
-      <div className="flex-1 overflow-y-auto">
+      <div className="flex-1 overflow-y-auto overscroll-contain no-scrollbar">
 	        {isLoading ? (
 	          <div className="flex items-center justify-center py-8">
 	            <Loader2 className="h-6 w-6 animate-spin motion-reduce:animate-none text-muted-foreground" />

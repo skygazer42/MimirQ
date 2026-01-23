@@ -142,7 +142,7 @@ export function ChunkStrategyDropdown({ value, onChange, className }: ChunkStrat
               )}
             />
           </div>
-          <div className="py-1 max-h-[340px] overflow-auto">
+          <div className="py-1 max-h-[340px] overflow-auto overscroll-contain no-scrollbar">
             {filteredOptions.length === 0 && (
               <div className="px-3 py-3 text-xs text-muted-foreground">没有匹配的切块方式</div>
             )}

@@ -31,7 +31,7 @@ export default function Loading() {
         </aside>
 
         {/* Main content skeleton */}
-        <main id="main-content" tabIndex={-1} className="flex-1 min-h-0 overflow-y-auto p-6">
+        <main id="main-content" tabIndex={-1} className="flex-1 min-h-0 overflow-y-auto overscroll-contain no-scrollbar p-6">
           <div className="max-w-5xl space-y-6">
             <div className="space-y-3">
               <Skeleton className="h-7 w-56" />

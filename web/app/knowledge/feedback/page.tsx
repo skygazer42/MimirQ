@@ -325,7 +325,7 @@ export default function FeedbackTriagePage() {
 	            </DialogHeader>
 
             {detail && (
-              <div className="p-8 space-y-8 max-h-[70vh] overflow-y-auto custom-scrollbar relative z-10">
+              <div className="p-8 space-y-8 max-h-[70vh] overflow-y-auto overscroll-contain no-scrollbar relative z-10">
 
                 {/* Meta Card */}
 	                <div className="rounded-2xl border border-border bg-card p-6 flex flex-col md:flex-row md:items-center justify-between gap-4 shadow-sm">
@@ -375,7 +375,7 @@ export default function FeedbackTriagePage() {
                         <Loader2 className="w-3.5 h-3.5" />
                         AI Response
                       </div>
-                      <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/50 p-5 text-sm leading-relaxed text-slate-600 dark:text-slate-300 font-mono text-[13px] whitespace-pre-wrap max-h-80 overflow-y-auto custom-scrollbar shadow-inner">
+                      <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/50 p-5 text-sm leading-relaxed text-slate-600 dark:text-slate-300 font-mono text-[13px] whitespace-pre-wrap max-h-80 overflow-y-auto overscroll-contain no-scrollbar shadow-inner">
                         {detail.message_content}
                       </div>
                     </div>

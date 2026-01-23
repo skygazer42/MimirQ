@@ -270,7 +270,7 @@ export function RegressionTestTab({ embedded = false }: { embedded?: boolean }) 
                 {runs.length} 次
               </div>
             </div>
-	            <div className="max-h-40 overflow-y-auto">
+	            <div className="max-h-40 overflow-y-auto overscroll-contain no-scrollbar">
 		              {isLoadingRuns ? (
 		                <div className="flex items-center justify-center py-8">
 		                  <Loader2 className="w-6 h-6 animate-spin motion-reduce:animate-none text-muted-foreground" />
@@ -316,7 +316,7 @@ export function RegressionTestTab({ embedded = false }: { embedded?: boolean }) 
 	          </div>
 
 	          {/* 运行详情 */}
-	          <div className="flex-1 bg-card border border-border rounded-2xl p-4 overflow-y-auto">
+	          <div className="flex-1 bg-card border border-border rounded-2xl p-4 overflow-y-auto overscroll-contain no-scrollbar">
 	            <div className="flex items-center justify-between mb-4">
 	              <div className="text-sm font-semibold text-foreground">
 	                运行详情

@@ -502,7 +502,7 @@ export default function PromptsPage() {
 
       {/* Preview Dialog */}
       <Dialog open={previewDialogOpen} onOpenChange={setPreviewDialogOpen}>
-        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto overscroll-contain no-scrollbar">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               {previewTemplate?.name}
@@ -602,7 +602,7 @@ export default function PromptsPage() {
 
       {/* Create/Edit Dialog */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto overscroll-contain no-scrollbar">
           <DialogHeader>
             <DialogTitle>
               {editingTemplate ? '编辑模板' : '创建新模板'}

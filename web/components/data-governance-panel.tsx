@@ -170,6 +170,16 @@ export function DataGovernancePanel() {
   const [isPanelCollapsed, setIsPanelCollapsed] = useState(false)
   const [isPanelResizing, setIsPanelResizing] = useState(false)
   const panelRef = useRef<HTMLDivElement>(null)
+  const contentScrollRef = useRef<HTMLDivElement>(null)
+
+  // When switching the selected file, reset the main preview pane so it doesn't look "half scrolled".
+  useEffect(() => {
+    if (!selectedFileId) return
+    const raf = window.requestAnimationFrame(() => {
+      contentScrollRef.current?.scrollTo({ top: 0, left: 0, behavior: 'auto' })
+    })
+    return () => window.cancelAnimationFrame(raf)
+  }, [selectedFileId])
 
   const startResizing = useCallback((e: React.MouseEvent) => {
     e.preventDefault()
@@ -770,7 +780,7 @@ export function DataGovernancePanel() {
 
               <div className="max-w-md w-full mx-auto mb-10 text-left relative z-20">
                 <div className="text-xs font-medium text-sky-500 uppercase tracking-widest mb-3 pl-2">文档结构</div>
-                <div className="bg-sky-500/10 dark:bg-sky-500/20 border border-sky-500/30 rounded-2xl p-5 max-h-48 overflow-y-auto custom-scrollbar shadow-sm">
+                <div className="bg-sky-500/10 dark:bg-sky-500/20 border border-sky-500/30 rounded-2xl p-5 max-h-48 overflow-y-auto overscroll-contain no-scrollbar shadow-sm">
                   <DocumentFolderTree />
                 </div>
               </div>
@@ -936,7 +946,7 @@ export function DataGovernancePanel() {
 
             {/* 文件目录树 - 可折叠区域 */}
             <div className="px-3 pt-2 pb-1 border-b border-border bg-muted/50">
-              <div className="max-h-48 overflow-y-auto custom-scrollbar p-1">
+              <div className="max-h-48 overflow-y-auto overscroll-contain no-scrollbar p-1">
                 <DocumentFolderTree />
               </div>
             </div>
@@ -947,7 +957,7 @@ export function DataGovernancePanel() {
               </h3>
             </div>
 
-            <div className="flex-1 overflow-y-auto px-3 pb-3 space-y-2 custom-scrollbar">
+            <div className="flex-1 overflow-y-auto overscroll-contain no-scrollbar px-3 pb-3 space-y-2">
               {visibleFiles.length === 0 ? (
                 <div className="text-xs text-muted-foreground text-center py-8">该目录暂无文件</div>
               ) : (
@@ -1157,7 +1167,7 @@ export function DataGovernancePanel() {
                 )}
 
                 {/* 内容区域 */}
-                <div className="flex-1 overflow-y-auto p-4 md:p-8 custom-scrollbar">
+                <div ref={contentScrollRef} className="flex-1 overflow-y-auto overscroll-contain no-scrollbar p-4 md:p-8">
                   <div className={cn(
                     "mx-auto transition-all duration-300 ease-out",
                     viewMode === 'edit' ? 'max-w-full' : 'max-w-4xl'
@@ -1183,7 +1193,7 @@ export function DataGovernancePanel() {
                             <div className="px-4 py-2 bg-muted border-b border-border text-xs font-semibold text-muted-foreground">
                               实时预览
                             </div>
-                            <div className="flex-1 overflow-y-auto p-6">
+                            <div className="flex-1 overflow-y-auto overscroll-contain no-scrollbar p-6">
                               <MarkdownRenderer markdown={displayContent || ''} />
                             </div>
                           </div>
@@ -1339,7 +1349,7 @@ export function DataGovernancePanel() {
                 </div>
 
                 {/* 工具内容区 */}
-                <div className="flex-1 overflow-y-auto bg-muted/30">
+                <div className="flex-1 overflow-y-auto overscroll-contain no-scrollbar bg-muted/30">
                   {activeTab === 'quality' && (
                     <QualityChecker
                       content={governanceState.originalContent}

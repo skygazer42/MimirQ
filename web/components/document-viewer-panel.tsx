@@ -93,6 +93,12 @@ export function DocumentViewerPanel() {
     setServerMatchTruncated(false)
     setServerMatchLoading(false)
     matchRequestSeqRef.current += 1
+
+    // Reset scroll position when switching documents so the panel doesn't open "half scrolled".
+    const raf = window.requestAnimationFrame(() => {
+      chunksListRef.current?.scrollTo({ top: 0, left: 0, behavior: "auto" })
+    })
+
     setIsLoading(true)
     documentApi.get(documentId, { includeChunks: false })
       .then(data => {
@@ -100,6 +106,8 @@ export function DocumentViewerPanel() {
       })
       .catch(console.error)
       .finally(() => setIsLoading(false))
+
+    return () => window.cancelAnimationFrame(raf)
   }, [documentId])
 
   // If a citation requests a highlight, fetch just that chunk first (fast path).

@@ -169,7 +169,7 @@ export function IngestionDetailDialog({
         )}
 
         {!isLoading && doc && (
-          <div className="p-8 space-y-8 max-h-[70vh] overflow-y-auto custom-scrollbar relative z-10">
+          <div className="p-8 space-y-8 max-h-[70vh] overflow-y-auto overscroll-contain no-scrollbar relative z-10">
 
             {/* Pipeline Stage Card */}
             <div className="rounded-2xl border border-border bg-card shadow-sm p-6 relative overflow-hidden">
