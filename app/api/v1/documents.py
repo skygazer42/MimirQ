@@ -55,9 +55,15 @@ from app.types.pipeline import PipelineOptions
 from app.services.indexer import Indexer
 from app.services.pipeline_config import (
     build_indexing_options,
+    merge_pipeline_options,
     build_pipeline_metadata,
     parse_pipeline_from_metadata,
     resolve_pipeline_effective,
+)
+from app.services.ingestion_policy import (
+    match_ingestion_rule,
+    parse_ingestion_policy_from_metadata,
+    resolve_governance_profile_ref,
 )
 from app.services.mineru_service import mineru_service
 from app.services.dataset_service import DatasetService, EDIT_ROLES
@@ -909,17 +915,6 @@ async def upload_document(
             detail=f"Unsupported file type. Allowed: {settings.allowed_extensions_list}"
         )
 
-    try:
-        requested_parser_backend = (parser_backend or "").strip().lower()
-        if file_ext == ".pdf" and requested_parser_backend in {"", "auto"}:
-            # Keep "auto" for background routing (quality scoring happens in DocumentProcessor).
-            resolved_parser_backend = "auto"
-        else:
-            resolved_parser_backend = parser_factory.resolve_backend(file_ext, parser_backend)
-        resolved_chunk_strategy = chunker_factory.resolve_strategy(chunk_strategy)
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc))
-
     pipeline_parsed = _parse_pipeline_json(pipeline)
     pipeline_options = _to_pipeline_options(
         pipeline=pipeline_parsed,
@@ -943,6 +938,78 @@ async def upload_document(
     )
     # Permission check.
     dataset = _resolve_writable_dataset(db, tenant_id, account_id, dataset_id)
+
+    # Dataset ingestion policy (file-level pre-processing + per-type overrides).
+    dataset_meta = (getattr(dataset, "dataset_metadata", None) or {}) if dataset is not None else {}
+    policy = parse_ingestion_policy_from_metadata(dataset_meta if isinstance(dataset_meta, dict) else {})  # type: ignore[arg-type]
+    matched_rule = match_ingestion_rule(policy, filename=file.filename, file_ext=file_ext)
+
+    ingestion_meta: Optional[dict[str, Any]] = None
+    parser_backend_choice: str = parser_backend
+    chunk_strategy_choice: str = chunk_strategy
+    preprocess_steps: list[dict] = []
+    policy_patch = PipelineOptions()
+
+    if matched_rule is not None:
+        # Only override when the request uses the global defaults (avoid surprising explicit choices).
+        default_pb = (getattr(settings, "DEFAULT_PARSER_BACKEND", "auto") or "auto").strip().lower() or "auto"
+        req_pb = (parser_backend or "").strip().lower()
+        if req_pb in {"", "auto", default_pb} and matched_rule.parser_backend:
+            parser_backend_choice = str(matched_rule.parser_backend)
+
+        default_cs = (getattr(settings, "DEFAULT_CHUNK_STRATEGY", "langchain_recursive") or "langchain_recursive").strip().lower()
+        req_cs = (chunk_strategy or "").strip().lower()
+        if req_cs in {"", default_cs} and matched_rule.chunk_strategy:
+            chunk_strategy_choice = str(matched_rule.chunk_strategy)
+
+        pp = getattr(matched_rule, "preprocess", None)
+        steps = getattr(pp, "steps", None) if pp is not None and bool(getattr(pp, "enabled", True)) else None
+        if isinstance(steps, list) and steps:
+            preprocess_steps = [
+                {
+                    "id": str(getattr(s, "id", "") or "").strip(),
+                    "params": dict(getattr(s, "params", {}) or {}),
+                }
+                for s in steps
+            ]
+
+        # Merge governance profile patch + rule patch into pipeline overrides.
+        patch_dict: dict[str, Any] = {}
+        profile_ref = getattr(matched_rule, "governance_profile_ref", None)
+        if isinstance(profile_ref, str) and profile_ref.strip():
+            try:
+                resolved = resolve_governance_profile_ref(db=db, tenant_id=tenant_id, profile_ref=profile_ref.strip())
+            except ValueError as exc:
+                raise HTTPException(status_code=400, detail=f"Invalid governance_profile_ref: {str(exc)[:120]}")
+            patch_dict.update(dict(resolved.pipeline_patch or {}))
+            if resolved.regex_rules:
+                patch_dict["governance_regex_rules"] = list(resolved.regex_rules)
+
+        patch_dict.update(dict(getattr(matched_rule, "pipeline_patch", None) or {}))
+        if patch_dict:
+            policy_patch = PipelineOptions(**patch_dict)
+
+        ingestion_meta = {
+            "version": str(getattr(policy, "version", "1") if policy is not None else "1"),
+            "rule": {"id": matched_rule.id, "name": matched_rule.name},
+            "preprocess": {"enabled": bool(preprocess_steps), "steps": preprocess_steps},
+            "governance_profile_ref": (profile_ref.strip() if isinstance(profile_ref, str) and profile_ref.strip() else None),
+        }
+
+    # Policy patches are merged before user overrides (user wins).
+    pipeline_options = merge_pipeline_options(policy_patch, pipeline_options)
+
+    # Resolve backend/strategy after policy application.
+    try:
+        requested_parser_backend = (parser_backend_choice or "").strip().lower()
+        if file_ext == ".pdf" and requested_parser_backend in {"", "auto"}:
+            # Keep "auto" for background routing (quality scoring happens in DocumentProcessor).
+            resolved_parser_backend = "auto"
+        else:
+            resolved_parser_backend = parser_factory.resolve_backend(file_ext, parser_backend_choice)
+        resolved_chunk_strategy = chunker_factory.resolve_strategy(chunk_strategy_choice)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
 
     pipeline_effective = resolve_pipeline_effective(
         dataset_metadata=(getattr(dataset, "dataset_metadata", None) or {}),
@@ -975,6 +1042,8 @@ async def upload_document(
     }
     if pipeline_metadata:
         doc_metadata["pipeline"] = pipeline_metadata
+    if ingestion_meta:
+        doc_metadata["ingestion"] = ingestion_meta
     pipeline_hash = _compute_pipeline_hash(doc_metadata)
     doc_metadata["pipeline_hash"] = pipeline_hash
 
@@ -1080,6 +1149,14 @@ async def upload_documents_batch(
     semaphore = asyncio.Semaphore(max_concurrent)
 
     pipeline_parsed = _parse_pipeline_json(pipeline)
+
+    # Permission check (done once).
+    dataset = _resolve_writable_dataset(db, tenant_id, account_id, dataset_id)
+    dataset_meta = (getattr(dataset, "dataset_metadata", None) or {}) if dataset is not None else {}
+    policy = parse_ingestion_policy_from_metadata(dataset_meta if isinstance(dataset_meta, dict) else {})  # type: ignore[arg-type]
+    default_pb = (getattr(settings, "DEFAULT_PARSER_BACKEND", "auto") or "auto").strip().lower() or "auto"
+    default_cs = (getattr(settings, "DEFAULT_CHUNK_STRATEGY", "langchain_recursive") or "langchain_recursive").strip().lower()
+    governance_profile_cache: dict[str, Any] = {}
     
     async def process_single_file(file: UploadFile) -> dict:
         """Handle upload for a single file."""
@@ -1096,14 +1173,6 @@ async def upload_documents_batch(
                         "filename": file.filename,
                         "error": f"Unsupported file type: {file_ext}"
                     }
-                
-                # Parser validation.
-                requested_parser_backend = (parser_backend or "").strip().lower()
-                if file_ext == ".pdf" and requested_parser_backend in {"", "auto"}:
-                    resolved_parser_backend = "auto"
-                else:
-                    resolved_parser_backend = parser_factory.resolve_backend(file_ext, parser_backend)
-                resolved_chunk_strategy = chunker_factory.resolve_strategy(chunk_strategy)
                 
                 pipeline_options = _to_pipeline_options(
                     pipeline=pipeline_parsed,
@@ -1125,6 +1194,72 @@ async def upload_documents_batch(
                     event_vector_enabled=event_vector_enabled,
                     entity_vector_enabled=entity_vector_enabled,
                 )
+
+                # Ingestion policy overrides (per file).
+                matched_rule = match_ingestion_rule(policy, filename=file.filename, file_ext=file_ext)
+                ingestion_meta: Optional[dict[str, Any]] = None
+                parser_backend_choice: str = parser_backend
+                chunk_strategy_choice: str = chunk_strategy
+                preprocess_steps: list[dict] = []
+                policy_patch = PipelineOptions()
+
+                if matched_rule is not None:
+                    req_pb = (parser_backend or "").strip().lower()
+                    if req_pb in {"", "auto", default_pb} and matched_rule.parser_backend:
+                        parser_backend_choice = str(matched_rule.parser_backend)
+
+                    req_cs = (chunk_strategy or "").strip().lower()
+                    if req_cs in {"", default_cs} and matched_rule.chunk_strategy:
+                        chunk_strategy_choice = str(matched_rule.chunk_strategy)
+
+                    pp = getattr(matched_rule, "preprocess", None)
+                    steps = getattr(pp, "steps", None) if pp is not None and bool(getattr(pp, "enabled", True)) else None
+                    if isinstance(steps, list) and steps:
+                        preprocess_steps = [
+                            {
+                                "id": str(getattr(s, "id", "") or "").strip(),
+                                "params": dict(getattr(s, "params", {}) or {}),
+                            }
+                            for s in steps
+                        ]
+
+                    patch_dict: dict[str, Any] = {}
+                    profile_ref = getattr(matched_rule, "governance_profile_ref", None)
+                    if isinstance(profile_ref, str) and profile_ref.strip():
+                        ref = profile_ref.strip()
+                        cached = governance_profile_cache.get(ref)
+                        if cached is None:
+                            try:
+                                cached = resolve_governance_profile_ref(db=db, tenant_id=tenant_id, profile_ref=ref)
+                            except ValueError as exc:
+                                raise HTTPException(status_code=400, detail=f"Invalid governance_profile_ref: {str(exc)[:120]}")
+                            governance_profile_cache[ref] = cached
+                        patch_dict.update(dict(getattr(cached, "pipeline_patch", None) or {}))
+                        rules = getattr(cached, "regex_rules", None) or []
+                        if rules:
+                            patch_dict["governance_regex_rules"] = list(rules)
+
+                    patch_dict.update(dict(getattr(matched_rule, "pipeline_patch", None) or {}))
+                    if patch_dict:
+                        policy_patch = PipelineOptions(**patch_dict)
+
+                    ingestion_meta = {
+                        "version": str(getattr(policy, "version", "1") if policy is not None else "1"),
+                        "rule": {"id": matched_rule.id, "name": matched_rule.name},
+                        "preprocess": {"enabled": bool(preprocess_steps), "steps": preprocess_steps},
+                        "governance_profile_ref": (profile_ref.strip() if isinstance(profile_ref, str) and profile_ref.strip() else None),
+                    }
+
+                pipeline_options = merge_pipeline_options(policy_patch, pipeline_options)
+
+                # Resolve backend/strategy after policy application.
+                requested_parser_backend = (parser_backend_choice or "").strip().lower()
+                if file_ext == ".pdf" and requested_parser_backend in {"", "auto"}:
+                    resolved_parser_backend = "auto"
+                else:
+                    resolved_parser_backend = parser_factory.resolve_backend(file_ext, parser_backend_choice)
+                resolved_chunk_strategy = chunker_factory.resolve_strategy(chunk_strategy_choice)
+
                 pipeline_effective = resolve_pipeline_effective(
                     dataset_metadata=(getattr(dataset, "dataset_metadata", None) or {}) if dataset else {},
                     document_metadata={},
@@ -1153,6 +1288,8 @@ async def upload_documents_batch(
                 }
                 if pipeline_metadata:
                     doc_metadata["pipeline"] = pipeline_metadata
+                if ingestion_meta:
+                    doc_metadata["ingestion"] = ingestion_meta
                 pipeline_hash = _compute_pipeline_hash(doc_metadata)
                 doc_metadata["pipeline_hash"] = pipeline_hash
                 
@@ -1211,9 +1348,6 @@ async def upload_documents_batch(
                     "filename": file.filename,
                     "error": str(e)
                 }
-    
-    # Permission check (done once).
-    dataset = _resolve_writable_dataset(db, tenant_id, account_id, dataset_id)
     
     # Process all files concurrently.
     tasks = [process_single_file(file) for file in files]

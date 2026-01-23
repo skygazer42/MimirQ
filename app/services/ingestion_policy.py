@@ -1,0 +1,357 @@
+"""
+Dataset ingestion policy (file-level pre-processing + per-file-type overrides).
+
+This layer is intentionally *declarative*:
+- Policies and "scripts" are JSON objects only.
+- No dynamic imports, no arbitrary code execution.
+
+Security hardening:
+- Strict allowlists (preprocess steps, pipeline_patch keys)
+- Size/length caps (rule count, regex lengths, patch size)
+- Best-effort regex ReDoS guard (nested quantifiers)
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from typing import Any, Dict, Optional
+import json
+import re
+
+from pydantic import ValidationError
+from sqlalchemy.orm import Session
+from uuid import UUID
+
+from app.api.schemas.document import DocumentPipelineOptions
+from app.api.schemas.governance_profile import GovernanceProfileOut
+from app.api.schemas.ingestion_policy import IngestionPolicy, IngestionRule, IngestionPreprocessStep
+from app.models.governance_profile import GovernanceProfile as DBGovernanceProfile
+from app.services.governance_profiles import get_builtin_governance_profiles, builtin_profile_to_out
+
+
+RULE_ID_RE = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9_.:\-]{0,99}$")
+MAX_RULES = 60
+MAX_EXTENSIONS_PER_RULE = 30
+MAX_EXTENSION_LEN = 12
+MAX_FILENAME_REGEX_LEN = 200
+MAX_PREPROCESS_STEPS = 20
+MAX_PIPELINE_PATCH_KEYS = 120
+
+_ALLOWED_RE_FLAG_BITS = int(re.IGNORECASE)
+_SUSPICIOUS_NESTED_QUANTIFIER_RE = re.compile(r"\([^)]*[+*][^)]*\)[+*]")
+
+
+# Public allowlist of supported file preprocess step ids.
+ALLOWED_PREPROCESS_STEP_IDS: set[str] = {
+    # Text-ish (applied to .txt/.md/.json/.csv/.html/...)
+    "text.reencode_utf8",
+    "text.strip_bom",
+    "text.normalize_newlines",
+    "text.trim_trailing_whitespace",
+    # HTML-only (applied when ext in .html/.htm)
+    "html.strip_scripts_styles",
+    "html.strip_comments",
+}
+
+
+def _is_suspicious_regex(pattern: str) -> bool:
+    if _SUSPICIOUS_NESTED_QUANTIFIER_RE.search(pattern):
+        return True
+    return False
+
+
+def _normalize_extensions(raw: object) -> list[str]:
+    if raw is None:
+        return []
+    if not isinstance(raw, list):
+        raise ValueError("match.extensions must be a list")
+    if len(raw) > MAX_EXTENSIONS_PER_RULE:
+        raise ValueError(f"match.extensions too many entries (max={MAX_EXTENSIONS_PER_RULE})")
+    out: list[str] = []
+    for item in raw:
+        if not isinstance(item, str):
+            continue
+        v = item.strip().lower()
+        if not v:
+            continue
+        if not v.startswith("."):
+            v = "." + v
+        if len(v) > MAX_EXTENSION_LEN:
+            raise ValueError("match.extensions contains an entry that is too long")
+        # Very conservative: extensions must be ".foo" with safe characters.
+        if not re.fullmatch(r"\.[a-z0-9][a-z0-9._-]*", v):
+            raise ValueError(f"invalid extension: {v}")
+        if v not in out:
+            out.append(v)
+    return out
+
+
+def _normalize_filename_regex(raw: object) -> str | None:
+    if raw is None:
+        return None
+    if not isinstance(raw, str):
+        raise ValueError("match.filename_regex must be a string")
+    pat = raw.strip()
+    if not pat:
+        return None
+    if len(pat) > MAX_FILENAME_REGEX_LEN:
+        raise ValueError(f"match.filename_regex too long (max={MAX_FILENAME_REGEX_LEN})")
+    if _is_suspicious_regex(pat):
+        raise ValueError("match.filename_regex looks unsafe")
+    try:
+        re.compile(pat, flags=_ALLOWED_RE_FLAG_BITS)
+    except re.error as exc:
+        raise ValueError(f"invalid match.filename_regex: {str(exc)[:120]}") from exc
+    return pat
+
+
+def _normalize_preprocess_steps(raw: object) -> list[dict]:
+    if raw is None:
+        return []
+    if not isinstance(raw, list):
+        raise ValueError("preprocess.steps must be a list")
+    if len(raw) > MAX_PREPROCESS_STEPS:
+        raise ValueError(f"preprocess.steps too many steps (max={MAX_PREPROCESS_STEPS})")
+    out: list[dict] = []
+    for idx, item in enumerate(raw):
+        step: IngestionPreprocessStep
+        if isinstance(item, IngestionPreprocessStep):
+            step = item
+        elif isinstance(item, dict):
+            try:
+                step = IngestionPreprocessStep(**item)
+            except ValidationError as exc:
+                raise ValueError(f"invalid preprocess step at index={idx}") from exc
+        else:
+            raise ValueError(f"invalid preprocess step at index={idx}")
+
+        sid = str(step.id or "").strip().lower()
+        if not sid:
+            raise ValueError(f"preprocess step id is required at index={idx}")
+        if sid not in ALLOWED_PREPROCESS_STEP_IDS:
+            raise ValueError(f"unsupported preprocess step id: {sid}")
+
+        params = step.params or {}
+        if not isinstance(params, dict):
+            raise ValueError(f"preprocess step params must be an object at index={idx}")
+        # Keep v1 strict: no params yet (easy to reason about and secure).
+        if params:
+            raise ValueError(f"preprocess step params not supported (index={idx})")
+
+        out.append({"id": sid, "params": {}})
+    return out
+
+
+def _normalize_pipeline_patch(raw: object) -> dict:
+    if raw is None:
+        return {}
+    if not isinstance(raw, dict):
+        raise ValueError("pipeline_patch must be an object")
+    if len(raw) > MAX_PIPELINE_PATCH_KEYS:
+        raise ValueError("pipeline_patch too many keys")
+    allowed = set(DocumentPipelineOptions.model_fields.keys())
+    unknown = [k for k in raw.keys() if k not in allowed]
+    if unknown:
+        unknown_sorted = ", ".join(sorted(map(str, unknown))[:20])
+        raise ValueError(f"pipeline_patch contains unknown keys: {unknown_sorted}")
+    try:
+        validated = DocumentPipelineOptions(**raw)
+    except ValidationError as exc:
+        raise ValueError("invalid pipeline_patch") from exc
+    return validated.model_dump(exclude_none=True)
+
+
+def validate_and_normalize_ingestion_policy(policy: IngestionPolicy) -> IngestionPolicy:
+    """
+    Validate and normalize policy.
+
+    Raises ValueError on invalid input.
+    """
+    if str(policy.version or "").strip() not in {"1"}:
+        raise ValueError("unsupported ingestion policy version")
+
+    rules_in = policy.rules or []
+    if len(rules_in) > MAX_RULES:
+        raise ValueError(f"too many rules (max={MAX_RULES})")
+
+    seen_ids: set[str] = set()
+    normalized_rules: list[IngestionRule] = []
+
+    for idx, rule in enumerate(rules_in):
+        if not isinstance(rule, IngestionRule):
+            try:
+                rule = IngestionRule(**(rule if isinstance(rule, dict) else {}))
+            except ValidationError as exc:
+                raise ValueError(f"invalid rule at index={idx}") from exc
+
+        rid = str(rule.id or "").strip()
+        if not rid:
+            raise ValueError(f"rule.id is required at index={idx}")
+        if not RULE_ID_RE.match(rid):
+            raise ValueError(f"invalid rule.id format at index={idx}")
+        if rid in seen_ids:
+            raise ValueError(f"duplicate rule.id: {rid}")
+        seen_ids.add(rid)
+
+        name = str(rule.name or "").strip()
+        if not name:
+            raise ValueError(f"rule.name is required at index={idx}")
+
+        match = rule.match or {}
+        ext_list = _normalize_extensions(getattr(match, "extensions", None))
+        filename_regex = _normalize_filename_regex(getattr(match, "filename_regex", None))
+
+        preprocess = rule.preprocess
+        preprocess_enabled = bool(getattr(preprocess, "enabled", True))
+        steps_norm = _normalize_preprocess_steps(getattr(preprocess, "steps", None) if preprocess_enabled else [])
+
+        parser_backend = (str(rule.parser_backend or "").strip().lower() or None) if rule.parser_backend is not None else None
+        chunk_strategy = (str(rule.chunk_strategy or "").strip().lower() or None) if rule.chunk_strategy is not None else None
+        governance_profile_ref = (str(rule.governance_profile_ref or "").strip() or None) if rule.governance_profile_ref is not None else None
+        if governance_profile_ref and ("\x7f" in governance_profile_ref or any(ord(ch) < 32 for ch in governance_profile_ref)):
+            raise ValueError("invalid governance_profile_ref")
+
+        patch_norm = _normalize_pipeline_patch(rule.pipeline_patch)
+
+        normalized_rules.append(
+            IngestionRule(
+                id=rid,
+                name=name[:200],
+                enabled=bool(rule.enabled),
+                match={"extensions": ext_list, "filename_regex": filename_regex},
+                preprocess={"enabled": preprocess_enabled, "steps": steps_norm},
+                parser_backend=parser_backend,
+                chunk_strategy=chunk_strategy,
+                governance_profile_ref=governance_profile_ref,
+                pipeline_patch=patch_norm,
+            )
+        )
+
+    return IngestionPolicy(version="1", rules=normalized_rules)
+
+
+def parse_ingestion_policy_from_metadata(metadata: Dict[str, Any]) -> IngestionPolicy | None:
+    if not isinstance(metadata, dict):
+        return None
+    raw = metadata.get("ingestion_policy")
+    if not isinstance(raw, dict):
+        return None
+    try:
+        model = IngestionPolicy(**raw)
+        return validate_and_normalize_ingestion_policy(model)
+    except Exception:
+        return None
+
+
+def policy_to_metadata(policy: IngestionPolicy | None) -> dict | None:
+    if policy is None:
+        return None
+    return validate_and_normalize_ingestion_policy(policy).model_dump()
+
+
+def match_ingestion_rule(policy: IngestionPolicy | None, *, filename: str, file_ext: str) -> IngestionRule | None:
+    if policy is None:
+        return None
+    ext = (file_ext or "").strip().lower()
+    if ext and not ext.startswith("."):
+        ext = "." + ext
+    fn = str(filename or "")
+    for rule in policy.rules or []:
+        if not bool(getattr(rule, "enabled", True)):
+            continue
+        match = getattr(rule, "match", None)
+        exts = []
+        rx = None
+        if match is not None:
+            exts = list(getattr(match, "extensions", None) or [])
+            rx = getattr(match, "filename_regex", None)
+        if exts and ext not in set(exts):
+            continue
+        if isinstance(rx, str) and rx.strip():
+            try:
+                if not re.search(rx, fn, flags=_ALLOWED_RE_FLAG_BITS):
+                    continue
+            except re.error:
+                # Invalid stored regex should not break ingestion; treat as non-match.
+                continue
+        return rule
+    return None
+
+
+@dataclass(frozen=True)
+class ResolvedGovernanceProfilePatch:
+    profile: GovernanceProfileOut
+    pipeline_patch: dict
+    regex_rules: list[dict]
+
+
+def resolve_governance_profile_ref(
+    *,
+    db: Session,
+    tenant_id: UUID,
+    profile_ref: str,
+) -> ResolvedGovernanceProfilePatch:
+    """
+    Resolve a governance profile ref (builtin:<key> | UUID | tenant-scoped key).
+
+    Returns normalized patch data suitable for merging into PipelineOptions.
+    """
+    ref = str(profile_ref or "").strip()
+    if not ref:
+        raise ValueError("profile_ref is required")
+
+    builtins = get_builtin_governance_profiles()
+    builtin_by_key = {p.key: p for p in builtins}
+    if ref in builtin_by_key:
+        profile_out = builtin_profile_to_out(builtin_by_key[ref])
+        payload = profile_out.payload
+        patch = payload.pipeline_patch or {}
+        rules = [r.model_dump() for r in (payload.regex_rules or [])]
+        return ResolvedGovernanceProfilePatch(profile=profile_out, pipeline_patch=dict(patch), regex_rules=rules)
+
+    # Allow UUID lookup.
+    try:
+        ref_uuid = UUID(ref)
+    except Exception:
+        ref_uuid = None
+
+    q = db.query(DBGovernanceProfile).filter(DBGovernanceProfile.tenant_id == tenant_id)
+    row = None
+    if ref_uuid is not None:
+        row = q.filter(DBGovernanceProfile.id == ref_uuid).first()
+    if row is None:
+        row = q.filter(DBGovernanceProfile.key == ref).first()
+    if row is None:
+        raise ValueError("governance profile not found")
+
+    payload_raw = getattr(row, "payload", None)
+    if not isinstance(payload_raw, dict):
+        payload_raw = {}
+    try:
+        profile_out = GovernanceProfileOut(
+            id=row.id,
+            key=(str(getattr(row, "key", "") or "").strip() or f"custom:{str(row.id)}"),
+            name=str(getattr(row, "name", "") or ""),
+            description=getattr(row, "description", None),
+            is_system=bool(getattr(row, "is_system", False)),
+            payload=payload_raw,  # pydantic will validate nested payload
+            created_at=getattr(row, "created_at", None),
+            updated_at=getattr(row, "updated_at", None),
+        )
+    except ValidationError as exc:
+        raise ValueError("invalid governance profile payload in DB") from exc
+
+    payload = profile_out.payload
+    patch = payload.pipeline_patch or {}
+    rules = [r.model_dump() for r in (payload.regex_rules or [])]
+    return ResolvedGovernanceProfilePatch(profile=profile_out, pipeline_patch=dict(patch), regex_rules=rules)
+
+
+def export_policy_json(policy: IngestionPolicy) -> bytes:
+    """
+    Export as UTF-8 JSON (stable, human-readable).
+    """
+    normalized = validate_and_normalize_ingestion_policy(policy)
+    obj = normalized.model_dump()
+    return json.dumps(obj, ensure_ascii=False, indent=2).encode("utf-8")
+

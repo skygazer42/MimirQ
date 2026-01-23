@@ -1,0 +1,71 @@
+"""
+Dataset Ingestion Policy schemas.
+
+This feature configures *pre-processing before parsing* (file-level) and
+per-file-type ingestion overrides (parser backend / chunk strategy / governance profile).
+
+Security notes:
+- Policies are declarative JSON only (no executable code).
+- Validation and normalization is enforced in app/services/ingestion_policy.py.
+"""
+
+from __future__ import annotations
+
+from typing import Any, Dict, List, Optional
+
+from pydantic import BaseModel, Field
+
+
+class IngestionPreprocessStep(BaseModel):
+    """
+    One pre-processing step applied to the raw file before parsing.
+
+    The backend only supports a small allowlist of step ids; unknown steps are rejected.
+    """
+
+    id: str = Field(..., min_length=1, max_length=80)
+    params: Dict[str, Any] = Field(default_factory=dict)
+
+
+class IngestionPreprocessConfig(BaseModel):
+    enabled: bool = True
+    steps: List[IngestionPreprocessStep] = Field(default_factory=list)
+
+
+class IngestionRuleMatch(BaseModel):
+    """
+    Rule matching conditions.
+
+    - extensions: file extensions like ".pdf", ".html". Empty means "match all".
+    - filename_regex: optional regex applied to the *original filename*.
+    """
+
+    extensions: List[str] = Field(default_factory=list)
+    filename_regex: Optional[str] = Field(default=None, max_length=500)
+
+
+class IngestionRule(BaseModel):
+    id: str = Field(..., min_length=1, max_length=100)
+    name: str = Field(..., min_length=1, max_length=200)
+    enabled: bool = True
+    match: IngestionRuleMatch = Field(default_factory=IngestionRuleMatch)
+    preprocess: IngestionPreprocessConfig = Field(default_factory=IngestionPreprocessConfig)
+
+    # Optional overrides (applied when policy is enabled and matches).
+    parser_backend: Optional[str] = Field(default=None, max_length=50)
+    chunk_strategy: Optional[str] = Field(default=None, max_length=80)
+    governance_profile_ref: Optional[str] = Field(default=None, max_length=120)
+
+    # Partial DocumentPipelineOptions shape (validated server-side).
+    pipeline_patch: Dict[str, Any] = Field(default_factory=dict)
+
+
+class IngestionPolicy(BaseModel):
+    version: str = Field(default="1", description="Policy schema version")
+    rules: List[IngestionRule] = Field(default_factory=list)
+
+
+class IngestionPolicyImportResponse(BaseModel):
+    replaced: bool = False
+    rule_count: int = 0
+

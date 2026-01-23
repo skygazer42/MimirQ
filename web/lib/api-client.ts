@@ -82,6 +82,9 @@ import type {
   RegisterRequest,
   UserProfile,
   ZipWithImagesResponse,
+  IngestionPolicy,
+  IngestionPolicyImportResponse,
+  IngestionPreviewResponse,
   RagvizSimilarityCollectionsResponse,
   RagvizSimilarityRequest,
   RagvizSimilarityCalculateResponse,
@@ -688,6 +691,20 @@ export const pipelineApi = {
     })
     return data
   },
+
+  async ingestionPreview(
+    file: File,
+    params: { dataset_id: string; parser_backend?: string; chunk_strategy?: string; diff_max_lines?: number }
+  ): Promise<IngestionPreviewResponse> {
+    const formData = new FormData()
+    formData.append('file', file)
+    formData.append('dataset_id', params.dataset_id)
+    if (params.parser_backend) formData.append('parser_backend', params.parser_backend)
+    if (params.chunk_strategy) formData.append('chunk_strategy', params.chunk_strategy)
+    if (params.diff_max_lines != null) formData.append('diff_max_lines', String(params.diff_max_lines))
+    const { data } = await apiClient.post('/pipeline/ingestion-preview', formData, { timeout: API_LONG_TIMEOUT_MS })
+    return data
+  },
 }
 
 // ==================== RAG 调试 API ====================
@@ -747,6 +764,29 @@ export const datasetApi = {
    */
   async delete(datasetId: string): Promise<void> {
     await apiClient.delete(`/datasets/${datasetId}`)
+  },
+
+  async getIngestionPolicy(datasetId: string): Promise<IngestionPolicy> {
+    const { data } = await apiClient.get(`/datasets/${datasetId}/ingestion-policy`)
+    return data
+  },
+
+  async updateIngestionPolicy(datasetId: string, policy: IngestionPolicy): Promise<IngestionPolicy> {
+    const { data } = await apiClient.put(`/datasets/${datasetId}/ingestion-policy`, policy)
+    return data
+  },
+
+  async importIngestionPolicy(datasetId: string, file: File, replace = true): Promise<IngestionPolicyImportResponse> {
+    const formData = new FormData()
+    formData.append('file', file)
+    formData.append('replace', replace ? 'true' : 'false')
+    const { data } = await apiClient.post(`/datasets/${datasetId}/ingestion-policy/import`, formData, { timeout: API_LONG_TIMEOUT_MS })
+    return data
+  },
+
+  async exportIngestionPolicy(datasetId: string): Promise<Blob> {
+    const { data } = await apiClient.get(`/datasets/${datasetId}/ingestion-policy/export`, { responseType: 'blob' })
+    return data as Blob
   },
 }
 

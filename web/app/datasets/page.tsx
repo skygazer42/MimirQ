@@ -1,8 +1,9 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
+import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
-import { Layers, Loader2, Pencil, Plus, RefreshCw, Trash2 } from 'lucide-react'
+import { Layers, Loader2, Pencil, Plus, RefreshCw, Settings2, Trash2 } from 'lucide-react'
 
 import { AppFrame } from '@/components/app-frame'
 import { PageScaffold } from '@/components/ui/page-scaffold'
@@ -53,6 +54,7 @@ function parseMembers(text: string): string[] {
 }
 
 export default function DatasetsPage() {
+  const router = useRouter()
   const { options: defaultPipelineOptions } = usePipelineOptions()
   const [items, setItems] = useState<Dataset[]>([])
   const [total, setTotal] = useState(0)
@@ -306,6 +308,15 @@ export default function DatasetsPage() {
                     </div>
 
                     <div className="flex items-center gap-2 flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity translate-x-4 group-hover:translate-x-0 duration-300">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="gap-2"
+                        onClick={() => router.push(`/datasets/${ds.id}/ingestion`)}
+                      >
+                        <Settings2 className="w-3.5 h-3.5" />
+                        入库策略
+                      </Button>
                       <Button
                         variant="outline"
                         size="sm"
