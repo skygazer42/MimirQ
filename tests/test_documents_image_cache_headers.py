@@ -42,7 +42,9 @@ def test_image_endpoint_sets_cache_headers_and_supports_etag(tmp_path, monkeypat
     res = client.get(f"/api/v1/documents/image/{image_id}")
 
     assert res.status_code == 200
-    assert res.headers.get("Cache-Control") == "private, max-age=3600"
+    cache_control = res.headers.get("Cache-Control") or ""
+    assert cache_control.startswith("private, max-age=3600")
+    assert "immutable" in cache_control
     assert res.headers.get("X-Content-Type-Options") == "nosniff"
 
     etag = res.headers.get("ETag")
@@ -53,4 +55,3 @@ def test_image_endpoint_sets_cache_headers_and_supports_etag(tmp_path, monkeypat
         headers={"If-None-Match": etag},
     )
     assert res2.status_code == 304
-

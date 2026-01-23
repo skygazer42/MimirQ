@@ -246,6 +246,31 @@ class DocumentList(BaseModel):
     items: List[DocumentDetail]
 
 
+class DocumentStats(BaseModel):
+    """Document stats for knowledge-base dashboards."""
+
+    total: int
+    by_status: Dict[str, int] = Field(default_factory=dict)
+    total_chunks: int = 0
+    total_size: int = 0
+
+
+class DocumentChunkMatch(BaseModel):
+    """Lightweight chunk match entry (for search/navigation without loading full content)."""
+
+    id: UUID
+    chunk_index: int
+    page_number: Optional[int] = None
+
+
+class DocumentChunkMatchList(BaseModel):
+    """Paged (and possibly truncated) chunk match list."""
+
+    total: int
+    truncated: bool = False
+    items: List[DocumentChunkMatch] = Field(default_factory=list)
+
+
 class DocumentChunkList(BaseModel):
     """Paged document chunks."""
     total: int

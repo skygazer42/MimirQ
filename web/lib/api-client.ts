@@ -5,7 +5,9 @@ import axios, { AxiosHeaders } from 'axios'
 import type {
   Document,
   DocumentChunk,
+  DocumentChunkMatchList,
   DocumentStatus,
+  DocumentStats,
   DocumentUserMetadataPatchRequest,
   DocumentBatchUserMetadataPatchRequest,
   DocumentBatchUserMetadataPatchResponse,
@@ -247,6 +249,14 @@ export const documentApi = {
   },
 
   /**
+   * 文档统计（用于知识库仪表盘/卡片）
+   */
+  async stats(params?: { dataset_id?: string; q?: string }): Promise<DocumentStats> {
+    const { data } = await apiClient.get('/documents/stats', { params })
+    return data
+  },
+
+  /**
    * 获取文档详情
    */
   async get(
@@ -271,6 +281,17 @@ export const documentApi = {
     params?: { skip?: number; limit?: number; q?: string }
   ): Promise<{ total: number; items: DocumentChunk[] }> {
     const { data } = await apiClient.get(`/documents/${documentId}/chunks`, { params })
+    return data
+  },
+
+  /**
+   * 搜索切片匹配（轻量：只返回 id/index/page，用于“文档内查找/跳转”）
+   */
+  async getChunkMatches(
+    documentId: string,
+    params: { q: string; limit?: number }
+  ): Promise<DocumentChunkMatchList> {
+    const { data } = await apiClient.get(`/documents/${documentId}/chunks/matches`, { params })
     return data
   },
 

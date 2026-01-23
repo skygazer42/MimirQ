@@ -44,6 +44,13 @@ export interface DocumentStatus {
   error_message?: string
 }
 
+export interface DocumentStats {
+  total: number
+  by_status: Record<string, number>
+  total_chunks: number
+  total_size: number
+}
+
 export interface DocumentUserMetadataPatchRequest {
   patch: Record<string, any>
   replace?: boolean
@@ -69,6 +76,18 @@ export interface DocumentChunk {
   end_char?: number
   chunk_index: number
   metadata?: Record<string, any>
+}
+
+export interface DocumentChunkMatch {
+  id: string
+  chunk_index: number
+  page_number?: number
+}
+
+export interface DocumentChunkMatchList {
+  total: number
+  truncated: boolean
+  items: DocumentChunkMatch[]
 }
 
 export interface DocumentPipelineOptions {

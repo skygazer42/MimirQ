@@ -10,6 +10,7 @@ import { CommandMenu } from "@/components/command-menu"
 import { FluidCursor } from "@/components/ui/fluid-cursor"
 import { TaskCenter } from "@/components/task-center"
 import { QueryProvider } from "@/components/providers/query-provider"
+import { RouteScrollReset } from "@/components/route-scroll-reset"
 
 export const metadata: Metadata = {
   title: "MimirQ - AI 知识库助手",
@@ -25,7 +26,7 @@ export default function RootLayout({
   children: React.ReactNode
 }>) {
   return (
-    <html lang="zh-CN" suppressHydrationWarning className="h-full">
+    <html lang="zh-CN" suppressHydrationWarning className="h-full overflow-hidden">
       {/* Lock window scrolling: the app uses panel-internal scrolling for better UX. */}
       <body className="font-sans h-dvh overflow-hidden">
         <ThemeProvider
@@ -37,6 +38,7 @@ export default function RootLayout({
           <QueryProvider>
             <SonnerToaster />
             <CommandMenu />
+            <RouteScrollReset />
             <FluidCursor />
             <TaskCenter />
             <PipelineCapabilitiesProvider>

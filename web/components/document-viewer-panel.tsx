@@ -64,6 +64,11 @@ export function DocumentViewerPanel() {
   const chunkSearchRef = React.useRef<HTMLInputElement>(null)
   const [chunkQuery, setChunkQuery] = React.useState("")
   const [matchCursor, setMatchCursor] = React.useState(0)
+  const [serverMatchIds, setServerMatchIds] = React.useState<string[]>([])
+  const [serverMatchTotal, setServerMatchTotal] = React.useState(0)
+  const [serverMatchTruncated, setServerMatchTruncated] = React.useState(false)
+  const [serverMatchLoading, setServerMatchLoading] = React.useState(false)
+  const matchRequestSeqRef = React.useRef(0)
 
   const rowVirtualizer = useVirtualizer({
     count: chunks.length,
@@ -83,6 +88,11 @@ export function DocumentViewerPanel() {
     setHighlightChunkLoading(false)
     setChunkQuery("")
     setMatchCursor(0)
+    setServerMatchIds([])
+    setServerMatchTotal(0)
+    setServerMatchTruncated(false)
+    setServerMatchLoading(false)
+    matchRequestSeqRef.current += 1
     setIsLoading(true)
     documentApi.get(documentId, { includeChunks: false })
       .then(data => {
@@ -197,7 +207,7 @@ export function DocumentViewerPanel() {
     rowVirtualizer.scrollToIndex(highlightIndex, { align: "center" })
   }, [highlightChunkId, activeTab, highlightIndex, rowVirtualizer])
 
-  const matchChunkIds = React.useMemo(() => {
+  const localMatchChunkIds = React.useMemo(() => {
     const q = chunkQuery.trim().toLowerCase()
     if (!q) return []
     const ids: string[] = []
@@ -207,6 +217,62 @@ export function DocumentViewerPanel() {
     }
     return ids
   }, [chunks, chunkQuery])
+
+  // When we haven't loaded the full chunk list, use a lightweight server search
+  // (IDs + indices) to support "find in document" without pulling huge payloads.
+  React.useEffect(() => {
+    const q = chunkQuery.trim()
+    if (!documentId || !q) {
+      setServerMatchIds([])
+      setServerMatchTotal(0)
+      setServerMatchTruncated(false)
+      setServerMatchLoading(false)
+      matchRequestSeqRef.current += 1
+      return
+    }
+
+    if (chunksLoaded) {
+      // Prefer local matching once full content is loaded (enables in-list highlighting).
+      setServerMatchIds([])
+      setServerMatchTotal(0)
+      setServerMatchTruncated(false)
+      setServerMatchLoading(false)
+      matchRequestSeqRef.current += 1
+      return
+    }
+
+    const seq = ++matchRequestSeqRef.current
+    setServerMatchLoading(true)
+    const t = window.setTimeout(() => {
+      documentApi
+        .getChunkMatches(documentId, { q, limit: 5000 })
+        .then((res) => {
+          if (seq !== matchRequestSeqRef.current) return
+          const items = res?.items || []
+          setServerMatchIds(items.map((it) => it.id))
+          setServerMatchTotal(Number(res?.total) || 0)
+          setServerMatchTruncated(Boolean(res?.truncated))
+        })
+        .catch((err) => {
+          if (seq !== matchRequestSeqRef.current) return
+          console.error(err)
+          setServerMatchIds([])
+          setServerMatchTotal(0)
+          setServerMatchTruncated(false)
+        })
+        .finally(() => {
+          if (seq !== matchRequestSeqRef.current) return
+          setServerMatchLoading(false)
+        })
+    }, 250)
+
+    return () => window.clearTimeout(t)
+  }, [documentId, chunkQuery, chunksLoaded])
+
+  const matchChunkIds = React.useMemo(() => {
+    if (!chunkQuery.trim()) return []
+    return chunksLoaded ? localMatchChunkIds : serverMatchIds
+  }, [chunkQuery, chunksLoaded, localMatchChunkIds, serverMatchIds])
 
   React.useEffect(() => {
     setMatchCursor(0)
@@ -293,7 +359,11 @@ export function DocumentViewerPanel() {
     <div 
         className={cn(
             "fixed inset-y-0 right-0 z-50 flex flex-col bg-background border-l border-border shadow-2xl transition-all duration-300 ease-in-out",
-           isExpanded ? "w-full md:w-[80vw]" : "w-full md:w-[40vw] md:min-w-[500px]"
+           // Keep width aligned with AppFrame's right padding:
+           // - md: 40vw
+           // - lg: fixed 500px
+           // - xl+: 40vw
+           isExpanded ? "w-full md:w-[80vw]" : "w-full md:w-[40vw] lg:w-[500px] xl:w-[40vw]"
         )}
     >
       {/* Header */}
@@ -402,23 +472,39 @@ export function DocumentViewerPanel() {
                        value={chunkQuery}
                        onChange={(e) => setChunkQuery(e.target.value)}
                        onKeyDown={(e) => {
-                         if (e.key === "Enter") jumpToMatch(matchCursor)
+                         if (e.key !== "Enter") return
+                         e.preventDefault()
+                         if (!matchChunkIds.length) return
+
+                         const currentId = matchChunkIds[matchCursor]
+                         // First Enter jumps to the current match; subsequent Enter goes next.
+                         if (currentId && highlightChunkId === currentId) {
+                           jumpToMatch(matchCursor + (e.shiftKey ? -1 : 1))
+                           return
+                         }
+
+                         jumpToMatch(matchCursor)
                        }}
                        placeholder={
-                         chunksLoading && !chunksLoaded
-                           ? "切片加载中…"
-                           : Boolean(highlightChunkId) && !loadAllChunks && !chunksLoaded
-                             ? "已定位引用切片（加载全部后可搜索）"
-                             : "搜索切片内容…"
+                         serverMatchLoading
+                           ? "搜索中…"
+                           : chunksLoaded
+                             ? "搜索切片内容…"
+                             : "搜索切片内容…（无需加载全部切片）"
                        }
-                       disabled={(chunksLoading && !chunksLoaded) || (Boolean(highlightChunkId) && !loadAllChunks && !chunksLoaded)}
                        className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                      />
                      <div className="flex items-center gap-2">
                        <div className="text-xs text-muted-foreground tabular-nums min-w-[88px] text-right">
                          {chunkQuery.trim() ? (
-                           matchChunkIds.length ? (
-                             <span>{matchCursor + 1}/{matchChunkIds.length}</span>
+                           serverMatchLoading ? (
+                             <span>…</span>
+                           ) : matchChunkIds.length ? (
+                             <span>
+                               {matchCursor + 1}/
+                               {chunksLoaded ? matchChunkIds.length : (serverMatchTotal || matchChunkIds.length)}
+                               {!chunksLoaded && serverMatchTruncated ? "+" : ""}
+                             </span>
                            ) : (
                              <span>0/0</span>
                            )
@@ -444,6 +530,12 @@ export function DocumentViewerPanel() {
                        </Button>
                      </div>
                    </div>
+
+                   {!chunksLoaded && chunkQuery.trim() && serverMatchTruncated ? (
+                     <div className="mt-2 text-[11px] text-muted-foreground">
+                       匹配结果过多，仅返回前 {matchChunkIds.length} 条（计数后缀 “+” 表示截断）。
+                     </div>
+                   ) : null}
 
                    {highlightChunkId && !loadAllChunks && !chunksLoaded ? (
                      <div className="mt-3 rounded-xl border border-border/60 bg-background/60 p-4">
@@ -518,7 +610,7 @@ export function DocumentViewerPanel() {
                                </div>
                              </div>
                              <p className="text-sm leading-relaxed text-foreground/90 font-mono whitespace-pre-wrap">
-                               {highlightChunk.content}
+                               {highlightText(highlightChunk.content, chunkQuery)}
                              </p>
                            </div>
                          ) : (
