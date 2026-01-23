@@ -6,7 +6,8 @@ type AppBackgroundProps = {
 
 export function AppBackground({ className }: AppBackgroundProps) {
   return (
-    <div aria-hidden="true" className={cn("pointer-events-none fixed inset-0 z-0", className)}>
+    // NOTE: Keep this layer from creating window-level scrollbars (glows use negative offsets).
+    <div aria-hidden="true" className={cn("pointer-events-none fixed inset-0 z-0 overflow-hidden", className)}>
       {/* Base wash */}
       <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-background via-background to-muted/40 dark:to-muted/20" />
 
@@ -19,4 +20,3 @@ export function AppBackground({ className }: AppBackgroundProps) {
     </div>
   )
 }
-
