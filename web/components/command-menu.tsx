@@ -99,7 +99,7 @@ export function CommandMenu() {
 
   return (
     <CommandDialog open={open} onOpenChange={setOpen}>
-      <CommandInput placeholder="输入命令或搜索..." />
+      <CommandInput placeholder="输入命令或搜索..." value={query} onValueChange={setQuery} />
       <CommandList>
         <CommandEmpty>未找到相关结果</CommandEmpty>
         
