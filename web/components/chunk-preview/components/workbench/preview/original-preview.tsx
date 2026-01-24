@@ -150,11 +150,18 @@ export function OriginalPreview() {
                   {originalTextSource === 'server' ? 'server' : 'local'}
                 </span>
               ) : null}
-              {!previewData.original_text ? (
-                <span className="px-1.5 py-0.5 rounded bg-warning/10 text-warning border border-warning/25">
-                  原文未返回
-                </span>
-              ) : null}
+              {!previewData.original_text ? (() => {
+                const limit = previewData.original_text_max_chars ?? 100000
+                const truncated = Boolean(previewData.original_text_truncated)
+                return (
+                  <span
+                    className="px-1.5 py-0.5 rounded bg-warning/10 text-warning border border-warning/25"
+                    title={truncated ? `原文超过 ${limit.toLocaleString()} chars，后端已省略返回` : '原文未返回'}
+                  >
+                    {truncated ? '原文过大，已省略' : '原文未返回'}
+                  </span>
+                )
+              })() : null}
             </div>
           )}
           <Button
@@ -212,9 +219,15 @@ export function OriginalPreview() {
             ) : (
               <div className="h-full flex flex-col items-center justify-center text-muted-foreground gap-2">
                 <FileText className="w-12 h-12 opacity-10" />
-                <p className="text-xs">原文未返回</p>
+                <p className="text-xs">{previewData.original_text_truncated ? '原文已省略' : '原文未返回'}</p>
                 <p className="text-xs text-muted-foreground max-w-[480px] text-center leading-relaxed">
-                  原文内容较大（{previewData.total_characters.toLocaleString()} chars）时，后端会省略原文以避免传输过大。
+                  {(() => {
+                    const limit = previewData.original_text_max_chars ?? 100000
+                    if (previewData.original_text_truncated) {
+                      return `原文超过 ${limit.toLocaleString()} chars（当前 ${previewData.total_characters.toLocaleString()} chars），后端已省略返回以避免传输过大。`
+                    }
+                    return `原文内容较大（${previewData.total_characters.toLocaleString()} chars）时，后端可能会省略原文以避免传输过大。`
+                  })()}
                   你仍可使用右侧切片列表进行检查与入库。
                 </p>
 
