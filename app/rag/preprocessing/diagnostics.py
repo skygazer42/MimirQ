@@ -14,7 +14,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import re
-from typing import Any, Dict, List, Literal, Tuple
+from typing import Any, Dict, List, Literal
 
 from app.rag.preprocessing.cleaning import build_repeated_line_signatures
 from app.rag.preprocessing.quality_filters import drop_if_low_density, drop_if_outline_only
@@ -55,7 +55,7 @@ def _line_stats(text: str) -> tuple[int, float, float, float]:
     lines = [ln.strip() for ln in (text or "").splitlines() if ln.strip()]
     if not lines:
         return 0, 0.0, 0.0, 0.0
-    lengths = [len(l) for l in lines]
+    lengths = [len(ln) for ln in lines]
     n = len(lengths)
     avg = sum(lengths) / max(1, n)
     short_ratio = sum(1 for x in lengths if x <= 80) / max(1, n)

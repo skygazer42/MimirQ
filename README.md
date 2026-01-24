@@ -33,9 +33,16 @@ MimirQ 是一个开源的 RAG 知识库问答平台。它将可视化切片预�
 
 ```bash
 git clone https://github.com/skygazer42/MimirQ.git
-cd MimirQ/docker
-cp .env.example .env
-docker compose up -d
+cd MimirQ
+
+# 生成本地配置文件（不会覆盖已有文件）
+make init
+
+# 启动后端 + 依赖（Postgres / Milvus / MinIO / Redis）
+make up
+
+# (可选) 启动前端（Next.js，生产构建）
+make up-web
 ```
 
 启动后访问 [http://localhost:8000/docs](http://localhost:8000/docs) 查看 API 文档，或启动前端访问 [http://localhost:3000](http://localhost:3000)。

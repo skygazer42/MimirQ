@@ -12,7 +12,7 @@ import mimetypes
 from fastapi import APIRouter, Depends, UploadFile, File, HTTPException, BackgroundTasks, Form, Request, Query
 from fastapi import Response
 from sqlalchemy.orm import Session, selectinload
-from typing import List, Optional, Literal
+from typing import Any, List, Optional, Literal
 from uuid import UUID
 from pathlib import Path
 import uuid

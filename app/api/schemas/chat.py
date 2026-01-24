@@ -137,6 +137,25 @@ class ChatRequest(BaseModel):
     rag_config: ChatRAGConfig = Field(default_factory=ChatRAGConfig)
 
 
+class ChatResponse(BaseModel):
+    """Non-streaming chat response payload."""
+
+    conversation_id: UUID
+    assistant_message_id: UUID
+    request_id: str
+    content: str
+    citations: List[Citation] = Field(default_factory=list)
+    total_tokens: int = 0
+    total_chars: int = 0
+    retrieval_mode: Optional[str] = None
+    vector_backend: Optional[str] = None
+    metrics: Dict[str, Any] = Field(default_factory=dict)
+    structured: bool = False
+    structured_data: Any = None
+
+    model_config = ConfigDict(extra="ignore")
+
+
 class StreamEvent(BaseModel):
     """Stream event."""
     type: str  # citations | token | done | error

@@ -22,6 +22,7 @@ from app.models.chat import Conversation, Message
 from app.services.dataset_service import DatasetService
 from app.api.schemas.chat import (
     ChatRequest,
+    ChatResponse,
     ConversationCreate,
     ConversationSchema,
     ConversationDetail,
@@ -153,6 +154,239 @@ def _retrieve_long_term_messages(
             }
         )
     return enriched_history
+
+
+@router.post("", response_model=ChatResponse)
+async def chat(
+    http_request: Request,
+    request: ChatRequest,
+    tenant_id: UUID = Depends(get_tenant_id),
+    account_id: str = Depends(get_current_account_id),
+    db: Session = Depends(get_db),
+):
+    """
+    Non-streaming chat endpoint.
+
+    It mirrors the `/chat/stream` behavior, but returns a single JSON payload
+    after the answer is ready.
+    """
+    conversation_id = request.conversation_id
+    citations_data: list = []
+    full_response = ""
+    allowed_doc_ids: list[UUID] = []
+    long_term_messages: list[dict] = []
+    allow_empty_docs = bool(getattr(settings, "CHAT_ALLOW_EMPTY_DOCUMENTS", True))
+
+    # 1) Load or create a conversation.
+    if conversation_id:
+        conversation = (
+            db.query(Conversation)
+            .filter(Conversation.id == conversation_id, Conversation.tenant_id == tenant_id)
+            .first()
+        )
+        if not conversation:
+            raise HTTPException(status_code=404, detail="Conversation not found")
+        target_doc_ids = request.document_ids if request.document_ids else (conversation.document_ids or [])
+        if target_doc_ids:
+            allowed_doc_ids = filter_allowed_document_ids(db, tenant_id, account_id, target_doc_ids)
+        else:
+            allowed_doc_ids = list_accessible_document_ids(db, tenant_id, account_id, status="completed")
+            if not allowed_doc_ids and not allow_empty_docs:
+                raise HTTPException(status_code=400, detail="No accessible documents for chat retrieval")
+        conversation.document_ids = allowed_doc_ids
+    else:
+        if request.document_ids:
+            allowed_doc_ids = filter_allowed_document_ids(db, tenant_id, account_id, request.document_ids)
+        else:
+            allowed_doc_ids = list_accessible_document_ids(db, tenant_id, account_id, status="completed")
+        if not allowed_doc_ids and not allow_empty_docs:
+            raise HTTPException(status_code=400, detail="No accessible documents for chat retrieval")
+        conversation = Conversation(
+            id=uuid.uuid4(),
+            tenant_id=tenant_id,
+            title=request.message[:50] + "..." if len(request.message) > 50 else request.message,
+            document_ids=allowed_doc_ids,
+        )
+        db.add(conversation)
+        db.flush()
+        conversation_id = conversation.id
+
+    # 2) Persist user message.
+    user_message = Message(
+        tenant_id=tenant_id,
+        conversation_id=conversation_id,
+        role="user",
+        content=request.message,
+    )
+    db.add(user_message)
+
+    # Optional: long-term memory recall (BM25 over conversation messages).
+    if request.enable_long_term_memory and settings.LONG_TERM_MEMORY_ENABLED and conversation_id:
+        long_term_messages = _retrieve_long_term_messages(
+            db=db,
+            conversation_id=conversation_id,
+            tenant_id=tenant_id,
+            query=request.message,
+            top_k=settings.LONG_TERM_MEMORY_TOP_K,
+        )
+
+    # Update conversation message count for the user message.
+    conversation.message_count = (conversation.message_count or 0) + 1
+    db.commit()
+
+    request_id = getattr(http_request.state, "request_id", None) or uuid.uuid4().hex
+    assistant_message_id = uuid.uuid4()
+    set_metrics_context(
+        request_id=str(request_id),
+        tenant_id=tenant_id,
+        conversation_id=conversation_id,
+        account_id=account_id,
+    )
+
+    doc_ids_to_use = allowed_doc_ids or []
+    metrics_data: dict = {}
+    structured_data = None
+
+    try:
+        # Graph path (LangGraph): invoke once and return the final state.
+        if request.rag_config.use_graph:
+            from app.rag.pipelines.langgraph import build_rag_state, rag_workflow
+
+            thread_id = str(conversation_id) if conversation_id else f"rag-{request_id}"
+            runtime_context = {
+                "request_id": str(request_id),
+                "conversation_id": str(conversation_id) if conversation_id else None,
+                "tenant_id": str(tenant_id) if tenant_id else None,
+                "account_id": account_id,
+            }
+
+            state = build_rag_state(
+                question=request.message,
+                history=[m.model_dump() for m in request.history] + long_term_messages,
+                document_ids=doc_ids_to_use,
+                tenant_id=tenant_id,
+                top_k=request.rag_config.top_k,
+                score_threshold=request.rag_config.score_threshold,
+                retrieval_mode=request.rag_config.retrieval_mode,
+                alpha=request.rag_config.alpha,
+                enable_weight_rerank=request.rag_config.enable_weight_rerank,
+                vector_weight=request.rag_config.vector_weight,
+                keyword_weight=request.rag_config.keyword_weight,
+                mmr_lambda=request.rag_config.mmr_lambda,
+                enable_reranker=request.rag_config.enable_reranker,
+                reranker_provider=request.rag_config.reranker_provider,
+                reranker_top_n=request.rag_config.reranker_top_n,
+                metadata_filter=request.rag_config.metadata_filter,
+                structured_output=request.structured_output,
+                structured_preset=request.structured_preset,
+                prompt_template_id=request.prompt_template_id,
+                prompt_template_key=request.prompt_template_key,
+                prompt_ab_experiment_key=request.prompt_ab_experiment_key,
+                ab_user_key=account_id,
+                db=db,
+            )
+
+            recursion_limit = max(1, int(getattr(settings, "LANGGRAPH_RECURSION_LIMIT", 25) or 25))
+            config = {"configurable": {"thread_id": thread_id}, "recursion_limit": recursion_limit}
+            graph_result = rag_workflow.invoke(state, config=config, context=runtime_context) or {}
+
+            citations_data = graph_result.get("citations") or []
+            full_response = graph_result.get("answer") or ""
+            metrics_data = dict(graph_result.get("metrics") or {})
+
+            if request.structured_output:
+                structured_data, structured_parse_meta = parse_json_from_text(full_response, expected="object")
+                metrics_data["structured_parse_ok"] = bool(structured_parse_meta.get("ok"))
+                metrics_data["structured_parse_method"] = structured_parse_meta.get("method")
+                metrics_data["structured_parse_error"] = structured_parse_meta.get("error")
+                metrics_data["structured_type"] = type(structured_data).__name__ if structured_data is not None else None
+                metrics_data["structured_preset"] = request.structured_preset
+        else:
+            # LangChain engine path: consume the stream and assemble a final payload.
+            engine = get_rag_engine()
+            done_data: dict = {}
+            async for event in engine.stream_chat(
+                question=request.message,
+                history=[m.model_dump() for m in request.history] + long_term_messages,
+                conversation_id=conversation_id,
+                document_ids=doc_ids_to_use,
+                metadata_filter=request.rag_config.metadata_filter,
+                top_k=request.rag_config.top_k,
+                score_threshold=request.rag_config.score_threshold,
+                tenant_id=tenant_id,
+                structured_output=request.structured_output,
+                retrieval_mode=request.rag_config.retrieval_mode,
+                alpha=request.rag_config.alpha,
+                enable_weight_rerank=request.rag_config.enable_weight_rerank,
+                vector_weight=request.rag_config.vector_weight,
+                keyword_weight=request.rag_config.keyword_weight,
+                mmr_lambda=request.rag_config.mmr_lambda,
+                enable_reranker=request.rag_config.enable_reranker,
+                reranker_provider=request.rag_config.reranker_provider,
+                reranker_top_n=request.rag_config.reranker_top_n,
+                structured_preset=request.structured_preset,
+                prompt_template_id=request.prompt_template_id,
+                prompt_template_key=request.prompt_template_key,
+                prompt_ab_experiment_key=request.prompt_ab_experiment_key,
+                ab_user_key=account_id,
+                db=db,
+                request_id=str(request_id),
+            ):
+                etype = event.get("type")
+                if etype == "citations":
+                    citations_data = event.get("data") or []
+                elif etype == "token":
+                    data = event.get("data") or {}
+                    full_response += str(data.get("content") or "")
+                elif etype == "done":
+                    done_data = event.get("data") or {}
+
+            if isinstance(done_data, dict):
+                metrics_data = dict(done_data.get("metrics") or {})
+                structured_data = done_data.get("structured_data")
+
+        # 3) Persist assistant response.
+        assistant_message = Message(
+            id=assistant_message_id,
+            tenant_id=tenant_id,
+            conversation_id=conversation_id,
+            role="assistant",
+            content=full_response,
+            citations=citations_data,
+            token_count=num_tokens_from_string(full_response or ""),
+            message_metadata={**(metrics_data or {}), "request_id": str(request_id)},
+        )
+        db.add(assistant_message)
+
+        conversation.message_count += 1
+        conversation.updated_at = datetime.utcnow()
+        db.commit()
+
+    except Exception as exc:  # noqa: BLE001
+        logger.error("Chat error: %s", str(exc)[:200])
+        raise HTTPException(status_code=500, detail=_format_stream_error_message(exc))
+
+    if conversation_id is None:
+        raise HTTPException(status_code=500, detail="Conversation id missing")
+
+    retrieval_mode_used = metrics_data.get("retrieval_mode") or request.rag_config.retrieval_mode
+    vector_backend_used = metrics_data.get("vector_backend") or settings.VECTOR_BACKEND
+    structured_ok = bool(metrics_data.get("structured_parse_ok")) and structured_data is not None
+
+    return {
+        "conversation_id": conversation_id,
+        "assistant_message_id": assistant_message_id,
+        "request_id": str(request_id),
+        "content": full_response,
+        "citations": citations_data,
+        "total_tokens": num_tokens_from_string(full_response or ""),
+        "total_chars": len(full_response or ""),
+        "retrieval_mode": retrieval_mode_used,
+        "vector_backend": vector_backend_used,
+        "metrics": metrics_data,
+        "structured": structured_ok if request.structured_output else False,
+        "structured_data": structured_data,
+    }
 
 
 @router.post("/stream")

@@ -305,6 +305,57 @@ def main() -> int:
                 json={"description": "smoke-updated"},
             )
 
+        # Dataset ingestion policy endpoints.
+        if ds_id:
+            policy_payload = {
+                "version": "1",
+                "rules": [
+                    {
+                        "id": "txt-default",
+                        "name": "TXT Default",
+                        "enabled": True,
+                        "match": {"extensions": [".txt"]},
+                        "preprocess": {"enabled": False, "steps": []},
+                        "parser_backend": "auto",
+                        "governance_profile_ref": "builtin:kb_default",
+                        "pipeline_patch": {"governance_enabled": True},
+                    }
+                ],
+            }
+            runner.call(
+                "PUT",
+                "/api/v1/datasets/{dataset_id}/ingestion-policy",
+                f"/api/v1/datasets/{ds_id}/ingestion-policy",
+                expected=[200],
+                json=policy_payload,
+            )
+            runner.call(
+                "GET",
+                "/api/v1/datasets/{dataset_id}/ingestion-policy",
+                f"/api/v1/datasets/{ds_id}/ingestion-policy",
+                expected=[200],
+            )
+            runner.call(
+                "GET",
+                "/api/v1/datasets/{dataset_id}/ingestion-policy/export",
+                f"/api/v1/datasets/{ds_id}/ingestion-policy/export",
+                expected=[200],
+            )
+            policy_bytes = json.dumps(policy_payload, ensure_ascii=False).encode("utf-8")
+            runner.call(
+                "POST",
+                "/api/v1/datasets/{dataset_id}/ingestion-policy/import",
+                f"/api/v1/datasets/{ds_id}/ingestion-policy/import",
+                expected=[200, 409],
+                files={"file": ("policy.json", policy_bytes, "application/json")},
+                data={"replace": "true"},
+            )
+        else:
+            runner.mark("GET", "/api/v1/datasets/{dataset_id}/ingestion-policy")
+            runner.mark("PUT", "/api/v1/datasets/{dataset_id}/ingestion-policy")
+            runner.mark("POST", "/api/v1/datasets/{dataset_id}/ingestion-policy/import")
+            runner.mark("GET", "/api/v1/datasets/{dataset_id}/ingestion-policy/export")
+
         # Documents endpoints: upload a small text file.
         sample_text = "Smoke test document.\nSecond line."
         files = {"file": ("smoke.txt", sample_text.encode("utf-8"), "text/plain")}
@@ -335,6 +386,7 @@ def main() -> int:
         )
 
         runner.call("GET", "/api/v1/documents/", "/api/v1/documents/?limit=5", expected=[200])
+        runner.call("GET", "/api/v1/documents/stats", "/api/v1/documents/stats", expected=[200])
 
         if doc_id:
             runner.call("GET", "/api/v1/documents/{document_id}", f"/api/v1/documents/{doc_id}", expected=[200])
@@ -417,6 +469,13 @@ def main() -> int:
                 "patch": {"batch": True, "source": "smoke"},
                 "replace": False,
             },
+        )
+        runner.call(
+            "POST",
+            "/api/v1/documents/batch-delete",
+            "/api/v1/documents/batch-delete",
+            expected=[200],
+            json={"document_ids": [str(uuid.uuid4())]},
         )
 
         cancel_target = str(manual_doc_id or uuid.uuid4())
@@ -504,6 +563,112 @@ def main() -> int:
         runner.call("GET", "/api/v1/pipeline/clean-rules", "/api/v1/pipeline/clean-rules", expected=[200])
         runner.call(
             "POST",
+            "/api/v1/pipeline/governance-analyze",
+            "/api/v1/pipeline/governance-analyze",
+            expected=[200],
+            json={"markdown": "<p>hello</p>\n\nA  \n\nB"},
+        )
+        if ds_id:
+            runner.call(
+                "POST",
+                "/api/v1/pipeline/ingestion-preview",
+                "/api/v1/pipeline/ingestion-preview",
+                expected=[200, 400, 500],
+                files={"file": ("ingest.txt", b"ingestion preview", "text/plain")},
+                data={"dataset_id": ds_id},
+            )
+        else:
+            runner.mark("POST", "/api/v1/pipeline/ingestion-preview")
+
+        # Governance profile endpoints (custom CRUD + import/export).
+        runner.call(
+            "GET",
+            "/api/v1/pipeline/governance-profiles",
+            "/api/v1/pipeline/governance-profiles?limit=5",
+            expected=[200],
+        )
+        gov_key = f"smoke_profile_{uuid.uuid4().hex[:6]}"
+        gov_resp = runner.call(
+            "POST",
+            "/api/v1/pipeline/governance-profiles",
+            "/api/v1/pipeline/governance-profiles",
+            expected=[201],
+            json={
+                "name": f"Smoke Governance {uuid.uuid4().hex[:6]}",
+                "description": "smoke",
+                "key": gov_key,
+                "payload": {
+                    "version": "1",
+                    "input_formats": ["markdown"],
+                    "pipeline_patch": {"governance_enabled": True},
+                    "regex_rules": [],
+                },
+            },
+        )
+        gov_id = parse_json(gov_resp).get("id") or gov_key
+        runner.call(
+            "GET",
+            "/api/v1/pipeline/governance-profiles/{profile_ref}",
+            f"/api/v1/pipeline/governance-profiles/{gov_id}",
+            expected=[200],
+        )
+        runner.call(
+            "PATCH",
+            "/api/v1/pipeline/governance-profiles/{profile_ref}",
+            f"/api/v1/pipeline/governance-profiles/{gov_id}",
+            expected=[200],
+            json={"description": "smoke-updated"},
+        )
+        runner.call(
+            "GET",
+            "/api/v1/pipeline/governance-profiles/{profile_ref}/export",
+            f"/api/v1/pipeline/governance-profiles/{gov_id}/export",
+            expected=[200],
+        )
+
+        import_key = f"smoke_import_{uuid.uuid4().hex[:6]}"
+        import_bytes = json.dumps(
+            {
+                "name": f"Smoke Imported {uuid.uuid4().hex[:6]}",
+                "description": "smoke",
+                "key": import_key,
+                "payload": {
+                    "version": "1",
+                    "input_formats": ["markdown"],
+                    "pipeline_patch": {"governance_enabled": True},
+                    "regex_rules": [],
+                },
+            },
+            ensure_ascii=False,
+        ).encode("utf-8")
+        runner.call(
+            "POST",
+            "/api/v1/pipeline/governance-profiles/import",
+            "/api/v1/pipeline/governance-profiles/import",
+            expected=[200, 409],
+            files={"file": ("profile.json", import_bytes, "application/json")},
+            data={"overwrite": "true"},
+        )
+        runner.call(
+            "GET",
+            "/api/v1/pipeline/governance-profiles/{profile_ref}",
+            f"/api/v1/pipeline/governance-profiles/{import_key}",
+            expected=[200, 404],
+        )
+        runner.call(
+            "DELETE",
+            "/api/v1/pipeline/governance-profiles/{profile_ref}",
+            f"/api/v1/pipeline/governance-profiles/{import_key}",
+            expected=[204, 404],
+        )
+        runner.call(
+            "DELETE",
+            "/api/v1/pipeline/governance-profiles/{profile_ref}",
+            f"/api/v1/pipeline/governance-profiles/{gov_id}",
+            expected=[204, 404],
+        )
+        runner.call(
+            "POST",
             "/api/v1/pipeline/extract-keywords",
             "/api/v1/pipeline/extract-keywords",
             expected=[200],
@@ -530,6 +695,55 @@ def main() -> int:
         else:
             runner.mark("POST", "/api/v1/pipeline/upload-zip-with-images")
 
+        # Parsing workspace endpoints (persistent drafts for /parsing UI).
+        runner.call(
+            "GET",
+            "/api/v1/parsing/documents",
+            "/api/v1/parsing/documents?limit=5",
+            expected=[200],
+        )
+        parsing_doc_id = None
+        parsing_upload = runner.call(
+            "POST",
+            "/api/v1/parsing/documents",
+            "/api/v1/parsing/documents",
+            expected=[201],
+            files={"file": ("parsing.txt", b"parsing workspace", "text/plain")},
+            data={"parser_backend": "auto"},
+        )
+        parsing_doc_id = parse_json(parsing_upload).get("id")
+        if parsing_doc_id:
+            runner.call(
+                "POST",
+                "/api/v1/parsing/documents/{document_id}/parse",
+                f"/api/v1/parsing/documents/{parsing_doc_id}/parse",
+                expected=[200, 400, 500],
+            )
+            runner.call(
+                "GET",
+                "/api/v1/parsing/documents/{document_id}/content",
+                f"/api/v1/parsing/documents/{parsing_doc_id}/content",
+                expected=[200],
+            )
+            runner.call(
+                "PATCH",
+                "/api/v1/parsing/documents/{document_id}/content",
+                f"/api/v1/parsing/documents/{parsing_doc_id}/content",
+                expected=[200],
+                json={"markdown_content": "# Edited\n\nok", "original_markdown_content": "# Edited\n\nok"},
+            )
+            runner.call(
+                "DELETE",
+                "/api/v1/parsing/documents/{document_id}",
+                f"/api/v1/parsing/documents/{parsing_doc_id}",
+                expected=[204],
+            )
+        else:
+            runner.mark("POST", "/api/v1/parsing/documents/{document_id}/parse")
+            runner.mark("GET", "/api/v1/parsing/documents/{document_id}/content")
+            runner.mark("PATCH", "/api/v1/parsing/documents/{document_id}/content")
+            runner.mark("DELETE", "/api/v1/parsing/documents/{document_id}")
+
         # Poll document status until ready (best effort).
         if doc_id:
             status_url = f"/api/v1/documents/{doc_id}/status"
@@ -545,6 +759,67 @@ def main() -> int:
                     break
                 time.sleep(1)
 
+        # Document pipeline + chunk browsing endpoints.
+        if doc_id:
+            runner.call(
+                "PATCH",
+                "/api/v1/documents/{document_id}/pipeline",
+                f"/api/v1/documents/{doc_id}/pipeline",
+                expected=[200, 404, 409],
+                json={"patch": {"governance_enabled": True}, "replace": False},
+            )
+            chunks_resp = runner.call(
+                "GET",
+                "/api/v1/documents/{document_id}/chunks",
+                f"/api/v1/documents/{doc_id}/chunks?limit=5",
+                expected=[200],
+            )
+            items = parse_json(chunks_resp).get("items") or []
+            first_chunk_id = items[0].get("id") if items else None
+            runner.call(
+                "GET",
+                "/api/v1/documents/{document_id}/chunks/matches",
+                f"/api/v1/documents/{doc_id}/chunks/matches?q=Smoke&limit=20",
+                expected=[200],
+            )
+            if first_chunk_id:
+                runner.call(
+                    "GET",
+                    "/api/v1/documents/{document_id}/chunks/{chunk_id}",
+                    f"/api/v1/documents/{doc_id}/chunks/{first_chunk_id}",
+                    expected=[200, 404],
+                )
+            else:
+                runner.call(
+                    "GET",
+                    "/api/v1/documents/{document_id}/chunks/{chunk_id}",
+                    f"/api/v1/documents/{doc_id}/chunks/{uuid.uuid4()}",
+                    expected=[404],
+                )
+        else:
+            runner.mark("PATCH", "/api/v1/documents/{document_id}/pipeline")
+            runner.mark("GET", "/api/v1/documents/{document_id}/chunks")
+            runner.mark("GET", "/api/v1/documents/{document_id}/chunks/matches")
+            runner.mark("GET", "/api/v1/documents/{document_id}/chunks/{chunk_id}")
+
+        # RAG visualization endpoints (similarity matrix UI).
+        col_resp = runner.call(
+            "GET",
+            "/api/v1/ragviz/similarity/collections",
+            "/api/v1/ragviz/similarity/collections",
+            expected=[200],
+        )
+        collections = parse_json(col_resp).get("collections") or []
+        x_collection = collections[0].get("id") if collections else "invalid"
+        y_collection = collections[0].get("id") if collections else "invalid"
+        runner.call(
+            "POST",
+            "/api/v1/ragviz/similarity/calculate",
+            "/api/v1/ragviz/similarity/calculate",
+            expected=[200],
+            json={"x_collection": x_collection, "y_collection": y_collection, "max_items": 10},
+        )
+
         # Chat endpoints (stream -> conversation).
         conversation_id = None
         if doc_id:
@@ -558,6 +833,20 @@ def main() -> int:
             conversation_id = parse_json(conv_resp).get("id")
         else:
             runner.mark("POST", "/api/v1/chat/conversations")
+
+        # Non-streaming chat endpoint (best-effort; may fail without a valid LLM key).
+        chat_path = "/api/v1/chat/" if ("POST", "/api/v1/chat/") in openapi_paths else "/api/v1/chat"
+        if doc_id:
+            chat_expected = [200] if not args.skip_llm_test else [200, 500, 502, 503]
+            runner.call(
+                "POST",
+                chat_path,
+                chat_path,
+                expected=chat_expected,
+                json={"message": "smoke non-stream", "document_ids": [doc_id]},
+            )
+        else:
+            runner.mark("POST", chat_path)
         if doc_id:
             ok, _ = runner.stream(
                 "POST",

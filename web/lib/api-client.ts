@@ -15,6 +15,7 @@ import type {
   Conversation,
   Message,
   ChatRequest,
+  ChatResponse,
   DocumentPreview,
   ManualChunk,
   DocumentPipelineOptions,
@@ -888,6 +889,14 @@ export const chatApi = {
         onError?.(e as Error)
       }
     }
+  },
+
+  /**
+   * 非流式聊天（一次性返回 JSON）
+   */
+  async chat(request: ChatRequest): Promise<ChatResponse> {
+    const { data } = await apiClient.post('/chat', request, { timeout: API_LONG_TIMEOUT_MS })
+    return data
   },
 
   async listCheckpoints(
