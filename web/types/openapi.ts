@@ -198,6 +198,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/documents/stats": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Document Stats
+         * @description Document stats for knowledge-base dashboards.
+         *
+         *     Notes:
+         *     - Enforces the same dataset permission semantics as `list_documents`.
+         *     - Supports lightweight filename search via `q`.
+         */
+        get: operations["get_document_stats_api_v1_documents_stats_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/documents/{document_id}": {
         parameters: {
             query?: never;
@@ -217,6 +241,161 @@ export interface paths {
          * @description Delete document.
          */
         delete: operations["delete_document_api_v1_documents__document_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/documents/{document_id}/chunks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Document Chunks
+         * @description List document chunks (paged).
+         *
+         *     This is preferred over `include_chunks=true` for large documents to avoid huge payloads.
+         */
+        get: operations["list_document_chunks_api_v1_documents__document_id__chunks_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/documents/{document_id}/chunks/matches": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Document Chunk Matches
+         * @description List chunk matches for a document (lightweight payload).
+         *
+         *     This is optimized for "find in document" UX where the frontend only needs:
+         *     - chunk id (for navigation / deep link)
+         *     - chunk_index/page_number (for display)
+         *
+         *     Notes:
+         *     - Enforces the same dataset permission semantics as `list_document_chunks`.
+         *     - Returns at most `limit` matches; `truncated=true` indicates there are more.
+         */
+        get: operations["list_document_chunk_matches_api_v1_documents__document_id__chunks_matches_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/documents/{document_id}/chunks/{chunk_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Document Chunk
+         * @description Get a single chunk for a document.
+         */
+        get: operations["get_document_chunk_api_v1_documents__document_id__chunks__chunk_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/documents/{document_id}/pipeline": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Patch Document Pipeline
+         * @description Patch `documents.metadata.pipeline` for document-level pipeline overrides.
+         */
+        patch: operations["patch_document_pipeline_api_v1_documents__document_id__pipeline_patch"];
+        trace?: never;
+    };
+    "/api/v1/documents/{document_id}/metadata": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Patch Document User Metadata
+         * @description Patch `documents.metadata.user` for user-editable document metadata.
+         */
+        patch: operations["patch_document_user_metadata_api_v1_documents__document_id__metadata_patch"];
+        trace?: never;
+    };
+    "/api/v1/documents/batch/metadata": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Batch Patch Document User Metadata
+         * @description Batch patch `documents.metadata.user`.
+         *
+         *     For any documents the caller cannot write, they will be returned in `denied`.
+         */
+        post: operations["batch_patch_document_user_metadata_api_v1_documents_batch_metadata_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/documents/{document_id}/download": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Download Document
+         * @description Download (or inline-preview) a document file.
+         *
+         *     This endpoint supports `?token=` and `?tenant_id=` query params to enable
+         *     usage in <iframe>/<a> tags where custom headers cannot be set.
+         */
+        get: operations["download_document_api_v1_documents__document_id__download_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -260,6 +439,50 @@ export interface paths {
          *     - When queue is disabled, the in-process/background worker cooperatively checks the cancelled status.
          */
         post: operations["cancel_document_processing_api_v1_documents__document_id__cancel_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/documents/{document_id}/retry": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Retry Document Processing
+         * @description Retry a failed/cancelled document processing task.
+         *
+         *     Notes:
+         *     - This will delete existing chunks (DB) and indexes (vector/BM25/KG) before reprocessing.
+         *     - Use `force=true` to allow retrying completed documents.
+         */
+        post: operations["retry_document_processing_api_v1_documents__document_id__retry_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/documents/batch-delete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Batch Delete Documents
+         * @description Batch delete documents (best-effort per id).
+         */
+        post: operations["batch_delete_documents_api_v1_documents_batch_delete_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -472,6 +695,108 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/parsing/documents": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Parsing Documents
+         * @description List parsing workspace documents (persistent across restarts).
+         */
+        get: operations["list_parsing_documents_api_v1_parsing_documents_get"];
+        put?: never;
+        /**
+         * Upload Parsing Document
+         * @description Upload a source file into the parsing workspace (no parsing yet).
+         */
+        post: operations["upload_parsing_document_api_v1_parsing_documents_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/parsing/documents/{document_id}/parse": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Parse Workspace Document
+         * @description Parse a previously uploaded workspace document and persist markdown.
+         */
+        post: operations["parse_workspace_document_api_v1_parsing_documents__document_id__parse_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/parsing/documents/{document_id}/content": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Parsing Content */
+        get: operations["get_parsing_content_api_v1_parsing_documents__document_id__content_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Update Parsing Content */
+        patch: operations["update_parsing_content_api_v1_parsing_documents__document_id__content_patch"];
+        trace?: never;
+    };
+    "/api/v1/parsing/documents/{document_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete Parsing Document */
+        delete: operations["delete_parsing_document_api_v1_parsing_documents__document_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/chat": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Chat
+         * @description Non-streaming chat endpoint.
+         *
+         *     It mirrors the `/chat/stream` behavior, but returns a single JSON payload
+         *     after the answer is ready.
+         */
+        post: operations["chat_api_v1_chat_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/chat/stream": {
         parameters: {
             query?: never;
@@ -525,7 +850,7 @@ export interface paths {
         };
         /**
          * Get Conversation Messages
-         * @description Fetch conversation history.
+         * @description Fetch conversation history (paged).
          */
         get: operations["get_conversation_messages_api_v1_chat_conversations__conversation_id__messages_get"];
         put?: never;
@@ -635,6 +960,58 @@ export interface paths {
         head?: never;
         /** Update Dataset */
         patch: operations["update_dataset_api_v1_datasets__dataset_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/datasets/{dataset_id}/ingestion-policy": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Dataset Ingestion Policy */
+        get: operations["get_dataset_ingestion_policy_api_v1_datasets__dataset_id__ingestion_policy_get"];
+        /** Put Dataset Ingestion Policy */
+        put: operations["put_dataset_ingestion_policy_api_v1_datasets__dataset_id__ingestion_policy_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/datasets/{dataset_id}/ingestion-policy/import": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Import Dataset Ingestion Policy */
+        post: operations["import_dataset_ingestion_policy_api_v1_datasets__dataset_id__ingestion_policy_import_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/datasets/{dataset_id}/ingestion-policy/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Export Dataset Ingestion Policy */
+        get: operations["export_dataset_ingestion_policy_api_v1_datasets__dataset_id__ingestion_policy_export_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/api/v1/kg/graph": {
@@ -1298,6 +1675,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/feedback/messages/enriched": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Message Feedback Enriched
+         * @description Feedback list with joined message content + conversation title (for triage dashboards).
+         */
+        get: operations["list_message_feedback_enriched_api_v1_feedback_messages_enriched_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/pipeline/capabilities": {
         parameters: {
             query?: never;
@@ -1320,6 +1717,91 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/pipeline/governance-profiles": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Governance Profiles
+         * @description List governance profiles (built-in + tenant custom profiles).
+         *
+         *     Notes:
+         *     - Built-in profiles are shipped in code (read-only).
+         *     - Custom profiles are stored in DB (tenant-scoped).
+         */
+        get: operations["list_governance_profiles_api_v1_pipeline_governance_profiles_get"];
+        put?: never;
+        /** Create Governance Profile */
+        post: operations["create_governance_profile_api_v1_pipeline_governance_profiles_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/pipeline/governance-profiles/{profile_ref}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Governance Profile */
+        get: operations["get_governance_profile_api_v1_pipeline_governance_profiles__profile_ref__get"];
+        put?: never;
+        post?: never;
+        /** Delete Governance Profile */
+        delete: operations["delete_governance_profile_api_v1_pipeline_governance_profiles__profile_ref__delete"];
+        options?: never;
+        head?: never;
+        /** Update Governance Profile */
+        patch: operations["update_governance_profile_api_v1_pipeline_governance_profiles__profile_ref__patch"];
+        trace?: never;
+    };
+    "/api/v1/pipeline/governance-profiles/import": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Import Governance Profiles
+         * @description Import governance profile scripts (JSON).
+         *
+         *     Security:
+         *     - Only declarative JSON is accepted (no executable code).
+         *     - Strong validation on regex rules and option keys is applied server-side.
+         */
+        post: operations["import_governance_profiles_api_v1_pipeline_governance_profiles_import_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/pipeline/governance-profiles/{profile_ref}/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Export Governance Profile */
+        get: operations["export_governance_profile_api_v1_pipeline_governance_profiles__profile_ref__export_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/pipeline/parse-preview": {
         parameters: {
             query?: never;
@@ -1334,6 +1816,30 @@ export interface paths {
          * @description Parse a file into a Markdown preview without persisting it; extract inline images to uploads/{tenant}/images.
          */
         post: operations["parse_preview_api_v1_pipeline_parse_preview_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/pipeline/ingestion-preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Ingestion Preview
+         * @description One-shot ingestion preview for a dataset:
+         *     - match dataset ingestion policy
+         *     - preprocess file (before parsing)
+         *     - parse to Markdown (preview)
+         *     - run governance clean preview (issues + unified diff)
+         */
+        post: operations["ingestion_preview_api_v1_pipeline_ingestion_preview_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1374,6 +1880,28 @@ export interface paths {
          * @description Preview governance-style cleaning for Markdown (no persistence) to compare before/after.
          */
         post: operations["clean_preview_api_v1_pipeline_clean_preview_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/pipeline/governance-analyze": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Governance Analyze
+         * @description Analyze a text for governance issues without performing cleaning/persistence.
+         *
+         *     This is intended for "quality check" UI flows to recommend治理配置/预设。
+         */
+        post: operations["governance_analyze_api_v1_pipeline_governance_analyze_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1529,6 +2057,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/ragviz/similarity/collections": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Similarity Collections */
+        get: operations["get_similarity_collections_api_v1_ragviz_similarity_collections_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/ragviz/similarity/calculate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Similarity Calculate */
+        post: operations["similarity_calculate_api_v1_ragviz_similarity_calculate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/": {
         parameters: {
             query?: never;
@@ -1659,6 +2221,54 @@ export interface components {
              */
             message: string;
         };
+        /** Body_import_dataset_ingestion_policy_api_v1_datasets__dataset_id__ingestion_policy_import_post */
+        Body_import_dataset_ingestion_policy_api_v1_datasets__dataset_id__ingestion_policy_import_post: {
+            /**
+             * File
+             * Format: binary
+             */
+            file: string;
+            /**
+             * Replace
+             * @default true
+             */
+            replace: boolean;
+        };
+        /** Body_import_governance_profiles_api_v1_pipeline_governance_profiles_import_post */
+        Body_import_governance_profiles_api_v1_pipeline_governance_profiles_import_post: {
+            /**
+             * File
+             * Format: binary
+             */
+            file: string;
+            /**
+             * Overwrite
+             * @default false
+             */
+            overwrite: boolean;
+        };
+        /** Body_ingestion_preview_api_v1_pipeline_ingestion_preview_post */
+        Body_ingestion_preview_api_v1_pipeline_ingestion_preview_post: {
+            /**
+             * File
+             * Format: binary
+             */
+            file: string;
+            /**
+             * Dataset Id
+             * Format: uuid
+             */
+            dataset_id: string;
+            /** Parser Backend */
+            parser_backend?: string | null;
+            /** Chunk Strategy */
+            chunk_strategy?: string | null;
+            /**
+             * Diff Max Lines
+             * @default 2000
+             */
+            diff_max_lines: number;
+        };
         /** Body_parse_preview_api_v1_pipeline_parse_preview_post */
         Body_parse_preview_api_v1_pipeline_parse_preview_post: {
             /**
@@ -1686,8 +2296,18 @@ export interface components {
              * @default langchain_recursive
              */
             chunk_strategy: string;
+            /** Separator Preset */
+            separator_preset?: string | null;
+            /** Separator */
+            separator?: string | null;
+            /** Keep Separator */
+            keep_separator?: boolean | null;
+            /** Separator Max Chunk Size */
+            separator_max_chunk_size?: number | null;
             /** Dataset Id */
             dataset_id?: string | null;
+            /** Pipeline */
+            pipeline?: string | null;
             /** Governance Enabled */
             governance_enabled?: boolean | null;
             /** Governance Remove Toc Lines */
@@ -1728,6 +2348,8 @@ export interface components {
             chunk_strategy: string;
             /** Dataset Id */
             dataset_id?: string | null;
+            /** Pipeline */
+            pipeline?: string | null;
             /** Governance Enabled */
             governance_enabled?: boolean | null;
             /** Governance Remove Toc Lines */
@@ -1766,6 +2388,8 @@ export interface components {
              * @default langchain_recursive
              */
             chunk_strategy: string;
+            /** Pipeline */
+            pipeline?: string | null;
             /** Governance Enabled */
             governance_enabled?: boolean | null;
             /** Governance Remove Toc Lines */
@@ -1817,6 +2441,8 @@ export interface components {
              * @default langchain_recursive
              */
             chunk_strategy: string;
+            /** Pipeline */
+            pipeline?: string | null;
             /** Governance Enabled */
             governance_enabled?: boolean | null;
             /** Governance Remove Toc Lines */
@@ -1858,6 +2484,19 @@ export interface components {
              * @default 5
              */
             max_concurrent: number;
+        };
+        /** Body_upload_parsing_document_api_v1_parsing_documents_post */
+        Body_upload_parsing_document_api_v1_parsing_documents_post: {
+            /**
+             * File
+             * Format: binary
+             */
+            file: string;
+            /**
+             * Parser Backend
+             * @default auto
+             */
+            parser_backend: string;
         };
         /** Body_upload_zip_with_images_api_v1_pipeline_upload_zip_with_images_post */
         Body_upload_zip_with_images_api_v1_pipeline_upload_zip_with_images_post: {
@@ -1989,6 +2628,51 @@ export interface components {
             prompt_ab_experiment_key?: string | null;
             rag_config?: components["schemas"]["ChatRAGConfig"];
         };
+        /**
+         * ChatResponse
+         * @description Non-streaming chat response payload.
+         */
+        ChatResponse: {
+            /**
+             * Conversation Id
+             * Format: uuid
+             */
+            conversation_id: string;
+            /**
+             * Assistant Message Id
+             * Format: uuid
+             */
+            assistant_message_id: string;
+            /** Request Id */
+            request_id: string;
+            /** Content */
+            content: string;
+            /** Citations */
+            citations?: components["schemas"]["Citation"][];
+            /**
+             * Total Tokens
+             * @default 0
+             */
+            total_tokens: number;
+            /**
+             * Total Chars
+             * @default 0
+             */
+            total_chars: number;
+            /** Retrieval Mode */
+            retrieval_mode?: string | null;
+            /** Vector Backend */
+            vector_backend?: string | null;
+            /** Metrics */
+            metrics?: Record<string, never>;
+            /**
+             * Structured
+             * @default false
+             */
+            structured: boolean;
+            /** Structured Data */
+            structured_data?: unknown;
+        };
         /** CheckpointDetailResponse */
         CheckpointDetailResponse: {
             /** Thread Id */
@@ -2064,6 +2748,8 @@ export interface components {
             content: string;
             /** Length */
             length: number;
+            /** Tokens Est */
+            tokens_est?: number | null;
             /** Start Index */
             start_index: number;
             /** End Index */
@@ -2102,30 +2788,12 @@ export interface components {
             /** Markdown */
             markdown: string;
         };
-        /**
-         * ChunkPreviewResponse
-         * @description Chunk preview response.
-         */
+        /** ChunkPreviewResponse */
         ChunkPreviewResponse: {
-            /** Filename */
-            filename: string;
-            /** File Type */
-            file_type: string;
-            /** File Size */
-            file_size: number;
-            /** Total Chunks */
-            total_chunks: number;
-            /** Total Characters */
-            total_characters: number;
-            params: components["schemas"]["ChunkPreviewParams"];
-            /** Chunks */
-            chunks: components["schemas"]["ChunkPreviewItem"][];
-            /** Original Text */
-            original_text?: string | null;
-            /** Parser Backend */
-            parser_backend: string;
-            /** Chunk Strategy */
-            chunk_strategy: string;
+            /** Paragraphs */
+            paragraphs: components["schemas"]["ChunkItem"][];
+            /** Sentences */
+            sentences: components["schemas"]["ChunkItem"][];
         };
         /** ChunkStrategyInfo */
         ChunkStrategyInfo: {
@@ -2227,6 +2895,16 @@ export interface components {
              */
             use_default_rules: boolean;
             /**
+             * Include Diff
+             * @default false
+             */
+            include_diff: boolean;
+            /**
+             * Diff Max Lines
+             * @default 2000
+             */
+            diff_max_lines: number;
+            /**
              * Input Format
              * @default markdown
              * @enum {string}
@@ -2291,6 +2969,91 @@ export interface components {
              */
             remove_images: "none" | "decorative" | "all";
             /**
+             * Extract Frontmatter
+             * @default false
+             */
+            extract_frontmatter: boolean;
+            /**
+             * Strip Frontmatter
+             * @default false
+             */
+            strip_frontmatter: boolean;
+            /**
+             * Detect Language
+             * @default false
+             */
+            detect_language: boolean;
+            /**
+             * Language Min Chars
+             * @default 40
+             */
+            language_min_chars: number;
+            /**
+             * Normalize Urls
+             * @default false
+             */
+            normalize_urls: boolean;
+            /**
+             * Normalize Urls Strip Tracking
+             * @default true
+             */
+            normalize_urls_strip_tracking: boolean;
+            /**
+             * Drop Duplicate Paragraphs
+             * @default false
+             */
+            drop_duplicate_paragraphs: boolean;
+            /**
+             * Drop Duplicate Paragraphs Min Occurrences
+             * @default 3
+             */
+            drop_duplicate_paragraphs_min_occurrences: number;
+            /**
+             * Drop Duplicate Paragraphs Min Chars
+             * @default 40
+             */
+            drop_duplicate_paragraphs_min_chars: number;
+            /**
+             * Drop Duplicate Paragraphs Max Chars
+             * @default 1200
+             */
+            drop_duplicate_paragraphs_max_chars: number;
+            /**
+             * Trim References
+             * @default false
+             */
+            trim_references: boolean;
+            /**
+             * Extract Keywords
+             * @default false
+             */
+            extract_keywords: boolean;
+            /**
+             * Keywords Provider
+             * @default auto
+             */
+            keywords_provider: string;
+            /**
+             * Keywords Top K
+             * @default 10
+             */
+            keywords_top_k: number;
+            /**
+             * Keywords Max Chars
+             * @default 20000
+             */
+            keywords_max_chars: number;
+            /**
+             * Normalize Tables
+             * @default false
+             */
+            normalize_tables: boolean;
+            /**
+             * Strip Code Line Numbers
+             * @default false
+             */
+            strip_code_line_numbers: boolean;
+            /**
              * Pii Anonymize
              * @default false
              */
@@ -2306,6 +3069,22 @@ export interface components {
              * @default [REDACTED]
              */
             pii_mask: string;
+            /**
+             * Secrets Redact
+             * @default false
+             */
+            secrets_redact: boolean;
+            /**
+             * Secrets Mode
+             * @default mask
+             * @enum {string}
+             */
+            secrets_mode: "mask" | "token";
+            /**
+             * Secrets Mask
+             * @default [SECRET]
+             */
+            secrets_mask: string;
             /**
              * Drop Outline Only
              * @default false
@@ -2371,6 +3150,37 @@ export interface components {
             pii_hits?: {
                 [key: string]: number;
             } | null;
+            /** Secrets Hits */
+            secrets_hits?: {
+                [key: string]: number;
+            } | null;
+            /** Frontmatter */
+            frontmatter?: Record<string, never> | null;
+            /** Title */
+            title?: string | null;
+            /** Tags */
+            tags?: string[] | null;
+            /** Language */
+            language?: string | null;
+            /** Language Confidence */
+            language_confidence?: number | null;
+            /** Keywords */
+            keywords?: string[] | null;
+            /**
+             * Urls Changed
+             * @default 0
+             */
+            urls_changed: number;
+            /**
+             * Paragraphs Dropped
+             * @default 0
+             */
+            paragraphs_dropped: number;
+            /**
+             * References Removed Lines
+             * @default 0
+             */
+            references_removed_lines: number;
             /**
              * Input Chars
              * @default 0
@@ -2406,6 +3216,17 @@ export interface components {
              * @default 0
              */
             changed_lines: number;
+            /** Diff Unified */
+            diff_unified?: string | null;
+            /**
+             * Diff Truncated
+             * @default false
+             */
+            diff_truncated: boolean;
+            /** Issues */
+            issues?: components["schemas"]["GovernanceIssue"][];
+            /** Suggested Pipeline Patch */
+            suggested_pipeline_patch?: Record<string, never>;
         };
         /** CleanRulesResponse */
         CleanRulesResponse: {
@@ -2432,6 +3253,16 @@ export interface components {
              * Format: uuid
              */
             conversation_id: string;
+            /**
+             * Returned
+             * @default 0
+             */
+            returned: number;
+            /**
+             * Has More
+             * @default false
+             */
+            has_more: boolean;
             /** Messages */
             messages: components["schemas"]["MessageSchema"][];
         };
@@ -2442,6 +3273,16 @@ export interface components {
         ConversationList: {
             /** Total */
             total: number;
+            /**
+             * Returned
+             * @default 0
+             */
+            returned: number;
+            /**
+             * Has More
+             * @default false
+             */
+            has_more: boolean;
             /** Items */
             items: components["schemas"]["ConversationSchema"][];
         };
@@ -2538,6 +3379,26 @@ export interface components {
             pipeline?: components["schemas"]["DocumentPipelineOptions"] | null;
         };
         /**
+         * DocumentBatchDeleteRequest
+         * @description Batch delete documents.
+         */
+        DocumentBatchDeleteRequest: {
+            /** Document Ids */
+            document_ids: string[];
+        };
+        /**
+         * DocumentBatchDeleteResponse
+         * @description Batch delete result.
+         */
+        DocumentBatchDeleteResponse: {
+            /** Deleted */
+            deleted: number;
+            /** Not Found */
+            not_found?: string[];
+            /** Denied */
+            denied?: string[];
+        };
+        /**
          * DocumentBatchUploadFailure
          * @description Single file result for failed batch upload.
          */
@@ -2577,6 +3438,73 @@ export interface components {
             filename: string;
             /** Status */
             status: string;
+        };
+        /**
+         * DocumentBatchUserMetadataPatchRequest
+         * @description Batch patch for `documents.metadata.user`.
+         */
+        DocumentBatchUserMetadataPatchRequest: {
+            /** Document Ids */
+            document_ids: string[];
+            /** Patch */
+            patch?: Record<string, never>;
+            /**
+             * Replace
+             * @default false
+             */
+            replace: boolean;
+        };
+        /**
+         * DocumentBatchUserMetadataPatchResponse
+         * @description Batch patch result.
+         */
+        DocumentBatchUserMetadataPatchResponse: {
+            /** Updated */
+            updated: number;
+            /** Not Found */
+            not_found?: string[];
+            /** Denied */
+            denied?: string[];
+        };
+        /**
+         * DocumentChunkList
+         * @description Paged document chunks.
+         */
+        DocumentChunkList: {
+            /** Total */
+            total: number;
+            /** Items */
+            items: components["schemas"]["DocumentChunkSchema"][];
+        };
+        /**
+         * DocumentChunkMatch
+         * @description Lightweight chunk match entry (for search/navigation without loading full content).
+         */
+        DocumentChunkMatch: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Chunk Index */
+            chunk_index: number;
+            /** Page Number */
+            page_number?: number | null;
+        };
+        /**
+         * DocumentChunkMatchList
+         * @description Paged (and possibly truncated) chunk match list.
+         */
+        DocumentChunkMatchList: {
+            /** Total */
+            total: number;
+            /**
+             * Truncated
+             * @default false
+             */
+            truncated: boolean;
+            /** Items */
+            items?: components["schemas"]["DocumentChunkMatch"][];
         };
         /**
          * DocumentChunkSchema
@@ -2695,6 +3623,96 @@ export interface components {
              * @description Image removal mode: none | decorative | all
              */
             governance_remove_images?: string | null;
+            /**
+             * Governance Regex Rules
+             * @description Additional regex cleanup rules (stored in metadata.pipeline.governance.regex_rules).
+             */
+            governance_regex_rules?: components["schemas"]["GovernanceRegexRule"][] | null;
+            /**
+             * Governance Extract Frontmatter
+             * @description Extract Markdown YAML frontmatter for metadata enrichment
+             */
+            governance_extract_frontmatter?: boolean | null;
+            /**
+             * Governance Strip Frontmatter
+             * @description Strip Markdown YAML frontmatter from content after extraction
+             */
+            governance_strip_frontmatter?: boolean | null;
+            /**
+             * Governance Detect Language
+             * @description Detect primary language/script (zh/en/mixed) for metadata enrichment
+             */
+            governance_detect_language?: boolean | null;
+            /**
+             * Governance Language Min Chars
+             * @description Min alnum/CJK chars before language detection triggers
+             */
+            governance_language_min_chars?: number | null;
+            /**
+             * Governance Normalize Urls
+             * @description Normalize URLs (e.g., strip tracking parameters) for consistency/dedup
+             */
+            governance_normalize_urls?: boolean | null;
+            /**
+             * Governance Normalize Urls Strip Tracking
+             * @description When normalizing URLs, strip common tracking parameters (utm_*, gclid, fbclid, etc.)
+             */
+            governance_normalize_urls_strip_tracking?: boolean | null;
+            /**
+             * Governance Drop Duplicate Paragraphs
+             * @description Drop paragraphs repeated many times within a document (best-effort)
+             */
+            governance_drop_duplicate_paragraphs?: boolean | null;
+            /**
+             * Governance Drop Duplicate Paragraphs Min Occurrences
+             * @description Min repeat occurrences to drop a paragraph
+             */
+            governance_drop_duplicate_paragraphs_min_occurrences?: number | null;
+            /**
+             * Governance Drop Duplicate Paragraphs Min Chars
+             * @description Min paragraph chars to consider for dedup
+             */
+            governance_drop_duplicate_paragraphs_min_chars?: number | null;
+            /**
+             * Governance Drop Duplicate Paragraphs Max Chars
+             * @description Max paragraph chars to consider for dedup (0 disables cap)
+             */
+            governance_drop_duplicate_paragraphs_max_chars?: number | null;
+            /**
+             * Governance Trim References
+             * @description Trim trailing reference/bibliography sections (best-effort)
+             */
+            governance_trim_references?: boolean | null;
+            /**
+             * Governance Extract Keywords
+             * @description Extract document-level keywords for metadata enrichment (best-effort)
+             */
+            governance_extract_keywords?: boolean | null;
+            /**
+             * Governance Keywords Provider
+             * @description Keyword provider: auto / jieba / jieba_textrank / hanlp / simple
+             */
+            governance_keywords_provider?: string | null;
+            /**
+             * Governance Keywords Top K
+             * @description Max keywords to extract
+             */
+            governance_keywords_top_k?: number | null;
+            /**
+             * Governance Keywords Max Chars
+             * @description Max chars used for keyword extraction (truncate when exceeded)
+             */
+            governance_keywords_max_chars?: number | null;
+            /**
+             * Governance Normalize Tables
+             * @description Normalize markdown tables (whitespace/column alignment)
+             */
+            governance_normalize_tables?: boolean | null;
+            /**
+             * Governance Strip Code Line Numbers
+             * @description Strip leading line numbers inside fenced code blocks
+             */
+            governance_strip_code_line_numbers?: boolean | null;
             /** Governance Pii Anonymize */
             governance_pii_anonymize?: boolean | null;
             /**
@@ -2707,6 +3725,21 @@ export interface components {
              * @description PII replacement string (mask mode)
              */
             governance_pii_mask?: string | null;
+            /**
+             * Governance Secrets Redact
+             * @description Redact common secrets/tokens (API keys, private keys, bearer tokens)
+             */
+            governance_secrets_redact?: boolean | null;
+            /**
+             * Governance Secrets Mode
+             * @description Secrets redaction mode: mask | token
+             */
+            governance_secrets_mode?: string | null;
+            /**
+             * Governance Secrets Mask
+             * @description Secrets replacement string (mask mode)
+             */
+            governance_secrets_mask?: string | null;
             /**
              * Governance Max Blank Lines
              * @description Max consecutive blank lines
@@ -2737,6 +3770,11 @@ export interface components {
              */
             governance_drop_low_density_threshold?: number | null;
             /**
+             * Governance Quarantine On Drop
+             * @description When governance drop filters trigger, mark document as quarantined instead of failed
+             */
+            governance_quarantine_on_drop?: boolean | null;
+            /**
              * Governance Unwrap Max Line Length
              * @description max line length
              */
@@ -2762,6 +3800,46 @@ export interface components {
              */
             governance_common_lines_min_ratio?: number | null;
             /**
+             * Parse Fallback Enabled
+             * @description Retry parsing with an alternative backend when output quality is low (PDF only)
+             */
+            parse_fallback_enabled?: boolean | null;
+            /**
+             * Parse Fallback Min Content Chars
+             * @description Min alnum/CJK chars to consider parse successful
+             */
+            parse_fallback_min_content_chars?: number | null;
+            /**
+             * Parse Fallback Max Retries
+             * @description Max parse fallback retries
+             */
+            parse_fallback_max_retries?: number | null;
+            /**
+             * Persist Parsed Content
+             * @description Persist parsed markdown (raw+clean) into document_parsed_contents
+             */
+            persist_parsed_content?: boolean | null;
+            /**
+             * Persist Parsed Content Max Chars
+             * @description Max chars to persist (truncate when exceeded)
+             */
+            persist_parsed_content_max_chars?: number | null;
+            /**
+             * Near Dedup Enabled
+             * @description Enable cross-document near-duplicate chunk dropping (SimHash)
+             */
+            near_dedup_enabled?: boolean | null;
+            /**
+             * Near Dedup Hamming Threshold
+             * @description Near-dup Hamming distance threshold
+             */
+            near_dedup_hamming_threshold?: number | null;
+            /**
+             * Near Dedup Max Bucket Size
+             * @description Max bucket size for near-dup index
+             */
+            near_dedup_max_bucket_size?: number | null;
+            /**
              * Chunk Size
              * @description Chunk size
              */
@@ -2783,6 +3861,46 @@ export interface components {
             entity_vector_enabled?: boolean | null;
         };
         /**
+         * DocumentPipelinePatchRequest
+         * @description Patch `documents.metadata.pipeline` (document-level pipeline overrides).
+         *
+         *     - When `replace=false` (default), apply only fields provided in `patch`.
+         *       - Any field explicitly set to `null` will clear that override (revert to defaults).
+         *     - When `replace=true`, replace the whole pipeline override with `patch`.
+         */
+        DocumentPipelinePatchRequest: {
+            /** @description Pipeline patch; null values clear overrides (when field is present). */
+            patch?: components["schemas"]["DocumentPipelineOptions"];
+            /**
+             * Replace
+             * @description Replace entire pipeline override instead of patching
+             * @default false
+             */
+            replace: boolean;
+        };
+        /**
+         * DocumentStats
+         * @description Document stats for knowledge-base dashboards.
+         */
+        DocumentStats: {
+            /** Total */
+            total: number;
+            /** By Status */
+            by_status?: {
+                [key: string]: number;
+            };
+            /**
+             * Total Chunks
+             * @default 0
+             */
+            total_chunks: number;
+            /**
+             * Total Size
+             * @default 0
+             */
+            total_size: number;
+        };
+        /**
          * DocumentStatus
          * @description Document processing status.
          */
@@ -2800,6 +3918,27 @@ export interface components {
             current_stage?: string | null;
             /** Error Message */
             error_message?: string | null;
+        };
+        /**
+         * DocumentUserMetadataPatchRequest
+         * @description Patch `documents.metadata.user` (user-editable metadata namespace).
+         *
+         *     - When `replace=false` (default), merge keys into existing `metadata.user`.
+         *     - When `replace=true`, replace the whole `metadata.user` object.
+         *     - Any key with value `null` will be removed (merge mode only).
+         */
+        DocumentUserMetadataPatchRequest: {
+            /**
+             * Patch
+             * @description User metadata patch; null values remove keys.
+             */
+            patch?: Record<string, never>;
+            /**
+             * Replace
+             * @description Replace entire metadata.user instead of merging
+             * @default false
+             */
+            replace: boolean;
         };
         /**
          * EmbeddingConfig
@@ -2960,6 +4099,102 @@ export interface components {
              */
             metadata?: Record<string, never>;
         };
+        /** GovernanceAnalyzeRequest */
+        GovernanceAnalyzeRequest: {
+            /** Markdown */
+            markdown: string;
+            /**
+             * Input Format
+             * @default markdown
+             * @enum {string}
+             */
+            input_format: "markdown" | "html";
+            /** Html Xpath */
+            html_xpath?: string | null;
+            /**
+             * Remove Images
+             * @default none
+             * @enum {string}
+             */
+            remove_images: "none" | "decorative" | "all";
+            /**
+             * Remove Control Chars
+             * @default true
+             */
+            remove_control_chars: boolean;
+            /**
+             * Unwrap Lines
+             * @default true
+             */
+            unwrap_lines: boolean;
+            /**
+             * Remove Common Lines
+             * @default true
+             */
+            remove_common_lines: boolean;
+            /**
+             * Remove Boilerplate
+             * @default false
+             */
+            remove_boilerplate: boolean;
+            /**
+             * Normalize Tables
+             * @default false
+             */
+            normalize_tables: boolean;
+            /**
+             * Normalize Urls
+             * @default false
+             */
+            normalize_urls: boolean;
+            /**
+             * Normalize Urls Strip Tracking
+             * @default true
+             */
+            normalize_urls_strip_tracking: boolean;
+            /**
+             * Drop Outline Only
+             * @default false
+             */
+            drop_outline_only: boolean;
+            /**
+             * Drop Outline Min Content Chars
+             * @default 200
+             */
+            drop_outline_min_content_chars: number;
+            /**
+             * Drop Outline Max Heading Ratio
+             * @default 0.85
+             */
+            drop_outline_max_heading_ratio: number;
+            /**
+             * Drop Low Density
+             * @default false
+             */
+            drop_low_density: boolean;
+            /**
+             * Drop Low Density Threshold
+             * @default 0.12
+             */
+            drop_low_density_threshold: number;
+        };
+        /** GovernanceAnalyzeResponse */
+        GovernanceAnalyzeResponse: {
+            /**
+             * Input Chars
+             * @default 0
+             */
+            input_chars: number;
+            /**
+             * Input Lines
+             * @default 0
+             */
+            input_lines: number;
+            /** Issues */
+            issues?: components["schemas"]["GovernanceIssue"][];
+            /** Suggested Pipeline Patch */
+            suggested_pipeline_patch?: Record<string, never>;
+        };
         /** GovernanceInfo */
         GovernanceInfo: {
             /**
@@ -2991,6 +4226,156 @@ export interface components {
             drop_reasons?: {
                 [key: string]: number;
             };
+        };
+        /** GovernanceIssue */
+        GovernanceIssue: {
+            /** Code */
+            code: string;
+            /**
+             * Severity
+             * @default info
+             * @enum {string}
+             */
+            severity: "info" | "warning" | "error";
+            /** Message */
+            message: string;
+            /**
+             * Count
+             * @default 0
+             */
+            count: number;
+            /**
+             * Samples
+             * @description Best-effort samples (may be truncated)
+             */
+            samples?: string[];
+            /**
+             * Suggested Pipeline Patch
+             * @description Best-effort suggested pipeline patch (DocumentPipelineOptions shape).
+             */
+            suggested_pipeline_patch?: Record<string, never>;
+        };
+        /** GovernanceProfileCreate */
+        GovernanceProfileCreate: {
+            /** Name */
+            name: string;
+            /** Description */
+            description?: string | null;
+            /**
+             * Key
+             * @description Optional stable key/slug for the profile (tenant-scoped).
+             */
+            key?: string | null;
+            payload: components["schemas"]["GovernanceProfilePayload"];
+        };
+        /** GovernanceProfileImportResponse */
+        GovernanceProfileImportResponse: {
+            /**
+             * Created
+             * @default 0
+             */
+            created: number;
+            /**
+             * Updated
+             * @default 0
+             */
+            updated: number;
+            /** Items */
+            items?: components["schemas"]["GovernanceProfileSummary"][];
+        };
+        /** GovernanceProfileListResponse */
+        GovernanceProfileListResponse: {
+            /** Total */
+            total: number;
+            /** Items */
+            items?: components["schemas"]["GovernanceProfileSummary"][];
+        };
+        /** GovernanceProfileOut */
+        GovernanceProfileOut: {
+            /** Id */
+            id?: string | null;
+            /** Key */
+            key: string;
+            /** Name */
+            name: string;
+            /** Description */
+            description?: string | null;
+            /**
+             * Is System
+             * @default false
+             */
+            is_system: boolean;
+            payload: components["schemas"]["GovernanceProfilePayload"];
+            /** Created At */
+            created_at?: string | null;
+            /** Updated At */
+            updated_at?: string | null;
+        };
+        /**
+         * GovernanceProfilePayload
+         * @description Declarative governance script payload.
+         *
+         *     - pipeline_patch: a partial DocumentPipelineOptions object to be merged by the caller.
+         *     - regex_rules: additional cleanup rules (applied after default rules by default).
+         */
+        GovernanceProfilePayload: {
+            /**
+             * Version
+             * @description Payload schema version
+             * @default 1
+             */
+            version: string;
+            /**
+             * Input Formats
+             * @description Recommended input format(s) for preview tools
+             */
+            input_formats?: ("markdown" | "html")[];
+            /** Pipeline Patch */
+            pipeline_patch?: Record<string, never>;
+            /** Regex Rules */
+            regex_rules?: components["schemas"]["app__api__schemas__governance_profile__RegexRuleModel"][];
+        };
+        /** GovernanceProfileSummary */
+        GovernanceProfileSummary: {
+            /** Id */
+            id?: string | null;
+            /** Key */
+            key: string;
+            /** Name */
+            name: string;
+            /** Description */
+            description?: string | null;
+            /**
+             * Is System
+             * @default false
+             */
+            is_system: boolean;
+        };
+        /** GovernanceProfileUpdate */
+        GovernanceProfileUpdate: {
+            /** Name */
+            name?: string | null;
+            /** Description */
+            description?: string | null;
+            payload?: components["schemas"]["GovernanceProfilePayload"] | null;
+        };
+        /**
+         * GovernanceRegexRule
+         * @description Declarative regex cleanup rule (no executable code).
+         */
+        GovernanceRegexRule: {
+            /** Pattern */
+            pattern: string;
+            /**
+             * Repl
+             * @default
+             */
+            repl: string;
+            /**
+             * Flags
+             * @default 0
+             */
+            flags: number;
         };
         /** HTTPValidationError */
         HTTPValidationError: {
@@ -3026,6 +4411,153 @@ export interface components {
             url: string;
             /** Filename */
             filename: string;
+        };
+        /** IngestionPolicy */
+        "IngestionPolicy-Input": {
+            /**
+             * Version
+             * @description Policy schema version
+             * @default 1
+             */
+            version: string;
+            /** Rules */
+            rules?: components["schemas"]["IngestionRule-Input"][];
+        };
+        /** IngestionPolicy */
+        "IngestionPolicy-Output": {
+            /**
+             * Version
+             * @description Policy schema version
+             * @default 1
+             */
+            version: string;
+            /** Rules */
+            rules?: components["schemas"]["IngestionRule-Output"][];
+        };
+        /** IngestionPolicyImportResponse */
+        IngestionPolicyImportResponse: {
+            /**
+             * Replaced
+             * @default false
+             */
+            replaced: boolean;
+            /**
+             * Rule Count
+             * @default 0
+             */
+            rule_count: number;
+        };
+        /** IngestionPreprocessConfig */
+        IngestionPreprocessConfig: {
+            /**
+             * Enabled
+             * @default true
+             */
+            enabled: boolean;
+            /** Steps */
+            steps?: components["schemas"]["IngestionPreprocessStep"][];
+        };
+        /**
+         * IngestionPreprocessStep
+         * @description One pre-processing step applied to the raw file before parsing.
+         *
+         *     The backend only supports a small allowlist of step ids; unknown steps are rejected.
+         */
+        IngestionPreprocessStep: {
+            /** Id */
+            id: string;
+            /** Params */
+            params?: Record<string, never>;
+        };
+        /** IngestionPreviewResponse */
+        IngestionPreviewResponse: {
+            rule: components["schemas"]["IngestionPreviewRule"];
+            preprocess: components["schemas"]["PreprocessSummary"];
+            parse: components["schemas"]["ParsePreviewResponse"];
+            clean: components["schemas"]["CleanPreviewResponse"];
+        };
+        /** IngestionPreviewRule */
+        IngestionPreviewRule: {
+            /**
+             * Matched
+             * @default false
+             */
+            matched: boolean;
+            /** Rule Id */
+            rule_id?: string | null;
+            /** Rule Name */
+            rule_name?: string | null;
+            /** Governance Profile Ref */
+            governance_profile_ref?: string | null;
+            /** Preprocess Steps */
+            preprocess_steps?: Record<string, never>[];
+            /**
+             * Parser Backend
+             * @default auto
+             */
+            parser_backend: string;
+            /**
+             * Chunk Strategy
+             * @default
+             */
+            chunk_strategy: string;
+        };
+        /** IngestionRule */
+        "IngestionRule-Input": {
+            /** Id */
+            id: string;
+            /** Name */
+            name: string;
+            /**
+             * Enabled
+             * @default true
+             */
+            enabled: boolean;
+            match?: components["schemas"]["IngestionRuleMatch"];
+            preprocess?: components["schemas"]["IngestionPreprocessConfig"];
+            /** Parser Backend */
+            parser_backend?: string | null;
+            /** Chunk Strategy */
+            chunk_strategy?: string | null;
+            /** Governance Profile Ref */
+            governance_profile_ref?: string | null;
+            /** Pipeline Patch */
+            pipeline_patch?: Record<string, never>;
+        };
+        /** IngestionRule */
+        "IngestionRule-Output": {
+            /** Id */
+            id: string;
+            /** Name */
+            name: string;
+            /**
+             * Enabled
+             * @default true
+             */
+            enabled: boolean;
+            match?: components["schemas"]["IngestionRuleMatch"];
+            preprocess?: components["schemas"]["IngestionPreprocessConfig"];
+            /** Parser Backend */
+            parser_backend?: string | null;
+            /** Chunk Strategy */
+            chunk_strategy?: string | null;
+            /** Governance Profile Ref */
+            governance_profile_ref?: string | null;
+            /** Pipeline Patch */
+            pipeline_patch?: Record<string, never>;
+        };
+        /**
+         * IngestionRuleMatch
+         * @description Rule matching conditions.
+         *
+         *     - extensions: file extensions like ".pdf", ".html". Empty means "match all".
+         *     - filename_regex: optional regex applied to the *original filename*.
+         */
+        IngestionRuleMatch: {
+            /** Extensions */
+            extensions?: string[];
+            /** Filename Regex */
+            filename_regex?: string | null;
         };
         /**
          * KGConfig
@@ -3543,6 +5075,67 @@ export interface components {
              */
             extra?: Record<string, never>;
         };
+        /** MessageFeedbackEnrichedList */
+        MessageFeedbackEnrichedList: {
+            /** Total */
+            total: number;
+            /** Items */
+            items: components["schemas"]["MessageFeedbackEnrichedOut"][];
+        };
+        /**
+         * MessageFeedbackEnrichedOut
+         * @description Feedback with joined message/conversation context for triage UIs.
+         */
+        MessageFeedbackEnrichedOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Tenant Id
+             * Format: uuid
+             */
+            tenant_id: string;
+            /**
+             * Conversation Id
+             * Format: uuid
+             */
+            conversation_id: string;
+            /**
+             * Message Id
+             * Format: uuid
+             */
+            message_id: string;
+            /** Account Id */
+            account_id: string;
+            /** Rating */
+            rating: number;
+            /** Reason */
+            reason: string | null;
+            /** Tags */
+            tags?: string[];
+            /** Expected Answer */
+            expected_answer: string | null;
+            /** Extra */
+            extra?: Record<string, never>;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /** Conversation Title */
+            conversation_title?: string | null;
+            /** Message Content */
+            message_content?: string | null;
+            /** Message Created At */
+            message_created_at?: string | null;
+        };
         /** MessageFeedbackList */
         MessageFeedbackList: {
             /** Total */
@@ -3827,6 +5420,41 @@ export interface components {
             /** Notes */
             notes?: string | null;
         };
+        /** ParsingContentResponse */
+        ParsingContentResponse: {
+            /**
+             * Document Id
+             * Format: uuid
+             */
+            document_id: string;
+            /**
+             * Parser Backend
+             * @default auto
+             */
+            parser_backend: string;
+            /**
+             * Markdown Content
+             * @default
+             */
+            markdown_content: string;
+            /**
+             * Original Markdown Content
+             * @default
+             */
+            original_markdown_content: string;
+            /** Parse Duration Sec */
+            parse_duration_sec?: number | null;
+        };
+        /** ParsingContentUpdateRequest */
+        ParsingContentUpdateRequest: {
+            /**
+             * Markdown Content
+             * @default
+             */
+            markdown_content: string;
+            /** Original Markdown Content */
+            original_markdown_content?: string | null;
+        };
         /** PipelineCapabilitiesResponse */
         PipelineCapabilitiesResponse: {
             /** Default Parser Backend */
@@ -3837,6 +5465,42 @@ export interface components {
             pdf_backends?: components["schemas"]["ParserBackendInfo"][];
             /** Chunk Strategies */
             chunk_strategies?: components["schemas"]["ChunkStrategyInfo"][];
+        };
+        /** PreprocessStepLog */
+        PreprocessStepLog: {
+            /** Id */
+            id: string;
+            /** Applied */
+            applied: boolean;
+            /** Changed */
+            changed: boolean;
+            /**
+             * Note
+             * @default
+             */
+            note: string;
+        };
+        /** PreprocessSummary */
+        PreprocessSummary: {
+            /**
+             * Changed
+             * @default false
+             */
+            changed: boolean;
+            /**
+             * Size Before
+             * @default 0
+             */
+            size_before: number;
+            /**
+             * Size After
+             * @default 0
+             */
+            size_after: number;
+            /** Steps */
+            steps?: components["schemas"]["PreprocessStepLog"][];
+            /** Warnings */
+            warnings?: string[];
         };
         /** PromptPreviewRequest */
         PromptPreviewRequest: {
@@ -4620,6 +6284,85 @@ export interface components {
              */
             pii_stream_holdback_chars: number;
         };
+        /** SimilarityCalculateResponse */
+        SimilarityCalculateResponse: {
+            /**
+             * Success
+             * @default true
+             */
+            success: boolean;
+            /** Result */
+            result?: Record<string, never> | null;
+            /** Message */
+            message?: string | null;
+            /** Error */
+            error?: string | null;
+            /** Error Type */
+            error_type?: string | null;
+            /** X Collection */
+            x_collection?: string | null;
+            /** Y Collection */
+            y_collection?: string | null;
+        };
+        /** SimilarityCollectionOut */
+        SimilarityCollectionOut: {
+            /** Id */
+            id: string;
+            /** Label */
+            label: string;
+            /** Kind */
+            kind: string;
+            /** Count */
+            count: number;
+            /** Meta */
+            meta?: Record<string, never>;
+        };
+        /** SimilarityCollectionsResponse */
+        SimilarityCollectionsResponse: {
+            /**
+             * Success
+             * @default true
+             */
+            success: boolean;
+            /** Collections */
+            collections?: components["schemas"]["SimilarityCollectionOut"][];
+            /**
+             * Count
+             * @default 0
+             */
+            count: number;
+        };
+        /** SimilarityRequest */
+        SimilarityRequest: {
+            /**
+             * X Collection
+             * @description X axis collection id
+             */
+            x_collection: string;
+            /**
+             * Y Collection
+             * @description Y axis collection id
+             */
+            y_collection: string;
+            /**
+             * X Max Items
+             * @description X axis max items
+             * @default 100
+             */
+            x_max_items: number | null;
+            /**
+             * Y Max Items
+             * @description Y axis max items
+             * @default 100
+             */
+            y_max_items: number | null;
+            /**
+             * Max Items
+             * @description Back-compat max items
+             * @default 100
+             */
+            max_items: number | null;
+        };
         /**
          * SystemSettings
          * @description Full system config.
@@ -4851,12 +6594,60 @@ export interface components {
             /** Document Id */
             document_id: string;
         };
-        /** ChunkPreviewResponse */
-        app__api__schemas__pipeline__ChunkPreviewResponse: {
-            /** Paragraphs */
-            paragraphs: components["schemas"]["ChunkItem"][];
-            /** Sentences */
-            sentences: components["schemas"]["ChunkItem"][];
+        /**
+         * ChunkPreviewResponse
+         * @description Chunk preview response.
+         */
+        app__api__schemas__document__ChunkPreviewResponse: {
+            /** Filename */
+            filename: string;
+            /** File Type */
+            file_type: string;
+            /** File Size */
+            file_size: number;
+            /** Total Chunks */
+            total_chunks: number;
+            /** Total Characters */
+            total_characters: number;
+            params: components["schemas"]["ChunkPreviewParams"];
+            /** Chunks */
+            chunks: components["schemas"]["ChunkPreviewItem"][];
+            /** Original Text */
+            original_text?: string | null;
+            /**
+             * Original Text Included
+             * @default false
+             */
+            original_text_included: boolean;
+            /**
+             * Original Text Truncated
+             * @default false
+             */
+            original_text_truncated: boolean;
+            /**
+             * Original Text Max Chars
+             * @default 100000
+             */
+            original_text_max_chars: number;
+            /** Parser Backend */
+            parser_backend: string;
+            /** Chunk Strategy */
+            chunk_strategy: string;
+        };
+        /** RegexRuleModel */
+        app__api__schemas__governance_profile__RegexRuleModel: {
+            /** Pattern */
+            pattern: string;
+            /**
+             * Repl
+             * @default
+             */
+            repl: string;
+            /**
+             * Flags
+             * @default 0
+             */
+            flags: number;
         };
     };
     responses: never;
@@ -5106,6 +6897,9 @@ export interface operations {
                 limit?: number;
                 status?: string | null;
                 dataset_id?: string | null;
+                q?: string | null;
+                order_by?: "created_at" | "filename" | "file_size";
+                order_dir?: "asc" | "desc";
             };
             header?: {
                 "x-tenant-id"?: string | null;
@@ -5124,6 +6918,42 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DocumentList"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_document_stats_api_v1_documents_stats_get: {
+        parameters: {
+            query?: {
+                dataset_id?: string | null;
+                q?: string | null;
+            };
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentStats"];
                 };
             };
             /** @description Validation Error */
@@ -5207,6 +7037,269 @@ export interface operations {
             };
         };
     };
+    list_document_chunks_api_v1_documents__document_id__chunks_get: {
+        parameters: {
+            query?: {
+                skip?: number;
+                limit?: number;
+                q?: string | null;
+            };
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path: {
+                document_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentChunkList"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_document_chunk_matches_api_v1_documents__document_id__chunks_matches_get: {
+        parameters: {
+            query: {
+                /** @description Case-insensitive substring match against chunk content */
+                q: string;
+                /** @description Max returned matches (may be truncated) */
+                limit?: number;
+            };
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path: {
+                document_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentChunkMatchList"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_document_chunk_api_v1_documents__document_id__chunks__chunk_id__get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path: {
+                document_id: string;
+                chunk_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentChunkSchema"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    patch_document_pipeline_api_v1_documents__document_id__pipeline_patch: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path: {
+                document_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DocumentPipelinePatchRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    patch_document_user_metadata_api_v1_documents__document_id__metadata_patch: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path: {
+                document_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DocumentUserMetadataPatchRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    batch_patch_document_user_metadata_api_v1_documents_batch_metadata_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DocumentBatchUserMetadataPatchRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentBatchUserMetadataPatchResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    download_document_api_v1_documents__document_id__download_get: {
+        parameters: {
+            query?: {
+                inline?: boolean;
+            };
+            header?: never;
+            path: {
+                document_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_document_status_api_v1_documents__document_id__status_get: {
         parameters: {
             query?: never;
@@ -5264,6 +7357,80 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DocumentStatus"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    retry_document_processing_api_v1_documents__document_id__retry_post: {
+        parameters: {
+            query?: {
+                force?: boolean;
+            };
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path: {
+                document_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentStatus"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    batch_delete_documents_api_v1_documents_batch_delete_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DocumentBatchDeleteRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentBatchDeleteResponse"];
                 };
             };
             /** @description Validation Error */
@@ -5439,7 +7606,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ChunkPreviewResponse"];
+                    "application/json": components["schemas"]["app__api__schemas__document__ChunkPreviewResponse"];
                 };
             };
             /** @description Validation Error */
@@ -5512,6 +7679,261 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["BatchTaskStatus"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_parsing_documents_api_v1_parsing_documents_get: {
+        parameters: {
+            query?: {
+                skip?: number;
+                limit?: number;
+                status?: string | null;
+            };
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentList"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    upload_parsing_document_api_v1_parsing_documents_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_upload_parsing_document_api_v1_parsing_documents_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    parse_workspace_document_api_v1_parsing_documents__document_id__parse_post: {
+        parameters: {
+            query?: {
+                parser_backend?: string | null;
+            };
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path: {
+                document_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ParsingContentResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_parsing_content_api_v1_parsing_documents__document_id__content_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path: {
+                document_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ParsingContentResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_parsing_content_api_v1_parsing_documents__document_id__content_patch: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path: {
+                document_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ParsingContentUpdateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ParsingContentResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_parsing_document_api_v1_parsing_documents__document_id__delete: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path: {
+                document_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    chat_api_v1_chat_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ChatRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatResponse"];
                 };
             };
             /** @description Validation Error */
@@ -5637,7 +8059,10 @@ export interface operations {
     };
     get_conversation_messages_api_v1_chat_conversations__conversation_id__messages_get: {
         parameters: {
-            query?: never;
+            query?: {
+                limit?: number | null;
+                before?: string | null;
+            };
             header?: {
                 "x-tenant-id"?: string | null;
                 authorization?: string | null;
@@ -5980,6 +8405,154 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DatasetOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_dataset_ingestion_policy_api_v1_datasets__dataset_id__ingestion_policy_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path: {
+                dataset_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IngestionPolicy-Output"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    put_dataset_ingestion_policy_api_v1_datasets__dataset_id__ingestion_policy_put: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path: {
+                dataset_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["IngestionPolicy-Input"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IngestionPolicy-Output"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    import_dataset_ingestion_policy_api_v1_datasets__dataset_id__ingestion_policy_import_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path: {
+                dataset_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_import_dataset_ingestion_policy_api_v1_datasets__dataset_id__ingestion_policy_import_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IngestionPolicyImportResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    export_dataset_ingestion_policy_api_v1_datasets__dataset_id__ingestion_policy_export_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path: {
+                dataset_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
                 };
             };
             /** @description Validation Error */
@@ -7268,6 +9841,46 @@ export interface operations {
             };
         };
     };
+    list_message_feedback_enriched_api_v1_feedback_messages_enriched_get: {
+        parameters: {
+            query?: {
+                skip?: number;
+                limit?: number;
+                conversation_id?: string | null;
+                message_id?: string | null;
+                min_rating?: number | null;
+                max_rating?: number | null;
+            };
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MessageFeedbackEnrichedList"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_pipeline_capabilities_api_v1_pipeline_capabilities_get: {
         parameters: {
             query?: never;
@@ -7288,6 +9901,259 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PipelineCapabilitiesResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_governance_profiles_api_v1_pipeline_governance_profiles_get: {
+        parameters: {
+            query?: {
+                q?: string | null;
+                include_builtin?: boolean;
+                limit?: number;
+            };
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GovernanceProfileListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_governance_profile_api_v1_pipeline_governance_profiles_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GovernanceProfileCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GovernanceProfileOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_governance_profile_api_v1_pipeline_governance_profiles__profile_ref__get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path: {
+                profile_ref: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GovernanceProfileOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_governance_profile_api_v1_pipeline_governance_profiles__profile_ref__delete: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path: {
+                profile_ref: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_governance_profile_api_v1_pipeline_governance_profiles__profile_ref__patch: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path: {
+                profile_ref: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GovernanceProfileUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GovernanceProfileOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    import_governance_profiles_api_v1_pipeline_governance_profiles_import_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_import_governance_profiles_api_v1_pipeline_governance_profiles_import_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GovernanceProfileImportResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    export_governance_profile_api_v1_pipeline_governance_profiles__profile_ref__export_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path: {
+                profile_ref: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
                 };
             };
             /** @description Validation Error */
@@ -7338,6 +10204,43 @@ export interface operations {
             };
         };
     };
+    ingestion_preview_api_v1_pipeline_ingestion_preview_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_ingestion_preview_api_v1_pipeline_ingestion_preview_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IngestionPreviewResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     chunk_preview_api_v1_pipeline_chunk_preview_post: {
         parameters: {
             query?: never;
@@ -7361,7 +10264,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["app__api__schemas__pipeline__ChunkPreviewResponse"];
+                    "application/json": components["schemas"]["ChunkPreviewResponse"];
                 };
             };
             /** @description Validation Error */
@@ -7399,6 +10302,43 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CleanPreviewResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    governance_analyze_api_v1_pipeline_governance_analyze_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GovernanceAnalyzeRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GovernanceAnalyzeResponse"];
                 };
             };
             /** @description Validation Error */
@@ -7617,6 +10557,76 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PromptPreviewResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_similarity_collections_api_v1_ragviz_similarity_collections_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SimilarityCollectionsResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    similarity_calculate_api_v1_ragviz_similarity_calculate_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SimilarityRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SimilarityCalculateResponse"];
                 };
             };
             /** @description Validation Error */
