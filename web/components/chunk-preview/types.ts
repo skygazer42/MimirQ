@@ -46,6 +46,7 @@ export interface ChunkPreviewState {
   lastPreviewAt: number | null
   lastPreviewDurationMs: number | null
   cacheHit: boolean
+  isPreviewDirty: boolean
   autoPreviewEnabled: boolean
   runHistory: Array<{
     id: string
@@ -104,6 +105,7 @@ export interface ChunkPreviewActions {
   loadExample: () => void
   reset: () => void
   toggleAutoPreview: (enabled?: boolean) => void
+  clearRunHistory: () => void
 
   // 配置操作
   updateSettings: (settings: Partial<Pick<ChunkPreviewState, 'chunkSize' | 'chunkOverlap' | 'strategy'>>) => void

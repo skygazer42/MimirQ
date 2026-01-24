@@ -4,7 +4,7 @@
  */
 'use client'
 
-import { createContext, useContext, useState, useCallback, useRef, useEffect, ReactNode } from 'react'
+import { createContext, useContext, useState, useCallback, useRef, useEffect, useMemo, ReactNode } from 'react'
 import { toast } from 'sonner'
 import { documentApi } from '@/lib/api-client'
 import { formatApiError } from '@/lib/api-errors'
@@ -22,6 +22,7 @@ import { scanFiles } from './utils/file-scanner'
 
 const ChunkPreviewContext = createContext<ChunkPreviewContextType | null>(null)
 const STORAGE_DATASET_ID_KEY = 'mimirq_chunk_preview_dataset_id'
+const STORAGE_SEPARATOR_SETTINGS_KEY = 'mimirq_chunk_preview_separator_settings'
 
 function decodeSeparatorInput(raw: string) {
   const value = (raw || '').trim()
@@ -84,6 +85,7 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: ChunkPrev
   const [lastPreviewAt, setLastPreviewAt] = useState<number | null>(null)
   const [lastPreviewDurationMs, setLastPreviewDurationMs] = useState<number | null>(null)
   const [cacheHit, setCacheHit] = useState(false)
+  const [lastPreviewCacheKey, setLastPreviewCacheKey] = useState<string | null>(null)
   const [autoPreviewEnabled, setAutoPreviewEnabled] = useState(true)
   const [runHistory, setRunHistory] = useState<Array<{
     id: string
@@ -115,6 +117,7 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: ChunkPrev
   const previewCacheRef = useRef<
     Map<string, { data: ChunkPreviewResponse; createdAt: number; durationMs: number }>
   >(new Map())
+  const separatorSettingsLoadedRef = useRef(false)
 
   useEffect(() => {
     return () => {
@@ -133,6 +136,38 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: ChunkPrev
     if (datasetId) window.localStorage.setItem(STORAGE_DATASET_ID_KEY, datasetId)
     else window.localStorage.removeItem(STORAGE_DATASET_ID_KEY)
   }, [datasetId])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const raw = (window.localStorage.getItem(STORAGE_SEPARATOR_SETTINGS_KEY) || '').trim()
+    if (!raw) {
+      separatorSettingsLoadedRef.current = true
+      return
+    }
+    try {
+      const data = JSON.parse(raw) as any
+      if (typeof data?.separatorPreset === 'string') setSeparatorPreset(data.separatorPreset)
+      if (typeof data?.separatorCustom === 'string') setSeparatorCustom(data.separatorCustom)
+      if (typeof data?.keepSeparator === 'boolean') setKeepSeparator(data.keepSeparator)
+      if (typeof data?.separatorMaxChunkSize === 'number') setSeparatorMaxChunkSize(data.separatorMaxChunkSize)
+    } catch {
+      // ignore corrupted storage
+    } finally {
+      separatorSettingsLoadedRef.current = true
+    }
+  }, [])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    if (!separatorSettingsLoadedRef.current) return
+    const payload = JSON.stringify({
+      separatorPreset,
+      separatorCustom,
+      keepSeparator,
+      separatorMaxChunkSize,
+    })
+    window.localStorage.setItem(STORAGE_SEPARATOR_SETTINGS_KEY, payload)
+  }, [separatorPreset, separatorCustom, keepSeparator, separatorMaxChunkSize])
 
   // 当前文件
   const currentFileItem = fileList[currentFileIndex] || null
@@ -353,6 +388,11 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: ChunkPrev
     separatorMaxChunkSize,
   ])
 
+  const currentPreviewCacheKey = useMemo(() => buildPreviewCacheKey(), [buildPreviewCacheKey])
+  const isPreviewDirty = Boolean(
+    previewData && lastPreviewCacheKey && currentPreviewCacheKey && currentPreviewCacheKey !== lastPreviewCacheKey
+  )
+
   // Actions: 执行预览
   const runPreview = useCallback(async (options?: { force?: boolean }) => {
     if (!file) return
@@ -367,15 +407,16 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: ChunkPrev
     }
 
     const cacheKey = buildPreviewCacheKey()
-	    const cached = cacheKey ? previewCacheRef.current.get(cacheKey) : undefined
-	    if (cached && !options?.force) {
-	      setHoveredChunkIndex(null)
-	      setSelectedChunkIndex(null)
-	      setCreatedDocumentId(null)
-	      setPreviewData(cached.data)
-	      setLastPreviewAt(cached.createdAt)
-	      setLastPreviewDurationMs(cached.durationMs)
-	      setCacheHit(true)
+    const cached = cacheKey ? previewCacheRef.current.get(cacheKey) : undefined
+    if (cached && !options?.force) {
+      setHoveredChunkIndex(null)
+      setSelectedChunkIndex(null)
+      setCreatedDocumentId(null)
+      setPreviewData(cached.data)
+      setLastPreviewAt(cached.createdAt)
+      setLastPreviewDurationMs(cached.durationMs)
+      setCacheHit(true)
+      setLastPreviewCacheKey(cacheKey || null)
       setError(null)
       setRunHistory((prev) => [
         {
@@ -436,6 +477,7 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: ChunkPrev
       if (cacheKey) {
         previewCacheRef.current.set(cacheKey, { data, createdAt, durationMs })
       }
+      setLastPreviewCacheKey(cacheKey || null)
       setRunHistory((prev) => [
         {
           id: makeId(),
@@ -474,6 +516,11 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: ChunkPrev
     chunkStrategyAvailable,
     buildPreviewCacheKey,
     makeId,
+    datasetId,
+    separatorPreset,
+    separatorCustom,
+    keepSeparator,
+    separatorMaxChunkSize,
   ])
 
   const cancelPreview = useCallback(() => {
@@ -545,7 +592,21 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: ChunkPrev
     } finally {
       setIsSubmitting(false)
     }
-  }, [previewData, file, currentFileItem, datasetId, chunkSize, chunkOverlap, pipelineOverridesEnabled, pipelineOptions, onConfirm])
+  }, [
+    previewData,
+    file,
+    currentFileItem,
+    datasetId,
+    chunkSize,
+    chunkOverlap,
+    pipelineOverridesEnabled,
+    pipelineOptions,
+    separatorPreset,
+    separatorCustom,
+    keepSeparator,
+    separatorMaxChunkSize,
+    onConfirm,
+  ])
 
   // Actions: 更新配置
   const updateSettings = useCallback(
@@ -636,6 +697,10 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: ChunkPrev
     setAutoPreviewEnabled((prev) => (typeof enabled === 'boolean' ? enabled : !prev))
   }, [])
 
+  const clearRunHistory = useCallback(() => {
+    setRunHistory([])
+  }, [])
+
   const toggleOriginalPanel = useCallback(() => {
     setShowOriginalPanel((prev) => !prev)
   }, [])
@@ -680,6 +745,7 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: ChunkPrev
     lastPreviewAt,
     lastPreviewDurationMs,
     cacheHit,
+    isPreviewDirty,
     autoPreviewEnabled,
     runHistory,
 
@@ -707,6 +773,7 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: ChunkPrev
     updateSeparatorSettings,
     reset,
     toggleAutoPreview,
+    clearRunHistory,
     loadExample,
     handleDragOver,
     handleDragLeave,

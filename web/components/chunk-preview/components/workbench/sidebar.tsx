@@ -63,6 +63,7 @@ export function Sidebar({ variant = 'panel' }: { variant?: 'panel' | 'dialog' } 
     processedStatus,
     setCurrentFileIndex,
     removeFile,
+    clearFiles,
     addFiles,
     setDatasetId,
     updateSettings,
@@ -71,6 +72,7 @@ export function Sidebar({ variant = 'panel' }: { variant?: 'panel' | 'dialog' } 
     cancelPreview,
     setParserBackend,
     toggleAutoPreview,
+    clearRunHistory,
   } = useChunkPreview()
   const { capabilities, parserBackendAvailable } = usePipelineCapabilities()
   const pipelineCtx = usePipelineOptions()
@@ -167,14 +169,32 @@ export function Sidebar({ variant = 'panel' }: { variant?: 'panel' | 'dialog' } 
               <Folder className="w-4 h-4 text-primary" />
               <h2 className="text-xs font-bold text-foreground uppercase tracking-wider">文件列表 ({fileList.length})</h2>
             </div>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => document.getElementById('add-file-input')?.click()}
-              className="h-6 w-6 p-0 hover:bg-primary/10"
-            >
-              <Upload className="w-3.5 h-3.5 text-primary" />
-            </Button>
+            <div className="flex items-center gap-1">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => document.getElementById('add-file-input')?.click()}
+                className="h-6 w-6 p-0 hover:bg-primary/10"
+                aria-label="添加文件"
+                title="添加文件"
+              >
+                <Upload className="w-3.5 h-3.5 text-primary" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  clearFiles()
+                  toast.success('已清空文件列表')
+                }}
+                className="h-6 w-6 p-0 hover:bg-destructive/10 hover:text-destructive"
+                disabled={fileList.length === 0}
+                aria-label="清空文件列表"
+                title="清空文件列表"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+              </Button>
+            </div>
             <input
               id="add-file-input"
               type="file"
@@ -206,6 +226,15 @@ export function Sidebar({ variant = 'panel' }: { variant?: 'panel' | 'dialog' } 
                 key={f.id}
                 onClick={() => {
                   if (fileIndex >= 0) setCurrentFileIndex(fileIndex)
+                }}
+                role="button"
+                tabIndex={0}
+                aria-label={`选择文件：${f.displayName}`}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault()
+                    if (fileIndex >= 0) setCurrentFileIndex(fileIndex)
+                  }
                 }}
                 className={cn(
                   'group flex items-center justify-between p-2 rounded-lg text-xs cursor-pointer transition-colors border',
@@ -245,6 +274,8 @@ export function Sidebar({ variant = 'panel' }: { variant?: 'panel' | 'dialog' } 
                       removeFile(fileIndex)
                     }}
                     className="opacity-0 group-hover:opacity-100 p-1 hover:bg-destructive/10 hover:text-destructive rounded transition-all focus-ring"
+                    aria-label={`移除文件：${f.displayName}`}
+                    title="移除文件"
                   >
                     <Trash2 className="w-3 h-3" />
                   </button>
@@ -865,9 +896,23 @@ export function Sidebar({ variant = 'panel' }: { variant?: 'panel' | 'dialog' } 
 
         {runHistory.length > 0 && (
           <div className="mt-8 pt-8 border-t border-border/60">
-            <div className="flex items-center gap-2 mb-4">
-              <Sparkles className="w-4 h-4 text-primary" />
-              <h2 className="text-xs font-bold text-foreground uppercase tracking-wider">最近预览</h2>
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-2">
+                <Sparkles className="w-4 h-4 text-primary" />
+                <h2 className="text-xs font-bold text-foreground uppercase tracking-wider">最近预览</h2>
+              </div>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="h-7 px-2 text-[11px]"
+                onClick={() => {
+                  clearRunHistory()
+                  toast.success('已清空最近预览')
+                }}
+              >
+                清空
+              </Button>
             </div>
             <div className="space-y-2 max-h-[180px] overflow-y-auto overscroll-contain no-scrollbar pr-1">
               {runHistory.map((item) => (

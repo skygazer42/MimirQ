@@ -5,7 +5,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useVirtualizer } from '@tanstack/react-virtual'
-import { Layers, MousePointer2, Loader2, AlertCircle, Search, CornerDownLeft, Copy, Braces } from 'lucide-react'
+import { Layers, MousePointer2, Loader2, AlertCircle, Search, CornerDownLeft, Copy, Braces, Code2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -43,6 +43,8 @@ export function ChunkList() {
   const [query, setQuery] = useState('')
   const [sortMode, setSortMode] = useState<SortMode>('index')
   const [pageFilter, setPageFilter] = useState<string>(PAGE_ALL_VALUE)
+  const [minLen, setMinLen] = useState<number>(0)
+  const [maxLen, setMaxLen] = useState<number>(0)
   const scrollRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -55,6 +57,8 @@ export function ChunkList() {
     setQueryInput('')
     setQuery('')
     setSortMode('index')
+    setMinLen(0)
+    setMaxLen(0)
   }, [previewData?.filename])
 
   const pageOptions = useMemo(() => {
@@ -88,7 +92,14 @@ export function ChunkList() {
           if (String(chunk.page_number ?? '') !== pageFilter) return false
         }
 
-        return q ? (chunk.content || '').toLowerCase().includes(q) : true
+        const contentOk = q ? (chunk.content || '').toLowerCase().includes(q) : true
+        if (!contentOk) return false
+
+        const len = Number(chunk.length || 0)
+        if (minLen > 0 && len < minLen) return false
+        if (maxLen > 0 && len > maxLen) return false
+
+        return true
       })
 
     if (sortMode === 'length_desc') {
@@ -97,7 +108,7 @@ export function ChunkList() {
       base.sort((a, b) => (a.chunk.length || 0) - (b.chunk.length || 0))
     }
     return base
-  }, [previewData, pageFilter, query, sortMode])
+  }, [previewData, pageFilter, query, sortMode, minLen, maxLen])
 
   const rowVirtualizer = useVirtualizer({
     count: filteredChunks.length,
@@ -182,6 +193,50 @@ export function ChunkList() {
               ))}
             </SelectContent>
           </Select>
+          <div className="hidden xl:flex items-center gap-1 text-[10px] text-muted-foreground">
+            <span className="mr-1">长度:</span>
+            <Input
+              value={minLen > 0 ? String(minLen) : ''}
+              onChange={(e) => {
+                const raw = e.target.value.trim()
+                const n = raw ? Number(raw) : 0
+                if (!raw) setMinLen(0)
+                else if (Number.isFinite(n)) setMinLen(Math.max(0, Math.trunc(n)))
+              }}
+              placeholder="Min"
+              className="h-7 w-[72px] text-[11px] font-mono bg-card/80"
+              inputMode="numeric"
+              aria-label="最小长度过滤"
+            />
+            <span className="px-1 opacity-70">-</span>
+            <Input
+              value={maxLen > 0 ? String(maxLen) : ''}
+              onChange={(e) => {
+                const raw = e.target.value.trim()
+                const n = raw ? Number(raw) : 0
+                if (!raw) setMaxLen(0)
+                else if (Number.isFinite(n)) setMaxLen(Math.max(0, Math.trunc(n)))
+              }}
+              placeholder="Max"
+              className="h-7 w-[72px] text-[11px] font-mono bg-card/80"
+              inputMode="numeric"
+              aria-label="最大长度过滤"
+            />
+            {(minLen > 0 || maxLen > 0) ? (
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="h-7 px-2 text-[11px]"
+                onClick={() => {
+                  setMinLen(0)
+                  setMaxLen(0)
+                }}
+              >
+                清除
+              </Button>
+            ) : null}
+          </div>
           {selectedChunkIndex != null ? (
             <Button
               type="button"
@@ -245,6 +300,22 @@ export function ChunkList() {
                 title="复制切片 JSON"
               >
                 <Braces className="h-4 w-4" />
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8"
+                onClick={() =>
+                  void copyText(
+                    '```text\n' + (selectedChunk.content || '') + '\n```\n',
+                    '已复制 Markdown 代码块'
+                  )
+                }
+                aria-label="复制为 Markdown 代码块"
+                title="复制为 Markdown 代码块"
+              >
+                <Code2 className="h-4 w-4" />
               </Button>
               <Button
                 type="button"
