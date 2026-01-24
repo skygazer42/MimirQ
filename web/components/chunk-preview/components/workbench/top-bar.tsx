@@ -36,7 +36,7 @@ import { useChunkPreview } from '@/components/chunk-preview/context'
 import { usePipelineOptions } from '@/contexts/pipeline-options-context'
 import { getChunkStrategyLabel } from '@/lib/chunk-strategies'
 import { getParserLabel } from '@/lib/parser-options'
-import { chunkPreviewToCsv, downloadTextFile, sanitizeFilename, toChunkPreviewExport } from '@/components/chunk-preview/utils/export'
+import { chunkPreviewToCsv, chunkPreviewToMarkdown, downloadTextFile, sanitizeFilename, toChunkPreviewExport } from '@/components/chunk-preview/utils/export'
 import { IngestionWorkflowStepper } from '@/components/ui/ingestion-workflow-stepper'
 import { ChunkingHelpDialog } from '@/components/chunk-preview/components/chunking-help-dialog'
 import { useRouter } from 'next/navigation'
@@ -294,6 +294,19 @@ export function TopBar() {
           {showOriginalPanel ? '隐藏原文' : '显示原文'}
         </Button>
 
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          onClick={() => setHelpOpen(true)}
+          className="text-muted-foreground hover:text-foreground h-9 px-3 text-xs font-medium hover:bg-muted"
+          aria-label="切块指南"
+          title="切块指南"
+        >
+          <HelpCircle className="w-3.5 h-3.5 mr-1.5" />
+          <span className="hidden md:inline">指南</span>
+        </Button>
+
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button
@@ -418,6 +431,18 @@ export function TopBar() {
               disabled={!previewData}
               onSelect={() => {
                 if (!previewData) return
+                const filename = `${sanitizeFilename(previewData.filename)}.chunks.md`
+                downloadTextFile(filename, chunkPreviewToMarkdown(previewData), 'text/markdown;charset=utf-8')
+                toast.success('已导出 Markdown')
+              }}
+            >
+              <Download className="mr-2 h-4 w-4" />
+              导出 chunks.md
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              disabled={!previewData}
+              onSelect={() => {
+                if (!previewData) return
                 const filename = `${sanitizeFilename(previewData.filename)}.chunks.csv`
                 downloadTextFile(filename, chunkPreviewToCsv(previewData), 'text/csv;charset=utf-8')
                 toast.success('已导出 CSV')
@@ -524,6 +549,8 @@ export function TopBar() {
         </Button>
       </div>
       <div className="absolute inset-x-6 bottom-0 h-px bg-gradient-to-r from-transparent via-primary/20 to-transparent" />
+
+      <ChunkingHelpDialog open={helpOpen} onOpenChange={setHelpOpen} />
     </header>
   )
 }

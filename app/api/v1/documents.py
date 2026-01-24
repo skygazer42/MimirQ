@@ -72,6 +72,7 @@ from app.storage.object.minio import minio_service, is_minio_uri, parse_minio_ur
 from app.models.dataset import Dataset, DatasetPermission, DatasetPermissionEnum
 from app.core.config import settings
 from app.core.env import is_production_env
+from app.core.token_utils import estimate_tokens, num_tokens_from_string
 from fastapi.responses import FileResponse, RedirectResponse, StreamingResponse
 from app.api.dependencies.tenant import get_tenant_id
 from app.api.dependencies.auth import get_current_account_id
@@ -3446,6 +3447,7 @@ async def preview_chunking(
         # Build response.
         chunk_items: List[ChunkPreviewItem] = []
         for idx, chunk in enumerate(chunks):
+            content = chunk.page_content or ""
             meta = chunk.metadata or {}
             page_num = meta.get('page') or meta.get('page_number')
             local_start = meta.get('start_char')
@@ -3461,12 +3463,22 @@ async def preview_chunking(
             else:
                 start_idx = 0
 
-            end_idx = start_idx + len(chunk.page_content)
+            end_idx = start_idx + len(content)
+            tokens_est = 0
+            if content:
+                # Token mode uses tiktoken when available; otherwise falls back to rough 4 chars/token.
+                # For non-token strategies, prefer fast estimation to keep preview snappy for large corpora.
+                tokens_est = (
+                    num_tokens_from_string(content)
+                    if resolved_chunk_strategy == "langchain_token"
+                    else estimate_tokens(content)
+                )
 
             chunk_items.append(ChunkPreviewItem(
                 index=idx,
-                content=chunk.page_content,
-                length=len(chunk.page_content),
+                content=content,
+                length=len(content),
+                tokens_est=tokens_est,
                 start_index=start_idx,
                 end_index=end_idx,
                 page_number=page_num,
@@ -3485,7 +3497,11 @@ async def preview_chunking(
                 unit="tokens" if resolved_chunk_strategy == "langchain_token" else "chars",
             ),
             chunks=chunk_items,
-            original_text=full_text if len(full_text) <= 100000 else None,  # Skip original text > 100 KB.
+            # Skip original text when too large (highlight offsets require full text).
+            original_text=full_text if len(full_text) <= 100000 else None,
+            original_text_included=len(full_text) <= 100000,
+            original_text_truncated=len(full_text) > 100000,
+            original_text_max_chars=100000,
             parser_backend=resolved_backend,
             chunk_strategy=resolved_chunk_strategy
         )
