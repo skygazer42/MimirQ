@@ -3,7 +3,6 @@ from __future__ import annotations
 import json
 import uuid
 
-import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
@@ -145,4 +144,3 @@ def test_dataset_ingestion_policy_import_replace_false_conflict(monkeypatch):  #
         files={"file": ("policy.json", b'{"version":"1","rules":[]}', "application/json")},
     )
     assert res.status_code == 409
-

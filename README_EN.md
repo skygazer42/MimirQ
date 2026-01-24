@@ -41,12 +41,12 @@ MimirQ is a fullâ€‘stack knowledge base Q&A system built around RAG (Retrievalâ€
 ### 1) Configure env files
 
 ```bash
-cd docker
-cp .env.example .env
-cd ..
+# From repo root:
+make init
 
-# Optional (for local frontend dev only)
-cp web/.env.local.example web/.env.local
+# (Optional) You can still copy manually:
+# cp docker/.env.example docker/.env
+# cp web/.env.local.example web/.env.local
 ```
 
 Edit `docker/.env` and set your LLM/Embedding keys (OpenAI-compatible API is supported).

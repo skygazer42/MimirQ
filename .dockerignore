@@ -16,6 +16,9 @@ web/.next_build/
 web/out/
 web/dist/
 web/.turbo/
+# Legacy local build outputs (not used by the Docker backend image).
+frontend/
+backend/
 node_modules/
 .next/
 .next_build/

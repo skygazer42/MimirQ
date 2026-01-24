@@ -1,4 +1,4 @@
-.PHONY: help up up-web up-etl4llm up-marker up-paddlevl up-mineru up-olmocr up-dev up-dev-web up-prod up-prod-web infra-up infra-up-etl4llm infra-up-marker infra-up-paddlevl infra-up-mineru infra-up-olmocr infra-ps infra-down down ps logs restart backend web test api-check api-smoke typecheck ui-check lint-py audit-py audit-web audit openapi-export openapi-types openapi-check db-upgrade db-revision verify parser-status clean doctor
+.PHONY: help init up up-web up-etl4llm up-marker up-paddlevl up-mineru up-olmocr up-dev up-dev-web up-prod up-prod-web infra-up infra-up-etl4llm infra-up-marker infra-up-paddlevl infra-up-mineru infra-up-olmocr infra-ps infra-down down ps logs restart backend web test api-check api-smoke typecheck ui-check lint-py lint-py-docker compileall-docker verify-docker audit-py audit-web audit openapi-export openapi-types openapi-check db-upgrade db-revision verify parser-status clean doctor
 
 PY := python3
 ifeq ($(OS),Windows_NT)
@@ -13,6 +13,7 @@ COMPOSE_WEB := docker compose -f docker/docker-compose.yml -f docker/docker-comp
 
 help:
 	@echo "MimirQ dev commands (run from repo root):"
+	@echo "  make init      - create local env files if missing (docker/.env, web/.env.local, .env)"
 	@echo "  make up        - docker compose up (build + detach)"
 	@echo "  make up-web    - docker compose up + frontend (extra compose file)"
 	@echo "  make up-etl4llm - docker compose up + ETL4LLM parser (profile etl4llm)"
@@ -44,6 +45,8 @@ help:
 	@echo "  make typecheck - run web TypeScript typecheck"
 	@echo "  make ui-check  - verify web UI design tokens (no hard-coded white/cyan etc)"
 	@echo "  make lint-py   - run Python lint (ruff)"
+	@echo "  make lint-py-docker - run Python lint in Docker (when local env isn't set up)"
+	@echo "  make verify-docker - run verify checks using Docker for Python"
 	@echo "  make audit-py  - audit Python deps (pip-audit)"
 	@echo "  make audit-web - audit web deps (pnpm audit)"
 	@echo "  make audit     - run both audits"
@@ -56,6 +59,12 @@ help:
 	@echo "  make parser-status - print parser backend availability"
 	@echo "  make clean     - remove local caches"
 	@echo "  make doctor    - quick env sanity checks"
+
+init:
+	@# Non-destructive: only create files that don't exist.
+	@if [ ! -f docker/.env ] && [ -f docker/.env.example ]; then cp docker/.env.example docker/.env; echo "[init] created docker/.env"; else echo "[init] docker/.env exists (skip)"; fi
+	@if [ ! -f web/.env.local ] && [ -f web/.env.local.example ]; then cp web/.env.local.example web/.env.local; echo "[init] created web/.env.local"; else echo "[init] web/.env.local exists (skip)"; fi
+	@if [ ! -f .env ] && [ -f .env.example ]; then cp .env.example .env; echo "[init] created .env"; else echo "[init] .env exists (skip)"; fi
 
 up:
 	$(COMPOSE) up -d --build
@@ -154,6 +163,12 @@ ui-check:
 lint-py:
 	$(PY) -m ruff check app tests scripts main.py
 
+lint-py-docker:
+	$(COMPOSE) exec -T mimirq-api ruff check app tests scripts main.py
+
+compileall-docker:
+	$(COMPOSE) exec -T mimirq-api python -m compileall -q app
+
 audit-py:
 	pip-audit -r requirements.txt --no-deps --disable-pip
 
@@ -188,6 +203,14 @@ verify:
 	cd web && pnpm run ui-check
 	cd web && pnpm run typecheck
 	PYTHONPYCACHEPREFIX=/tmp/mimirq-pycache $(PY) -m compileall -q app
+
+verify-docker:
+	@$(MAKE) api-check
+	cd web && pnpm run lint
+	cd web && pnpm run ui-check
+	cd web && pnpm run typecheck
+	@$(MAKE) lint-py-docker
+	@$(MAKE) compileall-docker
 
 clean:
 	$(PY) scripts/clean.py

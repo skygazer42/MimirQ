@@ -19,13 +19,16 @@ LLM_API_KEY=sk-your-api-key-here
 # LLM_MODEL=gpt-4o-mini
 ```
 
+> 小贴士：可以先运行 `make init`，它会在缺失时自动从模板创建：
+> - `docker/.env`（来自 `docker/.env.example`）
+> - `web/.env.local`（来自 `web/.env.local.example`）
+> - `.env`（来自 `.env.example`，用于本地运行后端时读取）
+
 ### 3. 启动服务
 
 ```bash
-# 如未创建 docker/.env，可先从模板复制
-cd docker
-cp .env.example .env
-cd ..
+# 推荐：一键生成本地 env（不会覆盖已有文件）
+make init
 
 # 推荐：使用 Makefile 一键启动/查看状态
 make up
@@ -43,6 +46,8 @@ make up-web
 # 2) 本地开发（热更新更快）
 # cd web; pnpm install; pnpm dev
 ```
+
+> 本地源码运行后端需要 Python 3.11+（项目包含 `match/case` 等语法与依赖约束）。如果你只想快速跑起来，优先使用 Docker。
 
 > Docker 启动前端时：`NEXT_PUBLIC_API_URL` 是给浏览器用的（默认 `http://localhost:8000`）；如需 SSR 在容器内访问后端，请设置 `API_INTERNAL_URL_DOCKER=http://mimirq-api:8000`（不要把 `NEXT_PUBLIC_API_URL` 改成 Docker 内部地址）。
 
@@ -155,6 +160,8 @@ make verify
 - 健康检查: http://localhost:8000/api/v1/health
 - 就绪探针: http://localhost:8000/api/v1/health/ready
 - 详细依赖状态: http://localhost:8000/health
+
+> 说明：聊天接口同时支持 LangChain 与 LangGraph 两条路径。当前端开启 RAG 设置里的 `use_graph` 时，会收到额外的 `graph` 事件用于展示更细的“思考路径/步骤”。
 
 ---
 

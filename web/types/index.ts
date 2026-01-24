@@ -710,6 +710,21 @@ export interface ChatRequest {
   }
 }
 
+export interface ChatResponse {
+  conversation_id: string
+  assistant_message_id: string
+  request_id: string
+  content: string
+  citations: Citation[]
+  total_tokens: number
+  total_chars: number
+  retrieval_mode?: string | null
+  vector_backend?: string | null
+  metrics: Record<string, any>
+  structured: boolean
+  structured_data?: any
+}
+
 export interface CheckpointItem {
   checkpoint_id?: string | null
   checkpoint_ns?: string
