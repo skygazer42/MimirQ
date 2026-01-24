@@ -46,6 +46,7 @@ export function ChunkList() {
   const [minLen, setMinLen] = useState<number>(0)
   const [maxLen, setMaxLen] = useState<number>(0)
   const scrollRef = useRef<HTMLDivElement>(null)
+  const searchRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     const t = window.setTimeout(() => setQuery(queryInput), QUERY_DEBOUNCE_MS)
@@ -163,6 +164,7 @@ export function ChunkList() {
           <div className="relative w-48">
             <Search className="w-3.5 h-3.5 text-muted-foreground absolute left-2 top-1/2 -translate-y-1/2" />
             <Input
+              ref={searchRef}
               value={queryInput}
               onChange={(e) => setQueryInput(e.target.value)}
               placeholder="搜索切片内容..."
@@ -251,9 +253,11 @@ export function ChunkList() {
           {matchesLabel ? <span className="text-[10px] text-muted-foreground font-mono">{matchesLabel}</span> : null}
           <div className="hidden lg:flex items-center gap-2 text-[10px] text-muted-foreground">
             <MousePointer2 className="w-3 h-3" />
-            {showOriginalPanel ? '悬停定位 · 点击锁定 · ↑↓ 导航' : '点击锁定 · ↑↓ 导航（原文已隐藏）'}
+            {showOriginalPanel
+              ? '悬停定位 · 点击锁定 · ↑↓/J K 导航 · / 搜索'
+              : '点击锁定 · ↑↓/J K 导航（原文已隐藏） · / 搜索'}
             <CornerDownLeft className="w-3 h-3 opacity-70" />
-            Esc 取消
+            Esc 取消 · G 首尾
           </div>
         </div>
       </div>
@@ -345,6 +349,22 @@ export function ChunkList() {
               : filteredChunks.findIndex((item) => item.index === selectedChunkIndex)
 
           const clamp = (n: number) => Math.max(0, Math.min(filteredChunks.length - 1, n))
+
+          if (e.key === '/') {
+            e.preventDefault()
+            searchRef.current?.focus()
+            return
+          }
+          if (e.key === 'Home' || (e.key.toLowerCase() === 'g' && !e.shiftKey)) {
+            e.preventDefault()
+            setSelectedChunkIndex(filteredChunks[0]?.index ?? null)
+            return
+          }
+          if (e.key === 'End' || (e.key.toLowerCase() === 'g' && e.shiftKey)) {
+            e.preventDefault()
+            setSelectedChunkIndex(filteredChunks[filteredChunks.length - 1]?.index ?? null)
+            return
+          }
 
           if (e.key === 'ArrowDown' || e.key.toLowerCase() === 'j') {
             e.preventDefault()
