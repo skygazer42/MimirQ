@@ -5,7 +5,8 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useVirtualizer } from '@tanstack/react-virtual'
-import { Layers, MousePointer2, Loader2, AlertCircle, Search, CornerDownLeft } from 'lucide-react'
+import { Layers, MousePointer2, Loader2, AlertCircle, Search, CornerDownLeft, Copy, Braces } from 'lucide-react'
+import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
@@ -15,6 +16,8 @@ import type { ChunkPreviewItem } from '@/types'
 
 const QUERY_DEBOUNCE_MS = 150
 type SortMode = 'index' | 'length_desc' | 'length_asc'
+const PAGE_ALL_VALUE = '__mimirq_page_all__'
+const PAGE_UNKNOWN_VALUE = '__mimirq_page_unknown__'
 
 function isEditableTarget(target: EventTarget | null) {
   const el = target as HTMLElement | null
@@ -39,6 +42,7 @@ export function ChunkList() {
   const [queryInput, setQueryInput] = useState('')
   const [query, setQuery] = useState('')
   const [sortMode, setSortMode] = useState<SortMode>('index')
+  const [pageFilter, setPageFilter] = useState<string>(PAGE_ALL_VALUE)
   const scrollRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -46,12 +50,46 @@ export function ChunkList() {
     return () => window.clearTimeout(t)
   }, [queryInput])
 
+  useEffect(() => {
+    setPageFilter(PAGE_ALL_VALUE)
+    setQueryInput('')
+    setQuery('')
+    setSortMode('index')
+  }, [previewData?.filename])
+
+  const pageOptions = useMemo(() => {
+    const chunks = previewData?.chunks || []
+    const pages = new Set<number>()
+    let hasUnknown = false
+    for (const c of chunks) {
+      if (typeof c.page_number === 'number') pages.add(c.page_number)
+      else hasUnknown = true
+    }
+    const list = Array.from(pages).sort((a, b) => a - b)
+    return { list, hasUnknown }
+  }, [previewData?.chunks])
+
+  const selectedChunk = useMemo(() => {
+    if (!previewData?.chunks || selectedChunkIndex == null) return null
+    return previewData.chunks[selectedChunkIndex] || null
+  }, [previewData?.chunks, selectedChunkIndex])
+
   const filteredChunks = useMemo(() => {
     if (!previewData?.chunks) return []
     const q = query.trim().toLowerCase()
     const base = previewData.chunks
       .map((chunk: ChunkPreviewItem, index: number) => ({ chunk, index }))
-      .filter(({ chunk }: { chunk: ChunkPreviewItem }) => (q ? (chunk.content || '').toLowerCase().includes(q) : true))
+      .filter(({ chunk }: { chunk: ChunkPreviewItem }) => {
+        if (pageFilter === PAGE_ALL_VALUE) {
+          // pass
+        } else if (pageFilter === PAGE_UNKNOWN_VALUE) {
+          if (typeof chunk.page_number === 'number') return false
+        } else {
+          if (String(chunk.page_number ?? '') !== pageFilter) return false
+        }
+
+        return q ? (chunk.content || '').toLowerCase().includes(q) : true
+      })
 
     if (sortMode === 'length_desc') {
       base.sort((a, b) => (b.chunk.length || 0) - (a.chunk.length || 0))
@@ -59,7 +97,7 @@ export function ChunkList() {
       base.sort((a, b) => (a.chunk.length || 0) - (b.chunk.length || 0))
     }
     return base
-  }, [previewData, query, sortMode])
+  }, [previewData, pageFilter, query, sortMode])
 
   const rowVirtualizer = useVirtualizer({
     count: filteredChunks.length,
@@ -84,6 +122,19 @@ export function ChunkList() {
   }, [filteredChunks.length, previewData?.total_chunks, query])
 
   const showVirtualized = Boolean(previewData?.chunks && filteredChunks.length > 0)
+
+  const copyText = async (value: string, okMessage: string) => {
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(value)
+        toast.success(okMessage)
+        return
+      }
+    } catch {
+      // ignore
+    }
+    toast.error('复制失败：浏览器不支持 Clipboard API')
+  }
 
   return (
     <div className="flex-1 flex flex-col min-w-0 bg-background/60">
@@ -117,6 +168,20 @@ export function ChunkList() {
               <SelectItem value="length_asc">长度：小到大</SelectItem>
             </SelectContent>
           </Select>
+          <Select value={pageFilter} onValueChange={(value) => setPageFilter(value)}>
+            <SelectTrigger className="h-7 w-[110px] text-[11px] bg-card/80">
+              <SelectValue placeholder="页面" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={PAGE_ALL_VALUE}>全部页面</SelectItem>
+              {pageOptions.hasUnknown ? <SelectItem value={PAGE_UNKNOWN_VALUE}>未知</SelectItem> : null}
+              {pageOptions.list.map((p) => (
+                <SelectItem key={p} value={String(p)}>
+                  P.{p}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
           {selectedChunkIndex != null ? (
             <Button
               type="button"
@@ -137,6 +202,63 @@ export function ChunkList() {
           </div>
         </div>
       </div>
+
+      {selectedChunk ? (
+        <div className="border-b border-border/60 bg-card/70 px-4 py-3">
+          <div className="flex items-center justify-between gap-3">
+            <div className="min-w-0">
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-mono font-medium text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
+                  #{selectedChunkIndex != null ? selectedChunkIndex + 1 : '-'}
+                </span>
+                {selectedChunk.page_number != null ? (
+                  <span className="text-xs text-muted-foreground">P.{selectedChunk.page_number}</span>
+                ) : null}
+                <span className="text-[10px] text-muted-foreground font-mono">
+                  {selectedChunk.start_index}-{selectedChunk.end_index} · {selectedChunk.length} chars
+                </span>
+              </div>
+              <div className="mt-1 text-[11px] text-muted-foreground line-clamp-2">
+                {(selectedChunk.content || '').slice(0, 260)}
+                {(selectedChunk.content || '').length > 260 ? '…' : ''}
+              </div>
+            </div>
+            <div className="flex items-center gap-1">
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8"
+                onClick={() => void copyText(selectedChunk.content || '', '已复制切片内容')}
+                aria-label="复制切片内容"
+                title="复制切片内容"
+              >
+                <Copy className="h-4 w-4" />
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8"
+                onClick={() => void copyText(JSON.stringify(selectedChunk, null, 2), '已复制切片 JSON')}
+                aria-label="复制切片 JSON"
+                title="复制切片 JSON"
+              >
+                <Braces className="h-4 w-4" />
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-8 px-3 text-[11px]"
+                onClick={() => setSelectedChunkIndex(null)}
+              >
+                取消锁定
+              </Button>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       <div
         ref={scrollRef}

@@ -3,7 +3,7 @@
  */
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import {
   Settings,
   Folder,
@@ -15,9 +15,14 @@ import {
   Sparkles,
   BarChart3,
   Loader2,
+  Database,
+  Wand2,
+  ChevronDown,
 } from 'lucide-react'
+import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { cn, formatFileSize } from '@/lib/utils'
 import { useChunkPreview } from '@/components/chunk-preview/context'
 import { ChunkStrategyDropdown } from '@/components/ui/chunk-strategy-dropdown'
@@ -25,18 +30,24 @@ import { ParserDropdown } from '@/components/ui/parser-dropdown'
 import { PipelineOptionsPanel } from '@/components/pipeline-options-panel'
 import { getChunkStrategyOption } from '@/lib/chunk-strategies'
 import { usePipelineCapabilities } from '@/contexts/pipeline-capabilities-context'
+import { usePipelineOptions } from '@/contexts/pipeline-options-context'
 import { UPLOAD_ACCEPT } from '@/lib/upload-extensions'
 import { computeChunkLengthStats } from '@/components/chunk-preview/utils/stats'
+import { datasetApi, pipelineApi } from '@/lib/api-client'
+import type { Dataset, IngestionPreviewResponse } from '@/types'
 
 function clampInt(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, Math.trunc(value)))
 }
 
-export function Sidebar() {
+const DATASET_DEFAULT_VALUE = '__mimirq_dataset_default__'
+
+export function Sidebar({ variant = 'panel' }: { variant?: 'panel' | 'dialog' } = {}) {
   const {
     fileList,
     currentFileIndex,
     currentFile,
+    datasetId,
     previewData,
     isLoading,
     cacheHit,
@@ -50,6 +61,7 @@ export function Sidebar() {
     setCurrentFileIndex,
     removeFile,
     addFiles,
+    setDatasetId,
     updateSettings,
     runPreview,
     cancelPreview,
@@ -57,6 +69,7 @@ export function Sidebar() {
     toggleAutoPreview,
   } = useChunkPreview()
   const { capabilities, parserBackendAvailable } = usePipelineCapabilities()
+  const pipelineCtx = usePipelineOptions()
 
   const chunkStrategyOption = getChunkStrategyOption(chunkStrategy)
   const resolvedChunkStrategy = previewData?.chunk_strategy || chunkStrategy
@@ -102,8 +115,45 @@ export function Sidebar() {
 
   const [showAdvancedStats, setShowAdvancedStats] = useState(false)
 
+  const [datasets, setDatasets] = useState<Dataset[]>([])
+  const [datasetsLoading, setDatasetsLoading] = useState(false)
+  const [datasetsError, setDatasetsError] = useState<string | null>(null)
+  const selectedDataset = useMemo(() => (datasetId ? datasets.find((ds) => ds.id === datasetId) || null : null), [datasetId, datasets])
+
+  const [ingestionPreview, setIngestionPreview] = useState<IngestionPreviewResponse | null>(null)
+  const [ingestionLoading, setIngestionLoading] = useState(false)
+  const [ingestionError, setIngestionError] = useState<string | null>(null)
+
+  useEffect(() => {
+    let alive = true
+    setDatasetsLoading(true)
+    setDatasetsError(null)
+    datasetApi
+      .list({ limit: 100 })
+      .then((res) => {
+        if (!alive) return
+        setDatasets(res.items || [])
+      })
+      .catch((err: any) => {
+        if (!alive) return
+        setDatasetsError((err?.message as string) || '加载数据集失败')
+      })
+      .finally(() => {
+        if (!alive) return
+        setDatasetsLoading(false)
+      })
+    return () => {
+      alive = false
+    }
+  }, [])
+
   return (
-    <aside className="w-80 bg-card/80 border-r border-border/60 flex flex-col flex-shrink-0 z-10 backdrop-blur">
+    <aside
+      className={cn(
+        'bg-card/80 flex flex-col flex-shrink-0 z-10 backdrop-blur',
+        variant === 'dialog' ? 'w-full border-0' : 'w-80 border-r border-border/60'
+      )}
+    >
       <div className="p-6 flex-1 overflow-y-auto overscroll-contain no-scrollbar">
         {/* 文件列表 */}
         <div className="mb-8 pb-8 border-b border-border/60">
@@ -228,6 +278,196 @@ export function Sidebar() {
               Ctrl/⌘ + Enter 预览 · Ctrl/⌘ + S 入库
             </div>
           </div>
+
+          <div className="space-y-2">
+            <label className="text-xs font-medium text-muted-foreground">目标数据集（可选）</label>
+            <Select
+              value={datasetId || DATASET_DEFAULT_VALUE}
+              onValueChange={(value) => {
+                setIngestionPreview(null)
+                setIngestionError(null)
+                setDatasetId(value === DATASET_DEFAULT_VALUE ? '' : value)
+              }}
+            >
+              <SelectTrigger className="h-10 bg-card/80">
+                <SelectValue placeholder="选择数据集" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={DATASET_DEFAULT_VALUE}>默认（自动选择可写数据集）</SelectItem>
+                {datasets.map((ds) => (
+                  <SelectItem key={ds.id} value={ds.id}>
+                    {ds.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {datasetsLoading ? (
+              <div className="text-[10px] text-muted-foreground">正在加载数据集...</div>
+            ) : datasetsError ? (
+              <div className="text-[10px] text-warning bg-warning/10 border border-warning/25 rounded-lg px-2 py-1">
+                {datasetsError}
+              </div>
+            ) : null}
+
+            {selectedDataset?.pipeline ? (
+              <div className="rounded-xl border border-border/60 bg-card/70 p-3">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="text-[10px] text-muted-foreground">数据集 Pipeline（摘要）</div>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="h-7 px-2 text-[11px]"
+                    onClick={() => {
+                      const patch = selectedDataset.pipeline as any
+                      pipelineCtx.setEnabled(true)
+                      for (const [k, v] of Object.entries(patch || {})) {
+                        if (k in pipelineCtx.options) {
+                          pipelineCtx.updateOption(k as any, v as any)
+                        }
+                      }
+                      toast.success('已应用数据集 Pipeline 到当前预览')
+                    }}
+                  >
+                    应用
+                  </Button>
+                </div>
+                <div className="mt-2 flex flex-wrap gap-2 text-[10px]">
+                  {(selectedDataset.pipeline as any).governance_enabled ? (
+                    <span className="px-2 py-0.5 rounded-full bg-sky-500/10 text-sky-700 dark:text-sky-200 border border-sky-500/20">
+                      Governance
+                    </span>
+                  ) : (
+                    <span className="px-2 py-0.5 rounded-full bg-muted text-muted-foreground border border-border/60">
+                      Governance Off
+                    </span>
+                  )}
+                  {(selectedDataset.pipeline as any).chunk_vector_enabled ? (
+                    <span className="px-2 py-0.5 rounded-full bg-primary/10 text-primary border border-primary/20">
+                      Vector
+                    </span>
+                  ) : (
+                    <span className="px-2 py-0.5 rounded-full bg-muted text-muted-foreground border border-border/60">
+                      Vector Off
+                    </span>
+                  )}
+                  {(selectedDataset.pipeline as any).bm25_index_enabled ? (
+                    <span className="px-2 py-0.5 rounded-full bg-primary/10 text-primary border border-primary/20">
+                      BM25
+                    </span>
+                  ) : (
+                    <span className="px-2 py-0.5 rounded-full bg-muted text-muted-foreground border border-border/60">
+                      BM25 Off
+                    </span>
+                  )}
+                  {(selectedDataset.pipeline as any).kg_enabled ? (
+                    <span className="px-2 py-0.5 rounded-full bg-purple-500/10 text-purple-700 dark:text-purple-200 border border-purple-500/20">
+                      KG
+                    </span>
+                  ) : null}
+                </div>
+              </div>
+            ) : null}
+
+            <Button
+              type="button"
+              variant="outline"
+              disabled={!datasetId || !currentFile || ingestionLoading}
+              className="w-full h-9 text-xs justify-start"
+              onClick={async () => {
+                if (!datasetId) {
+                  toast.error('请先选择目标数据集')
+                  return
+                }
+                if (!currentFile) return
+                setIngestionLoading(true)
+                setIngestionError(null)
+                try {
+                  const result = await pipelineApi.ingestionPreview(currentFile, {
+                    dataset_id: datasetId,
+                    parser_backend: parserBackend || undefined,
+                    chunk_strategy: chunkStrategy || undefined,
+                    diff_max_lines: 300,
+                  })
+                  setIngestionPreview(result)
+                  toast.success('已生成入库策略预览（可应用推荐）')
+                } catch (err: any) {
+                  setIngestionError((err?.message as string) || '入库策略预览失败')
+                } finally {
+                  setIngestionLoading(false)
+                }
+              }}
+            >
+              {ingestionLoading ? (
+                <Loader2 className="w-4 h-4 mr-2 animate-spin motion-reduce:animate-none" />
+              ) : (
+                <Wand2 className="w-4 h-4 mr-2 text-primary" />
+              )}
+              按入库策略智能推荐
+            </Button>
+
+            {ingestionError ? (
+              <div className="text-[10px] text-warning bg-warning/10 border border-warning/25 rounded-lg px-2 py-1">
+                {ingestionError}
+              </div>
+            ) : null}
+
+            {ingestionPreview ? (
+              <div className="rounded-xl border border-border/60 bg-card/70 p-3 space-y-2">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="text-[10px] text-muted-foreground">命中规则</div>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 px-2 text-[11px]"
+                    onClick={() => setIngestionPreview(null)}
+                  >
+                    清除
+                  </Button>
+                </div>
+                <div className="text-xs text-foreground/90 font-medium">
+                  {ingestionPreview.rule.matched
+                    ? (ingestionPreview.rule.rule_name || ingestionPreview.rule.rule_id || '已命中规则')
+                    : '未命中策略规则（使用默认配置）'}
+                </div>
+                <div className="text-[10px] text-muted-foreground font-mono">
+                  parser: {ingestionPreview.rule.parser_backend} · strategy: {ingestionPreview.rule.chunk_strategy}
+                </div>
+                {ingestionPreview.rule.governance_profile_ref ? (
+                  <div className="text-[10px] text-muted-foreground">
+                    governance profile: <span className="font-mono">{ingestionPreview.rule.governance_profile_ref}</span>
+                  </div>
+                ) : null}
+                <div className="text-[10px] text-muted-foreground">
+                  preprocess steps: <span className="font-mono">{ingestionPreview.rule.preprocess_steps.length}</span>
+                </div>
+                <div className="flex items-center gap-2 pt-1">
+                  <Button
+                    type="button"
+                    size="sm"
+                    className="h-8 px-3 text-[11px]"
+                    onClick={() => {
+                      setParserBackend(ingestionPreview.rule.parser_backend)
+                      updateSettings({ strategy: ingestionPreview.rule.chunk_strategy })
+                      toast.success('已应用推荐的解析器与切块策略')
+                    }}
+                  >
+                    应用推荐
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    className="h-8 px-3 text-[11px]"
+                    onClick={() => runPreview({ force: true })}
+                  >
+                    立即预览
+                  </Button>
+                </div>
+              </div>
+            ) : null}
+          </div>
           <div className="space-y-2">
             <label className="text-xs font-medium text-muted-foreground">解析器</label>
             <ParserDropdown value={parserBackend} onChange={setParserBackend} />
@@ -330,6 +570,22 @@ export function Sidebar() {
                   </span>
                 </div>
               ) : null}
+              <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
+                <span>快捷:</span>
+                {[10, 15, 20, 25].map((pct) => (
+                  <button
+                    key={pct}
+                    type="button"
+                    className="px-2 py-0.5 rounded-full border border-border/60 bg-muted/60 hover:bg-muted transition-colors focus-ring"
+                    onClick={() => {
+                      const target = Math.round(chunkSize * (pct / 100))
+                      updateSettings({ chunkOverlap: clampInt(target, 0, overlapMax) })
+                    }}
+                  >
+                    {pct}%
+                  </button>
+                ))}
+              </div>
             </div>
           )}
 
@@ -460,9 +716,23 @@ export function Sidebar() {
             </div>
             <div className="space-y-2 max-h-[180px] overflow-y-auto overscroll-contain no-scrollbar pr-1">
               {runHistory.map((item) => (
-                <div
+                <button
+                  type="button"
                   key={item.id}
-                  className="bg-card border border-border/60 rounded-xl px-3 py-2 text-[10px] text-muted-foreground shadow-sm"
+                  className={cn(
+                    "w-full text-left bg-card border border-border/60 rounded-xl px-3 py-2 text-[10px] text-muted-foreground shadow-sm",
+                    "hover:border-primary/25 hover:bg-primary/5 transition-colors focus-ring"
+                  )}
+                  onClick={() => {
+                    setParserBackend(item.parserBackend)
+                    updateSettings({
+                      strategy: item.strategy,
+                      chunkSize: item.chunkSize,
+                      chunkOverlap: item.chunkOverlap,
+                    })
+                    runPreview({ force: true })
+                    toast.success('已恢复历史预览配置')
+                  }}
                 >
                   <div className="flex items-center justify-between">
                     <span className="font-medium text-foreground/80 truncate">{item.fileName}</span>
@@ -476,7 +746,7 @@ export function Sidebar() {
                       <span className="px-2 py-0.5 rounded-full bg-success/10 text-success border border-success/25">缓存</span>
                     )}
                   </div>
-                </div>
+                </button>
               ))}
             </div>
           </div>
