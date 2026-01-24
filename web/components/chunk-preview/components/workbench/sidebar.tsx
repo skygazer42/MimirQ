@@ -120,6 +120,33 @@ export function Sidebar({ variant = 'panel' }: { variant?: 'panel' | 'dialog' } 
     }
   }, [chunkOverlap, chunkSize])
 
+  const effectiveSeparator = useMemo(() => {
+    if (!isSeparatorStrategy) return null
+
+    const presetMap: Record<string, string> = {
+      paragraph: '\n\n',
+      line: '\n',
+      sentence_cn: '。',
+      sentence_en: '.',
+      markdown_hr: '---',
+      markdown_h1: '# ',
+      markdown_h2: '## ',
+    }
+
+    if (separatorPreset && separatorPreset !== 'custom') {
+      return presetMap[separatorPreset] ?? '\n\n'
+    }
+
+    const raw = String(separatorCustom || '').trim()
+    if (!raw) return '\n\n'
+    try {
+      // Same trick as context.decodeSeparatorInput: support \n, \t, \uXXXX etc.
+      return JSON.parse(`"${raw.replace(/"/g, '\\"')}"`)
+    } catch {
+      return raw
+    }
+  }, [isSeparatorStrategy, separatorCustom, separatorPreset])
+
   const [showAdvancedStats, setShowAdvancedStats] = useState(false)
 
   const [datasets, setDatasets] = useState<Dataset[]>([])
@@ -590,6 +617,11 @@ export function Sidebar({ variant = 'panel' }: { variant?: 'panel' | 'dialog' } 
                 <div className="text-[10px] text-muted-foreground">
                   {SEPARATOR_PRESET_OPTIONS.find((o) => o.value === separatorPreset)?.hint || ''}
                 </div>
+                {effectiveSeparator ? (
+                  <div className="text-[10px] text-muted-foreground font-mono">
+                    有效分隔符: {JSON.stringify(effectiveSeparator).slice(1, -1) || '(empty)'} · len: {effectiveSeparator.length}
+                  </div>
+                ) : null}
               </div>
 
               {separatorPreset === 'custom' ? (

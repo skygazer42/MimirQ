@@ -5,7 +5,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useVirtualizer } from '@tanstack/react-virtual'
-import { Layers, MousePointer2, Loader2, AlertCircle, Search, CornerDownLeft, Copy, Braces, Code2 } from 'lucide-react'
+import { Layers, MousePointer2, Loader2, AlertCircle, Search, CornerDownLeft, Copy, Braces, Code2, X } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -128,10 +128,14 @@ export function ChunkList() {
   }, [filteredChunks, rowVirtualizer, selectedChunkIndex])
 
   const matchesLabel = useMemo(() => {
-    const q = query.trim()
-    if (!q) return null
+    const hasFilter =
+      Boolean(query.trim()) ||
+      pageFilter !== PAGE_ALL_VALUE ||
+      minLen > 0 ||
+      maxLen > 0
+    if (!hasFilter) return null
     return `${filteredChunks.length} / ${previewData?.total_chunks || 0}`
-  }, [filteredChunks.length, previewData?.total_chunks, query])
+  }, [filteredChunks.length, previewData?.total_chunks, query, pageFilter, minLen, maxLen])
 
   const showVirtualized = Boolean(previewData?.chunks && filteredChunks.length > 0)
 
@@ -168,8 +172,22 @@ export function ChunkList() {
               value={queryInput}
               onChange={(e) => setQueryInput(e.target.value)}
               placeholder="搜索切片内容..."
-              className="h-7 pl-7 pr-2 text-[11px] bg-card/80"
+              className="h-7 pl-7 pr-7 text-[11px] bg-card/80"
             />
+            {queryInput ? (
+              <button
+                type="button"
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors focus-ring rounded"
+                onClick={() => {
+                  setQueryInput('')
+                  setQuery('')
+                }}
+                aria-label="清除搜索"
+                title="清除搜索"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            ) : null}
           </div>
           <Select value={sortMode} onValueChange={(value) => setSortMode(value as SortMode)}>
             <SelectTrigger className="h-7 w-[140px] text-[11px] bg-card/80">
