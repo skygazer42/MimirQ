@@ -53,6 +53,7 @@ make up-web
 
 **1. 可视化切片预览**
 实时预览文档分块效果，告别黑盒处理，精确调整切片参数。
+使用说明见：[docs/guides/chunk_preview.md](./docs/guides/chunk_preview.md)。
 
 **2. 混合检索**
 向量检索 + BM25 关键词检索双引擎，RRF 算法融合排序，兼顾语义理解和精确匹配。

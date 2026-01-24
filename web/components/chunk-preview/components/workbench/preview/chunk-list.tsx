@@ -1,27 +1,89 @@
 /**
- * ChunkList - ?????????
+ * ChunkList - 切片列表
  */
 'use client'
 
-import { useMemo, useState } from 'react'
-import { Layers, MousePointer2, Loader2, AlertCircle, Search } from 'lucide-react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { useVirtualizer } from '@tanstack/react-virtual'
+import { Layers, MousePointer2, Loader2, AlertCircle, Search, CornerDownLeft } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { useChunkPreview } from '@/components/chunk-preview/context'
 import { ChunkCard } from '../../chunk-card'
 import type { ChunkPreviewItem } from '@/types'
 
+const QUERY_DEBOUNCE_MS = 150
+type SortMode = 'index' | 'length_desc' | 'length_asc'
+
+function isEditableTarget(target: EventTarget | null) {
+  const el = target as HTMLElement | null
+  if (!el) return false
+  const tag = (el.tagName || '').toLowerCase()
+  if (tag === 'input' || tag === 'textarea' || tag === 'select') return true
+  return el.isContentEditable
+}
+
 export function ChunkList() {
-  const { previewData, hoveredChunkIndex, setHoveredChunkIndex, isLoading, error, runPreview } = useChunkPreview()
+  const {
+    previewData,
+    hoveredChunkIndex,
+    selectedChunkIndex,
+    setHoveredChunkIndex,
+    setSelectedChunkIndex,
+    showOriginalPanel,
+    isLoading,
+    error,
+    runPreview,
+  } = useChunkPreview()
+  const [queryInput, setQueryInput] = useState('')
   const [query, setQuery] = useState('')
+  const [sortMode, setSortMode] = useState<SortMode>('index')
+  const scrollRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    const t = window.setTimeout(() => setQuery(queryInput), QUERY_DEBOUNCE_MS)
+    return () => window.clearTimeout(t)
+  }, [queryInput])
 
   const filteredChunks = useMemo(() => {
     if (!previewData?.chunks) return []
     const q = query.trim().toLowerCase()
-    return previewData.chunks
+    const base = previewData.chunks
       .map((chunk: ChunkPreviewItem, index: number) => ({ chunk, index }))
       .filter(({ chunk }: { chunk: ChunkPreviewItem }) => (q ? (chunk.content || '').toLowerCase().includes(q) : true))
-  }, [previewData, query])
+
+    if (sortMode === 'length_desc') {
+      base.sort((a, b) => (b.chunk.length || 0) - (a.chunk.length || 0))
+    } else if (sortMode === 'length_asc') {
+      base.sort((a, b) => (a.chunk.length || 0) - (b.chunk.length || 0))
+    }
+    return base
+  }, [previewData, query, sortMode])
+
+  const rowVirtualizer = useVirtualizer({
+    count: filteredChunks.length,
+    getScrollElement: () => scrollRef.current,
+    estimateSize: () => 140,
+    overscan: 8,
+  })
+
+  // Keep the selected chunk visible (best effort).
+  useEffect(() => {
+    if (selectedChunkIndex == null) return
+    const pos = filteredChunks.findIndex((item) => item.index === selectedChunkIndex)
+    if (pos >= 0) {
+      rowVirtualizer.scrollToIndex(pos, { align: 'center' })
+    }
+  }, [filteredChunks, rowVirtualizer, selectedChunkIndex])
+
+  const matchesLabel = useMemo(() => {
+    const q = query.trim()
+    if (!q) return null
+    return `${filteredChunks.length} / ${previewData?.total_chunks || 0}`
+  }, [filteredChunks.length, previewData?.total_chunks, query])
+
+  const showVirtualized = Boolean(previewData?.chunks && filteredChunks.length > 0)
 
   return (
     <div className="flex-1 flex flex-col min-w-0 bg-background/60">
@@ -39,33 +101,125 @@ export function ChunkList() {
           <div className="relative w-48">
             <Search className="w-3.5 h-3.5 text-muted-foreground absolute left-2 top-1/2 -translate-y-1/2" />
             <Input
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
+              value={queryInput}
+              onChange={(e) => setQueryInput(e.target.value)}
               placeholder="搜索切片内容..."
               className="h-7 pl-7 pr-2 text-[11px] bg-card/80"
             />
           </div>
-          <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
+          <Select value={sortMode} onValueChange={(value) => setSortMode(value as SortMode)}>
+            <SelectTrigger className="h-7 w-[140px] text-[11px] bg-card/80">
+              <SelectValue placeholder="排序" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="index">原顺序</SelectItem>
+              <SelectItem value="length_desc">长度：大到小</SelectItem>
+              <SelectItem value="length_asc">长度：小到大</SelectItem>
+            </SelectContent>
+          </Select>
+          {selectedChunkIndex != null ? (
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="h-7 px-2 text-[11px]"
+              onClick={() => setSelectedChunkIndex(null)}
+            >
+              清除锁定
+            </Button>
+          ) : null}
+          {matchesLabel ? <span className="text-[10px] text-muted-foreground font-mono">{matchesLabel}</span> : null}
+          <div className="hidden lg:flex items-center gap-2 text-[10px] text-muted-foreground">
             <MousePointer2 className="w-3 h-3" />
-            悬停查看对应原文
+            {showOriginalPanel ? '悬停定位 · 点击锁定 · ↑↓ 导航' : '点击锁定 · ↑↓ 导航（原文已隐藏）'}
+            <CornerDownLeft className="w-3 h-3 opacity-70" />
+            Esc 取消
           </div>
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto overscroll-contain no-scrollbar p-4">
-        <div className="min-h-full rounded-2xl border border-border/60 bg-card/70 p-3 shadow-sm backdrop-blur ring-1 ring-border/40 space-y-3">
+      <div
+        ref={scrollRef}
+        tabIndex={0}
+        onKeyDown={(e) => {
+          if (!previewData?.chunks?.length) return
+          if (isEditableTarget(e.target)) return
+          if (filteredChunks.length === 0) return
+
+          const currentPos =
+            selectedChunkIndex == null
+              ? -1
+              : filteredChunks.findIndex((item) => item.index === selectedChunkIndex)
+
+          const clamp = (n: number) => Math.max(0, Math.min(filteredChunks.length - 1, n))
+
+          if (e.key === 'ArrowDown' || e.key.toLowerCase() === 'j') {
+            e.preventDefault()
+            const nextPos = clamp(currentPos < 0 ? 0 : currentPos + 1)
+            setSelectedChunkIndex(filteredChunks[nextPos]?.index ?? null)
+            return
+          }
+          if (e.key === 'ArrowUp' || e.key.toLowerCase() === 'k') {
+            e.preventDefault()
+            const nextPos = clamp(currentPos < 0 ? 0 : currentPos - 1)
+            setSelectedChunkIndex(filteredChunks[nextPos]?.index ?? null)
+            return
+          }
+          if (e.key === 'Escape') {
+            e.preventDefault()
+            setSelectedChunkIndex(null)
+            return
+          }
+        }}
+        className="flex-1 overflow-y-auto overscroll-contain no-scrollbar p-4 focus-ring"
+        aria-label="切片列表（可键盘导航）"
+      >
+        <div
+          className="min-h-full rounded-2xl border border-border/60 bg-card/70 p-3 shadow-sm backdrop-blur ring-1 ring-border/40"
+          style={{
+            height: showVirtualized ? `${rowVirtualizer.getTotalSize()}px` : undefined,
+            position: showVirtualized ? 'relative' : undefined,
+          }}
+        >
           {previewData?.chunks ? (
             filteredChunks.length > 0 ? (
-              filteredChunks.map(({ chunk, index }: { chunk: ChunkPreviewItem; index: number }) => (
-                <ChunkCard
-                  key={index}
-                  chunk={chunk}
-                  index={index}
-                  isHovered={hoveredChunkIndex === index}
-                  onMouseEnter={() => setHoveredChunkIndex(index)}
-                  onMouseLeave={() => setHoveredChunkIndex(null)}
-                />
-              ))
+              rowVirtualizer.getVirtualItems().map((virtualRow) => {
+                const item = filteredChunks[virtualRow.index]
+                if (!item) return null
+                const { chunk, index } = item
+                const isHovered = hoveredChunkIndex === index
+                const isSelected = selectedChunkIndex === index
+
+                return (
+                  <div
+                    key={virtualRow.key}
+                    data-index={virtualRow.index}
+                    ref={rowVirtualizer.measureElement}
+                    style={{
+                      position: 'absolute',
+                      top: 0,
+                      left: 0,
+                      width: '100%',
+                      transform: `translateY(${virtualRow.start}px)`,
+                    }}
+                    className="pb-3"
+                  >
+                    <ChunkCard
+                      chunk={chunk}
+                      index={index}
+                      isHovered={isHovered}
+                      isSelected={isSelected}
+                      query={query}
+                      onMouseEnter={() => setHoveredChunkIndex(index)}
+                      onMouseLeave={() => setHoveredChunkIndex(null)}
+                      onToggleSelect={() => {
+                        setSelectedChunkIndex(selectedChunkIndex === index ? null : index)
+                        scrollRef.current?.focus()
+                      }}
+                    />
+                  </div>
+                )
+              })
             ) : (
               <div className="h-full flex flex-col items-center justify-center text-muted-foreground gap-2 py-12">
                 <Search className="w-10 h-10 opacity-20" />

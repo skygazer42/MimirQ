@@ -59,10 +59,12 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: ChunkPrev
 
   const [isLoading, setIsLoading] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [showOriginalPanel, setShowOriginalPanel] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
   const [previewData, setPreviewData] = useState<ChunkPreviewResponse | null>(null)
   const [hoveredChunkIndex, setHoveredChunkIndex] = useState<number | null>(null)
+  const [selectedChunkIndex, setSelectedChunkIndex] = useState<number | null>(null)
   const [lastPreviewAt, setLastPreviewAt] = useState<number | null>(null)
   const [lastPreviewDurationMs, setLastPreviewDurationMs] = useState<number | null>(null)
   const [cacheHit, setCacheHit] = useState(false)
@@ -184,6 +186,8 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: ChunkPrev
     setPreviewData(null)
     setError(null)
     setSubmitSuccess(false)
+    setHoveredChunkIndex(null)
+    setSelectedChunkIndex(null)
   }, [makeId])
 
   const removeFile = useCallback((index: number) => {
@@ -196,6 +200,8 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: ChunkPrev
       setCurrentFileIndex((prev) => prev - 1)
     }
     setPreviewData(null)
+    setHoveredChunkIndex(null)
+    setSelectedChunkIndex(null)
   }, [currentFileIndex])
 
   const selectFile = useCallback((index: number) => {
@@ -203,6 +209,8 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: ChunkPrev
     setPreviewData(null)
     setError(null)
     setSubmitSuccess(false)
+    setHoveredChunkIndex(null)
+    setSelectedChunkIndex(null)
   }, [])
 
   // Actions: 拖放
@@ -252,6 +260,8 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: ChunkPrev
     setPreviewData(null)
     setError(null)
     setSubmitSuccess(false)
+    setHoveredChunkIndex(null)
+    setSelectedChunkIndex(null)
   }, [makeId])
 
   const buildPreviewCacheKey = useCallback(() => {
@@ -285,6 +295,8 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: ChunkPrev
     const cacheKey = buildPreviewCacheKey()
     const cached = cacheKey ? previewCacheRef.current.get(cacheKey) : undefined
     if (cached && !options?.force) {
+      setHoveredChunkIndex(null)
+      setSelectedChunkIndex(null)
       setPreviewData(cached.data)
       setLastPreviewAt(cached.createdAt)
       setLastPreviewDurationMs(cached.durationMs)
@@ -315,6 +327,8 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: ChunkPrev
     setIsLoading(true)
     setError(null)
     setCacheHit(false)
+    setHoveredChunkIndex(null)
+    setSelectedChunkIndex(null)
     const startTime = performance.now()
 
     try {
@@ -373,6 +387,12 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: ChunkPrev
     buildPreviewCacheKey,
     makeId,
   ])
+
+  const cancelPreview = useCallback(() => {
+    previewAbortRef.current?.abort()
+    previewAbortRef.current = null
+    setIsLoading(false)
+  }, [])
 
   // Actions: 提交入库
   const submitChunks = useCallback(async () => {
@@ -450,6 +470,8 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: ChunkPrev
     setError(null)
     setProcessedStatus({})
     setSubmitSuccess(false)
+    setHoveredChunkIndex(null)
+    setSelectedChunkIndex(null)
     setLastPreviewAt(null)
     setLastPreviewDurationMs(null)
     setCacheHit(false)
@@ -490,6 +512,10 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: ChunkPrev
     setAutoPreviewEnabled((prev) => (typeof enabled === 'boolean' ? enabled : !prev))
   }, [])
 
+  const toggleOriginalPanel = useCallback(() => {
+    setShowOriginalPanel((prev) => !prev)
+  }, [])
+
   // 组装 Context Value
   const value: ChunkPreviewContextType = {
     // State
@@ -498,9 +524,11 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: ChunkPrev
     isDragging,
     isLoading,
     isSubmitting,
+    showOriginalPanel,
     error,
     previewData,
     hoveredChunkIndex,
+    selectedChunkIndex,
     chunkSize,
     chunkOverlap,
     strategy: chunkStrategy,
@@ -522,7 +550,10 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: ChunkPrev
     setCurrentFileIndex: selectFile,
     setIsDragging,
     setHoveredChunkIndex,
+    setSelectedChunkIndex,
+    toggleOriginalPanel,
     runPreview,
+    cancelPreview,
     submitChunks,
     updateSettings,
     reset,

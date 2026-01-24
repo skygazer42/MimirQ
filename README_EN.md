@@ -95,6 +95,7 @@ make up-web
 ## Docs
 
 See `docs/README.md` for docs and guides.
+- Chunk preview guide (CN): `docs/guides/chunk_preview.md`
 
 ## Acknowledgements
 

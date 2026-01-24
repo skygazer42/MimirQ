@@ -5,27 +5,38 @@
 
 import {
   Layers,
+  FileText,
   Save,
   RotateCcw,
+  MoreVertical,
+  Download,
+  Copy,
   X,
   Check,
   AlertCircle,
   Loader2,
 } from 'lucide-react'
+import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
-import { cn } from '@/lib/utils'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
+import { cn, formatFileSize } from '@/lib/utils'
+import { API_V1_BASE_URL } from '@/lib/env'
 import { useChunkPreview } from '@/components/chunk-preview/context'
-
-function formatFileSize(bytes: number) {
-  if (bytes < 1024) return `${bytes} B`
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
-  return `${(bytes / 1024 / 1024).toFixed(1)} MB`
-}
+import { usePipelineOptions } from '@/contexts/pipeline-options-context'
+import { getChunkStrategyLabel } from '@/lib/chunk-strategies'
+import { getParserLabel } from '@/lib/parser-options'
+import { chunkPreviewToCsv, downloadTextFile, sanitizeFilename, toChunkPreviewExport } from '@/components/chunk-preview/utils/export'
 
 export function TopBar() {
+  const { enabled: pipelineOverridesEnabled, options: pipelineOptions } = usePipelineOptions()
   const {
     currentFileIndex,
-    fileList,
     currentFileItem,
     currentFile,
     previewData,
@@ -38,12 +49,30 @@ export function TopBar() {
     submitSuccess,
     error,
     isSubmitting,
+    showOriginalPanel,
     submitChunks,
+    toggleOriginalPanel,
     reset,
     onClose,
   } = useChunkPreview()
 
   if (!currentFile || !currentFileItem) return null
+
+  const effectiveParserBackend = previewData?.parser_backend || parserBackend
+  const effectiveChunkStrategy = previewData?.chunk_strategy || chunkStrategy
+
+  const copyText = async (value: string, okMessage: string) => {
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(value)
+        toast.success(okMessage)
+        return
+      }
+    } catch {
+      // ignore
+    }
+    toast.error('复制失败：浏览器不支持 Clipboard API')
+  }
 
   return (
     <header className="flex-shrink-0 h-20 border-b border-border/60 flex justify-between items-center px-6 bg-card/80 backdrop-blur z-20 shadow-sm relative">
@@ -82,10 +111,14 @@ export function TopBar() {
           <div className="flex items-center gap-3 mt-1.5">
              <div className="flex items-center gap-2 text-[11px] text-muted-foreground bg-muted border border-border px-2 py-0.5 rounded-md">
                 <span className="text-muted-foreground">解析:</span>
-                <span className="font-medium text-primary">{parserBackend}</span>
+                <span className="font-medium text-primary" title={effectiveParserBackend}>
+                  {getParserLabel(effectiveParserBackend)}
+                </span>
                 <span className="w-px h-2.5 bg-border mx-0.5" />
                 <span className="text-muted-foreground">策略:</span>
-                <span className="font-medium text-primary">{chunkStrategy}</span>
+                <span className="font-medium text-primary" title={effectiveChunkStrategy}>
+                  {getChunkStrategyLabel(effectiveChunkStrategy)}
+                </span>
                 <span className="w-px h-2.5 bg-border mx-0.5" />
                 <span className="text-muted-foreground">参数:</span>
                 <span className="font-medium font-mono text-foreground/80">{chunkSize}/{chunkOverlap}</span>
@@ -138,6 +171,100 @@ export function TopBar() {
           <RotateCcw className="w-3.5 h-3.5 mr-1.5" />
           重置
         </Button>
+
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          onClick={toggleOriginalPanel}
+          className="text-muted-foreground hover:text-foreground h-9 px-3 text-xs font-medium hover:bg-muted"
+          aria-label={showOriginalPanel ? '隐藏原文面板' : '显示原文面板'}
+          title={showOriginalPanel ? '隐藏原文面板' : '显示原文面板'}
+        >
+          <FileText className="w-3.5 h-3.5 mr-1.5" />
+          {showOriginalPanel ? '隐藏原文' : '显示原文'}
+        </Button>
+
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="text-muted-foreground hover:text-foreground/80 h-9 w-9 p-0 rounded-full hover:bg-muted"
+              aria-label="更多操作"
+              title="更多操作"
+            >
+              <MoreVertical className="w-4 h-4" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-56">
+            <DropdownMenuItem
+              onSelect={() => {
+                const config = {
+                  chunk_size: chunkSize,
+                  chunk_overlap: chunkOverlap,
+                  parser_backend: effectiveParserBackend,
+                  chunk_strategy: effectiveChunkStrategy,
+                  pipeline: pipelineOverridesEnabled ? pipelineOptions : undefined,
+                }
+                void copyText(JSON.stringify(config, null, 2), '已复制预览配置')
+              }}
+            >
+              <Copy className="mr-2 h-4 w-4" />
+              复制预览配置
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              disabled={!previewData}
+              onSelect={() => {
+                if (!previewData) return
+                const filename = `${sanitizeFilename(previewData.filename)}.chunks.json`
+                downloadTextFile(filename, JSON.stringify(toChunkPreviewExport(previewData), null, 2), 'application/json;charset=utf-8')
+                toast.success('已导出 JSON')
+              }}
+            >
+              <Download className="mr-2 h-4 w-4" />
+              导出 chunks.json
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              disabled={!previewData}
+              onSelect={() => {
+                if (!previewData) return
+                const filename = `${sanitizeFilename(previewData.filename)}.chunks.csv`
+                downloadTextFile(filename, chunkPreviewToCsv(previewData), 'text/csv;charset=utf-8')
+                toast.success('已导出 CSV')
+              }}
+            >
+              <Download className="mr-2 h-4 w-4" />
+              导出 chunks.csv
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+	            <DropdownMenuItem
+	              onSelect={() => {
+	                const url = `${API_V1_BASE_URL}/documents/chunk-preview?chunk_size=${encodeURIComponent(
+	                  String(chunkSize)
+	                )}&chunk_overlap=${encodeURIComponent(String(chunkOverlap))}`
+	                const pipeline = pipelineOverridesEnabled ? JSON.stringify(pipelineOptions || {}) : null
+	                const lines = [
+	                  `curl -X POST \"${url}\" \\`,
+	                  `  -H \"X-User-ID: demo\" \\`,
+	                  `  -F \"file=@/path/to/your-file\" \\`,
+	                  `  -F \"parser_backend=${effectiveParserBackend}\" \\`,
+	                  `  -F \"chunk_strategy=${effectiveChunkStrategy}\"`,
+	                ]
+	                if (pipeline) {
+	                  lines[lines.length - 1] = `${lines[lines.length - 1]} \\`
+	                  lines.push(`  -F 'pipeline=${pipeline}'`)
+	                }
+	                const curl = lines.join('\n')
+	                void copyText(curl, '已复制 cURL')
+	              }}
+	            >
+              <Copy className="mr-2 h-4 w-4" />
+              复制 cURL（chunk-preview）
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
 
 	        {onClose && (
 	          <Button
