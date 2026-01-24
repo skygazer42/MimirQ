@@ -39,6 +39,7 @@ import {
 import { AppFrame } from '@/components/app-frame'
 import { Button } from '@/components/ui/button'
 import { PageScaffold } from '@/components/ui/page-scaffold'
+import { IngestionWorkflowStepper } from '@/components/ui/ingestion-workflow-stepper'
 import { documentApi, parsingApi } from '@/lib/api-client'
 import { formatApiError } from '@/lib/api-errors'
 import { formatFileSize, cn } from '@/lib/utils'
@@ -1505,6 +1506,9 @@ export default function ParsingPage() {
                 上传文件并转换为 Markdown 格式，为数据治理做准备
               </p>
             </div>
+          </div>
+          <div className="hidden xl:flex items-center gap-3">
+            <IngestionWorkflowStepper />
           </div>
           <div className="absolute inset-x-6 bottom-0 h-px bg-gradient-to-r from-transparent via-slate-200/70 dark:via-slate-800/60 to-transparent" />
         </header>

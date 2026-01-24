@@ -23,6 +23,7 @@ import { scanFiles } from './utils/file-scanner'
 const ChunkPreviewContext = createContext<ChunkPreviewContextType | null>(null)
 const STORAGE_DATASET_ID_KEY = 'mimirq_chunk_preview_dataset_id'
 const STORAGE_SEPARATOR_SETTINGS_KEY = 'mimirq_chunk_preview_separator_settings'
+const STORAGE_FOCUS_FILE_ID_KEY = 'mimirq_chunk_preview_focus_file_id'
 
 function decodeSeparatorInput(raw: string) {
   const value = (raw || '').trim()
