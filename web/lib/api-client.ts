@@ -95,6 +95,7 @@ import { getAuthHeaders } from '@/lib/auth-headers'
 import { API_LONG_TIMEOUT_MS, API_TIMEOUT_MS, API_V1_BASE_URL } from '@/lib/env'
 import { appendPipelineOptionsToFormData } from '@/lib/form-data'
 import { resolveParserBackendForFilename, resolveParserBackendForFiles } from '@/lib/parser-compat'
+import { createSseDataParser } from '@/lib/sse'
 
 function getOrCreateRequestId(headers: AxiosHeaders): string {
   const existing = headers.get('X-Request-ID')
@@ -862,26 +863,29 @@ export const chatApi = {
     }
 
     const decoder = new TextDecoder()
-    let buffer = ''
+    const sse = createSseDataParser()
 
     while (true) {
       const { done, value } = await reader.read()
 
       if (done) break
 
-      buffer += decoder.decode(value, { stream: true })
-      const lines = buffer.split('\n')
-      buffer = lines.pop() || ''
-
-      for (const line of lines) {
-        if (line.trim()) {
-          try {
-            const event = new MessageEvent('message', { data: line })
-            onEvent(event)
-          } catch (e) {
-            onError?.(e as Error)
-          }
+      const chunkText = decoder.decode(value, { stream: true })
+      for (const jsonStr of sse.feed(chunkText)) {
+        try {
+          onEvent(new MessageEvent('message', { data: jsonStr }))
+        } catch (e) {
+          onError?.(e as Error)
         }
+      }
+    }
+
+    // Flush any remaining decoder output (best-effort).
+    for (const jsonStr of sse.feed(decoder.decode())) {
+      try {
+        onEvent(new MessageEvent('message', { data: jsonStr }))
+      } catch (e) {
+        onError?.(e as Error)
       }
     }
   },
