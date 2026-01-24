@@ -59,6 +59,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { PageHeader } from '@/components/ui/page-header'
+import { IngestionWorkflowStepper } from '@/components/ui/ingestion-workflow-stepper'
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
 import { ROOT_FOLDER_ID, useParsedFiles } from '@/store/use-parsed-files-store'
@@ -76,14 +77,6 @@ import { DocumentFolderTree, getFileIcon } from '@/components/document-library/f
 import { extractMarkdownHeadings } from '@/lib/markdown'
 import { extractZipFiles, isZipFile } from '@/lib/zip'
 import { UPLOAD_ACCEPT_WITH_ZIP, ZIP_ALLOWED_EXTENSIONS } from '@/lib/upload-extensions'
-
-// 工作流步骤
-const WORKFLOW_STEPS = [
-  { label: '上传文件', href: '/parsing', icon: Upload },
-  { label: '解析文档', href: '/parsing', icon: FileText },
-  { label: '数据治理', href: '/data-governance', icon: ShieldCheck },
-  { label: '切块预览', href: '/chunk-preview', icon: Layers },
-]
 
 // 治理标签页
 const GOVERNANCE_TABS = [
@@ -740,7 +733,11 @@ export function DataGovernancePanel() {
 	                智能文档清洗、标注与结构化处理中心
 	              </span>
 	            }
-          />
+          >
+            <div className="hidden xl:flex items-center gap-3">
+              <IngestionWorkflowStepper />
+            </div>
+          </PageHeader>
         </div>
 
         <div className="flex-1 flex items-center justify-center p-6 relative">
@@ -885,6 +882,10 @@ export function DataGovernancePanel() {
               <Layers className="w-3.5 h-3.5" />
               推送切块预览
             </Button>
+          </div>
+          <div className="hidden xl:flex items-center gap-3">
+            <div className="w-px h-4 bg-border/60 mx-1" />
+            <IngestionWorkflowStepper />
           </div>
         </PageHeader>
       </div>
