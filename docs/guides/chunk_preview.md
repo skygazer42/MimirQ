@@ -59,7 +59,7 @@
 - 可隐藏/显示原文面板。
 - “更多操作”里支持：
   - 复制预览配置（便于复现）
-  - 导出配置.json / 从剪贴板导入配置（JSON）
+  - 导出配置.json / 从文件导入配置 / 从剪贴板导入配置（JSON）
   - 导出 chunks.json / chunks.csv
   - 复制 chunk-preview 的 cURL 示例
 

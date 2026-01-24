@@ -544,7 +544,15 @@ export function Sidebar({ variant = 'panel' }: { variant?: 'panel' | 'dialog' } 
           {/* 策略选择 */}
           <div className="space-y-2">
             <label className="text-xs font-medium text-muted-foreground">切块策略</label>
-            <ChunkStrategyDropdown value={chunkStrategy} onChange={(value) => updateSettings({ strategy: value })} />
+            <ChunkStrategyDropdown
+              value={chunkStrategy}
+              onChange={(value) => {
+                updateSettings({ strategy: value, ...(value === 'separator' ? { chunkOverlap: 0 } : {}) })
+                if (value === 'separator' && !separatorPreset) {
+                  updateSeparatorSettings({ separatorPreset: 'paragraph' })
+                }
+              }}
+            />
             <p className="text-[10px] text-muted-foreground leading-relaxed mt-1.5">{chunkStrategyOption.description}</p>
             <div className="flex flex-wrap items-center gap-2 pt-1 text-[10px] text-muted-foreground">
               <span className="opacity-80">快速预设:</span>
