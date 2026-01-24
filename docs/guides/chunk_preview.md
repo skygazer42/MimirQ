@@ -1,0 +1,71 @@
+# 切块预览（Chunk Preview）
+
+切块预览页面用于在「入库前」快速验证切块质量：是否过碎/过长、overlap 是否合理、章节/问答结构是否被破坏，以及是否能正确定位回原文。
+
+页面地址：`/chunk-preview`
+
+## 推荐工作流
+
+1) 文档解析（`/parsing`）：将 PDF/Office/网页等解析为 Markdown/纯文本（可预览解析结果）。
+
+2) 数据治理（`/data-governance`）：对解析后的文本做清洗、去噪、去页眉页脚、语言检测等（可预览 diff）。
+
+3) 切块预览（`/chunk-preview`）：选择解析器/切块策略/参数，预览 chunks，并确认入库。
+
+## 关键参数与建议
+
+- `chunk_size`
+  - 文本（chars）模式：常见 600-1500（视内容密度而定）。
+  - token 模式：常见 256-1024（视模型上下文和检索策略而定）。
+- `chunk_overlap`
+  - 常见经验值：`chunk_size` 的 10-25%（过小容易断语义；过大浪费向量与检索预算）。
+- `chunk_strategy`
+  - 预设/结构化策略更适合：FAQ/Q&A、章节文档、合同条款、会议纪要、代码 diff 等。
+  - 通用策略适合：普通长文、博客、说明文等。
+- `parser_backend`
+  - 不同解析器会影响原文结构（尤其是 PDF/Office），建议先在「文档解析」页验证解析质量，再进行切块调参。
+
+## 页面操作与快捷键
+
+### 切片列表
+
+- 悬停切片：高亮原文对应区间（原文面板开启时）。
+- 点击切片：锁定选中，便于上下对比与检查。
+- 键盘导航：`↑ / ↓` 或 `J / K` 选择上一/下一条，`Esc` 清除锁定。
+- 支持搜索与排序（原顺序 / 长度升序 / 长度降序）。
+
+### 原文面板
+
+- 支持「源码/渲染」切换（渲染模式不支持高亮定位）。
+- 若后端未返回原文（原文过大时会省略返回以避免传输过大）：
+  - 对于文本类文件（md/txt/json/csv 等），可尝试从本地文件读取原文用于定位。
+  - 对于二进制文档（pdf/docx 等），建议在「解析/治理」阶段先缩短或清洗，再来做精确定位。
+
+### 顶部栏
+
+- `Ctrl/Cmd + Enter`：强制重新生成预览（忽略缓存）。
+- `Ctrl/Cmd + S`：确认入库（提交 chunks）。
+- 可隐藏/显示原文面板。
+- “更多操作”里支持：
+  - 复制预览配置（便于复现）
+  - 导出 chunks.json / chunks.csv
+  - 复制 chunk-preview 的 cURL 示例
+
+## API 调用（用于脚本化调参）
+
+切块预览接口：
+
+- `POST /api/v1/documents/chunk-preview`
+  - Query: `chunk_size`, `chunk_overlap`
+  - Form: `file`, `parser_backend`, `chunk_strategy`, `pipeline`（可选，JSON string）
+
+示例（请替换 `X-User-ID` 与文件路径）：
+
+```bash
+curl -X POST "http://localhost:8000/api/v1/documents/chunk-preview?chunk_size=1000&chunk_overlap=200" \
+  -H "X-User-ID: demo" \
+  -F "file=@/path/to/your-file" \
+  -F "parser_backend=auto" \
+  -F "chunk_strategy=langchain_recursive"
+```
+

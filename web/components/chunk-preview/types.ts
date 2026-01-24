@@ -2,6 +2,8 @@
  * ChunkPreview 组件类型定义
  */
 
+import type { ChunkPreviewResponse } from '@/types'
+
 export interface ChunkPreviewProps {
   onConfirm?: (params: { chunk_size: number; chunk_overlap: number }) => void
   onClose?: () => void
@@ -27,13 +29,15 @@ export interface ChunkPreviewState {
   // UI 状态
   isLoading: boolean
   isSubmitting: boolean
+  showOriginalPanel: boolean
   submitSuccess: boolean
   error: string | null
   processedStatus: Record<string, 'pending' | 'success' | 'error'>
 
   // 预览数据
-  previewData: any | null
+  previewData: ChunkPreviewResponse | null
   hoveredChunkIndex: number | null
+  selectedChunkIndex: number | null
   lastPreviewAt: number | null
   lastPreviewDurationMs: number | null
   cacheHit: boolean
@@ -71,6 +75,8 @@ export interface ChunkPreviewActions {
   // UI 操作
   setIsDragging: (isDragging: boolean) => void
   setHoveredChunkIndex: (index: number | null) => void
+  setSelectedChunkIndex: (index: number | null) => void
+  toggleOriginalPanel: () => void
 
   // 拖放处理
   handleDragOver: (e: React.DragEvent) => void
@@ -79,6 +85,7 @@ export interface ChunkPreviewActions {
 
   // 数据操作
   runPreview: (options?: { force?: boolean }) => Promise<void>
+  cancelPreview: () => void
   submitChunks: () => Promise<void>
   loadExample: () => void
   reset: () => void

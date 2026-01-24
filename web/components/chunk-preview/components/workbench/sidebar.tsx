@@ -17,14 +17,20 @@ import {
   Loader2,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { cn } from '@/lib/utils'
+import { Input } from '@/components/ui/input'
+import { cn, formatFileSize } from '@/lib/utils'
 import { useChunkPreview } from '@/components/chunk-preview/context'
 import { ChunkStrategyDropdown } from '@/components/ui/chunk-strategy-dropdown'
 import { ParserDropdown } from '@/components/ui/parser-dropdown'
 import { PipelineOptionsPanel } from '@/components/pipeline-options-panel'
-import { getChunkStrategyOption, getChunkStrategyLabel } from '@/lib/chunk-strategies'
+import { getChunkStrategyOption } from '@/lib/chunk-strategies'
 import { usePipelineCapabilities } from '@/contexts/pipeline-capabilities-context'
 import { UPLOAD_ACCEPT } from '@/lib/upload-extensions'
+import { computeChunkLengthStats } from '@/components/chunk-preview/utils/stats'
+
+function clampInt(value: number, min: number, max: number) {
+  return Math.min(max, Math.max(min, Math.trunc(value)))
+}
 
 export function Sidebar() {
   const {
@@ -33,6 +39,7 @@ export function Sidebar() {
     currentFile,
     previewData,
     isLoading,
+    cacheHit,
     chunkSize,
     chunkOverlap,
     chunkStrategy,
@@ -45,6 +52,7 @@ export function Sidebar() {
     addFiles,
     updateSettings,
     runPreview,
+    cancelPreview,
     setParserBackend,
     toggleAutoPreview,
   } = useChunkPreview()
@@ -62,6 +70,12 @@ export function Sidebar() {
   const showOverlapControl =
     !isSentenceStrategy && !isRagflowStrategy && !isHierarchicalStrategy && strategyForUi !== 'separator'
 
+  const chunkSizeMin = isTokenStrategy ? 50 : 100
+  const chunkSizeMax = isTokenStrategy ? 2000 : 4000
+  const chunkSizeStep = isTokenStrategy ? 50 : 100
+  const overlapStep = isTokenStrategy ? 25 : 50
+  const overlapMax = Math.min(isTokenStrategy ? 500 : 1000, Math.max(0, chunkSize - chunkSizeMin))
+
   const sortedFileList = [...fileList].sort(
     (a, b) => (b.addedAt || 0) - (a.addedAt || 0)
   )
@@ -70,21 +84,23 @@ export function Sidebar() {
   const parserAvailable = parserBackendAvailable(parserBackend)
 
   const chunkStats = useMemo(() => {
-    if (!previewData?.chunks || previewData.chunks.length === 0) return null
-    const lengths = previewData.chunks.map((c: { content?: string | null }) => (c.content || '').length)
-    const total = lengths.reduce((sum: number, n: number) => sum + n, 0)
-    return {
-      avg: Math.round(total / lengths.length),
-      min: Math.min(...lengths),
-      max: Math.max(...lengths),
-    }
-  }, [previewData])
+    return previewData?.chunks ? computeChunkLengthStats(previewData.chunks) : null
+  }, [previewData?.chunks])
 
-  function formatFileSize(bytes: number) {
-    if (bytes < 1024) return `${bytes} B`
-    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
-    return `${(bytes / 1024 / 1024).toFixed(1)} MB`
-  }
+  const overlapGuidance = useMemo(() => {
+    if (!chunkSize || chunkSize <= 0) return null
+    const min = Math.round(chunkSize * 0.1)
+    const max = Math.round(chunkSize * 0.25)
+    const ratio = chunkOverlap / chunkSize
+    return {
+      min,
+      max,
+      ratio,
+      outOfRange: chunkOverlap < min || chunkOverlap > max,
+    }
+  }, [chunkOverlap, chunkSize])
+
+  const [showAdvancedStats, setShowAdvancedStats] = useState(false)
 
   return (
     <aside className="w-80 bg-card/80 border-r border-border/60 flex flex-col flex-shrink-0 z-10 backdrop-blur">
@@ -161,6 +177,9 @@ export function Sidebar() {
                       {String(f.originalFileType).toUpperCase()}
                     </span>
                   )}
+                  {typeof f.originalFileSize === 'number' ? (
+                    <span className="text-[10px] text-muted-foreground font-mono">{formatFileSize(f.originalFileSize)}</span>
+                  ) : null}
                   {processedStatus[f.id] === 'success' && <Check className="w-3.5 h-3.5 text-success" />}
                   {processedStatus[f.id] === 'error' && <AlertCircle className="w-3.5 h-3.5 text-destructive" />}
 
@@ -229,41 +248,88 @@ export function Sidebar() {
           {/* Slider Controls */}
           {!hideChunkSizeControl && (
             <div className="space-y-4">
-              <div className="flex justify-between items-center">
+              <div className="flex items-center justify-between gap-2">
                 <label className="text-xs font-medium text-muted-foreground">{isTokenStrategy ? 'Token 上限' : '块大小 (Chars)'}</label>
-                <span className="text-xs font-mono font-medium text-primary bg-primary/10 px-2 py-0.5 rounded">{chunkSize}</span>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-mono font-medium text-primary bg-primary/10 px-2 py-0.5 rounded">{chunkSize}</span>
+                  <Input
+                    type="number"
+                    inputMode="numeric"
+                    min={chunkSizeMin}
+                    max={chunkSizeMax}
+                    step={chunkSizeStep}
+                    value={chunkSize}
+                    onChange={(e) => {
+                      const n = Number(e.target.value)
+                      if (!Number.isFinite(n)) return
+                      const nextSize = clampInt(n, chunkSizeMin, chunkSizeMax)
+                      const nextOverlapMax = Math.min(isTokenStrategy ? 500 : 1000, Math.max(0, nextSize - chunkSizeMin))
+                      const nextOverlap = clampInt(chunkOverlap, 0, nextOverlapMax)
+                      updateSettings({ chunkSize: nextSize, chunkOverlap: nextOverlap })
+                    }}
+                    className="h-7 w-24 text-[11px] font-mono bg-card/80"
+                    aria-label={isTokenStrategy ? 'Token 上限' : '块大小'}
+                  />
+                </div>
               </div>
               <input
                 type="range"
-                min={isTokenStrategy ? 50 : 100}
-                max={isTokenStrategy ? 2000 : 4000}
-                step={isTokenStrategy ? 50 : 100}
+                min={chunkSizeMin}
+                max={chunkSizeMax}
+                step={chunkSizeStep}
                 value={chunkSize}
                 onChange={(e) => updateSettings({ chunkSize: Number(e.target.value) })}
                 className="w-full h-1.5 bg-muted/60 rounded-full appearance-none cursor-pointer accent-primary transition-colors"
               />
               <div className="flex justify-between text-[10px] text-muted-foreground font-mono">
-                <span>{isTokenStrategy ? 50 : 100}</span>
-                <span>{isTokenStrategy ? 2000 : 4000}</span>
+                <span>{chunkSizeMin}</span>
+                <span>{chunkSizeMax}</span>
               </div>
             </div>
           )}
 
           {showOverlapControl && (
             <div className="space-y-4">
-              <div className="flex justify-between items-center">
+              <div className="flex items-center justify-between gap-2">
                 <label className="text-xs font-medium text-muted-foreground">{isTokenStrategy ? 'Token 重叠' : '重叠 (Chars)'}</label>
-                <span className="text-xs font-mono font-medium text-primary bg-primary/10 px-2 py-0.5 rounded">{chunkOverlap}</span>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-mono font-medium text-primary bg-primary/10 px-2 py-0.5 rounded">{chunkOverlap}</span>
+                  <Input
+                    type="number"
+                    inputMode="numeric"
+                    min={0}
+                    max={overlapMax}
+                    step={overlapStep}
+                    value={chunkOverlap}
+                    onChange={(e) => {
+                      const n = Number(e.target.value)
+                      if (!Number.isFinite(n)) return
+                      updateSettings({ chunkOverlap: clampInt(n, 0, overlapMax) })
+                    }}
+                    className="h-7 w-24 text-[11px] font-mono bg-card/80"
+                    aria-label={isTokenStrategy ? 'Token 重叠' : '重叠'}
+                  />
+                </div>
               </div>
               <input
                 type="range"
                 min={0}
-                max={Math.min(isTokenStrategy ? 500 : 1000, chunkSize - (isTokenStrategy ? 50 : 100))}
-                step={isTokenStrategy ? 25 : 50}
+                max={overlapMax}
+                step={overlapStep}
                 value={chunkOverlap}
                 onChange={(e) => updateSettings({ chunkOverlap: Number(e.target.value) })}
                 className="w-full h-1.5 bg-muted/60 rounded-full appearance-none cursor-pointer accent-primary transition-colors"
               />
+              {overlapGuidance ? (
+                <div className="flex items-center justify-between text-[10px] text-muted-foreground">
+                  <span>
+                    建议 {overlapGuidance.min}-{overlapGuidance.max}（10-25%）
+                  </span>
+                  <span className={cn(overlapGuidance.outOfRange ? 'text-warning' : 'text-muted-foreground')}>
+                    当前 {Math.round(overlapGuidance.ratio * 100)}%
+                  </span>
+                </div>
+              ) : null}
             </div>
           )}
 
@@ -272,26 +338,52 @@ export function Sidebar() {
             <PipelineOptionsPanel compact />
           </div>
 
-          <Button
-            onClick={() => runPreview()}
-            disabled={isLoading}
-            className="w-full h-11 rounded-xl shadow-glow border border-primary/20"
-          >
-            {isLoading ? (
-              <Loader2 className="w-4 h-4 animate-spin motion-reduce:animate-none mr-2" />
-            ) : (
-              <Sparkles className="w-4 h-4 mr-2" />
-            )}
-            {isLoading ? '正在智能切分...' : '生成切片预览'}
-          </Button>
+          <div className="grid grid-cols-2 gap-2">
+            <Button
+              onClick={() => runPreview()}
+              disabled={isLoading}
+              className="h-11 rounded-xl shadow-glow border border-primary/20"
+            >
+              {isLoading ? (
+                <Loader2 className="w-4 h-4 animate-spin motion-reduce:animate-none mr-2" />
+              ) : (
+                <Sparkles className="w-4 h-4 mr-2" />
+              )}
+              {isLoading ? '生成中...' : '生成预览'}
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() => {
+                if (isLoading) {
+                  cancelPreview()
+                  return
+                }
+                runPreview({ force: true })
+              }}
+              className="h-11 rounded-xl"
+            >
+              {isLoading ? '取消' : cacheHit ? '忽略缓存' : '强制刷新'}
+            </Button>
+          </div>
         </div>
 
         {/* 统计指标 */}
         {previewData && (
           <div className="mt-8 pt-8 border-t border-border/60">
-            <div className="flex items-center gap-2 mb-4">
-              <BarChart3 className="w-4 h-4 text-primary" />
-              <h2 className="text-xs font-bold text-foreground uppercase tracking-wider">分析结果</h2>
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-2">
+                <BarChart3 className="w-4 h-4 text-primary" />
+                <h2 className="text-xs font-bold text-foreground uppercase tracking-wider">分析结果</h2>
+              </div>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="h-7 px-2 text-[11px]"
+                onClick={() => setShowAdvancedStats((v) => !v)}
+              >
+                {showAdvancedStats ? '收起' : '更多'}
+              </Button>
             </div>
 
             <div className="grid grid-cols-2 gap-3">
@@ -304,14 +396,59 @@ export function Sidebar() {
                 <div className="text-xl font-bold text-foreground mt-1">{chunkStats?.avg ?? '-'}</div>
               </div>
               <div className="bg-card p-3 rounded-xl border border-border/60 shadow-sm">
-                <div className="text-[10px] text-muted-foreground uppercase tracking-wider font-medium">最长片段</div>
-                <div className="text-xl font-bold text-foreground mt-1">{chunkStats?.max ?? '-'}</div>
+                <div className="text-[10px] text-muted-foreground uppercase tracking-wider font-medium">中位数</div>
+                <div className="text-xl font-bold text-foreground mt-1">{chunkStats?.median ?? '-'}</div>
               </div>
               <div className="bg-card p-3 rounded-xl border border-border/60 shadow-sm">
-                <div className="text-[10px] text-muted-foreground uppercase tracking-wider font-medium">最短片段</div>
-                <div className="text-xl font-bold text-foreground mt-1">{chunkStats?.min ?? '-'}</div>
+                <div className="text-[10px] text-muted-foreground uppercase tracking-wider font-medium">P90</div>
+                <div className="text-xl font-bold text-foreground mt-1">{chunkStats?.p90 ?? '-'}</div>
               </div>
             </div>
+
+            {showAdvancedStats && chunkStats ? (
+              <div className="mt-3 grid grid-cols-2 gap-3">
+                <div className="bg-card p-3 rounded-xl border border-border/60 shadow-sm">
+                  <div className="text-[10px] text-muted-foreground uppercase tracking-wider font-medium">最短 / 最长</div>
+                  <div className="mt-1 text-sm font-mono text-foreground/90">
+                    {chunkStats.min} / {chunkStats.max}
+                  </div>
+                  <div className="mt-1 text-[10px] text-muted-foreground font-mono">P10: {chunkStats.p10}</div>
+                </div>
+                <div className="bg-card p-3 rounded-xl border border-border/60 shadow-sm">
+                  <div className="text-[10px] text-muted-foreground uppercase tracking-wider font-medium">质量信号</div>
+                  <div className="mt-1 text-[11px] text-muted-foreground">
+                    <span className="font-mono text-foreground/90">{chunkStats.shortCount}</span> 个短切片 ·{' '}
+                    <span className="font-mono text-foreground/90">{chunkStats.duplicateCount}</span> 个重复（估算）
+                  </div>
+                  {overlapGuidance ? (
+                    <div className={cn('mt-1 text-[10px]', overlapGuidance.outOfRange ? 'text-warning' : 'text-muted-foreground')}>
+                      overlap {Math.round(overlapGuidance.ratio * 100)}%（建议 10-25%）
+                    </div>
+                  ) : null}
+                </div>
+                <div className="col-span-2 bg-card p-3 rounded-xl border border-border/60 shadow-sm">
+                  <div className="text-[10px] text-muted-foreground uppercase tracking-wider font-medium">长度分布</div>
+                  <div className="mt-2 flex items-end gap-1 h-12">
+                    {chunkStats.histogram.map((bin) => {
+                      const ratio = chunkStats.count ? bin.count / chunkStats.count : 0
+                      const h = Math.max(6, Math.round(ratio * 48))
+                      return (
+                        <div
+                          key={`${bin.from}-${bin.to}`}
+                          className="flex-1 rounded-sm bg-primary/20 hover:bg-primary/30 transition-colors"
+                          style={{ height: `${h}px` }}
+                          title={`${bin.from}-${bin.to}: ${bin.count}`}
+                        />
+                      )
+                    })}
+                  </div>
+                  <div className="mt-2 flex items-center justify-between text-[10px] text-muted-foreground font-mono">
+                    <span>0</span>
+                    <span>{chunkStats.max}</span>
+                  </div>
+                </div>
+              </div>
+            ) : null}
           </div>
         )}
 
