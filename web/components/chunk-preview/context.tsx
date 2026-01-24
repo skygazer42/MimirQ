@@ -238,6 +238,25 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: ChunkPrev
     setCreatedDocumentId(null)
   }, [currentFileIndex])
 
+  const clearFiles = useCallback(() => {
+    previewAbortRef.current?.abort()
+    previewAbortRef.current = null
+    setFileList([])
+    setCurrentFileIndex(0)
+    setPreviewData(null)
+    setError(null)
+    setProcessedStatus({})
+    setSubmitSuccess(false)
+    setHoveredChunkIndex(null)
+    setSelectedChunkIndex(null)
+    setLastPreviewAt(null)
+    setLastPreviewDurationMs(null)
+    setCacheHit(false)
+    setRunHistory([])
+    previewCacheRef.current.clear()
+    setCreatedDocumentId(null)
+  }, [])
+
   const selectFile = useCallback((index: number) => {
     setCurrentFileIndex(index)
     setPreviewData(null)
@@ -673,6 +692,7 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: ChunkPrev
     // Actions
     addFiles,
     removeFile,
+    clearFiles,
     setCurrentFileIndex: selectFile,
     setDatasetId,
     setIsDragging,

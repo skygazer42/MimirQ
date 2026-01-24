@@ -15,9 +15,7 @@ import {
   Sparkles,
   BarChart3,
   Loader2,
-  Database,
   Wand2,
-  ChevronDown,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
@@ -34,6 +32,7 @@ import { usePipelineOptions } from '@/contexts/pipeline-options-context'
 import { UPLOAD_ACCEPT } from '@/lib/upload-extensions'
 import { computeChunkLengthStats } from '@/components/chunk-preview/utils/stats'
 import { datasetApi, pipelineApi } from '@/lib/api-client'
+import { SEPARATOR_PRESET_OPTIONS } from '@/components/chunk-preview/constants'
 import type { Dataset, IngestionPreviewResponse } from '@/types'
 
 function clampInt(value: number, min: number, max: number) {
@@ -54,6 +53,10 @@ export function Sidebar({ variant = 'panel' }: { variant?: 'panel' | 'dialog' } 
     chunkSize,
     chunkOverlap,
     chunkStrategy,
+    separatorPreset,
+    separatorCustom,
+    keepSeparator,
+    separatorMaxChunkSize,
     parserBackend,
     autoPreviewEnabled,
     runHistory,
@@ -63,6 +66,7 @@ export function Sidebar({ variant = 'panel' }: { variant?: 'panel' | 'dialog' } 
     addFiles,
     setDatasetId,
     updateSettings,
+    updateSeparatorSettings,
     runPreview,
     cancelPreview,
     setParserBackend,
@@ -78,10 +82,11 @@ export function Sidebar({ variant = 'panel' }: { variant?: 'panel' | 'dialog' } 
   const isSentenceStrategy = strategyForUi === 'llama_index'
   const isHierarchicalStrategy = strategyForUi === 'llama_index_hierarchical'
   const isRagflowStrategy = strategyForUi.startsWith('ragflow_')
+  const isSeparatorStrategy = strategyForUi === 'separator'
 
   const hideChunkSizeControl = isSentenceStrategy || isRagflowStrategy
   const showOverlapControl =
-    !isSentenceStrategy && !isRagflowStrategy && !isHierarchicalStrategy && strategyForUi !== 'separator'
+    !isSentenceStrategy && !isRagflowStrategy && !isHierarchicalStrategy && !isSeparatorStrategy
 
   const chunkSizeMin = isTokenStrategy ? 50 : 100
   const chunkSizeMax = isTokenStrategy ? 2000 : 4000
@@ -483,7 +488,136 @@ export function Sidebar({ variant = 'panel' }: { variant?: 'panel' | 'dialog' } 
             <label className="text-xs font-medium text-muted-foreground">切块策略</label>
             <ChunkStrategyDropdown value={chunkStrategy} onChange={(value) => updateSettings({ strategy: value })} />
             <p className="text-[10px] text-muted-foreground leading-relaxed mt-1.5">{chunkStrategyOption.description}</p>
+            <div className="flex flex-wrap items-center gap-2 pt-1 text-[10px] text-muted-foreground">
+              <span className="opacity-80">快速预设:</span>
+              {[
+                {
+                  key: 'general',
+                  label: '通用',
+                  apply: () => updateSettings({ strategy: 'auto', chunkSize: 1000, chunkOverlap: 200 }),
+                },
+                {
+                  key: 'faq',
+                  label: 'FAQ/Q&A',
+                  apply: () => updateSettings({ strategy: 'qa_pairs', chunkSize: 800, chunkOverlap: 120 }),
+                },
+                {
+                  key: 'code',
+                  label: '代码',
+                  apply: () => updateSettings({ strategy: 'smart_code', chunkSize: 1000, chunkOverlap: 150 }),
+                },
+                {
+                  key: 'contract',
+                  label: '条款/合同',
+                  apply: () => updateSettings({ strategy: 'laws_structured', chunkSize: 1200, chunkOverlap: 200 }),
+                },
+                {
+                  key: 'separator',
+                  label: '分隔符',
+                  apply: () => {
+                    updateSettings({ strategy: 'separator', chunkSize: 1000, chunkOverlap: 0 })
+                    updateSeparatorSettings({ separatorPreset: 'paragraph' })
+                  },
+                },
+              ].map((item) => (
+                <button
+                  key={item.key}
+                  type="button"
+                  className="px-2 py-0.5 rounded-full border border-border/60 bg-muted/60 hover:bg-muted transition-colors focus-ring"
+                  onClick={() => {
+                    item.apply()
+                    toast.success(`已应用预设：${item.label}`)
+                  }}
+                >
+                  {item.label}
+                </button>
+              ))}
+            </div>
           </div>
+
+          {isSeparatorStrategy ? (
+            <div className="space-y-4 rounded-xl border border-border/60 bg-card/70 p-3 shadow-sm">
+              <div className="text-[10px] text-muted-foreground uppercase tracking-wider font-medium">分隔符策略参数</div>
+
+              <div className="space-y-2">
+                <label className="text-xs font-medium text-muted-foreground">分隔符预设</label>
+                <Select
+                  value={separatorPreset}
+                  onValueChange={(value) => updateSeparatorSettings({ separatorPreset: value })}
+                >
+                  <SelectTrigger className="h-9 bg-card/80">
+                    <SelectValue placeholder="选择分隔符预设" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {SEPARATOR_PRESET_OPTIONS.map((opt) => (
+                      <SelectItem key={opt.value} value={opt.value}>
+                        {opt.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <div className="text-[10px] text-muted-foreground">
+                  {SEPARATOR_PRESET_OPTIONS.find((o) => o.value === separatorPreset)?.hint || ''}
+                </div>
+              </div>
+
+              {separatorPreset === 'custom' ? (
+                <div className="space-y-2">
+                  <label className="text-xs font-medium text-muted-foreground">自定义分隔符</label>
+                  <Input
+                    value={separatorCustom}
+                    onChange={(e) => updateSeparatorSettings({ separatorCustom: e.target.value })}
+                    className="h-9 text-[11px] font-mono bg-card/80"
+                    placeholder="例如：\\n\\n / --- / ##  / END_OF_SECTION"
+                    aria-label="自定义分隔符"
+                  />
+                  <div className="text-[10px] text-muted-foreground">
+                    支持转义：\\n \\r \\t \\uXXXX（会在发送到后端前解析）
+                  </div>
+                </div>
+              ) : null}
+
+              <div className="flex items-center justify-between gap-2 bg-card border border-border/60 rounded-xl px-3 py-2">
+                <div>
+                  <div className="text-xs font-medium text-foreground/80">保留分隔符</div>
+                  <div className="text-[10px] text-muted-foreground">将分隔符附在前一块末尾</div>
+                </div>
+                <label className="inline-flex items-center gap-2 text-[10px] text-muted-foreground">
+                  <input
+                    type="checkbox"
+                    checked={keepSeparator}
+                    onChange={(e) => updateSeparatorSettings({ keepSeparator: e.target.checked })}
+                    className="h-3.5 w-3.5 rounded border-border/60 text-primary focus:ring-2 focus:ring-ring/20 focus:ring-offset-2 focus:ring-offset-background"
+                  />
+                  {keepSeparator ? '开启' : '关闭'}
+                </label>
+              </div>
+
+              <div className="space-y-2">
+                <div className="flex items-center justify-between gap-2">
+                  <label className="text-xs font-medium text-muted-foreground">最大块长度（可选）</label>
+                  <Input
+                    type="number"
+                    inputMode="numeric"
+                    min={0}
+                    max={20000}
+                    step={100}
+                    value={separatorMaxChunkSize}
+                    onChange={(e) => {
+                      const n = Number(e.target.value)
+                      if (!Number.isFinite(n)) return
+                      updateSeparatorSettings({ separatorMaxChunkSize: clampInt(n, 0, 20000) })
+                    }}
+                    className="h-7 w-24 text-[11px] font-mono bg-card/80"
+                    aria-label="最大块长度"
+                  />
+                </div>
+                <div className="text-[10px] text-muted-foreground leading-relaxed">
+                  0 表示自动：chunk_size × 3。注意：separator 策略不使用 overlap（重叠）。
+                </div>
+              </div>
+            </div>
+          ) : null}
 
           {/* Slider Controls */}
           {!hideChunkSizeControl && (
@@ -524,6 +658,27 @@ export function Sidebar({ variant = 'panel' }: { variant?: 'panel' | 'dialog' } 
               <div className="flex justify-between text-[10px] text-muted-foreground font-mono">
                 <span>{chunkSizeMin}</span>
                 <span>{chunkSizeMax}</span>
+              </div>
+              <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
+                <span>预设:</span>
+                {(isTokenStrategy ? [256, 512, 1024] : [600, 800, 1000, 1500]).map((size) => (
+                  <button
+                    key={size}
+                    type="button"
+                    className="px-2 py-0.5 rounded-full border border-border/60 bg-muted/60 hover:bg-muted transition-colors focus-ring font-mono"
+                    onClick={() => {
+                      const nextOverlapMax = Math.min(isTokenStrategy ? 500 : 1000, Math.max(0, size - chunkSizeMin))
+                      const ratio = chunkSize > 0 ? chunkOverlap / chunkSize : 0.2
+                      const desiredOverlap = Math.round(size * (Number.isFinite(ratio) ? ratio : 0.2))
+                      updateSettings({
+                        chunkSize: size,
+                        chunkOverlap: clampInt(desiredOverlap, 0, nextOverlapMax),
+                      })
+                    }}
+                  >
+                    {size}
+                  </button>
+                ))}
               </div>
             </div>
           )}

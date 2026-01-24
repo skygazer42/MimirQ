@@ -50,6 +50,7 @@ from app.parsing.processors.processor import document_processor
 from app.parsing.factory import parser_factory
 from app.parsing.subprocess_runner import SubprocessCancelled, SubprocessWorkerError, run_subprocess_worker
 from app.rag.chunking.factory import chunker_factory
+from app.rag.chunking.strategies.separator import SeparatorChunker
 from app.types.indexing import IndexKind, IndexRecord
 from app.types.pipeline import PipelineOptions
 from app.services.indexer import Indexer
@@ -3142,6 +3143,10 @@ async def preview_chunking(
     chunk_overlap: int = 200,
     parser_backend: str = Form(default=settings.DEFAULT_PARSER_BACKEND),
     chunk_strategy: str = Form(default=settings.DEFAULT_CHUNK_STRATEGY),
+    separator_preset: Optional[str] = Form(default=None),
+    separator: Optional[str] = Form(default=None),
+    keep_separator: Optional[bool] = Form(default=None),
+    separator_max_chunk_size: Optional[int] = Form(default=None),
     dataset_id: Optional[str] = Form(default=None),
     pipeline: Optional[str] = Form(default=None),
     governance_enabled: Optional[bool] = Form(default=None),
@@ -3340,11 +3345,30 @@ async def preview_chunking(
                     **governance_kwargs,
                 )
 
-            chunker = chunker_factory.get_chunker(
-                resolved_chunk_strategy,
-                chunk_size=chunk_size,
-                chunk_overlap=chunk_overlap
-            )
+            if resolved_chunk_strategy == "separator":
+                preset = (separator_preset or "").strip() or "paragraph"
+                if preset != "custom":
+                    sep_value = SeparatorChunker.PRESET_SEPARATORS.get(preset)
+                    if sep_value is None:
+                        raise HTTPException(status_code=400, detail=f"Invalid separator_preset: {preset}")
+                else:
+                    sep_value = separator if isinstance(separator, str) else ""
+                    if not sep_value:
+                        sep_value = "\n\n"
+
+                chunker = SeparatorChunker(
+                    chunk_size=chunk_size,
+                    chunk_overlap=chunk_overlap,
+                    separator=sep_value,
+                    keep_separator=True if keep_separator is None else bool(keep_separator),
+                    max_chunk_size=int(separator_max_chunk_size or 0),
+                )
+            else:
+                chunker = chunker_factory.get_chunker(
+                    resolved_chunk_strategy,
+                    chunk_size=chunk_size,
+                    chunk_overlap=chunk_overlap
+                )
             chunks = chunker.split_documents(documents)
 
         # Align with ingestion: drop extremely short chunks (keep image-bearing chunks).
