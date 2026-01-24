@@ -49,8 +49,13 @@ export function TopBar() {
     chunkStrategy,
     chunkSize,
     chunkOverlap,
+    separatorPreset,
+    separatorCustom,
+    keepSeparator,
+    separatorMaxChunkSize,
     lastPreviewDurationMs,
     cacheHit,
+    isPreviewDirty,
     submitSuccess,
     error,
     isSubmitting,
@@ -67,6 +72,13 @@ export function TopBar() {
 
   const effectiveParserBackend = previewData?.parser_backend || parserBackend
   const effectiveChunkStrategy = previewData?.chunk_strategy || chunkStrategy
+
+  const shouldIncludeSeparatorSettings = effectiveChunkStrategy === 'separator'
+
+  const escapeForAnsiC = (value: string) => {
+    // Used for bash $'...' strings in generated cURL.
+    return value.replace(/\\/g, '\\\\').replace(/'/g, "\\\\'")
+  }
 
   const copyText = async (value: string, okMessage: string) => {
     try {
@@ -165,6 +177,13 @@ export function TopBar() {
           </div>
         )}
 
+        {isPreviewDirty && !submitSuccess && !error ? (
+          <div className="flex items-center gap-1.5 text-warning text-xs font-medium bg-warning/10 px-3 py-1.5 rounded-full border border-warning/30">
+            <AlertCircle className="w-3.5 h-3.5" />
+            配置已变更，未重新预览
+          </div>
+        ) : null}
+
         {error && (
           <div className="flex items-center gap-1.5 text-destructive text-xs bg-destructive/10 px-3 py-1.5 rounded-full border border-destructive/30 max-w-[300px] truncate">
             <AlertCircle className="w-3.5 h-3.5" />
@@ -228,6 +247,14 @@ export function TopBar() {
                   parser_backend: effectiveParserBackend,
                   chunk_strategy: effectiveChunkStrategy,
                   pipeline: pipelineOverridesEnabled ? pipelineOptions : undefined,
+                  ...(shouldIncludeSeparatorSettings
+                    ? {
+                        separator_preset: separatorPreset,
+                        separator: separatorPreset === 'custom' ? separatorCustom : undefined,
+                        keep_separator: keepSeparator,
+                        separator_max_chunk_size: separatorMaxChunkSize,
+                      }
+                    : {}),
                 }
                 void copyText(JSON.stringify(config, null, 2), '已复制预览配置')
               }}
@@ -276,6 +303,16 @@ export function TopBar() {
                 if (datasetId) {
                   lines.push(`  -F \"dataset_id=${datasetId}\"`)
                 }
+                if (shouldIncludeSeparatorSettings) {
+                  lines.push(`  -F \"separator_preset=${separatorPreset}\"`)
+                  if (separatorPreset === 'custom') {
+                    lines.push(`  -F $'separator=${escapeForAnsiC(separatorCustom)}'`)
+                  }
+                  lines.push(`  -F \"keep_separator=${keepSeparator ? 'true' : 'false'}\"`)
+                  if (typeof separatorMaxChunkSize === 'number' && separatorMaxChunkSize > 0) {
+                    lines.push(`  -F \"separator_max_chunk_size=${separatorMaxChunkSize}\"`)
+                  }
+                }
                 if (pipeline) {
                   lines[lines.length - 1] = `${lines[lines.length - 1]} \\`
                   lines.push(`  -F 'pipeline=${pipeline}'`)
@@ -313,18 +350,18 @@ export function TopBar() {
           </DropdownMenuContent>
         </DropdownMenu>
 
-	        {onClose && (
-	          <Button
-	            variant="ghost"
-	            size="sm"
-	            onClick={onClose}
-	            className="text-muted-foreground hover:text-foreground/80 h-9 w-9 p-0 rounded-full hover:bg-muted"
-	            aria-label="关闭"
-	            title="关闭"
-	          >
-	            <X className="w-4 h-4" />
-	          </Button>
-	        )}
+        {onClose && (
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={onClose}
+            className="text-muted-foreground hover:text-foreground/80 h-9 w-9 p-0 rounded-full hover:bg-muted"
+            aria-label="关闭"
+            title="关闭"
+          >
+            <X className="w-4 h-4" />
+          </Button>
+        )}
 
         <Button
           onClick={submitChunks}
@@ -336,9 +373,9 @@ export function TopBar() {
               : 'bg-primary text-primary-foreground hover:bg-primary/90 shadow-primary/20'
           )}
         >
-	          {isSubmitting ? (
-	            <Loader2 className="w-3.5 h-3.5 animate-spin motion-reduce:animate-none mr-2" />
-	          ) : submitSuccess ? (
+          {isSubmitting ? (
+            <Loader2 className="w-3.5 h-3.5 animate-spin motion-reduce:animate-none mr-2" />
+          ) : submitSuccess ? (
             <Check className="w-3.5 h-3.5 mr-2" />
           ) : (
             <Save className="w-3.5 h-3.5 mr-2" />

@@ -4,6 +4,8 @@
 
 页面地址：`/chunk-preview`
 
+切块策略选型速查见：[docs/guides/chunk_strategies.md](./chunk_strategies.md)。
+
 ## 推荐工作流
 
 1) 文档解析（`/parsing`）：将 PDF/Office/网页等解析为 Markdown/纯文本（可预览解析结果）。
@@ -22,6 +24,14 @@
 - `chunk_strategy`
   - 预设/结构化策略更适合：FAQ/Q&A、章节文档、合同条款、会议纪要、代码 diff 等。
   - 通用策略适合：普通长文、博客、说明文等。
+- `separator`（当 `chunk_strategy=separator`）
+  - 适用于：Markdown/讲稿/段落明显的长文、PPT（`---` 分隔）、按标题 `#`/`##` 切分等。
+  - 关键参数：
+    - `separator_preset`：预设分隔符（`paragraph|line|sentence_cn|sentence_en|markdown_hr|markdown_h1|markdown_h2|custom`）。
+    - `separator`：自定义分隔符内容（仅当 `separator_preset=custom` 时生效）。
+      - 支持用 `\n` / `\t` 等转义写法（前端会在发送前解析为真实字符）。
+    - `keep_separator`：是否保留分隔符（附在前一块末尾），便于还原原始结构。
+    - `separator_max_chunk_size`：单块最大长度（超过则会按句子/换行等边界拆成子块）；0 表示自动（`chunk_size × 3`）。
 - `parser_backend`
   - 不同解析器会影响原文结构（尤其是 PDF/Office），建议先在「文档解析」页验证解析质量，再进行切块调参。
 
@@ -69,3 +79,14 @@ curl -X POST "http://localhost:8000/api/v1/documents/chunk-preview?chunk_size=10
   -F "chunk_strategy=langchain_recursive"
 ```
 
+separator 策略示例（按段落分隔，保留分隔符）：
+
+```bash
+curl -X POST "http://localhost:8000/api/v1/documents/chunk-preview?chunk_size=1000&chunk_overlap=200" \
+  -H "X-User-ID: demo" \
+  -F "file=@/path/to/your-file" \
+  -F "parser_backend=auto" \
+  -F "chunk_strategy=separator" \
+  -F "separator_preset=paragraph" \
+  -F "keep_separator=true"
+```
