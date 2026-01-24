@@ -5,6 +5,7 @@
 'use client'
 
 import { createContext, useContext, useState, useCallback, useRef, useEffect, ReactNode } from 'react'
+import { toast } from 'sonner'
 import { documentApi } from '@/lib/api-client'
 import { formatApiError } from '@/lib/api-errors'
 import { useParserBackendPreference } from '@/contexts/parser-backend-context'
@@ -20,6 +21,17 @@ import { EXAMPLE_TEXT } from './constants'
 import { scanFiles } from './utils/file-scanner'
 
 const ChunkPreviewContext = createContext<ChunkPreviewContextType | null>(null)
+const STORAGE_DATASET_ID_KEY = 'mimirq_chunk_preview_dataset_id'
+
+function decodeSeparatorInput(raw: string) {
+  const value = (raw || '').trim()
+  if (!value) return ''
+  try {
+    return JSON.parse(`"${value.replace(/"/g, '\\"')}"`)
+  } catch {
+    return value
+  }
+}
 
 export function useChunkPreview() {
   const context = useContext(ChunkPreviewContext)
@@ -60,7 +72,11 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: ChunkPrev
   const [isLoading, setIsLoading] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [showOriginalPanel, setShowOriginalPanel] = useState(true)
+  const [showSettingsPanel, setShowSettingsPanel] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [createdDocumentId, setCreatedDocumentId] = useState<string | null>(null)
+
+  const [datasetId, setDatasetIdState] = useState<string>('')
 
   const [previewData, setPreviewData] = useState<ChunkPreviewResponse | null>(null)
   const [hoveredChunkIndex, setHoveredChunkIndex] = useState<number | null>(null)
@@ -84,6 +100,10 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: ChunkPrev
 
   const [chunkSize, setChunkSize] = useState(pipelineOptions.chunk_size ?? 1000)
   const [chunkOverlap, setChunkOverlap] = useState(pipelineOptions.chunk_overlap ?? 200)
+  const [separatorPreset, setSeparatorPreset] = useState('paragraph')
+  const [separatorCustom, setSeparatorCustom] = useState('\\n\\n')
+  const [keepSeparator, setKeepSeparator] = useState(true)
+  const [separatorMaxChunkSize, setSeparatorMaxChunkSize] = useState(0)
 
   // 其他状态
   const [processedStatus, setProcessedStatus] = useState<Record<string, 'pending' | 'success' | 'error'>>({})
@@ -101,6 +121,18 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: ChunkPrev
       previewAbortRef.current?.abort()
     }
   }, [])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const saved = (window.localStorage.getItem(STORAGE_DATASET_ID_KEY) || '').trim()
+    if (saved) setDatasetIdState(saved)
+  }, [])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    if (datasetId) window.localStorage.setItem(STORAGE_DATASET_ID_KEY, datasetId)
+    else window.localStorage.removeItem(STORAGE_DATASET_ID_KEY)
+  }, [datasetId])
 
   // 当前文件
   const currentFileItem = fileList[currentFileIndex] || null
@@ -188,6 +220,7 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: ChunkPrev
     setSubmitSuccess(false)
     setHoveredChunkIndex(null)
     setSelectedChunkIndex(null)
+    setCreatedDocumentId(null)
   }, [makeId])
 
   const removeFile = useCallback((index: number) => {
@@ -202,6 +235,7 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: ChunkPrev
     setPreviewData(null)
     setHoveredChunkIndex(null)
     setSelectedChunkIndex(null)
+    setCreatedDocumentId(null)
   }, [currentFileIndex])
 
   const selectFile = useCallback((index: number) => {
@@ -211,6 +245,7 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: ChunkPrev
     setSubmitSuccess(false)
     setHoveredChunkIndex(null)
     setSelectedChunkIndex(null)
+    setCreatedDocumentId(null)
   }, [])
 
   // Actions: 拖放
@@ -262,22 +297,42 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: ChunkPrev
     setSubmitSuccess(false)
     setHoveredChunkIndex(null)
     setSelectedChunkIndex(null)
+    setCreatedDocumentId(null)
   }, [makeId])
 
   const buildPreviewCacheKey = useCallback(() => {
     if (!file) return ''
     const pipelineKey = pipelineOverridesEnabled ? JSON.stringify(pipelineOptions || {}) : 'none'
+    const separatorKey =
+      chunkStrategy === 'separator'
+        ? `sep:${separatorPreset}:${separatorCustom}:${keepSeparator ? 'keep' : 'drop'}:${separatorMaxChunkSize}`
+        : 'sep:none'
     return [
       file.name,
       file.size,
       file.lastModified,
+      datasetId || 'default-dataset',
       parserBackend,
       chunkStrategy,
       chunkSize,
       chunkOverlap,
       pipelineKey,
+      separatorKey,
     ].join('::')
-  }, [file, parserBackend, chunkStrategy, chunkSize, chunkOverlap, pipelineOverridesEnabled, pipelineOptions])
+  }, [
+    file,
+    datasetId,
+    parserBackend,
+    chunkStrategy,
+    chunkSize,
+    chunkOverlap,
+    pipelineOverridesEnabled,
+    pipelineOptions,
+    separatorPreset,
+    separatorCustom,
+    keepSeparator,
+    separatorMaxChunkSize,
+  ])
 
   // Actions: 执行预览
   const runPreview = useCallback(async (options?: { force?: boolean }) => {
@@ -293,14 +348,15 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: ChunkPrev
     }
 
     const cacheKey = buildPreviewCacheKey()
-    const cached = cacheKey ? previewCacheRef.current.get(cacheKey) : undefined
-    if (cached && !options?.force) {
-      setHoveredChunkIndex(null)
-      setSelectedChunkIndex(null)
-      setPreviewData(cached.data)
-      setLastPreviewAt(cached.createdAt)
-      setLastPreviewDurationMs(cached.durationMs)
-      setCacheHit(true)
+	    const cached = cacheKey ? previewCacheRef.current.get(cacheKey) : undefined
+	    if (cached && !options?.force) {
+	      setHoveredChunkIndex(null)
+	      setSelectedChunkIndex(null)
+	      setCreatedDocumentId(null)
+	      setPreviewData(cached.data)
+	      setLastPreviewAt(cached.createdAt)
+	      setLastPreviewDurationMs(cached.durationMs)
+	      setCacheHit(true)
       setError(null)
       setRunHistory((prev) => [
         {
@@ -329,15 +385,28 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: ChunkPrev
     setCacheHit(false)
     setHoveredChunkIndex(null)
     setSelectedChunkIndex(null)
+    setCreatedDocumentId(null)
     const startTime = performance.now()
 
     try {
+      const separator =
+        chunkStrategy === 'separator'
+          ? separatorPreset === 'custom'
+            ? decodeSeparatorInput(separatorCustom) || '\n\n'
+            : undefined
+          : undefined
+
       const data = await documentApi.chunkPreview(file, {
         chunk_size: chunkSize,
         chunk_overlap: chunkOverlap,
         parser_backend: parserBackend,
         chunk_strategy: chunkStrategy,
+        dataset_id: datasetId || undefined,
         pipeline: pipelineOverridesEnabled ? pipelineOptions : undefined,
+        separator_preset: chunkStrategy === 'separator' ? separatorPreset : undefined,
+        separator: separator,
+        keep_separator: chunkStrategy === 'separator' ? keepSeparator : undefined,
+        separator_max_chunk_size: chunkStrategy === 'separator' ? separatorMaxChunkSize : undefined,
       }, { signal: controller.signal })
       if (previewRequestIdRef.current !== requestId) return
       setPreviewData(data)
@@ -418,31 +487,46 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: ChunkPrev
           }
         : undefined
 
-      await documentApi.createFromChunks({
+      const separatorMeta =
+        previewData.chunk_strategy === 'separator'
+          ? {
+              separator_preset: separatorPreset,
+              separator_custom: separatorCustom,
+              keep_separator: keepSeparator,
+              separator_max_chunk_size: separatorMaxChunkSize,
+            }
+          : {}
+
+      const created = await documentApi.createFromChunks({
         filename: previewData.filename,
         file_type: previewData.file_type,
         file_size: previewData.file_size,
         chunks,
+        dataset_id: datasetId || undefined,
         metadata: {
           chunk_size: chunkSize,
           chunk_overlap: chunkOverlap,
           chunk_strategy: previewData.chunk_strategy,
           chunk_strategy_label: getChunkStrategyLabel(previewData.chunk_strategy),
           parser_backend: previewData.parser_backend,
+          dataset_id: datasetId || undefined,
+          ...separatorMeta,
         },
         pipeline,
       })
 
       setSubmitSuccess(true)
+      setCreatedDocumentId(created?.id || null)
       setProcessedStatus((prev) => ({ ...prev, [currentFileItem?.id || file.name]: 'success' }))
       onConfirm?.({ chunk_size: chunkSize, chunk_overlap: chunkOverlap })
+      toast.success('已成功入库')
     } catch (err: any) {
       setError(formatApiError(err, '入库失败'))
       setProcessedStatus((prev) => ({ ...prev, [currentFileItem?.id || file.name]: 'error' }))
     } finally {
       setIsSubmitting(false)
     }
-  }, [previewData, file, currentFileItem, chunkSize, chunkOverlap, pipelineOverridesEnabled, pipelineOptions, onConfirm])
+  }, [previewData, file, currentFileItem, datasetId, chunkSize, chunkOverlap, pipelineOverridesEnabled, pipelineOptions, onConfirm])
 
   // Actions: 更新配置
   const updateSettings = useCallback(
@@ -460,6 +544,20 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: ChunkPrev
       }
     },
     [updateOption, setChunkStrategy]
+  )
+
+  const updateSeparatorSettings = useCallback(
+    (
+      settings: Partial<
+        Pick<ChunkPreviewState, 'separatorPreset' | 'separatorCustom' | 'keepSeparator' | 'separatorMaxChunkSize'>
+      >
+    ) => {
+      if (settings.separatorPreset !== undefined) setSeparatorPreset(settings.separatorPreset)
+      if (settings.separatorCustom !== undefined) setSeparatorCustom(settings.separatorCustom)
+      if (settings.keepSeparator !== undefined) setKeepSeparator(settings.keepSeparator)
+      if (settings.separatorMaxChunkSize !== undefined) setSeparatorMaxChunkSize(settings.separatorMaxChunkSize)
+    },
+    []
   )
 
   // Actions: 重置
@@ -481,6 +579,13 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: ChunkPrev
     setChunkOverlap(200)
     updateOption('chunk_size', 1000)
     updateOption('chunk_overlap', 200)
+    setCreatedDocumentId(null)
+    setShowOriginalPanel(true)
+    setShowSettingsPanel(false)
+    setSeparatorPreset('paragraph')
+    setSeparatorCustom('\\n\\n')
+    setKeepSeparator(true)
+    setSeparatorMaxChunkSize(0)
   }, [updateOption])
 
   // 自动触发预览
@@ -516,22 +621,43 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: ChunkPrev
     setShowOriginalPanel((prev) => !prev)
   }, [])
 
+  const toggleSettingsPanel = useCallback(() => {
+    setShowSettingsPanel((prev) => !prev)
+  }, [])
+
+  const setDatasetId = useCallback((value: string) => {
+    setDatasetIdState((value || '').trim())
+    setPreviewData(null)
+    setError(null)
+    setSubmitSuccess(false)
+    setHoveredChunkIndex(null)
+    setSelectedChunkIndex(null)
+    setCreatedDocumentId(null)
+  }, [])
+
   // 组装 Context Value
   const value: ChunkPreviewContextType = {
     // State
     fileList,
     currentFileIndex,
     isDragging,
+    datasetId,
     isLoading,
     isSubmitting,
     showOriginalPanel,
+    showSettingsPanel,
     error,
+    createdDocumentId,
     previewData,
     hoveredChunkIndex,
     selectedChunkIndex,
     chunkSize,
     chunkOverlap,
     strategy: chunkStrategy,
+    separatorPreset,
+    separatorCustom,
+    keepSeparator,
+    separatorMaxChunkSize,
     lastPreviewAt,
     lastPreviewDurationMs,
     cacheHit,
@@ -548,14 +674,17 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: ChunkPrev
     addFiles,
     removeFile,
     setCurrentFileIndex: selectFile,
+    setDatasetId,
     setIsDragging,
     setHoveredChunkIndex,
     setSelectedChunkIndex,
     toggleOriginalPanel,
+    toggleSettingsPanel,
     runPreview,
     cancelPreview,
     submitChunks,
     updateSettings,
+    updateSeparatorSettings,
     reset,
     toggleAutoPreview,
     loadExample,

@@ -6,6 +6,8 @@
 import {
   Layers,
   FileText,
+  SlidersHorizontal,
+  ExternalLink,
   Save,
   RotateCcw,
   MoreVertical,
@@ -32,13 +34,16 @@ import { usePipelineOptions } from '@/contexts/pipeline-options-context'
 import { getChunkStrategyLabel } from '@/lib/chunk-strategies'
 import { getParserLabel } from '@/lib/parser-options'
 import { chunkPreviewToCsv, downloadTextFile, sanitizeFilename, toChunkPreviewExport } from '@/components/chunk-preview/utils/export'
+import { useRouter } from 'next/navigation'
 
 export function TopBar() {
+  const router = useRouter()
   const { enabled: pipelineOverridesEnabled, options: pipelineOptions } = usePipelineOptions()
   const {
     currentFileIndex,
     currentFileItem,
     currentFile,
+    datasetId,
     previewData,
     parserBackend,
     chunkStrategy,
@@ -50,8 +55,10 @@ export function TopBar() {
     error,
     isSubmitting,
     showOriginalPanel,
+    createdDocumentId,
     submitChunks,
     toggleOriginalPanel,
+    toggleSettingsPanel,
     reset,
     onClose,
   } = useChunkPreview()
@@ -176,6 +183,19 @@ export function TopBar() {
           type="button"
           variant="ghost"
           size="sm"
+          onClick={toggleSettingsPanel}
+          className="lg:hidden text-muted-foreground hover:text-foreground h-9 px-3 text-xs font-medium hover:bg-muted"
+          aria-label="打开参数面板"
+          title="打开参数面板"
+        >
+          <SlidersHorizontal className="w-3.5 h-3.5 mr-1.5" />
+          参数
+        </Button>
+
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
           onClick={toggleOriginalPanel}
           className="text-muted-foreground hover:text-foreground h-9 px-3 text-xs font-medium hover:bg-muted"
           aria-label={showOriginalPanel ? '隐藏原文面板' : '显示原文面板'}
@@ -202,6 +222,7 @@ export function TopBar() {
             <DropdownMenuItem
               onSelect={() => {
                 const config = {
+                  dataset_id: datasetId || undefined,
                   chunk_size: chunkSize,
                   chunk_overlap: chunkOverlap,
                   parser_backend: effectiveParserBackend,
@@ -239,30 +260,56 @@ export function TopBar() {
               导出 chunks.csv
             </DropdownMenuItem>
             <DropdownMenuSeparator />
-	            <DropdownMenuItem
-	              onSelect={() => {
-	                const url = `${API_V1_BASE_URL}/documents/chunk-preview?chunk_size=${encodeURIComponent(
-	                  String(chunkSize)
-	                )}&chunk_overlap=${encodeURIComponent(String(chunkOverlap))}`
-	                const pipeline = pipelineOverridesEnabled ? JSON.stringify(pipelineOptions || {}) : null
-	                const lines = [
-	                  `curl -X POST \"${url}\" \\`,
-	                  `  -H \"X-User-ID: demo\" \\`,
-	                  `  -F \"file=@/path/to/your-file\" \\`,
-	                  `  -F \"parser_backend=${effectiveParserBackend}\" \\`,
-	                  `  -F \"chunk_strategy=${effectiveChunkStrategy}\"`,
-	                ]
-	                if (pipeline) {
-	                  lines[lines.length - 1] = `${lines[lines.length - 1]} \\`
-	                  lines.push(`  -F 'pipeline=${pipeline}'`)
-	                }
-	                const curl = lines.join('\n')
-	                void copyText(curl, '已复制 cURL')
-	              }}
-	            >
+            <DropdownMenuItem
+              onSelect={() => {
+                const url = `${API_V1_BASE_URL}/documents/chunk-preview?chunk_size=${encodeURIComponent(
+                  String(chunkSize)
+                )}&chunk_overlap=${encodeURIComponent(String(chunkOverlap))}`
+                const pipeline = pipelineOverridesEnabled ? JSON.stringify(pipelineOptions || {}) : null
+                const lines = [
+                  `curl -X POST \"${url}\" \\`,
+                  `  -H \"X-User-ID: demo\" \\`,
+                  `  -F \"file=@/path/to/your-file\" \\`,
+                  `  -F \"parser_backend=${effectiveParserBackend}\" \\`,
+                  `  -F \"chunk_strategy=${effectiveChunkStrategy}\"`,
+                ]
+                if (datasetId) {
+                  lines.push(`  -F \"dataset_id=${datasetId}\"`)
+                }
+                if (pipeline) {
+                  lines[lines.length - 1] = `${lines[lines.length - 1]} \\`
+                  lines.push(`  -F 'pipeline=${pipeline}'`)
+                }
+                const curl = lines.join('\n')
+                void copyText(curl, '已复制 cURL')
+              }}
+            >
               <Copy className="mr-2 h-4 w-4" />
               复制 cURL（chunk-preview）
             </DropdownMenuItem>
+            {createdDocumentId ? (
+              <>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  onSelect={() => {
+                    void copyText(createdDocumentId, '已复制文档 ID')
+                  }}
+                >
+                  <Copy className="mr-2 h-4 w-4" />
+                  复制文档 ID
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onSelect={() => {
+                    const url = `/?doc=${encodeURIComponent(createdDocumentId)}`
+                    router.push(url)
+                    toast.success('已跳转到对话页并打开文档面板')
+                  }}
+                >
+                  <ExternalLink className="mr-2 h-4 w-4" />
+                  打开文档（对话页）
+                </DropdownMenuItem>
+              </>
+            ) : null}
           </DropdownMenuContent>
         </DropdownMenu>
 

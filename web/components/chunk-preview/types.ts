@@ -26,13 +26,18 @@ export interface ChunkPreviewState {
   currentFileItem: ChunkPreviewFileItem | null
   isDragging: boolean
 
+  // 数据集（可选）
+  datasetId: string
+
   // UI 状态
   isLoading: boolean
   isSubmitting: boolean
   showOriginalPanel: boolean
+  showSettingsPanel: boolean
   submitSuccess: boolean
   error: string | null
   processedStatus: Record<string, 'pending' | 'success' | 'error'>
+  createdDocumentId: string | null
 
   // 预览数据
   previewData: ChunkPreviewResponse | null
@@ -59,6 +64,10 @@ export interface ChunkPreviewState {
   chunkSize: number
   chunkOverlap: number
   strategy: string
+  separatorPreset: string
+  separatorCustom: string
+  keepSeparator: boolean
+  separatorMaxChunkSize: number
 
   // 外部 context
   parserBackend: string
@@ -72,11 +81,15 @@ export interface ChunkPreviewActions {
   removeFile: (index: number) => void
   setCurrentFileIndex: (index: number) => void
 
+  // 数据集
+  setDatasetId: (datasetId: string) => void
+
   // UI 操作
   setIsDragging: (isDragging: boolean) => void
   setHoveredChunkIndex: (index: number | null) => void
   setSelectedChunkIndex: (index: number | null) => void
   toggleOriginalPanel: () => void
+  toggleSettingsPanel: () => void
 
   // 拖放处理
   handleDragOver: (e: React.DragEvent) => void
@@ -93,6 +106,9 @@ export interface ChunkPreviewActions {
 
   // 配置操作
   updateSettings: (settings: Partial<Pick<ChunkPreviewState, 'chunkSize' | 'chunkOverlap' | 'strategy'>>) => void
+  updateSeparatorSettings: (
+    settings: Partial<Pick<ChunkPreviewState, 'separatorPreset' | 'separatorCustom' | 'keepSeparator' | 'separatorMaxChunkSize'>>
+  ) => void
   setParserBackend: (backend: string) => void
   setChunkStrategy: (strategy: string) => void
 }
