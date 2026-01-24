@@ -38,7 +38,8 @@ import { useRouter } from 'next/navigation'
 
 export function TopBar() {
   const router = useRouter()
-  const { enabled: pipelineOverridesEnabled, options: pipelineOptions } = usePipelineOptions()
+  const pipelineCtx = usePipelineOptions()
+  const { enabled: pipelineOverridesEnabled, options: pipelineOptions } = pipelineCtx
   const {
     currentFileIndex,
     currentFileItem,
@@ -65,6 +66,10 @@ export function TopBar() {
     toggleOriginalPanel,
     toggleSettingsPanel,
     reset,
+    setDatasetId,
+    setParserBackend,
+    updateSettings,
+    updateSeparatorSettings,
     onClose,
   } = useChunkPreview()
 
@@ -261,6 +266,101 @@ export function TopBar() {
             >
               <Copy className="mr-2 h-4 w-4" />
               复制预览配置
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              onSelect={() => {
+                const config = {
+                  dataset_id: datasetId || undefined,
+                  chunk_size: chunkSize,
+                  chunk_overlap: chunkOverlap,
+                  parser_backend: effectiveParserBackend,
+                  chunk_strategy: effectiveChunkStrategy,
+                  pipeline: pipelineOverridesEnabled ? pipelineOptions : undefined,
+                  ...(shouldIncludeSeparatorSettings
+                    ? {
+                        separator_preset: separatorPreset,
+                        separator: separatorPreset === 'custom' ? separatorCustom : undefined,
+                        keep_separator: keepSeparator,
+                        separator_max_chunk_size: separatorMaxChunkSize,
+                      }
+                    : {}),
+                }
+                const filename = `${sanitizeFilename(currentFileItem?.displayName || currentFile.name)}.chunk-preview.config.json`
+                downloadTextFile(filename, JSON.stringify(config, null, 2), 'application/json;charset=utf-8')
+                toast.success('已导出配置')
+              }}
+            >
+              <Download className="mr-2 h-4 w-4" />
+              导出配置.json
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              onSelect={async () => {
+                try {
+                  if (!navigator.clipboard?.readText) {
+                    toast.error('读取剪贴板失败：浏览器不支持 Clipboard API')
+                    return
+                  }
+                  const text = await navigator.clipboard.readText()
+                  const parsed = JSON.parse(text || '{}')
+                  if (!parsed || typeof parsed !== 'object') {
+                    toast.error('配置格式错误：不是有效的 JSON 对象')
+                    return
+                  }
+
+                  if (typeof (parsed as any).dataset_id === 'string') {
+                    setDatasetId(String((parsed as any).dataset_id))
+                  } else if ((parsed as any).dataset_id == null) {
+                    setDatasetId('')
+                  }
+
+                  if (typeof (parsed as any).parser_backend === 'string') {
+                    setParserBackend(String((parsed as any).parser_backend))
+                  }
+
+                  const nextStrategy =
+                    typeof (parsed as any).chunk_strategy === 'string' ? String((parsed as any).chunk_strategy) : undefined
+                  const nextSize = Number((parsed as any).chunk_size)
+                  const nextOverlap = Number((parsed as any).chunk_overlap)
+
+                  updateSettings({
+                    ...(nextStrategy ? { strategy: nextStrategy } : {}),
+                    ...(Number.isFinite(nextSize) ? { chunkSize: Math.max(50, Math.min(4000, Math.trunc(nextSize))) } : {}),
+                    ...(Number.isFinite(nextOverlap) ? { chunkOverlap: Math.max(0, Math.min(1000, Math.trunc(nextOverlap))) } : {}),
+                  })
+
+                  if (typeof (parsed as any).separator_preset === 'string') {
+                    updateSeparatorSettings({ separatorPreset: String((parsed as any).separator_preset) })
+                  }
+                  if (typeof (parsed as any).separator === 'string') {
+                    updateSeparatorSettings({ separatorCustom: String((parsed as any).separator) })
+                  }
+                  if (typeof (parsed as any).keep_separator === 'boolean') {
+                    updateSeparatorSettings({ keepSeparator: Boolean((parsed as any).keep_separator) })
+                  }
+                  if (Number.isFinite(Number((parsed as any).separator_max_chunk_size))) {
+                    updateSeparatorSettings({
+                      separatorMaxChunkSize: Math.max(0, Math.min(20000, Math.trunc(Number((parsed as any).separator_max_chunk_size)))),
+                    })
+                  }
+
+                  const pipeline = (parsed as any).pipeline
+                  if (pipeline && typeof pipeline === 'object') {
+                    pipelineCtx.setEnabled(true)
+                    for (const [k, v] of Object.entries(pipeline)) {
+                      if (k in pipelineCtx.options) {
+                        pipelineCtx.updateOption(k as any, v as any)
+                      }
+                    }
+                  }
+
+                  toast.success('已从剪贴板导入配置')
+                } catch (e: any) {
+                  toast.error((e?.message as string) || '导入配置失败')
+                }
+              }}
+            >
+              <Copy className="mr-2 h-4 w-4" />
+              从剪贴板导入配置
             </DropdownMenuItem>
             <DropdownMenuItem
               disabled={!previewData}
