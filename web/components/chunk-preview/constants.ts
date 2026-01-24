@@ -2,8 +2,28 @@
  * ChunkPreview 常量定义
  */
 
-// 分隔符配置
-export const SEPARATORS = ['\\n\\n', '\\n', '。', '！', '？', '.', '!', '?']
+export const SEPARATOR_PRESET_OPTIONS: Array<{
+  value:
+    | 'paragraph'
+    | 'line'
+    | 'sentence_cn'
+    | 'sentence_en'
+    | 'markdown_hr'
+    | 'markdown_h1'
+    | 'markdown_h2'
+    | 'custom'
+  label: string
+  hint: string
+}> = [
+  { value: 'paragraph', label: '段落（\\\\n\\\\n）', hint: '按空行分段（推荐）' },
+  { value: 'line', label: '按行（\\\\n）', hint: '按换行切分' },
+  { value: 'sentence_cn', label: '中文句号（。)', hint: '按中文句号切分' },
+  { value: 'sentence_en', label: '英文句号（.)', hint: '按英文句号切分' },
+  { value: 'markdown_hr', label: 'Markdown 分隔线（---）', hint: '适用于 slides/sections' },
+  { value: 'markdown_h1', label: 'Markdown H1（# ）', hint: '按一级标题切分' },
+  { value: 'markdown_h2', label: 'Markdown H2（## ）', hint: '按二级标题切分' },
+  { value: 'custom', label: '自定义', hint: '输入自定义分隔符（支持转义）' },
+]
 
 // 示例文档
 export const EXAMPLE_TEXT = `# 检索增强生成 (RAG) 简介

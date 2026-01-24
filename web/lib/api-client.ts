@@ -449,6 +449,10 @@ export const documentApi = {
       chunk_strategy?: string
       pipeline?: DocumentPipelineOptions
       dataset_id?: string
+      separator_preset?: string
+      separator?: string
+      keep_separator?: boolean
+      separator_max_chunk_size?: number
     } = {},
     options?: { signal?: AbortSignal }
   ): Promise<ChunkPreviewResponse> {
@@ -458,6 +462,14 @@ export const documentApi = {
     formData.append('parser_backend', resolvedParser.backend || 'auto')
     formData.append('chunk_strategy', params.chunk_strategy || 'langchain_recursive')
     if (params.dataset_id) formData.append('dataset_id', params.dataset_id)
+    if (params.separator_preset) formData.append('separator_preset', params.separator_preset)
+    if (typeof params.separator === 'string') formData.append('separator', params.separator)
+    if (typeof params.keep_separator === 'boolean') {
+      formData.append('keep_separator', params.keep_separator ? 'true' : 'false')
+    }
+    if (typeof params.separator_max_chunk_size === 'number') {
+      formData.append('separator_max_chunk_size', String(params.separator_max_chunk_size))
+    }
     appendPipelineOptionsToFormData(formData, params.pipeline)
 
     const effectiveChunkSize = params.chunk_size ?? params.pipeline?.chunk_size ?? 1000

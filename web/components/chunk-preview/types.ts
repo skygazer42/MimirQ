@@ -79,6 +79,7 @@ export interface ChunkPreviewActions {
   // 文件操作
   addFiles: (files: File[]) => void
   removeFile: (index: number) => void
+  clearFiles: () => void
   setCurrentFileIndex: (index: number) => void
 
   // 数据集

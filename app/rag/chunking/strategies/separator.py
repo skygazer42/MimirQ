@@ -49,49 +49,71 @@ class SeparatorChunker(BaseChunker):
         chunks: List[Document] = []
 
         for doc in documents:
-            text = doc.page_content
+            text = doc.page_content or ""
             if not text.strip():
                 continue
 
             # Split by separator, optionally keeping it
-            if self.keep_separator:
-                parts = re.split(f"({re.escape(self.separator)})", text)
-                merged_parts = []
-                for i, part in enumerate(parts):
-                    if i % 2 == 0:
-                        merged_parts.append(part)
-                    else:
-                        if merged_parts:
-                            merged_parts[-1] += part
+            if self.separator:
+                if self.keep_separator:
+                    # Keep separator by attaching it to the preceding split part.
+                    raw_parts = re.split(f"({re.escape(self.separator)})", text)
+                    parts: list[str] = []
+                    for i, part in enumerate(raw_parts):
+                        if i % 2 == 0:
+                            parts.append(part)
                         else:
-                            merged_parts.append(part)
-                parts = merged_parts
+                            if parts:
+                                parts[-1] += part
+                            else:
+                                parts.append(part)
+                else:
+                    parts = text.split(self.separator)
             else:
-                parts = text.split(self.separator)
+                parts = [text]
 
-            current_pos = 0
-            for part in parts:
+            offset = 0
+            for i, part in enumerate(parts):
+                # Derive the absolute location for this part.
+                raw_start = offset
+                raw_end = raw_start + len(part)
+
+                # Advance offset to the next segment start.
+                offset = raw_end
+                if not self.keep_separator and self.separator and i < len(parts) - 1:
+                    # text.split() drops the separator; account for it between parts.
+                    offset += len(self.separator)
+
                 if not part.strip():
-                    current_pos += len(part) + (0 if self.keep_separator else len(self.separator))
                     continue
 
                 # Handle oversized chunks
                 if len(part) > self.max_chunk_size:
-                    sub_chunks = self._split_large_chunk(part, current_pos, doc.metadata)
+                    sub_chunks = self._split_large_chunk(part, raw_start, doc.metadata)
                     chunks.extend(sub_chunks)
                 else:
                     metadata = dict(doc.metadata or {})
-                    start_idx = text.find(part, current_pos)
-                    if start_idx == -1:
-                        start_idx = current_pos
-                    end_idx = start_idx + len(part)
+                    content = part
+                    start_idx = raw_start
+                    end_idx = raw_end
+
+                    # If we're *not* keeping the separator, trim whitespace and adjust offsets
+                    # so that `text[start:end] == chunk.page_content` holds for highlighting.
+                    if not self.keep_separator:
+                        lstrip_len = len(part) - len(part.lstrip())
+                        rstrip_len = len(part) - len(part.rstrip())
+                        start_idx = raw_start + lstrip_len
+                        end_idx = raw_end - rstrip_len
+                        content = part[lstrip_len : len(part) - rstrip_len]
+
+                    if not content:
+                        continue
+
                     metadata["start_char"] = start_idx
                     metadata["end_char"] = end_idx
                     metadata["chunk_strategy"] = "separator"
                     metadata["separator"] = repr(self.separator)
-                    chunks.append(Document(page_content=part.strip(), metadata=metadata))
-
-                current_pos += len(part) + (0 if self.keep_separator else len(self.separator))
+                    chunks.append(Document(page_content=content, metadata=metadata))
 
         return chunks
 
@@ -116,11 +138,23 @@ class SeparatorChunker(BaseChunker):
                         end = last_sep + 1
                         break
 
-            chunk_text = text[pos:end].strip()
+            segment = text[pos:end]
+
+            if self.keep_separator:
+                chunk_text = segment
+                start_char = base_pos + pos
+                end_char = base_pos + end
+            else:
+                lstrip_len = len(segment) - len(segment.lstrip())
+                rstrip_len = len(segment) - len(segment.rstrip())
+                chunk_text = segment[lstrip_len : len(segment) - rstrip_len]
+                start_char = base_pos + pos + lstrip_len
+                end_char = base_pos + end - rstrip_len
+
             if chunk_text:
                 metadata = dict(base_metadata or {})
-                metadata["start_char"] = base_pos + pos
-                metadata["end_char"] = base_pos + end
+                metadata["start_char"] = start_char
+                metadata["end_char"] = end_char
                 metadata["chunk_strategy"] = "separator"
                 metadata["separator"] = repr(self.separator)
                 metadata["is_sub_chunk"] = True
