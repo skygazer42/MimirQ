@@ -10,8 +10,11 @@
 
 import fs from 'node:fs/promises'
 import path from 'node:path'
+import { fileURLToPath } from 'node:url'
 
-const WEB_ROOT = process.cwd()
+// Always scan from the web/ project root (not the caller's CWD).
+const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url))
+const WEB_ROOT = path.resolve(SCRIPT_DIR, '..')
 
 const IGNORE_DIRS = new Set([
   'node_modules',

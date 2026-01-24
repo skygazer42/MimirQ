@@ -23,6 +23,69 @@ interface UseChatOptions {
   onError?: (error: string) => void
 }
 
+function formatGraphStep(data: any): string | null {
+  if (!data || typeof data !== 'object') return null
+
+  const rawMessage = typeof data.message === 'string' ? data.message.trim() : ''
+  if (rawMessage) return rawMessage
+
+  const ev = String(data.event || '').trim()
+  if (!ev) return null
+
+  const citationsCount =
+    typeof data.citations_count === 'number' && Number.isFinite(data.citations_count) ? data.citations_count : null
+  const elapsedSec = typeof data.elapsed_sec === 'number' && Number.isFinite(data.elapsed_sec) ? data.elapsed_sec : null
+  const answerChars = typeof data.answer_chars === 'number' && Number.isFinite(data.answer_chars) ? data.answer_chars : null
+
+  switch (ev) {
+    case 'retrieve_start':
+      return '开始检索相关资料…'
+    case 'retrieve_done': {
+      let msg = '检索完成'
+      if (citationsCount != null) msg += `：${citationsCount} 条引用`
+      if (elapsedSec != null) msg += `（${elapsedSec.toFixed(2)}s）`
+      return msg
+    }
+    case 'generate_start':
+      return '开始生成回答…'
+    case 'generate_done': {
+      let msg = '生成完成'
+      if (answerChars != null) msg += `：${answerChars} 字符`
+      if (elapsedSec != null) msg += `（${elapsedSec.toFixed(2)}s）`
+      return msg
+    }
+    default:
+      return `Graph: ${ev}`
+  }
+}
+
+function formatRouteStep(data: any): string | null {
+  if (!data || typeof data !== 'object') return null
+  const modelUsed = typeof data.model_used === 'string' ? data.model_used.trim() : ''
+  const route = typeof data.route === 'string' ? data.route.trim() : ''
+  const reason = typeof data.reason === 'string' ? data.reason.trim() : ''
+
+  let msg = '模型路由'
+  if (route) msg += `：${route}`
+  if (modelUsed) msg += `（${modelUsed}）`
+  if (!route && modelUsed) msg = `模型：${modelUsed}`
+  if (reason) msg += ` - ${reason.slice(0, 120)}`
+  return msg
+}
+
+function formatRewriteStep(data: any): string | null {
+  if (!data || typeof data !== 'object') return null
+  const used = Boolean(data.used)
+  if (!used) return null
+
+  const rewritten = typeof data.rewritten === 'string' ? data.rewritten.trim() : ''
+  const elapsedSec = typeof data.elapsed_sec === 'number' && Number.isFinite(data.elapsed_sec) ? data.elapsed_sec : null
+
+  if (!rewritten) return null
+  const preview = rewritten.length > 120 ? `${rewritten.slice(0, 120)}…` : rewritten
+  return elapsedSec != null ? `查询改写：${preview}（${elapsedSec.toFixed(2)}s）` : `查询改写：${preview}`
+}
+
 export function useChat({
   conversationId: initialConversationId,
   documentIds,
@@ -240,11 +303,29 @@ export function useChat({
               citations = event.data
               setCurrentCitations(citations)
             } else if (event.type === 'event') {
-               const msg = event.data?.message
-               if (msg) {
-                 steps = [...steps, msg]
-                 setCurrentSteps(steps)
-               }
+              const msg = event.data?.message
+              if (msg) {
+                steps = [...steps, msg]
+                setCurrentSteps(steps)
+              }
+            } else if (event.type === 'graph') {
+              const msg = formatGraphStep(event.data)
+              if (msg) {
+                steps = [...steps, msg]
+                setCurrentSteps(steps)
+              }
+            } else if (event.type === 'route') {
+              const msg = formatRouteStep(event.data)
+              if (msg) {
+                steps = [...steps, msg]
+                setCurrentSteps(steps)
+              }
+            } else if (event.type === 'rewrite') {
+              const msg = formatRewriteStep(event.data)
+              if (msg) {
+                steps = [...steps, msg]
+                setCurrentSteps(steps)
+              }
             } else if (event.type === 'token') {
               fullResponseRef.current += event.data.content
               scheduleCurrentResponseUpdate()
