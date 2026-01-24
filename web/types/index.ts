@@ -222,6 +222,7 @@ export interface ChunkPreviewItem {
   index: number
   content: string
   length: number
+  tokens_est?: number
   start_index: number
   end_index: number
   page_number?: number
@@ -237,6 +238,9 @@ export interface ChunkPreviewResponse {
   params: ChunkPreviewParams
   chunks: ChunkPreviewItem[]
   original_text?: string
+  original_text_included?: boolean
+  original_text_truncated?: boolean
+  original_text_max_chars?: number
   parser_backend: string
   chunk_strategy: string
 }

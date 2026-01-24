@@ -5,7 +5,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useVirtualizer } from '@tanstack/react-virtual'
-import { Layers, MousePointer2, Loader2, AlertCircle, Search, CornerDownLeft, Copy, Braces, Code2, X } from 'lucide-react'
+import { Layers, MousePointer2, Loader2, AlertCircle, Search, CornerDownLeft, Copy, Braces, Code2, Quote, X } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -39,6 +39,7 @@ export function ChunkList() {
     error,
     runPreview,
   } = useChunkPreview()
+  const unit: 'chars' | 'tokens' = previewData?.params?.unit === 'tokens' ? 'tokens' : 'chars'
   const [queryInput, setQueryInput] = useState('')
   const [query, setQuery] = useState('')
   const [sortMode, setSortMode] = useState<SortMode>('index')
@@ -79,8 +80,19 @@ export function ChunkList() {
     return previewData.chunks[selectedChunkIndex] || null
   }, [previewData?.chunks, selectedChunkIndex])
 
+  const selectedChunkLenLabel = useMemo(() => {
+    if (!selectedChunk) return null
+    const tok = typeof selectedChunk.tokens_est === 'number' ? selectedChunk.tokens_est : null
+    if (unit === 'tokens') return `${tok ?? '-'} tok · ${selectedChunk.length} chars`
+    return tok != null ? `${selectedChunk.length} chars · ${tok} tok` : `${selectedChunk.length} chars`
+  }, [selectedChunk, unit])
+
   const filteredChunks = useMemo(() => {
     if (!previewData?.chunks) return []
+    const readLen = (chunk: ChunkPreviewItem) => {
+      if (unit === 'tokens') return Number(chunk.tokens_est || 0)
+      return Number(chunk.length || 0)
+    }
     const q = query.trim().toLowerCase()
     const base = previewData.chunks
       .map((chunk: ChunkPreviewItem, index: number) => ({ chunk, index }))
@@ -96,7 +108,7 @@ export function ChunkList() {
         const contentOk = q ? (chunk.content || '').toLowerCase().includes(q) : true
         if (!contentOk) return false
 
-        const len = Number(chunk.length || 0)
+        const len = readLen(chunk)
         if (minLen > 0 && len < minLen) return false
         if (maxLen > 0 && len > maxLen) return false
 
@@ -104,12 +116,12 @@ export function ChunkList() {
       })
 
     if (sortMode === 'length_desc') {
-      base.sort((a, b) => (b.chunk.length || 0) - (a.chunk.length || 0))
+      base.sort((a, b) => readLen(b.chunk) - readLen(a.chunk))
     } else if (sortMode === 'length_asc') {
-      base.sort((a, b) => (a.chunk.length || 0) - (b.chunk.length || 0))
+      base.sort((a, b) => readLen(a.chunk) - readLen(b.chunk))
     }
     return base
-  }, [previewData, pageFilter, query, sortMode, minLen, maxLen])
+  }, [previewData, pageFilter, query, sortMode, minLen, maxLen, unit])
 
   const rowVirtualizer = useVirtualizer({
     count: filteredChunks.length,
@@ -195,8 +207,8 @@ export function ChunkList() {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="index">原顺序</SelectItem>
-              <SelectItem value="length_desc">长度：大到小</SelectItem>
-              <SelectItem value="length_asc">长度：小到大</SelectItem>
+              <SelectItem value="length_desc">{unit === 'tokens' ? 'Tokens：大到小' : '长度：大到小'}</SelectItem>
+              <SelectItem value="length_asc">{unit === 'tokens' ? 'Tokens：小到大' : '长度：小到大'}</SelectItem>
             </SelectContent>
           </Select>
           <Select value={pageFilter} onValueChange={(value) => setPageFilter(value)}>
@@ -214,7 +226,7 @@ export function ChunkList() {
             </SelectContent>
           </Select>
           <div className="hidden xl:flex items-center gap-1 text-[10px] text-muted-foreground">
-            <span className="mr-1">长度:</span>
+            <span className="mr-1">{unit === 'tokens' ? 'Tokens:' : '长度:'}</span>
             <Input
               value={minLen > 0 ? String(minLen) : ''}
               onChange={(e) => {
@@ -226,7 +238,7 @@ export function ChunkList() {
               placeholder="Min"
               className="h-7 w-[72px] text-[11px] font-mono bg-card/80"
               inputMode="numeric"
-              aria-label="最小长度过滤"
+              aria-label={unit === 'tokens' ? '最小 token 过滤' : '最小长度过滤'}
             />
             <span className="px-1 opacity-70">-</span>
             <Input
@@ -240,7 +252,7 @@ export function ChunkList() {
               placeholder="Max"
               className="h-7 w-[72px] text-[11px] font-mono bg-card/80"
               inputMode="numeric"
-              aria-label="最大长度过滤"
+              aria-label={unit === 'tokens' ? '最大 token 过滤' : '最大长度过滤'}
             />
             {(minLen > 0 || maxLen > 0) ? (
               <Button
@@ -292,7 +304,7 @@ export function ChunkList() {
                   <span className="text-xs text-muted-foreground">P.{selectedChunk.page_number}</span>
                 ) : null}
                 <span className="text-[10px] text-muted-foreground font-mono">
-                  {selectedChunk.start_index}-{selectedChunk.end_index} · {selectedChunk.length} chars
+                  {selectedChunk.start_index}-{selectedChunk.end_index} · {selectedChunkLenLabel}
                 </span>
               </div>
               <div className="mt-1 text-[11px] text-muted-foreground line-clamp-2">
@@ -322,6 +334,31 @@ export function ChunkList() {
                 title="复制切片 JSON"
               >
                 <Braces className="h-4 w-4" />
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8"
+                onClick={() => {
+                  const name = (previewData?.filename || '').trim() || 'document'
+                  const pageLabel = selectedChunk.page_number != null ? ` · P.${selectedChunk.page_number}` : ''
+                  const tok = typeof selectedChunk.tokens_est === 'number' ? ` · ${selectedChunk.tokens_est} tok` : ''
+                  const fence = '````'
+                  const raw = String(selectedChunk.content || '').trim()
+                  const excerpt = raw.length > 2000 ? `${raw.slice(0, 2000)}…` : raw
+                  const text = [
+                    `【${name} · chunk #${(selectedChunkIndex ?? 0) + 1}${pageLabel}${tok} · ${selectedChunk.start_index}-${selectedChunk.end_index}】`,
+                    `${fence}text`,
+                    excerpt,
+                    fence,
+                  ].join('\n')
+                  void copyText(text, '已复制引用')
+                }}
+                aria-label="复制引用"
+                title="复制引用"
+              >
+                <Quote className="h-4 w-4" />
               </Button>
               <Button
                 type="button"
@@ -438,6 +475,8 @@ export function ChunkList() {
                     <ChunkCard
                       chunk={chunk}
                       index={index}
+                      unit={unit}
+                      sourceFilename={previewData?.filename}
                       isHovered={isHovered}
                       isSelected={isSelected}
                       query={query}

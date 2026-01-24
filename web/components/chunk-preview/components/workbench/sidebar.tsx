@@ -85,6 +85,7 @@ export function Sidebar({ variant = 'panel' }: { variant?: 'panel' | 'dialog' } 
   const isHierarchicalStrategy = strategyForUi === 'llama_index_hierarchical'
   const isRagflowStrategy = strategyForUi.startsWith('ragflow_')
   const isSeparatorStrategy = strategyForUi === 'separator'
+  const statsUnitLabel = isTokenStrategy ? 'tok' : 'chars'
 
   const hideChunkSizeControl = isSentenceStrategy || isRagflowStrategy
   const showOverlapControl =
@@ -104,8 +105,21 @@ export function Sidebar({ variant = 'panel' }: { variant?: 'panel' | 'dialog' } 
   const parserAvailable = parserBackendAvailable(parserBackend)
 
   const chunkStats = useMemo(() => {
-    return previewData?.chunks ? computeChunkLengthStats(previewData.chunks) : null
-  }, [previewData?.chunks])
+    if (!previewData?.chunks) return null
+
+    const statSource = previewData.chunks.map((c) => {
+      const tokensFallback = Math.max(0, Math.trunc((Number(c.length || 0) || 0) / 4))
+      return {
+        content: c.content,
+        length: isTokenStrategy ? (typeof c.tokens_est === 'number' ? c.tokens_est : tokensFallback) : c.length,
+      }
+    })
+
+    return computeChunkLengthStats(statSource, {
+      shortThreshold: isTokenStrategy ? 40 : 120,
+      histogramBins: 8,
+    })
+  }, [previewData?.chunks, isTokenStrategy])
 
   const overlapGuidance = useMemo(() => {
     if (!chunkSize || chunkSize <= 0) return null
@@ -874,23 +888,46 @@ export function Sidebar({ variant = 'panel' }: { variant?: 'panel' | 'dialog' } 
                 <div className="text-xl font-bold text-foreground mt-1">{previewData.total_chunks}</div>
               </div>
               <div className="bg-card p-3 rounded-xl border border-border/60 shadow-sm">
-                <div className="text-[10px] text-muted-foreground uppercase tracking-wider font-medium">平均长度</div>
-                <div className="text-xl font-bold text-foreground mt-1">{chunkStats?.avg ?? '-'}</div>
+                <div className="text-[10px] text-muted-foreground uppercase tracking-wider font-medium">
+                  {isTokenStrategy ? '平均 TOKENS' : '平均长度'}
+                </div>
+                <div className="text-xl font-bold text-foreground mt-1">
+                  {chunkStats?.avg ?? '-'}
+                  {isTokenStrategy ? (
+                    <span className="ml-1 text-xs font-mono text-muted-foreground">{statsUnitLabel}</span>
+                  ) : null}
+                </div>
               </div>
               <div className="bg-card p-3 rounded-xl border border-border/60 shadow-sm">
-                <div className="text-[10px] text-muted-foreground uppercase tracking-wider font-medium">中位数</div>
-                <div className="text-xl font-bold text-foreground mt-1">{chunkStats?.median ?? '-'}</div>
+                <div className="text-[10px] text-muted-foreground uppercase tracking-wider font-medium">
+                  {isTokenStrategy ? '中位数 TOKENS' : '中位数'}
+                </div>
+                <div className="text-xl font-bold text-foreground mt-1">
+                  {chunkStats?.median ?? '-'}
+                  {isTokenStrategy ? (
+                    <span className="ml-1 text-xs font-mono text-muted-foreground">{statsUnitLabel}</span>
+                  ) : null}
+                </div>
               </div>
               <div className="bg-card p-3 rounded-xl border border-border/60 shadow-sm">
-                <div className="text-[10px] text-muted-foreground uppercase tracking-wider font-medium">P90</div>
-                <div className="text-xl font-bold text-foreground mt-1">{chunkStats?.p90 ?? '-'}</div>
+                <div className="text-[10px] text-muted-foreground uppercase tracking-wider font-medium">
+                  {isTokenStrategy ? 'P90 TOKENS' : 'P90'}
+                </div>
+                <div className="text-xl font-bold text-foreground mt-1">
+                  {chunkStats?.p90 ?? '-'}
+                  {isTokenStrategy ? (
+                    <span className="ml-1 text-xs font-mono text-muted-foreground">{statsUnitLabel}</span>
+                  ) : null}
+                </div>
               </div>
             </div>
 
             {showAdvancedStats && chunkStats ? (
               <div className="mt-3 grid grid-cols-2 gap-3">
                 <div className="bg-card p-3 rounded-xl border border-border/60 shadow-sm">
-                  <div className="text-[10px] text-muted-foreground uppercase tracking-wider font-medium">最短 / 最长</div>
+                  <div className="text-[10px] text-muted-foreground uppercase tracking-wider font-medium">
+                    {isTokenStrategy ? '最小 / 最大 TOKENS' : '最短 / 最长'}
+                  </div>
                   <div className="mt-1 text-sm font-mono text-foreground/90">
                     {chunkStats.min} / {chunkStats.max}
                   </div>
@@ -909,7 +946,9 @@ export function Sidebar({ variant = 'panel' }: { variant?: 'panel' | 'dialog' } 
                   ) : null}
                 </div>
                 <div className="col-span-2 bg-card p-3 rounded-xl border border-border/60 shadow-sm">
-                  <div className="text-[10px] text-muted-foreground uppercase tracking-wider font-medium">长度分布</div>
+                  <div className="text-[10px] text-muted-foreground uppercase tracking-wider font-medium">
+                    {isTokenStrategy ? 'TOKENS 分布' : '长度分布'}
+                  </div>
                   <div className="mt-2 flex items-end gap-1 h-12">
                     {chunkStats.histogram.map((bin) => {
                       const ratio = chunkStats.count ? bin.count / chunkStats.count : 0
@@ -919,7 +958,7 @@ export function Sidebar({ variant = 'panel' }: { variant?: 'panel' | 'dialog' } 
                           key={`${bin.from}-${bin.to}`}
                           className="flex-1 rounded-sm bg-primary/20 hover:bg-primary/30 transition-colors"
                           style={{ height: `${h}px` }}
-                          title={`${bin.from}-${bin.to}: ${bin.count}`}
+                          title={`${bin.from}-${bin.to} ${statsUnitLabel}: ${bin.count}`}
                         />
                       )
                     })}

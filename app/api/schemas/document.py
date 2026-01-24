@@ -313,6 +313,8 @@ class ChunkPreviewItem(BaseModel):
     index: int
     content: str
     length: int
+    # Approximate token count for UI display/stats (token-mode uses tiktoken when available).
+    tokens_est: Optional[int] = None
     start_index: int  # Start position in original text.
     end_index: int    # End position in original text.
     page_number: Optional[int] = None
@@ -330,6 +332,10 @@ class ChunkPreviewResponse(BaseModel):
     chunks: List[ChunkPreviewItem]
     # Original text for frontend highlighting.
     original_text: Optional[str] = None
+    # Best-effort metadata for UI (whether original_text was omitted due to size limit).
+    original_text_included: bool = False
+    original_text_truncated: bool = False
+    original_text_max_chars: int = 100000
     parser_backend: str
     chunk_strategy: str
 

@@ -3,19 +3,24 @@
  */
 'use client'
 
+import { useState } from 'react'
 import {
   Upload,
   BookOpen,
+  HelpCircle,
   ScanLine,
   Cpu,
   FileUp,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { Button } from '@/components/ui/button'
 import { UPLOAD_ACCEPT } from '@/lib/upload-extensions'
 import { useChunkPreview } from '@/components/chunk-preview/context'
+import { ChunkingHelpDialog } from '@/components/chunk-preview/components/chunking-help-dialog'
 
 export function EmptyState() {
   const { isDragging, handleDragOver, handleDragLeave, handleDrop, addFiles, loadExample } = useChunkPreview()
+  const [helpOpen, setHelpOpen] = useState(false)
 
   return (
     <div className="min-h-full w-full text-foreground font-sans flex items-center justify-center p-6 selection:bg-primary/20 selection:text-foreground">
@@ -29,6 +34,12 @@ export function EmptyState() {
           <p className="mt-2 text-sm text-muted-foreground leading-relaxed">
             选择合适的解析器/切块策略与参数，右侧实时查看切片列表与原文定位，确认无误后再入库。
           </p>
+          <div className="mt-4 flex items-center gap-2">
+            <Button type="button" variant="outline" size="sm" className="h-8 px-3 text-[11px]" onClick={() => setHelpOpen(true)}>
+              <HelpCircle className="w-3.5 h-3.5 mr-1.5" />
+              切块指南
+            </Button>
+          </div>
         </div>
 
         <div
@@ -118,6 +129,8 @@ export function EmptyState() {
           </div>
         </div>
       </div>
+
+      <ChunkingHelpDialog open={helpOpen} onOpenChange={setHelpOpen} />
     </div>
   )
 }

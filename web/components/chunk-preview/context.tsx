@@ -119,6 +119,7 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: ChunkPrev
     Map<string, { data: ChunkPreviewResponse; createdAt: number; durationMs: number }>
   >(new Map())
   const separatorSettingsLoadedRef = useRef(false)
+  const focusFileLoadedRef = useRef(false)
 
   useEffect(() => {
     return () => {
@@ -173,6 +174,41 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: ChunkPrev
   // 当前文件
   const currentFileItem = fileList[currentFileIndex] || null
   const file = currentFileItem?.file || null
+
+  // Keep currentFileIndex valid when fileList changes.
+  useEffect(() => {
+    if (fileList.length === 0) {
+      setCurrentFileIndex(0)
+      focusFileLoadedRef.current = false
+      if (typeof window !== 'undefined') {
+        window.localStorage.removeItem(STORAGE_FOCUS_FILE_ID_KEY)
+      }
+      return
+    }
+    if (currentFileIndex >= fileList.length) {
+      setCurrentFileIndex(fileList.length - 1)
+    }
+  }, [currentFileIndex, fileList.length])
+
+  // Persist the currently focused file (best-effort UX when coming back to the page).
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    if (!currentFileItem?.id) return
+    window.localStorage.setItem(STORAGE_FOCUS_FILE_ID_KEY, currentFileItem.id)
+  }, [currentFileItem?.id])
+
+  // Restore focused file after fileList is initialized.
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    if (focusFileLoadedRef.current) return
+    if (fileList.length === 0) return
+    const saved = (window.localStorage.getItem(STORAGE_FOCUS_FILE_ID_KEY) || '').trim()
+    if (saved) {
+      const idx = fileList.findIndex((f) => f.id === saved)
+      if (idx >= 0) setCurrentFileIndex(idx)
+    }
+    focusFileLoadedRef.current = true
+  }, [fileList])
 
   // 初始化：从 parsedFiles 加载
   useEffect(() => {

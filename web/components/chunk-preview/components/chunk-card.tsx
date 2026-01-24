@@ -4,7 +4,7 @@
 'use client'
 
 import { useCallback, useMemo } from 'react'
-import { Copy, Braces, Pin, PinOff } from 'lucide-react'
+import { Copy, Braces, Pin, PinOff, Quote } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
@@ -13,6 +13,8 @@ import type { ChunkPreviewItem } from '@/types'
 interface ChunkCardProps {
   chunk: ChunkPreviewItem
   index: number
+  unit?: 'chars' | 'tokens'
+  sourceFilename?: string
   isHovered: boolean
   isSelected: boolean
   query?: string
@@ -63,6 +65,8 @@ function highlightText(text: string, rawQuery?: string) {
 export function ChunkCard({
   chunk,
   index,
+  unit = 'chars',
+  sourceFilename,
   isHovered,
   isSelected,
   query,
@@ -71,6 +75,21 @@ export function ChunkCard({
   onToggleSelect,
 }: ChunkCardProps) {
   const rangeLabel = useMemo(() => `${chunk.start_index}-${chunk.end_index}`, [chunk.start_index, chunk.end_index])
+  const tokens = useMemo(() => (typeof chunk.tokens_est === 'number' ? chunk.tokens_est : null), [chunk.tokens_est])
+  const citationText = useMemo(() => {
+    const name = (sourceFilename || '').trim() || 'document'
+    const pageLabel = chunk.page_number != null ? ` · P.${chunk.page_number}` : ''
+    const tokLabel = tokens != null ? ` · ${tokens} tok` : ''
+    const fence = '````'
+    const raw = String(chunk.content || '').trim()
+    const excerpt = raw.length > 2000 ? `${raw.slice(0, 2000)}…` : raw
+    return [
+      `【${name} · chunk #${index + 1}${pageLabel}${tokLabel} · ${rangeLabel}】`,
+      `${fence}text`,
+      excerpt,
+      fence,
+    ].join('\n')
+  }, [chunk.content, chunk.page_number, index, rangeLabel, sourceFilename, tokens])
 
   const copyText = useCallback(async (text: string, okMsg: string) => {
     try {
@@ -111,7 +130,19 @@ export function ChunkCard({
           >
             #{index + 1}
           </span>
-          <span className="text-[10px] text-muted-foreground font-mono">{chunk.length} chars</span>
+          {unit === 'tokens' ? (
+            <>
+              <span className="text-[10px] text-muted-foreground font-mono">{tokens ?? '-'} tok</span>
+              <span className="text-[10px] text-muted-foreground font-mono">{chunk.length} chars</span>
+            </>
+          ) : (
+            <span
+              className="text-[10px] text-muted-foreground font-mono"
+              title={tokens != null ? `${chunk.length} chars · ${tokens} tok` : `${chunk.length} chars`}
+            >
+              {chunk.length} chars
+            </span>
+          )}
           <span className="text-[10px] text-muted-foreground font-mono" title="start-end">
             {rangeLabel}
           </span>
@@ -121,6 +152,20 @@ export function ChunkCard({
             <span className="text-[10px] text-muted-foreground bg-muted px-1.5 py-0.5 rounded">P.{chunk.page_number}</span>
           )}
           <div className={cn('flex items-center gap-1', 'opacity-100 lg:opacity-0 lg:group-hover:opacity-100 transition-opacity')}>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7"
+              onClick={(e) => {
+                e.stopPropagation()
+                void copyText(citationText, '已复制引用')
+              }}
+              aria-label="复制引用"
+              title="复制引用"
+            >
+              <Quote className="h-4 w-4" />
+            </Button>
             <Button
               type="button"
               variant="ghost"
