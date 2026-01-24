@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import platform
+import re
 import shutil
 import subprocess
 from pathlib import Path
@@ -35,6 +36,14 @@ def _check_file(path: Path, *, required: bool) -> bool:
     return not required
 
 
+def _parse_python_version(output: str) -> tuple[int, int, int] | None:
+    # Expected: "Python 3.11.7"
+    m = re.search(r"Python\s+(\d+)\.(\d+)\.(\d+)", output or "")
+    if not m:
+        return None
+    return int(m.group(1)), int(m.group(2)), int(m.group(3))
+
+
 def main() -> int:
     repo_root = Path(__file__).resolve().parent.parent
     os_name = platform.system()
@@ -43,7 +52,22 @@ def main() -> int:
 
     ok = True
 
-    ok &= _check_cmd("Python", ["python", "--version"])
+    # Prefer python3 (most modern setups). Fall back to python (Windows / legacy PATH).
+    py_ok = _check_cmd("Python (python3)", ["python3", "--version"])
+    if not py_ok:
+        py_ok = _check_cmd("Python (python)", ["python", "--version"])
+    ok &= py_ok
+
+    # Warn (but don't fail) if local Python is < 3.11 (repo requires 3.11+ for syntax/deps).
+    for exe in ("python3", "python"):
+        code, out = _run([exe, "--version"])
+        if code != 0:
+            continue
+        ver = _parse_python_version(out)
+        if ver and (ver[0], ver[1]) < (3, 11):
+            print(f"[doctor] WARN: {exe} is {ver[0]}.{ver[1]}.{ver[2]} (MimirQ requires Python 3.11+ for local backend)")
+        break
+
     _check_cmd("Node", ["node", "--version"])
     _check_cmd("pnpm", ["pnpm", "--version"])
     _check_cmd("Docker", ["docker", "--version"])
