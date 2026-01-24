@@ -3,7 +3,7 @@
  */
 'use client'
 
-import { useRef } from 'react'
+import { useRef, useState } from 'react'
 import {
   Layers,
   FileText,
@@ -11,6 +11,7 @@ import {
   ExternalLink,
   Save,
   RotateCcw,
+  HelpCircle,
   MoreVertical,
   Download,
   Upload,
@@ -36,10 +37,13 @@ import { usePipelineOptions } from '@/contexts/pipeline-options-context'
 import { getChunkStrategyLabel } from '@/lib/chunk-strategies'
 import { getParserLabel } from '@/lib/parser-options'
 import { chunkPreviewToCsv, downloadTextFile, sanitizeFilename, toChunkPreviewExport } from '@/components/chunk-preview/utils/export'
+import { IngestionWorkflowStepper } from '@/components/ui/ingestion-workflow-stepper'
+import { ChunkingHelpDialog } from '@/components/chunk-preview/components/chunking-help-dialog'
 import { useRouter } from 'next/navigation'
 
 export function TopBar() {
   const router = useRouter()
+  const [helpOpen, setHelpOpen] = useState(false)
   const pipelineCtx = usePipelineOptions()
   const { enabled: pipelineOverridesEnabled, options: pipelineOptions } = pipelineCtx
   const importConfigInputRef = useRef<HTMLInputElement>(null)
@@ -252,6 +256,10 @@ export function TopBar() {
             {error}
           </div>
         )}
+
+        <div className="hidden 2xl:flex items-center gap-3">
+          <IngestionWorkflowStepper />
+        </div>
 
         <div className="h-8 w-px bg-border mx-2" />
 
