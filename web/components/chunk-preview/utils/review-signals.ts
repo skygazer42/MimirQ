@@ -90,6 +90,9 @@ export function computeCoverageSignals(
     }
   }
 
+  const strategy = options?.strategy || ''
+  const strictNoOverlap = strategy === 'separator'
+
   const sorted = [...analysis].sort((a, b) => {
     const sa = Number(a.start_index) || 0
     const sb = Number(b.start_index) || 0
@@ -116,12 +119,12 @@ export function computeCoverageSignals(
     } else if (start < coveredEnd) {
       const overlap = coveredEnd - start
       const chunkLen = Math.max(1, end - start)
+      if (overlap > 0) overlapPrevByIndex.set(idx, overlap)
+
       // Flag only "meaningfully high" overlaps to avoid noisy overlap-by-design.
-      const isHigh = overlap > 0 && (overlap / chunkLen >= 0.6 || overlap >= 800)
-      if (isHigh) {
-        overlapIndices.add(idx)
-        overlapPrevByIndex.set(idx, overlap)
-      }
+      // For separator (overlap=0), ANY overlap is unexpected -> flag.
+      const isHigh = overlap > 0 && (strictNoOverlap || overlap / chunkLen >= 0.6 || overlap >= 800)
+      if (isHigh) overlapIndices.add(idx)
     }
 
     if (end > coveredEnd) coveredEnd = end
@@ -129,4 +132,3 @@ export function computeCoverageSignals(
 
   return { basis, gapIndices, overlapIndices, gapBeforeByIndex, overlapPrevByIndex }
 }
-
