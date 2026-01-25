@@ -186,10 +186,10 @@ export function OriginalPreview() {
   }, [activeChunkIndex, previewMode])
 
   return (
-    <div className="flex-1 flex flex-col min-w-0 border-b lg:border-b-0 lg:border-r border-border/60 bg-card/85 backdrop-blur">
-      <div className="h-10 border-b border-border/60 bg-card/80 flex items-center justify-between px-4 shrink-0 backdrop-blur">
-        <span className="text-xs font-semibold text-primary flex items-center gap-2">
-          <FileText className="w-3.5 h-3.5 text-primary" />
+    <div className="flex-1 flex flex-col min-w-0 border-b lg:border-b-0 lg:border-r border-border/60 bg-card">
+      <div className="h-10 border-b border-border/60 bg-card flex items-center justify-between px-4 shrink-0">
+        <span className="text-sm font-semibold text-foreground flex items-center gap-2 whitespace-nowrap shrink-0">
+          <FileText className="w-4 h-4 text-muted-foreground" />
           原文内容
         </span>
         <div className="flex items-center gap-2">
@@ -280,7 +280,7 @@ export function OriginalPreview() {
       >
         <div
           className={cn(
-            'min-h-full rounded-2xl border border-border/60 bg-card/70 p-6 shadow-sm backdrop-blur ring-1 ring-border/40',
+            'min-h-full rounded-2xl border border-border/60 bg-card p-6 shadow-sm ring-1 ring-border/40',
             previewMode === 'editor' ? 'h-full' : null
           )}
         >

@@ -130,7 +130,7 @@ export function ChunkCard({
   return (
     <div
       className={cn(
-        'group relative bg-card/85 p-4 rounded-xl border transition-all duration-200 cursor-pointer backdrop-blur focus-within:ring-1 focus-within:ring-ring/20',
+        'group relative bg-card p-4 rounded-xl border transition-all duration-200 cursor-pointer focus-within:ring-1 focus-within:ring-ring/20',
         isSelected
           ? 'border-primary/45 shadow-lg shadow-primary/10 ring-1 ring-primary/20'
           : isHovered
@@ -344,7 +344,7 @@ export function ChunkCard({
 
       <div
         className={cn(
-          'text-sm font-mono leading-relaxed whitespace-pre-wrap break-words transition-colors',
+          'text-sm font-sans leading-relaxed whitespace-pre-wrap break-words transition-colors',
           isSelected || isHovered ? 'text-foreground' : 'text-muted-foreground'
         )}
       >

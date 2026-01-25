@@ -14,7 +14,7 @@ export function Workbench() {
   const { showOriginalPanel, showSettingsPanel, toggleSettingsPanel } = useChunkPreview()
 
   return (
-    <div className="flex flex-col h-full bg-background/60 text-foreground font-sans overflow-hidden">
+    <div className="flex flex-col h-full bg-background text-foreground font-sans overflow-hidden">
       {/* 顶部栏 */}
       <TopBar />
 
@@ -25,7 +25,7 @@ export function Workbench() {
         </div>
 
         {/* 主区域：原文 vs 预览 */}
-        <main className="flex-1 flex flex-col lg:flex-row overflow-hidden bg-background/60">
+        <main className="flex-1 flex flex-col lg:flex-row overflow-hidden bg-background">
           {/* 左侧原文 */}
           {showOriginalPanel ? <OriginalPreview /> : null}
 

@@ -250,7 +250,7 @@ export function Sidebar({ variant = 'panel' }: { variant?: 'panel' | 'dialog' } 
   return (
     <aside
       className={cn(
-        'bg-card/80 flex flex-col flex-shrink-0 z-10 backdrop-blur',
+        'bg-card flex flex-col flex-shrink-0 z-10',
         variant === 'dialog' ? 'w-full border-0' : 'w-80 border-r border-border/60'
       )}
     >
@@ -260,7 +260,7 @@ export function Sidebar({ variant = 'panel' }: { variant?: 'panel' | 'dialog' } 
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-2">
               <Folder className="w-4 h-4 text-primary" />
-              <h2 className="text-xs font-bold text-foreground uppercase tracking-wider">文件列表 ({fileList.length})</h2>
+              <h2 className="text-sm font-semibold text-foreground">文件列表 ({fileList.length})</h2>
             </div>
             <div className="flex items-center gap-1">
               <Button
@@ -302,7 +302,7 @@ export function Sidebar({ variant = 'panel' }: { variant?: 'panel' | 'dialog' } 
             />
           </div>
 
-          <div className="space-y-2 max-h-[200px] overflow-y-auto overscroll-contain no-scrollbar pr-1 rounded-xl border border-border/60 bg-card/80 p-2 shadow-sm backdrop-blur">
+          <div className="space-y-2 max-h-[200px] overflow-y-auto overscroll-contain no-scrollbar pr-1 rounded-xl border border-border/60 bg-card p-2 shadow-sm">
             {sortedFileList.map((f) => {
               const isActive = currentFileId === f.id
               const displayTime = f.addedAt
@@ -381,7 +381,7 @@ export function Sidebar({ variant = 'panel' }: { variant?: 'panel' | 'dialog' } 
 
         <div className="flex items-center gap-2 mb-6">
           <Settings className="w-4 h-4 text-primary" />
-          <h2 className="text-xs font-bold text-foreground uppercase tracking-wider">配置参数</h2>
+          <h2 className="text-sm font-semibold text-foreground">配置参数</h2>
         </div>
 
         <div className="space-y-8">
@@ -441,7 +441,7 @@ export function Sidebar({ variant = 'panel' }: { variant?: 'panel' | 'dialog' } 
                 step={10000}
                 value={originalTextMaxChars}
                 onChange={(e) => updatePerfSettings({ originalTextMaxChars: Number(e.target.value) })}
-                className="h-7 w-28 text-[11px] font-mono bg-card/80"
+                className="h-7 w-28 text-[11px] font-mono bg-background"
                 aria-label="原文上限"
                 disabled={!includeOriginalText}
               />
@@ -457,7 +457,7 @@ export function Sidebar({ variant = 'panel' }: { variant?: 'panel' | 'dialog' } 
                 step={100}
                 value={maxChunks}
                 onChange={(e) => updatePerfSettings({ maxChunks: Number(e.target.value) })}
-                className="h-7 w-28 text-[11px] font-mono bg-card/80"
+                className="h-7 w-28 text-[11px] font-mono bg-background"
                 aria-label="最多返回 chunks"
               />
             </div>
@@ -525,7 +525,7 @@ export function Sidebar({ variant = 'panel' }: { variant?: 'panel' | 'dialog' } 
                 setDatasetId(value === DATASET_DEFAULT_VALUE ? '' : value)
               }}
             >
-              <SelectTrigger className="h-10 bg-card/80">
+              <SelectTrigger className="h-10 bg-background">
                 <SelectValue placeholder="选择数据集" />
               </SelectTrigger>
               <SelectContent>
@@ -546,7 +546,7 @@ export function Sidebar({ variant = 'panel' }: { variant?: 'panel' | 'dialog' } 
             ) : null}
 
             {selectedDataset?.pipeline ? (
-              <div className="rounded-xl border border-border/60 bg-card/70 p-3">
+              <div className="rounded-xl border border-border/60 bg-background p-3">
                 <div className="flex items-center justify-between gap-2">
                   <div className="text-[10px] text-muted-foreground">数据集 Pipeline（摘要）</div>
                   <Button
@@ -649,7 +649,7 @@ export function Sidebar({ variant = 'panel' }: { variant?: 'panel' | 'dialog' } 
             ) : null}
 
             {ingestionPreview ? (
-              <div className="rounded-xl border border-border/60 bg-card/70 p-3 space-y-2">
+              <div className="rounded-xl border border-border/60 bg-background p-3 space-y-2">
                 <div className="flex items-center justify-between gap-2">
                   <div className="text-[10px] text-muted-foreground">命中规则</div>
                   <Button
@@ -775,7 +775,7 @@ export function Sidebar({ variant = 'panel' }: { variant?: 'panel' | 'dialog' } 
           </div>
 
           {isSeparatorStrategy ? (
-            <div className="space-y-4 rounded-xl border border-border/60 bg-card/70 p-3 shadow-sm">
+            <div className="space-y-4 rounded-xl border border-border/60 bg-background p-3 shadow-sm">
               <div className="text-[10px] text-muted-foreground uppercase tracking-wider font-medium">分隔符策略参数</div>
 
               <div className="space-y-2">
@@ -784,7 +784,7 @@ export function Sidebar({ variant = 'panel' }: { variant?: 'panel' | 'dialog' } 
                   value={separatorPreset}
                   onValueChange={(value) => updateSeparatorSettings({ separatorPreset: value })}
                 >
-                  <SelectTrigger className="h-9 bg-card/80">
+                  <SelectTrigger className="h-9 bg-background">
                     <SelectValue placeholder="选择分隔符预设" />
                   </SelectTrigger>
                   <SelectContent>
@@ -811,7 +811,7 @@ export function Sidebar({ variant = 'panel' }: { variant?: 'panel' | 'dialog' } 
                   <Input
                     value={separatorCustom}
                     onChange={(e) => updateSeparatorSettings({ separatorCustom: e.target.value })}
-                    className="h-9 text-[11px] font-mono bg-card/80"
+                    className="h-9 text-[11px] font-mono bg-background"
                     placeholder="例如：\\n\\n / --- / ##  / END_OF_SECTION"
                     aria-label="自定义分隔符"
                   />
@@ -852,7 +852,7 @@ export function Sidebar({ variant = 'panel' }: { variant?: 'panel' | 'dialog' } 
                       if (!Number.isFinite(n)) return
                       updateSeparatorSettings({ separatorMaxChunkSize: clampInt(n, 0, 20000) })
                     }}
-                    className="h-7 w-24 text-[11px] font-mono bg-card/80"
+                    className="h-7 w-24 text-[11px] font-mono bg-background"
                     aria-label="最大块长度"
                   />
                 </div>
@@ -864,7 +864,7 @@ export function Sidebar({ variant = 'panel' }: { variant?: 'panel' | 'dialog' } 
           ) : null}
 
           {isParentChildStrategy ? (
-            <div className="space-y-4 rounded-xl border border-border/60 bg-card/70 p-3 shadow-sm">
+            <div className="space-y-4 rounded-xl border border-border/60 bg-background p-3 shadow-sm">
               <div className="text-[10px] text-muted-foreground uppercase tracking-wider font-medium">PARENT-CHILD OPTIONS</div>
 
               <div className="grid grid-cols-2 gap-3">
@@ -882,7 +882,7 @@ export function Sidebar({ variant = 'panel' }: { variant?: 'panel' | 'dialog' } 
                       if (!Number.isFinite(n)) return
                       updateParentChildSettings({ parentChildRatio: Math.max(0.05, Math.min(1, n)) })
                     }}
-                    className="h-9 text-[11px] font-mono bg-card/80"
+                    className="h-9 text-[11px] font-mono bg-background"
                     aria-label="parent_child child_ratio"
                   />
                   <div className="text-[10px] text-muted-foreground">child_size = max(chunk_size × ratio, min_child_size)</div>
@@ -902,7 +902,7 @@ export function Sidebar({ variant = 'panel' }: { variant?: 'panel' | 'dialog' } 
                       if (!Number.isFinite(n)) return
                       updateParentChildSettings({ parentChildMinChildSize: clampInt(n, 50, 4000) })
                     }}
-                    className="h-9 text-[11px] font-mono bg-card/80"
+                    className="h-9 text-[11px] font-mono bg-background"
                     aria-label="parent_child min_child_size"
                   />
                   <div className="text-[10px] text-muted-foreground">recommended: 200–600 for text docs</div>
@@ -943,7 +943,7 @@ export function Sidebar({ variant = 'panel' }: { variant?: 'panel' | 'dialog' } 
                       const nextOverlap = clampInt(chunkOverlap, 0, nextOverlapMax)
                       updateSettings({ chunkSize: nextSize, chunkOverlap: nextOverlap })
                     }}
-                    className="h-7 w-24 text-[11px] font-mono bg-card/80"
+                    className="h-7 w-24 text-[11px] font-mono bg-background"
                     aria-label={isTokenStrategy ? 'Token 上限' : '块大小'}
                   />
                 </div>
@@ -1003,7 +1003,7 @@ export function Sidebar({ variant = 'panel' }: { variant?: 'panel' | 'dialog' } 
                       if (!Number.isFinite(n)) return
                       updateSettings({ chunkOverlap: clampInt(n, 0, overlapMax) })
                     }}
-                    className="h-7 w-24 text-[11px] font-mono bg-card/80"
+                    className="h-7 w-24 text-[11px] font-mono bg-background"
                     aria-label={isTokenStrategy ? 'Token 重叠' : '重叠'}
                   />
                 </div>
@@ -1086,7 +1086,7 @@ export function Sidebar({ variant = 'panel' }: { variant?: 'panel' | 'dialog' } 
             <div className="flex items-center justify-between mb-4">
               <div className="flex items-center gap-2">
                 <BarChart3 className="w-4 h-4 text-primary" />
-                <h2 className="text-xs font-bold text-foreground uppercase tracking-wider">分析结果</h2>
+                <h2 className="text-sm font-semibold text-foreground">分析结果</h2>
               </div>
               <Button
                 type="button"
@@ -1219,7 +1219,7 @@ export function Sidebar({ variant = 'panel' }: { variant?: 'panel' | 'dialog' } 
             <div className="flex items-center justify-between mb-4">
               <div className="flex items-center gap-2">
                 <Sparkles className="w-4 h-4 text-primary" />
-                <h2 className="text-xs font-bold text-foreground uppercase tracking-wider">最近预览</h2>
+                <h2 className="text-sm font-semibold text-foreground">最近预览</h2>
               </div>
               <Button
                 type="button"
