@@ -5,6 +5,7 @@
 'use client'
 
 import { createContext, useContext, useState, useCallback, useRef, useEffect, useMemo, ReactNode } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { toast } from 'sonner'
 import { documentApi } from '@/lib/api-client'
 import { formatApiError } from '@/lib/api-errors'
@@ -52,6 +53,8 @@ interface ChunkPreviewProviderProps {
 }
 
 export function ChunkPreviewProvider({ children, onConfirm, onClose }: ChunkPreviewProviderProps) {
+  const router = useRouter()
+  const searchParams = useSearchParams()
   // 外部依赖
   const parsedFiles = useParsedFiles((state) => state.files)
   const { parserBackend, setParserBackend } = useParserBackendPreference()
@@ -138,12 +141,64 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: ChunkPrev
   const separatorSettingsLoadedRef = useRef(false)
   const parentChildSettingsLoadedRef = useRef(false)
   const focusFileLoadedRef = useRef(false)
+  const deepLinkAppliedKeyRef = useRef<string>('')
+  const lastSyncedChunkParamRef = useRef<string>('')
 
   useEffect(() => {
     return () => {
       previewAbortRef.current?.abort()
     }
   }, [])
+
+  // Deep-link support: /chunk-preview?chunk=123 will auto-select chunk #123 (1-based)
+  // once preview data is available.
+  useEffect(() => {
+    if (!previewData?.chunks?.length) return
+    if (selectedChunkIndex != null) return
+
+    const raw = (searchParams.get('chunk') || '').trim()
+    if (!raw) return
+
+    const n = Number.parseInt(raw, 10)
+    if (!Number.isFinite(n)) return
+    const idx = n - 1
+    if (idx < 0 || idx >= previewData.chunks.length) return
+
+    const key = `${previewData.filename}::${raw}`
+    if (deepLinkAppliedKeyRef.current === key) return
+    deepLinkAppliedKeyRef.current = key
+
+    setSelectedChunkIndex(idx)
+  }, [previewData?.chunks?.length, previewData?.filename, searchParams, selectedChunkIndex])
+
+  // Sync selectedChunkIndex -> URL param (best-effort).
+  // Important: avoid clobbering inbound deep links before we have applied them.
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+
+    const current = (searchParams.get('chunk') || '').trim()
+    const next = selectedChunkIndex != null ? String(selectedChunkIndex + 1) : ''
+
+    // Keep ref in sync when URL already matches state.
+    if (current === next) {
+      lastSyncedChunkParamRef.current = next
+      return
+    }
+
+    // On initial load, `current` may come from a deep-link. Do not delete it just because
+    // selection is still null (preview might not be ready yet).
+    if (!next && current && current !== lastSyncedChunkParamRef.current) return
+
+    const params = new URLSearchParams(searchParams.toString())
+    if (next) params.set('chunk', next)
+    else params.delete('chunk')
+
+    lastSyncedChunkParamRef.current = next
+
+    const qs = params.toString()
+    const path = window.location.pathname || '/chunk-preview'
+    router.replace(`${path}${qs ? `?${qs}` : ''}`)
+  }, [router, searchParams, selectedChunkIndex])
 
   useEffect(() => {
     if (typeof window === 'undefined') return

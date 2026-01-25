@@ -38,23 +38,36 @@ import { ChunkCard } from '../../chunk-card'
 import { ChunkInspectorDialog } from '../../chunk-inspector-dialog'
 import type { ChunkPreviewItem } from '@/types'
 import { computeCoverageSignals, computeRoleIndices, fnv1a32, roughEstimateTokens } from '@/components/chunk-preview/utils/review-signals'
+import { getChunkSectionPath } from '@/components/chunk-preview/utils/sections'
+import { buildChunkSearchIndex, searchChunkIndex, type ChunkSearchResult } from '@/components/chunk-preview/utils/retrieval-search'
 
 const QUERY_DEBOUNCE_MS = 150
 type SortMode = 'index' | 'length_desc' | 'length_asc'
 type ViewMode = 'flat' | 'hierarchy'
+type GroupMode = 'none' | 'section'
 const PAGE_ALL_VALUE = '__mimirq_page_all__'
 const PAGE_UNKNOWN_VALUE = '__mimirq_page_unknown__'
+const SECTION_ALL_VALUE = '__mimirq_section_all__'
+const SECTION_NONE_VALUE = '__mimirq_section_none__'
 
-type DisplayRow = {
-  chunk: ChunkPreviewItem
-  index: number
-  indent: 0 | 1
-  groupKey?: string
-  role?: 'parent' | 'child' | 'solo'
-  childCountTotal?: number
-  childCountVisible?: number
-  isContext?: boolean
-}
+type DisplayRow =
+  | {
+      kind: 'chunk'
+      chunk: ChunkPreviewItem
+      index: number
+      indent: 0 | 1
+      groupKey?: string
+      role?: 'parent' | 'child' | 'solo'
+      childCountTotal?: number
+      childCountVisible?: number
+      isContext?: boolean
+    }
+  | {
+      kind: 'section'
+      key: string
+      label: string
+      count: number
+    }
 
 function isEditableTarget(target: EventTarget | null) {
   const el = target as HTMLElement | null
@@ -86,8 +99,12 @@ export function ChunkList() {
   const [query, setQuery] = useState('')
   const [sortMode, setSortMode] = useState<SortMode>('index')
   const [viewMode, setViewMode] = useState<ViewMode>('flat')
+  const [groupMode, setGroupMode] = useState<GroupMode>('none')
   const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({})
   const [pageFilter, setPageFilter] = useState<string>(PAGE_ALL_VALUE)
+  const [sectionFilter, setSectionFilter] = useState<string>(SECTION_ALL_VALUE)
+  const [retrieveOpen, setRetrieveOpen] = useState(false)
+  const [retrieveQuery, setRetrieveQuery] = useState('')
   const [minLen, setMinLen] = useState<number>(0)
   const [maxLen, setMaxLen] = useState<number>(0)
   const [onlyShort, setOnlyShort] = useState(false)
@@ -103,6 +120,7 @@ export function ChunkList() {
 
   const isParentChildStrategy = previewData?.chunk_strategy === 'parent_child'
   const isHierarchyView = isParentChildStrategy && viewMode === 'hierarchy'
+  const isSectionView = groupMode === 'section' && !isHierarchyView
 
   useEffect(() => {
     const t = window.setTimeout(() => setQuery(queryInput), QUERY_DEBOUNCE_MS)
@@ -111,10 +129,14 @@ export function ChunkList() {
 
   useEffect(() => {
     setPageFilter(PAGE_ALL_VALUE)
+    setSectionFilter(SECTION_ALL_VALUE)
     setQueryInput('')
     setQuery('')
     setSortMode('index')
     setViewMode('flat')
+    setGroupMode('none')
+    setRetrieveOpen(false)
+    setRetrieveQuery('')
     setCollapsedGroups({})
     setMinLen(0)
     setMaxLen(0)
@@ -179,6 +201,36 @@ export function ChunkList() {
       }
     })
   }, [previewData?.chunks, chunkOverrides])
+
+  const sectionOptions = useMemo(() => {
+    const chunks = effectiveChunks || []
+    const seen = new Set<string>()
+    const list: string[] = []
+    let hasNone = false
+    for (const c of chunks) {
+      const sec = getChunkSectionPath(c)
+      if (!sec) {
+        hasNone = true
+        continue
+      }
+      if (seen.has(sec)) continue
+      seen.add(sec)
+      list.push(sec)
+    }
+    return { list, hasNone }
+  }, [effectiveChunks])
+
+  const retrievalIndex = useMemo(() => {
+    if (!retrieveOpen) return null
+    return buildChunkSearchIndex(effectiveChunks)
+  }, [effectiveChunks, retrieveOpen])
+
+  const retrievalResults: ChunkSearchResult[] = useMemo(() => {
+    if (!retrieveOpen || !retrievalIndex) return []
+    const q = retrieveQuery.trim()
+    if (!q) return []
+    return searchChunkIndex(retrievalIndex, q, { limit: 10 })
+  }, [retrieveOpen, retrieveQuery, retrievalIndex])
 
   const duplicateIndices = useMemo(() => {
     const dups = new Set<number>()
@@ -255,6 +307,15 @@ export function ChunkList() {
           if (String(chunk.page_number ?? '') !== pageFilter) return false
         }
 
+        const sectionPath = getChunkSectionPath(chunk)
+        if (sectionFilter === SECTION_ALL_VALUE) {
+          // pass
+        } else if (sectionFilter === SECTION_NONE_VALUE) {
+          if (sectionPath) return false
+        } else {
+          if (!sectionPath || sectionPath !== sectionFilter) return false
+        }
+
         const contentOk = q ? (chunk.content || '').toLowerCase().includes(q) : true
         if (!contentOk) return false
 
@@ -281,6 +342,7 @@ export function ChunkList() {
   }, [
     effectiveChunks,
     pageFilter,
+    sectionFilter,
     query,
     sortMode,
     minLen,
@@ -305,12 +367,62 @@ export function ChunkList() {
   const displayRows: DisplayRow[] = useMemo(() => {
     if (!effectiveChunks.length) return []
     if (!isHierarchyView) {
-      return flatFilteredChunks.map(({ chunk, index }) => ({ chunk, index, indent: 0, role: 'solo' }))
+      if (groupMode !== 'section') {
+        return flatFilteredChunks.map(({ chunk, index }) => ({
+          kind: 'chunk',
+          chunk,
+          index,
+          indent: 0,
+          role: 'solo',
+        }))
+      }
+
+      const groupsInOrder: string[] = []
+      const groups = new Map<
+        string,
+        {
+          label: string
+          items: Array<{ chunk: ChunkPreviewItem; index: number }>
+        }
+      >()
+
+      for (const item of flatFilteredChunks) {
+        const sec = getChunkSectionPath(item.chunk)
+        const label = sec || 'No section'
+        const key = sec ? `sec:${sec}` : `sec:${SECTION_NONE_VALUE}`
+        let g = groups.get(key)
+        if (!g) {
+          g = { label, items: [] }
+          groups.set(key, g)
+          groupsInOrder.push(key)
+        }
+        g.items.push(item)
+      }
+
+      const rows: DisplayRow[] = []
+      for (const key of groupsInOrder) {
+        const g = groups.get(key)
+        if (!g) continue
+        rows.push({ kind: 'section', key, label: g.label, count: g.items.length })
+        if (Boolean(collapsedGroups[key])) continue
+        for (const it of g.items) {
+          rows.push({
+            kind: 'chunk',
+            chunk: it.chunk,
+            index: it.index,
+            indent: 1,
+            role: 'solo',
+          })
+        }
+      }
+
+      return rows
     }
 
     const hasActiveFilters =
       Boolean(query.trim()) ||
       pageFilter !== PAGE_ALL_VALUE ||
+      sectionFilter !== SECTION_ALL_VALUE ||
       minLen > 0 ||
       maxLen > 0 ||
       onlyShort ||
@@ -376,6 +488,7 @@ export function ChunkList() {
       const totalChildCount = childIdxs.length
 
       rows.push({
+        kind: 'chunk',
         chunk: effectiveChunks[parentIdx],
         index: parentIdx,
         indent: 0,
@@ -391,6 +504,7 @@ export function ChunkList() {
       for (const childIdx of childIdxs) {
         if (!matchIndexSet.has(childIdx)) continue
         rows.push({
+          kind: 'chunk',
           chunk: effectiveChunks[childIdx],
           index: childIdx,
           indent: 1,
@@ -405,8 +519,10 @@ export function ChunkList() {
     effectiveChunks,
     flatFilteredChunks,
     isHierarchyView,
+    groupMode,
     query,
     pageFilter,
+    sectionFilter,
     minLen,
     maxLen,
     onlyShort,
@@ -422,23 +538,33 @@ export function ChunkList() {
   const rowVirtualizer = useVirtualizer({
     count: displayRows.length,
     getScrollElement: () => scrollRef.current,
-    estimateSize: () => 140,
+    estimateSize: (idx) => (displayRows[idx]?.kind === 'section' ? 44 : 140),
     overscan: 8,
   })
 
   // Keep the selected chunk visible (best effort).
   useEffect(() => {
     if (selectedChunkIndex == null) return
-    const pos = displayRows.findIndex((item) => item.index === selectedChunkIndex)
+    const pos = displayRows.findIndex((item) => item.kind === 'chunk' && item.index === selectedChunkIndex)
     if (pos >= 0) {
       rowVirtualizer.scrollToIndex(pos, { align: 'center' })
     }
   }, [displayRows, rowVirtualizer, selectedChunkIndex])
 
+  const navigableIndices = useMemo(() => {
+    const out: number[] = []
+    for (const row of displayRows) {
+      if (row.kind !== 'chunk') continue
+      out.push(row.index)
+    }
+    return out
+  }, [displayRows])
+
   const matchesLabel = useMemo(() => {
     const hasFilter =
       Boolean(query.trim()) ||
       pageFilter !== PAGE_ALL_VALUE ||
+      sectionFilter !== SECTION_ALL_VALUE ||
       minLen > 0 ||
       maxLen > 0 ||
       onlyShort ||
@@ -454,6 +580,7 @@ export function ChunkList() {
     previewData?.total_chunks,
     query,
     pageFilter,
+    sectionFilter,
     minLen,
     maxLen,
     onlyShort,
@@ -467,13 +594,22 @@ export function ChunkList() {
   const showVirtualized = Boolean(previewData?.chunks && displayRows.length > 0)
 
   const expandableGroupKeys = useMemo(() => {
-    if (!isHierarchyView) return []
     const out: string[] = []
-    for (const row of displayRows) {
-      if (row.indent === 0 && row.groupKey && (row.childCountTotal || 0) > 0) out.push(row.groupKey)
+    if (isHierarchyView) {
+      for (const row of displayRows) {
+        if (row.kind !== 'chunk') continue
+        if (row.indent === 0 && row.groupKey && (row.childCountTotal || 0) > 0) out.push(row.groupKey)
+      }
+      return out
+    }
+    if (groupMode === 'section') {
+      for (const row of displayRows) {
+        if (row.kind === 'section' && row.count > 0) out.push(row.key)
+      }
+      return out
     }
     return out
-  }, [displayRows, isHierarchyView])
+  }, [displayRows, groupMode, isHierarchyView])
 
   const allGroupsCollapsed = useMemo(() => {
     if (!expandableGroupKeys.length) return false
@@ -536,7 +672,10 @@ export function ChunkList() {
               onValueChange={(value) => {
                 const next = value as ViewMode
                 setViewMode(next)
-                if (next === 'hierarchy') setSortMode('index')
+                if (next === 'hierarchy') {
+                  setSortMode('index')
+                  setGroupMode('none')
+                }
                 if (next !== 'hierarchy') setCollapsedGroups({})
               }}
             >
@@ -549,7 +688,26 @@ export function ChunkList() {
               </SelectContent>
             </Select>
           ) : null}
-          {isHierarchyView && expandableGroupKeys.length > 0 ? (
+          {!isHierarchyView && sectionOptions.list.length > 0 ? (
+            <Select
+              value={groupMode}
+              onValueChange={(value) => {
+                const next = value as GroupMode
+                setGroupMode(next)
+                setCollapsedGroups({})
+                if (next === 'section') setSortMode('index')
+              }}
+            >
+              <SelectTrigger className="h-7 w-[120px] text-[11px] bg-card/80">
+                <SelectValue placeholder="Group" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">No Group</SelectItem>
+                <SelectItem value="section">Section</SelectItem>
+              </SelectContent>
+            </Select>
+          ) : null}
+          {(isHierarchyView || isSectionView) && expandableGroupKeys.length > 0 ? (
             <Button
               type="button"
               variant="ghost"
@@ -569,7 +727,7 @@ export function ChunkList() {
               {allGroupsCollapsed ? 'Expand' : 'Collapse'}
             </Button>
           ) : null}
-          <Select value={sortMode} onValueChange={(value) => setSortMode(value as SortMode)} disabled={isHierarchyView}>
+          <Select value={sortMode} onValueChange={(value) => setSortMode(value as SortMode)} disabled={isHierarchyView || isSectionView}>
             <SelectTrigger className="h-7 w-[140px] text-[11px] bg-card/80">
               <SelectValue placeholder="排序" />
             </SelectTrigger>
@@ -593,6 +751,24 @@ export function ChunkList() {
               ))}
             </SelectContent>
           </Select>
+          {sectionOptions.list.length > 0 || sectionOptions.hasNone ? (
+            <Select value={sectionFilter} onValueChange={(value) => setSectionFilter(value)}>
+              <SelectTrigger className="h-7 w-[160px] text-[11px] bg-card/80">
+                <SelectValue placeholder="Section" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={SECTION_ALL_VALUE}>All sections</SelectItem>
+                {sectionOptions.hasNone ? <SelectItem value={SECTION_NONE_VALUE}>No section</SelectItem> : null}
+                {sectionOptions.list.map((sec) => (
+                  <SelectItem key={sec} value={sec}>
+                    <span className="block max-w-[520px] truncate" title={sec}>
+                      {sec}
+                    </span>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          ) : null}
           <div className="hidden xl:flex items-center gap-1 text-[10px] text-muted-foreground">
             <span className="mr-1">{unit === 'tokens' ? 'Tokens:' : '长度:'}</span>
             <Input
@@ -812,6 +988,17 @@ export function ChunkList() {
               清除锁定
             </Button>
           ) : null}
+          <Button
+            type="button"
+            variant={retrieveOpen ? 'secondary' : 'ghost'}
+            size="sm"
+            className="h-7 px-2 text-[11px]"
+            onClick={() => setRetrieveOpen((v) => !v)}
+            title="Retrieve (ranked local search)"
+          >
+            <Search className="h-3.5 w-3.5 mr-1" />
+            Retrieve{retrieveQuery.trim() ? ` ${retrievalResults.length}` : ''}
+          </Button>
           {matchesLabel ? <span className="text-[10px] text-muted-foreground font-mono">{matchesLabel}</span> : null}
           <div className="hidden lg:flex items-center gap-2 text-[10px] text-muted-foreground">
             <MousePointer2 className="w-3 h-3" />
@@ -823,6 +1010,78 @@ export function ChunkList() {
           </div>
         </div>
       </div>
+
+      {retrieveOpen ? (
+        <div className="border-b border-border/60 bg-card/70 px-4 py-3">
+          <div className="flex items-center gap-2">
+            <Search className="w-4 h-4 text-muted-foreground" />
+            <Input
+              value={retrieveQuery}
+              onChange={(e) => {
+                const v = e.target.value
+                setRetrieveQuery(v)
+                if (v.trim()) setRetrieveOpen(true)
+              }}
+              placeholder="Retrieval query (ranked)…"
+              className="h-8 text-[11px] bg-card/80"
+            />
+            {retrieveQuery ? (
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="h-8 px-2 text-[11px]"
+                onClick={() => setRetrieveQuery('')}
+              >
+                Clear
+              </Button>
+            ) : null}
+          </div>
+
+          {retrieveQuery.trim() ? (
+            <div className="mt-2 space-y-2">
+              {retrievalResults.length > 0 ? (
+                retrievalResults.map((r) => (
+                  <button
+                    key={`${r.index}-${r.score}`}
+                    type="button"
+                    className="w-full text-left rounded-xl border border-border/60 bg-card/50 hover:bg-card/80 px-3 py-2 transition-colors focus-ring"
+                    onClick={() => setSelectedChunkIndex(r.index)}
+                    title={r.section}
+                  >
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded bg-primary/10 text-primary border border-primary/20">
+                        #{r.index + 1}
+                      </span>
+                      {disabledIndices.has(r.index) ? (
+                        <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-muted/60 text-muted-foreground border border-border/60">
+                          SKIP
+                        </span>
+                      ) : null}
+                      {r.page_number != null ? (
+                        <span className="text-[10px] text-muted-foreground">P.{r.page_number}</span>
+                      ) : null}
+                      {r.section ? (
+                        <span className="min-w-0 flex-1 text-[10px] text-muted-foreground truncate">{r.section}</span>
+                      ) : (
+                        <span className="min-w-0 flex-1" />
+                      )}
+                      <span className="text-[10px] text-muted-foreground font-mono">{r.score.toFixed(2)}</span>
+                    </div>
+                    <div className="mt-1 text-[11px] text-muted-foreground line-clamp-2">{r.snippet}</div>
+                  </button>
+                ))
+              ) : (
+                <div className="text-[11px] text-muted-foreground">No results.</div>
+              )}
+            </div>
+          ) : (
+            <div className="mt-2 text-[11px] text-muted-foreground">
+              Type a query to simulate retrieval ranking (local MiniSearch; best-effort).
+            </div>
+          )}
+        </div>
+      ) : null}
 
       {selectedChunk ? (
         <div className="border-b border-border/60 bg-card/70 px-4 py-3">
@@ -943,14 +1202,14 @@ export function ChunkList() {
         onKeyDown={(e) => {
           if (!previewData?.chunks?.length) return
           if (isEditableTarget(e.target)) return
-          if (displayRows.length === 0) return
+          if (navigableIndices.length === 0) return
 
           const currentPos =
             selectedChunkIndex == null
               ? -1
-              : displayRows.findIndex((item) => item.index === selectedChunkIndex)
+              : navigableIndices.indexOf(selectedChunkIndex)
 
-          const clamp = (n: number) => Math.max(0, Math.min(displayRows.length - 1, n))
+          const clamp = (n: number) => Math.max(0, Math.min(navigableIndices.length - 1, n))
 
           if (e.key === '/') {
             e.preventDefault()
@@ -959,25 +1218,25 @@ export function ChunkList() {
           }
           if (e.key === 'Home' || (e.key.toLowerCase() === 'g' && !e.shiftKey)) {
             e.preventDefault()
-            setSelectedChunkIndex(displayRows[0]?.index ?? null)
+            setSelectedChunkIndex(navigableIndices[0] ?? null)
             return
           }
           if (e.key === 'End' || (e.key.toLowerCase() === 'g' && e.shiftKey)) {
             e.preventDefault()
-            setSelectedChunkIndex(displayRows[displayRows.length - 1]?.index ?? null)
+            setSelectedChunkIndex(navigableIndices[navigableIndices.length - 1] ?? null)
             return
           }
 
           if (e.key === 'ArrowDown' || e.key.toLowerCase() === 'j') {
             e.preventDefault()
             const nextPos = clamp(currentPos < 0 ? 0 : currentPos + 1)
-            setSelectedChunkIndex(displayRows[nextPos]?.index ?? null)
+            setSelectedChunkIndex(navigableIndices[nextPos] ?? null)
             return
           }
           if (e.key === 'ArrowUp' || e.key.toLowerCase() === 'k') {
             e.preventDefault()
             const nextPos = clamp(currentPos < 0 ? 0 : currentPos - 1)
-            setSelectedChunkIndex(displayRows[nextPos]?.index ?? null)
+            setSelectedChunkIndex(navigableIndices[nextPos] ?? null)
             return
           }
           if (e.key === 'Escape') {
@@ -1001,16 +1260,53 @@ export function ChunkList() {
               rowVirtualizer.getVirtualItems().map((virtualRow) => {
                 const item = displayRows[virtualRow.index]
                 if (!item) return null
+
+                if (item.kind === 'section') {
+                  const groupKey = item.key
+                  const isCollapsed = Boolean(collapsedGroups[groupKey])
+                  return (
+                    <div
+                      key={virtualRow.key}
+                      data-index={virtualRow.index}
+                      ref={rowVirtualizer.measureElement}
+                      style={{
+                        position: 'absolute',
+                        top: 0,
+                        left: 0,
+                        width: '100%',
+                        transform: `translateY(${virtualRow.start}px)`,
+                      }}
+                      className="pb-2"
+                    >
+                      <div className="flex items-center gap-2 px-2 py-1.5 rounded-xl border border-border/60 bg-muted/40">
+                        <button
+                          type="button"
+                          className="h-6 w-6 inline-flex items-center justify-center rounded-md border border-border/60 bg-card/70 text-muted-foreground hover:text-foreground hover:border-primary/30 hover:bg-card/90 transition-colors focus-ring"
+                          onClick={() => setCollapsedGroups((prev) => ({ ...prev, [groupKey]: !Boolean(prev[groupKey]) }))}
+                          aria-label={isCollapsed ? 'Expand section' : 'Collapse section'}
+                          title={isCollapsed ? 'Expand section' : 'Collapse section'}
+                        >
+                          {isCollapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                        </button>
+                        <span className="min-w-0 flex-1 text-[11px] font-semibold truncate" title={item.label}>
+                          {item.label}
+                        </span>
+                        <span className="text-[10px] text-muted-foreground font-mono">{item.count}</span>
+                      </div>
+                    </div>
+                  )
+                }
+
                 const { chunk, index, indent } = item
-                 const isHovered = hoveredChunkIndex === index
-                 const isSelected = selectedChunkIndex === index
-                 const isShort = shortIndices.has(index)
-                 const isDuplicate = duplicateIndices.has(index)
-                 const isEdited = editedIndices.has(index)
-                 const gapBefore = coverageSignals.gapBeforeByIndex.get(index)
-                 const overlapPrev = coverageSignals.overlapPrevByIndex.get(index)
-                 const isGap = coverageSignals.gapIndices.has(index)
-                 const isOverlap = coverageSignals.overlapIndices.has(index)
+                const isHovered = hoveredChunkIndex === index
+                const isSelected = selectedChunkIndex === index
+                const isShort = shortIndices.has(index)
+                const isDuplicate = duplicateIndices.has(index)
+                const isEdited = editedIndices.has(index)
+                const gapBefore = coverageSignals.gapBeforeByIndex.get(index)
+                const overlapPrev = coverageSignals.overlapPrevByIndex.get(index)
+                const isGap = coverageSignals.gapIndices.has(index)
+                const isOverlap = coverageSignals.overlapIndices.has(index)
 
                 const dimContext = Boolean(item.isContext) && !isHovered && !isSelected
                 const canCollapse =
@@ -1078,7 +1374,7 @@ export function ChunkList() {
                     <div
                       className={[
                         'min-w-0 flex-1',
-                        isHierarchyView && indent === 1 ? 'pl-3 border-l border-border/50' : '',
+                        (isHierarchyView || isSectionView) && indent === 1 ? 'pl-3 border-l border-border/50' : '',
                         dimContext ? 'opacity-75' : '',
                       ]
                         .filter(Boolean)

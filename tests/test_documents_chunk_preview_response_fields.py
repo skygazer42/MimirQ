@@ -161,6 +161,84 @@ def test_documents_chunk_preview_separator_ignores_overlap(monkeypatch):  # noqa
     assert any("ignores chunk_overlap" in w for w in (body.get("warnings") or []))
 
 
+def test_documents_chunk_preview_review_signals_optional(monkeypatch):  # noqa: ANN001
+    """include_review_signals should gate extra per-chunk signal fields."""
+    from app.rag.chunking.factory import chunker_factory
+    from langchain_core.documents import Document
+
+    client = _build_client(monkeypatch)
+
+    class _Chunker:
+        def split_documents(self, documents):  # noqa: ANN001, ANN202
+            # Two overlapping duplicate chunks.
+            return [
+                Document(page_content="a" * 200, metadata={"page": 1, "start_char": 0}),
+                Document(page_content="a" * 200, metadata={"page": 1, "start_char": 50}),
+            ]
+
+    monkeypatch.setattr(chunker_factory, "get_chunker", lambda *_, **__: _Chunker(), raising=True)
+
+    res0 = client.post(
+        "/api/v1/documents/chunk-preview?chunk_size=100&chunk_overlap=10",
+        data={"parser_backend": "auto", "chunk_strategy": "langchain_recursive"},
+        files={"file": ("doc.txt", b"hello world", "text/plain")},
+    )
+    assert res0.status_code == 200
+    body0 = res0.json()
+    assert body0.get("review_signals") is None
+
+    res = client.post(
+        "/api/v1/documents/chunk-preview?chunk_size=100&chunk_overlap=10&include_review_signals=true",
+        data={"parser_backend": "auto", "chunk_strategy": "langchain_recursive"},
+        files={"file": ("doc.txt", b"hello world", "text/plain")},
+    )
+    assert res.status_code == 200
+    body = res.json()
+    rs = body.get("review_signals")
+    assert isinstance(rs, dict)
+    assert rs.get("basis") == "all"
+    assert rs.get("short_indices") == []
+    assert rs.get("duplicate_indices") == [0, 1]
+    assert rs.get("overlap_indices") == [1]
+    assert rs.get("gap_indices") == []
+    assert (rs.get("overlap_prev_by_index") or {}).get("1") == 150
+
+
+def test_documents_chunk_preview_review_signals_parent_child_basis(monkeypatch):  # noqa: ANN001
+    from app.rag.chunking.factory import chunker_factory
+    from langchain_core.documents import Document
+
+    client = _build_client(monkeypatch)
+
+    class _Chunker:
+        def split_documents(self, documents):  # noqa: ANN001, ANN202
+            return [
+                Document(
+                    page_content="p" * 200,
+                    metadata={"page": 1, "start_char": 0, "chunk_role": "parent", "parent_id": "p1"},
+                ),
+                Document(
+                    page_content="c" * 100,
+                    metadata={"page": 1, "start_char": 50, "chunk_role": "child", "parent_id": "p1"},
+                ),
+            ]
+
+    monkeypatch.setattr(chunker_factory, "get_chunker", lambda *_, **__: _Chunker(), raising=True)
+
+    res = client.post(
+        "/api/v1/documents/chunk-preview?chunk_size=1000&chunk_overlap=200&include_review_signals=true",
+        data={"parser_backend": "auto", "chunk_strategy": "parent_child"},
+        files={"file": ("doc.txt", b"hello world", "text/plain")},
+    )
+    assert res.status_code == 200
+    body = res.json()
+    rs = body.get("review_signals")
+    assert isinstance(rs, dict)
+    assert rs.get("basis") == "child"
+    assert rs.get("gap_indices") == [1]
+    assert (rs.get("gap_before_by_index") or {}).get("1") == 50
+
+
 def test_documents_chunk_preview_can_disable_original_text(monkeypatch):  # noqa: ANN001
     client = _build_client(monkeypatch)
 

@@ -357,6 +357,19 @@ class ChunkPreviewQualityGate(BaseModel):
     reasons: List[str] = Field(default_factory=list)
 
 
+class ChunkPreviewReviewSignals(BaseModel):
+    """Optional per-chunk review signals for enterprise tuning/auditing."""
+
+    basis: Literal["all", "child"] = "all"
+    short_indices: List[int] = Field(default_factory=list)
+    duplicate_indices: List[int] = Field(default_factory=list)
+    gap_indices: List[int] = Field(default_factory=list)
+    overlap_indices: List[int] = Field(default_factory=list)
+    # Optional details (best-effort; keys are chunk indices).
+    gap_before_by_index: Dict[int, int] = Field(default_factory=dict)
+    overlap_prev_by_index: Dict[int, int] = Field(default_factory=dict)
+
+
 class ChunkPreviewResponse(BaseModel):
     """Chunk preview response."""
     filename: str
@@ -388,6 +401,8 @@ class ChunkPreviewResponse(BaseModel):
     auto_selected_strategy: Optional[str] = None
     # Non-fatal warnings for UI (e.g. ignored overlap for separator strategy).
     warnings: List[str] = Field(default_factory=list)
+    # Optional per-chunk review signals (gated by include_review_signals).
+    review_signals: Optional[ChunkPreviewReviewSignals] = None
     # Best-effort quality gate and actionable recommendations.
     quality_gate: Optional[ChunkPreviewQualityGate] = None
     recommendations: List[str] = Field(default_factory=list)
