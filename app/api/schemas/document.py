@@ -307,6 +307,10 @@ class ChunkPreviewParams(BaseModel):
     chunk_size: int = Field(default=1000, ge=50, le=4000, description="Chunk size")
     chunk_overlap: int = Field(default=200, ge=0, le=1000, description="Overlap size")
     unit: str = Field(default="chars", description="chunk_size/chunk_overlap unit: chars | tokens")
+    strategy_params: Dict[str, Any] = Field(
+        default_factory=dict,
+        description="Best-effort strategy-specific params for reproducibility (e.g. separator/parent_child).",
+    )
 
 
 class ChunkPreviewItem(BaseModel):

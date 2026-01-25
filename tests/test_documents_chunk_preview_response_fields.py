@@ -45,7 +45,7 @@ def _build_client(monkeypatch, *, parsed_pages: int = 1):  # noqa: ANN001
             # Keep test deterministic: treat parsed "pages" as chunks.
             return list(documents or [])
 
-    monkeypatch.setattr(chunker_factory, "get_chunker", lambda strategy, chunk_size, chunk_overlap: _Chunker(), raising=True)
+    monkeypatch.setattr(chunker_factory, "get_chunker", lambda strategy, chunk_size, chunk_overlap, **_: _Chunker(), raising=True)
 
     async def _fake_run_subprocess_worker(*, tenant_id, payload, disconnect_check, timeout_sec):  # noqa: ANN001, ANN202
         assert payload.get("action") == "parse_documents"
@@ -299,3 +299,78 @@ def test_documents_chunk_preview_by_sha_hit(monkeypatch):  # noqa: ANN001
     assert body.get("parse_duration_ms") == 0
     assert body.get("upload_duration_ms") == 0
     assert body.get("file_sha256") == sha
+
+
+def test_documents_chunk_preview_strategy_params_for_separator(monkeypatch):  # noqa: ANN001
+    client = _build_client(monkeypatch)
+
+    res = client.post(
+        "/api/v1/documents/chunk-preview?chunk_size=100&chunk_overlap=10",
+        data={
+            "parser_backend": "auto",
+            "chunk_strategy": "separator",
+            "separator_preset": "paragraph",
+            "keep_separator": "true",
+            "separator_max_chunk_size": "0",
+        },
+        files={"file": ("doc.txt", b"hello world", "text/plain")},
+    )
+    assert res.status_code == 200
+    body = res.json()
+    assert isinstance(body.get("params", {}).get("strategy_params"), dict)
+    sp = body["params"]["strategy_params"]
+    assert sp.get("separator_preset") == "paragraph"
+    assert isinstance(sp.get("separator"), str) and sp.get("separator")
+    assert sp.get("keep_separator") in (True, False)
+
+
+def test_documents_chunk_preview_strategy_params_for_parent_child(monkeypatch):  # noqa: ANN001
+    from app.rag.chunking.factory import chunker_factory
+
+    client = _build_client(monkeypatch)
+
+    captured = {}
+
+    class _PCChunker:
+        def __init__(self, child_ratio: float, min_child_size: int):  # noqa: ANN001
+            self.child_ratio = float(child_ratio)
+            self.min_child_size = int(min_child_size)
+            # Deterministic "effective" params for API echo.
+            self.child_size = int(min_child_size)
+            self.child_overlap = 0
+
+        def split_documents(self, documents):  # noqa: ANN001, ANN202
+            return list(documents or [])
+
+    def _get_chunker(strategy, chunk_size, chunk_overlap, **kwargs):  # noqa: ANN001, ANN202
+        captured["strategy"] = strategy
+        captured["chunk_size"] = chunk_size
+        captured["chunk_overlap"] = chunk_overlap
+        captured["kwargs"] = dict(kwargs)
+        return _PCChunker(
+            child_ratio=float(kwargs.get("child_ratio")),
+            min_child_size=int(kwargs.get("min_child_size")),
+        )
+
+    monkeypatch.setattr(chunker_factory, "get_chunker", _get_chunker, raising=True)
+    res = client.post(
+        "/api/v1/documents/chunk-preview?chunk_size=1000&chunk_overlap=100",
+        data={
+            "parser_backend": "auto",
+            "chunk_strategy": "parent_child",
+            "child_ratio": "0.25",
+            "min_child_size": "300",
+        },
+        files={"file": ("doc.txt", b"hello world", "text/plain")},
+    )
+    assert res.status_code == 200
+    assert captured.get("strategy") == "parent_child"
+    assert captured.get("kwargs", {}).get("child_ratio") == 0.25
+    assert captured.get("kwargs", {}).get("min_child_size") == 300
+
+    body = res.json()
+    sp = body["params"]["strategy_params"]
+    assert sp.get("child_ratio") == 0.25
+    assert sp.get("min_child_size") == 300
+    assert sp.get("child_size") == 300
+    assert sp.get("child_overlap") == 0
