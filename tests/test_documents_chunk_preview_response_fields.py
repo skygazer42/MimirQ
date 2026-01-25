@@ -94,7 +94,16 @@ def test_documents_chunk_preview_returns_tokens_est_and_original_text_flags(monk
         files={"file": ("doc.txt", b"hello world", "text/plain")},
     )
     assert res.status_code == 200
+    assert isinstance(res.headers.get("server-timing"), str) and "total" in res.headers.get("server-timing", "")
     body = res.json()
+    assert isinstance(body.get("file_sha256"), str) and len(body["file_sha256"]) == 64
+    assert body.get("parse_cache_hit") in (True, False)
+    assert body.get("preview_duration_ms") is None or isinstance(body.get("preview_duration_ms"), int)
+    assert body.get("upload_duration_ms") is None or isinstance(body.get("upload_duration_ms"), int)
+    assert body.get("parse_duration_ms") is None or isinstance(body.get("parse_duration_ms"), int)
+    assert isinstance(body.get("governance_duration_ms"), int)
+    assert isinstance(body.get("chunking_duration_ms"), int)
+    assert isinstance(body.get("stats_duration_ms"), int)
     assert body["params"]["unit"] == "tokens"
     assert body["original_text_included"] is True
     assert body["original_text_truncated"] is False
@@ -182,3 +191,40 @@ def test_documents_chunk_preview_truncates_chunks_when_max_chunks(monkeypatch): 
     assert body["total_chunks"] == 2
     assert body["total_chunks_full"] == 5
     assert len(body["chunks"]) == 2
+
+
+def test_documents_chunk_preview_parse_cache_hit(monkeypatch):  # noqa: ANN001
+    from app.core.config import settings
+    from app.services.preview_cache import preview_parse_cache
+
+    preview_parse_cache.clear()
+
+    fixed_tenant_id = uuid.uuid4()
+    client = _build_client(monkeypatch)
+    client.app.dependency_overrides[get_tenant_id] = lambda: fixed_tenant_id
+
+    monkeypatch.setattr(settings, "PREVIEW_PARSE_CACHE_ENABLED", True, raising=False)
+    monkeypatch.setattr(settings, "PREVIEW_PARSE_CACHE_TTL_SEC", 600, raising=False)
+    monkeypatch.setattr(settings, "PREVIEW_PARSE_CACHE_MAX_ENTRIES", 32, raising=False)
+    monkeypatch.setattr(settings, "PREVIEW_PARSE_CACHE_MAX_DOC_CHARS", 2_000_000, raising=False)
+
+    payload = b"hello world"
+    res1 = client.post(
+        "/api/v1/documents/chunk-preview?chunk_size=100&chunk_overlap=10",
+        data={"parser_backend": "auto", "chunk_strategy": "langchain_recursive"},
+        files={"file": ("doc.txt", payload, "text/plain")},
+    )
+    assert res1.status_code == 200
+    body1 = res1.json()
+    assert body1.get("parse_cache_hit") is False
+
+    res2 = client.post(
+        "/api/v1/documents/chunk-preview?chunk_size=100&chunk_overlap=10",
+        data={"parser_backend": "auto", "chunk_strategy": "langchain_recursive"},
+        files={"file": ("doc.txt", payload, "text/plain")},
+    )
+    assert res2.status_code == 200
+    body2 = res2.json()
+    assert body2.get("parse_cache_hit") is True
+    assert isinstance(body2.get("parse_cache_age_ms"), int) and body2["parse_cache_age_ms"] >= 0
+    assert body2.get("parse_duration_ms") == 0

@@ -136,6 +136,12 @@ class Settings(BaseSettings):
     MAX_FILE_SIZE: int = 50_000_000
     # Max JSON size (chars) for `pipeline` form field on multipart endpoints (documents upload/preview).
     PIPELINE_FORM_JSON_MAX_CHARS: int = 200_000
+    # Best-effort in-process parse cache for interactive preview endpoints (e.g. /documents/chunk-preview).
+    # Note: cache is per-worker; set to False/0 to disable.
+    PREVIEW_PARSE_CACHE_ENABLED: bool = True
+    PREVIEW_PARSE_CACHE_TTL_SEC: int = 600
+    PREVIEW_PARSE_CACHE_MAX_ENTRIES: int = 32
+    PREVIEW_PARSE_CACHE_MAX_DOC_CHARS: int = 2_000_000
     # ZIP extraction safety limits (for Markdown+images archives).
     ZIP_MAX_FILES: int = 2000
     ZIP_MAX_TOTAL_UNCOMPRESSED_BYTES: int = 500_000_000

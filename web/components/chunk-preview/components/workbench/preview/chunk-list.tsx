@@ -5,13 +5,14 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useVirtualizer } from '@tanstack/react-virtual'
-import { Layers, MousePointer2, Loader2, AlertCircle, Search, CornerDownLeft, Copy, Braces, Code2, Quote, X } from 'lucide-react'
+import { Layers, MousePointer2, Loader2, AlertCircle, Search, CornerDownLeft, Copy, Braces, Code2, Quote, X, Pencil } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { useChunkPreview } from '@/components/chunk-preview/context'
 import { ChunkCard } from '../../chunk-card'
+import { ChunkInspectorDialog } from '../../chunk-inspector-dialog'
 import type { ChunkPreviewItem } from '@/types'
 
 const QUERY_DEBOUNCE_MS = 150
@@ -27,13 +28,33 @@ function isEditableTarget(target: EventTarget | null) {
   return el.isContentEditable
 }
 
+function roughEstimateTokens(text: string) {
+  const raw = (text || '').trim()
+  if (!raw) return 0
+  // Fast + coarse: ~4 chars/token (works OK for Latin; underestimates for CJK).
+  return Math.max(1, Math.ceil(raw.length / 4))
+}
+
+function fnv1a32(input: string) {
+  // Non-crypto, fast hash for UI duplicate detection.
+  let h = 0x811c9dc5
+  for (let i = 0; i < input.length; i += 1) {
+    h ^= input.charCodeAt(i)
+    h = Math.imul(h, 0x01000193)
+  }
+  return (h >>> 0).toString(16).padStart(8, '0')
+}
+
 export function ChunkList() {
   const {
     previewData,
+    chunkOverrides,
     hoveredChunkIndex,
     selectedChunkIndex,
     setHoveredChunkIndex,
     setSelectedChunkIndex,
+    updateChunkOverride,
+    clearChunkOverride,
     showOriginalPanel,
     isLoading,
     error,
@@ -46,6 +67,11 @@ export function ChunkList() {
   const [pageFilter, setPageFilter] = useState<string>(PAGE_ALL_VALUE)
   const [minLen, setMinLen] = useState<number>(0)
   const [maxLen, setMaxLen] = useState<number>(0)
+  const [onlyShort, setOnlyShort] = useState(false)
+  const [onlyDuplicate, setOnlyDuplicate] = useState(false)
+  const [onlyEdited, setOnlyEdited] = useState(false)
+  const [inspectorOpen, setInspectorOpen] = useState(false)
+  const [inspectorIndex, setInspectorIndex] = useState<number | null>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
   const searchRef = useRef<HTMLInputElement>(null)
 
@@ -61,6 +87,11 @@ export function ChunkList() {
     setSortMode('index')
     setMinLen(0)
     setMaxLen(0)
+    setOnlyShort(false)
+    setOnlyDuplicate(false)
+    setOnlyEdited(false)
+    setInspectorOpen(false)
+    setInspectorIndex(null)
   }, [previewData?.filename])
 
   const pageOptions = useMemo(() => {
@@ -75,10 +106,66 @@ export function ChunkList() {
     return { list, hasUnknown }
   }, [previewData?.chunks])
 
+  const editedIndices = useMemo(() => {
+    const out = new Set<number>()
+    for (const k of Object.keys(chunkOverrides || {})) {
+      const n = Number(k)
+      if (Number.isFinite(n)) out.add(n)
+    }
+    return out
+  }, [chunkOverrides])
+
+  const effectiveChunks = useMemo(() => {
+    const raw = previewData?.chunks || []
+    if (!raw.length) return []
+    return raw.map((chunk) => {
+      const idx = typeof chunk.index === 'number' ? chunk.index : raw.indexOf(chunk)
+      const override = chunkOverrides?.[idx]
+      if (!override) return chunk
+      const content = String(override.content ?? chunk.content ?? '')
+      const metadata = (override.metadata ?? chunk.metadata ?? {}) as Record<string, any>
+      return {
+        ...chunk,
+        content,
+        metadata,
+        length: content.length,
+        tokens_est: roughEstimateTokens(content),
+      }
+    })
+  }, [previewData?.chunks, chunkOverrides])
+
+  const duplicateIndices = useMemo(() => {
+    const dups = new Set<number>()
+    const seen = new Map<string, number>()
+    for (const c of effectiveChunks) {
+      const trimmed = String(c?.content ?? '').trim()
+      if (!trimmed) continue
+      const key = fnv1a32(trimmed)
+      const prev = seen.get(key)
+      if (prev != null) {
+        dups.add(prev)
+        dups.add(Number(c.index))
+      } else {
+        seen.set(key, Number(c.index))
+      }
+    }
+    return dups
+  }, [effectiveChunks])
+
+  const shortIndices = useMemo(() => {
+    const threshold = unit === 'tokens' ? 40 : 120
+    const out = new Set<number>()
+    for (const c of effectiveChunks) {
+      const len = unit === 'tokens' ? Number(c.tokens_est || 0) : Number(c.length || 0)
+      if (len > 0 && len < threshold) out.add(Number(c.index))
+    }
+    return out
+  }, [effectiveChunks, unit])
+
   const selectedChunk = useMemo(() => {
-    if (!previewData?.chunks || selectedChunkIndex == null) return null
-    return previewData.chunks[selectedChunkIndex] || null
-  }, [previewData?.chunks, selectedChunkIndex])
+    if (!effectiveChunks.length || selectedChunkIndex == null) return null
+    return effectiveChunks[selectedChunkIndex] || null
+  }, [effectiveChunks, selectedChunkIndex])
 
   const selectedChunkLenLabel = useMemo(() => {
     if (!selectedChunk) return null
@@ -87,14 +174,24 @@ export function ChunkList() {
     return tok != null ? `${selectedChunk.length} chars · ${tok} tok` : `${selectedChunk.length} chars`
   }, [selectedChunk, unit])
 
+  const inspectorChunk = useMemo(() => {
+    if (inspectorIndex == null) return null
+    return effectiveChunks[inspectorIndex] || null
+  }, [effectiveChunks, inspectorIndex])
+
+  const inspectorOverrideUpdatedAt = useMemo(() => {
+    if (inspectorIndex == null) return undefined
+    return chunkOverrides?.[inspectorIndex]?.updatedAt
+  }, [chunkOverrides, inspectorIndex])
+
   const filteredChunks = useMemo(() => {
-    if (!previewData?.chunks) return []
+    if (!effectiveChunks.length) return []
     const readLen = (chunk: ChunkPreviewItem) => {
       if (unit === 'tokens') return Number(chunk.tokens_est || 0)
       return Number(chunk.length || 0)
     }
     const q = query.trim().toLowerCase()
-    const base = previewData.chunks
+    const base = effectiveChunks
       .map((chunk: ChunkPreviewItem, index: number) => ({ chunk, index }))
       .filter(({ chunk }: { chunk: ChunkPreviewItem }) => {
         if (pageFilter === PAGE_ALL_VALUE) {
@@ -112,6 +209,10 @@ export function ChunkList() {
         if (minLen > 0 && len < minLen) return false
         if (maxLen > 0 && len > maxLen) return false
 
+        if (onlyShort && !shortIndices.has(Number(chunk.index))) return false
+        if (onlyDuplicate && !duplicateIndices.has(Number(chunk.index))) return false
+        if (onlyEdited && !editedIndices.has(Number(chunk.index))) return false
+
         return true
       })
 
@@ -121,7 +222,21 @@ export function ChunkList() {
       base.sort((a, b) => readLen(a.chunk) - readLen(b.chunk))
     }
     return base
-  }, [previewData, pageFilter, query, sortMode, minLen, maxLen, unit])
+  }, [
+    effectiveChunks,
+    pageFilter,
+    query,
+    sortMode,
+    minLen,
+    maxLen,
+    unit,
+    onlyShort,
+    onlyDuplicate,
+    onlyEdited,
+    shortIndices,
+    duplicateIndices,
+    editedIndices,
+  ])
 
   const rowVirtualizer = useVirtualizer({
     count: filteredChunks.length,
@@ -269,6 +384,41 @@ export function ChunkList() {
               </Button>
             ) : null}
           </div>
+          <div className="hidden xl:flex items-center gap-1">
+            <Button
+              type="button"
+              variant={onlyShort ? 'secondary' : 'ghost'}
+              size="sm"
+              className="h-7 px-2 text-[11px]"
+              onClick={() => setOnlyShort((v) => !v)}
+              title="仅看短块"
+            >
+              <AlertCircle className="h-3.5 w-3.5 mr-1" />
+              短 {shortIndices.size}
+            </Button>
+            <Button
+              type="button"
+              variant={onlyDuplicate ? 'secondary' : 'ghost'}
+              size="sm"
+              className="h-7 px-2 text-[11px]"
+              onClick={() => setOnlyDuplicate((v) => !v)}
+              title="仅看重复块"
+            >
+              <Copy className="h-3.5 w-3.5 mr-1" />
+              重 {duplicateIndices.size}
+            </Button>
+            <Button
+              type="button"
+              variant={onlyEdited ? 'secondary' : 'ghost'}
+              size="sm"
+              className="h-7 px-2 text-[11px]"
+              onClick={() => setOnlyEdited((v) => !v)}
+              title="仅看已编辑"
+            >
+              <Pencil className="h-3.5 w-3.5 mr-1" />
+              改 {editedIndices.size}
+            </Button>
+          </div>
           {selectedChunkIndex != null ? (
             <Button
               type="button"
@@ -313,6 +463,21 @@ export function ChunkList() {
               </div>
             </div>
             <div className="flex items-center gap-1">
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8"
+                onClick={() => {
+                  if (selectedChunkIndex == null) return
+                  setInspectorIndex(selectedChunkIndex)
+                  setInspectorOpen(true)
+                }}
+                aria-label="编辑切片"
+                title="编辑切片"
+              >
+                <Pencil className="h-4 w-4" />
+              </Button>
               <Button
                 type="button"
                 variant="ghost"
@@ -457,6 +622,9 @@ export function ChunkList() {
                 const { chunk, index } = item
                 const isHovered = hoveredChunkIndex === index
                 const isSelected = selectedChunkIndex === index
+                const isShort = shortIndices.has(index)
+                const isDuplicate = duplicateIndices.has(index)
+                const isEdited = editedIndices.has(index)
 
                 return (
                   <div
@@ -479,9 +647,16 @@ export function ChunkList() {
                       sourceFilename={previewData?.filename}
                       isHovered={isHovered}
                       isSelected={isSelected}
+                      isShort={isShort}
+                      isDuplicate={isDuplicate}
+                      isEdited={isEdited}
                       query={query}
                       onMouseEnter={() => setHoveredChunkIndex(index)}
                       onMouseLeave={() => setHoveredChunkIndex(null)}
+                      onEdit={() => {
+                        setInspectorIndex(index)
+                        setInspectorOpen(true)
+                      }}
                       onToggleSelect={() => {
                         setSelectedChunkIndex(selectedChunkIndex === index ? null : index)
                         scrollRef.current?.focus()
@@ -518,6 +693,28 @@ export function ChunkList() {
           )}
         </div>
       </div>
+
+      <ChunkInspectorDialog
+        open={inspectorOpen}
+        onOpenChange={(open) => {
+          setInspectorOpen(open)
+          if (!open) setInspectorIndex(null)
+        }}
+        chunk={inspectorChunk}
+        index={inspectorIndex}
+        sourceFilename={previewData?.filename}
+        overrideUpdatedAt={inspectorOverrideUpdatedAt}
+        onSave={({ content, metadata }) => {
+          if (inspectorIndex == null) return
+          updateChunkOverride(inspectorIndex, { content, metadata })
+          toast.success('已保存编辑')
+        }}
+        onReset={() => {
+          if (inspectorIndex == null) return
+          clearChunkOverride(inspectorIndex)
+          toast.success('已重置编辑')
+        }}
+      />
     </div>
   )
 }

@@ -56,6 +56,7 @@ export function Sidebar({ variant = 'panel' }: { variant?: 'panel' | 'dialog' } 
     includeOriginalText,
     originalTextMaxChars,
     maxChunks,
+    useParseCache,
     separatorPreset,
     separatorCustom,
     keepSeparator,
@@ -413,6 +414,23 @@ export function Sidebar({ variant = 'panel' }: { variant?: 'panel' | 'dialog' } 
                 aria-label="最多返回 chunks"
               />
             </div>
+
+            <div className="flex items-center justify-between gap-2">
+              <div>
+                <div className="text-xs font-medium text-foreground/80">后端解析缓存</div>
+                <div className="text-[10px] text-muted-foreground">同一文件/解析器调参时可显著提速</div>
+              </div>
+              <label className="inline-flex items-center gap-2 text-[10px] text-muted-foreground">
+                <input
+                  type="checkbox"
+                  checked={useParseCache}
+                  onChange={(e) => updatePerfSettings({ useParseCache: e.target.checked })}
+                  className="h-3.5 w-3.5 rounded border-border/60 text-primary focus:ring-2 focus:ring-ring/20 focus:ring-offset-2 focus:ring-offset-background"
+                />
+                {useParseCache ? '开启' : '关闭'}
+              </label>
+            </div>
+
             <div className="text-[10px] text-muted-foreground leading-relaxed">
               0 表示不限制。建议 1000-5000；太大可能导致浏览器卡顿。
             </div>

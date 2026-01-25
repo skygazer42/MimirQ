@@ -65,7 +65,9 @@
 - “更多操作”里支持：
   - 复制预览配置（便于复现）
   - 导出配置.json / 从文件导入配置 / 从剪贴板导入配置（JSON）
-  - 导出 chunks.json / chunks.csv / chunks.md
+  - 导出 chunks.json / chunks.csv / chunks.md / chunks.jsonl
+  - 复制手动入库 payload（用于 `POST /api/v1/documents/manual`）
+  - 预览对比（A/B）：从同一文件的历史预览里选择一个基线，对比 chunk 数量/长度分布/内容重合度（估算）
   - 复制 chunk-preview 的 cURL 示例
 
 ## API 调用（用于脚本化调参）
@@ -73,7 +75,12 @@
 切块预览接口：
 
 - `POST /api/v1/documents/chunk-preview`
-  - Query: `chunk_size`, `chunk_overlap`
+  - Query: `chunk_size`, `chunk_overlap`, `include_original_text`, `original_text_max_chars`, `max_chunks`, `use_parse_cache`
+  - Response（新增字段，可忽略）：
+    - `file_sha256`, `parse_cache_hit`, `parse_cache_age_ms`
+    - `preview_duration_ms`（server_total）
+    - `upload_duration_ms`, `parse_duration_ms`, `governance_duration_ms`, `chunking_duration_ms`, `stats_duration_ms`
+    - 同时会返回 `Server-Timing` header（用于浏览器 devtools 性能排查）
   - Form: `file`, `parser_backend`, `chunk_strategy`, `pipeline`（可选，JSON string）
 
 示例（请替换 `X-User-ID` 与文件路径）：
