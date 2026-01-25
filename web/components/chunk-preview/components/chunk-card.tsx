@@ -84,6 +84,7 @@ export function ChunkCard({
 }: ChunkCardProps) {
   const rangeLabel = useMemo(() => `${chunk.start_index}-${chunk.end_index}`, [chunk.start_index, chunk.end_index])
   const tokens = useMemo(() => (typeof chunk.tokens_est === 'number' ? chunk.tokens_est : null), [chunk.tokens_est])
+  const chunkRole = (chunk.metadata as Record<string, any> | undefined)?.chunk_role as string | undefined
   const citationText = useMemo(() => {
     const name = (sourceFilename || '').trim() || 'document'
     const pageLabel = chunk.page_number != null ? ` · P.${chunk.page_number}` : ''
@@ -151,6 +152,15 @@ export function ChunkCard({
           {isShort ? (
             <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-warning/10 text-warning border border-warning/25">
               SHORT
+            </span>
+          ) : null}
+          {chunkRole === 'parent' ? (
+            <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-primary/10 text-primary border border-primary/25">
+              PARENT
+            </span>
+          ) : chunkRole === 'child' ? (
+            <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-muted/60 text-muted-foreground border border-border/60">
+              CHILD
             </span>
           ) : null}
           {unit === 'tokens' ? (
