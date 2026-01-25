@@ -4,12 +4,12 @@ interface DocumentViewState {
   isOpen: boolean
   documentId: string | null
   highlightChunkId: string | null
-  activeTab: 'preview' | 'chunks'
+  activeTab: 'preview' | 'text' | 'chunks'
   
   openDocument: (documentId: string, chunkId?: string) => void
   closeDocument: () => void
   setHighlightChunk: (chunkId: string | null) => void
-  setActiveTab: (tab: 'preview' | 'chunks') => void
+  setActiveTab: (tab: 'preview' | 'text' | 'chunks') => void
 }
 
 export const useDocumentView = create<DocumentViewState>((set) => ({
@@ -22,7 +22,8 @@ export const useDocumentView = create<DocumentViewState>((set) => ({
     isOpen: true, 
     documentId, 
     highlightChunkId: chunkId || null,
-    activeTab: chunkId ? 'chunks' : 'preview' 
+    // Enterprise UX: when we know the chunk id, jump directly to "text location" view.
+    activeTab: chunkId ? 'text' : 'preview' 
   }),
   
   closeDocument: () => set({ 

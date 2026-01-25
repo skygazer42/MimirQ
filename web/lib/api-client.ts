@@ -17,6 +17,7 @@ import type {
   ChatRequest,
   ChatResponse,
   DocumentPreview,
+  DocumentParsedContentResponse,
   ManualChunk,
   DocumentPipelineOptions,
   ChunkPreviewResponse,
@@ -282,6 +283,20 @@ export const documentApi = {
     const { data } = await apiClient.get(`/documents/${documentId}`, {
       params,
     })
+    return data
+  },
+
+  /**
+   * 获取已持久化的解析 Markdown（原始+清洗后）
+   *
+   * 说明：仅当 ingestion pipeline 开启 persist_parsed_content 时可用；
+   * 未开启时后端会返回 available=false（内容为空）。
+   */
+  async getParsedContent(
+    documentId: string,
+    params?: { max_chars?: number }
+  ): Promise<DocumentParsedContentResponse> {
+    const { data } = await apiClient.get(`/documents/${documentId}/parsed-content`, { params })
     return data
   },
 

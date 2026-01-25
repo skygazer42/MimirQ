@@ -20,7 +20,7 @@ from pathlib import Path
 import uuid
 
 from app.core.database import get_db
-from app.models.document import Document as DBDocument, DocumentChunk
+from app.models.document import Document as DBDocument, DocumentChunk, DocumentParsedContent
 from app.api.schemas.document import (
     DocumentList,
     DocumentStats,
@@ -39,6 +39,7 @@ from app.api.schemas.document import (
     DocumentBatchUserMetadataPatchResponse,
     DocumentBatchDeleteRequest,
     DocumentBatchDeleteResponse,
+    DocumentParsedContentResponse,
     ChunkPreviewParams,
     ChunkPreviewItem,
     ChunkPreviewStats,
@@ -1946,6 +1947,72 @@ async def get_document(
         setattr(document, "chunks_loaded", document.chunks)
 
     return document
+
+
+@router.get("/{document_id}/parsed-content", response_model=DocumentParsedContentResponse)
+async def get_document_parsed_content(
+    document_id: uuid.UUID,
+    max_chars: int = Query(default=200_000, ge=0, le=2_000_000),
+    tenant_id: UUID = Depends(get_tenant_id),
+    account_id: str = Depends(get_current_account_id),
+    db: Session = Depends(get_db),
+):
+    """
+    Get persisted parsed markdown content (raw+clean) for a document.
+
+    Availability:
+    - Only present when the ingestion pipeline enables `persist_parsed_content`.
+    - When unavailable, returns `available=false` with empty strings.
+    """
+    DatasetService.ensure_member(db, tenant_id, account_id)
+
+    document = (
+        db.query(DBDocument)
+        .filter(DBDocument.id == document_id, DBDocument.tenant_id == tenant_id)
+        .first()
+    )
+    if not document:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    if document.dataset_id:
+        ds = DatasetService.get_dataset(db, tenant_id, document.dataset_id)
+        DatasetService.assert_dataset_readable(db, ds, account_id)
+
+    row = (
+        db.query(DocumentParsedContent)
+        .filter(DocumentParsedContent.document_id == document_id, DocumentParsedContent.tenant_id == tenant_id)
+        .first()
+    )
+
+    doc_meta = getattr(document, "doc_metadata", None) or {}
+    persisted_meta = doc_meta.get("parsed_content_persisted") if isinstance(doc_meta, dict) else None
+    if not isinstance(persisted_meta, dict):
+        persisted_meta = {}
+
+    markdown = (getattr(row, "markdown_content", "") or "") if row is not None else ""
+    original = (getattr(row, "original_markdown_content", "") or "") if row is not None else ""
+    markdown_truncated = False
+    original_truncated = False
+
+    max_chars_eff = int(max_chars or 0)
+    if max_chars_eff > 0:
+        if len(markdown) > max_chars_eff:
+            markdown = markdown[:max_chars_eff]
+            markdown_truncated = True
+        if len(original) > max_chars_eff:
+            original = original[:max_chars_eff]
+            original_truncated = True
+
+    return DocumentParsedContentResponse(
+        document_id=document_id,
+        available=row is not None,
+        markdown_content=markdown,
+        original_markdown_content=original,
+        persisted_meta=persisted_meta,
+        markdown_truncated=markdown_truncated,
+        original_markdown_truncated=original_truncated,
+        max_chars=max_chars_eff,
+    )
 
 
 @router.get("/{document_id}/chunks", response_model=DocumentChunkList)

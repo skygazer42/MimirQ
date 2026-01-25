@@ -842,6 +842,45 @@ curl http://localhost:8000/api/v1/chat/conversations/CONV_ID/messages \
 
 ### GET /documents/{id} - 获取文档详情
 
+### GET /documents/{id}/chunks - 获取文档切片列表（分页）
+
+**查询参数：** `skip`, `limit`, `q`
+
+### GET /documents/{id}/chunks/matches - 文档内查找（轻量）
+
+**查询参数：** `q`, `limit`
+
+### GET /documents/{id}/chunks/{chunk_id} - 获取单个切片
+
+### GET /documents/{id}/parsed-content - 获取已持久化的解析文本（用于“文本定位/高亮”）
+
+说明：此接口仅在 ingestion pipeline 开启 `persist_parsed_content` 时可用；未开启时返回 `available=false`（内容为空）。
+
+**查询参数：**
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| max_chars | int | 否 | 额外的返回长度上限（默认 200000；0 表示不额外截断） |
+
+**响应 (200)：**
+```json
+{
+  "document_id": "doc-uuid",
+  "available": true,
+  "markdown_content": "…清洗后 Markdown（可能截断）…",
+  "original_markdown_content": "…原始解析 Markdown（可能截断）…",
+  "persisted_meta": {
+    "enabled": true,
+    "max_chars": 200000,
+    "original": { "raw_len": 123456, "stored_len": 200012, "truncated": true },
+    "cleaned": { "raw_len": 120000, "stored_len": 120000, "truncated": false }
+  },
+  "markdown_truncated": false,
+  "original_markdown_truncated": false,
+  "max_chars": 200000
+}
+```
+
 ### DELETE /documents/{id} - 删除文档
 
 ---

@@ -766,6 +766,8 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: ChunkPrev
     originalTextMaxChars,
     maxChunks,
     useParseCache,
+    parentChildRatio,
+    parentChildMinChildSize,
     previewData,
   ])
 

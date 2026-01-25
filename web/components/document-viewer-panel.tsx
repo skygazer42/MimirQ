@@ -7,11 +7,14 @@ import { cn } from "@/lib/utils"
 import { useDocumentView } from "@/store/document-view"
 import { Button } from "@/components/ui/button"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { documentApi } from "@/lib/api-client"
+import { documentApi, ragApi } from "@/lib/api-client"
 import { API_V1_BASE_URL } from "@/lib/env"
-import type { Document, DocumentChunk } from "@/types"
+import type { Citation, Document, DocumentChunk, DocumentParsedContentResponse } from "@/types"
 import { getAccessToken, getTenantId } from "@/lib/auth-storage"
 import { FloatingMenu } from "@/components/document-viewer/floating-menu"
+import { mapDocumentChunksToPreviewItems } from "@/lib/document-chunks"
+import { getDocContentFromCache, saveDocContentToCache } from "@/lib/doc-content-cache"
+import { OriginalPreviewMonaco } from "@/components/chunk-preview/components/workbench/preview/original-preview-monaco"
 import { toast } from "sonner"
 
 function escapeRegExp(value: string): string {
@@ -59,6 +62,14 @@ export function DocumentViewerPanel() {
   const [loadAllChunks, setLoadAllChunks] = React.useState(false)
   const [highlightChunk, setHighlightChunkState] = React.useState<DocumentChunk | null>(null)
   const [highlightChunkLoading, setHighlightChunkLoading] = React.useState(false)
+  const [parsedContent, setParsedContent] = React.useState<DocumentParsedContentResponse | null>(null)
+  const [parsedContentLoading, setParsedContentLoading] = React.useState(false)
+  const [parsedContentError, setParsedContentError] = React.useState<string | null>(null)
+  const [textMode, setTextMode] = React.useState<"cleaned" | "original">("cleaned")
+  const [retrieveQuery, setRetrieveQuery] = React.useState("")
+  const [retrieveLoading, setRetrieveLoading] = React.useState(false)
+  const [retrieveError, setRetrieveError] = React.useState<string | null>(null)
+  const [retrieveCitations, setRetrieveCitations] = React.useState<Citation[]>([])
   const [isExpanded, setIsExpanded] = React.useState(false)
   const chunksListRef = React.useRef<HTMLDivElement>(null)
   const chunkSearchRef = React.useRef<HTMLInputElement>(null)
@@ -69,6 +80,7 @@ export function DocumentViewerPanel() {
   const [serverMatchTruncated, setServerMatchTruncated] = React.useState(false)
   const [serverMatchLoading, setServerMatchLoading] = React.useState(false)
   const matchRequestSeqRef = React.useRef(0)
+  const parsedContentServerKeyRef = React.useRef<string | null>(null)
 
   const rowVirtualizer = useVirtualizer({
     count: chunks.length,
@@ -80,12 +92,21 @@ export function DocumentViewerPanel() {
   // Load document metadata (lazy-load chunks separately).
   React.useEffect(() => {
     if (!documentId) return
+    parsedContentServerKeyRef.current = null
     setDoc(null)
     setChunks([])
     setChunksLoaded(false)
     setLoadAllChunks(false)
     setHighlightChunkState(null)
     setHighlightChunkLoading(false)
+    setParsedContent(null)
+    setParsedContentLoading(false)
+    setParsedContentError(null)
+    setTextMode("cleaned")
+    setRetrieveQuery("")
+    setRetrieveLoading(false)
+    setRetrieveError(null)
+    setRetrieveCitations([])
     setChunkQuery("")
     setMatchCursor(0)
     setServerMatchIds([])
@@ -108,6 +129,36 @@ export function DocumentViewerPanel() {
       .finally(() => setIsLoading(false))
 
     return () => window.cancelAnimationFrame(raf)
+  }, [documentId])
+
+  // Best-effort cache: show parsed markdown quickly (used by the "text" tab).
+  React.useEffect(() => {
+    if (!documentId) return
+
+    let cancelled = false
+    ;(async () => {
+      try {
+        const cached = await getDocContentFromCache(documentId)
+        if (cancelled || !cached) return
+
+        setParsedContent({
+          document_id: documentId,
+          available: true,
+          markdown_content: cached.markdownContent || "",
+          original_markdown_content: cached.originalMarkdownContent || "",
+          persisted_meta: {},
+          markdown_truncated: false,
+          original_markdown_truncated: false,
+          max_chars: 0,
+        })
+      } catch {
+        // ignore cache errors
+      }
+    })()
+
+    return () => {
+      cancelled = true
+    }
   }, [documentId])
 
   // If a citation requests a highlight, fetch just that chunk first (fast path).
@@ -142,11 +193,54 @@ export function DocumentViewerPanel() {
     }
   }, [documentId, highlightChunkId])
 
+  // Load parsed markdown on demand (text tab).
+  React.useEffect(() => {
+    if (!documentId) return
+    if (activeTab !== "text") return
+
+    // Avoid re-fetching on tab switches once we have a server response.
+    if (parsedContentServerKeyRef.current === documentId) return
+
+    let cancelled = false
+    setParsedContentError(null)
+    setParsedContentLoading(true)
+
+    documentApi
+      .getParsedContent(documentId, { max_chars: 200_000 })
+      .then((data) => {
+        if (cancelled) return
+        parsedContentServerKeyRef.current = documentId
+        setParsedContent(data)
+        if (data?.available) {
+          void saveDocContentToCache({
+            id: documentId,
+            markdownContent: data.markdown_content || "",
+            originalMarkdownContent: data.original_markdown_content || "",
+          })
+        }
+      })
+      .catch((err) => {
+        if (cancelled) return
+        console.error(err)
+        setParsedContentError("加载解析文本失败")
+      })
+      .finally(() => {
+        if (cancelled) return
+        setParsedContentLoading(false)
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [documentId, activeTab])
+
   // Load chunks on demand (when user opens the "chunks" tab or a citation requests a highlight).
   React.useEffect(() => {
     if (!documentId) return
     if (chunksLoaded || chunksLoading) return
-    const shouldLoadAll = activeTab === "chunks" && (loadAllChunks || !highlightChunkId)
+    const shouldLoadAll =
+      (activeTab === "chunks" && (loadAllChunks || !highlightChunkId)) ||
+      (activeTab === "text" && (loadAllChunks || !highlightChunkId))
     if (!shouldLoadAll) return
 
     setChunksLoading(true)
@@ -181,6 +275,25 @@ export function DocumentViewerPanel() {
     if (!highlightChunkId) return -1
     return chunks.findIndex((c) => c.id === highlightChunkId)
   }, [chunks, highlightChunkId])
+
+  const textValue = React.useMemo(() => {
+    if (!parsedContent?.available) return ""
+    return textMode === "original"
+      ? String(parsedContent.original_markdown_content || "")
+      : String(parsedContent.markdown_content || "")
+  }, [parsedContent, textMode])
+
+  const textChunkItems = React.useMemo(() => {
+    // Only show the active chunk when we haven't loaded the full chunk list yet.
+    const base = chunksLoaded ? chunks : highlightChunk ? [highlightChunk] : []
+    return mapDocumentChunksToPreviewItems(base)
+  }, [chunks, chunksLoaded, highlightChunk])
+
+  const textActiveChunkIndex = React.useMemo(() => {
+    if (!highlightChunk) return null
+    const idx = textChunkItems.findIndex((it) => it.index === highlightChunk.chunk_index)
+    return idx >= 0 ? idx : null
+  }, [highlightChunk, textChunkItems])
 
   // Keyboard UX: Esc closes (or clears search first); Cmd/Ctrl+F focuses chunk search.
   React.useEffect(() => {
@@ -359,6 +472,26 @@ export function DocumentViewerPanel() {
     setHighlightChunk(matchChunkIds[clamped] || null)
   }, [matchChunkIds, setActiveTab, setHighlightChunk])
 
+  const runRetrievePreview = React.useCallback(async () => {
+    if (!documentId) return
+    const q = retrieveQuery.trim()
+    if (!q) return
+
+    setRetrieveLoading(true)
+    setRetrieveError(null)
+    try {
+      const res = await ragApi.retrievePreview({ query: q, document_ids: [documentId] })
+      const items = (res?.citations || []).filter((c) => c.document_id === documentId)
+      setRetrieveCitations(items)
+    } catch (err) {
+      console.error(err)
+      setRetrieveError("检索测试失败，请稍后重试")
+      setRetrieveCitations([])
+    } finally {
+      setRetrieveLoading(false)
+    }
+  }, [documentId, retrieveQuery])
+
   if (!isOpen) return null
 
   return (
@@ -413,7 +546,11 @@ export function DocumentViewerPanel() {
 
       {/* Main Content */}
       <div className="flex-1 overflow-hidden flex flex-col">
-         <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as any)} className="flex-1 flex flex-col">
+         <Tabs
+           value={activeTab}
+           onValueChange={(v) => setActiveTab(v as "preview" | "text" | "chunks")}
+           className="flex-1 flex flex-col"
+         >
             <div className="px-4 border-b border-border bg-background">
                 <TabsList className="w-full justify-start h-10 bg-transparent p-0 gap-6">
                     <TabsTrigger 
@@ -421,6 +558,12 @@ export function DocumentViewerPanel() {
                         className="h-10 rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent px-2 font-medium"
                     >
                         原文
+                    </TabsTrigger>
+                    <TabsTrigger 
+                        value="text" 
+                        className="h-10 rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent px-2 font-medium"
+                    >
+                        文本定位
                     </TabsTrigger>
                     <TabsTrigger 
                         value="chunks" 
@@ -470,6 +613,219 @@ export function DocumentViewerPanel() {
                     </div>
                   </div>
                 )}
+            </TabsContent>
+
+            <TabsContent value="text" className="flex-1 m-0 h-full overflow-hidden flex flex-col bg-muted/20 dark:bg-muted/10">
+                 <div className="p-4 border-b border-border bg-background/60 backdrop-blur-sm">
+                   <div className="flex flex-col gap-2">
+                     <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                       <div className="flex items-center flex-wrap gap-2">
+                         <Button
+                           type="button"
+                           size="sm"
+                           variant={textMode === "cleaned" ? "secondary" : "outline"}
+                           onClick={() => setTextMode("cleaned")}
+                         >
+                           清洗后
+                         </Button>
+                         <Button
+                           type="button"
+                           size="sm"
+                           variant={textMode === "original" ? "secondary" : "outline"}
+                           onClick={() => setTextMode("original")}
+                         >
+                           原始解析
+                         </Button>
+
+                         {highlightChunkId && !loadAllChunks && !chunksLoaded ? (
+                           <span className="text-[11px] text-muted-foreground">
+                             仅加载引用切片位置；如需展示全部切片位置，请点右侧「加载全部切片」。
+                           </span>
+                         ) : null}
+                       </div>
+
+                       <div className="flex items-center gap-2 justify-end">
+                         {highlightChunkId ? (
+                           <Button
+                             type="button"
+                             size="sm"
+                             variant="outline"
+                             onClick={() => setHighlightChunk(null)}
+                           >
+                             清除定位
+                           </Button>
+                         ) : null}
+
+                         {!chunksLoaded ? (
+                           <Button
+                             type="button"
+                             size="sm"
+                             onClick={() => setLoadAllChunks(true)}
+                             disabled={chunksLoading}
+                           >
+                             加载全部切片
+                           </Button>
+                         ) : null}
+                       </div>
+                     </div>
+
+                     <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+                       <input
+                         value={retrieveQuery}
+                         onChange={(e) => setRetrieveQuery(e.target.value)}
+                         onKeyDown={(e) => {
+                           if (e.key !== "Enter") return
+                           e.preventDefault()
+                           void runRetrievePreview()
+                         }}
+                         placeholder="检索测试：输入问题，查看真实检索命中的切片…"
+                         className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                       />
+                       <div className="flex items-center gap-2 justify-end">
+                         <Button
+                           type="button"
+                           size="sm"
+                           variant="outline"
+                           disabled={!retrieveQuery.trim() || retrieveLoading}
+                           onClick={() => void runRetrievePreview()}
+                         >
+                           {retrieveLoading ? (
+                             <span className="inline-flex items-center gap-2">
+                               <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" />
+                               检索中…
+                             </span>
+                           ) : (
+                             "检索"
+                           )}
+                         </Button>
+                         {retrieveCitations.length ? (
+                           <Button
+                             type="button"
+                             size="sm"
+                             variant="outline"
+                             onClick={() => {
+                               setRetrieveCitations([])
+                               setRetrieveError(null)
+                             }}
+                           >
+                             清空
+                           </Button>
+                         ) : null}
+                       </div>
+                     </div>
+
+                     {retrieveError ? (
+                       <div className="text-[11px] text-destructive bg-destructive/10 border border-destructive/25 px-2 py-1 rounded-lg">
+                         {retrieveError}
+                       </div>
+                     ) : null}
+
+                     {retrieveCitations.length ? (
+                       <div className="rounded-xl border border-border/60 bg-background/60 p-3 max-h-[220px] overflow-auto">
+                         <div className="text-xs font-semibold text-foreground mb-2">检索命中</div>
+                         <div className="space-y-2">
+                           {retrieveCitations.slice(0, 6).map((c, idx) => {
+                             const hasChunk = Boolean(c.chunk_id)
+                             return (
+                               <button
+                                 key={`${c.chunk_id || idx}-${idx}`}
+                                 type="button"
+                                 className={cn(
+                                   "w-full text-left rounded-lg border border-border bg-background px-3 py-2",
+                                   "hover:border-primary/30 hover:bg-muted/30 transition-colors"
+                                 )}
+                                 disabled={!hasChunk}
+                                 onClick={() => {
+                                   if (!c.chunk_id) return
+                                   setActiveTab("text")
+                                   setHighlightChunk(c.chunk_id)
+                                 }}
+                               >
+                                 <div className="flex items-center justify-between gap-2">
+                                   <div className="text-[11px] text-muted-foreground">
+                                     score <span className="font-mono">{Number(c.relevance_score || 0).toFixed(4)}</span>
+                                     {typeof c.page_number === "number" ? (
+                                       <span className="ml-2">P.{c.page_number}</span>
+                                     ) : null}
+                                   </div>
+                                   <div className="text-[11px] text-muted-foreground">
+                                     {hasChunk ? "点击定位" : "无 chunk_id"}
+                                   </div>
+                                 </div>
+                                 <div className="mt-1 text-xs leading-relaxed text-foreground/90 font-mono whitespace-pre-wrap line-clamp-3">
+                                   {c.chunk_content || ""}
+                                 </div>
+                               </button>
+                             )
+                           })}
+                         </div>
+                       </div>
+                     ) : null}
+
+                     {textMode === "original" ? (
+                       <div className="text-[11px] text-muted-foreground">
+                         提示：切片的 start/end 偏移通常基于「清洗后」文本；在「原始解析」视图中高亮定位可能不准确。
+                       </div>
+                     ) : null}
+
+                     {parsedContent?.markdown_truncated || parsedContent?.original_markdown_truncated ? (
+                       <div className="text-[11px] text-muted-foreground">
+                         文本已截断显示（max_chars={parsedContent?.max_chars ?? 0}）。如需完整内容，请提高 persist_parsed_content_max_chars 或缩小文件。
+                       </div>
+                     ) : null}
+
+                     {parsedContentError ? (
+                       <div className="text-[11px] text-destructive bg-destructive/10 border border-destructive/25 px-2 py-1 rounded-lg">
+                         {parsedContentError}
+                       </div>
+                     ) : null}
+                   </div>
+                 </div>
+
+                 <div className="flex-1 overflow-hidden p-4">
+                   {parsedContentLoading && !parsedContent ? (
+                     <div className="h-full flex items-center justify-center text-muted-foreground">
+                       <Loader2 className="h-8 w-8 animate-spin motion-reduce:animate-none" />
+                     </div>
+                   ) : parsedContent?.available && textValue ? (
+                     <OriginalPreviewMonaco
+                       text={textValue}
+                       chunks={textMode === "cleaned" ? textChunkItems : []}
+                       activeChunkIndex={textMode === "cleaned" ? textActiveChunkIndex : null}
+                       onSelectChunkIndex={(chunkIndex) => {
+                         const target =
+                           chunks.find((c) => c.chunk_index === chunkIndex) ||
+                           (highlightChunk && highlightChunk.chunk_index === chunkIndex ? highlightChunk : null)
+                         if (target) setHighlightChunk(target.id)
+                       }}
+                     />
+                   ) : (
+                     <div className="h-full flex items-center justify-center p-6">
+                       <div className="max-w-md w-full rounded-xl border border-border bg-background p-6 shadow-sm">
+                         <div className="flex items-start gap-3">
+                           <div className="p-2 rounded-lg bg-primary/10">
+                             <FileText className="h-5 w-5 text-primary" />
+                           </div>
+                           <div className="flex-1">
+                             <h4 className="text-sm font-semibold">未持久化解析文本</h4>
+                             <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
+                               当前文档未开启 <span className="font-mono">persist_parsed_content</span>，因此无法在此处高亮定位切片位置。
+                               你可以在上传/流水线配置中开启该选项后重新入库，或继续使用「智能切片」查看内容。
+                             </p>
+                             <div className="mt-4 flex items-center gap-2">
+                               <Button size="sm" variant="outline" onClick={() => setActiveTab("chunks")}>
+                                 查看切片
+                               </Button>
+                               <Button size="sm" variant="outline" onClick={() => setActiveTab("preview")}>
+                                 返回原文
+                               </Button>
+                             </div>
+                           </div>
+                         </div>
+                       </div>
+                     </div>
+                   )}
+                 </div>
             </TabsContent>
 
             <TabsContent value="chunks" className="flex-1 m-0 h-full overflow-hidden flex flex-col bg-muted/20 dark:bg-muted/10">
