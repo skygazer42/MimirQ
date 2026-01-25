@@ -219,8 +219,12 @@ export function TopBar() {
                   )}
                   {previewData && (
                     <span className="text-muted-foreground font-medium flex items-center gap-1">
-                       <span className="w-1.5 h-1.5 rounded-full bg-success" />
-                       {previewData.total_chunks} Chunks
+                       <span className={cn('w-1.5 h-1.5 rounded-full', previewData.chunks_truncated ? 'bg-warning' : 'bg-success')} />
+                       {(() => {
+                         const shown = Number(previewData.total_chunks || 0)
+                         const full = Number(previewData.total_chunks_full ?? shown)
+                         return full && full !== shown ? `${shown}/${full}` : `${shown}`
+                       })()} Chunks
                     </span>
                   )}
                </div>
@@ -231,6 +235,15 @@ export function TopBar() {
                   Hit Cache
                 </span>
              )}
+
+             {previewData?.warnings?.length ? (
+                <span
+                  className="text-[10px] px-1.5 py-0.5 rounded bg-warning/10 text-warning border border-warning/30 font-medium"
+                  title={(previewData.warnings || []).join('\\n')}
+                >
+                  Warnings: {previewData.warnings.length}
+                </span>
+             ) : null}
           </div>
         </div>
       </div>

@@ -2,7 +2,7 @@
 Document-related Pydantic schemas.
 """
 from pydantic import AliasChoices, BaseModel, Field, model_validator
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any, Literal
 from datetime import datetime
 from uuid import UUID
 
@@ -322,15 +322,39 @@ class ChunkPreviewItem(BaseModel):
     metadata: Dict[str, Any] = Field(default_factory=dict)
 
 
+class ChunkPreviewStats(BaseModel):
+    """Lightweight aggregate stats for UI (computed on returned chunks)."""
+
+    unit: Literal["chars", "tokens"] = "chars"
+    count: int = 0
+    total: int = 0
+    min: int = 0
+    max: int = 0
+    avg: int = 0
+    median: int = 0
+    p10: int = 0
+    p90: int = 0
+    total_tokens_est: int = 0
+    short_count: int = 0
+    duplicate_count: int = 0
+
+
 class ChunkPreviewResponse(BaseModel):
     """Chunk preview response."""
     filename: str
     file_type: str
     file_size: int
     total_chunks: int
+    # When max_chunks is used, the API may truncate returned chunks; this keeps the original count.
+    total_chunks_full: int = 0
+    chunks_truncated: bool = False
+    chunks_max_count: int = 0
     total_characters: int
     params: ChunkPreviewParams
     chunks: List[ChunkPreviewItem]
+    stats: Optional[ChunkPreviewStats] = None
+    # When using chunk_strategy=auto, return the most common selected strategy (best-effort).
+    auto_selected_strategy: Optional[str] = None
     # Non-fatal warnings for UI (e.g. ignored overlap for separator strategy).
     warnings: List[str] = Field(default_factory=list)
     # Original text for frontend highlighting.

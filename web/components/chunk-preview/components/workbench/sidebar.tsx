@@ -53,6 +53,9 @@ export function Sidebar({ variant = 'panel' }: { variant?: 'panel' | 'dialog' } 
     chunkSize,
     chunkOverlap,
     chunkStrategy,
+    includeOriginalText,
+    originalTextMaxChars,
+    maxChunks,
     separatorPreset,
     separatorCustom,
     keepSeparator,
@@ -67,6 +70,7 @@ export function Sidebar({ variant = 'panel' }: { variant?: 'panel' | 'dialog' } 
     addFiles,
     setDatasetId,
     updateSettings,
+    updatePerfSettings,
     updateSeparatorSettings,
     runPreview,
     cancelPreview,
@@ -354,6 +358,96 @@ export function Sidebar({ variant = 'panel' }: { variant?: 'panel' | 'dialog' } 
             <div className="text-[10px] text-muted-foreground">
               Ctrl/⌘ + Enter 预览 · Ctrl/⌘ + S 入库
             </div>
+          </div>
+
+          <div className="bg-card border border-border/60 rounded-xl px-3 py-3 shadow-sm space-y-3">
+            <div className="flex items-center gap-2">
+              <Wand2 className="w-4 h-4 text-primary" />
+              <div className="text-xs font-medium text-foreground/80">预览性能</div>
+              <div className="text-[10px] text-muted-foreground">仅影响预览载荷，不影响入库</div>
+            </div>
+
+            <div className="flex items-center justify-between gap-2">
+              <div>
+                <div className="text-xs font-medium text-foreground/80">返回原文（用于高亮）</div>
+                <div className="text-[10px] text-muted-foreground">大文档建议关闭或降低上限</div>
+              </div>
+              <label className="inline-flex items-center gap-2 text-[10px] text-muted-foreground">
+                <input
+                  type="checkbox"
+                  checked={includeOriginalText}
+                  onChange={(e) => updatePerfSettings({ includeOriginalText: e.target.checked })}
+                  className="h-3.5 w-3.5 rounded border-border/60 text-primary focus:ring-2 focus:ring-ring/20 focus:ring-offset-2 focus:ring-offset-background"
+                />
+                {includeOriginalText ? '开启' : '关闭'}
+              </label>
+            </div>
+
+            <div className="flex items-center justify-between gap-2">
+              <label className="text-xs font-medium text-muted-foreground">原文上限（chars）</label>
+              <Input
+                type="number"
+                inputMode="numeric"
+                min={0}
+                max={2000000}
+                step={10000}
+                value={originalTextMaxChars}
+                onChange={(e) => updatePerfSettings({ originalTextMaxChars: Number(e.target.value) })}
+                className="h-7 w-28 text-[11px] font-mono bg-card/80"
+                aria-label="原文上限"
+                disabled={!includeOriginalText}
+              />
+            </div>
+
+            <div className="flex items-center justify-between gap-2">
+              <label className="text-xs font-medium text-muted-foreground">最多返回 chunks</label>
+              <Input
+                type="number"
+                inputMode="numeric"
+                min={0}
+                max={20000}
+                step={100}
+                value={maxChunks}
+                onChange={(e) => updatePerfSettings({ maxChunks: Number(e.target.value) })}
+                className="h-7 w-28 text-[11px] font-mono bg-card/80"
+                aria-label="最多返回 chunks"
+              />
+            </div>
+            <div className="text-[10px] text-muted-foreground leading-relaxed">
+              0 表示不限制。建议 1000-5000；太大可能导致浏览器卡顿。
+            </div>
+
+            {previewData?.chunks_truncated ? (
+              <div className="text-[10px] text-warning bg-warning/10 border border-warning/25 rounded-lg px-2 py-1">
+                已截断：当前显示 {previewData.total_chunks}
+                {previewData.total_chunks_full && previewData.total_chunks_full !== previewData.total_chunks
+                  ? ` / ${previewData.total_chunks_full}`
+                  : ''}{' '}
+                chunks
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="h-6 px-2 ml-2 text-[10px]"
+                  onClick={async () => {
+                    updatePerfSettings({ maxChunks: 0 })
+                    await runPreview({ force: true })
+                  }}
+                >
+                  取消限制并重跑
+                </Button>
+              </div>
+            ) : null}
+
+            {previewData?.warnings?.length ? (
+              <div className="text-[10px] text-muted-foreground space-y-1">
+                {(previewData.warnings || []).slice(0, 6).map((w, i) => (
+                  <div key={`${i}-${w}`} className="px-2 py-1 rounded-lg border border-border/60 bg-muted/40">
+                    {w}
+                  </div>
+                ))}
+              </div>
+            ) : null}
           </div>
 
           <div className="space-y-2">

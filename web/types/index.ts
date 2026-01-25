@@ -229,14 +229,35 @@ export interface ChunkPreviewItem {
   metadata?: Record<string, any>
 }
 
+export interface ChunkPreviewStats {
+  unit?: 'chars' | 'tokens'
+  count?: number
+  total?: number
+  min?: number
+  max?: number
+  avg?: number
+  median?: number
+  p10?: number
+  p90?: number
+  total_tokens_est?: number
+  short_count?: number
+  duplicate_count?: number
+}
+
 export interface ChunkPreviewResponse {
   filename: string
   file_type: string
   file_size: number
   total_chunks: number
+  total_chunks_full?: number
+  chunks_truncated?: boolean
+  chunks_max_count?: number
   total_characters: number
   params: ChunkPreviewParams
   chunks: ChunkPreviewItem[]
+  stats?: ChunkPreviewStats
+  auto_selected_strategy?: string
+  warnings?: string[]
   original_text?: string
   original_text_included?: boolean
   original_text_truncated?: boolean

@@ -65,6 +65,10 @@ export interface ChunkPreviewState {
   chunkSize: number
   chunkOverlap: number
   strategy: string
+  // 预览性能/载荷控制（仅影响预览，不影响入库）
+  includeOriginalText: boolean
+  originalTextMaxChars: number
+  maxChunks: number
   separatorPreset: string
   separatorCustom: string
   keepSeparator: boolean
@@ -109,6 +113,9 @@ export interface ChunkPreviewActions {
 
   // 配置操作
   updateSettings: (settings: Partial<Pick<ChunkPreviewState, 'chunkSize' | 'chunkOverlap' | 'strategy'>>) => void
+  updatePerfSettings: (
+    settings: Partial<Pick<ChunkPreviewState, 'includeOriginalText' | 'originalTextMaxChars' | 'maxChunks'>>
+  ) => void
   updateSeparatorSettings: (
     settings: Partial<Pick<ChunkPreviewState, 'separatorPreset' | 'separatorCustom' | 'keepSeparator' | 'separatorMaxChunkSize'>>
   ) => void

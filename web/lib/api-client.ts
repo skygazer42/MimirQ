@@ -449,6 +449,9 @@ export const documentApi = {
       chunk_strategy?: string
       pipeline?: DocumentPipelineOptions
       dataset_id?: string
+      include_original_text?: boolean
+      original_text_max_chars?: number
+      max_chunks?: number
       separator_preset?: string
       separator?: string
       keep_separator?: boolean
@@ -481,6 +484,9 @@ export const documentApi = {
       params: {
         chunk_size: effectiveChunkSize,
         chunk_overlap: effectiveChunkOverlap,
+        include_original_text: typeof params.include_original_text === 'boolean' ? params.include_original_text : undefined,
+        original_text_max_chars: typeof params.original_text_max_chars === 'number' ? params.original_text_max_chars : undefined,
+        max_chunks: typeof params.max_chunks === 'number' ? params.max_chunks : undefined,
       },
     })
 
