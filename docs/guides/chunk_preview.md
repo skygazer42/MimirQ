@@ -80,8 +80,16 @@
     - `file_sha256`, `parse_cache_hit`, `parse_cache_age_ms`
     - `preview_duration_ms`（server_total）
     - `upload_duration_ms`, `parse_duration_ms`, `governance_duration_ms`, `chunking_duration_ms`, `stats_duration_ms`
+    - `quality_gate`（pass/warn/fail + reasons）、`recommendations`
+    - `stats.coverage_ratio / overlap_waste_ratio / gap_count`（用于评估 overlap 与定位覆盖）
     - 同时会返回 `Server-Timing` header（用于浏览器 devtools 性能排查）
   - Form: `file`, `parser_backend`, `chunk_strategy`, `pipeline`（可选，JSON string）
+
+- `POST /api/v1/documents/chunk-preview/by-sha`
+  - 免上传复用解析缓存（企业级调参体验：只要解析缓存还在，就可以快速 A/B）。
+  - 用法：先调用一次 `/chunk-preview` 让后端缓存解析结果；拿到响应里的 `file_sha256`，再用它调用该接口。
+  - Query: 同 `/chunk-preview`
+  - Form: `file_sha256`, `file_type`, `filename`, `parser_backend`, `chunk_strategy`（其余同 `/chunk-preview`）
 
 示例（请替换 `X-User-ID` 与文件路径）：
 
@@ -91,6 +99,26 @@ curl -X POST "http://localhost:8000/api/v1/documents/chunk-preview?chunk_size=10
   -F "file=@/path/to/your-file" \
   -F "parser_backend=auto" \
   -F "chunk_strategy=langchain_recursive"
+```
+
+by-sha 示例（先上传预览一次，取 `file_sha256`，再免上传调参）：
+
+```bash
+# 1) 先上传一次，拿到 file_sha256（示意：你可以用 jq 提取）
+file_sha256="$(curl -s -X POST \"http://localhost:8000/api/v1/documents/chunk-preview?chunk_size=1000&chunk_overlap=200\" \
+  -H \"X-User-ID: demo\" \
+  -F \"file=@/path/to/your-file\" \
+  -F \"parser_backend=auto\" \
+  -F \"chunk_strategy=langchain_recursive\" | jq -r .file_sha256)"
+
+# 2) 免上传，直接复用解析缓存做 A/B 调参
+curl -X POST \"http://localhost:8000/api/v1/documents/chunk-preview/by-sha?chunk_size=1200&chunk_overlap=160\" \
+  -H \"X-User-ID: demo\" \
+  -F \"file_sha256=${file_sha256}\" \
+  -F \"file_type=pdf\" \
+  -F \"filename=your-file.pdf\" \
+  -F \"parser_backend=auto\" \
+  -F \"chunk_strategy=langchain_recursive\"
 ```
 
 separator 策略示例（按段落分隔，保留分隔符）：

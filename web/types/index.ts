@@ -242,6 +242,17 @@ export interface ChunkPreviewStats {
   total_tokens_est?: number
   short_count?: number
   duplicate_count?: number
+  sum_chunk_chars?: number
+  covered_chars?: number
+  coverage_ratio?: number
+  overlap_waste_ratio?: number
+  gap_count?: number
+  largest_gap?: number
+}
+
+export interface ChunkPreviewQualityGate {
+  grade?: 'pass' | 'warn' | 'fail'
+  reasons?: string[]
 }
 
 export interface ChunkPreviewResponse {
@@ -267,6 +278,8 @@ export interface ChunkPreviewResponse {
   stats?: ChunkPreviewStats
   auto_selected_strategy?: string
   warnings?: string[]
+  quality_gate?: ChunkPreviewQualityGate
+  recommendations?: string[]
   original_text?: string
   original_text_included?: boolean
   original_text_truncated?: boolean

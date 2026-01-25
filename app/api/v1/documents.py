@@ -42,6 +42,7 @@ from app.api.schemas.document import (
     ChunkPreviewParams,
     ChunkPreviewItem,
     ChunkPreviewStats,
+    ChunkPreviewQualityGate,
     ChunkPreviewResponse,
     BatchUploadRequest,
     BatchUploadResponse,
@@ -578,6 +579,188 @@ def _parse_pipeline_json(pipeline: Optional[str]) -> Optional[DocumentPipelineOp
         msg = (str(exc) or exc.__class__.__name__)[:200]
         detail = "Invalid pipeline JSON" if is_production_env() else f"Invalid pipeline JSON: {msg}"
         raise HTTPException(status_code=400, detail=detail)
+
+
+def _compute_chunk_coverage_metrics(
+    chunk_items: list[ChunkPreviewItem], *, total_characters: int
+) -> dict[str, float | int]:
+    """
+    Compute coverage/overlap signals from chunk start/end indices.
+
+    - covered_chars: union length of all chunk ranges (clipped to [0, total_characters])
+    - gap_count / largest_gap: uncovered segments within [0, total_characters]
+    - overlap_waste_ratio: duplicated chars ratio due to overlap (0-1)
+    """
+    total = int(total_characters or 0)
+    if total <= 0 or not chunk_items:
+        return {
+            "sum_chunk_chars": 0,
+            "covered_chars": 0,
+            "coverage_ratio": 0.0,
+            "overlap_waste_ratio": 0.0,
+            "gap_count": 0,
+            "largest_gap": 0,
+        }
+
+    sum_chunk_chars = 0
+    ranges: list[tuple[int, int]] = []
+    for c in chunk_items:
+        try:
+            s = int(getattr(c, "start_index"))
+            e = int(getattr(c, "end_index"))
+        except Exception:
+            continue
+        if e <= s:
+            continue
+        # Clip to document range.
+        s2 = max(0, min(total, s))
+        e2 = max(0, min(total, e))
+        if e2 <= s2:
+            continue
+        ranges.append((s2, e2))
+        sum_chunk_chars += max(0, e2 - s2)
+
+    if not ranges:
+        return {
+            "sum_chunk_chars": 0,
+            "covered_chars": 0,
+            "coverage_ratio": 0.0,
+            "overlap_waste_ratio": 0.0,
+            "gap_count": 0,
+            "largest_gap": total,
+        }
+
+    ranges.sort(key=lambda x: (x[0], x[1]))
+    covered = 0
+    gap_count = 0
+    largest_gap = 0
+
+    cur_s, cur_e = ranges[0]
+    if cur_s > 0:
+        gap_count += 1
+        largest_gap = max(largest_gap, cur_s)
+
+    for s, e in ranges[1:]:
+        if s > cur_e:
+            covered += cur_e - cur_s
+            gap = s - cur_e
+            gap_count += 1
+            largest_gap = max(largest_gap, gap)
+            cur_s, cur_e = s, e
+        else:
+            cur_e = max(cur_e, e)
+
+    covered += cur_e - cur_s
+    if cur_e < total:
+        gap_count += 1
+        largest_gap = max(largest_gap, total - cur_e)
+
+    sum_chars = int(sum_chunk_chars)
+    covered_chars = int(max(0, covered))
+    coverage_ratio = float(covered_chars / total) if total > 0 else 0.0
+    overlap_waste_ratio = float(max(0, sum_chars - covered_chars) / sum_chars) if sum_chars > 0 else 0.0
+
+    return {
+        "sum_chunk_chars": sum_chars,
+        "covered_chars": covered_chars,
+        "coverage_ratio": coverage_ratio,
+        "overlap_waste_ratio": overlap_waste_ratio,
+        "gap_count": int(gap_count),
+        "largest_gap": int(largest_gap),
+    }
+
+
+def _compute_chunk_preview_quality(
+    *,
+    stats: ChunkPreviewStats,
+    total_chunks: int,
+    total_characters: int,
+    original_text_included: bool,
+    original_text_truncated: bool,
+) -> tuple[ChunkPreviewQualityGate, list[str]]:
+    """
+    Enterprise-friendly quality gate (heuristics; best-effort).
+
+    Goal: surface actionable signals when tuning chunking.
+    """
+    count = int(getattr(stats, "count", 0) or 0) or int(total_chunks or 0)
+    short_count = int(getattr(stats, "short_count", 0) or 0)
+    dup_count = int(getattr(stats, "duplicate_count", 0) or 0)
+
+    covered_chars = int(getattr(stats, "covered_chars", 0) or 0)
+    coverage_ratio = float(getattr(stats, "coverage_ratio", 0.0) or 0.0)
+    waste_ratio = float(getattr(stats, "overlap_waste_ratio", 0.0) or 0.0)
+    gap_count = int(getattr(stats, "gap_count", 0) or 0)
+
+    reasons: list[str] = []
+    recs: list[str] = []
+
+    if count <= 0:
+        reasons.append("no chunks produced")
+        recs.append("Try a different parser_backend or chunk_strategy; check governance drop settings.")
+
+    short_ratio = (short_count / count) if count > 0 else 0.0
+    dup_ratio = (dup_count / count) if count > 0 else 0.0
+
+    # Coverage signals are only meaningful when indices look plausible.
+    if total_characters > 0 and covered_chars > 0:
+        if coverage_ratio < 0.90:
+            reasons.append(f"coverage < 90% ({coverage_ratio:.0%})")
+            recs.append("Check parser_backend and governance settings; content may be dropped unexpectedly.")
+        elif coverage_ratio < 0.98 or gap_count > 0:
+            reasons.append(f"coverage < 98% ({coverage_ratio:.0%})")
+            recs.append("Check parser/page metadata; gaps may indicate start_char/page mapping issues.")
+
+    if short_ratio > 0.60:
+        reasons.append(f"too many short chunks ({short_ratio:.0%})")
+        recs.append("Increase chunk_size or use a structure-aware chunk_strategy (outline/markdown_header/etc.).")
+    elif short_ratio > 0.30:
+        reasons.append(f"many short chunks ({short_ratio:.0%})")
+        recs.append("Consider increasing chunk_size to reduce fragmentation.")
+
+    if dup_ratio > 0.40:
+        reasons.append(f"too many duplicates ({dup_ratio:.0%})")
+        recs.append("Enable governance_drop_duplicate_paragraphs or near_dedup to reduce repetition.")
+    elif dup_ratio > 0.15:
+        reasons.append(f"many duplicates ({dup_ratio:.0%})")
+        recs.append("Consider enabling governance_drop_duplicate_paragraphs / near_dedup.")
+
+    if waste_ratio > 0.60:
+        reasons.append(f"high overlap waste ({waste_ratio:.0%})")
+        recs.append("Reduce chunk_overlap to lower duplicated embedding work.")
+    elif waste_ratio > 0.35:
+        reasons.append(f"overlap waste ({waste_ratio:.0%})")
+        recs.append("Consider reducing chunk_overlap (enterprise cost control).")
+
+    if int(total_chunks or 0) > 10_000:
+        reasons.append("too many chunks (>10k)")
+        recs.append("Increase chunk_size or switch strategy; very high chunk counts hurt latency and cost.")
+    elif int(total_chunks or 0) > 5_000:
+        reasons.append("many chunks (>5k)")
+        recs.append("Consider increasing chunk_size to reduce chunk count.")
+
+    if original_text_truncated and not original_text_included:
+        recs.append("Original text omitted due to size; increase original_text_max_chars if you need precise highlighting.")
+
+    # Grade: fail if any hard reasons, warn if any reasons, otherwise pass.
+    grade: Literal["pass", "warn", "fail"] = "pass"
+    hard_fail = any(r.startswith("coverage < 90%") or r.startswith("too many short chunks") or r.startswith("too many duplicates") for r in reasons)
+    if hard_fail:
+        grade = "fail"
+    elif reasons:
+        grade = "warn"
+
+    # Deduplicate recommendations while preserving order.
+    deduped: list[str] = []
+    seen: set[str] = set()
+    for r in recs:
+        key = (r or "").strip()
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        deduped.append(key)
+
+    return ChunkPreviewQualityGate(grade=grade, reasons=reasons[:10]), deduped[:10]
 
 
 def _to_pipeline_options(
@@ -3703,6 +3886,7 @@ async def preview_chunking(
                 pos = max(0, min(len(sorted_lengths) - 1, pos))
                 return int(sorted_lengths[pos] or 0)
 
+            coverage = _compute_chunk_coverage_metrics(chunk_items, total_characters=total_characters)
             stats = ChunkPreviewStats(
                 unit=unit,
                 count=len(sorted_lengths),
@@ -3716,14 +3900,29 @@ async def preview_chunking(
                 total_tokens_est=int(total_tokens_est),
                 short_count=int(short_count),
                 duplicate_count=int(duplicate_count),
+                **coverage,
             )
         else:
-            stats = ChunkPreviewStats(unit=unit)
+            coverage = _compute_chunk_coverage_metrics(chunk_items, total_characters=total_characters)
+            stats = ChunkPreviewStats(unit=unit, **coverage)
         stats_duration_ms = int(max(0.0, (time.perf_counter() - _stats_started) * 1000.0))
 
         auto_selected_strategy: str | None = None
         if resolved_chunk_strategy == "auto" and auto_counts:
             auto_selected_strategy = auto_counts.most_common(1)[0][0]
+
+        original_text_truncated_val = bool(
+            include_original
+            and original_text_value is None
+            and total_characters > int(original_text_max_chars or 0)
+        )
+        quality_gate, recommendations = _compute_chunk_preview_quality(
+            stats=stats,
+            total_chunks=len(chunks),
+            total_characters=int(total_characters or 0),
+            original_text_included=original_text_value is not None,
+            original_text_truncated=original_text_truncated_val,
+        )
 
         preview_duration_ms_val = int(max(0.0, (time.perf_counter() - preview_started) * 1000.0))
         # Best-effort Server-Timing for quick profiling in browser devtools.
@@ -3767,10 +3966,12 @@ async def preview_chunking(
             stats=stats,
             auto_selected_strategy=auto_selected_strategy,
             warnings=warnings_out,
+            quality_gate=quality_gate,
+            recommendations=recommendations,
             # Skip original text when too large (highlight offsets require full text).
             original_text=original_text_value,
             original_text_included=original_text_value is not None,
-            original_text_truncated=bool(include_original and original_text_value is None and total_characters > int(original_text_max_chars or 0)),
+            original_text_truncated=original_text_truncated_val,
             original_text_max_chars=int(original_text_max_chars or 0),
             parser_backend=resolved_backend,
             chunk_strategy=resolved_chunk_strategy
@@ -4192,6 +4393,7 @@ async def preview_chunking_by_sha(
             pos = max(0, min(len(sorted_lengths) - 1, pos))
             return int(sorted_lengths[pos] or 0)
 
+        coverage = _compute_chunk_coverage_metrics(chunk_items, total_characters=total_characters)
         stats = ChunkPreviewStats(
             unit=unit,
             count=len(sorted_lengths),
@@ -4205,14 +4407,29 @@ async def preview_chunking_by_sha(
             total_tokens_est=int(total_tokens_est),
             short_count=int(short_count),
             duplicate_count=int(duplicate_count),
+            **coverage,
         )
     else:
-        stats = ChunkPreviewStats(unit=unit)
+        coverage = _compute_chunk_coverage_metrics(chunk_items, total_characters=total_characters)
+        stats = ChunkPreviewStats(unit=unit, **coverage)
     stats_duration_ms = int(max(0.0, (time.perf_counter() - _stats_started) * 1000.0))
 
     auto_selected_strategy: str | None = None
     if resolved_chunk_strategy == "auto" and auto_counts:
         auto_selected_strategy = auto_counts.most_common(1)[0][0]
+
+    original_text_truncated_val = bool(
+        include_original
+        and original_text_value is None
+        and total_characters > int(original_text_max_chars or 0)
+    )
+    quality_gate, recommendations = _compute_chunk_preview_quality(
+        stats=stats,
+        total_chunks=len(chunks),
+        total_characters=int(total_characters or 0),
+        original_text_included=original_text_value is not None,
+        original_text_truncated=original_text_truncated_val,
+    )
 
     preview_duration_ms_val = int(max(0.0, (time.perf_counter() - preview_started) * 1000.0))
     with contextlib.suppress(Exception):
@@ -4252,9 +4469,11 @@ async def preview_chunking_by_sha(
         stats=stats,
         auto_selected_strategy=auto_selected_strategy,
         warnings=warnings_out,
+        quality_gate=quality_gate,
+        recommendations=recommendations,
         original_text=original_text_value,
         original_text_included=original_text_value is not None,
-        original_text_truncated=bool(include_original and original_text_value is None and total_characters > int(original_text_max_chars or 0)),
+        original_text_truncated=original_text_truncated_val,
         original_text_max_chars=int(original_text_max_chars or 0),
         parser_backend=resolved_backend,
         chunk_strategy=resolved_chunk_strategy,

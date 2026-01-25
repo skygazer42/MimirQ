@@ -139,6 +139,26 @@ export function Sidebar({ variant = 'panel' }: { variant?: 'panel' | 'dialog' } 
     }
   }, [chunkOverlap, chunkSize])
 
+  const coverageSignals = useMemo(() => {
+    const ratioRaw = previewData?.stats?.coverage_ratio
+    const wasteRaw = previewData?.stats?.overlap_waste_ratio
+    const gapCountRaw = previewData?.stats?.gap_count
+    const largestGapRaw = previewData?.stats?.largest_gap
+
+    const ratio = typeof ratioRaw === 'number' && Number.isFinite(ratioRaw) ? ratioRaw : null
+    const waste = typeof wasteRaw === 'number' && Number.isFinite(wasteRaw) ? wasteRaw : null
+    const gapCount = typeof gapCountRaw === 'number' && Number.isFinite(gapCountRaw) ? gapCountRaw : null
+    const largestGap = typeof largestGapRaw === 'number' && Number.isFinite(largestGapRaw) ? largestGapRaw : null
+
+    if (ratio == null && waste == null && gapCount == null) return null
+    return {
+      coveragePct: ratio == null ? null : Math.max(0, Math.min(100, Math.round(ratio * 100))),
+      overlapWastePct: waste == null ? null : Math.max(0, Math.min(100, Math.round(waste * 100))),
+      gapCount: gapCount == null ? null : Math.max(0, Math.trunc(gapCount)),
+      largestGap: largestGap == null ? null : Math.max(0, Math.trunc(largestGap)),
+    }
+  }, [previewData?.stats?.coverage_ratio, previewData?.stats?.overlap_waste_ratio, previewData?.stats?.gap_count, previewData?.stats?.largest_gap])
+
   const effectiveSeparator = useMemo(() => {
     if (!isSeparatorStrategy) return null
 
@@ -1056,6 +1076,17 @@ export function Sidebar({ variant = 'panel' }: { variant?: 'panel' | 'dialog' } 
                       overlap {Math.round(overlapGuidance.ratio * 100)}%（建议 10-25%）
                     </div>
                   ) : null}
+                  {coverageSignals ? (
+                    <div
+                      className={cn(
+                        'mt-1 text-[10px]',
+                        coverageSignals.coveragePct != null && coverageSignals.coveragePct < 95 ? 'text-warning' : 'text-muted-foreground'
+                      )}
+                      title={coverageSignals.largestGap != null ? `largest_gap: ${coverageSignals.largestGap}` : undefined}
+                    >
+                      coverage {coverageSignals.coveragePct ?? '-'}% · waste {coverageSignals.overlapWastePct ?? '-'}% · gaps {coverageSignals.gapCount ?? '-'}
+                    </div>
+                  ) : null}
                 </div>
                 <div className="col-span-2 bg-card p-3 rounded-xl border border-border/60 shadow-sm">
                   <div className="text-[10px] text-muted-foreground uppercase tracking-wider font-medium">
@@ -1080,6 +1111,19 @@ export function Sidebar({ variant = 'panel' }: { variant?: 'panel' | 'dialog' } 
                     <span>{chunkStats.max}</span>
                   </div>
                 </div>
+                {previewData?.recommendations?.length ? (
+                  <div className="col-span-2 bg-card p-3 rounded-xl border border-border/60 shadow-sm">
+                    <div className="text-[10px] text-muted-foreground uppercase tracking-wider font-medium">RECOMMENDATIONS</div>
+                    <div className="mt-2 space-y-1 text-[11px] text-muted-foreground">
+                      {(previewData.recommendations || []).slice(0, 8).map((r, i) => (
+                        <div key={`${i}-${String(r).slice(0, 12)}`} className="flex gap-2">
+                          <span className="font-mono text-muted-foreground/70">-</span>
+                          <span className="flex-1">{String(r)}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
               </div>
             ) : null}
           </div>

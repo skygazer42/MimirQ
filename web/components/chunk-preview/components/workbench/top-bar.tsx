@@ -280,6 +280,22 @@ export function TopBar() {
                 </span>
              ) : null}
 
+             {previewData?.quality_gate?.grade ? (
+                <span
+                  className={cn(
+                    'text-[10px] px-1.5 py-0.5 rounded border font-medium',
+                    previewData.quality_gate.grade === 'pass'
+                      ? 'bg-success/10 text-success border-success/30'
+                      : previewData.quality_gate.grade === 'fail'
+                        ? 'bg-destructive/10 text-destructive border-destructive/30'
+                        : 'bg-warning/10 text-warning border-warning/30'
+                  )}
+                  title={(previewData.quality_gate.reasons || []).join('\\n')}
+                >
+                  Quality: {String(previewData.quality_gate.grade).toUpperCase()}
+                </span>
+             ) : null}
+
              {previewData?.warnings?.length ? (
                 <span
                   className="text-[10px] px-1.5 py-0.5 rounded bg-warning/10 text-warning border border-warning/30 font-medium"
