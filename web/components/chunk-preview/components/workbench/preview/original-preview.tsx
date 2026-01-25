@@ -10,6 +10,8 @@ import { useChunkPreview } from '@/components/chunk-preview/context'
 import { MarkdownRenderer } from '@/components/markdown/markdown-renderer'
 import { MarkdownToc } from '@/components/markdown/markdown-toc'
 import { extractMarkdownHeadings } from '@/lib/markdown'
+import { cn } from '@/lib/utils'
+import { OriginalPreviewMonaco } from './original-preview-monaco'
 
 const AUTO_LOAD_TEXT_MAX_BYTES = 800_000
 
@@ -32,8 +34,17 @@ function canReadFileAsText(file: File | null) {
 }
 
 export function OriginalPreview() {
-  const { previewData, hoveredChunkIndex, selectedChunkIndex, currentFile, isLoading, error } = useChunkPreview()
-  const [previewMode, setPreviewMode] = useState<'raw' | 'rendered'>('raw')
+  const {
+    previewData,
+    chunkOverrides,
+    hoveredChunkIndex,
+    selectedChunkIndex,
+    setSelectedChunkIndex,
+    currentFile,
+    isLoading,
+    error,
+  } = useChunkPreview()
+  const [previewMode, setPreviewMode] = useState<'raw' | 'rendered' | 'editor'>('raw')
   const [forceFullHighlight, setForceFullHighlight] = useState(false)
   const [localOriginalText, setLocalOriginalText] = useState<string | null>(null)
   const [localLoading, setLocalLoading] = useState(false)
@@ -49,6 +60,7 @@ export function OriginalPreview() {
       label: `#${activeChunkIndex + 1}`,
       range: `${chunk.start_index}-${chunk.end_index}`,
       page: chunk.page_number,
+      role: chunk.metadata?.chunk_role as string | undefined,
     }
   }, [activeChunkIndex, previewData?.chunks])
 
@@ -95,18 +107,36 @@ export function OriginalPreview() {
     }
   }, [canLoadFromFile, currentFile, localLoading, localOriginalText, previewData])
 
-  const getHighlightedText = useMemo(() => {
+  const highlightModel = useMemo(() => {
     if (!effectiveOriginalText || activeChunkIndex === null) return null
 
     const chunk = previewData?.chunks?.[activeChunkIndex]
     if (!chunk) return null
 
     const text = effectiveOriginalText
-    const start = Math.max(0, Number(chunk.start_index) || 0)
-    const end = Math.max(start, Number(chunk.end_index) || start)
-    if (start >= text.length) return null
-    const safeEnd = Math.min(end, text.length)
-    if (safeEnd <= start) return null
+    const activeStart = Math.max(0, Number(chunk.start_index) || 0)
+    const activeEnd = Math.max(activeStart, Number(chunk.end_index) || activeStart)
+    if (activeStart >= text.length) return null
+    const safeActiveEnd = Math.min(activeEnd, text.length)
+    if (safeActiveEnd <= activeStart) return null
+
+    // Parent-child: when selecting a child, also highlight its parent range (if provided).
+    const meta = (chunk.metadata || {}) as Record<string, any>
+    const role = String(meta.chunk_role || '')
+    const parentStartRaw = meta.parent_start_char ?? meta.parent_start_index ?? meta.parent_start
+    const parentEndRaw = meta.parent_end_char ?? meta.parent_end_index ?? meta.parent_end
+    const parentStart = role === 'child' && parentStartRaw != null ? Number(parentStartRaw) : NaN
+    const parentEnd = role === 'child' && parentEndRaw != null ? Number(parentEndRaw) : NaN
+    const hasParent =
+      role === 'child' &&
+      Number.isFinite(parentStart) &&
+      Number.isFinite(parentEnd) &&
+      parentEnd > parentStart &&
+      parentStart <= activeStart &&
+      parentEnd >= safeActiveEnd
+
+    const baseStart = hasParent ? Math.min(activeStart, parentStart) : activeStart
+    const baseEnd = hasParent ? Math.max(safeActiveEnd, parentEnd) : safeActiveEnd
 
     // Avoid rendering giant before/after strings for large texts: default to a windowed excerpt.
     const EXCERPT_THRESHOLD = 20_000
@@ -114,22 +144,30 @@ export function OriginalPreview() {
     const useExcerpt = !forceFullHighlight && text.length > EXCERPT_THRESHOLD
     if (!useExcerpt) {
       return {
-        before: text.slice(0, start),
-        highlighted: text.slice(start, safeEnd),
-        after: text.slice(safeEnd),
+        text,
+        excerptStart: 0,
+        excerptEnd: text.length,
         prefixOmitted: false,
         suffixOmitted: false,
+        activeStart,
+        activeEnd: safeActiveEnd,
+        parentStart: hasParent ? parentStart : null,
+        parentEnd: hasParent ? parentEnd : null,
       }
     }
 
-    const excerptStart = Math.max(0, start - CONTEXT_CHARS)
-    const excerptEnd = Math.min(text.length, safeEnd + CONTEXT_CHARS)
+    const excerptStart = Math.max(0, baseStart - CONTEXT_CHARS)
+    const excerptEnd = Math.min(text.length, baseEnd + CONTEXT_CHARS)
     return {
-      before: text.slice(excerptStart, start),
-      highlighted: text.slice(start, safeEnd),
-      after: text.slice(safeEnd, excerptEnd),
+      text,
+      excerptStart,
+      excerptEnd,
       prefixOmitted: excerptStart > 0,
       suffixOmitted: excerptEnd < text.length,
+      activeStart,
+      activeEnd: safeActiveEnd,
+      parentStart: hasParent ? parentStart : null,
+      parentEnd: hasParent ? parentEnd : null,
     }
   }, [activeChunkIndex, effectiveOriginalText, forceFullHighlight, previewData?.chunks])
 
@@ -163,6 +201,11 @@ export function OriginalPreview() {
                   {activeChunkMeta.page != null ? ` P.${activeChunkMeta.page}` : ''}
                   {' '}
                   <span className="text-muted-foreground">{activeChunkMeta.range}</span>
+                  {activeChunkMeta.role ? (
+                    <span className="ml-1 text-[9px] uppercase tracking-wide text-muted-foreground">
+                      {activeChunkMeta.role}
+                    </span>
+                  ) : null}
                 </span>
               ) : null}
               <span>{(effectiveOriginalText?.length ?? previewData.total_characters).toLocaleString()} chars</span>
@@ -196,20 +239,51 @@ export function OriginalPreview() {
               {forceFullHighlight ? '窗口' : '全文'}
             </Button>
           ) : null}
-          <Button
-            variant="ghost"
-            size="sm"
-            className="h-7 px-2 text-[11px]"
-            onClick={() => setPreviewMode((m) => (m === 'raw' ? 'rendered' : 'raw'))}
-            disabled={!effectiveOriginalText}
-          >
-            {previewMode === 'raw' ? '预览' : '源码'}
-          </Button>
+          <div className="flex items-center gap-1 rounded-md border border-border/60 bg-muted/20 p-0.5">
+            <Button
+              variant={previewMode === 'raw' ? 'secondary' : 'ghost'}
+              size="sm"
+              className="h-7 px-2 text-[11px]"
+              onClick={() => setPreviewMode('raw')}
+              disabled={!effectiveOriginalText}
+            >
+              源码
+            </Button>
+            <Button
+              variant={previewMode === 'rendered' ? 'secondary' : 'ghost'}
+              size="sm"
+              className="h-7 px-2 text-[11px]"
+              onClick={() => setPreviewMode('rendered')}
+              disabled={!effectiveOriginalText}
+            >
+              预览
+            </Button>
+            <Button
+              variant={previewMode === 'editor' ? 'secondary' : 'ghost'}
+              size="sm"
+              className="h-7 px-2 text-[11px]"
+              onClick={() => setPreviewMode('editor')}
+              disabled={!effectiveOriginalText}
+              title="Large-text viewer with stable highlight + overview markers"
+            >
+              编辑器
+            </Button>
+          </div>
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto overscroll-contain no-scrollbar p-4 scroll-smooth">
-        <div className="min-h-full rounded-2xl border border-border/60 bg-card/70 p-6 shadow-sm backdrop-blur ring-1 ring-border/40">
+      <div
+        className={cn(
+          'flex-1 overscroll-contain no-scrollbar p-4 scroll-smooth',
+          previewMode === 'editor' ? 'overflow-hidden' : 'overflow-y-auto'
+        )}
+      >
+        <div
+          className={cn(
+            'min-h-full rounded-2xl border border-border/60 bg-card/70 p-6 shadow-sm backdrop-blur ring-1 ring-border/40',
+            previewMode === 'editor' ? 'h-full' : null
+          )}
+        >
           {previewData ? (
             effectiveOriginalText ? (
               previewMode === 'rendered' ? (
@@ -219,7 +293,7 @@ export function OriginalPreview() {
                       <MarkdownRenderer markdown={effectiveOriginalText} autoScrollToHash />
                     </div>
                     <p className="mt-4 text-[11px] text-muted-foreground">
-                      提示：渲染模式下不支持高亮显示，请切换至源码模式查看切片对应位置
+                      提示：渲染模式下不支持高亮显示，请切换至源码/编辑器模式查看切片对应位置
                     </p>
                   </div>
                   {tocEnabled && (
@@ -230,21 +304,70 @@ export function OriginalPreview() {
                     </aside>
                   )}
                 </div>
+              ) : previewMode === 'editor' ? (
+                <div className="mx-auto w-full max-w-6xl h-full">
+                  <OriginalPreviewMonaco
+                    text={effectiveOriginalText}
+                    chunks={previewData.chunks}
+                    activeChunkIndex={activeChunkIndex}
+                    chunkOverrides={chunkOverrides}
+                    onSelectChunkIndex={setSelectedChunkIndex}
+                  />
+                  <p className="mt-3 text-[11px] text-muted-foreground">
+                    提示：右侧滚动条有 chunk 标记；点击原文可自动选中最细粒度的 chunk（child 优先）。
+                  </p>
+                </div>
               ) : (
                 <div className="font-mono text-sm leading-relaxed text-muted-foreground whitespace-pre-wrap max-w-3xl mx-auto">
-                  {activeChunkIndex !== null && getHighlightedText ? (
-                    <>
-                      {getHighlightedText.prefixOmitted ? <span className="opacity-40">…</span> : null}
-                      <span className="opacity-40">{getHighlightedText.before}</span>
-                      <mark
-                        ref={highlightRef}
-                        className="bg-primary/15 text-foreground rounded px-0.5 py-0.5 mx-0.5 shadow-sm font-medium"
-                      >
-                        {getHighlightedText.highlighted}
-                      </mark>
-                      <span className="opacity-40">{getHighlightedText.after}</span>
-                      {getHighlightedText.suffixOmitted ? <span className="opacity-40">…</span> : null}
-                    </>
+                  {activeChunkIndex !== null && highlightModel ? (
+                    (() => {
+                      const excerpt = highlightModel.text.slice(highlightModel.excerptStart, highlightModel.excerptEnd)
+                      const rel = (abs: number) => abs - highlightModel.excerptStart
+                      const safeSlice = (fromAbs: number, toAbs: number) =>
+                        excerpt.slice(Math.max(0, rel(fromAbs)), Math.max(0, rel(toAbs)))
+
+                      const hasParent = highlightModel.parentStart != null && highlightModel.parentEnd != null
+                      const parentStart = hasParent ? Number(highlightModel.parentStart) : null
+                      const parentEnd = hasParent ? Number(highlightModel.parentEnd) : null
+
+                      if (!hasParent || parentStart == null || parentEnd == null) {
+                        return (
+                          <>
+                            {highlightModel.prefixOmitted ? <span className="opacity-40">…</span> : null}
+                            <span className="opacity-40">{safeSlice(highlightModel.excerptStart, highlightModel.activeStart)}</span>
+                            <mark
+                              ref={highlightRef}
+                              className="bg-primary/15 text-foreground rounded px-0.5 py-0.5 mx-0.5 shadow-sm font-medium"
+                            >
+                              {safeSlice(highlightModel.activeStart, highlightModel.activeEnd)}
+                            </mark>
+                            <span className="opacity-40">{safeSlice(highlightModel.activeEnd, highlightModel.excerptEnd)}</span>
+                            {highlightModel.suffixOmitted ? <span className="opacity-40">…</span> : null}
+                          </>
+                        )
+                      }
+
+                      return (
+                        <>
+                          {highlightModel.prefixOmitted ? <span className="opacity-40">…</span> : null}
+                          <span className="opacity-40">{safeSlice(highlightModel.excerptStart, parentStart)}</span>
+
+                          <mark className="bg-primary/10 text-foreground rounded px-0.5 py-0.5 mx-0.5 shadow-sm">
+                            {safeSlice(parentStart, highlightModel.activeStart)}
+                            <mark
+                              ref={highlightRef}
+                              className="bg-primary/20 text-foreground rounded px-0.5 py-0.5 mx-0.5 shadow-sm font-medium"
+                            >
+                              {safeSlice(highlightModel.activeStart, highlightModel.activeEnd)}
+                            </mark>
+                            {safeSlice(highlightModel.activeEnd, parentEnd)}
+                          </mark>
+
+                          <span className="opacity-40">{safeSlice(parentEnd, highlightModel.excerptEnd)}</span>
+                          {highlightModel.suffixOmitted ? <span className="opacity-40">…</span> : null}
+                        </>
+                      )
+                    })()
                   ) : (
                     effectiveOriginalText
                   )}
