@@ -68,6 +68,8 @@ export function TopBar() {
     separatorCustom,
     keepSeparator,
     separatorMaxChunkSize,
+    parentChildRatio,
+    parentChildMinChildSize,
     lastPreviewDurationMs,
     cacheHit,
     isPreviewDirty,
@@ -96,6 +98,7 @@ export function TopBar() {
   const exportPreview = previewData ? applyChunkOverridesToPreview(previewData, chunkOverrides) : null
 
   const shouldIncludeSeparatorSettings = effectiveChunkStrategy === 'separator'
+  const shouldIncludeParentChildSettings = effectiveChunkStrategy === 'parent_child'
   const canCompare = Boolean(
     previewData &&
       (runHistory || []).filter(
@@ -594,6 +597,10 @@ export function TopBar() {
                 ]
                 if (datasetId) {
                   lines.push(`  -F \"dataset_id=${datasetId}\"`)
+                }
+                if (shouldIncludeParentChildSettings) {
+                  lines.push(`  -F "child_ratio=${parentChildRatio}"`)
+                  lines.push(`  -F "min_child_size=${parentChildMinChildSize}"`)
                 }
                 if (shouldIncludeSeparatorSettings) {
                   lines.push(`  -F \"separator_preset=${separatorPreset}\"`)

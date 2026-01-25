@@ -34,6 +34,14 @@
       - 支持用 `\n` / `\t` 等转义写法（前端会在发送前解析为真实字符）。
     - `keep_separator`：是否保留分隔符（附在前一块末尾），便于还原原始结构。
     - `separator_max_chunk_size`：单块最大长度（超过则会按句子/换行等边界拆成子块）；0 表示自动（`chunk_size × 3`）。
+- `parent_child`?? `chunk_strategy=parent_child`?
+  - Form: `child_ratio`, `min_child_size`
+  - ???child chunk ????/??? parent chunk ????? multi-vector / parent-child retriever??
+    - `child_size = max(chunk_size * child_ratio, min_child_size)`
+    - `child_overlap = min(chunk_overlap * child_ratio, child_size // 4)`
+  - Response: `params.strategy_params` ??????????????/???????
+  - UI: Sidebar ?? parent-child ???Chunk List ?? Flat/Hierarchy ???? `metadata.parent_id` ???????
+
 - `parser_backend`
   - 不同解析器会影响原文结构（尤其是 PDF/Office），建议先在「文档解析」页验证解析质量，再进行切块调参。
 
