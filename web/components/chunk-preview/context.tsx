@@ -558,7 +558,7 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: ChunkPrev
             : undefined
           : undefined
 
-      const data = await documentApi.chunkPreview(file, {
+      const baseParams = {
         chunk_size: chunkSize,
         chunk_overlap: effectiveOverlap,
         include_original_text: includeOriginalText,
@@ -573,7 +573,36 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: ChunkPrev
         separator: separator,
         keep_separator: chunkStrategy === 'separator' ? keepSeparator : undefined,
         separator_max_chunk_size: chunkStrategy === 'separator' ? separatorMaxChunkSize : undefined,
-      }, { signal: controller.signal })
+      } as const
+
+      // Enterprise UX: when parse cache is enabled and we have a prior file_sha256, avoid re-uploading the file.
+      // If server cache miss/disabled, fall back to uploading.
+      let data: ChunkPreviewResponse
+      const sha = (previewData as any)?.file_sha256 as string | undefined
+      const fileType = (previewData as any)?.file_type as string | undefined
+      if (useParseCache && sha && (fileType || file.name)) {
+        try {
+          data = await documentApi.chunkPreviewBySha(
+            {
+              file_sha256: sha,
+              file_type: fileType || undefined,
+              filename: file.name,
+              file_size: file.size,
+              ...baseParams,
+            },
+            { signal: controller.signal }
+          )
+        } catch (err: any) {
+          const status = err?.response?.status
+          if (status === 400 || status === 404) {
+            data = await documentApi.chunkPreview(file, baseParams, { signal: controller.signal })
+          } else {
+            throw err
+          }
+        }
+      } else {
+        data = await documentApi.chunkPreview(file, baseParams, { signal: controller.signal })
+      }
       if (previewRequestIdRef.current !== requestId) return
       setChunkOverrides({})
       setPreviewData(data)
@@ -633,6 +662,7 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: ChunkPrev
     originalTextMaxChars,
     maxChunks,
     useParseCache,
+    previewData,
   ])
 
   const cancelPreview = useCallback(() => {

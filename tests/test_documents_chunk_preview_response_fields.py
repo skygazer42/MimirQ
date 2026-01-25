@@ -32,7 +32,7 @@ def _override_get_current_account_id() -> str:
 
 
 def _build_client(monkeypatch, *, parsed_pages: int = 1):  # noqa: ANN001
-    from app.api.v1.documents import preview_chunking
+    from app.api.v1.documents import preview_chunking, preview_chunking_by_sha
     from app.services.dataset_service import DatasetService
     import app.api.v1.documents as documents_module
     from app.rag.chunking.factory import chunker_factory
@@ -82,6 +82,7 @@ def _build_client(monkeypatch, *, parsed_pages: int = 1):  # noqa: ANN001
     app.dependency_overrides[get_current_account_id] = _override_get_current_account_id
 
     app.post("/api/v1/documents/chunk-preview")(preview_chunking)
+    app.post("/api/v1/documents/chunk-preview/by-sha")(preview_chunking_by_sha)
     return TestClient(app)
 
 
@@ -228,3 +229,73 @@ def test_documents_chunk_preview_parse_cache_hit(monkeypatch):  # noqa: ANN001
     assert body2.get("parse_cache_hit") is True
     assert isinstance(body2.get("parse_cache_age_ms"), int) and body2["parse_cache_age_ms"] >= 0
     assert body2.get("parse_duration_ms") == 0
+
+
+def test_documents_chunk_preview_by_sha_cache_miss(monkeypatch):  # noqa: ANN001
+    from app.core.config import settings
+    from app.services.preview_cache import preview_parse_cache
+
+    preview_parse_cache.clear()
+
+    client = _build_client(monkeypatch)
+
+    monkeypatch.setattr(settings, "PREVIEW_PARSE_CACHE_ENABLED", True, raising=False)
+    monkeypatch.setattr(settings, "PREVIEW_PARSE_CACHE_TTL_SEC", 600, raising=False)
+    monkeypatch.setattr(settings, "PREVIEW_PARSE_CACHE_MAX_ENTRIES", 32, raising=False)
+
+    res = client.post(
+        "/api/v1/documents/chunk-preview/by-sha?chunk_size=100&chunk_overlap=10",
+        data={
+            "file_sha256": "0" * 64,
+            "file_type": "txt",
+            "filename": "doc.txt",
+            "parser_backend": "auto",
+            "chunk_strategy": "langchain_recursive",
+        },
+    )
+    assert res.status_code == 404
+
+
+def test_documents_chunk_preview_by_sha_hit(monkeypatch):  # noqa: ANN001
+    from app.core.config import settings
+    from app.services.preview_cache import preview_parse_cache
+
+    preview_parse_cache.clear()
+
+    fixed_tenant_id = uuid.uuid4()
+    client = _build_client(monkeypatch)
+    client.app.dependency_overrides[get_tenant_id] = lambda: fixed_tenant_id
+
+    monkeypatch.setattr(settings, "PREVIEW_PARSE_CACHE_ENABLED", True, raising=False)
+    monkeypatch.setattr(settings, "PREVIEW_PARSE_CACHE_TTL_SEC", 600, raising=False)
+    monkeypatch.setattr(settings, "PREVIEW_PARSE_CACHE_MAX_ENTRIES", 32, raising=False)
+    monkeypatch.setattr(settings, "PREVIEW_PARSE_CACHE_MAX_DOC_CHARS", 2_000_000, raising=False)
+
+    payload = b"hello world"
+    warm = client.post(
+        "/api/v1/documents/chunk-preview?chunk_size=100&chunk_overlap=10",
+        data={"parser_backend": "auto", "chunk_strategy": "langchain_recursive"},
+        files={"file": ("doc.txt", payload, "text/plain")},
+    )
+    assert warm.status_code == 200
+    warm_body = warm.json()
+    sha = warm_body.get("file_sha256")
+    assert isinstance(sha, str) and len(sha) == 64
+
+    res = client.post(
+        "/api/v1/documents/chunk-preview/by-sha?chunk_size=100&chunk_overlap=10",
+        data={
+            "file_sha256": sha,
+            "file_type": "txt",
+            "filename": "doc.txt",
+            "file_size": 11,
+            "parser_backend": "auto",
+            "chunk_strategy": "langchain_recursive",
+        },
+    )
+    assert res.status_code == 200
+    body = res.json()
+    assert body.get("parse_cache_hit") is True
+    assert body.get("parse_duration_ms") == 0
+    assert body.get("upload_duration_ms") == 0
+    assert body.get("file_sha256") == sha

@@ -498,6 +498,76 @@ export const documentApi = {
   /**
    * 批量上传申请 URL
    */
+  /**
+   * 切块预览（复用后端解析缓存，不上传文件）
+   *
+   * 说明：需要先调用一次 `chunkPreview(file, ...)` 让后端缓存解析结果。
+   * 如果缓存 miss，会返回 404；前端应回退到上传文件的方式。
+   */
+  async chunkPreviewBySha(
+    params: {
+      file_sha256: string
+      file_type?: string
+      filename?: string
+      file_size?: number
+      chunk_size?: number
+      chunk_overlap?: number
+      parser_backend?: string
+      chunk_strategy?: string
+      pipeline?: DocumentPipelineOptions
+      dataset_id?: string
+      include_original_text?: boolean
+      original_text_max_chars?: number
+      max_chunks?: number
+      use_parse_cache?: boolean
+      separator_preset?: string
+      separator?: string
+      keep_separator?: boolean
+      separator_max_chunk_size?: number
+    },
+    options?: { signal?: AbortSignal }
+  ): Promise<ChunkPreviewResponse> {
+    const name = params.filename || `doc.${String(params.file_type || 'txt').replace(/^\\.+/, '')}`
+    const resolvedParser = resolveParserBackendForFilename(name, params.parser_backend || 'auto')
+
+    const formData = new FormData()
+    formData.append('file_sha256', String(params.file_sha256 || ''))
+    if (params.file_type) formData.append('file_type', String(params.file_type))
+    if (params.filename) formData.append('filename', String(params.filename))
+    if (typeof params.file_size === 'number') formData.append('file_size', String(params.file_size))
+
+    formData.append('parser_backend', resolvedParser.backend || 'auto')
+    formData.append('chunk_strategy', params.chunk_strategy || 'langchain_recursive')
+    if (params.dataset_id) formData.append('dataset_id', params.dataset_id)
+    if (params.separator_preset) formData.append('separator_preset', params.separator_preset)
+    if (typeof params.separator === 'string') formData.append('separator', params.separator)
+    if (typeof params.keep_separator === 'boolean') {
+      formData.append('keep_separator', params.keep_separator ? 'true' : 'false')
+    }
+    if (typeof params.separator_max_chunk_size === 'number') {
+      formData.append('separator_max_chunk_size', String(params.separator_max_chunk_size))
+    }
+    appendPipelineOptionsToFormData(formData, params.pipeline)
+
+    const effectiveChunkSize = params.chunk_size ?? params.pipeline?.chunk_size ?? 1000
+    const effectiveChunkOverlap = params.chunk_overlap ?? params.pipeline?.chunk_overlap ?? 200
+
+    const { data } = await apiClient.post('/documents/chunk-preview/by-sha', formData, {
+      timeout: API_LONG_TIMEOUT_MS,
+      signal: options?.signal,
+      params: {
+        chunk_size: effectiveChunkSize,
+        chunk_overlap: effectiveChunkOverlap,
+        include_original_text: typeof params.include_original_text === 'boolean' ? params.include_original_text : undefined,
+        original_text_max_chars: typeof params.original_text_max_chars === 'number' ? params.original_text_max_chars : undefined,
+        max_chunks: typeof params.max_chunks === 'number' ? params.max_chunks : undefined,
+        use_parse_cache: typeof params.use_parse_cache === 'boolean' ? params.use_parse_cache : undefined,
+      },
+    })
+
+    return data
+  },
+
   async applyBatchUploadUrls(files: BatchFileInfo[]): Promise<BatchUploadResponse> {
     const { data } = await apiClient.post('/documents/batch-upload/apply-urls', { files })
     return data
