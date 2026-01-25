@@ -29,6 +29,7 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuCheckboxItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
@@ -50,6 +51,7 @@ export function TopBar() {
   const [helpOpen, setHelpOpen] = useState(false)
   const [compareOpen, setCompareOpen] = useState(false)
   const [testGenOpen, setTestGenOpen] = useState(false)
+  const [includeSkippedInExports, setIncludeSkippedInExports] = useState(false)
   const pipelineCtx = usePipelineOptions()
   const { enabled: pipelineOverridesEnabled, options: pipelineOptions } = pipelineCtx
   const importConfigInputRef = useRef<HTMLInputElement>(null)
@@ -95,7 +97,16 @@ export function TopBar() {
 
   const effectiveParserBackend = previewData?.parser_backend || parserBackend
   const effectiveChunkStrategy = previewData?.chunk_strategy || chunkStrategy
-  const exportPreview = previewData ? applyChunkOverridesToPreview(previewData, chunkOverrides) : null
+  const skippedCount = Object.values(chunkOverrides || {}).reduce(
+    (acc, o: any) => acc + (o?.disabled ? 1 : 0),
+    0
+  )
+
+  const exportPreviewEnabledOnly = previewData ? applyChunkOverridesToPreview(previewData, chunkOverrides) : null
+  const exportPreviewAll = previewData
+    ? applyChunkOverridesToPreview(previewData, chunkOverrides, { include_disabled: true })
+    : null
+  const exportPreview = includeSkippedInExports ? exportPreviewAll : exportPreviewEnabledOnly
 
   const shouldIncludeSeparatorSettings = effectiveChunkStrategy === 'separator'
   const shouldIncludeParentChildSettings = effectiveChunkStrategy === 'parent_child'
@@ -494,6 +505,18 @@ export function TopBar() {
               <Copy className="mr-2 h-4 w-4" />
               从剪贴板导入配置
             </DropdownMenuItem>
+            {previewData && skippedCount > 0 ? (
+              <>
+                <DropdownMenuSeparator />
+                <DropdownMenuCheckboxItem
+                  checked={includeSkippedInExports}
+                  onCheckedChange={(checked) => setIncludeSkippedInExports(Boolean(checked))}
+                >
+                  Include SKIP chunks in exports ({skippedCount})
+                </DropdownMenuCheckboxItem>
+              </>
+            ) : null}
+
             <DropdownMenuItem
               disabled={!previewData}
               onSelect={() => {
@@ -545,13 +568,14 @@ export function TopBar() {
             <DropdownMenuItem
               disabled={!previewData}
               onSelect={() => {
-                if (!exportPreview) return
+                const payloadPreview = exportPreviewEnabledOnly
+                if (!payloadPreview) return
                 const payload = {
-                  filename: exportPreview.filename,
-                  file_type: exportPreview.file_type,
-                  file_size: exportPreview.file_size,
+                  filename: payloadPreview.filename,
+                  file_type: payloadPreview.file_type,
+                  file_size: payloadPreview.file_size,
                   dataset_id: datasetId || undefined,
-                  chunks: (exportPreview.chunks || []).map((c) => ({
+                  chunks: (payloadPreview.chunks || []).map((c) => ({
                     content: c.content ?? '',
                     page_number: c.page_number,
                     start_char: c.start_index,

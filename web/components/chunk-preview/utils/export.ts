@@ -33,16 +33,19 @@ export function toChunkPreviewExport(preview: ChunkPreviewResponse) {
 
 export function applyChunkOverridesToPreview(
   preview: ChunkPreviewResponse,
-  overrides: Record<number, { content?: string; metadata?: Record<string, any>; disabled?: boolean; updatedAt?: number }> | undefined
+  overrides: Record<number, { content?: string; metadata?: Record<string, any>; disabled?: boolean; updatedAt?: number }> | undefined,
+  options?: { include_disabled?: boolean }
 ) {
   const keys = overrides ? Object.keys(overrides) : []
+  const includeDisabled = Boolean(options?.include_disabled)
   if (!keys.length) return preview
 
   const chunks = (preview.chunks || []).reduce((acc, chunk) => {
     const idx = typeof chunk.index === 'number' ? chunk.index : (preview.chunks || []).indexOf(chunk)
     const override = overrides?.[idx]
 
-    if (override?.disabled) return acc
+    const isDisabled = Boolean(override?.disabled)
+    if (isDisabled && !includeDisabled) return acc
     if (!override) {
       acc.push(chunk)
       return acc
@@ -50,10 +53,11 @@ export function applyChunkOverridesToPreview(
 
     const content = String(override.content ?? chunk.content ?? '')
     const metadata = (override.metadata ?? chunk.metadata ?? {}) as Record<string, any>
+    const exportMetadata = isDisabled && includeDisabled ? { ...metadata, __mimirq_skip: true } : metadata
     acc.push({
       ...chunk,
       content,
-      metadata,
+      metadata: exportMetadata,
       length: content.length,
       tokens_est: roughEstimateTokens(content),
     })
