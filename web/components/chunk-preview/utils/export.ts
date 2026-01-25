@@ -1,10 +1,5 @@
 import type { ChunkPreviewResponse } from '@/types'
-
-function roughEstimateTokens(text: string) {
-  const raw = (text || '').trim()
-  if (!raw) return 0
-  return Math.max(1, Math.ceil(raw.length / 4))
-}
+import { computeCoverageSignals, computeDuplicateIndices, computeShortIndices, fnv1a32, roughEstimateTokens } from './review-signals'
 
 export function sanitizeFilename(name: string) {
   const trimmed = (name || '').trim()
@@ -141,4 +136,105 @@ export function chunkPreviewToJsonl(preview: ChunkPreviewResponse) {
     })
   )
   return rows.join('\n')
+}
+
+export function chunkPreviewToReviewReport(
+  preview: ChunkPreviewResponse,
+  overrides: Record<number, { content?: string; metadata?: Record<string, any>; disabled?: boolean; updatedAt?: number }> | undefined,
+  options?: { include_disabled?: boolean }
+) {
+  const includeDisabled = Boolean(options?.include_disabled)
+
+  const mergedAll = applyChunkOverridesToPreview(preview, overrides, { include_disabled: true })
+  const merged = includeDisabled ? mergedAll : applyChunkOverridesToPreview(preview, overrides, { include_disabled: false })
+
+  const unit: 'chars' | 'tokens' = mergedAll.params?.unit === 'tokens' ? 'tokens' : 'chars'
+
+  const editedIndices = new Set<number>()
+  const disabledIndices = new Set<number>()
+  for (const [k, v] of Object.entries(overrides || {})) {
+    const idx = Number(k)
+    if (!Number.isFinite(idx)) continue
+    if ((v as any)?.disabled) disabledIndices.add(idx)
+    if ((v as any)?.content !== undefined || (v as any)?.metadata !== undefined) editedIndices.add(idx)
+  }
+
+  const duplicateIndices = computeDuplicateIndices(mergedAll.chunks || [])
+  const shortIndices = computeShortIndices(mergedAll.chunks || [], unit)
+  const coverage = computeCoverageSignals(mergedAll.chunks || [], { strategy: mergedAll.chunk_strategy })
+
+  const chunks = (merged.chunks || []).map((c) => {
+    const idx = Number(c.index)
+    const meta = (c.metadata || {}) as Record<string, any>
+    const raw = String(c.content || '')
+    const trimmed = raw.trim()
+
+    const gapBefore = coverage.gapBeforeByIndex.get(idx) || 0
+    const overlapPrev = coverage.overlapPrevByIndex.get(idx) || 0
+
+    const isDisabled = Boolean((overrides as any)?.[idx]?.disabled) || Boolean(meta.__mimirq_skip)
+    const isEdited = editedIndices.has(idx)
+
+    return {
+      index: idx,
+      page_number: typeof c.page_number === 'number' ? c.page_number : null,
+      start_index: Number(c.start_index) || 0,
+      end_index: Number(c.end_index) || 0,
+      length: Number(c.length) || 0,
+      tokens_est: typeof c.tokens_est === 'number' ? c.tokens_est : null,
+      role: typeof meta.chunk_role === 'string' ? meta.chunk_role : null,
+      parent_id: typeof meta.parent_id === 'string' ? meta.parent_id : typeof meta.parent_node_id === 'string' ? meta.parent_node_id : null,
+      disabled: isDisabled,
+      edited: isEdited,
+      flags: {
+        short: shortIndices.has(idx),
+        duplicate: duplicateIndices.has(idx),
+        gap: coverage.gapIndices.has(idx),
+        overlap: coverage.overlapIndices.has(idx),
+      },
+      gap_before: gapBefore,
+      overlap_prev: overlapPrev,
+      content_hash: trimmed ? fnv1a32(trimmed) : null,
+      content_preview: raw.length > 220 ? `${raw.slice(0, 220)}...` : raw,
+    }
+  })
+
+  return {
+    schema: 'mimirq.chunk_review.v1',
+    generated_at: new Date().toISOString(),
+    file: {
+      filename: mergedAll.filename,
+      file_type: mergedAll.file_type,
+      file_size: mergedAll.file_size,
+      file_sha256: (mergedAll as any).file_sha256 ?? null,
+      total_characters: mergedAll.total_characters,
+    },
+    config: {
+      parser_backend: mergedAll.parser_backend,
+      chunk_strategy: mergedAll.chunk_strategy,
+      chunk_size: mergedAll.params?.chunk_size,
+      chunk_overlap: mergedAll.params?.chunk_overlap,
+      unit,
+      strategy_params: mergedAll.params?.strategy_params || {},
+    },
+    stats: mergedAll.stats || null,
+    quality_gate: (mergedAll as any).quality_gate ?? null,
+    recommendations: (mergedAll as any).recommendations ?? [],
+    warnings: (mergedAll as any).warnings ?? [],
+    summary: {
+      total_chunks: mergedAll.total_chunks,
+      total_chunks_in_report: chunks.length,
+      include_disabled: includeDisabled,
+      disabled_count: disabledIndices.size,
+      edited_count: editedIndices.size,
+      issue_counts: {
+        short: shortIndices.size,
+        duplicate: duplicateIndices.size,
+        gap: coverage.gapIndices.size,
+        overlap: coverage.overlapIndices.size,
+      },
+      coverage_basis: coverage.basis,
+    },
+    chunks,
+  }
 }

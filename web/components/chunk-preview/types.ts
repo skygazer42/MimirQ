@@ -102,6 +102,7 @@ export interface ChunkPreviewActions {
   setSelectedChunkIndex: (index: number | null) => void
   updateChunkOverride: (index: number, override: { content?: string; metadata?: Record<string, any> }) => void
   toggleChunkDisabled: (index: number) => void
+  setChunksDisabled: (indices: number[], disabled: boolean) => void
   clearChunkOverride: (index: number) => void
   clearAllChunkOverrides: () => void
   toggleOriginalPanel: () => void

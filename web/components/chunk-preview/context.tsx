@@ -861,6 +861,41 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: ChunkPrev
     })
   }, [])
 
+  const setChunksDisabled = useCallback((indices: number[], disabled: boolean) => {
+    const list = Array.from(new Set((indices || []).map((n) => Math.trunc(Number(n))).filter((n) => Number.isFinite(n) && n >= 0)))
+    if (list.length === 0) return
+
+    setChunkOverrides((prev) => {
+      const now = Date.now()
+      const next = { ...prev }
+      let changed = false
+
+      for (const idx of list) {
+        const cur = next[idx] || {}
+        const curDisabled = Boolean((cur as any).disabled)
+
+        if (disabled) {
+          if (curDisabled) continue
+          next[idx] = { ...cur, disabled: true, updatedAt: now }
+          changed = true
+          continue
+        }
+
+        if (!curDisabled) continue
+        const { disabled: _omit, ...rest } = cur as any
+        const hasOther = rest.content !== undefined || rest.metadata !== undefined
+        if (!hasOther) {
+          delete next[idx]
+        } else {
+          next[idx] = { ...rest, updatedAt: now }
+        }
+        changed = true
+      }
+
+      return changed ? next : prev
+    })
+  }, [])
+
   const clearChunkOverride = useCallback((index: number) => {
     const idx = Math.trunc(Number(index))
     if (!Number.isFinite(idx) || idx < 0) return
@@ -1088,6 +1123,7 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: ChunkPrev
     setSelectedChunkIndex,
     updateChunkOverride,
     toggleChunkDisabled,
+    setChunksDisabled,
     clearChunkOverride,
     clearAllChunkOverrides,
     toggleOriginalPanel,

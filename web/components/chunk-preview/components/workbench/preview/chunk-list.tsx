@@ -20,16 +20,25 @@ import {
   Pencil,
   ChevronDown,
   ChevronRight,
+  Eye,
   EyeOff,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { useChunkPreview } from '@/components/chunk-preview/context'
 import { ChunkCard } from '../../chunk-card'
 import { ChunkInspectorDialog } from '../../chunk-inspector-dialog'
 import type { ChunkPreviewItem } from '@/types'
+import { computeCoverageSignals, computeRoleIndices, fnv1a32, roughEstimateTokens } from '@/components/chunk-preview/utils/review-signals'
 
 const QUERY_DEBOUNCE_MS = 150
 type SortMode = 'index' | 'length_desc' | 'length_asc'
@@ -56,23 +65,6 @@ function isEditableTarget(target: EventTarget | null) {
   return el.isContentEditable
 }
 
-function roughEstimateTokens(text: string) {
-  const raw = (text || '').trim()
-  if (!raw) return 0
-  // Fast + coarse: ~4 chars/token (works OK for Latin; underestimates for CJK).
-  return Math.max(1, Math.ceil(raw.length / 4))
-}
-
-function fnv1a32(input: string) {
-  // Non-crypto, fast hash for UI duplicate detection.
-  let h = 0x811c9dc5
-  for (let i = 0; i < input.length; i += 1) {
-    h ^= input.charCodeAt(i)
-    h = Math.imul(h, 0x01000193)
-  }
-  return (h >>> 0).toString(16).padStart(8, '0')
-}
-
 export function ChunkList() {
   const {
     previewData,
@@ -83,6 +75,7 @@ export function ChunkList() {
     setSelectedChunkIndex,
     updateChunkOverride,
     toggleChunkDisabled,
+    setChunksDisabled,
     clearChunkOverride,
     showOriginalPanel,
     isLoading,
@@ -102,6 +95,8 @@ export function ChunkList() {
   const [onlyDuplicate, setOnlyDuplicate] = useState(false)
   const [onlyEdited, setOnlyEdited] = useState(false)
   const [onlyDisabled, setOnlyDisabled] = useState(false)
+  const [onlyGap, setOnlyGap] = useState(false)
+  const [onlyOverlap, setOnlyOverlap] = useState(false)
   const [inspectorOpen, setInspectorOpen] = useState(false)
   const [inspectorIndex, setInspectorIndex] = useState<number | null>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
@@ -128,6 +123,8 @@ export function ChunkList() {
     setOnlyDuplicate(false)
     setOnlyEdited(false)
     setOnlyDisabled(false)
+    setOnlyGap(false)
+    setOnlyOverlap(false)
     setInspectorOpen(false)
     setInspectorIndex(null)
   }, [previewData?.filename])
@@ -212,6 +209,13 @@ export function ChunkList() {
     return out
   }, [effectiveChunks, unit])
 
+  const roleIndices = useMemo(() => computeRoleIndices(effectiveChunks), [effectiveChunks])
+
+  const coverageSignals = useMemo(
+    () => computeCoverageSignals(effectiveChunks, { strategy: previewData?.chunk_strategy }),
+    [effectiveChunks, previewData?.chunk_strategy]
+  )
+
   const selectedChunk = useMemo(() => {
     if (!effectiveChunks.length || selectedChunkIndex == null) return null
     return effectiveChunks[selectedChunkIndex] || null
@@ -263,6 +267,8 @@ export function ChunkList() {
         if (onlyDuplicate && !duplicateIndices.has(Number(chunk.index))) return false
         if (onlyEdited && !editedIndices.has(Number(chunk.index))) return false
         if (onlyDisabled && !disabledIndices.has(Number(chunk.index))) return false
+        if (onlyGap && !coverageSignals.gapIndices.has(Number(chunk.index))) return false
+        if (onlyOverlap && !coverageSignals.overlapIndices.has(Number(chunk.index))) return false
 
         return true
       })
@@ -285,10 +291,13 @@ export function ChunkList() {
     onlyDuplicate,
     onlyEdited,
     onlyDisabled,
+    onlyGap,
+    onlyOverlap,
     shortIndices,
     duplicateIndices,
     editedIndices,
     disabledIndices,
+    coverageSignals,
   ])
 
   const matchCount = flatFilteredChunks.length
@@ -308,7 +317,9 @@ export function ChunkList() {
       onlyShort ||
       onlyDuplicate ||
       onlyEdited ||
-      onlyDisabled
+      onlyDisabled ||
+      onlyGap ||
+      onlyOverlap
 
     type Group = {
       key: string
@@ -402,6 +413,9 @@ export function ChunkList() {
     onlyShort,
     onlyDuplicate,
     onlyEdited,
+    onlyDisabled,
+    onlyGap,
+    onlyOverlap,
     matchIndexSet,
     collapsedGroups,
   ])
@@ -431,10 +445,25 @@ export function ChunkList() {
       onlyShort ||
       onlyDuplicate ||
       onlyEdited ||
-      onlyDisabled
+      onlyDisabled ||
+      onlyGap ||
+      onlyOverlap
     if (!hasFilter) return null
     return `${matchCount} / ${previewData?.total_chunks || 0}`
-  }, [matchCount, previewData?.total_chunks, query, pageFilter, minLen, maxLen, onlyShort, onlyDuplicate, onlyEdited, onlyDisabled])
+  }, [
+    matchCount,
+    previewData?.total_chunks,
+    query,
+    pageFilter,
+    minLen,
+    maxLen,
+    onlyShort,
+    onlyDuplicate,
+    onlyEdited,
+    onlyDisabled,
+    onlyGap,
+    onlyOverlap,
+  ])
 
   const showVirtualized = Boolean(previewData?.chunks && displayRows.length > 0)
 
