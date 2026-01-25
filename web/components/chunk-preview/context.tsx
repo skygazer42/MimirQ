@@ -25,6 +25,7 @@ const STORAGE_DATASET_ID_KEY = 'mimirq_chunk_preview_dataset_id'
 const STORAGE_SEPARATOR_SETTINGS_KEY = 'mimirq_chunk_preview_separator_settings'
 const STORAGE_FOCUS_FILE_ID_KEY = 'mimirq_chunk_preview_focus_file_id'
 const STORAGE_PERF_SETTINGS_KEY = 'mimirq_chunk_preview_perf_settings'
+const STORAGE_PARENT_CHILD_SETTINGS_KEY = 'mimirq_chunk_preview_parent_child_settings'
 
 function decodeSeparatorInput(raw: string) {
   const value = (raw || '').trim()
@@ -120,6 +121,10 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: ChunkPrev
   const [keepSeparator, setKeepSeparator] = useState(true)
   const [separatorMaxChunkSize, setSeparatorMaxChunkSize] = useState(0)
 
+  // Strategy-specific options (preview tuning).
+  const [parentChildRatio, setParentChildRatio] = useState(0.5)
+  const [parentChildMinChildSize, setParentChildMinChildSize] = useState(200)
+
   // 其他状态
   const [processedStatus, setProcessedStatus] = useState<Record<string, 'pending' | 'success' | 'error'>>({})
   const [submitSuccess, setSubmitSuccess] = useState(false)
@@ -131,6 +136,7 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: ChunkPrev
     Map<string, { data: ChunkPreviewResponse; createdAt: number; durationMs: number }>
   >(new Map())
   const separatorSettingsLoadedRef = useRef(false)
+  const parentChildSettingsLoadedRef = useRef(false)
   const focusFileLoadedRef = useRef(false)
 
   useEffect(() => {
@@ -170,6 +176,40 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: ChunkPrev
       separatorSettingsLoadedRef.current = true
     }
   }, [])
+
+  // Load parent-child strategy settings (best-effort).
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const raw = (window.localStorage.getItem(STORAGE_PARENT_CHILD_SETTINGS_KEY) || '').trim()
+    if (!raw) {
+      parentChildSettingsLoadedRef.current = true
+      return
+    }
+    try {
+      const data = JSON.parse(raw) as any
+      if (typeof data?.parentChildRatio === 'number' && Number.isFinite(data.parentChildRatio)) {
+        setParentChildRatio(Math.max(0.05, Math.min(1.0, Number(data.parentChildRatio))))
+      }
+      if (typeof data?.parentChildMinChildSize === 'number' && Number.isFinite(data.parentChildMinChildSize)) {
+        setParentChildMinChildSize(Math.max(50, Math.min(4000, Math.trunc(Number(data.parentChildMinChildSize)))))
+      }
+    } catch {
+      // ignore corrupted storage
+    } finally {
+      parentChildSettingsLoadedRef.current = true
+    }
+  }, [])
+
+  // Persist parent-child strategy settings.
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    if (!parentChildSettingsLoadedRef.current) return
+    const payload = JSON.stringify({
+      parentChildRatio,
+      parentChildMinChildSize,
+    })
+    window.localStorage.setItem(STORAGE_PARENT_CHILD_SETTINGS_KEY, payload)
+  }, [parentChildRatio, parentChildMinChildSize])
 
   useEffect(() => {
     if (typeof window === 'undefined') return
@@ -454,6 +494,10 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: ChunkPrev
       chunkStrategy === 'separator'
         ? `sep:${separatorPreset}:${separatorCustom}:${keepSeparator ? 'keep' : 'drop'}:${separatorMaxChunkSize}`
         : 'sep:none'
+    const parentChildKey =
+      chunkStrategy === 'parent_child'
+        ? `pc:${parentChildRatio}:${parentChildMinChildSize}`
+        : 'pc:none'
     const perfKey = `perf:${includeOriginalText ? 'orig' : 'noorig'}:${originalTextMaxChars}:${maxChunks}:${useParseCache ? 'pcache' : 'nopcache'}`
     return [
       file.name,
@@ -466,6 +510,7 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: ChunkPrev
       chunkOverlap,
       pipelineKey,
       separatorKey,
+      parentChildKey,
       perfKey,
     ].join('::')
   }, [
@@ -481,6 +526,8 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: ChunkPrev
     separatorCustom,
     keepSeparator,
     separatorMaxChunkSize,
+    parentChildRatio,
+    parentChildMinChildSize,
     includeOriginalText,
     originalTextMaxChars,
     maxChunks,
@@ -567,6 +614,8 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: ChunkPrev
         use_parse_cache: useParseCache,
         parser_backend: parserBackend,
         chunk_strategy: chunkStrategy,
+        child_ratio: chunkStrategy === 'parent_child' ? parentChildRatio : undefined,
+        min_child_size: chunkStrategy === 'parent_child' ? parentChildMinChildSize : undefined,
         dataset_id: datasetId || undefined,
         pipeline: pipelineOverridesEnabled ? pipelineOptions : undefined,
         separator_preset: chunkStrategy === 'separator' ? separatorPreset : undefined,
@@ -851,6 +900,20 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: ChunkPrev
   )
 
   // Actions: 重置
+  const updateParentChildSettings = useCallback(
+    (settings: Partial<Pick<ChunkPreviewState, 'parentChildRatio' | 'parentChildMinChildSize'>>) => {
+      if (settings.parentChildRatio !== undefined) {
+        const n = Number(settings.parentChildRatio)
+        if (Number.isFinite(n)) setParentChildRatio(Math.max(0.05, Math.min(1.0, n)))
+      }
+      if (settings.parentChildMinChildSize !== undefined) {
+        const n = Number(settings.parentChildMinChildSize)
+        if (Number.isFinite(n)) setParentChildMinChildSize(Math.max(50, Math.min(4000, Math.trunc(n))))
+      }
+    },
+    []
+  )
+
   const reset = useCallback(() => {
     setFileList([])
     setCurrentFileIndex(0)
@@ -881,6 +944,8 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: ChunkPrev
     setSeparatorCustom('\\n\\n')
     setKeepSeparator(true)
     setSeparatorMaxChunkSize(0)
+    setParentChildRatio(0.5)
+    setParentChildMinChildSize(200)
   }, [updateOption])
 
   // 自动触发预览
@@ -963,6 +1028,8 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: ChunkPrev
     separatorCustom,
     keepSeparator,
     separatorMaxChunkSize,
+    parentChildRatio,
+    parentChildMinChildSize,
     lastPreviewAt,
     lastPreviewDurationMs,
     cacheHit,
@@ -996,6 +1063,7 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: ChunkPrev
     updateSettings,
     updatePerfSettings,
     updateSeparatorSettings,
+    updateParentChildSettings,
     reset,
     toggleAutoPreview,
     clearRunHistory,

@@ -216,6 +216,7 @@ export interface ChunkPreviewParams {
   chunk_size: number
   chunk_overlap: number
   unit?: 'chars' | 'tokens'
+  strategy_params?: Record<string, any>
 }
 
 export interface ChunkPreviewItem {

@@ -77,6 +77,8 @@ export interface ChunkPreviewState {
   separatorCustom: string
   keepSeparator: boolean
   separatorMaxChunkSize: number
+  parentChildRatio: number
+  parentChildMinChildSize: number
 
   // 外部 context
   parserBackend: string
@@ -126,6 +128,9 @@ export interface ChunkPreviewActions {
   ) => void
   updateSeparatorSettings: (
     settings: Partial<Pick<ChunkPreviewState, 'separatorPreset' | 'separatorCustom' | 'keepSeparator' | 'separatorMaxChunkSize'>>
+  ) => void
+  updateParentChildSettings: (
+    settings: Partial<Pick<ChunkPreviewState, 'parentChildRatio' | 'parentChildMinChildSize'>>
   ) => void
   setParserBackend: (backend: string) => void
   setChunkStrategy: (strategy: string) => void
