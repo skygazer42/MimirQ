@@ -303,7 +303,8 @@ class DocumentStatus(OrmModel):
 
 class ChunkPreviewParams(BaseModel):
     """Chunk preview parameters."""
-    chunk_size: int = Field(default=1000, ge=100, le=4000, description="Chunk size")
+    # Note: for langchain_token strategy this is interpreted as tokens; otherwise chars.
+    chunk_size: int = Field(default=1000, ge=50, le=4000, description="Chunk size")
     chunk_overlap: int = Field(default=200, ge=0, le=1000, description="Overlap size")
     unit: str = Field(default="chars", description="chunk_size/chunk_overlap unit: chars | tokens")
 
@@ -330,6 +331,8 @@ class ChunkPreviewResponse(BaseModel):
     total_characters: int
     params: ChunkPreviewParams
     chunks: List[ChunkPreviewItem]
+    # Non-fatal warnings for UI (e.g. ignored overlap for separator strategy).
+    warnings: List[str] = Field(default_factory=list)
     # Original text for frontend highlighting.
     original_text: Optional[str] = None
     # Best-effort metadata for UI (whether original_text was omitted due to size limit).

@@ -3142,6 +3142,8 @@ async def preview_chunking(
     file: UploadFile = File(...),
     chunk_size: int = 1000,
     chunk_overlap: int = 200,
+    include_original_text: bool = True,
+    original_text_max_chars: int = 100000,
     parser_backend: str = Form(default=settings.DEFAULT_PARSER_BACKEND),
     chunk_strategy: str = Form(default=settings.DEFAULT_CHUNK_STRATEGY),
     separator_preset: Optional[str] = Form(default=None),
@@ -3193,8 +3195,20 @@ async def preview_chunking(
         raise HTTPException(status_code=400, detail=f"chunk_size must be between {min_chunk_size} and 4000")
     if chunk_overlap < 0 or chunk_overlap > 1000:
         raise HTTPException(status_code=400, detail="chunk_overlap must be between 0 and 1000")
-    if chunk_overlap >= chunk_size:
+    if resolved_chunk_strategy != "separator" and chunk_overlap >= chunk_size:
         raise HTTPException(status_code=400, detail="chunk_overlap must be less than chunk_size")
+
+    # separator strategy does not use overlap; normalize for downstream consistency.
+    effective_chunk_overlap = 0 if resolved_chunk_strategy == "separator" else chunk_overlap
+
+    warnings_out: list[str] = []
+    if resolved_chunk_strategy == "separator" and chunk_overlap != effective_chunk_overlap:
+        warnings_out.append("separator strategy ignores chunk_overlap; using 0")
+
+    # Control whether we return original_text for highlighting (large payload guardrail).
+    if original_text_max_chars < 0 or original_text_max_chars > 2_000_000:
+        raise HTTPException(status_code=400, detail="original_text_max_chars must be between 0 and 2000000")
+    include_original = bool(include_original_text) and int(original_text_max_chars or 0) > 0
 
     # Validate file type.
     file_ext = Path(file.filename).suffix.lower()
@@ -3220,7 +3234,6 @@ async def preview_chunking(
             with contextlib.suppress(OSError):
                 file_size = int(temp_path.stat().st_size)
 
-        resolved_chunk_strategy = chunker_factory.resolve_strategy(chunk_strategy)
         dataset_meta: dict = {}
         if dataset_id:
             try:
@@ -3367,7 +3380,7 @@ async def preview_chunking(
 
                 chunker = SeparatorChunker(
                     chunk_size=chunk_size,
-                    chunk_overlap=chunk_overlap,
+                    chunk_overlap=effective_chunk_overlap,
                     separator=sep_value,
                     keep_separator=True if keep_separator is None else bool(keep_separator),
                     max_chunk_size=int(separator_max_chunk_size or 0),
@@ -3376,7 +3389,7 @@ async def preview_chunking(
                 chunker = chunker_factory.get_chunker(
                     resolved_chunk_strategy,
                     chunk_size=chunk_size,
-                    chunk_overlap=chunk_overlap
+                    chunk_overlap=effective_chunk_overlap
                 )
             chunks = chunker.split_documents(documents)
 
@@ -3501,10 +3514,11 @@ async def preview_chunking(
             total_characters=len(full_text),
             params=ChunkPreviewParams(
                 chunk_size=chunk_size,
-                chunk_overlap=chunk_overlap,
+                chunk_overlap=effective_chunk_overlap,
                 unit="tokens" if resolved_chunk_strategy == "langchain_token" else "chars",
             ),
             chunks=chunk_items,
+            warnings=warnings_out,
             # Skip original text when too large (highlight offsets require full text).
             original_text=full_text if len(full_text) <= 100000 else None,
             original_text_included=len(full_text) <= 100000,
