@@ -804,6 +804,7 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: ChunkPrev
     setFileList([])
     setCurrentFileIndex(0)
     setPreviewData(null)
+    setChunkOverrides({})
     setError(null)
     setProcessedStatus({})
     setSubmitSuccess(false)
