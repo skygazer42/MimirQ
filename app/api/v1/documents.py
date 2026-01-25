@@ -10,6 +10,7 @@ import json
 import re
 import shutil
 import mimetypes
+import time
 from fastapi import APIRouter, Depends, UploadFile, File, HTTPException, BackgroundTasks, Form, Request, Query
 from fastapi import Response
 from sqlalchemy.orm import Session, selectinload
@@ -83,7 +84,8 @@ from sqlalchemy import or_, and_, func
 from app.rag.core.logging import get_logger
 from app.rag.preprocessing.processor import governance_processor
 from app.rag.preprocessing.rules import build_governance_rules
-from app.api.utils.upload import save_upload_file
+from app.api.utils.upload import save_upload_file, save_upload_file_with_hash
+from app.services.preview_cache import preview_parse_cache, preview_parse_locks, ParseCacheEntry
 from app.tasks.queue import enqueue_document_processing
 
 
@@ -3141,12 +3143,14 @@ async def create_document_with_manual_chunks(
 @router.post("/chunk-preview", response_model=ChunkPreviewResponse)
 async def preview_chunking(
     request: Request,
+    response: Response,
     file: UploadFile = File(...),
     chunk_size: int = 1000,
     chunk_overlap: int = 200,
     include_original_text: bool = True,
     original_text_max_chars: int = 100000,
     max_chunks: int = 0,
+    use_parse_cache: bool = Query(default=True),
     parser_backend: str = Form(default=settings.DEFAULT_PARSER_BACKEND),
     chunk_strategy: str = Form(default=settings.DEFAULT_CHUNK_STRATEGY),
     separator_preset: Optional[str] = Form(default=None),
@@ -3185,6 +3189,15 @@ async def preview_chunking(
     """
     DatasetService.ensure_member(db, tenant_id, account_id)
     file.filename = _sanitize_filename(file.filename)
+    preview_started = time.perf_counter()
+    parse_cache_hit = False
+    parse_cache_age_ms: Optional[int] = None
+    file_sha256: Optional[str] = None
+    upload_duration_ms: Optional[int] = None
+    parse_duration_ms: Optional[int] = 0
+    governance_duration_ms: int = 0
+    chunking_duration_ms: int = 0
+    stats_duration_ms: int = 0
 
     # Resolve strategy early so validation can be strategy-aware.
     try:
@@ -3235,7 +3248,10 @@ async def preview_chunking(
     file_size: int = 0
 
     try:
-        file_size = int(await save_upload_file(file, temp_path, max_bytes=settings.MAX_FILE_SIZE) or 0)
+        _upload_started = time.perf_counter()
+        file_size, file_sha256 = await save_upload_file_with_hash(file, temp_path, max_bytes=settings.MAX_FILE_SIZE)
+        upload_duration_ms = int(max(0.0, (time.perf_counter() - _upload_started) * 1000.0))
+        file_size = int(file_size or 0)
         if file_size <= 0:
             with contextlib.suppress(OSError):
                 file_size = int(temp_path.stat().st_size)
@@ -3316,6 +3332,8 @@ async def preview_chunking(
 
         # Ragflow preset uses a separate branch (self-parse + chunk).
         if resolved_chunk_strategy in chunker_factory.RAGFLOW_STRATEGIES:
+            parse_duration_ms = None
+            _ragflow_started = time.perf_counter()
             result = await run_subprocess_worker(
                 tenant_id=tenant_id,
                 payload={
@@ -3328,6 +3346,7 @@ async def preview_chunking(
                 disconnect_check=request.is_disconnected,
                 timeout_sec=float(getattr(settings, "TASK_JOB_TIMEOUT_SEC", 60 * 30) or 60 * 30),
             )
+            chunking_duration_ms = int(max(0.0, (time.perf_counter() - _ragflow_started) * 1000.0))
             chunks = [
                 Document(
                     page_content=str(item.get("page_content") or ""),
@@ -3340,38 +3359,144 @@ async def preview_chunking(
             resolved_backend = "ragflow"
             documents = []  # Ragflow already handled.
             if pipeline_effective.governance_enabled:
+                _gov_started = time.perf_counter()
                 chunks, _stats = governance_processor.clean_documents(
                     chunks,
                     **governance_kwargs,
                 )
+                governance_duration_ms += int(max(0.0, (time.perf_counter() - _gov_started) * 1000.0))
         else:
-            parsed = await run_subprocess_worker(
-                tenant_id=tenant_id,
-                payload={
-                    "action": "parse_documents",
-                    "tenant_id": str(tenant_id),
-                    "file_path": str(temp_path),
-                    "parser_backend": parser_backend,
-                    "mode": "preview",
-                },
-                disconnect_check=request.is_disconnected,
-                timeout_sec=float(getattr(settings, "TASK_JOB_TIMEOUT_SEC", 60 * 30) or 60 * 30),
-            )
+            parsed_docs_payload: list[dict[str, Any]] | None = None
+            resolved_backend = str(parser_backend)
+
+            cache_enabled = bool(getattr(settings, "PREVIEW_PARSE_CACHE_ENABLED", False))
+            cache_ttl_sec = int(getattr(settings, "PREVIEW_PARSE_CACHE_TTL_SEC", 0) or 0)
+            cache_max_entries = int(getattr(settings, "PREVIEW_PARSE_CACHE_MAX_ENTRIES", 0) or 0)
+            cache_max_doc_chars = int(getattr(settings, "PREVIEW_PARSE_CACHE_MAX_DOC_CHARS", 0) or 0)
+
+            cache_key: str | None = None
+            if (
+                cache_enabled
+                and bool(use_parse_cache)
+                and bool(file_sha256)
+                and cache_ttl_sec > 0
+                and cache_max_entries > 0
+            ):
+                cache_key = (
+                    f"parse:{str(tenant_id)}:{str(file_sha256)}:{str(file_ext)}:"
+                    f"{str(parser_backend or '').strip().lower()}"
+                )
+                cached, age_ms = preview_parse_cache.get(cache_key, ttl_sec=cache_ttl_sec)
+                if cached is not None:
+                    parse_cache_hit = True
+                    parse_cache_age_ms = age_ms
+                    parsed_docs_payload = list(cached.documents or [])
+                    resolved_backend = str(cached.resolved_backend or parser_backend)
+
+            if parsed_docs_payload is None:
+                lock = preview_parse_locks.get(cache_key) if cache_key else None
+                if lock is not None:
+                    async with lock:
+                        # Double-check cache after acquiring the lock.
+                        cached, age_ms = preview_parse_cache.get(cache_key, ttl_sec=cache_ttl_sec)
+                        if cached is not None:
+                            parse_cache_hit = True
+                            parse_cache_age_ms = age_ms
+                            parsed_docs_payload = list(cached.documents or [])
+                            resolved_backend = str(cached.resolved_backend or parser_backend)
+                            parse_duration_ms = 0
+
+                        if parsed_docs_payload is None:
+                            _parse_started = time.perf_counter()
+                            parsed = await run_subprocess_worker(
+                                tenant_id=tenant_id,
+                                payload={
+                                    "action": "parse_documents",
+                                    "tenant_id": str(tenant_id),
+                                    "file_path": str(temp_path),
+                                    "parser_backend": parser_backend,
+                                    "mode": "preview",
+                                },
+                                disconnect_check=request.is_disconnected,
+                                timeout_sec=float(getattr(settings, "TASK_JOB_TIMEOUT_SEC", 60 * 30) or 60 * 30),
+                            )
+                            parse_duration_ms = int(max(0.0, (time.perf_counter() - _parse_started) * 1000.0))
+                            parsed_docs_payload = [
+                                item for item in (parsed.get("documents") or []) if isinstance(item, dict)
+                            ]
+                            resolved_backend = str(parsed.get("resolved_backend") or parser_backend)
+
+                            if cache_key and cache_enabled and bool(use_parse_cache) and cache_ttl_sec > 0 and cache_max_entries > 0:
+                                total_chars = sum(len(str(it.get("page_content") or "")) for it in (parsed_docs_payload or []))
+                                if cache_max_doc_chars <= 0 or total_chars <= cache_max_doc_chars:
+                                    preview_parse_cache.set(
+                                        cache_key,
+                                        ParseCacheEntry(
+                                            created_at_monotonic=time.monotonic(),
+                                            created_at_wall=time.time(),
+                                            file_sha256=str(file_sha256 or ""),
+                                            parser_backend=str(parser_backend or ""),
+                                            resolved_backend=str(resolved_backend or ""),
+                                            documents=list(parsed_docs_payload or []),
+                                            total_chars=int(total_chars),
+                                        ),
+                                        ttl_sec=cache_ttl_sec,
+                                        max_entries=cache_max_entries,
+                                    )
+                else:
+                    _parse_started = time.perf_counter()
+                    parsed = await run_subprocess_worker(
+                        tenant_id=tenant_id,
+                        payload={
+                            "action": "parse_documents",
+                            "tenant_id": str(tenant_id),
+                            "file_path": str(temp_path),
+                            "parser_backend": parser_backend,
+                            "mode": "preview",
+                        },
+                        disconnect_check=request.is_disconnected,
+                        timeout_sec=float(getattr(settings, "TASK_JOB_TIMEOUT_SEC", 60 * 30) or 60 * 30),
+                    )
+                    parse_duration_ms = int(max(0.0, (time.perf_counter() - _parse_started) * 1000.0))
+                    parsed_docs_payload = [
+                        item for item in (parsed.get("documents") or []) if isinstance(item, dict)
+                    ]
+                    resolved_backend = str(parsed.get("resolved_backend") or parser_backend)
+
+                    if cache_key and cache_enabled and bool(use_parse_cache) and cache_ttl_sec > 0 and cache_max_entries > 0:
+                        total_chars = sum(len(str(it.get("page_content") or "")) for it in (parsed_docs_payload or []))
+                        if cache_max_doc_chars <= 0 or total_chars <= cache_max_doc_chars:
+                            preview_parse_cache.set(
+                                cache_key,
+                                ParseCacheEntry(
+                                    created_at_monotonic=time.monotonic(),
+                                    created_at_wall=time.time(),
+                                    file_sha256=str(file_sha256 or ""),
+                                    parser_backend=str(parser_backend or ""),
+                                    resolved_backend=str(resolved_backend or ""),
+                                    documents=list(parsed_docs_payload or []),
+                                    total_chars=int(total_chars),
+                                ),
+                                ttl_sec=cache_ttl_sec,
+                                max_entries=cache_max_entries,
+                            )
+
             documents = [
                 Document(
                     page_content=str(item.get("page_content") or ""),
                     metadata=item.get("metadata") if isinstance(item.get("metadata"), dict) else {},
                     id=item.get("id") if isinstance(item.get("id"), str) else None,
                 )
-                for item in (parsed.get("documents") or [])
+                for item in (parsed_docs_payload or [])
                 if isinstance(item, dict)
             ]
-            resolved_backend = str(parsed.get("resolved_backend") or parser_backend)
             if pipeline_effective.governance_enabled:
+                _gov_started = time.perf_counter()
                 documents, _stats = governance_processor.clean_documents(
                     documents,
                     **governance_kwargs,
                 )
+                governance_duration_ms += int(max(0.0, (time.perf_counter() - _gov_started) * 1000.0))
 
             if resolved_chunk_strategy == "separator":
                 preset = (separator_preset or "").strip() or "paragraph"
@@ -3397,7 +3522,9 @@ async def preview_chunking(
                     chunk_size=chunk_size,
                     chunk_overlap=effective_chunk_overlap
                 )
+            _chunk_started = time.perf_counter()
             chunks = chunker.split_documents(documents)
+            chunking_duration_ms = int(max(0.0, (time.perf_counter() - _chunk_started) * 1000.0))
 
         # Align with ingestion: drop extremely short chunks (keep image-bearing chunks).
         min_chars = max(0, int(getattr(settings, "CHUNK_MIN_CHARS", 0) or 0))
@@ -3494,6 +3621,7 @@ async def preview_chunking(
                 original_text_value = "\n\n".join(parts) if parts else ""
 
         # Build response.
+        _stats_started = time.perf_counter()
         unit: Literal["chars", "tokens"] = "tokens" if resolved_chunk_strategy == "langchain_token" else "chars"
         chunk_items: List[ChunkPreviewItem] = []
         length_samples: list[int] = []
@@ -3590,15 +3718,40 @@ async def preview_chunking(
             )
         else:
             stats = ChunkPreviewStats(unit=unit)
+        stats_duration_ms = int(max(0.0, (time.perf_counter() - _stats_started) * 1000.0))
 
         auto_selected_strategy: str | None = None
         if resolved_chunk_strategy == "auto" and auto_counts:
             auto_selected_strategy = auto_counts.most_common(1)[0][0]
 
+        preview_duration_ms_val = int(max(0.0, (time.perf_counter() - preview_started) * 1000.0))
+        # Best-effort Server-Timing for quick profiling in browser devtools.
+        with contextlib.suppress(Exception):
+            timing_parts: list[str] = []
+            if upload_duration_ms is not None:
+                timing_parts.append(f"upload;dur={int(upload_duration_ms)}")
+            if parse_duration_ms is not None:
+                timing_parts.append(f"parse;dur={int(parse_duration_ms)}")
+            timing_parts.append(f"govern;dur={int(governance_duration_ms)}")
+            timing_parts.append(f"chunk;dur={int(chunking_duration_ms)}")
+            timing_parts.append(f"stats;dur={int(stats_duration_ms)}")
+            timing_parts.append(f"total;dur={int(preview_duration_ms_val)}")
+            if timing_parts:
+                response.headers["Server-Timing"] = ", ".join(timing_parts)
+
         return ChunkPreviewResponse(
             filename=file.filename,
             file_type=file_ext.lstrip('.'),
             file_size=file_size,
+            file_sha256=file_sha256,
+            parse_cache_hit=bool(parse_cache_hit),
+            parse_cache_age_ms=parse_cache_age_ms,
+            preview_duration_ms=preview_duration_ms_val,
+            upload_duration_ms=upload_duration_ms,
+            parse_duration_ms=parse_duration_ms,
+            governance_duration_ms=int(governance_duration_ms),
+            chunking_duration_ms=int(chunking_duration_ms),
+            stats_duration_ms=int(stats_duration_ms),
             total_chunks=len(chunks),
             total_chunks_full=int(total_chunks_full),
             chunks_truncated=bool(chunks_truncated),

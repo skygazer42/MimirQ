@@ -344,6 +344,19 @@ class ChunkPreviewResponse(BaseModel):
     filename: str
     file_type: str
     file_size: int
+    # SHA256 of the uploaded file content (for client-side correlation / caching).
+    file_sha256: Optional[str] = None
+    # Best-effort parse cache signals (server-side, per-process).
+    parse_cache_hit: bool = False
+    parse_cache_age_ms: Optional[int] = None
+    # Server-side elapsed time (best-effort; excludes network).
+    preview_duration_ms: Optional[int] = None
+    # Optional stage timings (best-effort; excludes network).
+    upload_duration_ms: Optional[int] = None
+    parse_duration_ms: Optional[int] = None
+    governance_duration_ms: Optional[int] = None
+    chunking_duration_ms: Optional[int] = None
+    stats_duration_ms: Optional[int] = None
     total_chunks: int
     # When max_chunks is used, the API may truncate returned chunks; this keeps the original count.
     total_chunks_full: int = 0

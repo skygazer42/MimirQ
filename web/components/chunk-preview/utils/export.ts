@@ -1,5 +1,11 @@
 import type { ChunkPreviewResponse } from '@/types'
 
+function roughEstimateTokens(text: string) {
+  const raw = (text || '').trim()
+  if (!raw) return 0
+  return Math.max(1, Math.ceil(raw.length / 4))
+}
+
 export function sanitizeFilename(name: string) {
   const trimmed = (name || '').trim()
   const base = trimmed || 'chunks'
@@ -22,6 +28,34 @@ export function toChunkPreviewExport(preview: ChunkPreviewResponse) {
   return {
     ...rest,
     original_text_included: Boolean(preview.original_text),
+  }
+}
+
+export function applyChunkOverridesToPreview(
+  preview: ChunkPreviewResponse,
+  overrides: Record<number, { content?: string; metadata?: Record<string, any> }> | undefined
+) {
+  const keys = overrides ? Object.keys(overrides) : []
+  if (!keys.length) return preview
+
+  const chunks = (preview.chunks || []).map((chunk) => {
+    const idx = typeof chunk.index === 'number' ? chunk.index : (preview.chunks || []).indexOf(chunk)
+    const override = overrides?.[idx]
+    if (!override) return chunk
+    const content = String(override.content ?? chunk.content ?? '')
+    const metadata = (override.metadata ?? chunk.metadata ?? {}) as Record<string, any>
+    return {
+      ...chunk,
+      content,
+      metadata,
+      length: content.length,
+      tokens_est: roughEstimateTokens(content),
+    }
+  })
+
+  return {
+    ...preview,
+    chunks,
   }
 }
 
@@ -79,4 +113,20 @@ export function chunkPreviewToMarkdown(preview: ChunkPreviewResponse) {
   }
 
   return lines.join('\n')
+}
+
+export function chunkPreviewToJsonl(preview: ChunkPreviewResponse) {
+  const rows = (preview.chunks || []).map((c) =>
+    JSON.stringify({
+      index: c.index,
+      page_number: c.page_number ?? null,
+      start_index: c.start_index,
+      end_index: c.end_index,
+      length: c.length,
+      tokens_est: typeof c.tokens_est === 'number' ? c.tokens_est : null,
+      metadata: c.metadata ?? {},
+      content: c.content ?? '',
+    })
+  )
+  return rows.join('\n')
 }

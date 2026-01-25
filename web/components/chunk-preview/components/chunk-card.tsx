@@ -4,7 +4,7 @@
 'use client'
 
 import { useCallback, useMemo } from 'react'
-import { Copy, Braces, Pin, PinOff, Quote } from 'lucide-react'
+import { Copy, Braces, Pin, PinOff, Quote, Pencil } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
@@ -17,10 +17,14 @@ interface ChunkCardProps {
   sourceFilename?: string
   isHovered: boolean
   isSelected: boolean
+  isShort?: boolean
+  isDuplicate?: boolean
+  isEdited?: boolean
   query?: string
   onMouseEnter: () => void
   onMouseLeave: () => void
   onToggleSelect: () => void
+  onEdit?: () => void
 }
 
 function highlightText(text: string, rawQuery?: string) {
@@ -69,10 +73,14 @@ export function ChunkCard({
   sourceFilename,
   isHovered,
   isSelected,
+  isShort,
+  isDuplicate,
+  isEdited,
   query,
   onMouseEnter,
   onMouseLeave,
   onToggleSelect,
+  onEdit,
 }: ChunkCardProps) {
   const rangeLabel = useMemo(() => `${chunk.start_index}-${chunk.end_index}`, [chunk.start_index, chunk.end_index])
   const tokens = useMemo(() => (typeof chunk.tokens_est === 'number' ? chunk.tokens_est : null), [chunk.tokens_est])
@@ -130,6 +138,21 @@ export function ChunkCard({
           >
             #{index + 1}
           </span>
+          {isEdited ? (
+            <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-info/10 text-info border border-info/25">
+              EDIT
+            </span>
+          ) : null}
+          {isDuplicate ? (
+            <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-warning/10 text-warning border border-warning/25">
+              DUP
+            </span>
+          ) : null}
+          {isShort ? (
+            <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-warning/10 text-warning border border-warning/25">
+              SHORT
+            </span>
+          ) : null}
           {unit === 'tokens' ? (
             <>
               <span className="text-[10px] text-muted-foreground font-mono">{tokens ?? '-'} tok</span>
@@ -152,6 +175,22 @@ export function ChunkCard({
             <span className="text-[10px] text-muted-foreground bg-muted px-1.5 py-0.5 rounded">P.{chunk.page_number}</span>
           )}
           <div className={cn('flex items-center gap-1', 'opacity-100 lg:opacity-0 lg:group-hover:opacity-100 transition-opacity')}>
+            {onEdit ? (
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="h-7 w-7"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  onEdit()
+                }}
+                aria-label="编辑切片"
+                title="编辑切片"
+              >
+                <Pencil className="h-4 w-4" />
+              </Button>
+            ) : null}
             <Button
               type="button"
               variant="ghost"

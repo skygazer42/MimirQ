@@ -452,6 +452,7 @@ export const documentApi = {
       include_original_text?: boolean
       original_text_max_chars?: number
       max_chunks?: number
+      use_parse_cache?: boolean
       separator_preset?: string
       separator?: string
       keep_separator?: boolean
@@ -487,6 +488,7 @@ export const documentApi = {
         include_original_text: typeof params.include_original_text === 'boolean' ? params.include_original_text : undefined,
         original_text_max_chars: typeof params.original_text_max_chars === 'number' ? params.original_text_max_chars : undefined,
         max_chunks: typeof params.max_chunks === 'number' ? params.max_chunks : undefined,
+        use_parse_cache: typeof params.use_parse_cache === 'boolean' ? params.use_parse_cache : undefined,
       },
     })
 

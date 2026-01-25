@@ -103,6 +103,7 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: ChunkPrev
     durationMs: number
     createdAt: number
     cacheHit: boolean
+    cacheKey?: string
   }>>([])
 
   const [chunkSize, setChunkSize] = useState(pipelineOptions.chunk_size ?? 1000)
@@ -112,6 +113,7 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: ChunkPrev
   const [includeOriginalText, setIncludeOriginalText] = useState(true)
   const [originalTextMaxChars, setOriginalTextMaxChars] = useState(100000)
   const [maxChunks, setMaxChunks] = useState(2000)
+  const [useParseCache, setUseParseCache] = useState(true)
 
   const [separatorPreset, setSeparatorPreset] = useState('paragraph')
   const [separatorCustom, setSeparatorCustom] = useState('\\n\\n')
@@ -195,6 +197,7 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: ChunkPrev
       if (typeof data?.maxChunks === 'number' && Number.isFinite(data.maxChunks)) {
         setMaxChunks(Math.max(0, Math.min(20000, Math.trunc(data.maxChunks))))
       }
+      if (typeof data?.useParseCache === 'boolean') setUseParseCache(Boolean(data.useParseCache))
     } catch {
       // ignore corrupted storage
     }
@@ -207,9 +210,10 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: ChunkPrev
       includeOriginalText,
       originalTextMaxChars,
       maxChunks,
+      useParseCache,
     })
     window.localStorage.setItem(STORAGE_PERF_SETTINGS_KEY, payload)
-  }, [includeOriginalText, originalTextMaxChars, maxChunks])
+  }, [includeOriginalText, originalTextMaxChars, maxChunks, useParseCache])
 
   // 当前文件
   const currentFileItem = fileList[currentFileIndex] || null
@@ -353,6 +357,7 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: ChunkPrev
       setCurrentFileIndex((prev) => prev - 1)
     }
     setPreviewData(null)
+    setChunkOverrides({})
     setHoveredChunkIndex(null)
     setSelectedChunkIndex(null)
     setCreatedDocumentId(null)
@@ -364,6 +369,7 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: ChunkPrev
     setFileList([])
     setCurrentFileIndex(0)
     setPreviewData(null)
+    setChunkOverrides({})
     setError(null)
     setProcessedStatus({})
     setSubmitSuccess(false)
@@ -380,6 +386,7 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: ChunkPrev
   const selectFile = useCallback((index: number) => {
     setCurrentFileIndex(index)
     setPreviewData(null)
+    setChunkOverrides({})
     setError(null)
     setSubmitSuccess(false)
     setHoveredChunkIndex(null)
@@ -447,7 +454,7 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: ChunkPrev
       chunkStrategy === 'separator'
         ? `sep:${separatorPreset}:${separatorCustom}:${keepSeparator ? 'keep' : 'drop'}:${separatorMaxChunkSize}`
         : 'sep:none'
-    const perfKey = `perf:${includeOriginalText ? 'orig' : 'noorig'}:${originalTextMaxChars}:${maxChunks}`
+    const perfKey = `perf:${includeOriginalText ? 'orig' : 'noorig'}:${originalTextMaxChars}:${maxChunks}:${useParseCache ? 'pcache' : 'nopcache'}`
     return [
       file.name,
       file.size,
@@ -477,6 +484,7 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: ChunkPrev
     includeOriginalText,
     originalTextMaxChars,
     maxChunks,
+    useParseCache,
   ])
 
   const currentPreviewCacheKey = useMemo(() => buildPreviewCacheKey(), [buildPreviewCacheKey])
@@ -523,6 +531,7 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: ChunkPrev
           durationMs: cached.durationMs,
           createdAt: Date.now(),
           cacheHit: true,
+          cacheKey: cacheKey || undefined,
         },
         ...prev,
       ].slice(0, 20))
@@ -555,6 +564,7 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: ChunkPrev
         include_original_text: includeOriginalText,
         original_text_max_chars: originalTextMaxChars,
         max_chunks: maxChunks,
+        use_parse_cache: useParseCache,
         parser_backend: parserBackend,
         chunk_strategy: chunkStrategy,
         dataset_id: datasetId || undefined,
@@ -587,6 +597,7 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: ChunkPrev
           durationMs,
           createdAt,
           cacheHit: false,
+          cacheKey: cacheKey || undefined,
         },
         ...prev,
       ].slice(0, 20))
@@ -621,12 +632,19 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: ChunkPrev
     includeOriginalText,
     originalTextMaxChars,
     maxChunks,
+    useParseCache,
   ])
 
   const cancelPreview = useCallback(() => {
     previewAbortRef.current?.abort()
     previewAbortRef.current = null
     setIsLoading(false)
+  }, [])
+
+  const getCachedPreview = useCallback((cacheKey: string) => {
+    const key = (cacheKey || '').trim()
+    if (!key) return null
+    return previewCacheRef.current.get(key)?.data ?? null
   }, [])
 
   // Actions: 提交入库
@@ -771,7 +789,9 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: ChunkPrev
   )
 
   const updatePerfSettings = useCallback(
-    (settings: Partial<Pick<ChunkPreviewState, 'includeOriginalText' | 'originalTextMaxChars' | 'maxChunks'>>) => {
+    (
+      settings: Partial<Pick<ChunkPreviewState, 'includeOriginalText' | 'originalTextMaxChars' | 'maxChunks' | 'useParseCache'>>
+    ) => {
       if (settings.includeOriginalText !== undefined) setIncludeOriginalText(Boolean(settings.includeOriginalText))
       if (settings.originalTextMaxChars !== undefined) {
         const n = Number(settings.originalTextMaxChars)
@@ -781,6 +801,7 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: ChunkPrev
         const n = Number(settings.maxChunks)
         if (Number.isFinite(n)) setMaxChunks(Math.max(0, Math.min(20000, Math.trunc(n))))
       }
+      if (settings.useParseCache !== undefined) setUseParseCache(Boolean(settings.useParseCache))
     },
     []
   )
@@ -820,6 +841,7 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: ChunkPrev
     setIncludeOriginalText(true)
     setOriginalTextMaxChars(100000)
     setMaxChunks(2000)
+    setUseParseCache(true)
     updateOption('chunk_size', 1000)
     updateOption('chunk_overlap', 200)
     setCreatedDocumentId(null)
@@ -875,6 +897,7 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: ChunkPrev
   const setDatasetId = useCallback((value: string) => {
     setDatasetIdState((value || '').trim())
     setPreviewData(null)
+    setChunkOverrides({})
     setError(null)
     setSubmitSuccess(false)
     setHoveredChunkIndex(null)
@@ -896,6 +919,7 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: ChunkPrev
     error,
     createdDocumentId,
     previewData,
+    chunkOverrides,
     hoveredChunkIndex,
     selectedChunkIndex,
     chunkSize,
@@ -903,6 +927,7 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: ChunkPrev
     includeOriginalText,
     originalTextMaxChars,
     maxChunks,
+    useParseCache,
     strategy: chunkStrategy,
     separatorPreset,
     separatorCustom,
@@ -930,6 +955,9 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: ChunkPrev
     setIsDragging,
     setHoveredChunkIndex,
     setSelectedChunkIndex,
+    updateChunkOverride,
+    clearChunkOverride,
+    clearAllChunkOverrides,
     toggleOriginalPanel,
     toggleSettingsPanel,
     runPreview,
@@ -941,6 +969,7 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: ChunkPrev
     reset,
     toggleAutoPreview,
     clearRunHistory,
+    getCachedPreview,
     loadExample,
     handleDragOver,
     handleDragLeave,

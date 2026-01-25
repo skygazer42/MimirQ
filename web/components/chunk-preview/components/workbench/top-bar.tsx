@@ -20,6 +20,7 @@ import {
   Check,
   AlertCircle,
   Loader2,
+  GitCompareArrows,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
@@ -36,14 +37,16 @@ import { useChunkPreview } from '@/components/chunk-preview/context'
 import { usePipelineOptions } from '@/contexts/pipeline-options-context'
 import { getChunkStrategyLabel } from '@/lib/chunk-strategies'
 import { getParserLabel } from '@/lib/parser-options'
-import { chunkPreviewToCsv, chunkPreviewToMarkdown, downloadTextFile, sanitizeFilename, toChunkPreviewExport } from '@/components/chunk-preview/utils/export'
+import { applyChunkOverridesToPreview, chunkPreviewToCsv, chunkPreviewToJsonl, chunkPreviewToMarkdown, downloadTextFile, sanitizeFilename, toChunkPreviewExport } from '@/components/chunk-preview/utils/export'
 import { IngestionWorkflowStepper } from '@/components/ui/ingestion-workflow-stepper'
 import { ChunkingHelpDialog } from '@/components/chunk-preview/components/chunking-help-dialog'
+import { ChunkCompareDialog } from '@/components/chunk-preview/components/chunk-compare-dialog'
 import { useRouter } from 'next/navigation'
 
 export function TopBar() {
   const router = useRouter()
   const [helpOpen, setHelpOpen] = useState(false)
+  const [compareOpen, setCompareOpen] = useState(false)
   const pipelineCtx = usePipelineOptions()
   const { enabled: pipelineOverridesEnabled, options: pipelineOptions } = pipelineCtx
   const importConfigInputRef = useRef<HTMLInputElement>(null)
@@ -53,6 +56,7 @@ export function TopBar() {
     currentFile,
     datasetId,
     previewData,
+    chunkOverrides,
     parserBackend,
     chunkStrategy,
     chunkSize,
@@ -64,6 +68,8 @@ export function TopBar() {
     lastPreviewDurationMs,
     cacheHit,
     isPreviewDirty,
+    runHistory,
+    getCachedPreview,
     submitSuccess,
     error,
     isSubmitting,
@@ -84,8 +90,29 @@ export function TopBar() {
 
   const effectiveParserBackend = previewData?.parser_backend || parserBackend
   const effectiveChunkStrategy = previewData?.chunk_strategy || chunkStrategy
+  const exportPreview = previewData ? applyChunkOverridesToPreview(previewData, chunkOverrides) : null
 
   const shouldIncludeSeparatorSettings = effectiveChunkStrategy === 'separator'
+  const canCompare = Boolean(
+    previewData &&
+      (runHistory || []).filter(
+        (item) => item.fileName === currentFile.name && typeof item.cacheKey === 'string' && Boolean(item.cacheKey)
+      ).length >= 2
+  )
+
+  const serverTimingTitle = (() => {
+    if (!previewData) return undefined
+    const rows: string[] = []
+    rows.push(`server_total: ${previewData.preview_duration_ms ?? '-'}ms`)
+    if (typeof previewData.upload_duration_ms === 'number') rows.push(`upload: ${previewData.upload_duration_ms}ms`)
+    if (previewData.parse_duration_ms != null) rows.push(`parse: ${previewData.parse_duration_ms}ms`)
+    if (typeof previewData.governance_duration_ms === 'number') rows.push(`govern: ${previewData.governance_duration_ms}ms`)
+    if (typeof previewData.chunking_duration_ms === 'number') rows.push(`chunk: ${previewData.chunking_duration_ms}ms`)
+    if (typeof previewData.stats_duration_ms === 'number') rows.push(`stats: ${previewData.stats_duration_ms}ms`)
+    rows.push(`parse_cache_hit: ${previewData.parse_cache_hit ? 'true' : 'false'}`)
+    if (previewData.parse_cache_hit) rows.push(`parse_cache_age_ms: ${previewData.parse_cache_age_ms ?? '-'}`)
+    return rows.join('\\n')
+  })()
 
   const escapeForAnsiC = (value: string) => {
     // Used for bash $'...' strings in generated cURL.
@@ -199,6 +226,14 @@ export function TopBar() {
                 <span className="font-medium text-primary" title={effectiveParserBackend}>
                   {getParserLabel(effectiveParserBackend)}
                 </span>
+                {effectiveChunkStrategy === 'auto' && previewData?.auto_selected_strategy ? (
+                  <span
+                    className="text-[10px] px-1.5 py-0.5 rounded bg-primary/10 text-primary border border-primary/20 font-medium"
+                    title={`auto_selected_strategy: ${previewData.auto_selected_strategy}`}
+                  >
+                    → {getChunkStrategyLabel(previewData.auto_selected_strategy)}
+                  </span>
+                ) : null}
                 <span className="w-px h-2.5 bg-border mx-0.5" />
                 <span className="text-muted-foreground">策略:</span>
                 <span className="font-medium text-primary" title={effectiveChunkStrategy}>
@@ -214,7 +249,7 @@ export function TopBar() {
                   {typeof lastPreviewDurationMs === 'number' && (
                     <span className="text-muted-foreground flex items-center gap-1">
                        <span className="w-1.5 h-1.5 rounded-full bg-muted-foreground/40" />
-                       {lastPreviewDurationMs}ms
+                       <span title={serverTimingTitle}>{lastPreviewDurationMs}ms</span>
                     </span>
                   )}
                   {previewData && (
@@ -235,6 +270,15 @@ export function TopBar() {
                   Hit Cache
                 </span>
              )}
+
+             {previewData?.parse_cache_hit ? (
+                <span
+                  className="text-[10px] px-1.5 py-0.5 rounded bg-info/10 text-info border border-info/30 font-medium"
+                  title={`parse_cache_age_ms: ${previewData.parse_cache_age_ms ?? '-'}`}
+                >
+                  Parse Cache
+                </span>
+             ) : null}
 
              {previewData?.warnings?.length ? (
                 <span
@@ -431,9 +475,9 @@ export function TopBar() {
             <DropdownMenuItem
               disabled={!previewData}
               onSelect={() => {
-                if (!previewData) return
-                const filename = `${sanitizeFilename(previewData.filename)}.chunks.json`
-                downloadTextFile(filename, JSON.stringify(toChunkPreviewExport(previewData), null, 2), 'application/json;charset=utf-8')
+                if (!exportPreview) return
+                const filename = `${sanitizeFilename(exportPreview.filename)}.chunks.json`
+                downloadTextFile(filename, JSON.stringify(toChunkPreviewExport(exportPreview), null, 2), 'application/json;charset=utf-8')
                 toast.success('已导出 JSON')
               }}
             >
@@ -443,9 +487,9 @@ export function TopBar() {
             <DropdownMenuItem
               disabled={!previewData}
               onSelect={() => {
-                if (!previewData) return
-                const filename = `${sanitizeFilename(previewData.filename)}.chunks.md`
-                downloadTextFile(filename, chunkPreviewToMarkdown(previewData), 'text/markdown;charset=utf-8')
+                if (!exportPreview) return
+                const filename = `${sanitizeFilename(exportPreview.filename)}.chunks.md`
+                downloadTextFile(filename, chunkPreviewToMarkdown(exportPreview), 'text/markdown;charset=utf-8')
                 toast.success('已导出 Markdown')
               }}
             >
@@ -455,14 +499,65 @@ export function TopBar() {
             <DropdownMenuItem
               disabled={!previewData}
               onSelect={() => {
-                if (!previewData) return
-                const filename = `${sanitizeFilename(previewData.filename)}.chunks.csv`
-                downloadTextFile(filename, chunkPreviewToCsv(previewData), 'text/csv;charset=utf-8')
+                if (!exportPreview) return
+                const filename = `${sanitizeFilename(exportPreview.filename)}.chunks.csv`
+                downloadTextFile(filename, chunkPreviewToCsv(exportPreview), 'text/csv;charset=utf-8')
                 toast.success('已导出 CSV')
               }}
             >
               <Download className="mr-2 h-4 w-4" />
               导出 chunks.csv
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              disabled={!previewData}
+              onSelect={() => {
+                if (!exportPreview) return
+                const filename = `${sanitizeFilename(exportPreview.filename)}.chunks.jsonl`
+                downloadTextFile(filename, chunkPreviewToJsonl(exportPreview), 'application/x-ndjson;charset=utf-8')
+                toast.success('已导出 JSONL')
+              }}
+            >
+              <Download className="mr-2 h-4 w-4" />
+              导出 chunks.jsonl
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              disabled={!previewData}
+              onSelect={() => {
+                if (!exportPreview) return
+                const payload = {
+                  filename: exportPreview.filename,
+                  file_type: exportPreview.file_type,
+                  file_size: exportPreview.file_size,
+                  dataset_id: datasetId || undefined,
+                  chunks: (exportPreview.chunks || []).map((c) => ({
+                    content: c.content ?? '',
+                    page_number: c.page_number,
+                    start_char: c.start_index,
+                    end_char: c.end_index,
+                    metadata: c.metadata ?? {},
+                  })),
+                  pipeline: pipelineOverridesEnabled
+                    ? {
+                        ...pipelineOptions,
+                        chunk_size: chunkSize,
+                        chunk_overlap: chunkOverlap,
+                      }
+                    : undefined,
+                }
+                void copyText(JSON.stringify(payload, null, 2), '已复制手动入库 payload')
+              }}
+            >
+              <Copy className="mr-2 h-4 w-4" />
+              复制手动入库 payload
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              disabled={!canCompare}
+              onSelect={() => {
+                setCompareOpen(true)
+              }}
+            >
+              <GitCompareArrows className="mr-2 h-4 w-4" />
+              预览对比（A/B）
             </DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem
@@ -564,6 +659,16 @@ export function TopBar() {
       <div className="absolute inset-x-6 bottom-0 h-px bg-gradient-to-r from-transparent via-primary/20 to-transparent" />
 
       <ChunkingHelpDialog open={helpOpen} onOpenChange={setHelpOpen} />
+      {previewData ? (
+        <ChunkCompareDialog
+          open={compareOpen}
+          onOpenChange={setCompareOpen}
+          current={previewData}
+          currentFileName={currentFile.name}
+          runHistory={runHistory}
+          getCachedPreview={getCachedPreview}
+        />
+      ) : null}
     </header>
   )
 }

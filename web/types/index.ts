@@ -248,6 +248,15 @@ export interface ChunkPreviewResponse {
   filename: string
   file_type: string
   file_size: number
+  file_sha256?: string
+  parse_cache_hit?: boolean
+  parse_cache_age_ms?: number
+  preview_duration_ms?: number
+  upload_duration_ms?: number
+  parse_duration_ms?: number | null
+  governance_duration_ms?: number
+  chunking_duration_ms?: number
+  stats_duration_ms?: number
   total_chunks: number
   total_chunks_full?: number
   chunks_truncated?: boolean

@@ -61,6 +61,7 @@ export interface ChunkPreviewState {
     durationMs: number
     createdAt: number
     cacheHit: boolean
+    cacheKey?: string
   }>
 
   // 配置状态
@@ -71,6 +72,7 @@ export interface ChunkPreviewState {
   includeOriginalText: boolean
   originalTextMaxChars: number
   maxChunks: number
+  useParseCache: boolean
   separatorPreset: string
   separatorCustom: string
   keepSeparator: boolean
@@ -115,11 +117,12 @@ export interface ChunkPreviewActions {
   reset: () => void
   toggleAutoPreview: (enabled?: boolean) => void
   clearRunHistory: () => void
+  getCachedPreview: (cacheKey: string) => ChunkPreviewResponse | null
 
   // 配置操作
   updateSettings: (settings: Partial<Pick<ChunkPreviewState, 'chunkSize' | 'chunkOverlap' | 'strategy'>>) => void
   updatePerfSettings: (
-    settings: Partial<Pick<ChunkPreviewState, 'includeOriginalText' | 'originalTextMaxChars' | 'maxChunks'>>
+    settings: Partial<Pick<ChunkPreviewState, 'includeOriginalText' | 'originalTextMaxChars' | 'maxChunks' | 'useParseCache'>>
   ) => void
   updateSeparatorSettings: (
     settings: Partial<Pick<ChunkPreviewState, 'separatorPreset' | 'separatorCustom' | 'keepSeparator' | 'separatorMaxChunkSize'>>
