@@ -3180,9 +3180,17 @@ async def preview_chunking(
     """
     DatasetService.ensure_member(db, tenant_id, account_id)
     file.filename = _sanitize_filename(file.filename)
+
+    # Resolve strategy early so validation can be strategy-aware.
+    try:
+        resolved_chunk_strategy = chunker_factory.resolve_strategy(chunk_strategy)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
     # Parameter validation.
-    if chunk_size < 100 or chunk_size > 4000:
-        raise HTTPException(status_code=400, detail="chunk_size must be between 100 and 4000")
+    min_chunk_size = 50 if resolved_chunk_strategy == "langchain_token" else 100
+    if chunk_size < min_chunk_size or chunk_size > 4000:
+        raise HTTPException(status_code=400, detail=f"chunk_size must be between {min_chunk_size} and 4000")
     if chunk_overlap < 0 or chunk_overlap > 1000:
         raise HTTPException(status_code=400, detail="chunk_overlap must be between 0 and 1000")
     if chunk_overlap >= chunk_size:
