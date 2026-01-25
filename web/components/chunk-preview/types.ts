@@ -41,6 +41,8 @@ export interface ChunkPreviewState {
 
   // 预览数据
   previewData: ChunkPreviewResponse | null
+  // Optional per-chunk overrides (frontend-only): used for editing content/metadata before ingestion/export.
+  chunkOverrides: Record<number, { content?: string; metadata?: Record<string, any>; updatedAt?: number }>
   hoveredChunkIndex: number | null
   selectedChunkIndex: number | null
   lastPreviewAt: number | null
@@ -94,6 +96,9 @@ export interface ChunkPreviewActions {
   setIsDragging: (isDragging: boolean) => void
   setHoveredChunkIndex: (index: number | null) => void
   setSelectedChunkIndex: (index: number | null) => void
+  updateChunkOverride: (index: number, override: { content?: string; metadata?: Record<string, any> }) => void
+  clearChunkOverride: (index: number) => void
+  clearAllChunkOverrides: () => void
   toggleOriginalPanel: () => void
   toggleSettingsPanel: () => void
 

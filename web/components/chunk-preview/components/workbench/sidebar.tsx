@@ -429,12 +429,12 @@ export function Sidebar({ variant = 'panel' }: { variant?: 'panel' | 'dialog' } 
                   variant="ghost"
                   size="sm"
                   className="h-6 px-2 ml-2 text-[10px]"
-                  onClick={async () => {
+                  onClick={() => {
                     updatePerfSettings({ maxChunks: 0 })
-                    await runPreview({ force: true })
+                    toast.success('已取消限制，请重新生成预览')
                   }}
                 >
-                  取消限制并重跑
+                  取消限制
                 </Button>
               </div>
             ) : null}
