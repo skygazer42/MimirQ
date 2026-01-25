@@ -12,6 +12,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import type { ChunkPreviewItem } from '@/types'
+import { getChunkSectionLabel } from '@/components/chunk-preview/utils/sections'
 
 export type ChunkOverrideDraft = {
   content: string
@@ -39,6 +40,7 @@ export function ChunkInspectorDialog({
 }) {
   const [content, setContent] = useState('')
   const [metadataText, setMetadataText] = useState('{}')
+  const sectionLabel = useMemo(() => (chunk ? getChunkSectionLabel(chunk) : null), [chunk])
 
   const title = useMemo(() => {
     const name = (sourceFilename || '').trim() || 'document'
@@ -88,6 +90,11 @@ export function ChunkInspectorDialog({
               {chunk?.page_number != null ? ` · P.${chunk.page_number}` : ''}
               {chunk ? ` · ${chunk.start_index}-${chunk.end_index}` : ''}
             </div>
+            {sectionLabel ? (
+              <div className="text-[11px] text-muted-foreground">
+                Section: <span title={sectionLabel.full}>{sectionLabel.full}</span>
+              </div>
+            ) : null}
             <div className="text-[11px] text-muted-foreground">
               仅影响入库/导出；不会重新切块，也不会改变原文定位。
               {overrideUpdatedAt ? `（已编辑：${new Date(overrideUpdatedAt).toLocaleString()}）` : ''}

@@ -256,6 +256,16 @@ export interface ChunkPreviewQualityGate {
   reasons?: string[]
 }
 
+export interface ChunkPreviewReviewSignals {
+  basis?: 'all' | 'child'
+  short_indices?: number[]
+  duplicate_indices?: number[]
+  gap_indices?: number[]
+  overlap_indices?: number[]
+  gap_before_by_index?: Record<string, number>
+  overlap_prev_by_index?: Record<string, number>
+}
+
 export interface ChunkPreviewResponse {
   filename: string
   file_type: string
@@ -279,6 +289,7 @@ export interface ChunkPreviewResponse {
   stats?: ChunkPreviewStats
   auto_selected_strategy?: string
   warnings?: string[]
+  review_signals?: ChunkPreviewReviewSignals
   quality_gate?: ChunkPreviewQualityGate
   recommendations?: string[]
   original_text?: string

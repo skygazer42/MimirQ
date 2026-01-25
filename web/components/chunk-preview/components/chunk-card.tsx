@@ -4,11 +4,12 @@
 'use client'
 
 import { useCallback, useMemo } from 'react'
-import { Copy, Braces, Pin, PinOff, Quote, Pencil, Eye, EyeOff } from 'lucide-react'
+import { Copy, Braces, Pin, PinOff, Quote, Pencil, Eye, EyeOff, Link2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import type { ChunkPreviewItem } from '@/types'
+import { getChunkSectionLabel } from '@/components/chunk-preview/utils/sections'
 
 interface ChunkCardProps {
   chunk: ChunkPreviewItem
@@ -97,6 +98,7 @@ export function ChunkCard({
   const rangeLabel = useMemo(() => `${chunk.start_index}-${chunk.end_index}`, [chunk.start_index, chunk.end_index])
   const tokens = useMemo(() => (typeof chunk.tokens_est === 'number' ? chunk.tokens_est : null), [chunk.tokens_est])
   const chunkRole = (chunk.metadata as Record<string, any> | undefined)?.chunk_role as string | undefined
+  const sectionLabel = useMemo(() => getChunkSectionLabel(chunk), [chunk])
   const citationText = useMemo(() => {
     const name = (sourceFilename || '').trim() || 'document'
     const pageLabel = chunk.page_number != null ? ` · P.${chunk.page_number}` : ''
@@ -198,6 +200,14 @@ export function ChunkCard({
               CHILD
             </span>
           ) : null}
+          {sectionLabel ? (
+            <span
+              className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-muted/60 text-muted-foreground border border-border/60 max-w-[180px] truncate"
+              title={sectionLabel.full}
+            >
+              {sectionLabel.short}
+            </span>
+          ) : null}
           {unit === 'tokens' ? (
             <>
               <span className="text-[10px] text-muted-foreground font-mono">{tokens ?? '-'} tok</span>
@@ -265,6 +275,26 @@ export function ChunkCard({
               title="复制引用"
             >
               <Quote className="h-4 w-4" />
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7"
+              onClick={(e) => {
+                e.stopPropagation()
+                try {
+                  const url = new URL(window.location.href)
+                  url.searchParams.set('chunk', String(index + 1))
+                  void copyText(url.toString(), '已复制链接')
+                } catch {
+                  toast.error('无法生成链接')
+                }
+              }}
+              aria-label="复制链接"
+              title="复制链接"
+            >
+              <Link2 className="h-4 w-4" />
             </Button>
             <Button
               type="button"

@@ -43,6 +43,7 @@ from app.api.schemas.document import (
     ChunkPreviewItem,
     ChunkPreviewStats,
     ChunkPreviewQualityGate,
+    ChunkPreviewReviewSignals,
     ChunkPreviewResponse,
     BatchUploadRequest,
     BatchUploadResponse,
@@ -668,6 +669,142 @@ def _compute_chunk_coverage_metrics(
         "gap_count": int(gap_count),
         "largest_gap": int(largest_gap),
     }
+
+
+def _compute_chunk_preview_review_signals(
+    *,
+    chunk_items: list[ChunkPreviewItem],
+    unit: Literal["chars", "tokens"],
+    strategy: str,
+) -> ChunkPreviewReviewSignals:
+    """
+    Optional per-chunk review signals (best-effort) for enterprise tuning/auditing.
+
+    Designed to be close to frontend's review-signals.ts so results are explainable.
+    """
+    basis: Literal["all", "child"] = "all"
+    strict_no_overlap = str(strategy or "") == "separator"
+
+    # Coverage basis: for parent_child, analyze child chunks when available.
+    analysis = list(chunk_items or [])
+    if str(strategy or "") == "parent_child":
+        filtered: list[ChunkPreviewItem] = []
+        for c in analysis:
+            meta = getattr(c, "metadata", None) or {}
+            role = meta.get("chunk_role") if isinstance(meta, dict) else None
+            if role != "parent":
+                filtered.append(c)
+        if filtered:
+            analysis = filtered
+            basis = "child"
+
+    # Gaps / overlaps from start/end indices.
+    gap_indices: set[int] = set()
+    overlap_indices: set[int] = set()
+    gap_before_by_index: dict[int, int] = {}
+    overlap_prev_by_index: dict[int, int] = {}
+
+    def _key(c: ChunkPreviewItem) -> tuple[int, int, int]:
+        try:
+            s = int(getattr(c, "start_index", 0) or 0)
+        except Exception:
+            s = 0
+        try:
+            e = int(getattr(c, "end_index", s) or s)
+        except Exception:
+            e = s
+        try:
+            i = int(getattr(c, "index", 0) or 0)
+        except Exception:
+            i = 0
+        return (s, e, i)
+
+    sorted_items = sorted(analysis, key=_key)
+    covered_end = 0
+    for c in sorted_items:
+        try:
+            idx = int(getattr(c, "index"))
+        except Exception:
+            continue
+        try:
+            start = int(getattr(c, "start_index", 0) or 0)
+        except Exception:
+            start = 0
+        try:
+            end = int(getattr(c, "end_index", start) or start)
+        except Exception:
+            end = start
+
+        start = max(0, start)
+        end = max(start, end)
+
+        if start > covered_end:
+            gap = start - covered_end
+            if gap > 0:
+                gap_indices.add(idx)
+                gap_before_by_index[idx] = int(gap)
+        elif start < covered_end:
+            overlap = covered_end - start
+            chunk_len = max(1, end - start)
+            if overlap > 0:
+                overlap_prev_by_index[idx] = int(overlap)
+            is_high = overlap > 0 and (strict_no_overlap or (overlap / chunk_len) >= 0.6 or overlap >= 800)
+            if is_high:
+                overlap_indices.add(idx)
+
+        if end > covered_end:
+            covered_end = end
+
+    # Short chunks.
+    short_indices: set[int] = set()
+    threshold = 40 if unit == "tokens" else 120
+    for c in chunk_items or []:
+        try:
+            idx = int(getattr(c, "index"))
+        except Exception:
+            continue
+        if unit == "tokens":
+            val = getattr(c, "tokens_est", None)
+            try:
+                n = int(val) if val is not None else 0
+            except Exception:
+                n = 0
+        else:
+            try:
+                n = int(getattr(c, "length", 0) or 0)
+            except Exception:
+                n = 0
+        if n > 0 and n < threshold:
+            short_indices.add(idx)
+
+    # Duplicates (content hash).
+    duplicate_indices: set[int] = set()
+    seen: dict[str, int] = {}
+    for c in chunk_items or []:
+        try:
+            idx = int(getattr(c, "index"))
+        except Exception:
+            continue
+        trimmed = str(getattr(c, "content", "") or "").strip()
+        if not trimmed:
+            continue
+        digest = hashlib.sha1(trimmed.encode("utf-8")).hexdigest()
+        prev = seen.get(digest)
+        if prev is not None:
+            duplicate_indices.add(prev)
+            duplicate_indices.add(idx)
+        else:
+            seen[digest] = idx
+
+    return ChunkPreviewReviewSignals(
+        basis=basis,
+        short_indices=sorted(short_indices),
+        duplicate_indices=sorted(duplicate_indices),
+        gap_indices=sorted(gap_indices),
+        overlap_indices=sorted(overlap_indices),
+        gap_before_by_index=gap_before_by_index,
+        overlap_prev_by_index=overlap_prev_by_index,
+    )
 
 
 def _compute_chunk_preview_quality(
@@ -3331,6 +3468,7 @@ async def preview_chunking(
     chunk_size: int = 1000,
     chunk_overlap: int = 200,
     include_original_text: bool = True,
+    include_review_signals: bool = Query(default=False),
     original_text_max_chars: int = 100000,
     max_chunks: int = 0,
     use_parse_cache: bool = Query(default=True),
@@ -3975,6 +4113,17 @@ async def preview_chunking(
             original_text_truncated=original_text_truncated_val,
         )
 
+        review_signals: ChunkPreviewReviewSignals | None = None
+        if bool(include_review_signals):
+            # For auto strategy, use the dominant selected strategy for overlap semantics.
+            signals_strategy = auto_selected_strategy or resolved_chunk_strategy
+            with contextlib.suppress(Exception):
+                review_signals = _compute_chunk_preview_review_signals(
+                    chunk_items=chunk_items,
+                    unit="tokens" if resolved_chunk_strategy == "langchain_token" else "chars",
+                    strategy=str(signals_strategy or ""),
+                )
+
         preview_duration_ms_val = int(max(0.0, (time.perf_counter() - preview_started) * 1000.0))
         # Best-effort Server-Timing for quick profiling in browser devtools.
         with contextlib.suppress(Exception):
@@ -4018,6 +4167,7 @@ async def preview_chunking(
             stats=stats,
             auto_selected_strategy=auto_selected_strategy,
             warnings=warnings_out,
+            review_signals=review_signals,
             quality_gate=quality_gate,
             recommendations=recommendations,
             # Skip original text when too large (highlight offsets require full text).
@@ -4076,6 +4226,7 @@ async def preview_chunking_by_sha(
     chunk_size: int = 1000,
     chunk_overlap: int = 200,
     include_original_text: bool = True,
+    include_review_signals: bool = Query(default=False),
     original_text_max_chars: int = 100000,
     max_chunks: int = 0,
     use_parse_cache: bool = Query(default=True),
@@ -4534,6 +4685,16 @@ async def preview_chunking_by_sha(
         original_text_truncated=original_text_truncated_val,
     )
 
+    review_signals: ChunkPreviewReviewSignals | None = None
+    if bool(include_review_signals):
+        signals_strategy = auto_selected_strategy or resolved_chunk_strategy
+        with contextlib.suppress(Exception):
+            review_signals = _compute_chunk_preview_review_signals(
+                chunk_items=chunk_items,
+                unit="tokens" if resolved_chunk_strategy == "langchain_token" else "chars",
+                strategy=str(signals_strategy or ""),
+            )
+
     preview_duration_ms_val = int(max(0.0, (time.perf_counter() - preview_started) * 1000.0))
     with contextlib.suppress(Exception):
         timing_parts: list[str] = []
@@ -4573,6 +4734,7 @@ async def preview_chunking_by_sha(
         stats=stats,
         auto_selected_strategy=auto_selected_strategy,
         warnings=warnings_out,
+        review_signals=review_signals,
         quality_gate=quality_gate,
         recommendations=recommendations,
         original_text=original_text_value,

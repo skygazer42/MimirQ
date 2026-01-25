@@ -34,13 +34,13 @@
       - 支持用 `\n` / `\t` 等转义写法（前端会在发送前解析为真实字符）。
     - `keep_separator`：是否保留分隔符（附在前一块末尾），便于还原原始结构。
     - `separator_max_chunk_size`：单块最大长度（超过则会按句子/换行等边界拆成子块）；0 表示自动（`chunk_size × 3`）。
-- `parent_child`?? `chunk_strategy=parent_child`?
-  - Form: `child_ratio`, `min_child_size`
-  - ???child chunk ????/??? parent chunk ????? multi-vector / parent-child retriever??
+- `chunk_strategy=parent_child`（Form: `child_ratio`, `min_child_size`）
+  - 适用于：企业级 RAG 场景下的“子块检索 + 父块补上下文”（parent-child / multi-vector）思路。
+  - 计算规则（后端会回显最终生效值）：
     - `child_size = max(chunk_size * child_ratio, min_child_size)`
     - `child_overlap = min(chunk_overlap * child_ratio, child_size // 4)`
-  - Response: `params.strategy_params` ??????????????/???????
-  - UI: Sidebar ?? parent-child ???Chunk List ?? Flat/Hierarchy ???? `metadata.parent_id` ???????
+  - Response：`params.strategy_params` 会回显 `child_ratio/min_child_size/child_size/child_overlap`，便于复现与审计。
+  - UI：Chunk List 支持 `Flat / Hierarchy`；Hierarchy 会按 `metadata.parent_id` 折叠，并在卡片上标注 `PARENT/CHILD`。
 
 - `parser_backend`
   - 不同解析器会影响原文结构（尤其是 PDF/Office），建议先在「文档解析」页验证解析质量，再进行切块调参。
@@ -55,17 +55,22 @@
 - 快捷搜索：在列表区域按 `/` 聚焦搜索框；`G` 跳转首/尾（`Home/End` 同理）。
 - 支持搜索与排序（原顺序 / 长度升序 / 长度降序）；当使用 `langchain_token` 时，长度口径会切换为 tokens。
 - 支持“复制引用”：在切片卡片上复制带文件名/Chunk# /页码的 Markdown 片段，便于评审与溯源。
-
-- ????? chunk ??? `SKIP`???????
-  - `SKIP` chunk ????????Confirm/submit????? manual payload
-  - chunks.* ?????? `SKIP` chunk?????????????? "Include SKIP chunks in exports"
-
-- Batch review (ChunkList):
-  - Batch menu: SKIP filtered/DUP/SHORT/(parents/children), RESTORE all/filtered.
-  - Filters: SHORT/DUP/GAP/OVR/EDIT/SKIP.
-
-- Review report:
-  - TopBar exports: Export review-report.json (flags + decisions + stats).
+- 支持 `SKIP`（禁用切片）：
+  - 卡片右侧 Eye/EyeOff 可快速 SKIP/恢复；被 SKIP 的 chunk 在 Confirm/submit 时不会入库。
+  - 导出时可选“Include SKIP chunks in exports”以便审计（默认不包含）。
+- Section / 章节视图（当 chunk metadata 存在 `outline_path_str` / `outline_path` / `header_path`）：
+  - Chunk List 顶部可按 Section 分组（`Group=Section`）并折叠；也可用 `Section` 下拉过滤。
+  - 卡片会显示 section breadcrumb（short）并提供完整 path tooltip。
+- Deep link：
+  - URL 参数 `?chunk=123`（1-based）会自动选中第 123 个 chunk。
+  - 每个 chunk 卡片支持“复制链接”，便于在评审/缺陷单中直达。
+- Ranked retrieval test（本地模拟）：
+  - 点击 `Retrieve` 打开检索面板，输入 query 后会给出 TopK（本地 MiniSearch）并带分数；点击结果跳转定位。
+- Batch review（ChunkList）：
+  - Batch menu：`SKIP filtered / SKIP DUP / SKIP SHORT / (parent_child) SKIP parents/children`；`RESTORE all / RESTORE filtered`。
+  - Filters：`SHORT / DUP / GAP / OVR / EDIT / SKIP`。
+- Review report：
+  - TopBar 支持导出 `review-report.json`（flags + decisions + stats），适合审计/评审附件。
 
 ### 原文面板
 
