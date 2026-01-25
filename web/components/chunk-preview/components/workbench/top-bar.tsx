@@ -204,7 +204,7 @@ export function TopBar() {
   }
 
   return (
-    <header className="flex-shrink-0 h-20 border-b border-border/60 flex justify-between items-center px-6 bg-card/80 backdrop-blur z-20 shadow-sm relative">
+    <header className="flex-shrink-0 h-20 border-b border-border/60 flex justify-between items-center px-6 bg-card z-20 shadow-sm relative">
       <div className="flex items-center gap-4">
         {/* Logo Icon */}
         <div className="w-10 h-10 bg-gradient-to-br from-primary to-info rounded-xl flex items-center justify-center shadow-primary/20 dark:shadow-primary/10 shadow-lg ring-1 ring-border/60">
@@ -214,7 +214,7 @@ export function TopBar() {
         <div className="flex flex-col justify-center min-w-0">
           {/* Row 1: Title & File Info */}
           <div className="flex items-center gap-3">
-            <h1 className="text-xs font-bold text-muted-foreground uppercase tracking-wider">切片预览</h1>
+            <h1 className="text-sm font-semibold text-foreground whitespace-nowrap">切片预览</h1>
             <div className="h-3 w-px bg-muted-foreground/40" />
             <div className="flex items-center gap-2 min-w-0">
                <span className="text-sm font-bold text-foreground truncate max-w-[300px]" title={currentFileItem?.displayName || currentFile.name}>

@@ -26,7 +26,7 @@ export function EmptyState() {
     <div className="min-h-full w-full text-foreground font-sans flex items-center justify-center p-6 selection:bg-primary/20 selection:text-foreground">
       <div className="w-full max-w-4xl">
         <div className="mb-6">
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-card/70 backdrop-blur border border-border/70 shadow-sm">
+          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-card border border-border/70 shadow-sm">
             <Upload className="w-3.5 h-3.5 text-primary" />
             <span className="text-xs font-semibold text-muted-foreground">切块预览</span>
           </div>
@@ -44,7 +44,7 @@ export function EmptyState() {
 
         <div
           className={cn(
-            'w-full bg-card/70 rounded-3xl p-2 shadow-xl border border-border/70 backdrop-blur transition-all duration-200 motion-reduce:transition-none',
+            'w-full bg-card rounded-3xl p-2 shadow-xl border border-border/70 transition-all duration-200 motion-reduce:transition-none',
             isDragging ? 'ring-4 ring-primary/15 border-primary/25' : 'hover:border-primary/25'
           )}
           onDragOver={handleDragOver}
@@ -91,7 +91,7 @@ export function EmptyState() {
               e.stopPropagation()
               loadExample()
             }}
-            className="group text-left bg-card/70 backdrop-blur p-5 rounded-2xl border border-border/70 shadow-sm hover:shadow-md hover:border-primary/25 cursor-pointer transition-all duration-200 motion-reduce:transition-none focus-ring"
+            className="group text-left bg-card p-5 rounded-2xl border border-border/70 shadow-sm hover:shadow-md hover:border-primary/25 cursor-pointer transition-all duration-200 motion-reduce:transition-none focus-ring"
           >
             <div className="flex items-start gap-3">
               <div className="p-2 rounded-lg bg-primary/10 text-primary">
@@ -104,7 +104,7 @@ export function EmptyState() {
             </div>
           </button>
 
-          <div className="bg-card/50 backdrop-blur p-5 rounded-2xl border border-border/70">
+          <div className="bg-card p-5 rounded-2xl border border-border/70">
             <div className="flex items-start gap-3">
               <div className="p-2 rounded-lg bg-primary/10 text-primary">
                 <ScanLine className="w-5 h-5" />
@@ -116,7 +116,7 @@ export function EmptyState() {
             </div>
           </div>
 
-          <div className="bg-card/50 backdrop-blur p-5 rounded-2xl border border-border/70">
+          <div className="bg-card p-5 rounded-2xl border border-border/70">
             <div className="flex items-start gap-3">
               <div className="p-2 rounded-lg bg-info/10 text-info">
                 <Cpu className="w-5 h-5" />

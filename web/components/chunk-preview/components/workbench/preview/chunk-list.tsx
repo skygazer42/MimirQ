@@ -630,10 +630,10 @@ export function ChunkList() {
   }
 
   return (
-    <div className="flex-1 flex flex-col min-w-0 bg-background/60">
-      <div className="h-12 border-b border-border/60 bg-card/80 flex items-center justify-between px-4 shrink-0 gap-3 backdrop-blur">
-        <span className="text-xs font-semibold text-primary flex items-center gap-2">
-          <Layers className="w-3.5 h-3.5" />
+    <div className="flex-1 flex flex-col min-w-0 bg-background">
+      <div className="h-12 border-b border-border/60 bg-card flex items-center justify-between px-4 shrink-0 gap-3">
+        <span className="text-sm font-semibold text-foreground flex items-center gap-2 whitespace-nowrap shrink-0">
+          <Layers className="w-4 h-4 text-muted-foreground" />
           切片列表
           {previewData?.total_chunks ? (
             <span className="text-[10px] text-primary bg-primary/10 border border-primary/20 px-2 py-0.5 rounded-full">
@@ -649,7 +649,7 @@ export function ChunkList() {
               value={queryInput}
               onChange={(e) => setQueryInput(e.target.value)}
               placeholder="搜索切片内容..."
-              className="h-7 pl-7 pr-7 text-[11px] bg-card/80"
+              className="h-7 pl-7 pr-7 text-xs bg-background"
             />
             {queryInput ? (
               <button
@@ -679,7 +679,7 @@ export function ChunkList() {
                 if (next !== 'hierarchy') setCollapsedGroups({})
               }}
             >
-              <SelectTrigger className="h-7 w-[120px] text-[11px] bg-card/80">
+              <SelectTrigger className="h-7 w-[120px] text-[11px] bg-background">
                 <SelectValue placeholder="View" />
               </SelectTrigger>
               <SelectContent>
@@ -698,7 +698,7 @@ export function ChunkList() {
                 if (next === 'section') setSortMode('index')
               }}
             >
-              <SelectTrigger className="h-7 w-[120px] text-[11px] bg-card/80">
+              <SelectTrigger className="h-7 w-[120px] text-[11px] bg-background">
                 <SelectValue placeholder="Group" />
               </SelectTrigger>
               <SelectContent>
@@ -728,7 +728,7 @@ export function ChunkList() {
             </Button>
           ) : null}
           <Select value={sortMode} onValueChange={(value) => setSortMode(value as SortMode)} disabled={isHierarchyView || isSectionView}>
-            <SelectTrigger className="h-7 w-[140px] text-[11px] bg-card/80">
+            <SelectTrigger className="h-7 w-[140px] text-[11px] bg-background">
               <SelectValue placeholder="排序" />
             </SelectTrigger>
             <SelectContent>
@@ -738,7 +738,7 @@ export function ChunkList() {
             </SelectContent>
           </Select>
           <Select value={pageFilter} onValueChange={(value) => setPageFilter(value)}>
-            <SelectTrigger className="h-7 w-[110px] text-[11px] bg-card/80">
+            <SelectTrigger className="h-7 w-[110px] text-[11px] bg-background">
               <SelectValue placeholder="页面" />
             </SelectTrigger>
             <SelectContent>
@@ -753,7 +753,7 @@ export function ChunkList() {
           </Select>
           {sectionOptions.list.length > 0 || sectionOptions.hasNone ? (
             <Select value={sectionFilter} onValueChange={(value) => setSectionFilter(value)}>
-              <SelectTrigger className="h-7 w-[160px] text-[11px] bg-card/80">
+              <SelectTrigger className="h-7 w-[160px] text-[11px] bg-background">
                 <SelectValue placeholder="Section" />
               </SelectTrigger>
               <SelectContent>
@@ -780,7 +780,7 @@ export function ChunkList() {
                 else if (Number.isFinite(n)) setMinLen(Math.max(0, Math.trunc(n)))
               }}
               placeholder="Min"
-              className="h-7 w-[72px] text-[11px] font-mono bg-card/80"
+              className="h-7 w-[72px] text-[11px] font-mono bg-background"
               inputMode="numeric"
               aria-label={unit === 'tokens' ? '最小 token 过滤' : '最小长度过滤'}
             />
@@ -794,7 +794,7 @@ export function ChunkList() {
                 else if (Number.isFinite(n)) setMaxLen(Math.max(0, Math.trunc(n)))
               }}
               placeholder="Max"
-              className="h-7 w-[72px] text-[11px] font-mono bg-card/80"
+              className="h-7 w-[72px] text-[11px] font-mono bg-background"
               inputMode="numeric"
               aria-label={unit === 'tokens' ? '最大 token 过滤' : '最大长度过滤'}
             />
@@ -1012,7 +1012,7 @@ export function ChunkList() {
       </div>
 
       {retrieveOpen ? (
-        <div className="border-b border-border/60 bg-card/70 px-4 py-3">
+        <div className="border-b border-border/60 bg-card px-4 py-3">
           <div className="flex items-center gap-2">
             <Search className="w-4 h-4 text-muted-foreground" />
             <Input
@@ -1023,7 +1023,7 @@ export function ChunkList() {
                 if (v.trim()) setRetrieveOpen(true)
               }}
               placeholder="Retrieval query (ranked)…"
-              className="h-8 text-[11px] bg-card/80"
+              className="h-8 text-[11px] bg-background"
             />
             {retrieveQuery ? (
               <Button
@@ -1045,7 +1045,7 @@ export function ChunkList() {
                   <button
                     key={`${r.index}-${r.score}`}
                     type="button"
-                    className="w-full text-left rounded-xl border border-border/60 bg-card/50 hover:bg-card/80 px-3 py-2 transition-colors focus-ring"
+                    className="w-full text-left rounded-xl border border-border/60 bg-background hover:bg-muted px-3 py-2 transition-colors focus-ring"
                     onClick={() => setSelectedChunkIndex(r.index)}
                     title={r.section}
                   >
@@ -1084,7 +1084,7 @@ export function ChunkList() {
       ) : null}
 
       {selectedChunk ? (
-        <div className="border-b border-border/60 bg-card/70 px-4 py-3">
+        <div className="border-b border-border/60 bg-card px-4 py-3">
           <div className="flex items-center justify-between gap-3">
             <div className="min-w-0">
               <div className="flex items-center gap-2">
@@ -1249,7 +1249,7 @@ export function ChunkList() {
         aria-label="切片列表（可键盘导航）"
       >
         <div
-          className="min-h-full rounded-2xl border border-border/60 bg-card/70 p-3 shadow-sm backdrop-blur ring-1 ring-border/40"
+          className="min-h-full rounded-2xl border border-border/60 bg-card p-3 shadow-sm ring-1 ring-border/40"
           style={{
             height: showVirtualized ? `${rowVirtualizer.getTotalSize()}px` : undefined,
             position: showVirtualized ? 'relative' : undefined,
@@ -1281,7 +1281,7 @@ export function ChunkList() {
                       <div className="flex items-center gap-2 px-2 py-1.5 rounded-xl border border-border/60 bg-muted/40">
                         <button
                           type="button"
-                          className="h-6 w-6 inline-flex items-center justify-center rounded-md border border-border/60 bg-card/70 text-muted-foreground hover:text-foreground hover:border-primary/30 hover:bg-card/90 transition-colors focus-ring"
+                          className="h-6 w-6 inline-flex items-center justify-center rounded-md border border-border/60 bg-card text-muted-foreground hover:text-foreground hover:border-primary/30 hover:bg-muted transition-colors focus-ring"
                           onClick={() => setCollapsedGroups((prev) => ({ ...prev, [groupKey]: !Boolean(prev[groupKey]) }))}
                           aria-label={isCollapsed ? 'Expand section' : 'Collapse section'}
                           title={isCollapsed ? 'Expand section' : 'Collapse section'}
@@ -1336,7 +1336,7 @@ export function ChunkList() {
                         {canCollapse ? (
                           <button
                             type="button"
-                            className="h-6 w-6 inline-flex items-center justify-center rounded-md border border-border/60 bg-card/70 text-muted-foreground hover:text-foreground hover:border-primary/30 hover:bg-card/90 transition-colors focus-ring"
+                            className="h-6 w-6 inline-flex items-center justify-center rounded-md border border-border/60 bg-card text-muted-foreground hover:text-foreground hover:border-primary/30 hover:bg-muted transition-colors focus-ring"
                             onClick={(e) => {
                               e.stopPropagation()
                               const nextCollapsed = !Boolean(collapsedGroups[groupKey])
