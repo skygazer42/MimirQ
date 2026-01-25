@@ -82,6 +82,9 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: ChunkPrev
   const [datasetId, setDatasetIdState] = useState<string>('')
 
   const [previewData, setPreviewData] = useState<ChunkPreviewResponse | null>(null)
+  const [chunkOverrides, setChunkOverrides] = useState<
+    Record<number, { content?: string; metadata?: Record<string, any>; updatedAt?: number }>
+  >({})
   const [hoveredChunkIndex, setHoveredChunkIndex] = useState<number | null>(null)
   const [selectedChunkIndex, setSelectedChunkIndex] = useState<number | null>(null)
   const [lastPreviewAt, setLastPreviewAt] = useState<number | null>(null)
@@ -429,6 +432,7 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: ChunkPrev
     ])
     setCurrentFileIndex(0)
     setPreviewData(null)
+    setChunkOverrides({})
     setError(null)
     setSubmitSuccess(false)
     setHoveredChunkIndex(null)
@@ -497,6 +501,7 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: ChunkPrev
     const cacheKey = buildPreviewCacheKey()
     const cached = cacheKey ? previewCacheRef.current.get(cacheKey) : undefined
     if (cached && !options?.force) {
+      setChunkOverrides({})
       setHoveredChunkIndex(null)
       setSelectedChunkIndex(null)
       setCreatedDocumentId(null)
@@ -560,6 +565,7 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: ChunkPrev
         separator_max_chunk_size: chunkStrategy === 'separator' ? separatorMaxChunkSize : undefined,
       }, { signal: controller.signal })
       if (previewRequestIdRef.current !== requestId) return
+      setChunkOverrides({})
       setPreviewData(data)
       const durationMs = Math.max(0, Math.round(performance.now() - startTime))
       const createdAt = Date.now()
@@ -631,13 +637,19 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: ChunkPrev
     setError(null)
 
     try {
-      const chunks = previewData.chunks.map((chunk) => ({
-        content: chunk.content,
-        page_number: chunk.page_number,
-        start_char: chunk.start_index,
-        end_char: chunk.end_index,
-        metadata: chunk.metadata,
-      }))
+      const chunks = previewData.chunks.map((chunk) => {
+        const idx = typeof chunk.index === 'number' ? chunk.index : previewData.chunks.indexOf(chunk)
+        const override = chunkOverrides[idx] || null
+        const content = String(override?.content ?? chunk.content ?? '')
+        const metadata = (override?.metadata ?? chunk.metadata ?? {}) as Record<string, any>
+        return {
+          content,
+          page_number: chunk.page_number,
+          start_char: chunk.start_index,
+          end_char: chunk.end_index,
+          metadata,
+        }
+      })
 
       const pipeline = pipelineOverridesEnabled
         ? {
@@ -688,6 +700,7 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: ChunkPrev
     }
   }, [
     previewData,
+    chunkOverrides,
     file,
     currentFileItem,
     datasetId,
@@ -703,6 +716,35 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: ChunkPrev
   ])
 
   // Actions: 更新配置
+  const updateChunkOverride = useCallback(
+    (index: number, override: { content?: string; metadata?: Record<string, any> }) => {
+      const idx = Math.trunc(Number(index))
+      if (!Number.isFinite(idx) || idx < 0) return
+      setChunkOverrides((prev) => {
+        const next = { ...prev }
+        const cur = next[idx] || {}
+        next[idx] = { ...cur, ...override, updatedAt: Date.now() }
+        return next
+      })
+    },
+    []
+  )
+
+  const clearChunkOverride = useCallback((index: number) => {
+    const idx = Math.trunc(Number(index))
+    if (!Number.isFinite(idx) || idx < 0) return
+    setChunkOverrides((prev) => {
+      if (!(idx in prev)) return prev
+      const next = { ...prev }
+      delete next[idx]
+      return next
+    })
+  }, [])
+
+  const clearAllChunkOverrides = useCallback(() => {
+    setChunkOverrides({})
+  }, [])
+
   const updateSettings = useCallback(
     (settings: Partial<Pick<ChunkPreviewState, 'chunkSize' | 'chunkOverlap' | 'strategy'>>) => {
       const nextStrategy = settings.strategy !== undefined ? settings.strategy : chunkStrategy

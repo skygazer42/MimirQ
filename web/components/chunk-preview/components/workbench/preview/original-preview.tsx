@@ -34,6 +34,7 @@ function canReadFileAsText(file: File | null) {
 export function OriginalPreview() {
   const { previewData, hoveredChunkIndex, selectedChunkIndex, currentFile, isLoading, error } = useChunkPreview()
   const [previewMode, setPreviewMode] = useState<'raw' | 'rendered'>('raw')
+  const [forceFullHighlight, setForceFullHighlight] = useState(false)
   const [localOriginalText, setLocalOriginalText] = useState<string | null>(null)
   const [localLoading, setLocalLoading] = useState(false)
   const [localError, setLocalError] = useState<string | null>(null)
@@ -59,6 +60,7 @@ export function OriginalPreview() {
     setLocalOriginalText(null)
     setLocalError(null)
     setLocalLoading(false)
+    setForceFullHighlight(false)
   }, [currentFile, previewData?.filename])
 
   useEffect(() => {
@@ -105,12 +107,31 @@ export function OriginalPreview() {
     if (start >= text.length) return null
     const safeEnd = Math.min(end, text.length)
     if (safeEnd <= start) return null
-    return {
-      before: text.slice(0, start),
-      highlighted: text.slice(start, safeEnd),
-      after: text.slice(safeEnd),
+
+    // Avoid rendering giant before/after strings for large texts: default to a windowed excerpt.
+    const EXCERPT_THRESHOLD = 20_000
+    const CONTEXT_CHARS = 2000
+    const useExcerpt = !forceFullHighlight && text.length > EXCERPT_THRESHOLD
+    if (!useExcerpt) {
+      return {
+        before: text.slice(0, start),
+        highlighted: text.slice(start, safeEnd),
+        after: text.slice(safeEnd),
+        prefixOmitted: false,
+        suffixOmitted: false,
+      }
     }
-  }, [activeChunkIndex, effectiveOriginalText, previewData?.chunks])
+
+    const excerptStart = Math.max(0, start - CONTEXT_CHARS)
+    const excerptEnd = Math.min(text.length, safeEnd + CONTEXT_CHARS)
+    return {
+      before: text.slice(excerptStart, start),
+      highlighted: text.slice(start, safeEnd),
+      after: text.slice(safeEnd, excerptEnd),
+      prefixOmitted: excerptStart > 0,
+      suffixOmitted: excerptEnd < text.length,
+    }
+  }, [activeChunkIndex, effectiveOriginalText, forceFullHighlight, previewData?.chunks])
 
   const tocEnabled = useMemo(
     () => extractMarkdownHeadings(effectiveOriginalText || '', { maxDepth: 4 }).length > 0,
@@ -164,6 +185,17 @@ export function OriginalPreview() {
               })() : null}
             </div>
           )}
+          {previewMode === 'raw' && effectiveOriginalText && activeChunkIndex !== null && effectiveOriginalText.length > 20000 ? (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-7 px-2 text-[11px]"
+              onClick={() => setForceFullHighlight((v) => !v)}
+              title={forceFullHighlight ? '切换为窗口高亮（更省内存）' : '切换为全文高亮（可能更卡）'}
+            >
+              {forceFullHighlight ? '窗口' : '全文'}
+            </Button>
+          ) : null}
           <Button
             variant="ghost"
             size="sm"
@@ -202,6 +234,7 @@ export function OriginalPreview() {
                 <div className="font-mono text-sm leading-relaxed text-muted-foreground whitespace-pre-wrap max-w-3xl mx-auto">
                   {activeChunkIndex !== null && getHighlightedText ? (
                     <>
+                      {getHighlightedText.prefixOmitted ? <span className="opacity-40">…</span> : null}
                       <span className="opacity-40">{getHighlightedText.before}</span>
                       <mark
                         ref={highlightRef}
@@ -210,6 +243,7 @@ export function OriginalPreview() {
                         {getHighlightedText.highlighted}
                       </mark>
                       <span className="opacity-40">{getHighlightedText.after}</span>
+                      {getHighlightedText.suffixOmitted ? <span className="opacity-40">…</span> : null}
                     </>
                   ) : (
                     effectiveOriginalText
