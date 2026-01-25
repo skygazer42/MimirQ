@@ -24,6 +24,7 @@ const ChunkPreviewContext = createContext<ChunkPreviewContextType | null>(null)
 const STORAGE_DATASET_ID_KEY = 'mimirq_chunk_preview_dataset_id'
 const STORAGE_SEPARATOR_SETTINGS_KEY = 'mimirq_chunk_preview_separator_settings'
 const STORAGE_FOCUS_FILE_ID_KEY = 'mimirq_chunk_preview_focus_file_id'
+const STORAGE_PERF_SETTINGS_KEY = 'mimirq_chunk_preview_perf_settings'
 
 function decodeSeparatorInput(raw: string) {
   const value = (raw || '').trim()
@@ -103,6 +104,12 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: ChunkPrev
 
   const [chunkSize, setChunkSize] = useState(pipelineOptions.chunk_size ?? 1000)
   const [chunkOverlap, setChunkOverlap] = useState(pipelineOptions.chunk_overlap ?? 200)
+
+  // Preview-only performance settings (payload guardrails; do not affect ingestion).
+  const [includeOriginalText, setIncludeOriginalText] = useState(true)
+  const [originalTextMaxChars, setOriginalTextMaxChars] = useState(100000)
+  const [maxChunks, setMaxChunks] = useState(2000)
+
   const [separatorPreset, setSeparatorPreset] = useState('paragraph')
   const [separatorCustom, setSeparatorCustom] = useState('\\n\\n')
   const [keepSeparator, setKeepSeparator] = useState(true)
@@ -170,6 +177,36 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: ChunkPrev
     })
     window.localStorage.setItem(STORAGE_SEPARATOR_SETTINGS_KEY, payload)
   }, [separatorPreset, separatorCustom, keepSeparator, separatorMaxChunkSize])
+
+  // Load preview perf settings (best-effort).
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const raw = (window.localStorage.getItem(STORAGE_PERF_SETTINGS_KEY) || '').trim()
+    if (!raw) return
+    try {
+      const data = JSON.parse(raw) as any
+      if (typeof data?.includeOriginalText === 'boolean') setIncludeOriginalText(data.includeOriginalText)
+      if (typeof data?.originalTextMaxChars === 'number' && Number.isFinite(data.originalTextMaxChars)) {
+        setOriginalTextMaxChars(Math.max(0, Math.min(2_000_000, Math.trunc(data.originalTextMaxChars))))
+      }
+      if (typeof data?.maxChunks === 'number' && Number.isFinite(data.maxChunks)) {
+        setMaxChunks(Math.max(0, Math.min(20000, Math.trunc(data.maxChunks))))
+      }
+    } catch {
+      // ignore corrupted storage
+    }
+  }, [])
+
+  // Persist preview perf settings.
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const payload = JSON.stringify({
+      includeOriginalText,
+      originalTextMaxChars,
+      maxChunks,
+    })
+    window.localStorage.setItem(STORAGE_PERF_SETTINGS_KEY, payload)
+  }, [includeOriginalText, originalTextMaxChars, maxChunks])
 
   // 当前文件
   const currentFileItem = fileList[currentFileIndex] || null
@@ -249,6 +286,14 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: ChunkPrev
       setChunkOverlap(pipelineOptions.chunk_overlap)
     }
   }, [pipelineOptions.chunk_overlap, chunkOverlap])
+
+  // Keep overlap consistent for separator strategy (no overlap).
+  useEffect(() => {
+    if (chunkStrategy !== 'separator') return
+    if (chunkOverlap === 0) return
+    setChunkOverlap(0)
+    updateOption('chunk_overlap', 0)
+  }, [chunkOverlap, chunkStrategy, updateOption])
 
   useEffect(() => {
     if (!capabilities) return
@@ -398,6 +443,7 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: ChunkPrev
       chunkStrategy === 'separator'
         ? `sep:${separatorPreset}:${separatorCustom}:${keepSeparator ? 'keep' : 'drop'}:${separatorMaxChunkSize}`
         : 'sep:none'
+    const perfKey = `perf:${includeOriginalText ? 'orig' : 'noorig'}:${originalTextMaxChars}:${maxChunks}`
     return [
       file.name,
       file.size,
@@ -409,6 +455,7 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: ChunkPrev
       chunkOverlap,
       pipelineKey,
       separatorKey,
+      perfKey,
     ].join('::')
   }, [
     file,
@@ -423,6 +470,9 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: ChunkPrev
     separatorCustom,
     keepSeparator,
     separatorMaxChunkSize,
+    includeOriginalText,
+    originalTextMaxChars,
+    maxChunks,
   ])
 
   const currentPreviewCacheKey = useMemo(() => buildPreviewCacheKey(), [buildPreviewCacheKey])
@@ -433,7 +483,8 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: ChunkPrev
   // Actions: 执行预览
   const runPreview = useCallback(async (options?: { force?: boolean }) => {
     if (!file) return
-    if (chunkOverlap >= chunkSize) {
+    const effectiveOverlap = chunkStrategy === 'separator' ? 0 : chunkOverlap
+    if (effectiveOverlap >= chunkSize) {
       setError('重叠长度必须小于切块长度')
       return
     }
@@ -462,7 +513,7 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: ChunkPrev
           parserBackend,
           strategy: chunkStrategy,
           chunkSize,
-          chunkOverlap,
+          chunkOverlap: effectiveOverlap,
           totalChunks: cached.data.total_chunks,
           durationMs: cached.durationMs,
           createdAt: Date.now(),
@@ -495,7 +546,10 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: ChunkPrev
 
       const data = await documentApi.chunkPreview(file, {
         chunk_size: chunkSize,
-        chunk_overlap: chunkOverlap,
+        chunk_overlap: effectiveOverlap,
+        include_original_text: includeOriginalText,
+        original_text_max_chars: originalTextMaxChars,
+        max_chunks: maxChunks,
         parser_backend: parserBackend,
         chunk_strategy: chunkStrategy,
         dataset_id: datasetId || undefined,
@@ -522,7 +576,7 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: ChunkPrev
           parserBackend,
           strategy: chunkStrategy,
           chunkSize,
-          chunkOverlap,
+          chunkOverlap: effectiveOverlap,
           totalChunks: data.total_chunks,
           durationMs,
           createdAt,
@@ -558,6 +612,9 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: ChunkPrev
     separatorCustom,
     keepSeparator,
     separatorMaxChunkSize,
+    includeOriginalText,
+    originalTextMaxChars,
+    maxChunks,
   ])
 
   const cancelPreview = useCallback(() => {
@@ -648,19 +705,42 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: ChunkPrev
   // Actions: 更新配置
   const updateSettings = useCallback(
     (settings: Partial<Pick<ChunkPreviewState, 'chunkSize' | 'chunkOverlap' | 'strategy'>>) => {
+      const nextStrategy = settings.strategy !== undefined ? settings.strategy : chunkStrategy
+
       if (settings.chunkSize !== undefined) {
         setChunkSize(settings.chunkSize)
         updateOption('chunk_size', settings.chunkSize)
       }
       if (settings.chunkOverlap !== undefined) {
-        setChunkOverlap(settings.chunkOverlap)
-        updateOption('chunk_overlap', settings.chunkOverlap)
+        const nextOverlap = nextStrategy === 'separator' ? 0 : settings.chunkOverlap
+        setChunkOverlap(nextOverlap)
+        updateOption('chunk_overlap', nextOverlap)
       }
       if (settings.strategy !== undefined) {
         setChunkStrategy(settings.strategy)
+        if (settings.strategy === 'separator') {
+          // separator does not use overlap; keep state consistent so validation/API stay clean.
+          setChunkOverlap(0)
+          updateOption('chunk_overlap', 0)
+        }
       }
     },
-    [updateOption, setChunkStrategy]
+    [chunkStrategy, updateOption, setChunkStrategy]
+  )
+
+  const updatePerfSettings = useCallback(
+    (settings: Partial<Pick<ChunkPreviewState, 'includeOriginalText' | 'originalTextMaxChars' | 'maxChunks'>>) => {
+      if (settings.includeOriginalText !== undefined) setIncludeOriginalText(Boolean(settings.includeOriginalText))
+      if (settings.originalTextMaxChars !== undefined) {
+        const n = Number(settings.originalTextMaxChars)
+        if (Number.isFinite(n)) setOriginalTextMaxChars(Math.max(0, Math.min(2_000_000, Math.trunc(n))))
+      }
+      if (settings.maxChunks !== undefined) {
+        const n = Number(settings.maxChunks)
+        if (Number.isFinite(n)) setMaxChunks(Math.max(0, Math.min(20000, Math.trunc(n))))
+      }
+    },
+    []
   )
 
   const updateSeparatorSettings = useCallback(
@@ -694,6 +774,9 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: ChunkPrev
     previewCacheRef.current.clear()
     setChunkSize(1000)
     setChunkOverlap(200)
+    setIncludeOriginalText(true)
+    setOriginalTextMaxChars(100000)
+    setMaxChunks(2000)
     updateOption('chunk_size', 1000)
     updateOption('chunk_overlap', 200)
     setCreatedDocumentId(null)
@@ -774,6 +857,9 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: ChunkPrev
     selectedChunkIndex,
     chunkSize,
     chunkOverlap,
+    includeOriginalText,
+    originalTextMaxChars,
+    maxChunks,
     strategy: chunkStrategy,
     separatorPreset,
     separatorCustom,
@@ -807,6 +893,7 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: ChunkPrev
     cancelPreview,
     submitChunks,
     updateSettings,
+    updatePerfSettings,
     updateSeparatorSettings,
     reset,
     toggleAutoPreview,

@@ -3,6 +3,7 @@ Document management API.
 """
 import asyncio
 import contextlib
+from collections import Counter
 from dataclasses import asdict
 import hashlib
 import json
@@ -39,6 +40,7 @@ from app.api.schemas.document import (
     DocumentBatchDeleteResponse,
     ChunkPreviewParams,
     ChunkPreviewItem,
+    ChunkPreviewStats,
     ChunkPreviewResponse,
     BatchUploadRequest,
     BatchUploadResponse,
@@ -3144,6 +3146,7 @@ async def preview_chunking(
     chunk_overlap: int = 200,
     include_original_text: bool = True,
     original_text_max_chars: int = 100000,
+    max_chunks: int = 0,
     parser_backend: str = Form(default=settings.DEFAULT_PARSER_BACKEND),
     chunk_strategy: str = Form(default=settings.DEFAULT_CHUNK_STRATEGY),
     separator_preset: Optional[str] = Form(default=None),
@@ -3209,6 +3212,9 @@ async def preview_chunking(
     if original_text_max_chars < 0 or original_text_max_chars > 2_000_000:
         raise HTTPException(status_code=400, detail="original_text_max_chars must be between 0 and 2000000")
     include_original = bool(include_original_text) and int(original_text_max_chars or 0) > 0
+
+    if max_chunks < 0 or max_chunks > 20000:
+        raise HTTPException(status_code=400, detail="max_chunks must be between 0 and 20000")
 
     # Validate file type.
     file_ext = Path(file.filename).suffix.lower()
@@ -3432,41 +3438,73 @@ async def preview_chunking(
             elif dropped:
                 logger.info("Chunk preview dropped %s short chunks (<%s chars)", dropped, min_chars)
 
+        # Optional response truncation for huge documents (UI safety / payload guardrail).
+        total_chunks_full = len(chunks)
+        chunks_truncated = False
+        if int(max_chunks or 0) > 0 and len(chunks) > int(max_chunks):
+            chunks_truncated = True
+            warnings_out.append(f"chunks truncated to max_chunks={int(max_chunks)} (full={total_chunks_full})")
+            chunks = chunks[: int(max_chunks)]
+
         # Merge original text: use parsed pages for non-ragflow, chunks for ragflow,
         # to keep original_text aligned with chunks for frontend highlighting.
-        page_texts = []
-        current_pos = 0
+        page_texts: list[dict[str, object]] = []
         ragflow_chunk_start_map: dict[int, int] = {}
+        page_start_map: dict[object, int] = {}
+        total_characters = 0
+        original_text_value: str | None = None
 
         if documents:
+            current_pos = 0
             for doc in documents:
-                text = doc.page_content
-                page_num = doc.metadata.get('page')
-                page_texts.append({
-                    'text': text,
-                    'page': page_num,
-                    'start': current_pos,
-                    'end': current_pos + len(text)
-                })
-                current_pos += len(text) + 1  # +1 for separator
+                text = doc.page_content or ""
+                page_num = doc.metadata.get("page")
+                page_texts.append(
+                    {
+                        "text": text,
+                        "page": page_num,
+                        "start": current_pos,
+                        "end": current_pos + len(text),
+                    }
+                )
+                current_pos += len(text) + 1  # +1 for "\n" join separator
 
-            full_text = "\n".join([p['text'] for p in page_texts]) if page_texts else ""
-            page_start_map = {item['page']: item['start'] for item in page_texts} if page_texts else {}
+            total_characters = sum(len(str(p.get("text") or "")) for p in page_texts) + max(0, len(page_texts) - 1)
+            page_start_map = {item.get("page"): int(item.get("start") or 0) for item in page_texts}
+            if include_original and total_characters <= int(original_text_max_chars or 0):
+                original_text_value = "\n".join([str(p.get("text") or "") for p in page_texts]) if page_texts else ""
         else:
             # Ragflow preset: documents is empty; build "locatable" text from chunks.
             # Note: not a strict original full text, but keeps highlighting stable.
-            parts: list[str] = []
+            total_characters = sum(len(c.page_content or "") for c in chunks) + (2 * (len(chunks) - 1) if chunks else 0)
+
+            parts: list[str] | None = None
+            if include_original and total_characters <= int(original_text_max_chars or 0):
+                parts = []
+
+            current_pos = 0
             for idx, chunk in enumerate(chunks):
                 text = chunk.page_content or ""
-                parts.append(text)
+                if parts is not None:
+                    parts.append(text)
                 ragflow_chunk_start_map[idx] = current_pos
-                current_pos += len(text) + 2  # +2 for "\n\n"
+                current_pos += len(text) + 2  # +2 for "\n\n" join separator
 
-            full_text = "\n\n".join(parts) if parts else ""
-            page_start_map = {}
+            if parts is not None:
+                original_text_value = "\n\n".join(parts) if parts else ""
 
         # Build response.
+        unit: Literal["chars", "tokens"] = "tokens" if resolved_chunk_strategy == "langchain_token" else "chars"
         chunk_items: List[ChunkPreviewItem] = []
+        length_samples: list[int] = []
+        total_len = 0
+        total_tokens_est = 0
+        short_threshold = 40 if unit == "tokens" else 120
+        short_count = 0
+        seen_hashes: set[str] = set()
+        duplicate_count = 0
+        auto_counts: Counter[str] = Counter()
+
         for idx, chunk in enumerate(chunks):
             content = chunk.page_content or ""
             meta = chunk.metadata or {}
@@ -3495,6 +3533,26 @@ async def preview_chunking(
                     else estimate_tokens(content)
                 )
 
+            total_tokens_est += int(tokens_est or 0)
+            unit_len = int(tokens_est or 0) if unit == "tokens" else len(content)
+            length_samples.append(unit_len)
+            total_len += unit_len
+            if unit_len > 0 and unit_len < short_threshold:
+                short_count += 1
+
+            stripped = content.strip()
+            if stripped:
+                digest = hashlib.sha256(stripped.encode("utf-8", "ignore")).hexdigest()
+                if digest in seen_hashes:
+                    duplicate_count += 1
+                else:
+                    seen_hashes.add(digest)
+
+            if resolved_chunk_strategy == "auto":
+                selected = meta.get("chunk_strategy_selected")
+                if isinstance(selected, str) and selected.strip():
+                    auto_counts[selected.strip().lower()] += 1
+
             chunk_items.append(ChunkPreviewItem(
                 index=idx,
                 content=content,
@@ -3506,24 +3564,60 @@ async def preview_chunking(
                 metadata=chunk.metadata
             ))
 
+        sorted_lengths = sorted(length_samples)
+        if sorted_lengths:
+            def _pct(p: int) -> int:
+                if not sorted_lengths:
+                    return 0
+                pp = max(0, min(100, int(p)))
+                pos = int((pp / 100.0) * (len(sorted_lengths) - 1))
+                pos = max(0, min(len(sorted_lengths) - 1, pos))
+                return int(sorted_lengths[pos] or 0)
+
+            stats = ChunkPreviewStats(
+                unit=unit,
+                count=len(sorted_lengths),
+                total=int(total_len),
+                min=int(sorted_lengths[0]),
+                max=int(sorted_lengths[-1]),
+                avg=int(round(total_len / len(sorted_lengths))) if sorted_lengths else 0,
+                median=_pct(50),
+                p10=_pct(10),
+                p90=_pct(90),
+                total_tokens_est=int(total_tokens_est),
+                short_count=int(short_count),
+                duplicate_count=int(duplicate_count),
+            )
+        else:
+            stats = ChunkPreviewStats(unit=unit)
+
+        auto_selected_strategy: str | None = None
+        if resolved_chunk_strategy == "auto" and auto_counts:
+            auto_selected_strategy = auto_counts.most_common(1)[0][0]
+
         return ChunkPreviewResponse(
             filename=file.filename,
             file_type=file_ext.lstrip('.'),
             file_size=file_size,
             total_chunks=len(chunks),
-            total_characters=len(full_text),
+            total_chunks_full=int(total_chunks_full),
+            chunks_truncated=bool(chunks_truncated),
+            chunks_max_count=int(max_chunks or 0),
+            total_characters=total_characters,
             params=ChunkPreviewParams(
                 chunk_size=chunk_size,
                 chunk_overlap=effective_chunk_overlap,
                 unit="tokens" if resolved_chunk_strategy == "langchain_token" else "chars",
             ),
             chunks=chunk_items,
+            stats=stats,
+            auto_selected_strategy=auto_selected_strategy,
             warnings=warnings_out,
             # Skip original text when too large (highlight offsets require full text).
-            original_text=full_text if len(full_text) <= 100000 else None,
-            original_text_included=len(full_text) <= 100000,
-            original_text_truncated=len(full_text) > 100000,
-            original_text_max_chars=100000,
+            original_text=original_text_value,
+            original_text_included=original_text_value is not None,
+            original_text_truncated=bool(include_original and original_text_value is None and total_characters > int(original_text_max_chars or 0)),
+            original_text_max_chars=int(original_text_max_chars or 0),
             parser_backend=resolved_backend,
             chunk_strategy=resolved_chunk_strategy
         )
