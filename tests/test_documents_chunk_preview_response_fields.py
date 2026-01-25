@@ -374,3 +374,22 @@ def test_documents_chunk_preview_strategy_params_for_parent_child(monkeypatch): 
     assert sp.get("min_child_size") == 300
     assert sp.get("child_size") == 300
     assert sp.get("child_overlap") == 0
+
+
+def test_documents_chunk_preview_ignores_parent_child_params_for_other_strategies(monkeypatch):  # noqa: ANN001
+    client = _build_client(monkeypatch)
+
+    res = client.post(
+        "/api/v1/documents/chunk-preview?chunk_size=100&chunk_overlap=10",
+        data={
+            "parser_backend": "auto",
+            "chunk_strategy": "langchain_recursive",
+            "child_ratio": "0.25",
+            "min_child_size": "300",
+        },
+        files={"file": ("doc.txt", b"hello world", "text/plain")},
+    )
+    assert res.status_code == 200
+    body = res.json()
+    assert any("ignored" in str(w) and "child_ratio" in str(w) for w in (body.get("warnings") or []))
+    assert body.get("params", {}).get("strategy_params") == {}
