@@ -3383,7 +3383,8 @@ async def preview_chunking(
                 and cache_max_entries > 0
             ):
                 cache_key = (
-                    f"parse:{str(tenant_id)}:{str(file_sha256)}:{str(file_ext)}:"
+                    # Scope to tenant + account to avoid cross-user cache leakage in multi-user tenants.
+                    f"parse:{str(tenant_id)}:{str(account_id)}:{str(file_sha256)}:{str(file_ext)}:"
                     f"{str(parser_backend or '').strip().lower()}"
                 )
                 cached, age_ms = preview_parse_cache.get(cache_key, ttl_sec=cache_ttl_sec)
@@ -3807,6 +3808,457 @@ async def preview_chunking(
                 shutil.rmtree(run_dir, ignore_errors=True)
         except Exception:
             pass
+
+
+# ==================== Chunk preview reuse API (no upload) ====================
+
+@router.post("/chunk-preview/by-sha", response_model=ChunkPreviewResponse)
+async def preview_chunking_by_sha(
+    request: Request,
+    response: Response,
+    file_sha256: str = Form(...),
+    file_type: Optional[str] = Form(default=None),
+    filename: Optional[str] = Form(default=None),
+    file_size: Optional[int] = Form(default=None),
+    chunk_size: int = 1000,
+    chunk_overlap: int = 200,
+    include_original_text: bool = True,
+    original_text_max_chars: int = 100000,
+    max_chunks: int = 0,
+    use_parse_cache: bool = Query(default=True),
+    parser_backend: str = Form(default=settings.DEFAULT_PARSER_BACKEND),
+    chunk_strategy: str = Form(default=settings.DEFAULT_CHUNK_STRATEGY),
+    separator_preset: Optional[str] = Form(default=None),
+    separator: Optional[str] = Form(default=None),
+    keep_separator: Optional[bool] = Form(default=None),
+    separator_max_chunk_size: Optional[int] = Form(default=None),
+    dataset_id: Optional[str] = Form(default=None),
+    pipeline: Optional[str] = Form(default=None),
+    governance_enabled: Optional[bool] = Form(default=None),
+    governance_remove_toc_lines: Optional[bool] = Form(default=None),
+    governance_remove_noise_lines: Optional[bool] = Form(default=None),
+    governance_unwrap_lines: Optional[bool] = Form(default=None),
+    governance_remove_common_lines: Optional[bool] = Form(default=None),
+    governance_unwrap_max_line_length: Optional[int] = Form(default=None),
+    governance_noise_min_chars: Optional[int] = Form(default=None),
+    governance_noise_ratio_threshold: Optional[float] = Form(default=None),
+    governance_common_lines_min_docs: Optional[int] = Form(default=None),
+    governance_common_lines_min_ratio: Optional[float] = Form(default=None),
+    tenant_id: UUID = Depends(get_tenant_id),
+    account_id: str = Depends(get_current_account_id),
+    db: Session = Depends(get_db),
+):
+    """
+    Chunk preview endpoint (reuse parse cache; no file upload).
+
+    Intended for fast A/B tuning after a file has been previewed once and the server-side
+    parse cache is warm. If cache is missing/expired, client should fall back to uploading.
+    """
+    DatasetService.ensure_member(db, tenant_id, account_id)
+
+    preview_started = time.perf_counter()
+    parse_cache_hit = False
+    parse_cache_age_ms: Optional[int] = None
+    upload_duration_ms: int = 0
+    parse_duration_ms: int = 0
+    governance_duration_ms: int = 0
+    chunking_duration_ms: int = 0
+    stats_duration_ms: int = 0
+    warnings_out: list[str] = []
+
+    sha = (file_sha256 or "").strip().lower()
+    if not re.fullmatch(r"[0-9a-f]{64}", sha):
+        raise HTTPException(status_code=400, detail="file_sha256 must be a 64-char hex string")
+
+    raw_type = (file_type or "").strip().lower().lstrip(".")
+    if not raw_type and filename:
+        raw_type = Path(str(filename)).suffix.lower().lstrip(".")
+    if not raw_type:
+        raise HTTPException(status_code=400, detail="file_type is required")
+    file_ext = f".{raw_type}"
+    if file_ext not in settings.allowed_extensions_list:
+        raise HTTPException(status_code=400, detail=f"Unsupported file type. Allowed: {settings.allowed_extensions_list}")
+
+    safe_name = _sanitize_filename(filename or f"{sha[:8]}{file_ext}")
+
+    # Resolve strategy early so validation can be strategy-aware.
+    try:
+        resolved_chunk_strategy = chunker_factory.resolve_strategy(chunk_strategy)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+    # Parameter validation (keep aligned with /chunk-preview).
+    min_chunk_size = 50 if resolved_chunk_strategy == "langchain_token" else 100
+    if chunk_size < min_chunk_size or chunk_size > 4000:
+        raise HTTPException(status_code=400, detail=f"chunk_size must be between {min_chunk_size} and 4000")
+    if chunk_overlap < 0 or chunk_overlap > 1000:
+        raise HTTPException(status_code=400, detail="chunk_overlap must be between 0 and 1000")
+    if resolved_chunk_strategy != "separator" and chunk_overlap >= chunk_size:
+        raise HTTPException(status_code=400, detail="chunk_overlap must be less than chunk_size")
+
+    effective_chunk_overlap = 0 if resolved_chunk_strategy == "separator" else chunk_overlap
+    if resolved_chunk_strategy == "separator" and chunk_overlap != effective_chunk_overlap:
+        warnings_out.append("separator strategy ignores chunk_overlap; using 0")
+
+    # Control whether we return original_text for highlighting (large payload guardrail).
+    if original_text_max_chars < 0 or original_text_max_chars > 2_000_000:
+        raise HTTPException(status_code=400, detail="original_text_max_chars must be between 0 and 2000000")
+    include_original = bool(include_original_text)
+
+    if resolved_chunk_strategy in chunker_factory.RAGFLOW_STRATEGIES:
+        raise HTTPException(status_code=400, detail="RAGFlow strategies do not support by-sha preview; please upload the file")
+
+    cache_enabled = bool(getattr(settings, "PREVIEW_PARSE_CACHE_ENABLED", False))
+    cache_ttl_sec = int(getattr(settings, "PREVIEW_PARSE_CACHE_TTL_SEC", 0) or 0)
+    cache_max_entries = int(getattr(settings, "PREVIEW_PARSE_CACHE_MAX_ENTRIES", 0) or 0)
+    if not (cache_enabled and bool(use_parse_cache) and cache_ttl_sec > 0 and cache_max_entries > 0):
+        raise HTTPException(status_code=400, detail="parse cache disabled; please upload the file")
+
+    cache_key = (
+        f"parse:{str(tenant_id)}:{str(account_id)}:{sha}:{str(file_ext)}:"
+        f"{str(parser_backend or '').strip().lower()}"
+    )
+
+    cached, age_ms = preview_parse_cache.get(cache_key, ttl_sec=cache_ttl_sec)
+    if cached is None:
+        raise HTTPException(status_code=404, detail="Parse cache miss. Upload the file once to warm the cache.")
+
+    parse_cache_hit = True
+    parse_cache_age_ms = age_ms
+    parsed_docs_payload = list(cached.documents or [])
+    resolved_backend = str(cached.resolved_backend or parser_backend)
+
+    # Dataset metadata (optional; affects effective pipeline rules).
+    dataset_meta: dict = {}
+    if dataset_id:
+        try:
+            ds = DatasetService.get_dataset(db, tenant_id, UUID(str(dataset_id)))
+            DatasetService.assert_dataset_readable(db, ds, account_id)
+            dataset_meta = dict(getattr(ds, "dataset_metadata", None) or {})
+        except HTTPException:
+            raise
+        except Exception:
+            dataset_meta = {}
+
+    pipeline_options = _to_pipeline_options(
+        pipeline=_parse_pipeline_json(pipeline),
+        governance_enabled=governance_enabled,
+        governance_remove_toc_lines=governance_remove_toc_lines,
+        governance_remove_noise_lines=governance_remove_noise_lines,
+        governance_unwrap_lines=governance_unwrap_lines,
+        governance_remove_common_lines=governance_remove_common_lines,
+        governance_unwrap_max_line_length=governance_unwrap_max_line_length,
+        governance_noise_min_chars=governance_noise_min_chars,
+        governance_noise_ratio_threshold=governance_noise_ratio_threshold,
+        governance_common_lines_min_docs=governance_common_lines_min_docs,
+        governance_common_lines_min_ratio=governance_common_lines_min_ratio,
+    )
+    pipeline_effective = resolve_pipeline_effective(
+        dataset_metadata=dataset_meta,
+        document_metadata={},
+        request_overrides=pipeline_options,
+    )
+    extra_rules = list(getattr(pipeline_effective, "governance_regex_rules", None) or [])
+    combined_rules = build_governance_rules(extra_rules) if extra_rules else None
+    governance_kwargs = {
+        **({"rules": combined_rules} if combined_rules else {}),
+        "remove_toc_lines": pipeline_effective.governance_remove_toc_lines,
+        "remove_noise_lines": pipeline_effective.governance_remove_noise_lines,
+        "unwrap_lines": pipeline_effective.governance_unwrap_lines,
+        "remove_common_lines": pipeline_effective.governance_remove_common_lines,
+        "remove_boilerplate": pipeline_effective.governance_remove_boilerplate,
+        "remove_images": pipeline_effective.governance_remove_images,
+        "extract_frontmatter": pipeline_effective.governance_extract_frontmatter,
+        "strip_frontmatter": pipeline_effective.governance_strip_frontmatter,
+        "detect_language": pipeline_effective.governance_detect_language,
+        "language_min_chars": pipeline_effective.governance_language_min_chars,
+        "normalize_urls": pipeline_effective.governance_normalize_urls,
+        "normalize_urls_strip_tracking": pipeline_effective.governance_normalize_urls_strip_tracking,
+        "drop_duplicate_paragraphs": pipeline_effective.governance_drop_duplicate_paragraphs,
+        "drop_duplicate_paragraphs_min_occurrences": pipeline_effective.governance_drop_duplicate_paragraphs_min_occurrences,
+        "drop_duplicate_paragraphs_min_chars": pipeline_effective.governance_drop_duplicate_paragraphs_min_chars,
+        "drop_duplicate_paragraphs_max_chars": pipeline_effective.governance_drop_duplicate_paragraphs_max_chars,
+        "trim_references": pipeline_effective.governance_trim_references,
+        "extract_keywords": pipeline_effective.governance_extract_keywords,
+        "keywords_provider": pipeline_effective.governance_keywords_provider,
+        "keywords_top_k": pipeline_effective.governance_keywords_top_k,
+        "keywords_max_chars": pipeline_effective.governance_keywords_max_chars,
+        "normalize_tables": pipeline_effective.governance_normalize_tables,
+        "strip_code_line_numbers": pipeline_effective.governance_strip_code_line_numbers,
+        "pii_anonymize": pipeline_effective.governance_pii_anonymize,
+        "pii_mode": pipeline_effective.governance_pii_mode,
+        "pii_mask": pipeline_effective.governance_pii_mask,
+        "secrets_redact": pipeline_effective.governance_secrets_redact,
+        "secrets_mode": pipeline_effective.governance_secrets_mode,
+        "secrets_mask": pipeline_effective.governance_secrets_mask,
+        "max_blank_lines": pipeline_effective.governance_max_blank_lines,
+        "drop_outline_only": pipeline_effective.governance_drop_outline_only,
+        "drop_outline_min_content_chars": pipeline_effective.governance_drop_outline_min_content_chars,
+        "drop_outline_max_heading_ratio": pipeline_effective.governance_drop_outline_max_heading_ratio,
+        "drop_low_density": pipeline_effective.governance_drop_low_density,
+        "drop_low_density_threshold": pipeline_effective.governance_drop_low_density_threshold,
+        "unwrap_max_line_length": pipeline_effective.governance_unwrap_max_line_length,
+        "noise_min_chars": pipeline_effective.governance_noise_min_chars,
+        "noise_ratio_threshold": pipeline_effective.governance_noise_ratio_threshold,
+        "common_lines_min_docs": pipeline_effective.governance_common_lines_min_docs,
+        "common_lines_min_ratio": pipeline_effective.governance_common_lines_min_ratio,
+    }
+
+    documents = [
+        Document(
+            page_content=str(item.get("page_content") or ""),
+            metadata=item.get("metadata") if isinstance(item.get("metadata"), dict) else {},
+            id=item.get("id") if isinstance(item.get("id"), str) else None,
+        )
+        for item in (parsed_docs_payload or [])
+        if isinstance(item, dict)
+    ]
+
+    if pipeline_effective.governance_enabled:
+        _gov_started = time.perf_counter()
+        documents, _stats = governance_processor.clean_documents(
+            documents,
+            **governance_kwargs,
+        )
+        governance_duration_ms += int(max(0.0, (time.perf_counter() - _gov_started) * 1000.0))
+
+    if resolved_chunk_strategy == "separator":
+        preset = (separator_preset or "").strip() or "paragraph"
+        if preset != "custom":
+            sep_value = SeparatorChunker.PRESET_SEPARATORS.get(preset)
+            if sep_value is None:
+                raise HTTPException(status_code=400, detail=f"Invalid separator_preset: {preset}")
+        else:
+            sep_value = separator if isinstance(separator, str) else ""
+            if not sep_value:
+                sep_value = "\n\n"
+
+        chunker = SeparatorChunker(
+            chunk_size=chunk_size,
+            chunk_overlap=effective_chunk_overlap,
+            separator=sep_value,
+            keep_separator=True if keep_separator is None else bool(keep_separator),
+            max_chunk_size=int(separator_max_chunk_size or 0),
+        )
+    else:
+        chunker = chunker_factory.get_chunker(
+            resolved_chunk_strategy,
+            chunk_size=chunk_size,
+            chunk_overlap=effective_chunk_overlap
+        )
+
+    _chunk_started = time.perf_counter()
+    chunks = chunker.split_documents(documents)
+    chunking_duration_ms = int(max(0.0, (time.perf_counter() - _chunk_started) * 1000.0))
+
+    # Align with ingestion: drop extremely short chunks (keep image-bearing chunks).
+    min_chars = max(0, int(getattr(settings, "CHUNK_MIN_CHARS", 0) or 0))
+    if min_chars > 0 and chunks:
+        before = len(chunks)
+        original_chunks = chunks
+        filtered = []
+        for c in original_chunks:
+            content = (c.page_content or "").strip()
+            if len(content) >= min_chars:
+                filtered.append(c)
+                continue
+            meta = c.metadata or {}
+            if (
+                meta.get("img_id")
+                or meta.get("image_id")
+                or meta.get("image_url")
+                or PREVIEW_IMAGE_REF_RE.search(content)
+                or MINIO_IMAGE_REF_RE.search(content)
+                or ("data:image" in content.lower())
+            ):
+                filtered.append(c)
+        if not filtered and original_chunks:
+            # Keep the longest chunk so preview stays consistent with ingestion.
+            longest = max(original_chunks, key=lambda d: len((d.page_content or "").strip()))
+            filtered = [longest]
+        chunks = filtered
+        dropped = before - len(chunks)
+        if dropped:
+            logger.info("Chunk preview(by-sha) dropped %s short chunks (<%s chars)", dropped, min_chars)
+
+    # Optional response truncation for huge documents (UI safety / payload guardrail).
+    total_chunks_full = len(chunks)
+    chunks_truncated = False
+    if int(max_chunks or 0) > 0 and len(chunks) > int(max_chunks):
+        chunks_truncated = True
+        warnings_out.append(f"chunks truncated to max_chunks={int(max_chunks)} (full={total_chunks_full})")
+        chunks = chunks[: int(max_chunks)]
+
+    # Merge original text: join parsed pages to keep start_index stable.
+    page_texts: list[dict[str, object]] = []
+    page_start_map: dict[object, int] = {}
+    total_characters = 0
+    original_text_value: str | None = None
+
+    current_pos = 0
+    for doc in documents:
+        text = doc.page_content or ""
+        page_num = doc.metadata.get("page")
+        page_texts.append(
+            {
+                "text": text,
+                "page": page_num,
+                "start": current_pos,
+                "end": current_pos + len(text),
+            }
+        )
+        current_pos += len(text) + 1  # +1 for "\n" join separator
+
+    total_characters = sum(len(str(p.get("text") or "")) for p in page_texts) + max(0, len(page_texts) - 1)
+    page_start_map = {item.get("page"): int(item.get("start") or 0) for item in page_texts}
+    if include_original and total_characters <= int(original_text_max_chars or 0):
+        original_text_value = "\n".join([str(p.get("text") or "") for p in page_texts]) if page_texts else ""
+
+    # Build response.
+    _stats_started = time.perf_counter()
+    unit: Literal["chars", "tokens"] = "tokens" if resolved_chunk_strategy == "langchain_token" else "chars"
+    chunk_items: List[ChunkPreviewItem] = []
+    length_samples: list[int] = []
+    total_len = 0
+    total_tokens_est = 0
+    short_threshold = 40 if unit == "tokens" else 120
+    short_count = 0
+    seen_hashes: set[str] = set()
+    duplicate_count = 0
+    auto_counts: Counter[str] = Counter()
+
+    for idx, chunk in enumerate(chunks):
+        content = chunk.page_content or ""
+        meta = chunk.metadata or {}
+        page_num = meta.get('page') or meta.get('page_number')
+        local_start = meta.get('start_char')
+
+        if local_start is not None and page_num in page_start_map:
+            start_idx = page_start_map[page_num] + int(local_start)
+        elif page_num in page_start_map:
+            start_idx = page_start_map[page_num]
+        elif meta.get("start_char") is not None:
+            start_idx = int(meta.get("start_char"))
+        else:
+            start_idx = 0
+
+        end_idx = start_idx + len(content)
+        tokens_est = 0
+        if content:
+            tokens_est = (
+                num_tokens_from_string(content)
+                if resolved_chunk_strategy == "langchain_token"
+                else estimate_tokens(content)
+            )
+
+        total_tokens_est += int(tokens_est or 0)
+        unit_len = int(tokens_est or 0) if unit == "tokens" else len(content)
+        length_samples.append(unit_len)
+        total_len += unit_len
+        if unit_len > 0 and unit_len < short_threshold:
+            short_count += 1
+
+        stripped = content.strip()
+        if stripped:
+            digest = hashlib.sha256(stripped.encode("utf-8", "ignore")).hexdigest()
+            if digest in seen_hashes:
+                duplicate_count += 1
+            else:
+                seen_hashes.add(digest)
+
+        if resolved_chunk_strategy == "auto":
+            selected = meta.get("chunk_strategy_selected")
+            if isinstance(selected, str) and selected.strip():
+                auto_counts[selected.strip().lower()] += 1
+
+        chunk_items.append(ChunkPreviewItem(
+            index=idx,
+            content=content,
+            length=len(content),
+            tokens_est=tokens_est,
+            start_index=start_idx,
+            end_index=end_idx,
+            page_number=page_num,
+            metadata=chunk.metadata
+        ))
+
+    sorted_lengths = sorted(length_samples)
+    if sorted_lengths:
+        def _pct(p: int) -> int:
+            if not sorted_lengths:
+                return 0
+            pp = max(0, min(100, int(p)))
+            pos = int((pp / 100.0) * (len(sorted_lengths) - 1))
+            pos = max(0, min(len(sorted_lengths) - 1, pos))
+            return int(sorted_lengths[pos] or 0)
+
+        stats = ChunkPreviewStats(
+            unit=unit,
+            count=len(sorted_lengths),
+            total=int(total_len),
+            min=int(sorted_lengths[0]),
+            max=int(sorted_lengths[-1]),
+            avg=int(round(total_len / len(sorted_lengths))) if sorted_lengths else 0,
+            median=_pct(50),
+            p10=_pct(10),
+            p90=_pct(90),
+            total_tokens_est=int(total_tokens_est),
+            short_count=int(short_count),
+            duplicate_count=int(duplicate_count),
+        )
+    else:
+        stats = ChunkPreviewStats(unit=unit)
+    stats_duration_ms = int(max(0.0, (time.perf_counter() - _stats_started) * 1000.0))
+
+    auto_selected_strategy: str | None = None
+    if resolved_chunk_strategy == "auto" and auto_counts:
+        auto_selected_strategy = auto_counts.most_common(1)[0][0]
+
+    preview_duration_ms_val = int(max(0.0, (time.perf_counter() - preview_started) * 1000.0))
+    with contextlib.suppress(Exception):
+        timing_parts: list[str] = []
+        timing_parts.append(f"upload;dur={int(upload_duration_ms)}")
+        timing_parts.append(f"parse;dur={int(parse_duration_ms)}")
+        timing_parts.append(f"govern;dur={int(governance_duration_ms)}")
+        timing_parts.append(f"chunk;dur={int(chunking_duration_ms)}")
+        timing_parts.append(f"stats;dur={int(stats_duration_ms)}")
+        timing_parts.append(f"total;dur={int(preview_duration_ms_val)}")
+        response.headers["Server-Timing"] = ", ".join(timing_parts)
+
+    return ChunkPreviewResponse(
+        filename=safe_name,
+        file_type=file_ext.lstrip('.'),
+        file_size=int(file_size or 0),
+        file_sha256=sha,
+        parse_cache_hit=bool(parse_cache_hit),
+        parse_cache_age_ms=parse_cache_age_ms,
+        preview_duration_ms=preview_duration_ms_val,
+        upload_duration_ms=int(upload_duration_ms),
+        parse_duration_ms=int(parse_duration_ms),
+        governance_duration_ms=int(governance_duration_ms),
+        chunking_duration_ms=int(chunking_duration_ms),
+        stats_duration_ms=int(stats_duration_ms),
+        total_chunks=len(chunks),
+        total_chunks_full=int(total_chunks_full),
+        chunks_truncated=bool(chunks_truncated),
+        chunks_max_count=int(max_chunks or 0),
+        total_characters=total_characters,
+        params=ChunkPreviewParams(
+            chunk_size=chunk_size,
+            chunk_overlap=effective_chunk_overlap,
+            unit="tokens" if resolved_chunk_strategy == "langchain_token" else "chars",
+        ),
+        chunks=chunk_items,
+        stats=stats,
+        auto_selected_strategy=auto_selected_strategy,
+        warnings=warnings_out,
+        original_text=original_text_value,
+        original_text_included=original_text_value is not None,
+        original_text_truncated=bool(include_original and original_text_value is None and total_characters > int(original_text_max_chars or 0)),
+        original_text_max_chars=int(original_text_max_chars or 0),
+        parser_backend=resolved_backend,
+        chunk_strategy=resolved_chunk_strategy,
+    )
 
 
 # ==================== MinerU batch upload API ====================
