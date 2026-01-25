@@ -20,6 +20,7 @@ import {
   Pencil,
   ChevronDown,
   ChevronRight,
+  EyeOff,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
@@ -81,6 +82,7 @@ export function ChunkList() {
     setHoveredChunkIndex,
     setSelectedChunkIndex,
     updateChunkOverride,
+    toggleChunkDisabled,
     clearChunkOverride,
     showOriginalPanel,
     isLoading,
@@ -99,6 +101,7 @@ export function ChunkList() {
   const [onlyShort, setOnlyShort] = useState(false)
   const [onlyDuplicate, setOnlyDuplicate] = useState(false)
   const [onlyEdited, setOnlyEdited] = useState(false)
+  const [onlyDisabled, setOnlyDisabled] = useState(false)
   const [inspectorOpen, setInspectorOpen] = useState(false)
   const [inspectorIndex, setInspectorIndex] = useState<number | null>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
@@ -124,6 +127,7 @@ export function ChunkList() {
     setOnlyShort(false)
     setOnlyDuplicate(false)
     setOnlyEdited(false)
+    setOnlyDisabled(false)
     setInspectorOpen(false)
     setInspectorIndex(null)
   }, [previewData?.filename])
@@ -142,14 +146,26 @@ export function ChunkList() {
 
   const editedIndices = useMemo(() => {
     const out = new Set<number>()
-    for (const k of Object.keys(chunkOverrides || {})) {
+    for (const [k, v] of Object.entries(chunkOverrides || {})) {
       const n = Number(k)
-      if (Number.isFinite(n)) out.add(n)
+      if (!Number.isFinite(n)) continue
+      if ((v as any)?.content !== undefined || (v as any)?.metadata !== undefined) out.add(n)
+    }
+    return out
+  }, [chunkOverrides])
+
+  const disabledIndices = useMemo(() => {
+    const out = new Set<number>()
+    for (const [k, v] of Object.entries(chunkOverrides || {})) {
+      const idx = Number(k)
+      if (!Number.isFinite(idx)) continue
+      if ((v as any)?.disabled) out.add(idx)
     }
     return out
   }, [chunkOverrides])
 
   const effectiveChunks = useMemo(() => {
+
     const raw = previewData?.chunks || []
     if (!raw.length) return []
     return raw.map((chunk) => {
@@ -246,6 +262,7 @@ export function ChunkList() {
         if (onlyShort && !shortIndices.has(Number(chunk.index))) return false
         if (onlyDuplicate && !duplicateIndices.has(Number(chunk.index))) return false
         if (onlyEdited && !editedIndices.has(Number(chunk.index))) return false
+        if (onlyDisabled && !disabledIndices.has(Number(chunk.index))) return false
 
         return true
       })
@@ -267,9 +284,11 @@ export function ChunkList() {
     onlyShort,
     onlyDuplicate,
     onlyEdited,
+    onlyDisabled,
     shortIndices,
     duplicateIndices,
     editedIndices,
+    disabledIndices,
   ])
 
   const matchCount = flatFilteredChunks.length
@@ -288,7 +307,8 @@ export function ChunkList() {
       maxLen > 0 ||
       onlyShort ||
       onlyDuplicate ||
-      onlyEdited
+      onlyEdited ||
+      onlyDisabled
 
     type Group = {
       key: string
@@ -410,10 +430,11 @@ export function ChunkList() {
       maxLen > 0 ||
       onlyShort ||
       onlyDuplicate ||
-      onlyEdited
+      onlyEdited ||
+      onlyDisabled
     if (!hasFilter) return null
     return `${matchCount} / ${previewData?.total_chunks || 0}`
-  }, [matchCount, previewData?.total_chunks, query, pageFilter, minLen, maxLen, onlyShort, onlyDuplicate, onlyEdited])
+  }, [matchCount, previewData?.total_chunks, query, pageFilter, minLen, maxLen, onlyShort, onlyDuplicate, onlyEdited, onlyDisabled])
 
   const showVirtualized = Boolean(previewData?.chunks && displayRows.length > 0)
 
@@ -912,6 +933,8 @@ export function ChunkList() {
                         isShort={isShort}
                         isDuplicate={isDuplicate}
                         isEdited={isEdited}
+                        isDisabled={disabledIndices.has(index)}
+                        onToggleDisabled={() => toggleChunkDisabled(index)}
                         query={query}
                         onMouseEnter={() => setHoveredChunkIndex(index)}
                         onMouseLeave={() => setHoveredChunkIndex(null)}

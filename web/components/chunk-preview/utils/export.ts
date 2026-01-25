@@ -33,29 +33,37 @@ export function toChunkPreviewExport(preview: ChunkPreviewResponse) {
 
 export function applyChunkOverridesToPreview(
   preview: ChunkPreviewResponse,
-  overrides: Record<number, { content?: string; metadata?: Record<string, any> }> | undefined
+  overrides: Record<number, { content?: string; metadata?: Record<string, any>; disabled?: boolean; updatedAt?: number }> | undefined
 ) {
   const keys = overrides ? Object.keys(overrides) : []
   if (!keys.length) return preview
 
-  const chunks = (preview.chunks || []).map((chunk) => {
+  const chunks = (preview.chunks || []).reduce((acc, chunk) => {
     const idx = typeof chunk.index === 'number' ? chunk.index : (preview.chunks || []).indexOf(chunk)
     const override = overrides?.[idx]
-    if (!override) return chunk
+
+    if (override?.disabled) return acc
+    if (!override) {
+      acc.push(chunk)
+      return acc
+    }
+
     const content = String(override.content ?? chunk.content ?? '')
     const metadata = (override.metadata ?? chunk.metadata ?? {}) as Record<string, any>
-    return {
+    acc.push({
       ...chunk,
       content,
       metadata,
       length: content.length,
       tokens_est: roughEstimateTokens(content),
-    }
-  })
+    })
+    return acc
+  }, [] as any[])
 
   return {
     ...preview,
     chunks,
+    total_chunks: chunks.length,
   }
 }
 

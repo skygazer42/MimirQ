@@ -4,7 +4,7 @@
 'use client'
 
 import { useCallback, useMemo } from 'react'
-import { Copy, Braces, Pin, PinOff, Quote, Pencil } from 'lucide-react'
+import { Copy, Braces, Pin, PinOff, Quote, Pencil, Eye, EyeOff } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
@@ -20,11 +20,13 @@ interface ChunkCardProps {
   isShort?: boolean
   isDuplicate?: boolean
   isEdited?: boolean
+  isDisabled?: boolean
   query?: string
   onMouseEnter: () => void
   onMouseLeave: () => void
   onToggleSelect: () => void
   onEdit?: () => void
+  onToggleDisabled?: () => void
 }
 
 function highlightText(text: string, rawQuery?: string) {
@@ -76,11 +78,13 @@ export function ChunkCard({
   isShort,
   isDuplicate,
   isEdited,
+  isDisabled,
   query,
   onMouseEnter,
   onMouseLeave,
   onToggleSelect,
   onEdit,
+  onToggleDisabled,
 }: ChunkCardProps) {
   const rangeLabel = useMemo(() => `${chunk.start_index}-${chunk.end_index}`, [chunk.start_index, chunk.end_index])
   const tokens = useMemo(() => (typeof chunk.tokens_est === 'number' ? chunk.tokens_est : null), [chunk.tokens_est])
@@ -121,7 +125,8 @@ export function ChunkCard({
           ? 'border-primary/45 shadow-lg shadow-primary/10 ring-1 ring-primary/20'
           : isHovered
             ? 'border-primary/30 shadow-md shadow-primary/10 ring-1 ring-ring/10 motion-safe:-translate-y-0.5 z-10'
-            : 'border-border hover:border-primary/25 hover:shadow-sm hover:shadow-primary/10'
+            : 'border-border hover:border-primary/25 hover:shadow-sm hover:shadow-primary/10',
+        isDisabled && !isSelected && !isHovered ? 'opacity-60' : ''
       )}
       onMouseEnter={onMouseEnter}
       onMouseLeave={onMouseLeave}
@@ -139,6 +144,12 @@ export function ChunkCard({
           >
             #{index + 1}
           </span>
+          {isDisabled ? (
+            <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-muted/60 text-muted-foreground border border-border/60">
+              SKIP
+            </span>
+          ) : null}
+
           {isEdited ? (
             <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-info/10 text-info border border-info/25">
               EDIT
@@ -199,6 +210,22 @@ export function ChunkCard({
                 title="编辑切片"
               >
                 <Pencil className="h-4 w-4" />
+              </Button>
+            ) : null}
+            {onToggleDisabled ? (
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="h-7 w-7"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  onToggleDisabled()
+                }}
+                aria-label={isDisabled ? 'Enable chunk' : 'Skip chunk'}
+                title={isDisabled ? 'Enable chunk' : 'Skip chunk'}
+              >
+                {isDisabled ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
               </Button>
             ) : null}
             <Button
