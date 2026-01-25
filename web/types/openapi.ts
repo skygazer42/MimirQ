@@ -612,6 +612,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/documents/chunk-preview/by-sha": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Preview Chunking By Sha
+         * @description Chunk preview endpoint (reuse parse cache; no file upload).
+         *
+         *     Intended for fast A/B tuning after a file has been previewed once and the server-side
+         *     parse cache is warm. If cache is missing/expired, client should fall back to uploading.
+         */
+        post: operations["preview_chunking_by_sha_api_v1_documents_chunk_preview_by_sha_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/documents/batch-upload/apply-urls": {
         parameters: {
             query?: never;
@@ -2296,6 +2319,67 @@ export interface components {
              * @default langchain_recursive
              */
             chunk_strategy: string;
+            /** Child Ratio */
+            child_ratio?: number | null;
+            /** Min Child Size */
+            min_child_size?: number | null;
+            /** Separator Preset */
+            separator_preset?: string | null;
+            /** Separator */
+            separator?: string | null;
+            /** Keep Separator */
+            keep_separator?: boolean | null;
+            /** Separator Max Chunk Size */
+            separator_max_chunk_size?: number | null;
+            /** Dataset Id */
+            dataset_id?: string | null;
+            /** Pipeline */
+            pipeline?: string | null;
+            /** Governance Enabled */
+            governance_enabled?: boolean | null;
+            /** Governance Remove Toc Lines */
+            governance_remove_toc_lines?: boolean | null;
+            /** Governance Remove Noise Lines */
+            governance_remove_noise_lines?: boolean | null;
+            /** Governance Unwrap Lines */
+            governance_unwrap_lines?: boolean | null;
+            /** Governance Remove Common Lines */
+            governance_remove_common_lines?: boolean | null;
+            /** Governance Unwrap Max Line Length */
+            governance_unwrap_max_line_length?: number | null;
+            /** Governance Noise Min Chars */
+            governance_noise_min_chars?: number | null;
+            /** Governance Noise Ratio Threshold */
+            governance_noise_ratio_threshold?: number | null;
+            /** Governance Common Lines Min Docs */
+            governance_common_lines_min_docs?: number | null;
+            /** Governance Common Lines Min Ratio */
+            governance_common_lines_min_ratio?: number | null;
+        };
+        /** Body_preview_chunking_by_sha_api_v1_documents_chunk_preview_by_sha_post */
+        Body_preview_chunking_by_sha_api_v1_documents_chunk_preview_by_sha_post: {
+            /** File Sha256 */
+            file_sha256: string;
+            /** File Type */
+            file_type?: string | null;
+            /** Filename */
+            filename?: string | null;
+            /** File Size */
+            file_size?: number | null;
+            /**
+             * Parser Backend
+             * @default auto
+             */
+            parser_backend: string;
+            /**
+             * Chunk Strategy
+             * @default langchain_recursive
+             */
+            chunk_strategy: string;
+            /** Child Ratio */
+            child_ratio?: number | null;
+            /** Min Child Size */
+            min_child_size?: number | null;
             /** Separator Preset */
             separator_preset?: string | null;
             /** Separator */
@@ -2588,7 +2672,9 @@ export interface components {
              */
             use_graph: boolean;
             /** Metadata Filter */
-            metadata_filter?: Record<string, never> | null;
+            metadata_filter?: {
+                [key: string]: unknown;
+            } | null;
         };
         /**
          * ChatRequest
@@ -2664,7 +2750,9 @@ export interface components {
             /** Vector Backend */
             vector_backend?: string | null;
             /** Metrics */
-            metrics?: Record<string, never>;
+            metrics?: {
+                [key: string]: unknown;
+            };
             /**
              * Structured
              * @default false
@@ -2689,9 +2777,13 @@ export interface components {
             /** Next */
             next?: unknown;
             /** Metadata */
-            metadata?: Record<string, never> | null;
+            metadata?: {
+                [key: string]: unknown;
+            } | null;
             /** Values */
-            values?: Record<string, never> | null;
+            values?: {
+                [key: string]: unknown;
+            } | null;
         };
         /** CheckpointItem */
         CheckpointItem: {
@@ -2707,9 +2799,13 @@ export interface components {
             /** Next */
             next?: unknown;
             /** Metadata */
-            metadata?: Record<string, never> | null;
+            metadata?: {
+                [key: string]: unknown;
+            } | null;
             /** Values */
-            values?: Record<string, never> | null;
+            values?: {
+                [key: string]: unknown;
+            } | null;
         };
         /** CheckpointListResponse */
         CheckpointListResponse: {
@@ -2757,7 +2853,9 @@ export interface components {
             /** Page Number */
             page_number?: number | null;
             /** Metadata */
-            metadata?: Record<string, never>;
+            metadata?: {
+                [key: string]: unknown;
+            };
         };
         /**
          * ChunkPreviewParams
@@ -2782,18 +2880,129 @@ export interface components {
              * @default chars
              */
             unit: string;
+            /**
+             * Strategy Params
+             * @description Best-effort strategy-specific params for reproducibility (e.g. separator/parent_child).
+             */
+            strategy_params?: {
+                [key: string]: unknown;
+            };
+        };
+        /**
+         * ChunkPreviewQualityGate
+         * @description Best-effort quality gate for enterprise tuning (heuristics).
+         */
+        ChunkPreviewQualityGate: {
+            /**
+             * Grade
+             * @default pass
+             * @enum {string}
+             */
+            grade: "pass" | "warn" | "fail";
+            /** Reasons */
+            reasons?: string[];
         };
         /** ChunkPreviewRequest */
         ChunkPreviewRequest: {
             /** Markdown */
             markdown: string;
         };
-        /** ChunkPreviewResponse */
-        ChunkPreviewResponse: {
-            /** Paragraphs */
-            paragraphs: components["schemas"]["ChunkItem"][];
-            /** Sentences */
-            sentences: components["schemas"]["ChunkItem"][];
+        /**
+         * ChunkPreviewStats
+         * @description Lightweight aggregate stats for UI (computed on returned chunks).
+         */
+        ChunkPreviewStats: {
+            /**
+             * Unit
+             * @default chars
+             * @enum {string}
+             */
+            unit: "chars" | "tokens";
+            /**
+             * Count
+             * @default 0
+             */
+            count: number;
+            /**
+             * Total
+             * @default 0
+             */
+            total: number;
+            /**
+             * Min
+             * @default 0
+             */
+            min: number;
+            /**
+             * Max
+             * @default 0
+             */
+            max: number;
+            /**
+             * Avg
+             * @default 0
+             */
+            avg: number;
+            /**
+             * Median
+             * @default 0
+             */
+            median: number;
+            /**
+             * P10
+             * @default 0
+             */
+            p10: number;
+            /**
+             * P90
+             * @default 0
+             */
+            p90: number;
+            /**
+             * Total Tokens Est
+             * @default 0
+             */
+            total_tokens_est: number;
+            /**
+             * Short Count
+             * @default 0
+             */
+            short_count: number;
+            /**
+             * Duplicate Count
+             * @default 0
+             */
+            duplicate_count: number;
+            /**
+             * Sum Chunk Chars
+             * @default 0
+             */
+            sum_chunk_chars: number;
+            /**
+             * Covered Chars
+             * @default 0
+             */
+            covered_chars: number;
+            /**
+             * Coverage Ratio
+             * @default 0
+             */
+            coverage_ratio: number;
+            /**
+             * Overlap Waste Ratio
+             * @default 0
+             */
+            overlap_waste_ratio: number;
+            /**
+             * Gap Count
+             * @default 0
+             */
+            gap_count: number;
+            /**
+             * Largest Gap
+             * @default 0
+             */
+            largest_gap: number;
         };
         /** ChunkStrategyInfo */
         ChunkStrategyInfo: {
@@ -2888,7 +3097,7 @@ export interface components {
             /** Markdown */
             markdown: string;
             /** Rules */
-            rules?: components["schemas"]["RegexRuleModel"][];
+            rules?: components["schemas"]["app__api__schemas__pipeline__RegexRuleModel"][];
             /**
              * Use Default Rules
              * @default true
@@ -3155,7 +3364,9 @@ export interface components {
                 [key: string]: number;
             } | null;
             /** Frontmatter */
-            frontmatter?: Record<string, never> | null;
+            frontmatter?: {
+                [key: string]: unknown;
+            } | null;
             /** Title */
             title?: string | null;
             /** Tags */
@@ -3226,12 +3437,14 @@ export interface components {
             /** Issues */
             issues?: components["schemas"]["GovernanceIssue"][];
             /** Suggested Pipeline Patch */
-            suggested_pipeline_patch?: Record<string, never>;
+            suggested_pipeline_patch?: {
+                [key: string]: unknown;
+            };
         };
         /** CleanRulesResponse */
         CleanRulesResponse: {
             /** Rules */
-            rules: components["schemas"]["RegexRuleModel"][];
+            rules: components["schemas"]["app__api__schemas__pipeline__RegexRuleModel"][];
         };
         /**
          * ConversationCreate
@@ -3447,7 +3660,9 @@ export interface components {
             /** Document Ids */
             document_ids: string[];
             /** Patch */
-            patch?: Record<string, never>;
+            patch?: {
+                [key: string]: unknown;
+            };
             /**
              * Replace
              * @default false
@@ -3527,7 +3742,9 @@ export interface components {
             /** Chunk Index */
             chunk_index: number;
             /** Metadata */
-            metadata?: Record<string, never>;
+            metadata?: {
+                [key: string]: unknown;
+            };
         };
         /**
          * DocumentDetail
@@ -3570,7 +3787,9 @@ export interface components {
             /** Dataset Id */
             dataset_id?: string | null;
             /** Metadata */
-            metadata?: Record<string, never>;
+            metadata?: {
+                [key: string]: unknown;
+            };
             governance?: components["schemas"]["GovernanceInfo"];
             /** Chunks */
             chunks?: components["schemas"]["DocumentChunkSchema"][] | null;
@@ -3932,7 +4151,9 @@ export interface components {
              * Patch
              * @description User metadata patch; null values remove keys.
              */
-            patch?: Record<string, never>;
+            patch?: {
+                [key: string]: unknown;
+            };
             /**
              * Replace
              * @description Replace entire metadata.user instead of merging
@@ -4097,7 +4318,9 @@ export interface components {
              * Metadata
              * @description Additional metadata
              */
-            metadata?: Record<string, never>;
+            metadata?: {
+                [key: string]: unknown;
+            };
         };
         /** GovernanceAnalyzeRequest */
         GovernanceAnalyzeRequest: {
@@ -4193,7 +4416,9 @@ export interface components {
             /** Issues */
             issues?: components["schemas"]["GovernanceIssue"][];
             /** Suggested Pipeline Patch */
-            suggested_pipeline_patch?: Record<string, never>;
+            suggested_pipeline_patch?: {
+                [key: string]: unknown;
+            };
         };
         /** GovernanceInfo */
         GovernanceInfo: {
@@ -4253,7 +4478,9 @@ export interface components {
              * Suggested Pipeline Patch
              * @description Best-effort suggested pipeline patch (DocumentPipelineOptions shape).
              */
-            suggested_pipeline_patch?: Record<string, never>;
+            suggested_pipeline_patch?: {
+                [key: string]: unknown;
+            };
         };
         /** GovernanceProfileCreate */
         GovernanceProfileCreate: {
@@ -4331,7 +4558,9 @@ export interface components {
              */
             input_formats?: ("markdown" | "html")[];
             /** Pipeline Patch */
-            pipeline_patch?: Record<string, never>;
+            pipeline_patch?: {
+                [key: string]: unknown;
+            };
             /** Regex Rules */
             regex_rules?: components["schemas"]["app__api__schemas__governance_profile__RegexRuleModel"][];
         };
@@ -4467,7 +4696,9 @@ export interface components {
             /** Id */
             id: string;
             /** Params */
-            params?: Record<string, never>;
+            params?: {
+                [key: string]: unknown;
+            };
         };
         /** IngestionPreviewResponse */
         IngestionPreviewResponse: {
@@ -4490,7 +4721,9 @@ export interface components {
             /** Governance Profile Ref */
             governance_profile_ref?: string | null;
             /** Preprocess Steps */
-            preprocess_steps?: Record<string, never>[];
+            preprocess_steps?: {
+                [key: string]: unknown;
+            }[];
             /**
              * Parser Backend
              * @default auto
@@ -4522,7 +4755,9 @@ export interface components {
             /** Governance Profile Ref */
             governance_profile_ref?: string | null;
             /** Pipeline Patch */
-            pipeline_patch?: Record<string, never>;
+            pipeline_patch?: {
+                [key: string]: unknown;
+            };
         };
         /** IngestionRule */
         "IngestionRule-Output": {
@@ -4544,7 +4779,9 @@ export interface components {
             /** Governance Profile Ref */
             governance_profile_ref?: string | null;
             /** Pipeline Patch */
-            pipeline_patch?: Record<string, never>;
+            pipeline_patch?: {
+                [key: string]: unknown;
+            };
         };
         /**
          * IngestionRuleMatch
@@ -4621,7 +4858,9 @@ export interface components {
             /** Neighbors */
             neighbors?: components["schemas"]["KGEntityNeighbor"][];
             /** Stats */
-            stats?: Record<string, never>;
+            stats?: {
+                [key: string]: unknown;
+            };
         };
         /**
          * KGEntityItem
@@ -4642,7 +4881,9 @@ export interface components {
             /** Description */
             description?: string | null;
             /** Extra Data */
-            extra_data?: Record<string, never>;
+            extra_data?: {
+                [key: string]: unknown;
+            };
             /** Created At */
             created_at?: string | null;
             /** Updated At */
@@ -4710,9 +4951,13 @@ export interface components {
             /** Chunk Id */
             chunk_id?: string | null;
             /** References */
-            references?: Record<string, never>;
+            references?: {
+                [key: string]: unknown;
+            };
             /** Extra Data */
-            extra_data?: Record<string, never>;
+            extra_data?: {
+                [key: string]: unknown;
+            };
             /** Created At */
             created_at?: string | null;
             /** Updated At */
@@ -4758,7 +5003,9 @@ export interface components {
              */
             weight: number;
             /** Meta */
-            meta?: Record<string, never>;
+            meta?: {
+                [key: string]: unknown;
+            };
         };
         /**
          * KGGraphNode
@@ -4780,7 +5027,9 @@ export interface components {
              */
             val: number;
             /** Meta */
-            meta?: Record<string, never>;
+            meta?: {
+                [key: string]: unknown;
+            };
         };
         /**
          * KGGraphResponse
@@ -4792,7 +5041,9 @@ export interface components {
             /** Links */
             links: components["schemas"]["KGGraphLink"][];
             /** Stats */
-            stats?: Record<string, never>;
+            stats?: {
+                [key: string]: unknown;
+            };
         };
         /**
          * KGSearchRequest
@@ -4815,7 +5066,9 @@ export interface components {
          */
         KGSearchResponse: {
             /** Result */
-            result: Record<string, never>;
+            result: {
+                [key: string]: unknown;
+            };
             /** Query */
             query: string;
         };
@@ -5001,7 +5254,9 @@ export interface components {
             /** End Char */
             end_char?: number | null;
             /** Metadata */
-            metadata?: Record<string, never>;
+            metadata?: {
+                [key: string]: unknown;
+            };
         };
         /**
          * ManualDocumentCreate
@@ -5019,7 +5274,9 @@ export interface components {
             /** Chunks */
             chunks: components["schemas"]["ManualChunkCreate"][];
             /** Metadata */
-            metadata?: Record<string, never>;
+            metadata?: {
+                [key: string]: unknown;
+            };
             pipeline?: components["schemas"]["DocumentPipelineOptions"] | null;
         };
         /**
@@ -5073,7 +5330,9 @@ export interface components {
              * Extra
              * @description Extension fields (optional)
              */
-            extra?: Record<string, never>;
+            extra?: {
+                [key: string]: unknown;
+            };
         };
         /** MessageFeedbackEnrichedList */
         MessageFeedbackEnrichedList: {
@@ -5118,7 +5377,9 @@ export interface components {
             /** Expected Answer */
             expected_answer: string | null;
             /** Extra */
-            extra?: Record<string, never>;
+            extra?: {
+                [key: string]: unknown;
+            };
             /**
              * Created At
              * Format: date-time
@@ -5176,7 +5437,9 @@ export interface components {
             /** Expected Answer */
             expected_answer: string | null;
             /** Extra */
-            extra?: Record<string, never>;
+            extra?: {
+                [key: string]: unknown;
+            };
             /**
              * Created At
              * Format: date-time
@@ -5208,7 +5471,9 @@ export interface components {
              */
             citations: components["schemas"]["Citation"][];
             /** Message Metadata */
-            message_metadata?: Record<string, never> | null;
+            message_metadata?: {
+                [key: string]: unknown;
+            } | null;
             /**
              * Created At
              * Format: date-time
@@ -5409,7 +5674,9 @@ export interface components {
             /** Page Number */
             page_number?: number | null;
             /** Metadata */
-            metadata?: Record<string, never>;
+            metadata?: {
+                [key: string]: unknown;
+            };
         };
         /** ParserBackendInfo */
         ParserBackendInfo: {
@@ -5530,15 +5797,23 @@ export interface components {
             /** Query For Retrieval */
             query_for_retrieval: string;
             /** Prompt Messages */
-            prompt_messages: Record<string, never>[];
+            prompt_messages: {
+                [key: string]: unknown;
+            }[];
             /** Prompt Text */
             prompt_text: string;
             /** Variables */
-            variables: Record<string, never>;
+            variables: {
+                [key: string]: unknown;
+            };
             /** Citations */
-            citations?: Record<string, never>[];
+            citations?: {
+                [key: string]: unknown;
+            }[];
             /** Metrics */
-            metrics?: Record<string, never>;
+            metrics?: {
+                [key: string]: unknown;
+            };
             /** Prompt Template Id */
             prompt_template_id?: string | null;
             /** Prompt Template Key */
@@ -5845,9 +6120,13 @@ export interface components {
             /** Retrieved Contexts */
             retrieved_contexts?: string[] | null;
             /** Citations */
-            citations?: Record<string, never>[];
+            citations?: {
+                [key: string]: unknown;
+            }[];
             /** Scores */
-            scores?: Record<string, never>;
+            scores?: {
+                [key: string]: unknown;
+            };
             /**
              * Created At
              * Format: date-time
@@ -5885,7 +6164,9 @@ export interface components {
              * Extra
              * @description Extension fields (optional)
              */
-            extra?: Record<string, never>;
+            extra?: {
+                [key: string]: unknown;
+            };
         };
         /** RagasRegressionCaseList */
         RagasRegressionCaseList: {
@@ -5917,7 +6198,9 @@ export interface components {
             /** Tags */
             tags?: string[];
             /** Extra */
-            extra?: Record<string, never>;
+            extra?: {
+                [key: string]: unknown;
+            };
             /** Created By */
             created_by?: string | null;
             /**
@@ -5955,9 +6238,13 @@ export interface components {
             /** Retrieved Contexts */
             retrieved_contexts?: string[] | null;
             /** Citations */
-            citations?: Record<string, never>[];
+            citations?: {
+                [key: string]: unknown;
+            }[];
             /** Scores */
-            scores?: Record<string, never>;
+            scores?: {
+                [key: string]: unknown;
+            };
             /**
              * Created At
              * Format: date-time
@@ -6091,9 +6378,13 @@ export interface components {
             /** Metrics */
             metrics?: string[];
             /** Params */
-            params?: Record<string, never>;
+            params?: {
+                [key: string]: unknown;
+            };
             /** Summary */
-            summary?: Record<string, never>;
+            summary?: {
+                [key: string]: unknown;
+            };
             /** Error Message */
             error_message?: string | null;
             /**
@@ -6171,9 +6462,13 @@ export interface components {
             /** Metrics */
             metrics?: string[];
             /** Params */
-            params?: Record<string, never>;
+            params?: {
+                [key: string]: unknown;
+            };
             /** Summary */
-            summary?: Record<string, never>;
+            summary?: {
+                [key: string]: unknown;
+            };
             /** Error Message */
             error_message?: string | null;
             /**
@@ -6210,21 +6505,6 @@ export interface components {
             /** Error */
             error?: string | null;
         };
-        /** RegexRuleModel */
-        RegexRuleModel: {
-            /** Pattern */
-            pattern: string;
-            /**
-             * Repl
-             * @default
-             */
-            repl: string;
-            /**
-             * Flags
-             * @default 0
-             */
-            flags: number;
-        };
         /** RegisterRequest */
         RegisterRequest: {
             /**
@@ -6252,9 +6532,13 @@ export interface components {
             /** Query For Retrieval */
             query_for_retrieval: string;
             /** Citations */
-            citations: Record<string, never>[];
+            citations: {
+                [key: string]: unknown;
+            }[];
             /** Metrics */
-            metrics?: Record<string, never>;
+            metrics?: {
+                [key: string]: unknown;
+            };
         };
         /** RuntimeMeta */
         RuntimeMeta: {
@@ -6292,7 +6576,9 @@ export interface components {
              */
             success: boolean;
             /** Result */
-            result?: Record<string, never> | null;
+            result?: {
+                [key: string]: unknown;
+            } | null;
             /** Message */
             message?: string | null;
             /** Error */
@@ -6315,7 +6601,9 @@ export interface components {
             /** Count */
             count: number;
             /** Meta */
-            meta?: Record<string, never>;
+            meta?: {
+                [key: string]: unknown;
+            };
         };
         /** SimilarityCollectionsResponse */
         SimilarityCollectionsResponse: {
@@ -6605,13 +6893,57 @@ export interface components {
             file_type: string;
             /** File Size */
             file_size: number;
+            /** File Sha256 */
+            file_sha256?: string | null;
+            /**
+             * Parse Cache Hit
+             * @default false
+             */
+            parse_cache_hit: boolean;
+            /** Parse Cache Age Ms */
+            parse_cache_age_ms?: number | null;
+            /** Preview Duration Ms */
+            preview_duration_ms?: number | null;
+            /** Upload Duration Ms */
+            upload_duration_ms?: number | null;
+            /** Parse Duration Ms */
+            parse_duration_ms?: number | null;
+            /** Governance Duration Ms */
+            governance_duration_ms?: number | null;
+            /** Chunking Duration Ms */
+            chunking_duration_ms?: number | null;
+            /** Stats Duration Ms */
+            stats_duration_ms?: number | null;
             /** Total Chunks */
             total_chunks: number;
+            /**
+             * Total Chunks Full
+             * @default 0
+             */
+            total_chunks_full: number;
+            /**
+             * Chunks Truncated
+             * @default false
+             */
+            chunks_truncated: boolean;
+            /**
+             * Chunks Max Count
+             * @default 0
+             */
+            chunks_max_count: number;
             /** Total Characters */
             total_characters: number;
             params: components["schemas"]["ChunkPreviewParams"];
             /** Chunks */
             chunks: components["schemas"]["ChunkPreviewItem"][];
+            stats?: components["schemas"]["ChunkPreviewStats"] | null;
+            /** Auto Selected Strategy */
+            auto_selected_strategy?: string | null;
+            /** Warnings */
+            warnings?: string[];
+            quality_gate?: components["schemas"]["ChunkPreviewQualityGate"] | null;
+            /** Recommendations */
+            recommendations?: string[];
             /** Original Text */
             original_text?: string | null;
             /**
@@ -6636,6 +6968,28 @@ export interface components {
         };
         /** RegexRuleModel */
         app__api__schemas__governance_profile__RegexRuleModel: {
+            /** Pattern */
+            pattern: string;
+            /**
+             * Repl
+             * @default
+             */
+            repl: string;
+            /**
+             * Flags
+             * @default 0
+             */
+            flags: number;
+        };
+        /** ChunkPreviewResponse */
+        app__api__schemas__pipeline__ChunkPreviewResponse: {
+            /** Paragraphs */
+            paragraphs: components["schemas"]["ChunkItem"][];
+            /** Sentences */
+            sentences: components["schemas"]["ChunkItem"][];
+        };
+        /** RegexRuleModel */
+        app__api__schemas__pipeline__RegexRuleModel: {
             /** Pattern */
             pattern: string;
             /**
@@ -7585,6 +7939,10 @@ export interface operations {
             query?: {
                 chunk_size?: number;
                 chunk_overlap?: number;
+                include_original_text?: boolean;
+                original_text_max_chars?: number;
+                max_chunks?: number;
+                use_parse_cache?: boolean;
             };
             header?: {
                 "x-tenant-id"?: string | null;
@@ -7597,6 +7955,50 @@ export interface operations {
         requestBody: {
             content: {
                 "multipart/form-data": components["schemas"]["Body_preview_chunking_api_v1_documents_chunk_preview_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["app__api__schemas__document__ChunkPreviewResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    preview_chunking_by_sha_api_v1_documents_chunk_preview_by_sha_post: {
+        parameters: {
+            query?: {
+                chunk_size?: number;
+                chunk_overlap?: number;
+                include_original_text?: boolean;
+                original_text_max_chars?: number;
+                max_chunks?: number;
+                use_parse_cache?: boolean;
+            };
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/x-www-form-urlencoded": components["schemas"]["Body_preview_chunking_by_sha_api_v1_documents_chunk_preview_by_sha_post"];
             };
         };
         responses: {
@@ -10264,7 +10666,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ChunkPreviewResponse"];
+                    "application/json": components["schemas"]["app__api__schemas__pipeline__ChunkPreviewResponse"];
                 };
             };
             /** @description Validation Error */

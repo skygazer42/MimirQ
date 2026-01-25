@@ -3336,6 +3336,9 @@ async def preview_chunking(
     use_parse_cache: bool = Query(default=True),
     parser_backend: str = Form(default=settings.DEFAULT_PARSER_BACKEND),
     chunk_strategy: str = Form(default=settings.DEFAULT_CHUNK_STRATEGY),
+    # Strategy-specific options (enterprise tuning). Currently used by parent_child.
+    child_ratio: Optional[float] = Form(default=None),
+    min_child_size: Optional[int] = Form(default=None),
     separator_preset: Optional[str] = Form(default=None),
     separator: Optional[str] = Form(default=None),
     keep_separator: Optional[bool] = Form(default=None),
@@ -3403,6 +3406,38 @@ async def preview_chunking(
     warnings_out: list[str] = []
     if resolved_chunk_strategy == "separator" and chunk_overlap != effective_chunk_overlap:
         warnings_out.append("separator strategy ignores chunk_overlap; using 0")
+
+    # Strategy-specific kwargs to pass into chunker constructors.
+    chunker_kwargs: dict[str, Any] = {}
+    if child_ratio is not None or min_child_size is not None:
+        if resolved_chunk_strategy != "parent_child":
+            warnings_out.append(
+                f"strategy params child_ratio/min_child_size ignored for chunk_strategy={resolved_chunk_strategy}"
+            )
+        else:
+            if child_ratio is not None:
+                try:
+                    r = float(child_ratio)
+                except (TypeError, ValueError):
+                    raise HTTPException(status_code=400, detail="child_ratio must be a float")
+                if r < 0.05 or r > 1.0:
+                    raise HTTPException(status_code=400, detail="child_ratio must be between 0.05 and 1.0")
+                chunker_kwargs["child_ratio"] = r
+
+            if min_child_size is not None:
+                try:
+                    m = int(min_child_size)
+                except (TypeError, ValueError):
+                    raise HTTPException(status_code=400, detail="min_child_size must be an int")
+                if m < 50 or m > 4000:
+                    raise HTTPException(status_code=400, detail="min_child_size must be between 50 and 4000")
+                if m > int(chunk_size or 0):
+                    warnings_out.append("min_child_size > chunk_size; clamping to chunk_size")
+                    m = int(chunk_size or 0)
+                chunker_kwargs["min_child_size"] = m
+
+    # Best-effort echo of strategy-specific parameters for reproducibility.
+    strategy_params_out: dict[str, Any] = {}
 
     # Control whether we return original_text for highlighting (large payload guardrail).
     if original_text_max_chars < 0 or original_text_max_chars > 2_000_000:
@@ -3700,12 +3735,28 @@ async def preview_chunking(
                     keep_separator=True if keep_separator is None else bool(keep_separator),
                     max_chunk_size=int(separator_max_chunk_size or 0),
                 )
+                strategy_params_out = {
+                    "separator_preset": preset,
+                    "separator": sep_value,
+                    "keep_separator": True if keep_separator is None else bool(keep_separator),
+                    "separator_max_chunk_size": int(separator_max_chunk_size or 0),
+                }
             else:
                 chunker = chunker_factory.get_chunker(
                     resolved_chunk_strategy,
                     chunk_size=chunk_size,
-                    chunk_overlap=effective_chunk_overlap
+                    chunk_overlap=effective_chunk_overlap,
+                    **chunker_kwargs,
                 )
+                strategy_params_out = dict(chunker_kwargs)
+                if resolved_chunk_strategy == "parent_child":
+                    with contextlib.suppress(Exception):
+                        strategy_params_out = {
+                            "child_ratio": float(getattr(chunker, "child_ratio")),
+                            "min_child_size": int(getattr(chunker, "min_child_size")),
+                            "child_size": int(getattr(chunker, "child_size")),
+                            "child_overlap": int(getattr(chunker, "child_overlap")),
+                        }
             _chunk_started = time.perf_counter()
             chunks = chunker.split_documents(documents)
             chunking_duration_ms = int(max(0.0, (time.perf_counter() - _chunk_started) * 1000.0))
@@ -3961,6 +4012,7 @@ async def preview_chunking(
                 chunk_size=chunk_size,
                 chunk_overlap=effective_chunk_overlap,
                 unit="tokens" if resolved_chunk_strategy == "langchain_token" else "chars",
+                strategy_params=strategy_params_out,
             ),
             chunks=chunk_items,
             stats=stats,
@@ -4029,6 +4081,9 @@ async def preview_chunking_by_sha(
     use_parse_cache: bool = Query(default=True),
     parser_backend: str = Form(default=settings.DEFAULT_PARSER_BACKEND),
     chunk_strategy: str = Form(default=settings.DEFAULT_CHUNK_STRATEGY),
+    # Strategy-specific options (enterprise tuning). Currently used by parent_child.
+    child_ratio: Optional[float] = Form(default=None),
+    min_child_size: Optional[int] = Form(default=None),
     separator_preset: Optional[str] = Form(default=None),
     separator: Optional[str] = Form(default=None),
     keep_separator: Optional[bool] = Form(default=None),
@@ -4100,6 +4155,38 @@ async def preview_chunking_by_sha(
     effective_chunk_overlap = 0 if resolved_chunk_strategy == "separator" else chunk_overlap
     if resolved_chunk_strategy == "separator" and chunk_overlap != effective_chunk_overlap:
         warnings_out.append("separator strategy ignores chunk_overlap; using 0")
+
+    # Strategy-specific kwargs to pass into chunker constructors.
+    chunker_kwargs: dict[str, Any] = {}
+    if child_ratio is not None or min_child_size is not None:
+        if resolved_chunk_strategy != "parent_child":
+            warnings_out.append(
+                f"strategy params child_ratio/min_child_size ignored for chunk_strategy={resolved_chunk_strategy}"
+            )
+        else:
+            if child_ratio is not None:
+                try:
+                    r = float(child_ratio)
+                except (TypeError, ValueError):
+                    raise HTTPException(status_code=400, detail="child_ratio must be a float")
+                if r < 0.05 or r > 1.0:
+                    raise HTTPException(status_code=400, detail="child_ratio must be between 0.05 and 1.0")
+                chunker_kwargs["child_ratio"] = r
+
+            if min_child_size is not None:
+                try:
+                    m = int(min_child_size)
+                except (TypeError, ValueError):
+                    raise HTTPException(status_code=400, detail="min_child_size must be an int")
+                if m < 50 or m > 4000:
+                    raise HTTPException(status_code=400, detail="min_child_size must be between 50 and 4000")
+                if m > int(chunk_size or 0):
+                    warnings_out.append("min_child_size > chunk_size; clamping to chunk_size")
+                    m = int(chunk_size or 0)
+                chunker_kwargs["min_child_size"] = m
+
+    # Best-effort echo of strategy-specific parameters for reproducibility.
+    strategy_params_out: dict[str, Any] = {}
 
     # Control whether we return original_text for highlighting (large payload guardrail).
     if original_text_max_chars < 0 or original_text_max_chars > 2_000_000:
@@ -4241,12 +4328,28 @@ async def preview_chunking_by_sha(
             keep_separator=True if keep_separator is None else bool(keep_separator),
             max_chunk_size=int(separator_max_chunk_size or 0),
         )
+        strategy_params_out = {
+            "separator_preset": preset,
+            "separator": sep_value,
+            "keep_separator": True if keep_separator is None else bool(keep_separator),
+            "separator_max_chunk_size": int(separator_max_chunk_size or 0),
+        }
     else:
         chunker = chunker_factory.get_chunker(
             resolved_chunk_strategy,
             chunk_size=chunk_size,
-            chunk_overlap=effective_chunk_overlap
+            chunk_overlap=effective_chunk_overlap,
+            **chunker_kwargs,
         )
+        strategy_params_out = dict(chunker_kwargs)
+        if resolved_chunk_strategy == "parent_child":
+            with contextlib.suppress(Exception):
+                strategy_params_out = {
+                    "child_ratio": float(getattr(chunker, "child_ratio")),
+                    "min_child_size": int(getattr(chunker, "min_child_size")),
+                    "child_size": int(getattr(chunker, "child_size")),
+                    "child_overlap": int(getattr(chunker, "child_overlap")),
+                }
 
     _chunk_started = time.perf_counter()
     chunks = chunker.split_documents(documents)
@@ -4464,6 +4567,7 @@ async def preview_chunking_by_sha(
             chunk_size=chunk_size,
             chunk_overlap=effective_chunk_overlap,
             unit="tokens" if resolved_chunk_strategy == "langchain_token" else "chars",
+            strategy_params=strategy_params_out,
         ),
         chunks=chunk_items,
         stats=stats,

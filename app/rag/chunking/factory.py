@@ -8,7 +8,8 @@ Usage:
     chunks = chunker.split_documents(documents)
 """
 
-from typing import Optional
+from typing import Any, Optional
+import inspect
 
 from app.core.config import settings
 from app.rag.chunking.base import BaseChunker
@@ -500,6 +501,7 @@ class ChunkerFactory:
         strategy: Optional[str],
         chunk_size: int,
         chunk_overlap: int,
+        **kwargs: Any,
     ) -> BaseChunker:
         """
         Create a chunker instance for the specified strategy.
@@ -524,6 +526,39 @@ class ChunkerFactory:
             )
 
         chunker_cls = self.SUPPORTED_STRATEGIES[resolved]
+
+        # Strategy-specific kwargs are allowed for enterprise tuning (e.g. parent_child child_ratio/min_child_size),
+        # but must not break chunkers that don't accept them.
+        if kwargs:
+            cache = getattr(self, "_init_kwargs_cache", None)
+            if cache is None:
+                cache = {}
+                setattr(self, "_init_kwargs_cache", cache)
+
+            accepted = cache.get(chunker_cls)
+            if accepted is None:
+                try:
+                    sig = inspect.signature(chunker_cls.__init__)
+                    if any(p.kind == inspect.Parameter.VAR_KEYWORD for p in sig.parameters.values()):
+                        # Accept any kwargs (constructor has **kwargs).
+                        accepted = False  # sentinel: accept-all
+                    else:
+                        accepted = {
+                            p.name
+                            for p in sig.parameters.values()
+                            if p.name != "self"
+                            and p.kind in (inspect.Parameter.POSITIONAL_OR_KEYWORD, inspect.Parameter.KEYWORD_ONLY)
+                        }
+                except Exception:  # pragma: no cover
+                    accepted = set()
+                cache[chunker_cls] = accepted
+
+            if accepted is False:
+                return chunker_cls(chunk_size=chunk_size, chunk_overlap=chunk_overlap, **kwargs)
+
+            filtered = {k: v for k, v in kwargs.items() if k in accepted}
+            return chunker_cls(chunk_size=chunk_size, chunk_overlap=chunk_overlap, **filtered)
+
         return chunker_cls(chunk_size=chunk_size, chunk_overlap=chunk_overlap)
 
     def is_ragflow_strategy(self, strategy: Optional[str]) -> bool:
