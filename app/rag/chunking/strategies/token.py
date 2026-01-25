@@ -21,13 +21,10 @@ class LangChainTokenChunker(BaseChunker):
         chunk_overlap: int,
         encoding_name: str = "cl100k_base",
     ):
-        # Pipeline-level chunk_size/chunk_overlap are defined in "characters"
-        # across strategies; TokenTextSplitter expects token counts. We use a
-        # simple chars->tokens heuristic (≈ chars/4) to keep semantics aligned.
-        self.chunk_size_chars = int(chunk_size)
-        self.chunk_overlap_chars = int(chunk_overlap)
-        self.chunk_size_tokens = max(1, int(self.chunk_size_chars // 4) or 1)
-        self.chunk_overlap_tokens = max(0, int(self.chunk_overlap_chars // 4) or 0)
+        # NOTE: For langchain_token strategy, the UI/docs treat chunk_size/chunk_overlap as *tokens*.
+        # Keep this strategy token-native (unlike other strategies which use chars).
+        self.chunk_size_tokens = max(1, int(chunk_size) or 1)
+        self.chunk_overlap_tokens = max(0, int(chunk_overlap) or 0)
         if self.chunk_overlap_tokens >= self.chunk_size_tokens:
             self.chunk_overlap_tokens = max(0, self.chunk_size_tokens - 1)
 
@@ -54,8 +51,6 @@ class LangChainTokenChunker(BaseChunker):
                 metadata["end_char"] = end_idx
                 metadata["chunk_strategy"] = "langchain_token"
                 metadata["encoding_name"] = self.encoding_name
-                metadata["chunk_size_chars"] = self.chunk_size_chars
-                metadata["chunk_overlap_chars"] = self.chunk_overlap_chars
                 metadata["chunk_size_tokens"] = self.chunk_size_tokens
                 metadata["chunk_overlap_tokens"] = self.chunk_overlap_tokens
                 chunks.append(Document(page_content=split_text, metadata=metadata))
