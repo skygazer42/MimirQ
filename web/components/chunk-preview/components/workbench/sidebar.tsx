@@ -61,6 +61,8 @@ export function Sidebar({ variant = 'panel' }: { variant?: 'panel' | 'dialog' } 
     separatorCustom,
     keepSeparator,
     separatorMaxChunkSize,
+    parentChildRatio,
+    parentChildMinChildSize,
     parserBackend,
     autoPreviewEnabled,
     runHistory,
@@ -73,6 +75,7 @@ export function Sidebar({ variant = 'panel' }: { variant?: 'panel' | 'dialog' } 
     updateSettings,
     updatePerfSettings,
     updateSeparatorSettings,
+    updateParentChildSettings,
     runPreview,
     cancelPreview,
     setParserBackend,
@@ -90,6 +93,7 @@ export function Sidebar({ variant = 'panel' }: { variant?: 'panel' | 'dialog' } 
   const isHierarchicalStrategy = strategyForUi === 'llama_index_hierarchical'
   const isRagflowStrategy = strategyForUi.startsWith('ragflow_')
   const isSeparatorStrategy = strategyForUi === 'separator'
+  const isParentChildStrategy = strategyForUi === 'parent_child'
   const statsUnitLabel = isTokenStrategy ? 'tok' : 'chars'
 
   const hideChunkSizeControl = isSentenceStrategy || isRagflowStrategy
@@ -185,6 +189,29 @@ export function Sidebar({ variant = 'panel' }: { variant?: 'panel' | 'dialog' } 
       return raw
     }
   }, [isSeparatorStrategy, separatorCustom, separatorPreset])
+
+  const parentChildEffective = useMemo(() => {
+    if (!isParentChildStrategy) return null
+    const sp = (previewData?.params as any)?.strategy_params as any
+    const ratio = typeof sp?.child_ratio === 'number' && Number.isFinite(sp.child_ratio) ? sp.child_ratio : parentChildRatio
+    const minSize =
+      typeof sp?.min_child_size === 'number' && Number.isFinite(sp.min_child_size) ? sp.min_child_size : parentChildMinChildSize
+    const childSize =
+      typeof sp?.child_size === 'number' && Number.isFinite(sp.child_size)
+        ? sp.child_size
+        : Math.max(Math.trunc(chunkSize * ratio), Math.trunc(minSize))
+    const childOverlap =
+      typeof sp?.child_overlap === 'number' && Number.isFinite(sp.child_overlap)
+        ? sp.child_overlap
+        : Math.min(Math.trunc(chunkOverlap * ratio), Math.max(0, Math.trunc(childSize / 4)))
+
+    return {
+      ratio: Number(ratio),
+      minSize: Math.trunc(minSize),
+      childSize: Math.trunc(childSize),
+      childOverlap: Math.trunc(childOverlap),
+    }
+  }, [chunkOverlap, chunkSize, isParentChildStrategy, parentChildMinChildSize, parentChildRatio, previewData?.params])
 
   const [showAdvancedStats, setShowAdvancedStats] = useState(false)
 
@@ -832,6 +859,64 @@ export function Sidebar({ variant = 'panel' }: { variant?: 'panel' | 'dialog' } 
                 <div className="text-[10px] text-muted-foreground leading-relaxed">
                   0 表示自动：chunk_size × 3。注意：separator 策略不使用 overlap（重叠）。
                 </div>
+              </div>
+            </div>
+          ) : null}
+
+          {isParentChildStrategy ? (
+            <div className="space-y-4 rounded-xl border border-border/60 bg-card/70 p-3 shadow-sm">
+              <div className="text-[10px] text-muted-foreground uppercase tracking-wider font-medium">PARENT-CHILD OPTIONS</div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-2">
+                  <label className="text-xs font-medium text-muted-foreground">child_ratio</label>
+                  <Input
+                    type="number"
+                    inputMode="decimal"
+                    min={0.05}
+                    max={1}
+                    step={0.05}
+                    value={parentChildRatio}
+                    onChange={(e) => {
+                      const n = Number(e.target.value)
+                      if (!Number.isFinite(n)) return
+                      updateParentChildSettings({ parentChildRatio: Math.max(0.05, Math.min(1, n)) })
+                    }}
+                    className="h-9 text-[11px] font-mono bg-card/80"
+                    aria-label="parent_child child_ratio"
+                  />
+                  <div className="text-[10px] text-muted-foreground">child_size = max(chunk_size × ratio, min_child_size)</div>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-xs font-medium text-muted-foreground">min_child_size</label>
+                  <Input
+                    type="number"
+                    inputMode="numeric"
+                    min={50}
+                    max={4000}
+                    step={50}
+                    value={parentChildMinChildSize}
+                    onChange={(e) => {
+                      const n = Number(e.target.value)
+                      if (!Number.isFinite(n)) return
+                      updateParentChildSettings({ parentChildMinChildSize: clampInt(n, 50, 4000) })
+                    }}
+                    className="h-9 text-[11px] font-mono bg-card/80"
+                    aria-label="parent_child min_child_size"
+                  />
+                  <div className="text-[10px] text-muted-foreground">recommended: 200–600 for text docs</div>
+                </div>
+              </div>
+
+              {parentChildEffective ? (
+                <div className="text-[10px] text-muted-foreground font-mono">
+                  effective child_size: {parentChildEffective.childSize} chars · child_overlap: {parentChildEffective.childOverlap} chars · ratio: {Math.round(parentChildEffective.ratio * 100)}%
+                </div>
+              ) : null}
+
+              <div className="text-[10px] text-muted-foreground leading-relaxed">
+                parent_child 会生成 parent/child 两类 chunks，并在 metadata 中写入 parent_id 与 chunk_role，便于后端 parent-child 检索/重排。
               </div>
             </div>
           ) : null}

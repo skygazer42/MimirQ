@@ -447,6 +447,8 @@ export const documentApi = {
       chunk_overlap?: number
       parser_backend?: string
       chunk_strategy?: string
+      child_ratio?: number
+      min_child_size?: number
       pipeline?: DocumentPipelineOptions
       dataset_id?: string
       include_original_text?: boolean
@@ -464,8 +466,13 @@ export const documentApi = {
     const formData = new FormData()
     formData.append('file', file)
     formData.append('parser_backend', resolvedParser.backend || 'auto')
-    formData.append('chunk_strategy', params.chunk_strategy || 'langchain_recursive')
+    const effectiveStrategy = params.chunk_strategy || 'langchain_recursive'
+    formData.append('chunk_strategy', effectiveStrategy)
     if (params.dataset_id) formData.append('dataset_id', params.dataset_id)
+    if (effectiveStrategy === 'parent_child') {
+      if (typeof params.child_ratio === 'number') formData.append('child_ratio', String(params.child_ratio))
+      if (typeof params.min_child_size === 'number') formData.append('min_child_size', String(params.min_child_size))
+    }
     if (params.separator_preset) formData.append('separator_preset', params.separator_preset)
     if (typeof params.separator === 'string') formData.append('separator', params.separator)
     if (typeof params.keep_separator === 'boolean') {
@@ -514,6 +521,8 @@ export const documentApi = {
       chunk_overlap?: number
       parser_backend?: string
       chunk_strategy?: string
+      child_ratio?: number
+      min_child_size?: number
       pipeline?: DocumentPipelineOptions
       dataset_id?: string
       include_original_text?: boolean
@@ -537,8 +546,13 @@ export const documentApi = {
     if (typeof params.file_size === 'number') formData.append('file_size', String(params.file_size))
 
     formData.append('parser_backend', resolvedParser.backend || 'auto')
-    formData.append('chunk_strategy', params.chunk_strategy || 'langchain_recursive')
+    const effectiveStrategy = params.chunk_strategy || 'langchain_recursive'
+    formData.append('chunk_strategy', effectiveStrategy)
     if (params.dataset_id) formData.append('dataset_id', params.dataset_id)
+    if (effectiveStrategy === 'parent_child') {
+      if (typeof params.child_ratio === 'number') formData.append('child_ratio', String(params.child_ratio))
+      if (typeof params.min_child_size === 'number') formData.append('min_child_size', String(params.min_child_size))
+    }
     if (params.separator_preset) formData.append('separator_preset', params.separator_preset)
     if (typeof params.separator === 'string') formData.append('separator', params.separator)
     if (typeof params.keep_separator === 'boolean') {
