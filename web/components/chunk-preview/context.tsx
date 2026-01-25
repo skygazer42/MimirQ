@@ -84,7 +84,7 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: ChunkPrev
 
   const [previewData, setPreviewData] = useState<ChunkPreviewResponse | null>(null)
   const [chunkOverrides, setChunkOverrides] = useState<
-    Record<number, { content?: string; metadata?: Record<string, any>; updatedAt?: number }>
+    Record<number, { content?: string; metadata?: Record<string, any>; disabled?: boolean; updatedAt?: number }>
   >({})
   const [hoveredChunkIndex, setHoveredChunkIndex] = useState<number | null>(null)
   const [selectedChunkIndex, setSelectedChunkIndex] = useState<number | null>(null)
@@ -734,19 +734,27 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: ChunkPrev
     setError(null)
 
     try {
-      const chunks = previewData.chunks.map((chunk) => {
+      const chunks = previewData.chunks.reduce((acc, chunk) => {
         const idx = typeof chunk.index === 'number' ? chunk.index : previewData.chunks.indexOf(chunk)
         const override = chunkOverrides[idx] || null
+        if (override?.disabled) return acc
         const content = String(override?.content ?? chunk.content ?? '')
         const metadata = (override?.metadata ?? chunk.metadata ?? {}) as Record<string, any>
-        return {
+        acc.push({
           content,
           page_number: chunk.page_number,
           start_char: chunk.start_index,
           end_char: chunk.end_index,
           metadata,
-        }
-      })
+        })
+        return acc
+      }, [] as any[])
+
+      if (!chunks.length) {
+        setError('No chunks to submit (all skipped)')
+        toast.error('No chunks to submit (all skipped)')
+        return
+      }
 
       const pipeline = pipelineOverridesEnabled
         ? {
@@ -826,6 +834,32 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: ChunkPrev
     },
     []
   )
+
+  const toggleChunkDisabled = useCallback((index: number) => {
+    const idx = Math.trunc(Number(index))
+    if (!Number.isFinite(idx) || idx < 0) return
+
+    setChunkOverrides((prev) => {
+      const next = { ...prev }
+      const cur = next[idx] || {}
+      const nextDisabled = !Boolean((cur as any).disabled)
+
+      if (nextDisabled) {
+        next[idx] = { ...cur, disabled: true, updatedAt: Date.now() }
+        return next
+      }
+
+      const { disabled: _omit, ...rest } = cur as any
+      const hasOther = rest.content !== undefined || rest.metadata !== undefined
+      if (!hasOther) {
+        delete next[idx]
+        return next
+      }
+
+      next[idx] = { ...rest, updatedAt: Date.now() }
+      return next
+    })
+  }, [])
 
   const clearChunkOverride = useCallback((index: number) => {
     const idx = Math.trunc(Number(index))
@@ -1053,6 +1087,7 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: ChunkPrev
     setHoveredChunkIndex,
     setSelectedChunkIndex,
     updateChunkOverride,
+    toggleChunkDisabled,
     clearChunkOverride,
     clearAllChunkOverrides,
     toggleOriginalPanel,
