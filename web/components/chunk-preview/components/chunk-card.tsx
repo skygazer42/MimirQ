@@ -19,6 +19,10 @@ interface ChunkCardProps {
   isSelected: boolean
   isShort?: boolean
   isDuplicate?: boolean
+  isGap?: boolean
+  gapBefore?: number
+  isOverlap?: boolean
+  overlapPrev?: number
   isEdited?: boolean
   isDisabled?: boolean
   query?: string
@@ -77,6 +81,10 @@ export function ChunkCard({
   isSelected,
   isShort,
   isDuplicate,
+  isGap,
+  gapBefore,
+  isOverlap,
+  overlapPrev,
   isEdited,
   isDisabled,
   query,
@@ -163,6 +171,22 @@ export function ChunkCard({
           {isShort ? (
             <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-warning/10 text-warning border border-warning/25">
               SHORT
+            </span>
+          ) : null}
+          {isGap ? (
+            <span
+              className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-destructive/10 text-destructive border border-destructive/25"
+              title={typeof gapBefore === 'number' ? `gap_before: ${gapBefore}` : undefined}
+            >
+              GAP
+            </span>
+          ) : null}
+          {isOverlap ? (
+            <span
+              className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-warning/10 text-warning border border-warning/25"
+              title={typeof overlapPrev === 'number' ? `overlap_prev: ${overlapPrev}` : undefined}
+            >
+              OVR
             </span>
           ) : null}
           {chunkRole === 'parent' ? (

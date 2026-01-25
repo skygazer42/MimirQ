@@ -20,7 +20,6 @@ import {
   Pencil,
   ChevronDown,
   ChevronRight,
-  Eye,
   EyeOff,
 } from 'lucide-react'
 import { toast } from 'sonner'
@@ -639,16 +638,114 @@ export function ChunkList() {
             ) : null}
           </div>
           <div className="hidden xl:flex items-center gap-1">
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button type="button" variant="outline" size="sm" className="h-7 px-2 text-[11px]">
+                  Batch
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem
+                  disabled={matchCount === 0}
+                  onSelect={() => {
+                    const targets = Array.from(matchIndexSet)
+                    const delta = targets.filter((i) => !disabledIndices.has(i)).length
+                    setChunksDisabled(targets, true)
+                    toast.success(`SKIP filtered: ${delta}`)
+                  }}
+                >
+                  SKIP filtered ({matchCount})
+                </DropdownMenuItem>
+
+                <DropdownMenuSeparator />
+
+                <DropdownMenuItem
+                  disabled={duplicateIndices.size === 0}
+                  onSelect={() => {
+                    const targets = Array.from(duplicateIndices)
+                    const delta = targets.filter((i) => !disabledIndices.has(i)).length
+                    setChunksDisabled(targets, true)
+                    toast.success(`SKIP DUP: ${delta}`)
+                  }}
+                >
+                  SKIP DUP ({duplicateIndices.size})
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  disabled={shortIndices.size === 0}
+                  onSelect={() => {
+                    const targets = Array.from(shortIndices)
+                    const delta = targets.filter((i) => !disabledIndices.has(i)).length
+                    setChunksDisabled(targets, true)
+                    toast.success(`SKIP SHORT: ${delta}`)
+                  }}
+                >
+                  SKIP SHORT ({shortIndices.size})
+                </DropdownMenuItem>
+
+                {isParentChildStrategy ? (
+                  <>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem
+                      disabled={roleIndices.parents.size === 0}
+                      onSelect={() => {
+                        const targets = Array.from(roleIndices.parents)
+                        const delta = targets.filter((i) => !disabledIndices.has(i)).length
+                        setChunksDisabled(targets, true)
+                        toast.success(`SKIP parents: ${delta}`)
+                      }}
+                    >
+                      SKIP parents ({roleIndices.parents.size})
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                      disabled={roleIndices.children.size === 0}
+                      onSelect={() => {
+                        const targets = Array.from(roleIndices.children)
+                        const delta = targets.filter((i) => !disabledIndices.has(i)).length
+                        setChunksDisabled(targets, true)
+                        toast.success(`SKIP children: ${delta}`)
+                      }}
+                    >
+                      SKIP children ({roleIndices.children.size})
+                    </DropdownMenuItem>
+                  </>
+                ) : null}
+
+                <DropdownMenuSeparator />
+
+                <DropdownMenuItem
+                  disabled={disabledIndices.size === 0}
+                  onSelect={() => {
+                    const targets = Array.from(disabledIndices)
+                    setChunksDisabled(targets, false)
+                    toast.success(`RESTORE all: ${targets.length}`)
+                  }}
+                >
+                  RESTORE all ({disabledIndices.size})
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  disabled={disabledIndices.size === 0 || matchCount === 0}
+                  onSelect={() => {
+                    const targets = Array.from(matchIndexSet)
+                    const delta = targets.filter((i) => disabledIndices.has(i)).length
+                    setChunksDisabled(targets, false)
+                    toast.success(`RESTORE filtered: ${delta}`)
+                  }}
+                >
+                  RESTORE filtered
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+
             <Button
               type="button"
               variant={onlyShort ? 'secondary' : 'ghost'}
               size="sm"
               className="h-7 px-2 text-[11px]"
               onClick={() => setOnlyShort((v) => !v)}
-              title="仅看短块"
+              title="Only SHORT"
             >
               <AlertCircle className="h-3.5 w-3.5 mr-1" />
-              短 {shortIndices.size}
+              SHORT {shortIndices.size}
             </Button>
             <Button
               type="button"
@@ -656,10 +753,30 @@ export function ChunkList() {
               size="sm"
               className="h-7 px-2 text-[11px]"
               onClick={() => setOnlyDuplicate((v) => !v)}
-              title="仅看重复块"
+              title="Only DUP"
             >
               <Copy className="h-3.5 w-3.5 mr-1" />
-              重 {duplicateIndices.size}
+              DUP {duplicateIndices.size}
+            </Button>
+            <Button
+              type="button"
+              variant={onlyGap ? 'secondary' : 'ghost'}
+              size="sm"
+              className="h-7 px-2 text-[11px]"
+              onClick={() => setOnlyGap((v) => !v)}
+              title={coverageSignals.basis === 'child' ? 'Only GAP (child coverage)' : 'Only GAP'}
+            >
+              GAP {coverageSignals.gapIndices.size}
+            </Button>
+            <Button
+              type="button"
+              variant={onlyOverlap ? 'secondary' : 'ghost'}
+              size="sm"
+              className="h-7 px-2 text-[11px]"
+              onClick={() => setOnlyOverlap((v) => !v)}
+              title={coverageSignals.basis === 'child' ? 'Only OVR (child coverage)' : 'Only OVR'}
+            >
+              OVR {coverageSignals.overlapIndices.size}
             </Button>
             <Button
               type="button"
@@ -667,10 +784,21 @@ export function ChunkList() {
               size="sm"
               className="h-7 px-2 text-[11px]"
               onClick={() => setOnlyEdited((v) => !v)}
-              title="仅看已编辑"
+              title="Only EDIT"
             >
               <Pencil className="h-3.5 w-3.5 mr-1" />
-              改 {editedIndices.size}
+              EDIT {editedIndices.size}
+            </Button>
+            <Button
+              type="button"
+              variant={onlyDisabled ? 'secondary' : 'ghost'}
+              size="sm"
+              className="h-7 px-2 text-[11px]"
+              onClick={() => setOnlyDisabled((v) => !v)}
+              title="Only SKIP"
+            >
+              <EyeOff className="h-3.5 w-3.5 mr-1" />
+              SKIP {disabledIndices.size}
             </Button>
           </div>
           {selectedChunkIndex != null ? (
@@ -874,11 +1002,15 @@ export function ChunkList() {
                 const item = displayRows[virtualRow.index]
                 if (!item) return null
                 const { chunk, index, indent } = item
-                const isHovered = hoveredChunkIndex === index
-                const isSelected = selectedChunkIndex === index
-                const isShort = shortIndices.has(index)
-                const isDuplicate = duplicateIndices.has(index)
-                const isEdited = editedIndices.has(index)
+                 const isHovered = hoveredChunkIndex === index
+                 const isSelected = selectedChunkIndex === index
+                 const isShort = shortIndices.has(index)
+                 const isDuplicate = duplicateIndices.has(index)
+                 const isEdited = editedIndices.has(index)
+                 const gapBefore = coverageSignals.gapBeforeByIndex.get(index)
+                 const overlapPrev = coverageSignals.overlapPrevByIndex.get(index)
+                 const isGap = coverageSignals.gapIndices.has(index)
+                 const isOverlap = coverageSignals.overlapIndices.has(index)
 
                 const dimContext = Boolean(item.isContext) && !isHovered && !isSelected
                 const canCollapse =
@@ -959,12 +1091,16 @@ export function ChunkList() {
                         sourceFilename={previewData?.filename}
                         isHovered={isHovered}
                         isSelected={isSelected}
-                        isShort={isShort}
-                        isDuplicate={isDuplicate}
-                        isEdited={isEdited}
-                        isDisabled={disabledIndices.has(index)}
-                        onToggleDisabled={() => toggleChunkDisabled(index)}
-                        query={query}
+                         isShort={isShort}
+                         isDuplicate={isDuplicate}
+                         isGap={isGap}
+                         gapBefore={gapBefore}
+                         isOverlap={isOverlap}
+                         overlapPrev={overlapPrev}
+                         isEdited={isEdited}
+                         isDisabled={disabledIndices.has(index)}
+                         onToggleDisabled={() => toggleChunkDisabled(index)}
+                         query={query}
                         onMouseEnter={() => setHoveredChunkIndex(index)}
                         onMouseLeave={() => setHoveredChunkIndex(null)}
                         onEdit={() => {

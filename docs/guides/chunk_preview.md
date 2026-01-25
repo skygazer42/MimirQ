@@ -60,6 +60,13 @@
   - `SKIP` chunk ????????Confirm/submit????? manual payload
   - chunks.* ?????? `SKIP` chunk?????????????? "Include SKIP chunks in exports"
 
+- Batch review (ChunkList):
+  - Batch menu: SKIP filtered/DUP/SHORT/(parents/children), RESTORE all/filtered.
+  - Filters: SHORT/DUP/GAP/OVR/EDIT/SKIP.
+
+- Review report:
+  - TopBar exports: Export review-report.json (flags + decisions + stats).
+
 ### 原文面板
 
 - 支持「源码/渲染/编辑器」切换（渲染模式不支持高亮定位；编辑器模式用于大文档稳定定位）。

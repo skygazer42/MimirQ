@@ -39,7 +39,7 @@ import { useChunkPreview } from '@/components/chunk-preview/context'
 import { usePipelineOptions } from '@/contexts/pipeline-options-context'
 import { getChunkStrategyLabel } from '@/lib/chunk-strategies'
 import { getParserLabel } from '@/lib/parser-options'
-import { applyChunkOverridesToPreview, chunkPreviewToCsv, chunkPreviewToJsonl, chunkPreviewToMarkdown, downloadTextFile, sanitizeFilename, toChunkPreviewExport } from '@/components/chunk-preview/utils/export'
+import { applyChunkOverridesToPreview, chunkPreviewToCsv, chunkPreviewToJsonl, chunkPreviewToMarkdown, chunkPreviewToReviewReport, downloadTextFile, sanitizeFilename, toChunkPreviewExport } from '@/components/chunk-preview/utils/export'
 import { IngestionWorkflowStepper } from '@/components/ui/ingestion-workflow-stepper'
 import { ChunkingHelpDialog } from '@/components/chunk-preview/components/chunking-help-dialog'
 import { ChunkCompareDialog } from '@/components/chunk-preview/components/chunk-compare-dialog'
@@ -565,6 +565,21 @@ export function TopBar() {
               <Download className="mr-2 h-4 w-4" />
               导出 chunks.jsonl
             </DropdownMenuItem>
+             <DropdownMenuItem
+               disabled={!previewData}
+               onSelect={() => {
+                 if (!previewData) return
+                 const report = chunkPreviewToReviewReport(previewData, chunkOverrides, {
+                   include_disabled: includeSkippedInExports,
+                 })
+                 const filename = `${sanitizeFilename(previewData.filename)}.chunk-review.json`
+                 downloadTextFile(filename, JSON.stringify(report, null, 2), 'application/json;charset=utf-8')
+                 toast.success('Review report exported')
+               }}
+             >
+               <Download className="mr-2 h-4 w-4" />
+               Export review-report.json
+             </DropdownMenuItem>
             <DropdownMenuItem
               disabled={!previewData}
               onSelect={() => {
