@@ -233,6 +233,26 @@ class DocumentParsePreview(BaseModel):
     parser_backend: str
 
 
+class DocumentParsedContentResponse(BaseModel):
+    """Persisted parsed markdown content for a document (best-effort).
+
+    Notes:
+    - This is only available when the ingestion pipeline enables `persist_parsed_content`.
+    - The returned markdown is already truncated when persisted (pipeline-controlled), and may be further
+      truncated by the API handler via `max_chars` for UI safety.
+    """
+
+    document_id: UUID
+    available: bool = False
+    markdown_content: str = Field(default="")
+    original_markdown_content: str = Field(default="")
+    # Best-effort metadata copied from `document.metadata.parsed_content_persisted`.
+    persisted_meta: Dict[str, Any] = Field(default_factory=dict)
+    markdown_truncated: bool = False
+    original_markdown_truncated: bool = False
+    max_chars: int = Field(default=200_000, ge=0, le=2_000_000)
+
+
 class ManualChunkCreate(BaseModel):
     """Single chunk entry in a manual chunking request."""
     content: str

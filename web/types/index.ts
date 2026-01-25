@@ -202,6 +202,17 @@ export interface DocumentPreview {
   parser_backend: string
 }
 
+export interface DocumentParsedContentResponse {
+  document_id: string
+  available: boolean
+  markdown_content: string
+  original_markdown_content: string
+  persisted_meta: Record<string, any>
+  markdown_truncated: boolean
+  original_markdown_truncated: boolean
+  max_chars: number
+}
+
 export interface ManualChunk {
   content: string
   page_number?: number
