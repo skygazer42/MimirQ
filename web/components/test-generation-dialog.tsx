@@ -41,6 +41,9 @@ interface TestGenerationDialogProps {
   open: boolean
   onClose: () => void
   onGenerated?: () => void
+  initialSourceType?: 'documents' | 'conversations'
+  initialDatasetId?: string
+  initialDocumentIds?: string[]
 }
 
 type SourceType = 'documents' | 'conversations'
@@ -50,6 +53,9 @@ export function TestGenerationDialog({
   open,
   onClose,
   onGenerated,
+  initialSourceType,
+  initialDatasetId,
+  initialDocumentIds,
 }: TestGenerationDialogProps) {
   const [step, setStep] = useState<Step>('select_source')
   const [sourceType, setSourceType] = useState<SourceType>('documents')
@@ -80,10 +86,24 @@ export function TestGenerationDialog({
   useEffect(() => {
     if (!open) return
 
+    const effectiveSourceType: SourceType = (initialDocumentIds?.length
+      ? 'documents'
+      : (initialSourceType as SourceType) || sourceType)
+
+    // Preselect support (enterprise workflow: chunk -> ingest -> generate tests).
+    if (initialDatasetId) setSelectedDatasetId(initialDatasetId)
+    if (initialDocumentIds?.length) {
+      setSourceType('documents')
+      setSelectedDocumentIds(new Set(initialDocumentIds))
+      setStep('configure')
+    } else if (initialSourceType) {
+      setSourceType(initialSourceType)
+    }
+
     const loadData = async () => {
       setIsLoadingData(true)
       try {
-        if (sourceType === 'documents') {
+        if (effectiveSourceType === 'documents') {
           const [docsResult, datasetsResult] = await Promise.all([
             documentApi.list({ limit: 100, status: 'completed' }),
             datasetApi.list({ limit: 50 }),
@@ -103,7 +123,7 @@ export function TestGenerationDialog({
     }
 
     loadData()
-  }, [open, sourceType])
+  }, [open, sourceType, initialSourceType, initialDatasetId, initialDocumentIds])
 
   // 重置状态
   const handleClose = () => {

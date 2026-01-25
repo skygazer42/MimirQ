@@ -337,6 +337,20 @@ class ChunkPreviewStats(BaseModel):
     total_tokens_est: int = 0
     short_count: int = 0
     duplicate_count: int = 0
+    # Coverage signals (chars-based; uses start/end indices).
+    sum_chunk_chars: int = 0
+    covered_chars: int = 0
+    coverage_ratio: float = 0.0
+    overlap_waste_ratio: float = 0.0
+    gap_count: int = 0
+    largest_gap: int = 0
+
+
+class ChunkPreviewQualityGate(BaseModel):
+    """Best-effort quality gate for enterprise tuning (heuristics)."""
+
+    grade: Literal["pass", "warn", "fail"] = "pass"
+    reasons: List[str] = Field(default_factory=list)
 
 
 class ChunkPreviewResponse(BaseModel):
@@ -370,6 +384,9 @@ class ChunkPreviewResponse(BaseModel):
     auto_selected_strategy: Optional[str] = None
     # Non-fatal warnings for UI (e.g. ignored overlap for separator strategy).
     warnings: List[str] = Field(default_factory=list)
+    # Best-effort quality gate and actionable recommendations.
+    quality_gate: Optional[ChunkPreviewQualityGate] = None
+    recommendations: List[str] = Field(default_factory=list)
     # Original text for frontend highlighting.
     original_text: Optional[str] = None
     # Best-effort metadata for UI (whether original_text was omitted due to size limit).
