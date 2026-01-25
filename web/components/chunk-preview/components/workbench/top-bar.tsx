@@ -21,6 +21,7 @@ import {
   AlertCircle,
   Loader2,
   GitCompareArrows,
+  TestTube2,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
@@ -41,12 +42,14 @@ import { applyChunkOverridesToPreview, chunkPreviewToCsv, chunkPreviewToJsonl, c
 import { IngestionWorkflowStepper } from '@/components/ui/ingestion-workflow-stepper'
 import { ChunkingHelpDialog } from '@/components/chunk-preview/components/chunking-help-dialog'
 import { ChunkCompareDialog } from '@/components/chunk-preview/components/chunk-compare-dialog'
+import { TestGenerationDialog } from '@/components/test-generation-dialog'
 import { useRouter } from 'next/navigation'
 
 export function TopBar() {
   const router = useRouter()
   const [helpOpen, setHelpOpen] = useState(false)
   const [compareOpen, setCompareOpen] = useState(false)
+  const [testGenOpen, setTestGenOpen] = useState(false)
   const pipelineCtx = usePipelineOptions()
   const { enabled: pipelineOverridesEnabled, options: pipelineOptions } = pipelineCtx
   const importConfigInputRef = useRef<HTMLInputElement>(null)
@@ -626,6 +629,14 @@ export function TopBar() {
                 </DropdownMenuItem>
                 <DropdownMenuItem
                   onSelect={() => {
+                    setTestGenOpen(true)
+                  }}
+                >
+                  <TestTube2 className="mr-2 h-4 w-4" />
+                  生成评测问题（RAGAS）
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onSelect={() => {
                     const url = `/?doc=${encodeURIComponent(createdDocumentId)}`
                     router.push(url)
                     toast.success('已跳转到对话页并打开文档面板')
@@ -685,6 +696,14 @@ export function TopBar() {
           getCachedPreview={getCachedPreview}
         />
       ) : null}
+      <TestGenerationDialog
+        open={testGenOpen}
+        onClose={() => setTestGenOpen(false)}
+        onGenerated={() => toast.success('已生成评测用例，可在「评测」页查看')}
+        initialSourceType="documents"
+        initialDatasetId={datasetId || undefined}
+        initialDocumentIds={createdDocumentId ? [createdDocumentId] : undefined}
+      />
     </header>
   )
 }
