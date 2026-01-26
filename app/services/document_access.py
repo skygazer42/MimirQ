@@ -3,8 +3,52 @@ from uuid import UUID
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
 from app.models.document import Document as DBDocument
+from app.models.document import DocumentPermission
 from app.services.dataset_service import DatasetService
 from app.models.dataset import Dataset, DatasetPermission, DatasetPermissionEnum
+
+
+# Document-level ACL ("security trimming") modes.
+_DOC_ACCESS_DEFAULTS = {"", "inherit"}
+_DOC_ACCESS_ALL = "all_team_members"
+_DOC_ACCESS_OWNER_ONLY = "only_me"
+_DOC_ACCESS_PARTIAL = "partial_members"
+
+
+def _normalize_doc_access_mode(value: object) -> str:
+    return (str(value or "")).strip().lower()
+
+
+def _doc_access_allows(
+    *,
+    doc_id: UUID,
+    access_mode: object,
+    owner_id: object,
+    account_id: str,
+    allowlist_doc_ids: Set[UUID],
+) -> bool:
+    """
+    Evaluate document-level ACL for a single doc.
+
+    Notes:
+    - Dataset-level permissions are enforced separately; this only checks document overrides.
+    - Unknown modes fail closed for defense-in-depth.
+    """
+    mode = _normalize_doc_access_mode(access_mode)
+    owner = (str(owner_id or "")).strip()
+
+    if mode in _DOC_ACCESS_DEFAULTS or mode == _DOC_ACCESS_ALL:
+        return True
+
+    if mode == _DOC_ACCESS_OWNER_ONLY:
+        return bool(owner and owner == account_id)
+
+    if mode == _DOC_ACCESS_PARTIAL:
+        if owner and owner == account_id:
+            return True
+        return doc_id in allowlist_doc_ids
+
+    return False
 
 
 def _resolve_allowed_dataset_ids(
@@ -67,7 +111,7 @@ def get_allowed_document_id_sets(
         return set(), set()
 
     documents = (
-        db.query(DBDocument.id, DBDocument.dataset_id)
+        db.query(DBDocument.id, DBDocument.dataset_id, DBDocument.access_mode, DBDocument.owner_id)
         .filter(
             DBDocument.tenant_id == tenant_id,
             DBDocument.id.in_(doc_ids),
@@ -75,22 +119,61 @@ def get_allowed_document_id_sets(
         .all()
     )
 
-    found_ids = {doc_id for doc_id, _ in documents}
+    found_ids = {doc_id for doc_id, *_ in documents}
     missing_ids = set(doc_ids) - found_ids
 
-    dataset_ids = {dataset_id for _, dataset_id in documents if dataset_id}
+    dataset_ids = {dataset_id for _, dataset_id, *_ in documents if dataset_id}
     dataset_map, allowed_dataset_ids = _resolve_allowed_dataset_ids(db, tenant_id, account_id, dataset_ids)
 
+    # Batch fetch allowlist membership for docs that require it.
+    doc_ids_needing_allowlist: list[UUID] = []
+    for doc_id, _dataset_id, access_mode, owner_id in documents:
+        mode = _normalize_doc_access_mode(access_mode)
+        if mode == _DOC_ACCESS_PARTIAL and (str(owner_id or "").strip() != account_id):
+            doc_ids_needing_allowlist.append(doc_id)
+
+    allowlist_doc_ids: Set[UUID] = set()
+    if doc_ids_needing_allowlist:
+        rows = (
+            db.query(DocumentPermission.document_id)
+            .filter(
+                DocumentPermission.tenant_id == tenant_id,
+                DocumentPermission.account_id == account_id,
+                DocumentPermission.document_id.in_(doc_ids_needing_allowlist),
+            )
+            .all()
+        )
+        allowlist_doc_ids = {row[0] for row in rows if row and row[0]}
+
     allowed_ids: Set[UUID] = set()
-    for doc_id, dataset_id in documents:
+    for doc_id, dataset_id, access_mode, owner_id in documents:
         if not dataset_id:
             # legacy document without dataset binding: allow for now
-            allowed_ids.add(doc_id)
+            if _doc_access_allows(
+                doc_id=doc_id,
+                access_mode=access_mode,
+                owner_id=owner_id,
+                account_id=account_id,
+                allowlist_doc_ids=allowlist_doc_ids,
+            ):
+                allowed_ids.add(doc_id)
             continue
         if dataset_id not in dataset_map:
             continue
         if dataset_id in allowed_dataset_ids:
-            allowed_ids.add(doc_id)
+            ds = dataset_map.get(dataset_id)
+            # Dataset owner can always access docs in their dataset (admin/management use-case).
+            if ds is not None and str(getattr(ds, "owner_id", "") or "") == account_id:
+                allowed_ids.add(doc_id)
+                continue
+            if _doc_access_allows(
+                doc_id=doc_id,
+                access_mode=access_mode,
+                owner_id=owner_id,
+                account_id=account_id,
+                allowlist_doc_ids=allowlist_doc_ids,
+            ):
+                allowed_ids.add(doc_id)
 
     return allowed_ids, missing_ids
 

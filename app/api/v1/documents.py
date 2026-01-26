@@ -1766,6 +1766,8 @@ async def upload_document(
         file_type=file_ext.lstrip('.'),
         file_size=file_size,
         file_path=str(file_path),
+        owner_id=account_id,
+        access_mode=None,  # inherit dataset permission by default
         status='pending',
         processing_progress=0,
         doc_metadata=doc_metadata,
@@ -2004,6 +2006,8 @@ async def upload_document_from_url(
         file_type=file_ext.lstrip("."),
         file_size=int(downloaded.size_bytes),
         file_path=str(final_path),
+        owner_id=account_id,
+        access_mode=None,  # inherit dataset permission by default
         status="pending",
         processing_progress=0,
         doc_metadata=doc_metadata,
@@ -2250,6 +2254,8 @@ async def upload_documents_batch(
                     file_type=file_ext.lstrip('.'),
                     file_size=file_size,
                     file_path=str(file_path),
+                    owner_id=account_id,
+                    access_mode=None,  # inherit dataset permission by default
                     status='pending',
                     processing_progress=0,
                     doc_metadata=doc_metadata,
@@ -4008,6 +4014,8 @@ async def create_document_with_manual_chunks(
         file_size=request.file_size,
         # Manual-chunk documents have no real file path; use a placeholder.
         file_path=f"manual://{document_id}",
+        owner_id=account_id,
+        access_mode=None,  # inherit dataset permission by default
         status='processing',
         processing_progress=0,
         current_stage='embedding',
