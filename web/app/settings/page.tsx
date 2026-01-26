@@ -984,80 +984,163 @@ export default function SettingsPage() {
                   RAG 参数
                 </h2>
 
-                <div className="bg-card border border-border rounded-2xl p-6 shadow-sm">
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                    <div>
-                      <div className="flex justify-between items-center mb-2">
-                        <label className="text-sm font-medium text-foreground/80">Top K</label>
-                        <span className="text-xs bg-muted px-2 py-0.5 rounded text-muted-foreground">
-                          {settings?.rag.retrieval_top_k ?? 5}
-                        </span>
-                      </div>
-                      <input
-                        type="range"
-                        min="1"
-                        max="20"
-                        value={editedSettings.rag?.retrieval_top_k ?? settings?.rag.retrieval_top_k ?? 5}
-                        onChange={(e) => {
-                          const rag = { ...(settings?.rag ?? {}), ...(editedSettings.rag ?? {}), retrieval_top_k: parseInt(e.target.value) }
-                          setEditedSettings(prev => ({ ...prev, rag: rag as any }))
-                        }}
-                        className="w-full h-2 bg-muted rounded-lg appearance-none cursor-pointer accent-primary"
-                      />
-                      <p className="text-xs text-muted-foreground mt-2">
-                        每次检索返回的最相关文档片段数量
-                      </p>
-                    </div>
+	                <div className="bg-card border border-border rounded-2xl p-6 shadow-sm">
+	                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+	                    <div>
+	                      <div className="flex justify-between items-center mb-2">
+	                        <label className="text-sm font-medium text-foreground/80">Top K</label>
+	                        <span className="text-xs bg-muted px-2 py-0.5 rounded text-muted-foreground">
+	                          {ragMerged.retrieval_top_k ?? 5}
+	                        </span>
+	                      </div>
+	                      <input
+	                        type="range"
+	                        min="1"
+	                        max="20"
+	                        value={ragMerged.retrieval_top_k ?? 5}
+	                        onChange={(e) => updateRag({ retrieval_top_k: parseInt(e.target.value, 10) })}
+	                        className="w-full h-2 bg-muted rounded-lg appearance-none cursor-pointer accent-primary"
+	                      />
+	                      <p className="text-xs text-muted-foreground mt-2">
+	                        每次检索返回的最相关文档片段数量
+	                      </p>
+	                    </div>
 
-                    <div>
-                      <div className="flex justify-between items-center mb-2">
-                        <label className="text-sm font-medium text-foreground/80">相似度阈值</label>
-                        <span className="text-xs bg-muted px-2 py-0.5 rounded text-muted-foreground">
-                          {(editedSettings.rag?.similarity_threshold ?? settings?.rag.similarity_threshold ?? 0.7).toFixed(1)}
-                        </span>
-                      </div>
-                      <input
-                        type="range"
-                        min="0"
-                        max="1"
-                        step="0.1"
-                        value={editedSettings.rag?.similarity_threshold ?? settings?.rag.similarity_threshold ?? 0.7}
-                        onChange={(e) => {
-                          const rag = { ...(settings?.rag ?? {}), ...(editedSettings.rag ?? {}), similarity_threshold: parseFloat(e.target.value) }
-                          setEditedSettings(prev => ({ ...prev, rag: rag as any }))
-                        }}
-                        className="w-full h-2 bg-muted rounded-lg appearance-none cursor-pointer accent-primary"
-                      />
-                      <p className="text-xs text-muted-foreground mt-2">
-                        过滤掉相关性得分低于此值的片段
-                      </p>
-                    </div>
+	                    <div>
+	                      <div className="flex justify-between items-center mb-2">
+	                        <label className="text-sm font-medium text-foreground/80">相似度阈值</label>
+	                        <span className="text-xs bg-muted px-2 py-0.5 rounded text-muted-foreground">
+	                          {(ragMerged.similarity_threshold ?? 0.7).toFixed(1)}
+	                        </span>
+	                      </div>
+	                      <input
+	                        type="range"
+	                        min="0"
+	                        max="1"
+	                        step="0.1"
+	                        value={ragMerged.similarity_threshold ?? 0.7}
+	                        onChange={(e) => updateRag({ similarity_threshold: parseFloat(e.target.value) })}
+	                        className="w-full h-2 bg-muted rounded-lg appearance-none cursor-pointer accent-primary"
+	                      />
+	                      <p className="text-xs text-muted-foreground mt-2">
+	                        过滤掉相关性得分低于此值的片段
+	                      </p>
+	                    </div>
 
-                    <div>
-                      <div className="flex justify-between items-center mb-2">
-                        <label className="text-sm font-medium text-foreground/80">分块大小</label>
-                        <span className="text-xs bg-muted px-2 py-0.5 rounded text-muted-foreground">
-                          {editedSettings.rag?.chunk_size ?? settings?.rag.chunk_size ?? 1000}
-                        </span>
-                      </div>
-                      <input
-                        type="range"
-                        min="200"
-                        max="4000"
-                        step="100"
-                        value={editedSettings.rag?.chunk_size ?? settings?.rag.chunk_size ?? 1000}
-                        onChange={(e) => {
-                          const rag = { ...(settings?.rag ?? {}), ...(editedSettings.rag ?? {}), chunk_size: parseInt(e.target.value) }
-                          setEditedSettings(prev => ({ ...prev, rag: rag as any }))
-                        }}
-                        className="w-full h-2 bg-muted rounded-lg appearance-none cursor-pointer accent-primary"
-                      />
-                      <p className="text-xs text-muted-foreground mt-2">
-                        文档分块的目标字符数
-                      </p>
-                    </div>
-                  </div>
-                </div>
+	                    <div className="rounded-xl border border-border p-4 bg-muted/30">
+	                      <div className="flex items-start justify-between gap-4">
+	                        <div>
+	                          <div className="text-sm font-semibold text-foreground">BM25 关键字检索</div>
+	                          <div className="text-xs text-muted-foreground mt-1">
+	                            启用关键词通道（hybrid/keyword 模式），对“精确词匹配”召回更友好
+	                          </div>
+	                        </div>
+	                        <button
+	                          type="button"
+	                          onClick={() => updateRag({ bm25_index_enabled: !Boolean(ragMerged.bm25_index_enabled ?? true) })}
+	                          className="shrink-0"
+	                          aria-label="Toggle BM25"
+	                        >
+	                          {Boolean(ragMerged.bm25_index_enabled ?? true) ? (
+	                            <ToggleRight className="w-10 h-10 text-primary" />
+	                          ) : (
+	                            <ToggleLeft className="w-10 h-10 text-muted-foreground hover:text-muted-foreground" />
+	                          )}
+	                        </button>
+	                      </div>
+	                      <p className="text-xs text-muted-foreground mt-3">
+	                        关闭后将不会使用/构建 BM25 索引（更省内存/CPU，但可能降低召回）
+	                      </p>
+	                    </div>
+
+	                    <div className="rounded-xl border border-border p-4 bg-muted/30">
+	                      <div className="flex items-start justify-between gap-4">
+	                        <div>
+	                          <div className="text-sm font-semibold text-foreground">启用重排序（Reranker）</div>
+	                          <div className="text-xs text-muted-foreground mt-1">
+	                            用重排序模型对候选片段二次排序，通常可提升答案质量（会增加延迟/成本）
+	                          </div>
+	                        </div>
+	                        <button
+	                          type="button"
+	                          onClick={() => updateRag({ enable_reranker: !Boolean(ragMerged.enable_reranker ?? false) })}
+	                          className="shrink-0"
+	                          aria-label="Toggle reranker"
+	                        >
+	                          {Boolean(ragMerged.enable_reranker ?? false) ? (
+	                            <ToggleRight className="w-10 h-10 text-primary" />
+	                          ) : (
+	                            <ToggleLeft className="w-10 h-10 text-muted-foreground hover:text-muted-foreground" />
+	                          )}
+	                        </button>
+	                      </div>
+	                      <p className="text-xs text-muted-foreground mt-3">
+	                        需要先在“重排序模型”里配置 Provider（否则可能无效果）
+	                      </p>
+	                    </div>
+
+	                    <div>
+	                      <div className="flex justify-between items-center mb-2">
+	                        <label className="text-sm font-medium text-foreground/80">分块大小</label>
+	                        <span className="text-xs bg-muted px-2 py-0.5 rounded text-muted-foreground">
+	                          {ragMerged.chunk_size ?? 1000}
+	                        </span>
+	                      </div>
+	                      <input
+	                        type="range"
+	                        min="200"
+	                        max="4000"
+	                        step="100"
+	                        value={ragMerged.chunk_size ?? 1000}
+	                        onChange={(e) => updateRag({ chunk_size: parseInt(e.target.value, 10) })}
+	                        className="w-full h-2 bg-muted rounded-lg appearance-none cursor-pointer accent-primary"
+	                      />
+	                      <p className="text-xs text-muted-foreground mt-2">
+	                        文档分块的目标字符数
+	                      </p>
+	                    </div>
+
+	                    <div>
+	                      <div className="flex justify-between items-center mb-2">
+	                        <label className="text-sm font-medium text-foreground/80">分块重叠</label>
+	                        <span className="text-xs bg-muted px-2 py-0.5 rounded text-muted-foreground">
+	                          {ragMerged.chunk_overlap ?? 200}
+	                        </span>
+	                      </div>
+	                      <input
+	                        type="range"
+	                        min="0"
+	                        max="1000"
+	                        step="50"
+	                        value={ragMerged.chunk_overlap ?? 200}
+	                        onChange={(e) => updateRag({ chunk_overlap: parseInt(e.target.value, 10) })}
+	                        className="w-full h-2 bg-muted rounded-lg appearance-none cursor-pointer accent-primary"
+	                      />
+	                      <p className="text-xs text-muted-foreground mt-2">
+	                        相邻 chunk 的重叠字符数（提高连续性，但会增加索引体积）
+	                      </p>
+	                    </div>
+
+	                    <div>
+	                      <div className="flex justify-between items-center mb-2">
+	                        <label className="text-sm font-medium text-foreground/80">最小分块长度</label>
+	                        <span className="text-xs bg-muted px-2 py-0.5 rounded text-muted-foreground">
+	                          {ragMerged.chunk_min_chars ?? 30}
+	                        </span>
+	                      </div>
+	                      <Input
+	                        type="number"
+	                        min={0}
+	                        max={5000}
+	                        value={ragMerged.chunk_min_chars ?? 30}
+	                        onChange={(e) => updateRag({ chunk_min_chars: Math.max(0, parseInt(e.target.value || "0", 10)) })}
+	                      />
+	                      <p className="text-xs text-muted-foreground mt-2">
+	                        入库时丢弃过短 chunk（0 表示关闭；图片/表格 chunk 会尽量保留）
+	                      </p>
+	                    </div>
+	                  </div>
+	                </div>
               </section>
 
               {/* 观测与调试 */}
