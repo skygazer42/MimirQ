@@ -5,19 +5,28 @@ Supports dataset creation, query, update, deletion, and permission management.
 import json
 import re
 
-from fastapi import APIRouter, Depends, Query, UploadFile, File, Form, HTTPException, Response
+from fastapi import APIRouter, BackgroundTasks, Depends, Query, UploadFile, File, Form, HTTPException, Response
 from sqlalchemy.orm import Session
 from uuid import UUID
 
 from app.core.database import get_db
+from app.core.database import SessionLocal
 from app.api.dependencies.tenant import get_tenant_id
 from app.api.dependencies.auth import get_current_account_id
 from app.api.schemas.dataset import DatasetCreate, DatasetUpdate, DatasetOut, DatasetListResponse
 from app.api.schemas.document import DocumentPipelineOptions
 from app.api.schemas.ingestion_policy import IngestionPolicy, IngestionPolicyImportResponse
+from app.api.schemas.dataset_profile import (
+    DatasetProfileSummary,
+    DatasetProfileFindingListResponse,
+    DatasetProfileScanRunCreateRequest,
+    DatasetProfileScanRunListResponse,
+    DatasetProfileScanRunOut,
+)
 from app.models.dataset import DatasetPermissionEnum, DatasetPermission
 from app.services.dataset_service import DatasetService, DatasetPermissionService
 from app.models.dataset import Dataset
+from app.models.dataset_profile_scan import DatasetProfileScanRun as DBDatasetProfileScanRun
 from app.services.pipeline_config import build_pipeline_metadata, parse_pipeline_from_metadata
 from app.services.ingestion_policy import (
     export_policy_json,
@@ -25,6 +34,9 @@ from app.services.ingestion_policy import (
     validate_and_normalize_ingestion_policy,
 )
 from app.types.pipeline import PipelineOptions
+from app.tasks.queue import enqueue_dataset_profile_scan
+from app.services.dataset_profile_service import compute_dataset_profile_summary, list_finding_documents
+from app.services.dataset_profile_scan_runner import run_dataset_profile_deep_scan
 
 router = APIRouter()
 
@@ -323,4 +335,250 @@ def export_dataset_ingestion_policy(
         content=content,
         media_type="application/json",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+def _scan_run_out_from_row(row: DBDatasetProfileScanRun) -> DatasetProfileScanRunOut:
+    cfg = getattr(row, "config", None)
+    if not isinstance(cfg, dict):
+        cfg = {}
+    summary = getattr(row, "summary", None)
+    if not isinstance(summary, dict):
+        summary = {}
+    return DatasetProfileScanRunOut(
+        id=row.id,
+        tenant_id=row.tenant_id,
+        dataset_id=row.dataset_id,
+        requested_by=getattr(row, "requested_by", None),
+        kind=str(getattr(row, "kind", "") or "deep"),
+        status=str(getattr(row, "status", "") or "pending"),
+        progress=int(getattr(row, "progress", 0) or 0),
+        config=cfg,
+        summary=summary,
+        error_message=getattr(row, "error_message", None),
+        started_at=getattr(row, "started_at", None),
+        finished_at=getattr(row, "finished_at", None),
+        created_at=getattr(row, "created_at", None),
+        updated_at=getattr(row, "updated_at", None),
+    )
+
+
+def _run_deep_scan_background(
+    *,
+    tenant_id: UUID,
+    account_id: str,
+    dataset_id: UUID,
+    scan_run_id: UUID,
+) -> None:
+    """
+    BackgroundTasks wrapper for deep scan when the queue is disabled.
+
+    Uses a dedicated DB session and marks the run as failed on exception.
+    """
+    db = SessionLocal()
+    try:
+        run_dataset_profile_deep_scan(
+            db,
+            tenant_id=tenant_id,
+            account_id=account_id,
+            dataset_id=dataset_id,
+            scan_run_id=scan_run_id,
+        )
+    except Exception as exc:  # noqa: BLE001
+        try:
+            row = (
+                db.query(DBDatasetProfileScanRun)
+                .filter(
+                    DBDatasetProfileScanRun.id == scan_run_id,
+                    DBDatasetProfileScanRun.tenant_id == tenant_id,
+                    DBDatasetProfileScanRun.dataset_id == dataset_id,
+                )
+                .first()
+            )
+            if row is not None:
+                row.status = "failed"
+                row.error_message = str(exc)[:200]
+                db.commit()
+        except Exception:
+            pass
+    finally:
+        db.close()
+
+
+@router.get("/{dataset_id}/profile/summary", response_model=DatasetProfileSummary)
+def get_dataset_profile_summary(
+    dataset_id: UUID,
+    tenant_id: UUID = Depends(get_tenant_id),
+    account_id: str = Depends(get_current_account_id),
+    db: Session = Depends(get_db),
+):
+    summary = compute_dataset_profile_summary(
+        db,
+        tenant_id=tenant_id,
+        account_id=account_id,
+        dataset_id=dataset_id,
+    )
+    return summary
+
+
+@router.get("/{dataset_id}/profile/findings/{finding_key}", response_model=DatasetProfileFindingListResponse)
+def list_dataset_profile_finding_documents(
+    dataset_id: UUID,
+    finding_key: str,
+    skip: int = Query(default=0, ge=0),
+    limit: int = Query(default=50, ge=1, le=200),
+    tenant_id: UUID = Depends(get_tenant_id),
+    account_id: str = Depends(get_current_account_id),
+    db: Session = Depends(get_db),
+):
+    try:
+        return list_finding_documents(
+            db,
+            tenant_id=tenant_id,
+            account_id=account_id,
+            dataset_id=dataset_id,
+            finding_key=finding_key,
+            skip=int(skip or 0),
+            limit=int(limit or 50),
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)[:200]) from exc
+
+
+@router.post("/{dataset_id}/profile/scan-runs", response_model=DatasetProfileScanRunOut, status_code=201)
+async def create_dataset_profile_scan_run(
+    dataset_id: UUID,
+    body: DatasetProfileScanRunCreateRequest,
+    background_tasks: BackgroundTasks,
+    tenant_id: UUID = Depends(get_tenant_id),
+    account_id: str = Depends(get_current_account_id),
+    db: Session = Depends(get_db),
+):
+    dataset = DatasetService.get_dataset(db, tenant_id, dataset_id)
+    DatasetService.assert_dataset_writable(db, dataset, account_id)
+
+    # Prevent accidental duplicate long-running scans.
+    existing = (
+        db.query(DBDatasetProfileScanRun)
+        .filter(
+            DBDatasetProfileScanRun.tenant_id == tenant_id,
+            DBDatasetProfileScanRun.dataset_id == dataset_id,
+            DBDatasetProfileScanRun.status.in_(["pending", "running"]),
+        )
+        .order_by(DBDatasetProfileScanRun.created_at.desc())
+        .first()
+    )
+    if existing is not None:
+        raise HTTPException(status_code=409, detail="A scan run is already pending/running for this dataset")
+
+    cfg = body.model_dump(exclude_none=True)
+    row = DBDatasetProfileScanRun(
+        tenant_id=tenant_id,
+        dataset_id=dataset_id,
+        requested_by=account_id,
+        kind="deep",
+        status="pending",
+        progress=0,
+        config=cfg,
+        summary={},
+    )
+    db.add(row)
+    db.commit()
+    db.refresh(row)
+
+    job_id = f"dataset_profile_scan:{tenant_id}:{dataset_id}:{row.id}"
+    task_id = await enqueue_dataset_profile_scan(
+        tenant_id=tenant_id,
+        dataset_id=dataset_id,
+        scan_run_id=row.id,
+        requested_by=account_id,
+        job_id=job_id,
+    )
+    if not task_id:
+        # Queue disabled; run in-process after response.
+        background_tasks.add_task(
+            _run_deep_scan_background,
+            tenant_id=tenant_id,
+            account_id=account_id,
+            dataset_id=dataset_id,
+            scan_run_id=row.id,
+        )
+
+    return _scan_run_out_from_row(row)
+
+
+@router.get("/{dataset_id}/profile/scan-runs", response_model=DatasetProfileScanRunListResponse)
+def list_dataset_profile_scan_runs(
+    dataset_id: UUID,
+    skip: int = Query(default=0, ge=0),
+    limit: int = Query(default=20, ge=1, le=200),
+    tenant_id: UUID = Depends(get_tenant_id),
+    account_id: str = Depends(get_current_account_id),
+    db: Session = Depends(get_db),
+):
+    dataset = DatasetService.get_dataset(db, tenant_id, dataset_id)
+    DatasetService.assert_dataset_readable(db, dataset, account_id)
+
+    q = (
+        db.query(DBDatasetProfileScanRun)
+        .filter(DBDatasetProfileScanRun.tenant_id == tenant_id, DBDatasetProfileScanRun.dataset_id == dataset_id)
+    )
+    total = int(q.count())
+    rows = (
+        q.order_by(DBDatasetProfileScanRun.created_at.desc())
+        .offset(int(skip or 0))
+        .limit(int(limit or 20))
+        .all()
+    )
+    return DatasetProfileScanRunListResponse(total=total, items=[_scan_run_out_from_row(r) for r in rows])
+
+
+@router.get("/{dataset_id}/profile/scan-runs/{scan_run_id}", response_model=DatasetProfileScanRunOut)
+def get_dataset_profile_scan_run(
+    dataset_id: UUID,
+    scan_run_id: UUID,
+    tenant_id: UUID = Depends(get_tenant_id),
+    account_id: str = Depends(get_current_account_id),
+    db: Session = Depends(get_db),
+):
+    dataset = DatasetService.get_dataset(db, tenant_id, dataset_id)
+    DatasetService.assert_dataset_readable(db, dataset, account_id)
+
+    row = (
+        db.query(DBDatasetProfileScanRun)
+        .filter(
+            DBDatasetProfileScanRun.id == scan_run_id,
+            DBDatasetProfileScanRun.tenant_id == tenant_id,
+            DBDatasetProfileScanRun.dataset_id == dataset_id,
+        )
+        .first()
+    )
+    if row is None:
+        raise HTTPException(status_code=404, detail="Scan run not found")
+    return _scan_run_out_from_row(row)
+
+
+@router.get("/{dataset_id}/profile/export")
+def export_dataset_profile_summary(
+    dataset_id: UUID,
+    tenant_id: UUID = Depends(get_tenant_id),
+    account_id: str = Depends(get_current_account_id),
+    db: Session = Depends(get_db),
+):
+    dataset = DatasetService.get_dataset(db, tenant_id, dataset_id)
+    DatasetService.assert_dataset_readable(db, dataset, account_id)
+
+    summary = compute_dataset_profile_summary(
+        db,
+        tenant_id=tenant_id,
+        account_id=account_id,
+        dataset_id=dataset_id,
+    )
+    content = json.dumps(summary.model_dump(), ensure_ascii=False, separators=(",", ":"))
+    safe = re.sub(r"[^a-zA-Z0-9_.-]+", "_", str(getattr(dataset, "name", "") or "dataset"))[:64]
+    filename = f"{safe}.profile.json"
+    return Response(
+        content=content,
+        media_type="application/json",
+        headers={"Content-Disposition": f'attachment; filename=\"{filename}\"'},
     )
