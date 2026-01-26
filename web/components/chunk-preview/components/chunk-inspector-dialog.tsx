@@ -7,16 +7,29 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import { Pencil, RotateCcw, Save } from 'lucide-react'
+import { Copy, Pencil, RotateCcw, Save, Sparkles } from 'lucide-react'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import type { ChunkPreviewItem } from '@/types'
 import { getChunkSectionLabel } from '@/components/chunk-preview/utils/sections'
+import { usePipelineOptions } from '@/contexts/pipeline-options-context'
 
 export type ChunkOverrideDraft = {
   content: string
   metadataText: string
+}
+
+function buildEmbeddingText(content: string, meta: Record<string, any> | null, sectionFull: string | null): string {
+  const raw = String(content ?? '')
+  if (!raw) return raw
+  const header =
+    (meta && (meta.header_path || meta.outline_path_str || meta.header_context)) ||
+    sectionFull ||
+    ''
+  const headerStr = String(header || '').trim()
+  if (!headerStr) return raw
+  return `[Section] ${headerStr}\n${raw}`
 }
 
 export function ChunkInspectorDialog({
@@ -38,6 +51,7 @@ export function ChunkInspectorDialog({
   onSave: (payload: { content: string; metadata: Record<string, any> }) => void
   onReset: () => void
 }) {
+  const pipelineCtx = usePipelineOptions()
   const [content, setContent] = useState('')
   const [metadataText, setMetadataText] = useState('{}')
   const sectionLabel = useMemo(() => (chunk ? getChunkSectionLabel(chunk) : null), [chunk])
@@ -75,6 +89,13 @@ export function ChunkInspectorDialog({
   const metadataError = metadataParse.error
 
   const disabled = !chunk || index == null
+  const embeddingPrefixEnabled = Boolean(pipelineCtx.enabled && pipelineCtx.options.embedding_context_prefix_enabled)
+  const embeddingText = useMemo(() => {
+    if (!embeddingPrefixEnabled) return String(content ?? '')
+    const meta = (parsedMetadata || chunk?.metadata || null) as Record<string, any> | null
+    const sectionFull = sectionLabel?.full || null
+    return buildEmbeddingText(String(content ?? ''), meta, sectionFull)
+  }, [chunk?.metadata, content, embeddingPrefixEnabled, parsedMetadata, sectionLabel?.full])
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -129,6 +150,48 @@ export function ChunkInspectorDialog({
               aria-invalid={metadataError ? 'true' : undefined}
               disabled={disabled}
             />
+          </div>
+
+          <div className="grid gap-1">
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <Sparkles className="w-4 h-4 text-primary" />
+                <div className="text-xs font-medium text-muted-foreground">embedding text (vector-only)</div>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-[11px] text-muted-foreground">
+                  {embeddingPrefixEnabled ? 'prefix: on' : 'prefix: off'}
+                </span>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  className="h-7 px-2 text-[11px]"
+                  onClick={async () => {
+                    try {
+                      await navigator.clipboard.writeText(embeddingText || '')
+                    } catch {
+                      // ignore
+                    }
+                  }}
+                  disabled={disabled || !embeddingText}
+                  aria-label="复制 embedding text"
+                  title="复制 embedding text"
+                >
+                  <Copy className="w-3.5 h-3.5 mr-1.5" />
+                  复制
+                </Button>
+              </div>
+            </div>
+            <Textarea
+              value={embeddingText}
+              readOnly
+              className="min-h-[140px] font-mono text-[12px] bg-muted/30"
+              disabled={disabled}
+            />
+            <div className="text-[11px] text-muted-foreground">
+              当启用 “Embedding · 结构化上下文前缀” 时，入库向量 embedding 会使用该文本；不会改变原文定位与 chunk.content（DB）。
+            </div>
           </div>
         </div>
 

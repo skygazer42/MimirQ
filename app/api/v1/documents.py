@@ -44,6 +44,7 @@ from app.api.schemas.document import (
     ChunkPreviewItem,
     ChunkPreviewStats,
     ChunkPreviewQualityGate,
+    ChunkPreviewRecommendationPatch,
     ChunkPreviewReviewSignals,
     ChunkPreviewResponse,
     BatchUploadRequest,
@@ -829,9 +830,12 @@ def _compute_chunk_preview_quality(
     stats: ChunkPreviewStats,
     total_chunks: int,
     total_characters: int,
+    chunk_size: int,
+    chunk_overlap: int,
     original_text_included: bool,
     original_text_truncated: bool,
-) -> tuple[ChunkPreviewQualityGate, list[str]]:
+    original_text_max_chars: int,
+) -> tuple[ChunkPreviewQualityGate, list[str], list[ChunkPreviewRecommendationPatch]]:
     """
     Enterprise-friendly quality gate (heuristics; best-effort).
 
@@ -848,6 +852,30 @@ def _compute_chunk_preview_quality(
 
     reasons: list[str] = []
     recs: list[str] = []
+    patches: list[ChunkPreviewRecommendationPatch] = []
+
+    def _add_patch(
+        *,
+        id: str,
+        title: str,
+        description: str,
+        target: Literal["preview", "pipeline", "perf"],
+        patch: dict[str, Any],
+    ) -> None:
+        if not patch:
+            return
+        try:
+            patches.append(
+                ChunkPreviewRecommendationPatch(
+                    id=str(id)[:80],
+                    title=str(title)[:120],
+                    description=str(description)[:400],
+                    target=target,
+                    patch=patch,
+                )
+            )
+        except Exception:
+            return
 
     if count <= 0:
         reasons.append("no chunks produced")
@@ -882,19 +910,82 @@ def _compute_chunk_preview_quality(
     if waste_ratio > 0.60:
         reasons.append(f"high overlap waste ({waste_ratio:.0%})")
         recs.append("Reduce chunk_overlap to lower duplicated embedding work.")
+        if int(chunk_overlap or 0) > 0 and int(chunk_size or 0) > 0:
+            target_overlap = int(round(int(chunk_size) * 0.15))
+            target_overlap = max(0, min(1000, target_overlap))
+            if target_overlap >= int(chunk_size):
+                target_overlap = max(0, int(chunk_size) - 1)
+            if target_overlap != int(chunk_overlap):
+                _add_patch(
+                    id="reduce_overlap",
+                    title="Reduce overlap",
+                    description="High overlap waste; reduce chunk_overlap (vector cost control).",
+                    target="preview",
+                    patch={"chunk_overlap": target_overlap},
+                )
     elif waste_ratio > 0.35:
         reasons.append(f"overlap waste ({waste_ratio:.0%})")
         recs.append("Consider reducing chunk_overlap (enterprise cost control).")
+        if int(chunk_overlap or 0) > 0 and int(chunk_size or 0) > 0:
+            target_overlap = int(round(int(chunk_size) * 0.2))
+            target_overlap = max(0, min(1000, target_overlap))
+            if target_overlap >= int(chunk_size):
+                target_overlap = max(0, int(chunk_size) - 1)
+            if target_overlap != int(chunk_overlap):
+                _add_patch(
+                    id="tune_overlap",
+                    title="Tune overlap",
+                    description="Moderate overlap waste; consider lowering chunk_overlap.",
+                    target="preview",
+                    patch={"chunk_overlap": target_overlap},
+                )
 
     if int(total_chunks or 0) > 10_000:
         reasons.append("too many chunks (>10k)")
         recs.append("Increase chunk_size or switch strategy; very high chunk counts hurt latency and cost.")
+        if int(chunk_size or 0) > 0:
+            target_size = min(4000, int(round(int(chunk_size) * 1.5)))
+            if target_size != int(chunk_size):
+                ratio = (int(chunk_overlap) / int(chunk_size)) if int(chunk_size) > 0 else 0.2
+                target_overlap = int(round(target_size * ratio))
+                target_overlap = max(0, min(1000, min(target_overlap, target_size - 1)))
+                _add_patch(
+                    id="increase_chunk_size",
+                    title="Increase chunk_size",
+                    description="Chunk count is very high; increase chunk_size to reduce indexing and retrieval overhead.",
+                    target="preview",
+                    patch={"chunk_size": target_size, "chunk_overlap": target_overlap},
+                )
     elif int(total_chunks or 0) > 5_000:
         reasons.append("many chunks (>5k)")
         recs.append("Consider increasing chunk_size to reduce chunk count.")
+        if int(chunk_size or 0) > 0:
+            target_size = min(4000, int(round(int(chunk_size) * 1.25)))
+            if target_size != int(chunk_size):
+                ratio = (int(chunk_overlap) / int(chunk_size)) if int(chunk_size) > 0 else 0.2
+                target_overlap = int(round(target_size * ratio))
+                target_overlap = max(0, min(1000, min(target_overlap, target_size - 1)))
+                _add_patch(
+                    id="increase_chunk_size_light",
+                    title="Increase chunk_size (light)",
+                    description="Chunk count is high; consider increasing chunk_size.",
+                    target="preview",
+                    patch={"chunk_size": target_size, "chunk_overlap": target_overlap},
+                )
 
     if original_text_truncated and not original_text_included:
         recs.append("Original text omitted due to size; increase original_text_max_chars if you need precise highlighting.")
+        cur_max = max(0, int(original_text_max_chars or 0))
+        if cur_max and cur_max < 2_000_000:
+            target_max = min(2_000_000, max(cur_max * 2, 120_000))
+            if target_max != cur_max:
+                _add_patch(
+                    id="increase_original_text_max_chars",
+                    title="Increase original_text_max_chars",
+                    description="Original text was omitted; increase the max to enable precise highlighting.",
+                    target="perf",
+                    patch={"original_text_max_chars": int(target_max), "include_original_text": True},
+                )
 
     # Grade: fail if any hard reasons, warn if any reasons, otherwise pass.
     grade: Literal["pass", "warn", "fail"] = "pass"
@@ -914,7 +1005,21 @@ def _compute_chunk_preview_quality(
         seen.add(key)
         deduped.append(key)
 
-    return ChunkPreviewQualityGate(grade=grade, reasons=reasons[:10]), deduped[:10]
+    # Best-effort extra patch: duplicates -> suggest governance-based dedup.
+    if dup_ratio > 0.15:
+        _add_patch(
+            id="enable_governance_drop_duplicate_paragraphs",
+            title="Enable duplicate paragraph drop",
+            description="Many duplicate chunks; consider enabling governance_drop_duplicate_paragraphs to reduce repetition.",
+            target="pipeline",
+            patch={"governance_enabled": True, "governance_drop_duplicate_paragraphs": True},
+        )
+
+    return (
+        ChunkPreviewQualityGate(grade=grade, reasons=reasons[:10]),
+        deduped[:10],
+        patches[:10],
+    )
 
 
 def _to_pipeline_options(
@@ -4221,12 +4326,15 @@ async def preview_chunking(
             and original_text_value is None
             and total_characters > int(original_text_max_chars or 0)
         )
-        quality_gate, recommendations = _compute_chunk_preview_quality(
+        quality_gate, recommendations, recommendation_patches = _compute_chunk_preview_quality(
             stats=stats,
             total_chunks=len(chunks),
             total_characters=int(total_characters or 0),
+            chunk_size=int(chunk_size or 0),
+            chunk_overlap=int(effective_chunk_overlap or 0),
             original_text_included=original_text_value is not None,
             original_text_truncated=original_text_truncated_val,
+            original_text_max_chars=int(original_text_max_chars or 0),
         )
 
         review_signals: ChunkPreviewReviewSignals | None = None

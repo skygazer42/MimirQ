@@ -82,6 +82,46 @@ def _ensure_chunk_metadata(
     return meta
 
 
+def _should_prefix_embedding(meta: Dict[str, Any]) -> bool:
+    """Best-effort filter: avoid prefixing non-text assets (images/tables)."""
+    doc_type = str(meta.get("doc_type_kwd") or "").strip().lower()
+    if doc_type in {"image", "table"}:
+        return False
+    if meta.get("image") is not None:
+        return False
+    if meta.get("img_id") or meta.get("image_id") or meta.get("image_url"):
+        return False
+    return True
+
+
+def _build_embedding_text(content: str, meta: Dict[str, Any], *, max_prefix_chars: int = 180) -> str:
+    """
+    Build the text used for embedding (vector similarity).
+
+    Rationale: add lightweight structural context (e.g. header_path/outline path) to reduce
+    "contextless fragments" without changing stored chunk content (DB) or offsets.
+    """
+    if not content:
+        return content
+    if not _should_prefix_embedding(meta):
+        return content
+
+    header = meta.get("header_path") or meta.get("outline_path_str") or meta.get("header_context") or None
+    if header is None:
+        # Some chunkers store outline/header as list.
+        header_list = meta.get("outline_path") or meta.get("header_path_list") or None
+        if isinstance(header_list, list) and header_list:
+            header = " / ".join([str(x).strip() for x in header_list if str(x).strip()][:10])
+
+    header_str = str(header or "").strip()
+    if not header_str:
+        return content
+
+    header_str = header_str[: max(20, int(max_prefix_chars or 0))]
+    prefix = f"[Section] {header_str}\n"
+    return prefix + content
+
+
 class Indexer:
     """
     Unified Indexer for chunk/event indexing.
@@ -241,12 +281,15 @@ class Indexer:
         normalized_chunks: List[ChunkInput] = []
         vector_docs: List[Dict[str, Any]] = []
         chunk_ids: List[UUID] = []
+        embedding_prefix_enabled = bool(getattr(options, "embedding_context_prefix_enabled", False)) if options else False
         for idx, c in enumerate(chunks):
             meta = dict(c.metadata or {})
             meta.setdefault("index_kind", IndexKind.CHUNK.value)
             meta.setdefault("tenant_id", str(tenant_id))
             meta.setdefault("document_id", str(document_id))
             meta.setdefault("source", source)
+            if embedding_prefix_enabled:
+                meta.setdefault("embedding_context_prefix_enabled", True)
             meta = _ensure_chunk_metadata(meta, content=c.content or "", document_id=document_id, chunk_index=idx)
             # Ensure every chunk has a stable UUID for cross-system linking.
             chunk_id = _safe_uuid(meta.get("chunk_id")) or uuid.uuid4()
@@ -261,7 +304,8 @@ class Indexer:
                     end_char=c.end_char,
                 )
             )
-            vector_docs.append({"content": c.content, "metadata": meta})
+            embed_text = _build_embedding_text(c.content or "", meta) if embedding_prefix_enabled else (c.content or "")
+            vector_docs.append({"content": embed_text, "metadata": meta})
 
         vector_ids = self._index_chunk_vectors(
             vector_docs,
@@ -325,6 +369,7 @@ class Indexer:
         normalized_chunks: List[ChunkInput] = []
         vector_docs: List[Dict[str, Any]] = []
         chunk_ids: List[UUID] = []
+        embedding_prefix_enabled = bool(getattr(options, "embedding_context_prefix_enabled", False)) if options else False
         
         for c in chunks:
             meta = dict(c.metadata or {})
@@ -332,6 +377,8 @@ class Indexer:
             meta.setdefault("tenant_id", str(tenant_id))
             meta.setdefault("document_id", str(document_id))
             meta.setdefault("source", source)
+            if embedding_prefix_enabled:
+                meta.setdefault("embedding_context_prefix_enabled", True)
             chunk_id = _safe_uuid(meta.get("chunk_id")) or uuid.uuid4()
             meta["chunk_id"] = str(chunk_id)
             chunk_ids.append(chunk_id)
@@ -344,7 +391,8 @@ class Indexer:
                     end_char=c.end_char,
                 )
             )
-            vector_docs.append({"content": c.content, "metadata": meta})
+            embed_text = _build_embedding_text(c.content or "", meta) if embedding_prefix_enabled else (c.content or "")
+            vector_docs.append({"content": embed_text, "metadata": meta})
         
         # Run in parallel: vector indexing + PostgreSQL persistence.
         enable_vectors = self._resolve_chunk_vector_enabled(options)

@@ -145,6 +145,7 @@ export interface DocumentPipelineOptions {
   near_dedup_max_bucket_size?: number
   chunk_size?: number
   chunk_overlap?: number
+  embedding_context_prefix_enabled?: boolean
   chunk_vector_enabled?: boolean
   bm25_index_enabled?: boolean
   kg_enabled?: boolean

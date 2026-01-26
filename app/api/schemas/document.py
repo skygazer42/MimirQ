@@ -86,6 +86,10 @@ class DocumentPipelineOptions(BaseModel):
     near_dedup_max_bucket_size: Optional[int] = Field(default=None, ge=8, le=100_000, description="Max bucket size for near-dup index")
     chunk_size: Optional[int] = Field(default=None, ge=100, le=4000, description="Chunk size")
     chunk_overlap: Optional[int] = Field(default=None, ge=0, le=1000, description="Overlap size")
+    embedding_context_prefix_enabled: Optional[bool] = Field(
+        default=None,
+        description="Prefix chunk content with lightweight structural context (e.g. header_path) before embedding (vector-only).",
+    )
     chunk_vector_enabled: Optional[bool] = None
     bm25_index_enabled: Optional[bool] = None
     kg_enabled: Optional[bool] = None
@@ -377,6 +381,16 @@ class ChunkPreviewQualityGate(BaseModel):
     reasons: List[str] = Field(default_factory=list)
 
 
+class ChunkPreviewRecommendationPatch(BaseModel):
+    """Structured, actionable recommendation (best-effort)."""
+
+    target: Literal["preview", "pipeline", "perf"] = "preview"
+    id: str = Field(..., min_length=1, max_length=80)
+    title: str = Field(..., min_length=1, max_length=120)
+    description: str = Field(default="", max_length=400)
+    patch: Dict[str, Any] = Field(default_factory=dict, description="Patch object; shape depends on target.")
+
+
 class ChunkPreviewReviewSignals(BaseModel):
     """Optional per-chunk review signals for enterprise tuning/auditing."""
 
@@ -426,6 +440,7 @@ class ChunkPreviewResponse(BaseModel):
     # Best-effort quality gate and actionable recommendations.
     quality_gate: Optional[ChunkPreviewQualityGate] = None
     recommendations: List[str] = Field(default_factory=list)
+    recommendation_patches: List[ChunkPreviewRecommendationPatch] = Field(default_factory=list)
     # Original text for frontend highlighting.
     original_text: Optional[str] = None
     # Best-effort metadata for UI (whether original_text was omitted due to size limit).

@@ -930,6 +930,15 @@ class HybridRetriever(BaseRetriever):
                     meta["chunk_id"] = cid_str
                     chunks_by_id[cid_str] = ck
 
+                    # Use DB content as the source of truth for downstream citations/highlighting.
+                    # Vector backends may store transformed text (e.g., embedding-only prefixes).
+                    try:
+                        db_content = ck.content or ""
+                        if isinstance(db_content, str) and db_content and r.get("content") != db_content:
+                            r["content"] = db_content
+                    except Exception:
+                        pass
+
                     # Merge DB metadata (only fill empty fields, avoid overwriting vector-side score etc.)
                     stored_meta = dict(ck.doc_metadata or {})
                     if stored_meta.get("img_id") and not meta.get("img_id"):

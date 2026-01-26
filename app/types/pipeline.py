@@ -68,6 +68,9 @@ class PipelineOptions:
     near_dedup_max_bucket_size: Optional[int] = None
     chunk_size: Optional[int] = None
     chunk_overlap: Optional[int] = None
+    # When enabled, prefix chunk content with lightweight structural context (e.g. header_path)
+    # before computing embeddings. Does not change stored chunk.content (DB); affects vector similarity only.
+    embedding_context_prefix_enabled: Optional[bool] = None
     chunk_vector_enabled: Optional[bool] = None
     bm25_index_enabled: Optional[bool] = None
     kg_enabled: Optional[bool] = None
@@ -131,6 +134,7 @@ class PipelineEffective:
     near_dedup_max_bucket_size: int
     chunk_size: int
     chunk_overlap: int
+    embedding_context_prefix_enabled: bool
     chunk_vector_enabled: bool
     bm25_index_enabled: bool
     kg_enabled: bool
