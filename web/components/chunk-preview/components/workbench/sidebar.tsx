@@ -734,6 +734,7 @@ export function Sidebar({ variant = 'panel' }: { variant?: 'panel' | 'dialog' } 
 	              open={ingestionDetailsOpen}
 	              onOpenChange={setIngestionDetailsOpen}
 	              preview={ingestionPreview}
+	              datasetId={datasetId}
 	              onApplyPipelinePatch={(patch) => {
 	                pipelineCtx.setEnabled(true)
 	                for (const [k, v] of Object.entries(patch || {})) {
