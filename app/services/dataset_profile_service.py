@@ -76,6 +76,11 @@ FINDING_KEY_REASONS: dict[str, dict[str, Any]] = {
         "severity": "info",
         "description": "near_dedup 在入库时丢弃了跨文档近重复 chunk（可用于质量排查）。",
     },
+    "exact_dup": {
+        "label": "完全重复文件（需 hash）",
+        "severity": "info",
+        "description": "基于 file_sha256 的完全重复候选。可在“深度扫描”中开启 compute_file_hash 补齐。",
+    },
 }
 
 
@@ -249,6 +254,7 @@ def compute_dataset_profile_summary(
 
     # Findings counters.
     finding_counts: dict[str, int] = {k: 0 for k in FINDING_KEY_REASONS.keys()}
+    sha_counts: Counter[str] = Counter()
 
     for row in rows.yield_per(1000):
         _doc_id, filename, file_type, file_size, status, _chunk_count, total_chars, _err, meta = row
@@ -308,6 +314,18 @@ def compute_dataset_profile_summary(
 
         if _has_near_dedup(meta_dict):
             finding_counts["near_dedup"] += 1
+
+        sha = str(meta_dict.get("file_sha256") or "").strip().lower()
+        if sha:
+            sha_counts[sha] += 1
+
+    # Exact duplicates (requires file_sha256 to be present).
+    if sha_counts:
+        dup_total = 0
+        for _sha, cnt in sha_counts.items():
+            if int(cnt) > 1:
+                dup_total += int(cnt)
+        finding_counts["exact_dup"] = int(dup_total)
 
     # Percentiles.
     lengths.sort()
@@ -433,6 +451,18 @@ def apply_finding_filter(
     if key == "near_dedup":
         return query.filter(func.coalesce(DBDocument.doc_metadata["near_dedup"]["dropped"].as_integer(), 0) > 0)
 
+    if key == "exact_dup":
+        # Subquery: file_sha256 with count>1 within the dataset scope.
+        sha_expr = DBDocument.doc_metadata["file_sha256"].as_string()
+        dup_subq = (
+            query.with_entities(sha_expr.label("sha"), func.count(DBDocument.id).label("cnt"))
+            .filter(sha_expr.is_not(None))
+            .group_by(sha_expr)
+            .having(func.count(DBDocument.id) > 1)
+            .subquery()
+        )
+        return query.filter(sha_expr.in_(select(dup_subq.c.sha)))
+
     return query
 
 
@@ -481,4 +511,3 @@ def list_finding_documents(
             )
         )
     return DatasetProfileFindingListResponse(total=total, items=out_items)
-
