@@ -776,6 +776,16 @@ export default function DatasetIngestionPolicyPage() {
               <RefreshCw className={cn('w-4 h-4', loading && 'animate-spin motion-reduce:animate-none')} />
               刷新
             </Button>
+            {datasetId ? (
+              <Button
+                variant="outline"
+                onClick={() => router.push(`/datasets/${datasetId}/profile`)}
+                className="gap-2"
+              >
+                <BarChart3 className="w-4 h-4" />
+                数据画像
+              </Button>
+            ) : null}
             <Button variant="outline" onClick={handleExport} className="gap-2">
               <Download className="w-4 h-4" />
               导出脚本
