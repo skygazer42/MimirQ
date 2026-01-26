@@ -78,6 +78,12 @@ def apply_runtime_migrations(engine) -> None:
             # Store per-message run metadata (metrics/request_id/route/etc.)
             'ALTER TABLE messages ADD COLUMN IF NOT EXISTS message_metadata JSONB;',
 
+            # =========================
+            # Document-level ACL ("security trimming")
+            # =========================
+            'ALTER TABLE documents ADD COLUMN IF NOT EXISTS owner_id VARCHAR(255);',
+            'ALTER TABLE documents ADD COLUMN IF NOT EXISTS access_mode VARCHAR(50);',
+
             # Datasets: store pipeline/governance defaults in metadata
             "ALTER TABLE datasets ADD COLUMN IF NOT EXISTS metadata JSONB DEFAULT '{}'::jsonb;",
 
@@ -126,6 +132,27 @@ def apply_runtime_migrations(engine) -> None:
             'ON datasets (tenant_id, updated_at);',
             'CREATE INDEX IF NOT EXISTS ix_dataset_permissions_tenant_account_id '
             'ON dataset_permissions (tenant_id, account_id);',
+            # Document ACL allowlist checks
+            'CREATE INDEX IF NOT EXISTS ix_document_permissions_tenant_account_id '
+            'ON document_permissions (tenant_id, account_id);',
+            'CREATE INDEX IF NOT EXISTS ix_document_permissions_tenant_document_id '
+            'ON document_permissions (tenant_id, document_id);',
+            'CREATE INDEX IF NOT EXISTS ix_documents_tenant_owner_id '
+            'ON documents (tenant_id, owner_id);',
+            'CREATE INDEX IF NOT EXISTS ix_documents_tenant_access_mode '
+            'ON documents (tenant_id, access_mode);',
+
+            # =========================
+            # Connector runs (ingestion framework)
+            # =========================
+            'CREATE INDEX IF NOT EXISTS ix_connector_runs_tenant_created_at '
+            'ON connector_runs (tenant_id, created_at);',
+            'CREATE INDEX IF NOT EXISTS ix_connector_runs_tenant_status_created_at '
+            'ON connector_runs (tenant_id, status, created_at);',
+            'CREATE INDEX IF NOT EXISTS ix_connector_run_documents_tenant_run '
+            'ON connector_run_documents (tenant_id, run_id);',
+            'CREATE INDEX IF NOT EXISTS ix_connector_run_documents_tenant_document '
+            'ON connector_run_documents (tenant_id, document_id);',
 
             # KG (optional): lookups by tenant/doc and join table hot paths
             'CREATE INDEX IF NOT EXISTS ix_kg_source_events_tenant_document '

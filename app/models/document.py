@@ -4,7 +4,7 @@ Document-related database models (multi-tenant support)
 Defines document and document chunk table structures.
 """
 import uuid
-from sqlalchemy import Column, String, Integer, BigInteger, DateTime, Text, ForeignKey
+from sqlalchemy import Column, String, Integer, BigInteger, DateTime, Text, ForeignKey, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
@@ -25,6 +25,16 @@ class Document(Base):
     file_type = Column(String(10), nullable=False)  # pdf, md, txt
     file_size = Column(BigInteger, nullable=False)
     file_path = Column(String(1000), nullable=False)
+
+    # Document-level access control (enterprise-style "security trimming").
+    # - owner_id: account/user id that "owns" the document (typically uploader/connector requester).
+    # - access_mode:
+    #   - NULL / "inherit": use dataset permissions only (default)
+    #   - "only_me": owner only
+    #   - "partial_members": owner + allowlist in `document_permissions`
+    #   - "all_team_members": allow all tenant members (still bounded by dataset permission)
+    owner_id = Column(String(255), nullable=True)
+    access_mode = Column(String(50), nullable=True)
 
     # Processing status
     status = Column(String(20), nullable=False, default='pending')  # pending | processing | completed | failed
@@ -52,6 +62,24 @@ class Document(Base):
         cascade="all, delete-orphan",
         uselist=False,
     )
+    permissions = relationship("DocumentPermission", back_populates="document", cascade="all, delete-orphan")
+
+
+class DocumentPermission(Base):
+    """Document partial member permissions (document-level ACL allowlist)."""
+
+    __tablename__ = "document_permissions"
+    __table_args__ = (
+        UniqueConstraint("document_id", "account_id", name="uq_document_permission_member"),
+    )
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id = Column(UUID(as_uuid=True), nullable=False, index=True)
+    document_id = Column(UUID(as_uuid=True), ForeignKey("documents.id", ondelete="CASCADE"), nullable=False, index=True)
+    account_id = Column(String(255), nullable=False, index=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    document = relationship("Document", back_populates="permissions")
 
 
 class DocumentChunk(Base):
