@@ -1313,10 +1313,28 @@ export interface MilvusConfig {
 export interface RAGConfig {
   chunk_size: number
   chunk_overlap: number
+  chunk_min_chars: number
   retrieval_top_k: number
   similarity_threshold: number
   default_parser_backend: string
   default_chunk_strategy: string
+  bm25_index_enabled: boolean
+  enable_reranker: boolean
+}
+
+export interface UrlIngestConfig {
+  enabled: boolean
+  max_bytes: number
+  timeout_sec: number
+  allow_private_ips: boolean
+  follow_redirects: boolean
+}
+
+export interface GovernanceConfig {
+  enabled: boolean
+  pii_anonymize: boolean
+  secrets_redact: boolean
+  quarantine_on_drop: boolean
 }
 
 export interface MinerUConfig {
@@ -1380,6 +1398,8 @@ export interface SystemSettings {
   embedding: EmbeddingConfig
   milvus: MilvusConfig
   rag: RAGConfig
+  url_ingest: UrlIngestConfig
+  governance: GovernanceConfig
   mineru: MinerUConfig
   etl4llm: Etl4LlmConfig
   marker: MarkerConfig

@@ -213,6 +213,11 @@ export default function SettingsPage() {
   const [editedSettings, setEditedSettings] = useState<Partial<SystemSettings>>({})
   const [showSecrets, setShowSecrets] = useState<Record<string, boolean>>({})
 
+  const ragMerged = useMemo(
+    () => ({ ...(settings?.rag ?? {}), ...(editedSettings.rag ?? {}) }) as Partial<SystemSettings['rag']>,
+    [settings?.rag, editedSettings.rag]
+  )
+
   // 加载配置
   useEffect(() => {
     loadSettings()
@@ -314,6 +319,12 @@ export default function SettingsPage() {
     const current = (editedSettings.paddle_vl || settings?.paddle_vl || DEFAULT_PADDLE_VL) as PaddleVLConfig
     const next = { ...current, ...patch }
     setEditedSettings((prev) => ({ ...prev, paddle_vl: next }))
+  }
+
+  const updateRag = (patch: Partial<SystemSettings['rag']>) => {
+    const current = (editedSettings.rag || settings?.rag || {}) as SystemSettings['rag']
+    const next = { ...current, ...patch }
+    setEditedSettings((prev) => ({ ...prev, rag: next as any }))
   }
 
   // 检查是否有未保存的更改
