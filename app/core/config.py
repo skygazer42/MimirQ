@@ -134,6 +134,14 @@ class Settings(BaseSettings):
 
     UPLOAD_DIR: str = "./uploads"
     MAX_FILE_SIZE: int = 50_000_000
+    # Optional: ingest documents by fetching a remote URL (connector skeleton).
+    URL_INGEST_ENABLED: bool = False
+    URL_INGEST_MAX_BYTES: int = 50_000_000
+    URL_INGEST_TIMEOUT_SEC: float = 30.0
+    # Security: disallow private/loopback/link-local hosts by default (SSRF guard).
+    URL_INGEST_ALLOW_PRIVATE_IPS: bool = False
+    # Security: do not follow redirects by default (avoid redirect-to-private SSRF).
+    URL_INGEST_FOLLOW_REDIRECTS: bool = False
     # Max JSON size (chars) for `pipeline` form field on multipart endpoints (documents upload/preview).
     PIPELINE_FORM_JSON_MAX_CHARS: int = 200_000
     # Best-effort in-process parse cache for interactive preview endpoints (e.g. /documents/chunk-preview).
@@ -271,6 +279,9 @@ class Settings(BaseSettings):
     CHUNK_OVERLAP: int = 200
     # Drop extremely short chunks during indexing (0 disables).
     CHUNK_MIN_CHARS: int = 30
+    # Optional: merge extremely short chunks with neighbors before indexing (0 disables).
+    # This helps reduce "over-fragmentation" in some structured splitters.
+    CHUNK_MERGE_SMALL_MIN_CHARS: int = 0
     # Guardrail: cap chunk count per document during ingest (0 disables).
     # Useful for huge PDFs that would otherwise generate excessive chunks and indexing load.
     MAX_CHUNKS_PER_DOCUMENT: int = 0
@@ -315,6 +326,13 @@ class Settings(BaseSettings):
     RAG_CONTEXT_NEIGHBOR_WINDOW: int = 0
     # Max number of neighbor chunks to add in total (0 disables the cap).
     RAG_CONTEXT_NEIGHBOR_MAX_ADDED: int = 20
+    # Optional: parent-child auto merge (retrieve children, return/append parents).
+    RAG_PARENT_CHILD_AUTO_MERGE_ENABLED: bool = False
+    # - replace: collapse multiple children under the same parent into one parent chunk
+    # - append: keep children and append the parent chunk (deduped)
+    RAG_PARENT_CHILD_AUTO_MERGE_MODE: str = "replace"
+    RAG_PARENT_CHILD_AUTO_MERGE_MIN_CHILDREN: int = 2
+    RAG_PARENT_CHILD_AUTO_MERGE_MAX_PARENTS: int = 20
     # Context evidence extraction (query-focused sentence selection)
     RAG_CONTEXT_EVIDENCE_ENABLED: bool = False
     RAG_CONTEXT_EVIDENCE_MAX_SENTENCES_PER_CHUNK: int = 6
