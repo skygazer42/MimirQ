@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime, timezone
 import uuid
 
 from fastapi import FastAPI
@@ -7,6 +8,7 @@ from fastapi.testclient import TestClient
 
 from app.api.dependencies.auth import get_current_account_id
 from app.api.dependencies.tenant import get_tenant_id
+from app.api.schemas.document import DocumentDetail
 from app.core.database import get_db
 
 
@@ -18,6 +20,16 @@ class _DummyDB:
         return None
 
     def refresh(self, obj) -> None:  # noqa: ANN001
+        # Our unit test uses a dummy DB; mimic a few DB defaults needed by the response_model.
+        if getattr(obj, "chunk_count", None) is None:
+            obj.chunk_count = 0
+        if getattr(obj, "total_characters", None) is None:
+            obj.total_characters = 0
+        now = datetime.now(timezone.utc)
+        if getattr(obj, "created_at", None) is None:
+            obj.created_at = now
+        if getattr(obj, "updated_at", None) is None:
+            obj.updated_at = now
         return None
 
 
@@ -70,7 +82,8 @@ def test_documents_upload_url_happy_path(monkeypatch, tmp_path):  # noqa: ANN001
     app.dependency_overrides[get_db] = _override_get_db
     app.dependency_overrides[get_tenant_id] = _override_get_tenant_id
     app.dependency_overrides[get_current_account_id] = _override_get_current_account_id
-    app.post("/api/v1/documents/upload-url", status_code=201)(upload_document_from_url)
+    # Mirror the real API contract: metadata should be exposed under `metadata` (alias of ORM `doc_metadata`).
+    app.post("/api/v1/documents/upload-url", status_code=201, response_model=DocumentDetail)(upload_document_from_url)
     client = TestClient(app)
 
     res = client.post(
