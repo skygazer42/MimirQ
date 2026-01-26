@@ -204,41 +204,20 @@ def build_dataset_documents_query(
     return dataset, query
 
 
-def compute_dataset_profile_summary(
-    db: Session,
+def aggregate_profile_from_rows(
     *,
-    tenant_id: UUID,
-    account_id: str,
     dataset_id: UUID,
+    rows: Iterable[tuple],
+    latest_scan_run: DatasetProfileScanRunSummary | None = None,
     density_threshold: float = 0.12,
     image_threshold: int = 8,
 ) -> DatasetProfileSummary:
     """
-    Compute a best-effort dataset profile summary.
+    Pure aggregation helper for dataset profile summary.
 
-    Notes:
-    - This is designed to be reasonably fast; it only uses persisted document stats/metadata.
-    - Heavy re-parsing / hashing is done in deep scan jobs.
+    `rows` must yield tuples matching the `with_entities(...)` shape used by
+    `compute_dataset_profile_summary`.
     """
-    _dataset, query = build_dataset_documents_query(db, tenant_id=tenant_id, account_id=account_id, dataset_id=dataset_id)
-
-    # Stream results to keep memory bounded for large corpora.
-    rows = (
-        query.with_entities(
-            DBDocument.id,
-            DBDocument.filename,
-            DBDocument.file_type,
-            DBDocument.file_size,
-            DBDocument.status,
-            DBDocument.chunk_count,
-            DBDocument.total_characters,
-            DBDocument.error_message,
-            DBDocument.doc_metadata,
-        )
-        .execution_options(stream_results=True)
-        .enable_eagerloads(False)
-    )
-
     by_status: Counter[str] = Counter()
     by_type: Counter[str] = Counter()
     total_size = 0
@@ -256,7 +235,7 @@ def compute_dataset_profile_summary(
     finding_counts: dict[str, int] = {k: 0 for k in FINDING_KEY_REASONS.keys()}
     sha_counts: Counter[str] = Counter()
 
-    for row in rows.yield_per(1000):
+    for row in rows:
         _doc_id, filename, file_type, file_size, status, _chunk_count, total_chars, _err, meta = row
         ft = _normalize_file_type(file_type, filename)
         st = str(status or "").strip().lower() or "unknown"
@@ -355,6 +334,43 @@ def compute_dataset_profile_summary(
             )
         )
 
+    now = datetime.now(timezone.utc)
+    return DatasetProfileSummary(
+        dataset_id=dataset_id,
+        generated_at=now,
+        total_documents=int(sum(by_status.values())),
+        total_size_bytes=int(total_size),
+        by_status={k: int(v) for k, v in by_status.items()},
+        by_file_type={k: int(v) for k, v in by_type.items()},
+        file_size_histogram=size_hist,
+        length_percentiles=percentiles,
+        length_histogram=length_hist,
+        pdf_scan=DatasetProfilePdfScanStats(scanned=pdf_scanned, not_scanned=pdf_not_scanned, unknown=pdf_unknown),
+        pii_hits_total={k: int(v) for k, v in pii_totals.items()},
+        secrets_hits_total={k: int(v) for k, v in secrets_totals.items()},
+        findings=findings_out,
+        latest_scan_run=latest_scan_run,
+    )
+
+
+def compute_dataset_profile_summary(
+    db: Session,
+    *,
+    tenant_id: UUID,
+    account_id: str,
+    dataset_id: UUID,
+    density_threshold: float = 0.12,
+    image_threshold: int = 8,
+) -> DatasetProfileSummary:
+    """
+    Compute a best-effort dataset profile summary.
+
+    Notes:
+    - This is designed to be reasonably fast; it only uses persisted document stats/metadata.
+    - Heavy re-parsing / hashing is done in deep scan jobs.
+    """
+    _dataset, query = build_dataset_documents_query(db, tenant_id=tenant_id, account_id=account_id, dataset_id=dataset_id)
+
     # Best-effort latest deep scan run.
     latest_run: DatasetProfileScanRunSummary | None = None
     try:
@@ -374,27 +390,34 @@ def compute_dataset_profile_summary(
                 created_at=getattr(row, "created_at", None),
                 started_at=getattr(row, "started_at", None),
                 finished_at=getattr(row, "finished_at", None),
-                error_message=getattr(row, "error_message", None),
-            )
+                    error_message=getattr(row, "error_message", None),
+                )
     except Exception:
         latest_run = None
 
-    now = datetime.now(timezone.utc)
-    return DatasetProfileSummary(
+    rows = (
+        query.with_entities(
+            DBDocument.id,
+            DBDocument.filename,
+            DBDocument.file_type,
+            DBDocument.file_size,
+            DBDocument.status,
+            DBDocument.chunk_count,
+            DBDocument.total_characters,
+            DBDocument.error_message,
+            DBDocument.doc_metadata,
+        )
+        .execution_options(stream_results=True)
+        .enable_eagerloads(False)
+        .yield_per(1000)
+    )
+
+    return aggregate_profile_from_rows(
         dataset_id=dataset_id,
-        generated_at=now,
-        total_documents=int(sum(by_status.values())),
-        total_size_bytes=int(total_size),
-        by_status={k: int(v) for k, v in by_status.items()},
-        by_file_type={k: int(v) for k, v in by_type.items()},
-        file_size_histogram=size_hist,
-        length_percentiles=percentiles,
-        length_histogram=length_hist,
-        pdf_scan=DatasetProfilePdfScanStats(scanned=pdf_scanned, not_scanned=pdf_not_scanned, unknown=pdf_unknown),
-        pii_hits_total={k: int(v) for k, v in pii_totals.items()},
-        secrets_hits_total={k: int(v) for k, v in secrets_totals.items()},
-        findings=findings_out,
+        rows=rows,
         latest_scan_run=latest_run,
+        density_threshold=float(density_threshold),
+        image_threshold=int(image_threshold),
     )
 
 
