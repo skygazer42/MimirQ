@@ -44,6 +44,7 @@ import { PageScaffold } from '@/components/ui/page-scaffold'
 import { EmptyState } from '@/components/ui/empty-state'
 import { Button } from '@/components/ui/button'
 import { IconButton } from '@/components/ui/icon-button'
+import { Input } from '@/components/ui/input'
 import { Panel } from '@/components/ui/panel'
 import { StatusBadge, type StatusBadgeStatus } from '@/components/ui/status-badge'
 import {
@@ -201,7 +202,7 @@ export default function KnowledgePage() {
   const lastUrlRef = useRef<string | null>(null)
   const didInitFromUrlRef = useRef(false)
 
-  const { documents, total, isLoading, uploadDocument, deleteDocument, loadDocuments } = useDocuments()
+  const { documents, total, isLoading, uploadDocument, uploadDocumentFromUrl, deleteDocument, loadDocuments } = useDocuments()
   const [activeTab, setActiveTab] = useState<TabType>('documents')
   const [viewMode, setViewMode] = useState<ViewMode>('grid')
   const { parserBackend, setParserBackend } = useParserBackendPreference()
@@ -214,6 +215,7 @@ export default function KnowledgePage() {
   const [batchDeleteOpen, setBatchDeleteOpen] = useState(false)
   const [batchDeleting, setBatchDeleting] = useState(false)
   const DATASET_ALL = '__all__'
+  const DATASET_DEFAULT = '__default__'
   const [datasets, setDatasets] = useState<Dataset[]>([])
   const [datasetScope, setDatasetScope] = useState<string>(DATASET_ALL)
   const [datasetsLoading, setDatasetsLoading] = useState(false)
@@ -418,6 +420,12 @@ export default function KnowledgePage() {
     }
   }, [selectedDocIds, loadDocuments])
 
+  const [urlImportOpen, setUrlImportOpen] = useState(false)
+  const [urlImportUrl, setUrlImportUrl] = useState('')
+  const [urlImportFilename, setUrlImportFilename] = useState('')
+  const [urlImportDatasetId, setUrlImportDatasetId] = useState<string>(DATASET_DEFAULT)
+  const [urlImportSubmitting, setUrlImportSubmitting] = useState(false)
+
   // 处理文件上传
   const handleFileUpload = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files
@@ -432,6 +440,30 @@ export default function KnowledgePage() {
     }
     e.target.value = ''
   }, [uploadDocument])
+
+  const handleUrlImport = useCallback(async () => {
+    const url = urlImportUrl.trim()
+    if (!url) {
+      toast.error('请输入 URL')
+      return
+    }
+    setUrlImportSubmitting(true)
+    try {
+      await uploadDocumentFromUrl({
+        url,
+        filename: urlImportFilename.trim() ? urlImportFilename.trim() : undefined,
+        dataset_id: urlImportDatasetId === DATASET_DEFAULT ? undefined : urlImportDatasetId,
+      })
+      toast.success('已提交 URL 导入任务（后台拉取并入库）')
+      setUrlImportOpen(false)
+      setUrlImportUrl('')
+      setUrlImportFilename('')
+    } catch (err: any) {
+      toast.error(formatApiError(err, 'URL 导入失败'))
+    } finally {
+      setUrlImportSubmitting(false)
+    }
+  }, [DATASET_DEFAULT, uploadDocumentFromUrl, urlImportDatasetId, urlImportFilename, urlImportUrl])
 
   // 检索测试
   const handleSearch = useCallback(async () => {
@@ -528,6 +560,106 @@ export default function KnowledgePage() {
                     </div>
                   </div>
                   <PipelineOptionsPanel />
+                </DialogContent>
+              </Dialog>
+              <Dialog
+                open={urlImportOpen}
+                onOpenChange={(open) => {
+                  setUrlImportOpen(open)
+                  if (open) {
+                    setUrlImportDatasetId(selectedDatasetId || DATASET_DEFAULT)
+                  }
+                }}
+              >
+                <DialogTrigger asChild>
+                  <Button
+                    variant="outline"
+                    className="gap-2 border-border bg-background/60 hover:bg-background text-muted-foreground"
+                  >
+                    <Send className="w-4 h-4" />
+                    URL 导入
+                  </Button>
+                </DialogTrigger>
+                <DialogContent className="max-w-2xl">
+                  <DialogHeader>
+                    <DialogTitle>通过 URL 导入文档</DialogTitle>
+                    <DialogDescription>
+                      后端拉取 URL 内容并按当前管线配置入库（需要后端开启 URL_INGEST_ENABLED）。
+                    </DialogDescription>
+                  </DialogHeader>
+
+                  <div className="space-y-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <div className="text-sm font-medium text-foreground/80">URL</div>
+                        <Input
+                          value={urlImportUrl}
+                          onChange={(e) => setUrlImportUrl(e.target.value)}
+                          placeholder="https://example.com/doc.pdf / https://example.com/page.html"
+                          className="font-mono"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <div className="text-sm font-medium text-foreground/80">文件名（可选）</div>
+                        <Input
+                          value={urlImportFilename}
+                          onChange={(e) => setUrlImportFilename(e.target.value)}
+                          placeholder="例如：产品手册.pdf"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="space-y-2">
+                      <div className="text-sm font-medium text-foreground/80">目标数据集</div>
+                      <Select value={urlImportDatasetId} onValueChange={setUrlImportDatasetId}>
+                        <SelectTrigger className="h-10 bg-background">
+                          <SelectValue placeholder="选择数据集" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value={DATASET_DEFAULT}>默认（自动选择可写数据集）</SelectItem>
+                          {datasets.map((ds) => (
+                            <SelectItem key={ds.id} value={ds.id}>
+                              {ds.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      {datasetsLoading ? (
+                        <div className="text-xs text-muted-foreground">正在加载数据集...</div>
+                      ) : null}
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <div className="text-sm font-medium text-foreground/80">解析方式</div>
+                        <ParserDropdown value={parserBackend} onChange={setParserBackend} />
+                      </div>
+                      <div className="space-y-2">
+                        <div className="text-sm font-medium text-foreground/80">切块策略</div>
+                        <ChunkStrategyDropdown value={chunkStrategy} onChange={setChunkStrategy} />
+                      </div>
+                    </div>
+
+                    <PipelineOptionsPanel />
+
+                    <div className="flex items-center justify-end gap-2 pt-2">
+                      <Button
+                        variant="outline"
+                        onClick={() => setUrlImportOpen(false)}
+                        disabled={urlImportSubmitting}
+                      >
+                        取消
+                      </Button>
+                      <Button
+                        onClick={handleUrlImport}
+                        disabled={urlImportSubmitting || !urlImportUrl.trim()}
+                        className="gap-2"
+                      >
+                        {urlImportSubmitting ? <Loader2 className="w-4 h-4 animate-spin motion-reduce:animate-none" /> : null}
+                        开始导入
+                      </Button>
+                    </div>
+                  </div>
                 </DialogContent>
               </Dialog>
               <label>

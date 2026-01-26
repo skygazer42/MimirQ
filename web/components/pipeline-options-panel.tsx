@@ -1,9 +1,10 @@
 'use client'
 
-import { useMemo } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { CheckCircle2, Layers, Network, ShieldCheck, Sparkles, ChevronDown } from 'lucide-react'
 import { Switch } from '@/components/ui/switch'
 import { Input } from '@/components/ui/input'
+import { Textarea } from '@/components/ui/textarea'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { cn } from '@/lib/utils'
 import { usePipelineOptions } from '@/contexts/pipeline-options-context'
@@ -30,6 +31,24 @@ export function PipelineOptionsPanel(props: PipelineOptionsPanelProps) {
   const governanceEnabled = !!options.governance_enabled
   const governanceDisabled = !enabled || !governanceEnabled
   const pipelineDisabled = !enabled
+
+  const [chunkStrategyParamsText, setChunkStrategyParamsText] = useState('')
+  const [chunkStrategyParamsError, setChunkStrategyParamsError] = useState<string | null>(null)
+
+  useEffect(() => {
+    try {
+      const raw = options.chunk_strategy_params
+      if (!raw || typeof raw !== 'object') {
+        setChunkStrategyParamsText('')
+      } else {
+        setChunkStrategyParamsText(JSON.stringify(raw, null, 2))
+      }
+      setChunkStrategyParamsError(null)
+    } catch {
+      setChunkStrategyParamsText('')
+      setChunkStrategyParamsError(null)
+    }
+  }, [options.chunk_strategy_params])
 
   const titleClasses = compact ? 'text-xs' : 'text-sm'
   const descClasses = compact ? 'text-[10px]' : 'text-xs'
@@ -337,6 +356,14 @@ export function PipelineOptionsPanel(props: PipelineOptionsPanelProps) {
 
   const pipelineNumbers = [
     {
+      key: 'chunk_merge_small_min_chars',
+      label: '短块合并阈值',
+      hint: '将极短 chunk 与相邻 chunk 合并（0 关闭），可减少过碎片化与噪声',
+      min: 0,
+      max: 10000,
+      step: 10,
+    },
+    {
       key: 'parse_fallback_min_content_chars',
       label: '回退最小内容',
       hint: '少于该值认为解析失败',
@@ -390,6 +417,69 @@ export function PipelineOptionsPanel(props: PipelineOptionsPanelProps) {
   const handleNumberChange = <K extends keyof typeof options>(key: K, value: number) => {
     if (!Number.isFinite(value)) return
     updateOption(key, value as (typeof options)[K])
+  }
+
+  const validateAndApplyChunkStrategyParams = (text: string) => {
+    const raw = String(text || '')
+    const trimmed = raw.trim()
+    if (!trimmed) {
+      setChunkStrategyParamsError(null)
+      updateOption('chunk_strategy_params', undefined)
+      return
+    }
+
+    let obj: any
+    try {
+      obj = JSON.parse(trimmed)
+    } catch {
+      setChunkStrategyParamsError('JSON 解析失败：请检查括号、引号与逗号')
+      return
+    }
+
+    if (obj == null) {
+      setChunkStrategyParamsError(null)
+      updateOption('chunk_strategy_params', undefined)
+      return
+    }
+
+    if (typeof obj !== 'object' || Array.isArray(obj)) {
+      setChunkStrategyParamsError('chunk_strategy_params 必须是 JSON Object（键值对）')
+      return
+    }
+
+    const entries = Object.entries(obj)
+    if (entries.length > 30) {
+      setChunkStrategyParamsError('chunk_strategy_params 键过多（最多 30 个）')
+      return
+    }
+
+    const cleaned: Record<string, any> = {}
+    for (const [k, v] of entries) {
+      const key = String(k || '').trim()
+      if (!key) continue
+      if (key.length > 80) {
+        setChunkStrategyParamsError('存在过长 key（最长 80 字符）')
+        return
+      }
+      const t = typeof v
+      if (v == null || t === 'boolean' || t === 'number') {
+        cleaned[key] = v
+        continue
+      }
+      if (t === 'string') {
+        if (String(v).length > 500) {
+          setChunkStrategyParamsError('存在过长 string value（最长 500 字符）')
+          return
+        }
+        cleaned[key] = v
+        continue
+      }
+      setChunkStrategyParamsError('只允许原始类型 value（null/bool/number/string），不允许嵌套对象/数组')
+      return
+    }
+
+    setChunkStrategyParamsError(null)
+    updateOption('chunk_strategy_params', Object.keys(cleaned).length ? cleaned : undefined)
   }
 
   return (
@@ -736,6 +826,35 @@ export function PipelineOptionsPanel(props: PipelineOptionsPanelProps) {
                               </label>
                             )
                           })}
+                        </div>
+
+                        <div className="pt-2 border-t border-border/60 space-y-2">
+                          <div className={cn("text-xs font-semibold text-foreground/70", compact && "text-[10px]")}>
+                            切块策略参数（高级）
+                          </div>
+                          <Textarea
+                            value={chunkStrategyParamsText}
+                            onChange={(e) => {
+                              const v = e.currentTarget.value
+                              setChunkStrategyParamsText(v)
+                              validateAndApplyChunkStrategyParams(v)
+                            }}
+                            disabled={pipelineDisabled}
+                            className={cn(
+                              "min-h-[84px] text-[11px] font-mono bg-card",
+                              compact && "min-h-[70px] text-[10px]"
+                            )}
+                            placeholder='例如：{ "child_ratio": 0.25, "min_child_size": 300 }'
+                          />
+                          {chunkStrategyParamsError ? (
+                            <div className={cn("text-[11px] text-warning bg-warning/10 border border-warning/25 rounded-lg px-2 py-1", compact && "text-[10px]")}>
+                              {chunkStrategyParamsError}
+                            </div>
+                          ) : (
+                            <div className={cn("text-[10px] text-muted-foreground leading-relaxed", compact && "text-[9px]")}>
+                              仅允许小型 JSON 对象（primitive values），后端会做同样的安全校验；显式参数将覆盖数据集/默认值。
+                            </div>
+                          )}
                         </div>
                       </div>
                     </div>

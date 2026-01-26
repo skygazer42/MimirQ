@@ -107,6 +107,101 @@ PREVIEW_IMAGE_REF_RE = re.compile(rf"(?:https?://[^\s)\"']+)?/api/v1/documents/i
 MINIO_IMAGE_REF_RE = re.compile(r"(?:https?://[^\s)\"']+)?/api/v1/documents/image-url/([^\s)\"']+)")
 
 
+def _coerce_bool_preview(value: Any) -> Optional[bool]:
+    if value is None:
+        return None
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return bool(value)
+    if isinstance(value, str):
+        lowered = value.strip().lower()
+        if lowered in {"1", "true", "yes", "y", "on"}:
+            return True
+        if lowered in {"0", "false", "no", "n", "off"}:
+            return False
+    return None
+
+
+def _coerce_int_preview(value: Any) -> Optional[int]:
+    if value is None:
+        return None
+    if isinstance(value, bool):
+        return int(value)
+    if isinstance(value, (int, float)):
+        try:
+            return int(value)
+        except Exception:
+            return None
+    if isinstance(value, str):
+        try:
+            return int(float(value.strip()))
+        except Exception:
+            return None
+    return None
+
+
+def _coerce_float_preview(value: Any) -> Optional[float]:
+    if value is None:
+        return None
+    if isinstance(value, bool):
+        return float(value)
+    if isinstance(value, (int, float)):
+        try:
+            return float(value)
+        except Exception:
+            return None
+    if isinstance(value, str):
+        try:
+            return float(value.strip())
+        except Exception:
+            return None
+    return None
+
+
+def _decode_escaped_input_preview(value: str) -> str:
+    """
+    Best-effort decode for user input strings like "\\n\\n" / "\\t" / "\\u4e2d".
+
+    Keep aligned with frontend behavior and ingestion SeparatorChunker handling.
+    """
+    raw = str(value or "")
+    if not raw:
+        return raw
+    try:
+        escaped = raw.replace("\"", "\\\"")
+        return json.loads(f"\"{escaped}\"")
+    except Exception:
+        return raw
+
+
+def _filter_chunker_kwargs_for_strategy(strategy: str, kwargs: dict[str, Any]) -> dict[str, Any]:
+    """
+    Filter kwargs to match the chunker __init__ signature (mirrors chunker_factory.get_chunker behavior).
+    """
+    if not kwargs:
+        return {}
+    chunker_cls = chunker_factory.SUPPORTED_STRATEGIES.get(strategy)
+    if chunker_cls is None:
+        return {}
+
+    try:
+        import inspect
+
+        sig = inspect.signature(chunker_cls.__init__)
+        if any(p.kind == inspect.Parameter.VAR_KEYWORD for p in sig.parameters.values()):
+            return dict(kwargs)
+        accepted = {
+            p.name
+            for p in sig.parameters.values()
+            if p.name not in {"self", "chunk_size", "chunk_overlap"}
+            and p.kind in (inspect.Parameter.POSITIONAL_OR_KEYWORD, inspect.Parameter.KEYWORD_ONLY)
+        }
+        return {k: v for k, v in kwargs.items() if k in accepted}
+    except Exception:
+        return {}
+
+
 def _ensure_preview_page_indices(documents: list[Document]) -> None:
     """
     Ensure each parsed Document has a stable per-document index for preview offset rebasing.
@@ -4139,36 +4234,14 @@ async def preview_chunking(
     if resolved_chunk_strategy == "separator" and chunk_overlap != effective_chunk_overlap:
         warnings_out.append("separator strategy ignores chunk_overlap; using 0")
 
-    # Strategy-specific kwargs to pass into chunker constructors.
+    # Strategy params can come from explicit form fields or pipeline.chunk_strategy_params.
+    # Precedence: explicit form fields > pipeline params > chunker defaults.
+    if (child_ratio is not None or min_child_size is not None) and resolved_chunk_strategy != "parent_child":
+        warnings_out.append(
+            f"strategy params child_ratio/min_child_size ignored for chunk_strategy={resolved_chunk_strategy}"
+        )
     chunker_kwargs: dict[str, Any] = {}
-    if child_ratio is not None or min_child_size is not None:
-        if resolved_chunk_strategy != "parent_child":
-            warnings_out.append(
-                f"strategy params child_ratio/min_child_size ignored for chunk_strategy={resolved_chunk_strategy}"
-            )
-        else:
-            if child_ratio is not None:
-                try:
-                    r = float(child_ratio)
-                except (TypeError, ValueError):
-                    raise HTTPException(status_code=400, detail="child_ratio must be a float")
-                if r < 0.05 or r > 1.0:
-                    raise HTTPException(status_code=400, detail="child_ratio must be between 0.05 and 1.0")
-                chunker_kwargs["child_ratio"] = r
-
-            if min_child_size is not None:
-                try:
-                    m = int(min_child_size)
-                except (TypeError, ValueError):
-                    raise HTTPException(status_code=400, detail="min_child_size must be an int")
-                if m < 50 or m > 4000:
-                    raise HTTPException(status_code=400, detail="min_child_size must be between 50 and 4000")
-                if m > int(chunk_size or 0):
-                    warnings_out.append("min_child_size > chunk_size; clamping to chunk_size")
-                    m = int(chunk_size or 0)
-                chunker_kwargs["min_child_size"] = m
-
-    # Best-effort echo of strategy-specific parameters for reproducibility.
+    separator_config: dict[str, Any] | None = None
     strategy_params_out: dict[str, Any] = {}
 
     # Control whether we return original_text for highlighting (large payload guardrail).
@@ -4234,6 +4307,74 @@ async def preview_chunking(
             document_metadata={},
             request_overrides=pipeline_options,
         )
+        pipeline_strategy_params: dict[str, Any] = dict(getattr(pipeline_effective, "chunk_strategy_params", {}) or {})
+        if resolved_chunk_strategy == "parent_child":
+            merged = dict(pipeline_strategy_params or {})
+            if child_ratio is not None:
+                merged["child_ratio"] = child_ratio
+            if min_child_size is not None:
+                merged["min_child_size"] = min_child_size
+
+            if "child_ratio" in merged:
+                r = _coerce_float_preview(merged.get("child_ratio"))
+                if r is None:
+                    raise HTTPException(status_code=400, detail="child_ratio must be a float")
+                if r < 0.05 or r > 1.0:
+                    raise HTTPException(status_code=400, detail="child_ratio must be between 0.05 and 1.0")
+                chunker_kwargs["child_ratio"] = float(r)
+
+            if "min_child_size" in merged:
+                m = _coerce_int_preview(merged.get("min_child_size"))
+                if m is None:
+                    raise HTTPException(status_code=400, detail="min_child_size must be an int")
+                if m < 50 or m > 4000:
+                    raise HTTPException(status_code=400, detail="min_child_size must be between 50 and 4000")
+                if m > int(chunk_size or 0):
+                    warnings_out.append("min_child_size > chunk_size; clamping to chunk_size")
+                    m = int(chunk_size or 0)
+                chunker_kwargs["min_child_size"] = int(m)
+        elif resolved_chunk_strategy == "separator":
+            merged = dict(pipeline_strategy_params or {})
+            if separator_preset is not None:
+                merged["separator_preset"] = separator_preset
+            if separator is not None:
+                merged["separator"] = separator
+            if keep_separator is not None:
+                merged["keep_separator"] = keep_separator
+            if separator_max_chunk_size is not None:
+                merged["separator_max_chunk_size"] = separator_max_chunk_size
+
+            preset = str(merged.get("separator_preset") or "").strip() or "paragraph"
+            if preset != "custom":
+                sep_value = SeparatorChunker.PRESET_SEPARATORS.get(preset)
+                if sep_value is None:
+                    raise HTTPException(status_code=400, detail=f"Invalid separator_preset: {preset}")
+            else:
+                raw = merged.get("separator")
+                if raw is None:
+                    raw = merged.get("separator_custom")
+                sep_value = str(raw or "")
+                if not sep_value:
+                    sep_value = "\n\n"
+                sep_value = _decode_escaped_input_preview(sep_value)
+
+            keep_sep = merged.get("keep_separator")
+            keep_sep_norm = _coerce_bool_preview(keep_sep)
+            keep_sep_bool = True if keep_sep_norm is None else bool(keep_sep_norm)
+
+            max_chunk_size = merged.get("separator_max_chunk_size")
+            if max_chunk_size is None:
+                max_chunk_size = merged.get("max_chunk_size")
+            max_chunk_size_int = int(_coerce_int_preview(max_chunk_size) or 0)
+
+            separator_config = {
+                "preset": preset,
+                "separator": sep_value,
+                "keep_separator": keep_sep_bool,
+                "separator_max_chunk_size": max_chunk_size_int,
+            }
+        else:
+            chunker_kwargs = _filter_chunker_kwargs_for_strategy(resolved_chunk_strategy, pipeline_strategy_params)
         extra_rules = list(getattr(pipeline_effective, "governance_regex_rules", None) or [])
         combined_rules = build_governance_rules(extra_rules) if extra_rules else None
         governance_kwargs = {
@@ -4453,28 +4594,23 @@ async def preview_chunking(
             _ensure_preview_page_indices(documents)
 
             if resolved_chunk_strategy == "separator":
-                preset = (separator_preset or "").strip() or "paragraph"
-                if preset != "custom":
-                    sep_value = SeparatorChunker.PRESET_SEPARATORS.get(preset)
-                    if sep_value is None:
-                        raise HTTPException(status_code=400, detail=f"Invalid separator_preset: {preset}")
-                else:
-                    sep_value = separator if isinstance(separator, str) else ""
-                    if not sep_value:
-                        sep_value = "\n\n"
-
+                assert separator_config is not None
+                preset = str(separator_config.get("preset") or "paragraph")
+                sep_value = str(separator_config.get("separator") or "\n\n")
+                keep_sep_bool = bool(separator_config.get("keep_separator"))
+                max_chunk_size_int = int(separator_config.get("separator_max_chunk_size") or 0)
                 chunker = SeparatorChunker(
                     chunk_size=chunk_size,
                     chunk_overlap=effective_chunk_overlap,
                     separator=sep_value,
-                    keep_separator=True if keep_separator is None else bool(keep_separator),
-                    max_chunk_size=int(separator_max_chunk_size or 0),
+                    keep_separator=keep_sep_bool,
+                    max_chunk_size=max_chunk_size_int,
                 )
                 strategy_params_out = {
                     "separator_preset": preset,
                     "separator": sep_value,
-                    "keep_separator": True if keep_separator is None else bool(keep_separator),
-                    "separator_max_chunk_size": int(separator_max_chunk_size or 0),
+                    "keep_separator": keep_sep_bool,
+                    "separator_max_chunk_size": max_chunk_size_int,
                 }
             else:
                 chunker = chunker_factory.get_chunker(
@@ -4943,36 +5079,14 @@ async def preview_chunking_by_sha(
     if resolved_chunk_strategy == "separator" and chunk_overlap != effective_chunk_overlap:
         warnings_out.append("separator strategy ignores chunk_overlap; using 0")
 
-    # Strategy-specific kwargs to pass into chunker constructors.
+    # Strategy params can come from explicit form fields or pipeline.chunk_strategy_params.
+    # Precedence: explicit form fields > pipeline params > chunker defaults.
+    if (child_ratio is not None or min_child_size is not None) and resolved_chunk_strategy != "parent_child":
+        warnings_out.append(
+            f"strategy params child_ratio/min_child_size ignored for chunk_strategy={resolved_chunk_strategy}"
+        )
     chunker_kwargs: dict[str, Any] = {}
-    if child_ratio is not None or min_child_size is not None:
-        if resolved_chunk_strategy != "parent_child":
-            warnings_out.append(
-                f"strategy params child_ratio/min_child_size ignored for chunk_strategy={resolved_chunk_strategy}"
-            )
-        else:
-            if child_ratio is not None:
-                try:
-                    r = float(child_ratio)
-                except (TypeError, ValueError):
-                    raise HTTPException(status_code=400, detail="child_ratio must be a float")
-                if r < 0.05 or r > 1.0:
-                    raise HTTPException(status_code=400, detail="child_ratio must be between 0.05 and 1.0")
-                chunker_kwargs["child_ratio"] = r
-
-            if min_child_size is not None:
-                try:
-                    m = int(min_child_size)
-                except (TypeError, ValueError):
-                    raise HTTPException(status_code=400, detail="min_child_size must be an int")
-                if m < 50 or m > 4000:
-                    raise HTTPException(status_code=400, detail="min_child_size must be between 50 and 4000")
-                if m > int(chunk_size or 0):
-                    warnings_out.append("min_child_size > chunk_size; clamping to chunk_size")
-                    m = int(chunk_size or 0)
-                chunker_kwargs["min_child_size"] = m
-
-    # Best-effort echo of strategy-specific parameters for reproducibility.
+    separator_config: dict[str, Any] | None = None
     strategy_params_out: dict[str, Any] = {}
 
     # Control whether we return original_text for highlighting (large payload guardrail).
@@ -5033,6 +5147,74 @@ async def preview_chunking_by_sha(
         document_metadata={},
         request_overrides=pipeline_options,
     )
+    pipeline_strategy_params: dict[str, Any] = dict(getattr(pipeline_effective, "chunk_strategy_params", {}) or {})
+    if resolved_chunk_strategy == "parent_child":
+        merged = dict(pipeline_strategy_params or {})
+        if child_ratio is not None:
+            merged["child_ratio"] = child_ratio
+        if min_child_size is not None:
+            merged["min_child_size"] = min_child_size
+
+        if "child_ratio" in merged:
+            r = _coerce_float_preview(merged.get("child_ratio"))
+            if r is None:
+                raise HTTPException(status_code=400, detail="child_ratio must be a float")
+            if r < 0.05 or r > 1.0:
+                raise HTTPException(status_code=400, detail="child_ratio must be between 0.05 and 1.0")
+            chunker_kwargs["child_ratio"] = float(r)
+
+        if "min_child_size" in merged:
+            m = _coerce_int_preview(merged.get("min_child_size"))
+            if m is None:
+                raise HTTPException(status_code=400, detail="min_child_size must be an int")
+            if m < 50 or m > 4000:
+                raise HTTPException(status_code=400, detail="min_child_size must be between 50 and 4000")
+            if m > int(chunk_size or 0):
+                warnings_out.append("min_child_size > chunk_size; clamping to chunk_size")
+                m = int(chunk_size or 0)
+            chunker_kwargs["min_child_size"] = int(m)
+    elif resolved_chunk_strategy == "separator":
+        merged = dict(pipeline_strategy_params or {})
+        if separator_preset is not None:
+            merged["separator_preset"] = separator_preset
+        if separator is not None:
+            merged["separator"] = separator
+        if keep_separator is not None:
+            merged["keep_separator"] = keep_separator
+        if separator_max_chunk_size is not None:
+            merged["separator_max_chunk_size"] = separator_max_chunk_size
+
+        preset = str(merged.get("separator_preset") or "").strip() or "paragraph"
+        if preset != "custom":
+            sep_value = SeparatorChunker.PRESET_SEPARATORS.get(preset)
+            if sep_value is None:
+                raise HTTPException(status_code=400, detail=f"Invalid separator_preset: {preset}")
+        else:
+            raw = merged.get("separator")
+            if raw is None:
+                raw = merged.get("separator_custom")
+            sep_value = str(raw or "")
+            if not sep_value:
+                sep_value = "\n\n"
+            sep_value = _decode_escaped_input_preview(sep_value)
+
+        keep_sep = merged.get("keep_separator")
+        keep_sep_norm = _coerce_bool_preview(keep_sep)
+        keep_sep_bool = True if keep_sep_norm is None else bool(keep_sep_norm)
+
+        max_chunk_size = merged.get("separator_max_chunk_size")
+        if max_chunk_size is None:
+            max_chunk_size = merged.get("max_chunk_size")
+        max_chunk_size_int = int(_coerce_int_preview(max_chunk_size) or 0)
+
+        separator_config = {
+            "preset": preset,
+            "separator": sep_value,
+            "keep_separator": keep_sep_bool,
+            "separator_max_chunk_size": max_chunk_size_int,
+        }
+    else:
+        chunker_kwargs = _filter_chunker_kwargs_for_strategy(resolved_chunk_strategy, pipeline_strategy_params)
     extra_rules = list(getattr(pipeline_effective, "governance_regex_rules", None) or [])
     combined_rules = build_governance_rules(extra_rules) if extra_rules else None
     governance_kwargs = {
@@ -5101,28 +5283,23 @@ async def preview_chunking_by_sha(
     _ensure_preview_page_indices(documents)
 
     if resolved_chunk_strategy == "separator":
-        preset = (separator_preset or "").strip() or "paragraph"
-        if preset != "custom":
-            sep_value = SeparatorChunker.PRESET_SEPARATORS.get(preset)
-            if sep_value is None:
-                raise HTTPException(status_code=400, detail=f"Invalid separator_preset: {preset}")
-        else:
-            sep_value = separator if isinstance(separator, str) else ""
-            if not sep_value:
-                sep_value = "\n\n"
-
+        assert separator_config is not None
+        preset = str(separator_config.get("preset") or "paragraph")
+        sep_value = str(separator_config.get("separator") or "\n\n")
+        keep_sep_bool = bool(separator_config.get("keep_separator"))
+        max_chunk_size_int = int(separator_config.get("separator_max_chunk_size") or 0)
         chunker = SeparatorChunker(
             chunk_size=chunk_size,
             chunk_overlap=effective_chunk_overlap,
             separator=sep_value,
-            keep_separator=True if keep_separator is None else bool(keep_separator),
-            max_chunk_size=int(separator_max_chunk_size or 0),
+            keep_separator=keep_sep_bool,
+            max_chunk_size=max_chunk_size_int,
         )
         strategy_params_out = {
             "separator_preset": preset,
             "separator": sep_value,
-            "keep_separator": True if keep_separator is None else bool(keep_separator),
-            "separator_max_chunk_size": int(separator_max_chunk_size or 0),
+            "keep_separator": keep_sep_bool,
+            "separator_max_chunk_size": max_chunk_size_int,
         }
     else:
         chunker = chunker_factory.get_chunker(

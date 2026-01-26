@@ -819,6 +819,39 @@ export function Sidebar({ variant = 'panel' }: { variant?: 'panel' | 'dialog' } 
             <div className="space-y-4 rounded-xl border border-border/60 bg-background p-3 shadow-sm">
               <div className="text-[10px] text-muted-foreground uppercase tracking-wider font-medium">分隔符策略参数</div>
 
+              <div className="flex items-center justify-between gap-2">
+                <div className="text-[10px] text-muted-foreground">同步到 Pipeline.chunk_strategy_params</div>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  className="h-7 px-2 text-[11px]"
+                  onClick={() => {
+                    const preset = separatorPreset || 'paragraph'
+                    const patch: Record<string, any> = {
+                      separator_preset: preset,
+                      keep_separator: !!keepSeparator,
+                      separator_max_chunk_size: Number(separatorMaxChunkSize) || 0,
+                    }
+                    if (preset === 'custom') {
+                      patch.separator = effectiveSeparator || '\n\n'
+                    }
+                    pipelineCtx.setEnabled(true)
+                    pipelineCtx.updateOption('chunk_strategy_params', patch)
+                    toast.success('已写入 Pipeline.chunk_strategy_params（separator）')
+                  }}
+                >
+                  写入
+                </Button>
+              </div>
+              {pipelineCtx.options.chunk_strategy_params ? (
+                <div className="text-[10px] text-muted-foreground font-mono break-all">
+                  当前 pipeline: {JSON.stringify(pipelineCtx.options.chunk_strategy_params)}
+                </div>
+              ) : (
+                <div className="text-[10px] text-muted-foreground font-mono">当前 pipeline: (empty)</div>
+              )}
+
               <div className="space-y-2">
                 <label className="text-xs font-medium text-muted-foreground">分隔符预设</label>
                 <Select
@@ -907,6 +940,34 @@ export function Sidebar({ variant = 'panel' }: { variant?: 'panel' | 'dialog' } 
           {isParentChildStrategy ? (
             <div className="space-y-4 rounded-xl border border-border/60 bg-background p-3 shadow-sm">
               <div className="text-[10px] text-muted-foreground uppercase tracking-wider font-medium">PARENT-CHILD OPTIONS</div>
+
+              <div className="flex items-center justify-between gap-2">
+                <div className="text-[10px] text-muted-foreground">同步到 Pipeline.chunk_strategy_params</div>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  className="h-7 px-2 text-[11px]"
+                  onClick={() => {
+                    const patch: Record<string, any> = {
+                      child_ratio: Number(parentChildRatio),
+                      min_child_size: Number(parentChildMinChildSize),
+                    }
+                    pipelineCtx.setEnabled(true)
+                    pipelineCtx.updateOption('chunk_strategy_params', patch)
+                    toast.success('已写入 Pipeline.chunk_strategy_params（parent_child）')
+                  }}
+                >
+                  写入
+                </Button>
+              </div>
+              {pipelineCtx.options.chunk_strategy_params ? (
+                <div className="text-[10px] text-muted-foreground font-mono break-all">
+                  当前 pipeline: {JSON.stringify(pipelineCtx.options.chunk_strategy_params)}
+                </div>
+              ) : (
+                <div className="text-[10px] text-muted-foreground font-mono">当前 pipeline: (empty)</div>
+              )}
 
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-2">

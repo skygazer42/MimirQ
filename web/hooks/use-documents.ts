@@ -171,6 +171,43 @@ export function useDocuments() {
   )
 
   /**
+   * 通过 URL 导入文档（后端拉取并入库）
+   */
+  const uploadDocumentFromUrl = useCallback(
+    async (params: { url: string; filename?: string; dataset_id?: string }) => {
+      setIsLoading(true)
+      setError(null)
+
+      try {
+        const newDoc = await documentApi.uploadFromUrl({
+          url: params.url,
+          filename: params.filename,
+          dataset_id: params.dataset_id,
+          parser_backend: parserBackend,
+          chunk_strategy: chunkStrategy,
+          pipeline: pipelineOverridesEnabled ? pipelineOptions : undefined,
+        })
+
+        const listParams = lastListParamsRef.current
+        if (matchesDocumentListParams(newDoc, listParams)) {
+          setDocuments((prev) => [newDoc, ...prev])
+          setTotal((prev) => prev + 1)
+        }
+
+        pollDocumentStatus(newDoc.id)
+        return newDoc
+      } catch (err: any) {
+        setError(formatApiError(err, 'Failed to upload document from URL'))
+        console.error('Upload from URL error:', err)
+        throw err
+      } finally {
+        setIsLoading(false)
+      }
+    },
+    [parserBackend, chunkStrategy, pipelineOverridesEnabled, pipelineOptions, pollDocumentStatus]
+  )
+
+  /**
    * 取消文档处理
    */
   const cancelDocument = useCallback(async (documentId: string) => {
@@ -240,6 +277,7 @@ export function useDocuments() {
     loadDocuments,
     refreshDocuments: loadDocuments,
     uploadDocument,
+    uploadDocumentFromUrl,
     cancelDocument,
     deleteDocument,
   }

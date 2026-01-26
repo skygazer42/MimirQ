@@ -144,6 +144,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/documents/upload-url": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Upload Document From Url
+         * @description Fetch a remote URL and ingest it as a document.
+         *
+         *     Notes:
+         *     - Disabled by default: set URL_INGEST_ENABLED=true to enable.
+         *     - SSRF guard: blocks private/loopback/link-local hosts by default.
+         */
+        post: operations["upload_document_from_url_api_v1_documents_upload_url_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/documents/upload-batch": {
         parameters: {
             query?: never;
@@ -241,6 +265,30 @@ export interface paths {
          * @description Delete document.
          */
         delete: operations["delete_document_api_v1_documents__document_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/documents/{document_id}/parsed-content": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Document Parsed Content
+         * @description Get persisted parsed markdown content (raw+clean) for a document.
+         *
+         *     Availability:
+         *     - Only present when the ingestion pipeline enables `persist_parsed_content`.
+         *     - When unavailable, returns `available=false` with empty strings.
+         */
+        get: operations["get_document_parsed_content_api_v1_documents__document_id__parsed_content_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -2902,10 +2950,73 @@ export interface components {
             /** Reasons */
             reasons?: string[];
         };
+        /**
+         * ChunkPreviewRecommendationPatch
+         * @description Structured, actionable recommendation (best-effort).
+         */
+        ChunkPreviewRecommendationPatch: {
+            /**
+             * Target
+             * @default preview
+             * @enum {string}
+             */
+            target: "preview" | "pipeline" | "perf";
+            /** Id */
+            id: string;
+            /** Title */
+            title: string;
+            /**
+             * Description
+             * @default
+             */
+            description: string;
+            /**
+             * Patch
+             * @description Patch object; shape depends on target.
+             */
+            patch?: {
+                [key: string]: unknown;
+            };
+        };
         /** ChunkPreviewRequest */
         ChunkPreviewRequest: {
             /** Markdown */
             markdown: string;
+        };
+        /** ChunkPreviewResponse */
+        ChunkPreviewResponse: {
+            /** Paragraphs */
+            paragraphs: components["schemas"]["ChunkItem"][];
+            /** Sentences */
+            sentences: components["schemas"]["ChunkItem"][];
+        };
+        /**
+         * ChunkPreviewReviewSignals
+         * @description Optional per-chunk review signals for enterprise tuning/auditing.
+         */
+        ChunkPreviewReviewSignals: {
+            /**
+             * Basis
+             * @default all
+             * @enum {string}
+             */
+            basis: "all" | "child";
+            /** Short Indices */
+            short_indices?: number[];
+            /** Duplicate Indices */
+            duplicate_indices?: number[];
+            /** Gap Indices */
+            gap_indices?: number[];
+            /** Overlap Indices */
+            overlap_indices?: number[];
+            /** Gap Before By Index */
+            gap_before_by_index?: {
+                [key: string]: number;
+            };
+            /** Overlap Prev By Index */
+            overlap_prev_by_index?: {
+                [key: string]: number;
+            };
         };
         /**
          * ChunkPreviewStats
@@ -3097,7 +3208,7 @@ export interface components {
             /** Markdown */
             markdown: string;
             /** Rules */
-            rules?: components["schemas"]["app__api__schemas__pipeline__RegexRuleModel"][];
+            rules?: components["schemas"]["RegexRuleModel"][];
             /**
              * Use Default Rules
              * @default true
@@ -3444,7 +3555,7 @@ export interface components {
         /** CleanRulesResponse */
         CleanRulesResponse: {
             /** Rules */
-            rules: components["schemas"]["app__api__schemas__pipeline__RegexRuleModel"][];
+            rules: components["schemas"]["RegexRuleModel"][];
         };
         /**
          * ConversationCreate
@@ -3821,6 +3932,56 @@ export interface components {
             parser_backend: string;
         };
         /**
+         * DocumentParsedContentResponse
+         * @description Persisted parsed markdown content for a document (best-effort).
+         *
+         *     Notes:
+         *     - This is only available when the ingestion pipeline enables `persist_parsed_content`.
+         *     - The returned markdown is already truncated when persisted (pipeline-controlled), and may be further
+         *       truncated by the API handler via `max_chars` for UI safety.
+         */
+        DocumentParsedContentResponse: {
+            /**
+             * Document Id
+             * Format: uuid
+             */
+            document_id: string;
+            /**
+             * Available
+             * @default false
+             */
+            available: boolean;
+            /**
+             * Markdown Content
+             * @default
+             */
+            markdown_content: string;
+            /**
+             * Original Markdown Content
+             * @default
+             */
+            original_markdown_content: string;
+            /** Persisted Meta */
+            persisted_meta?: {
+                [key: string]: unknown;
+            };
+            /**
+             * Markdown Truncated
+             * @default false
+             */
+            markdown_truncated: boolean;
+            /**
+             * Original Markdown Truncated
+             * @default false
+             */
+            original_markdown_truncated: boolean;
+            /**
+             * Max Chars
+             * @default 200000
+             */
+            max_chars: number;
+        };
+        /**
          * DocumentPipelineOptions
          * @description Per-document pipeline options.
          */
@@ -4068,6 +4229,23 @@ export interface components {
              * @description Overlap size
              */
             chunk_overlap?: number | null;
+            /**
+             * Chunk Merge Small Min Chars
+             * @description Optional: merge chunks shorter than this threshold with neighbors (0 disables).
+             */
+            chunk_merge_small_min_chars?: number | null;
+            /**
+             * Chunk Strategy Params
+             * @description Chunking strategy parameters (best-effort, strategy-specific). Only small JSON objects are allowed (primitive values only).
+             */
+            chunk_strategy_params?: {
+                [key: string]: unknown;
+            } | null;
+            /**
+             * Embedding Context Prefix Enabled
+             * @description Prefix chunk content with lightweight structural context (e.g. header_path) before embedding (vector-only).
+             */
+            embedding_context_prefix_enabled?: boolean | null;
             /** Chunk Vector Enabled */
             chunk_vector_enabled?: boolean | null;
             /** Bm25 Index Enabled */
@@ -6505,6 +6683,21 @@ export interface components {
             /** Error */
             error?: string | null;
         };
+        /** RegexRuleModel */
+        RegexRuleModel: {
+            /** Pattern */
+            pattern: string;
+            /**
+             * Repl
+             * @default
+             */
+            repl: string;
+            /**
+             * Flags
+             * @default 0
+             */
+            flags: number;
+        };
         /** RegisterRequest */
         RegisterRequest: {
             /**
@@ -6818,6 +7011,32 @@ export interface components {
             safety?: components["schemas"]["SafetyConfig"] | null;
             langgraph?: components["schemas"]["LangGraphConfig"] | null;
         };
+        /**
+         * UrlUploadRequest
+         * @description Upload a document by fetching a remote URL (connector skeleton).
+         */
+        UrlUploadRequest: {
+            /** Url */
+            url: string;
+            /** Dataset Id */
+            dataset_id?: string | null;
+            /**
+             * Filename
+             * @description Optional override filename (used for extension + display)
+             */
+            filename?: string | null;
+            /**
+             * Parser Backend
+             * @default auto
+             */
+            parser_backend: string;
+            /**
+             * Chunk Strategy
+             * @default langchain_recursive
+             */
+            chunk_strategy: string;
+            pipeline?: components["schemas"]["DocumentPipelineOptions"] | null;
+        };
         /** UserPublic */
         UserPublic: {
             /**
@@ -6941,9 +7160,12 @@ export interface components {
             auto_selected_strategy?: string | null;
             /** Warnings */
             warnings?: string[];
+            review_signals?: components["schemas"]["ChunkPreviewReviewSignals"] | null;
             quality_gate?: components["schemas"]["ChunkPreviewQualityGate"] | null;
             /** Recommendations */
             recommendations?: string[];
+            /** Recommendation Patches */
+            recommendation_patches?: components["schemas"]["ChunkPreviewRecommendationPatch"][];
             /** Original Text */
             original_text?: string | null;
             /**
@@ -6968,28 +7190,6 @@ export interface components {
         };
         /** RegexRuleModel */
         app__api__schemas__governance_profile__RegexRuleModel: {
-            /** Pattern */
-            pattern: string;
-            /**
-             * Repl
-             * @default
-             */
-            repl: string;
-            /**
-             * Flags
-             * @default 0
-             */
-            flags: number;
-        };
-        /** ChunkPreviewResponse */
-        app__api__schemas__pipeline__ChunkPreviewResponse: {
-            /** Paragraphs */
-            paragraphs: components["schemas"]["ChunkItem"][];
-            /** Sentences */
-            sentences: components["schemas"]["ChunkItem"][];
-        };
-        /** RegexRuleModel */
-        app__api__schemas__pipeline__RegexRuleModel: {
             /** Pattern */
             pattern: string;
             /**
@@ -7207,6 +7407,43 @@ export interface operations {
             };
         };
     };
+    upload_document_from_url_api_v1_documents_upload_url_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UrlUploadRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     upload_documents_batch_api_v1_documents_upload_batch_post: {
         parameters: {
             query?: never;
@@ -7379,6 +7616,43 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_document_parsed_content_api_v1_documents__document_id__parsed_content_get: {
+        parameters: {
+            query?: {
+                max_chars?: number;
+            };
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path: {
+                document_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentParsedContentResponse"];
+                };
             };
             /** @description Validation Error */
             422: {
@@ -7940,6 +8214,7 @@ export interface operations {
                 chunk_size?: number;
                 chunk_overlap?: number;
                 include_original_text?: boolean;
+                include_review_signals?: boolean;
                 original_text_max_chars?: number;
                 max_chunks?: number;
                 use_parse_cache?: boolean;
@@ -7984,6 +8259,7 @@ export interface operations {
                 chunk_size?: number;
                 chunk_overlap?: number;
                 include_original_text?: boolean;
+                include_review_signals?: boolean;
                 original_text_max_chars?: number;
                 max_chunks?: number;
                 use_parse_cache?: boolean;
@@ -10666,7 +10942,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["app__api__schemas__pipeline__ChunkPreviewResponse"];
+                    "application/json": components["schemas"]["ChunkPreviewResponse"];
                 };
             };
             /** @description Validation Error */
