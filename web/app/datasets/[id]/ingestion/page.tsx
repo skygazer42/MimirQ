@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { toast } from 'sonner'
-import { ArrowLeft, Download, FileUp, Loader2, Plus, RefreshCw, Save, Settings2, Sparkles, Trash2 } from 'lucide-react'
+import { ArrowLeft, BarChart3, Download, FileUp, Loader2, Plus, RefreshCw, Save, Settings2, Sparkles, Trash2 } from 'lucide-react'
 
 import { AppFrame } from '@/components/app-frame'
 import { PageScaffold } from '@/components/ui/page-scaffold'
