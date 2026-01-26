@@ -8,6 +8,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { cn } from '@/lib/utils'
 import { usePipelineOptions } from '@/contexts/pipeline-options-context'
+import { parseChunkStrategyParamsJson } from '@/lib/chunk-strategy-params'
 import type { DocumentPipelineOptions } from '@/types'
 
 type PipelineOptionsPanelProps = {
@@ -420,66 +421,13 @@ export function PipelineOptionsPanel(props: PipelineOptionsPanelProps) {
   }
 
   const validateAndApplyChunkStrategyParams = (text: string) => {
-    const raw = String(text || '')
-    const trimmed = raw.trim()
-    if (!trimmed) {
-      setChunkStrategyParamsError(null)
-      updateOption('chunk_strategy_params', undefined)
+    const res = parseChunkStrategyParamsJson(text)
+    if (!res.ok) {
+      setChunkStrategyParamsError(res.error)
       return
     }
-
-    let obj: any
-    try {
-      obj = JSON.parse(trimmed)
-    } catch {
-      setChunkStrategyParamsError('JSON 解析失败：请检查括号、引号与逗号')
-      return
-    }
-
-    if (obj == null) {
-      setChunkStrategyParamsError(null)
-      updateOption('chunk_strategy_params', undefined)
-      return
-    }
-
-    if (typeof obj !== 'object' || Array.isArray(obj)) {
-      setChunkStrategyParamsError('chunk_strategy_params 必须是 JSON Object（键值对）')
-      return
-    }
-
-    const entries = Object.entries(obj)
-    if (entries.length > 30) {
-      setChunkStrategyParamsError('chunk_strategy_params 键过多（最多 30 个）')
-      return
-    }
-
-    const cleaned: Record<string, any> = {}
-    for (const [k, v] of entries) {
-      const key = String(k || '').trim()
-      if (!key) continue
-      if (key.length > 80) {
-        setChunkStrategyParamsError('存在过长 key（最长 80 字符）')
-        return
-      }
-      const t = typeof v
-      if (v == null || t === 'boolean' || t === 'number') {
-        cleaned[key] = v
-        continue
-      }
-      if (t === 'string') {
-        if (String(v).length > 500) {
-          setChunkStrategyParamsError('存在过长 string value（最长 500 字符）')
-          return
-        }
-        cleaned[key] = v
-        continue
-      }
-      setChunkStrategyParamsError('只允许原始类型 value（null/bool/number/string），不允许嵌套对象/数组')
-      return
-    }
-
     setChunkStrategyParamsError(null)
-    updateOption('chunk_strategy_params', Object.keys(cleaned).length ? cleaned : undefined)
+    updateOption('chunk_strategy_params', res.value)
   }
 
   return (

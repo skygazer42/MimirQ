@@ -2,6 +2,7 @@
 
 import { createContext, useContext, useEffect, useMemo, useState } from 'react'
 import type { DocumentPipelineOptions } from '@/types'
+import { validateChunkStrategyParams } from '@/lib/chunk-strategy-params'
 
 const STORAGE_KEY = 'mimirq_pipeline_options'
 
@@ -146,32 +147,10 @@ const normalizeRegexRules = (value: unknown): Array<{ pattern: string; repl?: st
   return out
 }
 
-const normalizeChunkStrategyParams = (value: unknown): Record<string, any> | undefined => {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined
-  const entries = Object.entries(value as any)
-  if (entries.length > 30) return undefined
-  const out: Record<string, any> = {}
-  for (const [k, v] of entries) {
-    const key = String(k || '').trim()
-    if (!key) continue
-    if (key.length > 80) return undefined
-    const t = typeof v
-    if (v == null || t === 'boolean' || t === 'number') {
-      out[key] = v
-      continue
-    }
-    if (t === 'string') {
-      if (String(v).length > 500) return undefined
-      out[key] = v
-      continue
-    }
-    return undefined
-  }
-  return Object.keys(out).length ? out : undefined
-}
-
 const normalizeOptions = (raw: any): DocumentPipelineOptions => {
   if (!raw || typeof raw !== 'object') return { ...DEFAULT_OPTIONS }
+  const validatedStrategyParams = validateChunkStrategyParams(raw.chunk_strategy_params)
+  const chunkStrategyParams = validatedStrategyParams.ok ? validatedStrategyParams.value : undefined
   return {
     governance_enabled: toBool(raw.governance_enabled) ?? DEFAULT_OPTIONS.governance_enabled,
     governance_remove_toc_lines: toBool(raw.governance_remove_toc_lines) ?? DEFAULT_OPTIONS.governance_remove_toc_lines,
@@ -228,7 +207,7 @@ const normalizeOptions = (raw: any): DocumentPipelineOptions => {
     chunk_size: toInt(raw.chunk_size) ?? DEFAULT_OPTIONS.chunk_size,
     chunk_overlap: toInt(raw.chunk_overlap) ?? DEFAULT_OPTIONS.chunk_overlap,
     chunk_merge_small_min_chars: toInt(raw.chunk_merge_small_min_chars) ?? DEFAULT_OPTIONS.chunk_merge_small_min_chars,
-    chunk_strategy_params: normalizeChunkStrategyParams(raw.chunk_strategy_params) ?? DEFAULT_OPTIONS.chunk_strategy_params,
+    chunk_strategy_params: chunkStrategyParams ?? DEFAULT_OPTIONS.chunk_strategy_params,
     embedding_context_prefix_enabled: toBool(raw.embedding_context_prefix_enabled) ?? DEFAULT_OPTIONS.embedding_context_prefix_enabled,
     chunk_vector_enabled: toBool(raw.chunk_vector_enabled) ?? DEFAULT_OPTIONS.chunk_vector_enabled,
     bm25_index_enabled: toBool(raw.bm25_index_enabled) ?? DEFAULT_OPTIONS.bm25_index_enabled,
