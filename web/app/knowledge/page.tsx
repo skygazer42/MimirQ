@@ -46,6 +46,7 @@ import { Button } from '@/components/ui/button'
 import { IconButton } from '@/components/ui/icon-button'
 import { Input } from '@/components/ui/input'
 import { Panel } from '@/components/ui/panel'
+import { Textarea } from '@/components/ui/textarea'
 import { StatusBadge, type StatusBadgeStatus } from '@/components/ui/status-badge'
 import {
   Dialog,
@@ -63,13 +64,14 @@ import { UPLOAD_ACCEPT } from '@/lib/upload-extensions'
 import { StatCard, StatsGrid } from '@/components/ui/stats-card'
 import { DocumentDetailDialog } from '@/components/document-detail-dialog'
 import { getParserLabel } from '@/lib/parser-options'
-import type { Citation, Dataset, Document, DocumentStats } from '@/types'
-import { datasetApi, documentApi, ragApi } from '@/lib/api-client'
+import type { Citation, ConnectorRunOut, Dataset, Document, DocumentAccessMode, DocumentStats } from '@/types'
+import { connectorApi, datasetApi, documentApi, ragApi } from '@/lib/api-client'
 import { PipelineOptionsPanel } from '@/components/pipeline-options-panel'
 import { ParserDropdown } from '@/components/ui/parser-dropdown'
 import { ChunkStrategyDropdown } from '@/components/ui/chunk-strategy-dropdown'
 import { useParserBackendPreference } from '@/contexts/parser-backend-context'
 import { useChunkStrategyPreference } from '@/contexts/chunk-strategy-context'
+import { usePipelineOptions } from '@/contexts/pipeline-options-context'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 
 // Tab 类型
@@ -207,6 +209,7 @@ export default function KnowledgePage() {
   const [viewMode, setViewMode] = useState<ViewMode>('grid')
   const { parserBackend, setParserBackend } = useParserBackendPreference()
   const { chunkStrategy, setChunkStrategy } = useChunkStrategyPreference()
+  const { enabled: pipelineOverridesEnabled, options: pipelineOptions } = usePipelineOptions()
   const [docFilter, setDocFilter] = useState('')
   const [statusFilter, setStatusFilter] = useState<DocStatusFilter>('all')
   const [sortKey, setSortKey] = useState<DocSortKey>('created_at')
@@ -425,6 +428,16 @@ export default function KnowledgePage() {
   const [urlImportFilename, setUrlImportFilename] = useState('')
   const [urlImportDatasetId, setUrlImportDatasetId] = useState<string>(DATASET_DEFAULT)
   const [urlImportSubmitting, setUrlImportSubmitting] = useState(false)
+
+  const [urlBatchOpen, setUrlBatchOpen] = useState(false)
+  const [urlBatchUrls, setUrlBatchUrls] = useState('')
+  const [urlBatchFilename, setUrlBatchFilename] = useState('')
+  const [urlBatchDatasetId, setUrlBatchDatasetId] = useState<string>(DATASET_DEFAULT)
+  const [urlBatchAccessMode, setUrlBatchAccessMode] = useState<DocumentAccessMode>('inherit')
+  const [urlBatchAccessMembers, setUrlBatchAccessMembers] = useState('')
+  const [urlBatchSubmitting, setUrlBatchSubmitting] = useState(false)
+  const [connectorRuns, setConnectorRuns] = useState<ConnectorRunOut[]>([])
+  const [connectorRunsLoading, setConnectorRunsLoading] = useState(false)
 
   // 处理文件上传
   const handleFileUpload = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {

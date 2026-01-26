@@ -4,7 +4,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Calendar, Copy, Database, Eye, FileText, FileType, Hash, Loader2, Search, X } from 'lucide-react'
+import { Calendar, Copy, Database, Eye, FileText, FileType, Hash, Loader2, Search, Shield, X } from 'lucide-react'
 import { toast } from 'sonner'
 
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
@@ -14,13 +14,15 @@ import { EmptyState } from '@/components/ui/empty-state'
 import { IconButton } from '@/components/ui/icon-button'
 import { Input } from '@/components/ui/input'
 import { Panel } from '@/components/ui/panel'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { StatusBadge, type StatusBadgeStatus } from '@/components/ui/status-badge'
+import { Textarea } from '@/components/ui/textarea'
 import { documentApi, kgApi } from '@/lib/api-client'
 import { formatApiError } from '@/lib/api-errors'
 import { getChunkStrategyLabel } from '@/lib/chunk-strategies'
 import { getParserLabel } from '@/lib/parser-options'
 import { cn, formatDate, formatFileSize } from '@/lib/utils'
-import type { Document, DocumentChunk } from '@/types'
+import type { Document, DocumentAccessInfo, DocumentAccessMode, DocumentChunk } from '@/types'
 
 interface DocumentDetailDialogProps {
   document: Document
@@ -85,13 +87,25 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Doc
   const [error, setError] = useState<string | null>(null)
   const [isKgWorking, setIsKgWorking] = useState(false)
   const [chunkQuery, setChunkQuery] = useState('')
+  const [accessInfo, setAccessInfo] = useState<DocumentAccessInfo | null>(null)
+  const [accessDialogOpen, setAccessDialogOpen] = useState(false)
+  const [accessMode, setAccessMode] = useState<DocumentAccessMode>('inherit')
+  const [accessMembersText, setAccessMembersText] = useState('')
+  const [isSavingAccess, setIsSavingAccess] = useState(false)
 
   const loadDetail = useCallback(async () => {
     setIsLoading(true)
     setError(null)
     try {
-      const data = await documentApi.get(initialDocument.id, { includeChunks: true })
+      const [data, acl] = await Promise.all([
+        documentApi.get(initialDocument.id, { includeChunks: true }),
+        documentApi.getAccess(initialDocument.id).catch((err) => {
+          console.warn('Load document access error:', err)
+          return null
+        }),
+      ])
       setDetail(data)
+      setAccessInfo(acl)
     } catch (err: any) {
       console.error('Load document detail error:', err)
       setError(formatApiError(err, '获取文档详情失败'))
@@ -117,6 +131,23 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Doc
   const displayDoc = detail || initialDocument
   const status = asStatusBadgeStatus(displayDoc.status)
   const canRunKg = displayDoc.status === 'completed' && !isKgWorking
+  const effectiveAccessMode: DocumentAccessMode =
+    accessInfo?.mode || (displayDoc.access_mode as DocumentAccessMode | null) || 'inherit'
+
+  const accessModeLabel = useMemo(() => {
+    switch (effectiveAccessMode) {
+      case 'inherit':
+        return '继承数据集'
+      case 'only_me':
+        return '仅我可见'
+      case 'partial_members':
+        return '指定成员'
+      case 'all_team_members':
+        return '团队成员'
+      default:
+        return String(effectiveAccessMode)
+    }
+  }, [effectiveAccessMode])
 
   const filteredChunks = useMemo(() => {
     const q = chunkQuery.trim().toLowerCase()
@@ -185,6 +216,51 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Doc
     }
   }
 
+  const parseAccessMembers = useCallback((raw: string): string[] => {
+    const parts = (raw || '')
+      .split(/[\n,;]+/g)
+      .map((s) => s.trim())
+      .filter(Boolean)
+    const out: string[] = []
+    const seen = new Set<string>()
+    for (const p of parts) {
+      if (seen.has(p)) continue
+      seen.add(p)
+      out.push(p)
+      if (out.length >= 200) break
+    }
+    return out
+  }, [])
+
+  const handleSaveAccess = useCallback(async () => {
+    if (!displayDoc?.id) return
+    setIsSavingAccess(true)
+    try {
+      const payload = {
+        mode: accessMode,
+        partial_member_list: accessMode === 'partial_members' ? parseAccessMembers(accessMembersText) : null,
+      }
+      const res = await documentApi.updateAccess(displayDoc.id, payload)
+      setAccessInfo(res)
+      setDetail((prev) =>
+        prev
+          ? {
+              ...prev,
+              access_mode: res.mode === 'inherit' ? null : res.mode,
+              owner_id: res.owner_id ?? prev.owner_id,
+            }
+          : prev
+      )
+      toast.success('已更新文档访问控制')
+      setAccessDialogOpen(false)
+    } catch (err: any) {
+      console.error('Update document access failed:', err)
+      toast.error(formatApiError(err, '更新访问控制失败'))
+    } finally {
+      setIsSavingAccess(false)
+    }
+  }, [accessMode, accessMembersText, displayDoc?.id, parseAccessMembers])
+
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
@@ -245,6 +321,10 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Doc
                   切块：{chunkStrategyLabel}
                 </span>
               ) : null}
+              <span className="inline-flex items-center gap-1 rounded-full border border-border/60 bg-muted/60 px-2.5 py-1 text-xs font-medium text-muted-foreground">
+                <Shield className="h-3.5 w-3.5" />
+                {accessModeLabel}
+              </span>
             </div>
           </div>
         </header>
@@ -363,6 +443,74 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Doc
         <footer className="border-t border-border bg-muted/20 px-6 py-4">
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex flex-col gap-2 sm:flex-row">
+              <Dialog
+                open={accessDialogOpen}
+                onOpenChange={(next) => {
+                  if (next) {
+                    setAccessMode(effectiveAccessMode)
+                    setAccessMembersText((accessInfo?.partial_member_list || []).join('\n'))
+                  }
+                  setAccessDialogOpen(next)
+                }}
+              >
+                <DialogTrigger asChild>
+                  <Button variant="outline" className="w-full gap-2 sm:w-auto">
+                    <Shield className="h-4 w-4" />
+                    访问控制
+                  </Button>
+                </DialogTrigger>
+                <DialogContent className="max-w-xl">
+                  <DialogTitle>文档访问控制</DialogTitle>
+                  <DialogDescription className="text-xs">
+                    用于“安全裁剪（security trimming）”：在数据集权限基础上进一步限制该文档的可见范围。
+                  </DialogDescription>
+
+                  <div className="mt-4 space-y-4">
+                    <div className="space-y-2">
+                      <div className="text-sm font-medium">模式</div>
+                      <Select value={accessMode} onValueChange={(v) => setAccessMode(v as DocumentAccessMode)}>
+                        <SelectTrigger>
+                          <SelectValue placeholder="选择访问模式" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="inherit">继承数据集</SelectItem>
+                          <SelectItem value="only_me">仅我可见</SelectItem>
+                          <SelectItem value="partial_members">指定成员</SelectItem>
+                          <SelectItem value="all_team_members">团队成员</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <div className="text-xs text-muted-foreground">
+                        Owner：<span className="font-mono">{displayDoc.owner_id || '-'}</span>
+                      </div>
+                    </div>
+
+                    {accessMode === 'partial_members' ? (
+                      <div className="space-y-2">
+                        <div className="text-sm font-medium">允许成员（每行一个 user_id）</div>
+                        <Textarea
+                          value={accessMembersText}
+                          onChange={(e) => setAccessMembersText(e.target.value)}
+                          placeholder="例如：\nalice\nbob\ncharlie"
+                        />
+                        <div className="text-xs text-muted-foreground">最多 200 个；仅支持当前租户已存在的成员。</div>
+                      </div>
+                    ) : null}
+                  </div>
+
+                  <div className="mt-6 flex items-center justify-end gap-2">
+                    <Button variant="outline" onClick={() => setAccessDialogOpen(false)} disabled={isSavingAccess}>
+                      取消
+                    </Button>
+                    <Button onClick={() => void handleSaveAccess()} disabled={isSavingAccess}>
+                      {isSavingAccess ? (
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin motion-reduce:animate-none" />
+                      ) : null}
+                      保存
+                    </Button>
+                  </div>
+                </DialogContent>
+              </Dialog>
+
               <Button variant="outline" onClick={handleExtractKG} disabled={!canRunKg} className="w-full gap-2 sm:w-auto">
                 {isKgWorking && canRunKg ? (
                   <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" />

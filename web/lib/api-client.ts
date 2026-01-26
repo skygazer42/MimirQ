@@ -8,6 +8,12 @@ import type {
   DocumentChunkMatchList,
   DocumentStatus,
   DocumentStats,
+  DocumentAccessInfo,
+  DocumentAccessUpdateRequest,
+  ConnectorInfo,
+  ConnectorRunCreateRequest,
+  ConnectorRunListResponse,
+  ConnectorRunOut,
   DocumentUserMetadataPatchRequest,
   DocumentBatchUserMetadataPatchRequest,
   DocumentBatchUserMetadataPatchResponse,
@@ -306,6 +312,22 @@ export const documentApi = {
     const { data } = await apiClient.get(`/documents/${documentId}`, {
       params,
     })
+    return data
+  },
+
+  /**
+   * 获取文档访问控制（ACL）
+   */
+  async getAccess(documentId: string): Promise<DocumentAccessInfo> {
+    const { data } = await apiClient.get(`/documents/${documentId}/access`)
+    return data
+  },
+
+  /**
+   * 更新文档访问控制（ACL）
+   */
+  async updateAccess(documentId: string, payload: DocumentAccessUpdateRequest): Promise<DocumentAccessInfo> {
+    const { data } = await apiClient.put(`/documents/${documentId}/access`, payload)
     return data
   },
 
@@ -847,6 +869,35 @@ export const pipelineApi = {
     if (params.chunk_strategy) formData.append('chunk_strategy', params.chunk_strategy)
     if (params.diff_max_lines != null) formData.append('diff_max_lines', String(params.diff_max_lines))
     const { data } = await apiClient.post('/pipeline/ingestion-preview', formData, { timeout: API_LONG_TIMEOUT_MS })
+    return data
+  },
+}
+
+// ==================== Connectors API ====================
+
+export const connectorApi = {
+  async listConnectors(): Promise<ConnectorInfo[]> {
+    const { data } = await apiClient.get('/connectors')
+    return data
+  },
+
+  async createRun(payload: ConnectorRunCreateRequest): Promise<ConnectorRunOut> {
+    const { data } = await apiClient.post('/connectors/runs', payload)
+    return data
+  },
+
+  async listRuns(params?: { skip?: number; limit?: number; dataset_id?: string }): Promise<ConnectorRunListResponse> {
+    const { data } = await apiClient.get('/connectors/runs', { params })
+    return data
+  },
+
+  async getRun(runId: string): Promise<ConnectorRunOut> {
+    const { data } = await apiClient.get(`/connectors/runs/${runId}`)
+    return data
+  },
+
+  async cancelRun(runId: string): Promise<ConnectorRunOut> {
+    const { data } = await apiClient.post(`/connectors/runs/${runId}/cancel`)
     return data
   },
 }
