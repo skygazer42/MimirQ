@@ -130,10 +130,16 @@ export default function DatasetProfilePage() {
 
   const fileTypeChartData = useMemo(() => {
     const m = summary?.by_file_type || {}
-    return Object.entries(m)
+    const entries = Object.entries(m)
       .map(([name, value]) => ({ name, value: Number(value || 0) }))
+      .filter((x) => x.value > 0)
       .sort((a, b) => b.value - a.value)
-      .slice(0, 12)
+
+    const top = entries.slice(0, 10)
+    const rest = entries.slice(10)
+    const other = rest.reduce((acc, x) => acc + x.value, 0)
+    if (other > 0) top.push({ name: '其他', value: other })
+    return top
   }, [summary])
 
   const statusChartData = useMemo(() => {
@@ -159,6 +165,24 @@ export default function DatasetProfilePage() {
     ]
   }, [summary])
 
+  const piiChartData = useMemo(() => {
+    const m = summary?.pii_hits_total || {}
+    return Object.entries(m)
+      .map(([name, value]) => ({ name, value: Number(value || 0) }))
+      .filter((x) => x.value > 0)
+      .sort((a, b) => b.value - a.value)
+      .slice(0, 10)
+  }, [summary])
+
+  const secretsChartData = useMemo(() => {
+    const m = summary?.secrets_hits_total || {}
+    return Object.entries(m)
+      .map(([name, value]) => ({ name, value: Number(value || 0) }))
+      .filter((x) => x.value > 0)
+      .sort((a, b) => b.value - a.value)
+      .slice(0, 10)
+  }, [summary])
+
   const openFinding = useCallback(
     async (finding: DatasetProfileFindingSummary) => {
       if (!datasetId) return
@@ -182,15 +206,16 @@ export default function DatasetProfilePage() {
   const loadMoreFinding = useCallback(async () => {
     if (!datasetId || !selectedFinding || !findingRes) return
     if (findingRes.items.length >= findingRes.total) return
-      const nextSkip = findingRes.items.length
-      setFindingLoading(true)
-      try {
-        const res = await datasetApi.listProfileFinding(datasetId, selectedFinding.key, { skip: nextSkip, limit: 50 })
-        setFindingRes({ total: res.total, items: [...findingRes.items, ...(res.items || [])] })
-      } catch (e: any) {
-        console.error('Failed to load more finding documents', e)
-        toast.error(formatApiError(e, '加载更多失败'))
-      } finally {
+
+    const nextSkip = findingRes.items.length
+    setFindingLoading(true)
+    try {
+      const res = await datasetApi.listProfileFinding(datasetId, selectedFinding.key, { skip: nextSkip, limit: 50 })
+      setFindingRes({ total: res.total, items: [...findingRes.items, ...(res.items || [])] })
+    } catch (e: any) {
+      console.error('Failed to load more finding documents', e)
+      toast.error(formatApiError(e, '加载更多失败'))
+    } finally {
       setFindingLoading(false)
     }
   }, [datasetId, selectedFinding, findingRes])
@@ -216,6 +241,18 @@ export default function DatasetProfilePage() {
     },
     [load, stopPolling]
   )
+
+  // If a scan run is already running (e.g., user refreshed the page), resume polling.
+  useEffect(() => {
+    if (!datasetId) return
+    const run = summary?.latest_scan_run
+    const st = String(run?.status || '').toLowerCase()
+    if (!run?.id) return
+    if (st !== 'pending' && st !== 'running') return
+    if (pollTimerRef.current) return
+    setScanRunning(true)
+    pollTimerRef.current = window.setTimeout(() => void pollScanRun(datasetId, String(run.id)), 500)
+  }, [datasetId, pollScanRun, summary?.latest_scan_run])
 
   const startDeepScan = useCallback(async () => {
     if (!datasetId) return
@@ -254,8 +291,24 @@ export default function DatasetProfilePage() {
     }
   }, [datasetId, dataset?.name])
 
-  const latestRunStatus = summary?.latest_scan_run?.status || scanRun?.status
-  const latestRunProgress = summary?.latest_scan_run?.progress ?? scanRun?.progress ?? 0
+  const effectiveScanRun = useMemo(() => {
+    const srStatus = String(scanRun?.status || '').toLowerCase()
+    if (scanRun && (srStatus === 'pending' || srStatus === 'running')) {
+      return { status: scanRun.status, progress: scanRun.progress ?? 0, error_message: scanRun.error_message }
+    }
+    if (summary?.latest_scan_run) {
+      return {
+        status: summary.latest_scan_run.status,
+        progress: summary.latest_scan_run.progress ?? 0,
+        error_message: summary.latest_scan_run.error_message,
+      }
+    }
+    if (scanRun) return { status: scanRun.status, progress: scanRun.progress ?? 0, error_message: scanRun.error_message }
+    return { status: undefined, progress: 0, error_message: undefined }
+  }, [scanRun, summary?.latest_scan_run])
+
+  const latestRunStatus = effectiveScanRun.status
+  const latestRunProgress = effectiveScanRun.progress
 
   return (
     <AppFrame>
@@ -410,6 +463,48 @@ export default function DatasetProfilePage() {
                 </ResponsiveContainer>
               </div>
             </Panel>
+
+            <Panel className="p-5">
+              <div className="flex items-center justify-between mb-4">
+                <div className="font-semibold">PII 命中（次数）</div>
+              </div>
+              {piiChartData.length ? (
+                <div className="h-[280px]">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={piiChartData}>
+                      <CartesianGrid strokeDasharray="3 3" />
+                      <XAxis dataKey="name" fontSize={12} />
+                      <YAxis allowDecimals={false} fontSize={12} />
+                      <Tooltip />
+                      <Bar dataKey="value" fill="#f59e0b" radius={[6, 6, 0, 0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              ) : (
+                <div className="h-[280px] flex items-center justify-center text-muted-foreground">暂无数据</div>
+              )}
+            </Panel>
+
+            <Panel className="p-5">
+              <div className="flex items-center justify-between mb-4">
+                <div className="font-semibold">Secrets/Token 命中（次数）</div>
+              </div>
+              {secretsChartData.length ? (
+                <div className="h-[280px]">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={secretsChartData}>
+                      <CartesianGrid strokeDasharray="3 3" />
+                      <XAxis dataKey="name" fontSize={12} />
+                      <YAxis allowDecimals={false} fontSize={12} />
+                      <Tooltip />
+                      <Bar dataKey="value" fill="#fb7185" radius={[6, 6, 0, 0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              ) : (
+                <div className="h-[280px] flex items-center justify-center text-muted-foreground">暂无数据</div>
+              )}
+            </Panel>
           </div>
 
           <Panel className="p-5">
@@ -511,7 +606,7 @@ export default function DatasetProfilePage() {
             <div className="mt-4 flex items-center justify-between gap-4">
               <div className="text-sm text-muted-foreground">
                 进度：{scanRunning ? `${latestRunProgress || 0}%` : latestRunProgress ? `${latestRunProgress}%` : '-'}
-                {scanRun?.error_message ? <span className="ml-3 text-destructive">错误：{scanRun.error_message}</span> : null}
+                {effectiveScanRun.error_message ? <span className="ml-3 text-destructive">错误：{effectiveScanRun.error_message}</span> : null}
               </div>
             </div>
           </Panel>
