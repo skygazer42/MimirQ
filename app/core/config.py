@@ -352,6 +352,9 @@ class Settings(BaseSettings):
     VECTOR_BACKEND: str = "milvus"  # milvus | memory | faiss | chroma
     # Indexing toggles (to reduce duplicate pipelines when desired)
     CHUNK_VECTOR_ENABLED: bool = True
+    # When true, allow per-dataset/document pipeline to prefix chunk content with structural context
+    # (e.g. header_path) before embedding. Default is off to keep backward-compatible vectors.
+    EMBEDDING_CONTEXT_PREFIX_ENABLED: bool = False
     EVENT_VECTOR_ENABLED: bool = True
     ENTITY_VECTOR_ENABLED: bool = True
     BM25_INDEX_ENABLED: bool = True

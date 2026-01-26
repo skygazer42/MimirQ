@@ -67,6 +67,20 @@ export function PipelineOptionsPanel(props: PipelineOptionsPanelProps) {
       ],
     },
     {
+      title: 'Embedding',
+      icon: Sparkles,
+      color: 'text-emerald-600 dark:text-emerald-300',
+      bgColor: 'bg-emerald-500/10 dark:bg-emerald-500/20',
+      items: [
+        {
+          key: 'embedding_context_prefix_enabled',
+          label: '结构化上下文前缀',
+          hint: '在向量 embedding 前追加 header_path/outline 等轻量上下文（不改变正文与定位）',
+          dependsOn: 'chunk_vector_enabled',
+        },
+      ],
+    },
+    {
       title: '知识图谱',
       icon: Network,
       color: 'text-purple-600 dark:text-purple-300',

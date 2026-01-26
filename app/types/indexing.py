@@ -35,6 +35,8 @@ class IndexingOptions:
     bm25_index_enabled: Optional[bool] = None
     event_vector_enabled: Optional[bool] = None
     entity_vector_enabled: Optional[bool] = None
+    # When enabled, prefix chunk content with lightweight context (e.g. header_path) before embedding.
+    embedding_context_prefix_enabled: Optional[bool] = None
 
 
 @dataclass(frozen=True)
@@ -123,4 +125,3 @@ __all__ = [
     "PersistChunksResult",
     "PersistEventsResult",
 ]
-
