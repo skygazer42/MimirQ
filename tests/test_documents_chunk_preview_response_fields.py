@@ -530,10 +530,11 @@ def test_documents_chunk_preview_rebases_offsets_when_page_duplicated(monkeypatc
 def test_documents_chunk_preview_recommendation_patch_for_duplicates(monkeypatch):  # noqa: ANN001
     client = _build_client(monkeypatch, parsed_pages=2, duplicate_page_content=True)
 
+    payload = b"hello world " * 10
     res = client.post(
         "/api/v1/documents/chunk-preview?chunk_size=1000&chunk_overlap=200",
         data={"parser_backend": "auto", "chunk_strategy": "langchain_recursive"},
-        files={"file": ("doc.txt", b"hello world", "text/plain")},
+        files={"file": ("doc.txt", payload, "text/plain")},
     )
     assert res.status_code == 200
     body = res.json()
@@ -546,7 +547,7 @@ def test_documents_chunk_preview_recommendation_patch_for_duplicates(monkeypatch
 
 def test_documents_chunk_preview_recommendation_patch_for_overlap_waste(monkeypatch):  # noqa: ANN001
     # Force overlap by shifting page 2 start_char so it begins at index 0 (complete overlap).
-    text = "hello"
+    text = "hello world " * 10
     doc_base = len(f"{text}\n\n# page 1") + 1  # join uses "\\n"
     client = _build_client(monkeypatch, parsed_pages=2, start_char_overrides=[0, -doc_base])
 
