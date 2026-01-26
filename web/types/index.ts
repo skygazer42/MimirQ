@@ -5,6 +5,7 @@
 // ==================== 通用类型 ====================
 
 export type PermissionEnum = 'only_me' | 'all_team_members' | 'partial_members'
+export type DocumentAccessMode = 'inherit' | PermissionEnum
 
 // ==================== 文档相关类型 ====================
 
@@ -17,6 +18,8 @@ export interface Document {
   processing_progress: number
   chunk_count: number
   total_characters: number
+  owner_id?: string | null
+  access_mode?: DocumentAccessMode | null
   created_at: string
   updated_at: string
   current_stage?: string
@@ -42,6 +45,72 @@ export interface DocumentStatus {
   processing_progress: number
   current_stage?: string
   error_message?: string
+}
+
+export interface DocumentAccessInfo {
+  mode: DocumentAccessMode
+  owner_id?: string | null
+  partial_member_list?: string[] | null
+}
+
+export interface DocumentAccessUpdateRequest {
+  mode: DocumentAccessMode
+  partial_member_list?: string[] | null
+}
+
+// ==================== Connectors ====================
+
+export type ConnectorId = 'url_batch'
+export type ConnectorRunStatus = 'pending' | 'running' | 'completed' | 'failed' | 'cancelled'
+
+export interface ConnectorInfo {
+  id: ConnectorId
+  name: string
+  description?: string
+  supports_incremental?: boolean
+}
+
+export interface UrlBatchConnectorConfig {
+  urls: string[]
+  filename?: string | null
+  parser_backend?: string
+  chunk_strategy?: string
+  pipeline?: DocumentPipelineOptions
+  access?: DocumentAccessUpdateRequest | null
+}
+
+export interface ConnectorRunCreateRequest {
+  connector_id: ConnectorId
+  dataset_id?: string | null
+  config: UrlBatchConnectorConfig
+}
+
+export interface ConnectorRunDocumentOut {
+  document_id: string
+  source_ref?: string | null
+  status?: string
+}
+
+export interface ConnectorRunOut {
+  id: string
+  tenant_id: string
+  dataset_id?: string | null
+  connector_id: string
+  requested_by?: string | null
+  status: ConnectorRunStatus
+  config?: Record<string, any>
+  stats?: Record<string, any>
+  error_message?: string | null
+  task_id?: string | null
+  created_at: string
+  started_at?: string | null
+  finished_at?: string | null
+  documents?: ConnectorRunDocumentOut[]
+}
+
+export interface ConnectorRunListResponse {
+  total: number
+  items: ConnectorRunOut[]
 }
 
 export interface DocumentStats {

@@ -21,7 +21,7 @@ from pathlib import Path
 import uuid
 
 from app.core.database import get_db
-from app.models.document import Document as DBDocument, DocumentChunk, DocumentParsedContent
+from app.models.document import Document as DBDocument, DocumentChunk, DocumentParsedContent, DocumentPermission
 from app.api.schemas.document import (
     DocumentList,
     DocumentStats,
@@ -34,6 +34,8 @@ from app.api.schemas.document import (
     ParsedSegment,
     ManualDocumentCreate,
     DocumentPipelineOptions,
+    DocumentAccessInfo,
+    DocumentAccessUpdateRequest,
     DocumentPipelinePatchRequest,
     DocumentUserMetadataPatchRequest,
     DocumentBatchUserMetadataPatchRequest,
@@ -76,6 +78,7 @@ from app.services.ingestion_policy import (
 )
 from app.services.mineru_service import mineru_service
 from app.services.dataset_service import DatasetService, EDIT_ROLES
+from app.services.document_permission_service import DocumentPermissionService
 from app.storage.object.minio import minio_service, is_minio_uri, parse_minio_uri
 from app.models.dataset import Dataset, DatasetPermission, DatasetPermissionEnum
 from app.core.config import settings
@@ -85,7 +88,7 @@ from fastapi.responses import FileResponse, RedirectResponse, StreamingResponse
 from app.api.dependencies.tenant import get_tenant_id
 from app.api.dependencies.auth import get_current_account_id
 from app.rag.kg.pipeline import extract_events
-from sqlalchemy import or_, and_, func
+from sqlalchemy import or_, and_, func, select
 from app.rag.core.logging import get_logger
 from app.rag.preprocessing.processor import governance_processor
 from app.rag.preprocessing.rules import build_governance_rules
@@ -1565,6 +1568,56 @@ def _resolve_writable_dataset(
     )
 
 
+def _assert_document_acl_readable(
+    db: Session,
+    *,
+    tenant_id: UUID,
+    account_id: str,
+    document: DBDocument,
+    dataset: Dataset | None = None,
+) -> None:
+    """
+    Enforce document-level ACL ("security trimming") in addition to dataset permission.
+
+    - Dataset permission is enforced by callers (or passed in via `dataset`).
+    - Dataset owners can always access documents in their dataset.
+    """
+    if not account_id:
+        return
+
+    # Dataset owner bypass for management.
+    if dataset is not None and str(getattr(dataset, "owner_id", "") or "") == account_id:
+        return
+
+    mode = (str(getattr(document, "access_mode", "") or "")).strip().lower()
+    if not mode or mode in {"inherit", "all_team_members"}:
+        return
+
+    owner_id = (str(getattr(document, "owner_id", "") or "")).strip()
+    if owner_id and owner_id == account_id:
+        return
+
+    if mode == "only_me":
+        raise HTTPException(status_code=403, detail="No document access")
+
+    if mode == "partial_members":
+        exists = (
+            db.query(DocumentPermission)
+            .filter(
+                DocumentPermission.tenant_id == tenant_id,
+                DocumentPermission.document_id == document.id,
+                DocumentPermission.account_id == account_id,
+            )
+            .first()
+        )
+        if exists:
+            return
+        raise HTTPException(status_code=403, detail="No document access")
+
+    # Unknown mode: fail closed.
+    raise HTTPException(status_code=403, detail="No document access")
+
+
 class UrlUploadRequest(BaseModel):
     """Upload a document by fetching a remote URL (connector skeleton)."""
 
@@ -1574,6 +1627,256 @@ class UrlUploadRequest(BaseModel):
     parser_backend: str = Field(default=settings.DEFAULT_PARSER_BACKEND)
     chunk_strategy: str = Field(default=settings.DEFAULT_CHUNK_STRATEGY)
     pipeline: Optional[DocumentPipelineOptions] = None
+
+
+async def _ingest_url_upload_request(
+    *,
+    background_tasks: BackgroundTasks | None,
+    body: UrlUploadRequest,
+    tenant_id: UUID,
+    account_id: str,
+    db: Session,
+) -> DBDocument:
+    """
+    Shared implementation for URL ingestion.
+
+    - Used by API endpoint and connector runs.
+    - If task queue is disabled and `background_tasks` is None, processing runs inline (async).
+    """
+    if not bool(getattr(settings, "URL_INGEST_ENABLED", False)):
+        raise HTTPException(status_code=400, detail="URL ingestion is disabled")
+
+    url = await validate_url_for_ingest(str(body.url or ""))
+
+    # 1) Resolve dataset permission.
+    dataset = _resolve_writable_dataset(db, tenant_id, account_id, body.dataset_id)
+
+    # 2) Download to a temp path first, then decide extension (URL may not include it).
+    upload_dir = Path(settings.UPLOAD_DIR) / str(tenant_id)
+    upload_dir.mkdir(parents=True, exist_ok=True)
+    file_id = uuid.uuid4()
+    temp_path = upload_dir / f"{file_id}.urltmp"
+
+    downloaded = await download_url_to_path(
+        url,
+        temp_path,
+        max_bytes=int(getattr(settings, "URL_INGEST_MAX_BYTES", 0) or settings.MAX_FILE_SIZE),
+        timeout_sec=float(getattr(settings, "URL_INGEST_TIMEOUT_SEC", 30.0) or 30.0),
+        follow_redirects=bool(getattr(settings, "URL_INGEST_FOLLOW_REDIRECTS", False)),
+    )
+
+    content_type = (downloaded.content_type or "").split(";", 1)[0].strip().lower()
+
+    # 3) Determine file extension.
+    def _ext_from_filename(name: str | None) -> str | None:
+        if not name:
+            return None
+        ext = Path(str(name)).suffix.lower()
+        return ext if ext else None
+
+    def _ext_from_content_type(ct: str) -> str | None:
+        if not ct:
+            return None
+        if ct in {"text/html"}:
+            return ".html"
+        if ct in {"text/plain"}:
+            return ".txt"
+        if ct in {"text/markdown", "text/x-markdown"}:
+            return ".md"
+        if ct in {"application/pdf"}:
+            return ".pdf"
+        if ct in {"application/json"}:
+            return ".json"
+        if ct in {"text/xml", "application/xml", "application/rss+xml", "application/atom+xml"}:
+            return ".xml"
+        return None
+
+    # Prefer explicit filename override, then URL path, then content-type.
+    file_ext = _ext_from_filename(body.filename)
+    if not file_ext:
+        from urllib.parse import urlparse
+
+        parsed = urlparse(url)
+        file_ext = _ext_from_filename(Path(parsed.path).name)
+    if not file_ext:
+        file_ext = _ext_from_content_type(content_type)
+    if not file_ext:
+        # Best-effort: fall back to generic text if content looks text-ish.
+        if content_type.startswith("text/"):
+            file_ext = ".txt"
+        else:
+            raise HTTPException(status_code=400, detail=f"Unsupported content-type: {content_type or 'unknown'}")
+
+    file_ext = file_ext.lower()
+    if file_ext not in settings.allowed_extensions_list:
+        raise HTTPException(status_code=400, detail=f"Unsupported file type. Allowed: {settings.allowed_extensions_list}")
+
+    final_path = upload_dir / f"{file_id}{file_ext}"
+    try:
+        temp_path.replace(final_path)
+    except Exception:
+        try:
+            shutil.move(str(temp_path), str(final_path))
+        except Exception as exc:  # noqa: BLE001
+            with contextlib.suppress(OSError):
+                temp_path.unlink(missing_ok=True)
+            raise HTTPException(status_code=500, detail=f"failed to finalize downloaded file: {str(exc)[:120]}")
+
+    # 4) Resolve ingestion policy (optional) based on the inferred filename/ext.
+    safe_name = _sanitize_filename(body.filename or Path(final_path).name)
+
+    pipeline_options = PipelineOptions(**(body.pipeline.model_dump(exclude_none=True) if body.pipeline else {}))
+
+    dataset_meta = (getattr(dataset, "dataset_metadata", None) or {}) if dataset is not None else {}
+    policy = parse_ingestion_policy_from_metadata(dataset_meta if isinstance(dataset_meta, dict) else {})  # type: ignore[arg-type]
+    matched_rule = match_ingestion_rule(policy, filename=safe_name, file_ext=file_ext)
+
+    parser_backend_choice = str(body.parser_backend or settings.DEFAULT_PARSER_BACKEND)
+    chunk_strategy_choice = str(body.chunk_strategy or settings.DEFAULT_CHUNK_STRATEGY)
+    policy_patch = PipelineOptions()
+    ingestion_meta: Optional[dict[str, Any]] = None
+
+    if matched_rule is not None:
+        default_pb = (getattr(settings, "DEFAULT_PARSER_BACKEND", "auto") or "auto").strip().lower() or "auto"
+        req_pb = (parser_backend_choice or "").strip().lower()
+        if req_pb in {"", "auto", default_pb} and matched_rule.parser_backend:
+            parser_backend_choice = str(matched_rule.parser_backend)
+
+        default_cs = (getattr(settings, "DEFAULT_CHUNK_STRATEGY", "langchain_recursive") or "langchain_recursive").strip().lower()
+        req_cs = (chunk_strategy_choice or "").strip().lower()
+        if req_cs in {"", default_cs} and matched_rule.chunk_strategy:
+            chunk_strategy_choice = str(matched_rule.chunk_strategy)
+
+        preprocess_steps: list[dict[str, Any]] = []
+        pp = getattr(matched_rule, "preprocess", None)
+        steps = getattr(pp, "steps", None) if pp is not None and bool(getattr(pp, "enabled", True)) else None
+        if isinstance(steps, list) and steps:
+            preprocess_steps = [
+                {
+                    "id": str(getattr(s, "id", "") or "").strip(),
+                    "params": dict(getattr(s, "params", {}) or {}),
+                }
+                for s in steps
+            ]
+
+        patch_dict: dict[str, Any] = {}
+        profile_ref = getattr(matched_rule, "governance_profile_ref", None)
+        if isinstance(profile_ref, str) and profile_ref.strip():
+            try:
+                resolved = resolve_governance_profile_ref(db=db, tenant_id=tenant_id, profile_ref=profile_ref.strip())
+            except ValueError as exc:
+                raise HTTPException(status_code=400, detail=f"Invalid governance_profile_ref: {str(exc)[:120]}")
+            patch_dict.update(dict(resolved.pipeline_patch or {}))
+            if resolved.regex_rules:
+                patch_dict["governance_regex_rules"] = list(resolved.regex_rules)
+
+        patch_dict.update(dict(getattr(matched_rule, "pipeline_patch", None) or {}))
+        if patch_dict:
+            policy_patch = PipelineOptions(**patch_dict)
+
+        ingestion_meta = {
+            "version": str(getattr(policy, "version", "1") if policy is not None else "1"),
+            "rule": {"id": matched_rule.id, "name": matched_rule.name},
+            "preprocess": {"enabled": bool(preprocess_steps), "steps": preprocess_steps},
+            "governance_profile_ref": (profile_ref.strip() if isinstance(profile_ref, str) and profile_ref.strip() else None),
+            "source_url": url,
+        }
+
+    pipeline_options = merge_pipeline_options(policy_patch, pipeline_options)
+
+    # 5) Resolve backend/strategy after policy application.
+    try:
+        requested_parser_backend = (parser_backend_choice or "").strip().lower()
+        if file_ext == ".pdf" and requested_parser_backend in {"", "auto"}:
+            resolved_parser_backend = "auto"
+        else:
+            resolved_parser_backend = parser_factory.resolve_backend(file_ext, parser_backend_choice)
+        resolved_chunk_strategy = chunker_factory.resolve_strategy(chunk_strategy_choice)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+    pipeline_effective = resolve_pipeline_effective(
+        dataset_metadata=(getattr(dataset, "dataset_metadata", None) or {}),
+        document_metadata={},
+        request_overrides=pipeline_options,
+    )
+    if resolved_chunk_strategy not in chunker_factory.RAGFLOW_STRATEGIES:
+        _validate_chunk_params(pipeline_effective.chunk_size, pipeline_effective.chunk_overlap)
+
+    pipeline_metadata = build_pipeline_metadata(pipeline_options)
+
+    # 6) Create document record.
+    doc_metadata = {
+        "parser_backend": resolved_parser_backend,
+        "parser_backend_requested": str(body.parser_backend or "").lower(),
+        "chunk_strategy": resolved_chunk_strategy,
+        "chunk_strategy_requested": str(body.chunk_strategy or "").lower(),
+        "source_url": url,
+        "url_content_type": content_type or None,
+    }
+    if pipeline_metadata:
+        doc_metadata["pipeline"] = pipeline_metadata
+    if ingestion_meta:
+        doc_metadata["ingestion"] = ingestion_meta
+
+    pipeline_hash = _compute_pipeline_hash(doc_metadata)
+    doc_metadata["pipeline_hash"] = pipeline_hash
+
+    db_document = DBDocument(
+        id=file_id,
+        tenant_id=tenant_id,
+        dataset_id=dataset.id,
+        filename=safe_name,
+        file_type=file_ext.lstrip("."),
+        file_size=int(downloaded.size_bytes),
+        file_path=str(final_path),
+        owner_id=account_id,
+        access_mode=None,  # inherit dataset permission by default
+        status="pending",
+        processing_progress=0,
+        doc_metadata=doc_metadata,
+    )
+
+    db.add(db_document)
+    db.commit()
+    db.refresh(db_document)
+
+    # 7) Process document: enqueue if available; otherwise run/attach to background_tasks.
+    job_id = f"doc:{tenant_id}:{file_id}:{pipeline_hash}"
+    task_id = await enqueue_document_processing(
+        tenant_id=tenant_id,
+        document_id=file_id,
+        requested_by=account_id,
+        job_id=job_id,
+    )
+    if task_id:
+        meta = dict(db_document.doc_metadata or {})
+        meta["task_id"] = task_id
+        db_document.doc_metadata = meta
+        db.commit()
+        db.refresh(db_document)
+    else:
+        if background_tasks is not None:
+            background_tasks.add_task(
+                document_processor.process_document,
+                final_path,
+                file_id,
+                tenant_id,
+                resolved_parser_backend,
+                resolved_chunk_strategy,
+            )
+        else:
+            # Connector runs may execute outside of a FastAPI request lifecycle; run inline.
+            await document_processor.process_document(
+                file_path=final_path,
+                document_id=file_id,
+                tenant_id=tenant_id,
+                parser_backend=resolved_parser_backend,
+                chunk_strategy=resolved_chunk_strategy,
+                db=db,
+            )
+
+    return db_document
 
 
 @router.post("/upload", response_model=DocumentDetail, status_code=201)
@@ -1819,229 +2122,13 @@ async def upload_document_from_url(
     - Disabled by default: set URL_INGEST_ENABLED=true to enable.
     - SSRF guard: blocks private/loopback/link-local hosts by default.
     """
-    if not bool(getattr(settings, "URL_INGEST_ENABLED", False)):
-        raise HTTPException(status_code=400, detail="URL ingestion is disabled")
-
-    url = await validate_url_for_ingest(str(body.url or ""))
-
-    # 1) Resolve dataset permission.
-    dataset = _resolve_writable_dataset(db, tenant_id, account_id, body.dataset_id)
-
-    # 2) Download to a temp path first, then decide extension (URL may not include it).
-    upload_dir = Path(settings.UPLOAD_DIR) / str(tenant_id)
-    upload_dir.mkdir(parents=True, exist_ok=True)
-    file_id = uuid.uuid4()
-    temp_path = upload_dir / f"{file_id}.urltmp"
-
-    downloaded = await download_url_to_path(
-        url,
-        temp_path,
-        max_bytes=int(getattr(settings, "URL_INGEST_MAX_BYTES", 0) or settings.MAX_FILE_SIZE),
-        timeout_sec=float(getattr(settings, "URL_INGEST_TIMEOUT_SEC", 30.0) or 30.0),
-        follow_redirects=bool(getattr(settings, "URL_INGEST_FOLLOW_REDIRECTS", False)),
-    )
-
-    content_type = (downloaded.content_type or "").split(";", 1)[0].strip().lower()
-
-    # 3) Determine file extension.
-    def _ext_from_filename(name: str | None) -> str | None:
-        if not name:
-            return None
-        ext = Path(str(name)).suffix.lower()
-        return ext if ext else None
-
-    def _ext_from_content_type(ct: str) -> str | None:
-        if not ct:
-            return None
-        if ct in {"text/html"}:
-            return ".html"
-        if ct in {"text/plain"}:
-            return ".txt"
-        if ct in {"text/markdown", "text/x-markdown"}:
-            return ".md"
-        if ct in {"application/pdf"}:
-            return ".pdf"
-        if ct in {"application/json"}:
-            return ".json"
-        if ct in {"text/xml", "application/xml", "application/rss+xml", "application/atom+xml"}:
-            return ".xml"
-        return None
-
-    # Prefer explicit filename override, then URL path, then content-type.
-    file_ext = _ext_from_filename(body.filename)
-    if not file_ext:
-        from urllib.parse import urlparse
-
-        parsed = urlparse(url)
-        file_ext = _ext_from_filename(Path(parsed.path).name)
-    if not file_ext:
-        file_ext = _ext_from_content_type(content_type)
-    if not file_ext:
-        # Best-effort: fall back to generic text if content looks text-ish.
-        if content_type.startswith("text/"):
-            file_ext = ".txt"
-        else:
-            raise HTTPException(status_code=400, detail=f"Unsupported content-type: {content_type or 'unknown'}")
-
-    file_ext = file_ext.lower()
-    if file_ext not in settings.allowed_extensions_list:
-        raise HTTPException(status_code=400, detail=f"Unsupported file type. Allowed: {settings.allowed_extensions_list}")
-
-    final_path = upload_dir / f"{file_id}{file_ext}"
-    try:
-        temp_path.replace(final_path)
-    except Exception:
-        try:
-            shutil.move(str(temp_path), str(final_path))
-        except Exception as exc:  # noqa: BLE001
-            with contextlib.suppress(OSError):
-                temp_path.unlink(missing_ok=True)
-            raise HTTPException(status_code=500, detail=f"failed to finalize downloaded file: {str(exc)[:120]}")
-
-    # 4) Resolve ingestion policy (optional) based on the inferred filename/ext.
-    safe_name = _sanitize_filename(body.filename or Path(final_path).name)
-
-    pipeline_options = PipelineOptions(**(body.pipeline.model_dump(exclude_none=True) if body.pipeline else {}))
-
-    dataset_meta = (getattr(dataset, "dataset_metadata", None) or {}) if dataset is not None else {}
-    policy = parse_ingestion_policy_from_metadata(dataset_meta if isinstance(dataset_meta, dict) else {})  # type: ignore[arg-type]
-    matched_rule = match_ingestion_rule(policy, filename=safe_name, file_ext=file_ext)
-
-    parser_backend_choice = str(body.parser_backend or settings.DEFAULT_PARSER_BACKEND)
-    chunk_strategy_choice = str(body.chunk_strategy or settings.DEFAULT_CHUNK_STRATEGY)
-    policy_patch = PipelineOptions()
-    ingestion_meta: Optional[dict[str, Any]] = None
-
-    if matched_rule is not None:
-        default_pb = (getattr(settings, "DEFAULT_PARSER_BACKEND", "auto") or "auto").strip().lower() or "auto"
-        req_pb = (parser_backend_choice or "").strip().lower()
-        if req_pb in {"", "auto", default_pb} and matched_rule.parser_backend:
-            parser_backend_choice = str(matched_rule.parser_backend)
-
-        default_cs = (getattr(settings, "DEFAULT_CHUNK_STRATEGY", "langchain_recursive") or "langchain_recursive").strip().lower()
-        req_cs = (chunk_strategy_choice or "").strip().lower()
-        if req_cs in {"", default_cs} and matched_rule.chunk_strategy:
-            chunk_strategy_choice = str(matched_rule.chunk_strategy)
-
-        preprocess_steps: list[dict[str, Any]] = []
-        pp = getattr(matched_rule, "preprocess", None)
-        steps = getattr(pp, "steps", None) if pp is not None and bool(getattr(pp, "enabled", True)) else None
-        if isinstance(steps, list) and steps:
-            preprocess_steps = [
-                {
-                    "id": str(getattr(s, "id", "") or "").strip(),
-                    "params": dict(getattr(s, "params", {}) or {}),
-                }
-                for s in steps
-            ]
-
-        patch_dict: dict[str, Any] = {}
-        profile_ref = getattr(matched_rule, "governance_profile_ref", None)
-        if isinstance(profile_ref, str) and profile_ref.strip():
-            try:
-                resolved = resolve_governance_profile_ref(db=db, tenant_id=tenant_id, profile_ref=profile_ref.strip())
-            except ValueError as exc:
-                raise HTTPException(status_code=400, detail=f"Invalid governance_profile_ref: {str(exc)[:120]}")
-            patch_dict.update(dict(resolved.pipeline_patch or {}))
-            if resolved.regex_rules:
-                patch_dict["governance_regex_rules"] = list(resolved.regex_rules)
-
-        patch_dict.update(dict(getattr(matched_rule, "pipeline_patch", None) or {}))
-        if patch_dict:
-            policy_patch = PipelineOptions(**patch_dict)
-
-        ingestion_meta = {
-            "version": str(getattr(policy, "version", "1") if policy is not None else "1"),
-            "rule": {"id": matched_rule.id, "name": matched_rule.name},
-            "preprocess": {"enabled": bool(preprocess_steps), "steps": preprocess_steps},
-            "governance_profile_ref": (profile_ref.strip() if isinstance(profile_ref, str) and profile_ref.strip() else None),
-            "source_url": url,
-        }
-
-    pipeline_options = merge_pipeline_options(policy_patch, pipeline_options)
-
-    # 5) Resolve backend/strategy after policy application.
-    try:
-        requested_parser_backend = (parser_backend_choice or "").strip().lower()
-        if file_ext == ".pdf" and requested_parser_backend in {"", "auto"}:
-            resolved_parser_backend = "auto"
-        else:
-            resolved_parser_backend = parser_factory.resolve_backend(file_ext, parser_backend_choice)
-        resolved_chunk_strategy = chunker_factory.resolve_strategy(chunk_strategy_choice)
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc))
-
-    pipeline_effective = resolve_pipeline_effective(
-        dataset_metadata=(getattr(dataset, "dataset_metadata", None) or {}),
-        document_metadata={},
-        request_overrides=pipeline_options,
-    )
-    if resolved_chunk_strategy not in chunker_factory.RAGFLOW_STRATEGIES:
-        _validate_chunk_params(pipeline_effective.chunk_size, pipeline_effective.chunk_overlap)
-
-    pipeline_metadata = build_pipeline_metadata(pipeline_options)
-
-    # 6) Create document record.
-    doc_metadata = {
-        "parser_backend": resolved_parser_backend,
-        "parser_backend_requested": str(body.parser_backend or "").lower(),
-        "chunk_strategy": resolved_chunk_strategy,
-        "chunk_strategy_requested": str(body.chunk_strategy or "").lower(),
-        "source_url": url,
-        "url_content_type": content_type or None,
-    }
-    if pipeline_metadata:
-        doc_metadata["pipeline"] = pipeline_metadata
-    if ingestion_meta:
-        doc_metadata["ingestion"] = ingestion_meta
-
-    pipeline_hash = _compute_pipeline_hash(doc_metadata)
-    doc_metadata["pipeline_hash"] = pipeline_hash
-
-    db_document = DBDocument(
-        id=file_id,
+    return await _ingest_url_upload_request(
+        background_tasks=background_tasks,
+        body=body,
         tenant_id=tenant_id,
-        dataset_id=dataset.id,
-        filename=safe_name,
-        file_type=file_ext.lstrip("."),
-        file_size=int(downloaded.size_bytes),
-        file_path=str(final_path),
-        owner_id=account_id,
-        access_mode=None,  # inherit dataset permission by default
-        status="pending",
-        processing_progress=0,
-        doc_metadata=doc_metadata,
+        account_id=account_id,
+        db=db,
     )
-
-    db.add(db_document)
-    db.commit()
-    db.refresh(db_document)
-
-    # 7) Process document in background: enqueue if available (fallback to BackgroundTasks).
-    job_id = f"doc:{tenant_id}:{file_id}:{pipeline_hash}"
-    task_id = await enqueue_document_processing(
-        tenant_id=tenant_id,
-        document_id=file_id,
-        requested_by=account_id,
-        job_id=job_id,
-    )
-    if task_id:
-        meta = dict(db_document.doc_metadata or {})
-        meta["task_id"] = task_id
-        db_document.doc_metadata = meta
-        db.commit()
-        db.refresh(db_document)
-    else:
-        background_tasks.add_task(
-            document_processor.process_document,
-            final_path,
-            file_id,
-            tenant_id,
-            resolved_parser_backend,
-            resolved_chunk_strategy,
-        )
-
-    return db_document
 
 
 @router.post("/upload-batch", response_model=DocumentBatchUploadResponse, status_code=201)
@@ -2413,6 +2500,30 @@ async def list_documents(
             )
         )
 
+    # Document-level ACL filter ("security trimming").
+    # - Still bounded by dataset permissions above.
+    # - Dataset owners can always see their docs.
+    doc_perm_subq = select(DocumentPermission.document_id).where(
+        DocumentPermission.tenant_id == tenant_id,
+        DocumentPermission.account_id == account_id,
+    )
+    owner_dataset_ids_subq = select(Dataset.id).where(
+        Dataset.tenant_id == tenant_id,
+        Dataset.owner_id == account_id,
+    )
+    query = query.filter(
+        or_(
+            DBDocument.dataset_id.in_(owner_dataset_ids_subq),
+            DBDocument.access_mode.is_(None),
+            DBDocument.access_mode.in_(["inherit", "all_team_members"]),
+            DBDocument.owner_id == account_id,
+            and_(
+                DBDocument.access_mode == "partial_members",
+                DBDocument.id.in_(doc_perm_subq),
+            ),
+        )
+    )
+
     # Status filter.
     if status and status != 'all':
         normalized = str(status).strip().lower()
@@ -2512,6 +2623,25 @@ async def get_document_stats(
             )
         )
 
+    # Document-level ACL filter ("security trimming").
+    doc_perm_subq = select(DocumentPermission.document_id).where(
+        DocumentPermission.tenant_id == tenant_id,
+        DocumentPermission.account_id == account_id,
+    )
+    owner_dataset_ids_subq = select(Dataset.id).where(
+        Dataset.tenant_id == tenant_id,
+        Dataset.owner_id == account_id,
+    )
+    query = query.filter(
+        or_(
+            DBDocument.dataset_id.in_(owner_dataset_ids_subq),
+            DBDocument.access_mode.is_(None),
+            DBDocument.access_mode.in_(["inherit", "all_team_members"]),
+            DBDocument.owner_id == account_id,
+            and_(DBDocument.access_mode == "partial_members", DBDocument.id.in_(doc_perm_subq)),
+        )
+    )
+
     if q:
         term = q.strip()
         if term:
@@ -2564,9 +2694,11 @@ async def get_document(
         raise HTTPException(status_code=404, detail="Document not found")
 
     # Permission check.
+    ds: Dataset | None = None
     if document.dataset_id:
         ds = DatasetService.get_dataset(db, tenant_id, document.dataset_id)
         DatasetService.assert_dataset_readable(db, ds, account_id)
+    _assert_document_acl_readable(db, tenant_id=tenant_id, account_id=account_id, document=document, dataset=ds)
 
     # If chunks are needed, touch the relationship to ensure load.
     if include_chunks:
@@ -2575,6 +2707,103 @@ async def get_document(
         setattr(document, "chunks_loaded", document.chunks)
 
     return document
+
+
+@router.get("/{document_id}/access", response_model=DocumentAccessInfo)
+async def get_document_access(
+    document_id: uuid.UUID,
+    tenant_id: UUID = Depends(get_tenant_id),
+    account_id: str = Depends(get_current_account_id),
+    db: Session = Depends(get_db),
+):
+    """Get document-level ACL settings (requires document read access)."""
+    DatasetService.ensure_member(db, tenant_id, account_id)
+
+    document = (
+        db.query(DBDocument)
+        .filter(DBDocument.id == document_id, DBDocument.tenant_id == tenant_id)
+        .first()
+    )
+    if not document:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    ds: Dataset | None = None
+    if document.dataset_id:
+        ds = DatasetService.get_dataset(db, tenant_id, document.dataset_id)
+        DatasetService.assert_dataset_readable(db, ds, account_id)
+    _assert_document_acl_readable(db, tenant_id=tenant_id, account_id=account_id, document=document, dataset=ds)
+
+    mode = (str(getattr(document, "access_mode", "") or "")).strip().lower() or "inherit"
+    allowlist: list[str] | None = None
+    if mode == "partial_members":
+        allowlist = DocumentPermissionService.get_document_partial_member_list(db, tenant_id, document_id)
+
+    return DocumentAccessInfo(
+        mode=mode,  # type: ignore[arg-type]
+        owner_id=(getattr(document, "owner_id", None) or None),
+        partial_member_list=allowlist,
+    )
+
+
+@router.put("/{document_id}/access", response_model=DocumentAccessInfo)
+async def put_document_access(
+    document_id: uuid.UUID,
+    payload: DocumentAccessUpdateRequest,
+    tenant_id: UUID = Depends(get_tenant_id),
+    account_id: str = Depends(get_current_account_id),
+    db: Session = Depends(get_db),
+):
+    """Update document-level ACL settings (requires dataset write or tenant edit role)."""
+    member = DatasetService.ensure_member(db, tenant_id, account_id)
+
+    document = (
+        db.query(DBDocument)
+        .filter(DBDocument.id == document_id, DBDocument.tenant_id == tenant_id)
+        .first()
+    )
+    if not document:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    ds: Dataset | None = None
+    if document.dataset_id:
+        ds = DatasetService.get_dataset(db, tenant_id, document.dataset_id)
+        DatasetService.assert_dataset_writable(db, ds, account_id)
+    else:
+        # Legacy docs without dataset binding: require tenant edit role.
+        role = (getattr(member, "role", None) or "").lower()
+        if role not in EDIT_ROLES:
+            raise HTTPException(status_code=403, detail="No permission to manage document access")
+
+    mode = str(payload.mode or "inherit").strip().lower()
+    # Normalize storage: NULL means inherit.
+    document.access_mode = None if mode == "inherit" else mode
+
+    # Ensure owner_id exists for modes that depend on it (legacy docs).
+    if not (getattr(document, "owner_id", None) or "").strip():
+        document.owner_id = account_id
+
+    if mode == "partial_members":
+        DocumentPermissionService.update_partial_member_list(
+            db,
+            tenant_id,
+            document_id,
+            list(payload.partial_member_list or []),
+        )
+    else:
+        DocumentPermissionService.clear_partial_member_list(db, tenant_id, document_id)
+
+    db.commit()
+    db.refresh(document)
+
+    allowlist: list[str] | None = None
+    if mode == "partial_members":
+        allowlist = DocumentPermissionService.get_document_partial_member_list(db, tenant_id, document_id)
+
+    return DocumentAccessInfo(
+        mode=mode,  # type: ignore[arg-type]
+        owner_id=(getattr(document, "owner_id", None) or None),
+        partial_member_list=allowlist,
+    )
 
 
 @router.get("/{document_id}/parsed-content", response_model=DocumentParsedContentResponse)
@@ -2602,9 +2831,11 @@ async def get_document_parsed_content(
     if not document:
         raise HTTPException(status_code=404, detail="Document not found")
 
+    ds: Dataset | None = None
     if document.dataset_id:
         ds = DatasetService.get_dataset(db, tenant_id, document.dataset_id)
         DatasetService.assert_dataset_readable(db, ds, account_id)
+    _assert_document_acl_readable(db, tenant_id=tenant_id, account_id=account_id, document=document, dataset=ds)
 
     row = (
         db.query(DocumentParsedContent)
@@ -2668,9 +2899,11 @@ async def list_document_chunks(
     if not document:
         raise HTTPException(status_code=404, detail="Document not found")
 
+    ds: Dataset | None = None
     if document.dataset_id:
         ds = DatasetService.get_dataset(db, tenant_id, document.dataset_id)
         DatasetService.assert_dataset_readable(db, ds, account_id)
+    _assert_document_acl_readable(db, tenant_id=tenant_id, account_id=account_id, document=document, dataset=ds)
 
     query = db.query(DocumentChunk).filter(
         DocumentChunk.tenant_id == tenant_id,
@@ -2717,9 +2950,11 @@ async def list_document_chunk_matches(
     if not document:
         raise HTTPException(status_code=404, detail="Document not found")
 
+    ds: Dataset | None = None
     if document.dataset_id:
         ds = DatasetService.get_dataset(db, tenant_id, document.dataset_id)
         DatasetService.assert_dataset_readable(db, ds, account_id)
+    _assert_document_acl_readable(db, tenant_id=tenant_id, account_id=account_id, document=document, dataset=ds)
 
     term = (q or "").strip()
     if not term:
@@ -2774,9 +3009,11 @@ async def get_document_chunk(
     if not document:
         raise HTTPException(status_code=404, detail="Document not found")
 
+    ds: Dataset | None = None
     if document.dataset_id:
         ds = DatasetService.get_dataset(db, tenant_id, document.dataset_id)
         DatasetService.assert_dataset_readable(db, ds, account_id)
+    _assert_document_acl_readable(db, tenant_id=tenant_id, account_id=account_id, document=document, dataset=ds)
 
     chunk = (
         db.query(DocumentChunk)
@@ -2975,9 +3212,12 @@ async def download_document(
     if not document:
         raise HTTPException(status_code=404, detail="Document not found")
 
+    ds: Dataset | None = None
     if document.dataset_id and account_id:
         ds = DatasetService.get_dataset(db, tenant_id, document.dataset_id)
         DatasetService.assert_dataset_readable(db, ds, account_id)
+    if account_id:
+        _assert_document_acl_readable(db, tenant_id=tenant_id, account_id=account_id, document=document, dataset=ds)
 
     raw_path = str(document.file_path or "").strip()
     if not raw_path or raw_path.startswith("manual://"):
@@ -3132,9 +3372,11 @@ async def get_document_status(
     if not document:
         raise HTTPException(status_code=404, detail="Document not found")
 
+    ds: Dataset | None = None
     if document.dataset_id:
         ds = DatasetService.get_dataset(db, tenant_id, document.dataset_id)
         DatasetService.assert_dataset_readable(db, ds, account_id)
+    _assert_document_acl_readable(db, tenant_id=tenant_id, account_id=account_id, document=document, dataset=ds)
 
     return {
         "id": document.id,
@@ -3690,9 +3932,12 @@ async def get_image_url(
             raise HTTPException(status_code=404, detail="Image not found")
         if document.dataset_id and document.dataset_id != dataset_uuid:
             raise HTTPException(status_code=404, detail="Image not found")
+        ds: Dataset | None = None
         if document.dataset_id and account_id:
             ds = DatasetService.get_dataset(db, tenant_id, document.dataset_id)
             DatasetService.assert_dataset_readable(db, ds, account_id)
+        if account_id:
+            _assert_document_acl_readable(db, tenant_id=tenant_id, account_id=account_id, document=document, dataset=ds)
     else:
         # Backward compatible: "{dataset_id}-{chunk_id}"
         try:

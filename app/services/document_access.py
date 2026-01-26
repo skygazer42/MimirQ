@@ -226,7 +226,7 @@ def list_accessible_document_ids(
     """
     DatasetService.ensure_member(db, tenant_id, account_id)
     query = (
-        db.query(DBDocument.id, DBDocument.dataset_id, DBDocument.updated_at)
+        db.query(DBDocument.id, DBDocument.dataset_id, DBDocument.access_mode, DBDocument.owner_id, DBDocument.updated_at)
         .filter(DBDocument.tenant_id == tenant_id)
     )
     if status:
@@ -240,20 +240,54 @@ def list_accessible_document_ids(
     if not documents:
         return []
 
-    # Documents without dataset binding are treated as legacy and allowed.
-    dataset_ids = {dataset_id for _, dataset_id, _ in documents if dataset_id}
-    if not dataset_ids:
-        return [doc_id for doc_id, _, _ in documents]
-
+    dataset_ids = {dataset_id for _, dataset_id, *_ in documents if dataset_id}
     dataset_map, allowed_dataset_ids = _resolve_allowed_dataset_ids(db, tenant_id, account_id, dataset_ids)
 
+    # Batch fetch allowlist membership for docs that require it.
+    doc_ids_needing_allowlist: list[UUID] = []
+    for doc_id, _dataset_id, access_mode, owner_id, _updated_at in documents:
+        mode = _normalize_doc_access_mode(access_mode)
+        if mode == _DOC_ACCESS_PARTIAL and (str(owner_id or "").strip() != account_id):
+            doc_ids_needing_allowlist.append(doc_id)
+
+    allowlist_doc_ids: Set[UUID] = set()
+    if doc_ids_needing_allowlist:
+        rows = (
+            db.query(DocumentPermission.document_id)
+            .filter(
+                DocumentPermission.tenant_id == tenant_id,
+                DocumentPermission.account_id == account_id,
+                DocumentPermission.document_id.in_(doc_ids_needing_allowlist),
+            )
+            .all()
+        )
+        allowlist_doc_ids = {row[0] for row in rows if row and row[0]}
+
     accessible: List[UUID] = []
-    for doc_id, dataset_id, _ in documents:
+    for doc_id, dataset_id, access_mode, owner_id, _ in documents:
         if not dataset_id:
-            accessible.append(doc_id)
+            if _doc_access_allows(
+                doc_id=doc_id,
+                access_mode=access_mode,
+                owner_id=owner_id,
+                account_id=account_id,
+                allowlist_doc_ids=allowlist_doc_ids,
+            ):
+                accessible.append(doc_id)
             continue
         if dataset_id not in dataset_map:
             continue
         if dataset_id in allowed_dataset_ids:
-            accessible.append(doc_id)
+            ds = dataset_map.get(dataset_id)
+            if ds is not None and str(getattr(ds, "owner_id", "") or "") == account_id:
+                accessible.append(doc_id)
+                continue
+            if _doc_access_allows(
+                doc_id=doc_id,
+                access_mode=access_mode,
+                owner_id=owner_id,
+                account_id=account_id,
+                allowlist_doc_ids=allowlist_doc_ids,
+            ):
+                accessible.append(doc_id)
     return accessible

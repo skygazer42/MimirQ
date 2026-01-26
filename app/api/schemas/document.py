@@ -151,6 +151,47 @@ class DocumentPipelineOptions(BaseModel):
         return self
 
 
+DocumentAccessMode = Literal["inherit", "only_me", "all_team_members", "partial_members"]
+
+
+class DocumentAccessInfo(BaseModel):
+    """Document-level ACL (additional restriction on top of dataset permissions)."""
+
+    mode: DocumentAccessMode = "inherit"
+    owner_id: Optional[str] = Field(default=None, max_length=255)
+    partial_member_list: Optional[List[str]] = Field(default=None, max_length=200)
+
+
+class DocumentAccessUpdateRequest(BaseModel):
+    """Update a document's access mode and optional allowlist."""
+
+    mode: DocumentAccessMode = Field(default="inherit")
+    partial_member_list: Optional[List[str]] = Field(default=None, max_length=200)
+
+    @model_validator(mode="after")
+    def _normalize(self) -> "DocumentAccessUpdateRequest":
+        # Normalize member ids (trim/dedupe).
+        if self.partial_member_list is not None:
+            seen: set[str] = set()
+            normalized: list[str] = []
+            for raw in self.partial_member_list:
+                mid = str(raw or "").strip()
+                if not mid or mid in seen:
+                    continue
+                seen.add(mid)
+                if len(mid) > 255:
+                    raise ValueError("partial_member_list member id too long (max=255)")
+                normalized.append(mid)
+                if len(normalized) >= 200:
+                    break
+            self.partial_member_list = normalized
+
+        # Non-partial modes ignore allowlist (server will clear).
+        if self.mode != "partial_members":
+            self.partial_member_list = None
+        return self
+
+
 class DocumentPipelinePatchRequest(BaseModel):
     """
     Patch `documents.metadata.pipeline` (document-level pipeline overrides).
@@ -243,6 +284,8 @@ class DocumentDetail(OrmModel):
     processing_progress: int
     chunk_count: int
     total_characters: int
+    owner_id: Optional[str] = None
+    access_mode: Optional[DocumentAccessMode] = None
     created_at: datetime
     updated_at: datetime
     processed_at: Optional[datetime] = None
