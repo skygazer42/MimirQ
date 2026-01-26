@@ -9,7 +9,7 @@ import { toast } from 'sonner'
 import { useChat } from '@/hooks/use-chat'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
-import { promptTemplateApi, PromptTemplate } from '@/lib/api-client'
+import { promptTemplateApi, settingsApi, type PromptTemplate } from '@/lib/api-client'
 import { ChatMessageItem } from '@/components/chat/message-item'
 import {
   Select,
@@ -79,6 +79,36 @@ export function ChatArea({
   const [slashOpen, setSlashOpen] = useState(false)
   const [slashPos, setSlashPos] = useState({ top: 0, left: 0 })
   const [voiceModeOpen, setVoiceModeOpen] = useState(false)
+
+  // Initialize chat retrieval defaults from system settings (avoid hard-coded 5/0.7 overriding backend config).
+  useEffect(() => {
+    let cancelled = false
+    const loadRagDefaults = async () => {
+      try {
+        const system = await settingsApi.get()
+        if (cancelled) return
+        setRagConfig((prev) => {
+          const isDefault =
+            prev.top_k === 5 &&
+            prev.score_threshold === 0.7 &&
+            prev.retrieval_mode === 'hybrid' &&
+            prev.use_graph === false
+          if (!isDefault) return prev
+          return {
+            ...prev,
+            top_k: system.rag?.retrieval_top_k ?? prev.top_k,
+            score_threshold: system.rag?.similarity_threshold ?? prev.score_threshold,
+          }
+        })
+      } catch {
+        // best-effort only
+      }
+    }
+    void loadRagDefaults()
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   const handleKeyUp = useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === '/') {
