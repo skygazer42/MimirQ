@@ -177,3 +177,29 @@ async def enqueue_dataset_profile_scan(
         _job_try=1,
     )
     return getattr(job, "job_id", None) or job_id
+
+
+async def enqueue_dataset_precheck_scan(
+    *,
+    tenant_id: UUID,
+    dataset_id: UUID,
+    scan_run_id: UUID,
+    requested_by: str,
+    job_id: Optional[str] = None,
+) -> Optional[str]:
+    """Enqueue a dataset precheck scan job (returns None if queue disabled)."""
+    q = await get_queue()
+    if q is None:
+        return None
+    queue_name = getattr(settings, "TASK_QUEUE_NAME", "mimirq")
+    job = await q.enqueue_job(
+        "dataset_precheck_scan_job",
+        str(tenant_id),
+        str(dataset_id),
+        str(scan_run_id),
+        requested_by,
+        _queue_name=queue_name,
+        _job_id=job_id,
+        _job_try=1,
+    )
+    return getattr(job, "job_id", None) or job_id

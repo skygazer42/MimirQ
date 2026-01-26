@@ -37,6 +37,11 @@ import type {
   DatasetProfileScanRunCreateRequest,
   DatasetProfileScanRunListResponse,
   DatasetProfileScanRunOut,
+  DatasetPrecheckSummary,
+  DatasetPrecheckFindingListResponse,
+  DatasetPrecheckScanRunCreateRequest,
+  DatasetPrecheckScanRunListResponse,
+  DatasetPrecheckScanRunOut,
   MessageFeedback,
   MessageFeedbackCreate,
   MessageFeedbackListResponse,
@@ -1025,6 +1030,56 @@ export const datasetApi = {
 
   async exportProfileSummary(datasetId: string): Promise<Blob> {
     const { data } = await apiClient.get(`/datasets/${datasetId}/profile/export`, { responseType: 'blob' })
+    return data as Blob
+  },
+
+  async exportProfileHtml(datasetId: string, params?: { redact?: boolean }): Promise<Blob> {
+    const { data } = await apiClient.get(`/datasets/${datasetId}/profile/export-html`, { params, responseType: 'blob' })
+    return data as Blob
+  },
+
+  // ==================== Dataset Precheck (Local Folder Scan) ====================
+
+  async startPrecheckScan(datasetId: string, body: DatasetPrecheckScanRunCreateRequest): Promise<DatasetPrecheckScanRunOut> {
+    const { data } = await apiClient.post(`/datasets/${datasetId}/precheck/scan-runs`, body || {})
+    return data
+  },
+
+  async listPrecheckScanRuns(
+    datasetId: string,
+    params?: { skip?: number; limit?: number }
+  ): Promise<DatasetPrecheckScanRunListResponse> {
+    const { data } = await apiClient.get(`/datasets/${datasetId}/precheck/scan-runs`, { params })
+    return data
+  },
+
+  async getPrecheckScanRun(datasetId: string, scanRunId: string): Promise<DatasetPrecheckScanRunOut> {
+    const { data } = await apiClient.get(`/datasets/${datasetId}/precheck/scan-runs/${scanRunId}`)
+    return data
+  },
+
+  async getPrecheckSummary(datasetId: string, scanRunId: string): Promise<DatasetPrecheckSummary> {
+    const { data } = await apiClient.get(`/datasets/${datasetId}/precheck/scan-runs/${scanRunId}/summary`)
+    return data
+  },
+
+  async listPrecheckFinding(
+    datasetId: string,
+    scanRunId: string,
+    findingKey: string,
+    params?: { skip?: number; limit?: number }
+  ): Promise<DatasetPrecheckFindingListResponse> {
+    const { data } = await apiClient.get(`/datasets/${datasetId}/precheck/scan-runs/${scanRunId}/findings/${findingKey}`, { params })
+    return data
+  },
+
+  async exportPrecheckSummary(datasetId: string, scanRunId: string): Promise<Blob> {
+    const { data } = await apiClient.get(`/datasets/${datasetId}/precheck/scan-runs/${scanRunId}/export`, { responseType: 'blob' })
+    return data as Blob
+  },
+
+  async exportPrecheckHtml(datasetId: string, scanRunId: string, params?: { redact?: boolean }): Promise<Blob> {
+    const { data } = await apiClient.get(`/datasets/${datasetId}/precheck/scan-runs/${scanRunId}/export-html`, { params, responseType: 'blob' })
     return data as Blob
   },
 }

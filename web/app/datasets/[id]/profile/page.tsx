@@ -36,6 +36,8 @@ import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
 import { Input } from '@/components/ui/input'
 import { StatCard, StatsGrid } from '@/components/ui/stats-card'
+import { DocumentDetailDialog } from '@/components/document-detail-dialog'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 
 import { datasetApi } from '@/lib/api-client'
 import { formatApiError } from '@/lib/api-errors'
@@ -43,6 +45,7 @@ import { cn, formatFileSize, formatDate } from '@/lib/utils'
 
 import type {
   Dataset,
+  Document,
   DatasetProfileFindingListResponse,
   DatasetProfileFindingSummary,
   DatasetProfileScanRunCreateRequest,
@@ -93,6 +96,9 @@ export default function DatasetProfilePage() {
   const [scanRun, setScanRun] = useState<DatasetProfileScanRunOut | null>(null)
   const [scanRunning, setScanRunning] = useState(false)
   const pollTimerRef = useRef<number | null>(null)
+  const [scanRuns, setScanRuns] = useState<DatasetProfileScanRunOut[]>([])
+  const [compareA, setCompareA] = useState<string>('')
+  const [compareB, setCompareB] = useState<string>('')
 
   const [findingOpen, setFindingOpen] = useState(false)
   const [selectedFinding, setSelectedFinding] = useState<DatasetProfileFindingSummary | null>(null)
@@ -109,12 +115,17 @@ export default function DatasetProfilePage() {
     if (!datasetId) return
     setIsLoading(true)
     try {
-      const [ds, prof] = await Promise.all([
+      const [ds, prof, runList] = await Promise.all([
         datasetApi.get(datasetId),
         datasetApi.getProfileSummary(datasetId),
+        datasetApi.listProfileScanRuns(datasetId, { skip: 0, limit: 20 }).catch(() => ({ total: 0, items: [] })),
       ])
       setDataset(ds)
       setSummary(prof)
+      setScanRuns(runList.items || [])
+      const completed = (runList.items || []).filter((r) => String(r.status || '').toLowerCase() === 'completed')
+      setCompareA((prev) => prev || completed[0]?.id || '')
+      setCompareB((prev) => prev || completed[1]?.id || '')
     } catch (e: any) {
       console.error('Failed to load dataset profile', e)
       toast.error(formatApiError(e, '加载数据画像失败'))
@@ -309,6 +320,41 @@ export default function DatasetProfilePage() {
 
   const latestRunStatus = effectiveScanRun.status
   const latestRunProgress = effectiveScanRun.progress
+
+  const completedRuns = useMemo(
+    () => (scanRuns || []).filter((r) => String(r.status || '').toLowerCase() === 'completed'),
+    [scanRuns]
+  )
+
+  const compareDelta = useMemo(() => {
+    const a = completedRuns.find((r) => r.id === compareA)
+    const b = completedRuns.find((r) => r.id === compareB)
+    const sa = (a?.summary || {}) as any
+    const sb = (b?.summary || {}) as any
+    if (!a || !b || !sa || !sb) return null
+    const docsA = Number(sa.total_documents || 0)
+    const docsB = Number(sb.total_documents || 0)
+    const bytesA = Number(sa.total_size_bytes || 0)
+    const bytesB = Number(sb.total_size_bytes || 0)
+    const p90A = Number(sa.length_percentiles?.p90 || 0)
+    const p90B = Number(sb.length_percentiles?.p90 || 0)
+    const scannedA = Number(sa.pdf_scan?.scanned || 0)
+    const scannedB = Number(sb.pdf_scan?.scanned || 0)
+    const piiA = Object.values(sa.pii_hits_total || {}).reduce((acc: number, v: any) => acc + Number(v || 0), 0)
+    const piiB = Object.values(sb.pii_hits_total || {}).reduce((acc: number, v: any) => acc + Number(v || 0), 0)
+    const secA = Object.values(sa.secrets_hits_total || {}).reduce((acc: number, v: any) => acc + Number(v || 0), 0)
+    const secB = Object.values(sb.secrets_hits_total || {}).reduce((acc: number, v: any) => acc + Number(v || 0), 0)
+    return {
+      a,
+      b,
+      docs: docsB - docsA,
+      bytes: bytesB - bytesA,
+      p90: p90B - p90A,
+      scanned: scannedB - scannedA,
+      pii: piiB - piiA,
+      secrets: secB - secA,
+    }
+  }, [compareA, compareB, completedRuns])
 
   return (
     <AppFrame>
@@ -610,6 +656,156 @@ export default function DatasetProfilePage() {
               </div>
             </div>
           </Panel>
+
+          <Panel className="p-5">
+            <div className="flex items-start justify-between gap-4 mb-4">
+              <div>
+                <div className="font-semibold">扫描历史 / 对比</div>
+                <div className="text-sm text-muted-foreground mt-1">
+                  深度扫描会把“缺失指标”补齐，并保存一次 summary 快照；可用于回溯与对比。
+                </div>
+              </div>
+              <Button variant="outline" className="gap-2" onClick={() => void load()} disabled={isLoading}>
+                <RefreshCw className={cn('w-4 h-4', isLoading && 'animate-spin motion-reduce:animate-none')} />
+                刷新
+              </Button>
+            </div>
+
+            {scanRuns.length ? (
+              <div className="rounded-xl border border-border/60 overflow-hidden">
+                <table className="w-full text-sm text-left">
+                  <thead className="bg-muted/40 text-muted-foreground">
+                    <tr>
+                      <th className="px-3 py-2 font-medium">时间</th>
+                      <th className="px-3 py-2 font-medium">状态</th>
+                      <th className="px-3 py-2 font-medium">进度</th>
+                      <th className="px-3 py-2 font-medium">配置</th>
+                      <th className="px-3 py-2 font-medium">错误</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {scanRuns.map((r) => (
+                      <tr key={r.id} className="border-t border-border/60">
+                        <td className="px-3 py-2 font-mono text-xs">{r.created_at ? formatDate(r.created_at) : '-'}</td>
+                        <td className="px-3 py-2">
+                          <Badge variant="outline" className="font-mono text-xs">
+                            {String(r.status || '')}
+                          </Badge>
+                        </td>
+                        <td className="px-3 py-2 font-mono text-xs">{typeof r.progress === 'number' ? `${r.progress}%` : '-'}</td>
+                        <td className="px-3 py-2 font-mono text-xs text-muted-foreground">
+                          pdf:{r.config?.backfill_pdf_quality === false ? '0' : '1'} · text:{r.config?.backfill_text_quality === false ? '0' : '1'} · sha:{r.config?.compute_file_hash ? '1' : '0'}
+                        </td>
+                        <td className="px-3 py-2 text-xs text-destructive">{r.error_message || ''}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <div className="py-8 text-center text-muted-foreground">暂无扫描记录</div>
+            )}
+
+            <div className="mt-5 grid grid-cols-1 lg:grid-cols-3 gap-4">
+              <div className="lg:col-span-2 rounded-xl border border-border/60 bg-card/40 p-4">
+                <div className="font-medium mb-3">对比两次 completed 扫描快照</div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div className="space-y-2">
+                    <Label className="text-sm">Run A</Label>
+                    <Select value={compareA} onValueChange={setCompareA}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="选择 run" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {completedRuns.map((r) => (
+                          <SelectItem key={r.id} value={r.id}>
+                            {r.created_at ? formatDate(r.created_at) : r.id.slice(0, 8)} · {r.id.slice(0, 8)}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label className="text-sm">Run B</Label>
+                    <Select value={compareB} onValueChange={setCompareB}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="选择 run" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {completedRuns.map((r) => (
+                          <SelectItem key={r.id} value={r.id}>
+                            {r.created_at ? formatDate(r.created_at) : r.id.slice(0, 8)} · {r.id.slice(0, 8)}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+
+                {compareDelta ? (
+                  <div className="mt-4 grid grid-cols-2 lg:grid-cols-3 gap-3">
+                    <div className="rounded-lg border border-border/60 bg-muted/20 p-3">
+                      <div className="text-xs text-muted-foreground">文档数 Δ（B-A）</div>
+                      <div className="font-mono font-semibold text-sm mt-1">{compareDelta.docs >= 0 ? `+${compareDelta.docs}` : String(compareDelta.docs)}</div>
+                    </div>
+                    <div className="rounded-lg border border-border/60 bg-muted/20 p-3">
+                      <div className="text-xs text-muted-foreground">总大小 Δ（B-A）</div>
+                      <div className="font-mono font-semibold text-sm mt-1">
+                        {compareDelta.bytes >= 0 ? '+' : '-'}
+                        {formatFileSize(Math.abs(compareDelta.bytes))}
+                      </div>
+                    </div>
+                    <div className="rounded-lg border border-border/60 bg-muted/20 p-3">
+                      <div className="text-xs text-muted-foreground">P90 长度 Δ（B-A）</div>
+                      <div className="font-mono font-semibold text-sm mt-1">{compareDelta.p90 >= 0 ? `+${compareDelta.p90}` : String(compareDelta.p90)}</div>
+                    </div>
+                    <div className="rounded-lg border border-border/60 bg-muted/20 p-3">
+                      <div className="text-xs text-muted-foreground">扫描 PDF Δ（B-A）</div>
+                      <div className="font-mono font-semibold text-sm mt-1">{compareDelta.scanned >= 0 ? `+${compareDelta.scanned}` : String(compareDelta.scanned)}</div>
+                    </div>
+                    <div className="rounded-lg border border-border/60 bg-muted/20 p-3">
+                      <div className="text-xs text-muted-foreground">PII 命中 Δ（B-A）</div>
+                      <div className="font-mono font-semibold text-sm mt-1">{compareDelta.pii >= 0 ? `+${compareDelta.pii}` : String(compareDelta.pii)}</div>
+                    </div>
+                    <div className="rounded-lg border border-border/60 bg-muted/20 p-3">
+                      <div className="text-xs text-muted-foreground">Secrets 命中 Δ（B-A）</div>
+                      <div className="font-mono font-semibold text-sm mt-1">{compareDelta.secrets >= 0 ? `+${compareDelta.secrets}` : String(compareDelta.secrets)}</div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="mt-4 text-sm text-muted-foreground">请选择两个 completed 的扫描记录</div>
+                )}
+              </div>
+
+              <div className="rounded-xl border border-border/60 bg-card/40 p-4">
+                <div className="font-medium mb-2">导出离线报告</div>
+                <div className="text-sm text-muted-foreground">
+                  用于售前/分享：单文件 HTML（默认脱敏）。
+                </div>
+                <div className="mt-4 flex items-center gap-2">
+                  <Button
+                    variant="outline"
+                    className="gap-2"
+                    onClick={async () => {
+                      if (!datasetId) return
+                      try {
+                        const blob = await datasetApi.exportProfileHtml(datasetId, { redact: true })
+                        const safe = String(dataset?.name || 'dataset').replace(/[^a-zA-Z0-9_.-]+/g, '_').slice(0, 64)
+                        downloadBlob(blob, `${safe}.profile.html`)
+                        toast.success('已导出 HTML 报告')
+                      } catch (e: any) {
+                        toast.error(formatApiError(e, '导出失败'))
+                      }
+                    }}
+                    disabled={!summary}
+                  >
+                    <Download className="w-4 h-4" />
+                    导出 HTML
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </Panel>
         </div>
 
         <Dialog open={findingOpen} onOpenChange={(open) => {
@@ -660,13 +856,28 @@ export default function DatasetProfilePage() {
                         {findingRes.items.map((d) => (
                           <tr key={d.id} className="border-t border-border/60 hover:bg-muted/20 transition-colors">
                             <td className="px-3 py-2">
-                              <button
-                                type="button"
-                                className="text-primary hover:underline"
-                                onClick={() => router.push(`/knowledge?dataset=${datasetId}`)}
-                              >
-                                {d.filename}
-                              </button>
+                              <DocumentDetailDialog
+                                document={{
+                                  id: d.id,
+                                  filename: d.filename,
+                                  file_type: d.file_type,
+                                  file_size: d.file_size,
+                                  status: (d.status as any) || 'pending',
+                                  processing_progress: 0,
+                                  chunk_count: d.chunk_count || 0,
+                                  total_characters: d.total_characters || 0,
+                                  created_at: d.created_at || new Date().toISOString(),
+                                  updated_at: d.updated_at || new Date().toISOString(),
+                                  error_message: d.error_message || undefined,
+                                  metadata: d.metadata || {},
+                                  dataset_id: datasetId || undefined,
+                                } as Document}
+                                trigger={
+                                  <button type="button" className="text-primary hover:underline">
+                                    {d.filename}
+                                  </button>
+                                }
+                              />
                             </td>
                             <td className="px-3 py-2 font-mono text-xs">{d.file_type}</td>
                             <td className="px-3 py-2 font-mono text-xs">{formatFileSize(d.file_size || 0)}</td>

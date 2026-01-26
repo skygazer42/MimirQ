@@ -12,6 +12,7 @@ from __future__ import annotations
 
 from collections import Counter, defaultdict
 from datetime import datetime, timezone
+import time
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 from uuid import UUID
 
@@ -33,6 +34,12 @@ from app.models.document import DocumentPermission
 from app.models.dataset_profile_scan import DatasetProfileScanRun as DBDatasetProfileScanRun
 from app.services.dataset_service import DatasetService
 from app.services.dataset_profile_utils import FILE_SIZE_BINS, TEXT_LENGTH_BINS, histogram, percentile_from_sorted, safe_bool, safe_float, safe_int
+
+
+# Best-effort in-process cache for profile summaries (read-heavy dashboards).
+# Note: must include account_id due to document-level ACL (security trimming).
+_PROFILE_CACHE_TTL_SEC = 3.0
+_profile_cache: dict[tuple, tuple[float, DatasetProfileSummary]] = {}
 
 
 FINDING_KEY_REASONS: dict[str, dict[str, Any]] = {
@@ -371,6 +378,32 @@ def compute_dataset_profile_summary(
     """
     _dataset, query = build_dataset_documents_query(db, tenant_id=tenant_id, account_id=account_id, dataset_id=dataset_id)
 
+    # Best-effort short TTL cache: key includes ACL-scoped max(updated_at) so it invalidates on changes.
+    cache_key = None
+    try:
+        latest_doc_ts = (
+            query.with_entities(func.max(DBDocument.updated_at))
+            .execution_options(stream_results=True)
+            .enable_eagerloads(False)
+            .scalar()
+        )
+        latest_doc_key = latest_doc_ts.isoformat() if hasattr(latest_doc_ts, "isoformat") else str(latest_doc_ts or "")
+        cache_key = (
+            str(tenant_id),
+            str(account_id),
+            str(dataset_id),
+            float(density_threshold),
+            int(image_threshold),
+            latest_doc_key,
+        )
+        cached = _profile_cache.get(cache_key)
+        if cached is not None:
+            ts, payload = cached
+            if (time.monotonic() - float(ts)) < _PROFILE_CACHE_TTL_SEC:
+                return payload
+    except Exception:
+        cache_key = None
+
     # Best-effort latest deep scan run.
     latest_run: DatasetProfileScanRunSummary | None = None
     try:
@@ -412,13 +445,21 @@ def compute_dataset_profile_summary(
         .yield_per(1000)
     )
 
-    return aggregate_profile_from_rows(
+    summary = aggregate_profile_from_rows(
         dataset_id=dataset_id,
         rows=rows,
         latest_scan_run=latest_run,
         density_threshold=float(density_threshold),
         image_threshold=int(image_threshold),
     )
+
+    if cache_key is not None:
+        # Keep cache size bounded (best-effort).
+        if len(_profile_cache) > 256:
+            _profile_cache.clear()
+        _profile_cache[cache_key] = (time.monotonic(), summary)
+
+    return summary
 
 
 def apply_finding_filter(

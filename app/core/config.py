@@ -134,6 +134,17 @@ class Settings(BaseSettings):
 
     UPLOAD_DIR: str = "./uploads"
     MAX_FILE_SIZE: int = 50_000_000
+
+    # Local filesystem scan (precheck) - disabled by default for safety.
+    # Enable explicitly for local/on-prem deployments where the API process is allowed to read a mounted folder.
+    LOCAL_SCAN_ENABLED: bool = False
+    # CSV list of allowed root directories for scanning. Empty => only allow UPLOAD_DIR.
+    LOCAL_SCAN_ROOTS: str = ""
+    # Precheck scan safety limits.
+    PRECHECK_SCAN_MAX_FILES: int = 20_000
+    PRECHECK_SCAN_MAX_TOTAL_BYTES: int = 5_000_000_000  # 5GB
+    PRECHECK_TEXT_EXTRACT_MAX_BYTES: int = 2_000_000  # per file
+    PRECHECK_PDF_SAMPLE_PAGES: int = 3
     # Optional: ingest documents by fetching a remote URL (connector skeleton).
     URL_INGEST_ENABLED: bool = False
     URL_INGEST_MAX_BYTES: int = 50_000_000

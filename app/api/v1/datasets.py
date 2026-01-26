@@ -37,6 +37,7 @@ from app.types.pipeline import PipelineOptions
 from app.tasks.queue import enqueue_dataset_profile_scan
 from app.services.dataset_profile_service import compute_dataset_profile_summary, list_finding_documents
 from app.services.dataset_profile_scan_runner import run_dataset_profile_deep_scan
+from app.services.report_html import render_dataset_profile_html
 
 router = APIRouter()
 
@@ -580,5 +581,41 @@ def export_dataset_profile_summary(
     return Response(
         content=content,
         media_type="application/json",
+        headers={"Content-Disposition": f'attachment; filename=\"{filename}\"'},
+    )
+
+
+@router.get("/{dataset_id}/profile/export-html")
+def export_dataset_profile_html_report(
+    dataset_id: UUID,
+    redact: bool = Query(default=True, description="Whether to redact dataset name/id for sharing"),
+    tenant_id: UUID = Depends(get_tenant_id),
+    account_id: str = Depends(get_current_account_id),
+    db: Session = Depends(get_db),
+):
+    dataset = DatasetService.get_dataset(db, tenant_id, dataset_id)
+    DatasetService.assert_dataset_readable(db, dataset, account_id)
+
+    summary = compute_dataset_profile_summary(
+        db,
+        tenant_id=tenant_id,
+        account_id=account_id,
+        dataset_id=dataset_id,
+    )
+
+    html = render_dataset_profile_html(
+        title="MimirQ · 数据画像报告",
+        dataset_name=str(getattr(dataset, "name", "") or ""),
+        dataset_id=str(dataset_id),
+        generated_at=summary.generated_at,
+        summary=summary.model_dump(),
+        redact=bool(redact),
+    )
+
+    safe = re.sub(r"[^a-zA-Z0-9_.-]+", "_", str(getattr(dataset, "name", "") or "dataset"))[:64]
+    filename = f"{safe}.profile.html"
+    return Response(
+        content=html,
+        media_type="text/html; charset=utf-8",
         headers={"Content-Disposition": f'attachment; filename=\"{filename}\"'},
     )
