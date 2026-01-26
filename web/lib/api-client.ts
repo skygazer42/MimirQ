@@ -214,6 +214,29 @@ export const documentApi = {
   },
 
   /**
+   * 通过 URL 导入文档（后端拉取并入库）
+   */
+  async uploadFromUrl(params: {
+    url: string
+    dataset_id?: string
+    filename?: string
+    parser_backend?: string
+    chunk_strategy?: string
+    pipeline?: DocumentPipelineOptions
+  }): Promise<Document> {
+    const body: any = {
+      url: params.url,
+      dataset_id: params.dataset_id,
+      filename: params.filename,
+      parser_backend: params.parser_backend || 'auto',
+      chunk_strategy: params.chunk_strategy || 'langchain_recursive',
+      pipeline: params.pipeline,
+    }
+    const { data } = await apiClient.post('/documents/upload-url', body)
+    return data
+  },
+
+  /**
    * 批量上传文档（一次请求多文件）
    */
   async uploadBatch(

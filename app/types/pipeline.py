@@ -8,7 +8,7 @@ Notes:
 
 
 from dataclasses import dataclass
-from typing import Optional
+from typing import Any, Optional
 
 
 @dataclass(frozen=True)
@@ -68,6 +68,9 @@ class PipelineOptions:
     near_dedup_max_bucket_size: Optional[int] = None
     chunk_size: Optional[int] = None
     chunk_overlap: Optional[int] = None
+    chunk_merge_small_min_chars: Optional[int] = None
+    # Strategy-specific chunking params (best-effort; kept small & declarative by API validation).
+    chunk_strategy_params: Optional[dict[str, Any]] = None
     # When enabled, prefix chunk content with lightweight structural context (e.g. header_path)
     # before computing embeddings. Does not change stored chunk.content (DB); affects vector similarity only.
     embedding_context_prefix_enabled: Optional[bool] = None
@@ -134,6 +137,8 @@ class PipelineEffective:
     near_dedup_max_bucket_size: int
     chunk_size: int
     chunk_overlap: int
+    chunk_merge_small_min_chars: int
+    chunk_strategy_params: dict[str, Any]
     embedding_context_prefix_enabled: bool
     chunk_vector_enabled: bool
     bm25_index_enabled: bool

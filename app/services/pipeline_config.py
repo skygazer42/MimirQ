@@ -62,6 +62,40 @@ _REGEX_REPL_MAX = 2000
 _SUSPICIOUS_NESTED_QUANTIFIER_RE = re.compile(r"\([^)]*[+*][^)]*\)[+*]")
 
 
+def _sanitize_chunk_strategy_params(value: Any) -> Optional[dict[str, Any]]:
+    """
+    Best-effort validation for user-provided chunk strategy params stored in metadata.
+
+    Security: keep it declarative and small (primitive values only).
+    """
+    if value is None:
+        return None
+    if not isinstance(value, dict):
+        return None
+    if len(value) > 30:
+        return None
+
+    cleaned: dict[str, Any] = {}
+    for k, v in value.items():
+        if not isinstance(k, str):
+            continue
+        key = k.strip()
+        if not key or len(key) > 80:
+            continue
+        if v is None or isinstance(v, (bool, int, float)):
+            cleaned[key] = v
+            continue
+        if isinstance(v, str):
+            if len(v) > 500:
+                continue
+            cleaned[key] = v
+            continue
+        # No nested objects/lists.
+        continue
+
+    return cleaned or None
+
+
 def _sanitize_regex_rules(value: Any) -> Optional[list[dict]]:
     """
     Best-effort validation for user-provided regex rules stored in metadata.
@@ -211,6 +245,8 @@ def parse_pipeline_from_metadata(metadata: Dict[str, Any]) -> PipelineOptions:
         near_dedup_max_bucket_size=_coerce_int(dedup.get("max_bucket_size")),
         chunk_size=_coerce_int(pipeline.get("chunk_size")),
         chunk_overlap=_coerce_int(pipeline.get("chunk_overlap")),
+        chunk_merge_small_min_chars=_coerce_int(pipeline.get("chunk_merge_small_min_chars")),
+        chunk_strategy_params=_sanitize_chunk_strategy_params(pipeline.get("chunk_strategy_params")),
         embedding_context_prefix_enabled=_coerce_bool(index.get("embedding_context_prefix_enabled")),
         chunk_vector_enabled=_coerce_bool(index.get("chunk_vector_enabled")),
         bm25_index_enabled=_coerce_bool(index.get("bm25_index_enabled")),
@@ -241,6 +277,12 @@ def build_pipeline_metadata(options: PipelineOptions) -> Optional[Dict[str, Any]
         pipeline["chunk_size"] = int(options.chunk_size)
     if options.chunk_overlap is not None:
         pipeline["chunk_overlap"] = int(options.chunk_overlap)
+    if options.chunk_merge_small_min_chars is not None:
+        pipeline["chunk_merge_small_min_chars"] = int(options.chunk_merge_small_min_chars)
+    if options.chunk_strategy_params is not None:
+        sanitized = _sanitize_chunk_strategy_params(options.chunk_strategy_params)
+        if sanitized:
+            pipeline["chunk_strategy_params"] = sanitized
 
     governance: Dict[str, Any] = {}
     if options.governance_remove_toc_lines is not None:
@@ -643,6 +685,17 @@ def resolve_pipeline_options(options: PipelineOptions) -> PipelineEffective:
     )
     chunk_size = options.chunk_size if options.chunk_size is not None else settings.CHUNK_SIZE
     chunk_overlap = options.chunk_overlap if options.chunk_overlap is not None else settings.CHUNK_OVERLAP
+    chunk_merge_small_min_chars = (
+        options.chunk_merge_small_min_chars
+        if options.chunk_merge_small_min_chars is not None
+        else int(getattr(settings, "CHUNK_MERGE_SMALL_MIN_CHARS", 0) or 0)
+    )
+    chunk_strategy_params = (
+        options.chunk_strategy_params
+        if options.chunk_strategy_params is not None
+        else None
+    )
+    chunk_strategy_params = _sanitize_chunk_strategy_params(chunk_strategy_params) or {}
     embedding_context_prefix_enabled = (
         getattr(settings, "EMBEDDING_CONTEXT_PREFIX_ENABLED", False)
         if options.embedding_context_prefix_enabled is None
@@ -704,6 +757,8 @@ def resolve_pipeline_options(options: PipelineOptions) -> PipelineEffective:
         near_dedup_max_bucket_size=int(near_dedup_max_bucket_size),
         chunk_size=int(chunk_size),
         chunk_overlap=int(chunk_overlap),
+        chunk_merge_small_min_chars=int(chunk_merge_small_min_chars),
+        chunk_strategy_params=dict(chunk_strategy_params),
         embedding_context_prefix_enabled=bool(embedding_context_prefix_enabled),
         chunk_vector_enabled=_resolve_flag(settings.CHUNK_VECTOR_ENABLED, options.chunk_vector_enabled),
         bm25_index_enabled=_resolve_flag(settings.BM25_INDEX_ENABLED, options.bm25_index_enabled),

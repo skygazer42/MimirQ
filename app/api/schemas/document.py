@@ -86,6 +86,19 @@ class DocumentPipelineOptions(BaseModel):
     near_dedup_max_bucket_size: Optional[int] = Field(default=None, ge=8, le=100_000, description="Max bucket size for near-dup index")
     chunk_size: Optional[int] = Field(default=None, ge=100, le=4000, description="Chunk size")
     chunk_overlap: Optional[int] = Field(default=None, ge=0, le=1000, description="Overlap size")
+    chunk_merge_small_min_chars: Optional[int] = Field(
+        default=None,
+        ge=0,
+        le=10_000,
+        description="Optional: merge chunks shorter than this threshold with neighbors (0 disables).",
+    )
+    chunk_strategy_params: Optional[Dict[str, Any]] = Field(
+        default=None,
+        description=(
+            "Chunking strategy parameters (best-effort, strategy-specific). "
+            "Only small JSON objects are allowed (primitive values only)."
+        ),
+    )
     embedding_context_prefix_enabled: Optional[bool] = Field(
         default=None,
         description="Prefix chunk content with lightweight structural context (e.g. header_path) before embedding (vector-only).",
@@ -95,6 +108,47 @@ class DocumentPipelineOptions(BaseModel):
     kg_enabled: Optional[bool] = None
     event_vector_enabled: Optional[bool] = None
     entity_vector_enabled: Optional[bool] = None
+
+    @model_validator(mode="after")
+    def _validate_chunk_strategy_params(self) -> "DocumentPipelineOptions":
+        """
+        Security guard: keep `chunk_strategy_params` declarative and small.
+
+        This payload can originate from:
+        - API clients (pipeline JSON / patch)
+        - dataset ingestion policy pipeline_patch
+        """
+        raw = self.chunk_strategy_params
+        if raw is None:
+            return self
+        if not isinstance(raw, dict):
+            raise ValueError("chunk_strategy_params must be an object")
+        if len(raw) > 30:
+            raise ValueError("chunk_strategy_params has too many keys (max=30)")
+
+        cleaned: dict[str, Any] = {}
+        for k, v in raw.items():
+            if not isinstance(k, str):
+                raise ValueError("chunk_strategy_params keys must be strings")
+            key = k.strip()
+            if not key:
+                continue
+            if len(key) > 80:
+                raise ValueError("chunk_strategy_params key too long (max=80)")
+
+            # Keep values primitive-only (no nested objects/lists).
+            if v is None or isinstance(v, (bool, int, float)):
+                cleaned[key] = v
+                continue
+            if isinstance(v, str):
+                if len(v) > 500:
+                    raise ValueError("chunk_strategy_params string value too long (max=500)")
+                cleaned[key] = v
+                continue
+            raise ValueError("chunk_strategy_params values must be JSON primitives")
+
+        self.chunk_strategy_params = cleaned or None
+        return self
 
 
 class DocumentPipelinePatchRequest(BaseModel):

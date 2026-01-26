@@ -1087,6 +1087,243 @@ class HybridRetriever(BaseRetriever):
 
         return expanded
 
+    def _auto_merge_parent_child(self, results: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """
+        Parent-child auto merge (LlamaIndex AutoMergingRetriever-style, simplified).
+
+        - When results contain many child hits for the same parent_id, collapse them into the parent chunk.
+        - Two modes:
+          - replace: drop children (and their neighbors) and insert/bump the parent once.
+          - append: keep children and insert the parent once (deduped).
+        """
+        if not results:
+            return results
+        if not bool(getattr(settings, "RAG_PARENT_CHILD_AUTO_MERGE_ENABLED", False)):
+            return results
+
+        mode = str(getattr(settings, "RAG_PARENT_CHILD_AUTO_MERGE_MODE", "replace") or "replace").strip().lower()
+        if mode not in {"replace", "append"}:
+            mode = "replace"
+
+        min_children = max(1, int(getattr(settings, "RAG_PARENT_CHILD_AUTO_MERGE_MIN_CHILDREN", 2) or 2))
+        max_parents = max(0, int(getattr(settings, "RAG_PARENT_CHILD_AUTO_MERGE_MAX_PARENTS", 20) or 20))
+
+        tenant_filter = self.tenant_id
+
+        # Group child hits by (document_id, parent_id).
+        child_groups: dict[tuple[str, str], list[Dict[str, Any]]] = {}
+        parent_results: dict[tuple[str, str], Dict[str, Any]] = {}
+
+        # For neighbor cleanup (replace mode).
+        child_chunk_ids_by_group: dict[tuple[str, str], set[str]] = {}
+
+        for r in results:
+            meta = r.get("metadata") or {}
+            role = str(meta.get("chunk_role") or "").strip().lower()
+            parent_id = str(meta.get("parent_id") or meta.get("parent_node_id") or "").strip()
+            doc_id = str(meta.get("document_id") or "").strip()
+            if not parent_id or not doc_id:
+                continue
+
+            cid = r.get("chunk_id") or meta.get("chunk_id")
+            cid_str = str(cid) if cid else ""
+
+            if role == "parent":
+                parent_results[(doc_id, parent_id)] = r
+            elif role == "child":
+                key = (doc_id, parent_id)
+                child_groups.setdefault(key, []).append(r)
+                if cid_str:
+                    child_chunk_ids_by_group.setdefault(key, set()).add(cid_str)
+
+        if not child_groups:
+            return results
+
+        # Select top groups (by best child score) to avoid excessive DB queries.
+        scored_groups: list[tuple[float, tuple[str, str]]] = []
+        for key, items in child_groups.items():
+            best = 0.0
+            for it in items:
+                try:
+                    best = max(best, float(it.get("score", 0.0) or 0.0))
+                except Exception:
+                    continue
+            scored_groups.append((best, key))
+        scored_groups.sort(key=lambda x: x[0], reverse=True)
+        if max_parents and len(scored_groups) > max_parents:
+            scored_groups = scored_groups[:max_parents]
+
+        # Decide which groups to materialize a parent for.
+        selected_keys: list[tuple[str, str]] = []
+        for _, key in scored_groups:
+            if mode == "replace" and len(child_groups.get(key) or []) < min_children:
+                continue
+            selected_keys.append(key)
+
+        if not selected_keys:
+            return results
+
+        # Fetch parent chunks not already present in results.
+        missing_keys = [k for k in selected_keys if k not in parent_results]
+        fetched_parents: dict[tuple[str, str], DocumentChunk] = {}
+
+        if missing_keys:
+            doc_ids: set[UUID] = set()
+            parent_ids: set[str] = set()
+            for doc_id, parent_id in missing_keys:
+                try:
+                    doc_ids.add(UUID(doc_id))
+                except Exception:
+                    continue
+                if parent_id:
+                    parent_ids.add(parent_id)
+
+            if doc_ids and parent_ids:
+                db = SessionLocal()
+                try:
+                    q = db.query(DocumentChunk).filter(DocumentChunk.document_id.in_(list(doc_ids)))
+                    if tenant_filter:
+                        q = q.filter(DocumentChunk.tenant_id == tenant_filter)
+                    # JSONB lookup: metadata->>'chunk_role' == 'parent' and metadata->>'parent_id' in (...)
+                    q = q.filter(DocumentChunk.doc_metadata["chunk_role"].astext == "parent")  # type: ignore[attr-defined]
+                    q = q.filter(DocumentChunk.doc_metadata["parent_id"].astext.in_(list(parent_ids)))  # type: ignore[attr-defined]
+                    for ck in q.all():
+                        meta = dict(getattr(ck, "doc_metadata", None) or {})
+                        pid = str(meta.get("parent_id") or "").strip()
+                        if not pid:
+                            continue
+                        fetched_parents[(str(ck.document_id), pid)] = ck
+                except Exception:
+                    fetched_parents = {}
+                finally:
+                    try:
+                        db.close()
+                    except Exception:
+                        pass
+
+        # Helper: materialize a parent result dict.
+        def _parent_result_for(key: tuple[str, str], *, best_child_score: float) -> Dict[str, Any] | None:
+            if key in parent_results:
+                # If parent is already present (e.g., neighbor expansion), bump its score and mark role.
+                existing = parent_results[key]
+                meta = dict(existing.get("metadata") or {})
+                meta["retrieval_role"] = "parent"
+                existing["metadata"] = meta
+                try:
+                    existing_score = float(existing.get("score", 0.0) or 0.0)
+                except Exception:
+                    existing_score = 0.0
+                existing["score"] = max(existing_score, best_child_score * 0.97)
+                return existing
+
+            ck = fetched_parents.get(key)
+            if ck is None:
+                return None
+
+            cid = str(ck.id)
+            stored_meta = dict(ck.doc_metadata or {})
+            stored_meta.setdefault("tenant_id", str(ck.tenant_id))
+            stored_meta.setdefault("document_id", str(ck.document_id))
+            stored_meta.setdefault("chunk_index", int(ck.chunk_index))
+            stored_meta.setdefault("chunk_id", cid)
+            if ck.page_number is not None:
+                stored_meta.setdefault("page", ck.page_number)
+            if not stored_meta.get("source"):
+                stored_meta["source"] = "unknown"
+            stored_meta["retrieval_role"] = "parent"
+
+            return {
+                "chunk_id": cid,
+                "content": ck.content,
+                "metadata": stored_meta,
+                "score": float(best_child_score * 0.97),
+            }
+
+        # Build quick access for best child score per group.
+        best_score_by_group: dict[tuple[str, str], float] = {}
+        for key in selected_keys:
+            best = 0.0
+            for it in child_groups.get(key) or []:
+                try:
+                    best = max(best, float(it.get("score", 0.0) or 0.0))
+                except Exception:
+                    continue
+            best_score_by_group[key] = best
+
+        if mode == "append":
+            inserted: set[tuple[str, str]] = set()
+            out: list[Dict[str, Any]] = []
+            for r in results:
+                out.append(r)
+                meta = r.get("metadata") or {}
+                role = str(meta.get("chunk_role") or "").strip().lower()
+                if role != "child":
+                    continue
+                key = (str(meta.get("document_id") or "").strip(), str(meta.get("parent_id") or meta.get("parent_node_id") or "").strip())
+                if key not in selected_keys or key in inserted:
+                    continue
+                # Parent already present in results (e.g., neighbor expansion) -> don't duplicate.
+                if key in parent_results:
+                    inserted.add(key)
+                    continue
+                # Only insert if we can materialize the parent.
+                parent = _parent_result_for(key, best_child_score=best_score_by_group.get(key, 0.0))
+                if parent is not None:
+                    out.append(parent)
+                    inserted.add(key)
+            return out
+
+        # replace mode: collapse groups.
+        to_replace = set(selected_keys)
+        removed_child_ids: set[str] = set()
+        for key in to_replace:
+            removed_child_ids |= child_chunk_ids_by_group.get(key, set())
+
+        inserted: set[tuple[str, str]] = set()
+        out: list[Dict[str, Any]] = []
+        for r in results:
+            meta = r.get("metadata") or {}
+            cid = r.get("chunk_id") or meta.get("chunk_id")
+            cid_str = str(cid) if cid else ""
+
+            # Drop neighbors that were added for removed children.
+            if meta.get("retrieval_role") == "neighbor":
+                if str(meta.get("neighbor_of") or "") in removed_child_ids:
+                    continue
+
+            role = str(meta.get("chunk_role") or "").strip().lower()
+            key = (
+                str(meta.get("document_id") or "").strip(),
+                str(meta.get("parent_id") or meta.get("parent_node_id") or "").strip(),
+            )
+
+            if role == "child" and key in to_replace:
+                if key in inserted:
+                    continue
+                parent = _parent_result_for(key, best_child_score=best_score_by_group.get(key, 0.0))
+                if parent is not None:
+                    out.append(parent)
+                inserted.add(key)
+                continue
+
+            # If parent is already present, keep it (and mark as parent role).
+            if role == "parent" and key in to_replace:
+                pr = _parent_result_for(key, best_child_score=best_score_by_group.get(key, 0.0))
+                if pr is not None:
+                    # Ensure we only keep one parent per group.
+                    if key in inserted:
+                        continue
+                    out.append(pr)
+                    inserted.add(key)
+                    continue
+
+            # Keep other results as-is.
+            if cid_str and cid_str in removed_child_ids and role == "child":
+                continue
+            out.append(r)
+
+        return out
+
     def _get_relevant_documents(
         self,
         query: str,
@@ -1110,6 +1347,7 @@ class HybridRetriever(BaseRetriever):
         )
         results = self._enrich_results_with_db_metadata(results)
         results = self._expand_results_with_neighbors(results)
+        results = self._auto_merge_parent_child(results)
         docs: List[Document] = []
         for r in results:
             meta = dict(r.get("metadata") or {})

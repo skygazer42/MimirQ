@@ -21,6 +21,7 @@ from app.core.database import SessionLocal
 from app.models.document import Document as DBDocument, DocumentChunk, DocumentParsedContent
 from app.models.dataset import Dataset
 from app.rag.chunking.factory import chunker_factory
+from app.rag.chunking.strategies import SeparatorChunker
 from app.storage.object.minio import minio_service
 from app.types.indexing import IndexKind, IndexRecord
 from app.types.pipeline import PipelineEffective
@@ -202,6 +203,260 @@ def _truncate_chunks_for_limit(
         "asset_total": int(len(asset_indices)),
         "asset_kept": int(asset_kept),
     }
+
+
+def _ensure_ingest_page_indices(documents: List[Document]) -> None:
+    """
+    Ensure each parsed Document has a stable per-document index for offset rebasing.
+
+    Why:
+    - Many parsers (e.g. PDF) emit multiple Documents.
+    - Most chunkers compute start/end offsets relative to each `doc.page_content`.
+    - We persist parsed markdown by joining docs; to highlight chunks reliably,
+      we need global offsets (joined-text coordinates).
+    """
+    for i, doc in enumerate(documents or []):
+        meta = dict(getattr(doc, "metadata", None) or {})
+        meta.setdefault("page_index", i + 1)  # 1-based (align with chunk-preview)
+        doc.metadata = meta
+
+
+def _rebase_chunk_offsets_by_page_index(
+    *,
+    documents: List[Document],
+    chunks: List[Document],
+    join_separator: str = "\n\n",
+) -> List[Document]:
+    """
+    Convert chunk start/end offsets from per-Document coordinates to joined-text coordinates.
+
+    - Assumes chunk metadata contains `page_index` and local `start_char`/`end_char`.
+    - Uses the same join separator as persisted parsed content ("\\n\\n").
+    """
+    if not documents or not chunks:
+        return chunks
+
+    # Build page_index -> start_offset map.
+    sep_len = len(join_separator or "")
+    page_start: dict[int, int] = {}
+    cursor = 0
+    total_docs = len(documents)
+    for i, doc in enumerate(documents):
+        meta = dict(getattr(doc, "metadata", None) or {})
+        try:
+            page_index = int(meta.get("page_index") or (i + 1))
+        except Exception:
+            page_index = i + 1
+        page_start[page_index] = cursor
+        cursor += len(doc.page_content or "")
+        if i < total_docs - 1:
+            cursor += sep_len
+
+    out: List[Document] = []
+    for c in chunks:
+        meta = dict(getattr(c, "metadata", None) or {})
+        page_index_raw = meta.get("page_index")
+        try:
+            page_index = int(page_index_raw) if page_index_raw is not None else None
+        except Exception:
+            page_index = None
+        base = page_start.get(page_index, 0) if page_index is not None else 0
+
+        local_start = meta.get("start_char")
+        local_end = meta.get("end_char")
+
+        try:
+            start_i = int(local_start) if local_start is not None else None
+        except Exception:
+            start_i = None
+        try:
+            end_i = int(local_end) if local_end is not None else None
+        except Exception:
+            end_i = None
+
+        if start_i is not None:
+            meta.setdefault("start_char_local", start_i)
+            meta["start_char"] = base + start_i
+        if end_i is not None:
+            meta.setdefault("end_char_local", end_i)
+            meta["end_char"] = base + end_i
+        if page_index is not None:
+            meta.setdefault("start_char_base", base)
+
+        meta.setdefault("offsets_rebased", True)
+        out.append(Document(page_content=c.page_content, metadata=meta, id=getattr(c, "id", None)))
+
+    return out
+
+
+def _merge_small_chunks_by_min_chars(
+    *,
+    documents: List[Document],
+    chunks: List[Document],
+    min_chars: int,
+    join_separator: str = "\n\n",
+) -> List[Document]:
+    """
+    Merge very short text chunks with neighbors to reduce over-fragmentation.
+
+    Design goals:
+    - Keep merge bounded within the same `page_index` (stable highlighting).
+    - Preserve assets (image/table) and parent/child semantics by skipping those chunks.
+    - Use original per-page text slice when offsets are available (so content matches offsets).
+    """
+    min_chars = max(0, int(min_chars or 0))
+    if min_chars <= 0 or not documents or not chunks:
+        return chunks
+
+    # Build page_index -> (text, base_offset) lookup.
+    sep_len = len(join_separator or "")
+    page_text: dict[int, str] = {}
+    page_base: dict[int, int] = {}
+    cursor = 0
+    for i, doc in enumerate(documents):
+        meta = dict(getattr(doc, "metadata", None) or {})
+        try:
+            page_index = int(meta.get("page_index") or (i + 1))
+        except Exception:
+            page_index = i + 1
+        page_text[page_index] = doc.page_content or ""
+        page_base[page_index] = cursor
+        cursor += len(doc.page_content or "")
+        if i < len(documents) - 1:
+            cursor += sep_len
+
+    def _chunk_page_index(c: Document) -> int | None:
+        meta = getattr(c, "metadata", None) or {}
+        raw = meta.get("page_index")
+        try:
+            return int(raw) if raw is not None else None
+        except Exception:
+            return None
+
+    def _chunk_mergeable(c: Document) -> bool:
+        meta = getattr(c, "metadata", None) or {}
+        if _chunk_has_asset(meta):
+            return False
+        # Don't merge parent/child chunks (semantics matter for retrieval).
+        if meta.get("chunk_role") or meta.get("parent_id"):
+            return False
+        return True
+
+    def _local_range(meta: dict[str, Any], *, base: int) -> tuple[int, int] | None:
+        # Prefer explicitly stored locals (set by offset rebase stage).
+        start_local = meta.get("start_char_local")
+        end_local = meta.get("end_char_local")
+        try:
+            s = int(start_local) if start_local is not None else None
+            e = int(end_local) if end_local is not None else None
+        except Exception:
+            s = None
+            e = None
+
+        if s is None or e is None:
+            # Fallback: derive from global offsets.
+            try:
+                sg = int(meta.get("start_char")) if meta.get("start_char") is not None else None
+                eg = int(meta.get("end_char")) if meta.get("end_char") is not None else None
+            except Exception:
+                sg = None
+                eg = None
+            if sg is None or eg is None:
+                return None
+            s = max(0, sg - base)
+            e = max(s, eg - base)
+
+        if e < s:
+            return None
+        return s, e
+
+    def _merge_two(a: Document, b: Document, *, page_index: int) -> Document | None:
+        text = page_text.get(page_index)
+        base = int(page_base.get(page_index) or 0)
+        if text is None:
+            return None
+
+        ma = dict(getattr(a, "metadata", None) or {})
+        mb = dict(getattr(b, "metadata", None) or {})
+        ra = _local_range(ma, base=base)
+        rb = _local_range(mb, base=base)
+        if ra is None or rb is None:
+            return None
+
+        start_local = min(ra[0], rb[0])
+        end_local = max(ra[1], rb[1])
+        start_local = max(0, min(start_local, len(text)))
+        end_local = max(start_local, min(end_local, len(text)))
+
+        merged_text = text[start_local:end_local]
+
+        ma["page_index"] = page_index
+        ma.setdefault("start_char_base", base)
+        ma["start_char_local"] = start_local
+        ma["end_char_local"] = end_local
+        ma["start_char"] = base + start_local
+        ma["end_char"] = base + end_local
+        ma["offsets_rebased"] = True
+
+        ma["merged_small_chunks"] = int(ma.get("merged_small_chunks") or 0) + 1
+
+        return Document(page_content=merged_text, metadata=ma, id=getattr(a, "id", None))
+
+    out: List[Document] = []
+    pending: Document | None = None
+    pending_page: int | None = None
+
+    for c in chunks:
+        page_index = _chunk_page_index(c)
+        if pending is not None and page_index != pending_page:
+            out.append(pending)
+            pending = None
+            pending_page = None
+
+        meta = dict(getattr(c, "metadata", None) or {})
+        mergeable = page_index is not None and page_index in page_text and _chunk_mergeable(c)
+        content_len = len((c.page_content or "").strip())
+
+        if not mergeable:
+            if pending is not None:
+                out.append(pending)
+                pending = None
+                pending_page = None
+            out.append(c)
+            continue
+
+        if pending is not None:
+            merged = _merge_two(pending, c, page_index=page_index) if page_index is not None else None
+            if merged is not None:
+                out.append(merged)
+            else:
+                out.append(pending)
+                out.append(c)
+            pending = None
+            pending_page = None
+            continue
+
+        if content_len >= min_chars:
+            out.append(c)
+            continue
+
+        # Small chunk: merge into previous if possible, otherwise buffer and merge into next.
+        if out:
+            prev = out[-1]
+            prev_page = _chunk_page_index(prev)
+            if prev_page == page_index and _chunk_mergeable(prev):
+                merged = _merge_two(prev, c, page_index=page_index) if page_index is not None else None
+                if merged is not None:
+                    out[-1] = merged
+                    continue
+
+        pending = c
+        pending_page = page_index
+
+    if pending is not None:
+        out.append(pending)
+
+    return out
 
 
 class ParsingStage:
@@ -489,15 +744,121 @@ class ChunkingStage:
         chunk_strategy: str,
         chunk_size: int,
         chunk_overlap: int,
+        chunk_strategy_params: Dict[str, Any] | None = None,
     ) -> ChunkingResult:
         logger.info("Chunking document into smaller pieces...")
         if chunk_overlap >= chunk_size:
             raise ValueError("chunk_overlap must be less than chunk_size")
-        chunker = chunker_factory.get_chunker(
-            chunk_strategy,
-            chunk_size=chunk_size,
-            chunk_overlap=chunk_overlap,
-        )
+        params = dict(chunk_strategy_params or {})
+
+        def _to_bool(v: object) -> bool | None:
+            if v is None:
+                return None
+            if isinstance(v, bool):
+                return v
+            if isinstance(v, (int, float)):
+                return bool(v)
+            if isinstance(v, str):
+                s = v.strip().lower()
+                if s in {"1", "true", "yes", "y", "on"}:
+                    return True
+                if s in {"0", "false", "no", "n", "off"}:
+                    return False
+            return None
+
+        def _to_int(v: object) -> int | None:
+            if v is None:
+                return None
+            if isinstance(v, bool):
+                return int(v)
+            if isinstance(v, (int, float)):
+                try:
+                    return int(v)
+                except Exception:
+                    return None
+            if isinstance(v, str):
+                try:
+                    return int(float(v.strip()))
+                except Exception:
+                    return None
+            return None
+
+        def _to_float(v: object) -> float | None:
+            if v is None:
+                return None
+            if isinstance(v, bool):
+                return float(v)
+            if isinstance(v, (int, float)):
+                try:
+                    return float(v)
+                except Exception:
+                    return None
+            if isinstance(v, str):
+                try:
+                    return float(v.strip())
+                except Exception:
+                    return None
+            return None
+
+        # Separator chunking needs preset/custom mapping (preview supports this too).
+        if (chunk_strategy or "").strip().lower() == "separator":
+            preset = str(params.get("separator_preset") or "").strip() or "paragraph"
+            if preset != "custom":
+                sep_value = SeparatorChunker.PRESET_SEPARATORS.get(preset)
+                if sep_value is None:
+                    raise ValueError(f"Invalid separator_preset: {preset}")
+            else:
+                raw = params.get("separator")
+                if raw is None:
+                    raw = params.get("separator_custom")
+                sep_value = str(raw or "")
+                if not sep_value:
+                    sep_value = "\n\n"
+                # Support common escaped inputs like "\\n\\n" (match frontend behavior).
+                try:
+                    import json as _json  # local import to keep module deps minimal
+
+                    escaped = sep_value.replace("\"", "\\\"")
+                    sep_value = _json.loads(f"\"{escaped}\"")
+                except Exception:
+                    pass
+
+            keep_sep = params.get("keep_separator")
+            keep_sep_norm = _to_bool(keep_sep)
+            if keep_sep_norm is None:
+                keep_sep = True
+            else:
+                keep_sep = keep_sep_norm
+
+            max_chunk_size = _to_int(params.get("separator_max_chunk_size"))
+            if max_chunk_size is None:
+                max_chunk_size = _to_int(params.get("max_chunk_size"))
+            max_chunk_size = int(max_chunk_size or 0)
+
+            chunker = SeparatorChunker(
+                chunk_size=chunk_size,
+                chunk_overlap=chunk_overlap,
+                separator=sep_value,
+                keep_separator=bool(keep_sep),
+                max_chunk_size=max_chunk_size,
+            )
+        else:
+            # Common numeric coercions for strategy kwargs (avoid accidental string types from patches).
+            if "child_ratio" in params:
+                r = _to_float(params.get("child_ratio"))
+                if r is not None:
+                    params["child_ratio"] = r
+            if "min_child_size" in params:
+                n = _to_int(params.get("min_child_size"))
+                if n is not None:
+                    params["min_child_size"] = n
+
+            chunker = chunker_factory.get_chunker(
+                chunk_strategy,
+                chunk_size=chunk_size,
+                chunk_overlap=chunk_overlap,
+                **params,
+            )
         return ChunkingResult(chunks=chunker.split_documents(documents))
 
 
@@ -1049,6 +1410,11 @@ class DocumentProcessorService:
             await raise_if_cancelled()
 
             # Governance: normalize/clean documents or ragflow chunks.
+            merge_small_enabled = False
+            merge_small_min_chars = 0
+            merge_small_before = 0
+            merge_small_after = 0
+            merge_small_reduced = 0
             governance_stats: Optional[GovernanceStats] = None
             if parsed.chunks is not None:
                 with metrics_span("ingest.normalize"):
@@ -1123,6 +1489,9 @@ class DocumentProcessorService:
                     )
                 parsed_documents = gov.items
                 governance_stats = gov.stats
+
+                # Ensure stable per-doc indices so we can rebase chunk offsets into joined-text coordinates.
+                _ensure_ingest_page_indices(parsed_documents)
 
                 # Optional: persist parsed markdown (raw+clean) for audit/debug.
                 if bool(getattr(pipeline_effective, "persist_parsed_content", False)):
@@ -1210,8 +1579,30 @@ class DocumentProcessorService:
                         chunk_strategy=resolved_chunk_strategy,
                         chunk_size=int(pipeline_effective.chunk_size),
                         chunk_overlap=int(pipeline_effective.chunk_overlap),
+                        chunk_strategy_params=dict(getattr(pipeline_effective, "chunk_strategy_params", {}) or {}),
                     )
-                chunks = chunked.chunks
+                chunks = _rebase_chunk_offsets_by_page_index(
+                    documents=parsed_documents,
+                    chunks=chunked.chunks,
+                    join_separator="\n\n",
+                )
+                merge_min = max(0, int(getattr(pipeline_effective, "chunk_merge_small_min_chars", 0) or 0))
+                merge_small_min_chars = int(merge_min)
+                merge_small_before = len(chunks)
+                merge_small_after = merge_small_before
+                merge_small_reduced = 0
+                merge_small_enabled = bool(merge_min > 0)
+                if merge_min > 0 and chunks:
+                    with metrics_span("ingest.chunk_merge_small", min_chars=merge_min):
+                        merged = _merge_small_chunks_by_min_chars(
+                            documents=parsed_documents,
+                            chunks=chunks,
+                            min_chars=merge_min,
+                            join_separator="\n\n",
+                        )
+                    merge_small_after = len(merged)
+                    merge_small_reduced = max(0, merge_small_before - merge_small_after)
+                    chunks = merged
 
             await raise_if_cancelled()
 
@@ -1414,11 +1805,16 @@ class DocumentProcessorService:
                     }
                 )
 
-            if dedup_enabled or max_chunks_per_document > 0:
+            if merge_small_min_chars > 0 or dedup_enabled or max_chunks_per_document > 0:
                 self._record_chunk_postprocess_metadata(
                     db,
                     tenant_id=tenant_id,
                     document_id=document_id,
+                    merge_small_enabled=bool(merge_small_min_chars > 0),
+                    merge_small_min_chars=int(merge_small_min_chars),
+                    merge_small_before=int(merge_small_before),
+                    merge_small_after=int(merge_small_after),
+                    merge_small_reduced=int(merge_small_reduced),
                     dedup_enabled=dedup_enabled,
                     dedup_dropped=dedup_dropped,
                     max_chunks_per_document=max_chunks_per_document,
@@ -1460,6 +1856,17 @@ class DocumentProcessorService:
                     "parser_backend": resolved_backend,
                     "chunk_strategy": resolved_chunk_strategy,
                 }
+
+            # Best-effort: persist basic chunking stats for audit/debug (does not affect indexing).
+            try:
+                self._record_chunking_stats_metadata(
+                    db,
+                    tenant_id=tenant_id,
+                    document_id=document_id,
+                    chunks=chunks,
+                )
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("Failed to record chunking stats: %s", str(exc)[:200])
 
             # Chunk-level assets & metadata (image upload/binding).
             await raise_if_cancelled()
@@ -1907,6 +2314,8 @@ class DocumentProcessorService:
             "governance_common_lines_min_ratio": float(effective.governance_common_lines_min_ratio),
             "chunk_size": int(effective.chunk_size),
             "chunk_overlap": int(effective.chunk_overlap),
+            "chunk_merge_small_min_chars": int(getattr(effective, "chunk_merge_small_min_chars", 0) or 0),
+            "chunk_strategy_params": dict(getattr(effective, "chunk_strategy_params", {}) or {}),
             "chunk_vector_enabled": bool(effective.chunk_vector_enabled),
             "bm25_index_enabled": bool(effective.bm25_index_enabled),
             "kg_enabled": bool(effective.kg_enabled),
@@ -2168,6 +2577,11 @@ class DocumentProcessorService:
         *,
         tenant_id: UUID,
         document_id: UUID,
+        merge_small_enabled: bool,
+        merge_small_min_chars: int,
+        merge_small_before: int,
+        merge_small_after: int,
+        merge_small_reduced: int,
         dedup_enabled: bool,
         dedup_dropped: int,
         max_chunks_per_document: int,
@@ -2189,6 +2603,11 @@ class DocumentProcessorService:
 
         metadata = dict(db_doc.doc_metadata or {})
         metadata["chunk_postprocess"] = {
+            "merge_small_enabled": bool(merge_small_enabled),
+            "merge_small_min_chars": int(merge_small_min_chars),
+            "merge_small_before": int(merge_small_before),
+            "merge_small_after": int(merge_small_after),
+            "merge_small_reduced": int(merge_small_reduced),
             "dedup_enabled": bool(dedup_enabled),
             "dedup_dropped": int(dedup_dropped),
             "max_chunks_per_document": int(max_chunks_per_document),
@@ -2199,6 +2618,79 @@ class DocumentProcessorService:
             "truncated_dropped": int(truncated_dropped),
             "truncated_asset_total": int(truncated_asset_total),
             "truncated_asset_kept": int(truncated_asset_kept),
+        }
+        db_doc.doc_metadata = metadata
+        db.commit()
+        db.refresh(db_doc)
+
+    def _record_chunking_stats_metadata(
+        self,
+        db: Session,
+        *,
+        tenant_id: UUID,
+        document_id: UUID,
+        chunks: List[Document],
+        short_threshold: int = 120,
+    ) -> None:
+        """Persist basic chunking stats (length distribution, duplicates) on the document metadata."""
+        if not chunks:
+            return
+
+        db_doc = (
+            db.query(DBDocument)
+            .filter(DBDocument.id == document_id, DBDocument.tenant_id == tenant_id)
+            .first()
+        )
+        if not db_doc:
+            return
+
+        lengths: list[int] = []
+        seen: set[str] = set()
+        dup_count = 0
+        short_count = 0
+
+        for c in chunks:
+            text = (c.page_content or "").strip()
+            if not text:
+                continue
+            n = len(text)
+            lengths.append(n)
+            if n < int(short_threshold or 0):
+                short_count += 1
+            digest = hashlib.sha256(text.encode("utf-8", "ignore")).hexdigest()
+            if digest in seen:
+                dup_count += 1
+            else:
+                seen.add(digest)
+
+        if not lengths:
+            return
+
+        lengths.sort()
+        total = int(sum(lengths))
+
+        def _pct(p: int) -> int:
+            if not lengths:
+                return 0
+            pp = max(0, min(100, int(p)))
+            pos = int((pp / 100.0) * (len(lengths) - 1))
+            pos = max(0, min(len(lengths) - 1, pos))
+            return int(lengths[pos] or 0)
+
+        metadata = dict(db_doc.doc_metadata or {})
+        metadata["chunking_stats"] = {
+            "unit": "chars",
+            "count": int(len(lengths)),
+            "total": total,
+            "min": int(lengths[0]),
+            "max": int(lengths[-1]),
+            "avg": int(round(total / len(lengths))) if lengths else 0,
+            "median": _pct(50),
+            "p10": _pct(10),
+            "p90": _pct(90),
+            "short_threshold": int(short_threshold),
+            "short_count": int(short_count),
+            "duplicate_count": int(dup_count),
         }
         db_doc.doc_metadata = metadata
         db.commit()

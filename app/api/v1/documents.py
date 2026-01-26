@@ -13,6 +13,7 @@ import mimetypes
 import time
 from fastapi import APIRouter, Depends, UploadFile, File, HTTPException, BackgroundTasks, Form, Request, Query
 from fastapi import Response
+from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session, selectinload
 from typing import Any, List, Optional, Literal
 from uuid import UUID
@@ -89,6 +90,7 @@ from app.rag.core.logging import get_logger
 from app.rag.preprocessing.processor import governance_processor
 from app.rag.preprocessing.rules import build_governance_rules
 from app.api.utils.upload import save_upload_file, save_upload_file_with_hash
+from app.api.utils.url_ingest import download_url_to_path, validate_url_for_ingest
 from app.services.preview_cache import preview_parse_cache, preview_parse_locks, ParseCacheEntry
 from app.tasks.queue import enqueue_document_processing
 
@@ -118,6 +120,161 @@ def _ensure_preview_page_indices(documents: list[Document]) -> None:
         # Keep existing value if present; otherwise assign a deterministic 1-based index.
         meta.setdefault("page_index", i + 1)
         doc.metadata = meta
+
+
+def _preview_chunk_has_asset(meta: dict[str, Any], content: str | None = None) -> bool:
+    doc_type = str(meta.get("doc_type_kwd") or "").lower()
+    if doc_type in {"image", "table"}:
+        return True
+    if meta.get("image") is not None:
+        return True
+    if isinstance(meta.get("image_path"), str) and meta.get("image_path").strip():
+        return True
+    if meta.get("img_id") or meta.get("image_id") or meta.get("image_url"):
+        return True
+    if content:
+        lower = str(content).lower()
+        if ("data:image" in lower) or PREVIEW_IMAGE_REF_RE.search(content) or MINIO_IMAGE_REF_RE.search(content):
+            return True
+    return False
+
+
+def _merge_small_chunks_preview(
+    *,
+    documents: list[Document],
+    chunks: list[Document],
+    min_chars: int,
+) -> list[Document]:
+    """
+    Preview-time merge of very short chunks (local offsets per parsed Document).
+
+    Notes:
+    - Only merges within the same `page_index`.
+    - Preserves assets and parent/child semantics (skips those chunks).
+    - Keeps `start_char`/`end_char` in *local* coordinates; rebasing happens later.
+    """
+    min_chars = max(0, int(min_chars or 0))
+    if min_chars <= 0 or not documents or not chunks:
+        return chunks
+
+    # page_index -> text
+    page_text: dict[int, str] = {}
+    for i, doc in enumerate(documents):
+        meta = dict(getattr(doc, "metadata", None) or {})
+        try:
+            pi = int(meta.get("page_index") or (i + 1))
+        except Exception:
+            pi = i + 1
+        page_text[pi] = str(doc.page_content or "")
+
+    def _page_index_of(c: Document) -> int | None:
+        meta = getattr(c, "metadata", None) or {}
+        raw = meta.get("page_index")
+        try:
+            return int(raw) if raw is not None else None
+        except Exception:
+            return None
+
+    def _local_range(meta: dict[str, Any]) -> tuple[int, int] | None:
+        try:
+            s = int(meta.get("start_char")) if meta.get("start_char") is not None else None
+            e = int(meta.get("end_char")) if meta.get("end_char") is not None else None
+        except Exception:
+            return None
+        if s is None or e is None:
+            return None
+        if e < s:
+            return None
+        return s, e
+
+    def _merge_two(a: Document, b: Document, *, page_index: int) -> Document | None:
+        text = page_text.get(page_index)
+        if text is None:
+            return None
+        ma = dict(getattr(a, "metadata", None) or {})
+        mb = dict(getattr(b, "metadata", None) or {})
+        ra = _local_range(ma)
+        rb = _local_range(mb)
+        if ra is None or rb is None:
+            return None
+
+        start_local = min(ra[0], rb[0])
+        end_local = max(ra[1], rb[1])
+        start_local = max(0, min(start_local, len(text)))
+        end_local = max(start_local, min(end_local, len(text)))
+        merged_text = text[start_local:end_local]
+
+        ma["start_char"] = start_local
+        ma["end_char"] = end_local
+        ma["merged_small_chunks"] = int(ma.get("merged_small_chunks") or 0) + 1
+        return Document(page_content=merged_text, metadata=ma, id=getattr(a, "id", None))
+
+    out: list[Document] = []
+    pending: Document | None = None
+    pending_page: int | None = None
+
+    for c in chunks:
+        page_index = _page_index_of(c)
+        if pending is not None and page_index != pending_page:
+            out.append(pending)
+            pending = None
+            pending_page = None
+
+        meta = dict(getattr(c, "metadata", None) or {})
+        mergeable = (
+            page_index is not None
+            and page_index in page_text
+            and not _preview_chunk_has_asset(meta, c.page_content or "")
+            and not (meta.get("chunk_role") or meta.get("parent_id"))
+            and _local_range(meta) is not None
+        )
+        if not mergeable:
+            if pending is not None:
+                out.append(pending)
+                pending = None
+                pending_page = None
+            out.append(c)
+            continue
+
+        content_len = len((c.page_content or "").strip())
+
+        if pending is not None:
+            merged = _merge_two(pending, c, page_index=page_index) if page_index is not None else None
+            if merged is not None:
+                out.append(merged)
+            else:
+                out.append(pending)
+                out.append(c)
+            pending = None
+            pending_page = None
+            continue
+
+        if content_len >= min_chars:
+            out.append(c)
+            continue
+
+        if out:
+            prev = out[-1]
+            prev_page = _page_index_of(prev)
+            prev_meta = dict(getattr(prev, "metadata", None) or {})
+            if (
+                prev_page == page_index
+                and not _preview_chunk_has_asset(prev_meta, prev.page_content or "")
+                and not (prev_meta.get("chunk_role") or prev_meta.get("parent_id"))
+                and _local_range(prev_meta) is not None
+            ):
+                merged = _merge_two(prev, c, page_index=page_index) if page_index is not None else None
+                if merged is not None:
+                    out[-1] = merged
+                    continue
+
+        pending = c
+        pending_page = page_index
+
+    if pending is not None:
+        out.append(pending)
+
+    return out
 
 
 def _parse_uuid(value: str) -> UUID:
@@ -1313,6 +1470,17 @@ def _resolve_writable_dataset(
     )
 
 
+class UrlUploadRequest(BaseModel):
+    """Upload a document by fetching a remote URL (connector skeleton)."""
+
+    url: str = Field(..., max_length=2000)
+    dataset_id: Optional[UUID] = None
+    filename: Optional[str] = Field(default=None, max_length=500, description="Optional override filename (used for extension + display)")
+    parser_backend: str = Field(default=settings.DEFAULT_PARSER_BACKEND)
+    chunk_strategy: str = Field(default=settings.DEFAULT_CHUNK_STRATEGY)
+    pipeline: Optional[DocumentPipelineOptions] = None
+
+
 @router.post("/upload", response_model=DocumentDetail, status_code=201)
 async def upload_document(
     background_tasks: BackgroundTasks,
@@ -1530,6 +1698,244 @@ async def upload_document(
         background_tasks.add_task(
             document_processor.process_document,
             file_path,
+            file_id,
+            tenant_id,
+            resolved_parser_backend,
+            resolved_chunk_strategy,
+        )
+
+    return db_document
+
+
+@router.post("/upload-url", response_model=DocumentDetail, status_code=201)
+async def upload_document_from_url(
+    background_tasks: BackgroundTasks,
+    body: UrlUploadRequest,
+    tenant_id: UUID = Depends(get_tenant_id),
+    account_id: str = Depends(get_current_account_id),
+    db: Session = Depends(get_db),
+):
+    """
+    Fetch a remote URL and ingest it as a document.
+
+    Notes:
+    - Disabled by default: set URL_INGEST_ENABLED=true to enable.
+    - SSRF guard: blocks private/loopback/link-local hosts by default.
+    """
+    if not bool(getattr(settings, "URL_INGEST_ENABLED", False)):
+        raise HTTPException(status_code=400, detail="URL ingestion is disabled")
+
+    url = await validate_url_for_ingest(str(body.url or ""))
+
+    # 1) Resolve dataset permission.
+    dataset = _resolve_writable_dataset(db, tenant_id, account_id, body.dataset_id)
+
+    # 2) Download to a temp path first, then decide extension (URL may not include it).
+    upload_dir = Path(settings.UPLOAD_DIR) / str(tenant_id)
+    upload_dir.mkdir(parents=True, exist_ok=True)
+    file_id = uuid.uuid4()
+    temp_path = upload_dir / f"{file_id}.urltmp"
+
+    downloaded = await download_url_to_path(
+        url,
+        temp_path,
+        max_bytes=int(getattr(settings, "URL_INGEST_MAX_BYTES", 0) or settings.MAX_FILE_SIZE),
+        timeout_sec=float(getattr(settings, "URL_INGEST_TIMEOUT_SEC", 30.0) or 30.0),
+        follow_redirects=bool(getattr(settings, "URL_INGEST_FOLLOW_REDIRECTS", False)),
+    )
+
+    content_type = (downloaded.content_type or "").split(";", 1)[0].strip().lower()
+
+    # 3) Determine file extension.
+    def _ext_from_filename(name: str | None) -> str | None:
+        if not name:
+            return None
+        ext = Path(str(name)).suffix.lower()
+        return ext if ext else None
+
+    def _ext_from_content_type(ct: str) -> str | None:
+        if not ct:
+            return None
+        if ct in {"text/html"}:
+            return ".html"
+        if ct in {"text/plain"}:
+            return ".txt"
+        if ct in {"text/markdown", "text/x-markdown"}:
+            return ".md"
+        if ct in {"application/pdf"}:
+            return ".pdf"
+        if ct in {"application/json"}:
+            return ".json"
+        if ct in {"text/xml", "application/xml", "application/rss+xml", "application/atom+xml"}:
+            return ".xml"
+        return None
+
+    # Prefer explicit filename override, then URL path, then content-type.
+    file_ext = _ext_from_filename(body.filename)
+    if not file_ext:
+        from urllib.parse import urlparse
+
+        parsed = urlparse(url)
+        file_ext = _ext_from_filename(Path(parsed.path).name)
+    if not file_ext:
+        file_ext = _ext_from_content_type(content_type)
+    if not file_ext:
+        # Best-effort: fall back to generic text if content looks text-ish.
+        if content_type.startswith("text/"):
+            file_ext = ".txt"
+        else:
+            raise HTTPException(status_code=400, detail=f"Unsupported content-type: {content_type or 'unknown'}")
+
+    file_ext = file_ext.lower()
+    if file_ext not in settings.allowed_extensions_list:
+        raise HTTPException(status_code=400, detail=f"Unsupported file type. Allowed: {settings.allowed_extensions_list}")
+
+    final_path = upload_dir / f"{file_id}{file_ext}"
+    try:
+        temp_path.replace(final_path)
+    except Exception:
+        try:
+            shutil.move(str(temp_path), str(final_path))
+        except Exception as exc:  # noqa: BLE001
+            with contextlib.suppress(OSError):
+                temp_path.unlink(missing_ok=True)
+            raise HTTPException(status_code=500, detail=f"failed to finalize downloaded file: {str(exc)[:120]}")
+
+    # 4) Resolve ingestion policy (optional) based on the inferred filename/ext.
+    safe_name = _sanitize_filename(body.filename or Path(final_path).name)
+
+    pipeline_options = PipelineOptions(**(body.pipeline.model_dump(exclude_none=True) if body.pipeline else {}))
+
+    dataset_meta = (getattr(dataset, "dataset_metadata", None) or {}) if dataset is not None else {}
+    policy = parse_ingestion_policy_from_metadata(dataset_meta if isinstance(dataset_meta, dict) else {})  # type: ignore[arg-type]
+    matched_rule = match_ingestion_rule(policy, filename=safe_name, file_ext=file_ext)
+
+    parser_backend_choice = str(body.parser_backend or settings.DEFAULT_PARSER_BACKEND)
+    chunk_strategy_choice = str(body.chunk_strategy or settings.DEFAULT_CHUNK_STRATEGY)
+    policy_patch = PipelineOptions()
+    ingestion_meta: Optional[dict[str, Any]] = None
+
+    if matched_rule is not None:
+        default_pb = (getattr(settings, "DEFAULT_PARSER_BACKEND", "auto") or "auto").strip().lower() or "auto"
+        req_pb = (parser_backend_choice or "").strip().lower()
+        if req_pb in {"", "auto", default_pb} and matched_rule.parser_backend:
+            parser_backend_choice = str(matched_rule.parser_backend)
+
+        default_cs = (getattr(settings, "DEFAULT_CHUNK_STRATEGY", "langchain_recursive") or "langchain_recursive").strip().lower()
+        req_cs = (chunk_strategy_choice or "").strip().lower()
+        if req_cs in {"", default_cs} and matched_rule.chunk_strategy:
+            chunk_strategy_choice = str(matched_rule.chunk_strategy)
+
+        preprocess_steps: list[dict[str, Any]] = []
+        pp = getattr(matched_rule, "preprocess", None)
+        steps = getattr(pp, "steps", None) if pp is not None and bool(getattr(pp, "enabled", True)) else None
+        if isinstance(steps, list) and steps:
+            preprocess_steps = [
+                {
+                    "id": str(getattr(s, "id", "") or "").strip(),
+                    "params": dict(getattr(s, "params", {}) or {}),
+                }
+                for s in steps
+            ]
+
+        patch_dict: dict[str, Any] = {}
+        profile_ref = getattr(matched_rule, "governance_profile_ref", None)
+        if isinstance(profile_ref, str) and profile_ref.strip():
+            try:
+                resolved = resolve_governance_profile_ref(db=db, tenant_id=tenant_id, profile_ref=profile_ref.strip())
+            except ValueError as exc:
+                raise HTTPException(status_code=400, detail=f"Invalid governance_profile_ref: {str(exc)[:120]}")
+            patch_dict.update(dict(resolved.pipeline_patch or {}))
+            if resolved.regex_rules:
+                patch_dict["governance_regex_rules"] = list(resolved.regex_rules)
+
+        patch_dict.update(dict(getattr(matched_rule, "pipeline_patch", None) or {}))
+        if patch_dict:
+            policy_patch = PipelineOptions(**patch_dict)
+
+        ingestion_meta = {
+            "version": str(getattr(policy, "version", "1") if policy is not None else "1"),
+            "rule": {"id": matched_rule.id, "name": matched_rule.name},
+            "preprocess": {"enabled": bool(preprocess_steps), "steps": preprocess_steps},
+            "governance_profile_ref": (profile_ref.strip() if isinstance(profile_ref, str) and profile_ref.strip() else None),
+            "source_url": url,
+        }
+
+    pipeline_options = merge_pipeline_options(policy_patch, pipeline_options)
+
+    # 5) Resolve backend/strategy after policy application.
+    try:
+        requested_parser_backend = (parser_backend_choice or "").strip().lower()
+        if file_ext == ".pdf" and requested_parser_backend in {"", "auto"}:
+            resolved_parser_backend = "auto"
+        else:
+            resolved_parser_backend = parser_factory.resolve_backend(file_ext, parser_backend_choice)
+        resolved_chunk_strategy = chunker_factory.resolve_strategy(chunk_strategy_choice)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+    pipeline_effective = resolve_pipeline_effective(
+        dataset_metadata=(getattr(dataset, "dataset_metadata", None) or {}),
+        document_metadata={},
+        request_overrides=pipeline_options,
+    )
+    if resolved_chunk_strategy not in chunker_factory.RAGFLOW_STRATEGIES:
+        _validate_chunk_params(pipeline_effective.chunk_size, pipeline_effective.chunk_overlap)
+
+    pipeline_metadata = build_pipeline_metadata(pipeline_options)
+
+    # 6) Create document record.
+    doc_metadata = {
+        "parser_backend": resolved_parser_backend,
+        "parser_backend_requested": str(body.parser_backend or "").lower(),
+        "chunk_strategy": resolved_chunk_strategy,
+        "chunk_strategy_requested": str(body.chunk_strategy or "").lower(),
+        "source_url": url,
+        "url_content_type": content_type or None,
+    }
+    if pipeline_metadata:
+        doc_metadata["pipeline"] = pipeline_metadata
+    if ingestion_meta:
+        doc_metadata["ingestion"] = ingestion_meta
+
+    pipeline_hash = _compute_pipeline_hash(doc_metadata)
+    doc_metadata["pipeline_hash"] = pipeline_hash
+
+    db_document = DBDocument(
+        id=file_id,
+        tenant_id=tenant_id,
+        dataset_id=dataset.id,
+        filename=safe_name,
+        file_type=file_ext.lstrip("."),
+        file_size=int(downloaded.size_bytes),
+        file_path=str(final_path),
+        status="pending",
+        processing_progress=0,
+        doc_metadata=doc_metadata,
+    )
+
+    db.add(db_document)
+    db.commit()
+    db.refresh(db_document)
+
+    # 7) Process document in background: enqueue if available (fallback to BackgroundTasks).
+    job_id = f"doc:{tenant_id}:{file_id}:{pipeline_hash}"
+    task_id = await enqueue_document_processing(
+        tenant_id=tenant_id,
+        document_id=file_id,
+        requested_by=account_id,
+        job_id=job_id,
+    )
+    if task_id:
+        meta = dict(db_document.doc_metadata or {})
+        meta["task_id"] = task_id
+        db_document.doc_metadata = meta
+        db.commit()
+        db.refresh(db_document)
+    else:
+        background_tasks.add_task(
+            document_processor.process_document,
+            final_path,
             file_id,
             tenant_id,
             resolved_parser_backend,
@@ -4090,6 +4496,11 @@ async def preview_chunking(
             chunks = chunker.split_documents(documents)
             chunking_duration_ms = int(max(0.0, (time.perf_counter() - _chunk_started) * 1000.0))
 
+        # Optional: merge extremely short chunks with neighbors (preview-time).
+        merge_min = max(0, int(getattr(pipeline_effective, "chunk_merge_small_min_chars", 0) or 0))
+        if merge_min > 0 and documents and chunks:
+            chunks = _merge_small_chunks_preview(documents=documents, chunks=chunks, min_chars=merge_min)
+
         # Align with ingestion: drop extremely short chunks (keep image-bearing chunks).
         min_chars = max(0, int(getattr(settings, "CHUNK_MIN_CHARS", 0) or 0))
         if min_chars > 0 and chunks:
@@ -4733,6 +5144,11 @@ async def preview_chunking_by_sha(
     _chunk_started = time.perf_counter()
     chunks = chunker.split_documents(documents)
     chunking_duration_ms = int(max(0.0, (time.perf_counter() - _chunk_started) * 1000.0))
+
+    # Optional: merge extremely short chunks with neighbors (preview-time).
+    merge_min = max(0, int(getattr(pipeline_effective, "chunk_merge_small_min_chars", 0) or 0))
+    if merge_min > 0 and documents and chunks:
+        chunks = _merge_small_chunks_preview(documents=documents, chunks=chunks, min_chars=merge_min)
 
     # Align with ingestion: drop extremely short chunks (keep image-bearing chunks).
     min_chars = max(0, int(getattr(settings, "CHUNK_MIN_CHARS", 0) or 0))
