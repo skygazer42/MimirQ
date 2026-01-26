@@ -8,6 +8,7 @@
 
 import { useMemo } from 'react'
 import { FileText, Settings2 } from 'lucide-react'
+import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
 
 import { Button } from '@/components/ui/button'
@@ -28,13 +29,16 @@ export function IngestionPreviewDetailsDialog({
   open,
   onOpenChange,
   preview,
+  datasetId,
   onApplyPipelinePatch,
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
   preview: IngestionPreviewResponse | null
+  datasetId?: string
   onApplyPipelinePatch?: (patch: Record<string, any>) => void
 }) {
+  const router = useRouter()
   const ruleTitle = useMemo(() => {
     if (!preview) return ''
     if (!preview.rule?.matched) return '未命中策略规则（使用默认配置）'
@@ -92,11 +96,33 @@ export function IngestionPreviewDetailsDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-4xl">
         <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <Settings2 className="w-5 h-5 text-primary" />
-            入库策略预览
-          </DialogTitle>
-          <DialogDescription className="space-y-1">
+          <DialogTitle className="flex items-center justify-between gap-2">
+            <span className="flex items-center gap-2">
+              <Settings2 className="w-5 h-5 text-primary" />
+              入库策略预览
+            </span>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              className="h-8 px-3 text-[11px]"
+              onClick={() => {
+                const params = new URLSearchParams()
+                params.set('from', 'chunk-preview')
+                params.set('tab', 'clean')
+                const ds = String(datasetId || '').trim()
+                if (ds) params.set('dataset_id', ds)
+                const ref = String(preview?.rule?.governance_profile_ref || '').trim()
+                if (ref) params.set('governance_profile_ref', ref)
+                router.push(`/data-governance?${params.toString()}`)
+                onOpenChange(false)
+              }}
+              disabled={!preview}
+	            >
+	              去数据治理
+	            </Button>
+	          </DialogTitle>
+	          <DialogDescription className="space-y-1">
             <div className="text-xs text-foreground/90">
               {ruleTitle || '—'}
               {preview?.rule?.parser_backend ? (
