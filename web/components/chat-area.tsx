@@ -49,6 +49,8 @@ export function ChatArea({
   const [promptTemplateId, setPromptTemplateId] = useState<string>('')
   const [promptTemplates, setPromptTemplates] = useState<PromptTemplate[]>([])
   const [showRagSettings, setShowRagSettings] = useState(Boolean(initialOpenRagSettings))
+  const [hasSystemRagDefaults, setHasSystemRagDefaults] = useState(false)
+  const [ragConfigDirty, setRagConfigDirty] = useState(false)
   const [ragConfig, setRagConfig] = useState<{
     top_k: number
     score_threshold: number
@@ -87,6 +89,7 @@ export function ChatArea({
       try {
         const system = await settingsApi.get()
         if (cancelled) return
+        setHasSystemRagDefaults(true)
         setRagConfig((prev) => {
           const isDefault =
             prev.top_k === 5 &&
@@ -165,7 +168,7 @@ export function ChatArea({
   } = useChat({
     conversationId: initialConversationId,
     promptTemplateId: promptTemplateId || undefined,
-    ragConfig,
+    ragConfig: ragConfigDirty || hasSystemRagDefaults ? ragConfig : undefined,
     structuredOutput,
     structuredPreset: structuredPreset || undefined,
     enableLongTermMemory,
@@ -449,10 +452,13 @@ export function ChatArea({
                   <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-1.5">
                       <label className="text-xs text-muted-foreground">检索模式</label>
-                      <Select
-                        value={ragConfig.retrieval_mode}
-                        onValueChange={(v) => setRagConfig((prev) => ({ ...prev, retrieval_mode: v }))}
-                      >
+	                      <Select
+	                        value={ragConfig.retrieval_mode}
+	                        onValueChange={(v) => {
+	                          setRagConfigDirty(true)
+	                          setRagConfig((prev) => ({ ...prev, retrieval_mode: v }))
+	                        }}
+	                      >
                         <SelectTrigger className="h-8 text-xs">
                           <SelectValue />
                         </SelectTrigger>
@@ -467,26 +473,32 @@ export function ChatArea({
                     </div>
                     <div className="space-y-1.5">
                       <label className="text-xs text-muted-foreground">Top K</label>
-                      <input
-                        type="number"
-                        min={1}
-                        max={50}
-                        value={ragConfig.top_k}
-                        onChange={(e) => setRagConfig((prev) => ({ ...prev, top_k: Number(e.target.value || 0) }))}
-                        className="flex h-8 w-full rounded-md border border-input bg-background px-3 py-1 text-xs shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                      />
+	                      <input
+	                        type="number"
+	                        min={1}
+	                        max={50}
+	                        value={ragConfig.top_k}
+	                        onChange={(e) => {
+	                          setRagConfigDirty(true)
+	                          setRagConfig((prev) => ({ ...prev, top_k: Number(e.target.value || 0) }))
+	                        }}
+	                        className="flex h-8 w-full rounded-md border border-input bg-background px-3 py-1 text-xs shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+	                      />
                     </div>
                   </div>
 
                   <div className="space-y-3 pt-2 border-t">
                     <label className="flex items-center justify-between text-sm cursor-pointer hover:bg-secondary/50 p-1 rounded-md transition-colors">
                       <span className="text-muted-foreground text-xs">使用知识图谱 (LangGraph)</span>
-                      <input
-                        type="checkbox"
-                        checked={ragConfig.use_graph}
-                        onChange={(e) => setRagConfig((prev) => ({ ...prev, use_graph: e.target.checked }))}
-                        className="accent-primary h-4 w-4"
-                      />
+	                      <input
+	                        type="checkbox"
+	                        checked={ragConfig.use_graph}
+	                        onChange={(e) => {
+	                          setRagConfigDirty(true)
+	                          setRagConfig((prev) => ({ ...prev, use_graph: e.target.checked }))
+	                        }}
+	                        className="accent-primary h-4 w-4"
+	                      />
                     </label>
                     <label className="flex items-center justify-between text-sm cursor-pointer hover:bg-secondary/50 p-1 rounded-md transition-colors">
                       <span className="text-muted-foreground text-xs">启用长短期记忆</span>
