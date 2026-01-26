@@ -231,11 +231,7 @@ export function useChat({
             ? crypto.randomUUID()
             : `req-${Date.now()}-${Math.random().toString(16).slice(2)}`
 
-        const effectiveRagConfig = {
-          top_k: 5,
-          score_threshold: 0.7,
-          ...(ragConfig || {}),
-        }
+        const effectiveRagConfig = ragConfig || {}
         const useGraph = Boolean((effectiveRagConfig as any).use_graph)
 
         const response = await fetch(`${API_V1_BASE_URL}/chat/stream`, {
@@ -255,7 +251,7 @@ export function useChat({
             structured_output: Boolean(structuredOutput),
             structured_preset: structuredPreset || undefined,
             enable_long_term_memory: Boolean(enableLongTermMemory),
-            rag_config: effectiveRagConfig,
+            rag_config: Object.keys(effectiveRagConfig).length ? effectiveRagConfig : undefined,
           }),
           signal: abortControllerRef.current.signal,
         })

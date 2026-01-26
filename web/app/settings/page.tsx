@@ -222,6 +222,10 @@ export default function SettingsPage() {
       ({ ...(settings?.url_ingest ?? {}), ...(editedSettings.url_ingest ?? {}) }) as Partial<SystemSettings['url_ingest']>,
     [settings?.url_ingest, editedSettings.url_ingest]
   )
+  const governanceMerged = useMemo(
+    () => ({ ...(settings?.governance ?? {}), ...(editedSettings.governance ?? {}) }) as Partial<SystemSettings['governance']>,
+    [settings?.governance, editedSettings.governance]
+  )
 
   // 加载配置
   useEffect(() => {
@@ -336,6 +340,12 @@ export default function SettingsPage() {
     const current = (editedSettings.url_ingest || settings?.url_ingest || {}) as SystemSettings['url_ingest']
     const next = { ...current, ...patch }
     setEditedSettings((prev) => ({ ...prev, url_ingest: next as any }))
+  }
+
+  const updateGovernance = (patch: Partial<SystemSettings['governance']>) => {
+    const current = (editedSettings.governance || settings?.governance || {}) as SystemSettings['governance']
+    const next = { ...current, ...patch }
+    setEditedSettings((prev) => ({ ...prev, governance: next as any }))
   }
 
   // 检查是否有未保存的更改
@@ -1279,6 +1289,117 @@ export default function SettingsPage() {
 	                        aria-label="Toggle follow redirects"
 	                      >
 	                        {Boolean(urlIngestMerged.follow_redirects ?? false) ? (
+	                          <ToggleRight className="w-10 h-10 text-primary" />
+	                        ) : (
+	                          <ToggleLeft className="w-10 h-10 text-muted-foreground hover:text-muted-foreground" />
+	                        )}
+	                      </button>
+	                    </div>
+	                  </div>
+	                </div>
+	              </section>
+
+	              {/* 数据治理（入库清洗/脱敏） */}
+	              <section>
+	                <div className="flex items-center justify-between mb-6">
+	                  <h2 className="text-lg font-semibold text-foreground flex items-center gap-2">
+	                    <EyeOff className="h-5 w-5 text-primary" />
+	                    数据治理
+	                  </h2>
+	                  <div className="flex items-center gap-2 px-3 py-1 bg-primary/10 text-primary rounded-full text-xs font-medium border border-primary/20">
+	                    <span>保存后通常可立即生效</span>
+	                  </div>
+	                </div>
+
+	                <div className="bg-card border border-border rounded-2xl p-6 shadow-sm space-y-6">
+	                  <Alert className="shadow-soft/40">
+	                    <AlertCircle className="h-4 w-4" />
+	                    <div>
+	                      <AlertTitle>默认治理规则</AlertTitle>
+	                      <AlertDescription className="text-foreground/80">
+	                        这些开关会影响“入库前清洗/脱敏”，用于没有单独配置管线（dataset/document pipeline overrides）的场景。
+	                      </AlertDescription>
+	                    </div>
+	                  </Alert>
+
+	                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+	                    <div className="flex items-start justify-between gap-4 rounded-xl border border-border p-4 bg-muted/30">
+	                      <div>
+	                        <div className="text-sm font-semibold text-foreground">启用数据治理</div>
+	                        <div className="text-xs text-muted-foreground mt-1">
+	                          打开后才会应用下方治理项（对新入库文档生效）
+	                        </div>
+	                      </div>
+	                      <button
+	                        type="button"
+	                        onClick={() => updateGovernance({ enabled: !Boolean(governanceMerged.enabled ?? false) })}
+	                        className="shrink-0"
+	                        aria-label="Toggle governance"
+	                      >
+	                        {Boolean(governanceMerged.enabled ?? false) ? (
+	                          <ToggleRight className="w-10 h-10 text-primary" />
+	                        ) : (
+	                          <ToggleLeft className="w-10 h-10 text-muted-foreground hover:text-muted-foreground" />
+	                        )}
+	                      </button>
+	                    </div>
+
+	                    <div className="flex items-start justify-between gap-4 rounded-xl border border-border p-4 bg-muted/30">
+	                      <div>
+	                        <div className="text-sm font-semibold text-foreground">PII 脱敏</div>
+	                        <div className="text-xs text-muted-foreground mt-1">
+	                          尝试识别并匿名化手机号/邮箱等个人信息（可能影响检索/可读性）
+	                        </div>
+	                      </div>
+	                      <button
+	                        type="button"
+	                        onClick={() => updateGovernance({ pii_anonymize: !Boolean(governanceMerged.pii_anonymize ?? false) })}
+	                        className="shrink-0"
+	                        aria-label="Toggle PII anonymize"
+	                      >
+	                        {Boolean(governanceMerged.pii_anonymize ?? false) ? (
+	                          <ToggleRight className="w-10 h-10 text-primary" />
+	                        ) : (
+	                          <ToggleLeft className="w-10 h-10 text-muted-foreground hover:text-muted-foreground" />
+	                        )}
+	                      </button>
+	                    </div>
+
+	                    <div className="flex items-start justify-between gap-4 rounded-xl border border-border p-4 bg-muted/30">
+	                      <div>
+	                        <div className="text-sm font-semibold text-foreground">Secrets 脱敏</div>
+	                        <div className="text-xs text-muted-foreground mt-1">
+	                          尝试识别并遮蔽 API Key/Token 等敏感信息
+	                        </div>
+	                      </div>
+	                      <button
+	                        type="button"
+	                        onClick={() => updateGovernance({ secrets_redact: !Boolean(governanceMerged.secrets_redact ?? false) })}
+	                        className="shrink-0"
+	                        aria-label="Toggle secrets redact"
+	                      >
+	                        {Boolean(governanceMerged.secrets_redact ?? false) ? (
+	                          <ToggleRight className="w-10 h-10 text-primary" />
+	                        ) : (
+	                          <ToggleLeft className="w-10 h-10 text-muted-foreground hover:text-muted-foreground" />
+	                        )}
+	                      </button>
+	                    </div>
+
+	                    <div className="flex items-start justify-between gap-4 rounded-xl border border-border p-4 bg-muted/30">
+	                      <div>
+	                        <div className="text-sm font-semibold text-foreground">质量过滤触发时隔离</div>
+	                        <div className="text-xs text-muted-foreground mt-1">
+	                          当触发“低密度/仅目录”等过滤时，将文档标记为 quarantined（便于排查）
+	                        </div>
+	                      </div>
+	                      <button
+	                        type="button"
+	                        onClick={() => updateGovernance({ quarantine_on_drop: !Boolean(governanceMerged.quarantine_on_drop ?? false) })}
+	                        className="shrink-0"
+	                        aria-label="Toggle quarantine on drop"
+	                      >
+	                        {Boolean(governanceMerged.quarantine_on_drop ?? false) ? (
 	                          <ToggleRight className="w-10 h-10 text-primary" />
 	                        ) : (
 	                          <ToggleLeft className="w-10 h-10 text-muted-foreground hover:text-muted-foreground" />
