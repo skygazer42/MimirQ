@@ -1468,3 +1468,112 @@ export interface DatasetProfileScanRunListResponse {
   total: number
   items: DatasetProfileScanRunOut[]
 }
+
+// ==================== Dataset Precheck (Local Folder Scan) ====================
+
+export type DatasetPrecheckFindingSeverity = 'info' | 'warning' | 'error'
+
+export interface DatasetPrecheckHistogramBin {
+  label: string
+  min?: number | null
+  max?: number | null
+  count: number
+}
+
+export interface DatasetPrecheckPercentiles {
+  p25: number
+  p50: number
+  p75: number
+  p90: number
+  p99: number
+}
+
+export interface DatasetPrecheckPdfScanStats {
+  scanned: number
+  not_scanned: number
+  unknown: number
+}
+
+export interface DatasetPrecheckFindingSummary {
+  key: string
+  label: string
+  severity: DatasetPrecheckFindingSeverity
+  count: number
+  description?: string | null
+}
+
+export interface DatasetPrecheckSummary {
+  dataset_id: string
+  scan_run_id: string
+  generated_at: string
+
+  total_files: number
+  total_size_bytes: number
+  by_file_type: Record<string, number>
+
+  file_size_histogram: DatasetPrecheckHistogramBin[]
+  length_percentiles: DatasetPrecheckPercentiles
+  length_histogram: DatasetPrecheckHistogramBin[]
+
+  pdf_scan: DatasetPrecheckPdfScanStats
+
+  pii_hits_total: Record<string, number>
+  secrets_hits_total: Record<string, number>
+
+  findings: DatasetPrecheckFindingSummary[]
+}
+
+export interface DatasetPrecheckFileOut {
+  name: string
+  file_type: string
+  file_size: number
+  text_characters: number
+  estimated_text: boolean
+  pdf_scanned?: boolean | null
+  pii_hits: Record<string, number>
+  secrets_hits: Record<string, number>
+  file_sha256?: string | null
+  findings: string[]
+  error_message?: string | null
+}
+
+export interface DatasetPrecheckFindingListResponse {
+  total: number
+  items: DatasetPrecheckFileOut[]
+}
+
+export interface DatasetPrecheckScanRunCreateRequest {
+  root_path: string
+  max_files?: number | null
+  enable_pdf_quality?: boolean
+  enable_text_extract?: boolean
+  enable_pii?: boolean
+  enable_secrets?: boolean
+  compute_file_hash?: boolean
+  pdf_sample_pages?: number | null
+  text_extract_max_bytes?: number | null
+  redact_paths?: boolean
+}
+
+export interface DatasetPrecheckScanRunOut {
+  id: string
+  tenant_id: string
+  dataset_id: string
+  requested_by?: string | null
+  kind: string
+  status: string
+  progress: number
+  config: Record<string, any>
+  summary: Record<string, any>
+  artifacts: Record<string, any>
+  error_message?: string | null
+  started_at?: string | null
+  finished_at?: string | null
+  created_at?: string | null
+  updated_at?: string | null
+}
+
+export interface DatasetPrecheckScanRunListResponse {
+  total: number
+  items: DatasetPrecheckScanRunOut[]
+}

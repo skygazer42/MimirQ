@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
-import { BarChart3, Layers, Loader2, Pencil, Plus, RefreshCw, Settings2, Trash2 } from 'lucide-react'
+import { BarChart3, FileSearch, Layers, Loader2, Pencil, Plus, RefreshCw, Settings2, Trash2 } from 'lucide-react'
 
 import { AppFrame } from '@/components/app-frame'
 import { PageScaffold } from '@/components/ui/page-scaffold'
@@ -308,6 +308,15 @@ export default function DatasetsPage() {
                     </div>
 
                     <div className="flex items-center gap-2 flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity translate-x-4 group-hover:translate-x-0 duration-300">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="gap-2"
+                        onClick={() => router.push(`/datasets/${ds.id}/precheck`)}
+                      >
+                        <FileSearch className="w-3.5 h-3.5" />
+                        预检扫描
+                      </Button>
                       <Button
                         variant="outline"
                         size="sm"
