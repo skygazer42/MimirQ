@@ -30,7 +30,7 @@
 
 MimirQ 现状：
 - 已有：文件上传（含 batch）、多解析器、治理清洗、预览链路
-- 缺口（本次选择性集成）：**URL 导入**（作为“连接器骨架”的第一步）
+- 本次选择性集成（已落地）：**URL 导入**（作为“连接器骨架”的第一步）
 
 ### B. 切块（Chunking）
 常见能力：
@@ -42,10 +42,10 @@ MimirQ 现状：
 
 MimirQ 现状：
 - 已有：大量策略、chunk-preview（含 A/B、导出、SKIP、质量提示）、去重/截断
-- 缺口（本次选择性集成）：
-  - **入库链路缺少 chunk_strategy_params 的透传**（preview 有，ingest 无）
-  - **多页解析时 offsets 未统一 rebase**（preview 有，ingest 不完整）
-  - **短块合并（min chunk size）**缺失（部分开源产品默认提供）
+- 本次选择性集成（已落地）：
+  - **chunk_strategy_params 入库贯通**（preview/ingest 对齐，且回显生效参数便于复现）
+  - **offsets rebase**（多段解析 join 后统一 offsets，保障高亮/溯源一致）
+  - **短块合并（min chunk size）**（可选后处理，减少过碎块）
 
 ### C. 检索与上下文组装（Retrieval）
 常见能力：
@@ -55,7 +55,7 @@ MimirQ 现状：
 
 MimirQ 现状：
 - 已有：hybrid、RRF、MMR、reranker、neighbor window
-- 缺口（本次选择性集成）：**parent-child 自动回填父块**（避免只拿到过碎 child）
+- 本次选择性集成（已落地）：**parent-child 自动回填父块**（避免只拿到过碎 child）
 
 ### D. 可观测与评测（Observability / Eval）
 常见能力：
@@ -64,7 +64,7 @@ MimirQ 现状：
 
 MimirQ 现状：
 - 已有：RAGAS、feedback 表、Sentry/Prometheus/OTEL 依赖与初始化
-- 缺口（本次选择性集成）：补齐 **Phoenix/OTEL 的配置说明**（让能力“可用起来”）
+- 本次选择性集成（已落地）：补齐 **Phoenix/OTEL 的配置说明**（让能力“可用起来”）
 
 ## 3) 本次集成范围（落地项）
 
@@ -78,12 +78,21 @@ MimirQ 现状：
 
 > 未纳入本次实现但建议作为下一阶段：文档级 ACL/security trimming（向量端过滤 + DB 兜底）、更多连接器（Confluence/Notion/GitHub 等）、评测面板/回归集管理、可视化工作流编排。
 
+实现入口（建议先从这几个文件看起）：
+- URL 导入：`docs/guides/url_ingest.md`（后端 API + 安全开关 + 前端入口）
+- Chunk 参数贯通：`web/components/pipeline-options-panel.tsx`（pipeline 参数）、`app/api/v1/documents.py`（preview/ingest 对齐）
+- 短块合并与 offsets：`app/parsing/processors/processor.py`
+- parent-child 回填：`app/rag/retriever.py`
+- Phoenix/OTEL：`docs/guides/otel_phoenix.md`
+
 ## 4) 参考链接（对标资料）
 
 企业级（安全裁剪 / 文档级安全）：
 - Azure AI Search：Security trimming（按用户/组裁剪检索结果）https://learn.microsoft.com/en-us/azure/search/search-security-trimming
 - Amazon Kendra：Access control（基于权限的检索过滤）https://docs.aws.amazon.com/kendra/latest/dg/access-control.html
 - Elastic：Document level security（DLS）https://www.elastic.co/guide/en/elasticsearch/reference/current/document-level-security.html
+- OpenSearch：Document-level security（DLS）https://docs.opensearch.org/latest/security/access-control/document-level-security/
+- OpenSearch：Field-level security（FLS）https://docs.opensearch.org/latest/security/access-control/field-level-security/
 
 开源/产品化平台（连接器 / 切块能力）：
 - RAGFlow：Chunk templates（内置分块模板与策略说明）https://ragflow.io/docs/dev/chunk_templates
@@ -91,3 +100,9 @@ MimirQ 现状：
 - AnythingLLM：Authenticated website scraping（网页连接器/抓取）https://docs.anythingllm.com/agent/agents/agent-tools/authenticated-website-scraping
 - Open WebUI：RAG（知识库/RAG 集成说明）https://docs.openwebui.com/tutorial/rag/
 - Langflow：Components & Visual Workflows（可视化编排/组件）https://docs.langflow.org/components
+- LangChain：ParentDocumentRetriever（检索 chunk 回填父文档）https://js.langchain.com/docs/how_to/parent_document_retriever/
+- LangChain：Recursive text splitter（递归分隔符切分 / keep separator 等）https://python.langchain.com/docs/how_to/recursive_text_splitter/
+- LlamaIndex：AutoMergingRetriever（父子层级自动合并检索结果）https://docs.llamaindex.ai/en/stable/api_reference/retrievers/auto_merging/
+- Haystack：DocumentSplitter（split_length/split_overlap 参数化）https://docs.haystack.deepset.ai/docs/2.20/documentsplitter
+- Unstructured：Chunking（含 by-similarity 语义切块思路）https://docs.unstructured.io/platform/chunking
+- Phoenix（Arize）：Tracing / OTEL / Evals（企业级可观测与评测）https://arize.com/docs/phoenix
