@@ -4394,6 +4394,7 @@ async def preview_chunking(
             review_signals=review_signals,
             quality_gate=quality_gate,
             recommendations=recommendations,
+            recommendation_patches=recommendation_patches,
             # Skip original text when too large (highlight offsets require full text).
             original_text=original_text_value,
             original_text_included=original_text_value is not None,
@@ -4931,12 +4932,15 @@ async def preview_chunking_by_sha(
         and original_text_value is None
         and total_characters > int(original_text_max_chars or 0)
     )
-    quality_gate, recommendations = _compute_chunk_preview_quality(
+    quality_gate, recommendations, recommendation_patches = _compute_chunk_preview_quality(
         stats=stats,
         total_chunks=len(chunks),
         total_characters=int(total_characters or 0),
+        chunk_size=int(chunk_size or 0),
+        chunk_overlap=int(effective_chunk_overlap or 0),
         original_text_included=original_text_value is not None,
         original_text_truncated=original_text_truncated_val,
+        original_text_max_chars=int(original_text_max_chars or 0),
     )
 
     review_signals: ChunkPreviewReviewSignals | None = None
@@ -4988,10 +4992,11 @@ async def preview_chunking_by_sha(
         stats=stats,
         auto_selected_strategy=auto_selected_strategy,
         warnings=warnings_out,
-        review_signals=review_signals,
-        quality_gate=quality_gate,
-        recommendations=recommendations,
-        original_text=original_text_value,
+	        review_signals=review_signals,
+	        quality_gate=quality_gate,
+	        recommendations=recommendations,
+	        recommendation_patches=recommendation_patches,
+	        original_text=original_text_value,
         original_text_included=original_text_value is not None,
         original_text_truncated=original_text_truncated_val,
         original_text_max_chars=int(original_text_max_chars or 0),

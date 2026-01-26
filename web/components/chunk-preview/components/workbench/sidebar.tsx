@@ -1237,17 +1237,120 @@ export function Sidebar({ variant = 'panel' }: { variant?: 'panel' | 'dialog' } 
                     <span>{chunkStats.max}</span>
                   </div>
                 </div>
-                {previewData?.recommendations?.length ? (
+                {previewData?.recommendations?.length || previewData?.recommendation_patches?.length ? (
                   <div className="col-span-2 bg-card p-3 rounded-xl border border-border/60 shadow-sm">
-                    <div className="text-[10px] text-muted-foreground uppercase tracking-wider font-medium">RECOMMENDATIONS</div>
-                    <div className="mt-2 space-y-1 text-[11px] text-muted-foreground">
-                      {(previewData.recommendations || []).slice(0, 8).map((r, i) => (
-                        <div key={`${i}-${String(r).slice(0, 12)}`} className="flex gap-2">
-                          <span className="font-mono text-muted-foreground/70">-</span>
-                          <span className="flex-1">{String(r)}</span>
-                        </div>
-                      ))}
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="text-[10px] text-muted-foreground uppercase tracking-wider font-medium">RECOMMENDATIONS</div>
+                      {previewData?.recommendation_patches?.length ? (
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          className="h-7 px-2 text-[11px]"
+                          onClick={() => {
+                            for (const item of previewData.recommendation_patches || []) {
+                              const target = (item as any)?.target || 'preview'
+                              const patch = ((item as any)?.patch || {}) as any
+                              if (target === 'preview') {
+                                const next: any = {}
+                                if (typeof patch.chunk_size === 'number' && Number.isFinite(patch.chunk_size)) next.chunkSize = Math.trunc(patch.chunk_size)
+                                if (typeof patch.chunk_overlap === 'number' && Number.isFinite(patch.chunk_overlap)) next.chunkOverlap = Math.trunc(patch.chunk_overlap)
+                                if (Object.keys(next).length) updateSettings(next)
+                              } else if (target === 'pipeline') {
+                                pipelineCtx.setEnabled(true)
+                                for (const [k, v] of Object.entries(patch || {})) {
+                                  if (k in pipelineCtx.options) pipelineCtx.updateOption(k as any, v as any)
+                                }
+                              } else if (target === 'perf') {
+                                const next: any = {}
+                                if (typeof patch.include_original_text === 'boolean') next.includeOriginalText = patch.include_original_text
+                                if (typeof patch.original_text_max_chars === 'number' && Number.isFinite(patch.original_text_max_chars)) {
+                                  next.originalTextMaxChars = Math.trunc(patch.original_text_max_chars)
+                                }
+                                if (typeof patch.max_chunks === 'number' && Number.isFinite(patch.max_chunks)) next.maxChunks = Math.trunc(patch.max_chunks)
+                                if (Object.keys(next).length) updatePerfSettings(next)
+                              }
+                            }
+                            toast.success('已应用全部 recommendations（best-effort）')
+                          }}
+                        >
+                          一键应用
+                        </Button>
+                      ) : null}
                     </div>
+
+                    {previewData?.recommendation_patches?.length ? (
+                      <div className="mt-2 space-y-2">
+                        {(previewData.recommendation_patches || []).slice(0, 6).map((p, i) => {
+                          const title = String((p as any)?.title || (p as any)?.id || 'patch')
+                          const desc = String((p as any)?.description || '')
+                          const target = String((p as any)?.target || 'preview')
+                          const patch = ((p as any)?.patch || {}) as any
+                          return (
+                            <div key={`${i}-${String((p as any)?.id || title)}`} className="rounded-lg border border-border/60 bg-background p-2">
+                              <div className="flex items-center justify-between gap-2">
+                                <div className="min-w-0">
+                                  <div className="text-[11px] font-medium text-foreground/90">{title}</div>
+                                  {desc ? <div className="mt-0.5 text-[10px] text-muted-foreground">{desc}</div> : null}
+                                </div>
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  className="h-7 px-2 text-[11px]"
+                                  onClick={() => {
+                                    if (target === 'preview') {
+                                      const next: any = {}
+                                      if (typeof patch.chunk_size === 'number' && Number.isFinite(patch.chunk_size)) next.chunkSize = Math.trunc(patch.chunk_size)
+                                      if (typeof patch.chunk_overlap === 'number' && Number.isFinite(patch.chunk_overlap)) next.chunkOverlap = Math.trunc(patch.chunk_overlap)
+                                      if (Object.keys(next).length) {
+                                        updateSettings(next)
+                                        toast.success('已应用到预览参数')
+                                      }
+                                      return
+                                    }
+                                    if (target === 'pipeline') {
+                                      pipelineCtx.setEnabled(true)
+                                      for (const [k, v] of Object.entries(patch || {})) {
+                                        if (k in pipelineCtx.options) pipelineCtx.updateOption(k as any, v as any)
+                                      }
+                                      toast.success('已应用到入库管线')
+                                      return
+                                    }
+                                    if (target === 'perf') {
+                                      const next: any = {}
+                                      if (typeof patch.include_original_text === 'boolean') next.includeOriginalText = patch.include_original_text
+                                      if (typeof patch.original_text_max_chars === 'number' && Number.isFinite(patch.original_text_max_chars)) {
+                                        next.originalTextMaxChars = Math.trunc(patch.original_text_max_chars)
+                                      }
+                                      if (typeof patch.max_chunks === 'number' && Number.isFinite(patch.max_chunks)) next.maxChunks = Math.trunc(patch.max_chunks)
+                                      if (Object.keys(next).length) {
+                                        updatePerfSettings(next)
+                                        toast.success('已应用到性能参数')
+                                      }
+                                    }
+                                  }}
+                                  title={Object.keys(patch || {}).length ? JSON.stringify(patch) : undefined}
+                                >
+                                  应用
+                                </Button>
+                              </div>
+                              <div className="mt-1 text-[10px] text-muted-foreground font-mono">target: {target}</div>
+                            </div>
+                          )
+                        })}
+                      </div>
+                    ) : null}
+
+                    {previewData?.recommendations?.length ? (
+                      <div className="mt-2 space-y-1 text-[11px] text-muted-foreground">
+                        {(previewData.recommendations || []).slice(0, 8).map((r, i) => (
+                          <div key={`${i}-${String(r).slice(0, 12)}`} className="flex gap-2">
+                            <span className="font-mono text-muted-foreground/70">-</span>
+                            <span className="flex-1">{String(r)}</span>
+                          </div>
+                        ))}
+                      </div>
+                    ) : null}
                   </div>
                 ) : null}
               </div>
