@@ -131,10 +131,32 @@ class RAGConfig(BaseModel):
     """RAG parameter config."""
     chunk_size: int = 1000
     chunk_overlap: int = 200
+    chunk_min_chars: int = 30
     retrieval_top_k: int = 5
     similarity_threshold: float = 0.7
     default_parser_backend: str = "auto"
     default_chunk_strategy: str = "langchain_recursive"
+    bm25_index_enabled: bool = True
+    enable_reranker: bool = False
+
+
+class UrlIngestConfig(BaseModel):
+    """URL ingestion config (server-side fetch; connectors)."""
+
+    enabled: bool = False
+    max_bytes: int = 50_000_000
+    timeout_sec: float = 30.0
+    allow_private_ips: bool = False
+    follow_redirects: bool = False
+
+
+class GovernanceConfig(BaseModel):
+    """Global governance defaults (used when pipeline overrides are absent)."""
+
+    enabled: bool = False
+    pii_anonymize: bool = False
+    secrets_redact: bool = False
+    quarantine_on_drop: bool = False
 
 
 class ObservabilityConfig(BaseModel):
@@ -208,6 +230,8 @@ class SystemSettings(BaseModel):
     embedding: EmbeddingConfig
     milvus: MilvusConfig
     rag: RAGConfig
+    url_ingest: UrlIngestConfig
+    governance: GovernanceConfig
     mineru: MinerUConfig
     etl4llm: Etl4LlmConfig
     marker: MarkerConfig
@@ -226,6 +250,8 @@ class UpdateSettingsRequest(BaseModel):
     embedding: Optional[EmbeddingConfig] = None
     milvus: Optional[MilvusConfig] = None
     rag: Optional[RAGConfig] = None
+    url_ingest: Optional[UrlIngestConfig] = None
+    governance: Optional[GovernanceConfig] = None
     mineru: Optional[MinerUConfig] = None
     etl4llm: Optional[Etl4LlmConfig] = None
     marker: Optional[MarkerConfig] = None
@@ -339,6 +365,8 @@ def _apply_runtime_settings(env_vars: Dict[str, str], updated_keys: list[str]) -
         settings.CHUNK_SIZE = _parse_int(env_vars["CHUNK_SIZE"], default=settings.CHUNK_SIZE)
     if "CHUNK_OVERLAP" in updated_keys and "CHUNK_OVERLAP" in env_vars:
         settings.CHUNK_OVERLAP = _parse_int(env_vars["CHUNK_OVERLAP"], default=settings.CHUNK_OVERLAP)
+    if "CHUNK_MIN_CHARS" in updated_keys and "CHUNK_MIN_CHARS" in env_vars:
+        settings.CHUNK_MIN_CHARS = _parse_int(env_vars["CHUNK_MIN_CHARS"], default=getattr(settings, "CHUNK_MIN_CHARS", 0))
     if "RETRIEVAL_TOP_K" in updated_keys and "RETRIEVAL_TOP_K" in env_vars:
         settings.RETRIEVAL_TOP_K = _parse_int(env_vars["RETRIEVAL_TOP_K"], default=settings.RETRIEVAL_TOP_K)
     if "SIMILARITY_THRESHOLD" in updated_keys and "SIMILARITY_THRESHOLD" in env_vars:
@@ -350,6 +378,44 @@ def _apply_runtime_settings(env_vars: Dict[str, str], updated_keys: list[str]) -
         settings.DEFAULT_PARSER_BACKEND = env_vars["DEFAULT_PARSER_BACKEND"]
     if "DEFAULT_CHUNK_STRATEGY" in updated_keys and "DEFAULT_CHUNK_STRATEGY" in env_vars:
         settings.DEFAULT_CHUNK_STRATEGY = env_vars["DEFAULT_CHUNK_STRATEGY"]
+    if "BM25_INDEX_ENABLED" in updated_keys and "BM25_INDEX_ENABLED" in env_vars:
+        old_bm25 = bool(getattr(settings, "BM25_INDEX_ENABLED", True))
+        new_bm25 = _parse_bool(env_vars["BM25_INDEX_ENABLED"])
+        settings.BM25_INDEX_ENABLED = new_bm25
+        if old_bm25 and not new_bm25:
+            # Ensure the toggle takes effect immediately even if an in-memory BM25 cache exists.
+            with contextlib.suppress(Exception):
+                from app.rag.retriever import hybrid_retriever
+
+                hybrid_retriever.clear_bm25_cache()
+    if "ENABLE_RERANKER" in updated_keys and "ENABLE_RERANKER" in env_vars:
+        settings.ENABLE_RERANKER = _parse_bool(env_vars["ENABLE_RERANKER"])
+
+    # URL ingest / SSRF guardrails
+    if "URL_INGEST_ENABLED" in updated_keys and "URL_INGEST_ENABLED" in env_vars:
+        settings.URL_INGEST_ENABLED = _parse_bool(env_vars["URL_INGEST_ENABLED"])
+    if "URL_INGEST_MAX_BYTES" in updated_keys and "URL_INGEST_MAX_BYTES" in env_vars:
+        settings.URL_INGEST_MAX_BYTES = _parse_int(
+            env_vars["URL_INGEST_MAX_BYTES"], default=getattr(settings, "URL_INGEST_MAX_BYTES", 0)
+        )
+    if "URL_INGEST_TIMEOUT_SEC" in updated_keys and "URL_INGEST_TIMEOUT_SEC" in env_vars:
+        settings.URL_INGEST_TIMEOUT_SEC = _parse_float(
+            env_vars["URL_INGEST_TIMEOUT_SEC"], default=getattr(settings, "URL_INGEST_TIMEOUT_SEC", 30.0)
+        )
+    if "URL_INGEST_ALLOW_PRIVATE_IPS" in updated_keys and "URL_INGEST_ALLOW_PRIVATE_IPS" in env_vars:
+        settings.URL_INGEST_ALLOW_PRIVATE_IPS = _parse_bool(env_vars["URL_INGEST_ALLOW_PRIVATE_IPS"])
+    if "URL_INGEST_FOLLOW_REDIRECTS" in updated_keys and "URL_INGEST_FOLLOW_REDIRECTS" in env_vars:
+        settings.URL_INGEST_FOLLOW_REDIRECTS = _parse_bool(env_vars["URL_INGEST_FOLLOW_REDIRECTS"])
+
+    # Governance defaults
+    if "GOVERNANCE_ENABLED" in updated_keys and "GOVERNANCE_ENABLED" in env_vars:
+        settings.GOVERNANCE_ENABLED = _parse_bool(env_vars["GOVERNANCE_ENABLED"])
+    if "GOVERNANCE_PII_ANONYMIZE" in updated_keys and "GOVERNANCE_PII_ANONYMIZE" in env_vars:
+        settings.GOVERNANCE_PII_ANONYMIZE = _parse_bool(env_vars["GOVERNANCE_PII_ANONYMIZE"])
+    if "GOVERNANCE_SECRETS_REDACT" in updated_keys and "GOVERNANCE_SECRETS_REDACT" in env_vars:
+        settings.GOVERNANCE_SECRETS_REDACT = _parse_bool(env_vars["GOVERNANCE_SECRETS_REDACT"])
+    if "GOVERNANCE_QUARANTINE_ON_DROP" in updated_keys and "GOVERNANCE_QUARANTINE_ON_DROP" in env_vars:
+        settings.GOVERNANCE_QUARANTINE_ON_DROP = _parse_bool(env_vars["GOVERNANCE_QUARANTINE_ON_DROP"])
 
     # MinerU
     if "MINERU_API_TOKEN" in updated_keys and "MINERU_API_TOKEN" in env_vars:
@@ -540,10 +606,26 @@ async def get_settings(
         rag=RAGConfig(
             chunk_size=settings.CHUNK_SIZE,
             chunk_overlap=settings.CHUNK_OVERLAP,
+            chunk_min_chars=int(getattr(settings, "CHUNK_MIN_CHARS", 0) or 0),
             retrieval_top_k=settings.RETRIEVAL_TOP_K,
             similarity_threshold=settings.SIMILARITY_THRESHOLD,
             default_parser_backend=settings.DEFAULT_PARSER_BACKEND,
             default_chunk_strategy=settings.DEFAULT_CHUNK_STRATEGY,
+            bm25_index_enabled=bool(getattr(settings, "BM25_INDEX_ENABLED", True)),
+            enable_reranker=bool(getattr(settings, "ENABLE_RERANKER", False)),
+        ),
+        url_ingest=UrlIngestConfig(
+            enabled=bool(getattr(settings, "URL_INGEST_ENABLED", False)),
+            max_bytes=int(getattr(settings, "URL_INGEST_MAX_BYTES", 0) or 0),
+            timeout_sec=float(getattr(settings, "URL_INGEST_TIMEOUT_SEC", 0.0) or 0.0),
+            allow_private_ips=bool(getattr(settings, "URL_INGEST_ALLOW_PRIVATE_IPS", False)),
+            follow_redirects=bool(getattr(settings, "URL_INGEST_FOLLOW_REDIRECTS", False)),
+        ),
+        governance=GovernanceConfig(
+            enabled=bool(getattr(settings, "GOVERNANCE_ENABLED", False)),
+            pii_anonymize=bool(getattr(settings, "GOVERNANCE_PII_ANONYMIZE", False)),
+            secrets_redact=bool(getattr(settings, "GOVERNANCE_SECRETS_REDACT", False)),
+            quarantine_on_drop=bool(getattr(settings, "GOVERNANCE_QUARANTINE_ON_DROP", False)),
         ),
         mineru=MinerUConfig(
             api_token=mask_secret(settings.MINERU_API_TOKEN),
@@ -708,11 +790,58 @@ async def update_settings(
             rag = request.rag
             env_vars["CHUNK_SIZE"] = str(rag.chunk_size)
             env_vars["CHUNK_OVERLAP"] = str(rag.chunk_overlap)
+            env_vars["CHUNK_MIN_CHARS"] = str(max(0, int(getattr(rag, "chunk_min_chars", 0) or 0)))
             env_vars["RETRIEVAL_TOP_K"] = str(rag.retrieval_top_k)
             env_vars["SIMILARITY_THRESHOLD"] = str(rag.similarity_threshold)
             env_vars["DEFAULT_PARSER_BACKEND"] = _sanitize_env_value("DEFAULT_PARSER_BACKEND", rag.default_parser_backend)
             env_vars["DEFAULT_CHUNK_STRATEGY"] = _sanitize_env_value("DEFAULT_CHUNK_STRATEGY", rag.default_chunk_strategy)
-            updated_keys.extend(["CHUNK_SIZE", "CHUNK_OVERLAP", "RETRIEVAL_TOP_K", "SIMILARITY_THRESHOLD", "DEFAULT_PARSER_BACKEND", "DEFAULT_CHUNK_STRATEGY"])
+            env_vars["BM25_INDEX_ENABLED"] = str(bool(getattr(rag, "bm25_index_enabled", True))).lower()
+            env_vars["ENABLE_RERANKER"] = str(bool(getattr(rag, "enable_reranker", False))).lower()
+            updated_keys.extend(
+                [
+                    "CHUNK_SIZE",
+                    "CHUNK_OVERLAP",
+                    "CHUNK_MIN_CHARS",
+                    "RETRIEVAL_TOP_K",
+                    "SIMILARITY_THRESHOLD",
+                    "DEFAULT_PARSER_BACKEND",
+                    "DEFAULT_CHUNK_STRATEGY",
+                    "BM25_INDEX_ENABLED",
+                    "ENABLE_RERANKER",
+                ]
+            )
+
+        if request.url_ingest:
+            ui = request.url_ingest
+            env_vars["URL_INGEST_ENABLED"] = str(bool(ui.enabled)).lower()
+            env_vars["URL_INGEST_MAX_BYTES"] = str(int(getattr(ui, "max_bytes", 0) or 0))
+            env_vars["URL_INGEST_TIMEOUT_SEC"] = str(float(getattr(ui, "timeout_sec", 0.0) or 0.0))
+            env_vars["URL_INGEST_ALLOW_PRIVATE_IPS"] = str(bool(getattr(ui, "allow_private_ips", False))).lower()
+            env_vars["URL_INGEST_FOLLOW_REDIRECTS"] = str(bool(getattr(ui, "follow_redirects", False))).lower()
+            updated_keys.extend(
+                [
+                    "URL_INGEST_ENABLED",
+                    "URL_INGEST_MAX_BYTES",
+                    "URL_INGEST_TIMEOUT_SEC",
+                    "URL_INGEST_ALLOW_PRIVATE_IPS",
+                    "URL_INGEST_FOLLOW_REDIRECTS",
+                ]
+            )
+
+        if request.governance:
+            gv = request.governance
+            env_vars["GOVERNANCE_ENABLED"] = str(bool(getattr(gv, "enabled", False))).lower()
+            env_vars["GOVERNANCE_PII_ANONYMIZE"] = str(bool(getattr(gv, "pii_anonymize", False))).lower()
+            env_vars["GOVERNANCE_SECRETS_REDACT"] = str(bool(getattr(gv, "secrets_redact", False))).lower()
+            env_vars["GOVERNANCE_QUARANTINE_ON_DROP"] = str(bool(getattr(gv, "quarantine_on_drop", False))).lower()
+            updated_keys.extend(
+                [
+                    "GOVERNANCE_ENABLED",
+                    "GOVERNANCE_PII_ANONYMIZE",
+                    "GOVERNANCE_SECRETS_REDACT",
+                    "GOVERNANCE_QUARANTINE_ON_DROP",
+                ]
+            )
 
         # Update MinerU config.
         if request.mineru:

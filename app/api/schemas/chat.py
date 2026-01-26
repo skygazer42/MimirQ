@@ -6,6 +6,7 @@ from typing import Optional, List, Dict, Any
 from datetime import datetime
 from uuid import UUID
 from app.rag.core.text import normalize_retrieval_mode
+from app.core.config import settings
 
 from .base import OrmModel
 
@@ -92,8 +93,8 @@ class HistoryMessage(BaseModel):
 class ChatRAGConfig(BaseModel):
     """RAG parameters specific to the chat endpoint."""
 
-    top_k: int = Field(default=5, ge=1, le=100)
-    score_threshold: float = Field(default=0.7, ge=0.0, le=1.0)
+    top_k: int = Field(default_factory=lambda: settings.RETRIEVAL_TOP_K, ge=1, le=100)
+    score_threshold: float = Field(default_factory=lambda: settings.SIMILARITY_THRESHOLD, ge=0.0, le=1.0)
     max_tokens: int = Field(default=2000, ge=1, le=200_000)
 
     retrieval_mode: str = Field(default="hybrid")  # hybrid | vector | keyword | mmr | auto
@@ -102,11 +103,11 @@ class ChatRAGConfig(BaseModel):
     enable_weight_rerank: bool = True
     vector_weight: float = Field(default=0.6, ge=0.0, le=1.0)
     keyword_weight: float = Field(default=0.4, ge=0.0, le=1.0)
-    mmr_lambda: float = Field(default=0.7, ge=0.0, le=1.0)
+    mmr_lambda: float = Field(default_factory=lambda: settings.RETRIEVAL_MMR_LAMBDA, ge=0.0, le=1.0)
 
-    enable_reranker: bool = False  # optional: LLM/API rerank
-    reranker_provider: str = "llm"  # llm | pc | none
-    reranker_top_n: int = Field(default=20, ge=1, le=200)
+    enable_reranker: bool = Field(default_factory=lambda: settings.ENABLE_RERANKER)  # optional: LLM/API rerank
+    reranker_provider: str = Field(default_factory=lambda: settings.RERANKER_PROVIDER)  # llm | pc | none
+    reranker_top_n: int = Field(default_factory=lambda: settings.RERANKER_TOP_N, ge=1, le=200)
 
     # LangGraph path toggles
     use_graph: bool = False

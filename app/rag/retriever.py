@@ -572,6 +572,14 @@ class HybridRetriever(BaseRetriever):
         self._chunk_id_lookup[tenant_key] = lookup
         logger.info("BM25 index removed document %s for tenant %s", document_id, tenant_key)
 
+    def clear_bm25_cache(self) -> None:
+        """Clear all cached BM25 indices (in-memory only)."""
+        self._bm25_retrievers.clear()
+        self._bm25_docs.clear()
+        self._bm25_doc_ids.clear()
+        self._chunk_id_lookup.clear()
+        self._bm25_build_locks.clear()
+
     def _search_bm25(
         self,
         query: str,
@@ -581,6 +589,8 @@ class HybridRetriever(BaseRetriever):
         metadata_filter: Optional[Dict[str, Any]] = None,
     ) -> List[Dict[str, Any]]:
         """BM25 keyword retrieval (internal use, returns dicts with scores)."""
+        if not bool(getattr(settings, "BM25_INDEX_ENABLED", True)):
+            return []
         tenant_key = self._tenant_key(tenant_id)
         retriever = self._bm25_retrievers.get(tenant_key)
         docs = self._bm25_docs.get(tenant_key)
@@ -650,6 +660,13 @@ class HybridRetriever(BaseRetriever):
 
         want_vector = retrieval_mode in ("hybrid", "vector", "mmr")
         want_bm25 = retrieval_mode in ("hybrid", "keyword", "mmr")
+        if want_bm25 and not bool(getattr(settings, "BM25_INDEX_ENABLED", True)):
+            # Enforce the global flag even if a BM25 cache exists; fall back to vector so "keyword"
+            # mode doesn't become a hard-fail for users.
+            want_bm25 = False
+            if not want_vector:
+                want_vector = True
+                retrieval_mode = "vector"
 
         # MMR mode needs more candidates for diversity selection
         fetch_k = top_k * 2
