@@ -624,11 +624,6 @@ export default function KnowledgePage() {
         query: searchQuery.trim(),
         history: [],
         document_ids: [],
-        rag_config: {
-          top_k: 5,
-          score_threshold: 0.7,
-          retrieval_mode: 'hybrid',
-        },
       })
       setSearchResults(res.citations || [])
       setSearchQueryForRetrieval(res.query_for_retrieval || '')
