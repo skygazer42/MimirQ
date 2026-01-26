@@ -1353,3 +1353,118 @@ export interface RagvizSimilarityCalculateResponse {
   x_collection?: string
   y_collection?: string
 }
+
+// ==================== Dataset Profile (Ingestion Scan) ====================
+
+export type DatasetProfileFindingSeverity = 'info' | 'warning' | 'error'
+
+export interface DatasetProfileHistogramBin {
+  label: string
+  min?: number | null
+  max?: number | null
+  count: number
+}
+
+export interface DatasetProfilePercentiles {
+  p25: number
+  p50: number
+  p75: number
+  p90: number
+  p99: number
+}
+
+export interface DatasetProfilePdfScanStats {
+  scanned: number
+  not_scanned: number
+  unknown: number
+}
+
+export interface DatasetProfileFindingSummary {
+  key: string
+  label: string
+  severity: DatasetProfileFindingSeverity
+  count: number
+  description?: string | null
+}
+
+export interface DatasetProfileScanRunSummary {
+  id: string
+  kind: string
+  status: string
+  progress: number
+  requested_by?: string | null
+  created_at?: string | null
+  started_at?: string | null
+  finished_at?: string | null
+  error_message?: string | null
+}
+
+export interface DatasetProfileSummary {
+  dataset_id: string
+  generated_at: string
+
+  total_documents: number
+  total_size_bytes: number
+  by_status: Record<string, number>
+  by_file_type: Record<string, number>
+
+  file_size_histogram: DatasetProfileHistogramBin[]
+  length_percentiles: DatasetProfilePercentiles
+  length_histogram: DatasetProfileHistogramBin[]
+  pdf_scan: DatasetProfilePdfScanStats
+
+  pii_hits_total: Record<string, number>
+  secrets_hits_total: Record<string, number>
+
+  findings: DatasetProfileFindingSummary[]
+  latest_scan_run?: DatasetProfileScanRunSummary | null
+}
+
+export interface DatasetProfileDocumentOut {
+  id: string
+  dataset_id?: string | null
+  filename: string
+  file_type: string
+  file_size: number
+  status: string
+  chunk_count: number
+  total_characters: number
+  created_at?: string | null
+  updated_at?: string | null
+  error_message?: string | null
+  metadata: Record<string, any>
+}
+
+export interface DatasetProfileFindingListResponse {
+  total: number
+  items: DatasetProfileDocumentOut[]
+}
+
+export interface DatasetProfileScanRunCreateRequest {
+  backfill_pdf_quality?: boolean
+  backfill_text_quality?: boolean
+  compute_file_hash?: boolean
+  max_documents?: number | null
+}
+
+export interface DatasetProfileScanRunOut {
+  id: string
+  tenant_id: string
+  dataset_id: string
+  requested_by?: string | null
+  kind: string
+  status: string
+  progress: number
+  config: Record<string, any>
+  summary: Record<string, any>
+  error_message?: string | null
+  started_at?: string | null
+  finished_at?: string | null
+  created_at?: string | null
+  updated_at?: string | null
+}
+
+export interface DatasetProfileScanRunListResponse {
+  total: number
+  items: DatasetProfileScanRunOut[]
+}
