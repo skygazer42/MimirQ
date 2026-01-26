@@ -439,6 +439,62 @@ export default function KnowledgePage() {
   const [connectorRuns, setConnectorRuns] = useState<ConnectorRunOut[]>([])
   const [connectorRunsLoading, setConnectorRunsLoading] = useState(false)
 
+  const parseUrlBatchUrls = useCallback((raw: string): string[] => {
+    const parts = (raw || '')
+      .split(/[\n,;]+/g)
+      .map((s) => s.trim())
+      .filter(Boolean)
+    const out: string[] = []
+    const seen = new Set<string>()
+    for (const p of parts) {
+      if (!/^https?:\/\//i.test(p)) continue
+      if (seen.has(p)) continue
+      seen.add(p)
+      out.push(p)
+      if (out.length >= 50) break
+    }
+    return out
+  }, [])
+
+  const parseAccessMembers = useCallback((raw: string): string[] => {
+    const parts = (raw || '')
+      .split(/[\n,;]+/g)
+      .map((s) => s.trim())
+      .filter(Boolean)
+    const out: string[] = []
+    const seen = new Set<string>()
+    for (const p of parts) {
+      if (seen.has(p)) continue
+      seen.add(p)
+      out.push(p)
+      if (out.length >= 200) break
+    }
+    return out
+  }, [])
+
+  const loadConnectorRuns = useCallback(
+    async (params?: { datasetId?: string }) => {
+      setConnectorRunsLoading(true)
+      try {
+        const res = await connectorApi.listRuns({
+          limit: 20,
+          dataset_id: params?.datasetId,
+        })
+        setConnectorRuns(res.items || [])
+      } catch (err) {
+        console.warn('Load connector runs failed:', err)
+      } finally {
+        setConnectorRunsLoading(false)
+      }
+    },
+    []
+  )
+
+  useEffect(() => {
+    if (activeTab !== 'settings') return
+    void loadConnectorRuns({ datasetId: selectedDatasetId })
+  }, [activeTab, loadConnectorRuns, selectedDatasetId])
+
   // 处理文件上传
   const handleFileUpload = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files
@@ -477,6 +533,82 @@ export default function KnowledgePage() {
       setUrlImportSubmitting(false)
     }
   }, [DATASET_DEFAULT, uploadDocumentFromUrl, urlImportDatasetId, urlImportFilename, urlImportUrl])
+
+  const handleUrlBatchImport = useCallback(async () => {
+    const urls = parseUrlBatchUrls(urlBatchUrls)
+    if (!urls.length) {
+      toast.error('请输入至少 1 个 http(s) URL（每行一个）')
+      return
+    }
+
+    setUrlBatchSubmitting(true)
+    try {
+      const access =
+        urlBatchAccessMode === 'inherit'
+          ? null
+          : {
+              mode: urlBatchAccessMode,
+              partial_member_list: urlBatchAccessMode === 'partial_members' ? parseAccessMembers(urlBatchAccessMembers) : null,
+            }
+
+      const run = await connectorApi.createRun({
+        connector_id: 'url_batch',
+        dataset_id: urlBatchDatasetId === DATASET_DEFAULT ? undefined : urlBatchDatasetId,
+        config: {
+          urls,
+          filename: urlBatchFilename.trim() ? urlBatchFilename.trim() : undefined,
+          parser_backend: parserBackend,
+          chunk_strategy: chunkStrategy,
+          pipeline: pipelineOverridesEnabled ? pipelineOptions : undefined,
+          access,
+        },
+      })
+
+      toast.success(`已创建批量导入任务：${run.id.slice(0, 8)}`)
+      setUrlBatchOpen(false)
+      setUrlBatchUrls('')
+      setUrlBatchFilename('')
+      setUrlBatchAccessMode('inherit')
+      setUrlBatchAccessMembers('')
+      void loadConnectorRuns({ datasetId: selectedDatasetId })
+      void loadDocuments()
+    } catch (err: any) {
+      toast.error(formatApiError(err, '创建 URL 批量导入失败'))
+    } finally {
+      setUrlBatchSubmitting(false)
+    }
+  }, [
+    DATASET_DEFAULT,
+    chunkStrategy,
+    loadConnectorRuns,
+    loadDocuments,
+    parseAccessMembers,
+    parseUrlBatchUrls,
+    parserBackend,
+    pipelineOptions,
+    pipelineOverridesEnabled,
+    selectedDatasetId,
+    urlBatchAccessMembers,
+    urlBatchAccessMode,
+    urlBatchDatasetId,
+    urlBatchFilename,
+    urlBatchUrls,
+  ])
+
+  const handleCancelConnectorRun = useCallback(
+    async (runId: string) => {
+      if (!runId) return
+      if (!confirm('确定要取消该导入任务吗？（best-effort）')) return
+      try {
+        await connectorApi.cancelRun(runId)
+        toast.success('已取消导入任务')
+        void loadConnectorRuns({ datasetId: selectedDatasetId })
+      } catch (err: any) {
+        toast.error(formatApiError(err, '取消导入任务失败'))
+      }
+    },
+    [loadConnectorRuns, selectedDatasetId]
+  )
 
   // 检索测试
   const handleSearch = useCallback(async () => {
@@ -523,6 +655,23 @@ export default function KnowledgePage() {
         return { status: "pending", label: "等待" }
       default:
         return { status: "pending", label: "等待" }
+    }
+  }
+
+  const getConnectorRunBadge = (status: string): { status: StatusBadgeStatus; label: string } => {
+    switch (String(status || '').toLowerCase()) {
+      case 'pending':
+        return { status: 'pending', label: '等待' }
+      case 'running':
+        return { status: 'processing', label: '运行中' }
+      case 'completed':
+        return { status: 'completed', label: '已完成' }
+      case 'failed':
+        return { status: 'failed', label: '失败' }
+      case 'cancelled':
+        return { status: 'cancelled', label: '已取消' }
+      default:
+        return { status: 'pending', label: String(status || '等待') }
     }
   }
 
@@ -669,6 +818,131 @@ export default function KnowledgePage() {
                         className="gap-2"
                       >
                         {urlImportSubmitting ? <Loader2 className="w-4 h-4 animate-spin motion-reduce:animate-none" /> : null}
+                        开始导入
+                      </Button>
+                    </div>
+                  </div>
+                </DialogContent>
+              </Dialog>
+              <Dialog
+                open={urlBatchOpen}
+                onOpenChange={(open) => {
+                  setUrlBatchOpen(open)
+                  if (open) {
+                    setUrlBatchDatasetId(selectedDatasetId || DATASET_DEFAULT)
+                  }
+                }}
+              >
+                <DialogTrigger asChild>
+                  <Button
+                    variant="outline"
+                    className="gap-2 border-border bg-background/60 hover:bg-background text-muted-foreground"
+                  >
+                    <Zap className="w-4 h-4" />
+                    URL 批量导入
+                  </Button>
+                </DialogTrigger>
+                <DialogContent className="max-w-2xl">
+                  <DialogHeader>
+                    <DialogTitle>URL 批量导入（Connector）</DialogTitle>
+                    <DialogDescription>
+                      一次导入多个 URL，并生成导入运行记录（需要后端开启 URL_INGEST_ENABLED）。
+                    </DialogDescription>
+                  </DialogHeader>
+
+                  <div className="space-y-4">
+                    <div className="space-y-2">
+                      <div className="text-sm font-medium text-foreground/80">URLs（每行一个，最多 50）</div>
+                      <Textarea
+                        value={urlBatchUrls}
+                        onChange={(e) => setUrlBatchUrls(e.target.value)}
+                        placeholder={'https://example.com/doc1.pdf\nhttps://example.com/doc2.html'}
+                        className="font-mono min-h-[140px]"
+                      />
+                      <div className="text-xs text-muted-foreground">
+                        已识别 {parseUrlBatchUrls(urlBatchUrls).length} 个 URL（仅统计 http/https）。
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <div className="text-sm font-medium text-foreground/80">文件名（可选）</div>
+                        <Input
+                          value={urlBatchFilename}
+                          onChange={(e) => setUrlBatchFilename(e.target.value)}
+                          placeholder="例如：产品手册.pdf"
+                        />
+                        <div className="text-xs text-muted-foreground">
+                          用于显示名/扩展名推断（对所有 URL 生效）。
+                        </div>
+                      </div>
+                      <div className="space-y-2">
+                        <div className="text-sm font-medium text-foreground/80">目标数据集</div>
+                        <Select value={urlBatchDatasetId} onValueChange={setUrlBatchDatasetId}>
+                          <SelectTrigger className="h-10 bg-background">
+                            <SelectValue placeholder="选择数据集" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value={DATASET_DEFAULT}>默认（自动选择可写数据集）</SelectItem>
+                            {datasets.map((ds) => (
+                              <SelectItem key={ds.id} value={ds.id}>
+                                {ds.name}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        {datasetsLoading ? (
+                          <div className="text-xs text-muted-foreground">正在加载数据集...</div>
+                        ) : null}
+                      </div>
+                    </div>
+
+                    <div className="space-y-2">
+                      <div className="text-sm font-medium text-foreground/80">文档访问控制（可选）</div>
+                      <Select value={urlBatchAccessMode} onValueChange={(v) => setUrlBatchAccessMode(v as DocumentAccessMode)}>
+                        <SelectTrigger className="h-10 bg-background">
+                          <SelectValue placeholder="选择访问模式" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="inherit">继承数据集</SelectItem>
+                          <SelectItem value="only_me">仅我可见</SelectItem>
+                          <SelectItem value="partial_members">指定成员</SelectItem>
+                          <SelectItem value="all_team_members">团队成员</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      {urlBatchAccessMode === 'partial_members' ? (
+                        <div className="space-y-2 pt-2">
+                          <div className="text-sm font-medium text-foreground/80">允许成员（每行一个 user_id）</div>
+                          <Textarea
+                            value={urlBatchAccessMembers}
+                            onChange={(e) => setUrlBatchAccessMembers(e.target.value)}
+                            placeholder={'alice\nbob\ncharlie'}
+                            className="font-mono min-h-[110px]"
+                          />
+                          <div className="text-xs text-muted-foreground">最多 200 个；仅支持当前租户已存在的成员。</div>
+                        </div>
+                      ) : null}
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <div className="text-sm font-medium text-foreground/80">解析方式</div>
+                        <ParserDropdown value={parserBackend} onChange={setParserBackend} />
+                      </div>
+                      <div className="space-y-2">
+                        <div className="text-sm font-medium text-foreground/80">切块策略</div>
+                        <ChunkStrategyDropdown value={chunkStrategy} onChange={setChunkStrategy} />
+                      </div>
+                    </div>
+
+                    <PipelineOptionsPanel />
+
+                    <div className="flex items-center justify-end gap-2 pt-2">
+                      <Button variant="outline" onClick={() => setUrlBatchOpen(false)} disabled={urlBatchSubmitting}>
+                        取消
+                      </Button>
+                      <Button onClick={handleUrlBatchImport} disabled={urlBatchSubmitting} className="gap-2">
+                        {urlBatchSubmitting ? <Loader2 className="w-4 h-4 animate-spin motion-reduce:animate-none" /> : null}
                         开始导入
                       </Button>
                     </div>
@@ -1348,6 +1622,96 @@ export default function KnowledgePage() {
                         过滤低相关度的结果，值越大匹配越精准
                       </p>
                     </div>
+                  </div>
+
+                  <div className="h-px bg-border/60" />
+
+                  {/* Connectors */}
+                  <div className="space-y-3">
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                      <div>
+                        <label className="text-sm font-semibold text-foreground">Connectors 导入任务</label>
+                        <p className="text-xs text-muted-foreground mt-1">
+                          用于批量 URL 导入/同步；仅展示你有写权限的数据集的运行记录。
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Button
+                          variant="outline"
+                          className="gap-2"
+                          onClick={() => void loadConnectorRuns({ datasetId: selectedDatasetId })}
+                          disabled={connectorRunsLoading}
+                        >
+                          <RefreshCw className={cn('w-4 h-4', connectorRunsLoading && 'animate-spin motion-reduce:animate-none')} />
+                          刷新
+                        </Button>
+                      </div>
+                    </div>
+
+                    {connectorRunsLoading ? (
+                      <div className="rounded-xl border border-border/60 bg-background/60 p-4 text-sm text-muted-foreground">
+                        正在加载导入任务...
+                      </div>
+                    ) : connectorRuns.length === 0 ? (
+                      <div className="rounded-xl border border-border/60 bg-background/60 p-4 text-sm text-muted-foreground">
+                        暂无导入任务。可通过顶部“URL 批量导入”创建。
+                      </div>
+                    ) : (
+                      <div className="space-y-3">
+                        {connectorRuns.map((run) => {
+                          const badge = getConnectorRunBadge(run.status)
+                          const stats = (run.stats || {}) as any
+                          const created = Number(stats.created || 0)
+                          const failed = Number(stats.failed || 0)
+                          const errors: any[] = Array.isArray(stats.errors) ? stats.errors : []
+                          const isActive = run.status === 'pending' || run.status === 'running'
+                          return (
+                            <div
+                              key={run.id}
+                              className="rounded-xl border border-border/60 bg-background/60 p-4"
+                            >
+                              <div className="flex items-start justify-between gap-4">
+                                <div className="min-w-0">
+                                  <div className="flex flex-wrap items-center gap-2">
+                                    <StatusBadge status={badge.status} label={badge.label} dense />
+                                    <span className="text-xs font-mono text-muted-foreground truncate">{run.id}</span>
+                                  </div>
+                                  <div className="mt-1 text-xs text-muted-foreground">
+                                    {formatDate(run.created_at)} · {run.connector_id} · dataset {run.dataset_id || '-'}
+                                  </div>
+                                  <div className="mt-2 text-xs text-foreground/80">
+                                    created <span className="font-mono">{created}</span> · failed{' '}
+                                    <span className={cn('font-mono', failed > 0 && 'text-destructive')}>{failed}</span>
+                                  </div>
+                                  {run.error_message ? (
+                                    <div className="mt-2 text-xs text-destructive">{run.error_message}</div>
+                                  ) : null}
+                                  {errors.length > 0 ? (
+                                    <div className="mt-2 text-xs text-muted-foreground">
+                                      <div className="font-medium text-foreground/80">错误示例：</div>
+                                      <div className="mt-1 space-y-1">
+                                        {errors.slice(0, 3).map((e, idx) => (
+                                          <div key={idx} className="font-mono truncate">
+                                            {String(e?.url || '').slice(0, 80)} — {String(e?.error || '').slice(0, 120)}
+                                          </div>
+                                        ))}
+                                      </div>
+                                    </div>
+                                  ) : null}
+                                </div>
+
+                                {isActive ? (
+                                  <Button variant="outline" className="gap-2" onClick={() => void handleCancelConnectorRun(run.id)}>
+                                    <X className="w-4 h-4" />
+                                    取消
+                                  </Button>
+                                ) : null}
+                              </div>
+                            </div>
+                          )
+                        })}
+                      </div>
+                    )}
                   </div>
                 </div>
 

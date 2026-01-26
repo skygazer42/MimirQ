@@ -70,6 +70,14 @@ make up-web
 **6. 企业级架构**
 Milvus 十亿级向量检索、PostgreSQL 持久化、OpenAI 兼容接口、Docker 一键部署。
 
+**7. 文档级权限（Security Trimming）**
+在数据集权限之上支持文档级访问控制（owner / 指定成员 / 团队成员 / 继承），并在检索侧做权限裁剪避免引用越权。
+使用说明见：[docs/guides/document_acl.md](./docs/guides/document_acl.md)。
+
+**8. URL 导入与连接器（Connectors）**
+支持后端拉取远程 URL 入库，以及 URL 批量导入（Connector Run 记录状态/统计/错误）；内置 SSRF 防护与安全开关。
+使用说明见：[docs/guides/url_ingest.md](./docs/guides/url_ingest.md)。
+
 ## 高级配置
 
 如需自定义配置，请参考 [.env.example](docker/.env.example) 中的注释修改 `.env` 文件。完整环境变量说明见 [配置文档](./docs/guides/dependencies.md)。

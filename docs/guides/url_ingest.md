@@ -62,6 +62,42 @@ curl -X POST "http://localhost:8000/api/v1/documents/upload-url" \
   }'
 ```
 
+## Connector Runs：URL 批量导入
+
+在“单条 URL 导入”之上，连接器（Connectors）提供一个可扩展的 **入库执行框架**：你可以创建一次“导入运行（run）”，批量处理多个 URL，并在后台记录状态/统计/错误。
+
+前端入口：知识库页面顶部 `URL 批量导入` 按钮。
+
+相关 API：
+
+- `GET /api/v1/connectors`：列出可用连接器（当前仅 `url_batch`）
+- `POST /api/v1/connectors/runs`：创建一次连接器运行
+- `GET /api/v1/connectors/runs`：查询运行列表（可选 `dataset_id` 过滤）
+- `GET /api/v1/connectors/runs/{run_id}`：查询运行详情
+- `POST /api/v1/connectors/runs/{run_id}/cancel`：取消运行（best-effort）
+
+创建 run 请求示例（curl）：
+
+```bash
+curl -X POST "http://localhost:8000/api/v1/connectors/runs" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "connector_id": "url_batch",
+    "dataset_id": "00000000-0000-0000-0000-000000000000",
+    "config": {
+      "urls": [
+        "https://example.com/a.pdf",
+        "https://example.com/b.html"
+      ],
+      "filename": "可选：覆盖文件名（影响扩展名识别与展示）.pdf",
+      "parser_backend": "auto",
+      "chunk_strategy": "langchain_recursive",
+      "pipeline": { "chunk_merge_small_min_chars": 200 },
+      "access": { "mode": "inherit" }
+    }
+  }'
+```
+
 ## 文件类型判定规则
 
 后端会按以下优先级推断扩展名（决定可否入库与走哪个解析器）：
@@ -93,4 +129,3 @@ curl -X POST "http://localhost:8000/api/v1/documents/upload-url" \
 - 返回 `URL ingestion is disabled`：未开启 `URL_INGEST_ENABLED=true`
 - 返回 `url host is not allowed`：命中 SSRF 防护（私网/回环/.local/blocked host）
 - 返回 `remote file too large`：超过 `URL_INGEST_MAX_BYTES` / `MAX_FILE_SIZE`
-

@@ -17,9 +17,11 @@ FastAPI + LangChain/LangGraph backend, Next.js 14 frontend, with PostgreSQL + Mi
 MimirQ is a full‑stack knowledge base Q&A system built around RAG (Retrieval‑Augmented Generation). It supports:
 
 - Document ingestion (PDF/Markdown/TXT and more)
+- URL ingestion (server-side fetch) and batch URL import via connector runs (optional; gated by `URL_INGEST_ENABLED`)
 - Chunking + embeddings + indexing
 - Hybrid retrieval (Vector + BM25)
 - Streaming chat with citations
+- Document-level access control (security trimming) on top of dataset permissions
 - Optional MinIO image storage and background workers (Redis + arq)
 
 ## Tech Stack
@@ -96,6 +98,8 @@ make up-web
 
 See `docs/README.md` for docs and guides.
 - Chunk preview guide (CN): `docs/guides/chunk_preview.md`
+- URL ingestion (CN): `docs/guides/url_ingest.md`
+- Document ACL / security trimming (CN): `docs/guides/document_acl.md`
 
 ## Acknowledgements
 
