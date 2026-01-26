@@ -33,6 +33,7 @@ import { UPLOAD_ACCEPT } from '@/lib/upload-extensions'
 import { computeChunkLengthStats } from '@/components/chunk-preview/utils/stats'
 import { datasetApi, pipelineApi } from '@/lib/api-client'
 import { SEPARATOR_PRESET_OPTIONS } from '@/components/chunk-preview/constants'
+import { IngestionPreviewDetailsDialog } from '@/components/chunk-preview/components/ingestion-preview-details-dialog'
 import type { Dataset, IngestionPreviewResponse } from '@/types'
 
 function clampInt(value: number, min: number, max: number) {
@@ -223,6 +224,7 @@ export function Sidebar({ variant = 'panel' }: { variant?: 'panel' | 'dialog' } 
   const [ingestionPreview, setIngestionPreview] = useState<IngestionPreviewResponse | null>(null)
   const [ingestionLoading, setIngestionLoading] = useState(false)
   const [ingestionError, setIngestionError] = useState<string | null>(null)
+  const [ingestionDetailsOpen, setIngestionDetailsOpen] = useState(false)
 
   useEffect(() => {
     let alive = true
@@ -648,20 +650,31 @@ export function Sidebar({ variant = 'panel' }: { variant?: 'panel' | 'dialog' } 
               </div>
             ) : null}
 
-            {ingestionPreview ? (
-              <div className="rounded-xl border border-border/60 bg-background p-3 space-y-2">
-                <div className="flex items-center justify-between gap-2">
-                  <div className="text-[10px] text-muted-foreground">命中规则</div>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    className="h-7 px-2 text-[11px]"
-                    onClick={() => setIngestionPreview(null)}
-                  >
-                    清除
-                  </Button>
-                </div>
+	            {ingestionPreview ? (
+	              <div className="rounded-xl border border-border/60 bg-background p-3 space-y-2">
+	                <div className="flex items-center justify-between gap-2">
+	                  <div className="text-[10px] text-muted-foreground">命中规则</div>
+	                  <div className="flex items-center gap-1">
+	                    <Button
+	                      type="button"
+	                      variant="ghost"
+	                      size="sm"
+	                      className="h-7 px-2 text-[11px]"
+	                      onClick={() => setIngestionDetailsOpen(true)}
+	                    >
+	                      详情
+	                    </Button>
+	                    <Button
+	                      type="button"
+	                      variant="ghost"
+	                      size="sm"
+	                      className="h-7 px-2 text-[11px]"
+	                      onClick={() => setIngestionPreview(null)}
+	                    >
+	                      清除
+	                    </Button>
+	                  </div>
+	                </div>
                 <div className="text-xs text-foreground/90 font-medium">
                   {ingestionPreview.rule.matched
                     ? (ingestionPreview.rule.rule_name || ingestionPreview.rule.rule_id || '已命中规则')
@@ -675,9 +688,22 @@ export function Sidebar({ variant = 'panel' }: { variant?: 'panel' | 'dialog' } 
                     governance profile: <span className="font-mono">{ingestionPreview.rule.governance_profile_ref}</span>
                   </div>
                 ) : null}
-                <div className="text-[10px] text-muted-foreground">
-                  preprocess steps: <span className="font-mono">{ingestionPreview.rule.preprocess_steps.length}</span>
-                </div>
+	                <div className="text-[10px] text-muted-foreground">
+	                  preprocess steps: <span className="font-mono">{ingestionPreview.rule.preprocess_steps.length}</span>
+	                </div>
+	                <div className="text-[10px] text-muted-foreground">
+	                  preprocess:{' '}
+	                  <span className={cn(ingestionPreview.preprocess.changed ? 'text-warning' : 'text-muted-foreground')}>
+	                    {ingestionPreview.preprocess.changed ? 'changed' : 'no change'}
+	                  </span>{' '}
+	                  ·{' '}
+	                  <span className="font-mono">
+	                    {formatFileSize(ingestionPreview.preprocess.size_before)} → {formatFileSize(ingestionPreview.preprocess.size_after)}
+	                  </span>
+	                  {ingestionPreview.preprocess.warnings?.length ? (
+	                    <span className="text-warning"> · warnings {ingestionPreview.preprocess.warnings.length}</span>
+	                  ) : null}
+	                </div>
                 <div className="flex items-center gap-2 pt-1">
                   <Button
                     type="button"
@@ -701,9 +727,23 @@ export function Sidebar({ variant = 'panel' }: { variant?: 'panel' | 'dialog' } 
                     立即预览
                   </Button>
                 </div>
-              </div>
-            ) : null}
-          </div>
+	              </div>
+	            ) : null}
+
+	            <IngestionPreviewDetailsDialog
+	              open={ingestionDetailsOpen}
+	              onOpenChange={setIngestionDetailsOpen}
+	              preview={ingestionPreview}
+	              onApplyPipelinePatch={(patch) => {
+	                pipelineCtx.setEnabled(true)
+	                for (const [k, v] of Object.entries(patch || {})) {
+	                  if (k in pipelineCtx.options) {
+	                    pipelineCtx.updateOption(k as any, v as any)
+	                  }
+	                }
+	              }}
+	            />
+	          </div>
           <div className="space-y-2">
             <label className="text-xs font-medium text-muted-foreground">解析器</label>
             <ParserDropdown value={parserBackend} onChange={setParserBackend} />
