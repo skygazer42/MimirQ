@@ -60,7 +60,7 @@ import {
 } from '@/components/ui/select'
 import { PageHeader } from '@/components/ui/page-header'
 import { IngestionWorkflowStepper } from '@/components/ui/ingestion-workflow-stepper'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { toast } from 'sonner'
 import { ROOT_FOLDER_ID, useParsedFiles } from '@/store/use-parsed-files-store'
 import { cn, formatFileSize } from '@/lib/utils'
@@ -115,6 +115,7 @@ interface FileGovernanceState {
 
 export function DataGovernancePanel() {
   const router = useRouter()
+  const searchParams = useSearchParams()
   const files = useParsedFiles((state) => state.files)
   const libraryFolders = useParsedFiles((state) => state.folders)
   const activeFolderId = useParsedFiles((state) => state.activeFolderId)
@@ -128,6 +129,7 @@ export function DataGovernancePanel() {
 
   // UI 状态
   const [activeTab, setActiveTab] = useState<GovernanceTab>('quality')
+  const [inboundBannerDismissed, setInboundBannerDismissed] = useState(false)
   const [selectedFileId, setSelectedFileId] = useState<string | null>(null)
   const [viewMode, setViewMode] = useState<'edit' | 'preview' | 'original'>('preview')
   const [previewFormat, setPreviewFormat] = useState<'rendered' | 'markdown'>('rendered')
@@ -141,6 +143,68 @@ export function DataGovernancePanel() {
       uploadAbortRef.current?.abort()
     }
   }, [])
+
+  // Optional deep link from /chunk-preview (best-effort, non-breaking).
+  useEffect(() => {
+    const raw = (searchParams.get('tab') || '').trim()
+    if (!raw) return
+    if (GOVERNANCE_TABS.some((t) => t.id === raw)) {
+      setActiveTab(raw as GovernanceTab)
+    }
+  }, [searchParams])
+
+  const inboundContext = useMemo(() => {
+    const from = (searchParams.get('from') || '').trim()
+    const datasetId = (searchParams.get('dataset_id') || '').trim()
+    const governanceProfileRef = (searchParams.get('governance_profile_ref') || '').trim()
+    return {
+      from: from || null,
+      datasetId: datasetId || null,
+      governanceProfileRef: governanceProfileRef || null,
+    }
+  }, [searchParams])
+
+  const InboundBanner = useMemo(() => {
+    if (inboundBannerDismissed) return null
+    if (!inboundContext.from && !inboundContext.datasetId && !inboundContext.governanceProfileRef) return null
+    return (
+      <div className="mt-3 rounded-xl border border-border/60 bg-card px-4 py-3 text-[12px] text-muted-foreground flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="text-[11px] uppercase tracking-wider text-muted-foreground/80">Inbound</div>
+          <div className="mt-1 flex flex-wrap items-center gap-2">
+            {inboundContext.from ? (
+              <span className="px-2 py-0.5 rounded-full border border-border/60 bg-muted/40 font-mono">
+                from: {inboundContext.from}
+              </span>
+            ) : null}
+            {inboundContext.datasetId ? (
+              <span className="px-2 py-0.5 rounded-full border border-border/60 bg-muted/40 font-mono">
+                dataset_id: {inboundContext.datasetId}
+              </span>
+            ) : null}
+            {inboundContext.governanceProfileRef ? (
+              <span className="px-2 py-0.5 rounded-full border border-border/60 bg-muted/40 font-mono">
+                governance_profile_ref: {inboundContext.governanceProfileRef}
+              </span>
+            ) : null}
+          </div>
+          <div className="mt-2 text-[11px] text-muted-foreground">
+            提示：该页当前仅做引导展示；如需精确复现清洗效果，请在入库配置/规则中应用对应的 pipeline/governance 配置。
+          </div>
+        </div>
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          className="h-8 w-8 p-0 rounded-full text-muted-foreground hover:text-foreground"
+          aria-label="关闭提示"
+          onClick={() => setInboundBannerDismissed(true)}
+        >
+          <X className="w-4 h-4" />
+        </Button>
+      </div>
+    )
+  }, [inboundBannerDismissed, inboundContext.datasetId, inboundContext.from, inboundContext.governanceProfileRef])
 
   const cancelUploadAndParse = useCallback(() => {
     uploadAbortRef.current?.abort()
@@ -733,12 +797,13 @@ export function DataGovernancePanel() {
 	                智能文档清洗、标注与结构化处理中心
 	              </span>
 	            }
-          >
-            <div className="hidden xl:flex items-center gap-3">
-              <IngestionWorkflowStepper />
-            </div>
-          </PageHeader>
-        </div>
+	          >
+	            <div className="hidden xl:flex items-center gap-3">
+	              <IngestionWorkflowStepper />
+	            </div>
+	          </PageHeader>
+	          {InboundBanner}
+	        </div>
 
         <div className="flex-1 flex items-center justify-center p-6 relative">
           <div
@@ -849,8 +914,8 @@ export function DataGovernancePanel() {
 	              智能文档结构化处理与质量修复
 	            </span>
 	          }
-        >
-          <div className="flex items-center gap-3">
+	        >
+	          <div className="flex items-center gap-3">
             <Button
               variant="outline"
               size="sm"
@@ -886,9 +951,10 @@ export function DataGovernancePanel() {
           <div className="hidden xl:flex items-center gap-3">
             <div className="w-px h-4 bg-border/60 mx-1" />
             <IngestionWorkflowStepper />
-          </div>
-        </PageHeader>
-      </div>
+	          </div>
+	        </PageHeader>
+	        {InboundBanner}
+	      </div>
 
       <div className="flex-1 flex overflow-hidden min-h-0 relative bg-background">
         {/* 左侧文件列表 */}
