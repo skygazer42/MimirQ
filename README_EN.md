@@ -43,10 +43,13 @@ MimirQ is a fullâ€‘stack knowledge base Q&A system built around RAG (Retrievalâ€
 ### 1) Configure env files
 
 ```bash
-# From repo root:
+# Create local env files (.env / docker/.env / web/.env.local) without overwriting:
 make init
 
-# (Optional) You can still copy manually:
+# Windows (no `make`) alternative:
+python scripts/init_env.py
+
+# Or copy manually:
 # cp docker/.env.example docker/.env
 # cp web/.env.local.example web/.env.local
 ```

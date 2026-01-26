@@ -14,7 +14,7 @@
     "test:watch": "vitest",
     "ui-check": "node scripts/check-design-tokens.mjs",
     "api-check": "node scripts/check-api-contract.mjs && node scripts/check-api-coverage.mjs",
-    "openapi:export": "python3 ../scripts/export_openapi.py --out openapi.json",
+    "openapi:export": "node scripts/export-openapi.mjs --out openapi.json",
     "openapi-types": "pnpm run openapi:export && pnpm run gen:api-types",
     "gen:api-types": "openapi-typescript ./openapi.json -o types/openapi.ts"
   },

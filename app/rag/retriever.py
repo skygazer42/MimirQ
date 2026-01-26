@@ -7,7 +7,7 @@ from typing import List, Dict, Any, Optional
 from uuid import UUID
 import math
 import re
-from collections import Counter
+from collections import Counter, OrderedDict
 import heapq
 import jieba
 import time
@@ -71,6 +71,9 @@ class HybridRetriever(BaseRetriever):
     _bm25_doc_ids: Dict[str, set[str]] = PrivateAttr(default_factory=dict)
     _chunk_id_lookup: Dict[str, Dict[str, str]] = PrivateAttr(default_factory=dict)
     _bm25_build_locks: Dict[str, threading.Lock] = PrivateAttr(default_factory=dict)
+    # LRU order for per-tenant BM25 caches (prevents unbounded growth in multi-tenant deployments).
+    _bm25_cache_order: "OrderedDict[str, None]" = PrivateAttr(default_factory=OrderedDict)
+    _bm25_cache_lock: threading.Lock = PrivateAttr(default_factory=threading.Lock)
 
     def _refresh_bm25_doc_ids(self, tenant_key: str, docs: List[Document] | None) -> None:
         if not docs:
@@ -96,6 +99,52 @@ class HybridRetriever(BaseRetriever):
             lock = threading.Lock()
             self._bm25_build_locks[tenant_key] = lock
         return lock
+
+    def _bm25_cache_max_tenants(self) -> int:
+        try:
+            return max(0, int(getattr(settings, "BM25_CACHE_MAX_TENANTS", 0) or 0))
+        except Exception:
+            return 0
+
+    def _touch_bm25_cache(self, tenant_key: str) -> None:
+        """
+        Mark a tenant BM25 cache as recently used and evict LRU indices if needed.
+
+        Eviction is best-effort: it only removes in-memory caches (BM25 retriever + docs),
+        and will be rebuilt lazily on the next query for that tenant.
+        """
+        max_tenants = self._bm25_cache_max_tenants()
+        if max_tenants <= 0:
+            return
+
+        evicted: list[str] = []
+        with self._bm25_cache_lock:
+            if tenant_key in self._bm25_cache_order:
+                self._bm25_cache_order.move_to_end(tenant_key)
+            else:
+                self._bm25_cache_order[tenant_key] = None
+
+            # Safety guard: avoid an infinite loop if something goes wrong.
+            safety = len(self._bm25_cache_order) + 1
+            while len(self._bm25_cache_order) > max_tenants and safety > 0:
+                safety -= 1
+                oldest = next(iter(self._bm25_cache_order))
+                if oldest == tenant_key:
+                    # Don't evict the tenant we're actively serving/building.
+                    self._bm25_cache_order.move_to_end(oldest)
+                    continue
+                self._bm25_cache_order.pop(oldest, None)
+                evicted.append(oldest)
+
+        for tenant in evicted:
+            self._bm25_retrievers.pop(tenant, None)
+            self._bm25_docs.pop(tenant, None)
+            self._bm25_doc_ids.pop(tenant, None)
+            self._chunk_id_lookup.pop(tenant, None)
+            self._bm25_build_locks.pop(tenant, None)
+
+        if evicted:
+            logger.info("BM25 cache evicted %s tenants (max=%s)", len(evicted), max_tenants)
 
     def _lazy_build_bm25_index(
         self,
@@ -132,8 +181,10 @@ class HybridRetriever(BaseRetriever):
                 requested = {str(did) for did in document_ids if did is not None}
                 missing = requested - set(indexed or set())
                 if not missing:
+                    self._touch_bm25_cache(tenant_key)
                     return True
             else:
+                self._touch_bm25_cache(tenant_key)
                 return True
 
         lock = self._get_bm25_build_lock(tenant_key)
@@ -149,8 +200,10 @@ class HybridRetriever(BaseRetriever):
                     requested = {str(did) for did in document_ids if did is not None}
                     missing = requested - set(indexed or set())
                     if not missing:
+                        self._touch_bm25_cache(tenant_key)
                         return True
                 else:
+                    self._touch_bm25_cache(tenant_key)
                     return True
 
             full_tenant = bool(getattr(settings, "BM25_LAZY_BUILD_FULL_TENANT", False))
@@ -441,6 +494,7 @@ class HybridRetriever(BaseRetriever):
                 continue
             lookup[f"{doc_id}:{chunk_index}"] = str(d.id)
         self._chunk_id_lookup[tenant_key] = lookup
+        self._touch_bm25_cache(tenant_key)
         logger.info("BM25 index built with %s chunks for tenant %s", len(docs), tenant_key)
 
     def build_bm25_index_from_db(
@@ -537,6 +591,7 @@ class HybridRetriever(BaseRetriever):
                 continue
             lookup[f"{doc_id}:{chunk_index}"] = str(d.id)
         self._chunk_id_lookup[tenant_key] = lookup
+        self._touch_bm25_cache(tenant_key)
         logger.info("BM25 index updated to %s chunks for tenant %s", len(merged_docs), tenant_key)
 
     def remove_document_from_bm25_index(self, document_id: UUID, tenant_id: Optional[UUID] = None):
@@ -556,6 +611,9 @@ class HybridRetriever(BaseRetriever):
             self._bm25_docs.pop(tenant_key, None)
             self._bm25_doc_ids.pop(tenant_key, None)
             self._chunk_id_lookup.pop(tenant_key, None)
+            self._bm25_build_locks.pop(tenant_key, None)
+            with self._bm25_cache_lock:
+                self._bm25_cache_order.pop(tenant_key, None)
             logger.info("BM25 index cleared for tenant %s", tenant_key)
             return
         self._bm25_retrievers[tenant_key] = retriever
@@ -570,6 +628,7 @@ class HybridRetriever(BaseRetriever):
                 continue
             lookup[f"{doc_id}:{chunk_index}"] = str(d.id)
         self._chunk_id_lookup[tenant_key] = lookup
+        self._touch_bm25_cache(tenant_key)
         logger.info("BM25 index removed document %s for tenant %s", document_id, tenant_key)
 
     def clear_bm25_cache(self) -> None:
@@ -579,6 +638,8 @@ class HybridRetriever(BaseRetriever):
         self._bm25_doc_ids.clear()
         self._chunk_id_lookup.clear()
         self._bm25_build_locks.clear()
+        with self._bm25_cache_lock:
+            self._bm25_cache_order.clear()
 
     def _search_bm25(
         self,
@@ -601,6 +662,8 @@ class HybridRetriever(BaseRetriever):
             if retriever is None or docs is None:
                 logger.warning("BM25 index not initialized, skipping keyword search")
                 return []
+
+        self._touch_bm25_cache(tenant_key)
 
         allowed_ids = {str(doc_id) for doc_id in document_ids} if document_ids else None
         processed_query = retriever.preprocess_func(query)

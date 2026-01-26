@@ -1,6 +1,7 @@
 __pycache__/
 *.py[cod]
 .pytest_cache/
+.ruff_cache/
 venv/
 env/
 ENV/
@@ -28,11 +29,20 @@ dist/
 
 .env
 uploads/
+logs/
+runs/
 chroma_db/
 data/
+docs/
+images/
+tests/
 
 .git
 .gitignore
 
 .idea/
 .cursor/
+.codex/
+.gemini/
+.shared/
+.docling_tmp/

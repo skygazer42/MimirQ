@@ -12,6 +12,7 @@ from fastapi import APIRouter, Response
 
 from app.core.config import settings
 from app.core.database import SessionLocal
+from app.core.health_checks import check_database, check_minio, check_redis, check_vector
 from app.storage.vector.milvus import milvus_store
 from app.storage.object.minio import minio_service
 from app.api.schemas.health import HealthResponse, ReadyResponse
@@ -91,63 +92,26 @@ def ready(response: Response) -> dict:
         response.status_code = cached_status
         return cached_payload
 
-    from sqlalchemy import text
-
     ok = True
 
-    db_status = {"status": "disconnected"}
-    db = SessionLocal()
-    try:
-        db.execute(text("SELECT 1"))
-        db_status["status"] = "connected"
-    except Exception as exc:  # noqa: BLE001
-        ok = False
-        db_status["error"] = str(exc)[:200]
-    finally:
-        db.close()
+    db_status, db_ok = check_database(SessionLocal)
+    ok &= db_ok
 
-    vector_backend = (getattr(settings, "VECTOR_BACKEND", "milvus") or "milvus").lower()
-    vector_status: dict = {"backend": vector_backend, "status": "unknown"}
-    if vector_backend == "milvus":
-        try:
-            milvus_store.get_collection_count()
-            vector_status["status"] = "connected"
-        except Exception as exc:  # noqa: BLE001
-            ok = False
-            vector_status["status"] = "disconnected"
-            vector_status["error"] = str(exc)[:200]
-    else:
-        vector_status["status"] = "ready"
+    vector_status, _milvus_status, vector_ok = check_vector(
+        settings,
+        mode="ready",
+        milvus_get_collection_count=milvus_store.get_collection_count,
+    )
+    ok &= vector_ok
 
-    redis_required = bool(getattr(settings, "TASK_QUEUE_ENABLED", False))
-    redis_optional_cache = bool(getattr(settings, "EMBEDDING_CACHE_ENABLED", False))
-    redis_enabled = redis_required or redis_optional_cache
-    redis_status = {
-        "status": "disabled",
-        "enabled": redis_enabled,
-        "required": redis_required,
-        "embedding_cache_enabled": redis_optional_cache,
-    }
-    if redis_enabled:
-        try:
-            client = _get_redis_client()
-            client.ping()
-            redis_status["status"] = "connected"
-        except Exception as exc:  # noqa: BLE001
-            global _redis_client
-            _redis_client = None
-            redis_status["status"] = "disconnected"
-            redis_status["error"] = str(exc)[:200]
-            # Redis is only required when the task queue is enabled.
-            if redis_required:
-                ok = False
+    redis_status, redis_ok, reset_client = check_redis(settings, get_client=_get_redis_client)
+    ok &= redis_ok
+    if reset_client:
+        global _redis_client
+        _redis_client = None
 
-    minio_enabled = bool(getattr(settings, "MINIO_ENABLED", False))
-    minio_status = {"status": "disabled", "enabled": minio_enabled}
-    if minio_enabled:
-        minio_status = minio_service.health_check()
-        if minio_status.get("status") != "connected":
-            ok = False
+    minio_status, minio_ok = check_minio(settings, mode="ready", minio_health_check=minio_service.health_check)
+    ok &= minio_ok
 
     if not ok:
         response.status_code = 503

@@ -35,8 +35,10 @@ MimirQ 是一个开源的 RAG 知识库问答平台。它将可视化切片预�
 git clone https://github.com/skygazer42/MimirQ.git
 cd MimirQ
 
-# 生成本地配置文件（不会覆盖已有文件）
+# 生成本地配置文件（.env / docker/.env / web/.env.local；不会覆盖已有文件）
 make init
+# Windows 上如果没有 make，也可以：
+python scripts/init_env.py
 
 # 启动后端 + 依赖（Postgres / Milvus / MinIO / Redis）
 make up
