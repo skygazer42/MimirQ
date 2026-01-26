@@ -30,7 +30,7 @@
 
 MimirQ 现状：
 - 已有：文件上传（含 batch）、多解析器、治理清洗、预览链路
-- 本次选择性集成（已落地）：**URL 导入**（作为“连接器骨架”的第一步）
+- 本次选择性集成（已落地）：**URL 单条导入 + URL 批量导入（Connector Runs）**（作为“连接器骨架”的第一步）
 
 ### B. 切块（Chunking）
 常见能力：
@@ -55,7 +55,7 @@ MimirQ 现状：
 
 MimirQ 现状：
 - 已有：hybrid、RRF、MMR、reranker、neighbor window
-- 本次选择性集成（已落地）：**parent-child 自动回填父块**（避免只拿到过碎 child）
+- 本次选择性集成（已落地）：**文档级 ACL / security trimming**（DB 列表过滤 + 检索侧裁剪 + 兜底校验）
 
 ### D. 可观测与评测（Observability / Eval）
 常见能力：
@@ -76,7 +76,7 @@ MimirQ 现状：
 5. **URL 导入（连接器骨架）**：安全可控的 http/https 拉取 → 走标准入库流程
 6. **Phoenix/OTEL 文档**：把已有 OTEL 能力落到可操作配置
 
-> 未纳入本次实现但建议作为下一阶段：文档级 ACL/security trimming（向量端过滤 + DB 兜底）、更多连接器（Confluence/Notion/GitHub 等）、评测面板/回归集管理、可视化工作流编排。
+> 下一阶段建议：更多连接器（Confluence/Notion/GitHub 等）、更细粒度权限（字段级安全/FLS）、评测面板/回归集管理、可视化工作流编排。
 
 实现入口（建议先从这几个文件看起）：
 - URL 导入：`docs/guides/url_ingest.md`（后端 API + 安全开关 + 前端入口）
