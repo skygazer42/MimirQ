@@ -103,6 +103,22 @@ UUID_PATTERN = r"(?:[0-9a-fA-F]{32}|[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}
 PREVIEW_IMAGE_REF_RE = re.compile(rf"(?:https?://[^\s)\"']+)?/api/v1/documents/image/({UUID_PATTERN})")
 MINIO_IMAGE_REF_RE = re.compile(r"(?:https?://[^\s)\"']+)?/api/v1/documents/image-url/([^\s)\"']+)")
 
+
+def _ensure_preview_page_indices(documents: list[Document]) -> None:
+    """
+    Ensure each parsed Document has a stable per-document index for preview offset rebasing.
+
+    Some parsers emit multiple Documents without a unique `metadata.page` (or with duplicates).
+    Chunk preview joins these docs with "\\n" and returns global `start_index`/`end_index` offsets;
+    without a stable key, mapping by `page` can collide and misplace chunks.
+    """
+    for i, doc in enumerate(documents or []):
+        meta = dict(getattr(doc, "metadata", None) or {})
+        # Keep existing value if present; otherwise assign a deterministic 1-based index.
+        meta.setdefault("page_index", i + 1)
+        doc.metadata = meta
+
+
 def _parse_uuid(value: str) -> UUID:
     try:
         return UUID(str(value))
@@ -3922,6 +3938,9 @@ async def preview_chunking(
                 )
                 governance_duration_ms += int(max(0.0, (time.perf_counter() - _gov_started) * 1000.0))
 
+            # Ensure stable per-doc indices for offset rebasing (handles missing/duplicate page numbers).
+            _ensure_preview_page_indices(documents)
+
             if resolved_chunk_strategy == "separator":
                 preset = (separator_preset or "").strip() or "paragraph"
                 if preset != "custom":
@@ -4018,6 +4037,7 @@ async def preview_chunking(
         page_texts: list[dict[str, object]] = []
         ragflow_chunk_start_map: dict[int, int] = {}
         page_start_map: dict[object, int] = {}
+        page_index_start_map: dict[int, int] = {}
         total_characters = 0
         original_text_value: str | None = None
 
@@ -4025,11 +4045,14 @@ async def preview_chunking(
             current_pos = 0
             for doc in documents:
                 text = doc.page_content or ""
-                page_num = doc.metadata.get("page")
+                meta = doc.metadata or {}
+                page_num = meta.get("page") or meta.get("page_number")
+                page_index = meta.get("page_index")
                 page_texts.append(
                     {
                         "text": text,
                         "page": page_num,
+                        "page_index": page_index,
                         "start": current_pos,
                         "end": current_pos + len(text),
                     }
@@ -4037,7 +4060,18 @@ async def preview_chunking(
                 current_pos += len(text) + 1  # +1 for "\n" join separator
 
             total_characters = sum(len(str(p.get("text") or "")) for p in page_texts) + max(0, len(page_texts) - 1)
-            page_start_map = {item.get("page"): int(item.get("start") or 0) for item in page_texts}
+            # Prefer page_index mapping (unique) and keep first page-number occurrence as a best-effort fallback.
+            page_index_start_map = {
+                int(item.get("page_index")): int(item.get("start") or 0)
+                for item in page_texts
+                if item.get("page_index") is not None
+            }
+            for item in page_texts:
+                p = item.get("page")
+                if p is None:
+                    continue
+                if p not in page_start_map:
+                    page_start_map[p] = int(item.get("start") or 0)
             if include_original and total_characters <= int(original_text_max_chars or 0):
                 original_text_value = "\n".join([str(p.get("text") or "") for p in page_texts]) if page_texts else ""
         else:
@@ -4076,19 +4110,34 @@ async def preview_chunking(
         for idx, chunk in enumerate(chunks):
             content = chunk.page_content or ""
             meta = chunk.metadata or {}
-            page_num = meta.get('page') or meta.get('page_number')
-            local_start = meta.get('start_char')
+            page_num = meta.get("page") or meta.get("page_number")
+            page_index = meta.get("page_index")
+            local_start = meta.get("start_char")
 
             if idx in ragflow_chunk_start_map:
                 start_idx = ragflow_chunk_start_map[idx]
-            elif local_start is not None and page_num in page_start_map:
-                start_idx = page_start_map[page_num] + int(local_start)
-            elif page_num in page_start_map:
-                start_idx = page_start_map[page_num]
-            elif meta.get("start_char") is not None:
-                start_idx = int(meta.get("start_char"))
             else:
-                start_idx = 0
+                doc_base: int | None = None
+                if page_index is not None:
+                    try:
+                        doc_base = page_index_start_map.get(int(page_index))
+                    except Exception:
+                        doc_base = None
+                if doc_base is None and page_num is not None:
+                    doc_base = page_start_map.get(page_num)
+
+                if doc_base is None:
+                    # Last resort: treat start_char as already-global (best-effort).
+                    if meta.get("start_char") is not None:
+                        start_idx = int(meta.get("start_char"))
+                    else:
+                        start_idx = 0
+                else:
+                    try:
+                        local = int(local_start) if local_start is not None else 0
+                    except Exception:
+                        local = 0
+                    start_idx = int(doc_base) + local
 
             end_idx = start_idx + len(content)
             tokens_est = 0
@@ -4528,6 +4577,9 @@ async def preview_chunking_by_sha(
         )
         governance_duration_ms += int(max(0.0, (time.perf_counter() - _gov_started) * 1000.0))
 
+    # Ensure stable per-doc indices for offset rebasing (handles missing/duplicate page numbers).
+    _ensure_preview_page_indices(documents)
+
     if resolved_chunk_strategy == "separator":
         preset = (separator_preset or "").strip() or "paragraph"
         if preset != "custom":
@@ -4614,17 +4666,21 @@ async def preview_chunking_by_sha(
     # Merge original text: join parsed pages to keep start_index stable.
     page_texts: list[dict[str, object]] = []
     page_start_map: dict[object, int] = {}
+    page_index_start_map: dict[int, int] = {}
     total_characters = 0
     original_text_value: str | None = None
 
     current_pos = 0
     for doc in documents:
         text = doc.page_content or ""
-        page_num = doc.metadata.get("page")
+        meta = doc.metadata or {}
+        page_num = meta.get("page") or meta.get("page_number")
+        page_index = meta.get("page_index")
         page_texts.append(
             {
                 "text": text,
                 "page": page_num,
+                "page_index": page_index,
                 "start": current_pos,
                 "end": current_pos + len(text),
             }
@@ -4632,7 +4688,17 @@ async def preview_chunking_by_sha(
         current_pos += len(text) + 1  # +1 for "\n" join separator
 
     total_characters = sum(len(str(p.get("text") or "")) for p in page_texts) + max(0, len(page_texts) - 1)
-    page_start_map = {item.get("page"): int(item.get("start") or 0) for item in page_texts}
+    page_index_start_map = {
+        int(item.get("page_index")): int(item.get("start") or 0)
+        for item in page_texts
+        if item.get("page_index") is not None
+    }
+    for item in page_texts:
+        p = item.get("page")
+        if p is None:
+            continue
+        if p not in page_start_map:
+            page_start_map[p] = int(item.get("start") or 0)
     if include_original and total_characters <= int(original_text_max_chars or 0):
         original_text_value = "\n".join([str(p.get("text") or "") for p in page_texts]) if page_texts else ""
 
@@ -4652,17 +4718,30 @@ async def preview_chunking_by_sha(
     for idx, chunk in enumerate(chunks):
         content = chunk.page_content or ""
         meta = chunk.metadata or {}
-        page_num = meta.get('page') or meta.get('page_number')
-        local_start = meta.get('start_char')
+        page_num = meta.get("page") or meta.get("page_number")
+        page_index = meta.get("page_index")
+        local_start = meta.get("start_char")
 
-        if local_start is not None and page_num in page_start_map:
-            start_idx = page_start_map[page_num] + int(local_start)
-        elif page_num in page_start_map:
-            start_idx = page_start_map[page_num]
-        elif meta.get("start_char") is not None:
-            start_idx = int(meta.get("start_char"))
+        doc_base: int | None = None
+        if page_index is not None:
+            try:
+                doc_base = page_index_start_map.get(int(page_index))
+            except Exception:
+                doc_base = None
+        if doc_base is None and page_num is not None:
+            doc_base = page_start_map.get(page_num)
+
+        if doc_base is None:
+            if meta.get("start_char") is not None:
+                start_idx = int(meta.get("start_char"))
+            else:
+                start_idx = 0
         else:
-            start_idx = 0
+            try:
+                local = int(local_start) if local_start is not None else 0
+            except Exception:
+                local = 0
+            start_idx = int(doc_base) + local
 
         end_idx = start_idx + len(content)
         tokens_est = 0

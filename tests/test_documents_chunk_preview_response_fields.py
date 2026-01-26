@@ -31,7 +31,13 @@ def _override_get_current_account_id() -> str:
     return "test-account"
 
 
-def _build_client(monkeypatch, *, parsed_pages: int = 1):  # noqa: ANN001
+def _build_client(  # noqa: ANN001
+    monkeypatch,
+    *,
+    parsed_pages: int = 1,
+    include_page_meta: bool = True,
+    duplicate_page_meta: bool = False,
+):
     from app.api.v1.documents import preview_chunking, preview_chunking_by_sha
     from app.services.dataset_service import DatasetService
     import app.api.v1.documents as documents_module
@@ -53,20 +59,21 @@ def _build_client(monkeypatch, *, parsed_pages: int = 1):  # noqa: ANN001
         text = file_path.read_text(encoding="utf-8")
         pages = max(1, int(parsed_pages or 1))
         docs = []
+        def _meta_for_page(i: int) -> dict:  # noqa: ANN001
+            meta = {"start_char": 0}
+            if include_page_meta:
+                meta["page"] = 1 if duplicate_page_meta else (i + 1)
+            return meta
+
         if pages == 1:
-            docs = [
-                {
-                    "page_content": text,
-                    "metadata": {"page": 1, "start_char": 0},
-                }
-            ]
+            docs = [{"page_content": text, "metadata": _meta_for_page(0)}]
         else:
             # Make per-page content distinct so start offsets are deterministic.
             for i in range(pages):
                 docs.append(
                     {
                         "page_content": f"{text}\n\n# page {i + 1}",
-                        "metadata": {"page": i + 1, "start_char": 0},
+                        "metadata": _meta_for_page(i),
                     }
                 )
         return {
@@ -471,3 +478,49 @@ def test_documents_chunk_preview_ignores_parent_child_params_for_other_strategie
     body = res.json()
     assert any("ignored" in str(w) and "child_ratio" in str(w) for w in (body.get("warnings") or []))
     assert body.get("params", {}).get("strategy_params") == {}
+
+
+def test_documents_chunk_preview_rebases_offsets_when_page_missing(monkeypatch):  # noqa: ANN001
+    """
+    Regression: parsers may emit multiple Documents without a `metadata.page` field.
+
+    Chunk preview joins docs with "\\n"; start_index must be rebased by doc order, not by page (None).
+    """
+    client = _build_client(monkeypatch, parsed_pages=2, include_page_meta=False)
+    payload = b"hello world " * 10
+
+    res = client.post(
+        "/api/v1/documents/chunk-preview?chunk_size=100&chunk_overlap=10",
+        data={"parser_backend": "auto", "chunk_strategy": "langchain_recursive"},
+        files={"file": ("doc.txt", payload, "text/plain")},
+    )
+    assert res.status_code == 200
+    body = res.json()
+    assert len(body.get("chunks") or []) == 2
+    first = body["chunks"][0]
+    second = body["chunks"][1]
+    assert first["start_index"] == 0
+    assert second["start_index"] == len(first["content"]) + 1
+
+
+def test_documents_chunk_preview_rebases_offsets_when_page_duplicated(monkeypatch):  # noqa: ANN001
+    """
+    Regression: some parsers can emit duplicate page numbers (e.g. multiple segments per page).
+
+    start_index must not collide just because `metadata.page` is the same.
+    """
+    client = _build_client(monkeypatch, parsed_pages=2, include_page_meta=True, duplicate_page_meta=True)
+    payload = b"hello world " * 10
+
+    res = client.post(
+        "/api/v1/documents/chunk-preview?chunk_size=100&chunk_overlap=10",
+        data={"parser_backend": "auto", "chunk_strategy": "langchain_recursive"},
+        files={"file": ("doc.txt", payload, "text/plain")},
+    )
+    assert res.status_code == 200
+    body = res.json()
+    assert len(body.get("chunks") or []) == 2
+    first = body["chunks"][0]
+    second = body["chunks"][1]
+    assert first["start_index"] == 0
+    assert second["start_index"] == len(first["content"]) + 1
