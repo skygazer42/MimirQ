@@ -61,10 +61,8 @@ help:
 	@echo "  make doctor    - quick env sanity checks"
 
 init:
-	@# Non-destructive: only create files that don't exist.
-	@if [ ! -f docker/.env ] && [ -f docker/.env.example ]; then cp docker/.env.example docker/.env; echo "[init] created docker/.env"; else echo "[init] docker/.env exists (skip)"; fi
-	@if [ ! -f web/.env.local ] && [ -f web/.env.local.example ]; then cp web/.env.local.example web/.env.local; echo "[init] created web/.env.local"; else echo "[init] web/.env.local exists (skip)"; fi
-	@if [ ! -f .env ] && [ -f .env.example ]; then cp .env.example .env; echo "[init] created .env"; else echo "[init] .env exists (skip)"; fi
+	@# Cross-platform env bootstrap (non-destructive by default).
+	@$(PY) scripts/init_env.py
 
 up:
 	$(COMPOSE) up -d --build

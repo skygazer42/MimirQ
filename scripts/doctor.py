@@ -16,11 +16,12 @@ def _run(cmd: list[str]) -> tuple[int, str]:
     return result.returncode, out
 
 
-def _check_cmd(name: str, cmd: list[str]) -> bool:
+def _check_cmd(name: str, cmd: list[str], *, required: bool = True) -> bool:
     code, out = _run(cmd)
     if code == 127:
-        print(f"[doctor] MISSING: {name} ({cmd[0]} not found)")
-        return False
+        level = "MISSING" if required else "WARN"
+        print(f"[doctor] {level}: {name} ({cmd[0]} not found)")
+        return not required
     status = "OK" if code == 0 else f"ERR({code})"
     extra = f": {out}" if out else ""
     print(f"[doctor] {status}: {name}{extra}")
@@ -52,10 +53,17 @@ def main() -> int:
 
     ok = True
 
-    # Prefer python3 (most modern setups). Fall back to python (Windows / legacy PATH).
-    py_ok = _check_cmd("Python (python3)", ["python3", "--version"])
-    if not py_ok:
+    # Prefer python3 on Unix-like systems; prefer python on Windows.
+    if os_name == "Windows":
         py_ok = _check_cmd("Python (python)", ["python", "--version"])
+        # Optional: python3 alias (some Windows setups have it).
+        _check_cmd("Python (python3) (optional)", ["python3", "--version"], required=False)
+        if not py_ok:
+            py_ok = _check_cmd("Python (python3)", ["python3", "--version"])
+    else:
+        py_ok = _check_cmd("Python (python3)", ["python3", "--version"])
+        if not py_ok:
+            py_ok = _check_cmd("Python (python)", ["python", "--version"])
     ok &= py_ok
 
     # Warn (but don't fail) if local Python is < 3.11 (repo requires 3.11+ for syntax/deps).
@@ -78,9 +86,20 @@ def main() -> int:
     ok &= _check_file(repo_root / "web/package.json", required=True)
     ok &= _check_file(repo_root / "app/main.py", required=True)
 
-    _check_file(repo_root / ".env", required=False)
-    _check_file(repo_root / "docker/.env", required=False)
-    _check_file(repo_root / "web/.env.local", required=False)
+    env_files = [
+        repo_root / ".env",
+        repo_root / "docker/.env",
+        repo_root / "web/.env.local",
+    ]
+    missing_env: list[Path] = []
+    for path in env_files:
+        exists = path.exists()
+        _check_file(path, required=False)
+        if not exists:
+            missing_env.append(path)
+
+    if missing_env:
+        print("[doctor] HINT: Create env files with `python scripts/init_env.py` (or `make init`).")
 
     # Helpful hint: show whether pnpm is discoverable via PATH
     if shutil.which("pnpm") is None:

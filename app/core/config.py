@@ -386,6 +386,8 @@ class Settings(BaseSettings):
     BM25_STARTUP_BUILD_ENABLED: bool = False
     # Upper bound for startup-built chunks across the whole instance (0 disables the cap).
     BM25_STARTUP_BUILD_MAX_CHUNKS: int = 8000
+    # Max cached BM25 indices kept in memory (0 = unlimited). Useful for multi-tenant deployments.
+    BM25_CACHE_MAX_TENANTS: int = 32
     FAISS_STORE_PATH: str = "./vector_faiss"
     # FAISS persistence uses pickle; enable only when the index directory is fully trusted.
     FAISS_ALLOW_DANGEROUS_DESERIALIZATION: bool = False
@@ -756,6 +758,9 @@ class Settings(BaseSettings):
             raise ValueError(
                 f"RETRIEVAL_QUERY_PARALLELISM ({self.RETRIEVAL_QUERY_PARALLELISM}) must be >= 1"
             )
+
+        if int(getattr(self, "BM25_CACHE_MAX_TENANTS", 0) or 0) < 0:
+            raise ValueError("BM25_CACHE_MAX_TENANTS must be >= 0")
 
         # Validate workflow mode
         valid_workflow_modes = {"chain", "routing", "parallel", "react", "planner", "evaluator"}

@@ -1,0 +1,26 @@
+# Default: let Git auto-detect text files; keep working tree stable across platforms.
+* text=auto
+
+# Avoid CRLF issues in Docker / shell scripts.
+*.sh text eol=lf
+Dockerfile text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+
+# Source files
+*.py text eol=lf
+*.toml text eol=lf
+*.md text eol=lf
+*.mjs text eol=lf
+*.ts text eol=lf
+*.tsx text eol=lf
+*.json text eol=lf
+*.ps1 text eol=lf
+
+# Binaries
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.pdf binary
+

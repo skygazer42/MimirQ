@@ -64,7 +64,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Build backend image
-        run: docker build -t mimirq-backend .
+        run: docker build -t mimirq-backend -f docker/Dockerfile .
 
       - name: Build web image
         run: docker build -t mimirq-web -f web/Dockerfile.prod web

@@ -26,6 +26,8 @@ warnings.filterwarnings(
 )
 
 import logging
+import os
+import time
 from pathlib import Path
 from urllib.parse import urlparse
 from fastapi import FastAPI
@@ -40,12 +42,10 @@ from app.core.sentry import init_sentry
 from app.core.database import Base, SessionLocal, engine
 from app.core.exceptions import register_exception_handlers
 from app.core.migrations import apply_runtime_migrations
+from app.core.health_checks import check_database, check_minio, check_redis, check_vector
 from app.core.utils import parse_csv
 from app.api.v1 import router as api_v1_router
-from app.rag.retriever import hybrid_retriever
 from app.models.document import DocumentChunk, Document as DBDocument
-from app.storage.vector.milvus import milvus_store
-from app.storage.object.minio import minio_service
 from app.core.http_client import close_http_client_pool
 from app.tasks.queue import init_queue, close_queue, is_queue_initialized
 from app.api.middleware.request_id import RequestIDMiddleware
@@ -62,6 +62,36 @@ import app.models.user  # noqa: F401
 import app.models.connector  # noqa: F401
 
 logger = logging.getLogger("mimirq")
+_OPENAPI_EXPORT_MODE = str(os.getenv("MIMIRQ_OPENAPI_EXPORT", "") or "").strip().lower() in {"1", "true", "yes", "y", "on"}
+_HEALTH_CACHE_TTL_SEC = 2.0
+_health_cache: dict[str, object] = {"ts": 0.0, "payload": None, "key": None}
+
+
+def _health_cache_key() -> tuple[object, ...]:
+    # Include endpoints so the cache doesn't hide hot-reloaded settings changes.
+    return (
+        (getattr(settings, "VECTOR_BACKEND", "milvus") or "milvus").lower(),
+        bool(getattr(settings, "TASK_QUEUE_ENABLED", False)),
+        bool(getattr(settings, "EMBEDDING_CACHE_ENABLED", False)),
+        bool(getattr(settings, "MINIO_ENABLED", False)),
+        str(getattr(settings, "REDIS_URL", "") or ""),
+        str(getattr(settings, "MILVUS_HOST", "") or ""),
+        int(getattr(settings, "MILVUS_PORT", 0) or 0),
+        str(getattr(settings, "MINIO_ENDPOINT", "") or ""),
+        str(getattr(settings, "UPLOAD_DIR", "") or ""),
+    )
+
+
+def _get_cached_health_payload(cache_key: tuple[object, ...]) -> dict | None:  # type: ignore[type-arg]
+    now = time.monotonic()
+    payload = _health_cache.get("payload")
+    if (
+        payload is not None
+        and _health_cache.get("key") == cache_key
+        and (now - float(_health_cache.get("ts") or 0.0)) < _HEALTH_CACHE_TTL_SEC
+    ):
+        return payload  # type: ignore[return-value]
+    return None
 
 def _expand_dev_cors_origins(origins: list[str]) -> list[str]:
     """
@@ -111,10 +141,11 @@ configure_logging(
 )
 
 # Optional error monitoring (SENTRY_DSN).
-init_sentry()
+if not _OPENAPI_EXPORT_MODE:
+    init_sentry()
 
 # Optional OpenTelemetry tracing (OTEL_ENABLED).
-if init_otel():
+if not _OPENAPI_EXPORT_MODE and init_otel():
     instrument_httpx()
 
 
@@ -184,6 +215,8 @@ async def lifespan(app: FastAPI):
         logger.info("BM25 startup build disabled (BM25_STARTUP_BUILD_ENABLED=false)")
     else:
         logger.info("Initializing BM25 index (startup build)...")
+        from app.rag.retriever import hybrid_retriever
+
         db = SessionLocal()
         try:
             from sqlalchemy import func
@@ -350,48 +383,45 @@ async def root():
 @app.get("/health")
 async def health_check():
     """Health check."""
-    from sqlalchemy import text
+    cache_key = _health_cache_key()
+    cached = _get_cached_health_payload(cache_key)
+    if cached is not None:
+        return cached
 
-    db_status = {"status": "disconnected"}
-    db = SessionLocal()
-    try:
-        db.execute(text("SELECT 1"))
-        db_status["status"] = "connected"
-    except Exception as exc:
-        db_status["error"] = str(exc)[:200]
-    finally:
-        db.close()
+    db_status, _db_ok = check_database(SessionLocal)
 
+    # Vector (Milvus / local persistence backends)
     vector_backend = (getattr(settings, "VECTOR_BACKEND", "milvus") or "milvus").lower()
-    vector_status: dict = {"backend": vector_backend, "status": "unknown"}
-
-    milvus_status = {"status": "not_configured", "count": None}
+    milvus_get_count = None
     if vector_backend == "milvus":
-        milvus_status = {"status": "disconnected", "count": None}
         try:
-            milvus_status["count"] = milvus_store.get_collection_count()
-            milvus_status["status"] = "connected"
-        except Exception as exc:
-            milvus_status["error"] = str(exc)[:200]
-        vector_status.update(milvus_status)
-    elif vector_backend == "faiss":
-        path = Path(str(getattr(settings, "FAISS_STORE_PATH", "./vector_faiss")))
-        vector_status.update({"status": "ready" if path.exists() else "missing", "path": str(path)})
-    elif vector_backend == "chroma":
-        path = Path(str(getattr(settings, "CHROMA_PERSIST_PATH", "./vector_chroma")))
-        vector_status.update({"status": "ready" if path.exists() else "missing", "path": str(path)})
-    elif vector_backend == "memory":
-        vector_status.update({"status": "ready"})
+            from app.storage.vector.milvus import milvus_store
 
-    minio_status = {"status": "disabled"}
-    if settings.MINIO_ENABLED:
+            milvus_get_count = milvus_store.get_collection_count
+        except Exception:
+            milvus_get_count = None
+
+    vector_status, milvus_status, _vector_ok = check_vector(
+        settings,
+        mode="health",
+        milvus_get_collection_count=milvus_get_count,
+    )
+
+    # MinIO (optional)
+    minio_health_check = None
+    if bool(getattr(settings, "MINIO_ENABLED", False)):
         try:
-            minio_service._get_client()
-            minio_status["status"] = "connected"
-            minio_status["bucket"] = settings.MINIO_BUCKET_NAME
-        except Exception as exc:
-            minio_status["status"] = "disconnected"
-            minio_status["error"] = str(exc)[:200]
+            from app.storage.object.minio import minio_service
+
+            minio_health_check = minio_service.health_check
+        except Exception:
+            minio_health_check = None
+
+    minio_status, _minio_ok = check_minio(
+        settings,
+        mode="health",
+        minio_health_check=minio_health_check,
+    )
 
     uploads_status = {"status": "unknown", "path": settings.UPLOAD_DIR}
     try:
@@ -402,30 +432,7 @@ async def health_check():
         uploads_status["status"] = "unavailable"
         uploads_status["error"] = str(exc)[:200]
 
-    redis_required = bool(getattr(settings, "TASK_QUEUE_ENABLED", False))
-    redis_optional_cache = bool(getattr(settings, "EMBEDDING_CACHE_ENABLED", False))
-    redis_enabled = redis_required or redis_optional_cache
-    redis_status = {
-        "status": "disabled",
-        "enabled": redis_enabled,
-        "required": redis_required,
-        "embedding_cache_enabled": redis_optional_cache,
-    }
-    if redis_enabled:
-        try:
-            import redis
-
-            r = redis.Redis.from_url(
-                settings.REDIS_URL,
-                socket_timeout=1,
-                socket_connect_timeout=1,
-                decode_responses=True,
-            )
-            r.ping()
-            redis_status["status"] = "connected"
-        except Exception as exc:  # noqa: BLE001
-            redis_status["status"] = "disconnected"
-            redis_status["error"] = str(exc)[:200]
+    redis_status, _redis_ok, _reset_redis_client = check_redis(settings)
 
     task_queue_status = {
         "enabled": bool(getattr(settings, "TASK_QUEUE_ENABLED", False)),
@@ -436,7 +443,7 @@ async def health_check():
         task_queue_status["initialized"] = is_queue_initialized()
         task_queue_status["status"] = "connected" if task_queue_status["initialized"] else "not_initialized"
 
-    return {
+    payload = {
         "status": "healthy",
         "database": db_status,
         "vector": vector_status,
@@ -446,6 +453,10 @@ async def health_check():
         "uploads": uploads_status,
         "minio": minio_status,
     }
+    _health_cache["ts"] = time.monotonic()
+    _health_cache["payload"] = payload
+    _health_cache["key"] = cache_key
+    return payload
 
 
 if __name__ == "__main__":
