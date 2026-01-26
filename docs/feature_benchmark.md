@@ -78,3 +78,16 @@ MimirQ 现状：
 
 > 未纳入本次实现但建议作为下一阶段：文档级 ACL/security trimming（向量端过滤 + DB 兜底）、更多连接器（Confluence/Notion/GitHub 等）、评测面板/回归集管理、可视化工作流编排。
 
+## 4) 参考链接（对标资料）
+
+企业级（安全裁剪 / 文档级安全）：
+- Azure AI Search：Security trimming（按用户/组裁剪检索结果）https://learn.microsoft.com/en-us/azure/search/search-security-trimming
+- Amazon Kendra：Access control（基于权限的检索过滤）https://docs.aws.amazon.com/kendra/latest/dg/access-control.html
+- Elastic：Document level security（DLS）https://www.elastic.co/guide/en/elasticsearch/reference/current/document-level-security.html
+
+开源/产品化平台（连接器 / 切块能力）：
+- RAGFlow：Chunk templates（内置分块模板与策略说明）https://ragflow.io/docs/dev/chunk_templates
+- Dify：Chunk settings（知识库切块参数与策略）https://docs.dify.ai/guides/knowledge-base/chunk-settings
+- AnythingLLM：Authenticated website scraping（网页连接器/抓取）https://docs.anythingllm.com/agent/agents/agent-tools/authenticated-website-scraping
+- Open WebUI：RAG（知识库/RAG 集成说明）https://docs.openwebui.com/tutorial/rag/
+- Langflow：Components & Visual Workflows（可视化编排/组件）https://docs.langflow.org/components

@@ -60,6 +60,8 @@ const DEFAULT_OPTIONS: DocumentPipelineOptions = {
   near_dedup_max_bucket_size: 256,
   chunk_size: 1000,
   chunk_overlap: 200,
+  chunk_merge_small_min_chars: 0,
+  chunk_strategy_params: undefined,
   embedding_context_prefix_enabled: false,
   chunk_vector_enabled: true,
   bm25_index_enabled: true,
@@ -144,6 +146,30 @@ const normalizeRegexRules = (value: unknown): Array<{ pattern: string; repl?: st
   return out
 }
 
+const normalizeChunkStrategyParams = (value: unknown): Record<string, any> | undefined => {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined
+  const entries = Object.entries(value as any)
+  if (entries.length > 30) return undefined
+  const out: Record<string, any> = {}
+  for (const [k, v] of entries) {
+    const key = String(k || '').trim()
+    if (!key) continue
+    if (key.length > 80) return undefined
+    const t = typeof v
+    if (v == null || t === 'boolean' || t === 'number') {
+      out[key] = v
+      continue
+    }
+    if (t === 'string') {
+      if (String(v).length > 500) return undefined
+      out[key] = v
+      continue
+    }
+    return undefined
+  }
+  return Object.keys(out).length ? out : undefined
+}
+
 const normalizeOptions = (raw: any): DocumentPipelineOptions => {
   if (!raw || typeof raw !== 'object') return { ...DEFAULT_OPTIONS }
   return {
@@ -201,6 +227,8 @@ const normalizeOptions = (raw: any): DocumentPipelineOptions => {
     near_dedup_max_bucket_size: toInt(raw.near_dedup_max_bucket_size) ?? DEFAULT_OPTIONS.near_dedup_max_bucket_size,
     chunk_size: toInt(raw.chunk_size) ?? DEFAULT_OPTIONS.chunk_size,
     chunk_overlap: toInt(raw.chunk_overlap) ?? DEFAULT_OPTIONS.chunk_overlap,
+    chunk_merge_small_min_chars: toInt(raw.chunk_merge_small_min_chars) ?? DEFAULT_OPTIONS.chunk_merge_small_min_chars,
+    chunk_strategy_params: normalizeChunkStrategyParams(raw.chunk_strategy_params) ?? DEFAULT_OPTIONS.chunk_strategy_params,
     embedding_context_prefix_enabled: toBool(raw.embedding_context_prefix_enabled) ?? DEFAULT_OPTIONS.embedding_context_prefix_enabled,
     chunk_vector_enabled: toBool(raw.chunk_vector_enabled) ?? DEFAULT_OPTIONS.chunk_vector_enabled,
     bm25_index_enabled: toBool(raw.bm25_index_enabled) ?? DEFAULT_OPTIONS.bm25_index_enabled,
