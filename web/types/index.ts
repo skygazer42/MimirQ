@@ -268,6 +268,14 @@ export interface ChunkPreviewQualityGate {
   reasons?: string[]
 }
 
+export interface ChunkPreviewRecommendationPatch {
+  target?: 'preview' | 'pipeline' | 'perf'
+  id: string
+  title: string
+  description?: string
+  patch?: Record<string, any>
+}
+
 export interface ChunkPreviewReviewSignals {
   basis?: 'all' | 'child'
   short_indices?: number[]
@@ -304,6 +312,7 @@ export interface ChunkPreviewResponse {
   review_signals?: ChunkPreviewReviewSignals
   quality_gate?: ChunkPreviewQualityGate
   recommendations?: string[]
+  recommendation_patches?: ChunkPreviewRecommendationPatch[]
   original_text?: string
   original_text_included?: boolean
   original_text_truncated?: boolean

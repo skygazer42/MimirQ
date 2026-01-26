@@ -37,6 +37,8 @@ def _build_client(  # noqa: ANN001
     parsed_pages: int = 1,
     include_page_meta: bool = True,
     duplicate_page_meta: bool = False,
+    duplicate_page_content: bool = False,
+    start_char_overrides: list[int] | None = None,
 ):
     from app.api.v1.documents import preview_chunking, preview_chunking_by_sha
     from app.services.dataset_service import DatasetService
@@ -61,6 +63,8 @@ def _build_client(  # noqa: ANN001
         docs = []
         def _meta_for_page(i: int) -> dict:  # noqa: ANN001
             meta = {"start_char": 0}
+            if start_char_overrides and i < len(start_char_overrides):
+                meta["start_char"] = int(start_char_overrides[i])
             if include_page_meta:
                 meta["page"] = 1 if duplicate_page_meta else (i + 1)
             return meta
@@ -68,14 +72,9 @@ def _build_client(  # noqa: ANN001
         if pages == 1:
             docs = [{"page_content": text, "metadata": _meta_for_page(0)}]
         else:
-            # Make per-page content distinct so start offsets are deterministic.
             for i in range(pages):
-                docs.append(
-                    {
-                        "page_content": f"{text}\n\n# page {i + 1}",
-                        "metadata": _meta_for_page(i),
-                    }
-                )
+                content = text if duplicate_page_content else f"{text}\n\n# page {i + 1}"
+                docs.append({"page_content": content, "metadata": _meta_for_page(i)})
         return {
             "resolved_backend": "auto",
             "documents": docs,
@@ -135,6 +134,8 @@ def test_documents_chunk_preview_omits_original_text_when_too_large(monkeypatch)
     assert body["original_text_included"] is False
     assert body["original_text_truncated"] is True
     assert body["original_text_max_chars"] == 100000
+    patches = body.get("recommendation_patches") or []
+    assert any(p.get("id") == "increase_original_text_max_chars" for p in patches)
 
 
 def test_documents_chunk_preview_allows_small_token_chunk_size(monkeypatch):  # noqa: ANN001
@@ -524,3 +525,40 @@ def test_documents_chunk_preview_rebases_offsets_when_page_duplicated(monkeypatc
     second = body["chunks"][1]
     assert first["start_index"] == 0
     assert second["start_index"] == len(first["content"]) + 1
+
+
+def test_documents_chunk_preview_recommendation_patch_for_duplicates(monkeypatch):  # noqa: ANN001
+    client = _build_client(monkeypatch, parsed_pages=2, duplicate_page_content=True)
+
+    res = client.post(
+        "/api/v1/documents/chunk-preview?chunk_size=1000&chunk_overlap=200",
+        data={"parser_backend": "auto", "chunk_strategy": "langchain_recursive"},
+        files={"file": ("doc.txt", b"hello world", "text/plain")},
+    )
+    assert res.status_code == 200
+    body = res.json()
+    patches = body.get("recommendation_patches") or []
+    found = [p for p in patches if p.get("id") == "enable_governance_drop_duplicate_paragraphs"]
+    assert found, patches
+    assert found[0].get("target") == "pipeline"
+    assert (found[0].get("patch") or {}).get("governance_drop_duplicate_paragraphs") is True
+
+
+def test_documents_chunk_preview_recommendation_patch_for_overlap_waste(monkeypatch):  # noqa: ANN001
+    # Force overlap by shifting page 2 start_char so it begins at index 0 (complete overlap).
+    text = "hello"
+    doc_base = len(f"{text}\n\n# page 1") + 1  # join uses "\\n"
+    client = _build_client(monkeypatch, parsed_pages=2, start_char_overrides=[0, -doc_base])
+
+    res = client.post(
+        "/api/v1/documents/chunk-preview?chunk_size=1000&chunk_overlap=400",
+        data={"parser_backend": "auto", "chunk_strategy": "langchain_recursive"},
+        files={"file": ("doc.txt", text.encode("utf-8"), "text/plain")},
+    )
+    assert res.status_code == 200
+    body = res.json()
+    patches = body.get("recommendation_patches") or []
+    found = [p for p in patches if p.get("id") in ("tune_overlap", "reduce_overlap")]
+    assert found, patches
+    assert found[0].get("target") == "preview"
+    assert isinstance((found[0].get("patch") or {}).get("chunk_overlap"), int)
