@@ -1,0 +1,107 @@
+"""
+Dataset profile helpers (aggregation utils).
+
+Keep this module pure and dependency-free so it can be used from:
+- API endpoints (real-time summary)
+- background jobs (deep scan runs)
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from typing import Iterable, List, Optional, Sequence, Tuple
+
+
+def safe_int(value: object, *, default: int = 0) -> int:
+    try:
+        if value is None:
+            return int(default)
+        if isinstance(value, bool):
+            return int(default)
+        return int(value)  # type: ignore[arg-type]
+    except Exception:
+        return int(default)
+
+
+def safe_float(value: object, *, default: float = 0.0) -> float:
+    try:
+        if value is None:
+            return float(default)
+        if isinstance(value, bool):
+            return float(default)
+        return float(value)  # type: ignore[arg-type]
+    except Exception:
+        return float(default)
+
+
+def safe_bool(value: object, *, default: bool = False) -> bool:
+    if value is None:
+        return bool(default)
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return bool(value)
+    s = str(value).strip().lower()
+    if s in {"1", "true", "yes", "y", "on"}:
+        return True
+    if s in {"0", "false", "no", "n", "off"}:
+        return False
+    return bool(default)
+
+
+def percentile_from_sorted(sorted_values: Sequence[int], p: int) -> int:
+    if not sorted_values:
+        return 0
+    pp = max(0, min(100, int(p)))
+    pos = int((pp / 100.0) * (len(sorted_values) - 1))
+    pos = max(0, min(len(sorted_values) - 1, pos))
+    return int(sorted_values[pos] or 0)
+
+
+@dataclass(frozen=True)
+class HistogramBinSpec:
+    label: str
+    min: Optional[int] = None
+    max: Optional[int] = None
+
+    def contains(self, value: int) -> bool:
+        v = int(value or 0)
+        if self.min is not None and v < int(self.min):
+            return False
+        if self.max is not None and v >= int(self.max):
+            return False
+        return True
+
+
+def histogram(values: Iterable[int], bins: List[HistogramBinSpec]) -> List[dict]:
+    specs = list(bins or [])
+    counts = [0 for _ in specs]
+    for raw in values:
+        v = int(raw or 0)
+        for i, spec in enumerate(specs):
+            if spec.contains(v):
+                counts[i] += 1
+                break
+    out: List[dict] = []
+    for spec, count in zip(specs, counts):
+        out.append({"label": spec.label, "min": spec.min, "max": spec.max, "count": int(count)})
+    return out
+
+
+# Default bins (v1): tune later based on real customer corpora.
+TEXT_LENGTH_BINS: List[HistogramBinSpec] = [
+    HistogramBinSpec("0-500", 0, 500),
+    HistogramBinSpec("500-2k", 500, 2_000),
+    HistogramBinSpec("2k-10k", 2_000, 10_000),
+    HistogramBinSpec("10k-50k", 10_000, 50_000),
+    HistogramBinSpec("50k+", 50_000, None),
+]
+
+FILE_SIZE_BINS: List[HistogramBinSpec] = [
+    HistogramBinSpec("0-100KB", 0, 100 * 1024),
+    HistogramBinSpec("100KB-1MB", 100 * 1024, 1 * 1024 * 1024),
+    HistogramBinSpec("1-5MB", 1 * 1024 * 1024, 5 * 1024 * 1024),
+    HistogramBinSpec("5-20MB", 5 * 1024 * 1024, 20 * 1024 * 1024),
+    HistogramBinSpec("20MB+", 20 * 1024 * 1024, None),
+]
+
