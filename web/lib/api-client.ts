@@ -32,6 +32,11 @@ import type {
   DatasetCreate,
   DatasetUpdate,
   DatasetListResponse,
+  DatasetProfileSummary,
+  DatasetProfileFindingListResponse,
+  DatasetProfileScanRunCreateRequest,
+  DatasetProfileScanRunListResponse,
+  DatasetProfileScanRunOut,
   MessageFeedback,
   MessageFeedbackCreate,
   MessageFeedbackListResponse,
@@ -981,6 +986,45 @@ export const datasetApi = {
 
   async exportIngestionPolicy(datasetId: string): Promise<Blob> {
     const { data } = await apiClient.get(`/datasets/${datasetId}/ingestion-policy/export`, { responseType: 'blob' })
+    return data as Blob
+  },
+
+  // ==================== Dataset Profile (Ingestion Scan) ====================
+
+  async getProfileSummary(datasetId: string): Promise<DatasetProfileSummary> {
+    const { data } = await apiClient.get(`/datasets/${datasetId}/profile/summary`)
+    return data
+  },
+
+  async listProfileFinding(
+    datasetId: string,
+    findingKey: string,
+    params?: { skip?: number; limit?: number }
+  ): Promise<DatasetProfileFindingListResponse> {
+    const { data } = await apiClient.get(`/datasets/${datasetId}/profile/findings/${findingKey}`, { params })
+    return data
+  },
+
+  async startProfileScan(datasetId: string, body: DatasetProfileScanRunCreateRequest): Promise<DatasetProfileScanRunOut> {
+    const { data } = await apiClient.post(`/datasets/${datasetId}/profile/scan-runs`, body || {})
+    return data
+  },
+
+  async listProfileScanRuns(
+    datasetId: string,
+    params?: { skip?: number; limit?: number }
+  ): Promise<DatasetProfileScanRunListResponse> {
+    const { data } = await apiClient.get(`/datasets/${datasetId}/profile/scan-runs`, { params })
+    return data
+  },
+
+  async getProfileScanRun(datasetId: string, scanRunId: string): Promise<DatasetProfileScanRunOut> {
+    const { data } = await apiClient.get(`/datasets/${datasetId}/profile/scan-runs/${scanRunId}`)
+    return data
+  },
+
+  async exportProfileSummary(datasetId: string): Promise<Blob> {
+    const { data } = await apiClient.get(`/datasets/${datasetId}/profile/export`, { responseType: 'blob' })
     return data as Blob
   },
 }
