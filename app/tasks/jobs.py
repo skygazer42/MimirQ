@@ -10,17 +10,20 @@ Notes:
 import asyncio
 import contextlib
 import time
+from datetime import datetime, timezone
 from pathlib import Path
 from uuid import UUID
 import uuid
 
 from app.core.database import SessionLocal
 from app.models.document import Document as DBDocument
+from app.models.dataset_profile_scan import DatasetProfileScanRun as DBDatasetProfileScanRun
 from app.parsing.processors.processor import document_processor
 from app.rag.core.logging import get_logger
 from app.core.config import settings
 from app.storage.object.minio import is_minio_uri, minio_service, parse_minio_uri
 from app.tasks.locks import acquire_lock, get_retry_exc, make_lock_value, release_lock, tenant_acquire, tenant_release
+from app.services.dataset_profile_scan_runner import run_dataset_profile_deep_scan
 
 logger = get_logger("tasks.jobs")
 
@@ -227,6 +230,108 @@ async def process_document_job(ctx, tenant_id: str, document_id: str, requested_
             if temp_path is not None:
                 with contextlib.suppress(Exception):
                     temp_path.unlink(missing_ok=True)
+        elapsed = time.perf_counter() - t0
+        return {"ok": True, "elapsed_sec": round(elapsed, 3), "result": result}
+    finally:
+        if redis is not None and lock_key and lock_val:
+            await release_lock(redis, key=lock_key, value=lock_val)
+        await tenant_release(redis, sem_key)
+        db.close()
+
+
+async def dataset_profile_scan_job(ctx, tenant_id: str, dataset_id: str, scan_run_id: str, requested_by: str) -> dict:  # noqa: ANN001
+    """
+    Dataset profile deep scan job: best-effort backfill missing document metrics and persist a summary.
+
+    Args:
+        tenant_id: tenant UUID string
+        dataset_id: dataset UUID string
+        scan_run_id: scan run UUID string
+        requested_by: account_id (for permission semantics + audit)
+    """
+    t0 = time.perf_counter()
+    tid = UUID(tenant_id)
+    dsid = UUID(dataset_id)
+    rid = UUID(scan_run_id)
+
+    db = SessionLocal()
+    redis = None
+    lock_key = None
+    lock_val = None
+    sem_key = None
+    try:
+        # Ensure scan run exists under tenant/dataset.
+        run = (
+            db.query(DBDatasetProfileScanRun)
+            .filter(
+                DBDatasetProfileScanRun.id == rid,
+                DBDatasetProfileScanRun.tenant_id == tid,
+                DBDatasetProfileScanRun.dataset_id == dsid,
+            )
+            .first()
+        )
+        if run is None:
+            return {"ok": False, "reason": "scan_run_not_found", "tenant_id": tenant_id, "dataset_id": dataset_id, "scan_run_id": scan_run_id}
+
+        # Idempotent lock: avoid concurrent scans per dataset.
+        try:
+            redis = ctx.get("redis") if isinstance(ctx, dict) else None
+        except Exception:  # noqa: BLE001
+            redis = None
+
+        lock_key = f"lock:dataset_profile_scan:{tenant_id}:{dataset_id}"
+        lock_val = make_lock_value(requested_by)
+        lock_ttl = 60 * 40  # 40 min
+
+        if redis is not None:
+            sem_key = await tenant_acquire(
+                redis,
+                tenant_id=tenant_id,
+                kind="scan",
+                limit=int(getattr(settings, "TASK_TENANT_MAX_CONCURRENCY_DOC", 0) or 0),
+                ttl_sec=120,
+            )
+            acquired = await acquire_lock(redis, key=lock_key, value=lock_val, ttl_sec=lock_ttl)
+            if not acquired:
+                logger.info("Skip dataset scan job due to active lock: %s", lock_key)
+                return {
+                    "ok": True,
+                    "skipped": "locked",
+                    "tenant_id": tenant_id,
+                    "dataset_id": dataset_id,
+                    "scan_run_id": scan_run_id,
+                }
+
+        # Execute deep scan (sync, best-effort).
+        try:
+            result = run_dataset_profile_deep_scan(
+                db,
+                tenant_id=tid,
+                account_id=requested_by,
+                dataset_id=dsid,
+                scan_run_id=rid,
+            )
+        except Exception as exc:  # noqa: BLE001
+            # Mark run failed.
+            try:
+                run = (
+                    db.query(DBDatasetProfileScanRun)
+                    .filter(
+                        DBDatasetProfileScanRun.id == rid,
+                        DBDatasetProfileScanRun.tenant_id == tid,
+                        DBDatasetProfileScanRun.dataset_id == dsid,
+                    )
+                    .first()
+                )
+                if run is not None:
+                    run.status = "failed"
+                    run.error_message = str(exc)[:200]
+                    run.finished_at = datetime.now(timezone.utc)
+                    db.commit()
+            except Exception:
+                pass
+            raise
+
         elapsed = time.perf_counter() - t0
         return {"ok": True, "elapsed_sec": round(elapsed, 3), "result": result}
     finally:
