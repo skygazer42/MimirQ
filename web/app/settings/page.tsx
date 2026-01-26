@@ -217,6 +217,11 @@ export default function SettingsPage() {
     () => ({ ...(settings?.rag ?? {}), ...(editedSettings.rag ?? {}) }) as Partial<SystemSettings['rag']>,
     [settings?.rag, editedSettings.rag]
   )
+  const urlIngestMerged = useMemo(
+    () =>
+      ({ ...(settings?.url_ingest ?? {}), ...(editedSettings.url_ingest ?? {}) }) as Partial<SystemSettings['url_ingest']>,
+    [settings?.url_ingest, editedSettings.url_ingest]
+  )
 
   // 加载配置
   useEffect(() => {
@@ -325,6 +330,12 @@ export default function SettingsPage() {
     const current = (editedSettings.rag || settings?.rag || {}) as SystemSettings['rag']
     const next = { ...current, ...patch }
     setEditedSettings((prev) => ({ ...prev, rag: next as any }))
+  }
+
+  const updateUrlIngest = (patch: Partial<SystemSettings['url_ingest']>) => {
+    const current = (editedSettings.url_ingest || settings?.url_ingest || {}) as SystemSettings['url_ingest']
+    const next = { ...current, ...patch }
+    setEditedSettings((prev) => ({ ...prev, url_ingest: next as any }))
   }
 
   // 检查是否有未保存的更改
@@ -1141,13 +1152,148 @@ export default function SettingsPage() {
 	                    </div>
 	                  </div>
 	                </div>
-              </section>
+	              </section>
 
-              {/* 观测与调试 */}
-              <section>
-                <div className="flex items-center justify-between mb-6">
-                  <h2 className="text-lg font-semibold text-foreground flex items-center gap-2">
-                    <Eye className="h-5 w-5 text-primary" />
+	              {/* URL 导入（后端拉取） */}
+	              <section>
+	                <div className="flex items-center justify-between mb-6">
+	                  <h2 className="text-lg font-semibold text-foreground flex items-center gap-2">
+	                    <Network className="h-5 w-5 text-primary" />
+	                    URL 导入
+	                  </h2>
+	                  <div className="flex items-center gap-2 px-3 py-1 bg-primary/10 text-primary rounded-full text-xs font-medium border border-primary/20">
+	                    <span>保存后通常可立即生效</span>
+	                  </div>
+	                </div>
+
+	                <div className="bg-card border border-border rounded-2xl p-6 shadow-sm space-y-6">
+	                  <Alert variant="destructive" className="shadow-soft/40">
+	                    <AlertCircle className="h-4 w-4" />
+	                    <div>
+	                      <AlertTitle>安全提示</AlertTitle>
+	                      <AlertDescription className="text-foreground/80">
+	                        URL 导入会由后端发起网络请求，存在 SSRF 风险。生产环境建议保持关闭，或配置 egress 防火墙/allowlist。
+	                      </AlertDescription>
+	                    </div>
+	                  </Alert>
+
+	                  <div className="flex items-start justify-between gap-4">
+	                    <div>
+	                      <div className="text-sm font-semibold text-foreground">启用 URL 导入</div>
+	                      <div className="text-xs text-muted-foreground mt-1">
+	                        允许通过 URL 拉取内容并入库（知识库页面的“URL 导入”会依赖此开关）
+	                      </div>
+	                    </div>
+	                    <button
+	                      type="button"
+	                      onClick={() => {
+	                        const next = !Boolean(urlIngestMerged.enabled ?? false)
+	                        if (next) {
+	                          const ok = confirm('启用 URL 导入会让后端对外发起请求，可能带来 SSRF 风险。确定启用吗？')
+	                          if (!ok) return
+	                        }
+	                        updateUrlIngest({ enabled: next })
+	                      }}
+	                      className="shrink-0"
+	                      aria-label="Toggle URL ingest"
+	                    >
+	                      {Boolean(urlIngestMerged.enabled ?? false) ? (
+	                        <ToggleRight className="w-10 h-10 text-primary" />
+	                      ) : (
+	                        <ToggleLeft className="w-10 h-10 text-muted-foreground hover:text-muted-foreground" />
+	                      )}
+	                    </button>
+	                  </div>
+
+	                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+	                    <div>
+	                      <div className="text-xs text-muted-foreground mb-1">最大下载大小（字节）</div>
+	                      <Input
+	                        type="number"
+	                        min={0}
+	                        value={urlIngestMerged.max_bytes ?? 50_000_000}
+	                        onChange={(e) => updateUrlIngest({ max_bytes: Math.max(0, parseInt(e.target.value || '0', 10)) })}
+	                      />
+	                    </div>
+	                    <div>
+	                      <div className="text-xs text-muted-foreground mb-1">下载超时（秒）</div>
+	                      <Input
+	                        type="number"
+	                        min={0}
+	                        step="0.5"
+	                        value={urlIngestMerged.timeout_sec ?? 30.0}
+	                        onChange={(e) => updateUrlIngest({ timeout_sec: Math.max(0, parseFloat(e.target.value || '0')) })}
+	                      />
+	                    </div>
+	                  </div>
+
+	                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+	                    <div className="flex items-start justify-between gap-4 rounded-xl border border-border p-4 bg-muted/30">
+	                      <div>
+	                        <div className="text-sm font-semibold text-foreground">允许访问内网/私网 IP</div>
+	                        <div className="text-xs text-muted-foreground mt-1">
+	                          高风险：可能导致 SSRF 打到内网服务（强烈不建议）
+	                        </div>
+	                      </div>
+	                      <button
+	                        type="button"
+	                        onClick={() => {
+	                          const current = Boolean(urlIngestMerged.allow_private_ips ?? false)
+	                          const next = !current
+	                          if (next) {
+	                            const ok = confirm('允许访问内网/私网 IP 风险极高（SSRF）。确定开启吗？')
+	                            if (!ok) return
+	                          }
+	                          updateUrlIngest({ allow_private_ips: next })
+	                        }}
+	                        className="shrink-0"
+	                        aria-label="Toggle allow private IPs"
+	                      >
+	                        {Boolean(urlIngestMerged.allow_private_ips ?? false) ? (
+	                          <ToggleRight className="w-10 h-10 text-primary" />
+	                        ) : (
+	                          <ToggleLeft className="w-10 h-10 text-muted-foreground hover:text-muted-foreground" />
+	                        )}
+	                      </button>
+	                    </div>
+
+	                    <div className="flex items-start justify-between gap-4 rounded-xl border border-border p-4 bg-muted/30">
+	                      <div>
+	                        <div className="text-sm font-semibold text-foreground">跟随重定向</div>
+	                        <div className="text-xs text-muted-foreground mt-1">
+	                          可能重定向到内网/大文件；建议保持关闭
+	                        </div>
+	                      </div>
+	                      <button
+	                        type="button"
+	                        onClick={() => {
+	                          const current = Boolean(urlIngestMerged.follow_redirects ?? false)
+	                          const next = !current
+	                          if (next) {
+	                            const ok = confirm('跟随重定向可能引入 SSRF/大文件风险。确定开启吗？')
+	                            if (!ok) return
+	                          }
+	                          updateUrlIngest({ follow_redirects: next })
+	                        }}
+	                        className="shrink-0"
+	                        aria-label="Toggle follow redirects"
+	                      >
+	                        {Boolean(urlIngestMerged.follow_redirects ?? false) ? (
+	                          <ToggleRight className="w-10 h-10 text-primary" />
+	                        ) : (
+	                          <ToggleLeft className="w-10 h-10 text-muted-foreground hover:text-muted-foreground" />
+	                        )}
+	                      </button>
+	                    </div>
+	                  </div>
+	                </div>
+	              </section>
+
+	              {/* 观测与调试 */}
+	              <section>
+	                <div className="flex items-center justify-between mb-6">
+	                  <h2 className="text-lg font-semibold text-foreground flex items-center gap-2">
+	                    <Eye className="h-5 w-5 text-primary" />
                     观测与调试
                   </h2>
                   <div className="flex items-center gap-2 px-3 py-1 bg-primary/10 text-primary rounded-full text-xs font-medium border border-primary/20">
