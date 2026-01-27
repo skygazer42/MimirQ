@@ -33,7 +33,6 @@ from app.models.dataset_precheck_scan import DatasetPrecheckScanRun as DBDataset
 from app.rag.core.logging import get_logger
 from app.rag.preprocessing.pii_anonymizer import anonymize_pii
 from app.rag.preprocessing.secrets import redact_secrets
-from app.parsing.quality.scorer import score_pdf_quality
 from app.services.dataset_profile_utils import FILE_SIZE_BINS, TEXT_LENGTH_BINS, histogram, percentile_from_sorted, safe_int
 
 logger = get_logger("services.dataset_precheck_scan")
@@ -426,6 +425,12 @@ def run_dataset_precheck_scan(
             "length_percentiles": {"p25": 0, "p50": 0, "p75": 0, "p90": 0, "p99": 0},
             "length_histogram": [],
             "pdf_scan": {"scanned": 0, "not_scanned": 0, "unknown": 0},
+            "pdf_detection": {
+                "sample_pages": int(pdf_sample_pages),
+                "scan_max_chars_per_page": int(pdf_scan_max_chars),
+                "text_min_chars_per_page": int(pdf_text_min_chars),
+                "scan_ratio_threshold": float(pdf_scan_ratio_threshold),
+            },
             "pii_hits_total": {},
             "secrets_hits_total": {},
             "findings": [
@@ -623,6 +628,12 @@ def run_dataset_precheck_scan(
         "length_percentiles": percentiles,
         "length_histogram": histogram(text_lengths, TEXT_LENGTH_BINS),
         "pdf_scan": {"scanned": int(pdf_scanned), "not_scanned": int(pdf_not_scanned), "unknown": int(pdf_unknown)},
+        "pdf_detection": {
+            "sample_pages": int(pdf_sample_pages),
+            "scan_max_chars_per_page": int(pdf_scan_max_chars),
+            "text_min_chars_per_page": int(pdf_text_min_chars),
+            "scan_ratio_threshold": float(pdf_scan_ratio_threshold),
+        },
         "pii_hits_total": {k: int(v) for k, v in pii_totals.items()},
         "secrets_hits_total": {k: int(v) for k, v in secrets_totals.items()},
         "findings": [
