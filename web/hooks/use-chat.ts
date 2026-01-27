@@ -5,8 +5,8 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { Citation, Message, StreamEvent } from '@/types'
-import { withRequestId } from '@/lib/api-errors'
-import { API_TIMEOUT_MS } from '@/lib/env'
+import { extractBackendMessage, withRequestId } from '@/lib/api-errors'
+import { API_LONG_TIMEOUT_MS, API_TIMEOUT_MS } from '@/lib/env'
 import { chatApi } from '@/lib/api-client'
 
 interface UseChatOptions {
@@ -213,7 +213,7 @@ export function useChat({
       abortControllerRef.current = new AbortController()
 
       let didTimeout = false
-      const timeoutId = window.setTimeout(() => {
+      let timeoutId = window.setTimeout(() => {
         didTimeout = true
         abortControllerRef.current?.abort()
       }, API_TIMEOUT_MS)
@@ -229,151 +229,225 @@ export function useChat({
         let citations: Citation[] = []
         let steps: string[] = []
         let sawFirstEvent = false
+        let sawDone = false
         let streamError: Error | null = null
 
-        await chatApi.streamChat(
-          {
-            conversation_id: conversationId,
-            message,
-            history,
-            document_ids: documentIds,
-            prompt_template_id: promptTemplateId,
-            stream: !useGraph,
-            structured_output: Boolean(structuredOutput),
-            structured_preset: structuredPreset || undefined,
-            enable_long_term_memory: Boolean(enableLongTermMemory),
-            rag_config: Object.keys(effectiveRagConfig).length ? effectiveRagConfig : undefined,
-          },
-          (jsonStr) => {
-            if (!sawFirstEvent) {
-              sawFirstEvent = true
-              // Treat this as a "connect" timeout: once the first SSE frame arrives, stop the timer.
-              window.clearTimeout(timeoutId)
-            }
+        const chatRequest = {
+          conversation_id: conversationId,
+          message,
+          history,
+          document_ids: documentIds,
+          prompt_template_id: promptTemplateId,
+          stream: !useGraph,
+          structured_output: Boolean(structuredOutput),
+          structured_preset: structuredPreset || undefined,
+          enable_long_term_memory: Boolean(enableLongTermMemory),
+          rag_config: Object.keys(effectiveRagConfig).length ? effectiveRagConfig : undefined,
+        }
 
-            let event: StreamEvent
-            try {
-              event = JSON.parse(jsonStr)
-            } catch (e) {
-              console.error('Failed to parse SSE event:', e)
-              return
-            }
-
-            if (event.type === 'citations') {
-              citations = event.data
-              setCurrentCitations(citations)
-              return
-            }
-
-            if (event.type === 'event') {
-              const msg = event.data?.message
-              if (msg) {
-                steps = [...steps, msg]
-                setCurrentSteps(steps)
-              }
-              return
-            }
-
-            if (event.type === 'graph') {
-              const msg = formatGraphStep(event.data)
-              if (msg) {
-                steps = [...steps, msg]
-                setCurrentSteps(steps)
-              }
-              return
-            }
-
-            if (event.type === 'route') {
-              const msg = formatRouteStep(event.data)
-              if (msg) {
-                steps = [...steps, msg]
-                setCurrentSteps(steps)
-              }
-              return
-            }
-
-            if (event.type === 'rewrite') {
-              const msg = formatRewriteStep(event.data)
-              if (msg) {
-                steps = [...steps, msg]
-                setCurrentSteps(steps)
-              }
-              return
-            }
-
-            if (event.type === 'token') {
-              fullResponseRef.current += event.data.content
-              scheduleCurrentResponseUpdate()
-              return
-            }
-
-            if (event.type === 'done') {
-              flushCurrentResponseUpdate()
-              const nextConversationId = (event?.data?.conversation_id || '').trim()
-              if (nextConversationId && nextConversationId !== (conversationId || '')) {
-                setConversationId(nextConversationId)
-                onConversationId?.(nextConversationId)
+        try {
+          await chatApi.streamChat(
+            chatRequest,
+            (jsonStr) => {
+              if (!sawFirstEvent) {
+                sawFirstEvent = true
+                // Treat this as a "connect" timeout: once the first SSE frame arrives, stop the timer.
+                window.clearTimeout(timeoutId)
               }
 
-              const doneData = event?.data || {}
-              const assistantMessageId = String(
-                doneData?.assistant_message_id || doneData?.message_id || Date.now().toString()
-              )
+              let event: StreamEvent
+              try {
+                event = JSON.parse(jsonStr)
+              } catch (e) {
+                console.error('Failed to parse SSE event:', e)
+                return
+              }
 
-              let assistantContent = fullResponseRef.current
-              if (structuredOutput && event?.data?.structured_data != null) {
-                try {
-                  assistantContent = `\`\`\`json\n${JSON.stringify(event.data.structured_data, null, 2)}\n\`\`\``
-                } catch {
-                  assistantContent = fullResponseRef.current
+              if (event.type === 'citations') {
+                citations = event.data
+                setCurrentCitations(citations)
+                return
+              }
+
+              if (event.type === 'event') {
+                const msg = event.data?.message
+                if (msg) {
+                  steps = [...steps, msg]
+                  setCurrentSteps(steps)
                 }
+                return
               }
 
-              const messageMetadata = {
-                ...(doneData?.metrics || {}),
-                request_id: event.request_id || doneData?.request_id,
-                total_tokens: doneData?.total_tokens,
-                total_chars: doneData?.total_chars,
-                citations_count: doneData?.citations_count,
-                model_used: doneData?.model_used,
-                route: doneData?.route,
-                retrieval_mode: doneData?.retrieval_mode,
-                vector_backend: doneData?.vector_backend,
-                structured: doneData?.structured,
-                structured_preset: doneData?.structured_preset,
-                structured_parse_ok: (doneData?.metrics || {})?.structured_parse_ok,
+              if (event.type === 'graph') {
+                const msg = formatGraphStep(event.data)
+                if (msg) {
+                  steps = [...steps, msg]
+                  setCurrentSteps(steps)
+                }
+                return
               }
 
-              const assistantMessage: Message = {
-                id: assistantMessageId,
-                role: 'assistant',
-                content: assistantContent,
-                citations,
-                steps,
-                message_metadata: messageMetadata,
-                created_at: new Date().toISOString(),
+              if (event.type === 'route') {
+                const msg = formatRouteStep(event.data)
+                if (msg) {
+                  steps = [...steps, msg]
+                  setCurrentSteps(steps)
+                }
+                return
               }
 
-              setMessages((prev) => [...prev, assistantMessage])
-              setCurrentResponse('')
-              setCurrentCitations([])
-              setCurrentSteps([])
-              fullResponseRef.current = ''
-              return
+              if (event.type === 'rewrite') {
+                const msg = formatRewriteStep(event.data)
+                if (msg) {
+                  steps = [...steps, msg]
+                  setCurrentSteps(steps)
+                }
+                return
+              }
+
+              if (event.type === 'token') {
+                fullResponseRef.current += event.data.content
+                scheduleCurrentResponseUpdate()
+                return
+              }
+
+              if (event.type === 'done') {
+                sawDone = true
+                flushCurrentResponseUpdate()
+                const nextConversationId = (event?.data?.conversation_id || '').trim()
+                if (nextConversationId && nextConversationId !== (conversationId || '')) {
+                  setConversationId(nextConversationId)
+                  onConversationId?.(nextConversationId)
+                }
+
+                const doneData = event?.data || {}
+                const assistantMessageId = String(
+                  doneData?.assistant_message_id || doneData?.message_id || Date.now().toString()
+                )
+
+                let assistantContent = fullResponseRef.current
+                if (structuredOutput && event?.data?.structured_data != null) {
+                  try {
+                    assistantContent = `\`\`\`json\n${JSON.stringify(event.data.structured_data, null, 2)}\n\`\`\``
+                  } catch {
+                    assistantContent = fullResponseRef.current
+                  }
+                }
+
+                const messageMetadata = {
+                  ...(doneData?.metrics || {}),
+                  request_id: event.request_id || doneData?.request_id,
+                  total_tokens: doneData?.total_tokens,
+                  total_chars: doneData?.total_chars,
+                  citations_count: doneData?.citations_count,
+                  model_used: doneData?.model_used,
+                  route: doneData?.route,
+                  retrieval_mode: doneData?.retrieval_mode,
+                  vector_backend: doneData?.vector_backend,
+                  structured: doneData?.structured,
+                  structured_preset: doneData?.structured_preset,
+                  structured_parse_ok: (doneData?.metrics || {})?.structured_parse_ok,
+                }
+
+                const assistantMessage: Message = {
+                  id: assistantMessageId,
+                  role: 'assistant',
+                  content: assistantContent,
+                  citations,
+                  steps,
+                  message_metadata: messageMetadata,
+                  created_at: new Date().toISOString(),
+                }
+
+                setMessages((prev) => [...prev, assistantMessage])
+                setCurrentResponse('')
+                setCurrentCitations([])
+                setCurrentSteps([])
+                fullResponseRef.current = ''
+                return
+              }
+
+              if (event.type === 'error') {
+                const msg = event.data?.message || 'Unknown error'
+                streamError = new Error(withRequestId(msg, event.request_id))
+              }
+            },
+            { signal: abortControllerRef.current.signal }
+          )
+
+          if (streamError) throw streamError
+          if (!sawFirstEvent || !sawDone) {
+            throw new Error('SSE stream ended unexpectedly')
+          }
+        } catch (streamErr: any) {
+          if (streamErr?.name === 'AbortError') throw streamErr
+          if (sawDone) {
+            console.warn('SSE closed after done', streamErr)
+          } else {
+            console.warn('SSE unavailable; falling back to non-streaming chat', streamErr)
+
+            // Switch to a longer timeout when falling back to non-streaming chat.
+            window.clearTimeout(timeoutId)
+            timeoutId = window.setTimeout(() => {
+              didTimeout = true
+              abortControllerRef.current?.abort()
+            }, API_LONG_TIMEOUT_MS)
+
+            const resp = await chatApi.chat(chatRequest, { signal: abortControllerRef.current.signal })
+
+            window.clearTimeout(timeoutId)
+
+            const nextConversationId = (resp?.conversation_id || '').trim()
+            if (nextConversationId && nextConversationId !== (conversationId || '')) {
+              setConversationId(nextConversationId)
+              onConversationId?.(nextConversationId)
             }
 
-            if (event.type === 'error') {
-              const msg = event.data?.message || 'Unknown error'
-              streamError = new Error(withRequestId(msg, event.request_id))
+            let assistantContent = resp?.content || ''
+            if (structuredOutput && resp?.structured_data != null) {
+              try {
+                assistantContent = `\`\`\`json\n${JSON.stringify(resp.structured_data, null, 2)}\n\`\`\``
+              } catch {
+                assistantContent = resp?.content || ''
+              }
             }
-          },
-          { signal: abortControllerRef.current.signal }
-        )
 
-        if (streamError) throw streamError
+            const citationsFromResp = resp?.citations || []
+            const messageMetadata = {
+              ...(resp?.metrics || {}),
+              request_id: resp?.request_id,
+              total_tokens: resp?.total_tokens,
+              total_chars: resp?.total_chars,
+              citations_count: citationsFromResp.length,
+              retrieval_mode: resp?.retrieval_mode,
+              vector_backend: resp?.vector_backend,
+              structured: resp?.structured,
+              structured_preset: structuredPreset || undefined,
+              structured_parse_ok: (resp?.metrics || {})?.structured_parse_ok,
+            }
+
+            const assistantMessage: Message = {
+              id: String(resp?.assistant_message_id || Date.now().toString()),
+              role: 'assistant',
+              content: assistantContent,
+              citations: citationsFromResp,
+              steps: [],
+              message_metadata: messageMetadata,
+              created_at: new Date().toISOString(),
+            }
+
+            setMessages((prev) => [...prev, assistantMessage])
+            setCurrentResponse('')
+            setCurrentCitations([])
+            setCurrentSteps([])
+            fullResponseRef.current = ''
+          }
+        }
+
         flushCurrentResponseUpdate()
       } catch (err: any) {
-        if (err?.name === 'AbortError') {
+        const isAbort = err?.name === 'AbortError' || err?.name === 'CanceledError' || err?.code === 'ERR_CANCELED'
+        if (isAbort) {
           if (didTimeout) {
             onError?.('Request timed out')
           } else {

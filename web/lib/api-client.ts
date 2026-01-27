@@ -1253,6 +1253,7 @@ export const chatApi = {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
+        Accept: 'text/event-stream',
         ...getAuthHeaders(),
         'X-Request-ID': requestId,
       },
@@ -1269,15 +1270,16 @@ export const chatApi = {
       throw new Error('No response body')
     }
 
+    const backendRequestId = response.headers.get('X-Request-ID') || requestId
     await readSseDataStrings(reader, onJson, options.onError)
-    return { requestId }
+    return { requestId: backendRequestId }
   },
 
   /**
    * 非流式聊天（一次性返回 JSON）
    */
-  async chat(request: ChatRequest): Promise<ChatResponse> {
-    const { data } = await apiClient.post('/chat', request, { timeout: API_LONG_TIMEOUT_MS })
+  async chat(request: ChatRequest, options: { signal?: AbortSignal } = {}): Promise<ChatResponse> {
+    const { data } = await apiClient.post('/chat', request, { timeout: API_LONG_TIMEOUT_MS, signal: options.signal })
     return data
   },
 
@@ -1317,6 +1319,7 @@ export const sseApi = {
     const response = await fetch(`${API_V1_BASE_URL}/datasets/${datasetId}/precheck/scan-runs/${scanRunId}/events`, {
       method: 'GET',
       headers: {
+        Accept: 'text/event-stream',
         ...getAuthHeaders(),
         'X-Request-ID': requestId,
       },
@@ -1332,8 +1335,9 @@ export const sseApi = {
       throw new Error('No response body')
     }
 
+    const backendRequestId = response.headers.get('X-Request-ID') || requestId
     await readSseDataStrings(reader, onJson, options.onError)
-    return { requestId }
+    return { requestId: backendRequestId }
   },
 }
 

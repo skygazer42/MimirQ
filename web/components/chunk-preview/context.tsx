@@ -9,6 +9,7 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import { toast } from 'sonner'
 import { documentApi } from '@/lib/api-client'
 import { formatApiError } from '@/lib/api-errors'
+import { generateRequestId } from '@/lib/request-id'
 import { useParserBackendPreference } from '@/contexts/parser-backend-context'
 import { usePipelineCapabilities } from '@/contexts/pipeline-capabilities-context'
 import { useChunkStrategyPreference } from '@/contexts/chunk-strategy-context'
@@ -63,13 +64,7 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: ChunkPrev
   const { capabilities, parserBackendAvailable, chunkStrategyAvailable } = usePipelineCapabilities()
 
   // 生成 ID 工具
-  const makeId = useCallback(
-    () =>
-      (typeof crypto !== 'undefined' && 'randomUUID' in crypto && typeof crypto.randomUUID === 'function'
-        ? crypto.randomUUID()
-        : Math.random().toString(36).slice(2)),
-    []
-  )
+  const makeId = useCallback(() => generateRequestId(), [])
 
   // 核心状态
   const [fileList, setFileList] = useState<ChunkPreviewFileItem[]>([])
