@@ -7351,6 +7351,17 @@ export interface components {
              */
             model_version: string;
         };
+        /** MinioStatus */
+        MinioStatus: {
+            /** Status */
+            status: string;
+            /** Enabled */
+            enabled: boolean;
+            /** Bucket */
+            bucket?: string | null;
+            /** Error */
+            error?: string | null;
+        };
         /**
          * ObservabilityConfig
          * @description Observability/debug config.
@@ -8348,6 +8359,7 @@ export interface components {
             database: components["schemas"]["DatabaseStatus"];
             vector: components["schemas"]["VectorStatus"];
             redis: components["schemas"]["RedisStatus"];
+            minio: components["schemas"]["MinioStatus"];
         };
         /** RedisStatus */
         RedisStatus: {

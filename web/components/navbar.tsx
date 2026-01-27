@@ -169,11 +169,11 @@ export function Navbar({
     return () => clearTimeout(t)
   }, [router, pathname])
 
-  const authMode = String((backendMeta as any)?.features?.auth_mode || '')
+  const authMode = String(backendMeta?.features?.auth_mode || '')
   const vectorBackend = String(
-    (backendMeta as any)?.features?.vector_backend || (readyDetails as any)?.vector?.backend || ''
+    backendMeta?.features?.vector_backend || readyDetails?.vector?.backend || ''
   )
-  const buildSha = String((backendMeta as any)?.build?.sha || '')
+  const buildSha = String(backendMeta?.build?.sha || '')
   const buildShaShort = buildSha ? buildSha.slice(0, 8) : ''
   const checkedAtLabel = lastReadyAt ? new Date(lastReadyAt).toLocaleTimeString() : '—'
 
@@ -181,37 +181,37 @@ export function Navbar({
     ? [
         {
           key: 'DB',
-          status: (readyDetails as any)?.database?.status,
-          error: (readyDetails as any)?.database?.error,
+          status: readyDetails.database?.status,
+          error: readyDetails.database?.error,
         },
         {
-          key: `Vector (${String((readyDetails as any)?.vector?.backend || vectorBackend || '-')})`,
-          status: (readyDetails as any)?.vector?.status,
-          error: (readyDetails as any)?.vector?.error,
+          key: `Vector (${String(readyDetails.vector?.backend || vectorBackend || '-')})`,
+          status: readyDetails.vector?.status,
+          error: readyDetails.vector?.error,
         },
         {
           key: 'Redis',
-          status: (readyDetails as any)?.redis?.status,
+          status: readyDetails.redis?.status,
           note: (() => {
-            const r = (readyDetails as any)?.redis
+            const r = readyDetails.redis
             if (!r) return undefined
             if (!r.enabled) return 'disabled'
             const required = Boolean(r.required)
             const cache = Boolean(r.embedding_cache_enabled)
             return `${required ? 'required' : 'optional'}${cache ? ', cache' : ''}`
           })(),
-          error: (readyDetails as any)?.redis?.error,
+          error: readyDetails.redis?.error,
         },
         {
           key: 'MinIO',
-          status: (readyDetails as any)?.minio?.status,
+          status: readyDetails.minio?.status,
           note: (() => {
-            const m = (readyDetails as any)?.minio
+            const m = readyDetails.minio
             if (!m) return undefined
             if (!m.enabled) return 'disabled'
             return m.bucket ? `bucket: ${m.bucket}` : undefined
           })(),
-          error: (readyDetails as any)?.minio?.error,
+          error: readyDetails.minio?.error,
         },
       ]
     : []
