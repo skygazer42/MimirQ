@@ -149,6 +149,14 @@ class Settings(BaseSettings):
     URL_INGEST_ENABLED: bool = False
     URL_INGEST_MAX_BYTES: int = 50_000_000
     URL_INGEST_TIMEOUT_SEC: float = 30.0
+    # Allowlist (CSV) for outbound URL ingestion. Empty means "allow any public host/port"
+    # after applying SSRF guards (private/loopback/link-local are blocked by default).
+    # Supports wildcard suffix patterns like "*.example.com" (matches "a.example.com" but not "example.com").
+    URL_INGEST_ALLOWED_HOSTS: str = ""
+    # CSV list of allowed ports (e.g. "80,443"). Empty means allow any.
+    URL_INGEST_ALLOWED_PORTS: str = ""
+    # Redirect hop cap when follow_redirects=true (defense-in-depth).
+    URL_INGEST_MAX_REDIRECTS: int = 5
     # Security: disallow private/loopback/link-local hosts by default (SSRF guard).
     URL_INGEST_ALLOW_PRIVATE_IPS: bool = False
     # Security: do not follow redirects by default (avoid redirect-to-private SSRF).
