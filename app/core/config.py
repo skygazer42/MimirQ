@@ -654,6 +654,19 @@ class Settings(BaseSettings):
     CHAT_HISTORY_WINDOW: int = 5
     # Allow chat even when no accessible documents exist (dev-friendly).
     CHAT_ALLOW_EMPTY_DOCUMENTS: bool = True
+    # Optional: Chat + TAG (Table Store) bridge. When enabled, chat will try to answer table-like
+    # questions by running a bounded NL->SQL query over ingested Table Store assets and injecting
+    # the result as additional context.
+    #
+    # Safety: this is guarded by TABLE_NL2SQL_ENABLED + TABLE_LLM_ALLOW_RESULT_EGRESS, and query
+    # execution remains SELECT-only with strict caps.
+    CHAT_TAG_ENABLED: bool = False
+    CHAT_TAG_MAX_TABLES: int = 2
+    CHAT_TAG_MAX_DOC_IDS: int = 1000
+    CHAT_TAG_MAX_ROWS: int = 50
+    CHAT_TAG_MAX_COLS: int = 30
+    CHAT_TAG_MAX_BYTES: int = 200_000
+    CHAT_TAG_MIN_MATCH_SCORE: int = 1
     LONG_TERM_MEMORY_ENABLED: bool = False
     LONG_TERM_MEMORY_TOP_K: int = 3
     LONG_TERM_MEMORY_MIN_LEN: int = 20

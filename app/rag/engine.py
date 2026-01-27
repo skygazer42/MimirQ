@@ -743,7 +743,34 @@ Requirements:
                 docs = self.fuse_docs_rrf(docs_by_query, rrf_k=settings.RETRIEVAL_RRF_K, meta_prefix="query_expansion")
             docs = docs[: max(0, int(top_k or 0))] if docs else []
 
-            yield {"type": "event", "data": {"message": f"找到 {len(docs)} 条相关参考，正在整理回答..."}}
+            # Optional: TAG bridge - inject bounded table query results as extra context.
+            tag_docs: List[Document] = []
+            tag_meta: Dict[str, Any] = {"enabled": False, "used": False, "reason": "not_run"}
+            try:
+                from app.services.chat_tag_service import build_chat_tag_context_docs
+
+                if db is not None and tenant_id is not None and document_ids:
+                    yield {"type": "event", "data": {"message": "检测到表格资产，正在尝试表格查询（TAG）..."}}
+                    tag_docs, tag_meta = build_chat_tag_context_docs(
+                        db,
+                        tenant_id=tenant_id,
+                        document_ids=list(document_ids or []),
+                        question=question,
+                    )
+            except Exception as exc:  # noqa: BLE001
+                tag_docs = []
+                tag_meta = {"enabled": False, "used": False, "reason": f"tag_exception:{str(exc)[:120]}"}
+
+            if tag_docs:
+                docs = (tag_docs or []) + (docs or [])
+
+            yield {
+                "type": "event",
+                "data": {
+                    "message": f"找到 {len(docs)} 条相关参考，正在整理回答..."
+                    + (f"（TAG 注入 {len(tag_docs)} 条）" if tag_docs else ""),
+                },
+            }
 
             # Build citation info.
             citations: List[Dict[str, Any]] = build_citations_from_docs(
@@ -851,6 +878,11 @@ Requirements:
                             "history_chars": len(history_text or ""),
                             "context_chars": 0,
                             "llm_max_retries": settings.LLM_MAX_RETRIES,
+                            "tag_enabled": bool(tag_meta.get("enabled")),
+                            "tag_used": bool(tag_meta.get("used")),
+                            "tag_reason": tag_meta.get("reason"),
+                            "tag_tables_returned": int(tag_meta.get("returned") or 0),
+                            "tag_errors": tag_meta.get("errors"),
                             "abstain_enabled": bool(abstain_enabled),
                             "abstain_triggered": True,
                             "abstain_reason": abstain_reason,
@@ -1037,6 +1069,7 @@ Requirements:
                         "per_query": retrieval_per_query[:8],
                         "errors": retrieval_errors[:5],
                     },
+                    "tag": tag_meta,
                     "citations": citations[: min(len(citations), int(top_k or 5))],
                     "prompt": {
                         "prompt_template_id": str(selected_prompt_template_id) if selected_prompt_template_id else None,
@@ -1176,6 +1209,11 @@ Requirements:
                         "history_tokens": num_tokens_from_string(history_text or ""),
                         "context_chars": len(context or ""),
                         "context_tokens": num_tokens_from_string(context or ""),
+                        "tag_enabled": bool(tag_meta.get("enabled")),
+                        "tag_used": bool(tag_meta.get("used")),
+                        "tag_reason": tag_meta.get("reason"),
+                        "tag_tables_returned": int(tag_meta.get("returned") or 0),
+                        "tag_errors": tag_meta.get("errors"),
                         "context_limit_total_chars": int(settings.RAG_CONTEXT_MAX_TOTAL_CHARS or 0),
                         "context_limit_total_tokens": int(getattr(settings, "RAG_CONTEXT_MAX_TOTAL_TOKENS", 0) or 0),
                         "context_limit_per_chunk_chars": int(settings.RAG_CONTEXT_MAX_CHARS_PER_CHUNK or 0),
