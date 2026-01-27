@@ -70,6 +70,11 @@ FINDING_KEY_REASONS: dict[str, dict[str, Any]] = {
         "severity": "info",
         "description": "基于 file_sha256 的完全重复候选（需开启 compute_file_hash）。",
     },
+    "near_dup": {
+        "label": "近重复候选（版本冲突）",
+        "severity": "info",
+        "description": "基于文本样本的 SimHash 近重复候选（需开启 enable_near_dup；需要人工复核）。",
+    },
     "large_spreadsheet": {
         "label": "大型表格（建议结构化方案）",
         "severity": "info",
@@ -222,11 +227,17 @@ class _FileRecord:
     name: str
     file_type: str
     file_size: int
+    file_mtime: int = 0
     text_characters: int = 0
     estimated_text: bool = False
     pdf_scanned: Optional[bool] = None
+    pdf_pages: Optional[dict[str, Any]] = None
+    spreadsheet: Optional[dict[str, Any]] = None
+    text_simhash64: Optional[str] = None
     pii_hits: dict[str, int] = field(default_factory=dict)
     secrets_hits: dict[str, int] = field(default_factory=dict)
+    pii_samples: list[dict[str, Any]] = field(default_factory=list)
+    secrets_samples: list[dict[str, Any]] = field(default_factory=list)
     file_sha256: Optional[str] = None
     findings: list[str] = field(default_factory=list)
     error_message: Optional[str] = None
@@ -403,14 +414,18 @@ def run_dataset_precheck_scan(
             ext = path.suffix.lower()
             file_type = ext.lstrip(".") if ext.startswith(".") else (path.suffix or "").lower().lstrip(".") or "unknown"
             try:
-                size = int(path.stat().st_size)
+                st = path.stat()
+                size = int(st.st_size)
+                mtime = int(st.st_mtime)
             except Exception:
                 size = 0
+                mtime = 0
 
             rec = _FileRecord(
                 name=_sanitize_display_name(rel) if not redact_paths else f"FILE_{idx:06d}{ext}",
                 file_type=file_type or "unknown",
                 file_size=int(size),
+                file_mtime=int(mtime),
             )
 
             try:
@@ -564,4 +579,3 @@ def run_dataset_precheck_scan(
         "files": int(total),
         "errors": int(errors),
     }
-
