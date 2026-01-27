@@ -5,11 +5,9 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { Citation, Message, StreamEvent } from '@/types'
-import { getAuthHeaders } from '@/lib/auth-headers'
-import { extractBackendMessage, withRequestId } from '@/lib/api-errors'
-import { API_TIMEOUT_MS, API_V1_BASE_URL } from '@/lib/env'
+import { withRequestId } from '@/lib/api-errors'
+import { API_TIMEOUT_MS } from '@/lib/env'
 import { chatApi } from '@/lib/api-client'
-import { createSseDataParser } from '@/lib/sse'
 
 interface UseChatOptions {
   conversationId?: string
@@ -226,22 +224,15 @@ export function useChat({
           content: m.content,
         }))
 
-        const requestId =
-          typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
-            ? crypto.randomUUID()
-            : `req-${Date.now()}-${Math.random().toString(16).slice(2)}`
-
         const effectiveRagConfig = ragConfig || {}
         const useGraph = Boolean((effectiveRagConfig as any).use_graph)
+        let citations: Citation[] = []
+        let steps: string[] = []
+        let sawFirstEvent = false
+        let streamError: Error | null = null
 
-        const response = await fetch(`${API_V1_BASE_URL}/chat/stream`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            ...getAuthHeaders(),
-            'X-Request-ID': requestId,
-          },
-          body: JSON.stringify({
+        await chatApi.streamChat(
+          {
             conversation_id: conversationId,
             message,
             history,
@@ -252,80 +243,71 @@ export function useChat({
             structured_preset: structuredPreset || undefined,
             enable_long_term_memory: Boolean(enableLongTermMemory),
             rag_config: Object.keys(effectiveRagConfig).length ? effectiveRagConfig : undefined,
-          }),
-          signal: abortControllerRef.current.signal,
-        })
+          },
+          (jsonStr) => {
+            if (!sawFirstEvent) {
+              sawFirstEvent = true
+              // Treat this as a "connect" timeout: once the first SSE frame arrives, stop the timer.
+              window.clearTimeout(timeoutId)
+            }
 
-        window.clearTimeout(timeoutId)
-
-        if (!response.ok) {
-          let requestId = response.headers.get('X-Request-ID') || undefined
-          let msg = `HTTP error: ${response.status}`
-          try {
-            const data = await response.json()
-            requestId = (typeof data?.request_id === 'string' ? data.request_id : requestId) || requestId
-            msg = extractBackendMessage(data) || msg
-          } catch {
-            // ignore
-          }
-          throw new Error(withRequestId(msg, requestId))
-        }
-
-        const reader = response.body?.getReader()
-        if (!reader) {
-          throw new Error('No response body')
-        }
-
-        const decoder = new TextDecoder()
-        const sse = createSseDataParser()
-        let citations: Citation[] = []
-        let steps: string[] = []
-
-        while (true) {
-          const { done, value } = await reader.read()
-          if (done) break
-
-          const chunkText = decoder.decode(value, { stream: true })
-          for (const jsonStr of sse.feed(chunkText)) {
             let event: StreamEvent
             try {
               event = JSON.parse(jsonStr)
             } catch (e) {
               console.error('Failed to parse SSE event:', e)
-              continue
+              return
             }
 
             if (event.type === 'citations') {
               citations = event.data
               setCurrentCitations(citations)
-            } else if (event.type === 'event') {
+              return
+            }
+
+            if (event.type === 'event') {
               const msg = event.data?.message
               if (msg) {
                 steps = [...steps, msg]
                 setCurrentSteps(steps)
               }
-            } else if (event.type === 'graph') {
+              return
+            }
+
+            if (event.type === 'graph') {
               const msg = formatGraphStep(event.data)
               if (msg) {
                 steps = [...steps, msg]
                 setCurrentSteps(steps)
               }
-            } else if (event.type === 'route') {
+              return
+            }
+
+            if (event.type === 'route') {
               const msg = formatRouteStep(event.data)
               if (msg) {
                 steps = [...steps, msg]
                 setCurrentSteps(steps)
               }
-            } else if (event.type === 'rewrite') {
+              return
+            }
+
+            if (event.type === 'rewrite') {
               const msg = formatRewriteStep(event.data)
               if (msg) {
                 steps = [...steps, msg]
                 setCurrentSteps(steps)
               }
-            } else if (event.type === 'token') {
+              return
+            }
+
+            if (event.type === 'token') {
               fullResponseRef.current += event.data.content
               scheduleCurrentResponseUpdate()
-            } else if (event.type === 'done') {
+              return
+            }
+
+            if (event.type === 'done') {
               flushCurrentResponseUpdate()
               const nextConversationId = (event?.data?.conversation_id || '').trim()
               if (nextConversationId && nextConversationId !== (conversationId || '')) {
@@ -377,32 +359,18 @@ export function useChat({
               setCurrentCitations([])
               setCurrentSteps([])
               fullResponseRef.current = ''
-            } else if (event.type === 'error') {
-              const msg = event.data?.message || 'Unknown error'
-              throw new Error(withRequestId(msg, event.request_id))
+              return
             }
-          }
-        }
 
-        // Flush any remaining decoder output (best-effort).
-        for (const jsonStr of sse.feed(decoder.decode())) {
-          let event: StreamEvent
-          try {
-            event = JSON.parse(jsonStr)
-          } catch {
-            continue
-          }
-          if (event.type === 'citations') {
-            citations = event.data
-            setCurrentCitations(citations)
-          } else if (event.type === 'token') {
-            fullResponseRef.current += event.data.content
-            scheduleCurrentResponseUpdate()
-          } else if (event.type === 'error') {
-            const msg = event.data?.message || 'Unknown error'
-            throw new Error(withRequestId(msg, event.request_id))
-          }
-        }
+            if (event.type === 'error') {
+              const msg = event.data?.message || 'Unknown error'
+              streamError = new Error(withRequestId(msg, event.request_id))
+            }
+          },
+          { signal: abortControllerRef.current.signal }
+        )
+
+        if (streamError) throw streamError
         flushCurrentResponseUpdate()
       } catch (err: any) {
         if (err?.name === 'AbortError') {

@@ -33,6 +33,7 @@ import {
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { StatusBadge } from '@/components/ui/status-badge'
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { cn } from '@/lib/utils'
 import { ModeToggle } from '@/components/mode-toggle'
 import { healthApi } from '@/lib/api-client'
@@ -106,6 +107,7 @@ export function Navbar({
   const pathname = usePathname()
   const router = useRouter()
   const [backendOk, setBackendOk] = useState<boolean | null>(null)
+  const [readyDetails, setReadyDetails] = useState<any | null>(null)
   const { user, isAuthenticated, isDevMode, logout } = useAuth()
   const closeSidebarOnMobile = useCallback(() => {
     if (typeof window === 'undefined') return
@@ -152,12 +154,14 @@ export function Navbar({
     const ping = async () => {
       try {
         if (!alive) return
-        await healthApi.health()
+        const ready = await healthApi.ready()
         if (!alive) return
-        setBackendOk(true)
+        setBackendOk(Boolean((ready as any)?.ok))
+        setReadyDetails(ready)
       } catch {
         if (!alive) return
         setBackendOk(false)
+        setReadyDetails(null)
       }
     }
     ping()
@@ -327,7 +331,7 @@ export function Navbar({
           <div className="mt-3 flex items-center justify-between gap-2">
             <StatusBadge
               status={backendOk === true ? "completed" : backendOk === false ? "failed" : "processing"}
-              label={`Backend：${backendOk === true ? "OK" : backendOk === false ? "Down" : "..."}`}
+              label={`Deps：${backendOk === true ? "OK" : backendOk === false ? "Down" : "..."}`}
               dense
             />
           </div>
