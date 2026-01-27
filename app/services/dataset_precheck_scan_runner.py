@@ -13,7 +13,9 @@ Security:
 
 from __future__ import annotations
 
+import csv
 import hashlib
+import io
 import json
 import os
 import re
@@ -77,6 +79,21 @@ FINDING_KEY_REASONS: dict[str, dict[str, Any]] = {
         "label": "大型表格（建议结构化方案）",
         "severity": "info",
         "description": "行数过多的表格更适合 Text-to-SQL/结构化索引，而非纯向量检索。",
+    },
+    "wide_spreadsheet": {
+        "label": "宽表（列数过多）",
+        "severity": "info",
+        "description": "列数过多的表格通常不适合纯 RAG；建议走 TAG/SQL 或先做结构化清洗。",
+    },
+    "many_sheets_spreadsheet": {
+        "label": "多 Sheet 表格",
+        "severity": "info",
+        "description": "Sheet 数过多可能意味着多维报表/账表；建议拆分或优先走结构化方案。",
+    },
+    "merged_heavy_spreadsheet": {
+        "label": "合并单元格较多（结构复杂）",
+        "severity": "info",
+        "description": "合并单元格占比过高往往会增加解析/入库难度，建议专项处理（表格专用转换）。",
     },
 }
 
@@ -261,7 +278,19 @@ def _build_samples_payload(*, jsonl_path: Path, target_size: int) -> dict[str, A
     # Problem-focused samples: per finding bucket (cap per finding).
     needs_review: dict[str, list[dict[str, Any]]] = {}
     for fk, items in findings_buckets.items():
-        if fk not in {"parse_failed", "pdf_scanned", "pdf_unknown", "pii", "secrets", "large_spreadsheet", "near_dup", "exact_dup"}:
+        if fk not in {
+            "parse_failed",
+            "pdf_scanned",
+            "pdf_unknown",
+            "pii",
+            "secrets",
+            "large_spreadsheet",
+            "wide_spreadsheet",
+            "many_sheets_spreadsheet",
+            "merged_heavy_spreadsheet",
+            "near_dup",
+            "exact_dup",
+        }:
             continue
         items_sorted = sorted(items, key=lambda o: int(o.get("file_size") or 0), reverse=True)
         needs_review[fk] = items_sorted[: min(10, max(1, target_size // 6))]
@@ -479,9 +508,11 @@ def _xlsx_spreadsheet_stats(path: Path, *, max_sheets: int = 3) -> dict[str, Any
 
         return {
             "row_count": int(max_rows),
+            "col_count": int(max_cols),
             "sheet_count": int(sheet_count),
             "merged_cell_ratio": round(float(merged_ratio), 6),
             "estimated_rows": False,
+            "estimated_cols": False,
         }
     except Exception:
         return None
@@ -725,6 +756,19 @@ def run_dataset_precheck_scan(
         getattr(settings, "PRECHECK_SPREADSHEET_LARGE_ROW_THRESHOLD", 5000),
         default=5000,
     )
+    spreadsheet_wide_col_threshold = safe_int(
+        getattr(settings, "PRECHECK_SPREADSHEET_WIDE_COL_THRESHOLD", 80),
+        default=80,
+    )
+    spreadsheet_sheet_threshold = safe_int(
+        getattr(settings, "PRECHECK_SPREADSHEET_SHEET_THRESHOLD", 5),
+        default=5,
+    )
+    spreadsheet_merged_ratio_threshold = float(getattr(settings, "PRECHECK_SPREADSHEET_MERGED_RATIO_THRESHOLD", 0.15) or 0.15)
+    if spreadsheet_merged_ratio_threshold < 0.0:
+        spreadsheet_merged_ratio_threshold = 0.0
+    if spreadsheet_merged_ratio_threshold > 1.0:
+        spreadsheet_merged_ratio_threshold = 1.0
 
     # Prepare artifact dir and JSONL writer.
     artifact_root = Path(getattr(settings, "UPLOAD_DIR", "./uploads") or "./uploads") / str(tenant_id) / "precheck" / str(run.id)
@@ -1110,11 +1154,28 @@ def run_dataset_precheck_scan(
                                 ratio = size / max(1, min(size, text_max_bytes))
                                 row_count = int(row_count * ratio)
                                 estimated_rows = True
+                            col_count = 0
+                            try:
+                                sniff_sample = sample_text[:8192]
+                                dialect: csv.Dialect = csv.excel
+                                try:
+                                    dialect = csv.Sniffer().sniff(sniff_sample, delimiters=[",", "\t", ";", "|"])
+                                except Exception:
+                                    dialect = csv.excel
+                                reader = csv.reader(io.StringIO(sample_text), dialect)
+                                for row in reader:
+                                    if row and any(str(c).strip() for c in row):
+                                        col_count = int(len(row))
+                                        break
+                            except Exception:
+                                col_count = 0
                             rec.spreadsheet = {
                                 "row_count": int(row_count),
+                                "col_count": int(col_count),
                                 "sheet_count": 1,
                                 "merged_cell_ratio": 0.0,
                                 "estimated_rows": bool(estimated_rows),
+                                "estimated_cols": False,
                             }
                     else:
                         stats = _xlsx_spreadsheet_stats(path)
@@ -1126,6 +1187,21 @@ def run_dataset_precheck_scan(
                         if spreadsheet_large_row_threshold > 0 and rows >= int(spreadsheet_large_row_threshold):
                             rec.findings.append("large_spreadsheet")
                             finding_counts["large_spreadsheet"] += 1
+                        cols = int(rec.spreadsheet.get("col_count") or 0)
+                        if spreadsheet_wide_col_threshold > 0 and cols >= int(spreadsheet_wide_col_threshold):
+                            rec.findings.append("wide_spreadsheet")
+                            finding_counts["wide_spreadsheet"] += 1
+                        sheets = int(rec.spreadsheet.get("sheet_count") or 0)
+                        if spreadsheet_sheet_threshold > 0 and sheets >= int(spreadsheet_sheet_threshold):
+                            rec.findings.append("many_sheets_spreadsheet")
+                            finding_counts["many_sheets_spreadsheet"] += 1
+                        try:
+                            merged_ratio = float(rec.spreadsheet.get("merged_cell_ratio") or 0.0)
+                        except Exception:
+                            merged_ratio = 0.0
+                        if spreadsheet_merged_ratio_threshold > 0.0 and merged_ratio >= float(spreadsheet_merged_ratio_threshold):
+                            rec.findings.append("merged_heavy_spreadsheet")
+                            finding_counts["merged_heavy_spreadsheet"] += 1
 
                 # Optional PII/secrets detection on sample text.
                 if sample_text and enable_pii:

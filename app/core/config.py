@@ -149,6 +149,9 @@ class Settings(BaseSettings):
     PRECHECK_PDF_TEXT_CHARS_PER_PAGE: int = 200
     PRECHECK_PDF_SCAN_RATIO_THRESHOLD: float = 0.7
     PRECHECK_SPREADSHEET_LARGE_ROW_THRESHOLD: int = 5000
+    PRECHECK_SPREADSHEET_WIDE_COL_THRESHOLD: int = 80
+    PRECHECK_SPREADSHEET_SHEET_THRESHOLD: int = 5
+    PRECHECK_SPREADSHEET_MERGED_RATIO_THRESHOLD: float = 0.15
     # Optional: ingest documents by fetching a remote URL (connector skeleton).
     URL_INGEST_ENABLED: bool = False
     URL_INGEST_MAX_BYTES: int = 50_000_000
@@ -420,6 +423,7 @@ class Settings(BaseSettings):
     TABLE_STORE_DIR: str = "./uploads/table_store"
     TABLE_STORE_MAX_ROWS: int = 200_000  # 0 disables cap
     TABLE_STORE_MAX_COLS: int = 500      # 0 disables cap
+    TABLE_STORE_MAX_SHEETS: int = 50     # 0 disables cap
     TABLE_STORE_SAMPLE_ROWS: int = 20    # 0 disables sample persistence
     # Auto routing (optional): when table_store_enabled=true, decide per-file whether to use TAG (table_store)
     # or fall back to normal parsing+RAG based on table size/complexity signals.

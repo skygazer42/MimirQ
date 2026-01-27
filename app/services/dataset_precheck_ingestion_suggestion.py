@@ -139,6 +139,9 @@ def build_ingestion_policy_suggestion(
         if isinstance(item, dict)
     }
     large_spreadsheets = _safe_int((finding_by_key.get("large_spreadsheet") or {}).get("count"))
+    wide_spreadsheets = _safe_int((finding_by_key.get("wide_spreadsheet") or {}).get("count"))
+    many_sheet_spreadsheets = _safe_int((finding_by_key.get("many_sheets_spreadsheet") or {}).get("count"))
+    merged_heavy_spreadsheets = _safe_int((finding_by_key.get("merged_heavy_spreadsheet") or {}).get("count"))
 
     # Identify which file types actually hit PII/secrets, so we only patch relevant rules.
     jsonl_path = _load_jsonl_path(scan_run, tenant_id=tenant_id)
@@ -168,6 +171,12 @@ def build_ingestion_policy_suggestion(
         notes.append(f"P90 文本长度较长（{p90} chars）：Markdown/长文建议使用 longform 治理预设（去重+裁剪 References）")
     if large_spreadsheets > 0:
         notes.append(f"检测到大表/复杂表格：{large_spreadsheets}（建议优先走 TAG/SQL 方案，而不是硬上纯 RAG）")
+    if wide_spreadsheets > 0:
+        notes.append(f"检测到宽表（列数较多）：{wide_spreadsheets}（建议 TAG/结构化清洗；避免纯 RAG 切块导致噪声）")
+    if many_sheet_spreadsheets > 0:
+        notes.append(f"检测到多 Sheet 表格：{many_sheet_spreadsheets}（建议拆分或结构化处理；避免一次性全量入库）")
+    if merged_heavy_spreadsheets > 0:
+        notes.append(f"检测到合并单元格占比较高的表格：{merged_heavy_spreadsheets}（建议表格专用转换/人工复核）")
 
     # Build rules (conservative defaults).
     rules: list[dict[str, Any]] = []
@@ -329,7 +338,16 @@ def build_ingestion_policy_suggestion(
 
     # Manual-review buckets (bounded name lists).
     buckets = []
-    for key in ["parse_failed", "pdf_unknown", "large_spreadsheet", "exact_dup", "near_dup"]:
+    for key in [
+        "parse_failed",
+        "pdf_unknown",
+        "large_spreadsheet",
+        "wide_spreadsheet",
+        "many_sheets_spreadsheet",
+        "merged_heavy_spreadsheet",
+        "exact_dup",
+        "near_dup",
+    ]:
         try:
             if key == "near_dup":
                 # near_dups.json is optional; keep this best-effort.

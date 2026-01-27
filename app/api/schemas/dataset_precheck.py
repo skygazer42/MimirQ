@@ -58,9 +58,11 @@ class DatasetPrecheckPdfPageBreakdown(BaseModel):
 
 class DatasetPrecheckSpreadsheetStats(BaseModel):
     row_count: int = 0
+    col_count: int = 0
     sheet_count: int = 0
     merged_cell_ratio: float = 0.0
     estimated_rows: bool = False
+    estimated_cols: bool = False
 
 
 class DatasetPrecheckMatchSample(BaseModel):
