@@ -22,3 +22,9 @@ def test_parse_csv_wildcard():
 
     assert parse_csv("*") == ["*"]
 
+
+def test_parse_csv_exported_in_all() -> None:
+    import app.core.utils as utils
+
+    assert "parse_csv" in getattr(utils, "__all__", [])
+

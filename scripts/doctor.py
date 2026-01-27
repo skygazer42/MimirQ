@@ -78,8 +78,24 @@ def main() -> int:
 
     _check_cmd("Node", ["node", "--version"])
     _check_cmd("pnpm", ["pnpm", "--version"])
+    _check_cmd("Git (optional)", ["git", "--version"], required=False)
+    _check_cmd("Make (optional)", ["make", "--version"], required=False)
     _check_cmd("Docker", ["docker", "--version"])
     _check_cmd("Docker Compose", ["docker", "compose", "version"])
+    _check_cmd("Ruff (optional)", ["ruff", "--version"], required=False)
+    _check_cmd("pip-audit (optional)", ["pip-audit", "--version"], required=False)
+
+    # Best-effort: docker daemon check (avoid noisy `docker info` output).
+    if shutil.which("docker") is not None:
+        code, _out = _run(["docker", "ps"])
+        if code != 0:
+            print("[doctor] WARN: Docker CLI is installed but the daemon may not be running (try starting Docker Desktop).")
+
+    # Best-effort: warn about CRLF auto-conversion which may cause noisy diffs.
+    if shutil.which("git") is not None:
+        code, out = _run(["git", "config", "--get", "core.autocrlf"])
+        if code == 0 and (out or "").strip().lower() in {"true", "input"}:
+            print("[doctor] WARN: git core.autocrlf is enabled; consider disabling to reduce CRLF/LF churn (repo enforces LF via .gitattributes).")
 
     ok &= _check_file(repo_root / "docker/docker-compose.yml", required=True)
     ok &= _check_file(repo_root / "docker/docker-compose.web.yml", required=True)
@@ -104,6 +120,9 @@ def main() -> int:
     # Helpful hint: show whether pnpm is discoverable via PATH
     if shutil.which("pnpm") is None:
         print("[doctor] WARN: pnpm not on PATH (Corepack may be disabled).")
+
+    if os_name == "Windows":
+        print("[doctor] HINT: On Windows without make, use `powershell -File scripts/verify.ps1` for repo checks.")
 
     return 0 if ok else 1
 

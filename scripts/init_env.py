@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import argparse
+import re
 import shutil
+import secrets
 from pathlib import Path
 
 
@@ -11,6 +13,39 @@ def _plan(*, src: Path, dst: Path, force: bool) -> tuple[str, str]:
     if dst.exists() and not force:
         return "skip_exists", f"SKIP (exists): {dst.as_posix()}"
     return "write", f"WRITE: {dst.as_posix()} <= {src.as_posix()}"
+
+
+_SECRET_KEY_RE = re.compile(r"^(?P<key>SECRET_KEY)=(?P<val>.*)$", re.MULTILINE)
+
+
+def _maybe_set_secret_key(path: Path, *, secret_key: str) -> bool:
+    """
+    Best-effort: fill SECRET_KEY in an env file if it's empty.
+
+    We only touch the file when an explicit SECRET_KEY= line exists and the value is blank.
+    """
+    try:
+        raw = path.read_text(encoding="utf-8")
+    except OSError:
+        return False
+
+    m = _SECRET_KEY_RE.search(raw)
+    if not m:
+        return False
+
+    current = (m.group("val") or "").strip()
+    if current:
+        return False
+
+    updated = _SECRET_KEY_RE.sub(rf"\g<key>={secret_key}", raw, count=1)
+    if updated == raw:
+        return False
+
+    try:
+        path.write_text(updated, encoding="utf-8")
+    except OSError:
+        return False
+    return True
 
 
 def main() -> int:
@@ -32,6 +67,11 @@ def main() -> int:
         "--dry-run",
         action="store_true",
         help="Print planned changes without writing files.",
+    )
+    parser.add_argument(
+        "--gen-secret-key",
+        action="store_true",
+        help="When writing new env files, generate and fill SECRET_KEY if it's empty.",
     )
     args = parser.parse_args()
 
@@ -57,6 +97,7 @@ def main() -> int:
         return 0
 
     wrote_any = False
+    wrote_paths: list[Path] = []
     for kind, msg, src, dst in actions:
         print(f"[init-env] {msg}")
         if kind != "write":
@@ -64,6 +105,16 @@ def main() -> int:
         dst.parent.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(src, dst)
         wrote_any = True
+        wrote_paths.append(dst)
+
+    if bool(args.gen_secret_key) and wrote_paths:
+        secret_key = secrets.token_urlsafe(32)
+        changed = 0
+        for p in wrote_paths:
+            if _maybe_set_secret_key(p, secret_key=secret_key):
+                changed += 1
+        if changed:
+            print(f"[init-env] filled SECRET_KEY in {changed} file(s)")
 
     if not wrote_any:
         print("[init-env] no changes")

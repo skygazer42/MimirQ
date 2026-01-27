@@ -292,6 +292,10 @@ class Settings(BaseSettings):
     # Emit Server-Timing response header for quick perf debugging.
     SERVER_TIMING_ENABLED: bool = True
 
+    # Health/readiness cache TTL (seconds). Keeps probes cheap under load.
+    HEALTH_CACHE_TTL_SEC: float = 2.0
+    READY_CACHE_TTL_SEC: float = 2.0
+
     HOST: str = "0.0.0.0"
     PORT: int = 8000
 
@@ -421,6 +425,8 @@ class Settings(BaseSettings):
     # (.csv/.xls/.xlsx) are imported into a per-document SQLite store for SQL/TAG workflows.
     TABLE_STORE_ENABLED: bool = False
     TABLE_STORE_DIR: str = "./uploads/table_store"
+    # sqlite3 connection timeout (seconds) for TAG import/query. Keep low to avoid hanging requests.
+    TABLE_STORE_SQLITE_TIMEOUT_SEC: float = 30.0
     TABLE_STORE_MAX_ROWS: int = 200_000  # 0 disables cap
     TABLE_STORE_MAX_COLS: int = 500      # 0 disables cap
     TABLE_STORE_MAX_SHEETS: int = 50     # 0 disables cap

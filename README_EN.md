@@ -111,3 +111,7 @@ This project is inspired by and references ideas from the following open source 
 - [Dify](https://github.com/langgenius/dify)
 - [RAGFlow](https://github.com/infiniflow/ragflow)
 - [Bisheng](https://github.com/dataelement/bisheng)
+
+## License
+
+MIT License. See [LICENSE](LICENSE).
