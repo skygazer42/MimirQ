@@ -390,7 +390,11 @@ def lotus_sem_filter_dataset_table(
         import sqlite3
         import pandas as pd  # type: ignore
 
-        max_in_rows = min(int(getattr(settings, "TABLE_LOTUS_MAX_ROWS", 20_000) or 20_000), 100_000)
+        max_in_rows = min(
+            int(getattr(settings, "TABLE_LOTUS_MAX_ROWS", 20_000) or 20_000),
+            int(getattr(settings, "TABLE_SEM_FILTER_MAX_IN_ROWS", 2000) or 2000),
+            100_000,
+        )
         db_path = table_store_path(tenant_id=tenant_id, dataset_id=dataset_id, document_id=parsed.document_id)
         if not db_path.exists():
             raise HTTPException(status_code=404, detail="table store not found")

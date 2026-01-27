@@ -115,6 +115,36 @@ class DocumentPipelineOptions(BaseModel):
     table_store_max_rows: Optional[int] = Field(default=None, ge=0, le=5_000_000, description="Max rows to import per table (0 disables cap)")
     table_store_max_cols: Optional[int] = Field(default=None, ge=0, le=10_000, description="Max columns to import per table (0 disables cap)")
     table_store_sample_rows: Optional[int] = Field(default=None, ge=0, le=200, description="Rows to keep for metadata preview/sample (0 disables)")
+    # Auto routing (optional): when enabled, decide per-file whether to use TAG (table_store) or
+    # normal parsing+RAG based on size/complexity signals.
+    table_store_auto_route: Optional[bool] = Field(
+        default=None,
+        description="When table_store_enabled=true, auto-route small tables to RAG and large/complex tables to TAG",
+    )
+    table_store_auto_row_threshold: Optional[int] = Field(
+        default=None,
+        ge=0,
+        le=50_000_000,
+        description="In auto-route mode, route to TAG when estimated rows >= threshold (0 disables)",
+    )
+    table_store_auto_col_threshold: Optional[int] = Field(
+        default=None,
+        ge=0,
+        le=200_000,
+        description="In auto-route mode, route to TAG when estimated columns >= threshold (0 disables)",
+    )
+    table_store_auto_sheet_threshold: Optional[int] = Field(
+        default=None,
+        ge=0,
+        le=200_000,
+        description="In auto-route mode, route to TAG when sheet_count >= threshold (0 disables)",
+    )
+    table_store_auto_file_bytes_threshold: Optional[int] = Field(
+        default=None,
+        ge=0,
+        le=5_000_000_000,
+        description="In auto-route mode, route to TAG when file_size bytes >= threshold (0 disables)",
+    )
 
     @model_validator(mode="after")
     def _validate_chunk_strategy_params(self) -> "DocumentPipelineOptions":
