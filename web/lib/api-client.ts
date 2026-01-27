@@ -121,19 +121,20 @@ import type {
 } from '@/types'
 import type { MetaResponse } from '@/types/backend'
 import { extractBackendMessage, extractBackendRequestId, withRequestId } from '@/lib/api-errors'
+import { buildFetchError } from '@/lib/fetch-errors'
 import { getAuthHeaders } from '@/lib/auth-headers'
+import { clearAuthSession, getAccessToken } from '@/lib/auth-storage'
 import { API_LONG_TIMEOUT_MS, API_TIMEOUT_MS, API_V1_BASE_URL } from '@/lib/env'
 import { appendPipelineOptionsToFormData } from '@/lib/form-data'
 import { resolveParserBackendForFilename, resolveParserBackendForFiles } from '@/lib/parser-compat'
-import { createSseDataParser } from '@/lib/sse'
+import { generateRequestId } from '@/lib/request-id'
+import { readSseDataStrings } from '@/lib/sse-reader'
 
 function getOrCreateRequestId(headers: AxiosHeaders): string {
   const existing = headers.get('X-Request-ID')
   if (existing) return String(existing)
 
-  const requestId =
-    (globalThis.crypto as Crypto | undefined)?.randomUUID?.() ||
-    `${Date.now().toString(16)}-${Math.random().toString(16).slice(2)}`
+  const requestId = generateRequestId()
 
   headers.set('X-Request-ID', requestId)
   return requestId
@@ -169,9 +170,23 @@ apiClient.interceptors.response.use(
       const requestId = extractBackendRequestId(data) || (headerRequestId ? String(headerRequestId) : undefined)
 
       switch (status) {
-        case 401:
+        case 401: {
           console.error('[API] 未授权，请检查登录状态', requestId ? `(request_id=${requestId})` : '')
+
+          // If we were using JWT auth and the token is rejected/expired, clear the session
+          // so the UI doesn't stay in a broken "logged-in" state.
+          const token = getAccessToken()
+          if (token) {
+            clearAuthSession()
+            if (typeof window !== 'undefined') {
+              const path = String(window.location?.pathname || '')
+              if (!path.startsWith('/auth')) {
+                window.location.href = '/auth'
+              }
+            }
+          }
           break
+        }
         case 403:
           console.error('[API] 无权限访问', requestId ? `(request_id=${requestId})` : '')
           break
@@ -1227,11 +1242,12 @@ export const chatApi = {
   /**
    * 发送流式聊天请求
    */
-  async streamChat(request: ChatRequest, onEvent: (event: MessageEvent) => void, onError?: (error: Error) => void): Promise<void> {
-    const requestId =
-      typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
-        ? crypto.randomUUID()
-        : `req-${Date.now()}-${Math.random().toString(16).slice(2)}`
+  async streamChat(
+    request: ChatRequest,
+    onJson: (jsonStr: string) => void,
+    options: { signal?: AbortSignal; onError?: (error: unknown) => void } = {}
+  ): Promise<{ requestId: string }> {
+    const requestId = generateRequestId()
 
     const response = await fetch(`${API_V1_BASE_URL}/chat/stream`, {
       method: 'POST',
@@ -1241,10 +1257,11 @@ export const chatApi = {
         'X-Request-ID': requestId,
       },
       body: JSON.stringify(request),
+      signal: options.signal,
     })
 
     if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`)
+      throw await buildFetchError(response, 'Chat stream failed')
     }
 
     const reader = response.body?.getReader()
@@ -1252,32 +1269,8 @@ export const chatApi = {
       throw new Error('No response body')
     }
 
-    const decoder = new TextDecoder()
-    const sse = createSseDataParser()
-
-    while (true) {
-      const { done, value } = await reader.read()
-
-      if (done) break
-
-      const chunkText = decoder.decode(value, { stream: true })
-      for (const jsonStr of sse.feed(chunkText)) {
-        try {
-          onEvent(new MessageEvent('message', { data: jsonStr }))
-        } catch (e) {
-          onError?.(e as Error)
-        }
-      }
-    }
-
-    // Flush any remaining decoder output (best-effort).
-    for (const jsonStr of sse.feed(decoder.decode())) {
-      try {
-        onEvent(new MessageEvent('message', { data: jsonStr }))
-      } catch (e) {
-        onError?.(e as Error)
-      }
-    }
+    await readSseDataStrings(reader, onJson, options.onError)
+    return { requestId }
   },
 
   /**
@@ -1316,14 +1309,10 @@ export const sseApi = {
   async streamPrecheckScanEvents(
     datasetId: string,
     scanRunId: string,
-    onEvent: (event: MessageEvent) => void,
-    onError?: (error: Error) => void,
-    signal?: AbortSignal
-  ): Promise<void> {
-    const requestId =
-      typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
-        ? crypto.randomUUID()
-        : `req-${Date.now()}-${Math.random().toString(16).slice(2)}`
+    onJson: (jsonStr: string) => void,
+    options: { onError?: (error: unknown) => void; signal?: AbortSignal } = {}
+  ): Promise<{ requestId: string }> {
+    const requestId = generateRequestId()
 
     const response = await fetch(`${API_V1_BASE_URL}/datasets/${datasetId}/precheck/scan-runs/${scanRunId}/events`, {
       method: 'GET',
@@ -1331,11 +1320,11 @@ export const sseApi = {
         ...getAuthHeaders(),
         'X-Request-ID': requestId,
       },
-      signal,
+      signal: options.signal,
     })
 
     if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`)
+      throw await buildFetchError(response, 'Precheck SSE failed')
     }
 
     const reader = response.body?.getReader()
@@ -1343,30 +1332,8 @@ export const sseApi = {
       throw new Error('No response body')
     }
 
-    const decoder = new TextDecoder()
-    const sse = createSseDataParser()
-
-    while (true) {
-      const { done, value } = await reader.read()
-      if (done) break
-
-      const chunkText = decoder.decode(value, { stream: true })
-      for (const jsonStr of sse.feed(chunkText)) {
-        try {
-          onEvent(new MessageEvent('message', { data: jsonStr }))
-        } catch (e) {
-          onError?.(e as Error)
-        }
-      }
-    }
-
-    for (const jsonStr of sse.feed(decoder.decode())) {
-      try {
-        onEvent(new MessageEvent('message', { data: jsonStr }))
-      } catch (e) {
-        onError?.(e as Error)
-      }
-    }
+    await readSseDataStrings(reader, onJson, options.onError)
+    return { requestId }
   },
 }
 

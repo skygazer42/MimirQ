@@ -234,9 +234,9 @@ export default function DatasetPrecheckPage() {
         .streamPrecheckScanEvents(
           datasetIdValue,
           runId,
-          (evt) => {
+          (jsonStr) => {
             try {
-              const obj = JSON.parse(String((evt as any)?.data || '') || '{}')
+              const obj = JSON.parse(String(jsonStr || '') || '{}')
               if (obj?.id) setSelectedRun(obj)
               const st = String(obj?.status || '').toLowerCase()
               if (st === 'completed') {
@@ -252,10 +252,12 @@ export default function DatasetPrecheckPage() {
               // ignore
             }
           },
-          (err) => {
-            console.error('Precheck SSE error', err)
-          },
-          ctrl.signal
+          {
+            onError: (err) => {
+              console.error('Precheck SSE error', err)
+            },
+            signal: ctrl.signal,
+          }
         )
         .catch((e) => {
           console.warn('Precheck SSE unavailable; fallback to polling', e)
