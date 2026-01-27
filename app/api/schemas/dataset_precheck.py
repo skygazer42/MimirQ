@@ -105,8 +105,35 @@ class DatasetPrecheckScanRunCreateRequest(BaseModel):
     pdf_sample_pages: Optional[int] = Field(default=None, ge=1, le=50)
     text_extract_max_bytes: Optional[int] = Field(default=None, ge=1_000, le=50_000_000)
 
+    # Optional PDF page-type heuristics (used for scan_ratio/low_density_ratio metrics; best-effort).
+    pdf_min_text_chars_per_page: Optional[int] = Field(default=None, ge=0, le=20_000)
+    pdf_text_chars_per_page: Optional[int] = Field(default=None, ge=0, le=50_000)
+    pdf_scan_ratio_threshold: Optional[float] = Field(default=None, ge=0.0, le=1.0)
+
     # Privacy: when enabled, API responses will not include real paths (only aliases).
     redact_paths: bool = False
+
+    # Optional: include masked match samples (for internal review; off by default).
+    enable_pii_samples: bool = False
+    pii_context_chars: Optional[int] = Field(default=None, ge=0, le=500)
+    pii_max_samples_per_file: Optional[int] = Field(default=None, ge=0, le=50)
+
+    enable_secrets_samples: bool = False
+    secrets_context_chars: Optional[int] = Field(default=None, ge=0, le=500)
+    secrets_max_samples_per_file: Optional[int] = Field(default=None, ge=0, le=50)
+
+    # Optional: near-duplicate candidate detection (SimHash on extracted text samples).
+    enable_near_dup: bool = False
+    near_dup_hamming_threshold: Optional[int] = Field(default=None, ge=0, le=32)
+    near_dup_max_pairs: Optional[int] = Field(default=None, ge=0, le=100_000)
+
+    # Optional: representative sampling (for pricing/POC). Writes a sample list into run artifacts.
+    enable_sampling: bool = True
+    sample_size: Optional[int] = Field(default=None, ge=0, le=2000)
+
+    # Optional: incremental scan reuse (reuse unchanged file records from a previous run).
+    reuse_unchanged_files: bool = False
+    reuse_from_scan_run_id: Optional[UUID] = None
 
 
 class DatasetPrecheckScanRunOut(BaseModel):
@@ -130,4 +157,3 @@ class DatasetPrecheckScanRunOut(BaseModel):
 class DatasetPrecheckScanRunListResponse(BaseModel):
     total: int
     items: List[DatasetPrecheckScanRunOut] = Field(default_factory=list)
-
