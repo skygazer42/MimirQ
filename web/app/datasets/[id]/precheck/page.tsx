@@ -36,6 +36,8 @@ import { cn, formatFileSize, formatDate } from '@/lib/utils'
 
 import type {
   Dataset,
+  DatasetPrecheckDiffResponse,
+  DatasetPrecheckFileOut,
   DatasetPrecheckFindingListResponse,
   DatasetPrecheckFindingSummary,
   DatasetPrecheckIngestionSuggestionResponse,
@@ -133,6 +135,13 @@ export default function DatasetPrecheckPage() {
   const [selectedFinding, setSelectedFinding] = useState<DatasetPrecheckFindingSummary | null>(null)
   const [findingLoading, setFindingLoading] = useState(false)
   const [findingRes, setFindingRes] = useState<DatasetPrecheckFindingListResponse | null>(null)
+
+  const [fileDetailOpen, setFileDetailOpen] = useState(false)
+  const [fileDetail, setFileDetail] = useState<DatasetPrecheckFileOut | null>(null)
+
+  const [diffBaseRunId, setDiffBaseRunId] = useState<string>('')
+  const [diffLoading, setDiffLoading] = useState(false)
+  const [diffRes, setDiffRes] = useState<DatasetPrecheckDiffResponse | null>(null)
 
   const stopPolling = useCallback(() => {
     const t = pollTimerRef.current
@@ -478,6 +487,8 @@ export default function DatasetPrecheckPage() {
       setSelectedFinding(finding)
       setFindingOpen(true)
       setFindingLoading(true)
+      setFileDetailOpen(false)
+      setFileDetail(null)
       try {
         const res = await datasetApi.listPrecheckFinding(datasetId, selectedRun.id, finding.key, { skip: 0, limit: 50 })
         setFindingRes(res)
@@ -491,6 +502,21 @@ export default function DatasetPrecheckPage() {
     },
     [datasetId, selectedRun?.id]
   )
+
+  const loadDiff = useCallback(async () => {
+    if (!datasetId || !selectedRun?.id || !diffBaseRunId) return
+    setDiffLoading(true)
+    try {
+      const res = await datasetApi.diffPrecheckScanRuns(datasetId, selectedRun.id, { base_scan_run_id: diffBaseRunId })
+      setDiffRes(res)
+    } catch (e: any) {
+      console.error('Failed to diff precheck runs', e)
+      toast.error(formatApiError(e, '对比失败'))
+      setDiffRes(null)
+    } finally {
+      setDiffLoading(false)
+    }
+  }, [datasetId, diffBaseRunId, selectedRun?.id])
 
   const loadMoreFinding = useCallback(async () => {
     if (!datasetId || !selectedRun?.id || !selectedFinding || !findingRes) return
@@ -685,6 +711,78 @@ export default function DatasetPrecheckPage() {
                 {selectedRun?.error_message ? <span className="ml-3 text-destructive">错误：{selectedRun.error_message}</span> : null}
               </div>
             </div>
+          </Panel>
+
+          <Panel className="p-5">
+            <div className="flex items-center justify-between gap-4">
+              <div className="min-w-0">
+                <div className="font-semibold">对比扫描结果（Diff）</div>
+                <div className="text-sm text-muted-foreground mt-1">用于复盘治理成效：格式分布、问题清单、扫描件占比等的变化</div>
+              </div>
+              <div className="flex items-center gap-2">
+                <Select value={diffBaseRunId} onValueChange={(v) => setDiffBaseRunId(v)}>
+                  <SelectTrigger className="w-[320px]">
+                    <SelectValue placeholder="选择 base scan run" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {(runs || [])
+                      .filter((r) => r.id !== selectedRun?.id)
+                      .map((r) => (
+                        <SelectItem key={`base-${r.id}`} value={r.id}>
+                          {String(r.created_at || '').slice(0, 19) || r.id} · {String(r.status || '')} · {r.progress ?? 0}%
+                        </SelectItem>
+                      ))}
+                  </SelectContent>
+                </Select>
+                <Button variant="outline" className="gap-2" onClick={() => void loadDiff()} disabled={!diffBaseRunId || diffLoading || !selectedRun?.id}>
+                  {diffLoading ? <Loader2 className="w-4 h-4 animate-spin motion-reduce:animate-none" /> : null}
+                  计算
+                </Button>
+              </div>
+            </div>
+
+            {diffRes ? (
+              <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="rounded-xl border border-border/60 bg-muted/10 p-3 text-sm">
+                  <div className="font-mono text-xs text-muted-foreground">total_files</div>
+                  <div className="mt-1 font-mono text-lg">{diffRes.total_files.before} → {diffRes.total_files.after} (Δ {diffRes.total_files.delta})</div>
+                  <div className="mt-2 font-mono text-xs text-muted-foreground">pdf_scanned</div>
+                  <div className="mt-1 font-mono">{diffRes.pdf_scanned.before} → {diffRes.pdf_scanned.after} (Δ {diffRes.pdf_scanned.delta})</div>
+                  <div className="mt-2 font-mono text-xs text-muted-foreground">pdf_unknown</div>
+                  <div className="mt-1 font-mono">{diffRes.pdf_unknown.before} → {diffRes.pdf_unknown.after} (Δ {diffRes.pdf_unknown.delta})</div>
+                </div>
+
+                <div className="rounded-xl border border-border/60 overflow-hidden">
+                  <div className="px-3 py-2 text-sm font-medium bg-muted/40">Top Findings Δ</div>
+                  <div className="max-h-[220px] overflow-auto">
+                    <table className="w-full text-sm text-left">
+                      <thead className="bg-muted/20 text-muted-foreground">
+                        <tr>
+                          <th className="px-3 py-2 font-medium">key</th>
+                          <th className="px-3 py-2 font-medium">before</th>
+                          <th className="px-3 py-2 font-medium">after</th>
+                          <th className="px-3 py-2 font-medium">delta</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {(diffRes.findings || []).slice(0, 12).map((it) => (
+                          <tr key={`diff-${it.key}`} className="border-t border-border/60">
+                            <td className="px-3 py-2 font-mono text-xs">{it.key}</td>
+                            <td className="px-3 py-2 font-mono text-xs">{it.before}</td>
+                            <td className="px-3 py-2 font-mono text-xs">{it.after}</td>
+                            <td className={cn('px-3 py-2 font-mono text-xs', it.delta > 0 ? 'text-warning' : it.delta < 0 ? 'text-teal-400' : '')}>
+                              {it.delta}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="mt-4 text-sm text-muted-foreground">未计算</div>
+            )}
           </Panel>
 
           <Panel className="p-5">
@@ -994,16 +1092,31 @@ export default function DatasetPrecheckPage() {
                           <th className="px-3 py-2 font-medium">类型</th>
                           <th className="px-3 py-2 font-medium">大小</th>
                           <th className="px-3 py-2 font-medium">长度</th>
+                          <th className="px-3 py-2 font-medium">PDF</th>
+                          <th className="px-3 py-2 font-medium">表格</th>
                           <th className="px-3 py-2 font-medium">估算</th>
                         </tr>
                       </thead>
                       <tbody>
                         {findingRes.items.map((d) => (
-                          <tr key={`${d.name}-${d.file_type}-${d.file_size}`} className="border-t border-border/60 hover:bg-muted/20 transition-colors">
+                          <tr
+                            key={`${d.name}-${d.file_type}-${d.file_size}`}
+                            className="border-t border-border/60 hover:bg-muted/20 transition-colors cursor-pointer"
+                            onClick={() => {
+                              setFileDetail(d)
+                              setFileDetailOpen(true)
+                            }}
+                          >
                             <td className="px-3 py-2 font-mono text-xs">{d.name}</td>
                             <td className="px-3 py-2 font-mono text-xs">{d.file_type}</td>
                             <td className="px-3 py-2 font-mono text-xs">{formatFileSize(d.file_size || 0)}</td>
                             <td className="px-3 py-2 font-mono text-xs">{d.text_characters}</td>
+                            <td className="px-3 py-2 font-mono text-xs">
+                              {d.file_type === 'pdf' ? (d.pdf_scanned === true ? 'scan' : d.pdf_scanned === false ? 'text' : 'unknown') : ''}
+                            </td>
+                            <td className="px-3 py-2 font-mono text-xs">
+                              {d.spreadsheet?.row_count ? `${d.spreadsheet.row_count}` : ''}
+                            </td>
                             <td className="px-3 py-2 font-mono text-xs">{d.estimated_text ? 'yes' : ''}</td>
                           </tr>
                         ))}
@@ -1030,6 +1143,74 @@ export default function DatasetPrecheckPage() {
                 <div className="py-10 text-center text-muted-foreground">暂无数据</div>
               )}
             </div>
+          </DialogContent>
+        </Dialog>
+
+        <Dialog
+          open={fileDetailOpen}
+          onOpenChange={(open) => {
+            setFileDetailOpen(open)
+            if (!open) setFileDetail(null)
+          }}
+        >
+          <DialogContent className="max-w-4xl border-border bg-background/95 backdrop-blur-xl shadow-strong sm:rounded-2xl">
+            <DialogHeader>
+              <DialogTitle className="text-xl font-bold text-foreground">文件详情</DialogTitle>
+              <DialogDescription className="text-muted-foreground">{fileDetail?.name || ''}</DialogDescription>
+            </DialogHeader>
+
+            {fileDetail ? (
+              <div className="space-y-3">
+                <div className="rounded-xl border border-border/60 bg-muted/10 p-3 text-sm">
+                  <div className="font-mono text-xs text-muted-foreground">meta</div>
+                  <div className="mt-1 font-mono text-xs">
+                    type={fileDetail.file_type} · size={formatFileSize(fileDetail.file_size)} · chars={fileDetail.text_characters}{' '}
+                    {fileDetail.estimated_text ? '(estimated)' : ''}
+                  </div>
+                  {fileDetail.error_message ? <div className="mt-2 text-xs text-destructive">{fileDetail.error_message}</div> : null}
+                </div>
+
+                {fileDetail.pdf_pages ? (
+                  <div className="rounded-xl border border-border/60 bg-muted/10 p-3 text-sm">
+                    <div className="font-mono text-xs text-muted-foreground">pdf_pages</div>
+                    <div className="mt-1 font-mono text-xs">
+                      pages={fileDetail.pdf_pages.page_count} · sampled={fileDetail.pdf_pages.sampled_pages} · scanned={fileDetail.pdf_pages.scanned_pages} · text={fileDetail.pdf_pages.text_pages} · low_density={fileDetail.pdf_pages.low_density_pages} · unknown={fileDetail.pdf_pages.unknown_pages}
+                    </div>
+                  </div>
+                ) : null}
+
+                {fileDetail.spreadsheet ? (
+                  <div className="rounded-xl border border-border/60 bg-muted/10 p-3 text-sm">
+                    <div className="font-mono text-xs text-muted-foreground">spreadsheet</div>
+                    <div className="mt-1 font-mono text-xs">
+                      rows={fileDetail.spreadsheet.row_count} · sheets={fileDetail.spreadsheet.sheet_count} · merged_ratio={fileDetail.spreadsheet.merged_cell_ratio}
+                      {fileDetail.spreadsheet.estimated_rows ? ' (estimated)' : ''}
+                    </div>
+                  </div>
+                ) : null}
+
+                <div className="rounded-xl border border-border/60 overflow-hidden">
+                  <div className="px-3 py-2 text-sm font-medium bg-muted/40">findings</div>
+                  <div className="p-3 font-mono text-xs">{(fileDetail.findings || []).join(', ') || '-'}</div>
+                </div>
+
+                {(fileDetail.pii_samples || []).length ? (
+                  <div className="rounded-xl border border-border/60 overflow-hidden">
+                    <div className="px-3 py-2 text-sm font-medium bg-muted/40">PII samples</div>
+                    <pre className="p-3 text-xs overflow-auto max-h-[220px] bg-background font-mono">{JSON.stringify(fileDetail.pii_samples, null, 2)}</pre>
+                  </div>
+                ) : null}
+
+                {(fileDetail.secrets_samples || []).length ? (
+                  <div className="rounded-xl border border-border/60 overflow-hidden">
+                    <div className="px-3 py-2 text-sm font-medium bg-muted/40">Secrets samples</div>
+                    <pre className="p-3 text-xs overflow-auto max-h-[220px] bg-background font-mono">{JSON.stringify(fileDetail.secrets_samples, null, 2)}</pre>
+                  </div>
+                ) : null}
+              </div>
+            ) : (
+              <div className="py-10 text-center text-muted-foreground">暂无数据</div>
+            )}
           </DialogContent>
         </Dialog>
 

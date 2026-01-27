@@ -128,7 +128,6 @@ def build_ingestion_policy_suggestion(
     if not summary:
         raise HTTPException(status_code=404, detail="Summary not available")
 
-    by_type = summary.get("by_file_type") if isinstance(summary.get("by_file_type"), dict) else {}
     pdf_scan = summary.get("pdf_scan") if isinstance(summary.get("pdf_scan"), dict) else {}
     scanned_pdfs = _safe_int(pdf_scan.get("scanned"))
     unknown_pdfs = _safe_int(pdf_scan.get("unknown"))

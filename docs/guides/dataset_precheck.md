@@ -47,6 +47,12 @@ PRECHECK_PDF_SAMPLE_PAGES=3
 5. 扫描完成后可导出：
    - JSON：结构化数据，便于二次分析
    - HTML：单文件离线报告（默认脱敏）
+6. 进阶能力（建议做售前/交付对齐）：
+   - 「代表性样本（抽样）」：自动分层抽样 + 问题分桶样本，可直接下载 JSON 发给乙方/顾问用于估工估价
+   - 「近重复候选」：SimHash 基于抽样文本识别版本冲突候选（只输出待确认列表，不做删留决策）
+   - 「预检 → 入库策略」：把预检结果转成可导入的 ingestion policy（闭环：从“报告”走向“配置”）
+   - 「对比（Diff）」：同一路径/同一批数据多次扫描后对比变化，用于验证治理成效
+   - 支持「取消」与实时进度（SSE；Web 会自动回退到轮询）
 
 ## API 一览（调试用）
 
@@ -55,6 +61,19 @@ PRECHECK_PDF_SAMPLE_PAGES=3
 - 详情：`GET /api/v1/datasets/{dataset_id}/precheck/scan-runs/{run_id}`
 - Summary：`GET /api/v1/datasets/{dataset_id}/precheck/scan-runs/{run_id}/summary`
 - Findings drill-down：`GET /api/v1/datasets/{dataset_id}/precheck/scan-runs/{run_id}/findings/{finding_key}`
+- 代表性样本（抽样）：`GET /api/v1/datasets/{dataset_id}/precheck/scan-runs/{run_id}/samples?size=60`
+- 近重复详情：`GET /api/v1/datasets/{dataset_id}/precheck/scan-runs/{run_id}/near-dups`
+- Diff：`GET /api/v1/datasets/{dataset_id}/precheck/scan-runs/{run_id}/diff?base_scan_run_id={base_id}`
+- 建议入库策略：`GET /api/v1/datasets/{dataset_id}/precheck/scan-runs/{run_id}/suggest-ingestion-policy`
+- 应用入库策略：`POST /api/v1/datasets/{dataset_id}/precheck/scan-runs/{run_id}/apply-ingestion-policy?replace=false`
+- 取消：`POST /api/v1/datasets/{dataset_id}/precheck/scan-runs/{run_id}/cancel`
+- 进度 SSE：`GET /api/v1/datasets/{dataset_id}/precheck/scan-runs/{run_id}/events`
 - 导出 JSON：`GET /api/v1/datasets/{dataset_id}/precheck/scan-runs/{run_id}/export`
 - 导出 HTML：`GET /api/v1/datasets/{dataset_id}/precheck/scan-runs/{run_id}/export-html?redact=true`
+
+## 重要说明（和入库策略的关系）
+
+- 预检扫描的定位是“入库前摸底”，输出的是客观统计 + 可操作清单，不会给“健康分/风险分”这类主观评分。
+- 最值钱的闭环是：预检 -> 生成 ingestion policy -> 直接应用到数据集（或导出 JSON 再 import）。
+  这样下游入库就能按规则分流：比如 PDF 扫描件优先走 OCR、表格大文件提示走结构化方案、PII/Secrets 启用合规脱敏等。
 

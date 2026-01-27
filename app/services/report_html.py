@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from html import escape
-from typing import Any, Iterable
+from typing import Any
 
 
 def _fmt_int(n: Any) -> str:

@@ -13,9 +13,7 @@ Security:
 
 from __future__ import annotations
 
-import contextlib
 import hashlib
-import io
 import json
 import os
 import re
@@ -211,10 +209,8 @@ def _build_samples_payload(*, jsonl_path: Path, target_size: int) -> dict[str, A
             if not isinstance(obj, dict):
                 continue
 
-            name = str(obj.get("name") or "")
             file_type = str(obj.get("file_type") or "unknown")
             file_size = int(obj.get("file_size") or 0)
-            text_chars = int(obj.get("text_characters") or 0)
             pdf_scanned = obj.get("pdf_scanned")
             pdf_state = "na"
             if file_type.lower() == "pdf":
@@ -879,6 +875,14 @@ def run_dataset_precheck_scan(
                     prev_artifacts = prev_artifacts if isinstance(prev_artifacts, dict) else {}
                     prev_jsonl_raw = str(prev_artifacts.get("files_jsonl") or "").strip()
                     prev_jsonl = Path(prev_jsonl_raw) if prev_jsonl_raw else None
+                    if prev_jsonl and prev_jsonl.exists() and prev_jsonl.is_file():
+                        # Defense-in-depth: only reuse artifacts under the same tenant root.
+                        try:
+                            upload_root = Path(getattr(settings, "UPLOAD_DIR", "./uploads") or "./uploads").resolve(strict=False)
+                            tenant_root = (upload_root / str(tenant_id)).resolve(strict=False)
+                            prev_jsonl.resolve(strict=False).relative_to(tenant_root)
+                        except Exception:
+                            prev_jsonl = None
                     if prev_jsonl and prev_jsonl.exists() and prev_jsonl.is_file():
                         try:
                             with prev_jsonl.open("r", encoding="utf-8") as f:
