@@ -270,6 +270,71 @@ def _sanitize_display_name(rel_path: str) -> str:
     return s[:1024] if len(s) > 1024 else s
 
 
+def _xlsx_spreadsheet_stats(path: Path, *, max_sheets: int = 3) -> dict[str, Any] | None:
+    """
+    Best-effort spreadsheet stats for .xlsx (read-only).
+
+    Note: This is intentionally lightweight and may be approximate for files with
+    complex formatting. It should never raise.
+    """
+    try:
+        import openpyxl  # type: ignore
+    except Exception:
+        return None
+
+    wb = None
+    try:
+        wb = openpyxl.load_workbook(str(path), read_only=True, data_only=True)
+        sheetnames = list(getattr(wb, "sheetnames", None) or [])
+        sheet_count = int(len(sheetnames))
+        max_rows = 0
+        max_cols = 0
+        merged_area = 0
+
+        for idx, name in enumerate(sheetnames[: max(1, int(max_sheets or 1))]):
+            ws = wb[name]
+            r = int(getattr(ws, "max_row", 0) or 0)
+            c = int(getattr(ws, "max_column", 0) or 0)
+            max_rows = max(max_rows, r)
+            max_cols = max(max_cols, c)
+
+            # Only compute merged cells on the first sheet (cheap signal).
+            if idx == 0:
+                merged_cells = getattr(ws, "merged_cells", None)
+                ranges = list(getattr(merged_cells, "ranges", None) or [])
+                # Cap range count to avoid pathological files.
+                for rng in ranges[:5000]:
+                    try:
+                        merged_area += int(rng.size)  # type: ignore[attr-defined]
+                    except Exception:
+                        try:
+                            merged_area += int((rng.max_row - rng.min_row + 1) * (rng.max_col - rng.min_col + 1))  # type: ignore[attr-defined]
+                        except Exception:
+                            continue
+
+        total_area = max(1, int(max_rows) * int(max_cols))
+        merged_ratio = float(merged_area) / float(total_area)
+        if merged_ratio < 0.0:
+            merged_ratio = 0.0
+        if merged_ratio > 1.0:
+            merged_ratio = 1.0
+
+        return {
+            "row_count": int(max_rows),
+            "sheet_count": int(sheet_count),
+            "merged_cell_ratio": round(float(merged_ratio), 6),
+            "estimated_rows": False,
+        }
+    except Exception:
+        return None
+    finally:
+        try:
+            if wb is not None:
+                wb.close()
+        except Exception:
+            pass
+
+
 @dataclass
 class _FileRecord:
     name: str
@@ -385,6 +450,10 @@ def run_dataset_precheck_scan(
         cfg.get("pdf_scan_ratio_threshold")
         if cfg.get("pdf_scan_ratio_threshold") is not None
         else float(getattr(settings, "PRECHECK_PDF_SCAN_RATIO_THRESHOLD", 0.7) or 0.7)
+    )
+    spreadsheet_large_row_threshold = safe_int(
+        getattr(settings, "PRECHECK_SPREADSHEET_LARGE_ROW_THRESHOLD", 5000),
+        default=5000,
     )
 
     # Prepare artifact dir and JSONL writer.
@@ -551,6 +620,37 @@ def run_dataset_precheck_scan(
                             pdf_scanned += 1
                         else:
                             pdf_not_scanned += 1
+
+                # Spreadsheet stats (best-effort): large tables are often better served by structured indexing / Text-to-SQL.
+                if ext in {".csv", ".xlsx"}:
+                    if ext == ".csv":
+                        # Use the already-read text sample as a cheap proxy for row count.
+                        if sample_text:
+                            lines = int(sample_text.count("\n"))
+                            if not sample_text.endswith("\n"):
+                                lines += 1
+                            row_count = max(0, lines)
+                            estimated_rows = False
+                            if estimated_text and size > 0:
+                                ratio = size / max(1, min(size, text_max_bytes))
+                                row_count = int(row_count * ratio)
+                                estimated_rows = True
+                            rec.spreadsheet = {
+                                "row_count": int(row_count),
+                                "sheet_count": 1,
+                                "merged_cell_ratio": 0.0,
+                                "estimated_rows": bool(estimated_rows),
+                            }
+                    else:
+                        stats = _xlsx_spreadsheet_stats(path)
+                        if isinstance(stats, dict) and stats:
+                            rec.spreadsheet = stats
+
+                    if isinstance(rec.spreadsheet, dict):
+                        rows = int(rec.spreadsheet.get("row_count") or 0)
+                        if spreadsheet_large_row_threshold > 0 and rows >= int(spreadsheet_large_row_threshold):
+                            rec.findings.append("large_spreadsheet")
+                            finding_counts["large_spreadsheet"] += 1
 
                 # Optional PII/secrets detection on sample text.
                 if sample_text and enable_pii:
