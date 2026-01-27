@@ -16,6 +16,7 @@ import ipaddress
 import socket
 from dataclasses import dataclass
 from pathlib import Path
+from urllib.parse import urljoin
 from urllib.parse import urlparse
 
 import aiofiles
@@ -33,6 +34,50 @@ _BLOCKED_HOSTS = {
     "127.0.0.1",
     "::1",
 }
+
+def _parse_csv(raw: str) -> list[str]:
+    parts = [p.strip() for p in str(raw or "").split(",")]
+    return [p for p in parts if p]
+
+
+def _host_in_allowlist(host: str, allowlist: list[str]) -> bool:
+    """
+    Match host against an allowlist with optional wildcard suffix patterns.
+
+    - "example.com" matches exactly.
+    - "*.foo.com" matches "a.foo.com" but NOT "foo.com".
+    """
+    h = (host or "").strip().lower()
+    if not h:
+        return False
+    for raw in allowlist:
+        pat = (raw or "").strip().lower()
+        if not pat:
+            continue
+        if pat.startswith("*.") and len(pat) > 2:
+            suffix = pat[2:]
+            if h == suffix:
+                continue
+            if h.endswith("." + suffix):
+                return True
+            continue
+        if h == pat:
+            return True
+    return False
+
+
+def _parse_allowed_ports(raw: str) -> list[int]:
+    ports: list[int] = []
+    for item in _parse_csv(raw):
+        try:
+            p = int(item)
+        except Exception as exc:  # noqa: BLE001
+            raise ValueError("invalid_port_allowlist") from exc
+        if p <= 0 or p > 65535:
+            raise ValueError("invalid_port_allowlist")
+        if p not in ports:
+            ports.append(p)
+    return ports
 
 
 def _is_allowed_ip(ip: ipaddress._BaseAddress, *, allow_private: bool) -> bool:  # type: ignore[name-defined]
@@ -63,6 +108,24 @@ async def validate_url_for_ingest(url: str) -> str:
     if host in _BLOCKED_HOSTS or host.endswith(".local"):
         raise HTTPException(status_code=400, detail="url host is not allowed")
 
+    port = parsed.port or (443 if scheme == "https" else 80)
+
+    # Optional host allowlist (defense-in-depth; useful for enterprise deployments).
+    allowed_hosts = _parse_csv(str(getattr(settings, "URL_INGEST_ALLOWED_HOSTS", "") or ""))
+    if allowed_hosts and not _host_in_allowlist(host, allowed_hosts):
+        raise HTTPException(status_code=400, detail="url host is not allowed")
+
+    # Optional port allowlist.
+    allowed_ports_raw = str(getattr(settings, "URL_INGEST_ALLOWED_PORTS", "") or "")
+    if allowed_ports_raw.strip():
+        try:
+            allowed_ports = _parse_allowed_ports(allowed_ports_raw)
+        except ValueError:
+            # Misconfiguration should fail closed (server-side error).
+            raise HTTPException(status_code=500, detail="url ingest port allowlist misconfigured")
+        if port not in allowed_ports:
+            raise HTTPException(status_code=400, detail="url port is not allowed")
+
     allow_private = bool(getattr(settings, "URL_INGEST_ALLOW_PRIVATE_IPS", False))
 
     # IP literal?
@@ -73,7 +136,7 @@ async def validate_url_for_ingest(url: str) -> str:
         return raw
 
     # Resolve DNS (blocking -> thread).
-    port = parsed.port or (443 if scheme == "https" else 80)
+    # Port already resolved/validated above.
 
     def _resolve() -> list[str]:
         out: list[str] = []
@@ -143,37 +206,58 @@ async def download_url_to_path(
     pool = get_http_client_pool()
     client = await pool.get_client()
 
+    # Validate the starting URL.
+    current = await validate_url_for_ingest(url)
+    max_redirects = int(getattr(settings, "URL_INGEST_MAX_REDIRECTS", 5) or 5)
+    max_redirects = max(0, min(max_redirects, 20))
+
     try:
-        async with client.stream(
-            "GET",
-            url,
-            headers=headers,
-            timeout=httpx.Timeout(timeout_eff),
-            follow_redirects=follow_eff,
-        ) as resp:
-            if resp.status_code >= 400:
-                raise HTTPException(status_code=400, detail=f"failed to fetch url (status={resp.status_code})")
+        hops = 0
+        while True:
+            async with client.stream(
+                "GET",
+                current,
+                headers=headers,
+                timeout=httpx.Timeout(timeout_eff),
+                follow_redirects=False,  # validate per-hop ourselves
+            ) as resp:
+                # Manual redirect handling (defense-in-depth; prevents redirect-to-private SSRF).
+                if resp.status_code in {301, 302, 303, 307, 308}:
+                    if not follow_eff:
+                        raise HTTPException(status_code=400, detail="redirects are not allowed")
+                    if hops >= max_redirects:
+                        raise HTTPException(status_code=400, detail="too many redirects")
+                    loc = (resp.headers.get("location") or "").strip()
+                    if not loc:
+                        raise HTTPException(status_code=400, detail="redirect location missing")
+                    nxt = urljoin(str(resp.url), loc)
+                    current = await validate_url_for_ingest(nxt)
+                    hops += 1
+                    continue
 
-            content_length = resp.headers.get("content-length")
-            if content_length:
-                with contextlib.suppress(Exception):
-                    if int(content_length) > max_bytes_eff:
-                        raise HTTPException(status_code=413, detail="remote file too large")
+                if resp.status_code >= 400:
+                    raise HTTPException(status_code=400, detail=f"failed to fetch url (status={resp.status_code})")
 
-            async with aiofiles.open(destination, "wb") as f:
-                async for chunk in resp.aiter_bytes():
-                    if not chunk:
-                        continue
-                    size += len(chunk)
-                    if size > max_bytes_eff:
-                        raise HTTPException(status_code=413, detail="remote file too large")
-                    await f.write(chunk)
+                content_length = resp.headers.get("content-length")
+                if content_length:
+                    with contextlib.suppress(Exception):
+                        if int(content_length) > max_bytes_eff:
+                            raise HTTPException(status_code=413, detail="remote file too large")
 
-            return DownloadedURL(
-                size_bytes=int(size),
-                content_type=resp.headers.get("content-type"),
-                final_url=str(resp.url),
-            )
+                async with aiofiles.open(destination, "wb") as f:
+                    async for chunk in resp.aiter_bytes():
+                        if not chunk:
+                            continue
+                        size += len(chunk)
+                        if size > max_bytes_eff:
+                            raise HTTPException(status_code=413, detail="remote file too large")
+                        await f.write(chunk)
+
+                return DownloadedURL(
+                    size_bytes=int(size),
+                    content_type=resp.headers.get("content-type"),
+                    final_url=str(resp.url),
+                )
     except HTTPException:
         with contextlib.suppress(OSError):
             destination.unlink(missing_ok=True)
@@ -182,4 +266,3 @@ async def download_url_to_path(
         with contextlib.suppress(OSError):
             destination.unlink(missing_ok=True)
         raise HTTPException(status_code=500, detail=f"failed to fetch url: {str(exc)[:120]}") from exc
-
