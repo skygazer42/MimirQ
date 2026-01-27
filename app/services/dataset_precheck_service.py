@@ -34,6 +34,9 @@ FINDING_KEYS: set[str] = {
     "exact_dup",
     "near_dup",
     "large_spreadsheet",
+    "wide_spreadsheet",
+    "many_sheets_spreadsheet",
+    "merged_heavy_spreadsheet",
 }
 
 

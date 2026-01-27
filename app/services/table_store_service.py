@@ -217,6 +217,13 @@ def _import_excel(
     except Exception:
         sheet_names = []
 
+    # Guardrail: cap total imported sheets to avoid pathological workbooks.
+    max_sheets = int(getattr(settings, "TABLE_STORE_MAX_SHEETS", 0) or 0)
+    workbook_truncated = False
+    if max_sheets > 0 and len(sheet_names) > max_sheets:
+        workbook_truncated = True
+        sheet_names = sheet_names[: max(0, int(max_sheets))]
+
     if not sheet_names:
         # Produce an empty sheet0 table for consistency.
         empty = pd.DataFrame()
@@ -238,7 +245,7 @@ def _import_excel(
         except Exception:
             # Best-effort: skip unreadable sheets.
             continue
-        truncated = bool(nrows is not None and int(getattr(df, "shape", (0, 0))[0]) >= int(nrows))
+        truncated = bool(nrows is not None and int(getattr(df, "shape", (0, 0))[0]) >= int(nrows)) or bool(workbook_truncated)
         if max_cols and int(max_cols) > 0 and int(getattr(df, "shape", (0, 0))[1]) > int(max_cols):
             df = df.iloc[:, : int(max_cols)]
         assets.extend(
