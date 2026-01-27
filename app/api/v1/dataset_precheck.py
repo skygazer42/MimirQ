@@ -7,25 +7,40 @@ They are run-based (async), store progress in DB, and store per-file records on 
 
 from __future__ import annotations
 
+import asyncio
 import json
 import re
 from uuid import UUID
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Response
+from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
 from app.api.dependencies.auth import get_current_account_id
 from app.api.dependencies.tenant import get_tenant_id
 from app.api.schemas.dataset_precheck import (
     DatasetPrecheckFindingListResponse,
+    DatasetPrecheckDiffResponse,
+    DatasetPrecheckIngestionSuggestionResponse,
+    DatasetPrecheckNearDupResponse,
     DatasetPrecheckScanRunCreateRequest,
     DatasetPrecheckScanRunListResponse,
     DatasetPrecheckScanRunOut,
+    DatasetPrecheckSamplesResponse,
     DatasetPrecheckSummary,
 )
 from app.core.database import SessionLocal, get_db
 from app.models.dataset_precheck_scan import DatasetPrecheckScanRun as DBDatasetPrecheckScanRun
-from app.services.dataset_precheck_service import _scan_run_out_from_row, get_dataset_for_precheck, list_precheck_finding_files, load_precheck_summary_from_row
+from app.services.dataset_precheck_diff import diff_precheck_summaries
+from app.services.dataset_precheck_ingestion_suggestion import build_ingestion_policy_suggestion, apply_ingestion_policy_suggestion
+from app.services.dataset_precheck_service import (
+    _scan_run_out_from_row,
+    get_dataset_for_precheck,
+    list_precheck_finding_files,
+    load_precheck_near_dups_from_row,
+    load_precheck_samples_from_row,
+    load_precheck_summary_from_row,
+)
 from app.services.dataset_precheck_scan_runner import run_dataset_precheck_scan
 from app.services.report_html import render_precheck_html
 from app.tasks.queue import enqueue_dataset_precheck_scan
@@ -224,6 +239,273 @@ def list_dataset_precheck_finding_files(
         skip=int(skip or 0),
         limit=int(limit or 50),
     )
+
+
+@router.post("/{dataset_id}/precheck/scan-runs/{scan_run_id}/cancel", response_model=DatasetPrecheckScanRunOut)
+def cancel_dataset_precheck_scan_run(
+    dataset_id: UUID,
+    scan_run_id: UUID,
+    tenant_id: UUID = Depends(get_tenant_id),
+    account_id: str = Depends(get_current_account_id),
+    db: Session = Depends(get_db),
+):
+    # Cancelling affects the run state -> require dataset write permission.
+    get_dataset_for_precheck(db, tenant_id=tenant_id, dataset_id=dataset_id, account_id=account_id, require_write=True)
+
+    row = (
+        db.query(DBDatasetPrecheckScanRun)
+        .filter(
+            DBDatasetPrecheckScanRun.id == scan_run_id,
+            DBDatasetPrecheckScanRun.tenant_id == tenant_id,
+            DBDatasetPrecheckScanRun.dataset_id == dataset_id,
+        )
+        .first()
+    )
+    if row is None:
+        raise HTTPException(status_code=404, detail="Scan run not found")
+
+    st = str(getattr(row, "status", "") or "").lower()
+    if st in {"completed", "failed", "cancelled"}:
+        return DatasetPrecheckScanRunOut(**_scan_run_out_from_row(row))
+
+    row.status = "cancelled"
+    db.commit()
+    db.refresh(row)
+    return DatasetPrecheckScanRunOut(**_scan_run_out_from_row(row))
+
+
+@router.get("/{dataset_id}/precheck/scan-runs/{scan_run_id}/events")
+async def stream_dataset_precheck_scan_events(
+    dataset_id: UUID,
+    scan_run_id: UUID,
+    tenant_id: UUID = Depends(get_tenant_id),
+    account_id: str = Depends(get_current_account_id),
+    db: Session = Depends(get_db),
+):
+    """
+    Server-sent events (SSE) stream for scan run progress.
+
+    This allows web UIs to avoid polling while a scan is running.
+    """
+    # Read access is enough to observe progress.
+    get_dataset_for_precheck(db, tenant_id=tenant_id, dataset_id=dataset_id, account_id=account_id, require_write=False)
+
+    async def gen():  # noqa: ANN202
+        last_payload: str | None = None
+        try:
+            while True:
+                db2 = SessionLocal()
+                try:
+                    row = (
+                        db2.query(DBDatasetPrecheckScanRun)
+                        .filter(
+                            DBDatasetPrecheckScanRun.id == scan_run_id,
+                            DBDatasetPrecheckScanRun.tenant_id == tenant_id,
+                            DBDatasetPrecheckScanRun.dataset_id == dataset_id,
+                        )
+                        .first()
+                    )
+                    if row is None:
+                        break
+                    out = _scan_run_out_from_row(row)
+                    payload = json.dumps(out, ensure_ascii=False, separators=(",", ":"))
+                    st = str(out.get("status") or "").lower()
+                finally:
+                    db2.close()
+
+                if payload != last_payload:
+                    last_payload = payload
+                    yield f"data: {payload}\n\n"
+
+                if st not in {"pending", "running"}:
+                    break
+                await asyncio.sleep(1.0)
+        except asyncio.CancelledError:
+            return
+
+    return StreamingResponse(gen(), media_type="text/event-stream")
+
+
+@router.get(
+    "/{dataset_id}/precheck/scan-runs/{scan_run_id}/samples",
+    response_model=DatasetPrecheckSamplesResponse,
+)
+def get_dataset_precheck_samples(
+    dataset_id: UUID,
+    scan_run_id: UUID,
+    size: int = Query(default=60, ge=0, le=2000),
+    prefer_artifact: bool = Query(default=True),
+    tenant_id: UUID = Depends(get_tenant_id),
+    account_id: str = Depends(get_current_account_id),
+    db: Session = Depends(get_db),
+):
+    get_dataset_for_precheck(db, tenant_id=tenant_id, dataset_id=dataset_id, account_id=account_id, require_write=False)
+    row = (
+        db.query(DBDatasetPrecheckScanRun)
+        .filter(
+            DBDatasetPrecheckScanRun.id == scan_run_id,
+            DBDatasetPrecheckScanRun.tenant_id == tenant_id,
+            DBDatasetPrecheckScanRun.dataset_id == dataset_id,
+        )
+        .first()
+    )
+    if row is None:
+        raise HTTPException(status_code=404, detail="Scan run not found")
+
+    raw = load_precheck_samples_from_row(row, tenant_id=tenant_id, size=int(size or 0), prefer_artifact=bool(prefer_artifact))
+    try:
+        return DatasetPrecheckSamplesResponse(**raw)
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=500, detail=f"Invalid samples payload: {str(exc)[:200]}") from exc
+
+
+@router.get(
+    "/{dataset_id}/precheck/scan-runs/{scan_run_id}/near-dups",
+    response_model=DatasetPrecheckNearDupResponse,
+)
+def get_dataset_precheck_near_dups(
+    dataset_id: UUID,
+    scan_run_id: UUID,
+    tenant_id: UUID = Depends(get_tenant_id),
+    account_id: str = Depends(get_current_account_id),
+    db: Session = Depends(get_db),
+):
+    get_dataset_for_precheck(db, tenant_id=tenant_id, dataset_id=dataset_id, account_id=account_id, require_write=False)
+    row = (
+        db.query(DBDatasetPrecheckScanRun)
+        .filter(
+            DBDatasetPrecheckScanRun.id == scan_run_id,
+            DBDatasetPrecheckScanRun.tenant_id == tenant_id,
+            DBDatasetPrecheckScanRun.dataset_id == dataset_id,
+        )
+        .first()
+    )
+    if row is None:
+        raise HTTPException(status_code=404, detail="Scan run not found")
+
+    raw = load_precheck_near_dups_from_row(row, tenant_id=tenant_id)
+    try:
+        return DatasetPrecheckNearDupResponse(**raw)
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=500, detail=f"Invalid near-dup payload: {str(exc)[:200]}") from exc
+
+
+@router.get(
+    "/{dataset_id}/precheck/scan-runs/{scan_run_id}/diff",
+    response_model=DatasetPrecheckDiffResponse,
+)
+def diff_dataset_precheck_scan_runs(
+    dataset_id: UUID,
+    scan_run_id: UUID,
+    base_scan_run_id: UUID = Query(..., description="Base scan run id to compare against"),
+    tenant_id: UUID = Depends(get_tenant_id),
+    account_id: str = Depends(get_current_account_id),
+    db: Session = Depends(get_db),
+):
+    get_dataset_for_precheck(db, tenant_id=tenant_id, dataset_id=dataset_id, account_id=account_id, require_write=False)
+
+    base = (
+        db.query(DBDatasetPrecheckScanRun)
+        .filter(
+            DBDatasetPrecheckScanRun.id == base_scan_run_id,
+            DBDatasetPrecheckScanRun.tenant_id == tenant_id,
+            DBDatasetPrecheckScanRun.dataset_id == dataset_id,
+        )
+        .first()
+    )
+    if base is None:
+        raise HTTPException(status_code=404, detail="Base scan run not found")
+    target = (
+        db.query(DBDatasetPrecheckScanRun)
+        .filter(
+            DBDatasetPrecheckScanRun.id == scan_run_id,
+            DBDatasetPrecheckScanRun.tenant_id == tenant_id,
+            DBDatasetPrecheckScanRun.dataset_id == dataset_id,
+        )
+        .first()
+    )
+    if target is None:
+        raise HTTPException(status_code=404, detail="Target scan run not found")
+
+    base_summary = getattr(base, "summary", None)
+    base_summary = base_summary if isinstance(base_summary, dict) else {}
+    target_summary = getattr(target, "summary", None)
+    target_summary = target_summary if isinstance(target_summary, dict) else {}
+    if not base_summary or not target_summary:
+        raise HTTPException(status_code=404, detail="Summary not available")
+
+    diff = diff_precheck_summaries(
+        base_scan_run_id=base_scan_run_id,
+        target_scan_run_id=scan_run_id,
+        base_summary=base_summary,
+        target_summary=target_summary,
+    )
+    return DatasetPrecheckDiffResponse(**diff)
+
+
+@router.get(
+    "/{dataset_id}/precheck/scan-runs/{scan_run_id}/suggest-ingestion-policy",
+    response_model=DatasetPrecheckIngestionSuggestionResponse,
+)
+def get_dataset_precheck_ingestion_policy_suggestion(
+    dataset_id: UUID,
+    scan_run_id: UUID,
+    max_names_per_bucket: int = Query(default=50, ge=0, le=2000),
+    tenant_id: UUID = Depends(get_tenant_id),
+    account_id: str = Depends(get_current_account_id),
+    db: Session = Depends(get_db),
+):
+    get_dataset_for_precheck(db, tenant_id=tenant_id, dataset_id=dataset_id, account_id=account_id, require_write=False)
+    row = (
+        db.query(DBDatasetPrecheckScanRun)
+        .filter(
+            DBDatasetPrecheckScanRun.id == scan_run_id,
+            DBDatasetPrecheckScanRun.tenant_id == tenant_id,
+            DBDatasetPrecheckScanRun.dataset_id == dataset_id,
+        )
+        .first()
+    )
+    if row is None:
+        raise HTTPException(status_code=404, detail="Scan run not found")
+    suggestion = build_ingestion_policy_suggestion(
+        row,
+        tenant_id=tenant_id,
+        max_names_per_bucket=int(max_names_per_bucket or 0),
+    )
+    return DatasetPrecheckIngestionSuggestionResponse(**suggestion)
+
+
+@router.post("/{dataset_id}/precheck/scan-runs/{scan_run_id}/apply-ingestion-policy")
+def apply_dataset_precheck_ingestion_policy_suggestion(
+    dataset_id: UUID,
+    scan_run_id: UUID,
+    replace: bool = Query(default=False, description="Whether to overwrite existing dataset ingestion_policy"),
+    tenant_id: UUID = Depends(get_tenant_id),
+    account_id: str = Depends(get_current_account_id),
+    db: Session = Depends(get_db),
+):
+    # Applying modifies dataset metadata -> require write permission.
+    dataset = get_dataset_for_precheck(db, tenant_id=tenant_id, dataset_id=dataset_id, account_id=account_id, require_write=True)
+    row = (
+        db.query(DBDatasetPrecheckScanRun)
+        .filter(
+            DBDatasetPrecheckScanRun.id == scan_run_id,
+            DBDatasetPrecheckScanRun.tenant_id == tenant_id,
+            DBDatasetPrecheckScanRun.dataset_id == dataset_id,
+        )
+        .first()
+    )
+    if row is None:
+        raise HTTPException(status_code=404, detail="Scan run not found")
+
+    res = apply_ingestion_policy_suggestion(
+        db,
+        dataset=dataset,
+        scan_run=row,
+        tenant_id=tenant_id,
+        replace=bool(replace),
+    )
+    return res
 
 
 @router.get("/{dataset_id}/precheck/scan-runs/{scan_run_id}/export")
