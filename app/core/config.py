@@ -148,6 +148,7 @@ class Settings(BaseSettings):
     PRECHECK_PDF_MIN_TEXT_CHARS_PER_PAGE: int = 50
     PRECHECK_PDF_TEXT_CHARS_PER_PAGE: int = 200
     PRECHECK_PDF_SCAN_RATIO_THRESHOLD: float = 0.7
+    PRECHECK_SPREADSHEET_LARGE_ROW_THRESHOLD: int = 5000
     # Optional: ingest documents by fetching a remote URL (connector skeleton).
     URL_INGEST_ENABLED: bool = False
     URL_INGEST_MAX_BYTES: int = 50_000_000
