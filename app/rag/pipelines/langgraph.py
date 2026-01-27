@@ -88,6 +88,9 @@ class RAGState(TypedDict, total=False):
     prompt_template_key: Optional[str]
     prompt_ab_experiment_key: Optional[str]
     prompt_ab_variant: Optional[str]
+    # Optional: TAG injection (table_store query results) passed in by API layer.
+    tag_docs: Optional[List[Document]]
+    tag_meta: Optional[Dict[str, Any]]
     # Output fields
     query_for_retrieval: Optional[str]
     docs: Optional[List[Document]]
