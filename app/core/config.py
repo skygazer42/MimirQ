@@ -95,6 +95,11 @@ class Settings(BaseSettings):
     LLM_TIMEOUT: int = 60
     LLM_MAX_RETRIES: int = 3
 
+    # Dev/test helper: bypass external LLM calls with a deterministic fake streaming model.
+    # Useful for E2E tests and offline development.
+    LLM_MOCK_ENABLED: bool = False
+    LLM_MOCK_RESPONSE: str = "Hello from mock LLM."
+
     # HTTP client (httpx) knobs for external API calls
     HTTP_CLIENT_HTTP2_ENABLED: bool = True
     HTTP_CLIENT_MAX_CONNECTIONS: int = 100

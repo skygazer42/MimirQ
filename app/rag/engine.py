@@ -165,8 +165,18 @@ Requirements:
         )
 
 
-    def _build_llm(self, chat_cls: Type[ChatOpenAI], model_name: str) -> ChatOpenAI:
-        """Create a ChatOpenAI-compatible LLM with shared HTTP clients."""
+    def _build_llm(self, chat_cls: Type[ChatOpenAI], model_name: str) -> Any:
+        """Create a ChatOpenAI-compatible LLM with shared HTTP clients.
+
+        In dev/E2E we optionally use a fake streaming LLM to avoid external network calls.
+        """
+        if bool(getattr(settings, "LLM_MOCK_ENABLED", False)):
+            # Lazy import to keep default startup lightweight.
+            from langchain_core.language_models.fake import FakeStreamingListLLM
+
+            response = str(getattr(settings, "LLM_MOCK_RESPONSE", "") or "Hello from mock LLM.")
+            return FakeStreamingListLLM(responses=[response])
+
         return chat_cls(
             model=model_name,
             api_key=settings.LLM_API_KEY,
