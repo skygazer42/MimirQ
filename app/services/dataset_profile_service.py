@@ -13,7 +13,7 @@ from __future__ import annotations
 from collections import Counter, defaultdict
 from datetime import datetime, timezone
 import time
-from typing import Any, Dict, Iterable, List, Optional, Tuple
+from typing import Any, Iterable, List, Tuple
 from uuid import UUID
 
 from sqlalchemy import and_, func, or_, select

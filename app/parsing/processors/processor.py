@@ -11,6 +11,7 @@ from io import BytesIO
 from PIL import Image as PILImage
 import asyncio
 import base64
+import datetime as dt
 import hashlib
 import re
 import shutil
@@ -1171,6 +1172,103 @@ class DocumentProcessorService:
                 # Fail closed: when preprocessing is enabled, it is part of ingestion correctness.
                 raise RuntimeError(f"preprocess_failed: {str(exc)[:200]}") from exc
 
+            # Structured Table Store (TAG): import table-like documents and skip chunk/vector ingestion.
+            # This keeps structured assets queryable via SQL (and optional NL->SQL) instead of forcing RAG.
+            if (
+                bool(getattr(pipeline_effective, "table_store_enabled", False))
+                and db_document.dataset_id is not None
+                and file_path.suffix.lower() in {".csv", ".xls", ".xlsx"}
+            ):
+                await raise_if_cancelled(force=True)
+                await self._update_status(db, tenant_id, document_id, "processing", 15, "table_import")
+                try:
+                    from app.services.table_store_service import import_table_document
+
+                    assets = import_table_document(
+                        tenant_id=tenant_id,
+                        dataset_id=db_document.dataset_id,
+                        document_id=document_id,
+                        file_path=file_path,
+                        max_rows=int(getattr(pipeline_effective, "table_store_max_rows", 0) or 0),
+                        max_cols=int(getattr(pipeline_effective, "table_store_max_cols", 0) or 0),
+                        sample_rows=int(getattr(pipeline_effective, "table_store_sample_rows", 0) or 0),
+                    )
+                except Exception as exc:  # noqa: BLE001
+                    msg = f"table_import_failed: {(str(exc) or exc.__class__.__name__)[:200]}"
+                    logger.warning("Table import failed: %s document_id=%s", msg, document_id)
+                    await self._update_status(
+                        db,
+                        tenant_id,
+                        document_id,
+                        "failed",
+                        0,
+                        "failed",
+                        chunk_count=0,
+                        total_characters=0,
+                        error_message=msg,
+                    )
+                    return {
+                        "status": "failed",
+                        "reason": "table_import_failed",
+                        "chunk_count": 0,
+                        "total_characters": 0,
+                        "parser_backend": "table_store",
+                        "chunk_strategy": "none",
+                    }
+
+                await raise_if_cancelled(force=True)
+
+                # Persist structured table metadata for listing/preview endpoints.
+                try:
+                    now_iso = dt.datetime.utcnow().replace(tzinfo=dt.timezone.utc).isoformat()
+                    tables_payload: list[dict[str, Any]] = []
+                    for a in assets or []:
+                        tables_payload.append(
+                            {
+                                "table_id": str(getattr(a, "table_id", "")),
+                                "sheet_index": int(getattr(a, "sheet_index", 0) or 0),
+                                "sheet_name": getattr(a, "sheet_name", None),
+                                "row_count": int(getattr(a, "row_count", 0) or 0),
+                                "col_count": int(getattr(a, "col_count", 0) or 0),
+                                "truncated": bool(getattr(a, "truncated", False)),
+                                "columns": list(getattr(a, "columns", None) or []),
+                                "sample_rows": list(getattr(a, "sample_rows", None) or []),
+                            }
+                        )
+
+                    next_meta = dict(db_document.doc_metadata or {})
+                    next_meta["table_store"] = {
+                        "version": "1",
+                        "source_ext": file_path.suffix.lower(),
+                        "imported_at": now_iso,
+                        "tables": tables_payload,
+                    }
+                    db_document.doc_metadata = next_meta
+                    db.commit()
+                    db.refresh(db_document)
+                except Exception as exc:  # noqa: BLE001
+                    logger.warning("Failed to persist table_store metadata (ignored): %s", str(exc)[:200])
+
+                await self._update_status(
+                    db,
+                    tenant_id,
+                    document_id,
+                    "completed",
+                    100,
+                    "completed",
+                    chunk_count=0,
+                    total_characters=0,
+                    error_message=None,
+                )
+                return {
+                    "status": "completed",
+                    "reason": "table_store",
+                    "chunk_count": 0,
+                    "total_characters": 0,
+                    "parser_backend": "table_store",
+                    "chunk_strategy": "none",
+                }
+
             extra_rules = list(getattr(pipeline_effective, "governance_regex_rules", None) or [])
             combined_rules = build_governance_rules(extra_rules) if extra_rules else None
             governance_kwargs = {
@@ -1410,7 +1508,6 @@ class DocumentProcessorService:
             await raise_if_cancelled()
 
             # Governance: normalize/clean documents or ragflow chunks.
-            merge_small_enabled = False
             merge_small_min_chars = 0
             merge_small_before = 0
             merge_small_after = 0
@@ -1591,7 +1688,6 @@ class DocumentProcessorService:
                 merge_small_before = len(chunks)
                 merge_small_after = merge_small_before
                 merge_small_reduced = 0
-                merge_small_enabled = bool(merge_min > 0)
                 if merge_min > 0 and chunks:
                     with metrics_span("ingest.chunk_merge_small", min_chars=merge_min):
                         merged = _merge_small_chunks_by_min_chars(

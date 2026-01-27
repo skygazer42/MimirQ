@@ -108,6 +108,13 @@ class DocumentPipelineOptions(BaseModel):
     kg_enabled: Optional[bool] = None
     event_vector_enabled: Optional[bool] = None
     entity_vector_enabled: Optional[bool] = None
+    # Structured/table ingestion (TAG - Table Augmented Generation).
+    # When enabled, supported table-like documents (.csv/.xls/.xlsx) are imported into a per-document
+    # SQLite table store and can be queried via SQL / NL-to-SQL (separate endpoints).
+    table_store_enabled: Optional[bool] = Field(default=None, description="Enable structured table store import for .csv/.xls/.xlsx (TAG)")
+    table_store_max_rows: Optional[int] = Field(default=None, ge=0, le=5_000_000, description="Max rows to import per table (0 disables cap)")
+    table_store_max_cols: Optional[int] = Field(default=None, ge=0, le=10_000, description="Max columns to import per table (0 disables cap)")
+    table_store_sample_rows: Optional[int] = Field(default=None, ge=0, le=200, description="Rows to keep for metadata preview/sample (0 disables)")
 
     @model_validator(mode="after")
     def _validate_chunk_strategy_params(self) -> "DocumentPipelineOptions":

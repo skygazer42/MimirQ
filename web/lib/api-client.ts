@@ -46,6 +46,13 @@ import type {
   DatasetPrecheckNearDupResponse,
   DatasetPrecheckDiffResponse,
   DatasetPrecheckIngestionSuggestionResponse,
+  DatasetTablesListResponse,
+  DatasetTableAsset,
+  TableQueryRequest,
+  TableQueryResponse,
+  TableAskRequest,
+  TableAskResponse,
+  LotusSemFilterRequest,
   MessageFeedback,
   MessageFeedbackCreate,
   MessageFeedbackListResponse,
@@ -1130,6 +1137,45 @@ export const datasetApi = {
     params?: { replace?: boolean }
   ): Promise<IngestionPolicyImportResponse> {
     const { data } = await apiClient.post(`/datasets/${datasetId}/precheck/scan-runs/${scanRunId}/apply-ingestion-policy`, undefined, { params })
+    return data
+  },
+
+  // ==================== Dataset Tables (TAG) ====================
+
+  async listTables(
+    datasetId: string,
+    params?: { skip?: number; limit?: number; include_columns?: boolean; include_sample_rows?: boolean }
+  ): Promise<DatasetTablesListResponse> {
+    const { data } = await apiClient.get(`/datasets/${datasetId}/tables`, { params })
+    return data
+  },
+
+  async getTable(
+    datasetId: string,
+    tableId: string,
+    params?: { include_columns?: boolean; include_sample_rows?: boolean }
+  ): Promise<DatasetTableAsset> {
+    const { data } = await apiClient.get(`/datasets/${datasetId}/tables/${encodeURIComponent(tableId)}`, { params })
+    return data
+  },
+
+  async previewTable(datasetId: string, tableId: string, params?: { limit?: number }): Promise<TableQueryResponse> {
+    const { data } = await apiClient.get(`/datasets/${datasetId}/tables/${encodeURIComponent(tableId)}/preview`, { params })
+    return data
+  },
+
+  async queryTable(datasetId: string, tableId: string, body: TableQueryRequest): Promise<TableQueryResponse> {
+    const { data } = await apiClient.post(`/datasets/${datasetId}/tables/${encodeURIComponent(tableId)}/query`, body)
+    return data
+  },
+
+  async askTable(datasetId: string, tableId: string, body: TableAskRequest): Promise<TableAskResponse> {
+    const { data } = await apiClient.post(`/datasets/${datasetId}/tables/${encodeURIComponent(tableId)}/ask`, body, { timeout: API_LONG_TIMEOUT_MS })
+    return data
+  },
+
+  async lotusSemFilter(datasetId: string, tableId: string, body: LotusSemFilterRequest): Promise<TableQueryResponse> {
+    const { data } = await apiClient.post(`/datasets/${datasetId}/tables/${encodeURIComponent(tableId)}/lotus/sem-filter`, body, { timeout: API_LONG_TIMEOUT_MS })
     return data
   },
 }

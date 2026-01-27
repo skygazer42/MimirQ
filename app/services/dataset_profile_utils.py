@@ -9,7 +9,7 @@ Keep this module pure and dependency-free so it can be used from:
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Iterable, List, Optional, Sequence, Tuple
+from typing import Iterable, List, Optional, Sequence
 
 
 def safe_int(value: object, *, default: int = 0) -> int:
@@ -104,4 +104,3 @@ FILE_SIZE_BINS: List[HistogramBinSpec] = [
     HistogramBinSpec("5-20MB", 5 * 1024 * 1024, 20 * 1024 * 1024),
     HistogramBinSpec("20MB+", 20 * 1024 * 1024, None),
 ]
-

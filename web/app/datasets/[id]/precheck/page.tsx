@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { toast } from 'sonner'
-import { ArrowLeft, Download, FileSearch, Loader2, RefreshCw, Settings2, Sparkles, StopCircle, Wand2 } from 'lucide-react'
+import { ArrowLeft, Download, FileSearch, Loader2, RefreshCw, Settings2, Sparkles, StopCircle, Table2, Wand2 } from 'lucide-react'
 import {
   Bar,
   BarChart,
@@ -559,6 +559,12 @@ export default function DatasetPrecheckPage() {
               <Button variant="outline" className="gap-2" onClick={() => router.push(`/datasets/${datasetId}/ingestion`)}>
                 <Settings2 className="w-4 h-4" />
                 入库策略
+              </Button>
+            ) : null}
+            {datasetId ? (
+              <Button variant="outline" className="gap-2" onClick={() => router.push(`/datasets/${datasetId}/tables`)}>
+                <Table2 className="w-4 h-4" />
+                表格 / TAG
               </Button>
             ) : null}
             <Button variant="outline" className="gap-2" onClick={() => void load()} disabled={loading}>

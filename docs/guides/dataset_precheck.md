@@ -76,4 +76,4 @@ PRECHECK_PDF_SAMPLE_PAGES=3
 - 预检扫描的定位是“入库前摸底”，输出的是客观统计 + 可操作清单，不会给“健康分/风险分”这类主观评分。
 - 最值钱的闭环是：预检 -> 生成 ingestion policy -> 直接应用到数据集（或导出 JSON 再 import）。
   这样下游入库就能按规则分流：比如 PDF 扫描件优先走 OCR、表格大文件提示走结构化方案、PII/Secrets 启用合规脱敏等。
-
+- 表格结构化方案（TAG / Table Store）说明见：[docs/guides/table_tag.md](./table_tag.md)。

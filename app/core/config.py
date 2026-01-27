@@ -411,6 +411,26 @@ class Settings(BaseSettings):
     BM25_STARTUP_BUILD_MAX_CHUNKS: int = 8000
     # Max cached BM25 indices kept in memory (0 = unlimited). Useful for multi-tenant deployments.
     BM25_CACHE_MAX_TENANTS: int = 32
+    # =========================
+    # Structured Table Store (TAG)
+    # =========================
+    # When enabled (globally or via per-dataset/document pipeline), supported table-like files
+    # (.csv/.xls/.xlsx) are imported into a per-document SQLite store for SQL/TAG workflows.
+    TABLE_STORE_ENABLED: bool = False
+    TABLE_STORE_DIR: str = "./uploads/table_store"
+    TABLE_STORE_MAX_ROWS: int = 200_000  # 0 disables cap
+    TABLE_STORE_MAX_COLS: int = 500      # 0 disables cap
+    TABLE_STORE_SAMPLE_ROWS: int = 20    # 0 disables sample persistence
+    # Query/runtime guards (server-side safety, independent from LLM usage).
+    TABLE_QUERY_MAX_ROWS: int = 200
+    TABLE_QUERY_MAX_COLS: int = 200
+    TABLE_QUERY_MAX_BYTES: int = 1_000_000
+    # NL->SQL / TAG answer generation (optional; requires LLM credentials).
+    TABLE_NL2SQL_ENABLED: bool = False
+    # LOTUS semantic operators (optional/experimental).
+    TABLE_LOTUS_ENABLED: bool = False
+    TABLE_LOTUS_REPO_PATH: str = ""
+    TABLE_LOTUS_MAX_ROWS: int = 20_000
     FAISS_STORE_PATH: str = "./vector_faiss"
     # FAISS persistence uses pickle; enable only when the index directory is fully trusted.
     FAISS_ALLOW_DANGEROUS_DESERIALIZATION: bool = False

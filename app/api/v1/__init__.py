@@ -7,6 +7,7 @@ from app.api.v1 import (
     chat,
     datasets,
     dataset_precheck,
+    dataset_tables,
     documents,
     health,
     meta,
@@ -32,6 +33,7 @@ router.include_router(parsing.router, prefix="/parsing", tags=["Parsing Workspac
 router.include_router(chat.router, prefix="/chat", tags=["Chat"])
 router.include_router(datasets.router, prefix="/datasets", tags=["Datasets"])
 router.include_router(dataset_precheck.router, prefix="/datasets", tags=["Datasets Precheck"])
+router.include_router(dataset_tables.router, prefix="/datasets", tags=["Dataset Tables (TAG)"])
 router.include_router(kg.router, prefix="/kg", tags=["Knowledge Graph (KG)"])
 router.include_router(settings.router, prefix="/settings", tags=["Settings"])
 router.include_router(evaluations.router, prefix="/evaluations", tags=["Evaluations"])

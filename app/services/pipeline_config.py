@@ -183,6 +183,9 @@ def parse_pipeline_from_metadata(metadata: Dict[str, Any]) -> PipelineOptions:
     index = pipeline.get("index")
     if not isinstance(index, dict):
         index = {}
+    tables = pipeline.get("tables")
+    if not isinstance(tables, dict):
+        tables = {}
     governance = pipeline.get("governance")
     if not isinstance(governance, dict):
         governance = {}
@@ -253,6 +256,10 @@ def parse_pipeline_from_metadata(metadata: Dict[str, Any]) -> PipelineOptions:
         kg_enabled=_coerce_bool(index.get("kg_enabled")),
         event_vector_enabled=_coerce_bool(index.get("event_vector_enabled")),
         entity_vector_enabled=_coerce_bool(index.get("entity_vector_enabled")),
+        table_store_enabled=_coerce_bool(tables.get("enabled")),
+        table_store_max_rows=_coerce_int(tables.get("max_rows")),
+        table_store_max_cols=_coerce_int(tables.get("max_cols")),
+        table_store_sample_rows=_coerce_int(tables.get("sample_rows")),
     )
 
 
@@ -283,6 +290,18 @@ def build_pipeline_metadata(options: PipelineOptions) -> Optional[Dict[str, Any]
         sanitized = _sanitize_chunk_strategy_params(options.chunk_strategy_params)
         if sanitized:
             pipeline["chunk_strategy_params"] = sanitized
+
+    tables: Dict[str, Any] = {}
+    if options.table_store_enabled is not None:
+        tables["enabled"] = bool(options.table_store_enabled)
+    if options.table_store_max_rows is not None:
+        tables["max_rows"] = int(options.table_store_max_rows)
+    if options.table_store_max_cols is not None:
+        tables["max_cols"] = int(options.table_store_max_cols)
+    if options.table_store_sample_rows is not None:
+        tables["sample_rows"] = int(options.table_store_sample_rows)
+    if tables:
+        pipeline["tables"] = tables
 
     governance: Dict[str, Any] = {}
     if options.governance_remove_toc_lines is not None:
@@ -701,6 +720,26 @@ def resolve_pipeline_options(options: PipelineOptions) -> PipelineEffective:
         if options.embedding_context_prefix_enabled is None
         else bool(options.embedding_context_prefix_enabled)
     )
+    table_store_enabled = (
+        getattr(settings, "TABLE_STORE_ENABLED", False)
+        if options.table_store_enabled is None
+        else bool(options.table_store_enabled)
+    )
+    table_store_max_rows = (
+        options.table_store_max_rows
+        if options.table_store_max_rows is not None
+        else int(getattr(settings, "TABLE_STORE_MAX_ROWS", 200_000) or 200_000)
+    )
+    table_store_max_cols = (
+        options.table_store_max_cols
+        if options.table_store_max_cols is not None
+        else int(getattr(settings, "TABLE_STORE_MAX_COLS", 500) or 500)
+    )
+    table_store_sample_rows = (
+        options.table_store_sample_rows
+        if options.table_store_sample_rows is not None
+        else int(getattr(settings, "TABLE_STORE_SAMPLE_ROWS", 20) or 20)
+    )
 
     return PipelineEffective(
         governance_enabled=governance_enabled,
@@ -765,6 +804,10 @@ def resolve_pipeline_options(options: PipelineOptions) -> PipelineEffective:
         kg_enabled=_resolve_flag(settings.KG_ENABLED, options.kg_enabled),
         event_vector_enabled=_resolve_flag(settings.EVENT_VECTOR_ENABLED, options.event_vector_enabled),
         entity_vector_enabled=_resolve_flag(settings.ENTITY_VECTOR_ENABLED, options.entity_vector_enabled),
+        table_store_enabled=bool(table_store_enabled),
+        table_store_max_rows=int(table_store_max_rows),
+        table_store_max_cols=int(table_store_max_cols),
+        table_store_sample_rows=int(table_store_sample_rows),
     )
 
 
