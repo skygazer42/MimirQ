@@ -22,6 +22,7 @@ from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
 from app.api.schemas.ingestion_policy import IngestionPolicy, IngestionRule
+from app.core.config import settings
 from app.models.dataset import Dataset
 from app.models.dataset_precheck_scan import DatasetPrecheckScanRun as DBDatasetPrecheckScanRun
 from app.services.dataset_precheck_service import _assert_artifact_path_under_tenant, _list_finding_from_jsonl
@@ -219,17 +220,16 @@ def build_ingestion_policy_suggestion(
         )
     )
 
-    # Table-like files: prefer table store (TAG) over chunk/vector ingestion.
-    # NOTE: table_store import happens before parsing; governance profiles do not apply here.
+    # Table-like files: prefer TAG for large/complex tables, but keep small tables in RAG.
+    # We do this via table_store_auto_route (implemented in the ingestion processor).
     table_has_pii = bool({"csv", "xls", "xlsx"} & pii_types)
     table_patch: dict[str, Any] = {
         "table_store_enabled": True,
-        # Avoid indexing tables into RAG by default (keeps search quality and cost stable).
-        "chunk_vector_enabled": False,
-        "bm25_index_enabled": False,
-        "kg_enabled": False,
-        "event_vector_enabled": False,
-        "entity_vector_enabled": False,
+        "table_store_auto_route": True,
+        "table_store_auto_row_threshold": int(getattr(settings, "TABLE_STORE_AUTO_ROW_THRESHOLD", 5000) or 5000),
+        "table_store_auto_col_threshold": int(getattr(settings, "TABLE_STORE_AUTO_COL_THRESHOLD", 80) or 80),
+        "table_store_auto_sheet_threshold": int(getattr(settings, "TABLE_STORE_AUTO_SHEET_THRESHOLD", 5) or 5),
+        "table_store_auto_file_bytes_threshold": int(getattr(settings, "TABLE_STORE_AUTO_FILE_BYTES_THRESHOLD", 5_000_000) or 5_000_000),
     }
     if table_has_pii:
         # Conservative default: do not persist raw sample rows when precheck suggests PII exists.
@@ -238,7 +238,7 @@ def build_ingestion_policy_suggestion(
     rules.append(
         _rule(
             rid="tables-csv-tag",
-            name="表格（CSV）：Table Store (TAG/SQL)",
+            name="表格（CSV）：TAG 自动分流（大表→SQL，小表→RAG）",
             extensions=[".csv"],
             preprocess_steps=[
                 "text.reencode_utf8",
@@ -246,7 +246,7 @@ def build_ingestion_policy_suggestion(
                 "text.normalize_newlines",
             ],
             parser_backend="auto",
-            governance_profile_ref=None,
+            governance_profile_ref="builtin:structured_data",
             pipeline_patch=table_patch,
         )
     )
@@ -254,11 +254,11 @@ def build_ingestion_policy_suggestion(
     rules.append(
         _rule(
             rid="tables-excel-tag",
-            name="表格（XLS/XLSX）：Table Store (TAG/SQL)",
+            name="表格（XLS/XLSX）：TAG 自动分流（大表→SQL，小表→RAG）",
             extensions=[".xls", ".xlsx"],
             preprocess_steps=None,
             parser_backend="auto",
-            governance_profile_ref=None,
+            governance_profile_ref="builtin:structured_data",
             pipeline_patch=table_patch,
         )
     )

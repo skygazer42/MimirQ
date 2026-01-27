@@ -1172,102 +1172,146 @@ class DocumentProcessorService:
                 # Fail closed: when preprocessing is enabled, it is part of ingestion correctness.
                 raise RuntimeError(f"preprocess_failed: {str(exc)[:200]}") from exc
 
-            # Structured Table Store (TAG): import table-like documents and skip chunk/vector ingestion.
-            # This keeps structured assets queryable via SQL (and optional NL->SQL) instead of forcing RAG.
+            # Structured Table Store (TAG): optionally import table-like documents and skip chunk/vector ingestion.
+            #
+            # Default behavior (table_store_auto_route=false):
+            # - table_store_enabled=true  => always import table docs into SQLite (TAG) and short-circuit RAG indexing
+            #
+            # Auto routing (table_store_auto_route=true):
+            # - small tables => fall back to normal parsing+chunking+indexing (RAG)
+            # - large/complex tables => import into SQLite store (TAG)
             if (
                 bool(getattr(pipeline_effective, "table_store_enabled", False))
                 and db_document.dataset_id is not None
                 and file_path.suffix.lower() in {".csv", ".xls", ".xlsx"}
             ):
-                await raise_if_cancelled(force=True)
-                await self._update_status(db, tenant_id, document_id, "processing", 15, "table_import")
+                # Decide whether this file should go to TAG or remain in the RAG pipeline.
+                table_decision = None
                 try:
-                    from app.services.table_store_service import import_table_document
+                    from app.services.table_routing import decide_table_route
 
-                    assets = import_table_document(
-                        tenant_id=tenant_id,
-                        dataset_id=db_document.dataset_id,
-                        document_id=document_id,
+                    table_decision = decide_table_route(
                         file_path=file_path,
-                        max_rows=int(getattr(pipeline_effective, "table_store_max_rows", 0) or 0),
-                        max_cols=int(getattr(pipeline_effective, "table_store_max_cols", 0) or 0),
-                        sample_rows=int(getattr(pipeline_effective, "table_store_sample_rows", 0) or 0),
+                        auto_route=bool(getattr(pipeline_effective, "table_store_auto_route", False)),
+                        file_bytes_threshold=int(getattr(pipeline_effective, "table_store_auto_file_bytes_threshold", 0) or 0),
+                        row_threshold=int(getattr(pipeline_effective, "table_store_auto_row_threshold", 0) or 0),
+                        col_threshold=int(getattr(pipeline_effective, "table_store_auto_col_threshold", 0) or 0),
+                        sheet_threshold=int(getattr(pipeline_effective, "table_store_auto_sheet_threshold", 0) or 0),
                     )
-                except Exception as exc:  # noqa: BLE001
-                    msg = f"table_import_failed: {(str(exc) or exc.__class__.__name__)[:200]}"
-                    logger.warning("Table import failed: %s document_id=%s", msg, document_id)
+                except Exception:
+                    table_decision = None
+
+                # Persist routing decision for audit/debug (best-effort; never fail ingestion).
+                if table_decision is not None:
+                    try:
+                        next_meta = dict(db_document.doc_metadata or {})
+                        next_meta["table_routing"] = {
+                            "version": "1",
+                            "route": getattr(table_decision, "route", None),
+                            "reason": getattr(table_decision, "reason", None),
+                            "stats": dict(getattr(table_decision, "stats", None) or {}),
+                        }
+                        db_document.doc_metadata = next_meta
+                        db.commit()
+                        db.refresh(db_document)
+                    except Exception:
+                        pass
+
+                # When auto-route says "rag", continue the normal parsing+indexing pipeline.
+                should_tag = True
+                if table_decision is not None and str(getattr(table_decision, "route", "") or "").lower() == "rag":
+                    should_tag = False
+
+                if should_tag:
+                    await raise_if_cancelled(force=True)
+                    await self._update_status(db, tenant_id, document_id, "processing", 15, "table_import")
+                    try:
+                        from app.services.table_store_service import import_table_document
+
+                        assets = import_table_document(
+                            tenant_id=tenant_id,
+                            dataset_id=db_document.dataset_id,
+                            document_id=document_id,
+                            file_path=file_path,
+                            max_rows=int(getattr(pipeline_effective, "table_store_max_rows", 0) or 0),
+                            max_cols=int(getattr(pipeline_effective, "table_store_max_cols", 0) or 0),
+                            sample_rows=int(getattr(pipeline_effective, "table_store_sample_rows", 0) or 0),
+                        )
+                    except Exception as exc:  # noqa: BLE001
+                        msg = f"table_import_failed: {(str(exc) or exc.__class__.__name__)[:200]}"
+                        logger.warning("Table import failed: %s document_id=%s", msg, document_id)
+                        await self._update_status(
+                            db,
+                            tenant_id,
+                            document_id,
+                            "failed",
+                            0,
+                            "failed",
+                            chunk_count=0,
+                            total_characters=0,
+                            error_message=msg,
+                        )
+                        return {
+                            "status": "failed",
+                            "reason": "table_import_failed",
+                            "chunk_count": 0,
+                            "total_characters": 0,
+                            "parser_backend": "table_store",
+                            "chunk_strategy": "none",
+                        }
+
+                    await raise_if_cancelled(force=True)
+
+                    # Persist structured table metadata for listing/preview endpoints.
+                    try:
+                        now_iso = dt.datetime.utcnow().replace(tzinfo=dt.timezone.utc).isoformat()
+                        tables_payload: list[dict[str, Any]] = []
+                        for a in assets or []:
+                            tables_payload.append(
+                                {
+                                    "table_id": str(getattr(a, "table_id", "")),
+                                    "sheet_index": int(getattr(a, "sheet_index", 0) or 0),
+                                    "sheet_name": getattr(a, "sheet_name", None),
+                                    "row_count": int(getattr(a, "row_count", 0) or 0),
+                                    "col_count": int(getattr(a, "col_count", 0) or 0),
+                                    "truncated": bool(getattr(a, "truncated", False)),
+                                    "columns": list(getattr(a, "columns", None) or []),
+                                    "sample_rows": list(getattr(a, "sample_rows", None) or []),
+                                }
+                            )
+
+                        next_meta = dict(db_document.doc_metadata or {})
+                        next_meta["table_store"] = {
+                            "version": "1",
+                            "source_ext": file_path.suffix.lower(),
+                            "imported_at": now_iso,
+                            "tables": tables_payload,
+                        }
+                        db_document.doc_metadata = next_meta
+                        db.commit()
+                        db.refresh(db_document)
+                    except Exception as exc:  # noqa: BLE001
+                        logger.warning("Failed to persist table_store metadata (ignored): %s", str(exc)[:200])
+
                     await self._update_status(
                         db,
                         tenant_id,
                         document_id,
-                        "failed",
-                        0,
-                        "failed",
+                        "completed",
+                        100,
+                        "completed",
                         chunk_count=0,
                         total_characters=0,
-                        error_message=msg,
+                        error_message=None,
                     )
                     return {
-                        "status": "failed",
-                        "reason": "table_import_failed",
+                        "status": "completed",
+                        "reason": "table_store",
                         "chunk_count": 0,
                         "total_characters": 0,
                         "parser_backend": "table_store",
                         "chunk_strategy": "none",
                     }
-
-                await raise_if_cancelled(force=True)
-
-                # Persist structured table metadata for listing/preview endpoints.
-                try:
-                    now_iso = dt.datetime.utcnow().replace(tzinfo=dt.timezone.utc).isoformat()
-                    tables_payload: list[dict[str, Any]] = []
-                    for a in assets or []:
-                        tables_payload.append(
-                            {
-                                "table_id": str(getattr(a, "table_id", "")),
-                                "sheet_index": int(getattr(a, "sheet_index", 0) or 0),
-                                "sheet_name": getattr(a, "sheet_name", None),
-                                "row_count": int(getattr(a, "row_count", 0) or 0),
-                                "col_count": int(getattr(a, "col_count", 0) or 0),
-                                "truncated": bool(getattr(a, "truncated", False)),
-                                "columns": list(getattr(a, "columns", None) or []),
-                                "sample_rows": list(getattr(a, "sample_rows", None) or []),
-                            }
-                        )
-
-                    next_meta = dict(db_document.doc_metadata or {})
-                    next_meta["table_store"] = {
-                        "version": "1",
-                        "source_ext": file_path.suffix.lower(),
-                        "imported_at": now_iso,
-                        "tables": tables_payload,
-                    }
-                    db_document.doc_metadata = next_meta
-                    db.commit()
-                    db.refresh(db_document)
-                except Exception as exc:  # noqa: BLE001
-                    logger.warning("Failed to persist table_store metadata (ignored): %s", str(exc)[:200])
-
-                await self._update_status(
-                    db,
-                    tenant_id,
-                    document_id,
-                    "completed",
-                    100,
-                    "completed",
-                    chunk_count=0,
-                    total_characters=0,
-                    error_message=None,
-                )
-                return {
-                    "status": "completed",
-                    "reason": "table_store",
-                    "chunk_count": 0,
-                    "total_characters": 0,
-                    "parser_backend": "table_store",
-                    "chunk_strategy": "none",
-                }
 
             extra_rules = list(getattr(pipeline_effective, "governance_regex_rules", None) or [])
             combined_rules = build_governance_rules(extra_rules) if extra_rules else None

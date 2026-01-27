@@ -1316,7 +1316,9 @@ export default function DatasetPrecheckPage() {
                   </Badge>
                 ) : null}
               </DialogTitle>
-              <DialogDescription className="text-muted-foreground">把预检统计转成可导入的 ingestion policy（保守规则 + 待人工复核清单）</DialogDescription>
+              <DialogDescription className="text-muted-foreground">
+                把预检统计转成可导入的 ingestion policy（保守规则 + 待人工复核清单；表格默认启用 TAG 自动分流：大表→SQL，小表→RAG）
+              </DialogDescription>
             </DialogHeader>
 
             {policyLoading ? (

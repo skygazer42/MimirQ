@@ -222,6 +222,17 @@ export interface DocumentPipelineOptions {
   kg_enabled?: boolean
   event_vector_enabled?: boolean
   entity_vector_enabled?: boolean
+  // Structured table store (TAG)
+  table_store_enabled?: boolean
+  table_store_max_rows?: number
+  table_store_max_cols?: number
+  table_store_sample_rows?: number
+  // Auto routing (TAG vs RAG) for table-like docs when table_store_enabled=true
+  table_store_auto_route?: boolean
+  table_store_auto_row_threshold?: number
+  table_store_auto_col_threshold?: number
+  table_store_auto_sheet_threshold?: number
+  table_store_auto_file_bytes_threshold?: number
 }
 
 export interface DocumentPipelinePatchRequest {
