@@ -22,7 +22,6 @@ from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
 from app.api.schemas.ingestion_policy import IngestionPolicy, IngestionRule
-from app.core.config import settings
 from app.models.dataset import Dataset
 from app.models.dataset_precheck_scan import DatasetPrecheckScanRun as DBDatasetPrecheckScanRun
 from app.services.dataset_precheck_service import _assert_artifact_path_under_tenant, _list_finding_from_jsonl
@@ -213,7 +212,10 @@ def build_ingestion_policy_suggestion(
     )
 
     # Office.
-    office_patch = _pii_secrets_patch(enable_pii=bool({"docx", "pptx", "xls", "xlsx"} & pii_types), enable_secrets=bool({"docx", "pptx", "xls", "xlsx"} & secrets_types))
+    office_patch = _pii_secrets_patch(
+        enable_pii=bool({"docx", "pptx", "xls", "xlsx"} & pii_types),
+        enable_secrets=bool({"docx", "pptx", "xls", "xlsx"} & secrets_types),
+    )
     rules.append(
         _rule(
             rid="office-default",
@@ -355,4 +357,3 @@ __all__ = [
     "apply_ingestion_policy_suggestion",
     "build_ingestion_policy_suggestion",
 ]
-

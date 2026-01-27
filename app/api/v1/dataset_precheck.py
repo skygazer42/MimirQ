@@ -29,6 +29,7 @@ from app.api.schemas.dataset_precheck import (
     DatasetPrecheckSamplesResponse,
     DatasetPrecheckSummary,
 )
+from app.api.schemas.ingestion_policy import IngestionPolicyImportResponse
 from app.core.database import SessionLocal, get_db
 from app.models.dataset_precheck_scan import DatasetPrecheckScanRun as DBDatasetPrecheckScanRun
 from app.services.dataset_precheck_diff import diff_precheck_summaries
@@ -475,7 +476,10 @@ def get_dataset_precheck_ingestion_policy_suggestion(
     return DatasetPrecheckIngestionSuggestionResponse(**suggestion)
 
 
-@router.post("/{dataset_id}/precheck/scan-runs/{scan_run_id}/apply-ingestion-policy")
+@router.post(
+    "/{dataset_id}/precheck/scan-runs/{scan_run_id}/apply-ingestion-policy",
+    response_model=IngestionPolicyImportResponse,
+)
 def apply_dataset_precheck_ingestion_policy_suggestion(
     dataset_id: UUID,
     scan_run_id: UUID,
@@ -505,7 +509,7 @@ def apply_dataset_precheck_ingestion_policy_suggestion(
         tenant_id=tenant_id,
         replace=bool(replace),
     )
-    return res
+    return IngestionPolicyImportResponse(**res)
 
 
 @router.get("/{dataset_id}/precheck/scan-runs/{scan_run_id}/export")
@@ -572,6 +576,20 @@ def export_dataset_precheck_html_report(
     effective_redact = bool(redact) or bool(cfg.get("redact_paths", False))
     root_path = str(artifacts.get("root_path") or "")
 
+    samples = None
+    # Only include file lists in a redacted export when the scan itself redacted paths
+    # (avoid leaking real filenames via an on-demand rebuild).
+    if (not effective_redact) or bool(cfg.get("redact_paths", False)):
+        try:
+            samples = load_precheck_samples_from_row(
+                row,
+                tenant_id=tenant_id,
+                size=int(cfg.get("sample_size") or 60),
+                prefer_artifact=True,
+            )
+        except Exception:
+            samples = None
+
     html = render_precheck_html(
         title="MimirQ · 预检扫描报告",
         dataset_name=str(getattr(dataset, "name", "") or ""),
@@ -579,6 +597,7 @@ def export_dataset_precheck_html_report(
         root_path=root_path,
         generated_at=summary.generated_at,
         summary=summary.model_dump(),
+        samples=samples,
         redact=effective_redact,
     )
 
