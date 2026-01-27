@@ -184,11 +184,12 @@ def _read_text_sample(path: Path, *, max_bytes: int) -> tuple[str, bool]:
     return text, bool(size > read_bytes)
 
 
-def _pdf_text_sample(path: Path, *, sample_pages: int, max_chars: int = 200_000) -> tuple[str, bool, int]:
+def _pdf_text_sample(path: Path, *, sample_pages: int, max_chars: int = 200_000) -> tuple[str, bool, int, list[int | None]]:
     """
     Extract a best-effort text sample from first N pages of a PDF.
 
-    Returns (text, estimated, page_count).
+    Returns (text, estimated, page_count, per_page_chars) where per_page_chars is
+    a list aligned with sampled pages (None means extraction failed for that page).
     """
     try:
         import pdfplumber  # type: ignore
@@ -197,9 +198,16 @@ def _pdf_text_sample(path: Path, *, sample_pages: int, max_chars: int = 200_000)
             page_count = len(pdf.pages)
             n = max(1, min(int(sample_pages or 1), page_count))
             chunks: list[str] = []
+            per_page_chars: list[int | None] = []
             total = 0
             for p in pdf.pages[:n]:
-                t = p.extract_text() or ""
+                try:
+                    t = p.extract_text() or ""
+                except Exception:
+                    t = ""
+                    per_page_chars.append(None)
+                    continue
+                per_page_chars.append(len(t))
                 if not t:
                     continue
                 if total + len(t) > max_chars:
@@ -210,9 +218,50 @@ def _pdf_text_sample(path: Path, *, sample_pages: int, max_chars: int = 200_000)
                     break
         text = "\n".join(chunks)
         estimated = bool(page_count > n)
-        return text, estimated, int(page_count)
+        return text, estimated, int(page_count), per_page_chars
     except Exception:
-        return "", True, 0
+        return "", True, 0, []
+
+
+def _build_pdf_page_breakdown(
+    *,
+    page_count: int,
+    per_page_chars: list[int | None],
+    scan_max_chars: int,
+    text_min_chars: int,
+) -> dict[str, Any]:
+    scanned_pages = 0
+    text_pages = 0
+    low_density_pages = 0
+    unknown_pages = 0
+
+    sampled_pages = int(len(per_page_chars or []))
+    for ch in per_page_chars or []:
+        if ch is None:
+            unknown_pages += 1
+            continue
+        chars = int(ch or 0)
+        if chars <= int(scan_max_chars):
+            scanned_pages += 1
+        elif chars >= int(text_min_chars):
+            text_pages += 1
+        else:
+            low_density_pages += 1
+
+    denom = max(1, sampled_pages - unknown_pages)
+    scan_ratio = float(scanned_pages) / float(denom)
+    low_density_ratio = float(low_density_pages) / float(denom)
+
+    return {
+        "page_count": int(page_count or 0),
+        "sampled_pages": int(sampled_pages),
+        "scanned_pages": int(scanned_pages),
+        "text_pages": int(text_pages),
+        "low_density_pages": int(low_density_pages),
+        "unknown_pages": int(unknown_pages),
+        "scan_ratio": round(scan_ratio, 4),
+        "low_density_ratio": round(low_density_ratio, 4),
+    }
 
 
 def _sanitize_display_name(rel_path: str) -> str:
@@ -324,6 +373,20 @@ def run_dataset_precheck_scan(
     enable_secrets = bool(cfg.get("enable_secrets", False))
     compute_file_hash = bool(cfg.get("compute_file_hash", False))
     redact_paths = bool(cfg.get("redact_paths", False))
+
+    pdf_scan_max_chars = safe_int(
+        cfg.get("pdf_min_text_chars_per_page") or getattr(settings, "PRECHECK_PDF_MIN_TEXT_CHARS_PER_PAGE", 50),
+        default=50,
+    )
+    pdf_text_min_chars = safe_int(
+        cfg.get("pdf_text_chars_per_page") or getattr(settings, "PRECHECK_PDF_TEXT_CHARS_PER_PAGE", 200),
+        default=200,
+    )
+    pdf_scan_ratio_threshold = float(
+        cfg.get("pdf_scan_ratio_threshold")
+        if cfg.get("pdf_scan_ratio_threshold") is not None
+        else float(getattr(settings, "PRECHECK_PDF_SCAN_RATIO_THRESHOLD", 0.7) or 0.7)
+    )
 
     # Prepare artifact dir and JSONL writer.
     artifact_root = Path(getattr(settings, "UPLOAD_DIR", "./uploads") or "./uploads") / str(tenant_id) / "precheck" / str(run.id)
@@ -445,7 +508,7 @@ def run_dataset_precheck_scan(
                                 rec.text_characters = int(len(sample_text))
                                 rec.estimated_text = False
                     elif ext == ".pdf":
-                        sample_text, estimated_text, page_count = _pdf_text_sample(path, sample_pages=pdf_sample_pages)
+                        sample_text, estimated_text, page_count, per_page_chars = _pdf_text_sample(path, sample_pages=pdf_sample_pages)
                         if sample_text:
                             if estimated_text and page_count > 0:
                                 # Scale by pages (rough).
@@ -454,18 +517,28 @@ def run_dataset_precheck_scan(
                             else:
                                 rec.text_characters = int(len(sample_text))
                                 rec.estimated_text = False
+                        # Always attach PDF page breakdown when possible (even if text is empty).
+                        if page_count > 0 and per_page_chars:
+                            rec.pdf_pages = _build_pdf_page_breakdown(
+                                page_count=int(page_count),
+                                per_page_chars=per_page_chars,
+                                scan_max_chars=int(pdf_scan_max_chars),
+                                text_min_chars=int(pdf_text_min_chars),
+                            )
 
-                # PDF quality (scan detection).
+                # PDF scan detection (transparent heuristics on sampled pages).
                 if enable_pdf_quality and ext == ".pdf":
-                    q = score_pdf_quality(path, sample_pages=pdf_sample_pages, use_ocr_validation=bool(getattr(settings, "RAPIDOCR_ENABLED", False)))
-                    page_count = int(q.get("page_count") or 0)
+                    breakdown = rec.pdf_pages if isinstance(rec.pdf_pages, dict) else None
+                    scan_ratio = float(breakdown.get("scan_ratio") or 0.0) if breakdown else 0.0
+                    page_count = int(breakdown.get("page_count") or 0) if breakdown else 0
+
                     if page_count <= 0:
                         rec.pdf_scanned = None
                         rec.findings.append("pdf_unknown")
                         finding_counts["pdf_unknown"] += 1
                         pdf_unknown += 1
                     else:
-                        scanned = bool(q.get("is_scanned", False))
+                        scanned = bool(scan_ratio >= float(pdf_scan_ratio_threshold))
                         rec.pdf_scanned = scanned
                         if scanned:
                             rec.findings.append("pdf_scanned")
