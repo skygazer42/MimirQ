@@ -1121,7 +1121,7 @@ export default function DatasetPrecheckPage() {
                               {d.file_type === 'pdf' ? (d.pdf_scanned === true ? 'scan' : d.pdf_scanned === false ? 'text' : 'unknown') : ''}
                             </td>
                             <td className="px-3 py-2 font-mono text-xs">
-                              {d.spreadsheet?.row_count ? `${d.spreadsheet.row_count}` : ''}
+                              {d.spreadsheet ? `${d.spreadsheet.row_count || 0}x${d.spreadsheet.col_count || 0}` : ''}
                             </td>
                             <td className="px-3 py-2 font-mono text-xs">{d.estimated_text ? 'yes' : ''}</td>
                           </tr>
@@ -1189,8 +1189,8 @@ export default function DatasetPrecheckPage() {
                   <div className="rounded-xl border border-border/60 bg-muted/10 p-3 text-sm">
                     <div className="font-mono text-xs text-muted-foreground">spreadsheet</div>
                     <div className="mt-1 font-mono text-xs">
-                      rows={fileDetail.spreadsheet.row_count} · sheets={fileDetail.spreadsheet.sheet_count} · merged_ratio={fileDetail.spreadsheet.merged_cell_ratio}
-                      {fileDetail.spreadsheet.estimated_rows ? ' (estimated)' : ''}
+                      rows={fileDetail.spreadsheet.row_count} · cols={fileDetail.spreadsheet.col_count || 0} · sheets={fileDetail.spreadsheet.sheet_count} · merged_ratio={fileDetail.spreadsheet.merged_cell_ratio}
+                      {(fileDetail.spreadsheet.estimated_rows || fileDetail.spreadsheet.estimated_cols) ? ' (estimated)' : ''}
                     </div>
                   </div>
                 ) : null}

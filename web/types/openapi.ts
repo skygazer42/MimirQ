@@ -4822,6 +4822,11 @@ export interface components {
              */
             row_count: number;
             /**
+             * Col Count
+             * @default 0
+             */
+            col_count: number;
+            /**
              * Sheet Count
              * @default 0
              */
@@ -4836,6 +4841,11 @@ export interface components {
              * @default false
              */
             estimated_rows: boolean;
+            /**
+             * Estimated Cols
+             * @default false
+             */
+            estimated_cols: boolean;
         };
         /** DatasetPrecheckSummary */
         DatasetPrecheckSummary: {
