@@ -69,3 +69,32 @@ def test_precheck_findings_unknown_key_400(tmp_path):
         _list_finding_from_jsonl(jsonl_path=p, finding_key="nope", skip=0, limit=10)
     assert exc.value.status_code == 400
 
+
+def test_precheck_findings_new_spreadsheet_keys_are_allowed(tmp_path):
+    p = tmp_path / "files.jsonl"
+    p.write_text(
+        "\n".join(
+            [
+                json.dumps(
+                    {
+                        "name": "t.csv",
+                        "file_type": "csv",
+                        "file_size": 10,
+                        "text_characters": 10,
+                        "estimated_text": False,
+                        "findings": ["wide_spreadsheet"],
+                        "pii_hits": {},
+                        "secrets_hits": {},
+                        "spreadsheet": {"row_count": 10, "col_count": 99, "sheet_count": 1, "merged_cell_ratio": 0.0},
+                    },
+                    ensure_ascii=False,
+                )
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    res = _list_finding_from_jsonl(jsonl_path=p, finding_key="wide_spreadsheet", skip=0, limit=50)
+    assert res.total == 1
+    assert res.items and res.items[0].name == "t.csv"

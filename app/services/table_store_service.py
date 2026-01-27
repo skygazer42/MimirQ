@@ -158,6 +158,23 @@ def import_table_document(
     except Exception:
         # If unlink fails (e.g. concurrent reader), we will overwrite per table below.
         pass
+    if out_path.exists():
+        # If we failed to remove the DB file, ensure we don't keep stale `sheet_*` tables
+        # from previous ingests (e.g. when sheet count shrinks).
+        try:
+            conn = _connect_rw(out_path)
+            try:
+                cur = conn.execute("SELECT name FROM sqlite_master WHERE type='table' AND name LIKE 'sheet_%'")
+                for row in cur.fetchall():
+                    name = str(row[0] or "")
+                    if not name:
+                        continue
+                    conn.execute(f'DROP TABLE IF EXISTS "{name}";')
+                conn.commit()
+            finally:
+                conn.close()
+        except Exception:
+            pass
 
     if ext == ".csv":
         df, truncated = _read_csv(file_path, max_rows=max_rows, max_cols=max_cols)
@@ -379,6 +396,18 @@ def run_table_query(
     raw_sql = str(sql or "")
     if not raw_sql.strip():
         raise ValueError("sql is required")
+
+    # Defense-in-depth: enforce server hard caps even if callers pass higher values.
+    hard_rows = int(getattr(settings, "TABLE_QUERY_MAX_ROWS", 0) or 0)
+    hard_cols = int(getattr(settings, "TABLE_QUERY_MAX_COLS", 0) or 0)
+    hard_bytes = int(getattr(settings, "TABLE_QUERY_MAX_BYTES", 0) or 0)
+    if hard_rows > 0:
+        max_rows = min(int(max_rows or 0) or hard_rows, hard_rows)
+    if hard_cols > 0:
+        max_cols = min(int(max_cols or 0) or hard_cols, hard_cols)
+    if hard_bytes > 0:
+        max_bytes = min(int(max_bytes or 0) or hard_bytes, hard_bytes)
+
     max_sql_chars = int(getattr(settings, "TABLE_QUERY_MAX_SQL_CHARS", 20_000) or 20_000)
     if max_sql_chars > 0 and len(raw_sql) > int(max_sql_chars):
         raise ValueError(f"sql_too_long (max {int(max_sql_chars)})")
@@ -386,6 +415,9 @@ def run_table_query(
         raise ValueError("multiple statements are not allowed")
     if not _SQL_SELECT_PREFIX_RE.match(raw_sql):
         raise ValueError("only SELECT queries are allowed")
+    # Avoid explicit schema/introspection queries (defense-in-depth; authorizer still applies).
+    if re.search(r"\bsqlite_(?:master|schema|temp_master|temp_schema)\b", raw_sql, flags=re.IGNORECASE):
+        raise ValueError("schema_table_reference_not_allowed")
 
     sql_table = sql_table_name_for_sheet(parsed.sheet_index)
     db_path = table_store_path(tenant_id=tenant_id, dataset_id=dataset_id, document_id=parsed.document_id)

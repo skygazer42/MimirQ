@@ -38,6 +38,7 @@ MimirQ 支持将结构化表格（CSV/XLS/XLSX）走 **TAG**（Table Augmented G
 在后端 `.env` 中配置（参考 `.env.example` / `docker/.env.example`）：
 
 - `TABLE_STORE_ENABLED=true`：启用表格入库到 Table Store
+- `TABLE_STORE_MAX_SHEETS=50`：最多导入的 Sheet 数（防止极端 Excel 占用资源；0 不限制）
 - `TABLE_STORE_SAMPLE_ROWS=0`：不持久化采样行（合规/PII 场景建议）
 - `TABLE_STORE_AUTO_ROUTE=true`：开启自动分流（小表继续走 RAG；大表走 Table Store）
 - `TABLE_STORE_AUTO_ROW_THRESHOLD / TABLE_STORE_AUTO_COL_THRESHOLD / TABLE_STORE_AUTO_SHEET_THRESHOLD / TABLE_STORE_AUTO_FILE_BYTES_THRESHOLD`：分流阈值

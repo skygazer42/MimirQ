@@ -400,13 +400,33 @@ def lotus_sem_filter_dataset_table(
             int(getattr(settings, "TABLE_SEM_FILTER_MAX_IN_ROWS", 2000) or 2000),
             100_000,
         )
+        max_in_cols = int(getattr(settings, "TABLE_SEM_FILTER_MAX_COLS", 30) or 30)
         db_path = table_store_path(tenant_id=tenant_id, dataset_id=dataset_id, document_id=parsed.document_id)
         if not db_path.exists():
             raise HTTPException(status_code=404, detail="table store not found")
         try:
             conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True, timeout=30)
             try:
-                df = pd.read_sql_query(f'SELECT * FROM "{sql_table}" LIMIT {int(max_in_rows)}', conn)
+                # Avoid loading extremely wide tables into pandas when we only need a small column set
+                # for semantic filtering.
+                cols: list[str] = []
+                try:
+                    cur = conn.execute(f'PRAGMA table_info("{sql_table}")')
+                    cols = [str(r[1]) for r in cur.fetchall() if r and len(r) > 1 and str(r[1] or "").strip()]
+                except Exception:
+                    cols = []
+
+                if max_in_cols > 0 and cols:
+                    cols = cols[: int(max_in_cols)]
+                if cols:
+                    def _q(ident: str) -> str:
+                        return '"' + str(ident).replace('"', '""') + '"'
+
+                    select_list = ", ".join([_q(c) for c in cols])
+                    query = f'SELECT {select_list} FROM "{sql_table}" LIMIT {int(max_in_rows)}'
+                else:
+                    query = f'SELECT * FROM "{sql_table}" LIMIT {int(max_in_rows)}'
+                df = pd.read_sql_query(query, conn)
             finally:
                 conn.close()
         except Exception as exc:  # noqa: BLE001

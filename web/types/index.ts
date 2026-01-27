@@ -1538,9 +1538,11 @@ export interface DatasetPrecheckPdfPageBreakdown {
 
 export interface DatasetPrecheckSpreadsheetStats {
   row_count: number
+  col_count: number
   sheet_count: number
   merged_cell_ratio: number
   estimated_rows: boolean
+  estimated_cols: boolean
 }
 
 export interface DatasetPrecheckMatchSample {
