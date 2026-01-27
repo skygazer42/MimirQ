@@ -21,15 +21,18 @@
 
 ## 1) 后端是否真的“就绪”？
 
-优先看 readiness（会检查 DB / Milvus / Redis）：
+优先看 readiness（会检查 DB / Milvus / Redis / MinIO）：
 - `GET http://localhost:8000/api/v1/health/ready`
 
 快速健康检查：
 - `GET http://localhost:8000/api/v1/health`
 
 如果 `health/ready` 返回 `503`：
-- 看 `database/vector/redis` 的 `status` 字段
+- 看 `database/vector/redis/minio` 的 `status` 字段
 - Docker：`make logs` 或 `docker compose -f docker/docker-compose.yml logs -f mimirq-api`
+
+也可以直接在前端打开诊断页：
+- `GET http://localhost:3000/diagnostics`
 
 ---
 
@@ -92,4 +95,3 @@ Docker 默认允许：
 - `make openapi-types`
 
 相关说明：`docs/integration/API_CONTRACT.md`
-

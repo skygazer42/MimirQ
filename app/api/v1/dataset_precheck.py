@@ -10,6 +10,7 @@ from __future__ import annotations
 import asyncio
 import json
 import re
+import time
 from uuid import UUID
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Response
@@ -293,7 +294,10 @@ async def stream_dataset_precheck_scan_events(
 
     async def gen():  # noqa: ANN202
         last_payload: str | None = None
+        last_keepalive = time.monotonic()
         try:
+            # Send an immediate frame so clients/proxies don't see an idle connection.
+            yield ": keepalive\n\n"
             while True:
                 db2 = SessionLocal()
                 try:
@@ -317,6 +321,11 @@ async def stream_dataset_precheck_scan_events(
                 if payload != last_payload:
                     last_payload = payload
                     yield f"data: {payload}\n\n"
+                    last_keepalive = time.monotonic()
+                elif (time.monotonic() - last_keepalive) > 15.0:
+                    # Keep the connection alive even if the payload doesn't change for a while.
+                    yield ": keepalive\n\n"
+                    last_keepalive = time.monotonic()
 
                 if st not in {"pending", "running"}:
                     break
@@ -324,7 +333,15 @@ async def stream_dataset_precheck_scan_events(
         except asyncio.CancelledError:
             return
 
-    return StreamingResponse(gen(), media_type="text/event-stream")
+    return StreamingResponse(
+        gen(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
 
 
 @router.get(

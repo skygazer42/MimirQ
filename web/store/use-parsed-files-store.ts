@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import { persist, createJSONStorage } from 'zustand/middleware'
 import { deleteDocContentFromCache, deleteDocSourceFromCache, saveDocContentToCache } from '@/lib/doc-content-cache'
+import { generateRequestId } from '@/lib/request-id'
 
 export const ROOT_FOLDER_ID = 'root'
 
@@ -56,10 +57,7 @@ interface ParsedFilesState {
   setLoaded: (loaded: boolean) => void
 }
 
-const makeId = () =>
-  typeof crypto !== 'undefined' && 'randomUUID' in crypto && typeof crypto.randomUUID === 'function'
-    ? crypto.randomUUID()
-    : Math.random().toString(36).substring(2, 15)
+const makeId = () => generateRequestId()
 
 const noopStorage = {
   getItem: (_name: string) => null,

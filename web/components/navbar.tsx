@@ -36,8 +36,9 @@ import { StatusBadge } from '@/components/ui/status-badge'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { cn } from '@/lib/utils'
 import { ModeToggle } from '@/components/mode-toggle'
-import { healthApi } from '@/lib/api-client'
 import { useAuth } from '@/hooks/use-auth'
+import { useBackendMeta } from '@/hooks/use-backend-meta'
+import { useBackendReady } from '@/hooks/use-backend-ready'
 
 type MenuItem = {
   icon: React.ComponentType<{ className?: string }>
@@ -83,7 +84,10 @@ const menuSections: Array<{ title: string; items: MenuItem[] }> = [
   },
   {
     title: '系统',
-    items: [{ icon: Settings, label: '设置', href: '/settings' }],
+    items: [
+      { icon: Activity, label: '诊断', href: '/diagnostics' },
+      { icon: Settings, label: '设置', href: '/settings' },
+    ],
   },
 ]
 
@@ -92,6 +96,18 @@ const menuItems: MenuItem[] = menuSections.flatMap((s) => s.items)
 function isActiveRoute(pathname: string, href: string) {
   if (href === '/') return pathname === '/'
   return pathname === href || pathname.startsWith(`${href}/`)
+}
+
+function formatDepStatus(status: unknown): { label: string; className: string } {
+  const label = String(status || '').trim() || 'unknown'
+  const lower = label.toLowerCase()
+  if (lower === 'connected' || lower === 'ready') {
+    return { label, className: 'text-success' }
+  }
+  if (lower === 'disabled' || lower === 'not_configured' || lower === 'unknown') {
+    return { label, className: 'text-muted-foreground' }
+  }
+  return { label, className: 'text-destructive' }
 }
 
 export function Navbar({
@@ -106,9 +122,13 @@ export function Navbar({
   const setSidebarOpen = externalSetOpen ?? setInternalIsOpen
   const pathname = usePathname()
   const router = useRouter()
-  const [backendOk, setBackendOk] = useState<boolean | null>(null)
-  const [readyDetails, setReadyDetails] = useState<any | null>(null)
   const { user, isAuthenticated, isDevMode, logout } = useAuth()
+  const { data: backendMeta } = useBackendMeta()
+  const backendReady = useBackendReady()
+  const readyDetails = backendReady.data ?? null
+  const backendOk =
+    typeof readyDetails?.ok === 'boolean' ? readyDetails.ok : backendReady.isError ? false : null
+  const lastReadyAt = Math.max(backendReady.dataUpdatedAt || 0, backendReady.errorUpdatedAt || 0) || null
   const closeSidebarOnMobile = useCallback(() => {
     if (typeof window === 'undefined') return
     try {
@@ -149,28 +169,52 @@ export function Navbar({
     return () => clearTimeout(t)
   }, [router, pathname])
 
-  useEffect(() => {
-    let alive = true
-    const ping = async () => {
-      try {
-        if (!alive) return
-        const ready = await healthApi.ready()
-        if (!alive) return
-        setBackendOk(Boolean((ready as any)?.ok))
-        setReadyDetails(ready)
-      } catch {
-        if (!alive) return
-        setBackendOk(false)
-        setReadyDetails(null)
-      }
-    }
-    ping()
-    const t = setInterval(ping, 30_000)
-    return () => {
-      alive = false
-      clearInterval(t)
-    }
-  }, [])
+  const authMode = String((backendMeta as any)?.features?.auth_mode || '')
+  const vectorBackend = String(
+    (backendMeta as any)?.features?.vector_backend || (readyDetails as any)?.vector?.backend || ''
+  )
+  const buildSha = String((backendMeta as any)?.build?.sha || '')
+  const buildShaShort = buildSha ? buildSha.slice(0, 8) : ''
+  const checkedAtLabel = lastReadyAt ? new Date(lastReadyAt).toLocaleTimeString() : '—'
+
+  const depRows: Array<{ key: string; status: unknown; note?: string; error?: unknown }> = readyDetails
+    ? [
+        {
+          key: 'DB',
+          status: (readyDetails as any)?.database?.status,
+          error: (readyDetails as any)?.database?.error,
+        },
+        {
+          key: `Vector (${String((readyDetails as any)?.vector?.backend || vectorBackend || '-')})`,
+          status: (readyDetails as any)?.vector?.status,
+          error: (readyDetails as any)?.vector?.error,
+        },
+        {
+          key: 'Redis',
+          status: (readyDetails as any)?.redis?.status,
+          note: (() => {
+            const r = (readyDetails as any)?.redis
+            if (!r) return undefined
+            if (!r.enabled) return 'disabled'
+            const required = Boolean(r.required)
+            const cache = Boolean(r.embedding_cache_enabled)
+            return `${required ? 'required' : 'optional'}${cache ? ', cache' : ''}`
+          })(),
+          error: (readyDetails as any)?.redis?.error,
+        },
+        {
+          key: 'MinIO',
+          status: (readyDetails as any)?.minio?.status,
+          note: (() => {
+            const m = (readyDetails as any)?.minio
+            if (!m) return undefined
+            if (!m.enabled) return 'disabled'
+            return m.bucket ? `bucket: ${m.bucket}` : undefined
+          })(),
+          error: (readyDetails as any)?.minio?.error,
+        },
+      ]
+    : []
 
   return (
     <>
@@ -329,11 +373,97 @@ export function Navbar({
           </div>
 
           <div className="mt-3 flex items-center justify-between gap-2">
-            <StatusBadge
-              status={backendOk === true ? "completed" : backendOk === false ? "failed" : "processing"}
-              label={`Deps：${backendOk === true ? "OK" : backendOk === false ? "Down" : "..."}`}
-              dense
-            />
+            <Popover>
+              <PopoverTrigger asChild>
+                <button
+                  type="button"
+                  className="rounded-full focus-ring"
+                  aria-label="查看后端依赖状态"
+                  title="查看后端依赖状态"
+                >
+                  <StatusBadge
+                    status={backendOk === true ? "completed" : backendOk === false ? "failed" : "processing"}
+                    label={`Deps：${backendOk === true ? "OK" : backendOk === false ? "Down" : "..."}`}
+                    dense
+                  />
+                </button>
+              </PopoverTrigger>
+              <PopoverContent align="start" side="top" className="w-80">
+                <div className="space-y-3 text-xs">
+                  <div className="flex items-center justify-between">
+                    <p className="font-semibold">依赖就绪</p>
+                    <span
+                      className={cn(
+                        "font-medium",
+                        backendOk === true
+                          ? "text-success"
+                          : backendOk === false
+                            ? "text-destructive"
+                            : "text-muted-foreground"
+                      )}
+                    >
+                      {backendOk === true ? "OK" : backendOk === false ? "Down" : "..."}
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-x-3 gap-y-2 text-[11px] text-muted-foreground">
+                    <div className="flex items-center justify-between gap-2">
+                      <span>Auth</span>
+                      <span className="text-foreground">{authMode || '-'}</span>
+                    </div>
+                    <div className="flex items-center justify-between gap-2">
+                      <span>Vector</span>
+                      <span className="text-foreground">{vectorBackend || '-'}</span>
+                    </div>
+                    <div className="flex items-center justify-between gap-2">
+                      <span>Build</span>
+                      <span className="font-mono text-foreground">{buildShaShort || '-'}</span>
+                    </div>
+                    <div className="flex items-center justify-between gap-2">
+                      <span>Checked</span>
+                      <span className="text-foreground">{checkedAtLabel}</span>
+                    </div>
+                  </div>
+
+                  <div className="rounded-md border border-border/60 bg-background/40 p-2.5">
+                    {readyDetails ? (
+                      <div className="space-y-2">
+                        {depRows.map((row) => {
+                          const st = formatDepStatus(row.status)
+                          const errText = row.error ? String(row.error) : ''
+                          return (
+                            <div key={row.key} className="space-y-0.5">
+                              <div className="flex items-start justify-between gap-2">
+                                <span className="font-medium text-foreground">{row.key}</span>
+                                <span className={cn("font-medium", st.className)}>{st.label}</span>
+                              </div>
+                              {row.note ? <div className="text-[10px] text-muted-foreground">{row.note}</div> : null}
+                              {errText ? (
+                                <div
+                                  className="text-[10px] text-muted-foreground max-w-[260px] truncate"
+                                  title={errText}
+                                >
+                                  {errText}
+                                </div>
+                              ) : null}
+                            </div>
+                          )
+                        })}
+                      </div>
+                    ) : (
+                      <p className="text-[11px] text-muted-foreground">未能获取依赖状态（后端未启动或网络不可达）。</p>
+                    )}
+                  </div>
+
+                  <div className="flex items-center justify-between pt-1">
+                    <Link href="/diagnostics" className="text-[11px] text-primary hover:underline">
+                      诊断页
+                    </Link>
+                    <span className="text-[11px] text-muted-foreground">请求包含 X-Request-ID</span>
+                  </div>
+                </div>
+              </PopoverContent>
+            </Popover>
           </div>
         </div>
       </nav>

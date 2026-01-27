@@ -33,8 +33,16 @@ class RedisStatus(BaseModel):
     error: Optional[str] = None
 
 
+class MinioStatus(BaseModel):
+    status: str
+    enabled: bool
+    bucket: Optional[str] = None
+    error: Optional[str] = None
+
+
 class ReadyResponse(BaseModel):
     ok: bool
     database: DatabaseStatus
     vector: VectorStatus
     redis: RedisStatus
+    minio: MinioStatus

@@ -916,7 +916,7 @@ curl http://localhost:8000/api/v1/chat/conversations/CONV_ID/messages \
 
 ### GET /health/ready - 就绪探针
 
-检查数据库、Milvus、Redis 连接状态。
+检查数据库、Milvus、Redis、MinIO 连接状态。
 
 ---
 
