@@ -92,6 +92,22 @@ export default function DatasetPrecheckPage() {
     pdf_sample_pages: null,
     text_extract_max_bytes: null,
     redact_paths: false,
+    pdf_min_text_chars_per_page: null,
+    pdf_text_chars_per_page: null,
+    pdf_scan_ratio_threshold: null,
+    enable_pii_samples: false,
+    pii_context_chars: null,
+    pii_max_samples_per_file: null,
+    enable_secrets_samples: false,
+    secrets_context_chars: null,
+    secrets_max_samples_per_file: null,
+    enable_near_dup: false,
+    near_dup_hamming_threshold: null,
+    near_dup_max_pairs: null,
+    enable_sampling: true,
+    sample_size: null,
+    reuse_unchanged_files: false,
+    reuse_from_scan_run_id: null,
   })
 
   const [findingOpen, setFindingOpen] = useState(false)
@@ -709,4 +725,3 @@ export default function DatasetPrecheckPage() {
     </AppFrame>
   )
 }
-
