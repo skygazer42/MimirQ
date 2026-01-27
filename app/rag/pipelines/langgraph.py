@@ -518,6 +518,28 @@ def _retrieve_node(state: RAGState) -> RAGState:
     top_k = int(state.get("top_k", settings.RETRIEVAL_TOP_K) or settings.RETRIEVAL_TOP_K or 5)
     docs = (docs or [])[: max(0, top_k)]
 
+    # Optional: TAG injection (table_store results) passed in by the API layer.
+    injected = state.get("tag_docs")
+    tag_docs: List[Document] = []
+    if isinstance(injected, list) and injected:
+        for obj in injected[:10]:  # hard cap: avoid huge state payloads
+            if isinstance(obj, Document):
+                tag_docs.append(obj)
+                continue
+            if isinstance(obj, dict):
+                content = obj.get("page_content")
+                if content is None:
+                    content = obj.get("content")
+                meta = obj.get("metadata")
+                meta = meta if isinstance(meta, dict) else {}
+                did = obj.get("id") or meta.get("chunk_id")
+                try:
+                    tag_docs.append(Document(page_content=str(content or ""), metadata=meta, id=did))
+                except Exception:
+                    continue
+    if tag_docs:
+        docs = tag_docs + (docs or [])
+
     citations = build_citations_from_docs(
         docs,
         retrieval_elapsed_sec=retrieval_elapsed,
@@ -560,6 +582,15 @@ def _retrieve_node(state: RAGState) -> RAGState:
     metrics["decompose_parse_ok"] = bool(decompose_parse_meta.get("ok"))
     metrics["decompose_parse_method"] = decompose_parse_meta.get("method")
     metrics["decompose_parse_error"] = decompose_parse_meta.get("error")
+    if tag_docs:
+        metrics["tag"] = {
+            "enabled": True,
+            "used": True,
+            "returned": len(tag_docs),
+            "reason": (state.get("tag_meta") or {}).get("reason") if isinstance(state.get("tag_meta"), dict) else "injected",
+        }
+    elif isinstance(state.get("tag_meta"), dict):
+        metrics["tag"] = state.get("tag_meta")
 
     # Grounding guard: abstain when evidence is weak/empty.
     abstain_enabled = bool(settings.RAG_ABSTAIN_ENABLED)

@@ -86,3 +86,21 @@ SQL 执行器是 **SELECT-only**：
 - `POST /api/v1/datasets/{dataset_id}/tables/{table_id}/lotus/sem-filter`
 
 > 说明：该接口路径保留了历史命名（`/lotus/sem-filter`），但实现为 MimirQ 内置的“LOTUS-like”语义过滤能力，不依赖外部 LOTUS 包。
+
+## Chat 自动 TAG（可选）
+
+当你希望「对话」里也能直接查表（而不是手动去“表格 / TAG”页面）时，可以开启 Chat→TAG 桥接：
+
+- `CHAT_TAG_ENABLED=true`
+- `TABLE_NL2SQL_ENABLED=true`
+- `TABLE_LLM_ALLOW_RESULT_EGRESS=true`（因为 chat 会把 SQL 结果作为上下文引用材料注入到 LLM）
+
+Chat 侧会：
+
+1. 从当前会话绑定的 `document_ids` 中，找出已走 Table Store 的表格资产（`doc_metadata.table_store`）。
+2. 基于问题与表结构（文件名/sheet/列名）选择少量候选表（默认最多 2 个）。
+3. 对每个候选表执行一次 bounded NL→SQL→SELECT，并把结果以 JSON 形式注入到引用材料中（`retrieval_role=tag`）。
+
+可调参数（见 `.env.example`）：
+
+- `CHAT_TAG_MAX_TABLES / CHAT_TAG_MAX_DOC_IDS / CHAT_TAG_MAX_ROWS / CHAT_TAG_MAX_COLS / CHAT_TAG_MAX_BYTES`
