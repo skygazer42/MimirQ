@@ -145,6 +145,9 @@ class Settings(BaseSettings):
     PRECHECK_SCAN_MAX_TOTAL_BYTES: int = 5_000_000_000  # 5GB
     PRECHECK_TEXT_EXTRACT_MAX_BYTES: int = 2_000_000  # per file
     PRECHECK_PDF_SAMPLE_PAGES: int = 3
+    PRECHECK_PDF_MIN_TEXT_CHARS_PER_PAGE: int = 50
+    PRECHECK_PDF_TEXT_CHARS_PER_PAGE: int = 200
+    PRECHECK_PDF_SCAN_RATIO_THRESHOLD: float = 0.7
     # Optional: ingest documents by fetching a remote URL (connector skeleton).
     URL_INGEST_ENABLED: bool = False
     URL_INGEST_MAX_BYTES: int = 50_000_000

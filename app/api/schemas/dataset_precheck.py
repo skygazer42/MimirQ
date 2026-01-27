@@ -93,6 +93,8 @@ class DatasetPrecheckSummary(BaseModel):
     length_histogram: List[DatasetPrecheckHistogramBin] = Field(default_factory=list)
 
     pdf_scan: DatasetPrecheckPdfScanStats = Field(default_factory=DatasetPrecheckPdfScanStats)
+    # Echo PDF page-type heuristics used during the scan (best-effort; for transparency).
+    pdf_detection: Dict[str, Any] = Field(default_factory=dict)
 
     pii_hits_total: Dict[str, int] = Field(default_factory=dict)
     secrets_hits_total: Dict[str, int] = Field(default_factory=dict)
