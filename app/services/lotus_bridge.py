@@ -50,6 +50,8 @@ def lotus_available() -> LotusAvailability:
         return LotusAvailability(ok=False, reason="TABLE_LOTUS_ENABLED=false")
     if not str(getattr(settings, "LLM_API_KEY", "") or "").strip():
         return LotusAvailability(ok=False, reason="LLM_API_KEY is not configured")
+    if not bool(getattr(settings, "TABLE_LLM_ALLOW_ROW_EGRESS", False)):
+        return LotusAvailability(ok=False, reason="TABLE_LLM_ALLOW_ROW_EGRESS=false")
     return LotusAvailability(ok=True)
 
 
@@ -160,6 +162,8 @@ def sem_filter(
     instr = " ".join(str(user_instruction or "").strip().split())
     if not instr:
         raise ValueError("user_instruction is required")
+    if not bool(getattr(settings, "TABLE_LLM_ALLOW_ROW_EGRESS", False)):
+        raise RuntimeError("TABLE_LLM_ALLOW_ROW_EGRESS=false")
 
     # Apply conservative caps before serializing rows to the LLM.
     max_in_rows = int(getattr(settings, "TABLE_SEM_FILTER_MAX_IN_ROWS", 2000) or 2000)
@@ -255,4 +259,3 @@ def sem_filter(
 
 
 __all__ = ["LotusAvailability", "lotus_available", "sem_filter"]
-

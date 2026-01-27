@@ -17,9 +17,11 @@ import datetime as dt
 import json
 import re
 import sqlite3
+import time
 
 import pandas as pd  # type: ignore
 
+from app.core.config import settings
 from app.services.table_store import (
     format_table_id,
     parse_table_id,
@@ -370,6 +372,9 @@ def run_table_query(
     raw_sql = str(sql or "")
     if not raw_sql.strip():
         raise ValueError("sql is required")
+    max_sql_chars = int(getattr(settings, "TABLE_QUERY_MAX_SQL_CHARS", 20_000) or 20_000)
+    if max_sql_chars > 0 and len(raw_sql) > int(max_sql_chars):
+        raise ValueError(f"sql_too_long (max {int(max_sql_chars)})")
     if ";" in raw_sql:
         raise ValueError("multiple statements are not allowed")
     if not _SQL_SELECT_PREFIX_RE.match(raw_sql):
@@ -385,13 +390,42 @@ def run_table_query(
     normalized = raw_sql.strip()
     if re.search(r"\blimit\b", normalized, flags=re.IGNORECASE) is None:
         normalized = f"{normalized}\nLIMIT {limit}"
+    else:
+        # Best-effort: reject obvious LIMIT literals that exceed the server max_rows.
+        # This does not attempt to fully parse SQL; progress/time limits are the primary guard.
+        try:
+            limits = [int(m.group(1)) for m in re.finditer(r"\blimit\s+(\d+)\b", normalized, flags=re.IGNORECASE)]
+        except Exception:
+            limits = []
+        if limits and max(limits) > limit:
+            raise ValueError(f"limit_too_large (max {limit})")
 
     # SQLite authorizer: deny writes/pragma/attach and restrict reads to our sheet table only.
     conn = _connect_ro(db_path)
     truncated = False
     try:
+        # Time budget guardrail (DoS defense-in-depth). Uses SQLite VM progress handler.
+        timeout_sec = float(getattr(settings, "TABLE_QUERY_TIMEOUT_SEC", 0.0) or 0.0)
+        progress_ops = int(getattr(settings, "TABLE_QUERY_PROGRESS_OPS", 0) or 0)
+        if timeout_sec > 0 and progress_ops > 0:
+            start = time.monotonic()
+
+            def _progress() -> int:  # pragma: no cover (timing dependent)
+                return 1 if (time.monotonic() - start) > timeout_sec else 0
+
+            try:
+                conn.set_progress_handler(_progress, int(progress_ops))
+            except Exception:
+                pass
+
         _apply_sqlite_readonly_authorizer(conn, allowed_tables={sql_table})
-        cur = conn.execute(normalized)
+        try:
+            cur = conn.execute(normalized)
+        except sqlite3.OperationalError as exc:
+            msg = str(exc or "").lower()
+            if "interrupted" in msg and timeout_sec > 0:
+                raise TimeoutError(f"query_timeout ({timeout_sec:.1f}s)") from exc
+            raise
         col_names = [d[0] for d in (cur.description or [])]
         if max_cols and int(max_cols) > 0 and len(col_names) > int(max_cols):
             col_names = col_names[: int(max_cols)]

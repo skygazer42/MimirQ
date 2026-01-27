@@ -333,6 +333,11 @@ def ask_dataset_table(
         max_cols=int(getattr(settings, "TABLE_QUERY_MAX_COLS", 200) or 200),
         max_bytes=int(getattr(settings, "TABLE_QUERY_MAX_BYTES", 1_000_000) or 1_000_000),
     )
+    if not bool(getattr(settings, "TABLE_LLM_ALLOW_RESULT_EGRESS", False)):
+        raise HTTPException(
+            status_code=400,
+            detail="TABLE_LLM_ALLOW_RESULT_EGRESS=false (answer drafting requires sending query results to an LLM)",
+        )
     try:
         answer = generate_answer_from_result(question=str(body.question or ""), sql=str(result.get("sql") or sql), result=result)
     except Exception as exc:  # noqa: BLE001

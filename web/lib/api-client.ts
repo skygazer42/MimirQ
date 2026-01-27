@@ -117,6 +117,7 @@ import type {
   RagvizSimilarityCollectionsResponse,
   RagvizSimilarityRequest,
   RagvizSimilarityCalculateResponse,
+  RagMetricsSummaryResponse,
 } from '@/types'
 import type { MetaResponse } from '@/types/backend'
 import { extractBackendMessage, extractBackendRequestId, withRequestId } from '@/lib/api-errors'
@@ -1698,6 +1699,13 @@ export type BackendMeta = MetaResponse
 export const metaApi = {
   async get(): Promise<BackendMeta> {
     const { data } = await apiClient.get('/meta')
+    return data
+  },
+}
+
+export const observabilityApi = {
+  async getRagMetricsSummary(params: { window_minutes?: number; max_bytes?: number }): Promise<RagMetricsSummaryResponse> {
+    const { data } = await apiClient.get('/observability/rag-metrics/summary', { params })
     return data
   },
 }

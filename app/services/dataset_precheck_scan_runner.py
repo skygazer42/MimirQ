@@ -577,6 +577,7 @@ class _FileRecord:
 
 def _iter_files(root: Path, *, max_files: int) -> Iterable[Path]:
     # Use os.walk to avoid following symlinks by default.
+    root_resolved = root.resolve(strict=False)
     count = 0
     for dirpath, dirnames, filenames in os.walk(str(root), topdown=True, followlinks=False):
         # Skip hidden dirs by default (can be added later via config).
@@ -585,6 +586,19 @@ def _iter_files(root: Path, *, max_files: int) -> Iterable[Path]:
             if fn.startswith("."):
                 continue
             path = Path(dirpath) / fn
+            # Defense-in-depth: do not follow symlinks (files or dirs). `os.walk(... followlinks=False)`
+            # only prevents descending into symlink *directories*; symlink files still appear in filenames.
+            try:
+                if path.is_symlink():
+                    continue
+            except Exception:
+                continue
+            # Ensure the resolved path stays within the scan root to prevent symlink escape.
+            try:
+                path.resolve(strict=False).relative_to(root_resolved)
+            except Exception:
+                continue
+
             if not path.is_file():
                 continue
             yield path
