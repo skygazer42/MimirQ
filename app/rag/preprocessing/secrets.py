@@ -24,6 +24,14 @@ class SecretsRedactResult:
     changed: bool
 
 
+@dataclass(frozen=True)
+class SecretMatch:
+    kind: str
+    start: int
+    end: int
+    text: str
+
+
 # NOTE: Patterns are intentionally conservative to reduce false positives.
 _OPENAI_KEY_RE = re.compile(r"\bsk-[A-Za-z0-9]{16,}\b")
 _BEARER_TOKEN_RE = re.compile(r"(?i)\bbearer\s+([A-Za-z0-9\-_.]{12,})\b")
@@ -89,9 +97,64 @@ def redact_secrets(text: str, *, enabled: bool, mode: SecretMode = "mask", mask:
     return SecretsRedactResult(text=current, hits=hits, changed=(current != original))
 
 
+def find_secret_matches(text: str, *, max_matches: int = 50) -> list[SecretMatch]:
+    """
+    Find secret/token candidates in text (best-effort).
+
+    Intended for review-time displays (precheck / governance debug). Results are
+    conservative but still require human verification.
+    """
+    s = text or ""
+    if not s:
+        return []
+
+    max_matches = max(0, min(int(max_matches or 0), 200))
+    if max_matches <= 0:
+        return []
+
+    patterns: list[tuple[str, re.Pattern[str]]] = [
+        ("private_key", _PRIVATE_KEY_BLOCK_RE),
+        ("openai_key", _OPENAI_KEY_RE),
+        ("github_token", _GITHUB_TOKEN_RE),
+        ("slack_token", _SLACK_TOKEN_RE),
+        ("aws_access_key", _AWS_ACCESS_KEY_RE),
+        ("bearer_token", _BEARER_TOKEN_RE),
+    ]
+
+    taken: list[tuple[int, int]] = []
+    out: list[SecretMatch] = []
+
+    def overlaps(a0: int, a1: int) -> bool:
+        for b0, b1 in taken:
+            if a0 < b1 and a1 > b0:
+                return True
+        return False
+
+    for kind, pat in patterns:
+        for m in pat.finditer(s):
+            raw = m.group(0) or ""
+            if not raw:
+                continue
+            start, end = int(m.start()), int(m.end())
+            if start < 0 or end <= start:
+                continue
+            if overlaps(start, end):
+                continue
+            out.append(SecretMatch(kind=kind, start=start, end=end, text=raw))
+            taken.append((start, end))
+            if len(out) >= max_matches:
+                break
+        if len(out) >= max_matches:
+            break
+
+    out.sort(key=lambda x: (x.start, x.end))
+    return out
+
+
 __all__ = [
     "SecretMode",
     "SecretsRedactResult",
     "redact_secrets",
+    "SecretMatch",
+    "find_secret_matches",
 ]
-

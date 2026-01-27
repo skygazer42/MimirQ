@@ -19,6 +19,7 @@ import io
 import json
 import os
 import re
+from collections import Counter
 import time
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
@@ -31,8 +32,8 @@ from sqlalchemy.orm import Session
 from app.core.config import settings
 from app.models.dataset_precheck_scan import DatasetPrecheckScanRun as DBDatasetPrecheckScanRun
 from app.rag.core.logging import get_logger
-from app.rag.preprocessing.pii_anonymizer import anonymize_pii
-from app.rag.preprocessing.secrets import redact_secrets
+from app.rag.preprocessing.pii_anonymizer import anonymize_pii, find_pii_matches
+from app.rag.preprocessing.secrets import redact_secrets, find_secret_matches
 from app.services.dataset_profile_utils import FILE_SIZE_BINS, TEXT_LENGTH_BINS, histogram, percentile_from_sorted, safe_int
 
 logger = get_logger("services.dataset_precheck_scan")
@@ -116,6 +117,53 @@ TEXTLIKE_EXTS = {
     ".html",
     ".htm",
 }
+
+
+def _hash64(text: str) -> int:
+    # Stable 64-bit hash for SimHash features (blake2b is fast and deterministic).
+    h = hashlib.blake2b((text or "").encode("utf-8", errors="ignore"), digest_size=8).digest()
+    return int.from_bytes(h, byteorder="big", signed=False)
+
+
+def _simhash64(text: str, *, max_tokens: int = 2000) -> int:
+    """
+    Compute a simple 64-bit SimHash for near-duplicate detection (best-effort).
+
+    We intentionally keep this dependency-free and conservative:
+    - tokenize by simple regex (latin alnum + CJK)
+    - cap token count to avoid large CPU spikes during scans
+    """
+    s = (text or "").strip()
+    if not s:
+        return 0
+
+    tokens = re.findall(r"[A-Za-z0-9_\u4e00-\u9fff]{2,}", s.lower())
+    if not tokens:
+        return 0
+    if len(tokens) > max_tokens:
+        tokens = tokens[:max_tokens]
+
+    counts = Counter(tokens)
+    # 64-dim signed accumulator.
+    v = [0] * 64
+    for tok, w in counts.items():
+        hv = _hash64(tok)
+        weight = int(w)
+        for i in range(64):
+            if (hv >> i) & 1:
+                v[i] += weight
+            else:
+                v[i] -= weight
+
+    out = 0
+    for i, val in enumerate(v):
+        if val > 0:
+            out |= 1 << i
+    return int(out)
+
+
+def _hamming_distance64(a: int, b: int) -> int:
+    return int((int(a) ^ int(b)).bit_count())
 
 
 def _now_utc() -> datetime:
@@ -335,6 +383,67 @@ def _xlsx_spreadsheet_stats(path: Path, *, max_sheets: int = 3) -> dict[str, Any
             pass
 
 
+def _mask_pii_value(kind: str, raw: str) -> str:
+    k = (kind or "").strip().lower()
+    s = (raw or "").strip()
+    if not s:
+        return "[REDACTED]"
+    if k == "email":
+        if "@" not in s:
+            return "[REDACTED]"
+        local, domain = s.split("@", 1)
+        head = (local[:1] + "***") if local else "***"
+        return f"{head}@{domain}"
+    if k == "ip":
+        parts = s.split(".")
+        if len(parts) == 4:
+            return ".".join(parts[:3] + ["***"])
+        return "[REDACTED]"
+    if k in {"phone"}:
+        digits = re.sub(r"[^\d]", "", s)
+        if len(digits) >= 7:
+            return f"{digits[:3]}****{digits[-2:]}"
+        return "[REDACTED]"
+    if k == "credit_card":
+        digits = re.sub(r"[^\d]", "", s)
+        if len(digits) >= 8:
+            return f"{digits[:4]}****{digits[-4:]}"
+        return "[REDACTED]"
+    if k == "cn_id":
+        if len(s) >= 10:
+            return f"{s[:6]}********{s[-2:]}"
+        return "[REDACTED]"
+    if k == "ssn":
+        return "***-**-****"
+    return "[REDACTED]"
+
+
+def _mask_secret_value(kind: str, raw: str) -> str:
+    k = (kind or "").strip().lower()
+    s = (raw or "").strip()
+    if not s:
+        return "[SECRET]"
+    if k == "openai_key":
+        return "sk-***"
+    if k == "github_token":
+        if s.startswith("ghp_"):
+            return "ghp_***"
+        if s.startswith("github_pat_"):
+            return "github_pat_***"
+        return "[SECRET]"
+    if k == "aws_access_key":
+        return (s[:4] + "***") if len(s) >= 4 else "[SECRET]"
+    if k == "slack_token":
+        # xox[baprs]-...
+        prefix = s.split("-", 1)[0]
+        return f"{prefix}-***" if prefix else "[SECRET]"
+    if k == "bearer_token":
+        return "Bearer ***"
+    if k == "private_key":
+        return "-----BEGIN PRIVATE KEY----- ... -----END PRIVATE KEY-----"
+    return "[SECRET]"
+
+
 @dataclass
 class _FileRecord:
     name: str
@@ -438,6 +547,24 @@ def run_dataset_precheck_scan(
     compute_file_hash = bool(cfg.get("compute_file_hash", False))
     redact_paths = bool(cfg.get("redact_paths", False))
 
+    enable_pii_samples = bool(cfg.get("enable_pii_samples", False))
+    pii_context_chars = safe_int(cfg.get("pii_context_chars") or 50, default=50)
+    pii_context_chars = max(0, min(pii_context_chars, 500))
+    pii_max_samples_per_file = safe_int(cfg.get("pii_max_samples_per_file") or 5, default=5)
+    pii_max_samples_per_file = max(0, min(pii_max_samples_per_file, 50))
+
+    enable_secrets_samples = bool(cfg.get("enable_secrets_samples", False))
+    secrets_context_chars = safe_int(cfg.get("secrets_context_chars") or 50, default=50)
+    secrets_context_chars = max(0, min(secrets_context_chars, 500))
+    secrets_max_samples_per_file = safe_int(cfg.get("secrets_max_samples_per_file") or 5, default=5)
+    secrets_max_samples_per_file = max(0, min(secrets_max_samples_per_file, 50))
+
+    enable_near_dup = bool(cfg.get("enable_near_dup", False))
+    near_dup_hamming_threshold = safe_int(cfg.get("near_dup_hamming_threshold") or 5, default=5)
+    near_dup_hamming_threshold = max(0, min(near_dup_hamming_threshold, 32))
+    near_dup_max_pairs = safe_int(cfg.get("near_dup_max_pairs") or 5000, default=5000)
+    near_dup_max_pairs = max(0, min(near_dup_max_pairs, 200_000))
+
     pdf_scan_max_chars = safe_int(
         cfg.get("pdf_min_text_chars_per_page") or getattr(settings, "PRECHECK_PDF_MIN_TEXT_CHARS_PER_PAGE", 50),
         default=50,
@@ -537,6 +664,9 @@ def run_dataset_precheck_scan(
     # For exact-dup finding: sha256 -> count.
     sha_counts: dict[str, int] = {}
 
+    # For near-dup finding: (display_name, simhash64) pairs.
+    simhash_entries: list[tuple[str, int]] = []
+
     errors = 0
 
     # Stream JSONL writes to avoid holding all file records in memory.
@@ -599,6 +729,16 @@ def run_dataset_precheck_scan(
                                 scan_max_chars=int(pdf_scan_max_chars),
                                 text_min_chars=int(pdf_text_min_chars),
                             )
+
+                # Optional near-duplicate fingerprint (SimHash over extracted text sample).
+                if enable_near_dup and sample_text:
+                    try:
+                        sim = _simhash64(sample_text)
+                    except Exception:
+                        sim = 0
+                    if sim:
+                        rec.text_simhash64 = f"{int(sim) & ((1<<64)-1):016x}"
+                        simhash_entries.append((rec.name, int(sim)))
 
                 # PDF scan detection (transparent heuristics on sampled pages).
                 if enable_pdf_quality and ext == ".pdf":
@@ -663,6 +803,31 @@ def run_dataset_precheck_scan(
                             for k, v in rec.pii_hits.items():
                                 pii_totals[k] = pii_totals.get(k, 0) + int(v)
 
+                    if enable_pii_samples and pii_max_samples_per_file > 0:
+                        matches = find_pii_matches(sample_text, max_matches=pii_max_samples_per_file)
+                        for m in matches:
+                            start = int(getattr(m, "start", 0) or 0)
+                            end = int(getattr(m, "end", 0) or 0)
+                            if end <= start:
+                                continue
+                            ctx_start = max(0, start - int(pii_context_chars))
+                            ctx_end = min(len(sample_text), end + int(pii_context_chars))
+                            ctx = sample_text[ctx_start:ctx_end]
+                            # Mask other occurrences within context for safer display.
+                            ctx = anonymize_pii(ctx, enabled=True, mode="mask").text
+                            ctx = redact_secrets(ctx, enabled=True, mode="mask").text
+                            if len(ctx) > 2000:
+                                ctx = ctx[:2000] + "..."
+                            rec.pii_samples.append(
+                                {
+                                    "kind": str(getattr(m, "kind", "") or "pii"),
+                                    "masked": _mask_pii_value(str(getattr(m, "kind", "") or ""), str(getattr(m, "text", "") or "")),
+                                    "context": ctx,
+                                    "start": start,
+                                    "end": end,
+                                }
+                            )
+
                 if sample_text and enable_secrets:
                     sec = redact_secrets(sample_text, enabled=True, mode="mask")
                     if sec.hits:
@@ -672,6 +837,31 @@ def run_dataset_precheck_scan(
                             finding_counts["secrets"] += 1
                             for k, v in rec.secrets_hits.items():
                                 secrets_totals[k] = secrets_totals.get(k, 0) + int(v)
+
+                    if enable_secrets_samples and secrets_max_samples_per_file > 0:
+                        matches = find_secret_matches(sample_text, max_matches=secrets_max_samples_per_file)
+                        for m in matches:
+                            start = int(getattr(m, "start", 0) or 0)
+                            end = int(getattr(m, "end", 0) or 0)
+                            if end <= start:
+                                continue
+                            ctx_start = max(0, start - int(secrets_context_chars))
+                            ctx_end = min(len(sample_text), end + int(secrets_context_chars))
+                            ctx = sample_text[ctx_start:ctx_end]
+                            # Mask PII/secrets in context for safer display.
+                            ctx = anonymize_pii(ctx, enabled=True, mode="mask").text
+                            ctx = redact_secrets(ctx, enabled=True, mode="mask").text
+                            if len(ctx) > 2000:
+                                ctx = ctx[:2000] + "..."
+                            rec.secrets_samples.append(
+                                {
+                                    "kind": str(getattr(m, "kind", "") or "secret"),
+                                    "masked": _mask_secret_value(str(getattr(m, "kind", "") or ""), str(getattr(m, "text", "") or "")),
+                                    "context": ctx,
+                                    "start": start,
+                                    "end": end,
+                                }
+                            )
 
                 # Optional file hash (expensive; for exact duplicates).
                 if compute_file_hash:
@@ -705,6 +895,87 @@ def run_dataset_precheck_scan(
                 dup_total += int(cnt)
         if dup_total > 0:
             finding_counts["exact_dup"] = int(dup_total)
+
+    near_dup_path: Path | None = None
+    if enable_near_dup and simhash_entries and near_dup_hamming_threshold > 0 and near_dup_max_pairs > 0:
+        names = [n for n, _h in simhash_entries]
+        hashes = [int(_h) for _n, _h in simhash_entries]
+        n_total = len(hashes)
+
+        # LSH banding to avoid O(N^2) comparisons (4x16-bit bands).
+        buckets: dict[tuple[int, int], list[int]] = {}
+        pairs: list[dict[str, Any]] = []
+        parent = list(range(n_total))
+        rank = [0] * n_total
+
+        def find(x: int) -> int:
+            while parent[x] != x:
+                parent[x] = parent[parent[x]]
+                x = parent[x]
+            return x
+
+        def union(a: int, b: int) -> None:
+            ra = find(a)
+            rb = find(b)
+            if ra == rb:
+                return
+            if rank[ra] < rank[rb]:
+                parent[ra] = rb
+            elif rank[ra] > rank[rb]:
+                parent[rb] = ra
+            else:
+                parent[rb] = ra
+                rank[ra] += 1
+
+        # Compare candidates as we insert each item.
+        for i, h in enumerate(hashes):
+            candidates: set[int] = set()
+            for band in range(4):
+                key = (band, int((h >> (band * 16)) & 0xFFFF))
+                existing = buckets.get(key)
+                if existing and len(existing) <= 2000:
+                    candidates.update(existing)
+                buckets.setdefault(key, []).append(i)
+
+            for j in candidates:
+                if j == i:
+                    continue
+                d = _hamming_distance64(h, hashes[j])
+                if d <= int(near_dup_hamming_threshold):
+                    pairs.append({"a": names[j], "b": names[i], "distance": int(d)})
+                    union(i, j)
+                    if len(pairs) >= int(near_dup_max_pairs):
+                        break
+            if len(pairs) >= int(near_dup_max_pairs):
+                break
+
+        # Build clusters from union-find (size>=2).
+        groups: dict[int, list[int]] = {}
+        for idx in range(n_total):
+            r = find(idx)
+            groups.setdefault(r, []).append(idx)
+
+        clusters: list[dict[str, Any]] = []
+        for root_id, members in groups.items():
+            if len(members) < 2:
+                continue
+            clusters.append({"id": str(root_id), "members": [names[i] for i in sorted(members)]})
+
+        clusters.sort(key=lambda c: (-len(c.get("members") or []), str(c.get("id") or "")))
+        affected = {m for c in clusters for m in (c.get("members") or [])}
+        if affected:
+            finding_counts["near_dup"] = int(len(affected))
+
+        near_dup_payload = {
+            "threshold": int(near_dup_hamming_threshold),
+            "max_pairs": int(near_dup_max_pairs),
+            "pairs_returned": int(len(pairs)),
+            "clusters_returned": int(len(clusters)),
+            "clusters": clusters[:2000],
+            "pairs": pairs[:5000],
+        }
+        near_dup_path = (artifact_root / "near_dups.json").resolve(strict=False)
+        near_dup_path.write_text(json.dumps(near_dup_payload, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
 
     # Histograms + percentiles.
     file_sizes.sort()
@@ -756,6 +1027,8 @@ def run_dataset_precheck_scan(
         "files_jsonl": str(jsonl_path),
         "root_path": "[REDACTED]" if redact_paths else str(root),
     }
+    if near_dup_path is not None:
+        run.artifacts["near_dups_json"] = str(near_dup_path)
     db.commit()
 
     return {
