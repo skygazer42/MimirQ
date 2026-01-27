@@ -26,6 +26,14 @@ class PiiAnonymizeResult:
     changed: bool
 
 
+@dataclass(frozen=True)
+class PiiMatch:
+    kind: str
+    start: int
+    end: int
+    text: str
+
+
 _EMAIL_RE = re.compile(r"(?i)\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b")
 _IPV4_RE = re.compile(r"(?<!\d)(?:\d{1,3}\.){3}\d{1,3}(?!\d)")
 _SSN_RE = re.compile(r"(?<!\d)\d{3}-\d{2}-\d{4}(?!\d)")
@@ -152,3 +160,60 @@ def anonymize_pii(text: str, *, enabled: bool, mode: PiiMode = "mask", mask: str
 
     return PiiAnonymizeResult(text=current, hits=hits, changed=(current != original))
 
+
+def find_pii_matches(text: str, *, max_matches: int = 50) -> list[PiiMatch]:
+    """
+    Find PII matches with the same (conservative) validators used by anonymize_pii().
+
+    Intended for review-time displays (precheck / governance debug). Results are
+    best-effort and may include false positives; callers should show them as
+    "needs review" rather than hard conclusions.
+    """
+    s = text or ""
+    if not s:
+        return []
+
+    max_matches = max(0, min(int(max_matches or 0), 200))
+    if max_matches <= 0:
+        return []
+
+    patterns: list[tuple[str, re.Pattern[str], Callable[[str], bool] | None]] = [
+        ("email", _EMAIL_RE, None),
+        ("ip", _IPV4_RE, _valid_ipv4),
+        ("ssn", _SSN_RE, None),
+        ("cn_id", _CN_ID18_RE, _valid_cn_id18),
+        ("credit_card", _CREDIT_CARD_CANDIDATE_RE, _valid_credit_card),
+        ("phone", _CN_MOBILE_RE, None),
+        ("phone", _PHONE_GENERIC_RE, _valid_phone_candidate),
+    ]
+
+    taken: list[tuple[int, int]] = []
+    out: list[PiiMatch] = []
+
+    def overlaps(a0: int, a1: int) -> bool:
+        for b0, b1 in taken:
+            if a0 < b1 and a1 > b0:
+                return True
+        return False
+
+    for kind, pat, validator in patterns:
+        for m in pat.finditer(s):
+            raw = m.group(0) or ""
+            if not raw:
+                continue
+            start, end = int(m.start()), int(m.end())
+            if start < 0 or end <= start:
+                continue
+            if overlaps(start, end):
+                continue
+            if validator is not None and not validator(raw):
+                continue
+            out.append(PiiMatch(kind=kind, start=start, end=end, text=raw))
+            taken.append((start, end))
+            if len(out) >= max_matches:
+                break
+        if len(out) >= max_matches:
+            break
+
+    out.sort(key=lambda x: (x.start, x.end))
+    return out
