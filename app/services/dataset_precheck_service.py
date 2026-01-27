@@ -31,6 +31,7 @@ FINDING_KEYS: set[str] = {
     "pii",
     "secrets",
     "exact_dup",
+    "near_dup",
     "large_spreadsheet",
 }
 

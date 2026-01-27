@@ -36,6 +36,39 @@ class DatasetPrecheckPdfScanStats(BaseModel):
     unknown: int = 0
 
 
+class DatasetPrecheckPdfPageBreakdown(BaseModel):
+    """
+    Best-effort per-page type breakdown (computed on sampled pages).
+
+    This is intended for *transparent* PDF routing decisions (scan/mixed/low-density),
+    not as a strict ground truth.
+    """
+
+    page_count: int = 0
+    sampled_pages: int = 0
+    scanned_pages: int = 0
+    text_pages: int = 0
+    low_density_pages: int = 0
+    unknown_pages: int = 0
+    scan_ratio: float = 0.0
+    low_density_ratio: float = 0.0
+
+
+class DatasetPrecheckSpreadsheetStats(BaseModel):
+    row_count: int = 0
+    sheet_count: int = 0
+    merged_cell_ratio: float = 0.0
+    estimated_rows: bool = False
+
+
+class DatasetPrecheckMatchSample(BaseModel):
+    kind: str
+    masked: str
+    context: str
+    start: Optional[int] = None
+    end: Optional[int] = None
+
+
 class DatasetPrecheckFindingSummary(BaseModel):
     key: str
     label: str
@@ -72,11 +105,17 @@ class DatasetPrecheckFileOut(BaseModel):
     name: str
     file_type: str
     file_size: int
+    file_mtime: Optional[int] = None
     text_characters: int = 0
     estimated_text: bool = False
     pdf_scanned: Optional[bool] = None
+    pdf_pages: Optional[DatasetPrecheckPdfPageBreakdown] = None
+    spreadsheet: Optional[DatasetPrecheckSpreadsheetStats] = None
+    text_simhash64: Optional[str] = None
     pii_hits: Dict[str, int] = Field(default_factory=dict)
     secrets_hits: Dict[str, int] = Field(default_factory=dict)
+    pii_samples: List[DatasetPrecheckMatchSample] = Field(default_factory=list)
+    secrets_samples: List[DatasetPrecheckMatchSample] = Field(default_factory=list)
     file_sha256: Optional[str] = None
     findings: List[str] = Field(default_factory=list)
     error_message: Optional[str] = None
