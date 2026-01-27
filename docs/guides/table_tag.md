@@ -1,6 +1,6 @@
 # 表格 / TAG（Table Augmented Generation）
 
-MimirQ 支持将结构化表格（CSV/XLS/XLSX）走 **TAG**（Table Augmented Generation）链路：把表格导入每文档 SQLite（Table Store），通过 **SQL 查询**（以及可选的 NL→SQL/LOTUS）来回答问题，而不是强行把大表切块嵌入进向量库。
+MimirQ 支持将结构化表格（CSV/XLS/XLSX）走 **TAG**（Table Augmented Generation）链路：把表格导入每文档 SQLite（Table Store），通过 **SQL 查询**（以及可选的 NL→SQL/语义过滤）来回答问题，而不是强行把大表切块嵌入进向量库。
 
 ## 适用场景（RAG vs TAG）
 
@@ -41,7 +41,7 @@ SQL 执行器是 **SELECT-only**：
 3. 支持三类操作：
    - **SQL 查询**：手写 `SELECT` / `WITH SELECT`
    - **TAG 问答（NL→SQL）**：自然语言 → SQL → 执行 → 基于结果生成答案
-   - **LOTUS sem_filter（可选）**：对 DataFrame 做语义过滤（失败时回退 NL→SQL）
+   - **语义过滤（sem_filter，可选）**：对表格行做自然语言过滤（LLM 批量判定；有行数/列数/单元格长度保护阈值）
 
 ## NL→SQL（TAG 问答）
 
@@ -54,17 +54,16 @@ SQL 执行器是 **SELECT-only**：
 
 - `POST /api/v1/datasets/{dataset_id}/tables/{table_id}/ask`
 
-## LOTUS（可选，实验性）
+## 语义过滤（sem_filter，可选）
 
-开启：
+开启（默认关闭，避免意外产生高额 LLM 调用）：
 
 - `TABLE_LOTUS_ENABLED=true`
 - 配置 `LLM_API_KEY`
-- 若 LOTUS 未安装为 Python 包，可设置 `TABLE_LOTUS_REPO_PATH=/data/temp34/lotus`（开发/本地集成用）
+- 可调保护阈值：`TABLE_SEM_FILTER_MAX_IN_ROWS / TABLE_SEM_FILTER_MAX_COLS / TABLE_SEM_FILTER_MAX_CELL_CHARS / TABLE_SEM_FILTER_BATCH_SIZE`
 
 接口：
 
 - `POST /api/v1/datasets/{dataset_id}/tables/{table_id}/lotus/sem-filter`
 
-> 说明：LOTUS 引入的依赖组合可能与主工程有冲突，因此默认做成可选能力；不可用时会自动回退到 NL→SQL（如果已开启）。
-
+> 说明：该接口路径保留了历史命名（`/lotus/sem-filter`），但实现为 MimirQ 内置的“LOTUS-like”语义过滤能力，不依赖外部 LOTUS 包。

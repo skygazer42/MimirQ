@@ -260,6 +260,11 @@ def parse_pipeline_from_metadata(metadata: Dict[str, Any]) -> PipelineOptions:
         table_store_max_rows=_coerce_int(tables.get("max_rows")),
         table_store_max_cols=_coerce_int(tables.get("max_cols")),
         table_store_sample_rows=_coerce_int(tables.get("sample_rows")),
+        table_store_auto_route=_coerce_bool(tables.get("auto_route")),
+        table_store_auto_row_threshold=_coerce_int(tables.get("auto_row_threshold")),
+        table_store_auto_col_threshold=_coerce_int(tables.get("auto_col_threshold")),
+        table_store_auto_sheet_threshold=_coerce_int(tables.get("auto_sheet_threshold")),
+        table_store_auto_file_bytes_threshold=_coerce_int(tables.get("auto_file_bytes_threshold")),
     )
 
 
@@ -300,6 +305,16 @@ def build_pipeline_metadata(options: PipelineOptions) -> Optional[Dict[str, Any]
         tables["max_cols"] = int(options.table_store_max_cols)
     if options.table_store_sample_rows is not None:
         tables["sample_rows"] = int(options.table_store_sample_rows)
+    if options.table_store_auto_route is not None:
+        tables["auto_route"] = bool(options.table_store_auto_route)
+    if options.table_store_auto_row_threshold is not None:
+        tables["auto_row_threshold"] = int(options.table_store_auto_row_threshold)
+    if options.table_store_auto_col_threshold is not None:
+        tables["auto_col_threshold"] = int(options.table_store_auto_col_threshold)
+    if options.table_store_auto_sheet_threshold is not None:
+        tables["auto_sheet_threshold"] = int(options.table_store_auto_sheet_threshold)
+    if options.table_store_auto_file_bytes_threshold is not None:
+        tables["auto_file_bytes_threshold"] = int(options.table_store_auto_file_bytes_threshold)
     if tables:
         pipeline["tables"] = tables
 
@@ -740,6 +755,31 @@ def resolve_pipeline_options(options: PipelineOptions) -> PipelineEffective:
         if options.table_store_sample_rows is not None
         else int(getattr(settings, "TABLE_STORE_SAMPLE_ROWS", 20) or 20)
     )
+    table_store_auto_route = (
+        getattr(settings, "TABLE_STORE_AUTO_ROUTE", False)
+        if options.table_store_auto_route is None
+        else bool(options.table_store_auto_route)
+    )
+    table_store_auto_row_threshold = (
+        options.table_store_auto_row_threshold
+        if options.table_store_auto_row_threshold is not None
+        else int(getattr(settings, "TABLE_STORE_AUTO_ROW_THRESHOLD", 5000) or 5000)
+    )
+    table_store_auto_col_threshold = (
+        options.table_store_auto_col_threshold
+        if options.table_store_auto_col_threshold is not None
+        else int(getattr(settings, "TABLE_STORE_AUTO_COL_THRESHOLD", 80) or 80)
+    )
+    table_store_auto_sheet_threshold = (
+        options.table_store_auto_sheet_threshold
+        if options.table_store_auto_sheet_threshold is not None
+        else int(getattr(settings, "TABLE_STORE_AUTO_SHEET_THRESHOLD", 5) or 5)
+    )
+    table_store_auto_file_bytes_threshold = (
+        options.table_store_auto_file_bytes_threshold
+        if options.table_store_auto_file_bytes_threshold is not None
+        else int(getattr(settings, "TABLE_STORE_AUTO_FILE_BYTES_THRESHOLD", 5_000_000) or 5_000_000)
+    )
 
     return PipelineEffective(
         governance_enabled=governance_enabled,
@@ -808,6 +848,11 @@ def resolve_pipeline_options(options: PipelineOptions) -> PipelineEffective:
         table_store_max_rows=int(table_store_max_rows),
         table_store_max_cols=int(table_store_max_cols),
         table_store_sample_rows=int(table_store_sample_rows),
+        table_store_auto_route=bool(table_store_auto_route),
+        table_store_auto_row_threshold=int(table_store_auto_row_threshold),
+        table_store_auto_col_threshold=int(table_store_auto_col_threshold),
+        table_store_auto_sheet_threshold=int(table_store_auto_sheet_threshold),
+        table_store_auto_file_bytes_threshold=int(table_store_auto_file_bytes_threshold),
     )
 
 

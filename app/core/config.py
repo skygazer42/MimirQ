@@ -421,6 +421,17 @@ class Settings(BaseSettings):
     TABLE_STORE_MAX_ROWS: int = 200_000  # 0 disables cap
     TABLE_STORE_MAX_COLS: int = 500      # 0 disables cap
     TABLE_STORE_SAMPLE_ROWS: int = 20    # 0 disables sample persistence
+    # Auto routing (optional): when table_store_enabled=true, decide per-file whether to use TAG (table_store)
+    # or fall back to normal parsing+RAG based on table size/complexity signals.
+    #
+    # This is useful when you want:
+    # - small tables -> parse to Markdown / chunk / index (RAG)
+    # - large/complex tables -> import to SQLite (TAG / Text-to-SQL)
+    TABLE_STORE_AUTO_ROUTE: bool = False
+    TABLE_STORE_AUTO_ROW_THRESHOLD: int = 5000
+    TABLE_STORE_AUTO_COL_THRESHOLD: int = 80
+    TABLE_STORE_AUTO_SHEET_THRESHOLD: int = 5
+    TABLE_STORE_AUTO_FILE_BYTES_THRESHOLD: int = 5_000_000
     # Query/runtime guards (server-side safety, independent from LLM usage).
     TABLE_QUERY_MAX_ROWS: int = 200
     TABLE_QUERY_MAX_COLS: int = 200
@@ -429,8 +440,12 @@ class Settings(BaseSettings):
     TABLE_NL2SQL_ENABLED: bool = False
     # LOTUS semantic operators (optional/experimental).
     TABLE_LOTUS_ENABLED: bool = False
-    TABLE_LOTUS_REPO_PATH: str = ""
     TABLE_LOTUS_MAX_ROWS: int = 20_000
+    # Built-in semantic filter guards (LOTUS-like). These protect against accidental high-cost scans.
+    TABLE_SEM_FILTER_MAX_IN_ROWS: int = 2000
+    TABLE_SEM_FILTER_MAX_COLS: int = 30
+    TABLE_SEM_FILTER_MAX_CELL_CHARS: int = 200
+    TABLE_SEM_FILTER_BATCH_SIZE: int = 25
     FAISS_STORE_PATH: str = "./vector_faiss"
     # FAISS persistence uses pickle; enable only when the index directory is fully trusted.
     FAISS_ALLOW_DANGEROUS_DESERIALIZATION: bool = False
