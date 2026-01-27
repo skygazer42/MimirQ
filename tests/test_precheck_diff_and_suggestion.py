@@ -156,6 +156,15 @@ def test_precheck_ingestion_policy_suggestion_and_apply(monkeypatch, tmp_path):
     assert md_rule is not None
     assert md_rule.get("governance_profile_ref") == "builtin:wiki_longform"
 
+    table_csv = next((r for r in policy.get("rules") or [] if r.get("id") == "tables-csv-tag"), None)
+    assert table_csv is not None
+    assert table_csv.get("governance_profile_ref") == "builtin:structured_data"
+    patch = table_csv.get("pipeline_patch") or {}
+    assert patch.get("table_store_enabled") is True
+    assert patch.get("table_store_auto_route") is True
+    # Auto-route should not hard-disable indexing for *all* tables.
+    assert "chunk_vector_enabled" not in patch
+
     buckets = {b["key"]: b for b in suggestion.get("manual_review") or []}
     assert buckets["parse_failed"]["total"] == 1
     assert buckets["large_spreadsheet"]["total"] == 1
@@ -190,4 +199,3 @@ def test_precheck_ingestion_policy_suggestion_and_apply(monkeypatch, tmp_path):
             replace=False,
         )
     assert exc.value.status_code == 409
-

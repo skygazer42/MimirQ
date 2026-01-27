@@ -16,9 +16,22 @@ MimirQ 支持将结构化表格（CSV/XLS/XLSX）走 **TAG**（Table Augmented G
 - 使用 pandas 读取表格
 - 写入 `TABLE_STORE_DIR/{tenant_id}/{dataset_id}/{document_id}.sqlite3`
 - 在文档 `doc_metadata.table_store` 中记录表资产（sheet、列信息、采样行等）
-- **默认不进入** chunk/vector/BM25 等索引（避免成本爆炸/召回质量下降）
+- 走 Table Store 的文档 **不进入** chunk/vector/BM25 等索引（避免成本爆炸/召回质量下降）
 
 > 注意：`.xls` 读取依赖运行环境（通常需要 `xlrd`）。若你们不计划支持旧格式，建议先用 LibreOffice/Pandoc 转成 `.xlsx`。
+
+## 表格自动分流（推荐：小表 RAG / 大表 TAG）
+
+在企业真实数据里，表格通常分两类：
+
+- **小表**：几十/几百行，用 Markdown 解析后切块入库即可（RAG 也能很好用）
+- **大表/多 Sheet/超宽表**：入库成本高且检索差，更适合 TAG（SQL/Text-to-SQL）
+
+因此推荐开启 **auto route**：
+
+- `table_store_enabled=true` + `table_store_auto_route=true`
+- 处理器会根据阈值（行数/列数/Sheet 数/文件大小）决定该文件走 **RAG** 还是 **TAG**
+- 决策会写入 `doc_metadata.table_routing`（便于审计/排障）
 
 ## 开关与安全边界
 
@@ -26,6 +39,8 @@ MimirQ 支持将结构化表格（CSV/XLS/XLSX）走 **TAG**（Table Augmented G
 
 - `TABLE_STORE_ENABLED=true`：启用表格入库到 Table Store
 - `TABLE_STORE_SAMPLE_ROWS=0`：不持久化采样行（合规/PII 场景建议）
+- `TABLE_STORE_AUTO_ROUTE=true`：开启自动分流（小表继续走 RAG；大表走 Table Store）
+- `TABLE_STORE_AUTO_ROW_THRESHOLD / TABLE_STORE_AUTO_COL_THRESHOLD / TABLE_STORE_AUTO_SHEET_THRESHOLD / TABLE_STORE_AUTO_FILE_BYTES_THRESHOLD`：分流阈值
 - `TABLE_QUERY_MAX_ROWS / TABLE_QUERY_MAX_COLS / TABLE_QUERY_MAX_BYTES`：限制 API 返回规模
 
 SQL 执行器是 **SELECT-only**：
