@@ -750,7 +750,14 @@ Requirements:
                 from app.services.chat_tag_service import build_chat_tag_context_docs
 
                 if db is not None and tenant_id is not None and document_ids:
-                    yield {"type": "event", "data": {"message": "检测到表格资产，正在尝试表格查询（TAG）..."}}
+                    # Only show TAG progress when the feature is actually enabled.
+                    if (
+                        bool(getattr(settings, "CHAT_TAG_ENABLED", False))
+                        and bool(getattr(settings, "TABLE_NL2SQL_ENABLED", False))
+                        and bool(getattr(settings, "TABLE_LLM_ALLOW_RESULT_EGRESS", False))
+                        and bool(str(getattr(settings, "LLM_API_KEY", "") or "").strip())
+                    ):
+                        yield {"type": "event", "data": {"message": "检测到表格资产，正在尝试表格查询（TAG）..."}}
                     tag_docs, tag_meta = build_chat_tag_context_docs(
                         db,
                         tenant_id=tenant_id,
