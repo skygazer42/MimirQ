@@ -18,6 +18,7 @@ from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
 from app.api.schemas.dataset_precheck import DatasetPrecheckFindingListResponse, DatasetPrecheckFileOut, DatasetPrecheckSummary
+from app.services.dataset_precheck_scan_runner import _build_samples_payload
 from app.core.config import settings
 from app.models.dataset import Dataset
 from app.models.dataset_precheck_scan import DatasetPrecheckScanRun as DBDatasetPrecheckScanRun
@@ -180,6 +181,132 @@ def _list_finding_from_jsonl(
     return DatasetPrecheckFindingListResponse(total=int(total), items=items)
 
 
+def load_precheck_samples_from_row(
+    row: DBDatasetPrecheckScanRun,
+    *,
+    tenant_id: UUID,
+    size: int = 60,
+    prefer_artifact: bool = True,
+) -> dict[str, Any]:
+    """
+    Load representative samples payload for a scan run.
+
+    - Prefer persisted artifacts (samples_json) when available.
+    - Fallback to on-demand build from files_jsonl.
+    """
+    size_n = max(0, min(int(size or 0), 2000))
+
+    artifacts = getattr(row, "artifacts", None)
+    artifacts = artifacts if isinstance(artifacts, dict) else {}
+
+    if prefer_artifact:
+        raw = str(artifacts.get("samples_json") or "").strip()
+        if raw:
+            p = Path(raw)
+            _assert_artifact_path_under_tenant(tenant_id=tenant_id, path=p)
+            if p.exists() and p.is_file():
+                try:
+                    obj = json.loads(p.read_text(encoding="utf-8"))
+                    if isinstance(obj, dict):
+                        return obj
+                except Exception:
+                    pass
+
+    # Build on demand from JSONL.
+    jsonl_raw = str(artifacts.get("files_jsonl") or "").strip()
+    if not jsonl_raw:
+        raise HTTPException(status_code=404, detail="Artifacts not available")
+    jsonl_path = Path(jsonl_raw)
+    _assert_artifact_path_under_tenant(tenant_id=tenant_id, path=jsonl_path)
+    if not jsonl_path.exists() or not jsonl_path.is_file():
+        raise HTTPException(status_code=404, detail="Artifacts not found")
+
+    return _build_samples_payload(jsonl_path=jsonl_path, target_size=size_n)
+
+
+def load_precheck_near_dups_from_row(
+    row: DBDatasetPrecheckScanRun,
+    *,
+    tenant_id: UUID,
+) -> dict[str, Any]:
+    artifacts = getattr(row, "artifacts", None)
+    artifacts = artifacts if isinstance(artifacts, dict) else {}
+    raw = str(artifacts.get("near_dups_json") or "").strip()
+    if not raw:
+        raise HTTPException(status_code=404, detail="Near-dup artifact not available")
+    p = Path(raw)
+    _assert_artifact_path_under_tenant(tenant_id=tenant_id, path=p)
+    if not p.exists() or not p.is_file():
+        raise HTTPException(status_code=404, detail="Near-dup artifact not found")
+    try:
+        obj = json.loads(p.read_text(encoding="utf-8"))
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=500, detail=f"Invalid near-dup artifact: {str(exc)[:200]}") from exc
+    if not isinstance(obj, dict):
+        raise HTTPException(status_code=500, detail="Invalid near-dup artifact")
+    return obj
+
+
+def list_near_dup_files_from_row(
+    row: DBDatasetPrecheckScanRun,
+    *,
+    tenant_id: UUID,
+    skip: int,
+    limit: int,
+) -> DatasetPrecheckFindingListResponse:
+    """
+    Resolve near-duplicate affected files (from near_dups_json) into per-file records.
+
+    This keeps JSONL immutable (streaming write) and avoids a rewrite pass.
+    """
+    artifacts = getattr(row, "artifacts", None)
+    artifacts = artifacts if isinstance(artifacts, dict) else {}
+    jsonl_raw = str(artifacts.get("files_jsonl") or "").strip()
+    if not jsonl_raw:
+        raise HTTPException(status_code=404, detail="Artifacts not available")
+    jsonl_path = Path(jsonl_raw)
+    _assert_artifact_path_under_tenant(tenant_id=tenant_id, path=jsonl_path)
+    if not jsonl_path.exists() or not jsonl_path.is_file():
+        raise HTTPException(status_code=404, detail="Artifacts not found")
+
+    near = load_precheck_near_dups_from_row(row, tenant_id=tenant_id)
+    clusters = near.get("clusters") if isinstance(near.get("clusters"), list) else []
+    affected: set[str] = set()
+    for c in clusters:
+        if not isinstance(c, dict):
+            continue
+        members = c.get("members")
+        if isinstance(members, list):
+            for m in members:
+                name = str(m or "").strip()
+                if name:
+                    affected.add(name)
+
+    if not affected:
+        return DatasetPrecheckFindingListResponse(total=0, items=[])
+
+    skip_n = max(0, int(skip or 0))
+    limit_n = max(1, min(int(limit or 50), 200))
+
+    total = 0
+    items: list[DatasetPrecheckFileOut] = []
+    for obj in _iter_jsonl(jsonl_path):
+        nm = str(obj.get("name") or "").strip()
+        if not nm or nm not in affected:
+            continue
+        total += 1
+        if total <= skip_n:
+            continue
+        if len(items) >= limit_n:
+            continue
+        try:
+            items.append(DatasetPrecheckFileOut(**obj))
+        except Exception:
+            continue
+
+    return DatasetPrecheckFindingListResponse(total=int(total), items=items)
+
+
 def list_precheck_finding_files(
     db: Session,
     *,
@@ -220,6 +347,10 @@ def list_precheck_finding_files(
     _assert_artifact_path_under_tenant(tenant_id=tenant_id, path=jsonl_path)
     if not jsonl_path.exists() or not jsonl_path.is_file():
         raise HTTPException(status_code=404, detail="Artifacts not found")
+
+    # near_dup is cluster-based and resolved via near_dups_json (not per-record findings).
+    if key == "near_dup":
+        return list_near_dup_files_from_row(row, tenant_id=tenant_id, skip=int(skip or 0), limit=int(limit or 50))
 
     return _list_finding_from_jsonl(jsonl_path=jsonl_path, finding_key=key, skip=int(skip or 0), limit=int(limit or 50))
 

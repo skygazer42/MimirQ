@@ -14,6 +14,8 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field
 
+from app.api.schemas.ingestion_policy import IngestionPolicy
+
 
 class DatasetPrecheckHistogramBin(BaseModel):
     label: str
@@ -198,3 +200,87 @@ class DatasetPrecheckScanRunOut(BaseModel):
 class DatasetPrecheckScanRunListResponse(BaseModel):
     total: int
     items: List[DatasetPrecheckScanRunOut] = Field(default_factory=list)
+
+
+# ==================== Extras (samples / near-dup / diff / suggestions) ====================
+
+
+class DatasetPrecheckSamplesResponse(BaseModel):
+    """
+    Representative samples payload for pricing/POC alignment.
+
+    Note: Items reuse DatasetPrecheckFileOut (already redacted/aliased when redact_paths=true).
+    """
+
+    requested: int = 0
+    strata_count: int = 0
+    representative: List[DatasetPrecheckFileOut] = Field(default_factory=list)
+    needs_review: Dict[str, List[DatasetPrecheckFileOut]] = Field(default_factory=dict)
+    top_large_files: List[DatasetPrecheckFileOut] = Field(default_factory=list)
+    top_long_text: List[DatasetPrecheckFileOut] = Field(default_factory=list)
+
+
+class DatasetPrecheckNearDupCluster(BaseModel):
+    id: str
+    members: List[str] = Field(default_factory=list)
+
+
+class DatasetPrecheckNearDupPair(BaseModel):
+    a: str
+    b: str
+    distance: int
+
+
+class DatasetPrecheckNearDupResponse(BaseModel):
+    threshold: int = 0
+    max_pairs: int = 0
+    pairs_returned: int = 0
+    clusters_returned: int = 0
+    clusters: List[DatasetPrecheckNearDupCluster] = Field(default_factory=list)
+    pairs: List[DatasetPrecheckNearDupPair] = Field(default_factory=list)
+
+
+class DatasetPrecheckDiffItem(BaseModel):
+    key: str
+    before: int = 0
+    after: int = 0
+    delta: int = 0
+
+
+class DatasetPrecheckDiffResponse(BaseModel):
+    """
+    Diff between two scan run summaries (objective numbers only).
+    """
+
+    base_scan_run_id: UUID
+    target_scan_run_id: UUID
+    generated_at: datetime
+
+    total_files: DatasetPrecheckDiffItem
+    total_size_bytes: DatasetPrecheckDiffItem
+    pdf_scanned: DatasetPrecheckDiffItem
+    pdf_unknown: DatasetPrecheckDiffItem
+
+    by_file_type: List[DatasetPrecheckDiffItem] = Field(default_factory=list)
+    findings: List[DatasetPrecheckDiffItem] = Field(default_factory=list)
+
+
+class DatasetPrecheckManualReviewBucket(BaseModel):
+    """
+    A bounded list of file names that likely require manual review.
+    """
+
+    key: str
+    total: int = 0
+    sample_names: List[str] = Field(default_factory=list)
+
+
+class DatasetPrecheckIngestionSuggestionResponse(BaseModel):
+    """
+    Suggested, importable ingestion policy + manual-review buckets derived from a precheck run.
+    """
+
+    generated_at: datetime
+    policy: IngestionPolicy
+    notes: List[str] = Field(default_factory=list)
+    manual_review: List[DatasetPrecheckManualReviewBucket] = Field(default_factory=list)

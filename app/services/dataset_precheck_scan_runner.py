@@ -683,6 +683,21 @@ def run_dataset_precheck_scan(
     sample_size = safe_int(cfg.get("sample_size") or 60, default=60)
     sample_size = max(0, min(sample_size, 2000))
 
+    # Optional: reuse unchanged file records from a previous scan run (incremental scans).
+    reuse_unchanged_files = bool(cfg.get("reuse_unchanged_files", False))
+    reuse_from_scan_run_id: UUID | None = None
+    raw_reuse_id = cfg.get("reuse_from_scan_run_id")
+    if raw_reuse_id:
+        try:
+            reuse_from_scan_run_id = UUID(str(raw_reuse_id))
+        except Exception:
+            reuse_from_scan_run_id = None
+
+    # Shareable mode should not include per-match contexts (even if toggled on).
+    if redact_paths:
+        enable_pii_samples = False
+        enable_secrets_samples = False
+
     pdf_scan_max_chars = safe_int(
         cfg.get("pdf_min_text_chars_per_page") or getattr(settings, "PRECHECK_PDF_MIN_TEXT_CHARS_PER_PAGE", 50),
         default=50,
@@ -705,6 +720,7 @@ def run_dataset_precheck_scan(
     artifact_root = Path(getattr(settings, "UPLOAD_DIR", "./uploads") or "./uploads") / str(tenant_id) / "precheck" / str(run.id)
     artifact_root.mkdir(parents=True, exist_ok=True)
     jsonl_path = (artifact_root / "files.jsonl").resolve(strict=False)
+    samples_path = (artifact_root / "samples.json").resolve(strict=False)
 
     # Enumerate file candidates first to compute total for progress (bounded by max_files).
     allowed_exts = set(getattr(settings, "allowed_extensions_list", []) or [])
@@ -757,9 +773,11 @@ def run_dataset_precheck_scan(
         return {"ok": True, "files": 0}
 
     last_progress_write = time.monotonic()
+    cancelled = False
 
     def flush_progress(processed: int, *, force: bool = False) -> None:
         nonlocal last_progress_write
+        nonlocal cancelled
         now = time.monotonic()
         if not force and (now - last_progress_write) < 0.5:
             return
@@ -767,6 +785,14 @@ def run_dataset_precheck_scan(
         pct = int((processed / max(1, total)) * 100)
         run.progress = max(0, min(100, pct))
         db.commit()
+        # Allow cooperative cancellation from another session (API).
+        try:
+            db.refresh(run)
+            if str(getattr(run, "status", "") or "").lower() == "cancelled":
+                cancelled = True
+        except Exception:
+            # Best-effort: ignore refresh failures.
+            pass
 
     # Aggregation accumulators.
     by_type: dict[str, int] = {}
@@ -786,10 +812,104 @@ def run_dataset_precheck_scan(
     simhash_entries: list[tuple[str, int]] = []
 
     errors = 0
+    reused_files = 0
+
+    # Optional: load a previous JSONL snapshot for incremental reuse.
+    prev_records: dict[str, dict[str, Any]] = {}
+    if reuse_unchanged_files and not redact_paths:
+        # Pick the previous run (explicit id, else latest completed run for this dataset).
+        prev_run: DBDatasetPrecheckScanRun | None = None
+        if reuse_from_scan_run_id is not None:
+            prev_run = (
+                db.query(DBDatasetPrecheckScanRun)
+                .filter(
+                    DBDatasetPrecheckScanRun.id == reuse_from_scan_run_id,
+                    DBDatasetPrecheckScanRun.tenant_id == tenant_id,
+                    DBDatasetPrecheckScanRun.dataset_id == dataset_id,
+                )
+                .first()
+            )
+        else:
+            prev_run = (
+                db.query(DBDatasetPrecheckScanRun)
+                .filter(
+                    DBDatasetPrecheckScanRun.tenant_id == tenant_id,
+                    DBDatasetPrecheckScanRun.dataset_id == dataset_id,
+                    DBDatasetPrecheckScanRun.status == "completed",
+                )
+                .order_by(DBDatasetPrecheckScanRun.created_at.desc())
+                .first()
+            )
+
+        def _cfg_subset(d: dict[str, Any], keys: set[str]) -> dict[str, Any]:
+            out: dict[str, Any] = {}
+            for k in keys:
+                if k in d:
+                    out[k] = d.get(k)
+            return out
+
+        if prev_run is not None:
+            prev_cfg = dict(getattr(prev_run, "config", None) or {})
+            prev_root = str(prev_cfg.get("root_path") or "").strip()
+            if prev_root and prev_root == root_path and bool(prev_cfg.get("redact_paths", False)) is False:
+                # Only reuse when the feature-affecting config matches (avoid confusing deltas).
+                cfg_keys = {
+                    "enable_pdf_quality",
+                    "enable_text_extract",
+                    "enable_pii",
+                    "enable_secrets",
+                    "compute_file_hash",
+                    "pdf_sample_pages",
+                    "text_extract_max_bytes",
+                    "pdf_min_text_chars_per_page",
+                    "pdf_text_chars_per_page",
+                    "pdf_scan_ratio_threshold",
+                    "enable_pii_samples",
+                    "pii_context_chars",
+                    "pii_max_samples_per_file",
+                    "enable_secrets_samples",
+                    "secrets_context_chars",
+                    "secrets_max_samples_per_file",
+                    "enable_near_dup",
+                    "near_dup_hamming_threshold",
+                    "near_dup_max_pairs",
+                }
+                if _cfg_subset(cfg, cfg_keys) == _cfg_subset(prev_cfg, cfg_keys):
+                    prev_artifacts = getattr(prev_run, "artifacts", None)
+                    prev_artifacts = prev_artifacts if isinstance(prev_artifacts, dict) else {}
+                    prev_jsonl_raw = str(prev_artifacts.get("files_jsonl") or "").strip()
+                    prev_jsonl = Path(prev_jsonl_raw) if prev_jsonl_raw else None
+                    if prev_jsonl and prev_jsonl.exists() and prev_jsonl.is_file():
+                        try:
+                            with prev_jsonl.open("r", encoding="utf-8") as f:
+                                for line in f:
+                                    s = (line or "").strip()
+                                    if not s:
+                                        continue
+                                    try:
+                                        obj = json.loads(s)
+                                    except Exception:
+                                        continue
+                                    if not isinstance(obj, dict):
+                                        continue
+                                    name = str(obj.get("name") or "").strip()
+                                    if not name:
+                                        continue
+                                    prev_records[name] = obj
+                        except Exception as exc:  # noqa: BLE001
+                            logger.warning("Failed to load previous precheck JSONL (reuse disabled): %s", str(exc)[:200])
+                else:
+                    logger.info("Skip reuse_unchanged_files due to config mismatch (scan_run_id=%s)", str(getattr(prev_run, "id", "")))
+            else:
+                logger.info("Skip reuse_unchanged_files due to root_path mismatch or redacted prev run")
+    elif reuse_unchanged_files and redact_paths:
+        logger.info("Skip reuse_unchanged_files in redact_paths mode")
 
     # Stream JSONL writes to avoid holding all file records in memory.
     with jsonl_path.open("w", encoding="utf-8") as jf:
         for idx, path in enumerate(candidates, start=1):
+            if cancelled:
+                break
             rel = ""
             try:
                 rel = str(path.relative_to(root)).replace("\\", "/")
@@ -814,6 +934,85 @@ def run_dataset_precheck_scan(
             )
 
             try:
+                # Incremental reuse: keep unchanged file records without re-reading content.
+                if prev_records and not redact_paths:
+                    prev = prev_records.get(rec.name)
+                    if isinstance(prev, dict):
+                        try:
+                            prev_size = int(prev.get("file_size") or 0)
+                            prev_mtime = int(prev.get("file_mtime") or 0)
+                        except Exception:
+                            prev_size = -1
+                            prev_mtime = -1
+                        prev_findings = prev.get("findings") if isinstance(prev.get("findings"), list) else []
+                        has_parse_failed = "parse_failed" in {str(x or "").strip().lower() for x in prev_findings}
+                        if not has_parse_failed and prev_size == rec.file_size and prev_mtime == rec.file_mtime:
+                            # We intentionally skip reuse of parse_failed files so a new environment
+                            # (deps/permissions) can re-evaluate them.
+                            reused_files += 1
+                            # Preserve stable name (relative path) and current fs stats.
+                            prev = dict(prev)
+                            prev["name"] = rec.name
+                            prev["file_size"] = rec.file_size
+                            prev["file_mtime"] = rec.file_mtime
+
+                            # Aggregation (best-effort) from previous record.
+                            by_type[str(prev.get("file_type") or rec.file_type or "unknown")] = by_type.get(
+                                str(prev.get("file_type") or rec.file_type or "unknown"),
+                                0,
+                            ) + 1
+                            file_sizes.append(int(prev.get("file_size") or 0))
+                            tl = int(prev.get("text_characters") or 0)
+                            if tl > 0:
+                                text_lengths.append(tl)
+                            # PDF scan counts.
+                            pdf_sc = prev.get("pdf_scanned")
+                            if pdf_sc is True:
+                                pdf_scanned += 1
+                            elif pdf_sc is False:
+                                pdf_not_scanned += 1
+                            elif str(prev.get("file_type") or "").strip().lower() == "pdf":
+                                pdf_unknown += 1
+
+                            # Findings counts.
+                            if isinstance(prev_findings, list):
+                                for fk in prev_findings:
+                                    k = str(fk or "").strip().lower()
+                                    if k in finding_counts:
+                                        finding_counts[k] += 1
+
+                            # Totals for pii/secrets.
+                            pii_hits = prev.get("pii_hits") if isinstance(prev.get("pii_hits"), dict) else {}
+                            for k, v in pii_hits.items():
+                                try:
+                                    pii_totals[str(k)] = pii_totals.get(str(k), 0) + int(v or 0)
+                                except Exception:
+                                    continue
+                            secrets_hits = prev.get("secrets_hits") if isinstance(prev.get("secrets_hits"), dict) else {}
+                            for k, v in secrets_hits.items():
+                                try:
+                                    secrets_totals[str(k)] = secrets_totals.get(str(k), 0) + int(v or 0)
+                                except Exception:
+                                    continue
+
+                            # Near-dup entries and exact-dup entries.
+                            if enable_near_dup:
+                                sim_hex = str(prev.get("text_simhash64") or "").strip().lower()
+                                if sim_hex:
+                                    try:
+                                        simhash_entries.append((rec.name, int(sim_hex, 16)))
+                                    except Exception:
+                                        pass
+                            if compute_file_hash:
+                                sha = str(prev.get("file_sha256") or "").strip().lower()
+                                if sha:
+                                    sha_counts[sha] = sha_counts.get(sha, 0) + 1
+
+                            jf.write(json.dumps(prev, ensure_ascii=False, separators=(",", ":")))
+                            jf.write("\n")
+                            flush_progress(idx)
+                            continue
+
                 # Text metrics (best-effort).
                 sample_text = ""
                 estimated_text = False
@@ -1005,6 +1204,10 @@ def run_dataset_precheck_scan(
 
             flush_progress(idx)
 
+    if cancelled:
+        # Best-effort: keep partial artifacts + summary.
+        run.status = "cancelled"
+
     # Add exact-dup counts.
     if compute_file_hash and sha_counts:
         dup_total = 0
@@ -1095,6 +1298,16 @@ def run_dataset_precheck_scan(
         near_dup_path = (artifact_root / "near_dups.json").resolve(strict=False)
         near_dup_path.write_text(json.dumps(near_dup_payload, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
 
+    # Representative sampling artifact (shareable when redact_paths=true).
+    samples_written = False
+    if enable_sampling and sample_size > 0:
+        try:
+            payload = _build_samples_payload(jsonl_path=jsonl_path, target_size=sample_size)
+            samples_path.write_text(json.dumps(payload, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
+            samples_written = True
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Failed to write samples.json: %s", str(exc)[:200])
+
     # Histograms + percentiles.
     file_sizes.sort()
     text_lengths.sort()
@@ -1110,8 +1323,10 @@ def run_dataset_precheck_scan(
         "dataset_id": str(dataset_id),
         "scan_run_id": str(run.id),
         "generated_at": _now_utc().isoformat(),
-        "total_files": int(total),
+        # Use processed count (supports cancelled runs with partial artifacts).
+        "total_files": int(len(file_sizes)),
         "total_size_bytes": int(sum(file_sizes)),
+        "reused_files": int(reused_files),
         "by_file_type": {k: int(v) for k, v in sorted(by_type.items(), key=lambda kv: (-kv[1], kv[0]))},
         "file_size_histogram": histogram(file_sizes, FILE_SIZE_BINS),
         "length_percentiles": percentiles,
@@ -1137,8 +1352,9 @@ def run_dataset_precheck_scan(
         ],
     }
 
-    run.status = "completed"
-    run.progress = 100
+    if not cancelled:
+        run.status = "completed"
+        run.progress = 100
     run.finished_at = _now_utc()
     run.summary = summary
     run.artifacts = {
@@ -1147,10 +1363,13 @@ def run_dataset_precheck_scan(
     }
     if near_dup_path is not None:
         run.artifacts["near_dups_json"] = str(near_dup_path)
+    if samples_written:
+        run.artifacts["samples_json"] = str(samples_path)
     db.commit()
 
     return {
         "ok": True,
         "files": int(total),
         "errors": int(errors),
+        "reused": int(reused_files),
     }
