@@ -120,6 +120,26 @@ export interface DocumentStats {
   total_size: number
 }
 
+// ==================== Observability ====================
+
+export interface RagMetricsSummaryResponse {
+  enabled: boolean
+  path: string
+  window_minutes: number
+  truncated: boolean
+  record_count: number
+  rag_trace_count: number
+  reranker_api_count: number
+  retrieval_avg_elapsed_sec?: number | null
+  retrieval_p95_elapsed_sec?: number | null
+  rerank_avg_elapsed_sec?: number | null
+  citations_avg_count?: number | null
+  retrieval_mode_counts: Record<string, number>
+  hit_type_counts: Record<string, number>
+  error_counts: Record<string, number>
+  timeseries: Record<string, any[]>
+}
+
 export interface DocumentUserMetadataPatchRequest {
   patch: Record<string, any>
   replace?: boolean

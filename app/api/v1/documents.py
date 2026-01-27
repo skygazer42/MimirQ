@@ -3716,6 +3716,25 @@ async def delete_document(
     # 2. Delete vectors from vector store (backend-dependent).
     Indexer(db).delete_all(tenant_id=tenant_id, document_id=document_id, commit=False)
 
+    # 2.5 Delete structured table store (TAG) sqlite file (best-effort).
+    #
+    # Storage layout is deterministic and tenant/dataset scoped:
+    #   {TABLE_STORE_DIR}/{tenant_id}/{dataset_id}/{document_id}.sqlite3
+    if document.dataset_id is not None and str(document.file_type or "").lower() in {"csv", "xls", "xlsx"}:
+        try:
+            from app.services.table_store import table_store_path
+
+            db_path = table_store_path(tenant_id=tenant_id, dataset_id=document.dataset_id, document_id=document.id)
+            if db_path.exists():
+                db_path.unlink(missing_ok=True)
+            # Best-effort: remove empty parent dirs.
+            with contextlib.suppress(Exception):
+                db_path.parent.rmdir()
+            with contextlib.suppress(Exception):
+                db_path.parent.parent.rmdir()
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Failed to delete table store file for document %s: %s", document_id, str(exc)[:200])
+
     # 3. Delete local file.
     try:
         raw_path = str(document.file_path or "").strip()
@@ -3738,8 +3757,17 @@ async def delete_document(
                         logger.warning("Failed to delete document from object storage: %s", e)
             else:
                 file_path = Path(raw_path)
-                if file_path.exists():
-                    file_path.unlink()
+                if file_path.exists() and file_path.is_file():
+                    # Prevent path traversal / unsafe paths in DB: only allow deletes under uploads/{tenant_id}/
+                    upload_root = Path(settings.UPLOAD_DIR)
+                    tenant_root = upload_root / str(tenant_id)
+                    from app.services.path_safety import resolve_under_base
+
+                    safe = resolve_under_base(file_path, base=tenant_root)
+                    if safe is None:
+                        logger.warning("Skipping unsafe document file delete: %s", raw_path)
+                    else:
+                        safe.unlink(missing_ok=True)
     except Exception as e:
         logger.warning("Failed to delete file: %s", e)
 

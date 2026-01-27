@@ -109,6 +109,9 @@ def generate_answer_from_result(
     """
     Draft a user-facing answer grounded in the executed SQL result.
     """
+    if not bool(getattr(settings, "TABLE_LLM_ALLOW_RESULT_EGRESS", False)):
+        raise RuntimeError("TABLE_LLM_ALLOW_RESULT_EGRESS=false")
+
     q = " ".join((question or "").strip().split())
     if not q:
         raise ValueError("question is required")

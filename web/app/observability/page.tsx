@@ -8,7 +8,8 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { StatCard, StatsGrid } from '@/components/ui/stats-card'
-import { observabilityApi, type RagMetricsSummaryResponse } from '@/lib/api-client'
+import { observabilityApi } from '@/lib/api-client'
+import type { RagMetricsSummaryResponse } from '@/types'
 import { cn } from '@/lib/utils'
 import { toast } from 'sonner'
 import {
@@ -91,8 +92,8 @@ export default function ObservabilityPage() {
   }, [summary?.timeseries])
 
   const topErrors = useMemo(() => {
-    const raw = summary?.error_counts || {}
-    const entries = Object.entries(raw).sort((a, b) => (b[1] || 0) - (a[1] || 0))
+    const raw: Record<string, number> = summary?.error_counts ?? {}
+    const entries = Object.entries(raw).sort((a, b) => (b[1] ?? 0) - (a[1] ?? 0))
     return entries.slice(0, 8)
   }, [summary?.error_counts])
 
@@ -292,4 +293,3 @@ export default function ObservabilityPage() {
     </AppFrame>
   )
 }
-

@@ -436,8 +436,17 @@ class Settings(BaseSettings):
     TABLE_QUERY_MAX_ROWS: int = 200
     TABLE_QUERY_MAX_COLS: int = 200
     TABLE_QUERY_MAX_BYTES: int = 1_000_000
+    TABLE_QUERY_MAX_SQL_CHARS: int = 20_000
+    # Abort long-running SQL queries (SQLite VM instruction budget via progress handler).
+    TABLE_QUERY_TIMEOUT_SEC: float = 5.0
+    TABLE_QUERY_PROGRESS_OPS: int = 10_000
     # NL->SQL / TAG answer generation (optional; requires LLM credentials).
     TABLE_NL2SQL_ENABLED: bool = False
+    # Data egress controls for LLM-backed table operations.
+    # - RESULT_EGRESS: allow sending SQL query results (rows) to an LLM (for answer drafting).
+    # - ROW_EGRESS: allow sending raw table rows to an LLM (e.g. semantic filter).
+    TABLE_LLM_ALLOW_RESULT_EGRESS: bool = False
+    TABLE_LLM_ALLOW_ROW_EGRESS: bool = False
     # LOTUS semantic operators (optional/experimental).
     TABLE_LOTUS_ENABLED: bool = False
     TABLE_LOTUS_MAX_ROWS: int = 20_000

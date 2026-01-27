@@ -11,6 +11,7 @@ from app.api.v1 import (
     documents,
     health,
     meta,
+    observability,
     parsing,
     settings,
     evaluations,
@@ -43,3 +44,4 @@ router.include_router(pipeline.router, prefix="/pipeline", tags=["Pipeline"])
 router.include_router(connectors.router, prefix="/connectors", tags=["Connectors"])
 router.include_router(rag.router, prefix="/rag", tags=["RAG"])
 router.include_router(ragviz.router, prefix="/ragviz", tags=["RAG Visualization (RAGViz)"])
+router.include_router(observability.router, prefix="/observability", tags=["Observability"])

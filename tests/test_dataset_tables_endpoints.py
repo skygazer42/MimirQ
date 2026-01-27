@@ -144,6 +144,7 @@ def test_dataset_tables_list_and_get(monkeypatch):  # noqa: ANN001
 
     monkeypatch.setattr(settings, "TABLE_NL2SQL_ENABLED", True, raising=False)
     monkeypatch.setattr(settings, "LLM_API_KEY", "test", raising=False)
+    monkeypatch.setattr(settings, "TABLE_LLM_ALLOW_RESULT_EGRESS", True, raising=False)
 
     app = FastAPI()
     app.dependency_overrides[get_db] = _override_get_db([doc])
@@ -179,4 +180,3 @@ def test_dataset_tables_list_and_get(monkeypatch):  # noqa: ANN001
     res = client.post(f"/api/v1/datasets/{dataset_id}/tables/{table_id}/ask", json={"question": "What is a+b?"})
     assert res.status_code == 200
     assert res.json()["answer"] == "answer"
-

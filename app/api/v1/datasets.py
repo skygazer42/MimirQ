@@ -11,6 +11,7 @@ from uuid import UUID
 
 from app.core.database import get_db
 from app.core.database import SessionLocal
+from app.core.config import settings
 from app.api.dependencies.tenant import get_tenant_id
 from app.api.dependencies.auth import get_current_account_id
 from app.api.schemas.dataset import DatasetCreate, DatasetUpdate, DatasetOut, DatasetListResponse
@@ -26,7 +27,9 @@ from app.api.schemas.dataset_profile import (
 from app.models.dataset import DatasetPermissionEnum, DatasetPermission
 from app.services.dataset_service import DatasetService, DatasetPermissionService
 from app.models.dataset import Dataset
+from app.models.document import Document as DBDocument
 from app.models.dataset_profile_scan import DatasetProfileScanRun as DBDatasetProfileScanRun
+from app.models.dataset_precheck_scan import DatasetPrecheckScanRun as DBDatasetPrecheckScanRun
 from app.services.pipeline_config import build_pipeline_metadata, parse_pipeline_from_metadata
 from app.services.ingestion_policy import (
     export_policy_json,
@@ -234,8 +237,93 @@ def delete_dataset(
 ):
     dataset = DatasetService.get_dataset(db, tenant_id, dataset_id)
     DatasetService.assert_dataset_writable(db, dataset, account_id)
+
+    # Prevent leaving orphaned documents: Document.dataset_id is not a DB FK, so we must enforce this at the API layer.
+    doc_count = (
+        db.query(DBDocument)
+        .filter(DBDocument.tenant_id == tenant_id, DBDocument.dataset_id == dataset_id)
+        .count()
+    )
+    if doc_count > 0:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Dataset is not empty: {doc_count} documents still reference this dataset. Delete documents first.",
+        )
+
+    # Prevent deleting while long-running dataset scans are still active.
+    active_profile_scans = (
+        db.query(DBDatasetProfileScanRun)
+        .filter(
+            DBDatasetProfileScanRun.tenant_id == tenant_id,
+            DBDatasetProfileScanRun.dataset_id == dataset_id,
+            DBDatasetProfileScanRun.status.in_(["pending", "running"]),
+        )
+        .count()
+    )
+    active_precheck_scans = (
+        db.query(DBDatasetPrecheckScanRun)
+        .filter(
+            DBDatasetPrecheckScanRun.tenant_id == tenant_id,
+            DBDatasetPrecheckScanRun.dataset_id == dataset_id,
+            DBDatasetPrecheckScanRun.status.in_(["pending", "running"]),
+        )
+        .count()
+    )
+    if active_profile_scans > 0 or active_precheck_scans > 0:
+        raise HTTPException(
+            status_code=409,
+            detail="Dataset has active scan runs (pending/running). Cancel them and retry.",
+        )
+
+    # Capture precheck run ids for best-effort artifact cleanup after deletion.
+    precheck_run_ids = [
+        r[0]
+        for r in (
+            db.query(DBDatasetPrecheckScanRun.id)
+            .filter(DBDatasetPrecheckScanRun.tenant_id == tenant_id, DBDatasetPrecheckScanRun.dataset_id == dataset_id)
+            .all()
+        )
+        if r and r[0] is not None
+    ]
+
     db.delete(dataset)
     db.commit()
+
+    # Best-effort: cleanup structured table store directory for this dataset.
+    try:
+        import shutil
+        from pathlib import Path
+
+        root = Path(str(getattr(settings, "TABLE_STORE_DIR", "./uploads/table_store") or "./uploads/table_store"))
+        ds_dir = (root / str(tenant_id) / str(dataset_id)).resolve(strict=False)
+        # Defense-in-depth: only delete under TABLE_STORE_DIR.
+        from app.services.path_safety import resolve_under_base
+
+        safe_dir = resolve_under_base(ds_dir, base=root)
+        if safe_dir is not None and safe_dir.exists():
+            shutil.rmtree(safe_dir, ignore_errors=True)
+    except Exception:
+        pass
+
+    # Best-effort: cleanup precheck artifacts under uploads/{tenant}/precheck/{run_id}/
+    try:
+        import shutil
+        from pathlib import Path
+
+        upload_root = Path(getattr(settings, "UPLOAD_DIR", "./uploads") or "./uploads")
+        tenant_root = upload_root / str(tenant_id)
+        for rid in precheck_run_ids:
+            try:
+                run_dir = tenant_root / "precheck" / str(rid)
+                from app.services.path_safety import resolve_under_base
+
+                safe = resolve_under_base(run_dir, base=tenant_root)
+                if safe is not None and safe.exists():
+                    shutil.rmtree(safe, ignore_errors=True)
+            except Exception:
+                continue
+    except Exception:
+        pass
     return None
 
 

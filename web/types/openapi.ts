@@ -270,6 +270,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/documents/{document_id}/access": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Document Access
+         * @description Get document-level ACL settings (requires document read access).
+         */
+        get: operations["get_document_access_api_v1_documents__document_id__access_get"];
+        /**
+         * Put Document Access
+         * @description Update document-level ACL settings (requires dataset write or tenant edit role).
+         */
+        put: operations["put_document_access_api_v1_documents__document_id__access_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/documents/{document_id}/parsed-content": {
         parameters: {
             query?: never;
@@ -1079,6 +1103,438 @@ export interface paths {
         get: operations["export_dataset_ingestion_policy_api_v1_datasets__dataset_id__ingestion_policy_export_get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/datasets/{dataset_id}/profile/summary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Dataset Profile Summary */
+        get: operations["get_dataset_profile_summary_api_v1_datasets__dataset_id__profile_summary_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/datasets/{dataset_id}/profile/findings/{finding_key}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Dataset Profile Finding Documents */
+        get: operations["list_dataset_profile_finding_documents_api_v1_datasets__dataset_id__profile_findings__finding_key__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/datasets/{dataset_id}/profile/scan-runs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Dataset Profile Scan Runs */
+        get: operations["list_dataset_profile_scan_runs_api_v1_datasets__dataset_id__profile_scan_runs_get"];
+        put?: never;
+        /** Create Dataset Profile Scan Run */
+        post: operations["create_dataset_profile_scan_run_api_v1_datasets__dataset_id__profile_scan_runs_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/datasets/{dataset_id}/profile/scan-runs/{scan_run_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Dataset Profile Scan Run */
+        get: operations["get_dataset_profile_scan_run_api_v1_datasets__dataset_id__profile_scan_runs__scan_run_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/datasets/{dataset_id}/profile/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Export Dataset Profile Summary */
+        get: operations["export_dataset_profile_summary_api_v1_datasets__dataset_id__profile_export_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/datasets/{dataset_id}/profile/export-html": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Export Dataset Profile Html Report */
+        get: operations["export_dataset_profile_html_report_api_v1_datasets__dataset_id__profile_export_html_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/datasets/{dataset_id}/precheck/scan-runs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Dataset Precheck Scan Runs */
+        get: operations["list_dataset_precheck_scan_runs_api_v1_datasets__dataset_id__precheck_scan_runs_get"];
+        put?: never;
+        /** Create Dataset Precheck Scan Run */
+        post: operations["create_dataset_precheck_scan_run_api_v1_datasets__dataset_id__precheck_scan_runs_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/datasets/{dataset_id}/precheck/scan-runs/{scan_run_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Dataset Precheck Scan Run */
+        get: operations["get_dataset_precheck_scan_run_api_v1_datasets__dataset_id__precheck_scan_runs__scan_run_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/datasets/{dataset_id}/precheck/scan-runs/{scan_run_id}/summary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Dataset Precheck Summary */
+        get: operations["get_dataset_precheck_summary_api_v1_datasets__dataset_id__precheck_scan_runs__scan_run_id__summary_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/datasets/{dataset_id}/precheck/scan-runs/{scan_run_id}/findings/{finding_key}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Dataset Precheck Finding Files */
+        get: operations["list_dataset_precheck_finding_files_api_v1_datasets__dataset_id__precheck_scan_runs__scan_run_id__findings__finding_key__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/datasets/{dataset_id}/precheck/scan-runs/{scan_run_id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Cancel Dataset Precheck Scan Run */
+        post: operations["cancel_dataset_precheck_scan_run_api_v1_datasets__dataset_id__precheck_scan_runs__scan_run_id__cancel_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/datasets/{dataset_id}/precheck/scan-runs/{scan_run_id}/events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Stream Dataset Precheck Scan Events
+         * @description Server-sent events (SSE) stream for scan run progress.
+         *
+         *     This allows web UIs to avoid polling while a scan is running.
+         */
+        get: operations["stream_dataset_precheck_scan_events_api_v1_datasets__dataset_id__precheck_scan_runs__scan_run_id__events_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/datasets/{dataset_id}/precheck/scan-runs/{scan_run_id}/samples": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Dataset Precheck Samples */
+        get: operations["get_dataset_precheck_samples_api_v1_datasets__dataset_id__precheck_scan_runs__scan_run_id__samples_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/datasets/{dataset_id}/precheck/scan-runs/{scan_run_id}/near-dups": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Dataset Precheck Near Dups */
+        get: operations["get_dataset_precheck_near_dups_api_v1_datasets__dataset_id__precheck_scan_runs__scan_run_id__near_dups_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/datasets/{dataset_id}/precheck/scan-runs/{scan_run_id}/diff": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Diff Dataset Precheck Scan Runs */
+        get: operations["diff_dataset_precheck_scan_runs_api_v1_datasets__dataset_id__precheck_scan_runs__scan_run_id__diff_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/datasets/{dataset_id}/precheck/scan-runs/{scan_run_id}/suggest-ingestion-policy": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Dataset Precheck Ingestion Policy Suggestion */
+        get: operations["get_dataset_precheck_ingestion_policy_suggestion_api_v1_datasets__dataset_id__precheck_scan_runs__scan_run_id__suggest_ingestion_policy_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/datasets/{dataset_id}/precheck/scan-runs/{scan_run_id}/apply-ingestion-policy": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Apply Dataset Precheck Ingestion Policy Suggestion */
+        post: operations["apply_dataset_precheck_ingestion_policy_suggestion_api_v1_datasets__dataset_id__precheck_scan_runs__scan_run_id__apply_ingestion_policy_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/datasets/{dataset_id}/precheck/scan-runs/{scan_run_id}/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Export Dataset Precheck Summary Json */
+        get: operations["export_dataset_precheck_summary_json_api_v1_datasets__dataset_id__precheck_scan_runs__scan_run_id__export_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/datasets/{dataset_id}/precheck/scan-runs/{scan_run_id}/export-html": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Export Dataset Precheck Html Report */
+        get: operations["export_dataset_precheck_html_report_api_v1_datasets__dataset_id__precheck_scan_runs__scan_run_id__export_html_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/datasets/{dataset_id}/tables": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List tables ingested into the structured table store for a dataset */
+        get: operations["list_dataset_tables_api_v1_datasets__dataset_id__tables_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/datasets/{dataset_id}/tables/{table_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get table metadata by table_id */
+        get: operations["get_dataset_table_api_v1_datasets__dataset_id__tables__table_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/datasets/{dataset_id}/tables/{table_id}/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Preview a table (SELECT * ... LIMIT N) */
+        get: operations["preview_dataset_table_api_v1_datasets__dataset_id__tables__table_id__preview_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/datasets/{dataset_id}/tables/{table_id}/query": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Run a SELECT-only SQL query against a table */
+        post: operations["query_dataset_table_api_v1_datasets__dataset_id__tables__table_id__query_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/datasets/{dataset_id}/tables/{table_id}/ask": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** TAG: Ask a question over a table (NL -> SQL -> execute -> answer) */
+        post: operations["ask_dataset_table_api_v1_datasets__dataset_id__tables__table_id__ask_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/datasets/{dataset_id}/tables/{table_id}/lotus/sem-filter": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** LOTUS (optional): semantic filter over a table (falls back to NL->SQL when LOTUS unavailable) */
+        post: operations["lotus_sem_filter_dataset_table_api_v1_datasets__dataset_id__tables__table_id__lotus_sem_filter_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2088,6 +2544,92 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/connectors": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Connectors
+         * @description List available connectors (static registry).
+         */
+        get: operations["list_connectors_api_v1_connectors_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/connectors/runs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Connector Runs
+         * @description List connector runs (requires dataset write permission for each returned run's dataset).
+         */
+        get: operations["list_connector_runs_api_v1_connectors_runs_get"];
+        put?: never;
+        /**
+         * Create Connector Run
+         * @description Create a connector run (currently supports url_batch).
+         *
+         *     Requires dataset write permission.
+         */
+        post: operations["create_connector_run_api_v1_connectors_runs_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/connectors/runs/{run_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Connector Run
+         * @description Get connector run detail (requires dataset write permission).
+         */
+        get: operations["get_connector_run_api_v1_connectors_runs__run_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/connectors/runs/{run_id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Cancel Connector Run
+         * @description Cancel a running connector run (best-effort).
+         */
+        post: operations["cancel_connector_run_api_v1_connectors_runs__run_id__cancel_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/rag/retrieve-preview": {
         parameters: {
             query?: never;
@@ -2156,6 +2698,23 @@ export interface paths {
         put?: never;
         /** Similarity Calculate */
         post: operations["similarity_calculate_api_v1_ragviz_similarity_calculate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/observability/rag-metrics/summary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Rag Metrics Summary */
+        get: operations["get_rag_metrics_summary_api_v1_observability_rag_metrics_summary_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -2654,16 +3213,10 @@ export interface components {
          * @description RAG parameters specific to the chat endpoint.
          */
         ChatRAGConfig: {
-            /**
-             * Top K
-             * @default 5
-             */
-            top_k: number;
-            /**
-             * Score Threshold
-             * @default 0.7
-             */
-            score_threshold: number;
+            /** Top K */
+            top_k?: number;
+            /** Score Threshold */
+            score_threshold?: number;
             /**
              * Max Tokens
              * @default 2000
@@ -2694,26 +3247,14 @@ export interface components {
              * @default 0.4
              */
             keyword_weight: number;
-            /**
-             * Mmr Lambda
-             * @default 0.7
-             */
-            mmr_lambda: number;
-            /**
-             * Enable Reranker
-             * @default false
-             */
-            enable_reranker: boolean;
-            /**
-             * Reranker Provider
-             * @default llm
-             */
-            reranker_provider: string;
-            /**
-             * Reranker Top N
-             * @default 20
-             */
-            reranker_top_n: number;
+            /** Mmr Lambda */
+            mmr_lambda?: number;
+            /** Enable Reranker */
+            enable_reranker?: boolean;
+            /** Reranker Provider */
+            reranker_provider?: string;
+            /** Reranker Top N */
+            reranker_top_n?: number;
             /**
              * Use Graph
              * @default false
@@ -2983,13 +3524,6 @@ export interface components {
             /** Markdown */
             markdown: string;
         };
-        /** ChunkPreviewResponse */
-        ChunkPreviewResponse: {
-            /** Paragraphs */
-            paragraphs: components["schemas"]["ChunkItem"][];
-            /** Sentences */
-            sentences: components["schemas"]["ChunkItem"][];
-        };
         /**
          * ChunkPreviewReviewSignals
          * @description Optional per-chunk review signals for enterprise tuning/auditing.
@@ -3208,7 +3742,7 @@ export interface components {
             /** Markdown */
             markdown: string;
             /** Rules */
-            rules?: components["schemas"]["RegexRuleModel"][];
+            rules?: components["schemas"]["app__api__schemas__pipeline__RegexRuleModel"][];
             /**
              * Use Default Rules
              * @default true
@@ -3555,7 +4089,108 @@ export interface components {
         /** CleanRulesResponse */
         CleanRulesResponse: {
             /** Rules */
-            rules: components["schemas"]["RegexRuleModel"][];
+            rules: components["schemas"]["app__api__schemas__pipeline__RegexRuleModel"][];
+        };
+        /** ConnectorInfo */
+        ConnectorInfo: {
+            /**
+             * Id
+             * @constant
+             */
+            id: "url_batch";
+            /** Name */
+            name: string;
+            /**
+             * Description
+             * @default
+             */
+            description: string;
+            /**
+             * Supports Incremental
+             * @default false
+             */
+            supports_incremental: boolean;
+        };
+        /** ConnectorRunCreateRequest */
+        ConnectorRunCreateRequest: {
+            /**
+             * Connector Id
+             * @default url_batch
+             * @constant
+             */
+            connector_id: "url_batch";
+            /** Dataset Id */
+            dataset_id?: string | null;
+            config: components["schemas"]["UrlBatchConnectorConfig"];
+        };
+        /** ConnectorRunDocumentOut */
+        ConnectorRunDocumentOut: {
+            /**
+             * Document Id
+             * Format: uuid
+             */
+            document_id: string;
+            /** Source Ref */
+            source_ref?: string | null;
+            /**
+             * Status
+             * @default created
+             */
+            status: string;
+        };
+        /** ConnectorRunListResponse */
+        ConnectorRunListResponse: {
+            /** Total */
+            total: number;
+            /** Items */
+            items: components["schemas"]["ConnectorRunOut"][];
+        };
+        /** ConnectorRunOut */
+        ConnectorRunOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Tenant Id
+             * Format: uuid
+             */
+            tenant_id: string;
+            /** Dataset Id */
+            dataset_id?: string | null;
+            /** Connector Id */
+            connector_id: string;
+            /** Requested By */
+            requested_by?: string | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "pending" | "running" | "completed" | "failed" | "cancelled";
+            /** Config */
+            config?: {
+                [key: string]: unknown;
+            };
+            /** Stats */
+            stats?: {
+                [key: string]: unknown;
+            };
+            /** Error Message */
+            error_message?: string | null;
+            /** Task Id */
+            task_id?: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Started At */
+            started_at?: string | null;
+            /** Finished At */
+            finished_at?: string | null;
+            /** Documents */
+            documents?: components["schemas"]["ConnectorRunDocumentOut"][];
         };
         /**
          * ConversationCreate
@@ -3691,6 +4326,858 @@ export interface components {
          * @enum {string}
          */
         DatasetPermissionEnum: "only_me" | "all_team_members" | "partial_members";
+        /** DatasetPrecheckDiffItem */
+        DatasetPrecheckDiffItem: {
+            /** Key */
+            key: string;
+            /**
+             * Before
+             * @default 0
+             */
+            before: number;
+            /**
+             * After
+             * @default 0
+             */
+            after: number;
+            /**
+             * Delta
+             * @default 0
+             */
+            delta: number;
+        };
+        /**
+         * DatasetPrecheckDiffResponse
+         * @description Diff between two scan run summaries (objective numbers only).
+         */
+        DatasetPrecheckDiffResponse: {
+            /**
+             * Base Scan Run Id
+             * Format: uuid
+             */
+            base_scan_run_id: string;
+            /**
+             * Target Scan Run Id
+             * Format: uuid
+             */
+            target_scan_run_id: string;
+            /**
+             * Generated At
+             * Format: date-time
+             */
+            generated_at: string;
+            total_files: components["schemas"]["DatasetPrecheckDiffItem"];
+            total_size_bytes: components["schemas"]["DatasetPrecheckDiffItem"];
+            pdf_scanned: components["schemas"]["DatasetPrecheckDiffItem"];
+            pdf_unknown: components["schemas"]["DatasetPrecheckDiffItem"];
+            /** By File Type */
+            by_file_type?: components["schemas"]["DatasetPrecheckDiffItem"][];
+            /** Findings */
+            findings?: components["schemas"]["DatasetPrecheckDiffItem"][];
+        };
+        /** DatasetPrecheckFileOut */
+        DatasetPrecheckFileOut: {
+            /** Name */
+            name: string;
+            /** File Type */
+            file_type: string;
+            /** File Size */
+            file_size: number;
+            /** File Mtime */
+            file_mtime?: number | null;
+            /**
+             * Text Characters
+             * @default 0
+             */
+            text_characters: number;
+            /**
+             * Estimated Text
+             * @default false
+             */
+            estimated_text: boolean;
+            /** Pdf Scanned */
+            pdf_scanned?: boolean | null;
+            pdf_pages?: components["schemas"]["DatasetPrecheckPdfPageBreakdown"] | null;
+            spreadsheet?: components["schemas"]["DatasetPrecheckSpreadsheetStats"] | null;
+            /** Text Simhash64 */
+            text_simhash64?: string | null;
+            /** Pii Hits */
+            pii_hits?: {
+                [key: string]: number;
+            };
+            /** Secrets Hits */
+            secrets_hits?: {
+                [key: string]: number;
+            };
+            /** Pii Samples */
+            pii_samples?: components["schemas"]["DatasetPrecheckMatchSample"][];
+            /** Secrets Samples */
+            secrets_samples?: components["schemas"]["DatasetPrecheckMatchSample"][];
+            /** File Sha256 */
+            file_sha256?: string | null;
+            /** Findings */
+            findings?: string[];
+            /** Error Message */
+            error_message?: string | null;
+        };
+        /** DatasetPrecheckFindingListResponse */
+        DatasetPrecheckFindingListResponse: {
+            /** Total */
+            total: number;
+            /** Items */
+            items?: components["schemas"]["DatasetPrecheckFileOut"][];
+        };
+        /** DatasetPrecheckFindingSummary */
+        DatasetPrecheckFindingSummary: {
+            /** Key */
+            key: string;
+            /** Label */
+            label: string;
+            /**
+             * Severity
+             * @default info
+             * @enum {string}
+             */
+            severity: "info" | "warning" | "error";
+            /**
+             * Count
+             * @default 0
+             */
+            count: number;
+            /** Description */
+            description?: string | null;
+        };
+        /** DatasetPrecheckHistogramBin */
+        DatasetPrecheckHistogramBin: {
+            /** Label */
+            label: string;
+            /** Min */
+            min?: number | null;
+            /** Max */
+            max?: number | null;
+            /**
+             * Count
+             * @default 0
+             */
+            count: number;
+        };
+        /**
+         * DatasetPrecheckIngestionSuggestionResponse
+         * @description Suggested, importable ingestion policy + manual-review buckets derived from a precheck run.
+         */
+        DatasetPrecheckIngestionSuggestionResponse: {
+            /**
+             * Generated At
+             * Format: date-time
+             */
+            generated_at: string;
+            policy: components["schemas"]["IngestionPolicy-Output"];
+            /** Notes */
+            notes?: string[];
+            /** Manual Review */
+            manual_review?: components["schemas"]["DatasetPrecheckManualReviewBucket"][];
+        };
+        /**
+         * DatasetPrecheckManualReviewBucket
+         * @description A bounded list of file names that likely require manual review.
+         */
+        DatasetPrecheckManualReviewBucket: {
+            /** Key */
+            key: string;
+            /**
+             * Total
+             * @default 0
+             */
+            total: number;
+            /** Sample Names */
+            sample_names?: string[];
+        };
+        /** DatasetPrecheckMatchSample */
+        DatasetPrecheckMatchSample: {
+            /** Kind */
+            kind: string;
+            /** Masked */
+            masked: string;
+            /** Context */
+            context: string;
+            /** Start */
+            start?: number | null;
+            /** End */
+            end?: number | null;
+        };
+        /** DatasetPrecheckNearDupCluster */
+        DatasetPrecheckNearDupCluster: {
+            /** Id */
+            id: string;
+            /** Members */
+            members?: string[];
+        };
+        /** DatasetPrecheckNearDupPair */
+        DatasetPrecheckNearDupPair: {
+            /** A */
+            a: string;
+            /** B */
+            b: string;
+            /** Distance */
+            distance: number;
+        };
+        /** DatasetPrecheckNearDupResponse */
+        DatasetPrecheckNearDupResponse: {
+            /**
+             * Threshold
+             * @default 0
+             */
+            threshold: number;
+            /**
+             * Max Pairs
+             * @default 0
+             */
+            max_pairs: number;
+            /**
+             * Pairs Returned
+             * @default 0
+             */
+            pairs_returned: number;
+            /**
+             * Clusters Returned
+             * @default 0
+             */
+            clusters_returned: number;
+            /** Clusters */
+            clusters?: components["schemas"]["DatasetPrecheckNearDupCluster"][];
+            /** Pairs */
+            pairs?: components["schemas"]["DatasetPrecheckNearDupPair"][];
+        };
+        /**
+         * DatasetPrecheckPdfPageBreakdown
+         * @description Best-effort per-page type breakdown (computed on sampled pages).
+         *
+         *     This is intended for *transparent* PDF routing decisions (scan/mixed/low-density),
+         *     not as a strict ground truth.
+         */
+        DatasetPrecheckPdfPageBreakdown: {
+            /**
+             * Page Count
+             * @default 0
+             */
+            page_count: number;
+            /**
+             * Sampled Pages
+             * @default 0
+             */
+            sampled_pages: number;
+            /**
+             * Scanned Pages
+             * @default 0
+             */
+            scanned_pages: number;
+            /**
+             * Text Pages
+             * @default 0
+             */
+            text_pages: number;
+            /**
+             * Low Density Pages
+             * @default 0
+             */
+            low_density_pages: number;
+            /**
+             * Unknown Pages
+             * @default 0
+             */
+            unknown_pages: number;
+            /**
+             * Scan Ratio
+             * @default 0
+             */
+            scan_ratio: number;
+            /**
+             * Low Density Ratio
+             * @default 0
+             */
+            low_density_ratio: number;
+        };
+        /** DatasetPrecheckPdfScanStats */
+        DatasetPrecheckPdfScanStats: {
+            /**
+             * Scanned
+             * @default 0
+             */
+            scanned: number;
+            /**
+             * Not Scanned
+             * @default 0
+             */
+            not_scanned: number;
+            /**
+             * Unknown
+             * @default 0
+             */
+            unknown: number;
+        };
+        /** DatasetPrecheckPercentiles */
+        DatasetPrecheckPercentiles: {
+            /**
+             * P25
+             * @default 0
+             */
+            p25: number;
+            /**
+             * P50
+             * @default 0
+             */
+            p50: number;
+            /**
+             * P75
+             * @default 0
+             */
+            p75: number;
+            /**
+             * P90
+             * @default 0
+             */
+            p90: number;
+            /**
+             * P99
+             * @default 0
+             */
+            p99: number;
+        };
+        /**
+         * DatasetPrecheckSamplesResponse
+         * @description Representative samples payload for pricing/POC alignment.
+         *
+         *     Note: Items reuse DatasetPrecheckFileOut (already redacted/aliased when redact_paths=true).
+         */
+        DatasetPrecheckSamplesResponse: {
+            /**
+             * Requested
+             * @default 0
+             */
+            requested: number;
+            /**
+             * Strata Count
+             * @default 0
+             */
+            strata_count: number;
+            /** Representative */
+            representative?: components["schemas"]["DatasetPrecheckFileOut"][];
+            /** Needs Review */
+            needs_review?: {
+                [key: string]: components["schemas"]["DatasetPrecheckFileOut"][];
+            };
+            /** Top Large Files */
+            top_large_files?: components["schemas"]["DatasetPrecheckFileOut"][];
+            /** Top Long Text */
+            top_long_text?: components["schemas"]["DatasetPrecheckFileOut"][];
+        };
+        /** DatasetPrecheckScanRunCreateRequest */
+        DatasetPrecheckScanRunCreateRequest: {
+            /** Root Path */
+            root_path: string;
+            /** Max Files */
+            max_files?: number | null;
+            /**
+             * Enable Pdf Quality
+             * @default true
+             */
+            enable_pdf_quality: boolean;
+            /**
+             * Enable Text Extract
+             * @default true
+             */
+            enable_text_extract: boolean;
+            /**
+             * Enable Pii
+             * @default false
+             */
+            enable_pii: boolean;
+            /**
+             * Enable Secrets
+             * @default false
+             */
+            enable_secrets: boolean;
+            /**
+             * Compute File Hash
+             * @default false
+             */
+            compute_file_hash: boolean;
+            /** Pdf Sample Pages */
+            pdf_sample_pages?: number | null;
+            /** Text Extract Max Bytes */
+            text_extract_max_bytes?: number | null;
+            /** Pdf Min Text Chars Per Page */
+            pdf_min_text_chars_per_page?: number | null;
+            /** Pdf Text Chars Per Page */
+            pdf_text_chars_per_page?: number | null;
+            /** Pdf Scan Ratio Threshold */
+            pdf_scan_ratio_threshold?: number | null;
+            /**
+             * Redact Paths
+             * @default false
+             */
+            redact_paths: boolean;
+            /**
+             * Enable Pii Samples
+             * @default false
+             */
+            enable_pii_samples: boolean;
+            /** Pii Context Chars */
+            pii_context_chars?: number | null;
+            /** Pii Max Samples Per File */
+            pii_max_samples_per_file?: number | null;
+            /**
+             * Enable Secrets Samples
+             * @default false
+             */
+            enable_secrets_samples: boolean;
+            /** Secrets Context Chars */
+            secrets_context_chars?: number | null;
+            /** Secrets Max Samples Per File */
+            secrets_max_samples_per_file?: number | null;
+            /**
+             * Enable Near Dup
+             * @default false
+             */
+            enable_near_dup: boolean;
+            /** Near Dup Hamming Threshold */
+            near_dup_hamming_threshold?: number | null;
+            /** Near Dup Max Pairs */
+            near_dup_max_pairs?: number | null;
+            /**
+             * Enable Sampling
+             * @default true
+             */
+            enable_sampling: boolean;
+            /** Sample Size */
+            sample_size?: number | null;
+            /**
+             * Reuse Unchanged Files
+             * @default false
+             */
+            reuse_unchanged_files: boolean;
+            /** Reuse From Scan Run Id */
+            reuse_from_scan_run_id?: string | null;
+        };
+        /** DatasetPrecheckScanRunListResponse */
+        DatasetPrecheckScanRunListResponse: {
+            /** Total */
+            total: number;
+            /** Items */
+            items?: components["schemas"]["DatasetPrecheckScanRunOut"][];
+        };
+        /** DatasetPrecheckScanRunOut */
+        DatasetPrecheckScanRunOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Tenant Id
+             * Format: uuid
+             */
+            tenant_id: string;
+            /**
+             * Dataset Id
+             * Format: uuid
+             */
+            dataset_id: string;
+            /** Requested By */
+            requested_by?: string | null;
+            /** Kind */
+            kind: string;
+            /** Status */
+            status: string;
+            /** Progress */
+            progress: number;
+            /** Config */
+            config?: {
+                [key: string]: unknown;
+            };
+            /** Summary */
+            summary?: {
+                [key: string]: unknown;
+            };
+            /** Artifacts */
+            artifacts?: {
+                [key: string]: unknown;
+            };
+            /** Error Message */
+            error_message?: string | null;
+            /** Started At */
+            started_at?: string | null;
+            /** Finished At */
+            finished_at?: string | null;
+            /** Created At */
+            created_at?: string | null;
+            /** Updated At */
+            updated_at?: string | null;
+        };
+        /** DatasetPrecheckSpreadsheetStats */
+        DatasetPrecheckSpreadsheetStats: {
+            /**
+             * Row Count
+             * @default 0
+             */
+            row_count: number;
+            /**
+             * Sheet Count
+             * @default 0
+             */
+            sheet_count: number;
+            /**
+             * Merged Cell Ratio
+             * @default 0
+             */
+            merged_cell_ratio: number;
+            /**
+             * Estimated Rows
+             * @default false
+             */
+            estimated_rows: boolean;
+        };
+        /** DatasetPrecheckSummary */
+        DatasetPrecheckSummary: {
+            /**
+             * Dataset Id
+             * Format: uuid
+             */
+            dataset_id: string;
+            /**
+             * Scan Run Id
+             * Format: uuid
+             */
+            scan_run_id: string;
+            /**
+             * Generated At
+             * Format: date-time
+             */
+            generated_at: string;
+            /**
+             * Total Files
+             * @default 0
+             */
+            total_files: number;
+            /**
+             * Total Size Bytes
+             * @default 0
+             */
+            total_size_bytes: number;
+            /**
+             * Reused Files
+             * @default 0
+             */
+            reused_files: number;
+            /** By File Type */
+            by_file_type?: {
+                [key: string]: number;
+            };
+            /** File Size Histogram */
+            file_size_histogram?: components["schemas"]["DatasetPrecheckHistogramBin"][];
+            length_percentiles?: components["schemas"]["DatasetPrecheckPercentiles"];
+            /** Length Histogram */
+            length_histogram?: components["schemas"]["DatasetPrecheckHistogramBin"][];
+            pdf_scan?: components["schemas"]["DatasetPrecheckPdfScanStats"];
+            /** Pdf Detection */
+            pdf_detection?: {
+                [key: string]: unknown;
+            };
+            /** Pii Hits Total */
+            pii_hits_total?: {
+                [key: string]: number;
+            };
+            /** Secrets Hits Total */
+            secrets_hits_total?: {
+                [key: string]: number;
+            };
+            /** Findings */
+            findings?: components["schemas"]["DatasetPrecheckFindingSummary"][];
+        };
+        /** DatasetProfileDocumentOut */
+        DatasetProfileDocumentOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Dataset Id */
+            dataset_id?: string | null;
+            /** Filename */
+            filename: string;
+            /** File Type */
+            file_type: string;
+            /** File Size */
+            file_size: number;
+            /** Status */
+            status: string;
+            /**
+             * Chunk Count
+             * @default 0
+             */
+            chunk_count: number;
+            /**
+             * Total Characters
+             * @default 0
+             */
+            total_characters: number;
+            /** Created At */
+            created_at?: string | null;
+            /** Updated At */
+            updated_at?: string | null;
+            /** Error Message */
+            error_message?: string | null;
+            /** Metadata */
+            metadata?: {
+                [key: string]: unknown;
+            };
+        };
+        /** DatasetProfileFindingListResponse */
+        DatasetProfileFindingListResponse: {
+            /** Total */
+            total: number;
+            /** Items */
+            items?: components["schemas"]["DatasetProfileDocumentOut"][];
+        };
+        /** DatasetProfileFindingSummary */
+        DatasetProfileFindingSummary: {
+            /** Key */
+            key: string;
+            /** Label */
+            label: string;
+            /**
+             * Severity
+             * @default info
+             * @enum {string}
+             */
+            severity: "info" | "warning" | "error";
+            /**
+             * Count
+             * @default 0
+             */
+            count: number;
+            /** Description */
+            description?: string | null;
+        };
+        /** DatasetProfileHistogramBin */
+        DatasetProfileHistogramBin: {
+            /** Label */
+            label: string;
+            /** Min */
+            min?: number | null;
+            /** Max */
+            max?: number | null;
+            /**
+             * Count
+             * @default 0
+             */
+            count: number;
+        };
+        /** DatasetProfilePdfScanStats */
+        DatasetProfilePdfScanStats: {
+            /**
+             * Scanned
+             * @default 0
+             */
+            scanned: number;
+            /**
+             * Not Scanned
+             * @default 0
+             */
+            not_scanned: number;
+            /**
+             * Unknown
+             * @default 0
+             */
+            unknown: number;
+        };
+        /** DatasetProfilePercentiles */
+        DatasetProfilePercentiles: {
+            /**
+             * P25
+             * @default 0
+             */
+            p25: number;
+            /**
+             * P50
+             * @default 0
+             */
+            p50: number;
+            /**
+             * P75
+             * @default 0
+             */
+            p75: number;
+            /**
+             * P90
+             * @default 0
+             */
+            p90: number;
+            /**
+             * P99
+             * @default 0
+             */
+            p99: number;
+        };
+        /** DatasetProfileScanRunCreateRequest */
+        DatasetProfileScanRunCreateRequest: {
+            /**
+             * Backfill Pdf Quality
+             * @default true
+             */
+            backfill_pdf_quality: boolean;
+            /**
+             * Backfill Text Quality
+             * @default true
+             */
+            backfill_text_quality: boolean;
+            /**
+             * Compute File Hash
+             * @default false
+             */
+            compute_file_hash: boolean;
+            /** Max Documents */
+            max_documents?: number | null;
+        };
+        /** DatasetProfileScanRunListResponse */
+        DatasetProfileScanRunListResponse: {
+            /** Total */
+            total: number;
+            /** Items */
+            items?: components["schemas"]["DatasetProfileScanRunOut"][];
+        };
+        /** DatasetProfileScanRunOut */
+        DatasetProfileScanRunOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Tenant Id
+             * Format: uuid
+             */
+            tenant_id: string;
+            /**
+             * Dataset Id
+             * Format: uuid
+             */
+            dataset_id: string;
+            /** Requested By */
+            requested_by?: string | null;
+            /** Kind */
+            kind: string;
+            /** Status */
+            status: string;
+            /** Progress */
+            progress: number;
+            /** Config */
+            config?: {
+                [key: string]: unknown;
+            };
+            /** Summary */
+            summary?: {
+                [key: string]: unknown;
+            };
+            /** Error Message */
+            error_message?: string | null;
+            /** Started At */
+            started_at?: string | null;
+            /** Finished At */
+            finished_at?: string | null;
+            /** Created At */
+            created_at?: string | null;
+            /** Updated At */
+            updated_at?: string | null;
+        };
+        /** DatasetProfileScanRunSummary */
+        DatasetProfileScanRunSummary: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Kind
+             * @default deep
+             */
+            kind: string;
+            /**
+             * Status
+             * @default pending
+             */
+            status: string;
+            /**
+             * Progress
+             * @default 0
+             */
+            progress: number;
+            /** Requested By */
+            requested_by?: string | null;
+            /** Created At */
+            created_at?: string | null;
+            /** Started At */
+            started_at?: string | null;
+            /** Finished At */
+            finished_at?: string | null;
+            /** Error Message */
+            error_message?: string | null;
+        };
+        /** DatasetProfileSummary */
+        DatasetProfileSummary: {
+            /**
+             * Dataset Id
+             * Format: uuid
+             */
+            dataset_id: string;
+            /**
+             * Generated At
+             * Format: date-time
+             */
+            generated_at: string;
+            /**
+             * Total Documents
+             * @default 0
+             */
+            total_documents: number;
+            /**
+             * Total Size Bytes
+             * @default 0
+             */
+            total_size_bytes: number;
+            /** By Status */
+            by_status?: {
+                [key: string]: number;
+            };
+            /** By File Type */
+            by_file_type?: {
+                [key: string]: number;
+            };
+            /** File Size Histogram */
+            file_size_histogram?: components["schemas"]["DatasetProfileHistogramBin"][];
+            length_percentiles?: components["schemas"]["DatasetProfilePercentiles"];
+            /** Length Histogram */
+            length_histogram?: components["schemas"]["DatasetProfileHistogramBin"][];
+            pdf_scan?: components["schemas"]["DatasetProfilePdfScanStats"];
+            /** Pii Hits Total */
+            pii_hits_total?: {
+                [key: string]: number;
+            };
+            /** Secrets Hits Total */
+            secrets_hits_total?: {
+                [key: string]: number;
+            };
+            /** Findings */
+            findings?: components["schemas"]["DatasetProfileFindingSummary"][];
+            latest_scan_run?: components["schemas"]["DatasetProfileScanRunSummary"] | null;
+        };
+        /** DatasetTablesListResponse */
+        DatasetTablesListResponse: {
+            /** Total */
+            total: number;
+            /** Items */
+            items: components["schemas"]["TableAssetOut"][];
+        };
         /** DatasetUpdate */
         DatasetUpdate: {
             /** Name */
@@ -3701,6 +5188,36 @@ export interface components {
             /** Partial Member List */
             partial_member_list?: string[] | null;
             pipeline?: components["schemas"]["DocumentPipelineOptions"] | null;
+        };
+        /**
+         * DocumentAccessInfo
+         * @description Document-level ACL (additional restriction on top of dataset permissions).
+         */
+        DocumentAccessInfo: {
+            /**
+             * Mode
+             * @default inherit
+             * @enum {string}
+             */
+            mode: "inherit" | "only_me" | "all_team_members" | "partial_members";
+            /** Owner Id */
+            owner_id?: string | null;
+            /** Partial Member List */
+            partial_member_list?: string[] | null;
+        };
+        /**
+         * DocumentAccessUpdateRequest
+         * @description Update a document's access mode and optional allowlist.
+         */
+        DocumentAccessUpdateRequest: {
+            /**
+             * Mode
+             * @default inherit
+             * @enum {string}
+             */
+            mode: "inherit" | "only_me" | "all_team_members" | "partial_members";
+            /** Partial Member List */
+            partial_member_list?: string[] | null;
         };
         /**
          * DocumentBatchDeleteRequest
@@ -3881,6 +5398,10 @@ export interface components {
             chunk_count: number;
             /** Total Characters */
             total_characters: number;
+            /** Owner Id */
+            owner_id?: string | null;
+            /** Access Mode */
+            access_mode?: ("inherit" | "only_me" | "all_team_members" | "partial_members") | null;
             /**
              * Created At
              * Format: date-time
@@ -4256,6 +5777,51 @@ export interface components {
             event_vector_enabled?: boolean | null;
             /** Entity Vector Enabled */
             entity_vector_enabled?: boolean | null;
+            /**
+             * Table Store Enabled
+             * @description Enable structured table store import for .csv/.xls/.xlsx (TAG)
+             */
+            table_store_enabled?: boolean | null;
+            /**
+             * Table Store Max Rows
+             * @description Max rows to import per table (0 disables cap)
+             */
+            table_store_max_rows?: number | null;
+            /**
+             * Table Store Max Cols
+             * @description Max columns to import per table (0 disables cap)
+             */
+            table_store_max_cols?: number | null;
+            /**
+             * Table Store Sample Rows
+             * @description Rows to keep for metadata preview/sample (0 disables)
+             */
+            table_store_sample_rows?: number | null;
+            /**
+             * Table Store Auto Route
+             * @description When table_store_enabled=true, auto-route small tables to RAG and large/complex tables to TAG
+             */
+            table_store_auto_route?: boolean | null;
+            /**
+             * Table Store Auto Row Threshold
+             * @description In auto-route mode, route to TAG when estimated rows >= threshold (0 disables)
+             */
+            table_store_auto_row_threshold?: number | null;
+            /**
+             * Table Store Auto Col Threshold
+             * @description In auto-route mode, route to TAG when estimated columns >= threshold (0 disables)
+             */
+            table_store_auto_col_threshold?: number | null;
+            /**
+             * Table Store Auto Sheet Threshold
+             * @description In auto-route mode, route to TAG when sheet_count >= threshold (0 disables)
+             */
+            table_store_auto_sheet_threshold?: number | null;
+            /**
+             * Table Store Auto File Bytes Threshold
+             * @description In auto-route mode, route to TAG when file_size bytes >= threshold (0 disables)
+             */
+            table_store_auto_file_bytes_threshold?: number | null;
         };
         /**
          * DocumentPipelinePatchRequest
@@ -4597,6 +6163,32 @@ export interface components {
             suggested_pipeline_patch?: {
                 [key: string]: unknown;
             };
+        };
+        /**
+         * GovernanceConfig
+         * @description Global governance defaults (used when pipeline overrides are absent).
+         */
+        GovernanceConfig: {
+            /**
+             * Enabled
+             * @default false
+             */
+            enabled: boolean;
+            /**
+             * Pii Anonymize
+             * @default false
+             */
+            pii_anonymize: boolean;
+            /**
+             * Secrets Redact
+             * @default false
+             */
+            secrets_redact: boolean;
+            /**
+             * Quarantine On Drop
+             * @default false
+             */
+            quarantine_on_drop: boolean;
         };
         /** GovernanceInfo */
         GovernanceInfo: {
@@ -5381,6 +6973,18 @@ export interface components {
             identifier: string;
             /** Password */
             password: string;
+        };
+        /** LotusSemFilterRequest */
+        LotusSemFilterRequest: {
+            /** User Instruction */
+            user_instruction: string;
+            /**
+             * Strategy
+             * @default cot
+             */
+            strategy: string;
+            /** Max Rows */
+            max_rows?: number | null;
         };
         /**
          * MagicPDFConfig
@@ -6250,6 +7854,11 @@ export interface components {
              */
             chunk_overlap: number;
             /**
+             * Chunk Min Chars
+             * @default 30
+             */
+            chunk_min_chars: number;
+            /**
              * Retrieval Top K
              * @default 5
              */
@@ -6269,6 +7878,69 @@ export interface components {
              * @default langchain_recursive
              */
             default_chunk_strategy: string;
+            /**
+             * Bm25 Index Enabled
+             * @default true
+             */
+            bm25_index_enabled: boolean;
+            /**
+             * Enable Reranker
+             * @default false
+             */
+            enable_reranker: boolean;
+        };
+        /** RagMetricsSummaryResponse */
+        RagMetricsSummaryResponse: {
+            /** Enabled */
+            enabled: boolean;
+            /** Path */
+            path: string;
+            /** Window Minutes */
+            window_minutes: number;
+            /** Truncated */
+            truncated: boolean;
+            /** Record Count */
+            record_count: number;
+            /** Rag Trace Count */
+            rag_trace_count: number;
+            /** Reranker Api Count */
+            reranker_api_count: number;
+            /** Retrieval Avg Elapsed Sec */
+            retrieval_avg_elapsed_sec?: number | null;
+            /** Retrieval P95 Elapsed Sec */
+            retrieval_p95_elapsed_sec?: number | null;
+            /** Rerank Avg Elapsed Sec */
+            rerank_avg_elapsed_sec?: number | null;
+            /** Citations Avg Count */
+            citations_avg_count?: number | null;
+            /**
+             * Retrieval Mode Counts
+             * @default {}
+             */
+            retrieval_mode_counts: {
+                [key: string]: number;
+            };
+            /**
+             * Hit Type Counts
+             * @default {}
+             */
+            hit_type_counts: {
+                [key: string]: number;
+            };
+            /**
+             * Error Counts
+             * @default {}
+             */
+            error_counts: {
+                [key: string]: number;
+            };
+            /**
+             * Timeseries
+             * @default {}
+             */
+            timeseries: {
+                [key: string]: unknown[];
+            };
         };
         /**
          * RagasItemSchema
@@ -6683,21 +8355,6 @@ export interface components {
             /** Error */
             error?: string | null;
         };
-        /** RegexRuleModel */
-        RegexRuleModel: {
-            /** Pattern */
-            pattern: string;
-            /**
-             * Repl
-             * @default
-             */
-            repl: string;
-            /**
-             * Flags
-             * @default 0
-             */
-            flags: number;
-        };
         /** RegisterRequest */
         RegisterRequest: {
             /**
@@ -6855,6 +8512,8 @@ export interface components {
             embedding: components["schemas"]["EmbeddingConfig"];
             milvus: components["schemas"]["MilvusConfig"];
             rag: components["schemas"]["RAGConfig"];
+            url_ingest: components["schemas"]["UrlIngestConfig"];
+            governance: components["schemas"]["GovernanceConfig"];
             mineru: components["schemas"]["MinerUConfig"];
             etl4llm: components["schemas"]["Etl4LlmConfig"];
             marker: components["schemas"]["MarkerConfig"];
@@ -6863,6 +8522,91 @@ export interface components {
             observability: components["schemas"]["ObservabilityConfig"];
             safety: components["schemas"]["SafetyConfig"];
             langgraph: components["schemas"]["LangGraphConfig"];
+        };
+        /** TableAskRequest */
+        TableAskRequest: {
+            /** Question */
+            question: string;
+            /** Max Rows */
+            max_rows?: number | null;
+        };
+        /** TableAskResponse */
+        TableAskResponse: {
+            /** Answer */
+            answer: string;
+            /** Sql */
+            sql?: string | null;
+            data?: components["schemas"]["TableQueryResponse"] | null;
+        };
+        /** TableAssetOut */
+        TableAssetOut: {
+            /** Table Id */
+            table_id: string;
+            /**
+             * Document Id
+             * Format: uuid
+             */
+            document_id: string;
+            /** Document Filename */
+            document_filename?: string | null;
+            /**
+             * Sheet Index
+             * @default 0
+             */
+            sheet_index: number;
+            /** Sheet Name */
+            sheet_name?: string | null;
+            /**
+             * Row Count
+             * @default 0
+             */
+            row_count: number;
+            /**
+             * Col Count
+             * @default 0
+             */
+            col_count: number;
+            /**
+             * Truncated
+             * @default false
+             */
+            truncated: boolean;
+            /** Columns */
+            columns?: components["schemas"]["TableColumnOut"][];
+            /** Sample Rows */
+            sample_rows?: {
+                [key: string]: unknown;
+            }[];
+        };
+        /** TableColumnOut */
+        TableColumnOut: {
+            /** Name */
+            name: string;
+            /** Dtype */
+            dtype?: string | null;
+        };
+        /** TableQueryRequest */
+        TableQueryRequest: {
+            /** Sql */
+            sql: string;
+            /** Max Rows */
+            max_rows?: number | null;
+            /** Max Cols */
+            max_cols?: number | null;
+        };
+        /** TableQueryResponse */
+        TableQueryResponse: {
+            /** Sql */
+            sql: string;
+            /** Columns */
+            columns: string[];
+            /** Rows */
+            rows: unknown[][];
+            /**
+             * Truncated
+             * @default false
+             */
+            truncated: boolean;
         };
         /**
          * TestGenFromConversationsRequest
@@ -7002,6 +8746,8 @@ export interface components {
             embedding?: components["schemas"]["EmbeddingConfig"] | null;
             milvus?: components["schemas"]["MilvusConfig"] | null;
             rag?: components["schemas"]["RAGConfig"] | null;
+            url_ingest?: components["schemas"]["UrlIngestConfig"] | null;
+            governance?: components["schemas"]["GovernanceConfig"] | null;
             mineru?: components["schemas"]["MinerUConfig"] | null;
             etl4llm?: components["schemas"]["Etl4LlmConfig"] | null;
             marker?: components["schemas"]["MarkerConfig"] | null;
@@ -7010,6 +8756,65 @@ export interface components {
             observability?: components["schemas"]["ObservabilityConfig"] | null;
             safety?: components["schemas"]["SafetyConfig"] | null;
             langgraph?: components["schemas"]["LangGraphConfig"] | null;
+        };
+        /**
+         * UrlBatchConnectorConfig
+         * @description Config for `url_batch` connector.
+         */
+        UrlBatchConnectorConfig: {
+            /**
+             * Urls
+             * @description One URL per entry
+             */
+            urls: string[];
+            /**
+             * Filename
+             * @description Optional: override filename for display/extension inference (applies to all urls).
+             */
+            filename?: string | null;
+            /**
+             * Parser Backend
+             * @default auto
+             */
+            parser_backend: string;
+            /**
+             * Chunk Strategy
+             * @default langchain_recursive
+             */
+            chunk_strategy: string;
+            pipeline?: components["schemas"]["DocumentPipelineOptions"] | null;
+            access?: components["schemas"]["DocumentAccessUpdateRequest"] | null;
+        };
+        /**
+         * UrlIngestConfig
+         * @description URL ingestion config (server-side fetch; connectors).
+         */
+        UrlIngestConfig: {
+            /**
+             * Enabled
+             * @default false
+             */
+            enabled: boolean;
+            /**
+             * Max Bytes
+             * @default 50000000
+             */
+            max_bytes: number;
+            /**
+             * Timeout Sec
+             * @default 30
+             */
+            timeout_sec: number;
+            /**
+             * Allow Private Ips
+             * @default false
+             */
+            allow_private_ips: boolean;
+            /**
+             * Follow Redirects
+             * @default false
+             */
+            follow_redirects: boolean;
         };
         /**
          * UrlUploadRequest
@@ -7190,6 +8995,28 @@ export interface components {
         };
         /** RegexRuleModel */
         app__api__schemas__governance_profile__RegexRuleModel: {
+            /** Pattern */
+            pattern: string;
+            /**
+             * Repl
+             * @default
+             */
+            repl: string;
+            /**
+             * Flags
+             * @default 0
+             */
+            flags: number;
+        };
+        /** ChunkPreviewResponse */
+        app__api__schemas__pipeline__ChunkPreviewResponse: {
+            /** Paragraphs */
+            paragraphs: components["schemas"]["ChunkItem"][];
+            /** Sentences */
+            sentences: components["schemas"]["ChunkItem"][];
+        };
+        /** RegexRuleModel */
+        app__api__schemas__pipeline__RegexRuleModel: {
             /** Pattern */
             pattern: string;
             /**
@@ -7616,6 +9443,80 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_document_access_api_v1_documents__document_id__access_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path: {
+                document_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentAccessInfo"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    put_document_access_api_v1_documents__document_id__access_put: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path: {
+                document_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DocumentAccessUpdateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentAccessInfo"];
+                };
             };
             /** @description Validation Error */
             422: {
@@ -9231,6 +11132,1034 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_dataset_profile_summary_api_v1_datasets__dataset_id__profile_summary_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path: {
+                dataset_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DatasetProfileSummary"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_dataset_profile_finding_documents_api_v1_datasets__dataset_id__profile_findings__finding_key__get: {
+        parameters: {
+            query?: {
+                skip?: number;
+                limit?: number;
+            };
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path: {
+                dataset_id: string;
+                finding_key: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DatasetProfileFindingListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_dataset_profile_scan_runs_api_v1_datasets__dataset_id__profile_scan_runs_get: {
+        parameters: {
+            query?: {
+                skip?: number;
+                limit?: number;
+            };
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path: {
+                dataset_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DatasetProfileScanRunListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_dataset_profile_scan_run_api_v1_datasets__dataset_id__profile_scan_runs_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path: {
+                dataset_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DatasetProfileScanRunCreateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DatasetProfileScanRunOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_dataset_profile_scan_run_api_v1_datasets__dataset_id__profile_scan_runs__scan_run_id__get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path: {
+                dataset_id: string;
+                scan_run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DatasetProfileScanRunOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    export_dataset_profile_summary_api_v1_datasets__dataset_id__profile_export_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path: {
+                dataset_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    export_dataset_profile_html_report_api_v1_datasets__dataset_id__profile_export_html_get: {
+        parameters: {
+            query?: {
+                /** @description Whether to redact dataset name/id for sharing */
+                redact?: boolean;
+            };
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path: {
+                dataset_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_dataset_precheck_scan_runs_api_v1_datasets__dataset_id__precheck_scan_runs_get: {
+        parameters: {
+            query?: {
+                skip?: number;
+                limit?: number;
+            };
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path: {
+                dataset_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DatasetPrecheckScanRunListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_dataset_precheck_scan_run_api_v1_datasets__dataset_id__precheck_scan_runs_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path: {
+                dataset_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DatasetPrecheckScanRunCreateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DatasetPrecheckScanRunOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_dataset_precheck_scan_run_api_v1_datasets__dataset_id__precheck_scan_runs__scan_run_id__get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path: {
+                dataset_id: string;
+                scan_run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DatasetPrecheckScanRunOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_dataset_precheck_summary_api_v1_datasets__dataset_id__precheck_scan_runs__scan_run_id__summary_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path: {
+                dataset_id: string;
+                scan_run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DatasetPrecheckSummary"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_dataset_precheck_finding_files_api_v1_datasets__dataset_id__precheck_scan_runs__scan_run_id__findings__finding_key__get: {
+        parameters: {
+            query?: {
+                skip?: number;
+                limit?: number;
+            };
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path: {
+                dataset_id: string;
+                scan_run_id: string;
+                finding_key: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DatasetPrecheckFindingListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    cancel_dataset_precheck_scan_run_api_v1_datasets__dataset_id__precheck_scan_runs__scan_run_id__cancel_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path: {
+                dataset_id: string;
+                scan_run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DatasetPrecheckScanRunOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    stream_dataset_precheck_scan_events_api_v1_datasets__dataset_id__precheck_scan_runs__scan_run_id__events_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path: {
+                dataset_id: string;
+                scan_run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_dataset_precheck_samples_api_v1_datasets__dataset_id__precheck_scan_runs__scan_run_id__samples_get: {
+        parameters: {
+            query?: {
+                size?: number;
+                prefer_artifact?: boolean;
+            };
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path: {
+                dataset_id: string;
+                scan_run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DatasetPrecheckSamplesResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_dataset_precheck_near_dups_api_v1_datasets__dataset_id__precheck_scan_runs__scan_run_id__near_dups_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path: {
+                dataset_id: string;
+                scan_run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DatasetPrecheckNearDupResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    diff_dataset_precheck_scan_runs_api_v1_datasets__dataset_id__precheck_scan_runs__scan_run_id__diff_get: {
+        parameters: {
+            query: {
+                /** @description Base scan run id to compare against */
+                base_scan_run_id: string;
+            };
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path: {
+                dataset_id: string;
+                scan_run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DatasetPrecheckDiffResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_dataset_precheck_ingestion_policy_suggestion_api_v1_datasets__dataset_id__precheck_scan_runs__scan_run_id__suggest_ingestion_policy_get: {
+        parameters: {
+            query?: {
+                max_names_per_bucket?: number;
+            };
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path: {
+                dataset_id: string;
+                scan_run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DatasetPrecheckIngestionSuggestionResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    apply_dataset_precheck_ingestion_policy_suggestion_api_v1_datasets__dataset_id__precheck_scan_runs__scan_run_id__apply_ingestion_policy_post: {
+        parameters: {
+            query?: {
+                /** @description Whether to overwrite existing dataset ingestion_policy */
+                replace?: boolean;
+            };
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path: {
+                dataset_id: string;
+                scan_run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IngestionPolicyImportResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    export_dataset_precheck_summary_json_api_v1_datasets__dataset_id__precheck_scan_runs__scan_run_id__export_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path: {
+                dataset_id: string;
+                scan_run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    export_dataset_precheck_html_report_api_v1_datasets__dataset_id__precheck_scan_runs__scan_run_id__export_html_get: {
+        parameters: {
+            query?: {
+                /** @description Whether to redact dataset/path for sharing */
+                redact?: boolean;
+            };
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path: {
+                dataset_id: string;
+                scan_run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_dataset_tables_api_v1_datasets__dataset_id__tables_get: {
+        parameters: {
+            query?: {
+                /** @description Document-level offset (not table-level) */
+                skip?: number;
+                /** @description Document-level limit (not table-level) */
+                limit?: number;
+                /** @description Include column schema in each item */
+                include_columns?: boolean;
+                /** @description Include sample rows in each item */
+                include_sample_rows?: boolean;
+            };
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path: {
+                dataset_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DatasetTablesListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_dataset_table_api_v1_datasets__dataset_id__tables__table_id__get: {
+        parameters: {
+            query?: {
+                include_columns?: boolean;
+                include_sample_rows?: boolean;
+            };
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path: {
+                dataset_id: string;
+                table_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TableAssetOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    preview_dataset_table_api_v1_datasets__dataset_id__tables__table_id__preview_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path: {
+                dataset_id: string;
+                table_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TableQueryResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    query_dataset_table_api_v1_datasets__dataset_id__tables__table_id__query_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path: {
+                dataset_id: string;
+                table_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TableQueryRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TableQueryResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    ask_dataset_table_api_v1_datasets__dataset_id__tables__table_id__ask_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path: {
+                dataset_id: string;
+                table_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TableAskRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TableAskResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    lotus_sem_filter_dataset_table_api_v1_datasets__dataset_id__tables__table_id__lotus_sem_filter_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path: {
+                dataset_id: string;
+                table_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LotusSemFilterRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TableQueryResponse"];
                 };
             };
             /** @description Validation Error */
@@ -10942,7 +13871,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ChunkPreviewResponse"];
+                    "application/json": components["schemas"]["app__api__schemas__pipeline__ChunkPreviewResponse"];
                 };
             };
             /** @description Validation Error */
@@ -11174,6 +14103,170 @@ export interface operations {
             };
         };
     };
+    list_connectors_api_v1_connectors_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConnectorInfo"][];
+                };
+            };
+        };
+    };
+    list_connector_runs_api_v1_connectors_runs_get: {
+        parameters: {
+            query?: {
+                skip?: number;
+                limit?: number;
+                dataset_id?: string | null;
+            };
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConnectorRunListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_connector_run_api_v1_connectors_runs_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ConnectorRunCreateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConnectorRunOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_connector_run_api_v1_connectors_runs__run_id__get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConnectorRunOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    cancel_connector_run_api_v1_connectors_runs__run_id__cancel_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConnectorRunOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     retrieve_preview_api_v1_rag_retrieve_preview_post: {
         parameters: {
             query?: never;
@@ -11305,6 +14398,42 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SimilarityCalculateResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_rag_metrics_summary_api_v1_observability_rag_metrics_summary_get: {
+        parameters: {
+            query?: {
+                window_minutes?: number;
+                max_bytes?: number;
+            };
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RagMetricsSummaryResponse"];
                 };
             };
             /** @description Validation Error */
