@@ -47,6 +47,24 @@ class TableAsset:
     sample_rows: list[dict[str, Any]]
 
 
+def _sqlite_timeout_sec() -> float:
+    """
+    Coerce and clamp sqlite busy timeout.
+
+    - Keep requests responsive by capping excessively large values.
+    - Allow 0 to fail fast when the DB is locked.
+    """
+    raw = getattr(settings, "TABLE_STORE_SQLITE_TIMEOUT_SEC", 30.0)
+    try:
+        timeout = float(raw)  # type: ignore[arg-type]
+    except Exception:
+        timeout = 30.0
+
+    if timeout < 0:
+        timeout = 0.0
+    return min(timeout, 120.0)
+
+
 def _jsonify_value(v: Any) -> Any:
     if v is None:
         return None
@@ -114,7 +132,9 @@ def _connect_rw(path: Path) -> sqlite3.Connection:
         path.parent.mkdir(parents=True, exist_ok=True)
     except Exception:
         pass
-    conn = sqlite3.connect(str(path), timeout=30)
+    timeout = _sqlite_timeout_sec()
+    conn = sqlite3.connect(str(path), timeout=timeout)
+    conn.execute(f"PRAGMA busy_timeout={int(timeout * 1000)};")
     conn.execute("PRAGMA journal_mode=WAL;")
     conn.execute("PRAGMA synchronous=NORMAL;")
     conn.execute("PRAGMA foreign_keys=ON;")
@@ -124,7 +144,9 @@ def _connect_rw(path: Path) -> sqlite3.Connection:
 def _connect_ro(path: Path) -> sqlite3.Connection:
     # Read-only query connection (prevents writes even if authorizer is bypassed).
     uri = f"file:{path}?mode=ro"
-    conn = sqlite3.connect(uri, uri=True, timeout=30)
+    timeout = _sqlite_timeout_sec()
+    conn = sqlite3.connect(uri, uri=True, timeout=timeout)
+    conn.execute(f"PRAGMA busy_timeout={int(timeout * 1000)};")
     conn.row_factory = sqlite3.Row
     return conn
 
@@ -222,63 +244,71 @@ def _import_excel(
     sample_rows: int,
 ) -> list[TableAsset]:
     # Keep this simple and robust: use pandas for both .xls and .xlsx.
+    #
+    # Important: ensure the underlying file handle is closed, otherwise Windows
+    # can fail to delete temp xlsx files during cleanup (PermissionError).
     try:
-        xls = pd.ExcelFile(str(file_path))
+        with pd.ExcelFile(str(file_path)) as xls:
+            assets: list[TableAsset] = []
+            sheet_names: list[str] = []
+            try:
+                sheet_names = list(getattr(xls, "sheet_names", []) or [])
+            except Exception:
+                sheet_names = []
+
+            # Guardrail: cap total imported sheets to avoid pathological workbooks.
+            max_sheets = int(getattr(settings, "TABLE_STORE_MAX_SHEETS", 0) or 0)
+            workbook_truncated = False
+            if max_sheets > 0 and len(sheet_names) > max_sheets:
+                workbook_truncated = True
+                sheet_names = sheet_names[: max(0, int(max_sheets))]
+
+            if not sheet_names:
+                # Produce an empty sheet0 table for consistency.
+                empty = pd.DataFrame()
+                return _write_single_sheet(
+                    tenant_id=tenant_id,
+                    dataset_id=dataset_id,
+                    document_id=document_id,
+                    df=empty,
+                    sheet_index=0,
+                    sheet_name=None,
+                    truncated=False,
+                    sample_rows=sample_rows,
+                )
+
+            for idx, name in enumerate(sheet_names):
+                nrows = max(0, int(max_rows or 0)) or None
+                try:
+                    df = pd.read_excel(xls, sheet_name=name, nrows=nrows, dtype_backend="numpy_nullable")  # type: ignore[call-arg]
+                except Exception:
+                    # Best-effort: skip unreadable sheets.
+                    continue
+                truncated = bool(nrows is not None and int(getattr(df, "shape", (0, 0))[0]) >= int(nrows)) or bool(workbook_truncated)
+                if max_cols and int(max_cols) > 0 and int(getattr(df, "shape", (0, 0))[1]) > int(max_cols):
+                    df = df.iloc[:, : int(max_cols)]
+                assets.extend(
+                    _write_single_sheet(
+                        tenant_id=tenant_id,
+                        dataset_id=dataset_id,
+                        document_id=document_id,
+                        df=df,
+                        sheet_index=int(idx),
+                        sheet_name=str(name),
+                        truncated=truncated,
+                        sample_rows=sample_rows,
+                    )
+                )
+
+            return assets or []
     except Exception as exc:
-        raise RuntimeError(f"excel_open_failed: {str(exc)[:200]}") from exc
-
-    assets: list[TableAsset] = []
-    sheet_names: list[str] = []
-    try:
-        sheet_names = list(getattr(xls, "sheet_names", []) or [])
-    except Exception:
-        sheet_names = []
-
-    # Guardrail: cap total imported sheets to avoid pathological workbooks.
-    max_sheets = int(getattr(settings, "TABLE_STORE_MAX_SHEETS", 0) or 0)
-    workbook_truncated = False
-    if max_sheets > 0 and len(sheet_names) > max_sheets:
-        workbook_truncated = True
-        sheet_names = sheet_names[: max(0, int(max_sheets))]
-
-    if not sheet_names:
-        # Produce an empty sheet0 table for consistency.
-        empty = pd.DataFrame()
-        return _write_single_sheet(
-            tenant_id=tenant_id,
-            dataset_id=dataset_id,
-            document_id=document_id,
-            df=empty,
-            sheet_index=0,
-            sheet_name=None,
-            truncated=False,
-            sample_rows=sample_rows,
-        )
-
-    for idx, name in enumerate(sheet_names):
-        nrows = max(0, int(max_rows or 0)) or None
-        try:
-            df = pd.read_excel(xls, sheet_name=name, nrows=nrows, dtype_backend="numpy_nullable")  # type: ignore[call-arg]
-        except Exception:
-            # Best-effort: skip unreadable sheets.
-            continue
-        truncated = bool(nrows is not None and int(getattr(df, "shape", (0, 0))[0]) >= int(nrows)) or bool(workbook_truncated)
-        if max_cols and int(max_cols) > 0 and int(getattr(df, "shape", (0, 0))[1]) > int(max_cols):
-            df = df.iloc[:, : int(max_cols)]
-        assets.extend(
-            _write_single_sheet(
-                tenant_id=tenant_id,
-                dataset_id=dataset_id,
-                document_id=document_id,
-                df=df,
-                sheet_index=int(idx),
-                sheet_name=str(name),
-                truncated=truncated,
-                sample_rows=sample_rows,
-            )
-        )
-
-    return assets or []
+        hint = ""
+        ext = file_path.suffix.lower()
+        if ext == ".xls":
+            hint = " (hint: install 'xlrd' for .xls support)"
+        if ext == ".xlsx":
+            hint = " (hint: install 'openpyxl' for .xlsx support)"
+        raise RuntimeError(f"excel_open_failed{hint}: {str(exc)[:200]}") from exc
 
 
 def _write_single_sheet(

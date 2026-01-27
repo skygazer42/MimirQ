@@ -7,21 +7,41 @@ Provides system health status check interfaces for frontend and developer tools 
 
 from datetime import datetime, timezone
 import time
+from typing import Any
 
 from fastapi import APIRouter, Response
 
 from app.core.config import settings
 from app.core.database import SessionLocal
 from app.core.health_checks import check_database, check_minio, check_redis, check_vector
-from app.storage.vector.milvus import milvus_store
-from app.storage.object.minio import minio_service
 from app.api.schemas.health import HealthResponse, ReadyResponse
 
 
 router = APIRouter()
-_READY_CACHE_TTL_SEC = 2.0
+_READY_CACHE_TTL_SEC = max(0.0, float(getattr(settings, "READY_CACHE_TTL_SEC", 2.0) or 2.0))
 _ready_cache: dict[str, object] = {"ts": 0.0, "payload": None, "status": 200, "key": None}
 _redis_client = None
+
+
+class _MilvusStoreProxy:
+    # Keep /health import-time lightweight; import the real client only when called.
+    def get_collection_count(self) -> int:
+        from app.storage.vector.milvus import milvus_store
+
+        return milvus_store.get_collection_count()
+
+
+class _MinioServiceProxy:
+    # Keep /health import-time lightweight; import the real client only when called.
+    def health_check(self) -> dict[str, Any]:
+        from app.storage.object.minio import minio_service
+
+        return minio_service.health_check()
+
+
+# Backward compatible symbols (tests / tooling patch these).
+milvus_store = _MilvusStoreProxy()
+minio_service = _MinioServiceProxy()
 
 
 def _ready_cache_key() -> tuple[object, ...]:
@@ -97,10 +117,12 @@ def ready(response: Response) -> dict:
     db_status, db_ok = check_database(SessionLocal)
     ok &= db_ok
 
+    vector_backend = (getattr(settings, "VECTOR_BACKEND", "milvus") or "milvus").lower()
+    milvus_get_count = milvus_store.get_collection_count if vector_backend == "milvus" else None
     vector_status, _milvus_status, vector_ok = check_vector(
         settings,
         mode="ready",
-        milvus_get_collection_count=milvus_store.get_collection_count,
+        milvus_get_collection_count=milvus_get_count,
     )
     ok &= vector_ok
 
@@ -110,7 +132,8 @@ def ready(response: Response) -> dict:
         global _redis_client
         _redis_client = None
 
-    minio_status, minio_ok = check_minio(settings, mode="ready", minio_health_check=minio_service.health_check)
+    minio_health_check = minio_service.health_check if bool(getattr(settings, "MINIO_ENABLED", False)) else None
+    minio_status, minio_ok = check_minio(settings, mode="ready", minio_health_check=minio_health_check)
     ok &= minio_ok
 
     if not ok:

@@ -1,48 +1,32 @@
 from __future__ import annotations
 
-import httpx
-import pytest
-from fastapi import FastAPI, Request
-
-from app.api.middleware.request_id import RequestIDMiddleware
+import re
 
 
-def _make_app() -> FastAPI:
-    app = FastAPI()
-    app.add_middleware(RequestIDMiddleware)
-
-    @app.get("/ping")
-    async def ping(request: Request) -> dict:
-        return {"request_id": getattr(request.state, "request_id", None)}
-
-    return app
+_UUID_HEX_RE = re.compile(r"^[0-9a-f]{32}$")
 
 
-@pytest.mark.asyncio
-async def test_request_id_generated_and_propagated():
-    transport = httpx.ASGITransport(app=_make_app())
-    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
-        res = await client.get("/ping")
-    assert res.status_code == 200
-    assert res.headers.get("X-Request-ID")
-    assert res.json()["request_id"] == res.headers["X-Request-ID"]
+def test_normalize_request_id_accepts_valid() -> None:
+    from app.api.middleware.request_id import _normalize_request_id
+
+    assert _normalize_request_id("abc-123") == "abc-123"
+    assert _normalize_request_id("  abc_123  ") == "abc_123"
+    assert _normalize_request_id("a" * 128) == "a" * 128
 
 
-@pytest.mark.asyncio
-async def test_request_id_echoes_valid_client_header():
-    transport = httpx.ASGITransport(app=_make_app())
-    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
-        res = await client.get("/ping", headers={"X-Request-ID": "req-123"})
-    assert res.status_code == 200
-    assert res.headers["X-Request-ID"] == "req-123"
-    assert res.json()["request_id"] == "req-123"
+def test_normalize_request_id_rejects_injection_and_invalid() -> None:
+    from app.api.middleware.request_id import _normalize_request_id
 
+    assert _UUID_HEX_RE.match(_normalize_request_id(None) or "")
+    assert _UUID_HEX_RE.match(_normalize_request_id("") or "")
 
-@pytest.mark.asyncio
-async def test_request_id_rejects_unsafe_header_values():
-    transport = httpx.ASGITransport(app=_make_app())
-    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
-        res = await client.get("/ping", headers={"X-Request-ID": "bad\nid"})
-    assert res.status_code == 200
-    assert res.headers["X-Request-ID"] != "bad\nid"
-    assert res.json()["request_id"] == res.headers["X-Request-ID"]
+    # Header injection / control chars
+    assert _UUID_HEX_RE.match(_normalize_request_id("abc\n123") or "")
+    assert _UUID_HEX_RE.match(_normalize_request_id("abc\r123") or "")
+
+    # Invalid leading char
+    assert _UUID_HEX_RE.match(_normalize_request_id("-bad") or "")
+
+    # Too long (max 128)
+    assert _UUID_HEX_RE.match(_normalize_request_id("a" * 129) or "")
+

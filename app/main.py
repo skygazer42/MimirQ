@@ -63,7 +63,7 @@ import app.models.connector  # noqa: F401
 
 logger = logging.getLogger("mimirq")
 _OPENAPI_EXPORT_MODE = str(os.getenv("MIMIRQ_OPENAPI_EXPORT", "") or "").strip().lower() in {"1", "true", "yes", "y", "on"}
-_HEALTH_CACHE_TTL_SEC = 2.0
+_HEALTH_CACHE_TTL_SEC = max(0.0, float(getattr(settings, "HEALTH_CACHE_TTL_SEC", 2.0) or 2.0))
 _health_cache: dict[str, object] = {"ts": 0.0, "payload": None, "key": None}
 
 

@@ -107,6 +107,13 @@ def configure_logging(*, log_level: str = "INFO", log_format: str = "plain") -> 
     level = int(logging._nameToLevel.get(str(log_level).upper(), logging.INFO))
 
     if str(log_format).lower() != "json":
+        # Best-effort: ensure the process respects LOG_LEVEL even when we keep plain logging.
+        # Do not forcibly override existing handlers (e.g., uvicorn / pytest log capture).
+        root = logging.getLogger()
+        if not getattr(root, "handlers", None):
+            logging.basicConfig(level=level)
+        else:
+            root.setLevel(level)
         return
 
     handler = logging.StreamHandler(sys.stdout)

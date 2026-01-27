@@ -25,6 +25,9 @@
 - [integration/API_CONTRACT.md](./integration/API_CONTRACT.md)：前后端接口契约检查（保证接口一一对应）。
 - [integration/API_SMOKE.md](./integration/API_SMOKE.md)：全接口冒烟（OpenAPI 全量覆盖 + 调用验证）。
 
+## 运维 / CI
+- [operations.md](./operations.md)：doctor/verify/audit/回归门禁等脚本使用说明。
+
 ## 优化清单
 - [optimization/OPTIMIZATION_20_TASKS_DOC_PARSING_CHUNKING_CLEANING.md](./optimization/OPTIMIZATION_20_TASKS_DOC_PARSING_CHUNKING_CLEANING.md)：文档解析/清洗/切块 20 项深度优化。
 
