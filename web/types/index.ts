@@ -1694,3 +1694,58 @@ export interface DatasetPrecheckIngestionSuggestionResponse {
   notes: string[]
   manual_review: DatasetPrecheckManualReviewBucket[]
 }
+
+// ==================== Dataset Tables (TAG) ====================
+
+export interface DatasetTableColumn {
+  name: string
+  dtype?: string | null
+}
+
+export interface DatasetTableAsset {
+  table_id: string
+  document_id: string
+  document_filename?: string | null
+  sheet_index: number
+  sheet_name?: string | null
+  row_count: number
+  col_count: number
+  truncated: boolean
+  columns: DatasetTableColumn[]
+  sample_rows: Record<string, any>[]
+}
+
+export interface DatasetTablesListResponse {
+  total: number
+  items: DatasetTableAsset[]
+}
+
+export interface TableQueryRequest {
+  sql: string
+  max_rows?: number | null
+  max_cols?: number | null
+}
+
+export interface TableQueryResponse {
+  sql: string
+  columns: string[]
+  rows: any[][]
+  truncated: boolean
+}
+
+export interface TableAskRequest {
+  question: string
+  max_rows?: number | null
+}
+
+export interface TableAskResponse {
+  answer: string
+  sql?: string | null
+  data?: TableQueryResponse | null
+}
+
+export interface LotusSemFilterRequest {
+  user_instruction: string
+  strategy?: string
+  max_rows?: number | null
+}

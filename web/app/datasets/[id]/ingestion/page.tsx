@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { toast } from 'sonner'
-import { ArrowLeft, BarChart3, Download, FileUp, Loader2, Plus, RefreshCw, Save, Settings2, Sparkles, Trash2 } from 'lucide-react'
+import { ArrowLeft, BarChart3, Download, FileUp, Loader2, Plus, RefreshCw, Save, Settings2, Sparkles, Table2, Trash2 } from 'lucide-react'
 
 import { AppFrame } from '@/components/app-frame'
 import { PageScaffold } from '@/components/ui/page-scaffold'
@@ -784,6 +784,16 @@ export default function DatasetIngestionPolicyPage() {
               >
                 <BarChart3 className="w-4 h-4" />
                 数据画像
+              </Button>
+            ) : null}
+            {datasetId ? (
+              <Button
+                variant="outline"
+                onClick={() => router.push(`/datasets/${datasetId}/tables`)}
+                className="gap-2"
+              >
+                <Table2 className="w-4 h-4" />
+                表格 / TAG
               </Button>
             ) : null}
             <Button variant="outline" onClick={handleExport} className="gap-2">

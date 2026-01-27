@@ -159,6 +159,7 @@ async def lifespan(app: FastAPI):
     # Ensure local directories exist (uploads/logs/vector persistence).
     for dir_path in [
         settings.UPLOAD_DIR,
+        getattr(settings, "TABLE_STORE_DIR", None),
         settings.FAISS_STORE_PATH if getattr(settings, "VECTOR_BACKEND", "milvus") == "faiss" else None,
         settings.CHROMA_PERSIST_PATH if getattr(settings, "VECTOR_BACKEND", "milvus") == "chroma" else None,
     ]:

@@ -79,6 +79,11 @@ class PipelineOptions:
     kg_enabled: Optional[bool] = None
     event_vector_enabled: Optional[bool] = None
     entity_vector_enabled: Optional[bool] = None
+    # Structured/table store (TAG).
+    table_store_enabled: Optional[bool] = None
+    table_store_max_rows: Optional[int] = None
+    table_store_max_cols: Optional[int] = None
+    table_store_sample_rows: Optional[int] = None
 
 
 @dataclass(frozen=True)
@@ -145,6 +150,10 @@ class PipelineEffective:
     kg_enabled: bool
     event_vector_enabled: bool
     entity_vector_enabled: bool
+    table_store_enabled: bool
+    table_store_max_rows: int
+    table_store_max_cols: int
+    table_store_sample_rows: int
 
 
 __all__ = [

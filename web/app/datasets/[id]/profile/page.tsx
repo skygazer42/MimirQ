@@ -12,6 +12,7 @@ import {
   RefreshCw,
   Settings2,
   Sparkles,
+  Table2,
 } from 'lucide-react'
 import {
   Bar,
@@ -378,6 +379,12 @@ export default function DatasetProfilePage() {
               <Button variant="outline" className="gap-2" onClick={() => router.push(`/datasets/${datasetId}/ingestion`)}>
                 <Settings2 className="w-4 h-4" />
                 入库策略
+              </Button>
+            ) : null}
+            {datasetId ? (
+              <Button variant="outline" className="gap-2" onClick={() => router.push(`/datasets/${datasetId}/tables`)}>
+                <Table2 className="w-4 h-4" />
+                表格 / TAG
               </Button>
             ) : null}
             <Button

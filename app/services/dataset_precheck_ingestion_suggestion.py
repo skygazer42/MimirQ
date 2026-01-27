@@ -131,6 +131,13 @@ def build_ingestion_policy_suggestion(
     pdf_scan = summary.get("pdf_scan") if isinstance(summary.get("pdf_scan"), dict) else {}
     scanned_pdfs = _safe_int(pdf_scan.get("scanned"))
     unknown_pdfs = _safe_int(pdf_scan.get("unknown"))
+    finding_list = summary.get("findings") if isinstance(summary.get("findings"), list) else []
+    finding_by_key = {
+        str(item.get("key") or "").strip().lower(): item
+        for item in (finding_list or [])
+        if isinstance(item, dict)
+    }
+    large_spreadsheets = _safe_int((finding_by_key.get("large_spreadsheet") or {}).get("count"))
 
     # Identify which file types actually hit PII/secrets, so we only patch relevant rules.
     jsonl_path = _load_jsonl_path(scan_run, tenant_id=tenant_id)
@@ -158,6 +165,8 @@ def build_ingestion_policy_suggestion(
         notes.append(f"PDF 类型未知：{unknown_pdfs}（可能为加密/权限/依赖缺失；建议加入人工复核队列）")
     if use_longform:
         notes.append(f"P90 文本长度较长（{p90} chars）：Markdown/长文建议使用 longform 治理预设（去重+裁剪 References）")
+    if large_spreadsheets > 0:
+        notes.append(f"检测到大表/复杂表格：{large_spreadsheets}（建议优先走 TAG/SQL 方案，而不是硬上纯 RAG）")
 
     # Build rules (conservative defaults).
     rules: list[dict[str, Any]] = []
@@ -210,16 +219,60 @@ def build_ingestion_policy_suggestion(
         )
     )
 
+    # Table-like files: prefer table store (TAG) over chunk/vector ingestion.
+    # NOTE: table_store import happens before parsing; governance profiles do not apply here.
+    table_has_pii = bool({"csv", "xls", "xlsx"} & pii_types)
+    table_patch: dict[str, Any] = {
+        "table_store_enabled": True,
+        # Avoid indexing tables into RAG by default (keeps search quality and cost stable).
+        "chunk_vector_enabled": False,
+        "bm25_index_enabled": False,
+        "kg_enabled": False,
+        "event_vector_enabled": False,
+        "entity_vector_enabled": False,
+    }
+    if table_has_pii:
+        # Conservative default: do not persist raw sample rows when precheck suggests PII exists.
+        table_patch["table_store_sample_rows"] = 0
+    # CSV is text; apply safe text preprocess before import.
+    rules.append(
+        _rule(
+            rid="tables-csv-tag",
+            name="表格（CSV）：Table Store (TAG/SQL)",
+            extensions=[".csv"],
+            preprocess_steps=[
+                "text.reencode_utf8",
+                "text.strip_bom",
+                "text.normalize_newlines",
+            ],
+            parser_backend="auto",
+            governance_profile_ref=None,
+            pipeline_patch=table_patch,
+        )
+    )
+    # Excel is binary; do NOT apply text preprocess steps.
+    rules.append(
+        _rule(
+            rid="tables-excel-tag",
+            name="表格（XLS/XLSX）：Table Store (TAG/SQL)",
+            extensions=[".xls", ".xlsx"],
+            preprocess_steps=None,
+            parser_backend="auto",
+            governance_profile_ref=None,
+            pipeline_patch=table_patch,
+        )
+    )
+
     # Office.
     office_patch = _pii_secrets_patch(
-        enable_pii=bool({"docx", "pptx", "xls", "xlsx"} & pii_types),
-        enable_secrets=bool({"docx", "pptx", "xls", "xlsx"} & secrets_types),
+        enable_pii=bool({"docx", "pptx"} & pii_types),
+        enable_secrets=bool({"docx", "pptx"} & secrets_types),
     )
     rules.append(
         _rule(
             rid="office-default",
-            name="Office（DOCX/PPTX/XLSX）",
-            extensions=[".docx", ".pptx", ".xls", ".xlsx"],
+            name="Office（DOCX/PPTX）",
+            extensions=[".docx", ".pptx"],
             preprocess_steps=None,
             parser_backend="markitdown",
             governance_profile_ref="builtin:kb_default",
@@ -229,14 +282,14 @@ def build_ingestion_policy_suggestion(
 
     # Structured data (csv/json/log).
     structured_patch = _pii_secrets_patch(
-        enable_pii=bool({"csv", "json", "jsonl", "ndjson", "log", "txt"} & pii_types),
-        enable_secrets=bool({"csv", "json", "jsonl", "ndjson", "log", "txt"} & secrets_types),
+        enable_pii=bool({"json", "jsonl", "ndjson", "log", "txt"} & pii_types),
+        enable_secrets=bool({"json", "jsonl", "ndjson", "log", "txt"} & secrets_types),
     )
     rules.append(
         _rule(
             rid="structured-data",
-            name="结构化数据（CSV/JSON/日志型）",
-            extensions=[".csv", ".json", ".jsonl", ".ndjson", ".log"],
+            name="结构化数据（JSON/日志型）",
+            extensions=[".json", ".jsonl", ".ndjson", ".log"],
             preprocess_steps=[
                 "text.reencode_utf8",
                 "text.strip_bom",

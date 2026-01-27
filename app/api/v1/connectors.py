@@ -10,7 +10,6 @@ from __future__ import annotations
 
 import contextlib
 from datetime import datetime, timezone
-from typing import Any
 from uuid import UUID
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
@@ -348,4 +347,3 @@ def cancel_connector_run(
     db.commit()
     db.refresh(run)
     return _run_out(run)
-
