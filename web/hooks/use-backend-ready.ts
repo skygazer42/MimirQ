@@ -2,7 +2,8 @@
 
 import { useQuery } from '@tanstack/react-query'
 
-import { healthApi, type ReadyResponse } from '@/lib/api-client'
+import { healthApi } from '@/lib/api-client'
+import type { ReadyResponse } from '@/types/backend'
 
 export function useBackendReady() {
   return useQuery<ReadyResponse>({
@@ -14,4 +15,3 @@ export function useBackendReady() {
     retry: 1,
   })
 }
-
