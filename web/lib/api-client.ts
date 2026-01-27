@@ -42,6 +42,10 @@ import type {
   DatasetPrecheckScanRunCreateRequest,
   DatasetPrecheckScanRunListResponse,
   DatasetPrecheckScanRunOut,
+  DatasetPrecheckSamplesResponse,
+  DatasetPrecheckNearDupResponse,
+  DatasetPrecheckDiffResponse,
+  DatasetPrecheckIngestionSuggestionResponse,
   MessageFeedback,
   MessageFeedbackCreate,
   MessageFeedbackListResponse,
@@ -1082,6 +1086,52 @@ export const datasetApi = {
     const { data } = await apiClient.get(`/datasets/${datasetId}/precheck/scan-runs/${scanRunId}/export-html`, { params, responseType: 'blob' })
     return data as Blob
   },
+
+  async cancelPrecheckScan(datasetId: string, scanRunId: string): Promise<DatasetPrecheckScanRunOut> {
+    const { data } = await apiClient.post(`/datasets/${datasetId}/precheck/scan-runs/${scanRunId}/cancel`)
+    return data
+  },
+
+  async getPrecheckSamples(
+    datasetId: string,
+    scanRunId: string,
+    params?: { size?: number; prefer_artifact?: boolean }
+  ): Promise<DatasetPrecheckSamplesResponse> {
+    const { data } = await apiClient.get(`/datasets/${datasetId}/precheck/scan-runs/${scanRunId}/samples`, { params })
+    return data
+  },
+
+  async getPrecheckNearDups(datasetId: string, scanRunId: string): Promise<DatasetPrecheckNearDupResponse> {
+    const { data } = await apiClient.get(`/datasets/${datasetId}/precheck/scan-runs/${scanRunId}/near-dups`)
+    return data
+  },
+
+  async diffPrecheckScanRuns(
+    datasetId: string,
+    scanRunId: string,
+    params: { base_scan_run_id: string }
+  ): Promise<DatasetPrecheckDiffResponse> {
+    const { data } = await apiClient.get(`/datasets/${datasetId}/precheck/scan-runs/${scanRunId}/diff`, { params })
+    return data
+  },
+
+  async suggestPrecheckIngestionPolicy(
+    datasetId: string,
+    scanRunId: string,
+    params?: { max_names_per_bucket?: number }
+  ): Promise<DatasetPrecheckIngestionSuggestionResponse> {
+    const { data } = await apiClient.get(`/datasets/${datasetId}/precheck/scan-runs/${scanRunId}/suggest-ingestion-policy`, { params })
+    return data
+  },
+
+  async applyPrecheckIngestionPolicy(
+    datasetId: string,
+    scanRunId: string,
+    params?: { replace?: boolean }
+  ): Promise<IngestionPolicyImportResponse> {
+    const { data } = await apiClient.post(`/datasets/${datasetId}/precheck/scan-runs/${scanRunId}/apply-ingestion-policy`, undefined, { params })
+    return data
+  },
 }
 
 // ==================== 对话 API ====================
@@ -1210,6 +1260,66 @@ export const chatApi = {
 
   async deleteCheckpoints(conversationId: string): Promise<void> {
     await apiClient.delete(`/chat/conversations/${conversationId}/checkpoints`)
+  },
+}
+
+// ==================== SSE helpers (scan progress) ====================
+
+export const sseApi = {
+  async streamPrecheckScanEvents(
+    datasetId: string,
+    scanRunId: string,
+    onEvent: (event: MessageEvent) => void,
+    onError?: (error: Error) => void,
+    signal?: AbortSignal
+  ): Promise<void> {
+    const requestId =
+      typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+        ? crypto.randomUUID()
+        : `req-${Date.now()}-${Math.random().toString(16).slice(2)}`
+
+    const response = await fetch(`${API_V1_BASE_URL}/datasets/${datasetId}/precheck/scan-runs/${scanRunId}/events`, {
+      method: 'GET',
+      headers: {
+        ...getAuthHeaders(),
+        'X-Request-ID': requestId,
+      },
+      signal,
+    })
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`)
+    }
+
+    const reader = response.body?.getReader()
+    if (!reader) {
+      throw new Error('No response body')
+    }
+
+    const decoder = new TextDecoder()
+    const sse = createSseDataParser()
+
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+
+      const chunkText = decoder.decode(value, { stream: true })
+      for (const jsonStr of sse.feed(chunkText)) {
+        try {
+          onEvent(new MessageEvent('message', { data: jsonStr }))
+        } catch (e) {
+          onError?.(e as Error)
+        }
+      }
+    }
+
+    for (const jsonStr of sse.feed(decoder.decode())) {
+      try {
+        onEvent(new MessageEvent('message', { data: jsonStr }))
+      } catch (e) {
+        onError?.(e as Error)
+      }
+    }
   },
 }
 

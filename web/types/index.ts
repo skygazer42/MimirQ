@@ -1494,6 +1494,32 @@ export interface DatasetPrecheckPdfScanStats {
   unknown: number
 }
 
+export interface DatasetPrecheckPdfPageBreakdown {
+  page_count: number
+  sampled_pages: number
+  scanned_pages: number
+  text_pages: number
+  low_density_pages: number
+  unknown_pages: number
+  scan_ratio: number
+  low_density_ratio: number
+}
+
+export interface DatasetPrecheckSpreadsheetStats {
+  row_count: number
+  sheet_count: number
+  merged_cell_ratio: number
+  estimated_rows: boolean
+}
+
+export interface DatasetPrecheckMatchSample {
+  kind: string
+  masked: string
+  context: string
+  start?: number | null
+  end?: number | null
+}
+
 export interface DatasetPrecheckFindingSummary {
   key: string
   label: string
@@ -1509,6 +1535,7 @@ export interface DatasetPrecheckSummary {
 
   total_files: number
   total_size_bytes: number
+  reused_files?: number
   by_file_type: Record<string, number>
 
   file_size_histogram: DatasetPrecheckHistogramBin[]
@@ -1516,6 +1543,7 @@ export interface DatasetPrecheckSummary {
   length_histogram: DatasetPrecheckHistogramBin[]
 
   pdf_scan: DatasetPrecheckPdfScanStats
+  pdf_detection?: Record<string, any>
 
   pii_hits_total: Record<string, number>
   secrets_hits_total: Record<string, number>
@@ -1527,11 +1555,17 @@ export interface DatasetPrecheckFileOut {
   name: string
   file_type: string
   file_size: number
+  file_mtime?: number | null
   text_characters: number
   estimated_text: boolean
   pdf_scanned?: boolean | null
+  pdf_pages?: DatasetPrecheckPdfPageBreakdown | null
+  spreadsheet?: DatasetPrecheckSpreadsheetStats | null
+  text_simhash64?: string | null
   pii_hits: Record<string, number>
   secrets_hits: Record<string, number>
+  pii_samples?: DatasetPrecheckMatchSample[]
+  secrets_samples?: DatasetPrecheckMatchSample[]
   file_sha256?: string | null
   findings: string[]
   error_message?: string | null
@@ -1553,6 +1587,28 @@ export interface DatasetPrecheckScanRunCreateRequest {
   pdf_sample_pages?: number | null
   text_extract_max_bytes?: number | null
   redact_paths?: boolean
+
+  enable_pii_samples?: boolean
+  pii_context_chars?: number | null
+  pii_max_samples_per_file?: number | null
+
+  enable_secrets_samples?: boolean
+  secrets_context_chars?: number | null
+  secrets_max_samples_per_file?: number | null
+
+  pdf_min_text_chars_per_page?: number | null
+  pdf_text_chars_per_page?: number | null
+  pdf_scan_ratio_threshold?: number | null
+
+  enable_near_dup?: boolean
+  near_dup_hamming_threshold?: number | null
+  near_dup_max_pairs?: number | null
+
+  enable_sampling?: boolean
+  sample_size?: number | null
+
+  reuse_unchanged_files?: boolean
+  reuse_from_scan_run_id?: string | null
 }
 
 export interface DatasetPrecheckScanRunOut {
@@ -1576,4 +1632,65 @@ export interface DatasetPrecheckScanRunOut {
 export interface DatasetPrecheckScanRunListResponse {
   total: number
   items: DatasetPrecheckScanRunOut[]
+}
+
+export interface DatasetPrecheckSamplesResponse {
+  requested: number
+  strata_count: number
+  representative: DatasetPrecheckFileOut[]
+  needs_review: Record<string, DatasetPrecheckFileOut[]>
+  top_large_files: DatasetPrecheckFileOut[]
+  top_long_text: DatasetPrecheckFileOut[]
+}
+
+export interface DatasetPrecheckNearDupCluster {
+  id: string
+  members: string[]
+}
+
+export interface DatasetPrecheckNearDupPair {
+  a: string
+  b: string
+  distance: number
+}
+
+export interface DatasetPrecheckNearDupResponse {
+  threshold: number
+  max_pairs: number
+  pairs_returned: number
+  clusters_returned: number
+  clusters: DatasetPrecheckNearDupCluster[]
+  pairs: DatasetPrecheckNearDupPair[]
+}
+
+export interface DatasetPrecheckDiffItem {
+  key: string
+  before: number
+  after: number
+  delta: number
+}
+
+export interface DatasetPrecheckDiffResponse {
+  base_scan_run_id: string
+  target_scan_run_id: string
+  generated_at: string
+  total_files: DatasetPrecheckDiffItem
+  total_size_bytes: DatasetPrecheckDiffItem
+  pdf_scanned: DatasetPrecheckDiffItem
+  pdf_unknown: DatasetPrecheckDiffItem
+  by_file_type: DatasetPrecheckDiffItem[]
+  findings: DatasetPrecheckDiffItem[]
+}
+
+export interface DatasetPrecheckManualReviewBucket {
+  key: string
+  total: number
+  sample_names: string[]
+}
+
+export interface DatasetPrecheckIngestionSuggestionResponse {
+  generated_at: string
+  policy: IngestionPolicy
+  notes: string[]
+  manual_review: DatasetPrecheckManualReviewBucket[]
 }

@@ -86,6 +86,8 @@ class DatasetPrecheckSummary(BaseModel):
 
     total_files: int = 0
     total_size_bytes: int = 0
+    # How many records were reused from a previous scan run (incremental scans).
+    reused_files: int = 0
     by_file_type: Dict[str, int] = Field(default_factory=dict)
 
     file_size_histogram: List[DatasetPrecheckHistogramBin] = Field(default_factory=list)
