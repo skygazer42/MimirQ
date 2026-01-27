@@ -286,6 +286,23 @@ async def chat(
                 db=db,
             )
 
+            # Optional: Chat -> TAG injection for LangGraph path.
+            # This mirrors the LangChain engine behavior, but keeps the DB/LLM calls
+            # outside the graph to avoid persisting non-serializable resources.
+            try:
+                from app.services.chat_tag_service import build_chat_tag_context_docs
+
+                tag_docs, tag_meta = build_chat_tag_context_docs(
+                    db,
+                    tenant_id=tenant_id,
+                    document_ids=doc_ids_to_use,
+                    question=request.message,
+                )
+                state["tag_docs"] = tag_docs
+                state["tag_meta"] = tag_meta
+            except Exception as exc:  # noqa: BLE001
+                state["tag_meta"] = {"enabled": False, "used": False, "reason": f"tag_exception:{str(exc)[:120]}"}
+
             recursion_limit = max(1, int(getattr(settings, "LANGGRAPH_RECURSION_LIMIT", 25) or 25))
             config = {"configurable": {"thread_id": thread_id}, "recursion_limit": recursion_limit}
             graph_result = rag_workflow.invoke(state, config=config, context=runtime_context) or {}
