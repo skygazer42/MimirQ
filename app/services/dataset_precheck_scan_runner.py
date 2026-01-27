@@ -166,6 +166,120 @@ def _hamming_distance64(a: int, b: int) -> int:
     return int((int(a) ^ int(b)).bit_count())
 
 
+def _bucket_file_size_label(size: int) -> str:
+    v = int(size or 0)
+    for spec in FILE_SIZE_BINS:
+        try:
+            if spec.contains(v):
+                return str(spec.label)
+        except Exception:
+            continue
+    return "unknown"
+
+
+def _build_samples_payload(*, jsonl_path: Path, target_size: int) -> dict[str, Any]:
+    """
+    Build representative + problem-focused samples from a precheck JSONL artifact.
+
+    Output is designed for pricing/POC alignment (shareable when redact_paths=true).
+    """
+    target_size = max(0, min(int(target_size or 0), 2000))
+    if target_size <= 0:
+        return {"requested": 0, "representative": [], "needs_review": {}, "top_large_files": [], "top_long_text": []}
+
+    # Base strata: (file_type, size_bin, pdf_state).
+    groups: dict[tuple[str, str, str], list[dict[str, Any]]] = {}
+    findings_buckets: dict[str, list[dict[str, Any]]] = {}
+    largest: list[dict[str, Any]] = []
+    longest: list[dict[str, Any]] = []
+
+    def _push_top(arr: list[dict[str, Any]], item: dict[str, Any], *, key: str, top_k: int = 20) -> None:
+        arr.append(item)
+        arr.sort(key=lambda x: int(x.get(key) or 0), reverse=True)
+        if len(arr) > top_k:
+            del arr[top_k:]
+
+    with jsonl_path.open("r", encoding="utf-8") as f:
+        for line in f:
+            s = (line or "").strip()
+            if not s:
+                continue
+            try:
+                obj = json.loads(s)
+            except Exception:
+                continue
+            if not isinstance(obj, dict):
+                continue
+
+            name = str(obj.get("name") or "")
+            file_type = str(obj.get("file_type") or "unknown")
+            file_size = int(obj.get("file_size") or 0)
+            text_chars = int(obj.get("text_characters") or 0)
+            pdf_scanned = obj.get("pdf_scanned")
+            pdf_state = "na"
+            if file_type.lower() == "pdf":
+                if pdf_scanned is True:
+                    pdf_state = "scan"
+                elif pdf_scanned is False:
+                    pdf_state = "text"
+                else:
+                    pdf_state = "unknown"
+
+            size_bin = _bucket_file_size_label(file_size)
+            key = (file_type.lower(), size_bin, pdf_state)
+            groups.setdefault(key, []).append(obj)
+
+            findings = obj.get("findings")
+            if isinstance(findings, list):
+                for fk in findings:
+                    fkey = str(fk or "").strip().lower()
+                    if not fkey:
+                        continue
+                    findings_buckets.setdefault(fkey, []).append(obj)
+
+            _push_top(largest, obj, key="file_size", top_k=20)
+            _push_top(longest, obj, key="text_characters", top_k=20)
+
+    # Representative picks: choose one file per stratum.
+    rep: list[dict[str, Any]] = []
+    ordered_groups = sorted(groups.items(), key=lambda kv: (-len(kv[1]), kv[0]))
+    if len(ordered_groups) <= target_size:
+        chosen = ordered_groups
+    else:
+        half = max(1, target_size // 2)
+        chosen = ordered_groups[:half] + ordered_groups[-(target_size - half) :]
+
+    picked_names: set[str] = set()
+    for _k, items in chosen:
+        items_sorted = sorted(items, key=lambda o: str(o.get("name") or ""))
+        if not items_sorted:
+            continue
+        item = items_sorted[0]
+        nm = str(item.get("name") or "")
+        if nm and nm not in picked_names:
+            picked_names.add(nm)
+            rep.append(item)
+        if len(rep) >= target_size:
+            break
+
+    # Problem-focused samples: per finding bucket (cap per finding).
+    needs_review: dict[str, list[dict[str, Any]]] = {}
+    for fk, items in findings_buckets.items():
+        if fk not in {"parse_failed", "pdf_scanned", "pdf_unknown", "pii", "secrets", "large_spreadsheet", "near_dup", "exact_dup"}:
+            continue
+        items_sorted = sorted(items, key=lambda o: int(o.get("file_size") or 0), reverse=True)
+        needs_review[fk] = items_sorted[: min(10, max(1, target_size // 6))]
+
+    return {
+        "requested": int(target_size),
+        "representative": rep,
+        "needs_review": needs_review,
+        "top_large_files": largest,
+        "top_long_text": longest,
+        "strata_count": int(len(groups)),
+    }
+
+
 def _now_utc() -> datetime:
     return datetime.now(timezone.utc)
 
@@ -564,6 +678,10 @@ def run_dataset_precheck_scan(
     near_dup_hamming_threshold = max(0, min(near_dup_hamming_threshold, 32))
     near_dup_max_pairs = safe_int(cfg.get("near_dup_max_pairs") or 5000, default=5000)
     near_dup_max_pairs = max(0, min(near_dup_max_pairs, 200_000))
+
+    enable_sampling = bool(cfg.get("enable_sampling", True))
+    sample_size = safe_int(cfg.get("sample_size") or 60, default=60)
+    sample_size = max(0, min(sample_size, 2000))
 
     pdf_scan_max_chars = safe_int(
         cfg.get("pdf_min_text_chars_per_page") or getattr(settings, "PRECHECK_PDF_MIN_TEXT_CHARS_PER_PAGE", 50),
