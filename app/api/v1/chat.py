@@ -541,6 +541,23 @@ async def stream_chat(
                     db=db,
                 )
 
+                # Optional: Chat -> TAG injection for LangGraph path (streaming).
+                try:
+                    from app.services.chat_tag_service import build_chat_tag_context_docs
+
+                    tag_docs, tag_meta = build_chat_tag_context_docs(
+                        db,
+                        tenant_id=tenant_id,
+                        document_ids=doc_ids_to_use,
+                        question=request.message,
+                    )
+                    state["tag_docs"] = tag_docs
+                    state["tag_meta"] = tag_meta
+                    if bool(tag_meta.get("enabled")):
+                        yield f"data: {json.dumps({'request_id': str(request_id), 'type': 'event', 'data': {'message': '尝试表格查询（TAG）…'}}, ensure_ascii=False)}\n\n"
+                except Exception as exc:  # noqa: BLE001
+                    state["tag_meta"] = {"enabled": False, "used": False, "reason": f"tag_exception:{str(exc)[:120]}"}
+
                 recursion_limit = max(1, int(getattr(settings, "LANGGRAPH_RECURSION_LIMIT", 25) or 25))
                 config = {"configurable": {"thread_id": thread_id}, "recursion_limit": recursion_limit}
                 final_state: dict | None = None
