@@ -253,6 +253,7 @@ def render_precheck_html(
     root_path: str | None,
     generated_at: datetime | str | None,
     summary: dict,
+    samples: dict | None = None,
     redact: bool = False,
 ) -> str:
     name = "[REDACTED]" if redact else (dataset_name or "")
@@ -286,6 +287,65 @@ def render_precheck_html(
             cnt = 0
         finding_rows.append((key, cnt))
     finding_rows.sort(key=lambda kv: (-kv[1], kv[0]))
+
+    pdf_det = summary.get("pdf_detection") if isinstance(summary.get("pdf_detection"), dict) else {}
+
+    # Optional representative sampling section.
+    samples_section = ""
+    if isinstance(samples, dict) and samples:
+        rep = samples.get("representative") if isinstance(samples.get("representative"), list) else []
+        needs_review = samples.get("needs_review") if isinstance(samples.get("needs_review"), dict) else {}
+
+        def _render_file_list(items: Any, *, max_rows: int = 60) -> str:
+            if not isinstance(items, list) or not items:
+                return '<div class="empty">暂无</div>'
+            rows: list[str] = []
+            for obj in items[: max(0, int(max_rows))]:
+                if not isinstance(obj, dict):
+                    continue
+                nm = escape(str(obj.get("name") or ""))
+                ft = escape(str(obj.get("file_type") or ""))
+                sz = _fmt_bytes(obj.get("file_size"))
+                rows.append(f"<tr><td class=\"k\">{nm}</td><td class=\"v\">{ft}</td><td class=\"v\">{escape(sz)}</td></tr>")
+            if not rows:
+                return '<div class="empty">暂无</div>'
+            return (
+                "<table class=\"bars\">"
+                "<thead><tr><th>File</th><th>Type</th><th>Size</th></tr></thead>"
+                "<tbody>"
+                + "".join(rows)
+                + "</tbody></table>"
+            )
+
+        # Needs-review overview (per bucket).
+        needs_rows: list[str] = []
+        for k, lst in sorted(needs_review.items(), key=lambda kv: str(kv[0] or "")):
+            if not isinstance(lst, list) or not lst:
+                continue
+            label = escape(str(k))
+            needs_rows.append(f"<tr><td class=\"k\">{label}</td><td class=\"v\">{_fmt_int(len(lst))}</td></tr>")
+        needs_table = (
+            "<table class=\"bars\">"
+            "<thead><tr><th>Bucket</th><th>Samples</th></tr></thead>"
+            "<tbody>"
+            + "".join(needs_rows)
+            + "</tbody></table>"
+            if needs_rows
+            else '<div class="empty">暂无</div>'
+        )
+
+        samples_section = (
+            "<div class=\"section two\">"
+            "<div>"
+            "<h2>代表性样本（按格式/大小/PDF类型分层）</h2>"
+            + _render_file_list(rep, max_rows=60)
+            + "</div>"
+            "<div>"
+            "<h2>需复核样本（按问题分桶）</h2>"
+            + needs_table
+            + "</div>"
+            "</div>"
+        )
 
     html = f"""<!doctype html>
 <html lang="zh-CN">
@@ -373,6 +433,21 @@ def render_precheck_html(
       {_render_bar_table(finding_rows, total=max(1, total_files))}
     </div>
 
+    <div class="section">
+      <h2>PDF 判定参数（透明阈值）</h2>
+      <table class="bars">
+        <thead><tr><th>Key</th><th>Value</th><th></th></tr></thead>
+        <tbody>
+          <tr><td class="k">sample_pages</td><td class="v">{escape(str(pdf_det.get("sample_pages") or ""))}</td><td></td></tr>
+          <tr><td class="k">scan_max_chars_per_page</td><td class="v">{escape(str(pdf_det.get("scan_max_chars_per_page") or ""))}</td><td></td></tr>
+          <tr><td class="k">text_min_chars_per_page</td><td class="v">{escape(str(pdf_det.get("text_min_chars_per_page") or ""))}</td><td></td></tr>
+          <tr><td class="k">scan_ratio_threshold</td><td class="v">{escape(str(pdf_det.get("scan_ratio_threshold") or ""))}</td><td></td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    {samples_section}
+
     <div class="footer">
       <div>说明：预检扫描以“入库前摸底”为目标，输出客观统计与待复核清单；不做主观评分。</div>
     </div>
@@ -381,4 +456,3 @@ def render_precheck_html(
 </html>
 """
     return html
-
