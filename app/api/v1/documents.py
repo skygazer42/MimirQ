@@ -2091,7 +2091,7 @@ async def upload_document(
     file_path = upload_dir / f"{file_id}{file_ext}"
 
     try:
-        file_size = await save_upload_file(file, file_path, max_bytes=settings.MAX_FILE_SIZE)
+        file_size, file_sha256 = await save_upload_file_with_hash(file, file_path, max_bytes=settings.MAX_FILE_SIZE)
     except HTTPException:
         raise
 
@@ -2102,6 +2102,8 @@ async def upload_document(
         "chunk_strategy": resolved_chunk_strategy,
         "chunk_strategy_requested": (chunk_strategy or "").lower(),
     }
+    if isinstance(file_sha256, str) and file_sha256:
+        doc_metadata["file_sha256"] = file_sha256
     if pipeline_metadata:
         doc_metadata["pipeline"] = pipeline_metadata
     if ingestion_meta:
@@ -2394,7 +2396,7 @@ async def upload_documents_batch(
                 file_id = uuid.uuid4()
                 file_path = upload_dir / f"{file_id}{file_ext}"
                 
-                file_size = await save_upload_file(file, file_path, max_bytes=settings.MAX_FILE_SIZE)
+                file_size, file_sha256 = await save_upload_file_with_hash(file, file_path, max_bytes=settings.MAX_FILE_SIZE)
                 
                 # Create database record.
                 doc_metadata = {
@@ -2403,6 +2405,8 @@ async def upload_documents_batch(
                     "chunk_strategy": resolved_chunk_strategy,
                     "chunk_strategy_requested": (chunk_strategy or "").lower(),
                 }
+                if isinstance(file_sha256, str) and file_sha256:
+                    doc_metadata["file_sha256"] = file_sha256
                 if pipeline_metadata:
                     doc_metadata["pipeline"] = pipeline_metadata
                 if ingestion_meta:
