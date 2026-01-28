@@ -12,7 +12,7 @@ from __future__ import annotations
 from collections import deque
 from dataclasses import dataclass
 import re
-from typing import Any, Dict, Iterable, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 from urllib.parse import urljoin, urlsplit, urlunsplit
 
 import httpx
@@ -299,4 +299,3 @@ async def crawl_site(
 
 
 __all__ = ["WebCrawlResult", "crawl_site"]
-
