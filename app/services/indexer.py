@@ -561,6 +561,39 @@ class Indexer:
         except Exception as exc:
             logger.warning("Failed to update BM25 index after deletion: %s", exc)
 
+    def delete_chunk_indexes_for_doc_pipeline_key(
+        self,
+        *,
+        tenant_id: UUID,
+        document_id: UUID,
+        doc_pipeline_key: str,
+    ) -> None:
+        """
+        Best-effort scoped delete for versioned documents.
+
+        This avoids wiping the currently active pipeline when a *new* pipeline version
+        is cancelled/failed mid-ingest.
+        """
+        filter_spec = {"doc_pipeline_key": {"$eq": str(doc_pipeline_key or "")}}
+        try:
+            get_vector_store().delete_by_document_id_and_filter(
+                document_id=document_id,
+                tenant_id=tenant_id,
+                metadata_filter=filter_spec,
+            )
+        except NotImplementedError:
+            logger.warning("Vector backend does not support selective delete; skipping scoped vector cleanup")
+        except Exception as exc:
+            logger.warning("Failed to delete vectors (scoped): %s", str(exc)[:200])
+
+        try:
+            hybrid_retriever.remove_from_bm25_index_by_metadata_filter(
+                tenant_id=tenant_id,
+                metadata_filter=filter_spec,
+            )
+        except Exception as exc:
+            logger.warning("Failed to update BM25 index after scoped deletion: %s", str(exc)[:200])
+
     def delete_event_indexes(
         self,
         *,
