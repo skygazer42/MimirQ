@@ -55,6 +55,16 @@ def _dataset_pipeline_out(ds: Dataset) -> DocumentPipelineOptions | None:
         return None
     return DocumentPipelineOptions(**data)
 
+def _dataset_ingestion_defaults(ds: Dataset) -> tuple[str | None, str | None]:
+    meta = getattr(ds, "dataset_metadata", None)
+    if not isinstance(meta, dict):
+        return None, None
+    pb = meta.get("default_parser_backend")
+    cs = meta.get("default_chunk_strategy")
+    pb_out = str(pb).strip() if isinstance(pb, str) and pb.strip() else None
+    cs_out = str(cs).strip() if isinstance(cs, str) and cs.strip() else None
+    return pb_out, cs_out
+
 
 @router.post("/", response_model=DatasetOut, status_code=201)
 def create_dataset(
@@ -73,15 +83,37 @@ def create_dataset(
         partial_members=payload.partial_member_list or [],
     )
 
-    # Optional dataset-level pipeline defaults.
+    # Optional dataset-level defaults (stored in datasets.metadata).
+    meta = dict(getattr(dataset, "dataset_metadata", None) or {})
+    changed = False
+
+    # 1) Pipeline defaults (governance/indexing).
     if payload.pipeline is not None:
         options = PipelineOptions(**payload.pipeline.model_dump(exclude_none=True))
         pipeline_meta = build_pipeline_metadata(options)
-        meta = dict(getattr(dataset, "dataset_metadata", None) or {})
         if pipeline_meta:
             meta["pipeline"] = pipeline_meta
         else:
             meta.pop("pipeline", None)
+        changed = True
+
+    # 2) Ingestion defaults (parser/chunk strategy).
+    if payload.default_parser_backend is not None:
+        val = str(payload.default_parser_backend or "").strip().lower()
+        if val:
+            meta["default_parser_backend"] = val
+        else:
+            meta.pop("default_parser_backend", None)
+        changed = True
+    if payload.default_chunk_strategy is not None:
+        val = str(payload.default_chunk_strategy or "").strip().lower()
+        if val:
+            meta["default_chunk_strategy"] = val
+        else:
+            meta.pop("default_chunk_strategy", None)
+        changed = True
+
+    if changed:
         dataset.dataset_metadata = meta
         db.commit()
         db.refresh(dataset)
@@ -90,6 +122,7 @@ def create_dataset(
     if dataset.permission == DatasetPermissionEnum.PARTIAL_MEMBERS:
         partial_list = payload.partial_member_list or []
 
+    default_parser_backend, default_chunk_strategy = _dataset_ingestion_defaults(dataset)
     return DatasetOut(
         id=dataset.id,
         tenant_id=dataset.tenant_id,
@@ -99,6 +132,8 @@ def create_dataset(
         owner_id=dataset.owner_id,
         partial_member_list=partial_list
         ,
+        default_parser_backend=default_parser_backend,
+        default_chunk_strategy=default_chunk_strategy,
         pipeline=_dataset_pipeline_out(dataset),
     )
 
@@ -141,6 +176,7 @@ def list_datasets(
         partial_list = None
         if ds.permission == DatasetPermissionEnum.PARTIAL_MEMBERS:
             partial_list = partial_member_map.get(ds.id, [])
+        default_parser_backend, default_chunk_strategy = _dataset_ingestion_defaults(ds)
         results.append(DatasetOut(
             id=ds.id,
             tenant_id=ds.tenant_id,
@@ -149,6 +185,8 @@ def list_datasets(
             permission=ds.permission,
             owner_id=ds.owner_id,
             partial_member_list=partial_list,
+            default_parser_backend=default_parser_backend,
+            default_chunk_strategy=default_chunk_strategy,
             pipeline=_dataset_pipeline_out(ds),
         ))
     return {"total": total, "items": results}
