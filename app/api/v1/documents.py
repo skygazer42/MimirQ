@@ -1821,6 +1821,9 @@ async def _ingest_url_upload_request(
 
     pipeline_hash = _compute_pipeline_hash(doc_metadata)
     doc_metadata["pipeline_hash"] = pipeline_hash
+    # Versioning: the first processed pipeline is the active one by default.
+    doc_metadata.setdefault("active_pipeline_hash", pipeline_hash)
+    doc_metadata.setdefault("active_pipeline_ready", False)
 
     db_document = DBDocument(
         id=file_id,
@@ -2060,6 +2063,9 @@ async def upload_document(
         doc_metadata["ingestion"] = ingestion_meta
     pipeline_hash = _compute_pipeline_hash(doc_metadata)
     doc_metadata["pipeline_hash"] = pipeline_hash
+    # Versioning: the first processed pipeline is the active one by default.
+    doc_metadata.setdefault("active_pipeline_hash", pipeline_hash)
+    doc_metadata.setdefault("active_pipeline_ready", False)
 
     db_document = DBDocument(
         id=file_id,
@@ -2332,6 +2338,9 @@ async def upload_documents_batch(
                     doc_metadata["ingestion"] = ingestion_meta
                 pipeline_hash = _compute_pipeline_hash(doc_metadata)
                 doc_metadata["pipeline_hash"] = pipeline_hash
+                # Versioning: the first processed pipeline is the active one by default.
+                doc_metadata.setdefault("active_pipeline_hash", pipeline_hash)
+                doc_metadata.setdefault("active_pipeline_ready", False)
                 
                 db_document = DBDocument(
                     id=file_id,
@@ -4277,6 +4286,15 @@ async def create_document_with_manual_chunks(
     doc_metadata = dict(request.metadata or {})
     if pipeline_metadata:
         doc_metadata["pipeline"] = pipeline_metadata
+    # Manual documents still participate in pipeline versioning (for retrieval scoping and rollback).
+    doc_metadata.setdefault("parser_backend", "manual")
+    doc_metadata.setdefault("chunk_strategy", "manual")
+    doc_metadata.setdefault("parser_backend_requested", "manual")
+    doc_metadata.setdefault("chunk_strategy_requested", "manual")
+    pipeline_hash = _compute_pipeline_hash(doc_metadata)
+    doc_metadata.setdefault("pipeline_hash", pipeline_hash)
+    doc_metadata.setdefault("active_pipeline_hash", doc_metadata.get("pipeline_hash") or pipeline_hash)
+    doc_metadata.setdefault("active_pipeline_ready", False)
 
     db_document = DBDocument(
         id=document_id,
@@ -4309,6 +4327,7 @@ async def create_document_with_manual_chunks(
         records: List[IndexRecord] = []
         for idx, chunk in enumerate(request.chunks):
             content = chunk.content or ""
+            pipeline_hash = str((db_document.doc_metadata or {}).get("pipeline_hash") or "").strip()
             metadata = {
                 "source": request.filename,
                 "file_type": request.file_type.lower(),
@@ -4316,6 +4335,8 @@ async def create_document_with_manual_chunks(
                 "page": chunk.page_number,
                 "document_id": str(document_id),
                 "chunk_index": idx,
+                "pipeline_hash": pipeline_hash,
+                "doc_pipeline_key": f"{document_id}:{pipeline_hash}" if pipeline_hash else str(document_id),
                 **(chunk.metadata or {}),
             }
 
@@ -4388,6 +4409,12 @@ async def create_document_with_manual_chunks(
         db_document.status = 'completed'
         db_document.processing_progress = 100
         db_document.current_stage = 'completed'
+        meta = dict(db_document.doc_metadata or {})
+        if meta.get("active_pipeline_hash") and meta.get("pipeline_hash"):
+            # Keep active hash in sync for manual documents (single-shot pipeline).
+            meta["active_pipeline_hash"] = meta.get("pipeline_hash")
+        meta["active_pipeline_ready"] = True
+        db_document.doc_metadata = meta
         db.commit()
         db.refresh(db_document)
 

@@ -2032,6 +2032,7 @@ class DocumentProcessorService:
                 meta = dict(c.metadata or {})
                 if pipeline_hash:
                     meta.setdefault("pipeline_hash", pipeline_hash)
+                    meta.setdefault("doc_pipeline_key", f"{document_id}:{pipeline_hash}")
                 if file_type:
                     meta.setdefault("file_type", file_type)
                 if governance_version:
@@ -2093,6 +2094,14 @@ class DocumentProcessorService:
 
             await raise_if_cancelled(force=True)
 
+            # Versioning: only switch the *active* pipeline after a successful completion,
+            # so ongoing reprocessing doesn't immediately "downgrade" retrieval quality.
+            meta_patch = dict(db_document.doc_metadata or {})
+            completed_pipeline_hash = str(meta_patch.get("pipeline_hash") or "").strip()
+            if completed_pipeline_hash:
+                meta_patch["active_pipeline_hash"] = completed_pipeline_hash
+                meta_patch["active_pipeline_ready"] = True
+
             await self._update_status(
                 db,
                 tenant_id,
@@ -2101,7 +2110,8 @@ class DocumentProcessorService:
                 100,
                 "completed",
                 chunk_count=len(chunks),
-                total_characters=total_chars
+                total_characters=total_chars,
+                doc_metadata=meta_patch,
             )
 
             logger.info(
