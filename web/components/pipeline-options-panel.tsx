@@ -2,9 +2,11 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { CheckCircle2, Layers, Network, ShieldCheck, Sparkles, ChevronDown } from 'lucide-react'
+import { toast } from 'sonner'
 import { Switch } from '@/components/ui/switch'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
+import { Button } from '@/components/ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { cn } from '@/lib/utils'
 import { usePipelineOptions } from '@/contexts/pipeline-options-context'
@@ -430,6 +432,27 @@ export function PipelineOptionsPanel(props: PipelineOptionsPanelProps) {
     updateOption('chunk_strategy_params', res.value)
   }
 
+  const exportPipelineJson = async () => {
+    const text = ctx.exportJson()
+    try {
+      await navigator.clipboard.writeText(text)
+      toast.success('已复制管线 JSON')
+    } catch {
+      toast.error('复制失败（浏览器未授权剪贴板）')
+    }
+  }
+
+  const importPipelineJson = () => {
+    const text = window.prompt('粘贴管线 JSON（支持 {enabled, options} 或仅 options）')
+    if (!text) return
+    const res = ctx.importJson(text)
+    if (!res.ok) {
+      toast.error(res.error || '导入失败')
+      return
+    }
+    toast.success('已导入管线 JSON')
+  }
+
   return (
     <div className={cn("space-y-4 font-sans", className)}>
       {!props.hideEnabledToggle && (
@@ -446,6 +469,28 @@ export function PipelineOptionsPanel(props: PipelineOptionsPanelProps) {
             checked={enabled}
             onCheckedChange={(value) => setEnabled(value === true)}
           />
+        </div>
+      )}
+
+      {!compact && (
+        <div className="flex items-center justify-end gap-2">
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={() => {
+              ctx.reset()
+              toast.message('已重置为默认管线')
+            }}
+          >
+            重置
+          </Button>
+          <Button type="button" variant="outline" size="sm" onClick={importPipelineJson}>
+            导入 JSON
+          </Button>
+          <Button type="button" variant="outline" size="sm" onClick={exportPipelineJson}>
+            导出 JSON
+          </Button>
         </div>
       )}
 
