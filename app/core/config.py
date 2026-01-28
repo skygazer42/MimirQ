@@ -736,6 +736,9 @@ class Settings(BaseSettings):
     # Chat streaming (SSE) robustness
     CHAT_STREAM_HEARTBEAT_SEC: float = 10.0
     CHAT_STREAM_CANCEL_ON_DISCONNECT: bool = True
+    # Optional: reduce SSE tail latency by persisting the assistant turn in a background task
+    # after sending the "done" event. Trade-off: a crash after response may drop persistence.
+    CHAT_STREAM_PERSIST_IN_BACKGROUND: bool = False
     # PII redaction (disabled by default)
     PII_REDACTION_ENABLED: bool = False
     PII_REDACTION_MASK: str = "[REDACTED]"

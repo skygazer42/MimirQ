@@ -959,6 +959,32 @@ async def stream_chat(
                 }
             )
 
+            if persist_in_background:
+                with contextlib.suppress(Exception):
+                    asyncio.create_task(
+                        _persist_chat_stream_turn_background(
+                            tenant_id=tenant_id,
+                            conversation_id=conversation_id,
+                            account_id=account_id,
+                            assistant_message_id=assistant_message_id,
+                            request_id=str(request_id),
+                            question=request.message,
+                            document_count=len(doc_ids_to_use),
+                            content=answer_text,
+                            citations=citations_data,
+                            metrics=metrics_data,
+                            dataset_id_used=dataset_id_used,
+                            cache_hit=True,
+                            cache_key=cache_key,
+                            cache_eligible=False,
+                            structured_data=structured_data,
+                            ip=client_ip,
+                            user_agent=user_agent,
+                            enable_summary_memory=enable_summary_memory,
+                        )
+                    )
+                return
+
             assistant_message = Message(
                 id=assistant_message_id,
                 tenant_id=tenant_id,
@@ -1191,6 +1217,32 @@ async def stream_chat(
                     }
                 )
 
+                if persist_in_background:
+                    with contextlib.suppress(Exception):
+                        asyncio.create_task(
+                            _persist_chat_stream_turn_background(
+                                tenant_id=tenant_id,
+                                conversation_id=conversation_id,
+                                account_id=account_id,
+                                assistant_message_id=assistant_message_id,
+                                request_id=str(request_id),
+                                question=request.message,
+                                document_count=len(doc_ids_to_use),
+                                content=full_response,
+                                citations=citations_data,
+                                metrics=metrics_data,
+                                dataset_id_used=dataset_id_used,
+                                cache_hit=cache_hit,
+                                cache_key=cache_key,
+                                cache_eligible=False,
+                                structured_data=structured_data,
+                                ip=client_ip,
+                                user_agent=user_agent,
+                                enable_summary_memory=enable_summary_memory,
+                            )
+                        )
+                    return
+
                 assistant_message = Message(
                     id=assistant_message_id,
                     tenant_id=tenant_id,
@@ -1415,6 +1467,33 @@ async def stream_chat(
                 metrics_data.setdefault("dataset_id", str(dataset_id_used))
             if quota_meta.get("enabled") and isinstance(metrics_data, dict):
                 metrics_data.setdefault("quota", quota_meta)
+
+            if persist_in_background:
+                with contextlib.suppress(Exception):
+                    asyncio.create_task(
+                        _persist_chat_stream_turn_background(
+                            tenant_id=tenant_id,
+                            conversation_id=conversation_id,
+                            account_id=account_id,
+                            assistant_message_id=assistant_message_id,
+                            request_id=str(request_id),
+                            question=request.message,
+                            document_count=len(doc_ids_to_use),
+                            content=full_response,
+                            citations=citations_data,
+                            metrics=metrics_data,
+                            dataset_id_used=dataset_id_used,
+                            cache_hit=cache_hit,
+                            cache_key=cache_key,
+                            cache_eligible=False,
+                            structured_data=structured_data,
+                            ip=client_ip,
+                            user_agent=user_agent,
+                            enable_summary_memory=enable_summary_memory,
+                        )
+                    )
+                return
+
             assistant_message = Message(
                 id=assistant_message_id,
                 tenant_id=tenant_id,
