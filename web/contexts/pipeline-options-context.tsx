@@ -82,6 +82,8 @@ type PipelineOptionsContextValue = {
   setEnabled: (value: boolean) => void
   updateOption: <K extends keyof DocumentPipelineOptions>(key: K, value: DocumentPipelineOptions[K]) => void
   reset: () => void
+  exportJson: () => string
+  importJson: (jsonText: string) => { ok: boolean; error?: string }
 }
 
 const PipelineOptionsContext = createContext<PipelineOptionsContextValue | null>(null)
@@ -280,6 +282,35 @@ export function PipelineOptionsProvider({ children }: { children: React.ReactNod
     },
     reset: () => {
       setState({ enabled: false, options: { ...DEFAULT_OPTIONS } })
+    },
+    exportJson: () => JSON.stringify({ enabled: state.enabled, options: state.options }, null, 2),
+    importJson: (jsonText: string) => {
+      const raw = (jsonText || '').trim()
+      if (!raw) return { ok: false, error: 'Empty JSON' }
+      let parsed: any
+      try {
+        parsed = JSON.parse(raw)
+      } catch {
+        return { ok: false, error: 'Invalid JSON' }
+      }
+
+      // Accept either:
+      // - { enabled, options }
+      // - { ...options }
+      try {
+        if (parsed && typeof parsed === 'object' && ('options' in parsed || 'enabled' in parsed)) {
+          const enabled =
+            typeof (parsed as any).enabled === 'boolean' ? Boolean((parsed as any).enabled) : state.enabled
+          const optionsRaw = (parsed as any).options ?? {}
+          setState({ enabled, options: normalizeOptions(optionsRaw) })
+          return { ok: true }
+        }
+
+        setState((prev) => ({ ...prev, options: normalizeOptions(parsed) }))
+        return { ok: true }
+      } catch {
+        return { ok: false, error: 'Invalid options shape' }
+      }
     },
   }), [state])
 
