@@ -74,6 +74,41 @@ const PIPELINE_INDEX_PRESETS: Record<
   },
 }
 
+const PIPELINE_OPTION_LABELS: Partial<Record<keyof DocumentPipelineOptions, string>> = {
+  governance_enabled: '治理清洗',
+  persist_parsed_content: '持久化解析结果',
+  parse_fallback_enabled: '解析回退',
+  near_dedup_enabled: '跨文档近重复去重',
+  embedding_context_prefix_enabled: 'Embedding 上下文前缀',
+  chunk_vector_enabled: '向量索引 (Vector)',
+  bm25_index_enabled: '全文索引 (BM25)',
+  kg_enabled: 'KG 抽取',
+  event_vector_enabled: '事件索引',
+  entity_vector_enabled: '实体索引',
+  chunk_size: 'chunk_size',
+  chunk_overlap: 'chunk_overlap',
+  chunk_merge_small_min_chars: '短块合并阈值',
+}
+
+type PipelinePresetDiffItem = {
+  key: keyof DocumentPipelineOptions
+  from: unknown
+  to: unknown
+}
+
+function formatPipelineOptionValue(value: unknown): string {
+  if (typeof value === 'boolean') return value ? 'on' : 'off'
+  if (typeof value === 'number') return String(value)
+  if (typeof value === 'string') return value
+  if (value === null) return 'null'
+  if (typeof value === 'undefined') return 'unset'
+  try {
+    return JSON.stringify(value)
+  } catch {
+    return String(value)
+  }
+}
+
 function detectPipelineIndexPreset(options: DocumentPipelineOptions): PipelineIndexPreset {
   const ids: PipelineIndexPreset[] = ['economical', 'high_quality']
   for (const id of ids) {
@@ -106,6 +141,7 @@ export function PipelineOptionsPanel(props: PipelineOptionsPanelProps) {
 
   const [chunkStrategyParamsText, setChunkStrategyParamsText] = useState('')
   const [chunkStrategyParamsError, setChunkStrategyParamsError] = useState<string | null>(null)
+  const [indexPresetDraft, setIndexPresetDraft] = useState<PipelineIndexPreset | null>(null)
 
   useEffect(() => {
     try {
@@ -125,6 +161,26 @@ export function PipelineOptionsPanel(props: PipelineOptionsPanelProps) {
   const titleClasses = compact ? 'text-xs' : 'text-sm'
   const descClasses = compact ? 'text-[10px]' : 'text-xs'
   const activeIndexPreset = useMemo(() => detectPipelineIndexPreset(options), [options])
+  const pendingIndexPreset = useMemo(() => {
+    if (!indexPresetDraft) return null
+    if (indexPresetDraft === activeIndexPreset) return null
+    if (indexPresetDraft === 'custom') return null
+    return indexPresetDraft
+  }, [activeIndexPreset, indexPresetDraft])
+  const pendingPresetDiff = useMemo<PipelinePresetDiffItem[]>(() => {
+    if (!pendingIndexPreset) return []
+    const patch = PIPELINE_INDEX_PRESETS[pendingIndexPreset].patch
+    const diffs: PipelinePresetDiffItem[] = []
+    for (const [rawKey, target] of Object.entries(patch)) {
+      if (typeof target === 'undefined') continue
+      const key = rawKey as keyof DocumentPipelineOptions
+      const current = (options as any)?.[key]
+      if (current === target) continue
+      diffs.push({ key, from: current, to: target })
+    }
+    return diffs
+  }, [options, pendingIndexPreset])
+  const presetSelectValue = indexPresetDraft ?? activeIndexPreset
 
   const optionGroups = useMemo(() => ([
     {
@@ -556,23 +612,99 @@ export function PipelineOptionsPanel(props: PipelineOptionsPanelProps) {
         </div>
       )}
 
-      <div className={cn("flex items-center justify-between gap-3 rounded-xl border border-border bg-muted/30", compact ? "px-2.5 py-2" : "p-3")}>
-        <div className="min-w-0">
-          <div className={cn("font-semibold text-foreground", titleClasses)}>索引模式（成本/质量）</div>
-          <p className={cn("text-muted-foreground", descClasses)}>
-            {compact ? 'Economical / High-quality presets' : '一键套用常见预设；你仍可继续逐项微调。'}
-          </p>
+      <div className={cn("rounded-xl border border-border bg-muted/30", compact ? "px-2.5 py-2" : "p-3")}>
+        <div className="flex items-center justify-between gap-3">
+          <div className="min-w-0">
+            <div className={cn("font-semibold text-foreground", titleClasses)}>索引模式（成本/质量）</div>
+            <p className={cn("text-muted-foreground", descClasses)}>
+              {compact ? 'Economical / High-quality presets' : '先预览改动再应用；你仍可继续逐项微调。'}
+            </p>
+          </div>
+          <Select
+            value={presetSelectValue}
+            onValueChange={(v) => {
+              const next = v as PipelineIndexPreset
+              if (next === 'custom') {
+                setIndexPresetDraft(null)
+                return
+              }
+              if (next === activeIndexPreset) {
+                setIndexPresetDraft(null)
+                return
+              }
+              setIndexPresetDraft(next)
+            }}
+          >
+            <SelectTrigger className={cn("h-8", compact ? "w-44" : "w-52")}>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="custom">自定义</SelectItem>
+              <SelectItem value="economical">Economical (省成本)</SelectItem>
+              <SelectItem value="high_quality">High-quality (高质量)</SelectItem>
+            </SelectContent>
+          </Select>
         </div>
-        <Select value={activeIndexPreset} onValueChange={(v) => applyIndexPreset(v as PipelineIndexPreset)}>
-          <SelectTrigger className={cn("h-8", compact ? "w-44" : "w-52")}>
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="custom">自定义</SelectItem>
-            <SelectItem value="economical">Economical (省成本)</SelectItem>
-            <SelectItem value="high_quality">High-quality (高质量)</SelectItem>
-          </SelectContent>
-        </Select>
+
+        {pendingIndexPreset ? (
+          <div className={cn("mt-3 rounded-lg border border-border bg-background/60", compact ? "p-2.5" : "p-3")}>
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <div className={cn("font-semibold text-foreground", compact ? "text-xs" : "text-sm")}>
+                  将应用：{PIPELINE_INDEX_PRESETS[pendingIndexPreset].label}
+                </div>
+                <div className={cn("text-muted-foreground", compact ? "text-[10px]" : "text-xs")}>
+                  {PIPELINE_INDEX_PRESETS[pendingIndexPreset].description} · 预计修改 {pendingPresetDiff.length} 项
+                </div>
+              </div>
+              <div className="flex items-center gap-2 shrink-0">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="ghost"
+                  className="h-8"
+                  onClick={() => setIndexPresetDraft(null)}
+                >
+                  取消
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  className="h-8"
+                  onClick={() => {
+                    applyIndexPreset(pendingIndexPreset)
+                    setIndexPresetDraft(null)
+                  }}
+                >
+                  应用
+                </Button>
+              </div>
+            </div>
+
+            <details className="mt-2 group/details">
+              <summary className={cn(
+                "cursor-pointer select-none flex items-center justify-between gap-2 rounded-md px-2 py-1 hover:bg-muted/60 transition-colors",
+                compact ? "text-[11px]" : "text-xs"
+              )}>
+                <span className="text-muted-foreground">查看变更</span>
+                <ChevronDown className="h-3 w-3 text-muted-foreground transition-transform group-open/details:rotate-180" />
+              </summary>
+              <div className="mt-2 grid gap-1.5 px-2">
+                {pendingPresetDiff.map((d) => {
+                  const label = PIPELINE_OPTION_LABELS[d.key] || String(d.key)
+                  return (
+                    <div key={String(d.key)} className="flex items-center justify-between gap-3 text-[11px]">
+                      <span className="text-muted-foreground truncate">{label}</span>
+                      <span className="font-mono text-foreground/80 shrink-0">
+                        {formatPipelineOptionValue(d.from)} → {formatPipelineOptionValue(d.to)}
+                      </span>
+                    </div>
+                  )
+                })}
+              </div>
+            </details>
+          </div>
+        ) : null}
       </div>
 
       {!compact && (

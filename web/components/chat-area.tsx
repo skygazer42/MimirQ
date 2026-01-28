@@ -165,13 +165,15 @@ export function ChatArea({
     try {
       const parsed = JSON.parse(raw)
       if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
-        setMetadataFilterError('metadata_filter must be a JSON object')
+        setMetadataFilterError('metadata_filter must be a JSON object (filter disabled)')
+        setRagConfig((prev) => ({ ...prev, metadata_filter: undefined }))
         return
       }
       setMetadataFilterError(null)
       setRagConfig((prev) => ({ ...prev, metadata_filter: parsed }))
     } catch {
-      setMetadataFilterError('Invalid JSON')
+      setMetadataFilterError('Invalid JSON (filter disabled)')
+      setRagConfig((prev) => ({ ...prev, metadata_filter: undefined }))
     }
   }, [metadataFilterMode, metadataFilterText])
 
@@ -578,6 +580,17 @@ export function ChatArea({
                         {metadataFilterError ? (
                           <div className="text-[11px] text-destructive">{metadataFilterError}</div>
                         ) : null}
+                        <details className="group/details rounded-md border border-border bg-muted/30 px-3 py-2">
+                          <summary className="cursor-pointer select-none text-[11px] text-muted-foreground">
+                            支持的操作符 / 示例
+                          </summary>
+                          <div className="mt-2 space-y-1 text-[11px] text-muted-foreground">
+                            <div className="font-mono text-foreground/80">$eq $ne $gt $gte $lt $lte $in $nin $contains $exists</div>
+                            <div>多个字段默认 AND 关系；支持 dotted path（例如 document_user.tags）。</div>
+                            <div className="font-mono text-foreground/80">{'{"file_type":{"$ne":"qa"}}'}</div>
+                            <div className="font-mono text-foreground/80">{'{"page":{"$gte":10},"source":{"$contains":"handbook"}}'}</div>
+                          </div>
+                        </details>
                       </div>
                     ) : null}
                   </div>
