@@ -9,6 +9,7 @@ Currently provides minimal loop capability:
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
@@ -17,15 +18,23 @@ from app.api.dependencies.tenant import get_tenant_id
 from app.models.chat import Message
 from app.models.chat import Conversation
 from app.models.feedback import MessageFeedback
+from app.models.evaluation import RagasRegressionCase
 from app.api.schemas.feedback import (
     MessageFeedbackCreateRequest,
     MessageFeedbackList,
     MessageFeedbackOut,
     MessageFeedbackEnrichedList,
 )
+from app.api.schemas.regression import RagasRegressionCaseOut
 from app.services.dataset_service import DatasetService
 
 router = APIRouter(tags=["Feedback"])
+
+
+class FeedbackToRegressionCaseRequest(BaseModel):
+    include_document_scope: bool = True
+    tags: list[str] = []
+    extra: dict = {}
 
 
 @router.post("/messages", response_model=MessageFeedbackOut, status_code=status.HTTP_201_CREATED)
@@ -177,3 +186,121 @@ async def list_message_feedback_enriched(
         items.append(fb)
 
     return {"total": total, "items": items}
+
+
+@router.post("/messages/{feedback_id}/to-regression-case", response_model=RagasRegressionCaseOut, status_code=201)
+async def create_regression_case_from_feedback(
+    feedback_id: UUID,
+    body: FeedbackToRegressionCaseRequest,
+    tenant_id: UUID = Depends(get_tenant_id),
+    account_id: str = Depends(get_current_account_id),
+    db: Session = Depends(get_db),
+):
+    """
+    Convert a feedback entry into a RAGAS regression case.
+
+    Heuristics:
+    - Question is inferred from the latest user message before the rated assistant message.
+    - dataset_id is read from assistant message metadata when available.
+    - document_ids scope is inherited from the conversation when requested.
+    """
+    DatasetService.ensure_member(db, tenant_id, account_id)
+
+    fb = (
+        db.query(MessageFeedback)
+        .filter(MessageFeedback.id == feedback_id, MessageFeedback.tenant_id == tenant_id)
+        .first()
+    )
+    if not fb:
+        raise HTTPException(status_code=404, detail="Feedback not found")
+
+    assistant = (
+        db.query(Message)
+        .filter(Message.id == fb.message_id, Message.tenant_id == tenant_id)
+        .first()
+    )
+    if not assistant:
+        raise HTTPException(status_code=404, detail="Assistant message not found")
+
+    conv = (
+        db.query(Conversation)
+        .filter(Conversation.id == fb.conversation_id, Conversation.tenant_id == tenant_id)
+        .first()
+    )
+    if not conv:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+
+    # Infer question from last user message before the assistant answer.
+    q_msg = (
+        db.query(Message)
+        .filter(
+            Message.tenant_id == tenant_id,
+            Message.conversation_id == conv.id,
+            Message.role == "user",
+            Message.created_at <= assistant.created_at,
+        )
+        .order_by(Message.created_at.desc())
+        .first()
+    )
+    question = (q_msg.content if q_msg else "").strip()
+    if not question:
+        # Fallback: keep a stable placeholder to avoid empty regression cases.
+        question = "(missing user question)"
+
+    dataset_id: UUID | None = None
+    meta = assistant.message_metadata if isinstance(getattr(assistant, "message_metadata", None), dict) else {}
+    raw_ds = meta.get("dataset_id") if isinstance(meta, dict) else None
+    if isinstance(raw_ds, str) and raw_ds.strip():
+        try:
+            dataset_id = UUID(raw_ds.strip())
+        except Exception:
+            dataset_id = None
+
+    doc_ids: list[str] = []
+    if bool(getattr(body, "include_document_scope", True)):
+        doc_ids = [str(x) for x in (conv.document_ids or [])]
+
+    tags: list[str] = []
+    if isinstance(fb.tags, list):
+        tags.extend([str(x) for x in fb.tags if isinstance(x, (str, int, float))])
+    if isinstance(getattr(body, "tags", None), list):
+        tags.extend([str(x) for x in body.tags if isinstance(x, (str, int, float))])
+    # Small normalization: unique + cap.
+    seen: set[str] = set()
+    cleaned: list[str] = []
+    for t in tags:
+        v = str(t or "").strip()
+        if not v:
+            continue
+        key = v.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        cleaned.append(v[:64])
+        if len(cleaned) >= 30:
+            break
+
+    extra: dict = {}
+    if isinstance(fb.extra, dict):
+        extra.update(fb.extra)
+    if isinstance(getattr(body, "extra", None), dict):
+        extra.update(body.extra)
+    extra.setdefault("source", "feedback")
+    extra.setdefault("feedback_id", str(fb.id))
+    extra.setdefault("message_id", str(fb.message_id))
+    extra.setdefault("rating", int(fb.rating))
+
+    row = RagasRegressionCase(
+        tenant_id=tenant_id,
+        dataset_id=dataset_id,
+        document_ids=doc_ids,
+        question=question,
+        expected_answer=fb.expected_answer,
+        tags=cleaned,
+        extra=extra,
+        created_by=account_id,
+    )
+    db.add(row)
+    db.commit()
+    db.refresh(row)
+    return row
