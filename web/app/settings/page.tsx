@@ -32,6 +32,7 @@ import {
   type SafetyConfig,
   type ChatConfig,
   type LangGraphConfig,
+  type CacheConfig,
 } from '@/lib/api-client'
 import { cn } from '@/lib/utils'
 import { extractBackendMessage, withRequestId } from '@/lib/api-errors'
@@ -170,6 +171,14 @@ const DEFAULT_CHAT: ChatConfig = {
 
 const DEFAULT_LANGGRAPH: LangGraphConfig = {
   use_subgraphs: false,
+}
+
+const DEFAULT_CACHE: CacheConfig = {
+  upload_dedup_enabled: false,
+  chat_response_cache_enabled: false,
+  chat_response_cache_ttl_sec: 300,
+  chat_response_cache_max_value_bytes: 200000,
+  chat_response_cache_require_empty_history: true,
 }
 
 const DEFAULT_MAGICPDF: MagicPDFConfig = {
@@ -327,6 +336,12 @@ export default function SettingsPage() {
     const current = (editedSettings.chat || settings?.chat || DEFAULT_CHAT) as ChatConfig
     const next = { ...current, ...patch }
     setEditedSettings((prev) => ({ ...prev, chat: next }))
+  }
+
+  const updateCache = (patch: Partial<CacheConfig>) => {
+    const current = (editedSettings.cache || settings?.cache || DEFAULT_CACHE) as CacheConfig
+    const next = { ...current, ...patch }
+    setEditedSettings((prev) => ({ ...prev, cache: next }))
   }
 
   const updateMagicPDF = (patch: Partial<MagicPDFConfig>) => {
@@ -1676,6 +1691,107 @@ export default function SettingsPage() {
                         设为 0 将禁用心跳（不推荐，可能被代理/负载均衡断开）
                       </div>
                     </div>
+                  </div>
+
+                  {/* Cache / performance */}
+                  <div className="space-y-3 border-t pt-6">
+                    <div className="flex items-start justify-between gap-4">
+                      <div>
+                        <div className="text-sm font-semibold text-foreground flex items-center gap-2">
+                          <Database className="h-4 w-4 text-muted-foreground" />
+                          性能与缓存
+                        </div>
+                        <div className="text-xs text-muted-foreground mt-1">
+                          去重/缓存属于“best-effort”，依赖 Redis 时会 fail-open（不可用时不影响主流程）
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
+                      <div className="flex items-start justify-between gap-4 rounded-xl border border-border p-4 bg-muted/30">
+                        <div>
+                          <div className="text-sm font-semibold text-foreground">上传去重（Dataset 内）</div>
+                          <div className="text-xs text-muted-foreground mt-1">
+                            同 file_sha256 + pipeline_hash 时直接复用已存在文档，减少重复入库/embedding
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            updateCache({
+                              upload_dedup_enabled: !((editedSettings.cache?.upload_dedup_enabled ?? settings?.cache?.upload_dedup_enabled) ?? DEFAULT_CACHE.upload_dedup_enabled),
+                            })
+                          }
+                          className="shrink-0"
+                          aria-label="Toggle upload dedup"
+                        >
+                          {((editedSettings.cache?.upload_dedup_enabled ?? settings?.cache?.upload_dedup_enabled) ?? DEFAULT_CACHE.upload_dedup_enabled) ? (
+                            <ToggleRight className="w-10 h-10 text-primary" />
+                          ) : (
+                            <ToggleLeft className="w-10 h-10 text-muted-foreground hover:text-muted-foreground" />
+                          )}
+                        </button>
+                      </div>
+
+                      <div className="flex items-start justify-between gap-4 rounded-xl border border-border p-4 bg-muted/30">
+                        <div>
+                          <div className="text-sm font-semibold text-foreground">Chat 响应缓存（Redis）</div>
+                          <div className="text-xs text-muted-foreground mt-1">
+                            相同问题+相同文档范围+相同配置命中后直接返回，降低 LLM/检索成本
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            updateCache({
+                              chat_response_cache_enabled: !((editedSettings.cache?.chat_response_cache_enabled ?? settings?.cache?.chat_response_cache_enabled) ?? DEFAULT_CACHE.chat_response_cache_enabled),
+                            })
+                          }
+                          className="shrink-0"
+                          aria-label="Toggle chat response cache"
+                        >
+                          {((editedSettings.cache?.chat_response_cache_enabled ?? settings?.cache?.chat_response_cache_enabled) ?? DEFAULT_CACHE.chat_response_cache_enabled) ? (
+                            <ToggleRight className="w-10 h-10 text-primary" />
+                          ) : (
+                            <ToggleLeft className="w-10 h-10 text-muted-foreground hover:text-muted-foreground" />
+                          )}
+                        </button>
+                      </div>
+                    </div>
+
+                    {((editedSettings.cache?.chat_response_cache_enabled ?? settings?.cache?.chat_response_cache_enabled) ?? DEFAULT_CACHE.chat_response_cache_enabled) && (
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-2">
+                        <div>
+                          <div className="text-xs text-muted-foreground mb-1">TTL（秒）</div>
+                          <Input
+                            type="number"
+                            min={0}
+                            max={86400}
+                            value={editedSettings.cache?.chat_response_cache_ttl_sec ?? settings?.cache?.chat_response_cache_ttl_sec ?? DEFAULT_CACHE.chat_response_cache_ttl_sec}
+                            onChange={(e) => updateCache({ chat_response_cache_ttl_sec: parseInt(e.target.value || '0', 10) })}
+                          />
+                        </div>
+                        <div>
+                          <div className="text-xs text-muted-foreground mb-1">最大 value bytes</div>
+                          <Input
+                            type="number"
+                            min={0}
+                            max={5000000}
+                            value={editedSettings.cache?.chat_response_cache_max_value_bytes ?? settings?.cache?.chat_response_cache_max_value_bytes ?? DEFAULT_CACHE.chat_response_cache_max_value_bytes}
+                            onChange={(e) => updateCache({ chat_response_cache_max_value_bytes: parseInt(e.target.value || '0', 10) })}
+                          />
+                        </div>
+                        <div className="flex items-center gap-2 pt-5">
+                          <input
+                            type="checkbox"
+                            checked={((editedSettings.cache?.chat_response_cache_require_empty_history ?? settings?.cache?.chat_response_cache_require_empty_history) ?? DEFAULT_CACHE.chat_response_cache_require_empty_history)}
+                            onChange={(e) => updateCache({ chat_response_cache_require_empty_history: e.target.checked })}
+                            className="h-4 w-4 accent-primary"
+                          />
+                          <span className="text-sm text-foreground/80">仅缓存无历史请求</span>
+                        </div>
+                      </div>
+                    )}
                   </div>
 
                   {/* Safety / PII */}

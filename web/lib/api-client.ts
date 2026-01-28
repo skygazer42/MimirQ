@@ -1665,6 +1665,14 @@ export interface RAGConfig {
   enable_reranker: boolean
 }
 
+export interface CacheConfig {
+  upload_dedup_enabled: boolean
+  chat_response_cache_enabled: boolean
+  chat_response_cache_ttl_sec: number
+  chat_response_cache_max_value_bytes: number
+  chat_response_cache_require_empty_history: boolean
+}
+
 export interface UrlIngestConfig {
   enabled: boolean
   max_bytes: number
@@ -1748,6 +1756,7 @@ export interface SystemSettings {
   embedding: EmbeddingConfig
   milvus: MilvusConfig
   rag: RAGConfig
+  cache: CacheConfig
   url_ingest: UrlIngestConfig
   governance: GovernanceConfig
   mineru: MinerUConfig

@@ -228,6 +228,18 @@ class LangGraphConfig(BaseModel):
     use_subgraphs: bool = False
 
 
+class CacheConfig(BaseModel):
+    """Performance / cache config."""
+
+    upload_dedup_enabled: bool = False
+
+    # Chat response cache (Redis, best-effort).
+    chat_response_cache_enabled: bool = False
+    chat_response_cache_ttl_sec: int = Field(default=300, ge=0, le=86_400)
+    chat_response_cache_max_value_bytes: int = Field(default=200_000, ge=0, le=5_000_000)
+    chat_response_cache_require_empty_history: bool = True
+
+
 class MinerUConfig(BaseModel):
     """MinerU config."""
     api_token: str = ""
@@ -276,6 +288,7 @@ class SystemSettings(BaseModel):
     embedding: EmbeddingConfig
     milvus: MilvusConfig
     rag: RAGConfig
+    cache: CacheConfig
     url_ingest: UrlIngestConfig
     governance: GovernanceConfig
     mineru: MinerUConfig
@@ -297,6 +310,7 @@ class UpdateSettingsRequest(BaseModel):
     embedding: Optional[EmbeddingConfig] = None
     milvus: Optional[MilvusConfig] = None
     rag: Optional[RAGConfig] = None
+    cache: Optional[CacheConfig] = None
     url_ingest: Optional[UrlIngestConfig] = None
     governance: Optional[GovernanceConfig] = None
     mineru: Optional[MinerUConfig] = None
@@ -438,6 +452,25 @@ def _apply_runtime_settings(env_vars: Dict[str, str], updated_keys: list[str]) -
                 hybrid_retriever.clear_bm25_cache()
     if "ENABLE_RERANKER" in updated_keys and "ENABLE_RERANKER" in env_vars:
         settings.ENABLE_RERANKER = _parse_bool(env_vars["ENABLE_RERANKER"])
+
+    # Cache / performance (best-effort).
+    if "UPLOAD_DEDUP_ENABLED" in updated_keys and "UPLOAD_DEDUP_ENABLED" in env_vars:
+        settings.UPLOAD_DEDUP_ENABLED = _parse_bool(env_vars["UPLOAD_DEDUP_ENABLED"])
+
+    if "CHAT_RESPONSE_CACHE_ENABLED" in updated_keys and "CHAT_RESPONSE_CACHE_ENABLED" in env_vars:
+        settings.CHAT_RESPONSE_CACHE_ENABLED = _parse_bool(env_vars["CHAT_RESPONSE_CACHE_ENABLED"])
+    if "CHAT_RESPONSE_CACHE_TTL_SEC" in updated_keys and "CHAT_RESPONSE_CACHE_TTL_SEC" in env_vars:
+        settings.CHAT_RESPONSE_CACHE_TTL_SEC = _parse_int(
+            env_vars["CHAT_RESPONSE_CACHE_TTL_SEC"],
+            default=int(getattr(settings, "CHAT_RESPONSE_CACHE_TTL_SEC", 300) or 300),
+        )
+    if "CHAT_RESPONSE_CACHE_MAX_VALUE_BYTES" in updated_keys and "CHAT_RESPONSE_CACHE_MAX_VALUE_BYTES" in env_vars:
+        settings.CHAT_RESPONSE_CACHE_MAX_VALUE_BYTES = _parse_int(
+            env_vars["CHAT_RESPONSE_CACHE_MAX_VALUE_BYTES"],
+            default=int(getattr(settings, "CHAT_RESPONSE_CACHE_MAX_VALUE_BYTES", 200_000) or 200_000),
+        )
+    if "CHAT_RESPONSE_CACHE_REQUIRE_EMPTY_HISTORY" in updated_keys and "CHAT_RESPONSE_CACHE_REQUIRE_EMPTY_HISTORY" in env_vars:
+        settings.CHAT_RESPONSE_CACHE_REQUIRE_EMPTY_HISTORY = _parse_bool(env_vars["CHAT_RESPONSE_CACHE_REQUIRE_EMPTY_HISTORY"])
 
     # URL ingest / SSRF guardrails
     if "URL_INGEST_ENABLED" in updated_keys and "URL_INGEST_ENABLED" in env_vars:
@@ -703,6 +736,13 @@ async def get_settings(
             bm25_index_enabled=bool(getattr(settings, "BM25_INDEX_ENABLED", True)),
             enable_reranker=bool(getattr(settings, "ENABLE_RERANKER", False)),
         ),
+        cache=CacheConfig(
+            upload_dedup_enabled=bool(getattr(settings, "UPLOAD_DEDUP_ENABLED", False)),
+            chat_response_cache_enabled=bool(getattr(settings, "CHAT_RESPONSE_CACHE_ENABLED", False)),
+            chat_response_cache_ttl_sec=int(getattr(settings, "CHAT_RESPONSE_CACHE_TTL_SEC", 300) or 0),
+            chat_response_cache_max_value_bytes=int(getattr(settings, "CHAT_RESPONSE_CACHE_MAX_VALUE_BYTES", 200_000) or 0),
+            chat_response_cache_require_empty_history=bool(getattr(settings, "CHAT_RESPONSE_CACHE_REQUIRE_EMPTY_HISTORY", True)),
+        ),
         url_ingest=UrlIngestConfig(
             enabled=bool(getattr(settings, "URL_INGEST_ENABLED", False)),
             max_bytes=int(getattr(settings, "URL_INGEST_MAX_BYTES", 0) or 0),
@@ -905,6 +945,28 @@ async def update_settings(
                     "DEFAULT_CHUNK_STRATEGY",
                     "BM25_INDEX_ENABLED",
                     "ENABLE_RERANKER",
+                ]
+            )
+
+        # Update cache/performance config.
+        if request.cache:
+            cc = request.cache
+            env_vars["UPLOAD_DEDUP_ENABLED"] = str(bool(getattr(cc, "upload_dedup_enabled", False))).lower()
+            env_vars["CHAT_RESPONSE_CACHE_ENABLED"] = str(bool(getattr(cc, "chat_response_cache_enabled", False))).lower()
+            env_vars["CHAT_RESPONSE_CACHE_TTL_SEC"] = str(int(getattr(cc, "chat_response_cache_ttl_sec", 0) or 0))
+            env_vars["CHAT_RESPONSE_CACHE_MAX_VALUE_BYTES"] = str(
+                int(getattr(cc, "chat_response_cache_max_value_bytes", 0) or 0)
+            )
+            env_vars["CHAT_RESPONSE_CACHE_REQUIRE_EMPTY_HISTORY"] = str(
+                bool(getattr(cc, "chat_response_cache_require_empty_history", True))
+            ).lower()
+            updated_keys.extend(
+                [
+                    "UPLOAD_DEDUP_ENABLED",
+                    "CHAT_RESPONSE_CACHE_ENABLED",
+                    "CHAT_RESPONSE_CACHE_TTL_SEC",
+                    "CHAT_RESPONSE_CACHE_MAX_VALUE_BYTES",
+                    "CHAT_RESPONSE_CACHE_REQUIRE_EMPTY_HISTORY",
                 ]
             )
 

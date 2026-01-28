@@ -2899,13 +2899,23 @@ async def list_document_duplicates(
     Notes:
     - Requires dataset read permission.
     - Applies document-level ACL filtering for non-owners ("security trimming").
+    - Uses Postgres grouping when available to avoid loading all documents into memory.
     - Best-effort and bounded by `max_groups`/`max_docs_per_group`.
     """
     DatasetService.ensure_member(db, tenant_id, account_id)
     ds = DatasetService.get_dataset(db, tenant_id, dataset_id)
     DatasetService.assert_dataset_readable(db, ds, account_id)
 
-    query = db.query(DBDocument).filter(
+    sha_expr = None
+    sha_key_expr = None
+    try:
+        sha_expr = DBDocument.doc_metadata["file_sha256"].astext  # type: ignore[attr-defined]
+        sha_key_expr = func.lower(sha_expr)
+    except Exception:
+        sha_expr = None
+        sha_key_expr = None
+
+    base_query = db.query(DBDocument).filter(
         DBDocument.tenant_id == tenant_id,
         DBDocument.dataset_id == dataset_id,
     )
@@ -2920,7 +2930,7 @@ async def list_document_duplicates(
             )
             .subquery()
         )
-        query = query.filter(
+        base_query = base_query.filter(
             or_(
                 DBDocument.access_mode.is_(None),
                 DBDocument.access_mode.in_(["inherit", "all_team_members"]),
@@ -2932,7 +2942,167 @@ async def list_document_duplicates(
             )
         )
 
-    rows = query.with_entities(
+    # Fast path: Postgres group-by on JSONB metadata.
+    if sha_expr is not None and sha_key_expr is not None:
+        try:
+            # Total groups (count of distinct sha groups that meet min_count).
+            group_all_q = (
+                db.query(sha_key_expr.label("sha"))
+                .select_from(DBDocument)
+                .filter(DBDocument.tenant_id == tenant_id, DBDocument.dataset_id == dataset_id)
+            )
+            # Apply ACL filters from base_query (reuse its criterion by reapplying the same OR).
+            # Note: easiest is to re-run base_query filters for the group query by cloning the same conditions.
+            if str(getattr(ds, "owner_id", "") or "") != str(account_id or ""):
+                doc_perm_subq = (
+                    db.query(DocumentPermission.document_id)
+                    .filter(
+                        DocumentPermission.tenant_id == tenant_id,
+                        DocumentPermission.account_id == account_id,
+                    )
+                    .subquery()
+                )
+                group_all_q = group_all_q.filter(
+                    or_(
+                        DBDocument.access_mode.is_(None),
+                        DBDocument.access_mode.in_(["inherit", "all_team_members"]),
+                        DBDocument.owner_id == account_id,
+                        and_(
+                            DBDocument.access_mode == "partial_members",
+                            DBDocument.id.in_(doc_perm_subq),
+                        ),
+                    )
+                )
+
+            group_all_q = group_all_q.filter(sha_expr.isnot(None), sha_expr != "").group_by(sha_key_expr).having(
+                func.count(DBDocument.id) >= int(min_count or 2)
+            )
+
+            total_groups = int(db.query(func.count()).select_from(group_all_q.subquery()).scalar() or 0)
+
+            # Top groups: order by size + newest.
+            group_top_q = (
+                db.query(
+                    sha_key_expr.label("sha"),
+                    func.count(DBDocument.id).label("cnt"),
+                    func.max(DBDocument.created_at).label("newest_at"),
+                )
+                .select_from(DBDocument)
+                .filter(DBDocument.tenant_id == tenant_id, DBDocument.dataset_id == dataset_id)
+            )
+            if str(getattr(ds, "owner_id", "") or "") != str(account_id or ""):
+                doc_perm_subq = (
+                    db.query(DocumentPermission.document_id)
+                    .filter(
+                        DocumentPermission.tenant_id == tenant_id,
+                        DocumentPermission.account_id == account_id,
+                    )
+                    .subquery()
+                )
+                group_top_q = group_top_q.filter(
+                    or_(
+                        DBDocument.access_mode.is_(None),
+                        DBDocument.access_mode.in_(["inherit", "all_team_members"]),
+                        DBDocument.owner_id == account_id,
+                        and_(
+                            DBDocument.access_mode == "partial_members",
+                            DBDocument.id.in_(doc_perm_subq),
+                        ),
+                    )
+                )
+
+            group_top_q = (
+                group_top_q.filter(sha_expr.isnot(None), sha_expr != "")
+                .group_by(sha_key_expr)
+                .having(func.count(DBDocument.id) >= int(min_count or 2))
+                .order_by(func.count(DBDocument.id).desc(), func.max(DBDocument.created_at).desc(), sha_key_expr.asc())
+                .limit(int(max_groups or 50))
+            )
+
+            top_groups = group_top_q.all()
+            sha_list = [str(row.sha).strip().lower() for row in top_groups if row and row.sha]
+
+            if not sha_list:
+                return {"total": total_groups, "items": []}
+
+            rownum = func.row_number().over(partition_by=sha_key_expr, order_by=DBDocument.created_at.desc()).label("rn")
+            docs_q = (
+                db.query(
+                    sha_key_expr.label("sha"),
+                    DBDocument.id.label("id"),
+                    DBDocument.filename.label("filename"),
+                    DBDocument.status.label("status"),
+                    DBDocument.dataset_id.label("dataset_id"),
+                    DBDocument.created_at.label("created_at"),
+                    rownum,
+                )
+                .select_from(DBDocument)
+                .filter(DBDocument.tenant_id == tenant_id, DBDocument.dataset_id == dataset_id, sha_key_expr.in_(sha_list))
+            )
+            if str(getattr(ds, "owner_id", "") or "") != str(account_id or ""):
+                doc_perm_subq = (
+                    db.query(DocumentPermission.document_id)
+                    .filter(
+                        DocumentPermission.tenant_id == tenant_id,
+                        DocumentPermission.account_id == account_id,
+                    )
+                    .subquery()
+                )
+                docs_q = docs_q.filter(
+                    or_(
+                        DBDocument.access_mode.is_(None),
+                        DBDocument.access_mode.in_(["inherit", "all_team_members"]),
+                        DBDocument.owner_id == account_id,
+                        and_(
+                            DBDocument.access_mode == "partial_members",
+                            DBDocument.id.in_(doc_perm_subq),
+                        ),
+                    )
+                )
+
+            docs_subq = docs_q.subquery()
+            rows = (
+                db.query(docs_subq)
+                .filter(docs_subq.c.rn <= int(max_docs_per_group or 20))
+                .order_by(docs_subq.c.sha.asc(), docs_subq.c.created_at.desc())
+                .all()
+            )
+
+            docs_by_sha: dict[str, list[dict[str, Any]]] = {}
+            for r in rows:
+                sha = str(getattr(r, "sha", "") or "").strip().lower()
+                if not sha:
+                    continue
+                docs_by_sha.setdefault(sha, []).append(
+                    {
+                        "id": r.id,
+                        "filename": r.filename,
+                        "status": str(r.status or ""),
+                        "dataset_id": r.dataset_id,
+                        "created_at": r.created_at,
+                    }
+                )
+
+            items: list[dict[str, Any]] = []
+            for row in top_groups:
+                sha = str(row.sha or "").strip().lower()
+                if not sha:
+                    continue
+                items.append(
+                    {
+                        "file_sha256": sha,
+                        "count": int(row.cnt or 0),
+                        "documents": docs_by_sha.get(sha, [])[: int(max_docs_per_group or 20)],
+                    }
+                )
+
+            return {"total": total_groups, "items": items}
+        except Exception:
+            # Fall back to the Python scan path below (best-effort).
+            pass
+
+    # Fallback: load docs and group in memory (bounded by max_groups/max_docs_per_group).
+    rows = base_query.with_entities(
         DBDocument.id,
         DBDocument.filename,
         DBDocument.status,
@@ -2973,7 +3143,6 @@ async def list_document_duplicates(
         groups_all.append((sha, docs, newest_ts))
 
     total_groups = len(groups_all)
-    # Sort by group size, then by newest created_at (timestamp).
     groups_all.sort(key=lambda item: (-len(item[1]), -float(item[2] or 0.0), item[0]))
 
     items: list[dict[str, Any]] = []
