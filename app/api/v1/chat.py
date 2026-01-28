@@ -5,7 +5,6 @@ import asyncio
 import contextlib
 import logging
 import re
-import time
 from uuid import UUID
 import uuid
 from datetime import datetime
