@@ -36,6 +36,7 @@ import {
   Sparkles,
   Send,
   Zap,
+  Globe,
   Filter,
   X,
 } from 'lucide-react'
@@ -436,6 +437,25 @@ export default function KnowledgePage() {
   const [urlBatchAccessMode, setUrlBatchAccessMode] = useState<DocumentAccessMode>('inherit')
   const [urlBatchAccessMembers, setUrlBatchAccessMembers] = useState('')
   const [urlBatchSubmitting, setUrlBatchSubmitting] = useState(false)
+
+  const [webCrawlOpen, setWebCrawlOpen] = useState(false)
+  const [webCrawlStartUrls, setWebCrawlStartUrls] = useState('')
+  const [webCrawlFilename, setWebCrawlFilename] = useState('')
+  const [webCrawlDatasetId, setWebCrawlDatasetId] = useState<string>(DATASET_DEFAULT)
+  const [webCrawlMaxPages, setWebCrawlMaxPages] = useState(50)
+  const [webCrawlMaxDepth, setWebCrawlMaxDepth] = useState(3)
+  const [webCrawlSameHostOnly, setWebCrawlSameHostOnly] = useState(true)
+  const [webCrawlIncludePatterns, setWebCrawlIncludePatterns] = useState('')
+  const [webCrawlExcludePatterns, setWebCrawlExcludePatterns] = useState('')
+  const [webCrawlUserAgent, setWebCrawlUserAgent] = useState('')
+  const [webCrawlAuthType, setWebCrawlAuthType] = useState<'none' | 'cookie' | 'bearer' | 'basic'>('none')
+  const [webCrawlAuthCookie, setWebCrawlAuthCookie] = useState('')
+  const [webCrawlAuthToken, setWebCrawlAuthToken] = useState('')
+  const [webCrawlAuthUsername, setWebCrawlAuthUsername] = useState('')
+  const [webCrawlAuthPassword, setWebCrawlAuthPassword] = useState('')
+  const [webCrawlAccessMode, setWebCrawlAccessMode] = useState<DocumentAccessMode>('inherit')
+  const [webCrawlAccessMembers, setWebCrawlAccessMembers] = useState('')
+  const [webCrawlSubmitting, setWebCrawlSubmitting] = useState(false)
   const [connectorRuns, setConnectorRuns] = useState<ConnectorRunOut[]>([])
   const [connectorRunsLoading, setConnectorRunsLoading] = useState(false)
 
@@ -452,6 +472,39 @@ export default function KnowledgePage() {
       seen.add(p)
       out.push(p)
       if (out.length >= 50) break
+    }
+    return out
+  }, [])
+
+  const parseWebCrawlStartUrls = useCallback((raw: string): string[] => {
+    const parts = (raw || '')
+      .split(/[\n,;]+/g)
+      .map((s) => s.trim())
+      .filter(Boolean)
+    const out: string[] = []
+    const seen = new Set<string>()
+    for (const p of parts) {
+      if (!/^https?:\/\//i.test(p)) continue
+      if (seen.has(p)) continue
+      seen.add(p)
+      out.push(p)
+      if (out.length >= 5) break
+    }
+    return out
+  }, [])
+
+  const parsePatterns = useCallback((raw: string, max: number): string[] => {
+    const parts = (raw || '')
+      .split(/\n+/g)
+      .map((s) => s.trim())
+      .filter(Boolean)
+    const out: string[] = []
+    const seen = new Set<string>()
+    for (const p of parts) {
+      if (seen.has(p)) continue
+      seen.add(p)
+      out.push(p)
+      if (out.length >= max) break
     }
     return out
   }, [])
@@ -593,6 +646,127 @@ export default function KnowledgePage() {
     urlBatchDatasetId,
     urlBatchFilename,
     urlBatchUrls,
+  ])
+
+  const handleWebCrawlImport = useCallback(async () => {
+    const startUrls = parseWebCrawlStartUrls(webCrawlStartUrls)
+    if (!startUrls.length) {
+      toast.error('Please input at least 1 http(s) seed URL (one per line)')
+      return
+    }
+
+    let auth: any = null
+    const authType = webCrawlAuthType
+    if (authType === 'cookie') {
+      const cookie = webCrawlAuthCookie.trim()
+      if (!cookie) {
+        toast.error('Please input Cookie')
+        return
+      }
+      auth = { type: 'cookie', cookie }
+    } else if (authType === 'bearer') {
+      const token = webCrawlAuthToken.trim()
+      if (!token) {
+        toast.error('Please input Bearer token')
+        return
+      }
+      auth = { type: 'bearer', token }
+    } else if (authType === 'basic') {
+      const username = webCrawlAuthUsername.trim()
+      const password = webCrawlAuthPassword.trim()
+      if (!username || !password) {
+        toast.error('Please input Basic username/password')
+        return
+      }
+      auth = { type: 'basic', username, password }
+    }
+
+    const maxPages = Number.isFinite(webCrawlMaxPages) ? Math.trunc(webCrawlMaxPages) : 50
+    const maxDepth = Number.isFinite(webCrawlMaxDepth) ? Math.trunc(webCrawlMaxDepth) : 3
+
+    setWebCrawlSubmitting(true)
+    try {
+      const access =
+        webCrawlAccessMode === 'inherit'
+          ? null
+          : {
+              mode: webCrawlAccessMode,
+              partial_member_list:
+                webCrawlAccessMode === 'partial_members' ? parseAccessMembers(webCrawlAccessMembers) : null,
+            }
+
+      const run = await connectorApi.createRun({
+        connector_id: 'web_crawl',
+        dataset_id: webCrawlDatasetId === DATASET_DEFAULT ? undefined : webCrawlDatasetId,
+        config: {
+          start_urls: startUrls,
+          max_pages: maxPages,
+          max_depth: maxDepth,
+          same_host_only: Boolean(webCrawlSameHostOnly),
+          include_patterns: parsePatterns(webCrawlIncludePatterns, 30),
+          exclude_patterns: parsePatterns(webCrawlExcludePatterns, 60),
+          user_agent: webCrawlUserAgent.trim() ? webCrawlUserAgent.trim() : undefined,
+          auth,
+          filename: webCrawlFilename.trim() ? webCrawlFilename.trim() : undefined,
+          parser_backend: parserBackend,
+          chunk_strategy: chunkStrategy,
+          pipeline: pipelineOverridesEnabled ? pipelineOptions : undefined,
+          access,
+        },
+      })
+
+      toast.success(`Web crawl run created: ${run.id.slice(0, 8)}`)
+      setWebCrawlOpen(false)
+      setWebCrawlStartUrls('')
+      setWebCrawlFilename('')
+      setWebCrawlMaxPages(50)
+      setWebCrawlMaxDepth(3)
+      setWebCrawlSameHostOnly(true)
+      setWebCrawlIncludePatterns('')
+      setWebCrawlExcludePatterns('')
+      setWebCrawlUserAgent('')
+      setWebCrawlAuthType('none')
+      setWebCrawlAuthCookie('')
+      setWebCrawlAuthToken('')
+      setWebCrawlAuthUsername('')
+      setWebCrawlAuthPassword('')
+      setWebCrawlAccessMode('inherit')
+      setWebCrawlAccessMembers('')
+      void loadConnectorRuns({ datasetId: selectedDatasetId })
+      void loadDocuments()
+    } catch (err: any) {
+      toast.error(formatApiError(err, 'Failed to create web crawl run'))
+    } finally {
+      setWebCrawlSubmitting(false)
+    }
+  }, [
+    DATASET_DEFAULT,
+    chunkStrategy,
+    loadConnectorRuns,
+    loadDocuments,
+    parseAccessMembers,
+    parsePatterns,
+    parseWebCrawlStartUrls,
+    parserBackend,
+    pipelineOptions,
+    pipelineOverridesEnabled,
+    selectedDatasetId,
+    webCrawlAccessMembers,
+    webCrawlAccessMode,
+    webCrawlAuthCookie,
+    webCrawlAuthPassword,
+    webCrawlAuthToken,
+    webCrawlAuthType,
+    webCrawlAuthUsername,
+    webCrawlDatasetId,
+    webCrawlExcludePatterns,
+    webCrawlFilename,
+    webCrawlIncludePatterns,
+    webCrawlMaxDepth,
+    webCrawlMaxPages,
+    webCrawlSameHostOnly,
+    webCrawlStartUrls,
+    webCrawlUserAgent,
   ])
 
   const handleCancelConnectorRun = useCallback(
@@ -939,6 +1113,248 @@ export default function KnowledgePage() {
                       <Button onClick={handleUrlBatchImport} disabled={urlBatchSubmitting} className="gap-2">
                         {urlBatchSubmitting ? <Loader2 className="w-4 h-4 animate-spin motion-reduce:animate-none" /> : null}
                         开始导入
+                      </Button>
+                    </div>
+                  </div>
+                </DialogContent>
+              </Dialog>
+              <Dialog
+                open={webCrawlOpen}
+                onOpenChange={(open) => {
+                  setWebCrawlOpen(open)
+                  if (open) {
+                    setWebCrawlDatasetId(selectedDatasetId || DATASET_DEFAULT)
+                  }
+                }}
+              >
+                <DialogTrigger asChild>
+                  <Button
+                    variant="outline"
+                    className="gap-2 border-border bg-background/60 hover:bg-background text-muted-foreground"
+                  >
+                    <Globe className="w-4 h-4" />
+                    Website Crawl
+                  </Button>
+                </DialogTrigger>
+                <DialogContent className="max-w-3xl">
+                  <DialogHeader>
+                    <DialogTitle>Website Crawl (Connector)</DialogTitle>
+                    <DialogDescription>
+                      Crawl from one or more seed URLs, discover links, then ingest each page via URL ingestion.
+                      Requires backend `URL_INGEST_ENABLED=true`.
+                    </DialogDescription>
+                  </DialogHeader>
+
+                  <div className="space-y-4">
+                    <div className="space-y-2">
+                      <div className="text-sm font-medium text-foreground/80">Seed URLs (one per line, max 5)</div>
+                      <Textarea
+                        value={webCrawlStartUrls}
+                        onChange={(e) => setWebCrawlStartUrls(e.target.value)}
+                        placeholder={'https://example.com/docs\nhttps://example.com/help'}
+                        className="font-mono min-h-[120px]"
+                      />
+                      <div className="text-xs text-muted-foreground">
+                        Parsed: {parseWebCrawlStartUrls(webCrawlStartUrls).length} urls
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                      <div className="space-y-2">
+                        <div className="text-sm font-medium text-foreground/80">Max pages</div>
+                        <Input
+                          type="number"
+                          value={webCrawlMaxPages}
+                          onChange={(e) => setWebCrawlMaxPages(Number(e.target.value || 0))}
+                          min={1}
+                          max={500}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <div className="text-sm font-medium text-foreground/80">Max depth</div>
+                        <Input
+                          type="number"
+                          value={webCrawlMaxDepth}
+                          onChange={(e) => setWebCrawlMaxDepth(Number(e.target.value || 0))}
+                          min={0}
+                          max={10}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <div className="text-sm font-medium text-foreground/80">Scope</div>
+                        <label className="flex items-center gap-2 text-sm text-muted-foreground cursor-pointer select-none">
+                          <input
+                            type="checkbox"
+                            checked={webCrawlSameHostOnly}
+                            onChange={(e) => setWebCrawlSameHostOnly(e.target.checked)}
+                            className="accent-primary h-4 w-4"
+                          />
+                          Same host only
+                        </label>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <div className="text-sm font-medium text-foreground/80">Include patterns (regex, one per line)</div>
+                        <Textarea
+                          value={webCrawlIncludePatterns}
+                          onChange={(e) => setWebCrawlIncludePatterns(e.target.value)}
+                          placeholder={'/docs/\n/help/'}
+                          className="font-mono min-h-[110px]"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <div className="text-sm font-medium text-foreground/80">Exclude patterns (regex, one per line)</div>
+                        <Textarea
+                          value={webCrawlExcludePatterns}
+                          onChange={(e) => setWebCrawlExcludePatterns(e.target.value)}
+                          placeholder={'/logout\n\\?print=1'}
+                          className="font-mono min-h-[110px]"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <div className="text-sm font-medium text-foreground/80">User-Agent (optional)</div>
+                        <Input
+                          value={webCrawlUserAgent}
+                          onChange={(e) => setWebCrawlUserAgent(e.target.value)}
+                          placeholder="MimirQ/1.0 (+web-crawl)"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <div className="text-sm font-medium text-foreground/80">Auth</div>
+                        <Select value={webCrawlAuthType} onValueChange={(v) => setWebCrawlAuthType(v as any)}>
+                          <SelectTrigger className="h-10 bg-background">
+                            <SelectValue placeholder="Select auth" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="none">None</SelectItem>
+                            <SelectItem value="cookie">Cookie</SelectItem>
+                            <SelectItem value="bearer">Bearer</SelectItem>
+                            <SelectItem value="basic">Basic</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+
+                    {webCrawlAuthType === 'cookie' ? (
+                      <div className="space-y-2">
+                        <div className="text-sm font-medium text-foreground/80">Cookie header value</div>
+                        <Textarea
+                          value={webCrawlAuthCookie}
+                          onChange={(e) => setWebCrawlAuthCookie(e.target.value)}
+                          placeholder="session=...; other=..."
+                          className="font-mono min-h-[90px]"
+                        />
+                      </div>
+                    ) : null}
+                    {webCrawlAuthType === 'bearer' ? (
+                      <div className="space-y-2">
+                        <div className="text-sm font-medium text-foreground/80">Bearer token</div>
+                        <Textarea
+                          value={webCrawlAuthToken}
+                          onChange={(e) => setWebCrawlAuthToken(e.target.value)}
+                          placeholder="eyJhbGciOi..."
+                          className="font-mono min-h-[90px]"
+                        />
+                      </div>
+                    ) : null}
+                    {webCrawlAuthType === 'basic' ? (
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                          <div className="text-sm font-medium text-foreground/80">Username</div>
+                          <Input value={webCrawlAuthUsername} onChange={(e) => setWebCrawlAuthUsername(e.target.value)} />
+                        </div>
+                        <div className="space-y-2">
+                          <div className="text-sm font-medium text-foreground/80">Password</div>
+                          <Input
+                            type="password"
+                            value={webCrawlAuthPassword}
+                            onChange={(e) => setWebCrawlAuthPassword(e.target.value)}
+                          />
+                        </div>
+                      </div>
+                    ) : null}
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <div className="text-sm font-medium text-foreground/80">Filename override (optional)</div>
+                        <Input
+                          value={webCrawlFilename}
+                          onChange={(e) => setWebCrawlFilename(e.target.value)}
+                          placeholder="e.g. website.html"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <div className="text-sm font-medium text-foreground/80">Target dataset</div>
+                        <Select value={webCrawlDatasetId} onValueChange={setWebCrawlDatasetId}>
+                          <SelectTrigger className="h-10 bg-background">
+                            <SelectValue placeholder="Select dataset" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value={DATASET_DEFAULT}>Default (auto)</SelectItem>
+                            {datasets.map((ds) => (
+                              <SelectItem key={ds.id} value={ds.id}>
+                                {ds.name}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        {datasetsLoading ? (
+                          <div className="text-xs text-muted-foreground">Loading datasets...</div>
+                        ) : null}
+                      </div>
+                    </div>
+
+                    <div className="space-y-2">
+                      <div className="text-sm font-medium text-foreground/80">Document access (optional)</div>
+                      <Select value={webCrawlAccessMode} onValueChange={(v) => setWebCrawlAccessMode(v as DocumentAccessMode)}>
+                        <SelectTrigger className="h-10 bg-background">
+                          <SelectValue placeholder="Select access mode" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="inherit">Inherit dataset</SelectItem>
+                          <SelectItem value="only_me">Only me</SelectItem>
+                          <SelectItem value="partial_members">Partial members</SelectItem>
+                          <SelectItem value="all_team_members">All team members</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      {webCrawlAccessMode === 'partial_members' ? (
+                        <div className="space-y-2 pt-2">
+                          <div className="text-sm font-medium text-foreground/80">Allowed members (one user_id per line)</div>
+                          <Textarea
+                            value={webCrawlAccessMembers}
+                            onChange={(e) => setWebCrawlAccessMembers(e.target.value)}
+                            placeholder={'alice\nbob\ncharlie'}
+                            className="font-mono min-h-[110px]"
+                          />
+                        </div>
+                      ) : null}
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <div className="text-sm font-medium text-foreground/80">Parser</div>
+                        <ParserDropdown value={parserBackend} onChange={setParserBackend} />
+                      </div>
+                      <div className="space-y-2">
+                        <div className="text-sm font-medium text-foreground/80">Chunk strategy</div>
+                        <ChunkStrategyDropdown value={chunkStrategy} onChange={setChunkStrategy} />
+                      </div>
+                    </div>
+
+                    <PipelineOptionsPanel />
+
+                    <div className="flex items-center justify-end gap-2 pt-2">
+                      <Button variant="outline" onClick={() => setWebCrawlOpen(false)} disabled={webCrawlSubmitting}>
+                        Cancel
+                      </Button>
+                      <Button onClick={handleWebCrawlImport} disabled={webCrawlSubmitting} className="gap-2">
+                        {webCrawlSubmitting ? <Loader2 className="w-4 h-4 animate-spin motion-reduce:animate-none" /> : null}
+                        Start
                       </Button>
                     </div>
                   </div>

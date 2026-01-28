@@ -70,6 +70,8 @@ curl -X POST "http://localhost:8000/api/v1/documents/upload-url" \
 
 前端入口：知识库页面顶部 `URL 批量导入` 按钮。
 
+站点级抓取请参考：[docs/guides/web_crawl.md](./web_crawl.md)（`web_crawl` connector）。
+
 相关 API：
 
 - `GET /api/v1/connectors`：列出可用连接器（当前仅 `url_batch`）

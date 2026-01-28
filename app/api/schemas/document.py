@@ -372,6 +372,32 @@ class DocumentChunkSchema(OrmModel):
     )
 
 
+class DocumentChunkUpdateRequest(BaseModel):
+    """
+    Patch a document chunk.
+
+    Notes:
+    - This is used for post-ingest manual chunk editing (no re-parse required).
+    - metadata is a patch dict: keys with null values are removed.
+    """
+
+    content: Optional[str] = Field(default=None, max_length=200_000)
+    page_number: Optional[int] = Field(default=None, ge=0, le=100_000)
+    start_char: Optional[int] = Field(default=None, ge=0, le=10_000_000)
+    end_char: Optional[int] = Field(default=None, ge=0, le=10_000_000)
+    metadata: Optional[Dict[str, Any]] = Field(default=None, description="Chunk metadata patch (null values delete keys)")
+
+
+class DocumentChunkCreateRequest(BaseModel):
+    """Create a new chunk (appends to the active pipeline version)."""
+
+    content: str = Field(..., min_length=1, max_length=200_000)
+    page_number: Optional[int] = Field(default=None, ge=0, le=100_000)
+    start_char: Optional[int] = Field(default=None, ge=0, le=10_000_000)
+    end_char: Optional[int] = Field(default=None, ge=0, le=10_000_000)
+    metadata: Dict[str, Any] = Field(default_factory=dict)
+
+
 class GovernanceInfo(BaseModel):
     enabled: bool = False
     documents: int = 0

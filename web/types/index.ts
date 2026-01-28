@@ -76,7 +76,7 @@ export interface DocumentAccessUpdateRequest {
 
 // ==================== Connectors ====================
 
-export type ConnectorId = 'url_batch'
+export type ConnectorId = 'url_batch' | 'web_crawl'
 export type ConnectorRunStatus = 'pending' | 'running' | 'completed' | 'failed' | 'cancelled'
 
 export interface ConnectorInfo {
@@ -95,11 +95,42 @@ export interface UrlBatchConnectorConfig {
   access?: DocumentAccessUpdateRequest | null
 }
 
-export interface ConnectorRunCreateRequest {
-  connector_id: ConnectorId
-  dataset_id?: string | null
-  config: UrlBatchConnectorConfig
+export interface WebCrawlAuthConfig {
+  type: 'none' | 'cookie' | 'bearer' | 'basic'
+  cookie?: string | null
+  token?: string | null
+  username?: string | null
+  password?: string | null
 }
+
+export interface WebCrawlConnectorConfig {
+  start_urls: string[]
+  max_pages?: number
+  max_depth?: number
+  same_host_only?: boolean
+  include_patterns?: string[]
+  exclude_patterns?: string[]
+  user_agent?: string | null
+  auth?: WebCrawlAuthConfig | null
+
+  filename?: string | null
+  parser_backend?: string
+  chunk_strategy?: string
+  pipeline?: DocumentPipelineOptions
+  access?: DocumentAccessUpdateRequest | null
+}
+
+export type ConnectorRunCreateRequest =
+  | {
+      connector_id: 'url_batch'
+      dataset_id?: string | null
+      config: UrlBatchConnectorConfig
+    }
+  | {
+      connector_id: 'web_crawl'
+      dataset_id?: string | null
+      config: WebCrawlConnectorConfig
+    }
 
 export interface ConnectorRunDocumentOut {
   document_id: string
@@ -236,6 +267,22 @@ export interface DocumentChunk {
   start_char?: number
   end_char?: number
   chunk_index: number
+  metadata?: Record<string, any>
+}
+
+export interface DocumentChunkUpdateRequest {
+  content?: string
+  page_number?: number
+  start_char?: number
+  end_char?: number
+  metadata?: Record<string, any> | null
+}
+
+export interface DocumentChunkCreateRequest {
+  content: string
+  page_number?: number
+  start_char?: number
+  end_char?: number
   metadata?: Record<string, any>
 }
 

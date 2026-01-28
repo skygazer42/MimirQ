@@ -5,7 +5,9 @@ import axios, { AxiosHeaders } from 'axios'
 import type {
   Document,
   DocumentChunk,
+  DocumentChunkCreateRequest,
   DocumentChunkMatchList,
+  DocumentChunkUpdateRequest,
   DocumentStatus,
   DocumentStats,
   DocumentAccessInfo,
@@ -433,6 +435,29 @@ export const documentApi = {
   async getChunk(documentId: string, chunkId: string): Promise<DocumentChunk> {
     const { data } = await apiClient.get(`/documents/${documentId}/chunks/${chunkId}`)
     return data
+  },
+
+  /**
+   * 创建新切片（追加到当前激活版本）
+   */
+  async createChunk(documentId: string, payload: DocumentChunkCreateRequest): Promise<DocumentChunk> {
+    const { data } = await apiClient.post(`/documents/${documentId}/chunks`, payload)
+    return data
+  },
+
+  /**
+   * 更新切片（入库后手工编辑）
+   */
+  async updateChunk(documentId: string, chunkId: string, payload: DocumentChunkUpdateRequest): Promise<DocumentChunk> {
+    const { data } = await apiClient.patch(`/documents/${documentId}/chunks/${chunkId}`, payload)
+    return data
+  },
+
+  /**
+   * 删除切片（入库后手工编辑）
+   */
+  async deleteChunk(documentId: string, chunkId: string): Promise<void> {
+    await apiClient.delete(`/documents/${documentId}/chunks/${chunkId}`)
   },
 
   /**
