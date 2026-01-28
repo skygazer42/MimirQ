@@ -66,6 +66,7 @@ from app.api.schemas.document import (
     BatchTaskStatus,
     DocumentBatchUploadResponse,
 )
+from app.api.schemas.qa import DocumentQAGenerateRequest, DocumentQAGenerateResponse, QAPairPreview
 from langchain_core.documents import Document
 from app.parsing.processors.processor import document_processor
 from app.parsing.factory import parser_factory
@@ -75,6 +76,7 @@ from app.rag.chunking.strategies.separator import SeparatorChunker
 from app.types.indexing import IndexKind, IndexRecord
 from app.types.pipeline import PipelineOptions
 from app.services.indexer import Indexer
+from app.services.document_qa_service import generate_and_index_document_qa
 from app.services.pipeline_config import (
     build_indexing_options,
     merge_pipeline_options,
@@ -4322,6 +4324,72 @@ async def delete_document_chunk(
         db.commit()
 
     return Response(status_code=204)
+
+
+@router.post("/{document_id}/qa/generate", response_model=DocumentQAGenerateResponse)
+async def generate_document_qa(
+    document_id: uuid.UUID,
+    payload: DocumentQAGenerateRequest,
+    tenant_id: UUID = Depends(get_tenant_id),
+    account_id: str = Depends(get_current_account_id),
+    db: Session = Depends(get_db),
+):
+    """
+    Generate (or extract) FAQ-style Q&A pairs for a document and index them as extra chunks.
+
+    Generated chunks are tagged with `file_type=qa` in chunk metadata.
+    """
+    DatasetService.ensure_member(db, tenant_id, account_id)
+
+    document = (
+        db.query(DBDocument)
+        .filter(DBDocument.id == document_id, DBDocument.tenant_id == tenant_id)
+        .first()
+    )
+    if not document:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    ds: Dataset | None = None
+    if document.dataset_id:
+        ds = DatasetService.get_dataset(db, tenant_id, document.dataset_id)
+        DatasetService.assert_dataset_writable(db, ds, account_id)
+    _assert_document_acl_readable(db, tenant_id=tenant_id, account_id=account_id, document=document, dataset=ds)
+
+    current_status = str(document.status or "").lower()
+    if current_status in {"pending", "processing"}:
+        raise HTTPException(status_code=409, detail=f"Cannot generate Q&A for a {current_status} document")
+
+    result = generate_and_index_document_qa(
+        db,
+        tenant_id=tenant_id,
+        document=document,
+        num_pairs=int(payload.num_pairs or 0),
+        replace_existing=bool(payload.replace_existing),
+        prefer_llm=bool(payload.prefer_llm),
+        max_source_chars=int(payload.max_source_chars or 0),
+        preview_pairs=int(payload.preview_pairs or 0),
+    )
+
+    audit_log_event(
+        db,
+        tenant_id=tenant_id,
+        actor_id=account_id,
+        action="document.qa.generate",
+        resource_type="document",
+        resource_id=str(document_id),
+        details={"mode": result.mode, "deleted": int(result.deleted), "created": int(result.created)},
+    )
+    with contextlib.suppress(Exception):
+        db.commit()
+
+    return DocumentQAGenerateResponse(
+        document_id=document_id,
+        mode=str(result.mode or "none"),
+        deleted=int(result.deleted),
+        created=int(result.created),
+        chunk_ids=list(result.chunk_ids or []),
+        preview=[QAPairPreview(**p) for p in (result.preview or [])],
+    )
 
 
 @router.patch("/{document_id}/pipeline", response_model=DocumentDetail)

@@ -23,6 +23,75 @@ type PipelineOptionsPanelProps = {
   hideEnabledToggle?: boolean
 }
 
+type PipelineIndexPreset = 'custom' | 'economical' | 'high_quality'
+
+const PIPELINE_INDEX_PRESETS: Record<
+  PipelineIndexPreset,
+  { label: string; description: string; patch: Partial<DocumentPipelineOptions> }
+> = {
+  custom: {
+    label: '自定义',
+    description: '保持当前配置',
+    patch: {},
+  },
+  economical: {
+    label: 'Economical (省成本)',
+    description: '更少处理/存储，适合大规模导入',
+    patch: {
+      governance_enabled: false,
+      persist_parsed_content: false,
+      parse_fallback_enabled: false,
+      near_dedup_enabled: false,
+      embedding_context_prefix_enabled: false,
+      chunk_vector_enabled: true,
+      bm25_index_enabled: true,
+      kg_enabled: false,
+      event_vector_enabled: false,
+      entity_vector_enabled: false,
+      chunk_size: 1500,
+      chunk_overlap: 150,
+      chunk_merge_small_min_chars: 0,
+    },
+  },
+  high_quality: {
+    label: 'High-quality (高质量)',
+    description: '更细切块+去重+上下文前缀，召回更稳',
+    patch: {
+      governance_enabled: true,
+      persist_parsed_content: true,
+      parse_fallback_enabled: true,
+      near_dedup_enabled: true,
+      embedding_context_prefix_enabled: true,
+      chunk_vector_enabled: true,
+      bm25_index_enabled: true,
+      kg_enabled: false,
+      event_vector_enabled: false,
+      entity_vector_enabled: false,
+      chunk_size: 900,
+      chunk_overlap: 200,
+      chunk_merge_small_min_chars: 160,
+    },
+  },
+}
+
+function detectPipelineIndexPreset(options: DocumentPipelineOptions): PipelineIndexPreset {
+  const ids: PipelineIndexPreset[] = ['economical', 'high_quality']
+  for (const id of ids) {
+    const patch = PIPELINE_INDEX_PRESETS[id].patch
+    let match = true
+    for (const [rawKey, expected] of Object.entries(patch)) {
+      const key = rawKey as keyof DocumentPipelineOptions
+      if (typeof expected === 'undefined') continue
+      if ((options as any)?.[key] !== expected) {
+        match = false
+        break
+      }
+    }
+    if (match) return id
+  }
+  return 'custom'
+}
+
 export function PipelineOptionsPanel(props: PipelineOptionsPanelProps) {
   const { className, compact } = props
   const ctx = usePipelineOptions()
@@ -55,6 +124,7 @@ export function PipelineOptionsPanel(props: PipelineOptionsPanelProps) {
 
   const titleClasses = compact ? 'text-xs' : 'text-sm'
   const descClasses = compact ? 'text-[10px]' : 'text-xs'
+  const activeIndexPreset = useMemo(() => detectPipelineIndexPreset(options), [options])
 
   const optionGroups = useMemo(() => ([
     {
@@ -453,6 +523,20 @@ export function PipelineOptionsPanel(props: PipelineOptionsPanelProps) {
     toast.success('已导入管线 JSON')
   }
 
+  const applyIndexPreset = (preset: PipelineIndexPreset) => {
+    if (preset === 'custom') return
+
+    // Choosing a preset implies enabling the pipeline (for the current UI surface).
+    if (!enabled) setEnabled(true)
+
+    const patch = PIPELINE_INDEX_PRESETS[preset].patch
+    for (const [rawKey, value] of Object.entries(patch)) {
+      if (typeof value === 'undefined') continue
+      updateOption(rawKey as keyof DocumentPipelineOptions, value as any)
+    }
+    toast.success(`已应用索引模式：${PIPELINE_INDEX_PRESETS[preset].label}`)
+  }
+
   return (
     <div className={cn("space-y-4 font-sans", className)}>
       {!props.hideEnabledToggle && (
@@ -471,6 +555,25 @@ export function PipelineOptionsPanel(props: PipelineOptionsPanelProps) {
           />
         </div>
       )}
+
+      <div className={cn("flex items-center justify-between gap-3 rounded-xl border border-border bg-muted/30", compact ? "px-2.5 py-2" : "p-3")}>
+        <div className="min-w-0">
+          <div className={cn("font-semibold text-foreground", titleClasses)}>索引模式（成本/质量）</div>
+          <p className={cn("text-muted-foreground", descClasses)}>
+            {compact ? 'Economical / High-quality presets' : '一键套用常见预设；你仍可继续逐项微调。'}
+          </p>
+        </div>
+        <Select value={activeIndexPreset} onValueChange={(v) => applyIndexPreset(v as PipelineIndexPreset)}>
+          <SelectTrigger className={cn("h-8", compact ? "w-44" : "w-52")}>
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="custom">自定义</SelectItem>
+            <SelectItem value="economical">Economical (省成本)</SelectItem>
+            <SelectItem value="high_quality">High-quality (高质量)</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
 
       {!compact && (
         <div className="flex items-center justify-end gap-2">

@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, type Dispatch, type SetStateAction } from 'react'
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
 import { BarChart3, FileSearch, Layers, Loader2, Pencil, Plus, RefreshCw, Settings2, Table2, Trash2 } from 'lucide-react'
@@ -405,7 +405,7 @@ function DatasetForm({
   setForm,
 }: {
   form: DatasetFormState
-  setForm: (next: DatasetFormState) => void
+  setForm: Dispatch<SetStateAction<DatasetFormState>>
 }) {
   return (
     <div className="grid gap-5">
@@ -497,13 +497,13 @@ function DatasetForm({
                 // dataset panel is always "enabled" when visible; ignore
               }}
               onOptionChange={(key, value) => {
-                setForm({
-                  ...form,
+                setForm((prev) => ({
+                  ...prev,
                   pipelineOptions: {
-                    ...form.pipelineOptions,
+                    ...prev.pipelineOptions,
                     [key]: value,
                   },
-                })
+                }))
               }}
             />
           </div>

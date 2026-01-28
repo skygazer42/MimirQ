@@ -8,6 +8,8 @@ import type {
   DocumentChunkCreateRequest,
   DocumentChunkMatchList,
   DocumentChunkUpdateRequest,
+  DocumentQAGenerateRequest,
+  DocumentQAGenerateResponse,
   DocumentStatus,
   DocumentStats,
   DocumentAccessInfo,
@@ -463,6 +465,14 @@ export const documentApi = {
   /**
    * 下载/预览原始文件（返回 Blob）
    */
+  /**
+   * Generate FAQ-style Q&A pairs for a document and index them as extra chunks (file_type=qa).
+   */
+  async generateQa(documentId: string, payload: DocumentQAGenerateRequest): Promise<DocumentQAGenerateResponse> {
+    const { data } = await apiClient.post(`/documents/${documentId}/qa/generate`, payload)
+    return data
+  },
+
   async download(documentId: string, params?: { inline?: boolean }): Promise<Blob> {
     const { data } = await apiClient.get(`/documents/${documentId}/download`, {
       params,
