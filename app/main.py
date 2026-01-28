@@ -62,6 +62,8 @@ import app.models.user  # noqa: F401
 import app.models.connector  # noqa: F401
 # Ensure audit log models are registered for metadata creation
 import app.models.audit_log  # noqa: F401
+# Ensure conversation summary models are registered for metadata creation
+import app.models.conversation_summary  # noqa: F401
 
 logger = logging.getLogger("mimirq")
 _OPENAPI_EXPORT_MODE = str(os.getenv("MIMIRQ_OPENAPI_EXPORT", "") or "").strip().lower() in {"1", "true", "yes", "y", "on"}

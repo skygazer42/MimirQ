@@ -139,6 +139,7 @@ class ChatRequest(BaseModel):
     structured_output: bool = False  # Require structured (JSON) output.
     structured_preset: Optional[str] = None  # faq | summary | action_items | custom
     enable_long_term_memory: bool = False  # Enable long-term memory retrieval.
+    enable_summary_memory: bool = False  # Enable persistent summary memory injection (when available).
     prompt_template_id: Optional[UUID] = None  # Custom prompt template ID.
     prompt_template_key: Optional[str] = None  # Select latest version by key (optional).
     prompt_ab_experiment_key: Optional[str] = None  # A/B experiment key (optional, stable per-user split).

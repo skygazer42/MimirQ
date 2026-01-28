@@ -27,6 +27,21 @@ def format_history_text(
     if not hist_slice:
         return empty_placeholder
 
+    # Preserve the latest system message even when using a small rolling window.
+    # This enables summary-memory injection without requiring a large CHAT_HISTORY_WINDOW.
+    if window and history:
+        last_system = None
+        for msg in reversed(history):
+            if isinstance(msg, dict):
+                role_value = msg.get("role")
+            else:
+                role_value = getattr(msg, "role", None)
+            if role_value == "system":
+                last_system = msg
+                break
+        if last_system is not None and last_system not in hist_slice:
+            hist_slice = [last_system] + list(hist_slice)
+
     parts: list[str] = []
     for msg in hist_slice:
         if isinstance(msg, dict):
@@ -36,9 +51,11 @@ def format_history_text(
             role_value = getattr(msg, "role", None)
             content_value = getattr(msg, "content", "")
 
-        role = user_label if role_value == "user" else assistant_label
+        if role_value == "system":
+            role = "System"
+        else:
+            role = user_label if role_value == "user" else assistant_label
         parts.append(f"{role}: {content_value}")
 
     text = "\n\n".join(parts).strip()
     return text or empty_placeholder
-

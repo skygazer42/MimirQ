@@ -12,6 +12,7 @@ from typing import Optional, List
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
 from fastapi.encoders import jsonable_encoder
+from pydantic import BaseModel
 from sqlalchemy import func, and_, or_
 from sqlalchemy.orm import Session
 from langchain_core.documents import Document
@@ -40,6 +41,7 @@ from app.services.chat_response_cache import build_chat_cache_key, get_cached_ch
 from app.services.prompt_defaults import merge_prompt_defaults_with_dataset
 from app.services.rag_defaults import merge_rag_config_with_dataset_defaults
 from app.services.audit_log_service import audit_log_event, build_chat_audit_details
+from app.services.conversation_summary_service import get_conversation_summary, clear_conversation_summary, update_conversation_summary
 from app.rag.engine import get_rag_engine
 from app.rag.core.text import parse_json_from_text
 from app.services.metrics_logger import log_metrics, set_metrics_context
@@ -296,6 +298,16 @@ async def chat(
         dataset_meta=dataset_defaults_meta,
     )
 
+    # Optional: persistent summary memory injection.
+    history_for_llm = [m.model_dump() for m in request.history] + long_term_messages
+    if bool(getattr(request, "enable_summary_memory", False)) and conversation_id:
+        try:
+            summary_text = get_conversation_summary(db, tenant_id=tenant_id, conversation_id=conversation_id)
+        except Exception:
+            summary_text = None
+        if summary_text:
+            history_for_llm = [{"role": "system", "content": summary_text}] + history_for_llm
+
     metrics_data: dict = {}
     structured_data = None
 
@@ -357,7 +369,7 @@ async def chat(
 
                 state = build_rag_state(
                     question=request.message,
-                    history=[m.model_dump() for m in request.history] + long_term_messages,
+                    history=history_for_llm,
                     document_ids=doc_ids_to_use,
                     tenant_id=tenant_id,
                     top_k=effective_rag_config.top_k,
@@ -421,7 +433,7 @@ async def chat(
                 done_data: dict = {}
                 async for event in engine.stream_chat(
                     question=request.message,
-                    history=[m.model_dump() for m in request.history] + long_term_messages,
+                    history=history_for_llm,
                     conversation_id=conversation_id,
                     document_ids=doc_ids_to_use,
                     metadata_filter=effective_rag_config.metadata_filter,
@@ -685,6 +697,15 @@ async def stream_chat(
             dataset_meta=dataset_defaults_meta,
         )
 
+        history_for_llm = [m.model_dump() for m in request.history] + long_term_messages
+        if bool(getattr(request, "enable_summary_memory", False)) and conversation_id:
+            try:
+                summary_text = get_conversation_summary(db, tenant_id=tenant_id, conversation_id=conversation_id)
+            except Exception:
+                summary_text = None
+            if summary_text:
+                history_for_llm = [{"role": "system", "content": summary_text}] + history_for_llm
+
         # LangGraph path: stream stage events (custom) + state snapshots (values).
         if effective_rag_config.use_graph:
             try:
@@ -700,7 +721,7 @@ async def stream_chat(
 
                 state = build_rag_state(
                     question=request.message,
-                    history=[m.model_dump() for m in request.history] + long_term_messages,
+                    history=history_for_llm,
                     document_ids=doc_ids_to_use,
                     tenant_id=tenant_id,
                     top_k=effective_rag_config.top_k,
@@ -907,7 +928,7 @@ async def stream_chat(
             engine = get_rag_engine()
             async for event in engine.stream_chat(
                 question=request.message,
-                history=[m.model_dump() for m in request.history] + long_term_messages,
+                history=history_for_llm,
                 conversation_id=conversation_id,
                 document_ids=doc_ids_to_use,
                 metadata_filter=effective_rag_config.metadata_filter,
@@ -1286,6 +1307,86 @@ async def get_conversation_messages(
         "has_more": has_more,
         "messages": messages,
     }
+
+
+class ConversationSummaryResponse(BaseModel):
+    available: bool
+    summary: str | None = None
+
+
+class ConversationSummaryUpdateResponse(BaseModel):
+    summary: str
+
+
+@router.get("/conversations/{conversation_id}/summary", response_model=ConversationSummaryResponse)
+async def get_conversation_summary_endpoint(
+    conversation_id: UUID,
+    tenant_id: UUID = Depends(get_tenant_id),
+    account_id: str = Depends(get_current_account_id),
+    db: Session = Depends(get_db),
+):
+    DatasetService.ensure_member(db, tenant_id, account_id)
+    conversation = (
+        db.query(Conversation)
+        .filter(Conversation.id == conversation_id, Conversation.tenant_id == tenant_id)
+        .first()
+    )
+    if not conversation:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+    _ensure_conversation_access(db, tenant_id, account_id, conversation)
+
+    summary = None
+    try:
+        summary = get_conversation_summary(db, tenant_id=tenant_id, conversation_id=conversation_id)
+    except Exception:
+        summary = None
+
+    return {"available": bool(summary), "summary": summary}
+
+
+@router.post("/conversations/{conversation_id}/summary/update", response_model=ConversationSummaryUpdateResponse)
+async def update_conversation_summary_endpoint(
+    conversation_id: UUID,
+    tenant_id: UUID = Depends(get_tenant_id),
+    account_id: str = Depends(get_current_account_id),
+    db: Session = Depends(get_db),
+):
+    if not bool(getattr(settings, "PERSISTENT_SUMMARY_MEMORY_ENABLED", False)):
+        raise HTTPException(status_code=400, detail="Persistent summary memory is disabled")
+
+    DatasetService.ensure_member(db, tenant_id, account_id)
+    conversation = (
+        db.query(Conversation)
+        .filter(Conversation.id == conversation_id, Conversation.tenant_id == tenant_id)
+        .first()
+    )
+    if not conversation:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+    _ensure_conversation_access(db, tenant_id, account_id, conversation)
+
+    summary = await update_conversation_summary(db, tenant_id=tenant_id, conversation_id=conversation_id)
+    return {"summary": summary}
+
+
+@router.delete("/conversations/{conversation_id}/summary", status_code=204)
+async def delete_conversation_summary_endpoint(
+    conversation_id: UUID,
+    tenant_id: UUID = Depends(get_tenant_id),
+    account_id: str = Depends(get_current_account_id),
+    db: Session = Depends(get_db),
+):
+    DatasetService.ensure_member(db, tenant_id, account_id)
+    conversation = (
+        db.query(Conversation)
+        .filter(Conversation.id == conversation_id, Conversation.tenant_id == tenant_id)
+        .first()
+    )
+    if not conversation:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+    _ensure_conversation_access(db, tenant_id, account_id, conversation)
+
+    clear_conversation_summary(db, tenant_id=tenant_id, conversation_id=conversation_id)
+    return None
 
 
 def _checkpoint_values_to_json(values: dict | None) -> dict:

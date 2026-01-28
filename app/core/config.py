@@ -709,6 +709,11 @@ class Settings(BaseSettings):
     SUMMARIZATION_THRESHOLD: int = 10  # Messages before auto-summarization
     SUMMARIZATION_ENABLED: bool = True
 
+    # Persistent summary memory (conversation-level; disabled by default).
+    PERSISTENT_SUMMARY_MEMORY_ENABLED: bool = False
+    PERSISTENT_SUMMARY_MEMORY_LOOKBACK_MESSAGES: int = 20
+    PERSISTENT_SUMMARY_MEMORY_MAX_SUMMARY_TOKENS: int = 500
+
     # Workflow mode configuration
     WORKFLOW_MODE: str = "chain"  # chain | routing | parallel | react | planner | evaluator
     EVALUATOR_MAX_ITERATIONS: int = 3
@@ -888,6 +893,11 @@ class Settings(BaseSettings):
         quota_mode = str(getattr(self, "CHAT_ASSISTANT_TOKEN_QUOTA_MODE", "block") or "block").lower()
         if quota_mode not in {"block", "warn"}:
             raise ValueError("CHAT_ASSISTANT_TOKEN_QUOTA_MODE must be one of: block, warn")
+
+        if int(getattr(self, "PERSISTENT_SUMMARY_MEMORY_LOOKBACK_MESSAGES", 0) or 0) <= 0:
+            raise ValueError("PERSISTENT_SUMMARY_MEMORY_LOOKBACK_MESSAGES must be > 0")
+        if int(getattr(self, "PERSISTENT_SUMMARY_MEMORY_MAX_SUMMARY_TOKENS", 0) or 0) <= 0:
+            raise ValueError("PERSISTENT_SUMMARY_MEMORY_MAX_SUMMARY_TOKENS must be > 0")
 
         # Validate workflow mode
         valid_workflow_modes = {"chain", "routing", "parallel", "react", "planner", "evaluator"}
