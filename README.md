@@ -80,6 +80,10 @@ Milvus 十亿级向量检索、PostgreSQL 持久化、OpenAI 兼容接口、Dock
 支持后端拉取远程 URL 入库，以及 URL 批量导入（Connector Run 记录状态/统计/错误）；内置 SSRF 防护与安全开关。
 使用说明见：[docs/guides/url_ingest.md](./docs/guides/url_ingest.md)。
 
+**9. 文档版本（Pipeline Versions）**
+同一文档在不同 pipeline 配置（解析/治理/切块等）下会形成不同的 `pipeline_hash` 版本；支持查看版本、激活回滚、删除历史版本，并可在 UI 中直接切换预览某个版本的切片。
+使用说明见：[docs/guides/document_versions.md](./docs/guides/document_versions.md)。
+
 ## 高级配置
 
 如需自定义配置，请参考 [.env.example](docker/.env.example) 中的注释修改 `.env` 文件。完整环境变量说明见 [配置文档](./docs/guides/dependencies.md)。

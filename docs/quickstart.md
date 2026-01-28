@@ -161,6 +161,8 @@ make verify
 - 就绪探针: http://localhost:8000/api/v1/health/ready
 - 详细依赖状态: http://localhost:8000/health
 
+> 提示：如需查看/回滚文档的 `pipeline_hash` 版本，可在「知识库」打开文档详情弹窗后点击“版本”。详见：[docs/guides/document_versions.md](./guides/document_versions.md)。
+
 > 说明：聊天接口同时支持 LangChain 与 LangGraph 两条路径。当前端开启 RAG 设置里的 `use_graph` 时，会收到额外的 `graph` 事件用于展示更细的“思考路径/步骤”。
 
 ---

@@ -3204,11 +3204,15 @@ async def get_document(
         )
 
         if not all_versions:
-            doc_meta = dict(document.doc_metadata or {})
-            active_hash = str(doc_meta.get("active_pipeline_hash") or doc_meta.get("pipeline_hash") or "").strip()
-            selected_hash = str(pipeline_hash or "").strip() or active_hash
-            if selected_hash:
-                target_key = f"{document_id}:{selected_hash}"
+            from app.core.pipeline_versions import resolve_doc_pipeline_key
+
+            target_key = resolve_doc_pipeline_key(
+                document_id,
+                getattr(document, "doc_metadata", None),
+                pipeline_hash,
+                all_versions=all_versions,
+            )
+            if target_key:
                 chunk_query = chunk_query.filter(
                     DocumentChunk.doc_metadata["doc_pipeline_key"].astext == target_key  # type: ignore[attr-defined]
                 )
@@ -3416,8 +3420,10 @@ async def list_document_versions(
         DatasetService.assert_dataset_readable(db, ds, account_id)
     _assert_document_acl_readable(db, tenant_id=tenant_id, account_id=account_id, document=document, dataset=ds)
 
+    from app.core.pipeline_versions import get_active_pipeline_hash
+
     doc_meta = dict(document.doc_metadata or {})
-    active_hash = str(doc_meta.get("active_pipeline_hash") or doc_meta.get("pipeline_hash") or "").strip() or None
+    active_hash = get_active_pipeline_hash(doc_meta)
     active_key = f"{document_id}:{active_hash}" if active_hash else None
 
     items = []
@@ -3782,11 +3788,15 @@ async def list_document_chunks(
     )
 
     if not all_versions:
-        doc_meta = dict(document.doc_metadata or {})
-        active_hash = str(doc_meta.get("active_pipeline_hash") or doc_meta.get("pipeline_hash") or "").strip()
-        selected_hash = str(pipeline_hash or "").strip() or active_hash
-        if selected_hash:
-            target_key = f"{document_id}:{selected_hash}"
+        from app.core.pipeline_versions import resolve_doc_pipeline_key
+
+        target_key = resolve_doc_pipeline_key(
+            document_id,
+            getattr(document, "doc_metadata", None),
+            pipeline_hash,
+            all_versions=all_versions,
+        )
+        if target_key:
             query = query.filter(
                 DocumentChunk.doc_metadata["doc_pipeline_key"].astext == target_key  # type: ignore[attr-defined]
             )
@@ -3853,11 +3863,15 @@ async def list_document_chunk_matches(
         .order_by(DocumentChunk.chunk_index.asc())
     )
     if not all_versions:
-        doc_meta = dict(document.doc_metadata or {})
-        active_hash = str(doc_meta.get("active_pipeline_hash") or doc_meta.get("pipeline_hash") or "").strip()
-        selected_hash = str(pipeline_hash or "").strip() or active_hash
-        if selected_hash:
-            target_key = f"{document_id}:{selected_hash}"
+        from app.core.pipeline_versions import resolve_doc_pipeline_key
+
+        target_key = resolve_doc_pipeline_key(
+            document_id,
+            getattr(document, "doc_metadata", None),
+            pipeline_hash,
+            all_versions=all_versions,
+        )
+        if target_key:
             query = query.filter(
                 DocumentChunk.doc_metadata["doc_pipeline_key"].astext == target_key  # type: ignore[attr-defined]
             )
