@@ -670,6 +670,35 @@ class MilvusVectorStore:
             except Exception:
                 pass
 
+    def delete_by_document_id_and_filter(
+        self,
+        *,
+        document_id: UUID,
+        tenant_id: Optional[UUID] = None,
+        metadata_filter: Optional[Dict[str, Any]] = None,
+    ) -> None:
+        """
+        Delete vectors for a given document, scoped by a metadata_filter (best-effort).
+
+        Safety notes:
+        - If the filter cannot be translated into a safe Milvus expr, this is a no-op (never "delete all").
+        - Caller can still fall back to full delete_by_document_id when appropriate.
+        """
+        self._ensure_store()
+        assert self._store is not None
+
+        base_expr = self._build_expr(document_ids=[document_id], tenant_id=tenant_id)
+        metadata_expr = _build_milvus_metadata_expr(metadata_filter)
+        if not metadata_expr:
+            return
+
+        expr = f"({base_expr}) and ({metadata_expr})" if base_expr else metadata_expr
+        self._store.delete(expr=expr)
+        try:
+            self._store.col.flush()  # type: ignore[union-attr]
+        except Exception:
+            pass
+
     def get_collection_count(self) -> int:
         """Return document count in the vector collection."""
         self._ensure_store()

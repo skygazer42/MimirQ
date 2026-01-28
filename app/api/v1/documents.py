@@ -3539,33 +3539,72 @@ async def retry_document_processing(
         if not file_path.exists() or not file_path.is_file():
             raise HTTPException(status_code=404, detail="Document file not found")
 
-    # Reset indexes (vector/BM25/KG) + DB chunks to avoid duplicates on re-run.
-    with contextlib.suppress(Exception):
-        Indexer(db).delete_all(tenant_id=tenant_id, document_id=document_id, commit=False)
-    with contextlib.suppress(Exception):
-        db.query(DocumentChunk).filter(
-            DocumentChunk.document_id == document_id,
-            DocumentChunk.tenant_id == tenant_id,
-        ).delete(synchronize_session=False)
-
     meta = dict(document.doc_metadata or {})
     meta.pop("cancel_requested", None)
     meta.pop("task_id", None)
     meta.pop("kg_task_id", None)
-    meta.pop("img_ids", None)
 
-    pipeline_hash = str(meta.get("pipeline_hash") or "").strip()
-    if not pipeline_hash:
-        pipeline_hash = _compute_pipeline_hash(meta)
-        meta["pipeline_hash"] = pipeline_hash
+    # Versioning:
+    # - pipeline_hash: the config we're (re)processing now (new version)
+    # - active_pipeline_hash: the version currently served for retrieval (may lag behind until success)
+    active_pipeline_hash = str(meta.get("active_pipeline_hash") or meta.get("pipeline_hash") or "").strip()
+    if "active_pipeline_ready" not in meta:
+        # Backward-compatible default: a completed document is considered "active-ready".
+        meta["active_pipeline_ready"] = bool(str(document.status or "").lower() == "completed")
+
+    pipeline_hash = _compute_pipeline_hash(meta)
+    meta["pipeline_hash"] = pipeline_hash
+    if not active_pipeline_hash:
+        active_pipeline_hash = pipeline_hash
+        meta["active_pipeline_hash"] = active_pipeline_hash
+
+    preserve_existing_versions = bool(meta.get("active_pipeline_ready")) and pipeline_hash != active_pipeline_hash
+
+    if preserve_existing_versions:
+        # Clean any stale artifacts from a previous attempt of the *target* version,
+        # without touching the currently-active version.
+        target_key = f"{document_id}:{pipeline_hash}"
+        with contextlib.suppress(Exception):
+            from app.storage.vector.factory import get_vector_store
+
+            get_vector_store().delete_by_document_id_and_filter(
+                document_id=document_id,
+                tenant_id=tenant_id,
+                metadata_filter={"doc_pipeline_key": {"$eq": target_key}},
+            )
+        with contextlib.suppress(Exception):
+            from app.rag.retriever import hybrid_retriever
+
+            hybrid_retriever.remove_from_bm25_index_by_metadata_filter(
+                tenant_id=tenant_id,
+                metadata_filter={"doc_pipeline_key": {"$eq": target_key}},
+            )
+        with contextlib.suppress(Exception):
+            db.query(DocumentChunk).filter(
+                DocumentChunk.document_id == document_id,
+                DocumentChunk.tenant_id == tenant_id,
+                DocumentChunk.doc_metadata["doc_pipeline_key"].astext == target_key,  # type: ignore[attr-defined]
+            ).delete(synchronize_session=False)
+    else:
+        # Legacy behavior: reset all indexes + DB chunks to avoid duplicates when re-running the same version.
+        with contextlib.suppress(Exception):
+            Indexer(db).delete_all(tenant_id=tenant_id, document_id=document_id, commit=False)
+        with contextlib.suppress(Exception):
+            db.query(DocumentChunk).filter(
+                DocumentChunk.document_id == document_id,
+                DocumentChunk.tenant_id == tenant_id,
+            ).delete(synchronize_session=False)
+        # If we're deleting chunks, also drop document-level image list (it will be rebuilt on ingest).
+        meta.pop("img_ids", None)
 
     document.doc_metadata = meta
     document.status = "pending"
     document.processing_progress = 0
     document.current_stage = "queued"
     document.error_message = None
-    document.chunk_count = 0
-    document.total_characters = 0
+    if not preserve_existing_versions:
+        document.chunk_count = 0
+        document.total_characters = 0
     db.commit()
     db.refresh(document)
 

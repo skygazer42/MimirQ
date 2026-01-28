@@ -631,6 +631,65 @@ class HybridRetriever(BaseRetriever):
         self._touch_bm25_cache(tenant_key)
         logger.info("BM25 index removed document %s for tenant %s", document_id, tenant_key)
 
+    def remove_from_bm25_index_by_metadata_filter(
+        self,
+        *,
+        tenant_id: Optional[UUID] = None,
+        metadata_filter: Optional[Dict[str, Any]] = None,
+    ) -> int:
+        """
+        Remove BM25 docs that match a metadata_filter (in-memory only).
+
+        This is used for versioned re-indexing (e.g. delete only a specific doc_pipeline_key),
+        without dropping other versions that may still serve as the active pipeline.
+        """
+        if not metadata_filter or not isinstance(metadata_filter, dict):
+            return 0
+
+        tenant_key = self._tenant_key(tenant_id)
+        existing = self._bm25_docs.get(tenant_key) or []
+        if not existing:
+            return 0
+
+        before = len(existing)
+        filtered = [d for d in existing if not self._match_metadata_filter((d.metadata or {}), metadata_filter)]
+        removed = before - len(filtered)
+        if removed <= 0:
+            return 0
+
+        retriever = BM25Retriever.from_documents(
+            filtered,
+            preprocess_func=self._bm25_tokenize,
+            k=10,
+        ) if filtered else None
+
+        if retriever is None:
+            self._bm25_retrievers.pop(tenant_key, None)
+            self._bm25_docs.pop(tenant_key, None)
+            self._bm25_doc_ids.pop(tenant_key, None)
+            self._chunk_id_lookup.pop(tenant_key, None)
+            self._bm25_build_locks.pop(tenant_key, None)
+            with self._bm25_cache_lock:
+                self._bm25_cache_order.pop(tenant_key, None)
+            logger.info("BM25 index cleared for tenant %s after filtered deletion (removed=%s)", tenant_key, removed)
+            return removed
+
+        self._bm25_retrievers[tenant_key] = retriever
+        self._bm25_docs[tenant_key] = filtered
+        self._refresh_bm25_doc_ids(tenant_key, filtered)
+        lookup: Dict[str, str] = {}
+        for d in filtered:
+            meta = d.metadata or {}
+            doc_id = meta.get("document_id")
+            chunk_index = meta.get("chunk_index")
+            if doc_id is None or chunk_index is None or d.id is None:
+                continue
+            lookup[f"{doc_id}:{chunk_index}"] = str(d.id)
+        self._chunk_id_lookup[tenant_key] = lookup
+        self._touch_bm25_cache(tenant_key)
+        logger.info("BM25 index removed %s docs by metadata_filter for tenant %s", removed, tenant_key)
+        return removed
+
     def clear_bm25_cache(self) -> None:
         """Clear all cached BM25 indices (in-memory only)."""
         self._bm25_retrievers.clear()
