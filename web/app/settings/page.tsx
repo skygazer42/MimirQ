@@ -214,8 +214,10 @@ export default function SettingsPage() {
   const [status, setStatus] = useState<SystemStatus | null>(null)
   const [backendMeta, setBackendMeta] = useState<BackendMeta | null>(null)
   const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const [saveMessage, setSaveMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
+  const [lastUpdatedKeys, setLastUpdatedKeys] = useState<string[]>([])
 
   // 编辑状态
   const [editedSettings, setEditedSettings] = useState<Partial<SystemSettings>>({})
@@ -242,6 +244,7 @@ export default function SettingsPage() {
 
   const loadSettings = async () => {
     setLoading(true)
+    setLoadError(null)
     try {
       const [settingsData, statusData, metaData] = await Promise.all([
         settingsApi.get(),
@@ -253,7 +256,11 @@ export default function SettingsPage() {
       setBackendMeta(metaData)
       setEditedSettings({})
     } catch (error) {
-      console.error('Failed to load settings:', error)
+      const err = error as any
+      const data = err?.response?.data
+      const requestId = err?.response?.headers?.['x-request-id'] || data?.request_id
+      const msg = extractBackendMessage(data) || err?.message || '加载失败'
+      setLoadError(withRequestId(msg, requestId))
     } finally {
       setLoading(false)
     }
@@ -265,9 +272,11 @@ export default function SettingsPage() {
 
     setSaving(true)
     setSaveMessage(null)
+    setLastUpdatedKeys([])
     try {
       const result = await settingsApi.update(editedSettings)
       setSaveMessage({ type: 'success', text: result.message })
+      setLastUpdatedKeys(result.updated_keys || [])
       await loadSettings()
       refreshCapabilities().catch(() => null)
     } catch (error: any) {
@@ -314,6 +323,12 @@ export default function SettingsPage() {
     setEditedSettings((prev) => ({ ...prev, langgraph: next }))
   }
 
+  const updateChat = (patch: Partial<ChatConfig>) => {
+    const current = (editedSettings.chat || settings?.chat || DEFAULT_CHAT) as ChatConfig
+    const next = { ...current, ...patch }
+    setEditedSettings((prev) => ({ ...prev, chat: next }))
+  }
+
   const updateMagicPDF = (patch: Partial<MagicPDFConfig>) => {
     const current = (editedSettings.magicpdf || settings?.magicpdf || DEFAULT_MAGICPDF) as MagicPDFConfig
     const next = { ...current, ...patch }
@@ -358,6 +373,18 @@ export default function SettingsPage() {
 
   // 检查是否有未保存的更改
   const hasChanges = Object.keys(editedSettings).length > 0
+
+  // 当存在未保存更改时，刷新/关闭标签页给出提醒（防止误操作丢配置）。
+  useEffect(() => {
+    if (!hasChanges) return
+    const handler = (e: BeforeUnloadEvent) => {
+      e.preventDefault()
+      e.returnValue = ''
+      return ''
+    }
+    window.addEventListener('beforeunload', handler)
+    return () => window.removeEventListener('beforeunload', handler)
+  }, [hasChanges])
 
   const handleConfigure = (provider: ModelProvider) => {
     setSelectedProvider(provider)
@@ -462,25 +489,46 @@ export default function SettingsPage() {
         iconColor="text-primary"
         description="管理功能开关、模型接入及系统参数"
         top={
-          saveMessage ? (
-            <Alert
-              variant={saveMessage.type === 'success' ? 'success' : 'destructive'}
-              className="shadow-soft/40"
-            >
-              {saveMessage.type === 'success' ? (
-                <CheckCircle2 className="h-4 w-4" />
-              ) : (
-                <XCircle className="h-4 w-4" />
+          (loadError || saveMessage) ? (
+            <div className="space-y-3">
+              {loadError && (
+                <Alert variant="destructive" className="shadow-soft/40">
+                  <XCircle className="h-4 w-4" />
+                  <div>
+                    <AlertTitle>加载失败</AlertTitle>
+                    <AlertDescription className="text-foreground/80">
+                      {loadError}
+                    </AlertDescription>
+                  </div>
+                </Alert>
               )}
-              <div>
-                <AlertTitle>
-                  {saveMessage.type === 'success' ? '保存成功' : '保存失败'}
-                </AlertTitle>
-                <AlertDescription className="text-foreground/80">
-                  {saveMessage.text}
-                </AlertDescription>
-              </div>
-            </Alert>
+              {saveMessage && (
+                <Alert
+                  variant={saveMessage.type === 'success' ? 'success' : 'destructive'}
+                  className="shadow-soft/40"
+                >
+                  {saveMessage.type === 'success' ? (
+                    <CheckCircle2 className="h-4 w-4" />
+                  ) : (
+                    <XCircle className="h-4 w-4" />
+                  )}
+                  <div>
+                    <AlertTitle>
+                      {saveMessage.type === 'success' ? '保存成功' : '保存失败'}
+                    </AlertTitle>
+                    <AlertDescription className="text-foreground/80 space-y-2">
+                      <div>{saveMessage.text}</div>
+                      {saveMessage.type === 'success' && lastUpdatedKeys.length > 0 && (
+                        <div className="text-xs text-muted-foreground">
+                          Updated: {lastUpdatedKeys.slice(0, 10).join(', ')}
+                          {lastUpdatedKeys.length > 10 ? ` (+${lastUpdatedKeys.length - 10})` : ''}
+                        </div>
+                      )}
+                    </AlertDescription>
+                  </div>
+                </Alert>
+              )}
+            </div>
           ) : null
         }
         actions={
@@ -1537,6 +1585,97 @@ export default function SettingsPage() {
                         </div>
                       </div>
                     )}
+                  </div>
+
+                  {/* Metrics log (JSONL) */}
+                  <div className="space-y-3 border-t pt-6">
+                    <div className="flex items-start justify-between gap-4">
+                      <div>
+                        <div className="text-sm font-semibold text-foreground flex items-center gap-2">
+                          <Eye className="h-4 w-4 text-muted-foreground" />
+                          RAG Metrics 日志（JSONL）
+                        </div>
+                        <div className="text-xs text-muted-foreground mt-1">
+                          写入 RAG 过程指标到 logs/rag_metrics.jsonl（建议线上关闭 “包含原始文本”）
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          updateObservability({
+                            metrics_log_enabled: !((editedSettings.observability?.metrics_log_enabled ?? settings?.observability?.metrics_log_enabled) ?? DEFAULT_OBSERVABILITY.metrics_log_enabled),
+                          })
+                        }
+                        className="shrink-0"
+                      >
+                        {((editedSettings.observability?.metrics_log_enabled ?? settings?.observability?.metrics_log_enabled) ?? DEFAULT_OBSERVABILITY.metrics_log_enabled) ? (
+                          <ToggleRight className="w-10 h-10 text-primary" />
+                        ) : (
+                          <ToggleLeft className="w-10 h-10 text-muted-foreground hover:text-muted-foreground" />
+                        )}
+                      </button>
+                    </div>
+
+                    {((editedSettings.observability?.metrics_log_enabled ?? settings?.observability?.metrics_log_enabled) ?? DEFAULT_OBSERVABILITY.metrics_log_enabled) && (
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-2">
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="checkbox"
+                            checked={((editedSettings.observability?.metrics_log_include_text ?? settings?.observability?.metrics_log_include_text) ?? DEFAULT_OBSERVABILITY.metrics_log_include_text)}
+                            onChange={(e) => updateObservability({ metrics_log_include_text: e.target.checked })}
+                            className="h-4 w-4 accent-primary"
+                          />
+                          <span className="text-sm text-foreground/80">包含原始文本</span>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Chat streaming */}
+                  <div className="space-y-3 border-t pt-6">
+                    <div className="flex items-start justify-between gap-4">
+                      <div>
+                        <div className="text-sm font-semibold text-foreground flex items-center gap-2">
+                          <Server className="h-4 w-4 text-muted-foreground" />
+                          Chat 流式稳定性（SSE）
+                        </div>
+                        <div className="text-xs text-muted-foreground mt-1">
+                          Heartbeat 用于保活连接；断连自动取消可减少浪费（保存后通常可立即生效）
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          updateChat({
+                            stream_cancel_on_disconnect: !((editedSettings.chat?.stream_cancel_on_disconnect ?? settings?.chat?.stream_cancel_on_disconnect) ?? DEFAULT_CHAT.stream_cancel_on_disconnect),
+                          })
+                        }
+                        className="shrink-0"
+                      >
+                        {((editedSettings.chat?.stream_cancel_on_disconnect ?? settings?.chat?.stream_cancel_on_disconnect) ?? DEFAULT_CHAT.stream_cancel_on_disconnect) ? (
+                          <ToggleRight className="w-10 h-10 text-primary" />
+                        ) : (
+                          <ToggleLeft className="w-10 h-10 text-muted-foreground hover:text-muted-foreground" />
+                        )}
+                      </button>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-2">
+                      <div>
+                        <div className="text-xs text-muted-foreground mb-1">Heartbeat（秒）</div>
+                        <Input
+                          type="number"
+                          min={0}
+                          max={120}
+                          step={1}
+                          value={editedSettings.chat?.stream_heartbeat_sec ?? settings?.chat?.stream_heartbeat_sec ?? DEFAULT_CHAT.stream_heartbeat_sec}
+                          onChange={(e) => updateChat({ stream_heartbeat_sec: parseFloat(e.target.value || '0') })}
+                        />
+                      </div>
+                      <div className="text-xs text-muted-foreground md:col-span-2 flex items-center">
+                        设为 0 将禁用心跳（不推荐，可能被代理/负载均衡断开）
+                      </div>
+                    </div>
                   </div>
 
                   {/* Safety / PII */}

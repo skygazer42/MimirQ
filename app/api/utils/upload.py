@@ -55,6 +55,10 @@ async def save_upload_file(
     except Exception as exc:  # noqa: BLE001
         _safe_unlink(destination)
         raise HTTPException(status_code=500, detail=f"Failed to save file: {str(exc)[:200]}") from exc
+    finally:
+        # Avoid leaking file descriptors for multi-file uploads.
+        with contextlib.suppress(Exception):
+            await upload_file.close()
 
 
 async def save_upload_file_with_hash(
@@ -94,6 +98,10 @@ async def save_upload_file_with_hash(
     except Exception as exc:  # noqa: BLE001
         _safe_unlink(destination)
         raise HTTPException(status_code=500, detail=f"Failed to save file: {str(exc)[:200]}") from exc
+    finally:
+        # Avoid leaking file descriptors for multi-file uploads.
+        with contextlib.suppress(Exception):
+            await upload_file.close()
 
 
 __all__ = ["save_upload_file", "save_upload_file_with_hash"]
