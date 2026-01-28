@@ -18,11 +18,16 @@ class Citation(BaseModel):
     chunk_content: str
     matched_terms: Optional[List[str]] = None
     page_number: Optional[int] = None
+    chunk_index: Optional[int] = None
+    start_char: Optional[int] = None
+    end_char: Optional[int] = None
     header_path: Optional[str] = None
     chunk_strategy: Optional[str] = None
     chunk_role: Optional[str] = None
     retrieval_role: Optional[str] = None
     neighbor_of: Optional[str] = None
+    doc_pipeline_key: Optional[str] = None
+    pipeline_hash: Optional[str] = None
     relevance_score: float = 0.0
     vector_score: Optional[float] = None
     bm25_score: Optional[float] = None
@@ -40,6 +45,8 @@ class Citation(BaseModel):
     has_image: bool = Field(default=False, description="Whether this citation contains an image")
     img_id: Optional[str] = Field(default=None, description="Image ID (MinIO format: {tenant_id}:{dataset_id}:{document_id}:{chunk_index})")
     img_url: Optional[str] = Field(default=None, description="Image access URL")
+
+    model_config = ConfigDict(extra="ignore")
 
 
 class MessageSchema(OrmModel):
