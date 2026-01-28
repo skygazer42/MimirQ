@@ -82,6 +82,21 @@ class BaseVectorStore:
     def delete_by_document_id(self, document_id: UUID, tenant_id: Optional[UUID] = None) -> None:
         raise NotImplementedError
 
+    def delete_by_document_id_and_filter(
+        self,
+        *,
+        document_id: UUID,
+        tenant_id: Optional[UUID],
+        metadata_filter: Dict[str, Any],
+    ) -> None:
+        """
+        Best-effort selective delete for a single document.
+
+        Used for versioned re-indexing/rollback (e.g. delete only the target pipeline version).
+        Backends that cannot support this should raise NotImplementedError.
+        """
+        raise NotImplementedError
+
 
 class MilvusVectorStore(BaseVectorStore):
     """Milvus backend wrapper."""
@@ -110,6 +125,15 @@ class MilvusVectorStore(BaseVectorStore):
     def delete_by_document_id(self, document_id: UUID, tenant_id: Optional[UUID] = None) -> None:
         milvus_store.delete_by_document_id(document_id, tenant_id=tenant_id)
 
+    def delete_by_document_id_and_filter(
+        self,
+        *,
+        document_id: UUID,
+        tenant_id: Optional[UUID],
+        metadata_filter: Dict[str, Any],
+    ) -> None:
+        milvus_store.delete_by_document_id_and_filter(document_id=document_id, tenant_id=tenant_id, metadata_filter=metadata_filter)
+
 
 class StubVectorStore(BaseVectorStore):
     """Placeholder implementation for future backends."""
@@ -130,6 +154,15 @@ class StubVectorStore(BaseVectorStore):
 
     def delete_by_document_id(self, document_id: UUID, tenant_id: Optional[UUID] = None) -> None:
         return
+
+    def delete_by_document_id_and_filter(
+        self,
+        *,
+        document_id: UUID,
+        tenant_id: Optional[UUID],
+        metadata_filter: Dict[str, Any],
+    ) -> None:
+        raise NotImplementedError("Vector backend not implemented")
 
 
 class MemoryVectorStore(BaseVectorStore):
@@ -223,6 +256,27 @@ class MemoryVectorStore(BaseVectorStore):
             (vec, meta)
             for (vec, meta) in self.storage
             if not (meta.get("document_id") == doc_id and (tenant is None or meta.get("tenant_id") == tenant))
+        ]
+
+    def delete_by_document_id_and_filter(
+        self,
+        *,
+        document_id: UUID,
+        tenant_id: Optional[UUID],
+        metadata_filter: Dict[str, Any],
+    ) -> None:
+        doc_id = str(document_id)
+        tenant = str(tenant_id) if tenant_id else None
+        if not metadata_filter or not isinstance(metadata_filter, dict):
+            return self.delete_by_document_id(document_id, tenant_id=tenant_id)
+        self.storage = [
+            (vec, meta)
+            for (vec, meta) in self.storage
+            if not (
+                meta.get("document_id") == doc_id
+                and (tenant is None or meta.get("tenant_id") == tenant)
+                and _match_metadata_filter(meta, metadata_filter)
+            )
         ]
 
 
@@ -371,6 +425,16 @@ class FAISSVectorStore(BaseVectorStore):
             os.makedirs(self.persist_path, exist_ok=True)
             store.save_local(self.persist_path, index_name=key)
 
+    def delete_by_document_id_and_filter(
+        self,
+        *,
+        document_id: UUID,
+        tenant_id: Optional[UUID],
+        metadata_filter: Dict[str, Any],
+    ) -> None:
+        # FAISS wrapper doesn't support metadata-where deletes reliably; fail closed.
+        raise NotImplementedError("Selective delete is not supported for FAISS backend")
+
 
 class ChromaVectorStore(BaseVectorStore):
     """Chroma backend persisted to a local path."""
@@ -470,6 +534,17 @@ class ChromaVectorStore(BaseVectorStore):
             store.persist()
         except Exception:
             return
+
+    def delete_by_document_id_and_filter(
+        self,
+        *,
+        document_id: UUID,
+        tenant_id: Optional[UUID],
+        metadata_filter: Dict[str, Any],
+    ) -> None:
+        # The underlying Chroma where spec is not compatible with our generic filter syntax.
+        # Avoid surprising deletes; callers should fall back to full delete or rebuild.
+        raise NotImplementedError("Selective delete is not supported for Chroma backend")
 
 
 _VECTOR_STORE_SINGLETONS: Dict[str, BaseVectorStore] = {}
