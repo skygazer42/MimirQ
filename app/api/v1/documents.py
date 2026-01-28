@@ -1732,18 +1732,33 @@ async def _ingest_url_upload_request(
     policy = parse_ingestion_policy_from_metadata(dataset_meta if isinstance(dataset_meta, dict) else {})  # type: ignore[arg-type]
     matched_rule = match_ingestion_rule(policy, filename=safe_name, file_ext=file_ext)
 
-    parser_backend_choice = str(body.parser_backend or settings.DEFAULT_PARSER_BACKEND)
-    chunk_strategy_choice = str(body.chunk_strategy or settings.DEFAULT_CHUNK_STRATEGY)
+    dataset_default_pb = None
+    dataset_default_cs = None
+    if dataset is not None:
+        ds_meta = getattr(dataset, "dataset_metadata", None)
+        if isinstance(ds_meta, dict):
+            raw_pb = ds_meta.get("default_parser_backend")
+            raw_cs = ds_meta.get("default_chunk_strategy")
+            if isinstance(raw_pb, str) and raw_pb.strip():
+                dataset_default_pb = raw_pb.strip().lower()
+            if isinstance(raw_cs, str) and raw_cs.strip():
+                dataset_default_cs = raw_cs.strip().lower()
+
+    default_pb_eff = dataset_default_pb or str(getattr(settings, "DEFAULT_PARSER_BACKEND", "auto") or "auto").strip().lower() or "auto"
+    default_cs_eff = dataset_default_cs or str(getattr(settings, "DEFAULT_CHUNK_STRATEGY", "langchain_recursive") or "langchain_recursive").strip().lower() or "langchain_recursive"
+
+    parser_backend_choice = str(body.parser_backend or default_pb_eff)
+    chunk_strategy_choice = str(body.chunk_strategy or default_cs_eff)
     policy_patch = PipelineOptions()
     ingestion_meta: Optional[dict[str, Any]] = None
 
     if matched_rule is not None:
-        default_pb = (getattr(settings, "DEFAULT_PARSER_BACKEND", "auto") or "auto").strip().lower() or "auto"
+        default_pb = default_pb_eff
         req_pb = (parser_backend_choice or "").strip().lower()
         if req_pb in {"", "auto", default_pb} and matched_rule.parser_backend:
             parser_backend_choice = str(matched_rule.parser_backend)
 
-        default_cs = (getattr(settings, "DEFAULT_CHUNK_STRATEGY", "langchain_recursive") or "langchain_recursive").strip().lower()
+        default_cs = default_cs_eff
         req_cs = (chunk_strategy_choice or "").strip().lower()
         if req_cs in {"", default_cs} and matched_rule.chunk_strategy:
             chunk_strategy_choice = str(matched_rule.chunk_strategy)

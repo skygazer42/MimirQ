@@ -204,6 +204,7 @@ def get_dataset(
     partial_list = None
     if dataset.permission == DatasetPermissionEnum.PARTIAL_MEMBERS:
         partial_list = DatasetPermissionService.get_dataset_partial_member_list(db, tenant_id, dataset_id)
+    default_parser_backend, default_chunk_strategy = _dataset_ingestion_defaults(dataset)
     return DatasetOut(
         id=dataset.id,
         tenant_id=dataset.tenant_id,
@@ -212,6 +213,8 @@ def get_dataset(
         permission=dataset.permission,
         owner_id=dataset.owner_id,
         partial_member_list=partial_list,
+        default_parser_backend=default_parser_backend,
+        default_chunk_strategy=default_chunk_strategy,
         pipeline=_dataset_pipeline_out(dataset),
     )
 
@@ -237,15 +240,36 @@ def update_dataset(
         partial_members=payload.partial_member_list,
     )
 
-    # Update dataset-level pipeline defaults (stored in datasets.metadata.pipeline).
+    # Update dataset-level defaults (stored in datasets.metadata).
+    meta = dict(getattr(updated, "dataset_metadata", None) or {})
+    changed = False
+
     if payload.pipeline is not None:
         options = PipelineOptions(**payload.pipeline.model_dump(exclude_none=True))
         pipeline_meta = build_pipeline_metadata(options)
-        meta = dict(getattr(updated, "dataset_metadata", None) or {})
         if pipeline_meta:
             meta["pipeline"] = pipeline_meta
         else:
             meta.pop("pipeline", None)
+        changed = True
+
+    if payload.default_parser_backend is not None:
+        val = str(payload.default_parser_backend or "").strip().lower()
+        if val:
+            meta["default_parser_backend"] = val
+        else:
+            meta.pop("default_parser_backend", None)
+        changed = True
+
+    if payload.default_chunk_strategy is not None:
+        val = str(payload.default_chunk_strategy or "").strip().lower()
+        if val:
+            meta["default_chunk_strategy"] = val
+        else:
+            meta.pop("default_chunk_strategy", None)
+        changed = True
+
+    if changed:
         updated.dataset_metadata = meta
         db.commit()
         db.refresh(updated)
@@ -254,6 +278,7 @@ def update_dataset(
     if updated.permission == DatasetPermissionEnum.PARTIAL_MEMBERS:
         partial_list = DatasetPermissionService.get_dataset_partial_member_list(db, tenant_id, updated.id)
 
+    default_parser_backend, default_chunk_strategy = _dataset_ingestion_defaults(updated)
     return DatasetOut(
         id=updated.id,
         tenant_id=updated.tenant_id,
@@ -262,6 +287,8 @@ def update_dataset(
         permission=updated.permission,
         owner_id=updated.owner_id,
         partial_member_list=partial_list,
+        default_parser_backend=default_parser_backend,
+        default_chunk_strategy=default_chunk_strategy,
         pipeline=_dataset_pipeline_out(updated),
     )
 
