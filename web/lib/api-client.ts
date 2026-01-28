@@ -10,6 +10,13 @@ import type {
   DocumentStats,
   DocumentAccessInfo,
   DocumentAccessUpdateRequest,
+  DocumentBatchRetryRequest,
+  DocumentBatchRetryResponse,
+  DocumentBatchMoveRequest,
+  DocumentBatchMoveResponse,
+  DocumentBatchAccessUpdateRequest,
+  DocumentBatchAccessUpdateResponse,
+  DocumentDuplicateList,
   ConnectorInfo,
   ConnectorRunCreateRequest,
   ConnectorRunListResponse,
@@ -38,6 +45,9 @@ import type {
   DatasetUpdate,
   DatasetListResponse,
   DatasetIngestionStats,
+  DatasetConfigExport,
+  DatasetConfigImportRequest,
+  DatasetCloneRequest,
   DatasetProfileSummary,
   DatasetProfileFindingListResponse,
   DatasetProfileScanRunCreateRequest,
@@ -325,6 +335,8 @@ export const documentApi = {
     limit?: number
     status?: string
     dataset_id?: string
+    file_type?: string
+    owner_id?: string
     q?: string
     order_by?: string
     order_dir?: 'asc' | 'desc' | string
@@ -336,7 +348,7 @@ export const documentApi = {
   /**
    * 文档统计（用于知识库仪表盘/卡片）
    */
-  async stats(params?: { dataset_id?: string; q?: string }): Promise<DocumentStats> {
+  async stats(params?: { dataset_id?: string; file_type?: string; owner_id?: string; q?: string }): Promise<DocumentStats> {
     const { data } = await apiClient.get('/documents/stats', { params })
     return data
   },
@@ -465,6 +477,43 @@ export const documentApi = {
    */
   async batchDelete(document_ids: string[]): Promise<{ deleted: number; not_found: string[]; denied: string[] }> {
     const { data } = await apiClient.post('/documents/batch-delete', { document_ids })
+    return data
+  },
+
+  /**
+   * 批量重试/重新入库
+   */
+  async batchRetry(payload: DocumentBatchRetryRequest): Promise<DocumentBatchRetryResponse> {
+    const { data } = await apiClient.post('/documents/batch/retry', payload)
+    return data
+  },
+
+  /**
+   * 批量更新文档 ACL（access_mode + allowlist）
+   */
+  async batchUpdateAccess(payload: DocumentBatchAccessUpdateRequest): Promise<DocumentBatchAccessUpdateResponse> {
+    const { data } = await apiClient.post('/documents/batch/access', payload)
+    return data
+  },
+
+  /**
+   * 批量移动文档到目标数据集（受限：不支持 MinIO-backed/含 MinIO 图片的文档）
+   */
+  async batchMove(payload: DocumentBatchMoveRequest): Promise<DocumentBatchMoveResponse> {
+    const { data } = await apiClient.post('/documents/batch/move', payload)
+    return data
+  },
+
+  /**
+   * 查找重复文档（按 file_sha256，数据集内）
+   */
+  async listDuplicates(params: {
+    dataset_id: string
+    min_count?: number
+    max_groups?: number
+    max_docs_per_group?: number
+  }): Promise<DocumentDuplicateList> {
+    const { data } = await apiClient.get('/documents/duplicates', { params })
     return data
   },
 
@@ -1032,6 +1081,21 @@ export const datasetApi = {
     return data as Blob
   },
 
+  async exportConfig(datasetId: string): Promise<DatasetConfigExport> {
+    const { data } = await apiClient.get(`/datasets/${datasetId}/config/export`)
+    return data
+  },
+
+  async importConfig(datasetId: string, payload: DatasetConfigImportRequest): Promise<Dataset> {
+    const { data } = await apiClient.post(`/datasets/${datasetId}/config/import`, payload)
+    return data
+  },
+
+  async clone(datasetId: string, payload: DatasetCloneRequest): Promise<Dataset> {
+    const { data } = await apiClient.post(`/datasets/${datasetId}/clone`, payload)
+    return data
+  },
+
   // ==================== Dataset Profile (Ingestion Scan) ====================
 
   async getProfileSummary(datasetId: string): Promise<DatasetProfileSummary> {
@@ -1219,6 +1283,22 @@ export const chatApi = {
   }): Promise<Conversation> {
     const { data } = await apiClient.post('/chat/conversations', params)
     return data
+  },
+
+  /**
+   * 更新对话元数据（当前：title）
+   */
+  async updateConversation(conversationId: string, payload: { title?: string | null }): Promise<Conversation> {
+    const { data } = await apiClient.patch(`/chat/conversations/${conversationId}`, payload)
+    return data
+  },
+
+  /**
+   * 导出对话（markdown/json）
+   */
+  async exportConversation(conversationId: string, params?: { fmt?: 'markdown' | 'json'; include_citations?: boolean }): Promise<Blob> {
+    const { data } = await apiClient.get(`/chat/conversations/${conversationId}/export`, { params, responseType: 'blob' })
+    return data as Blob
   },
 
   /**
@@ -1642,12 +1722,19 @@ export interface ObservabilityConfig {
   agent_log_enabled: boolean
   agent_log_include_execution_path: boolean
   agent_log_max_preview_chars: number
+  metrics_log_enabled: boolean
+  metrics_log_include_text: boolean
 }
 
 export interface SafetyConfig {
   pii_redaction_enabled: boolean
   pii_redaction_mask: string
   pii_stream_holdback_chars: number
+}
+
+export interface ChatConfig {
+  stream_heartbeat_sec: number
+  stream_cancel_on_disconnect: boolean
 }
 
 export interface LangGraphConfig {
@@ -1670,6 +1757,7 @@ export interface SystemSettings {
   magicpdf: MagicPDFConfig
   observability: ObservabilityConfig
   safety: SafetyConfig
+  chat: ChatConfig
   langgraph: LangGraphConfig
 }
 

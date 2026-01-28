@@ -12,6 +12,7 @@ from app.rag.core.text import normalize_retrieval_mode
 from app.models.dataset import DatasetPermissionEnum
 from .base import OrmModel
 from .document import DocumentPipelineOptions
+from .ingestion_policy import IngestionPolicy
 
 
 class DatasetRAGDefaults(BaseModel):
@@ -114,3 +115,41 @@ class DatasetIngestionStats(BaseModel):
     total_size: int = 0
     total_characters: int = 0
     last_processed_at: Optional[datetime] = None
+
+
+class DatasetConfigBundle(BaseModel):
+    """
+    Dataset-level configuration bundle (portable).
+
+    Used for export/import/clone to standardize ingestion + retrieval behavior
+    across datasets without introducing visual workflow editors.
+    """
+
+    default_parser_backend: Optional[str] = None
+    default_chunk_strategy: Optional[str] = None
+    rag_defaults: Optional[DatasetRAGDefaults] = None
+    default_prompt_template_id: Optional[UUID] = None
+    default_prompt_template_key: Optional[str] = None
+    default_prompt_ab_experiment_key: Optional[str] = None
+    pipeline: Optional[DocumentPipelineOptions] = None
+    ingestion_policy: Optional[IngestionPolicy] = None
+
+
+class DatasetConfigExport(BaseModel):
+    version: str = Field(default="1")
+    dataset_id: UUID
+    name: str
+    exported_at: datetime
+    config: DatasetConfigBundle
+
+
+class DatasetConfigImportRequest(BaseModel):
+    config: DatasetConfigBundle
+    replace: bool = False
+
+
+class DatasetCloneRequest(BaseModel):
+    name: str = Field(..., max_length=255)
+    description: Optional[str] = None
+    copy_permission: bool = True
+    copy_partial_members: bool = True

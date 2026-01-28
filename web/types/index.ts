@@ -120,6 +120,62 @@ export interface DocumentStats {
   total_size: number
 }
 
+export interface DocumentBatchRetryRequest {
+  document_ids: string[]
+  force?: boolean
+  skip_if_unchanged?: boolean
+}
+
+export interface DocumentBatchRetryResponse {
+  queued: number
+  skipped: number
+  not_found: string[]
+  denied: string[]
+  conflicts: string[]
+}
+
+export interface DocumentBatchMoveRequest {
+  document_ids: string[]
+  target_dataset_id?: string | null
+}
+
+export interface DocumentBatchMoveResponse {
+  moved: number
+  not_found: string[]
+  denied: string[]
+  conflicts: string[]
+}
+
+export interface DocumentBatchAccessUpdateRequest {
+  document_ids: string[]
+  access: DocumentAccessUpdateRequest
+}
+
+export interface DocumentBatchAccessUpdateResponse {
+  updated: number
+  not_found: string[]
+  denied: string[]
+}
+
+export interface DuplicateDocumentItem {
+  id: string
+  filename: string
+  status: string
+  dataset_id?: string | null
+  created_at: string
+}
+
+export interface DocumentDuplicateGroup {
+  file_sha256: string
+  count: number
+  documents: DuplicateDocumentItem[]
+}
+
+export interface DocumentDuplicateList {
+  total: number
+  items: DocumentDuplicateGroup[]
+}
+
 // ==================== Observability ====================
 
 export interface RagMetricsSummaryResponse {
@@ -829,6 +885,37 @@ export interface DatasetIngestionStats {
   total_size: number
   total_characters: number
   last_processed_at?: string | null
+}
+
+export interface DatasetConfigBundle {
+  default_parser_backend?: string | null
+  default_chunk_strategy?: string | null
+  rag_defaults?: Record<string, any> | null
+  default_prompt_template_id?: string | null
+  default_prompt_template_key?: string | null
+  default_prompt_ab_experiment_key?: string | null
+  pipeline?: DocumentPipelineOptions | null
+  ingestion_policy?: Record<string, any> | null
+}
+
+export interface DatasetConfigExport {
+  version: string
+  dataset_id: string
+  name: string
+  exported_at: string
+  config: DatasetConfigBundle
+}
+
+export interface DatasetConfigImportRequest {
+  config: DatasetConfigBundle
+  replace?: boolean
+}
+
+export interface DatasetCloneRequest {
+  name: string
+  description?: string | null
+  copy_permission?: boolean
+  copy_partial_members?: boolean
 }
 
 // ==================== 对话相关类型 ====================

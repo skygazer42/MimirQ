@@ -2529,6 +2529,8 @@ async def list_documents(
     limit: int = Query(default=20, ge=1, le=200),
     status: Optional[str] = None,
     dataset_id: Optional[UUID] = None,
+    file_type: Optional[str] = Query(default=None, max_length=20),
+    owner_id: Optional[str] = Query(default=None, max_length=255),
     q: Optional[str] = Query(default=None, max_length=200),
     order_by: Literal["created_at", "filename", "file_size"] = Query(default="created_at"),
     order_dir: Literal["asc", "desc"] = Query(default="desc"),
@@ -2624,6 +2626,18 @@ async def list_documents(
         else:
             query = query.filter(DBDocument.status == status)
 
+    # File type filter.
+    if file_type:
+        ft = str(file_type or "").strip().lower()
+        if ft:
+            query = query.filter(DBDocument.file_type == ft)
+
+    # Owner filter (document-level ACL owner_id).
+    if owner_id:
+        oid = str(owner_id or "").strip()
+        if oid:
+            query = query.filter(DBDocument.owner_id == oid)
+
     # Quick filename filter (case-insensitive).
     if q:
         term = q.strip()
@@ -2659,6 +2673,8 @@ async def list_documents(
 @router.get("/stats", response_model=DocumentStats)
 async def get_document_stats(
     dataset_id: Optional[UUID] = None,
+    file_type: Optional[str] = Query(default=None, max_length=20),
+    owner_id: Optional[str] = Query(default=None, max_length=255),
     q: Optional[str] = Query(default=None, max_length=200),
     tenant_id: UUID = Depends(get_tenant_id),
     account_id: str = Depends(get_current_account_id),
@@ -2738,6 +2754,16 @@ async def get_document_stats(
         if term:
             query = query.filter(DBDocument.filename.ilike(f"%{term}%"))
 
+    if file_type:
+        ft = str(file_type or "").strip().lower()
+        if ft:
+            query = query.filter(DBDocument.file_type == ft)
+
+    if owner_id:
+        oid = str(owner_id or "").strip()
+        if oid:
+            query = query.filter(DBDocument.owner_id == oid)
+
     status_rows = (
         query.with_entities(DBDocument.status, func.count(DBDocument.id))
         .group_by(DBDocument.status)
@@ -2759,6 +2785,113 @@ async def get_document_stats(
         "total_chunks": total_chunks,
         "total_size": total_size,
     }
+
+
+@router.get("/duplicates", response_model=DocumentDuplicateList)
+async def list_document_duplicates(
+    dataset_id: UUID = Query(..., description="Dataset scope for duplicate detection"),
+    min_count: int = Query(default=2, ge=2, le=50),
+    max_groups: int = Query(default=50, ge=1, le=200),
+    max_docs_per_group: int = Query(default=20, ge=1, le=100),
+    tenant_id: UUID = Depends(get_tenant_id),
+    account_id: str = Depends(get_current_account_id),
+    db: Session = Depends(get_db),
+):
+    """
+    Find duplicate documents by `documents.metadata.file_sha256` within a dataset.
+
+    Notes:
+    - Requires dataset read permission.
+    - Applies document-level ACL filtering for non-owners ("security trimming").
+    - Best-effort and bounded by `max_groups`/`max_docs_per_group`.
+    """
+    DatasetService.ensure_member(db, tenant_id, account_id)
+    ds = DatasetService.get_dataset(db, tenant_id, dataset_id)
+    DatasetService.assert_dataset_readable(db, ds, account_id)
+
+    query = db.query(DBDocument).filter(
+        DBDocument.tenant_id == tenant_id,
+        DBDocument.dataset_id == dataset_id,
+    )
+
+    # Document-level ACL filter (dataset owner bypass).
+    if str(getattr(ds, "owner_id", "") or "") != str(account_id or ""):
+        doc_perm_subq = (
+            db.query(DocumentPermission.document_id)
+            .filter(
+                DocumentPermission.tenant_id == tenant_id,
+                DocumentPermission.account_id == account_id,
+            )
+            .subquery()
+        )
+        query = query.filter(
+            or_(
+                DBDocument.access_mode.is_(None),
+                DBDocument.access_mode.in_(["inherit", "all_team_members"]),
+                DBDocument.owner_id == account_id,
+                and_(
+                    DBDocument.access_mode == "partial_members",
+                    DBDocument.id.in_(doc_perm_subq),
+                ),
+            )
+        )
+
+    rows = query.with_entities(
+        DBDocument.id,
+        DBDocument.filename,
+        DBDocument.status,
+        DBDocument.dataset_id,
+        DBDocument.created_at,
+        DBDocument.doc_metadata,
+    ).all()
+
+    by_sha: dict[str, list[dict[str, Any]]] = {}
+    for doc_id, filename, status, ds_id, created_at, meta in rows:
+        m = meta if isinstance(meta, dict) else {}
+        sha = str(m.get("file_sha256") or "").strip().lower()
+        if not sha:
+            continue
+        by_sha.setdefault(sha, []).append(
+            {
+                "id": doc_id,
+                "filename": filename,
+                "status": str(status or ""),
+                "dataset_id": ds_id,
+                "created_at": created_at,
+            }
+        )
+
+    def _dt_ts(value: Any) -> float:
+        try:
+            return float(value.timestamp()) if value is not None else 0.0
+        except Exception:
+            return 0.0
+
+    groups_all: list[tuple[str, list[dict[str, Any]], float]] = []
+    for sha, docs in by_sha.items():
+        if len(docs) < int(min_count or 2):
+            continue
+        newest_ts = 0.0
+        for d in docs:
+            newest_ts = max(newest_ts, _dt_ts(d.get("created_at")))
+        groups_all.append((sha, docs, newest_ts))
+
+    total_groups = len(groups_all)
+    # Sort by group size, then by newest created_at (timestamp).
+    groups_all.sort(key=lambda item: (-len(item[1]), -float(item[2] or 0.0), item[0]))
+
+    items: list[dict[str, Any]] = []
+    for sha, docs, _newest_ts in groups_all[: int(max_groups or 50)]:
+        docs_sorted = sorted(docs, key=lambda d: _dt_ts(d.get("created_at")), reverse=True)
+        items.append(
+            {
+                "file_sha256": sha,
+                "count": len(docs),
+                "documents": docs_sorted[: int(max_docs_per_group or 20)],
+            }
+        )
+
+    return {"total": total_groups, "items": items}
 
 
 @router.get("/{document_id}", response_model=DocumentDetail)
@@ -4412,6 +4545,174 @@ async def batch_delete_documents(
             raise
 
     return {"deleted": deleted, "not_found": not_found, "denied": denied}
+
+
+@router.post("/batch/retry", response_model=DocumentBatchRetryResponse)
+async def batch_retry_documents(
+    payload: DocumentBatchRetryRequest,
+    background_tasks: BackgroundTasks,
+    tenant_id: UUID = Depends(get_tenant_id),
+    account_id: str = Depends(get_current_account_id),
+    db: Session = Depends(get_db),
+):
+    """Batch retry/reprocess documents (best-effort per id)."""
+    DatasetService.ensure_member(db, tenant_id, account_id)
+
+    queued = 0
+    skipped = 0
+    not_found: list[UUID] = []
+    denied: list[UUID] = []
+    conflicts: list[UUID] = []
+
+    for document_id in payload.document_ids:
+        try:
+            out = await retry_document_processing(
+                document_id=document_id,
+                background_tasks=background_tasks,
+                force=bool(payload.force),
+                skip_if_unchanged=bool(payload.skip_if_unchanged),
+                tenant_id=tenant_id,
+                account_id=account_id,
+                db=db,
+            )
+            status = str((out or {}).get("status") or "").lower()
+            if bool(payload.force) and bool(payload.skip_if_unchanged) and status == "completed":
+                skipped += 1
+            else:
+                queued += 1
+        except HTTPException as exc:
+            if exc.status_code == 404:
+                not_found.append(document_id)
+                continue
+            if exc.status_code in (401, 403):
+                denied.append(document_id)
+                continue
+            if exc.status_code in (409, 413, 429, 503):
+                conflicts.append(document_id)
+                continue
+            raise
+
+    return {
+        "queued": queued,
+        "skipped": skipped,
+        "not_found": not_found,
+        "denied": denied,
+        "conflicts": conflicts,
+    }
+
+
+@router.post("/batch/access", response_model=DocumentBatchAccessUpdateResponse)
+async def batch_update_document_access(
+    payload: DocumentBatchAccessUpdateRequest,
+    tenant_id: UUID = Depends(get_tenant_id),
+    account_id: str = Depends(get_current_account_id),
+    db: Session = Depends(get_db),
+):
+    """Batch update document ACL (best-effort per id)."""
+    DatasetService.ensure_member(db, tenant_id, account_id)
+
+    updated = 0
+    not_found: list[UUID] = []
+    denied: list[UUID] = []
+
+    for document_id in payload.document_ids:
+        try:
+            await put_document_access(
+                document_id=document_id,
+                payload=payload.access,
+                tenant_id=tenant_id,
+                account_id=account_id,
+                db=db,
+            )
+            updated += 1
+        except HTTPException as exc:
+            if exc.status_code == 404:
+                not_found.append(document_id)
+                continue
+            if exc.status_code in (401, 403):
+                denied.append(document_id)
+                continue
+            raise
+
+    return {"updated": updated, "not_found": not_found, "denied": denied}
+
+
+@router.post("/batch/move", response_model=DocumentBatchMoveResponse)
+async def batch_move_documents(
+    payload: DocumentBatchMoveRequest,
+    tenant_id: UUID = Depends(get_tenant_id),
+    account_id: str = Depends(get_current_account_id),
+    db: Session = Depends(get_db),
+):
+    """
+    Batch move documents between datasets (best-effort).
+
+    Notes:
+    - Disallows moving MinIO-backed documents or documents with MinIO image assets (`metadata.img_ids`)
+      because dataset_id is part of the object/key namespace.
+    - Disallows moving documents that are pending/processing.
+    """
+    member = DatasetService.ensure_member(db, tenant_id, account_id)
+
+    target_ds: Dataset | None = None
+    if payload.target_dataset_id is not None:
+        target_ds = DatasetService.get_dataset(db, tenant_id, payload.target_dataset_id)
+        DatasetService.assert_dataset_writable(db, target_ds, account_id)
+    else:
+        # Moving into "no dataset" space is legacy; require tenant edit role.
+        role = (getattr(member, "role", None) or "").lower()
+        if role not in EDIT_ROLES:
+            raise HTTPException(status_code=403, detail="No permission to move documents to unassigned scope")
+
+    moved = 0
+    not_found: list[UUID] = []
+    denied: list[UUID] = []
+    conflicts: list[UUID] = []
+
+    for document_id in payload.document_ids:
+        doc = (
+            db.query(DBDocument)
+            .filter(DBDocument.id == document_id, DBDocument.tenant_id == tenant_id)
+            .first()
+        )
+        if not doc:
+            not_found.append(document_id)
+            continue
+
+        # Must be able to write the current dataset.
+        if doc.dataset_id:
+            try:
+                ds = DatasetService.get_dataset(db, tenant_id, doc.dataset_id)
+                DatasetService.assert_dataset_writable(db, ds, account_id)
+            except HTTPException:
+                denied.append(document_id)
+                continue
+
+        # Avoid changing dataset_id while a worker is active.
+        status = str(doc.status or "").lower()
+        if status in {"pending", "processing"}:
+            conflicts.append(document_id)
+            continue
+
+        raw_path = str(getattr(doc, "file_path", "") or "").strip()
+        if raw_path and is_minio_uri(raw_path):
+            conflicts.append(document_id)
+            continue
+
+        meta = dict(getattr(doc, "doc_metadata", None) or {})
+        img_ids = meta.get("img_ids")
+        if isinstance(img_ids, list) and any(isinstance(v, str) and v.strip() for v in img_ids):
+            # MinIO image ids embed dataset_id; moving would break /image-url access checks.
+            conflicts.append(document_id)
+            continue
+
+        doc.dataset_id = payload.target_dataset_id
+        moved += 1
+
+    if moved:
+        db.commit()
+
+    return {"moved": moved, "not_found": not_found, "denied": denied, "conflicts": conflicts}
 
 
 @router.get("/image/{image_id}")

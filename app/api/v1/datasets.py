@@ -4,6 +4,8 @@ Supports dataset creation, query, update, deletion, and permission management.
 """
 import json
 import re
+import contextlib
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, BackgroundTasks, Depends, Query, UploadFile, File, Form, HTTPException, Response
 from sqlalchemy.orm import Session
@@ -21,6 +23,10 @@ from app.api.schemas.dataset import (
     DatasetListResponse,
     DatasetRAGDefaults,
     DatasetIngestionStats,
+    DatasetConfigExport,
+    DatasetConfigImportRequest,
+    DatasetConfigBundle,
+    DatasetCloneRequest,
 )
 from app.api.schemas.document import DocumentPipelineOptions
 from app.api.schemas.ingestion_policy import IngestionPolicy, IngestionPolicyImportResponse
@@ -562,6 +568,258 @@ def update_dataset(
         default_prompt_template_key=prompt_template_key,
         default_prompt_ab_experiment_key=prompt_ab_experiment_key,
         pipeline=_dataset_pipeline_out(updated),
+    )
+
+
+def _build_dataset_config_bundle(ds: Dataset) -> DatasetConfigBundle:
+    meta = getattr(ds, "dataset_metadata", None)
+    meta_dict = meta if isinstance(meta, dict) else {}
+
+    default_parser_backend, default_chunk_strategy = _dataset_ingestion_defaults(ds)
+    prompt_template_id, prompt_template_key, prompt_ab_experiment_key = _dataset_prompt_defaults_out(ds)
+
+    ingestion_policy = None
+    if "ingestion_policy" in meta_dict:
+        ingestion_policy = parse_ingestion_policy_from_metadata(meta_dict)
+
+    return DatasetConfigBundle(
+        default_parser_backend=default_parser_backend,
+        default_chunk_strategy=default_chunk_strategy,
+        rag_defaults=_dataset_rag_defaults_out(ds),
+        default_prompt_template_id=prompt_template_id,
+        default_prompt_template_key=prompt_template_key,
+        default_prompt_ab_experiment_key=prompt_ab_experiment_key,
+        pipeline=_dataset_pipeline_out(ds),
+        ingestion_policy=ingestion_policy,
+    )
+
+
+@router.get("/{dataset_id}/config/export", response_model=DatasetConfigExport)
+def export_dataset_config(
+    dataset_id: UUID,
+    tenant_id: UUID = Depends(get_tenant_id),
+    account_id: str = Depends(get_current_account_id),
+    db: Session = Depends(get_db),
+):
+    """Export a portable dataset config bundle (JSON)."""
+    DatasetService.ensure_member(db, tenant_id, account_id)
+    ds = DatasetService.get_dataset(db, tenant_id, dataset_id)
+    DatasetService.assert_dataset_readable(db, ds, account_id)
+
+    return DatasetConfigExport(
+        version="1",
+        dataset_id=ds.id,
+        name=str(ds.name or ""),
+        exported_at=datetime.now(timezone.utc),
+        config=_build_dataset_config_bundle(ds),
+    )
+
+
+@router.post("/{dataset_id}/config/import", response_model=DatasetOut)
+def import_dataset_config(
+    dataset_id: UUID,
+    payload: DatasetConfigImportRequest,
+    tenant_id: UUID = Depends(get_tenant_id),
+    account_id: str = Depends(get_current_account_id),
+    db: Session = Depends(get_db),
+):
+    """
+    Import a dataset config bundle.
+
+    Semantics:
+    - replace=false (default): apply only non-null fields in the bundle (no clearing).
+    - replace=true: overwrite/clear supported config keys based on bundle content.
+    """
+    DatasetService.ensure_member(db, tenant_id, account_id)
+    ds = DatasetService.get_dataset(db, tenant_id, dataset_id)
+    DatasetService.assert_dataset_writable(db, ds, account_id)
+
+    replace = bool(payload.replace)
+    cfg = payload.config
+    meta = dict(getattr(ds, "dataset_metadata", None) or {})
+    changed = False
+
+    # Pipeline defaults
+    if replace or cfg.pipeline is not None:
+        if cfg.pipeline is not None:
+            options = PipelineOptions(**cfg.pipeline.model_dump(exclude_none=True))
+            pipeline_meta = build_pipeline_metadata(options)
+            if pipeline_meta:
+                meta["pipeline"] = pipeline_meta
+            else:
+                meta.pop("pipeline", None)
+        else:
+            meta.pop("pipeline", None)
+        changed = True
+
+    # Ingestion defaults
+    if replace or cfg.default_parser_backend is not None:
+        raw = str(cfg.default_parser_backend or "").strip()
+        if raw:
+            meta["default_parser_backend"] = _normalize_dataset_default_parser_backend(raw)
+        else:
+            meta.pop("default_parser_backend", None)
+        changed = True
+
+    if replace or cfg.default_chunk_strategy is not None:
+        raw = str(cfg.default_chunk_strategy or "").strip()
+        if raw:
+            meta["default_chunk_strategy"] = _normalize_dataset_default_chunk_strategy(raw)
+        else:
+            meta.pop("default_chunk_strategy", None)
+        changed = True
+
+    # RAG defaults
+    if replace or cfg.rag_defaults is not None:
+        data = cfg.rag_defaults.model_dump(exclude_none=True) if cfg.rag_defaults is not None else {}
+        if data:
+            meta["rag_defaults"] = data
+        else:
+            meta.pop("rag_defaults", None)
+        changed = True
+
+    # Prompt defaults
+    if replace or cfg.default_prompt_template_id is not None:
+        if cfg.default_prompt_template_id is not None:
+            meta["default_prompt_template_id"] = str(cfg.default_prompt_template_id)
+        else:
+            meta.pop("default_prompt_template_id", None)
+        changed = True
+
+    if replace or cfg.default_prompt_template_key is not None:
+        val = str(cfg.default_prompt_template_key or "").strip().lower()
+        if val:
+            meta["default_prompt_template_key"] = val
+        else:
+            meta.pop("default_prompt_template_key", None)
+        changed = True
+
+    if replace or cfg.default_prompt_ab_experiment_key is not None:
+        val = str(cfg.default_prompt_ab_experiment_key or "").strip()
+        if val:
+            meta["default_prompt_ab_experiment_key"] = val
+        else:
+            meta.pop("default_prompt_ab_experiment_key", None)
+        changed = True
+
+    # Ingestion policy
+    if replace or cfg.ingestion_policy is not None:
+        if cfg.ingestion_policy is not None:
+            normalized = validate_and_normalize_ingestion_policy(cfg.ingestion_policy)
+            meta["ingestion_policy"] = normalized.model_dump()
+        else:
+            meta.pop("ingestion_policy", None)
+        changed = True
+
+    if changed:
+        ds.dataset_metadata = meta
+        db.commit()
+        db.refresh(ds)
+
+    audit_log_event(
+        db,
+        tenant_id=tenant_id,
+        actor_id=account_id,
+        action="dataset.config.import",
+        resource_type="dataset",
+        resource_id=str(ds.id),
+        details={"replace": bool(replace)},
+    )
+    with contextlib.suppress(Exception):
+        db.commit()
+
+    partial_list = None
+    if ds.permission == DatasetPermissionEnum.PARTIAL_MEMBERS:
+        partial_list = DatasetPermissionService.get_dataset_partial_member_list(db, tenant_id, ds.id)
+
+    default_parser_backend, default_chunk_strategy = _dataset_ingestion_defaults(ds)
+    prompt_template_id, prompt_template_key, prompt_ab_experiment_key = _dataset_prompt_defaults_out(ds)
+
+    return DatasetOut(
+        id=ds.id,
+        tenant_id=ds.tenant_id,
+        name=ds.name,
+        description=ds.description,
+        permission=ds.permission,
+        owner_id=ds.owner_id,
+        partial_member_list=partial_list,
+        default_parser_backend=default_parser_backend,
+        default_chunk_strategy=default_chunk_strategy,
+        rag_defaults=_dataset_rag_defaults_out(ds),
+        default_prompt_template_id=prompt_template_id,
+        default_prompt_template_key=prompt_template_key,
+        default_prompt_ab_experiment_key=prompt_ab_experiment_key,
+        pipeline=_dataset_pipeline_out(ds),
+    )
+
+
+@router.post("/{dataset_id}/clone", response_model=DatasetOut, status_code=201)
+def clone_dataset(
+    dataset_id: UUID,
+    payload: DatasetCloneRequest,
+    tenant_id: UUID = Depends(get_tenant_id),
+    account_id: str = Depends(get_current_account_id),
+    db: Session = Depends(get_db),
+):
+    """Clone an existing dataset (config + optional permission/members)."""
+    DatasetService.ensure_member(db, tenant_id, account_id)
+    src = DatasetService.get_dataset(db, tenant_id, dataset_id)
+    DatasetService.assert_dataset_writable(db, src, account_id)
+
+    permission = src.permission if payload.copy_permission else DatasetPermissionEnum.ALL_TEAM_MEMBERS
+    partial_members: list[str] = []
+    if permission == DatasetPermissionEnum.PARTIAL_MEMBERS and payload.copy_partial_members:
+        partial_members = DatasetPermissionService.get_dataset_partial_member_list(db, tenant_id, src.id) or []
+
+    created = DatasetService.create_dataset(
+        db=db,
+        tenant_id=tenant_id,
+        name=str(payload.name or "").strip(),
+        description=str(payload.description or "").strip() or None,
+        permission=permission,
+        owner_id=account_id,
+        partial_members=partial_members,
+    )
+
+    # Copy portable config keys from the source dataset.
+    created.dataset_metadata = dict(getattr(src, "dataset_metadata", None) or {})
+    db.commit()
+    db.refresh(created)
+
+    audit_log_event(
+        db,
+        tenant_id=tenant_id,
+        actor_id=account_id,
+        action="dataset.clone",
+        resource_type="dataset",
+        resource_id=str(created.id),
+        details={"source_dataset_id": str(src.id)},
+    )
+    with contextlib.suppress(Exception):
+        db.commit()
+
+    partial_list = None
+    if created.permission == DatasetPermissionEnum.PARTIAL_MEMBERS:
+        partial_list = DatasetPermissionService.get_dataset_partial_member_list(db, tenant_id, created.id)
+
+    default_parser_backend, default_chunk_strategy = _dataset_ingestion_defaults(created)
+    prompt_template_id, prompt_template_key, prompt_ab_experiment_key = _dataset_prompt_defaults_out(created)
+
+    return DatasetOut(
+        id=created.id,
+        tenant_id=created.tenant_id,
+        name=created.name,
+        description=created.description,
+        permission=created.permission,
+        owner_id=created.owner_id,
+        partial_member_list=partial_list,
+        default_parser_backend=default_parser_backend,
+        default_chunk_strategy=default_chunk_strategy,
+        rag_defaults=_dataset_rag_defaults_out(created),
+        default_prompt_template_id=prompt_template_id,
+        default_prompt_template_key=prompt_template_key,
+        default_prompt_ab_experiment_key=prompt_ab_experiment_key,
+        pipeline=_dataset_pipeline_out(created),
     )
 
 
