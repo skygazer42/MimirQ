@@ -775,6 +775,62 @@ def _compute_pipeline_hash(doc_metadata: dict) -> str:
     return hashlib.sha256(raw).hexdigest()[:16]
 
 
+def _find_duplicate_document(
+    db: Session,
+    *,
+    tenant_id: UUID,
+    dataset_id: UUID | None,
+    file_sha256: str | None,
+    pipeline_hash: str | None,
+) -> DBDocument | None:
+    """
+    Find an existing document with the same (file_sha256 + pipeline_hash) within a dataset.
+
+    This is used as an optional ingestion optimization to avoid re-embedding identical inputs
+    under identical pipeline options.
+    """
+    if dataset_id is None:
+        return None
+
+    sha = str(file_sha256 or "").strip().lower()
+    ph = str(pipeline_hash or "").strip()
+    if not sha or not ph:
+        return None
+
+    # Postgres JSONB fast path.
+    try:
+        return (
+            db.query(DBDocument)
+            .filter(
+                DBDocument.tenant_id == tenant_id,
+                DBDocument.dataset_id == dataset_id,
+                DBDocument.doc_metadata["file_sha256"].astext == sha,  # type: ignore[attr-defined]
+                DBDocument.doc_metadata["pipeline_hash"].astext == ph,  # type: ignore[attr-defined]
+            )
+            .order_by(DBDocument.created_at.desc())
+            .first()
+        )
+    except Exception:
+        # Best-effort fallback for non-Postgres backends: scan a bounded window.
+        rows = (
+            db.query(DBDocument)
+            .filter(
+                DBDocument.tenant_id == tenant_id,
+                DBDocument.dataset_id == dataset_id,
+            )
+            .order_by(DBDocument.created_at.desc())
+            .limit(2000)
+            .all()
+        )
+        for doc in rows:
+            meta = doc.doc_metadata if isinstance(doc.doc_metadata, dict) else {}
+            sha0 = str(meta.get("file_sha256") or "").strip().lower()
+            ph0 = str(meta.get("pipeline_hash") or "").strip()
+            if sha0 == sha and ph0 == ph:
+                return doc
+        return None
+
+
 def _apply_user_metadata_patch(*, current: dict, patch: dict, replace: bool) -> dict:
     if replace:
         next_user = dict(patch or {})
@@ -2120,6 +2176,27 @@ async def upload_document(
     # Versioning: the first processed pipeline is the active one by default.
     doc_metadata.setdefault("active_pipeline_hash", pipeline_hash)
     doc_metadata.setdefault("active_pipeline_ready", False)
+
+    # Optional: upload deduplication (same file_sha256 + same pipeline_hash within the same dataset).
+    if bool(getattr(settings, "UPLOAD_DEDUP_ENABLED", False)) and isinstance(file_sha256, str) and file_sha256:
+        dup = _find_duplicate_document(
+            db,
+            tenant_id=tenant_id,
+            dataset_id=getattr(dataset, "id", None),
+            file_sha256=file_sha256,
+            pipeline_hash=pipeline_hash,
+        )
+        if dup is not None and str(getattr(dup, "status", "") or "").lower() not in {"failed"}:
+            logger.info(
+                "Upload dedup hit tenant_id=%s dataset_id=%s document_id=%s",
+                str(tenant_id),
+                str(getattr(dataset, "id", None)),
+                str(getattr(dup, "id", "")),
+            )
+            # Remove the just-uploaded file to save disk.
+            with contextlib.suppress(OSError):
+                file_path.unlink(missing_ok=True)
+            return dup
 
     db_document = DBDocument(
         id=file_id,

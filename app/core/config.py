@@ -158,6 +158,10 @@ class Settings(BaseSettings):
 
     UPLOAD_DIR: str = "./uploads"
     MAX_FILE_SIZE: int = 50_000_000
+    # Optional: deduplicate uploads by (file_sha256 + pipeline_hash) within a dataset.
+    # When enabled, re-uploading the same file with the same pipeline options returns the existing document
+    # instead of creating a new record + re-embedding.
+    UPLOAD_DEDUP_ENABLED: bool = False
 
     # Local filesystem scan (precheck) - disabled by default for safety.
     # Enable explicitly for local/on-prem deployments where the API process is allowed to read a mounted folder.

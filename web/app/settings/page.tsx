@@ -30,6 +30,7 @@ import {
   type MagicPDFConfig,
   type ObservabilityConfig,
   type SafetyConfig,
+  type ChatConfig,
   type LangGraphConfig,
 } from '@/lib/api-client'
 import { cn } from '@/lib/utils'
@@ -152,12 +153,19 @@ const DEFAULT_OBSERVABILITY: ObservabilityConfig = {
   agent_log_enabled: false,
   agent_log_include_execution_path: false,
   agent_log_max_preview_chars: 500,
+  metrics_log_enabled: false,
+  metrics_log_include_text: false,
 }
 
 const DEFAULT_SAFETY: SafetyConfig = {
   pii_redaction_enabled: false,
   pii_redaction_mask: '[REDACTED]',
   pii_stream_holdback_chars: 128,
+}
+
+const DEFAULT_CHAT: ChatConfig = {
+  stream_heartbeat_sec: 10,
+  stream_cancel_on_disconnect: true,
 }
 
 const DEFAULT_LANGGRAPH: LangGraphConfig = {
