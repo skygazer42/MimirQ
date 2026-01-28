@@ -22,7 +22,7 @@ import { formatApiError } from '@/lib/api-errors'
 import { getChunkStrategyLabel } from '@/lib/chunk-strategies'
 import { getParserLabel } from '@/lib/parser-options'
 import { cn, formatDate, formatFileSize } from '@/lib/utils'
-import type { Document, DocumentAccessInfo, DocumentAccessMode, DocumentChunk } from '@/types'
+import type { Document, DocumentAccessInfo, DocumentAccessMode, DocumentChunk, DocumentVersionList } from '@/types'
 
 interface DocumentDetailDialogProps {
   document: Document
@@ -30,6 +30,8 @@ interface DocumentDetailDialogProps {
 }
 
 const EMPTY_CHUNKS: DocumentChunk[] = []
+const ACTIVE_PIPELINE_VALUE = '__active__'
+const CHUNK_PAGE_SIZE = 200
 
 function asStatusBadgeStatus(status: string | undefined): StatusBadgeStatus {
   switch (status) {
@@ -83,8 +85,21 @@ function highlightText(text: string, query: string) {
 export function DocumentDetailDialog({ document: initialDocument, trigger }: DocumentDetailDialogProps) {
   const [open, setOpen] = useState(false)
   const [detail, setDetail] = useState<Document | null>(null)
-  const [isLoading, setIsLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const [isLoadingDoc, setIsLoadingDoc] = useState(false)
+  const [docError, setDocError] = useState<string | null>(null)
+
+  const [chunks, setChunks] = useState<DocumentChunk[]>(EMPTY_CHUNKS)
+  const [chunksTotal, setChunksTotal] = useState(0)
+  const [isLoadingChunks, setIsLoadingChunks] = useState(false)
+  const [chunkError, setChunkError] = useState<string | null>(null)
+
+  const [versions, setVersions] = useState<DocumentVersionList | null>(null)
+  const [isLoadingVersions, setIsLoadingVersions] = useState(false)
+  const [versionsError, setVersionsError] = useState<string | null>(null)
+  const [versionsDialogOpen, setVersionsDialogOpen] = useState(false)
+  const [isVersionWorking, setIsVersionWorking] = useState(false)
+  const [viewPipelineHash, setViewPipelineHash] = useState<string>(ACTIVE_PIPELINE_VALUE)
+
   const [isKgWorking, setIsKgWorking] = useState(false)
   const [chunkQuery, setChunkQuery] = useState('')
   const [accessInfo, setAccessInfo] = useState<DocumentAccessInfo | null>(null)
@@ -94,11 +109,11 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Doc
   const [isSavingAccess, setIsSavingAccess] = useState(false)
 
   const loadDetail = useCallback(async () => {
-    setIsLoading(true)
-    setError(null)
+    setIsLoadingDoc(true)
+    setDocError(null)
     try {
       const [data, acl] = await Promise.all([
-        documentApi.get(initialDocument.id, { includeChunks: true }),
+        documentApi.get(initialDocument.id),
         documentApi.getAccess(initialDocument.id).catch((err) => {
           console.warn('Load document access error:', err)
           return null
@@ -108,18 +123,89 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Doc
       setAccessInfo(acl)
     } catch (err: any) {
       console.error('Load document detail error:', err)
-      setError(formatApiError(err, '获取文档详情失败'))
+      setDocError(formatApiError(err, '获取文档详情失败'))
     } finally {
-      setIsLoading(false)
+      setIsLoadingDoc(false)
     }
   }, [initialDocument.id])
+
+  const loadVersions = useCallback(async () => {
+    setIsLoadingVersions(true)
+    setVersionsError(null)
+    try {
+      const data = await documentApi.listVersions(initialDocument.id)
+      setVersions(data)
+    } catch (err: any) {
+      console.error('Load document versions error:', err)
+      setVersionsError(formatApiError(err, '获取文档版本失败'))
+    } finally {
+      setIsLoadingVersions(false)
+    }
+  }, [initialDocument.id])
+
+  const fetchChunksPage = useCallback(
+    async (skip: number) => {
+      const q = chunkQuery.trim()
+      const pipelineHash = viewPipelineHash === ACTIVE_PIPELINE_VALUE ? undefined : viewPipelineHash
+      const res = await documentApi.listChunks(initialDocument.id, {
+        skip,
+        limit: CHUNK_PAGE_SIZE,
+        q: q ? q : undefined,
+        pipeline_hash: pipelineHash,
+      })
+      return res
+    },
+    [chunkQuery, initialDocument.id, viewPipelineHash]
+  )
+
+  const reloadChunks = useCallback(async () => {
+    setIsLoadingChunks(true)
+    setChunkError(null)
+    setChunks([])
+    setChunksTotal(0)
+    try {
+      const res = await fetchChunksPage(0)
+      setChunks(res.items || [])
+      setChunksTotal(Number(res.total || 0))
+    } catch (err: any) {
+      console.error('Load document chunks error:', err)
+      setChunkError(formatApiError(err, '获取切片失败'))
+    } finally {
+      setIsLoadingChunks(false)
+    }
+  }, [fetchChunksPage])
+
+  const loadMoreChunks = useCallback(async () => {
+    if (isLoadingChunks) return
+    if (chunks.length >= chunksTotal) return
+    setIsLoadingChunks(true)
+    setChunkError(null)
+    try {
+      const res = await fetchChunksPage(chunks.length)
+      setChunks((prev) => [...prev, ...(res.items || [])])
+      setChunksTotal(Number(res.total || 0))
+    } catch (err: any) {
+      console.error('Load more chunks error:', err)
+      setChunkError(formatApiError(err, '加载更多切片失败'))
+    } finally {
+      setIsLoadingChunks(false)
+    }
+  }, [chunks.length, chunksTotal, fetchChunksPage, isLoadingChunks])
 
   useEffect(() => {
     if (!open) return
     void loadDetail()
-  }, [open, loadDetail])
+    void loadVersions()
+  }, [open, loadDetail, loadVersions])
 
-  const chunks = detail?.chunks ?? EMPTY_CHUNKS
+  useEffect(() => {
+    if (!open) return
+    const handle = window.setTimeout(() => {
+      void reloadChunks()
+    }, chunkQuery.trim() ? 250 : 0)
+    return () => window.clearTimeout(handle)
+  }, [open, chunkQuery, viewPipelineHash, reloadChunks])
+
   const parserBackend =
     (detail?.metadata?.parser_backend as string) || (initialDocument.metadata?.parser_backend as string) || ''
   const chunkStrategy =
@@ -149,17 +235,9 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Doc
     }
   }, [effectiveAccessMode])
 
-  const filteredChunks = useMemo(() => {
-    const q = chunkQuery.trim().toLowerCase()
-    if (!q) return chunks
-    return chunks.filter((chunk) => {
-      const content = chunk.content || ''
-      if (content.toLowerCase().includes(q)) return true
-      if (String(chunk.chunk_index).includes(q)) return true
-      if (typeof chunk.page_number === 'number' && String(chunk.page_number).includes(q)) return true
-      return false
-    })
-  }, [chunks, chunkQuery])
+  const isSearching = chunkQuery.trim().length > 0
+  const canLoadMoreChunks = chunks.length < chunksTotal
+  const loadError = docError || chunkError
 
   const copyToClipboard = useCallback(async (text: string) => {
     const content = text || ''
@@ -186,6 +264,56 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Doc
       toast.error('复制失败')
     }
   }, [])
+
+  const handleActivateVersion = useCallback(
+    async (pipelineHash: string) => {
+      const ph = String(pipelineHash || '').trim()
+      if (!ph) return
+      if (!confirm(`确定要将该文档切换到版本 ${ph.slice(0, 12)}… 吗？\n\n这不会重新解析/重新向量化，只会切换检索与引用的激活版本。`)) return
+
+      setIsVersionWorking(true)
+      try {
+        await documentApi.activateVersion(initialDocument.id, ph)
+        toast.success('已切换激活版本')
+        setViewPipelineHash(ACTIVE_PIPELINE_VALUE)
+        await Promise.all([loadDetail(), loadVersions()])
+        await reloadChunks()
+      } catch (err: any) {
+        console.error('Activate document version failed:', err)
+        toast.error(formatApiError(err, '切换版本失败'))
+      } finally {
+        setIsVersionWorking(false)
+      }
+    },
+    [initialDocument.id, loadDetail, loadVersions, reloadChunks]
+  )
+
+  const handleDeleteVersion = useCallback(
+    async (pipelineHash: string) => {
+      const ph = String(pipelineHash || '').trim()
+      if (!ph) return
+      if (!confirm(`确定要删除该文档的版本 ${ph.slice(0, 12)}… 吗？\n\n注意：当前激活版本无法删除。`)) return
+
+      setIsVersionWorking(true)
+      try {
+        await documentApi.deleteVersion(initialDocument.id, ph)
+        toast.success('已删除版本')
+        // If the user was viewing this version, fallback to active.
+        if (viewPipelineHash === ph) {
+          setViewPipelineHash(ACTIVE_PIPELINE_VALUE)
+        }
+        await loadVersions()
+        await loadDetail()
+        await reloadChunks()
+      } catch (err: any) {
+        console.error('Delete document version failed:', err)
+        toast.error(formatApiError(err, '删除版本失败'))
+      } finally {
+        setIsVersionWorking(false)
+      }
+    },
+    [initialDocument.id, loadDetail, loadVersions, reloadChunks, viewPipelineHash]
+  )
 
   const handleExtractKG = async () => {
     if (!canRunKg) return
@@ -338,12 +466,29 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Doc
                 <Input
                   value={chunkQuery}
                   onChange={(e) => setChunkQuery(e.target.value)}
-                  placeholder="搜索切片内容 / 页码 / 编号..."
+                  placeholder="搜索切片内容..."
                   className="h-10 pl-9"
                 />
               </div>
+
+              {versions?.items?.length ? (
+                <Select value={viewPipelineHash} onValueChange={setViewPipelineHash}>
+                  <SelectTrigger className="hidden h-10 w-[220px] sm:flex">
+                    <SelectValue placeholder="选择版本" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={ACTIVE_PIPELINE_VALUE}>当前激活版本</SelectItem>
+                    {versions.items.map((v) => (
+                      <SelectItem key={v.pipeline_hash} value={v.pipeline_hash}>
+                        {v.active ? '激活' : '历史'} {v.pipeline_hash.slice(0, 10)}… · {v.chunk_count} chunks
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              ) : null}
+
               <span className="hidden sm:inline-flex rounded-full border border-border/60 bg-muted/60 px-2 py-1 text-xs text-muted-foreground">
-                {filteredChunks.length}/{chunks.length}
+                {chunks.length}/{chunksTotal}
               </span>
               {chunkQuery ? (
                 <IconButton
@@ -358,19 +503,26 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Doc
             </div>
 
             <div className="h-full overflow-y-auto overscroll-contain no-scrollbar p-4">
-              {isLoading ? (
+              {(isLoadingDoc && !detail) || (isLoadingChunks && chunks.length === 0) ? (
                 <div className="flex h-full flex-col items-center justify-center gap-3 text-muted-foreground">
                   <Loader2 className="h-8 w-8 animate-spin motion-reduce:animate-none" />
                   <p className="text-sm">正在加载切片数据...</p>
                 </div>
-              ) : error ? (
+              ) : loadError && chunks.length === 0 ? (
                 <div className="mx-auto max-w-2xl py-10">
                   <Alert variant="destructive">
                     <AlertTitle>加载失败</AlertTitle>
-                    <AlertDescription>{error}</AlertDescription>
+                    <AlertDescription>{loadError}</AlertDescription>
                   </Alert>
                   <div className="mt-4 flex items-center justify-end gap-2">
-                    <Button variant="outline" onClick={() => void loadDetail()}>
+                    <Button
+                      variant="outline"
+                      onClick={() => {
+                        void loadDetail()
+                        void loadVersions()
+                        void reloadChunks()
+                      }}
+                    >
                       重试
                     </Button>
                     <Button variant="secondary" onClick={() => setOpen(false)}>
@@ -378,14 +530,14 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Doc
                     </Button>
                   </div>
                 </div>
-              ) : chunks.length === 0 ? (
+              ) : chunksTotal === 0 && !isSearching ? (
                 <EmptyState
                   icon={FileText}
                   title="暂无切片数据"
                   description="该文档暂未生成可用切片，或后端未返回切片内容。"
                   className="min-h-[320px]"
                 />
-              ) : filteredChunks.length === 0 ? (
+              ) : chunksTotal === 0 && isSearching ? (
                 <EmptyState
                   icon={Search}
                   title="未找到匹配切片"
@@ -398,7 +550,14 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Doc
                 </EmptyState>
               ) : (
                 <div className="space-y-3 pb-6">
-                  {filteredChunks.map((chunk) => (
+                  {chunkError && chunks.length > 0 ? (
+                    <Alert variant="destructive">
+                      <AlertTitle>加载切片失败</AlertTitle>
+                      <AlertDescription>{chunkError}</AlertDescription>
+                    </Alert>
+                  ) : null}
+
+                  {chunks.map((chunk) => (
                     <div
                       key={chunk.id}
                       className={cn(
@@ -433,6 +592,22 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Doc
                       </div>
                     </div>
                   ))}
+
+                  {canLoadMoreChunks ? (
+                    <div className="flex justify-center pt-2">
+                      <Button
+                        variant="outline"
+                        onClick={() => void loadMoreChunks()}
+                        disabled={isLoadingChunks}
+                        className="gap-2"
+                      >
+                        {isLoadingChunks ? (
+                          <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" />
+                        ) : null}
+                        加载更多
+                      </Button>
+                    </div>
+                  ) : null}
                 </div>
               )}
             </div>
@@ -443,6 +618,145 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Doc
         <footer className="border-t border-border bg-muted/20 px-6 py-4">
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex flex-col gap-2 sm:flex-row">
+              <Dialog
+                open={versionsDialogOpen}
+                onOpenChange={(next) => {
+                  setVersionsDialogOpen(next)
+                  if (next) {
+                    void loadVersions()
+                  }
+                }}
+              >
+                <DialogTrigger asChild>
+                  <Button variant="outline" className="w-full gap-2 sm:w-auto">
+                    <Hash className="h-4 w-4" />
+                    版本
+                  </Button>
+                </DialogTrigger>
+                <DialogContent className="max-w-2xl">
+                  <DialogTitle>文档版本（pipeline）</DialogTitle>
+                  <DialogDescription className="text-xs">
+                    用于运维/回滚：不同 pipeline 配置会生成不同的 <span className="font-mono">pipeline_hash</span> 版本；激活版本会影响检索与引用。
+                  </DialogDescription>
+
+                  <div className="mt-4 space-y-3">
+                    {isLoadingVersions ? (
+                      <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                        <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" />
+                        正在加载版本信息...
+                      </div>
+                    ) : versionsError ? (
+                      <Alert variant="destructive">
+                        <AlertTitle>加载版本失败</AlertTitle>
+                        <AlertDescription className="flex items-center justify-between gap-3">
+                          <span className="min-w-0 flex-1">{versionsError}</span>
+                          <Button variant="outline" size="sm" onClick={() => void loadVersions()}>
+                            重试
+                          </Button>
+                        </AlertDescription>
+                      </Alert>
+                    ) : null}
+
+                    <div className="rounded-xl border border-border/60 bg-muted/20 p-3">
+                      <div className="text-xs text-muted-foreground">当前激活 pipeline_hash</div>
+                      <div className="mt-2 flex items-center justify-between gap-2">
+                        <div className="min-w-0 font-mono text-xs text-foreground">
+                          {versions?.active_pipeline_hash || '-'}
+                        </div>
+                        <IconButton
+                          label="复制 pipeline_hash"
+                          variant="ghost"
+                          className="h-9 w-9 text-muted-foreground hover:text-foreground"
+                          disabled={!versions?.active_pipeline_hash}
+                          onClick={() => void copyToClipboard(String(versions?.active_pipeline_hash || ''))}
+                        >
+                          <Copy className="h-4 w-4" />
+                        </IconButton>
+                      </div>
+                    </div>
+
+                    {!isLoadingVersions && !versionsError ? (
+                      versions?.items?.length ? (
+                        <div className="space-y-2">
+                          {versions.items.map((v) => (
+                            <div
+                              key={v.pipeline_hash}
+                              className={cn(
+                                "flex items-start justify-between gap-3 rounded-xl border border-border/60 bg-card p-3",
+                                v.active ? "border-primary/30 bg-primary/5" : "bg-card"
+                              )}
+                            >
+                              <div className="min-w-0">
+                                <div className="flex flex-wrap items-center gap-2">
+                                  <span className="font-mono text-xs text-foreground">{v.pipeline_hash}</span>
+                                  {v.active ? (
+                                    <span className="rounded-full border border-primary/40 bg-primary/10 px-2 py-0.5 text-[11px] font-medium text-primary">
+                                      ACTIVE
+                                    </span>
+                                  ) : null}
+                                </div>
+                                <div className="mt-1 text-xs text-muted-foreground">
+                                  {v.chunk_count} chunks
+                                  {v.last_chunk_at ? ` · 更新 ${formatDate(v.last_chunk_at)}` : ''}
+                                </div>
+                              </div>
+
+                              <div className="flex flex-shrink-0 items-center gap-2">
+                                <IconButton
+                                  label="复制版本 hash"
+                                  variant="ghost"
+                                  className="h-9 w-9 text-muted-foreground hover:text-foreground"
+                                  onClick={() => void copyToClipboard(v.pipeline_hash)}
+                                >
+                                  <Copy className="h-4 w-4" />
+                                </IconButton>
+
+                                {v.active ? (
+                                  <Button size="sm" variant="secondary" disabled>
+                                    已激活
+                                  </Button>
+                                ) : (
+                                  <>
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      onClick={() => void handleActivateVersion(v.pipeline_hash)}
+                                      disabled={isVersionWorking}
+                                    >
+                                      激活
+                                    </Button>
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      onClick={() => void handleDeleteVersion(v.pipeline_hash)}
+                                      disabled={isVersionWorking}
+                                      className="text-destructive hover:bg-destructive/10 hover:text-destructive"
+                                    >
+                                      删除
+                                    </Button>
+                                  </>
+                                )}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <EmptyState
+                          icon={Hash}
+                          title="暂无版本信息"
+                          description="当前文档还没有可用的 pipeline 版本记录（或尚未生成切片）。"
+                          className="min-h-[240px]"
+                        />
+                      )
+                    ) : null}
+
+                    <div className="text-xs text-muted-foreground">
+                      提示：激活/删除版本需要对文档所属数据集有写权限；删除操作不可恢复。
+                    </div>
+                  </div>
+                </DialogContent>
+              </Dialog>
+
               <Dialog
                 open={accessDialogOpen}
                 onOpenChange={(next) => {
