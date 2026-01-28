@@ -711,6 +711,9 @@ class Settings(BaseSettings):
 
     # Persistent summary memory (conversation-level; disabled by default).
     PERSISTENT_SUMMARY_MEMORY_ENABLED: bool = False
+    # When enabled, update the persistent summary after each assistant turn when the request opts in
+    # (ChatRequest.enable_summary_memory=true). Best-effort and fail-open.
+    PERSISTENT_SUMMARY_MEMORY_AUTO_UPDATE: bool = False
     PERSISTENT_SUMMARY_MEMORY_LOOKBACK_MESSAGES: int = 20
     PERSISTENT_SUMMARY_MEMORY_MAX_SUMMARY_TOKENS: int = 500
 

@@ -85,6 +85,14 @@ function EvaluationsPageContent() {
     if (cid) setSelectedConversationId(cid)
   }, [searchParams])
 
+  // Support deep-linking: /evaluations?tab=regression|conversation
+  useEffect(() => {
+    const tab = (searchParams.get('tab') || '').trim().toLowerCase()
+    if (tab === 'regression' || tab === 'conversation') {
+      setActiveTab(tab as TabType)
+    }
+  }, [searchParams])
+
   const loadConversations = async () => {
     try {
       const res = await chatApi.listConversations({ limit: 100 })

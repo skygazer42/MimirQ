@@ -1,6 +1,8 @@
 """
 Chat API.
 """
+import asyncio
+import contextlib
 import logging
 import re
 from uuid import UUID
@@ -9,7 +11,7 @@ from datetime import datetime
 import json
 from typing import Optional, List
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
 from fastapi.encoders import jsonable_encoder
 from pydantic import BaseModel
@@ -56,6 +58,26 @@ from app.rag.preprocessing.tokenization import tokenize_for_bm25
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+async def _auto_update_summary_background(*, tenant_id: UUID, conversation_id: UUID) -> None:
+    """
+    Best-effort async background task to update persistent summary memory.
+
+    Important: uses a new DB session to avoid holding request-scoped sessions after responses.
+    """
+    try:
+        from app.core.database import SessionLocal  # noqa: WPS433
+
+        db2 = SessionLocal()
+        try:
+            await update_conversation_summary(db2, tenant_id=tenant_id, conversation_id=conversation_id)
+        finally:
+            try:
+                db2.close()
+            except Exception:
+                pass
+    except Exception:
+        return
 
 
 def _format_stream_error_message(exc: Exception) -> str:
@@ -168,6 +190,7 @@ def _retrieve_long_term_messages(
 async def chat(
     http_request: Request,
     request: ChatRequest,
+    background_tasks: BackgroundTasks,
     tenant_id: UUID = Depends(get_tenant_id),
     account_id: str = Depends(get_current_account_id),
     db: Session = Depends(get_db),
@@ -537,6 +560,16 @@ async def chat(
 
     if conversation_id is None:
         raise HTTPException(status_code=500, detail="Conversation id missing")
+
+    # Optional: auto-update persistent summary after the assistant turn (best-effort).
+    if (
+        bool(getattr(settings, "PERSISTENT_SUMMARY_MEMORY_ENABLED", False))
+        and bool(getattr(settings, "PERSISTENT_SUMMARY_MEMORY_AUTO_UPDATE", False))
+        and bool(getattr(request, "enable_summary_memory", False))
+        and conversation_id
+    ):
+        with contextlib.suppress(Exception):
+            background_tasks.add_task(_auto_update_summary_background, tenant_id=tenant_id, conversation_id=conversation_id)
 
     retrieval_mode_used = metrics_data.get("retrieval_mode") or effective_rag_config.retrieval_mode
     vector_backend_used = metrics_data.get("vector_backend") or settings.VECTOR_BACKEND
@@ -908,6 +941,15 @@ async def stream_chat(
                 conversation.message_count += 1
                 conversation.updated_at = datetime.utcnow()
                 db.commit()
+
+                if (
+                    bool(getattr(settings, "PERSISTENT_SUMMARY_MEMORY_ENABLED", False))
+                    and bool(getattr(settings, "PERSISTENT_SUMMARY_MEMORY_AUTO_UPDATE", False))
+                    and bool(getattr(request, "enable_summary_memory", False))
+                    and conversation_id
+                ):
+                    with contextlib.suppress(Exception):
+                        asyncio.create_task(_auto_update_summary_background(tenant_id=tenant_id, conversation_id=conversation_id))
                 return
 
             except Exception as e:  # noqa: BLE001
@@ -1057,6 +1099,15 @@ async def stream_chat(
             conversation.message_count += 1
             conversation.updated_at = datetime.utcnow()
             db.commit()
+
+            if (
+                bool(getattr(settings, "PERSISTENT_SUMMARY_MEMORY_ENABLED", False))
+                and bool(getattr(settings, "PERSISTENT_SUMMARY_MEMORY_AUTO_UPDATE", False))
+                and bool(getattr(request, "enable_summary_memory", False))
+                and conversation_id
+            ):
+                with contextlib.suppress(Exception):
+                    asyncio.create_task(_auto_update_summary_background(tenant_id=tenant_id, conversation_id=conversation_id))
 
         except Exception as e:
             logger.error("Chat stream error: %s", str(e)[:200])

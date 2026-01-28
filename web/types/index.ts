@@ -821,6 +821,16 @@ export interface DatasetListResponse {
   items: Dataset[]
 }
 
+export interface DatasetIngestionStats {
+  dataset_id: string
+  total_documents: number
+  by_status: Record<string, number>
+  total_chunks: number
+  total_size: number
+  total_characters: number
+  last_processed_at?: string | null
+}
+
 // ==================== 对话相关类型 ====================
 
 export interface Message {
@@ -876,6 +886,7 @@ export interface ChatRequest {
   structured_output?: boolean
   structured_preset?: 'faq' | 'summary' | 'action_items' | 'custom' | string | null
   enable_long_term_memory?: boolean
+  enable_summary_memory?: boolean
   prompt_template_id?: string
   prompt_template_key?: string
   prompt_ab_experiment_key?: string
@@ -895,6 +906,64 @@ export interface ChatRequest {
     use_graph?: boolean
     metadata_filter?: Record<string, any>
   }
+}
+
+export interface ConversationSummaryResponse {
+  available: boolean
+  summary?: string | null
+}
+
+export interface ConversationSummaryUpdateResponse {
+  summary: string
+}
+
+// ==================== Usage / Quotas ====================
+
+export interface ChatTokenUsageRow {
+  dataset_id?: string | null
+  assistant_messages: number
+  assistant_tokens: number
+}
+
+export interface ChatTokenUsageSummary {
+  window_start: string
+  window_end: string
+  total_assistant_messages: number
+  total_assistant_tokens: number
+  by_dataset: ChatTokenUsageRow[]
+}
+
+export interface ChatTokenQuotaStatus {
+  enabled: boolean
+  mode: string
+  limit: number
+  used: number
+  remaining: number
+  exceeded: boolean
+  window_hours: number
+  window_start: string
+  window_end: string
+}
+
+// ==================== Audit Logs ====================
+
+export interface AuditLogItem {
+  id: string
+  tenant_id: string
+  actor_id?: string | null
+  action: string
+  resource_type?: string | null
+  resource_id?: string | null
+  request_id?: string | null
+  ip?: string | null
+  user_agent?: string | null
+  details: Record<string, any>
+  created_at: string
+}
+
+export interface AuditLogListResponse {
+  total: number
+  items: AuditLogItem[]
 }
 
 export interface ChatResponse {

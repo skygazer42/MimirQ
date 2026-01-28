@@ -22,6 +22,11 @@ import type {
   Message,
   ChatRequest,
   ChatResponse,
+  ConversationSummaryResponse,
+  ConversationSummaryUpdateResponse,
+  ChatTokenUsageSummary,
+  ChatTokenQuotaStatus,
+  AuditLogListResponse,
   DocumentPreview,
   DocumentParsedContentResponse,
   ManualChunk,
@@ -32,6 +37,7 @@ import type {
   DatasetCreate,
   DatasetUpdate,
   DatasetListResponse,
+  DatasetIngestionStats,
   DatasetProfileSummary,
   DatasetProfileFindingListResponse,
   DatasetProfileScanRunCreateRequest,
@@ -983,6 +989,11 @@ export const datasetApi = {
     return data
   },
 
+  async getIngestionStats(datasetId: string): Promise<DatasetIngestionStats> {
+    const { data } = await apiClient.get(`/datasets/${datasetId}/ingestion/stats`)
+    return data
+  },
+
   /**
    * 更新数据集
    */
@@ -1303,6 +1314,20 @@ export const chatApi = {
   async deleteCheckpoints(conversationId: string): Promise<void> {
     await apiClient.delete(`/chat/conversations/${conversationId}/checkpoints`)
   },
+
+  async getConversationSummary(conversationId: string): Promise<ConversationSummaryResponse> {
+    const { data } = await apiClient.get(`/chat/conversations/${conversationId}/summary`)
+    return data
+  },
+
+  async updateConversationSummary(conversationId: string): Promise<ConversationSummaryUpdateResponse> {
+    const { data } = await apiClient.post(`/chat/conversations/${conversationId}/summary/update`)
+    return data
+  },
+
+  async deleteConversationSummary(conversationId: string): Promise<void> {
+    await apiClient.delete(`/chat/conversations/${conversationId}/summary`)
+  },
 }
 
 // ==================== SSE helpers (scan progress) ====================
@@ -1376,6 +1401,17 @@ export const feedbackApi = {
     max_rating?: number
   }): Promise<MessageFeedbackEnrichedListResponse> {
     const { data } = await apiClient.get('/feedback/messages/enriched', { params })
+    return data
+  },
+
+  /**
+   * 将反馈转为回归用例（RAGAS regression case）
+   */
+  async toRegressionCase(
+    feedbackId: string,
+    body: { include_document_scope?: boolean; tags?: string[]; extra?: Record<string, any> } = {}
+  ): Promise<RegressionCase> {
+    const { data } = await apiClient.post(`/feedback/messages/${feedbackId}/to-regression-case`, body)
     return data
   },
 }
@@ -1677,6 +1713,35 @@ export const metaApi = {
 export const observabilityApi = {
   async getRagMetricsSummary(params: { window_minutes?: number; max_bytes?: number }): Promise<RagMetricsSummaryResponse> {
     const { data } = await apiClient.get('/observability/rag-metrics/summary', { params })
+    return data
+  },
+}
+
+export const usageApi = {
+  async getChatTokenUsageSummary(params: { window_days?: number; since?: string; until?: string } = {}): Promise<ChatTokenUsageSummary> {
+    const { data } = await apiClient.get('/usage/chat/tokens/summary', { params })
+    return data
+  },
+
+  async getChatTokenQuotaStatus(): Promise<ChatTokenQuotaStatus> {
+    const { data } = await apiClient.get('/usage/chat/tokens/quota')
+    return data
+  },
+}
+
+export const auditApi = {
+  async listLogs(params: {
+    skip?: number
+    limit?: number
+    actor_id?: string
+    action?: string
+    resource_type?: string
+    resource_id?: string
+    request_id?: string
+    since?: string
+    until?: string
+  } = {}): Promise<AuditLogListResponse> {
+    const { data } = await apiClient.get('/audit/logs', { params })
     return data
   },
 }

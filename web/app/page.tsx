@@ -12,6 +12,8 @@ export default function Home({
     rag?: string
     doc?: string
     chunk?: string
+    start?: string
+    end?: string
   }
 }) {
   return (
@@ -21,6 +23,8 @@ export default function Home({
       initialOpenRagSettings={searchParams?.rag === '1' || searchParams?.rag === 'true'}
       initialDocumentId={searchParams?.doc}
       initialChunkId={searchParams?.chunk}
+      initialHighlightStart={searchParams?.start}
+      initialHighlightEnd={searchParams?.end}
     />
   )
 }

@@ -565,9 +565,12 @@ const CitationCard = memo(function CitationCard({ citation, index }: { citation:
     e.stopPropagation()
     // Open document viewer panel
     if (citation.document_id) {
-      openDocument(citation.document_id, citation.chunk_id)
+      const start = typeof citation.start_char === 'number' ? citation.start_char : null
+      const end = typeof citation.end_char === 'number' ? citation.end_char : null
+      const range = start != null && end != null && end > start ? { start, end } : undefined
+      openDocument(citation.document_id, citation.chunk_id, range)
     }
-  }, [citation.document_id, citation.chunk_id, openDocument])
+  }, [citation.document_id, citation.chunk_id, citation.start_char, citation.end_char, openDocument])
 
   return (
     <div

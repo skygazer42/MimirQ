@@ -2,7 +2,8 @@
 Dataset-related Pydantic schemas.
 Defines data models for dataset creation, update, and query endpoints.
 """
-from typing import List, Optional
+from datetime import datetime
+from typing import Dict, List, Optional
 from uuid import UUID
 from pydantic import BaseModel, Field, ConfigDict, field_validator
 
@@ -101,3 +102,15 @@ class DatasetOut(OrmModel):
 class DatasetListResponse(BaseModel):
     total: int
     items: List[DatasetOut]
+
+
+class DatasetIngestionStats(BaseModel):
+    """Lightweight dataset ingestion stats for dashboards."""
+
+    dataset_id: UUID
+    total_documents: int
+    by_status: Dict[str, int] = Field(default_factory=dict)
+    total_chunks: int = 0
+    total_size: int = 0
+    total_characters: int = 0
+    last_processed_at: Optional[datetime] = None
