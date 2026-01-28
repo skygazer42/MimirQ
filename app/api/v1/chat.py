@@ -81,6 +81,110 @@ async def _auto_update_summary_background(*, tenant_id: UUID, conversation_id: U
         return
 
 
+async def _persist_chat_stream_turn_background(
+    *,
+    tenant_id: UUID,
+    conversation_id: UUID,
+    account_id: str,
+    assistant_message_id: UUID,
+    request_id: str,
+    question: str,
+    document_count: int,
+    content: str,
+    citations: list,
+    metrics: dict,
+    dataset_id_used: UUID | None,
+    cache_hit: bool,
+    cache_key: str | None,
+    cache_eligible: bool,
+    structured_data: object | None,
+    ip: str | None,
+    user_agent: str | None,
+    enable_summary_memory: bool,
+) -> None:
+    """
+    Best-effort async background persistence for streaming chat.
+
+    Why: reduce tail latency for SSE by not blocking on DB commit after sending "done".
+    Trade-off: if the worker crashes after responding, the assistant message might not be persisted.
+    """
+    try:
+        from app.core.database import SessionLocal  # noqa: WPS433
+
+        db2 = SessionLocal()
+        try:
+            metrics2 = dict(metrics or {})
+            # Optional: store response in Redis cache (best-effort).
+            if cache_eligible and (not cache_hit) and cache_key and (content or "").strip():
+                cache_payload = jsonable_encoder(
+                    {
+                        "content": content,
+                        "citations": citations if isinstance(citations, list) else [],
+                        "metrics": metrics2,
+                        "structured_data": structured_data,
+                    }
+                )
+                stored = bool(set_cached_chat_response(cache_key, cache_payload))
+                metrics2.setdefault("chat_cache_store_ok", stored)
+
+            assistant_message = Message(
+                id=assistant_message_id,
+                tenant_id=tenant_id,
+                conversation_id=conversation_id,
+                role="assistant",
+                content=content or "",
+                citations=citations if isinstance(citations, list) else [],
+                token_count=num_tokens_from_string(content or ""),
+                message_metadata={**(metrics2 or {}), "request_id": str(request_id)},
+            )
+            db2.add(assistant_message)
+
+            audit_log_event(
+                db2,
+                tenant_id=tenant_id,
+                actor_id=account_id,
+                action="chat.stream",
+                resource_type="conversation",
+                resource_id=str(conversation_id),
+                request_id=str(request_id),
+                ip=ip,
+                user_agent=user_agent,
+                details=build_chat_audit_details(
+                    question=question,
+                    document_count=int(document_count or 0),
+                    dataset_id=dataset_id_used,
+                    cache_hit=cache_hit,
+                ),
+            )
+
+            conv = (
+                db2.query(Conversation)
+                .filter(Conversation.id == conversation_id, Conversation.tenant_id == tenant_id)
+                .first()
+            )
+            if conv is not None:
+                conv.message_count = int(conv.message_count or 0) + 1
+                conv.updated_at = datetime.utcnow()
+
+            db2.commit()
+        finally:
+            try:
+                db2.close()
+            except Exception:
+                pass
+
+        if (
+            bool(getattr(settings, "PERSISTENT_SUMMARY_MEMORY_ENABLED", False))
+            and bool(getattr(settings, "PERSISTENT_SUMMARY_MEMORY_AUTO_UPDATE", False))
+            and bool(enable_summary_memory)
+            and conversation_id
+        ):
+            with contextlib.suppress(Exception):
+                asyncio.create_task(_auto_update_summary_background(tenant_id=tenant_id, conversation_id=conversation_id))
+    except Exception:
+        return
+
+
 def _format_stream_error_message(exc: Exception) -> str:
     raw = str(exc) or exc.__class__.__name__
     raw = " ".join(raw.split())
@@ -205,6 +309,7 @@ async def chat(
     conversation_id = request.conversation_id
     citations_data: list = []
     full_response = ""
+    full_response_parts: list[str] = []
     allowed_doc_ids: list[UUID] = []
     long_term_messages: list[dict] = []
     allow_empty_docs = bool(getattr(settings, "CHAT_ALLOW_EMPTY_DOCUMENTS", True))
@@ -487,9 +592,13 @@ async def chat(
                         citations_data = event.get("data") or []
                     elif etype == "token":
                         data = event.get("data") or {}
-                        full_response += str(data.get("content") or "")
+                        full_response_parts.append(str(data.get("content") or ""))
                     elif etype == "done":
                         done_data = event.get("data") or {}
+
+                # Avoid O(n^2) string concatenation for long answers.
+                if full_response_parts:
+                    full_response = "".join(full_response_parts)
 
                 if isinstance(done_data, dict):
                     metrics_data = dict(done_data.get("metrics") or {})
@@ -680,6 +789,8 @@ async def stream_chat(
         doc_ids_to_use = allowed_doc_ids or []
         request_id = getattr(http_request.state, "request_id", None) or uuid.uuid4().hex
         assistant_message_id = uuid.uuid4()
+        # Avoid O(n^2) string concatenation while streaming tokens.
+        response_parts: list[str] = []
         metrics_data = {}
         structured_data = None
         set_metrics_context(
@@ -688,6 +799,10 @@ async def stream_chat(
             conversation_id=conversation_id,
             account_id=account_id,
         )
+        persist_in_background = bool(getattr(settings, "CHAT_STREAM_PERSIST_IN_BACKGROUND", False))
+        client_ip = getattr(getattr(http_request, "client", None), "host", None)
+        user_agent = http_request.headers.get("user-agent")
+        enable_summary_memory = bool(getattr(request, "enable_summary_memory", False))
 
         # Send an immediate SSE frame so clients/proxies don't see an idle connection.
         yield ": keepalive\n\n"
@@ -978,7 +1093,7 @@ async def stream_chat(
                         for i in range(0, len(answer_text), chunk_size):
                             token_chunk = answer_text[i : i + chunk_size]
                             yield f"data: {json.dumps({'request_id': str(request_id), 'type': 'token', 'data': {'content': token_chunk}}, ensure_ascii=False)}\n\n"
-                            full_response += token_chunk
+                            response_parts.append(token_chunk)
                         answer_sent = True
 
                 graph_result = final_state or {}
@@ -993,7 +1108,9 @@ async def stream_chat(
                     for i in range(0, len(answer_text), chunk_size):
                         token_chunk = answer_text[i : i + chunk_size]
                         yield f"data: {json.dumps({'request_id': str(request_id), 'type': 'token', 'data': {'content': token_chunk}}, ensure_ascii=False)}\n\n"
-                        full_response += token_chunk
+                        response_parts.append(token_chunk)
+
+                full_response = "".join(response_parts)
 
                 metrics_data = graph_result.get("metrics") or {
                     "retrieval_mode": effective_rag_config.retrieval_mode,
@@ -1262,7 +1379,7 @@ async def stream_chat(
                 # Accumulate full response.
                 if event.get("type") == "token":
                     data = event.get("data") if isinstance(event.get("data"), dict) else {}
-                    full_response += str((data or {}).get("content") or "")
+                    response_parts.append(str((data or {}).get("content") or ""))
 
                 # Stream SSE events.
                 event["request_id"] = str(request_id)
@@ -1277,6 +1394,8 @@ async def stream_chat(
 
             if producer_exc is not None:
                 raise producer_exc
+
+            full_response = "".join(response_parts)
 
             # Optional: store response in Redis cache after streaming (best-effort).
             if cache_eligible and (not cache_hit) and cache_key and full_response.strip():
