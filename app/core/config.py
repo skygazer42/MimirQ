@@ -495,6 +495,8 @@ class Settings(BaseSettings):
     CHROMA_PERSIST_PATH: str = "./vector_chroma"
     ENABLE_METRICS_LOG: bool = False
     METRICS_LOG_PATH: str = "./logs/rag_metrics.jsonl"
+    # When false (default), omit raw question/query/snippets from metrics logs to reduce PII leakage.
+    METRICS_LOG_INCLUDE_TEXT: bool = False
     ENABLE_QUERY_REWRITE: bool = False
     QUERY_REWRITE_TEMPERATURE: float = 0.2
     QUERY_REWRITE_MAX_CHARS: int = 120
@@ -727,6 +729,9 @@ class Settings(BaseSettings):
     # Stream writer configuration
     STREAM_WRITER_ENABLED: bool = True
     STREAM_BUFFER_SIZE: int = 100
+    # Chat streaming (SSE) robustness
+    CHAT_STREAM_HEARTBEAT_SEC: float = 10.0
+    CHAT_STREAM_CANCEL_ON_DISCONNECT: bool = True
     # PII redaction (disabled by default)
     PII_REDACTION_ENABLED: bool = False
     PII_REDACTION_MASK: str = "[REDACTED]"

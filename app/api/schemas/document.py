@@ -288,6 +288,76 @@ class DocumentBatchDeleteResponse(BaseModel):
     denied: List[UUID] = Field(default_factory=list)
 
 
+class DocumentBatchRetryRequest(BaseModel):
+    """Batch retry document ingestion (reprocess)."""
+
+    document_ids: List[UUID] = Field(..., min_length=1, max_length=200)
+    force: bool = False
+    skip_if_unchanged: bool = False
+
+
+class DocumentBatchRetryResponse(BaseModel):
+    """Batch retry result."""
+
+    queued: int
+    skipped: int
+    not_found: List[UUID] = Field(default_factory=list)
+    denied: List[UUID] = Field(default_factory=list)
+    conflicts: List[UUID] = Field(default_factory=list)
+
+
+class DocumentBatchMoveRequest(BaseModel):
+    """Batch move documents between datasets (best-effort)."""
+
+    document_ids: List[UUID] = Field(..., min_length=1, max_length=200)
+    target_dataset_id: Optional[UUID] = None
+
+
+class DocumentBatchMoveResponse(BaseModel):
+    """Batch move result."""
+
+    moved: int
+    not_found: List[UUID] = Field(default_factory=list)
+    denied: List[UUID] = Field(default_factory=list)
+    conflicts: List[UUID] = Field(default_factory=list)
+
+
+class DocumentBatchAccessUpdateRequest(BaseModel):
+    """Batch update document-level ACL."""
+
+    document_ids: List[UUID] = Field(..., min_length=1, max_length=200)
+    access: DocumentAccessUpdateRequest
+
+
+class DocumentBatchAccessUpdateResponse(BaseModel):
+    """Batch ACL update result."""
+
+    updated: int
+    not_found: List[UUID] = Field(default_factory=list)
+    denied: List[UUID] = Field(default_factory=list)
+
+
+class DuplicateDocumentItem(BaseModel):
+    """Document info in a duplicate group (by file_sha256)."""
+
+    id: UUID
+    filename: str
+    status: str
+    dataset_id: Optional[UUID] = None
+    created_at: datetime
+
+
+class DocumentDuplicateGroup(BaseModel):
+    file_sha256: str
+    count: int
+    documents: List[DuplicateDocumentItem] = Field(default_factory=list)
+
+
+class DocumentDuplicateList(BaseModel):
+    total: int
+    items: List[DocumentDuplicateGroup] = Field(default_factory=list)
+
+
 class DocumentChunkSchema(OrmModel):
     """Document chunk."""
     id: UUID

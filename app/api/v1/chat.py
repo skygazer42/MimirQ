@@ -5,13 +5,14 @@ import asyncio
 import contextlib
 import logging
 import re
+import time
 from uuid import UUID
 import uuid
 from datetime import datetime
 import json
 from typing import Optional, List
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request, Response
 from fastapi.responses import StreamingResponse
 from fastapi.encoders import jsonable_encoder
 from pydantic import BaseModel
@@ -27,6 +28,7 @@ from app.api.schemas.chat import (
     ChatRequest,
     ChatResponse,
     ConversationCreate,
+    ConversationUpdate,
     ConversationSchema,
     ConversationDetail,
     ConversationList,
@@ -968,38 +970,78 @@ async def stream_chat(
         try:
             # Use the LangChain engine.
             engine = get_rag_engine()
-            async for event in engine.stream_chat(
-                question=request.message,
-                history=history_for_llm,
-                conversation_id=conversation_id,
-                document_ids=doc_ids_to_use,
-                metadata_filter=effective_rag_config.metadata_filter,
-                top_k=effective_rag_config.top_k,
-                score_threshold=effective_rag_config.score_threshold,
-                tenant_id=tenant_id,
-                structured_output=request.structured_output,
-                retrieval_mode=effective_rag_config.retrieval_mode,
-                alpha=effective_rag_config.alpha,
-                enable_weight_rerank=effective_rag_config.enable_weight_rerank,
-                vector_weight=effective_rag_config.vector_weight,
-                keyword_weight=effective_rag_config.keyword_weight,
-                mmr_lambda=effective_rag_config.mmr_lambda,
-                enable_reranker=effective_rag_config.enable_reranker,
-                reranker_provider=effective_rag_config.reranker_provider,
-                reranker_top_n=effective_rag_config.reranker_top_n,
-                structured_preset=request.structured_preset,
-                prompt_template_id=effective_prompt_template_id,
-                prompt_template_key=effective_prompt_template_key,
-                prompt_ab_experiment_key=effective_prompt_ab_experiment_key,
-                ab_user_key=account_id,
-                db=db,
-                request_id=str(request_id),
-            ):
-                # Capture citations.
-                if event['type'] == 'citations':
-                    citations_data = event['data']
+            heartbeat_sec = max(0.0, float(getattr(settings, "CHAT_STREAM_HEARTBEAT_SEC", 10.0) or 10.0))
+            cancel_on_disconnect = bool(getattr(settings, "CHAT_STREAM_CANCEL_ON_DISCONNECT", True))
 
-                if event['type'] == 'done':
+            q: asyncio.Queue[dict | None] = asyncio.Queue()
+            producer_exc: Exception | None = None
+
+            async def _produce() -> None:
+                nonlocal producer_exc
+                try:
+                    async for ev in engine.stream_chat(
+                        question=request.message,
+                        history=history_for_llm,
+                        conversation_id=conversation_id,
+                        document_ids=doc_ids_to_use,
+                        metadata_filter=effective_rag_config.metadata_filter,
+                        top_k=effective_rag_config.top_k,
+                        score_threshold=effective_rag_config.score_threshold,
+                        tenant_id=tenant_id,
+                        structured_output=request.structured_output,
+                        retrieval_mode=effective_rag_config.retrieval_mode,
+                        alpha=effective_rag_config.alpha,
+                        enable_weight_rerank=effective_rag_config.enable_weight_rerank,
+                        vector_weight=effective_rag_config.vector_weight,
+                        keyword_weight=effective_rag_config.keyword_weight,
+                        mmr_lambda=effective_rag_config.mmr_lambda,
+                        enable_reranker=effective_rag_config.enable_reranker,
+                        reranker_provider=effective_rag_config.reranker_provider,
+                        reranker_top_n=effective_rag_config.reranker_top_n,
+                        structured_preset=request.structured_preset,
+                        prompt_template_id=effective_prompt_template_id,
+                        prompt_template_key=effective_prompt_template_key,
+                        prompt_ab_experiment_key=effective_prompt_ab_experiment_key,
+                        ab_user_key=account_id,
+                        db=db,
+                        request_id=str(request_id),
+                    ):
+                        await q.put(ev)
+                except Exception as exc:  # noqa: BLE001
+                    producer_exc = exc
+                finally:
+                    await q.put(None)
+
+            producer_task = asyncio.create_task(_produce())
+            disconnected = False
+
+            while True:
+                if cancel_on_disconnect:
+                    try:
+                        if await http_request.is_disconnected():
+                            disconnected = True
+                            producer_task.cancel()
+                            break
+                    except Exception:
+                        pass
+
+                try:
+                    ev = await asyncio.wait_for(q.get(), timeout=heartbeat_sec) if heartbeat_sec > 0 else await q.get()
+                except asyncio.TimeoutError:
+                    # Keep the SSE connection warm for proxies/load balancers.
+                    yield ": keepalive\n\n"
+                    continue
+
+                if ev is None:
+                    break
+
+                event = ev
+
+                # Capture citations.
+                if event.get("type") == "citations":
+                    citations_data = event.get("data") or []
+
+                if event.get("type") == "done":
                     if isinstance(event.get("data"), dict):
                         event["data"]["assistant_message_id"] = str(assistant_message_id)
                         metrics_data = event["data"].get("metrics", {})  # type: ignore[assignment]
@@ -1053,12 +1095,23 @@ async def stream_chat(
                             pass
 
                 # Accumulate full response.
-                if event['type'] == 'token':
-                    full_response += event['data']['content']
+                if event.get("type") == "token":
+                    data = event.get("data") if isinstance(event.get("data"), dict) else {}
+                    full_response += str((data or {}).get("content") or "")
 
                 # Stream SSE events.
                 event["request_id"] = str(request_id)
                 yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
+
+            with contextlib.suppress(asyncio.CancelledError, Exception):
+                await producer_task
+
+            if disconnected:
+                # Client has gone away; skip persisting assistant message to avoid wasting work.
+                return
+
+            if producer_exc is not None:
+                raise producer_exc
 
             # 4. Persist assistant response.
             if dataset_id_used is not None and isinstance(metrics_data, dict):
@@ -1164,6 +1217,163 @@ async def create_conversation(
     db.refresh(conversation)
 
     return conversation
+
+
+@router.patch("/conversations/{conversation_id}", response_model=ConversationSchema)
+async def update_conversation(
+    conversation_id: UUID,
+    payload: ConversationUpdate,
+    tenant_id: UUID = Depends(get_tenant_id),
+    account_id: str = Depends(get_current_account_id),
+    db: Session = Depends(get_db),
+):
+    """Update conversation metadata (currently: title)."""
+    DatasetService.ensure_member(db, tenant_id, account_id)
+
+    conversation = (
+        db.query(Conversation)
+        .filter(Conversation.id == conversation_id, Conversation.tenant_id == tenant_id)
+        .first()
+    )
+    if not conversation:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+
+    _ensure_conversation_access(db, tenant_id, account_id, conversation)
+
+    changed = False
+    if "title" in getattr(payload, "model_fields_set", set()):
+        title = (payload.title or "").strip()
+        conversation.title = title or None
+        changed = True
+
+    if changed:
+        audit_log_event(
+            db,
+            tenant_id=tenant_id,
+            actor_id=account_id,
+            action="chat.conversation.update",
+            resource_type="conversation",
+            resource_id=str(conversation_id),
+            details={"title_chars": len((conversation.title or "").strip())},
+        )
+        db.commit()
+        db.refresh(conversation)
+
+    return conversation
+
+
+@router.get("/conversations/{conversation_id}/export")
+async def export_conversation(
+    conversation_id: UUID,
+    fmt: str = Query(default="markdown", pattern="^(markdown|json)$"),
+    include_citations: bool = Query(default=True),
+    tenant_id: UUID = Depends(get_tenant_id),
+    account_id: str = Depends(get_current_account_id),
+    db: Session = Depends(get_db),
+):
+    """
+    Export a conversation as a downloadable file.
+
+    - fmt=markdown (default): text/markdown
+    - fmt=json: application/json
+    """
+    DatasetService.ensure_member(db, tenant_id, account_id)
+
+    conversation = (
+        db.query(Conversation)
+        .filter(Conversation.id == conversation_id, Conversation.tenant_id == tenant_id)
+        .first()
+    )
+    if not conversation:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+
+    _ensure_conversation_access(db, tenant_id, account_id, conversation)
+
+    messages = (
+        db.query(Message)
+        .filter(Message.tenant_id == tenant_id, Message.conversation_id == conversation_id)
+        .order_by(Message.created_at.asc(), Message.id.asc())
+        .all()
+    )
+
+    title = (conversation.title or "").strip() or f"Conversation {conversation_id}"
+
+    if fmt == "json":
+        payload = {
+            "conversation_id": str(conversation_id),
+            "title": title,
+            "exported_at": datetime.utcnow().isoformat() + "Z",
+            "messages": [
+                {
+                    "id": str(m.id),
+                    "role": m.role,
+                    "content": m.content,
+                    "citations": (m.citations if include_citations else None),
+                    "created_at": m.created_at.isoformat() if m.created_at else None,
+                }
+                for m in messages
+            ],
+        }
+        body = json.dumps(payload, ensure_ascii=False, indent=2)
+        media_type = "application/json"
+        suffix = "json"
+    else:
+        parts: list[str] = []
+        parts.append(f"# {title}")
+        parts.append("")
+        parts.append(f"- conversation_id: `{conversation_id}`")
+        parts.append(f"- exported_at_utc: `{datetime.utcnow().isoformat()}Z`")
+        parts.append("")
+
+        for m in messages:
+            role = str(m.role or "").strip() or "unknown"
+            parts.append(f"## {role}")
+            parts.append("")
+            parts.append(str(m.content or ""))
+            parts.append("")
+
+            if include_citations and role == "assistant" and isinstance(getattr(m, "citations", None), list):
+                cites = m.citations or []
+                if cites:
+                    parts.append("### citations")
+                    for c in cites[:20]:
+                        if not isinstance(c, dict):
+                            continue
+                        doc_name = (str(c.get("document_name") or "") or "").strip()
+                        doc_id = c.get("document_id")
+                        chunk_index = c.get("chunk_index")
+                        page = c.get("page_number")
+                        snippet = (str(c.get("chunk_content") or "") or "").strip()
+                        if len(snippet) > 260:
+                            snippet = snippet[:260] + "..."
+                        parts.append(
+                            f"- {doc_name or 'Document'} (doc_id={doc_id}, chunk_index={chunk_index}, page={page}): {snippet}"
+                        )
+                    parts.append("")
+
+        body = "\n".join(parts).strip() + "\n"
+        media_type = "text/markdown; charset=utf-8"
+        suffix = "md"
+
+    from urllib.parse import quote  # local import keeps module load light
+
+    safe_title = re.sub(r"[^A-Za-z0-9._-]+", "_", title)[:80] or "conversation"
+    filename = f"{safe_title}.{suffix}"
+    headers = {"Content-Disposition": f"attachment; filename*=UTF-8''{quote(filename)}"}
+
+    audit_log_event(
+        db,
+        tenant_id=tenant_id,
+        actor_id=account_id,
+        action="chat.conversation.export",
+        resource_type="conversation",
+        resource_id=str(conversation_id),
+        details={"format": fmt, "include_citations": bool(include_citations), "messages": len(messages)},
+    )
+    with contextlib.suppress(Exception):
+        db.commit()
+
+    return Response(content=body, media_type=media_type, headers=headers)
 
 
 @router.get("/conversations", response_model=ConversationList)
