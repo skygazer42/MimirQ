@@ -14,7 +14,7 @@ import time
 from fastapi import APIRouter, Depends, UploadFile, File, HTTPException, BackgroundTasks, Form, Request, Query
 from fastapi import Response
 from pydantic import BaseModel, Field
-from sqlalchemy.orm import Session, selectinload
+from sqlalchemy.orm import Session
 from typing import Any, List, Optional, Literal
 from uuid import UUID
 from pathlib import Path
@@ -3163,6 +3163,15 @@ async def list_document_duplicates(
 async def get_document(
     document_id: uuid.UUID,
     include_chunks: bool = False,
+    pipeline_hash: Optional[str] = Query(
+        default=None,
+        max_length=64,
+        description="Optional: filter chunks by a specific pipeline_hash version (when include_chunks=true)",
+    ),
+    all_versions: bool = Query(
+        default=False,
+        description="If true, include chunks across all pipeline versions (debug; when include_chunks=true)",
+    ),
     tenant_id: UUID = Depends(get_tenant_id),
     account_id: str = Depends(get_current_account_id),
     db: Session = Depends(get_db)
@@ -3175,8 +3184,6 @@ async def get_document(
         DBDocument.id == document_id,
         DBDocument.tenant_id == tenant_id
     )
-    if include_chunks:
-        query = query.options(selectinload(DBDocument.chunks))
     document = query.first()
 
     if not document:
@@ -3189,11 +3196,27 @@ async def get_document(
         DatasetService.assert_dataset_readable(db, ds, account_id)
     _assert_document_acl_readable(db, tenant_id=tenant_id, account_id=account_id, document=document, dataset=ds)
 
-    # If chunks are needed, touch the relationship to ensure load.
+    # If chunks are needed, load them explicitly (avoid relationship eager-load across pipeline versions).
     if include_chunks:
+        chunk_query = db.query(DocumentChunk).filter(
+            DocumentChunk.tenant_id == tenant_id,
+            DocumentChunk.document_id == document_id,
+        )
+
+        if not all_versions:
+            doc_meta = dict(document.doc_metadata or {})
+            active_hash = str(doc_meta.get("active_pipeline_hash") or doc_meta.get("pipeline_hash") or "").strip()
+            selected_hash = str(pipeline_hash or "").strip() or active_hash
+            if selected_hash:
+                target_key = f"{document_id}:{selected_hash}"
+                chunk_query = chunk_query.filter(
+                    DocumentChunk.doc_metadata["doc_pipeline_key"].astext == target_key  # type: ignore[attr-defined]
+                )
+
+        chunks = chunk_query.order_by(DocumentChunk.chunk_index.asc()).all()
         # Expose a non-relationship attribute for Pydantic to serialize without triggering
         # accidental lazy-loading when include_chunks=false.
-        setattr(document, "chunks_loaded", document.chunks)
+        setattr(document, "chunks_loaded", chunks)
 
     return document
 

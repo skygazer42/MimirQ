@@ -5,6 +5,12 @@ ifeq ($(OS),Windows_NT)
 PY := python
 endif
 
+# `PYTHONPYCACHEPREFIX=... cmd` is POSIX-only; keep `make verify` working on Windows.
+COMPILEALL_VERIFY := PYTHONPYCACHEPREFIX=/tmp/mimirq-pycache $(PY) -m compileall -q app
+ifeq ($(OS),Windows_NT)
+COMPILEALL_VERIFY := $(PY) -m compileall -q app
+endif
+
 COMPOSE := docker compose -f docker/docker-compose.yml
 COMPOSE_INFRA := docker compose -f docker/docker-compose.infra.yml
 COMPOSE_PARSERS := docker compose -f docker/docker-compose.yml -f docker/docker-compose.parsers.yml
@@ -200,7 +206,7 @@ verify:
 	cd web && pnpm run lint
 	cd web && pnpm run ui-check
 	cd web && pnpm run typecheck
-	PYTHONPYCACHEPREFIX=/tmp/mimirq-pycache $(PY) -m compileall -q app
+	$(COMPILEALL_VERIFY)
 
 verify-docker:
 	@$(MAKE) api-check

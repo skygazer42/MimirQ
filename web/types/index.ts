@@ -47,6 +47,22 @@ export interface DocumentStatus {
   error_message?: string
 }
 
+export interface DocumentVersionInfo {
+  pipeline_hash: string
+  doc_pipeline_key: string
+  chunk_count: number
+  first_chunk_at?: string | null
+  last_chunk_at?: string | null
+  active: boolean
+}
+
+export interface DocumentVersionList {
+  document_id: string
+  active_pipeline_hash?: string | null
+  pipeline_hash?: string | null
+  items: DocumentVersionInfo[]
+}
+
 export interface DocumentAccessInfo {
   mode: DocumentAccessMode
   owner_id?: string | null
