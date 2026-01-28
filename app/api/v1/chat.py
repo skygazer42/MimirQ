@@ -183,6 +183,10 @@ async def chat(
     long_term_messages: list[dict] = []
     allow_empty_docs = bool(getattr(settings, "CHAT_ALLOW_EMPTY_DOCUMENTS", True))
 
+    quota_meta = check_chat_assistant_token_quota(db, tenant_id=tenant_id)
+    if quota_meta.get("enabled") and quota_meta.get("exceeded") and quota_meta.get("mode") == "block":
+        raise HTTPException(status_code=429, detail="Chat quota exceeded (assistant tokens)")
+
     # 1) Load or create a conversation.
     if conversation_id:
         conversation = (
@@ -465,6 +469,8 @@ async def chat(
         if dataset_prompt_defaults_applied_fields:
             metrics_data.setdefault("dataset_prompt_defaults_applied", True)
             metrics_data.setdefault("dataset_prompt_defaults_fields", dataset_prompt_defaults_applied_fields)
+        if quota_meta.get("enabled"):
+            metrics_data.setdefault("quota", quota_meta)
 
         # Optional: store response in Redis cache before DB commit so metadata is consistent.
         if cache_eligible and (not cache_hit) and cache_key and full_response.strip():
@@ -558,6 +564,9 @@ async def stream_chat(
     allowed_doc_ids: list[UUID] = []
     long_term_messages: list[dict] = []
     allow_empty_docs = bool(getattr(settings, "CHAT_ALLOW_EMPTY_DOCUMENTS", True))
+    quota_meta = check_chat_assistant_token_quota(db, tenant_id=tenant_id)
+    if quota_meta.get("enabled") and quota_meta.get("exceeded") and quota_meta.get("mode") == "block":
+        raise HTTPException(status_code=429, detail="Chat quota exceeded (assistant tokens)")
 
     # 1. Load or create a conversation.
     if conversation_id:
