@@ -35,12 +35,18 @@ from app.services.document_access import (
     get_allowed_document_id_sets,
     list_accessible_document_ids,
 )
+from app.services.dataset_defaults import load_dataset_metadata, resolve_single_dataset_id_for_documents
+from app.services.chat_response_cache import build_chat_cache_key, get_cached_chat_response, set_cached_chat_response
+from app.services.prompt_defaults import merge_prompt_defaults_with_dataset
+from app.services.rag_defaults import merge_rag_config_with_dataset_defaults
+from app.services.audit_log_service import audit_log_event, build_chat_audit_details
 from app.rag.engine import get_rag_engine
 from app.rag.core.text import parse_json_from_text
 from app.services.metrics_logger import log_metrics, set_metrics_context
 from app.core.token_utils import num_tokens_from_string
 from app.core.config import settings
 from app.core.env import is_production_env
+from app.services.quota_service import check_chat_assistant_token_quota
 from app.api.dependencies.tenant import get_tenant_id
 from app.api.dependencies.auth import get_current_account_id
 from app.rag.preprocessing.tokenization import tokenize_for_bm25
@@ -217,6 +223,7 @@ async def chat(
         conversation_id=conversation_id,
         role="user",
         content=request.message,
+        token_count=num_tokens_from_string(request.message or ""),
     )
     db.add(user_message)
 
@@ -244,125 +251,234 @@ async def chat(
     )
 
     doc_ids_to_use = allowed_doc_ids or []
+
+    # Dataset-level default RAG config (best-effort): apply only when all documents share one dataset_id.
+    effective_rag_config = request.rag_config
+    dataset_rag_defaults_applied_fields: list[str] = []
+    dataset_defaults_meta: dict | None = None
+    dataset_id_used: UUID | None = None
+    rag_fields_set = set(getattr(request.rag_config, "model_fields_set", set()) or set())
+    if "rag_config" not in set(getattr(request, "model_fields_set", set()) or set()):
+        rag_fields_set = set()
+    try:
+        dataset_id_used = resolve_single_dataset_id_for_documents(db, tenant_id=tenant_id, document_ids=doc_ids_to_use)
+        if dataset_id_used is not None:
+            ds_meta = load_dataset_metadata(db, tenant_id=tenant_id, dataset_id=dataset_id_used)
+            dataset_defaults_meta = ds_meta if isinstance(ds_meta, dict) else None
+            raw_defaults = ds_meta.get("rag_defaults") if isinstance(ds_meta, dict) else None
+            effective_rag_config, dataset_rag_defaults_applied_fields = merge_rag_config_with_dataset_defaults(
+                rag_config=effective_rag_config,
+                request_fields_set=rag_fields_set,
+                raw_dataset_defaults=raw_defaults,
+            )
+    except Exception:
+        # Never block chat due to per-dataset defaults parsing.
+        dataset_rag_defaults_applied_fields = []
+        dataset_defaults_meta = None
+        dataset_id_used = None
+
+    # Dataset-level default prompt settings (best-effort).
+    req_fields = set(getattr(request, "model_fields_set", set()) or set())
+    (
+        effective_prompt_template_id,
+        effective_prompt_template_key,
+        effective_prompt_ab_experiment_key,
+        dataset_prompt_defaults_applied_fields,
+    ) = merge_prompt_defaults_with_dataset(
+        prompt_template_id=request.prompt_template_id,
+        prompt_template_key=request.prompt_template_key,
+        prompt_ab_experiment_key=request.prompt_ab_experiment_key,
+        request_fields_set=req_fields,
+        dataset_meta=dataset_defaults_meta,
+    )
+
     metrics_data: dict = {}
     structured_data = None
 
-    try:
-        # Graph path (LangGraph): invoke once and return the final state.
-        if request.rag_config.use_graph:
-            from app.rag.pipelines.langgraph import build_rag_state, rag_workflow
+    # Optional chat response cache (best-effort).
+    cache_key: str | None = None
+    cache_hit = False
+    cache_eligible = bool(getattr(settings, "CHAT_RESPONSE_CACHE_ENABLED", False))
+    if cache_eligible:
+        if not doc_ids_to_use:
+            cache_eligible = False
+        if bool(getattr(settings, "CHAT_RESPONSE_CACHE_REQUIRE_EMPTY_HISTORY", True)):
+            if request.history or request.enable_long_term_memory or long_term_messages:
+                cache_eligible = False
 
-            thread_id = str(conversation_id) if conversation_id else f"rag-{request_id}"
-            runtime_context = {
-                "request_id": str(request_id),
-                "conversation_id": str(conversation_id) if conversation_id else None,
-                "tenant_id": str(tenant_id) if tenant_id else None,
-                "account_id": account_id,
+    if cache_eligible:
+        try:
+            rag_cfg = jsonable_encoder(effective_rag_config.model_dump())
+            prompt_cfg = {
+                "prompt_template_id": str(effective_prompt_template_id) if effective_prompt_template_id else None,
+                "prompt_template_key": (effective_prompt_template_key or None),
+                "prompt_ab_experiment_key": (effective_prompt_ab_experiment_key or None),
             }
-
-            state = build_rag_state(
+            cache_key = build_chat_cache_key(
+                tenant_id=str(tenant_id),
+                account_id=str(account_id or ""),
+                document_ids=[str(d) for d in doc_ids_to_use],
                 question=request.message,
-                history=[m.model_dump() for m in request.history] + long_term_messages,
-                document_ids=doc_ids_to_use,
-                tenant_id=tenant_id,
-                top_k=request.rag_config.top_k,
-                score_threshold=request.rag_config.score_threshold,
-                retrieval_mode=request.rag_config.retrieval_mode,
-                alpha=request.rag_config.alpha,
-                enable_weight_rerank=request.rag_config.enable_weight_rerank,
-                vector_weight=request.rag_config.vector_weight,
-                keyword_weight=request.rag_config.keyword_weight,
-                mmr_lambda=request.rag_config.mmr_lambda,
-                enable_reranker=request.rag_config.enable_reranker,
-                reranker_provider=request.rag_config.reranker_provider,
-                reranker_top_n=request.rag_config.reranker_top_n,
-                metadata_filter=request.rag_config.metadata_filter,
-                structured_output=request.structured_output,
+                rag_config=rag_cfg,
+                prompt_config=prompt_cfg,
+                structured_output=bool(request.structured_output),
                 structured_preset=request.structured_preset,
-                prompt_template_id=request.prompt_template_id,
-                prompt_template_key=request.prompt_template_key,
-                prompt_ab_experiment_key=request.prompt_ab_experiment_key,
-                ab_user_key=account_id,
-                db=db,
+                use_graph=bool(effective_rag_config.use_graph),
             )
+            cached = get_cached_chat_response(cache_key) if cache_key else None
+        except Exception:
+            cached = None
 
-            # Optional: Chat -> TAG injection for LangGraph path.
-            # This mirrors the LangChain engine behavior, but keeps the DB/LLM calls
-            # outside the graph to avoid persisting non-serializable resources.
-            try:
-                from app.services.chat_tag_service import build_chat_tag_context_docs
+        if isinstance(cached, dict):
+            full_response = str(cached.get("content") or "")
+            citations_data = cached.get("citations") if isinstance(cached.get("citations"), list) else []
+            metrics_data = dict(cached.get("metrics") or {})
+            metrics_data["chat_cache_hit"] = True
+            structured_data = cached.get("structured_data")
+            cache_hit = True
 
-                tag_docs, tag_meta = build_chat_tag_context_docs(
-                    db,
-                    tenant_id=tenant_id,
-                    document_ids=doc_ids_to_use,
+    try:
+        if not cache_hit:
+            # Graph path (LangGraph): invoke once and return the final state.
+            if effective_rag_config.use_graph:
+                from app.rag.pipelines.langgraph import build_rag_state, rag_workflow
+
+                thread_id = str(conversation_id) if conversation_id else f"rag-{request_id}"
+                runtime_context = {
+                    "request_id": str(request_id),
+                    "conversation_id": str(conversation_id) if conversation_id else None,
+                    "tenant_id": str(tenant_id) if tenant_id else None,
+                    "account_id": account_id,
+                }
+
+                state = build_rag_state(
                     question=request.message,
+                    history=[m.model_dump() for m in request.history] + long_term_messages,
+                    document_ids=doc_ids_to_use,
+                    tenant_id=tenant_id,
+                    top_k=effective_rag_config.top_k,
+                    score_threshold=effective_rag_config.score_threshold,
+                    retrieval_mode=effective_rag_config.retrieval_mode,
+                    alpha=effective_rag_config.alpha,
+                    enable_weight_rerank=effective_rag_config.enable_weight_rerank,
+                    vector_weight=effective_rag_config.vector_weight,
+                    keyword_weight=effective_rag_config.keyword_weight,
+                    mmr_lambda=effective_rag_config.mmr_lambda,
+                    enable_reranker=effective_rag_config.enable_reranker,
+                    reranker_provider=effective_rag_config.reranker_provider,
+                    reranker_top_n=effective_rag_config.reranker_top_n,
+                    metadata_filter=effective_rag_config.metadata_filter,
+                    structured_output=request.structured_output,
+                    structured_preset=request.structured_preset,
+                    prompt_template_id=effective_prompt_template_id,
+                    prompt_template_key=effective_prompt_template_key,
+                    prompt_ab_experiment_key=effective_prompt_ab_experiment_key,
+                    ab_user_key=account_id,
+                    db=db,
                 )
-                state["tag_docs"] = tag_docs
-                state["tag_meta"] = tag_meta
-            except Exception as exc:  # noqa: BLE001
-                state["tag_meta"] = {"enabled": False, "used": False, "reason": f"tag_exception:{str(exc)[:120]}"}
 
-            recursion_limit = max(1, int(getattr(settings, "LANGGRAPH_RECURSION_LIMIT", 25) or 25))
-            config = {"configurable": {"thread_id": thread_id}, "recursion_limit": recursion_limit}
-            graph_result = rag_workflow.invoke(state, config=config, context=runtime_context) or {}
+                # Optional: Chat -> TAG injection for LangGraph path.
+                # This mirrors the LangChain engine behavior, but keeps the DB/LLM calls
+                # outside the graph to avoid persisting non-serializable resources.
+                try:
+                    from app.services.chat_tag_service import build_chat_tag_context_docs
 
-            citations_data = graph_result.get("citations") or []
-            full_response = graph_result.get("answer") or ""
-            metrics_data = dict(graph_result.get("metrics") or {})
+                    tag_docs, tag_meta = build_chat_tag_context_docs(
+                        db,
+                        tenant_id=tenant_id,
+                        document_ids=doc_ids_to_use,
+                        question=request.message,
+                    )
+                    state["tag_docs"] = tag_docs
+                    state["tag_meta"] = tag_meta
+                except Exception as exc:  # noqa: BLE001
+                    state["tag_meta"] = {"enabled": False, "used": False, "reason": f"tag_exception:{str(exc)[:120]}"}
 
-            if request.structured_output:
-                structured_data, structured_parse_meta = parse_json_from_text(full_response, expected="object")
-                metrics_data["structured_parse_ok"] = bool(structured_parse_meta.get("ok"))
-                metrics_data["structured_parse_method"] = structured_parse_meta.get("method")
-                metrics_data["structured_parse_error"] = structured_parse_meta.get("error")
-                metrics_data["structured_type"] = type(structured_data).__name__ if structured_data is not None else None
-                metrics_data["structured_preset"] = request.structured_preset
-        else:
-            # LangChain engine path: consume the stream and assemble a final payload.
-            engine = get_rag_engine()
-            done_data: dict = {}
-            async for event in engine.stream_chat(
-                question=request.message,
-                history=[m.model_dump() for m in request.history] + long_term_messages,
-                conversation_id=conversation_id,
-                document_ids=doc_ids_to_use,
-                metadata_filter=request.rag_config.metadata_filter,
-                top_k=request.rag_config.top_k,
-                score_threshold=request.rag_config.score_threshold,
-                tenant_id=tenant_id,
-                structured_output=request.structured_output,
-                retrieval_mode=request.rag_config.retrieval_mode,
-                alpha=request.rag_config.alpha,
-                enable_weight_rerank=request.rag_config.enable_weight_rerank,
-                vector_weight=request.rag_config.vector_weight,
-                keyword_weight=request.rag_config.keyword_weight,
-                mmr_lambda=request.rag_config.mmr_lambda,
-                enable_reranker=request.rag_config.enable_reranker,
-                reranker_provider=request.rag_config.reranker_provider,
-                reranker_top_n=request.rag_config.reranker_top_n,
-                structured_preset=request.structured_preset,
-                prompt_template_id=request.prompt_template_id,
-                prompt_template_key=request.prompt_template_key,
-                prompt_ab_experiment_key=request.prompt_ab_experiment_key,
-                ab_user_key=account_id,
-                db=db,
-                request_id=str(request_id),
-            ):
-                etype = event.get("type")
-                if etype == "citations":
-                    citations_data = event.get("data") or []
-                elif etype == "token":
-                    data = event.get("data") or {}
-                    full_response += str(data.get("content") or "")
-                elif etype == "done":
-                    done_data = event.get("data") or {}
+                recursion_limit = max(1, int(getattr(settings, "LANGGRAPH_RECURSION_LIMIT", 25) or 25))
+                config = {"configurable": {"thread_id": thread_id}, "recursion_limit": recursion_limit}
+                graph_result = rag_workflow.invoke(state, config=config, context=runtime_context) or {}
 
-            if isinstance(done_data, dict):
-                metrics_data = dict(done_data.get("metrics") or {})
-                structured_data = done_data.get("structured_data")
+                citations_data = graph_result.get("citations") or []
+                full_response = graph_result.get("answer") or ""
+                metrics_data = dict(graph_result.get("metrics") or {})
+
+                if request.structured_output:
+                    structured_data, structured_parse_meta = parse_json_from_text(full_response, expected="object")
+                    metrics_data["structured_parse_ok"] = bool(structured_parse_meta.get("ok"))
+                    metrics_data["structured_parse_method"] = structured_parse_meta.get("method")
+                    metrics_data["structured_parse_error"] = structured_parse_meta.get("error")
+                    metrics_data["structured_type"] = (
+                        type(structured_data).__name__ if structured_data is not None else None
+                    )
+                    metrics_data["structured_preset"] = request.structured_preset
+            else:
+                # LangChain engine path: consume the stream and assemble a final payload.
+                engine = get_rag_engine()
+                done_data: dict = {}
+                async for event in engine.stream_chat(
+                    question=request.message,
+                    history=[m.model_dump() for m in request.history] + long_term_messages,
+                    conversation_id=conversation_id,
+                    document_ids=doc_ids_to_use,
+                    metadata_filter=effective_rag_config.metadata_filter,
+                    top_k=effective_rag_config.top_k,
+                    score_threshold=effective_rag_config.score_threshold,
+                    tenant_id=tenant_id,
+                    structured_output=request.structured_output,
+                    retrieval_mode=effective_rag_config.retrieval_mode,
+                    alpha=effective_rag_config.alpha,
+                    enable_weight_rerank=effective_rag_config.enable_weight_rerank,
+                    vector_weight=effective_rag_config.vector_weight,
+                    keyword_weight=effective_rag_config.keyword_weight,
+                    mmr_lambda=effective_rag_config.mmr_lambda,
+                    enable_reranker=effective_rag_config.enable_reranker,
+                    reranker_provider=effective_rag_config.reranker_provider,
+                    reranker_top_n=effective_rag_config.reranker_top_n,
+                    structured_preset=request.structured_preset,
+                    prompt_template_id=effective_prompt_template_id,
+                    prompt_template_key=effective_prompt_template_key,
+                    prompt_ab_experiment_key=effective_prompt_ab_experiment_key,
+                    ab_user_key=account_id,
+                    db=db,
+                    request_id=str(request_id),
+                ):
+                    etype = event.get("type")
+                    if etype == "citations":
+                        citations_data = event.get("data") or []
+                    elif etype == "token":
+                        data = event.get("data") or {}
+                        full_response += str(data.get("content") or "")
+                    elif etype == "done":
+                        done_data = event.get("data") or {}
+
+                if isinstance(done_data, dict):
+                    metrics_data = dict(done_data.get("metrics") or {})
+                    structured_data = done_data.get("structured_data")
 
         # 3) Persist assistant response.
+        # Persist dataset-level default metadata into the stored message for later analytics/debugging.
+        if dataset_id_used is not None:
+            metrics_data.setdefault("dataset_id", str(dataset_id_used))
+        if dataset_rag_defaults_applied_fields:
+            metrics_data.setdefault("dataset_rag_defaults_applied", True)
+            metrics_data.setdefault("dataset_rag_defaults_fields", dataset_rag_defaults_applied_fields)
+        if dataset_prompt_defaults_applied_fields:
+            metrics_data.setdefault("dataset_prompt_defaults_applied", True)
+            metrics_data.setdefault("dataset_prompt_defaults_fields", dataset_prompt_defaults_applied_fields)
+
+        # Optional: store response in Redis cache before DB commit so metadata is consistent.
+        if cache_eligible and (not cache_hit) and cache_key and full_response.strip():
+            cache_payload = jsonable_encoder(
+                {
+                    "content": full_response,
+                    "citations": citations_data,
+                    "metrics": metrics_data,
+                    "structured_data": structured_data,
+                }
+            )
+            stored = bool(set_cached_chat_response(cache_key, cache_payload))
+            metrics_data.setdefault("chat_cache_store_ok", stored)
+
         assistant_message = Message(
             id=assistant_message_id,
             tenant_id=tenant_id,
@@ -375,6 +491,24 @@ async def chat(
         )
         db.add(assistant_message)
 
+        audit_log_event(
+            db,
+            tenant_id=tenant_id,
+            actor_id=account_id,
+            action="chat.ask",
+            resource_type="conversation",
+            resource_id=str(conversation_id),
+            request_id=str(request_id),
+            ip=getattr(getattr(http_request, "client", None), "host", None),
+            user_agent=http_request.headers.get("user-agent"),
+            details=build_chat_audit_details(
+                question=request.message,
+                document_count=len(doc_ids_to_use),
+                dataset_id=dataset_id_used,
+                cache_hit=cache_hit,
+            ),
+        )
+
         conversation.message_count += 1
         conversation.updated_at = datetime.utcnow()
         db.commit()
@@ -386,7 +520,7 @@ async def chat(
     if conversation_id is None:
         raise HTTPException(status_code=500, detail="Conversation id missing")
 
-    retrieval_mode_used = metrics_data.get("retrieval_mode") or request.rag_config.retrieval_mode
+    retrieval_mode_used = metrics_data.get("retrieval_mode") or effective_rag_config.retrieval_mode
     vector_backend_used = metrics_data.get("vector_backend") or settings.VECTOR_BACKEND
     structured_ok = bool(metrics_data.get("structured_parse_ok")) and structured_data is not None
 
@@ -466,7 +600,8 @@ async def stream_chat(
         tenant_id=tenant_id,
         conversation_id=conversation_id,
         role='user',
-        content=request.message
+        content=request.message,
+        token_count=num_tokens_from_string(request.message or ""),
     )
     db.add(user_message)
 
@@ -502,8 +637,47 @@ async def stream_chat(
         yield ": keepalive\n\n"
         yield f"data: {json.dumps({'request_id': str(request_id), 'type': 'event', 'data': {'message': '开始处理…'}}, ensure_ascii=False)}\n\n"
 
+        # Dataset-level default RAG config (best-effort): apply only when all docs share one dataset_id.
+        effective_rag_config = request.rag_config
+        dataset_rag_defaults_applied_fields: list[str] = []
+        dataset_defaults_meta: dict | None = None
+        dataset_id_used: UUID | None = None
+        rag_fields_set = set(getattr(request.rag_config, "model_fields_set", set()) or set())
+        if "rag_config" not in set(getattr(request, "model_fields_set", set()) or set()):
+            rag_fields_set = set()
+        try:
+            dataset_id_used = resolve_single_dataset_id_for_documents(db, tenant_id=tenant_id, document_ids=doc_ids_to_use)
+            if dataset_id_used is not None:
+                ds_meta = load_dataset_metadata(db, tenant_id=tenant_id, dataset_id=dataset_id_used)
+                dataset_defaults_meta = ds_meta if isinstance(ds_meta, dict) else None
+                raw_defaults = ds_meta.get("rag_defaults") if isinstance(ds_meta, dict) else None
+                effective_rag_config, dataset_rag_defaults_applied_fields = merge_rag_config_with_dataset_defaults(
+                    rag_config=effective_rag_config,
+                    request_fields_set=rag_fields_set,
+                    raw_dataset_defaults=raw_defaults,
+                )
+        except Exception:
+            dataset_rag_defaults_applied_fields = []
+            dataset_defaults_meta = None
+            dataset_id_used = None
+
+        # Dataset-level default prompt settings (best-effort).
+        req_fields = set(getattr(request, "model_fields_set", set()) or set())
+        (
+            effective_prompt_template_id,
+            effective_prompt_template_key,
+            effective_prompt_ab_experiment_key,
+            dataset_prompt_defaults_applied_fields,
+        ) = merge_prompt_defaults_with_dataset(
+            prompt_template_id=request.prompt_template_id,
+            prompt_template_key=request.prompt_template_key,
+            prompt_ab_experiment_key=request.prompt_ab_experiment_key,
+            request_fields_set=req_fields,
+            dataset_meta=dataset_defaults_meta,
+        )
+
         # LangGraph path: stream stage events (custom) + state snapshots (values).
-        if request.rag_config.use_graph:
+        if effective_rag_config.use_graph:
             try:
                 from app.rag.pipelines.langgraph import build_rag_state, rag_workflow
 
@@ -520,23 +694,23 @@ async def stream_chat(
                     history=[m.model_dump() for m in request.history] + long_term_messages,
                     document_ids=doc_ids_to_use,
                     tenant_id=tenant_id,
-                    top_k=request.rag_config.top_k,
-                    score_threshold=request.rag_config.score_threshold,
-                    retrieval_mode=request.rag_config.retrieval_mode,
-                    alpha=request.rag_config.alpha,
-                    enable_weight_rerank=request.rag_config.enable_weight_rerank,
-                    vector_weight=request.rag_config.vector_weight,
-                    keyword_weight=request.rag_config.keyword_weight,
-                    mmr_lambda=request.rag_config.mmr_lambda,
-                    enable_reranker=request.rag_config.enable_reranker,
-                    reranker_provider=request.rag_config.reranker_provider,
-                    reranker_top_n=request.rag_config.reranker_top_n,
-                    metadata_filter=request.rag_config.metadata_filter,
+                    top_k=effective_rag_config.top_k,
+                    score_threshold=effective_rag_config.score_threshold,
+                    retrieval_mode=effective_rag_config.retrieval_mode,
+                    alpha=effective_rag_config.alpha,
+                    enable_weight_rerank=effective_rag_config.enable_weight_rerank,
+                    vector_weight=effective_rag_config.vector_weight,
+                    keyword_weight=effective_rag_config.keyword_weight,
+                    mmr_lambda=effective_rag_config.mmr_lambda,
+                    enable_reranker=effective_rag_config.enable_reranker,
+                    reranker_provider=effective_rag_config.reranker_provider,
+                    reranker_top_n=effective_rag_config.reranker_top_n,
+                    metadata_filter=effective_rag_config.metadata_filter,
                     structured_output=request.structured_output,
                     structured_preset=request.structured_preset,
-                    prompt_template_id=request.prompt_template_id,
-                    prompt_template_key=request.prompt_template_key,
-                    prompt_ab_experiment_key=request.prompt_ab_experiment_key,
+                    prompt_template_id=effective_prompt_template_id,
+                    prompt_template_key=effective_prompt_template_key,
+                    prompt_ab_experiment_key=effective_prompt_ab_experiment_key,
                     ab_user_key=account_id,
                     db=db,
                 )
@@ -608,12 +782,22 @@ async def stream_chat(
                         full_response += token_chunk
 
                 metrics_data = graph_result.get("metrics") or {
-                    "retrieval_mode": request.rag_config.retrieval_mode,
+                    "retrieval_mode": effective_rag_config.retrieval_mode,
                     "vector_backend": settings.VECTOR_BACKEND,
                     "elapsed_sec": None,
                 }
                 metrics_data = dict(metrics_data or {})
-                retrieval_mode_used = metrics_data.get("retrieval_mode") or request.rag_config.retrieval_mode
+                if dataset_id_used is not None:
+                    metrics_data.setdefault("dataset_id", str(dataset_id_used))
+                if dataset_rag_defaults_applied_fields:
+                    metrics_data.setdefault("dataset_rag_defaults_applied", True)
+                    metrics_data.setdefault("dataset_rag_defaults_fields", dataset_rag_defaults_applied_fields)
+
+                if dataset_prompt_defaults_applied_fields:
+                    metrics_data.setdefault("dataset_prompt_defaults_applied", True)
+                    metrics_data.setdefault("dataset_prompt_defaults_fields", dataset_prompt_defaults_applied_fields)
+
+                retrieval_mode_used = metrics_data.get("retrieval_mode") or effective_rag_config.retrieval_mode
                 vector_backend_used = metrics_data.get("vector_backend") or settings.VECTOR_BACKEND
 
                 structured_data = None
@@ -671,6 +855,24 @@ async def stream_chat(
                 )
                 db.add(assistant_message)
 
+                audit_log_event(
+                    db,
+                    tenant_id=tenant_id,
+                    actor_id=account_id,
+                    action="chat.stream",
+                    resource_type="conversation",
+                    resource_id=str(conversation_id),
+                    request_id=str(request_id),
+                    ip=getattr(getattr(http_request, "client", None), "host", None),
+                    user_agent=http_request.headers.get("user-agent"),
+                    details=build_chat_audit_details(
+                        question=request.message,
+                        document_count=len(doc_ids_to_use),
+                        dataset_id=dataset_id_used,
+                        cache_hit=None,
+                    ),
+                )
+
                 conversation.message_count += 1
                 conversation.updated_at = datetime.utcnow()
                 db.commit()
@@ -697,24 +899,24 @@ async def stream_chat(
                 history=[m.model_dump() for m in request.history] + long_term_messages,
                 conversation_id=conversation_id,
                 document_ids=doc_ids_to_use,
-                metadata_filter=request.rag_config.metadata_filter,
-                top_k=request.rag_config.top_k,
-                score_threshold=request.rag_config.score_threshold,
+                metadata_filter=effective_rag_config.metadata_filter,
+                top_k=effective_rag_config.top_k,
+                score_threshold=effective_rag_config.score_threshold,
                 tenant_id=tenant_id,
                 structured_output=request.structured_output,
-                retrieval_mode=request.rag_config.retrieval_mode,
-                alpha=request.rag_config.alpha,
-                enable_weight_rerank=request.rag_config.enable_weight_rerank,
-                vector_weight=request.rag_config.vector_weight,
-                keyword_weight=request.rag_config.keyword_weight,
-                mmr_lambda=request.rag_config.mmr_lambda,
-                enable_reranker=request.rag_config.enable_reranker,
-                reranker_provider=request.rag_config.reranker_provider,
-                reranker_top_n=request.rag_config.reranker_top_n,
+                retrieval_mode=effective_rag_config.retrieval_mode,
+                alpha=effective_rag_config.alpha,
+                enable_weight_rerank=effective_rag_config.enable_weight_rerank,
+                vector_weight=effective_rag_config.vector_weight,
+                keyword_weight=effective_rag_config.keyword_weight,
+                mmr_lambda=effective_rag_config.mmr_lambda,
+                enable_reranker=effective_rag_config.enable_reranker,
+                reranker_provider=effective_rag_config.reranker_provider,
+                reranker_top_n=effective_rag_config.reranker_top_n,
                 structured_preset=request.structured_preset,
-                prompt_template_id=request.prompt_template_id,
-                prompt_template_key=request.prompt_template_key,
-                prompt_ab_experiment_key=request.prompt_ab_experiment_key,
+                prompt_template_id=effective_prompt_template_id,
+                prompt_template_key=effective_prompt_template_key,
+                prompt_ab_experiment_key=effective_prompt_ab_experiment_key,
                 ab_user_key=account_id,
                 db=db,
                 request_id=str(request_id),
@@ -722,10 +924,50 @@ async def stream_chat(
                 # Capture citations.
                 if event['type'] == 'citations':
                     citations_data = event['data']
+
                 if event['type'] == 'done':
                     if isinstance(event.get("data"), dict):
                         event["data"]["assistant_message_id"] = str(assistant_message_id)
-                    metrics_data = event['data'].get("metrics", {})
+                        metrics_data = event["data"].get("metrics", {})  # type: ignore[assignment]
+                    else:
+                        metrics_data = {}  # type: ignore[assignment]
+
+                    if dataset_id_used is not None:
+                        try:
+                            if isinstance(metrics_data, dict):
+                                metrics_data.setdefault("dataset_id", str(dataset_id_used))
+                            if isinstance(event.get("data"), dict) and isinstance(event["data"].get("metrics"), dict):
+                                event["data"]["metrics"].setdefault("dataset_id", str(dataset_id_used))
+                        except Exception:
+                            pass
+
+                    if dataset_rag_defaults_applied_fields:
+                        try:
+                            if isinstance(metrics_data, dict):
+                                metrics_data.setdefault("dataset_rag_defaults_applied", True)
+                                metrics_data.setdefault("dataset_rag_defaults_fields", dataset_rag_defaults_applied_fields)
+                            if isinstance(event.get("data"), dict) and isinstance(event["data"].get("metrics"), dict):
+                                event["data"]["metrics"].setdefault("dataset_rag_defaults_applied", True)
+                                event["data"]["metrics"].setdefault(
+                                    "dataset_rag_defaults_fields", dataset_rag_defaults_applied_fields
+                                )
+                        except Exception:
+                            pass
+
+                    if dataset_prompt_defaults_applied_fields:
+                        try:
+                            if isinstance(metrics_data, dict):
+                                metrics_data.setdefault("dataset_prompt_defaults_applied", True)
+                                metrics_data.setdefault(
+                                    "dataset_prompt_defaults_fields", dataset_prompt_defaults_applied_fields
+                                )
+                            if isinstance(event.get("data"), dict) and isinstance(event["data"].get("metrics"), dict):
+                                event["data"]["metrics"].setdefault("dataset_prompt_defaults_applied", True)
+                                event["data"]["metrics"].setdefault(
+                                    "dataset_prompt_defaults_fields", dataset_prompt_defaults_applied_fields
+                                )
+                        except Exception:
+                            pass
 
                 # Accumulate full response.
                 if event['type'] == 'token':
@@ -736,6 +978,8 @@ async def stream_chat(
                 yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
 
             # 4. Persist assistant response.
+            if dataset_id_used is not None and isinstance(metrics_data, dict):
+                metrics_data.setdefault("dataset_id", str(dataset_id_used))
             assistant_message = Message(
                 id=assistant_message_id,
                 tenant_id=tenant_id,
@@ -747,6 +991,24 @@ async def stream_chat(
                 message_metadata={**(metrics_data or {}), "request_id": str(request_id)}
             )
             db.add(assistant_message)
+
+            audit_log_event(
+                db,
+                tenant_id=tenant_id,
+                actor_id=account_id,
+                action="chat.stream",
+                resource_type="conversation",
+                resource_id=str(conversation_id),
+                request_id=str(request_id),
+                ip=getattr(getattr(http_request, "client", None), "host", None),
+                user_agent=http_request.headers.get("user-agent"),
+                details=build_chat_audit_details(
+                    question=request.message,
+                    document_count=len(doc_ids_to_use),
+                    dataset_id=dataset_id_used,
+                    cache_hit=None,
+                ),
+            )
 
             # Update conversation metadata.
             conversation.message_count += 1

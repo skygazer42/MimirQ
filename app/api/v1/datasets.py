@@ -14,7 +14,7 @@ from app.core.database import SessionLocal
 from app.core.config import settings
 from app.api.dependencies.tenant import get_tenant_id
 from app.api.dependencies.auth import get_current_account_id
-from app.api.schemas.dataset import DatasetCreate, DatasetUpdate, DatasetOut, DatasetListResponse
+from app.api.schemas.dataset import DatasetCreate, DatasetUpdate, DatasetOut, DatasetListResponse, DatasetRAGDefaults
 from app.api.schemas.document import DocumentPipelineOptions
 from app.api.schemas.ingestion_policy import IngestionPolicy, IngestionPolicyImportResponse
 from app.api.schemas.dataset_profile import (
@@ -36,9 +36,13 @@ from app.services.ingestion_policy import (
     parse_ingestion_policy_from_metadata,
     validate_and_normalize_ingestion_policy,
 )
+from app.parsing.backends import normalize_parser_backend
+from app.parsing.factory import ParserFactory
+from app.rag.chunking import chunker_factory
 from app.types.pipeline import PipelineOptions
 from app.tasks.queue import enqueue_dataset_profile_scan
 from app.services.dataset_profile_service import compute_dataset_profile_summary, list_finding_documents
+from app.services.audit_log_service import audit_log_event
 from app.services.dataset_profile_scan_runner import run_dataset_profile_deep_scan
 from app.services.report_html import render_dataset_profile_html
 
@@ -64,6 +68,73 @@ def _dataset_ingestion_defaults(ds: Dataset) -> tuple[str | None, str | None]:
     pb_out = str(pb).strip() if isinstance(pb, str) and pb.strip() else None
     cs_out = str(cs).strip() if isinstance(cs, str) and cs.strip() else None
     return pb_out, cs_out
+
+
+def _dataset_rag_defaults_out(ds: Dataset) -> DatasetRAGDefaults | None:
+    meta = getattr(ds, "dataset_metadata", None)
+    if not isinstance(meta, dict):
+        return None
+    raw = meta.get("rag_defaults")
+    if not isinstance(raw, dict):
+        return None
+    try:
+        # DatasetRAGDefaults is small and extra="ignore"; safe to parse best-effort.
+        parsed = DatasetRAGDefaults(**raw)
+    except Exception:
+        return None
+    # Hide empty objects for cleaner API responses.
+    if not parsed.model_dump(exclude_none=True):
+        return None
+    return parsed
+
+
+def _dataset_prompt_defaults_out(ds: Dataset) -> tuple[UUID | None, str | None, str | None]:
+    meta = getattr(ds, "dataset_metadata", None)
+    if not isinstance(meta, dict):
+        return None, None, None
+
+    raw_id = meta.get("default_prompt_template_id")
+    prompt_id: UUID | None = None
+    if isinstance(raw_id, str) and raw_id.strip():
+        try:
+            prompt_id = UUID(raw_id.strip())
+        except Exception:
+            prompt_id = None
+
+    raw_key = meta.get("default_prompt_template_key")
+    prompt_key = str(raw_key).strip() if isinstance(raw_key, str) and raw_key.strip() else None
+
+    raw_ab = meta.get("default_prompt_ab_experiment_key")
+    ab_key = str(raw_ab).strip() if isinstance(raw_ab, str) and raw_ab.strip() else None
+
+    return prompt_id, prompt_key, ab_key
+
+
+_ALLOWED_PARSER_DEFAULTS = set(ParserFactory.SUPPORTED_PDF_BACKENDS) | set(ParserFactory.SUPPORTED_NON_PDF_BACKENDS)
+
+
+def _normalize_dataset_default_parser_backend(value: str) -> str:
+    """
+    Normalize and validate a dataset-level default parser backend.
+
+    Note: availability is not validated here (depends on deployment config); we only validate
+    that the identifier is known to the backend.
+    """
+    normalized = normalize_parser_backend(value) or ""
+    if not normalized:
+        return ""
+    if normalized not in _ALLOWED_PARSER_DEFAULTS:
+        allowed = sorted(_ALLOWED_PARSER_DEFAULTS)
+        raise HTTPException(status_code=400, detail=f"Unsupported default_parser_backend '{value}'. Supported: {allowed}")
+    return normalized
+
+
+def _normalize_dataset_default_chunk_strategy(value: str) -> str:
+    """Normalize/validate a dataset-level default chunk strategy."""
+    try:
+        return chunker_factory.resolve_strategy(value)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @router.post("/", response_model=DatasetOut, status_code=201)
@@ -99,18 +170,46 @@ def create_dataset(
 
     # 2) Ingestion defaults (parser/chunk strategy).
     if payload.default_parser_backend is not None:
-        val = str(payload.default_parser_backend or "").strip().lower()
-        if val:
-            meta["default_parser_backend"] = val
+        raw = str(payload.default_parser_backend or "").strip()
+        if raw:
+            meta["default_parser_backend"] = _normalize_dataset_default_parser_backend(raw)
         else:
             meta.pop("default_parser_backend", None)
         changed = True
     if payload.default_chunk_strategy is not None:
-        val = str(payload.default_chunk_strategy or "").strip().lower()
-        if val:
-            meta["default_chunk_strategy"] = val
+        raw = str(payload.default_chunk_strategy or "").strip()
+        if raw:
+            meta["default_chunk_strategy"] = _normalize_dataset_default_chunk_strategy(raw)
         else:
             meta.pop("default_chunk_strategy", None)
+        changed = True
+
+    # 3) RAG defaults (chat retrieval defaults).
+    if payload.rag_defaults is not None:
+        data = payload.rag_defaults.model_dump(exclude_none=True)
+        if data:
+            meta["rag_defaults"] = data
+        else:
+            meta.pop("rag_defaults", None)
+        changed = True
+
+    # 4) Prompt defaults (prompt template + optional A/B experiment key).
+    if payload.default_prompt_template_id is not None:
+        meta["default_prompt_template_id"] = str(payload.default_prompt_template_id)
+        changed = True
+    if payload.default_prompt_template_key is not None:
+        val = str(payload.default_prompt_template_key or "").strip().lower()
+        if val:
+            meta["default_prompt_template_key"] = val
+        else:
+            meta.pop("default_prompt_template_key", None)
+        changed = True
+    if payload.default_prompt_ab_experiment_key is not None:
+        val = str(payload.default_prompt_ab_experiment_key or "").strip()
+        if val:
+            meta["default_prompt_ab_experiment_key"] = val
+        else:
+            meta.pop("default_prompt_ab_experiment_key", None)
         changed = True
 
     if changed:
@@ -123,6 +222,26 @@ def create_dataset(
         partial_list = payload.partial_member_list or []
 
     default_parser_backend, default_chunk_strategy = _dataset_ingestion_defaults(dataset)
+    prompt_template_id, prompt_template_key, prompt_ab_experiment_key = _dataset_prompt_defaults_out(dataset)
+
+    # Best-effort audit log (commit separately; never block response).
+    audit_log_event(
+        db,
+        tenant_id=tenant_id,
+        actor_id=account_id,
+        action="dataset.create",
+        resource_type="dataset",
+        resource_id=str(dataset.id),
+        details={
+            "name": str(dataset.name or "")[:255],
+            "permission": str(dataset.permission or ""),
+        },
+    )
+    try:
+        db.commit()
+    except Exception:
+        pass
+
     return DatasetOut(
         id=dataset.id,
         tenant_id=dataset.tenant_id,
@@ -134,6 +253,10 @@ def create_dataset(
         ,
         default_parser_backend=default_parser_backend,
         default_chunk_strategy=default_chunk_strategy,
+        rag_defaults=_dataset_rag_defaults_out(dataset),
+        default_prompt_template_id=prompt_template_id,
+        default_prompt_template_key=prompt_template_key,
+        default_prompt_ab_experiment_key=prompt_ab_experiment_key,
         pipeline=_dataset_pipeline_out(dataset),
     )
 
@@ -177,6 +300,7 @@ def list_datasets(
         if ds.permission == DatasetPermissionEnum.PARTIAL_MEMBERS:
             partial_list = partial_member_map.get(ds.id, [])
         default_parser_backend, default_chunk_strategy = _dataset_ingestion_defaults(ds)
+        prompt_template_id, prompt_template_key, prompt_ab_experiment_key = _dataset_prompt_defaults_out(ds)
         results.append(DatasetOut(
             id=ds.id,
             tenant_id=ds.tenant_id,
@@ -187,6 +311,10 @@ def list_datasets(
             partial_member_list=partial_list,
             default_parser_backend=default_parser_backend,
             default_chunk_strategy=default_chunk_strategy,
+            rag_defaults=_dataset_rag_defaults_out(ds),
+            default_prompt_template_id=prompt_template_id,
+            default_prompt_template_key=prompt_template_key,
+            default_prompt_ab_experiment_key=prompt_ab_experiment_key,
             pipeline=_dataset_pipeline_out(ds),
         ))
     return {"total": total, "items": results}
@@ -205,6 +333,7 @@ def get_dataset(
     if dataset.permission == DatasetPermissionEnum.PARTIAL_MEMBERS:
         partial_list = DatasetPermissionService.get_dataset_partial_member_list(db, tenant_id, dataset_id)
     default_parser_backend, default_chunk_strategy = _dataset_ingestion_defaults(dataset)
+    prompt_template_id, prompt_template_key, prompt_ab_experiment_key = _dataset_prompt_defaults_out(dataset)
     return DatasetOut(
         id=dataset.id,
         tenant_id=dataset.tenant_id,
@@ -215,6 +344,10 @@ def get_dataset(
         partial_member_list=partial_list,
         default_parser_backend=default_parser_backend,
         default_chunk_strategy=default_chunk_strategy,
+        rag_defaults=_dataset_rag_defaults_out(dataset),
+        default_prompt_template_id=prompt_template_id,
+        default_prompt_template_key=prompt_template_key,
+        default_prompt_ab_experiment_key=prompt_ab_experiment_key,
         pipeline=_dataset_pipeline_out(dataset),
     )
 
@@ -254,19 +387,51 @@ def update_dataset(
         changed = True
 
     if payload.default_parser_backend is not None:
-        val = str(payload.default_parser_backend or "").strip().lower()
-        if val:
-            meta["default_parser_backend"] = val
+        raw = str(payload.default_parser_backend or "").strip()
+        if raw:
+            meta["default_parser_backend"] = _normalize_dataset_default_parser_backend(raw)
         else:
             meta.pop("default_parser_backend", None)
         changed = True
 
     if payload.default_chunk_strategy is not None:
-        val = str(payload.default_chunk_strategy or "").strip().lower()
-        if val:
-            meta["default_chunk_strategy"] = val
+        raw = str(payload.default_chunk_strategy or "").strip()
+        if raw:
+            meta["default_chunk_strategy"] = _normalize_dataset_default_chunk_strategy(raw)
         else:
             meta.pop("default_chunk_strategy", None)
+        changed = True
+
+    if payload.rag_defaults is not None:
+        data = payload.rag_defaults.model_dump(exclude_none=True)
+        if data:
+            meta["rag_defaults"] = data
+        else:
+            meta.pop("rag_defaults", None)
+        changed = True
+
+    # Prompt defaults allow explicit clearing via `null` (need fields_set checks).
+    if "default_prompt_template_id" in payload.model_fields_set:
+        if payload.default_prompt_template_id is not None:
+            meta["default_prompt_template_id"] = str(payload.default_prompt_template_id)
+        else:
+            meta.pop("default_prompt_template_id", None)
+        changed = True
+
+    if "default_prompt_template_key" in payload.model_fields_set:
+        val = str(payload.default_prompt_template_key or "").strip().lower()
+        if val:
+            meta["default_prompt_template_key"] = val
+        else:
+            meta.pop("default_prompt_template_key", None)
+        changed = True
+
+    if "default_prompt_ab_experiment_key" in payload.model_fields_set:
+        val = str(payload.default_prompt_ab_experiment_key or "").strip()
+        if val:
+            meta["default_prompt_ab_experiment_key"] = val
+        else:
+            meta.pop("default_prompt_ab_experiment_key", None)
         changed = True
 
     if changed:
@@ -279,6 +444,26 @@ def update_dataset(
         partial_list = DatasetPermissionService.get_dataset_partial_member_list(db, tenant_id, updated.id)
 
     default_parser_backend, default_chunk_strategy = _dataset_ingestion_defaults(updated)
+    prompt_template_id, prompt_template_key, prompt_ab_experiment_key = _dataset_prompt_defaults_out(updated)
+
+    audit_log_event(
+        db,
+        tenant_id=tenant_id,
+        actor_id=account_id,
+        action="dataset.update",
+        resource_type="dataset",
+        resource_id=str(updated.id),
+        details={
+            "changed": bool(changed),
+            "name": str(updated.name or "")[:255],
+            "permission": str(updated.permission or ""),
+        },
+    )
+    try:
+        db.commit()
+    except Exception:
+        pass
+
     return DatasetOut(
         id=updated.id,
         tenant_id=updated.tenant_id,
@@ -289,6 +474,10 @@ def update_dataset(
         partial_member_list=partial_list,
         default_parser_backend=default_parser_backend,
         default_chunk_strategy=default_chunk_strategy,
+        rag_defaults=_dataset_rag_defaults_out(updated),
+        default_prompt_template_id=prompt_template_id,
+        default_prompt_template_key=prompt_template_key,
+        default_prompt_ab_experiment_key=prompt_ab_experiment_key,
         pipeline=_dataset_pipeline_out(updated),
     )
 

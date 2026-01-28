@@ -4,11 +4,45 @@ Defines data models for dataset creation, update, and query endpoints.
 """
 from typing import List, Optional
 from uuid import UUID
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict, field_validator
+
+from app.rag.core.text import normalize_retrieval_mode
 
 from app.models.dataset import DatasetPermissionEnum
 from .base import OrmModel
 from .document import DocumentPipelineOptions
+
+
+class DatasetRAGDefaults(BaseModel):
+    """
+    Dataset-level default RAG settings (optional overrides).
+
+    These defaults are applied when the chat request doesn't explicitly provide the corresponding fields.
+    """
+
+    top_k: Optional[int] = Field(default=None, ge=1, le=100)
+    score_threshold: Optional[float] = Field(default=None, ge=0.0, le=1.0)
+    retrieval_mode: Optional[str] = None  # hybrid | vector | keyword | mmr | auto
+    alpha: Optional[float] = Field(default=None, ge=0.0, le=1.0)
+
+    enable_weight_rerank: Optional[bool] = None
+    vector_weight: Optional[float] = Field(default=None, ge=0.0, le=1.0)
+    keyword_weight: Optional[float] = Field(default=None, ge=0.0, le=1.0)
+    mmr_lambda: Optional[float] = Field(default=None, ge=0.0, le=1.0)
+
+    enable_reranker: Optional[bool] = None
+    reranker_provider: Optional[str] = None
+    reranker_top_n: Optional[int] = Field(default=None, ge=1, le=200)
+
+    model_config = ConfigDict(extra="ignore")
+
+    @field_validator("retrieval_mode", mode="before")
+    @classmethod
+    def _normalize_retrieval_mode(cls, v):  # noqa: ANN001
+        if v is None:
+            return None
+        s = str(v)
+        return normalize_retrieval_mode(s) if s.strip() else None
 
 
 class DatasetBase(BaseModel):
@@ -19,6 +53,12 @@ class DatasetBase(BaseModel):
     # Dataset-level ingestion defaults (applied when the request uses global defaults).
     default_parser_backend: Optional[str] = None
     default_chunk_strategy: Optional[str] = None
+    # Dataset-level default RAG settings (applied when chat doesn't specify).
+    rag_defaults: Optional[DatasetRAGDefaults] = None
+    # Dataset-level default prompt settings (applied when chat doesn't specify).
+    default_prompt_template_id: Optional[UUID] = None
+    default_prompt_template_key: Optional[str] = None
+    default_prompt_ab_experiment_key: Optional[str] = None
     # Dataset-level pipeline defaults (governance/indexing). If omitted, tenant defaults apply.
     pipeline: Optional[DocumentPipelineOptions] = None
 
@@ -34,6 +74,10 @@ class DatasetUpdate(BaseModel):
     partial_member_list: Optional[List[str]] = None
     default_parser_backend: Optional[str] = None
     default_chunk_strategy: Optional[str] = None
+    rag_defaults: Optional[DatasetRAGDefaults] = None
+    default_prompt_template_id: Optional[UUID] = None
+    default_prompt_template_key: Optional[str] = None
+    default_prompt_ab_experiment_key: Optional[str] = None
     pipeline: Optional[DocumentPipelineOptions] = None
 
 
@@ -47,6 +91,10 @@ class DatasetOut(OrmModel):
     partial_member_list: Optional[List[str]] = None
     default_parser_backend: Optional[str] = None
     default_chunk_strategy: Optional[str] = None
+    rag_defaults: Optional[DatasetRAGDefaults] = None
+    default_prompt_template_id: Optional[UUID] = None
+    default_prompt_template_key: Optional[str] = None
+    default_prompt_ab_experiment_key: Optional[str] = None
     pipeline: Optional[DocumentPipelineOptions] = None
 
 

@@ -22,6 +22,7 @@ import uuid
 
 from app.core.database import get_db
 from app.models.document import Document as DBDocument, DocumentChunk, DocumentParsedContent, DocumentPermission
+from app.services.audit_log_service import audit_log_event
 from app.api.schemas.document import (
     DocumentList,
     DocumentStats,
@@ -1978,20 +1979,48 @@ async def upload_document(
     matched_rule = match_ingestion_rule(policy, filename=file.filename, file_ext=file_ext)
 
     ingestion_meta: Optional[dict[str, Any]] = None
+    # Dataset-level ingestion defaults (parser/chunk strategy). These apply when the request uses
+    # the global defaults, keeping explicit user choices untouched.
+    dataset_default_pb = None
+    dataset_default_cs = None
+    if isinstance(dataset_meta, dict):
+        raw_pb = dataset_meta.get("default_parser_backend")
+        raw_cs = dataset_meta.get("default_chunk_strategy")
+        if isinstance(raw_pb, str) and raw_pb.strip():
+            dataset_default_pb = raw_pb.strip().lower()
+        if isinstance(raw_cs, str) and raw_cs.strip():
+            dataset_default_cs = raw_cs.strip().lower()
+
+    global_default_pb = str(getattr(settings, "DEFAULT_PARSER_BACKEND", "auto") or "auto").strip().lower() or "auto"
+    global_default_cs = (
+        str(getattr(settings, "DEFAULT_CHUNK_STRATEGY", "langchain_recursive") or "langchain_recursive").strip().lower()
+        or "langchain_recursive"
+    )
+    default_pb_eff = dataset_default_pb or global_default_pb
+    default_cs_eff = dataset_default_cs or global_default_cs
+
     parser_backend_choice: str = parser_backend
     chunk_strategy_choice: str = chunk_strategy
+
+    req_pb = (parser_backend or "").strip().lower()
+    if dataset_default_pb and req_pb in {"", "auto", global_default_pb}:
+        parser_backend_choice = dataset_default_pb
+
+    req_cs = (chunk_strategy or "").strip().lower()
+    if dataset_default_cs and req_cs in {"", global_default_cs}:
+        chunk_strategy_choice = dataset_default_cs
     preprocess_steps: list[dict] = []
     policy_patch = PipelineOptions()
 
     if matched_rule is not None:
         # Only override when the request uses the global defaults (avoid surprising explicit choices).
-        default_pb = (getattr(settings, "DEFAULT_PARSER_BACKEND", "auto") or "auto").strip().lower() or "auto"
-        req_pb = (parser_backend or "").strip().lower()
+        default_pb = default_pb_eff
+        req_pb = (parser_backend_choice or "").strip().lower()
         if req_pb in {"", "auto", default_pb} and matched_rule.parser_backend:
             parser_backend_choice = str(matched_rule.parser_backend)
 
-        default_cs = (getattr(settings, "DEFAULT_CHUNK_STRATEGY", "langchain_recursive") or "langchain_recursive").strip().lower()
-        req_cs = (chunk_strategy or "").strip().lower()
+        default_cs = default_cs_eff
+        req_cs = (chunk_strategy_choice or "").strip().lower()
         if req_cs in {"", default_cs} and matched_rule.chunk_strategy:
             chunk_strategy_choice = str(matched_rule.chunk_strategy)
 
@@ -2216,8 +2245,34 @@ async def upload_documents_batch(
     dataset = _resolve_writable_dataset(db, tenant_id, account_id, dataset_id)
     dataset_meta = (getattr(dataset, "dataset_metadata", None) or {}) if dataset is not None else {}
     policy = parse_ingestion_policy_from_metadata(dataset_meta if isinstance(dataset_meta, dict) else {})  # type: ignore[arg-type]
-    default_pb = (getattr(settings, "DEFAULT_PARSER_BACKEND", "auto") or "auto").strip().lower() or "auto"
-    default_cs = (getattr(settings, "DEFAULT_CHUNK_STRATEGY", "langchain_recursive") or "langchain_recursive").strip().lower()
+    # Dataset-level ingestion defaults: apply once for the batch (still allow per-file ingestion-policy overrides).
+    dataset_default_pb = None
+    dataset_default_cs = None
+    if isinstance(dataset_meta, dict):
+        raw_pb = dataset_meta.get("default_parser_backend")
+        raw_cs = dataset_meta.get("default_chunk_strategy")
+        if isinstance(raw_pb, str) and raw_pb.strip():
+            dataset_default_pb = raw_pb.strip().lower()
+        if isinstance(raw_cs, str) and raw_cs.strip():
+            dataset_default_cs = raw_cs.strip().lower()
+
+    global_default_pb = str(getattr(settings, "DEFAULT_PARSER_BACKEND", "auto") or "auto").strip().lower() or "auto"
+    global_default_cs = (
+        str(getattr(settings, "DEFAULT_CHUNK_STRATEGY", "langchain_recursive") or "langchain_recursive").strip().lower()
+        or "langchain_recursive"
+    )
+    default_pb = dataset_default_pb or global_default_pb
+    default_cs = dataset_default_cs or global_default_cs
+
+    parser_backend_base = parser_backend
+    chunk_strategy_base = chunk_strategy
+    req_pb = (parser_backend or "").strip().lower()
+    if dataset_default_pb and req_pb in {"", "auto", global_default_pb}:
+        parser_backend_base = dataset_default_pb
+    req_cs = (chunk_strategy or "").strip().lower()
+    if dataset_default_cs and req_cs in {"", global_default_cs}:
+        chunk_strategy_base = dataset_default_cs
+
     governance_profile_cache: dict[str, Any] = {}
     
     async def process_single_file(file: UploadFile) -> dict:
@@ -2260,17 +2315,17 @@ async def upload_documents_batch(
                 # Ingestion policy overrides (per file).
                 matched_rule = match_ingestion_rule(policy, filename=file.filename, file_ext=file_ext)
                 ingestion_meta: Optional[dict[str, Any]] = None
-                parser_backend_choice: str = parser_backend
-                chunk_strategy_choice: str = chunk_strategy
+                parser_backend_choice: str = parser_backend_base
+                chunk_strategy_choice: str = chunk_strategy_base
                 preprocess_steps: list[dict] = []
                 policy_patch = PipelineOptions()
 
                 if matched_rule is not None:
-                    req_pb = (parser_backend or "").strip().lower()
+                    req_pb = (parser_backend_choice or "").strip().lower()
                     if req_pb in {"", "auto", default_pb} and matched_rule.parser_backend:
                         parser_backend_choice = str(matched_rule.parser_backend)
 
-                    req_cs = (chunk_strategy or "").strip().lower()
+                    req_cs = (chunk_strategy_choice or "").strip().lower()
                     if req_cs in {"", default_cs} and matched_rule.chunk_strategy:
                         chunk_strategy_choice = str(matched_rule.chunk_strategy)
 
@@ -4064,6 +4119,19 @@ async def delete_document(
 
     # 4. Delete DB record (cascade chunks).
     db.delete(document)
+    audit_log_event(
+        db,
+        tenant_id=tenant_id,
+        actor_id=account_id,
+        action="document.delete",
+        resource_type="document",
+        resource_id=str(document_id),
+        details={
+            "dataset_id": str(document.dataset_id) if getattr(document, "dataset_id", None) else None,
+            "file_type": str(getattr(document, "file_type", "") or ""),
+            "file_size": int(getattr(document, "file_size", 0) or 0),
+        },
+    )
     db.commit()
 
     # 5. Remove chunks from BM25 index (in-memory).

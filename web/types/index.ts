@@ -267,11 +267,16 @@ export interface Citation {
   chunk_content: string
   matched_terms?: string[]
   page_number?: number
+  chunk_index?: number
+  start_char?: number
+  end_char?: number
   header_path?: string
   chunk_strategy?: string
   chunk_role?: string
   retrieval_role?: string
   neighbor_of?: string
+  doc_pipeline_key?: string
+  pipeline_hash?: string
   relevance_score: number
   vector_score?: number
   bm25_score?: number
