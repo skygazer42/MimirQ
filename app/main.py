@@ -365,6 +365,20 @@ app.add_middleware(
     server_timing_enabled=bool(getattr(settings, "SERVER_TIMING_ENABLED", True)),
 )
 
+# Security headers (lightweight hardening).
+if bool(getattr(settings, "SECURITY_HEADERS_ENABLED", True)):
+    from app.api.middleware.security_headers import SecurityHeadersMiddleware
+
+    app.add_middleware(
+        SecurityHeadersMiddleware,
+        x_content_type_options=str(getattr(settings, "SECURITY_HEADERS_X_CONTENT_TYPE_OPTIONS", "nosniff") or "nosniff"),
+        x_frame_options=str(getattr(settings, "SECURITY_HEADERS_X_FRAME_OPTIONS", "DENY") or "DENY"),
+        referrer_policy=str(
+            getattr(settings, "SECURITY_HEADERS_REFERRER_POLICY", "strict-origin-when-cross-origin")
+            or "strict-origin-when-cross-origin"
+        ),
+    )
+
 # Request-id middleware (outermost; propagates X-Request-ID for tracing).
 app.add_middleware(RequestIDMiddleware)
 

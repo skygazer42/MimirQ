@@ -137,6 +137,12 @@ class Settings(BaseSettings):
     LOG_LEVEL: str = "INFO"
     LOG_FORMAT: Literal["plain", "json"] = "plain"
 
+    # Security headers (backend hardening)
+    SECURITY_HEADERS_ENABLED: bool = True
+    SECURITY_HEADERS_X_CONTENT_TYPE_OPTIONS: str = "nosniff"
+    SECURITY_HEADERS_X_FRAME_OPTIONS: str = "DENY"
+    SECURITY_HEADERS_REFERRER_POLICY: str = "strict-origin-when-cross-origin"
+
     # Prometheus metrics
     PROMETHEUS_ENABLED: bool = False
 

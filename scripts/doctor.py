@@ -4,15 +4,41 @@ import platform
 import re
 import shutil
 import subprocess
+import locale
 from pathlib import Path
+
+
+def _decode_output(data: bytes) -> str:
+    if not data:
+        return ""
+
+    # Some Windows environments default to GBK/CP936, while many CLIs output UTF-8.
+    # Decode defensively to avoid crashing `doctor` on mixed/unknown encodings.
+    preferred = (locale.getpreferredencoding(False) or "").strip()
+    candidates = ["utf-8"]
+    if preferred and preferred.lower() not in {"utf-8", "utf8"}:
+        candidates.append(preferred)
+    # Windows-specific fallback (safe no-op on non-Windows where it's unsupported).
+    candidates.append("mbcs")
+
+    for enc in candidates:
+        try:
+            return data.decode(enc)
+        except Exception:  # noqa: BLE001
+            continue
+
+    return data.decode("utf-8", errors="replace")
 
 
 def _run(cmd: list[str]) -> tuple[int, str]:
     exe = shutil.which(cmd[0])
     if exe is None:
         return 127, ""
-    result = subprocess.run([exe, *cmd[1:]], text=True, capture_output=True)
-    out = (result.stdout or "").strip() or (result.stderr or "").strip()
+
+    # Capture bytes and decode ourselves; `text=True` can raise UnicodeDecodeError on Windows.
+    result = subprocess.run([exe, *cmd[1:]], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    out_bytes = (result.stdout or b"").strip() or (result.stderr or b"").strip()
+    out = _decode_output(out_bytes).strip()
     return result.returncode, out
 
 

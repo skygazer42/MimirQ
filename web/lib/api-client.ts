@@ -17,6 +17,7 @@ import type {
   DocumentBatchAccessUpdateRequest,
   DocumentBatchAccessUpdateResponse,
   DocumentDuplicateList,
+  DocumentVersionList,
   ConnectorInfo,
   ConnectorRunCreateRequest,
   ConnectorRunListResponse,
@@ -358,10 +359,14 @@ export const documentApi = {
    */
   async get(
     documentId: string,
-    options?: { includeChunks?: boolean }
+    options?: { includeChunks?: boolean; pipeline_hash?: string; all_versions?: boolean }
   ): Promise<Document> {
     const params = options?.includeChunks
-      ? { include_chunks: true }
+      ? {
+          include_chunks: true,
+          pipeline_hash: options.pipeline_hash,
+          all_versions: options.all_versions,
+        }
       : undefined
 
     const { data } = await apiClient.get(`/documents/${documentId}`, {
@@ -405,7 +410,7 @@ export const documentApi = {
    */
   async listChunks(
     documentId: string,
-    params?: { skip?: number; limit?: number; q?: string }
+    params?: { skip?: number; limit?: number; q?: string; pipeline_hash?: string; all_versions?: boolean }
   ): Promise<{ total: number; items: DocumentChunk[] }> {
     const { data } = await apiClient.get(`/documents/${documentId}/chunks`, { params })
     return data
@@ -416,7 +421,7 @@ export const documentApi = {
    */
   async getChunkMatches(
     documentId: string,
-    params: { q: string; limit?: number }
+    params: { q: string; limit?: number; pipeline_hash?: string; all_versions?: boolean }
   ): Promise<DocumentChunkMatchList> {
     const { data } = await apiClient.get(`/documents/${documentId}/chunks/matches`, { params })
     return data
@@ -537,6 +542,23 @@ export const documentApi = {
   ): Promise<Document> {
     const { data } = await apiClient.patch(`/documents/${documentId}/pipeline`, payload)
     return data
+  },
+
+  // Document pipeline versions (ops/debug/rollback)
+  async listVersions(documentId: string): Promise<DocumentVersionList> {
+    const { data } = await apiClient.get(`/documents/${documentId}/versions`)
+    return data
+  },
+
+  async activateVersion(documentId: string, pipelineHash: string): Promise<Document> {
+    const { data } = await apiClient.post(
+      `/documents/${documentId}/versions/${encodeURIComponent(pipelineHash)}/activate`
+    )
+    return data
+  },
+
+  async deleteVersion(documentId: string, pipelineHash: string): Promise<void> {
+    await apiClient.delete(`/documents/${documentId}/versions/${encodeURIComponent(pipelineHash)}`)
   },
 
   /**
