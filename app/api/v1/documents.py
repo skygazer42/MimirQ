@@ -2500,6 +2500,25 @@ async def upload_documents_batch(
                 # Versioning: the first processed pipeline is the active one by default.
                 doc_metadata.setdefault("active_pipeline_hash", pipeline_hash)
                 doc_metadata.setdefault("active_pipeline_ready", False)
+
+                # Optional: upload deduplication (same file_sha256 + pipeline_hash within the dataset).
+                if bool(getattr(settings, "UPLOAD_DEDUP_ENABLED", False)) and isinstance(file_sha256, str) and file_sha256:
+                    dup = _find_duplicate_document(
+                        db,
+                        tenant_id=tenant_id,
+                        dataset_id=getattr(dataset, "id", None) if dataset is not None else None,
+                        file_sha256=file_sha256,
+                        pipeline_hash=pipeline_hash,
+                    )
+                    if dup is not None and str(getattr(dup, "status", "") or "").lower() not in {"failed"}:
+                        with contextlib.suppress(OSError):
+                            file_path.unlink(missing_ok=True)
+                        return {
+                            "success": True,
+                            "filename": file.filename,
+                            "document_id": str(getattr(dup, "id", "")),
+                            "document": dup,
+                        }
                 
                 db_document = DBDocument(
                     id=file_id,

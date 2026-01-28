@@ -141,6 +141,11 @@ def apply_runtime_migrations(engine) -> None:
             'ON documents (tenant_id, owner_id);',
             'CREATE INDEX IF NOT EXISTS ix_documents_tenant_access_mode '
             'ON documents (tenant_id, access_mode);',
+            # Optional: file hashing (upload dedupe / duplicate detection).
+            "CREATE INDEX IF NOT EXISTS ix_documents_tenant_dataset_sha "
+            "ON documents (tenant_id, dataset_id, ((metadata->>'file_sha256')));",
+            "CREATE INDEX IF NOT EXISTS ix_documents_tenant_dataset_sha_ph "
+            "ON documents (tenant_id, dataset_id, ((metadata->>'file_sha256')), ((metadata->>'pipeline_hash')));",
 
             # =========================
             # Document pipeline versioning (best-effort backfill for legacy deployments)

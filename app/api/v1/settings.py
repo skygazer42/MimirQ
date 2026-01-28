@@ -5,6 +5,9 @@ Supports reading and updating .env configuration.
 
 import ipaddress
 import contextlib
+import os
+import tempfile
+import threading
 import time
 from pathlib import Path
 from typing import Any, Dict, Optional
@@ -12,7 +15,7 @@ from urllib.parse import urlparse
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from app.api.dependencies.auth import get_current_account_id
@@ -28,6 +31,38 @@ router = APIRouter()
 ENV_FILE = Path(__file__).parent.parent.parent.parent / ".env"
 
 _SETTINGS_ADMIN_ROLES = {"owner", "admin"}
+_ENV_UPDATE_LOCK = threading.Lock()
+
+
+@contextlib.contextmanager
+def _env_file_lock():
+    """
+    Best-effort cross-process lock for `.env` updates.
+
+    - In-process: guarded by a thread lock.
+    - POSIX: additionally uses `fcntl.flock` on a sibling lockfile.
+    """
+    with _ENV_UPDATE_LOCK:
+        fcntl = None
+        if os.name == "posix":
+            with contextlib.suppress(Exception):
+                import fcntl as _fcntl  # noqa: WPS433
+
+                fcntl = _fcntl
+
+        if fcntl is None:
+            yield
+            return
+
+        lock_path = ENV_FILE.with_name(f"{ENV_FILE.name}.lock")
+        lock_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(lock_path, "a", encoding="utf-8") as lockf:
+            fcntl.flock(lockf.fileno(), fcntl.LOCK_EX)
+            try:
+                yield
+            finally:
+                with contextlib.suppress(Exception):
+                    fcntl.flock(lockf.fileno(), fcntl.LOCK_UN)
 
 
 def _sanitize_env_value(key: str, value: Any) -> str:
@@ -163,11 +198,11 @@ class ObservabilityConfig(BaseModel):
     """Observability/debug config."""
     tool_call_log_enabled: bool = False
     tool_call_log_include_preview: bool = False
-    tool_call_log_max_preview_chars: int = 500
+    tool_call_log_max_preview_chars: int = Field(default=500, ge=0, le=5000)
 
     agent_log_enabled: bool = False
     agent_log_include_execution_path: bool = False
-    agent_log_max_preview_chars: int = 500
+    agent_log_max_preview_chars: int = Field(default=500, ge=0, le=5000)
 
     # JSONL metrics log (RAG trace dashboard)
     metrics_log_enabled: bool = False
@@ -178,13 +213,13 @@ class SafetyConfig(BaseModel):
     """Security/privacy config."""
     pii_redaction_enabled: bool = False
     pii_redaction_mask: str = "[REDACTED]"
-    pii_stream_holdback_chars: int = 128
+    pii_stream_holdback_chars: int = Field(default=128, ge=0, le=4096)
 
 
 class ChatConfig(BaseModel):
     """Chat streaming/runtime config."""
 
-    stream_heartbeat_sec: float = 10.0
+    stream_heartbeat_sec: float = Field(default=10.0, ge=0.0, le=120.0)
     stream_cancel_on_disconnect: bool = True
 
 
@@ -545,7 +580,7 @@ def read_env_file() -> Dict[str, str]:
 
 
 def write_env_file(env_vars: Dict[str, str]):
-    """Write .env file, preserving comments and formatting."""
+    """Write .env file, preserving comments and formatting (atomic best-effort)."""
     lines = []
     existing_keys = set()
 
@@ -569,8 +604,35 @@ def write_env_file(env_vars: Dict[str, str]):
         if key not in existing_keys:
             lines.append(f"{key}={value}")
 
-    with open(ENV_FILE, 'w', encoding='utf-8') as f:
-        f.write('\n'.join(lines) + '\n')
+    content = "\n".join(lines) + "\n"
+    target_dir = ENV_FILE.parent
+    target_dir.mkdir(parents=True, exist_ok=True)
+
+    # Atomic replace to avoid partial writes when the process is interrupted.
+    tmp_path = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode="w",
+            encoding="utf-8",
+            dir=str(target_dir),
+            prefix=f"{ENV_FILE.name}.",
+            suffix=".tmp",
+            delete=False,
+        ) as tf:
+            tmp_path = Path(tf.name)
+            tf.write(content)
+            tf.flush()
+            os.fsync(tf.fileno())
+
+        if ENV_FILE.exists():
+            with contextlib.suppress(Exception):
+                os.chmod(tmp_path, ENV_FILE.stat().st_mode)
+
+        os.replace(str(tmp_path), str(ENV_FILE))
+    finally:
+        if tmp_path is not None:
+            with contextlib.suppress(OSError):
+                tmp_path.unlink(missing_ok=True)
 
 
 def mask_secret(value: str) -> str:
@@ -718,6 +780,8 @@ async def update_settings(
 ):
     """Update system config (write .env file)."""
     _ensure_settings_writable(db, tenant_id, account_id)
+    lock_ctx = _env_file_lock()
+    lock_ctx.__enter__()
     try:
         env_vars = read_env_file()
         updated_keys = []
@@ -1011,6 +1075,9 @@ async def update_settings(
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to save configuration: {str(e)}")
+    finally:
+        with contextlib.suppress(Exception):
+            lock_ctx.__exit__(None, None, None)
 
 
 @router.get("/status")
