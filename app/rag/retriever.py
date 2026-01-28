@@ -792,6 +792,51 @@ class HybridRetriever(BaseRetriever):
         """Hybrid search: vector retrieval + BM25, optional reranking."""
         retrieval_mode = (retrieval_mode or "hybrid").lower()
 
+        # Metadata filter strategy:
+        # - BM25 sees Postgres chunk metadata (rich JSON) -> can apply most filters early.
+        # - Milvus (document collection) stores a small fixed metadata schema -> only pass supported keys early
+        #   to avoid false negatives when users filter on richer DB-only metadata.
+        full_metadata_filter = metadata_filter if (metadata_filter and self.metadata_filter_enabled) else None
+        bm25_filter: Optional[Dict[str, Any]] = None
+        vector_filter: Optional[Dict[str, Any]] = None
+        if full_metadata_filter and isinstance(full_metadata_filter, dict):
+            bm25_filter = {
+                k: v
+                for k, v in full_metadata_filter.items()
+                if isinstance(k, str) and not str(k).startswith("document_user.")
+            }
+            # Milvus document vectors support only a subset of scalar fields.
+            # Keep keys top-level only (no dotted paths) and map common aliases.
+            vector_allowed = {
+                "tenant_id",
+                "document_id",
+                "chunk_id",
+                "chunk_index",
+                "pipeline_hash",
+                "doc_pipeline_key",
+                "source",
+                "file_type",
+                "img_id",
+                "image_id",
+                "image_url",
+                "page_number",
+            }
+            vf: Dict[str, Any] = {}
+            for k, v in bm25_filter.items():
+                if not isinstance(k, str):
+                    continue
+                if "." in k:
+                    continue
+                if k == "page":
+                    vf["page_number"] = v
+                    continue
+                if k == "img_url":
+                    vf["image_url"] = v
+                    continue
+                if k in vector_allowed:
+                    vf[k] = v
+            vector_filter = vf or None
+
         want_vector = retrieval_mode in ("hybrid", "vector", "mmr")
         want_bm25 = retrieval_mode in ("hybrid", "keyword", "mmr")
         if want_bm25 and not bool(getattr(settings, "BM25_INDEX_ENABLED", True)):
@@ -820,8 +865,8 @@ class HybridRetriever(BaseRetriever):
                     "tenant_id": tenant_id,
                 }
                 # Add metadata filter if supported and provided
-                if metadata_filter and self.metadata_filter_enabled:
-                    search_kwargs["metadata_filter"] = metadata_filter
+                if vector_filter:
+                    search_kwargs["metadata_filter"] = vector_filter
 
                 vector_results = vector_store.search(**search_kwargs)
             except Exception as exc:
@@ -836,7 +881,7 @@ class HybridRetriever(BaseRetriever):
                 top_k=fetch_k,
                 document_ids=document_ids,
                 tenant_id=tenant_id,
-                metadata_filter=metadata_filter,
+                metadata_filter=bm25_filter,
             )
 
         # Fallback: when single-channel mode fails, try the other channel.
@@ -846,7 +891,7 @@ class HybridRetriever(BaseRetriever):
                 top_k=fetch_k,
                 document_ids=document_ids,
                 tenant_id=tenant_id,
-                metadata_filter=metadata_filter,
+                metadata_filter=bm25_filter,
             )
         elif retrieval_mode == "keyword" and not bm25_results:
             vector_store = get_vector_store()
@@ -858,8 +903,8 @@ class HybridRetriever(BaseRetriever):
                     "document_ids": document_ids,
                     "tenant_id": tenant_id,
                 }
-                if metadata_filter and self.metadata_filter_enabled:
-                    fallback_kwargs["metadata_filter"] = metadata_filter
+                if vector_filter:
+                    fallback_kwargs["metadata_filter"] = vector_filter
                 vector_results = vector_store.search(**fallback_kwargs)
             except Exception as exc:
                 logger.warning("Vector search failed: %s", exc)
@@ -867,10 +912,8 @@ class HybridRetriever(BaseRetriever):
 
         # Try to fill in chunk_id for vector retrieval results (for citations / RAGAS contexts)
         if vector_results:
-            if metadata_filter and self.metadata_filter_enabled:
-                vector_results = [
-                    r for r in vector_results if self._match_metadata_filter((r.get("metadata") or {}), metadata_filter)
-                ]
+            if vector_filter:
+                vector_results = [r for r in vector_results if self._match_metadata_filter((r.get("metadata") or {}), vector_filter)]
             tenant_key = self._tenant_key(tenant_id)
             lookup = self._chunk_id_lookup.get(tenant_key) or {}
             for r in vector_results:
@@ -1057,6 +1100,26 @@ class HybridRetriever(BaseRetriever):
                 for ck in q.all():
                     chunks_by_pair[(str(ck.document_id), int(ck.chunk_index))] = ck
 
+            # Document-level user metadata is stored on documents.metadata.user (not per-chunk).
+            # Fetch it once per document to enable metadata filtering like `document_user.tags`.
+            doc_user_by_id: Dict[str, Dict[str, Any]] = {}
+            try:
+                doc_ids: set[UUID] = set()
+                for ck in list(chunks_by_id.values()) + list(chunks_by_pair.values()):
+                    if ck and getattr(ck, "document_id", None):
+                        doc_ids.add(UUID(str(ck.document_id)))
+                if doc_ids:
+                    dq = db.query(DBDocument.id, DBDocument.doc_metadata).filter(DBDocument.id.in_(sorted(doc_ids)))
+                    if tenant_filter:
+                        dq = dq.filter(DBDocument.tenant_id == tenant_filter)
+                    for doc_id, doc_meta in dq.all():
+                        meta0 = doc_meta if isinstance(doc_meta, dict) else {}
+                        user0 = meta0.get("user") if isinstance(meta0.get("user"), dict) else {}
+                        if user0:
+                            doc_user_by_id[str(doc_id)] = dict(user0)
+            except Exception:
+                doc_user_by_id = {}
+
             resolved: List[Dict[str, Any]] = []
             for r in results:
                 meta = dict(r.get("metadata") or {})
@@ -1096,12 +1159,18 @@ class HybridRetriever(BaseRetriever):
 
                     # Merge DB metadata (only fill empty fields, avoid overwriting vector-side score etc.)
                     stored_meta = dict(ck.doc_metadata or {})
+                    # Fill in missing fields from persisted chunk metadata (rich JSONB).
+                    for k, v in stored_meta.items():
+                        if k not in meta or meta.get(k) in (None, "", [], {}):
+                            meta[k] = v
                     if stored_meta.get("img_id") and not meta.get("img_id"):
                         meta["img_id"] = stored_meta.get("img_id")
                     if stored_meta.get("source") and not meta.get("source"):
                         meta["source"] = stored_meta.get("source")
                     if (ck.page_number is not None) and not meta.get("page"):
                         meta["page"] = ck.page_number
+                    if (ck.page_number is not None) and not meta.get("page_number"):
+                        meta["page_number"] = ck.page_number
                     # Position data enables precise UI highlighting / deep-linking.
                     if (ck.start_char is not None) and meta.get("start_char") is None:
                         meta["start_char"] = int(ck.start_char)
@@ -1120,8 +1189,25 @@ class HybridRetriever(BaseRetriever):
                         if stored_meta.get(key) and not meta.get(key):
                             meta[key] = stored_meta.get(key)
 
+                    # Attach document-level user metadata for metadata filtering / enterprise search facets.
+                    doc_user = doc_user_by_id.get(str(ck.document_id))
+                    if doc_user and not meta.get("document_user"):
+                        meta["document_user"] = doc_user
+
                 r["metadata"] = meta
                 resolved.append(r)
+
+            # Apply the full metadata filter *after* DB enrichment.
+            if self.metadata_filter and self.metadata_filter_enabled:
+                try:
+                    filtered: List[Dict[str, Any]] = []
+                    for item in resolved:
+                        m = item.get("metadata") or {}
+                        if isinstance(m, dict) and self._match_metadata_filter(m, self.metadata_filter):
+                            filtered.append(item)
+                    resolved = filtered
+                except Exception:
+                    pass
 
             return resolved
         except Exception:

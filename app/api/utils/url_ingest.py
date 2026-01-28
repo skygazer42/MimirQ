@@ -13,6 +13,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import ipaddress
+import re
 import socket
 from dataclasses import dataclass
 from pathlib import Path
@@ -34,6 +35,44 @@ _BLOCKED_HOSTS = {
     "127.0.0.1",
     "::1",
 }
+
+_HEADER_NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9\\-]{0,49}$")
+_BLOCKED_EXTRA_HEADERS = {
+    "host",
+    "connection",
+    "content-length",
+    "transfer-encoding",
+    "proxy-connection",
+    "proxy-authorization",
+}
+_MAX_HEADER_VALUE_CHARS = 20_000
+
+
+def _sanitize_extra_headers(extra: dict[str, str] | None) -> dict[str, str]:
+    """
+    Best-effort header allowlist for URL ingestion/crawling.
+
+    This is intentionally conservative to avoid request smuggling / SSRF bypass footguns.
+    """
+    if not extra or not isinstance(extra, dict):
+        return {}
+    out: dict[str, str] = {}
+    for k, v in extra.items():
+        if not isinstance(k, str):
+            continue
+        name = k.strip()
+        if not name:
+            continue
+        if not _HEADER_NAME_RE.match(name):
+            continue
+        if name.lower() in _BLOCKED_EXTRA_HEADERS:
+            continue
+        val = str(v or "")
+        if len(val) > _MAX_HEADER_VALUE_CHARS:
+            val = val[:_MAX_HEADER_VALUE_CHARS]
+        out[name] = val
+    return out
+
 
 def _parse_csv(raw: str) -> list[str]:
     parts = [p.strip() for p in str(raw or "").split(",")]
@@ -182,6 +221,7 @@ async def download_url_to_path(
     timeout_sec: float | None = None,
     follow_redirects: bool | None = None,
     user_agent: str | None = None,
+    extra_headers: dict[str, str] | None = None,
 ) -> DownloadedURL:
     """
     Stream-download URL content to a local file with a hard size limit.
@@ -200,6 +240,7 @@ async def download_url_to_path(
     if not ua:
         ua = "MimirQ/1.0 (+url-ingest)"
     headers["User-Agent"] = ua
+    headers.update(_sanitize_extra_headers(extra_headers))
 
     destination.parent.mkdir(parents=True, exist_ok=True)
     size = 0

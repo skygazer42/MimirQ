@@ -1,11 +1,14 @@
 "use client"
 
 import * as React from "react"
-import { X, Maximize2, Minimize2, FileText, Loader2, Download, Copy, Link2 } from "lucide-react"
+import { X, Maximize2, Minimize2, FileText, Loader2, Download, Copy, Link2, Pencil, Trash2, Plus } from "lucide-react"
 import { useVirtualizer } from "@tanstack/react-virtual"
 import { cn } from "@/lib/utils"
 import { useDocumentView } from "@/store/document-view"
 import { Button } from "@/components/ui/button"
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { Textarea } from "@/components/ui/textarea"
+import { Input } from "@/components/ui/input"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { documentApi, ragApi } from "@/lib/api-client"
 import { API_V1_BASE_URL } from "@/lib/env"
@@ -81,6 +84,14 @@ export function DocumentViewerPanel() {
   const [serverMatchLoading, setServerMatchLoading] = React.useState(false)
   const matchRequestSeqRef = React.useRef(0)
   const parsedContentServerKeyRef = React.useRef<string | null>(null)
+
+  const [chunkEditorOpen, setChunkEditorOpen] = React.useState(false)
+  const [chunkEditorMode, setChunkEditorMode] = React.useState<"create" | "edit">("create")
+  const [chunkEditorTarget, setChunkEditorTarget] = React.useState<DocumentChunk | null>(null)
+  const [chunkEditorContent, setChunkEditorContent] = React.useState("")
+  const [chunkEditorPageNumber, setChunkEditorPageNumber] = React.useState<string>("")
+  const [chunkEditorSubmitting, setChunkEditorSubmitting] = React.useState(false)
+  const [chunkDeleteSubmitting, setChunkDeleteSubmitting] = React.useState<string | null>(null)
 
   const rowVirtualizer = useVirtualizer({
     count: chunks.length,
@@ -468,6 +479,130 @@ export function DocumentViewerPanel() {
     if (ok) toast.success(okMsg)
   }, [])
 
+  const canEditChunks = Boolean(doc && !["pending", "processing"].includes(String(doc.status || "").toLowerCase()))
+
+  const openCreateChunk = React.useCallback(() => {
+    setChunkEditorMode("create")
+    setChunkEditorTarget(null)
+    setChunkEditorContent("")
+    setChunkEditorPageNumber("")
+    setChunkEditorOpen(true)
+    setActiveTab("chunks")
+  }, [setActiveTab])
+
+  const openEditChunk = React.useCallback((chunk: DocumentChunk) => {
+    setChunkEditorMode("edit")
+    setChunkEditorTarget(chunk)
+    setChunkEditorContent(chunk.content || "")
+    setChunkEditorPageNumber(typeof chunk.page_number === "number" ? String(chunk.page_number) : "")
+    setChunkEditorOpen(true)
+    setActiveTab("chunks")
+  }, [setActiveTab])
+
+  const submitChunkEditor = React.useCallback(async () => {
+    if (!documentId) return
+    if (!canEditChunks) return
+
+    const content = (chunkEditorContent || "").trim()
+    if (!content) {
+      toast.error("Chunk content is empty")
+      return
+    }
+
+    const pageText = (chunkEditorPageNumber || "").trim()
+    const pageNumber =
+      pageText && Number.isFinite(Number(pageText)) ? Math.max(0, Math.trunc(Number(pageText))) : undefined
+
+    setChunkEditorSubmitting(true)
+    try {
+      if (chunkEditorMode === "create") {
+        const created = await documentApi.createChunk(documentId, {
+          content,
+          page_number: pageNumber,
+          metadata: {},
+        })
+        toast.success("Chunk created")
+
+        // If we haven't loaded all chunks, switch to full load so the new chunk can be discovered/browsed.
+        if (!chunksLoaded) setLoadAllChunks(true)
+
+        setChunks((prev) => [...prev, created])
+        setDoc((prev) =>
+          prev
+            ? {
+                ...prev,
+                chunk_count: typeof prev.chunk_count === "number" ? prev.chunk_count + 1 : prev.chunk_count,
+              }
+            : prev
+        )
+        setHighlightChunk(created.id)
+      } else {
+        const target = chunkEditorTarget
+        if (!target) return
+        const updated = await documentApi.updateChunk(documentId, target.id, { content, page_number: pageNumber })
+        toast.success("Chunk updated")
+        setChunks((prev) => prev.map((c) => (c.id === updated.id ? updated : c)))
+        setHighlightChunkState((prev) => (prev && prev.id === updated.id ? updated : prev))
+      }
+
+      // Re-measure virtualization after content changes (best-effort).
+      window.requestAnimationFrame(() => rowVirtualizer.measure())
+
+      setChunkEditorOpen(false)
+    } catch (err: any) {
+      console.error(err)
+      toast.error("Chunk edit failed")
+    } finally {
+      setChunkEditorSubmitting(false)
+    }
+  }, [
+    canEditChunks,
+    chunkEditorContent,
+    chunkEditorMode,
+    chunkEditorPageNumber,
+    chunkEditorTarget,
+    chunksLoaded,
+    documentId,
+    rowVirtualizer,
+    setHighlightChunk,
+  ])
+
+  const deleteChunk = React.useCallback(
+    async (chunk: DocumentChunk) => {
+      if (!documentId) return
+      if (!canEditChunks) return
+      const ok = window.confirm(`Delete chunk #${chunk.chunk_index}? This cannot be undone.`)
+      if (!ok) return
+
+      setChunkDeleteSubmitting(chunk.id)
+      try {
+        await documentApi.deleteChunk(documentId, chunk.id)
+        toast.success("Chunk deleted")
+        setChunks((prev) => prev.filter((c) => c.id !== chunk.id))
+        setDoc((prev) =>
+          prev
+            ? {
+                ...prev,
+                chunk_count: typeof prev.chunk_count === "number" ? Math.max(0, prev.chunk_count - 1) : prev.chunk_count,
+              }
+            : prev
+        )
+        if (highlightChunkId === chunk.id) {
+          setHighlightChunk(null)
+          setHighlightChunkState(null)
+        }
+
+        window.requestAnimationFrame(() => rowVirtualizer.measure())
+      } catch (err) {
+        console.error(err)
+        toast.error("Chunk delete failed")
+      } finally {
+        setChunkDeleteSubmitting(null)
+      }
+    },
+    [canEditChunks, documentId, highlightChunkId, rowVirtualizer, setHighlightChunk]
+  )
+
   const canInlinePreview = (doc?.file_type || "").toLowerCase() === "pdf"
 
   const jumpToMatch = React.useCallback((nextIndex: number) => {
@@ -503,6 +638,80 @@ export function DocumentViewerPanel() {
   return (
     <>
     <FloatingMenu />
+    <Dialog
+      open={chunkEditorOpen}
+      onOpenChange={(open) => {
+        if (!open) {
+          setChunkEditorOpen(false)
+          setChunkEditorSubmitting(false)
+          return
+        }
+        setChunkEditorOpen(true)
+      }}
+    >
+      <DialogContent className="max-w-2xl">
+        <DialogHeader>
+          <DialogTitle>
+            {chunkEditorMode === "create"
+              ? "Add chunk"
+              : `Edit chunk #${chunkEditorTarget?.chunk_index ?? "-"}`}
+          </DialogTitle>
+        </DialogHeader>
+
+        <div className="space-y-3">
+          <div className="space-y-2">
+            <div className="text-sm font-medium text-foreground/80">Content</div>
+            <Textarea
+              value={chunkEditorContent}
+              onChange={(e) => setChunkEditorContent(e.target.value)}
+              className="min-h-[220px] font-mono"
+              placeholder="Paste or edit chunk content..."
+            />
+            <div className="text-xs text-muted-foreground tabular-nums">
+              {chunkEditorContent.length.toLocaleString()} chars
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <div className="space-y-2">
+              <div className="text-sm font-medium text-foreground/80">Page (optional)</div>
+              <Input
+                value={chunkEditorPageNumber}
+                onChange={(e) => setChunkEditorPageNumber(e.target.value)}
+                inputMode="numeric"
+                placeholder="e.g. 12"
+              />
+            </div>
+            <div className="space-y-2">
+              <div className="text-sm font-medium text-foreground/80">Status</div>
+              <div className="text-xs text-muted-foreground">
+                {canEditChunks ? "Editable" : "Document is processing; editing disabled"}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <DialogFooter>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => setChunkEditorOpen(false)}
+            disabled={chunkEditorSubmitting}
+          >
+            Cancel
+          </Button>
+          <Button
+            type="button"
+            onClick={() => void submitChunkEditor()}
+            disabled={chunkEditorSubmitting || !canEditChunks || !chunkEditorContent.trim()}
+            className="gap-2"
+          >
+            {chunkEditorSubmitting ? <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" /> : null}
+            Save
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
     <div 
         className={cn(
             "fixed inset-y-0 right-0 z-50 flex flex-col bg-background border-l border-border shadow-2xl transition-all duration-300 ease-in-out",

@@ -46,6 +46,63 @@ _MILVUS_STRING_FIELDS = frozenset(
 )
 _MILVUS_ALLOWED_FILTER_FIELDS = _MILVUS_NUMERIC_FIELDS | _MILVUS_STRING_FIELDS
 
+# Document collection (knowledge base chunks) stores a fixed subset of metadata fields.
+# Keep this list in sync with MilvusVectorStore.add_documents().
+_DOC_VECTOR_METADATA_FIELDS = frozenset(
+    {
+        "tenant_id",
+        "document_id",
+        "chunk_index",
+        "chunk_id",
+        "pipeline_hash",
+        "doc_pipeline_key",
+        "page_number",
+        "source",
+        "file_type",
+        "img_id",
+        "image_id",
+        "image_url",
+    }
+)
+
+# Public-facing aliases commonly used in the retrieval layer.
+_MILVUS_FILTER_KEY_ALIASES: dict[str, str] = {
+    "page": "page_number",
+    "img_url": "image_url",
+}
+
+
+def _sanitize_milvus_metadata_filter(
+    metadata_filter: Optional[Dict[str, Any]],
+    *,
+    allowed_fields: Optional[set[str]] = None,
+) -> Dict[str, Any]:
+    """
+    Return a safe, best-effort filter spec that only contains supported keys.
+
+    Notes:
+    - Dotted (nested) keys are not supported in Milvus scalar expr and are dropped.
+    - This is intentionally conservative: it prevents "missing-field" false negatives when
+      callers include rich metadata filters that are only available in Postgres.
+    """
+    if not metadata_filter or not isinstance(metadata_filter, dict):
+        return {}
+
+    allowed = allowed_fields or set(_MILVUS_ALLOWED_FILTER_FIELDS)
+    cleaned: Dict[str, Any] = {}
+    for raw_key, condition in metadata_filter.items():
+        if not isinstance(raw_key, str):
+            continue
+        if "." in raw_key:
+            continue
+        key = _MILVUS_FILTER_KEY_ALIASES.get(raw_key, raw_key)
+        if key not in allowed:
+            continue
+        if not _MILVUS_FIELD_NAME_RE.match(key):
+            continue
+        cleaned[key] = condition
+    return cleaned
+
 
 def _coerce_milvus_metadata_value(value: Any) -> Any:
     """Milvus does not support None values for scalar fields."""
@@ -133,6 +190,9 @@ def _build_milvus_metadata_expr(metadata_filter: Optional[Dict[str, Any]]) -> Op
     for key, condition in metadata_filter.items():
         if not isinstance(key, str):
             continue
+        if "." in key:
+            continue
+        key = _MILVUS_FILTER_KEY_ALIASES.get(key, key)
         if key not in _MILVUS_ALLOWED_FILTER_FIELDS:
             continue
         if not _MILVUS_FIELD_NAME_RE.match(key):
@@ -423,7 +483,8 @@ class MilvusAdapter:
         self._ensure_store()
         assert self._store is not None
 
-        metadata_expr = _build_milvus_metadata_expr(metadata_filter)
+        supported_filter = _sanitize_milvus_metadata_filter(metadata_filter)
+        metadata_expr = _build_milvus_metadata_expr(supported_filter)
         if expr and metadata_expr:
             combined_expr = f"({expr}) and ({metadata_expr})"
         else:
@@ -450,7 +511,7 @@ class MilvusAdapter:
                 "content": doc.page_content,
             }
             for doc, score in results
-            if not metadata_filter or _match_metadata_filter(doc.metadata or {}, metadata_filter)
+            if not supported_filter or _match_metadata_filter(doc.metadata or {}, supported_filter)
         ]
 
 
@@ -610,8 +671,12 @@ class MilvusVectorStore:
         self._ensure_store()
         assert self._store is not None
 
+        supported_filter = _sanitize_milvus_metadata_filter(
+            metadata_filter,
+            allowed_fields=set(_DOC_VECTOR_METADATA_FIELDS),
+        )
         base_expr = self._build_expr(document_ids=document_ids, tenant_id=tenant_id)
-        metadata_expr = _build_milvus_metadata_expr(metadata_filter)
+        metadata_expr = _build_milvus_metadata_expr(supported_filter)
         if base_expr and metadata_expr:
             combined_expr = f"({base_expr}) and ({metadata_expr})"
         else:
@@ -628,7 +693,7 @@ class MilvusVectorStore:
             if score < score_threshold:
                 continue
             meta = doc.metadata or {}
-            if metadata_filter and not _match_metadata_filter(meta, metadata_filter):
+            if supported_filter and not _match_metadata_filter(meta, supported_filter):
                 continue
             chunk_id = meta.get("chunk_id")
             formatted.append(
@@ -640,6 +705,7 @@ class MilvusVectorStore:
                         "document_id": meta.get("document_id"),
                         "source": meta.get("source", "unknown"),
                         "page": meta.get("page_number"),
+                        "page_number": meta.get("page_number"),
                         "chunk_index": meta.get("chunk_index"),
                         "chunk_id": chunk_id,
                         "pipeline_hash": meta.get("pipeline_hash"),

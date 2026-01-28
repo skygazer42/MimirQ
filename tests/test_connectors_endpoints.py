@@ -53,6 +53,7 @@ def test_connectors_list_contains_url_batch():  # noqa: ANN001
     assert res.status_code == 200, res.text
     items = res.json()
     assert any(item.get("id") == "url_batch" for item in items)
+    assert any(item.get("id") == "web_crawl" for item in items)
 
 
 def test_connectors_create_run_requires_url_ingest_enabled(monkeypatch):  # noqa: ANN001
@@ -128,4 +129,51 @@ def test_connectors_create_run_happy_path(monkeypatch):  # noqa: ANN001
     assert body.get("dataset_id") == str(dataset_id)
     assert body.get("status") == "pending"
     assert (body.get("config") or {}).get("urls") == ["https://example.com/a.txt", "https://example.com/b.txt"]
+
+
+def test_connectors_create_web_crawl_run_redacts_auth(monkeypatch):  # noqa: ANN001
+    from app.api.v1.connectors import create_connector_run
+    import app.api.v1.connectors as connectors_module
+    from app.core.config import settings
+
+    monkeypatch.setattr(settings, "URL_INGEST_ENABLED", True, raising=False)
+    monkeypatch.setattr(connectors_module.DatasetService, "ensure_member", lambda *_a, **_k: None, raising=True)
+
+    dataset_id = uuid.uuid4()
+
+    class _Dataset:
+        def __init__(self, dataset_id: uuid.UUID):  # noqa: ANN001
+            self.id = dataset_id
+
+    monkeypatch.setattr(
+        connectors_module,
+        "_resolve_writable_dataset",
+        lambda *_a, **_k: _Dataset(dataset_id),
+        raising=True,
+    )
+
+    app = FastAPI()
+    app.dependency_overrides[get_db] = _override_get_db
+    app.dependency_overrides[get_tenant_id] = _override_get_tenant_id
+    app.dependency_overrides[get_current_account_id] = _override_get_current_account_id
+    app.post("/api/v1/connectors/runs", status_code=201, response_model=ConnectorRunOut)(create_connector_run)
+    client = TestClient(app)
+
+    res = client.post(
+        "/api/v1/connectors/runs",
+        json={
+            "connector_id": "web_crawl",
+            "dataset_id": str(dataset_id),
+            "config": {
+                "start_urls": ["https://example.com"],
+                "auth": {"type": "bearer", "token": "secret-token"},
+                "max_pages": 1,
+                "max_depth": 0,
+            },
+        },
+    )
+    assert res.status_code == 201, res.text
+    body = res.json()
+    cfg = body.get("config") or {}
+    assert cfg.get("auth", {}).get("token") == "<redacted>"
 
