@@ -27,6 +27,7 @@ from app.api.schemas.feedback import (
 )
 from app.api.schemas.regression import RagasRegressionCaseOut
 from app.services.dataset_service import DatasetService
+from app.services.audit_log_service import audit_log_event
 
 router = APIRouter(tags=["Feedback"])
 
@@ -301,6 +302,27 @@ async def create_regression_case_from_feedback(
         created_by=account_id,
     )
     db.add(row)
+    try:
+        db.flush()
+    except Exception:
+        pass
+
+    # Best-effort audit log (commit in the same transaction).
+    audit_log_event(
+        db,
+        tenant_id=tenant_id,
+        actor_id=account_id,
+        action="regression.case.create_from_feedback",
+        resource_type="regression_case",
+        resource_id=str(getattr(row, "id", "") or ""),
+        details={
+            "feedback_id": str(fb.id),
+            "message_id": str(fb.message_id),
+            "rating": int(fb.rating),
+            "dataset_id": str(dataset_id) if dataset_id else None,
+            "document_count": len(doc_ids),
+        },
+    )
     db.commit()
     db.refresh(row)
     return row

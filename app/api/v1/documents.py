@@ -3159,7 +3159,160 @@ async def activate_document_version(
     document.error_message = None
     db.commit()
     db.refresh(document)
+
+    # Best-effort audit log (commit separately; never block response).
+    audit_log_event(
+        db,
+        tenant_id=tenant_id,
+        actor_id=account_id,
+        action="document.version.activate",
+        resource_type="document",
+        resource_id=str(document_id),
+        details={
+            "pipeline_hash": pipeline_hash_norm,
+        },
+    )
+    try:
+        db.commit()
+    except Exception:
+        db.rollback()
     return document
+
+
+@router.delete("/{document_id}/versions/{pipeline_hash}", status_code=204)
+async def delete_document_version(
+    document_id: uuid.UUID,
+    pipeline_hash: str,
+    tenant_id: UUID = Depends(get_tenant_id),
+    account_id: str = Depends(get_current_account_id),
+    db: Session = Depends(get_db),
+):
+    """
+    Delete a non-active document pipeline version (best-effort cleanup).
+
+    Notes:
+    - This deletes DB chunks for the requested pipeline_hash and best-effort removes
+      vectors/BM25 index entries for that version.
+    - The currently-active version cannot be deleted (use activate to switch first).
+    - This endpoint is intended for ops/debug cleanup; it does not re-run processing.
+    """
+    DatasetService.ensure_member(db, tenant_id, account_id)
+
+    document = (
+        db.query(DBDocument)
+        .filter(DBDocument.id == document_id, DBDocument.tenant_id == tenant_id)
+        .first()
+    )
+    if not document:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    if document.dataset_id:
+        ds = DatasetService.get_dataset(db, tenant_id, document.dataset_id)
+        DatasetService.assert_dataset_writable(db, ds, account_id)
+
+    pipeline_hash_norm = str(pipeline_hash or "").strip()
+    if not pipeline_hash_norm:
+        raise HTTPException(status_code=400, detail="pipeline_hash is required")
+    if len(pipeline_hash_norm) > 64:
+        raise HTTPException(status_code=400, detail="pipeline_hash too long")
+
+    # Guard: do not delete versions while processing the same target version.
+    doc_status = str(getattr(document, "status", "") or "").lower()
+    meta = dict(getattr(document, "doc_metadata", None) or {})
+    current_hash = str(meta.get("pipeline_hash") or "").strip()
+    if doc_status in {"pending", "processing"} and current_hash == pipeline_hash_norm:
+        raise HTTPException(status_code=409, detail="Cannot delete the current in-progress pipeline version")
+
+    active_hash = str(meta.get("active_pipeline_hash") or meta.get("pipeline_hash") or "").strip()
+    if active_hash and pipeline_hash_norm == active_hash:
+        raise HTTPException(status_code=409, detail="Cannot delete the active pipeline version (activate another first)")
+
+    target_key = f"{document_id}:{pipeline_hash_norm}"
+
+    # Resolve chunk ids for this version (supports non-Postgres backends).
+    chunk_ids: list[UUID] = []
+    try:
+        rows = (
+            db.query(DocumentChunk.id)
+            .filter(
+                DocumentChunk.tenant_id == tenant_id,
+                DocumentChunk.document_id == document_id,
+                DocumentChunk.doc_metadata["doc_pipeline_key"].astext == target_key,  # type: ignore[attr-defined]
+            )
+            .all()
+        )
+        chunk_ids = [cid for (cid,) in rows if isinstance(cid, UUID)]
+    except Exception:
+        # Fallback: scan doc_metadata dicts in Python (slower but safe).
+        rows = (
+            db.query(DocumentChunk.id, DocumentChunk.doc_metadata)
+            .filter(
+                DocumentChunk.tenant_id == tenant_id,
+                DocumentChunk.document_id == document_id,
+            )
+            .all()
+        )
+        for cid, cmeta in rows:
+            m = cmeta if isinstance(cmeta, dict) else {}
+            key = str(m.get("doc_pipeline_key") or "").strip()
+            if key == target_key:
+                chunk_ids.append(cid)
+
+    if not chunk_ids:
+        raise HTTPException(status_code=404, detail="Document version not found (no chunks for this pipeline_hash)")
+
+    # Best-effort: remove vectors/BM25 entries for the version.
+    with contextlib.suppress(Exception):
+        from app.storage.vector.factory import get_vector_store
+
+        get_vector_store().delete_by_document_id_and_filter(
+            document_id=document_id,
+            tenant_id=tenant_id,
+            metadata_filter={"doc_pipeline_key": {"$eq": target_key}},
+        )
+    with contextlib.suppress(Exception):
+        from app.rag.retriever import hybrid_retriever
+
+        hybrid_retriever.remove_from_bm25_index_by_metadata_filter(
+            tenant_id=tenant_id,
+            metadata_filter={"doc_pipeline_key": {"$eq": target_key}},
+        )
+
+    # Delete DB chunks for the version.
+    db.query(DocumentChunk).filter(
+        DocumentChunk.tenant_id == tenant_id,
+        DocumentChunk.document_id == document_id,
+        DocumentChunk.id.in_(chunk_ids),
+    ).delete(synchronize_session=False)
+
+    # If the deleted version was the "current pipeline" (but not active), reset it to active for safety.
+    if current_hash and current_hash == pipeline_hash_norm:
+        if active_hash:
+            meta["pipeline_hash"] = active_hash
+        else:
+            meta.pop("pipeline_hash", None)
+        document.doc_metadata = meta
+
+    db.commit()
+
+    # Best-effort audit log (commit separately; never block deletion).
+    audit_log_event(
+        db,
+        tenant_id=tenant_id,
+        actor_id=account_id,
+        action="document.version.delete",
+        resource_type="document",
+        resource_id=str(document_id),
+        details={
+            "pipeline_hash": pipeline_hash_norm,
+            "deleted_chunk_count": len(chunk_ids),
+        },
+    )
+    try:
+        db.commit()
+    except Exception:
+        db.rollback()
+    return Response(status_code=204)
 
 
 @router.get("/{document_id}/chunks", response_model=DocumentChunkList)
@@ -3776,6 +3929,7 @@ async def retry_document_processing(
     document_id: uuid.UUID,
     background_tasks: BackgroundTasks,
     force: bool = False,
+    skip_if_unchanged: bool = False,
     tenant_id: UUID = Depends(get_tenant_id),
     account_id: str = Depends(get_current_account_id),
     db: Session = Depends(get_db),
@@ -3810,6 +3964,80 @@ async def retry_document_processing(
     raw_path = str(document.file_path or "").strip()
     if not raw_path or raw_path.startswith("manual://"):
         raise HTTPException(status_code=409, detail="Document file is not reprocessable")
+
+    # Optional: skip wasteful reprocessing for completed docs when nothing changes.
+    # We require file_sha256 to be present to avoid surprising behavior for legacy docs.
+    if skip_if_unchanged and current_status == "completed" and force:
+        meta0 = dict(document.doc_metadata or {})
+        file_sha = str(meta0.get("file_sha256") or "").strip().lower()
+        # Backward-compatible: a completed doc is considered "active-ready".
+        ready0 = (
+            bool(meta0.get("active_pipeline_ready"))
+            if "active_pipeline_ready" in meta0
+            else True
+        )
+        active0 = str(meta0.get("active_pipeline_hash") or meta0.get("pipeline_hash") or "").strip()
+        if file_sha and ready0 and active0:
+            try:
+                computed0 = _compute_pipeline_hash(meta0)
+            except Exception:
+                computed0 = ""
+            if computed0 and computed0 == active0:
+                # Ensure chunks exist for the active version before skipping.
+                target_key = f"{document_id}:{active0}"
+                exists = None
+                try:
+                    exists = (
+                        db.query(DocumentChunk.id)
+                        .filter(
+                            DocumentChunk.tenant_id == tenant_id,
+                            DocumentChunk.document_id == document_id,
+                            DocumentChunk.doc_metadata["doc_pipeline_key"].astext == target_key,  # type: ignore[attr-defined]
+                        )
+                        .limit(1)
+                        .first()
+                    )
+                except Exception:
+                    # Non-Postgres fallback: scan a small window of chunk metadata.
+                    exists = None
+                    rows = (
+                        db.query(DocumentChunk.doc_metadata)
+                        .filter(
+                            DocumentChunk.tenant_id == tenant_id,
+                            DocumentChunk.document_id == document_id,
+                        )
+                        .limit(200)
+                        .all()
+                    )
+                    for (cmeta,) in rows:
+                        m = cmeta if isinstance(cmeta, dict) else {}
+                        key = str(m.get("doc_pipeline_key") or "").strip()
+                        if key == target_key:
+                            exists = True
+                            break
+
+                if exists:
+                    # Best-effort audit log (commit separately; never block response).
+                    audit_log_event(
+                        db,
+                        tenant_id=tenant_id,
+                        actor_id=account_id,
+                        action="document.retry.skipped",
+                        resource_type="document",
+                        resource_id=str(document_id),
+                        details={"reason": "unchanged", "pipeline_hash": active0},
+                    )
+                    try:
+                        db.commit()
+                    except Exception:
+                        db.rollback()
+                    return {
+                        "id": document.id,
+                        "status": document.status,
+                        "processing_progress": document.processing_progress,
+                        "current_stage": document.current_stage,
+                        "error_message": document.error_message,
+                    }
 
     object_name: str | None = None
     file_path: Path | None = None

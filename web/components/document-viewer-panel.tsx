@@ -53,7 +53,7 @@ function highlightText(content: string, query: string) {
 }
 
 export function DocumentViewerPanel() {
-  const { isOpen, documentId, highlightChunkId, closeDocument, activeTab, setActiveTab, setHighlightChunk } = useDocumentView()
+  const { isOpen, documentId, highlightChunkId, highlightRange, closeDocument, activeTab, setActiveTab, setHighlightChunk } = useDocumentView()
   const [doc, setDoc] = React.useState<Document | null>(null)
   const [chunks, setChunks] = React.useState<DocumentChunk[]>([])
   const [isLoading, setIsLoading] = React.useState(false)
@@ -420,12 +420,18 @@ export function DocumentViewerPanel() {
     return url.toString()
   }, [documentId])
 
-  const buildChunkLink = React.useCallback((chunkId: string) => {
+  const buildChunkLink = React.useCallback((chunkId: string, range?: { start?: number | null; end?: number | null }) => {
     if (!documentId) return ""
     try {
       const url = new URL("/", window.location.origin)
       url.searchParams.set("doc", documentId)
       url.searchParams.set("chunk", chunkId)
+      const start = range?.start
+      const end = range?.end
+      if (typeof start === "number" && Number.isFinite(start) && typeof end === "number" && Number.isFinite(end) && end > start) {
+        url.searchParams.set("start", String(Math.trunc(start)))
+        url.searchParams.set("end", String(Math.trunc(end)))
+      }
       return url.toString()
     } catch {
       return ""
@@ -792,6 +798,7 @@ export function DocumentViewerPanel() {
                        text={textValue}
                        chunks={textMode === "cleaned" ? textChunkItems : []}
                        activeChunkIndex={textMode === "cleaned" ? textActiveChunkIndex : null}
+                       activeRange={textMode === "cleaned" ? (highlightRange ?? null) : null}
                        onSelectChunkIndex={(chunkIndex) => {
                          const target =
                            chunks.find((c) => c.chunk_index === chunkIndex) ||
@@ -964,7 +971,15 @@ export function DocumentViewerPanel() {
                                      variant="ghost"
                                      size="icon"
                                      className="h-7 w-7"
-                                     onClick={() => copyText(buildChunkLink(highlightChunk.id), "已复制定位链接")}
+                                    onClick={() =>
+                                      copyText(
+                                        buildChunkLink(highlightChunk.id, {
+                                          start: typeof highlightChunk.start_char === "number" ? highlightChunk.start_char : null,
+                                          end: typeof highlightChunk.end_char === "number" ? highlightChunk.end_char : null,
+                                        }),
+                                        "已复制定位链接"
+                                      )
+                                    }
                                      aria-label="复制定位链接"
                                      title="复制定位链接"
                                    >
@@ -1051,7 +1066,15 @@ export function DocumentViewerPanel() {
                                         variant="ghost"
                                         size="icon"
                                         className="h-7 w-7"
-                                        onClick={() => copyText(buildChunkLink(chunk.id), "已复制定位链接")}
+                                        onClick={() =>
+                                          copyText(
+                                            buildChunkLink(chunk.id, {
+                                              start: typeof chunk.start_char === "number" ? chunk.start_char : null,
+                                              end: typeof chunk.end_char === "number" ? chunk.end_char : null,
+                                            }),
+                                            "已复制定位链接"
+                                          )
+                                        }
                                         aria-label="复制定位链接"
                                         title="复制定位链接"
                                       >

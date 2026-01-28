@@ -14,7 +14,14 @@ from app.core.database import SessionLocal
 from app.core.config import settings
 from app.api.dependencies.tenant import get_tenant_id
 from app.api.dependencies.auth import get_current_account_id
-from app.api.schemas.dataset import DatasetCreate, DatasetUpdate, DatasetOut, DatasetListResponse, DatasetRAGDefaults
+from app.api.schemas.dataset import (
+    DatasetCreate,
+    DatasetUpdate,
+    DatasetOut,
+    DatasetListResponse,
+    DatasetRAGDefaults,
+    DatasetIngestionStats,
+)
 from app.api.schemas.document import DocumentPipelineOptions
 from app.api.schemas.ingestion_policy import IngestionPolicy, IngestionPolicyImportResponse
 from app.api.schemas.dataset_profile import (
@@ -27,7 +34,7 @@ from app.api.schemas.dataset_profile import (
 from app.models.dataset import DatasetPermissionEnum, DatasetPermission
 from app.services.dataset_service import DatasetService, DatasetPermissionService
 from app.models.dataset import Dataset
-from app.models.document import Document as DBDocument
+from app.models.document import Document as DBDocument, DocumentPermission
 from app.models.dataset_profile_scan import DatasetProfileScanRun as DBDatasetProfileScanRun
 from app.models.dataset_precheck_scan import DatasetPrecheckScanRun as DBDatasetPrecheckScanRun
 from app.services.pipeline_config import build_pipeline_metadata, parse_pipeline_from_metadata
@@ -45,6 +52,7 @@ from app.services.dataset_profile_service import compute_dataset_profile_summary
 from app.services.audit_log_service import audit_log_event
 from app.services.dataset_profile_scan_runner import run_dataset_profile_deep_scan
 from app.services.report_html import render_dataset_profile_html
+from sqlalchemy import func, and_, or_
 
 router = APIRouter()
 
@@ -108,6 +116,81 @@ def _dataset_prompt_defaults_out(ds: Dataset) -> tuple[UUID | None, str | None, 
     ab_key = str(raw_ab).strip() if isinstance(raw_ab, str) and raw_ab.strip() else None
 
     return prompt_id, prompt_key, ab_key
+
+
+@router.get("/{dataset_id}/ingestion/stats", response_model=DatasetIngestionStats)
+def get_dataset_ingestion_stats(
+    dataset_id: UUID,
+    tenant_id: UUID = Depends(get_tenant_id),
+    account_id: str = Depends(get_current_account_id),
+    db: Session = Depends(get_db),
+):
+    """
+    Lightweight dataset ingestion stats (documents/chunks/chars/status breakdown).
+
+    Notes:
+    - Enforces dataset read permission.
+    - Applies document-level ACL filtering for non-owners ("security trimming").
+    """
+    DatasetService.ensure_member(db, tenant_id, account_id)
+    ds = DatasetService.get_dataset(db, tenant_id, dataset_id)
+    DatasetService.assert_dataset_readable(db, ds, account_id)
+
+    query = db.query(DBDocument).filter(
+        DBDocument.tenant_id == tenant_id,
+        DBDocument.dataset_id == dataset_id,
+    )
+
+    # Document-level ACL filter (dataset owner bypass).
+    if str(getattr(ds, "owner_id", "") or "") != str(account_id or ""):
+        doc_perm_subq = (
+            db.query(DocumentPermission.document_id)
+            .filter(
+                DocumentPermission.tenant_id == tenant_id,
+                DocumentPermission.account_id == account_id,
+            )
+            .subquery()
+        )
+        query = query.filter(
+            or_(
+                DBDocument.access_mode.is_(None),
+                DBDocument.access_mode.in_(["inherit", "all_team_members"]),
+                DBDocument.owner_id == account_id,
+                and_(
+                    DBDocument.access_mode == "partial_members",
+                    DBDocument.id.in_(doc_perm_subq),
+                ),
+            )
+        )
+
+    status_rows = (
+        query.with_entities(DBDocument.status, func.count(DBDocument.id))
+        .group_by(DBDocument.status)
+        .all()
+    )
+    by_status = {str(status): int(count) for status, count in status_rows if status is not None}
+    total_docs = int(sum(by_status.values()))
+
+    sums = query.with_entities(
+        func.coalesce(func.sum(DBDocument.chunk_count), 0),
+        func.coalesce(func.sum(DBDocument.file_size), 0),
+        func.coalesce(func.sum(DBDocument.total_characters), 0),
+        func.max(DBDocument.processed_at),
+    ).one()
+    total_chunks = int(sums[0] or 0)
+    total_size = int(sums[1] or 0)
+    total_chars = int(sums[2] or 0)
+    last_processed_at = sums[3]
+
+    return DatasetIngestionStats(
+        dataset_id=dataset_id,
+        total_documents=total_docs,
+        by_status=by_status,
+        total_chunks=total_chunks,
+        total_size=total_size,
+        total_characters=total_chars,
+        last_processed_at=last_processed_at,
+    )
 
 
 _ALLOWED_PARSER_DEFAULTS = set(ParserFactory.SUPPORTED_PDF_BACKENDS) | set(ParserFactory.SUPPORTED_NON_PDF_BACKENDS)

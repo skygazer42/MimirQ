@@ -20,6 +20,7 @@ from app.api.dependencies.tenant import get_tenant_id
 from app.core.database import get_db
 from app.models.chat import Message
 from app.services.dataset_service import DatasetService
+from app.services.quota_service import check_chat_assistant_token_quota
 
 router = APIRouter()
 
@@ -45,6 +46,54 @@ class ChatTokenUsageSummary(BaseModel):
     total_assistant_messages: int
     total_assistant_tokens: int
     by_dataset: List[ChatTokenUsageRow]
+
+
+class ChatTokenQuotaStatus(BaseModel):
+    enabled: bool
+    mode: str
+    limit: int
+    used: int
+    remaining: int
+    exceeded: bool
+    window_hours: int
+    window_start: datetime
+    window_end: datetime
+
+
+@router.get("/chat/tokens/quota", response_model=ChatTokenQuotaStatus)
+def get_chat_token_quota_status(
+    tenant_id: UUID = Depends(get_tenant_id),
+    account_id: str = Depends(get_current_account_id),
+    db: Session = Depends(get_db),
+):
+    """
+    Return the current rolling assistant-token quota status for this tenant.
+
+    Intended for admin dashboards and operational visibility.
+    """
+    _ensure_admin(db, tenant_id, account_id)
+
+    now = datetime.now(timezone.utc)
+    meta = check_chat_assistant_token_quota(db, tenant_id=tenant_id)
+    enabled = bool(meta.get("enabled"))
+    limit = int(meta.get("limit") or 0)
+    used = int(meta.get("used") or 0)
+    window_hours = int(meta.get("window_hours") or 24)
+    mode = str(meta.get("mode") or "block")
+    exceeded = bool(meta.get("exceeded")) if enabled else False
+    remaining = max(0, limit - used) if enabled and limit > 0 else 0
+    window_start = now - timedelta(hours=max(1, window_hours))
+    return ChatTokenQuotaStatus(
+        enabled=enabled,
+        mode=mode,
+        limit=limit,
+        used=used,
+        remaining=remaining,
+        exceeded=exceeded,
+        window_hours=window_hours,
+        window_start=window_start,
+        window_end=now,
+    )
 
 
 @router.get("/chat/tokens/summary", response_model=ChatTokenUsageSummary)
@@ -112,4 +161,3 @@ def get_chat_token_usage_summary(
         total_assistant_tokens=total_tokens,
         by_dataset=items,
     )
-

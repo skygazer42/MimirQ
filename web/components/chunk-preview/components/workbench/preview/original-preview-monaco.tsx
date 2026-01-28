@@ -91,10 +91,11 @@ export function OriginalPreviewMonaco(props: {
   text: string
   chunks: ChunkPreviewItem[]
   activeChunkIndex: number | null
+  activeRange?: { start: number; end: number } | null
   chunkOverrides?: Record<number, { disabled?: boolean }>
   onSelectChunkIndex?: (index: number) => void
 }) {
-  const { text, chunks, activeChunkIndex, chunkOverrides, onSelectChunkIndex } = props
+  const { text, chunks, activeChunkIndex, activeRange, chunkOverrides, onSelectChunkIndex } = props
 
   const editorRef = useRef<any>(null)
   const monacoRef = useRef<any>(null)
@@ -155,19 +156,30 @@ export function OriginalPreviewMonaco(props: {
 
     const textLen = text.length
     const chunk = activeChunkIndex != null ? chunks[activeChunkIndex] : null
-    if (!chunk) {
+    const explicitStartRaw = activeRange?.start
+    const explicitEndRaw = activeRange?.end
+    const explicitStart =
+      typeof explicitStartRaw === 'number' && Number.isFinite(explicitStartRaw) ? Math.trunc(explicitStartRaw) : null
+    const explicitEnd =
+      typeof explicitEndRaw === 'number' && Number.isFinite(explicitEndRaw) ? Math.trunc(explicitEndRaw) : null
+
+    const explicit =
+      explicitStart != null && explicitEnd != null && explicitEnd > explicitStart
+        ? {
+            start: clampOffset(explicitStart, 0, textLen),
+            end: clampOffset(Math.max(explicitStart, explicitEnd), 0, textLen),
+          }
+        : null
+
+    if (!chunk && !explicit) {
       activeDecorationIdsRef.current = editor.deltaDecorations(activeDecorationIdsRef.current, [])
       return
     }
 
-    const activeStart = clampOffset(Number(chunk.start_index) || 0, 0, textLen)
-    const activeEnd = clampOffset(Math.max(activeStart, Number(chunk.end_index) || activeStart), 0, textLen)
-    if (activeEnd <= activeStart) {
-      activeDecorationIdsRef.current = editor.deltaDecorations(activeDecorationIdsRef.current, [])
-      return
-    }
+    const activeStart = chunk ? clampOffset(Number(chunk.start_index) || 0, 0, textLen) : 0
+    const activeEnd = chunk ? clampOffset(Math.max(activeStart, Number(chunk.end_index) || activeStart), 0, textLen) : 0
 
-    const parent = resolveParentRange(chunk, chunks)
+    const parent = chunk ? resolveParentRange(chunk, chunks) : null
 
     const decos: any[] = []
     if (parent) {
@@ -185,24 +197,44 @@ export function OriginalPreviewMonaco(props: {
       }
     }
 
-    const s = offsetToPosition(lineStarts, activeStart)
-    const e = offsetToPosition(lineStarts, activeEnd)
-    const activeRange = new monaco.Range(s.lineNumber, s.column, e.lineNumber, e.column)
-    decos.push({
-      range: activeRange,
-      options: {
-        inlineClassName: 'mimirq-monaco-active-highlight',
-      },
-    })
+    let revealRange: any | null = null
+
+    if (chunk && activeEnd > activeStart) {
+      const s = offsetToPosition(lineStarts, activeStart)
+      const e = offsetToPosition(lineStarts, activeEnd)
+      const chunkRange = new monaco.Range(s.lineNumber, s.column, e.lineNumber, e.column)
+      decos.push({
+        range: chunkRange,
+        options: {
+          inlineClassName: 'mimirq-monaco-active-highlight',
+        },
+      })
+      revealRange = chunkRange
+    }
+
+    if (explicit && explicit.end > explicit.start) {
+      const s = offsetToPosition(lineStarts, explicit.start)
+      const e = offsetToPosition(lineStarts, explicit.end)
+      const explicitRange = new monaco.Range(s.lineNumber, s.column, e.lineNumber, e.column)
+      decos.push({
+        range: explicitRange,
+        options: {
+          inlineClassName: 'mimirq-monaco-citation-highlight',
+        },
+      })
+      revealRange = explicitRange
+    }
 
     activeDecorationIdsRef.current = editor.deltaDecorations(activeDecorationIdsRef.current, decos)
 
     try {
-      editor.revealRangeInCenter(activeRange, monaco.editor.ScrollType.Smooth)
+      if (revealRange) {
+        editor.revealRangeInCenter(revealRange, monaco.editor.ScrollType.Smooth)
+      }
     } catch {
       // no-op
     }
-  }, [activeChunkIndex, chunks, lineStarts, text.length])
+  }, [activeChunkIndex, activeRange, chunks, lineStarts, text.length])
 
   useEffect(() => {
     applyOverviewDecorations()
@@ -274,8 +306,12 @@ export function OriginalPreviewMonaco(props: {
           border-radius: 2px;
           box-shadow: inset 0 0 0 1px rgba(59, 130, 246, 0.25);
         }
+        .mimirq-monaco-citation-highlight {
+          background: rgba(245, 158, 11, 0.22);
+          border-radius: 2px;
+          box-shadow: inset 0 0 0 1px rgba(245, 158, 11, 0.35);
+        }
       `}</style>
     </div>
   )
 }
-

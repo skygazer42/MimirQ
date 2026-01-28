@@ -17,6 +17,7 @@ interface UseChatOptions {
   structuredOutput?: boolean
   structuredPreset?: string
   enableLongTermMemory?: boolean
+  enableSummaryMemory?: boolean
   onConversationId?: (conversationId: string) => void
   onError?: (error: string) => void
 }
@@ -92,6 +93,7 @@ export function useChat({
   structuredOutput,
   structuredPreset,
   enableLongTermMemory,
+  enableSummaryMemory,
   onConversationId,
   onError,
 }: UseChatOptions = {}) {
@@ -242,6 +244,7 @@ export function useChat({
           structured_output: Boolean(structuredOutput),
           structured_preset: structuredPreset || undefined,
           enable_long_term_memory: Boolean(enableLongTermMemory),
+          enable_summary_memory: Boolean(enableSummaryMemory),
           rag_config: Object.keys(effectiveRagConfig).length ? effectiveRagConfig : undefined,
         }
 

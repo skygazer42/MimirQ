@@ -24,6 +24,7 @@ import {
   PopoverTrigger,
 } from '@/components/ui/popover'
 import { VoiceModeOverlay } from '@/components/chat/voice-mode-overlay'
+import { ConversationSummaryDialog } from '@/components/chat/conversation-summary-dialog'
 import getCaretCoordinates from 'textarea-caret'
 import { SlashMenu } from '@/components/chat/slash-menu'
 import { globalEventBus } from '@/lib/event-bus'
@@ -65,6 +66,8 @@ export function ChatArea({
   const [structuredOutput, setStructuredOutput] = useState(false)
   const [structuredPreset, setStructuredPreset] = useState<string>('')
   const [enableLongTermMemory, setEnableLongTermMemory] = useState(false)
+  const [enableSummaryMemory, setEnableSummaryMemory] = useState(false)
+  const [summaryDialogOpen, setSummaryDialogOpen] = useState(false)
   const [visibleCount, setVisibleCount] = useState(DEFAULT_VISIBLE_MESSAGES)
   const scrollContainerRef = useRef<HTMLDivElement>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
@@ -172,6 +175,7 @@ export function ChatArea({
     structuredOutput,
     structuredPreset: structuredPreset || undefined,
     enableLongTermMemory,
+    enableSummaryMemory,
     onConversationId,
     onError: (error) => {
       console.error('Chat error:', error)
@@ -509,6 +513,28 @@ export function ChatArea({
                         className="accent-primary h-4 w-4"
                       />
                     </label>
+                    <div className="flex items-center justify-between text-sm hover:bg-secondary/50 p-1 rounded-md transition-colors">
+                      <span className="text-muted-foreground text-xs">启用摘要记忆（持久）</span>
+                      <div className="flex items-center gap-2">
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          className="h-7 px-2 text-[11px] rounded-lg"
+                          onClick={() => setSummaryDialogOpen(true)}
+                          disabled={!conversationId}
+                          title={!conversationId ? '请先发送一条消息生成会话' : '查看/更新摘要'}
+                        >
+                          查看
+                        </Button>
+                        <input
+                          type="checkbox"
+                          checked={enableSummaryMemory}
+                          onChange={(e) => setEnableSummaryMemory(e.target.checked)}
+                          className="accent-primary h-4 w-4"
+                        />
+                      </div>
+                    </div>
                     <label className="flex items-center justify-between text-sm cursor-pointer hover:bg-secondary/50 p-1 rounded-md transition-colors">
                       <span className="text-muted-foreground text-xs">结构化输出</span>
                       <input
@@ -627,6 +653,12 @@ export function ChatArea({
           setVoiceModeOpen(false)
           sendMessage(text)
         }}
+      />
+
+      <ConversationSummaryDialog
+        open={summaryDialogOpen}
+        onOpenChange={setSummaryDialogOpen}
+        conversationId={conversationId}
       />
     </div>
   )

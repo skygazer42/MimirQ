@@ -16,6 +16,7 @@ from app.core.config import settings
 
 
 _QUERY_TOKEN_RE = re.compile(r"[A-Za-z][A-Za-z0-9_+-]{1,}|[\u4e00-\u9fff]{2,}")
+_SENTENCE_BOUNDARIES = {"。", "！", "？", ".", "!", "?", "\n"}
 
 
 def _collapse_ws(text: str) -> str:
@@ -57,6 +58,28 @@ def _find_first_match(text: str, terms: list[str]) -> tuple[int, str] | None:
     return best
 
 
+def _find_prev_boundary(text: str, *, start: int, end: int) -> int:
+    """Return the last sentence-boundary position in [start, end), or -1."""
+    best = -1
+    for ch in _SENTENCE_BOUNDARIES:
+        pos = text.rfind(ch, start, end)
+        if pos > best:
+            best = pos
+    return best
+
+
+def _find_next_boundary(text: str, *, start: int, end: int) -> int | None:
+    """Return the first sentence-boundary position in [start, end), or None."""
+    best: int | None = None
+    for ch in _SENTENCE_BOUNDARIES:
+        pos = text.find(ch, start, end)
+        if pos < 0:
+            continue
+        if best is None or pos < best:
+            best = pos
+    return best
+
+
 def _build_snippet(text: str, query: str | None, *, max_chars: int = 220) -> tuple[str, list[str]]:
     max_chars = max(60, int(max_chars or 0))
     clean = _collapse_ws(text)
@@ -74,9 +97,20 @@ def _build_snippet(text: str, query: str | None, *, max_chars: int = 220) -> tup
     idx, _ = hit
     before = max_chars // 3
     after = max_chars - before
-    start = max(0, idx - before)
-    end = min(len(clean), idx + after)
-    snippet = clean[start:end]
+    base_start = max(0, idx - before)
+    base_end = min(len(clean), idx + after)
+
+    # Prefer sentence-level windows for readability, while keeping the same max_chars budget.
+    start = base_start
+    end = base_end
+    prev = _find_prev_boundary(clean, start=base_start, end=idx)
+    if prev >= 0:
+        start = min(max(base_start, prev + 1), len(clean))
+    nxt = _find_next_boundary(clean, start=idx, end=base_end)
+    if nxt is not None:
+        end = min(max(start, nxt + 1), len(clean))
+
+    snippet = clean[start:end].strip() or clean[base_start:base_end]
     if start > 0:
         snippet = "..." + snippet
     if end < len(clean):

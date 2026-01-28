@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { toast } from 'sonner'
-import { ArrowLeft, BarChart3, Download, FileUp, Loader2, Plus, RefreshCw, Save, Settings2, Sparkles, Table2, Trash2 } from 'lucide-react'
+import { ArrowLeft, BarChart3, Download, FileUp, Loader2, Plus, RefreshCw, Save, Scissors, Settings2, Sparkles, Table2, Trash2 } from 'lucide-react'
 
 import { AppFrame } from '@/components/app-frame'
 import { PageScaffold } from '@/components/ui/page-scaffold'
@@ -17,12 +17,13 @@ import { Textarea } from '@/components/ui/textarea'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { StatCard, StatsGrid } from '@/components/ui/stats-card'
 
 import { datasetApi, pipelineApi } from '@/lib/api-client'
 import { formatApiError } from '@/lib/api-errors'
 import { cn } from '@/lib/utils'
 import { usePipelineCapabilities } from '@/contexts/pipeline-capabilities-context'
-import type { Dataset, GovernanceProfileSummary, IngestionPolicy, IngestionRule, IngestionPreviewResponse } from '@/types'
+import type { Dataset, DatasetIngestionStats, GovernanceProfileSummary, IngestionPolicy, IngestionRule, IngestionPreviewResponse } from '@/types'
 
 const NONE = '__none__'
 
@@ -597,6 +598,7 @@ export default function DatasetIngestionPolicyPage() {
   const { capabilities } = usePipelineCapabilities()
 
   const [dataset, setDataset] = useState<Dataset | null>(null)
+  const [ingestionStats, setIngestionStats] = useState<DatasetIngestionStats | null>(null)
   const [policy, setPolicy] = useState<IngestionPolicy | null>(null)
   const [profiles, setProfiles] = useState<GovernanceProfileSummary[]>([])
   const [loading, setLoading] = useState(false)
@@ -635,12 +637,14 @@ export default function DatasetIngestionPolicyPage() {
     if (!datasetId) return
     setLoading(true)
     try {
-      const [ds, pol] = await Promise.all([
+      const [ds, pol, stats] = await Promise.all([
         datasetApi.get(datasetId),
         datasetApi.getIngestionPolicy(datasetId),
+        datasetApi.getIngestionStats(datasetId).catch(() => null),
       ])
       setDataset(ds)
       setPolicy(pol)
+      setIngestionStats(stats)
     } catch (e: any) {
       console.error('Failed to load dataset ingestion policy', e)
       toast.error(formatApiError(e, '加载入库策略失败'))
@@ -861,6 +865,39 @@ export default function DatasetIngestionPolicyPage() {
         }
       >
         <div className="space-y-6">
+          {ingestionStats ? (
+            <StatsGrid className="mt-2">
+              <StatCard
+                icon={FileUp}
+                label="文档数"
+                value={ingestionStats.total_documents}
+                subValue={`completed ${(ingestionStats.by_status?.completed || 0) as number} · failed ${(ingestionStats.by_status?.failed || 0) as number}`}
+                color="sky"
+              />
+              <StatCard
+                icon={Scissors}
+                label="切片数"
+                value={ingestionStats.total_chunks}
+                subValue="sum(chunk_count)"
+                color="teal"
+              />
+              <StatCard
+                icon={BarChart3}
+                label="总字符数"
+                value={ingestionStats.total_characters}
+                subValue="sum(total_characters)"
+                color="amber"
+              />
+              <StatCard
+                icon={RefreshCw}
+                label="最近入库"
+                value={ingestionStats.last_processed_at ? new Date(ingestionStats.last_processed_at).toLocaleString() : '—'}
+                subValue="processed_at"
+                color="green"
+              />
+            </StatsGrid>
+          ) : null}
+
           <Panel variant="glass" className="overflow-hidden">
             <div className="px-5 py-4 border-b border-border/60 flex items-center justify-between">
               <div className="min-w-0">

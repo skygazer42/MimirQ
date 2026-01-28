@@ -30,6 +30,7 @@ import {
   LogOut,
   PanelLeftClose,
   PanelLeftOpen,
+  Coins,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { StatusBadge } from '@/components/ui/status-badge'
@@ -86,6 +87,8 @@ const menuSections: Array<{ title: string; items: MenuItem[] }> = [
     title: '系统',
     items: [
       { icon: Activity, label: '诊断', href: '/diagnostics' },
+      { icon: Coins, label: '用量/配额', href: '/usage' },
+      { icon: ShieldCheck, label: '审计日志', href: '/audit' },
       { icon: Settings, label: '设置', href: '/settings' },
     ],
   },

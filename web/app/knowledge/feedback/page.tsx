@@ -1,9 +1,9 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useRouter } from 'next/navigation'
-import { Star, RefreshCw, Search, ArrowUpRight, Copy, MessageSquare, Loader2, ThumbsUp, ThumbsDown, ArrowRight } from 'lucide-react'
+import { Star, RefreshCw, Search, ArrowUpRight, ArrowRight, Copy, MessageSquare, Loader2, ThumbsUp, ThumbsDown, TestTube2 } from 'lucide-react'
 import { toast } from 'sonner'
 
 import { AppFrame } from '@/components/app-frame'
@@ -52,6 +52,8 @@ export default function FeedbackTriagePage() {
   const [filterType, setFilterType] = useState<FeedbackTypeFilter>('all')
   const [searchTerm, setSearchTerm] = useState('')
   const [detail, setDetail] = useState<MessageFeedbackEnriched | null>(null)
+  const [creatingCase, setCreatingCase] = useState(false)
+  const [createdCaseId, setCreatedCaseId] = useState<string | null>(null)
 
   const params = useMemo(() => {
     const p: any = {}
@@ -119,6 +121,12 @@ export default function FeedbackTriagePage() {
       toast.error(formatApiError(err, '复制失败'))
     }
   }
+
+  // Reset per-detail UI state.
+  useEffect(() => {
+    setCreatedCaseId(null)
+    setCreatingCase(false)
+  }, [detail?.id])
 
   return (
     <AppFrame mainClassName="transition-all duration-300">
@@ -383,6 +391,44 @@ export default function FeedbackTriagePage() {
                 </div>
 
                 <div className="flex items-center justify-end gap-3 pt-6 border-t border-slate-200/60 dark:border-slate-800/60">
+                  <Button
+                    variant="outline"
+                    disabled={!detail?.id || creatingCase}
+                    onClick={async () => {
+                      if (!detail?.id) return
+                      setCreatingCase(true)
+                      try {
+                        const rc = await feedbackApi.toRegressionCase(detail.id, { include_document_scope: true })
+                        setCreatedCaseId(rc.id)
+                        toast.success('已创建回归用例')
+                      } catch (err: any) {
+                        toast.error(formatApiError(err, '创建回归用例失败'))
+                      } finally {
+                        setCreatingCase(false)
+                      }
+                    }}
+                    className="rounded-full border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800 gap-2"
+                  >
+                    {creatingCase ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none" />
+                    ) : (
+                      <TestTube2 className="h-3.5 w-3.5" />
+                    )}
+                    生成回归用例
+                  </Button>
+
+                  {createdCaseId ? (
+                    <Button
+                      variant="outline"
+                      onClick={() => router.push(`/evaluations?tab=regression`)}
+                      className="rounded-full border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800 gap-2"
+                      title={`case_id=${createdCaseId}`}
+                    >
+                      前往回归测试
+                      <ArrowUpRight className="h-3.5 w-3.5" />
+                    </Button>
+                  ) : null}
+
                   <Button
                     variant="outline"
                     onClick={() => router.push(`/history?id=${encodeURIComponent(detail.conversation_id)}`)}
