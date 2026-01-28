@@ -78,6 +78,25 @@ class Settings(BaseSettings):
     EMBEDDING_CACHE_TTL_SEC: int = 7 * 24 * 3600
     EMBEDDING_CACHE_PREFIX: str = "emb"
 
+    # Chat response cache (Redis; best-effort; safe by default).
+    # Stores fully rendered assistant replies for identical requests (guarded by doc scope + config).
+    CHAT_RESPONSE_CACHE_ENABLED: bool = False
+    CHAT_RESPONSE_CACHE_TTL_SEC: int = 300
+    CHAT_RESPONSE_CACHE_PREFIX: str = "chat"
+    CHAT_RESPONSE_CACHE_MAX_VALUE_BYTES: int = 200_000
+    # Default guardrail: only cache stateless requests (no explicit history).
+    CHAT_RESPONSE_CACHE_REQUIRE_EMPTY_HISTORY: bool = True
+
+    # Usage quotas (best-effort; disabled by default).
+    # Applies per-tenant over a rolling time window.
+    CHAT_ASSISTANT_TOKEN_QUOTA_ENABLED: bool = False
+    CHAT_ASSISTANT_TOKEN_QUOTA_LIMIT: int = 0
+    CHAT_ASSISTANT_TOKEN_QUOTA_WINDOW_HOURS: int = 24
+    # Mode:
+    # - "block": reject new requests with HTTP 429 when exceeded
+    # - "warn": allow but annotate metrics (no enforcement)
+    CHAT_ASSISTANT_TOKEN_QUOTA_MODE: str = "block"
+
     # Vector write batching (Milvus/Chroma/etc). Smaller batches reduce tail latency and memory spikes.
     VECTOR_WRITE_BATCH_SIZE: int = 256
     VECTOR_WRITE_MAX_RETRIES: int = 1
@@ -856,6 +875,19 @@ class Settings(BaseSettings):
 
         if int(getattr(self, "BM25_CACHE_MAX_TENANTS", 0) or 0) < 0:
             raise ValueError("BM25_CACHE_MAX_TENANTS must be >= 0")
+
+        if int(getattr(self, "CHAT_RESPONSE_CACHE_TTL_SEC", 0) or 0) < 0:
+            raise ValueError("CHAT_RESPONSE_CACHE_TTL_SEC must be >= 0")
+        if int(getattr(self, "CHAT_RESPONSE_CACHE_MAX_VALUE_BYTES", 0) or 0) < 0:
+            raise ValueError("CHAT_RESPONSE_CACHE_MAX_VALUE_BYTES must be >= 0")
+
+        if int(getattr(self, "CHAT_ASSISTANT_TOKEN_QUOTA_LIMIT", 0) or 0) < 0:
+            raise ValueError("CHAT_ASSISTANT_TOKEN_QUOTA_LIMIT must be >= 0")
+        if int(getattr(self, "CHAT_ASSISTANT_TOKEN_QUOTA_WINDOW_HOURS", 0) or 0) <= 0:
+            raise ValueError("CHAT_ASSISTANT_TOKEN_QUOTA_WINDOW_HOURS must be > 0")
+        quota_mode = str(getattr(self, "CHAT_ASSISTANT_TOKEN_QUOTA_MODE", "block") or "block").lower()
+        if quota_mode not in {"block", "warn"}:
+            raise ValueError("CHAT_ASSISTANT_TOKEN_QUOTA_MODE must be one of: block, warn")
 
         # Validate workflow mode
         valid_workflow_modes = {"chain", "routing", "parallel", "react", "planner", "evaluator"}

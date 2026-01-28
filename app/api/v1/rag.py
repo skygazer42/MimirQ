@@ -20,6 +20,8 @@ from app.api.schemas.chat import ChatRAGConfig, HistoryMessage
 from app.core.config import settings
 from app.core.database import get_db
 from app.services.document_access import filter_allowed_document_ids, list_accessible_document_ids
+from app.services.dataset_defaults import load_dataset_metadata, resolve_single_dataset_id_for_documents
+from app.services.rag_defaults import merge_rag_config_with_dataset_defaults
 
 router = APIRouter()
 
@@ -55,22 +57,41 @@ async def retrieve_preview(
 
     from app.rag.pipelines.langgraph import _retrieve_node  # internal reuse
 
+    # Dataset-level default RAG config (best-effort): apply only when all docs share one dataset_id.
+    effective_rag_config = body.rag_config
+    dataset_rag_defaults_applied_fields: list[str] = []
+    rag_fields_set = set(getattr(body.rag_config, "model_fields_set", set()) or set())
+    if "rag_config" not in set(getattr(body, "model_fields_set", set()) or set()):
+        rag_fields_set = set()
+    try:
+        ds_id = resolve_single_dataset_id_for_documents(db, tenant_id=tenant_id, document_ids=allowed_doc_ids)
+        if ds_id is not None:
+            ds_meta = load_dataset_metadata(db, tenant_id=tenant_id, dataset_id=ds_id)
+            raw_defaults = ds_meta.get("rag_defaults") if isinstance(ds_meta, dict) else None
+            effective_rag_config, dataset_rag_defaults_applied_fields = merge_rag_config_with_dataset_defaults(
+                rag_config=effective_rag_config,
+                request_fields_set=rag_fields_set,
+                raw_dataset_defaults=raw_defaults,
+            )
+    except Exception:
+        dataset_rag_defaults_applied_fields = []
+
     state: Dict[str, Any] = {
         "question": body.query,
         "history": [m.model_dump() for m in body.history],
         "document_ids": allowed_doc_ids,
         "tenant_id": tenant_id,
-        "top_k": body.rag_config.top_k,
-        "score_threshold": body.rag_config.score_threshold,
-        "retrieval_mode": body.rag_config.retrieval_mode,
-        "alpha": body.rag_config.alpha,
-        "enable_weight_rerank": body.rag_config.enable_weight_rerank,
-        "vector_weight": body.rag_config.vector_weight,
-        "keyword_weight": body.rag_config.keyword_weight,
-        "mmr_lambda": body.rag_config.mmr_lambda,
-        "enable_reranker": body.rag_config.enable_reranker,
-        "reranker_provider": body.rag_config.reranker_provider,
-        "reranker_top_n": body.rag_config.reranker_top_n,
+        "top_k": effective_rag_config.top_k,
+        "score_threshold": effective_rag_config.score_threshold,
+        "retrieval_mode": effective_rag_config.retrieval_mode,
+        "alpha": effective_rag_config.alpha,
+        "enable_weight_rerank": effective_rag_config.enable_weight_rerank,
+        "vector_weight": effective_rag_config.vector_weight,
+        "keyword_weight": effective_rag_config.keyword_weight,
+        "mmr_lambda": effective_rag_config.mmr_lambda,
+        "enable_reranker": effective_rag_config.enable_reranker,
+        "reranker_provider": effective_rag_config.reranker_provider,
+        "reranker_top_n": effective_rag_config.reranker_top_n,
     }
 
     result = _retrieve_node(state) or {}
@@ -81,7 +102,10 @@ async def retrieve_preview(
     # Ensure minimum fields exist for UI debugging.
     metrics = dict(metrics)
     metrics.setdefault("vector_backend", settings.VECTOR_BACKEND)
-    metrics.setdefault("requested_retrieval_mode", body.rag_config.retrieval_mode)
+    metrics.setdefault("requested_retrieval_mode", effective_rag_config.retrieval_mode)
+    if dataset_rag_defaults_applied_fields:
+        metrics.setdefault("dataset_rag_defaults_applied", True)
+        metrics.setdefault("dataset_rag_defaults_fields", dataset_rag_defaults_applied_fields)
 
     return RetrievePreviewResponse(
         query_for_retrieval=query_for_retrieval,
@@ -131,6 +155,25 @@ async def prompt_preview(
     if not allowed_doc_ids:
         raise HTTPException(status_code=400, detail="No accessible documents for retrieval")
 
+    # Dataset-level default RAG config (best-effort): apply only when all docs share one dataset_id.
+    effective_rag_config = body.rag_config
+    dataset_rag_defaults_applied_fields: list[str] = []
+    rag_fields_set = set(getattr(body.rag_config, "model_fields_set", set()) or set())
+    if "rag_config" not in set(getattr(body, "model_fields_set", set()) or set()):
+        rag_fields_set = set()
+    try:
+        ds_id = resolve_single_dataset_id_for_documents(db, tenant_id=tenant_id, document_ids=allowed_doc_ids)
+        if ds_id is not None:
+            ds_meta = load_dataset_metadata(db, tenant_id=tenant_id, dataset_id=ds_id)
+            raw_defaults = ds_meta.get("rag_defaults") if isinstance(ds_meta, dict) else None
+            effective_rag_config, dataset_rag_defaults_applied_fields = merge_rag_config_with_dataset_defaults(
+                rag_config=effective_rag_config,
+                request_fields_set=rag_fields_set,
+                raw_dataset_defaults=raw_defaults,
+            )
+    except Exception:
+        dataset_rag_defaults_applied_fields = []
+
     from langchain_core.prompts import ChatPromptTemplate
 
     from app.rag.engine import get_rag_engine
@@ -141,17 +184,17 @@ async def prompt_preview(
         history=[m.model_dump() for m in body.history],
         document_ids=allowed_doc_ids,
         tenant_id=tenant_id,
-        top_k=body.rag_config.top_k,
-        score_threshold=body.rag_config.score_threshold,
-        retrieval_mode=body.rag_config.retrieval_mode,
-        alpha=body.rag_config.alpha,
-        enable_weight_rerank=body.rag_config.enable_weight_rerank,
-        vector_weight=body.rag_config.vector_weight,
-        keyword_weight=body.rag_config.keyword_weight,
-        mmr_lambda=body.rag_config.mmr_lambda,
-        enable_reranker=body.rag_config.enable_reranker,
-        reranker_provider=body.rag_config.reranker_provider,
-        reranker_top_n=body.rag_config.reranker_top_n,
+        top_k=effective_rag_config.top_k,
+        score_threshold=effective_rag_config.score_threshold,
+        retrieval_mode=effective_rag_config.retrieval_mode,
+        alpha=effective_rag_config.alpha,
+        enable_weight_rerank=effective_rag_config.enable_weight_rerank,
+        vector_weight=effective_rag_config.vector_weight,
+        keyword_weight=effective_rag_config.keyword_weight,
+        mmr_lambda=effective_rag_config.mmr_lambda,
+        enable_reranker=effective_rag_config.enable_reranker,
+        reranker_provider=effective_rag_config.reranker_provider,
+        reranker_top_n=effective_rag_config.reranker_top_n,
         structured_output=body.structured_output,
         structured_preset=body.structured_preset,
         prompt_template_id=body.prompt_template_id,
@@ -202,7 +245,10 @@ async def prompt_preview(
         raise HTTPException(status_code=400, detail=f"Prompt render failed: {exc}") from exc
 
     metrics.setdefault("vector_backend", settings.VECTOR_BACKEND)
-    metrics.setdefault("requested_retrieval_mode", body.rag_config.retrieval_mode)
+    metrics.setdefault("requested_retrieval_mode", effective_rag_config.retrieval_mode)
+    if dataset_rag_defaults_applied_fields:
+        metrics.setdefault("dataset_rag_defaults_applied", True)
+        metrics.setdefault("dataset_rag_defaults_fields", dataset_rag_defaults_applied_fields)
     metrics["prompt_chars"] = len(prompt_text or "")
     metrics["context_chars"] = len(ctx or "")
     metrics["history_chars"] = len(hist_text or "")

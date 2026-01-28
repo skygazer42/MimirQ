@@ -4,6 +4,7 @@ API v1 routes.
 from fastapi import APIRouter
 from app.api.v1 import (
     auth,
+    audit,
     chat,
     datasets,
     dataset_precheck,
@@ -14,6 +15,7 @@ from app.api.v1 import (
     observability,
     parsing,
     settings,
+    usage,
     evaluations,
     prompt_templates,
     feedback,
@@ -45,3 +47,5 @@ router.include_router(connectors.router, prefix="/connectors", tags=["Connectors
 router.include_router(rag.router, prefix="/rag", tags=["RAG"])
 router.include_router(ragviz.router, prefix="/ragviz", tags=["RAG Visualization (RAGViz)"])
 router.include_router(observability.router, prefix="/observability", tags=["Observability"])
+router.include_router(audit.router, prefix="/audit", tags=["Audit"])
+router.include_router(usage.router, prefix="/usage", tags=["Usage"])

@@ -1102,6 +1102,16 @@ class HybridRetriever(BaseRetriever):
                         meta["source"] = stored_meta.get("source")
                     if (ck.page_number is not None) and not meta.get("page"):
                         meta["page"] = ck.page_number
+                    # Position data enables precise UI highlighting / deep-linking.
+                    if (ck.start_char is not None) and meta.get("start_char") is None:
+                        meta["start_char"] = int(ck.start_char)
+                    if (ck.end_char is not None) and meta.get("end_char") is None:
+                        meta["end_char"] = int(ck.end_char)
+                    if meta.get("chunk_index") is None:
+                        try:
+                            meta["chunk_index"] = int(getattr(ck, "chunk_index", None))
+                        except Exception:
+                            pass
                     if stored_meta.get("parser_backend") and not meta.get("parser_backend"):
                         meta["parser_backend"] = stored_meta.get("parser_backend")
                     if stored_meta.get("doc_type_kwd") and not meta.get("doc_type_kwd"):

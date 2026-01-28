@@ -139,6 +139,22 @@ def build_citations_from_docs(
         chunk_id = getattr(doc, "id", None) or meta.get("chunk_id")
         snippet, matched_terms = _build_snippet(doc.page_content or "", query, max_chars=220)
 
+        start_char = meta.get("start_char")
+        end_char = meta.get("end_char")
+        chunk_index = meta.get("chunk_index")
+        try:
+            start_char = int(start_char) if start_char is not None else None
+        except Exception:
+            start_char = None
+        try:
+            end_char = int(end_char) if end_char is not None else None
+        except Exception:
+            end_char = None
+        try:
+            chunk_index = int(chunk_index) if chunk_index is not None else None
+        except Exception:
+            chunk_index = None
+
         citation: Dict[str, Any] = {
             "chunk_id": chunk_id,
             "document_id": meta.get("document_id"),
@@ -146,11 +162,17 @@ def build_citations_from_docs(
             "chunk_content": snippet or ((doc.page_content or "")[:200] + "..."),
             "matched_terms": matched_terms,
             "page_number": page_number,
+            "chunk_index": chunk_index,
+            "start_char": start_char,
+            "end_char": end_char,
             "header_path": meta.get("header_path") or meta.get("header_context"),
             "chunk_strategy": meta.get("chunk_strategy"),
             "chunk_role": meta.get("chunk_role"),
             "retrieval_role": retrieval_role,
             "neighbor_of": neighbor_of,
+            # Useful for audit/debug and for versioned retrieval UIs.
+            "doc_pipeline_key": meta.get("doc_pipeline_key"),
+            "pipeline_hash": meta.get("pipeline_hash"),
             "relevance_score": round(float(meta.get("score", 0.0) or 0.0), 2),
             "vector_score": round(v_score_raw, 3),
             "bm25_score": round(b_score_raw, 3),
