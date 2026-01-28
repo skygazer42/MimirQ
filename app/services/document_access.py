@@ -230,7 +230,15 @@ def list_accessible_document_ids(
         .filter(DBDocument.tenant_id == tenant_id)
     )
     if status:
-        query = query.filter(DBDocument.status == status)
+        if str(status).lower() == "completed":
+            # Versioning: allow documents that are currently reprocessing/failed/cancelled,
+            # as long as they still have an active pipeline that was completed before.
+            query = query.filter(
+                (DBDocument.status == "completed")
+                | (DBDocument.doc_metadata["active_pipeline_ready"].astext == "true")  # type: ignore[attr-defined]
+            )
+        else:
+            query = query.filter(DBDocument.status == status)
 
     query = query.order_by(DBDocument.updated_at.desc())
     if limit and limit > 0:

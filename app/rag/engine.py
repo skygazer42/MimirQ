@@ -457,6 +457,42 @@ Requirements:
             # Chat history (for prompt + optional query rewrite).
             history_text = format_history_text(history, window=settings.CHAT_HISTORY_WINDOW)
 
+            # Version-aware retrieval scoping:
+            # When a document is reprocessed with a new pipeline_hash, we keep the old pipeline active
+            # until the new run completes. Retrieval must therefore filter by each doc's active version.
+            if db is not None and tenant_id is not None and document_ids:
+                try:
+                    from app.models.document import Document as DBDocument
+
+                    rows = (
+                        db.query(DBDocument.id, DBDocument.status, DBDocument.doc_metadata)
+                        .filter(DBDocument.tenant_id == tenant_id, DBDocument.id.in_(list(document_ids)))
+                        .all()
+                    )
+                    active_keys: list[str] = []
+                    for did, status, meta in rows:
+                        m = meta if isinstance(meta, dict) else {}
+                        ready = (
+                            bool(m.get("active_pipeline_ready"))
+                            if "active_pipeline_ready" in m
+                            else (str(status or "").lower() == "completed")
+                        )
+                        if not ready:
+                            continue
+                        active_hash = str(m.get("active_pipeline_hash") or m.get("pipeline_hash") or "").strip()
+                        if not active_hash:
+                            continue
+                        active_keys.append(f"{did}:{active_hash}")
+
+                    if active_keys:
+                        mf = dict(metadata_filter or {})
+                        # Override user-supplied doc_pipeline_key filters to avoid mixing versions.
+                        mf["doc_pipeline_key"] = {"$in": set(active_keys)}
+                        metadata_filter = mf
+                except Exception:
+                    # Best-effort only; fallback to legacy behavior.
+                    pass
+
             t_all_start = time.time()
             query_for_retrieval = question
             rewrite_elapsed = 0.0

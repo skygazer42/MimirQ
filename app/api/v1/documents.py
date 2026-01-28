@@ -29,6 +29,7 @@ from app.api.schemas.document import (
     DocumentChunkSchema,
     DocumentChunkList,
     DocumentChunkMatchList,
+    DocumentVersionList,
     DocumentStatus,
     DocumentParsePreview,
     ParsedSegment,
@@ -2883,12 +2884,218 @@ async def get_document_parsed_content(
     )
 
 
+@router.get("/{document_id}/versions", response_model=DocumentVersionList)
+async def list_document_versions(
+    document_id: uuid.UUID,
+    tenant_id: UUID = Depends(get_tenant_id),
+    account_id: str = Depends(get_current_account_id),
+    db: Session = Depends(get_db),
+):
+    """
+    List document pipeline versions (keyed by pipeline_hash).
+
+    Notes:
+    - Versions are inferred from persisted chunks (doc_metadata.doc_pipeline_key).
+    - This is best-effort and primarily intended for ops/debug/rollback.
+    """
+    DatasetService.ensure_member(db, tenant_id, account_id)
+
+    document = (
+        db.query(DBDocument)
+        .filter(DBDocument.id == document_id, DBDocument.tenant_id == tenant_id)
+        .first()
+    )
+    if not document:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    ds: Dataset | None = None
+    if document.dataset_id:
+        ds = DatasetService.get_dataset(db, tenant_id, document.dataset_id)
+        DatasetService.assert_dataset_readable(db, ds, account_id)
+    _assert_document_acl_readable(db, tenant_id=tenant_id, account_id=account_id, document=document, dataset=ds)
+
+    doc_meta = dict(document.doc_metadata or {})
+    active_hash = str(doc_meta.get("active_pipeline_hash") or doc_meta.get("pipeline_hash") or "").strip() or None
+    active_key = f"{document_id}:{active_hash}" if active_hash else None
+
+    items = []
+    try:
+        rows = (
+            db.query(
+                DocumentChunk.doc_metadata["pipeline_hash"].astext,  # type: ignore[attr-defined]
+                DocumentChunk.doc_metadata["doc_pipeline_key"].astext,  # type: ignore[attr-defined]
+                func.count(DocumentChunk.id),
+                func.min(DocumentChunk.created_at),
+                func.max(DocumentChunk.created_at),
+            )
+            .filter(
+                DocumentChunk.tenant_id == tenant_id,
+                DocumentChunk.document_id == document_id,
+            )
+            .group_by(
+                DocumentChunk.doc_metadata["pipeline_hash"].astext,  # type: ignore[attr-defined]
+                DocumentChunk.doc_metadata["doc_pipeline_key"].astext,  # type: ignore[attr-defined]
+            )
+            .all()
+        )
+        for pipeline_hash, doc_pipeline_key, cnt, first_at, last_at in rows:
+            ph = str(pipeline_hash or "").strip()
+            key = str(doc_pipeline_key or "").strip() or (f"{document_id}:{ph}" if ph else str(document_id))
+            if not ph:
+                continue
+            items.append(
+                {
+                    "pipeline_hash": ph,
+                    "doc_pipeline_key": key,
+                    "chunk_count": int(cnt or 0),
+                    "first_chunk_at": first_at,
+                    "last_chunk_at": last_at,
+                    "active": bool(active_key and key == active_key),
+                }
+            )
+    except Exception:
+        # Fallback: scan chunks (slower, but works for non-Postgres or JSON operator quirks).
+        rows = (
+            db.query(DocumentChunk.doc_metadata, DocumentChunk.created_at)
+            .filter(DocumentChunk.tenant_id == tenant_id, DocumentChunk.document_id == document_id)
+            .all()
+        )
+        by_key: dict[str, dict] = {}
+        for meta, created_at in rows:
+            m = meta if isinstance(meta, dict) else {}
+            ph = str(m.get("pipeline_hash") or "").strip()
+            if not ph:
+                continue
+            key = str(m.get("doc_pipeline_key") or "").strip() or f"{document_id}:{ph}"
+            entry = by_key.get(key) or {
+                "pipeline_hash": ph,
+                "doc_pipeline_key": key,
+                "chunk_count": 0,
+                "first_chunk_at": None,
+                "last_chunk_at": None,
+                "active": bool(active_key and key == active_key),
+            }
+            entry["chunk_count"] = int(entry.get("chunk_count") or 0) + 1
+            if created_at:
+                if entry["first_chunk_at"] is None or created_at < entry["first_chunk_at"]:
+                    entry["first_chunk_at"] = created_at
+                if entry["last_chunk_at"] is None or created_at > entry["last_chunk_at"]:
+                    entry["last_chunk_at"] = created_at
+            by_key[key] = entry
+        items = list(by_key.values())
+
+    items.sort(key=lambda x: (x.get("active") is True, x.get("last_chunk_at") is not None, x.get("last_chunk_at")), reverse=True)
+
+    return {
+        "document_id": document_id,
+        "active_pipeline_hash": active_hash,
+        "pipeline_hash": str(doc_meta.get("pipeline_hash") or "").strip() or None,
+        "items": items,
+    }
+
+
+@router.post("/{document_id}/versions/{pipeline_hash}/activate", response_model=DocumentDetail)
+async def activate_document_version(
+    document_id: uuid.UUID,
+    pipeline_hash: str,
+    tenant_id: UUID = Depends(get_tenant_id),
+    account_id: str = Depends(get_current_account_id),
+    db: Session = Depends(get_db),
+):
+    """
+    Activate (rollback to) a specific pipeline_hash version for retrieval/citations.
+
+    This does not re-run parsing/indexing; it only switches the active version *if* chunks exist.
+    """
+    DatasetService.ensure_member(db, tenant_id, account_id)
+
+    document = (
+        db.query(DBDocument)
+        .filter(DBDocument.id == document_id, DBDocument.tenant_id == tenant_id)
+        .first()
+    )
+    if not document:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    if document.dataset_id:
+        ds = DatasetService.get_dataset(db, tenant_id, document.dataset_id)
+        DatasetService.assert_dataset_writable(db, ds, account_id)
+
+    pipeline_hash_norm = str(pipeline_hash or "").strip()
+    if not pipeline_hash_norm:
+        raise HTTPException(status_code=400, detail="pipeline_hash is required")
+    if len(pipeline_hash_norm) > 64:
+        raise HTTPException(status_code=400, detail="pipeline_hash too long")
+
+    target_key = f"{document_id}:{pipeline_hash_norm}"
+    exists = (
+        db.query(DocumentChunk.id)
+        .filter(
+            DocumentChunk.tenant_id == tenant_id,
+            DocumentChunk.document_id == document_id,
+            DocumentChunk.doc_metadata["doc_pipeline_key"].astext == target_key,  # type: ignore[attr-defined]
+        )
+        .limit(1)
+        .first()
+    )
+    if not exists:
+        raise HTTPException(status_code=404, detail="Document version not found (no chunks for this pipeline_hash)")
+
+    # Best-effort: refresh doc stats for the activated version (keeps UI consistent).
+    chunk_count = int(
+        db.query(func.count(DocumentChunk.id))
+        .filter(
+            DocumentChunk.tenant_id == tenant_id,
+            DocumentChunk.document_id == document_id,
+            DocumentChunk.doc_metadata["doc_pipeline_key"].astext == target_key,  # type: ignore[attr-defined]
+        )
+        .scalar()
+        or 0
+    )
+    # Sum content_len if available (faster than len(content) for large blobs).
+    total_chars = 0
+    try:
+        rows = (
+            db.query(DocumentChunk.doc_metadata)
+            .filter(
+                DocumentChunk.tenant_id == tenant_id,
+                DocumentChunk.document_id == document_id,
+                DocumentChunk.doc_metadata["doc_pipeline_key"].astext == target_key,  # type: ignore[attr-defined]
+            )
+            .all()
+        )
+        for (meta,) in rows:
+            m = meta if isinstance(meta, dict) else {}
+            try:
+                total_chars += int(m.get("content_len") or 0)
+            except Exception:
+                continue
+    except Exception:
+        total_chars = 0
+
+    meta = dict(document.doc_metadata or {})
+    meta["active_pipeline_hash"] = pipeline_hash_norm
+    meta["active_pipeline_ready"] = True
+    document.doc_metadata = meta
+    document.chunk_count = chunk_count
+    document.total_characters = total_chars
+    document.status = "completed"
+    document.processing_progress = 100
+    document.current_stage = "completed"
+    document.error_message = None
+    db.commit()
+    db.refresh(document)
+    return document
+
+
 @router.get("/{document_id}/chunks", response_model=DocumentChunkList)
 async def list_document_chunks(
     document_id: uuid.UUID,
     skip: int = Query(default=0, ge=0),
     limit: int = Query(default=500, ge=1, le=2000),
     q: Optional[str] = Query(default=None, max_length=200),
+    pipeline_hash: Optional[str] = Query(default=None, max_length=64, description="Optional: filter by a specific pipeline_hash version"),
+    all_versions: bool = Query(default=False, description="If true, return chunks across all pipeline versions (debug)"),
     tenant_id: UUID = Depends(get_tenant_id),
     account_id: str = Depends(get_current_account_id),
     db: Session = Depends(get_db),
@@ -2919,6 +3126,16 @@ async def list_document_chunks(
         DocumentChunk.document_id == document_id,
     )
 
+    if not all_versions:
+        doc_meta = dict(document.doc_metadata or {})
+        active_hash = str(doc_meta.get("active_pipeline_hash") or doc_meta.get("pipeline_hash") or "").strip()
+        selected_hash = str(pipeline_hash or "").strip() or active_hash
+        if selected_hash:
+            target_key = f"{document_id}:{selected_hash}"
+            query = query.filter(
+                DocumentChunk.doc_metadata["doc_pipeline_key"].astext == target_key  # type: ignore[attr-defined]
+            )
+
     if q:
         term = q.strip()
         if term:
@@ -2934,6 +3151,8 @@ async def list_document_chunk_matches(
     document_id: uuid.UUID,
     q: str = Query(..., max_length=200, description="Case-insensitive substring match against chunk content"),
     limit: int = Query(default=2000, ge=1, le=5000, description="Max returned matches (may be truncated)"),
+    pipeline_hash: Optional[str] = Query(default=None, max_length=64, description="Optional: filter by a specific pipeline_hash version"),
+    all_versions: bool = Query(default=False, description="If true, return matches across all pipeline versions (debug)"),
     tenant_id: UUID = Depends(get_tenant_id),
     account_id: str = Depends(get_current_account_id),
     db: Session = Depends(get_db),
@@ -2978,6 +3197,15 @@ async def list_document_chunk_matches(
         )
         .order_by(DocumentChunk.chunk_index.asc())
     )
+    if not all_versions:
+        doc_meta = dict(document.doc_metadata or {})
+        active_hash = str(doc_meta.get("active_pipeline_hash") or doc_meta.get("pipeline_hash") or "").strip()
+        selected_hash = str(pipeline_hash or "").strip() or active_hash
+        if selected_hash:
+            target_key = f"{document_id}:{selected_hash}"
+            query = query.filter(
+                DocumentChunk.doc_metadata["doc_pipeline_key"].astext == target_key  # type: ignore[attr-defined]
+            )
 
     total = int(query.count())
     rows = (
