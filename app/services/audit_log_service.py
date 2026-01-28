@@ -7,7 +7,7 @@ Best-effort, fail-open: logging must never break product flows.
 from __future__ import annotations
 
 import hashlib
-from typing import Any, Optional
+from typing import Any
 from uuid import UUID
 
 from sqlalchemy.orm import Session
@@ -76,4 +76,3 @@ def build_chat_audit_details(
     if cache_hit is not None:
         out["cache_hit"] = bool(cache_hit)
     return out
-
