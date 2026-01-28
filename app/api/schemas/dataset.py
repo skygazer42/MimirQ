@@ -16,6 +16,9 @@ class DatasetBase(BaseModel):
     description: Optional[str] = None
     permission: DatasetPermissionEnum = DatasetPermissionEnum.ALL_TEAM_MEMBERS
     partial_member_list: Optional[List[str]] = None
+    # Dataset-level ingestion defaults (applied when the request uses global defaults).
+    default_parser_backend: Optional[str] = None
+    default_chunk_strategy: Optional[str] = None
     # Dataset-level pipeline defaults (governance/indexing). If omitted, tenant defaults apply.
     pipeline: Optional[DocumentPipelineOptions] = None
 
@@ -29,6 +32,8 @@ class DatasetUpdate(BaseModel):
     description: Optional[str] = None
     permission: Optional[DatasetPermissionEnum] = None
     partial_member_list: Optional[List[str]] = None
+    default_parser_backend: Optional[str] = None
+    default_chunk_strategy: Optional[str] = None
     pipeline: Optional[DocumentPipelineOptions] = None
 
 
@@ -40,6 +45,8 @@ class DatasetOut(OrmModel):
     permission: DatasetPermissionEnum
     owner_id: Optional[str]
     partial_member_list: Optional[List[str]] = None
+    default_parser_backend: Optional[str] = None
+    default_chunk_strategy: Optional[str] = None
     pipeline: Optional[DocumentPipelineOptions] = None
 
 

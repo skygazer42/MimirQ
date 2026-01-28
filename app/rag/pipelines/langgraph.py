@@ -1187,6 +1187,38 @@ def build_rag_state(
             chosen.usage_count += 1
             db.commit()
 
+    # Version-aware retrieval scoping: force retrieval to use each doc's active pipeline.
+    if db is not None and tenant_id is not None and document_ids:
+        try:
+            from app.models.document import Document as DBDocument
+
+            rows = (
+                db.query(DBDocument.id, DBDocument.status, DBDocument.doc_metadata)
+                .filter(DBDocument.tenant_id == tenant_id, DBDocument.id.in_(list(document_ids)))
+                .all()
+            )
+            active_keys: list[str] = []
+            for did, status, meta in rows:
+                m = meta if isinstance(meta, dict) else {}
+                ready = (
+                    bool(m.get("active_pipeline_ready"))
+                    if "active_pipeline_ready" in m
+                    else (str(status or "").lower() == "completed")
+                )
+                if not ready:
+                    continue
+                active_hash = str(m.get("active_pipeline_hash") or m.get("pipeline_hash") or "").strip()
+                if not active_hash:
+                    continue
+                active_keys.append(f"{did}:{active_hash}")
+
+            if active_keys:
+                mf = dict(metadata_filter or {})
+                mf["doc_pipeline_key"] = {"$in": set(active_keys)}
+                metadata_filter = mf
+        except Exception:
+            pass
+
     return {
         "question": question,
         "history": history or [],

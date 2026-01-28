@@ -489,9 +489,12 @@ class HybridRetriever(BaseRetriever):
         for d in docs:
             meta = d.metadata or {}
             doc_id = meta.get("document_id")
+            doc_pipeline_key = meta.get("doc_pipeline_key")
             chunk_index = meta.get("chunk_index")
             if doc_id is None or chunk_index is None or d.id is None:
                 continue
+            if doc_pipeline_key is not None:
+                lookup[f"{doc_pipeline_key}:{chunk_index}"] = str(d.id)
             lookup[f"{doc_id}:{chunk_index}"] = str(d.id)
         self._chunk_id_lookup[tenant_key] = lookup
         self._touch_bm25_cache(tenant_key)
@@ -586,9 +589,12 @@ class HybridRetriever(BaseRetriever):
         for d in merged_docs:
             meta = d.metadata or {}
             doc_id = meta.get("document_id")
+            doc_pipeline_key = meta.get("doc_pipeline_key")
             chunk_index = meta.get("chunk_index")
             if doc_id is None or chunk_index is None or d.id is None:
                 continue
+            if doc_pipeline_key is not None:
+                lookup[f"{doc_pipeline_key}:{chunk_index}"] = str(d.id)
             lookup[f"{doc_id}:{chunk_index}"] = str(d.id)
         self._chunk_id_lookup[tenant_key] = lookup
         self._touch_bm25_cache(tenant_key)
@@ -623,9 +629,12 @@ class HybridRetriever(BaseRetriever):
         for d in filtered:
             meta = d.metadata or {}
             doc_id = meta.get("document_id")
+            doc_pipeline_key = meta.get("doc_pipeline_key")
             chunk_index = meta.get("chunk_index")
             if doc_id is None or chunk_index is None or d.id is None:
                 continue
+            if doc_pipeline_key is not None:
+                lookup[f"{doc_pipeline_key}:{chunk_index}"] = str(d.id)
             lookup[f"{doc_id}:{chunk_index}"] = str(d.id)
         self._chunk_id_lookup[tenant_key] = lookup
         self._touch_bm25_cache(tenant_key)
@@ -681,9 +690,12 @@ class HybridRetriever(BaseRetriever):
         for d in filtered:
             meta = d.metadata or {}
             doc_id = meta.get("document_id")
+            doc_pipeline_key = meta.get("doc_pipeline_key")
             chunk_index = meta.get("chunk_index")
             if doc_id is None or chunk_index is None or d.id is None:
                 continue
+            if doc_pipeline_key is not None:
+                lookup[f"{doc_pipeline_key}:{chunk_index}"] = str(d.id)
             lookup[f"{doc_id}:{chunk_index}"] = str(d.id)
         self._chunk_id_lookup[tenant_key] = lookup
         self._touch_bm25_cache(tenant_key)
@@ -874,8 +886,12 @@ class HybridRetriever(BaseRetriever):
                 chunk_index = meta.get("chunk_index")
                 if doc_id is None or chunk_index is None:
                     continue
-                key = f"{doc_id}:{chunk_index}"
-                mapped = lookup.get(key)
+                mapped = None
+                doc_pipeline_key = meta.get("doc_pipeline_key")
+                if doc_pipeline_key is not None:
+                    mapped = lookup.get(f"{doc_pipeline_key}:{chunk_index}")
+                if not mapped:
+                    mapped = lookup.get(f"{doc_id}:{chunk_index}")
                 if not mapped:
                     continue
                 r["chunk_id"] = mapped
