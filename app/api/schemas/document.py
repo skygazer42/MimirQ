@@ -448,6 +448,26 @@ class DocumentChunkList(BaseModel):
     items: List[DocumentChunkSchema]
 
 
+class DocumentVersionInfo(BaseModel):
+    """A document processing/version entry (keyed by pipeline_hash)."""
+
+    pipeline_hash: str
+    doc_pipeline_key: str
+    chunk_count: int = 0
+    first_chunk_at: Optional[datetime] = None
+    last_chunk_at: Optional[datetime] = None
+    active: bool = False
+
+
+class DocumentVersionList(BaseModel):
+    """List document versions (pipeline history)."""
+
+    document_id: UUID
+    active_pipeline_hash: Optional[str] = None
+    pipeline_hash: Optional[str] = None
+    items: List[DocumentVersionInfo] = Field(default_factory=list)
+
+
 class DocumentStatus(OrmModel):
     """Document processing status."""
     id: UUID

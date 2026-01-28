@@ -143,6 +143,36 @@ def apply_runtime_migrations(engine) -> None:
             'ON documents (tenant_id, access_mode);',
 
             # =========================
+            # Document pipeline versioning (best-effort backfill for legacy deployments)
+            # =========================
+            # Promote existing completed docs to have an explicit active pipeline hash.
+            "UPDATE documents "
+            "SET metadata = jsonb_set("
+            "  jsonb_set(COALESCE(metadata, '{}'::jsonb), '{active_pipeline_hash}', metadata->'pipeline_hash', true),"
+            "  '{active_pipeline_ready}', 'true'::jsonb, true"
+            ") "
+            "WHERE (metadata->>'active_pipeline_hash' IS NULL OR metadata->>'active_pipeline_hash' = '') "
+            "  AND (metadata->>'pipeline_hash') IS NOT NULL "
+            "  AND status = 'completed';",
+            # Backfill doc_pipeline_key for existing chunks so version-aware retrieval can filter safely.
+            "UPDATE document_chunks AS c "
+            "SET metadata = jsonb_set("
+            "  jsonb_set(COALESCE(c.metadata, '{}'::jsonb), '{pipeline_hash}', to_jsonb(COALESCE(c.metadata->>'pipeline_hash', d.metadata->>'pipeline_hash')), true),"
+            "  '{doc_pipeline_key}', to_jsonb("
+            "    COALESCE("
+            "      c.metadata->>'doc_pipeline_key',"
+            "      concat(c.document_id::text, ':', COALESCE(c.metadata->>'pipeline_hash', d.metadata->>'pipeline_hash'))"
+            "    )"
+            "  ), true"
+            ") "
+            "FROM documents AS d "
+            "WHERE c.document_id = d.id "
+            "  AND c.tenant_id = d.tenant_id "
+            "  AND (c.metadata->>'doc_pipeline_key' IS NULL OR c.metadata->>'doc_pipeline_key' = '') "
+            "  AND (COALESCE(c.metadata->>'pipeline_hash', d.metadata->>'pipeline_hash') IS NOT NULL) "
+            "  AND (COALESCE(c.metadata->>'pipeline_hash', d.metadata->>'pipeline_hash') <> '');",
+
+            # =========================
             # Connector runs (ingestion framework)
             # =========================
             'CREATE INDEX IF NOT EXISTS ix_connector_runs_tenant_created_at '

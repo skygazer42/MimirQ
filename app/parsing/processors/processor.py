@@ -2203,7 +2203,18 @@ class DocumentProcessorService:
                 pass
             # Best-effort cleanup for vector/BM25 side effects (indexing is not transactional).
             try:
-                Indexer(db).delete_chunk_indexes(tenant_id=tenant_id, document_id=document_id)
+                meta = dict(getattr(db_document, "doc_metadata", None) or {})
+                active_hash = str(meta.get("active_pipeline_hash") or "").strip()
+                cur_hash = str(meta.get("pipeline_hash") or "").strip()
+                active_ready = bool(meta.get("active_pipeline_ready"))
+                if active_ready and active_hash and cur_hash and cur_hash != active_hash:
+                    Indexer(db).delete_chunk_indexes_for_doc_pipeline_key(
+                        tenant_id=tenant_id,
+                        document_id=document_id,
+                        doc_pipeline_key=f"{document_id}:{cur_hash}",
+                    )
+                else:
+                    Indexer(db).delete_chunk_indexes(tenant_id=tenant_id, document_id=document_id)
             except Exception:
                 pass
             await self._update_status(
@@ -2223,7 +2234,18 @@ class DocumentProcessorService:
             except Exception:
                 pass
             try:
-                Indexer(db).delete_chunk_indexes(tenant_id=tenant_id, document_id=document_id)
+                meta = dict(getattr(db_document, "doc_metadata", None) or {})
+                active_hash = str(meta.get("active_pipeline_hash") or "").strip()
+                cur_hash = str(meta.get("pipeline_hash") or "").strip()
+                active_ready = bool(meta.get("active_pipeline_ready"))
+                if active_ready and active_hash and cur_hash and cur_hash != active_hash:
+                    Indexer(db).delete_chunk_indexes_for_doc_pipeline_key(
+                        tenant_id=tenant_id,
+                        document_id=document_id,
+                        doc_pipeline_key=f"{document_id}:{cur_hash}",
+                    )
+                else:
+                    Indexer(db).delete_chunk_indexes(tenant_id=tenant_id, document_id=document_id)
             except Exception:
                 pass
             try:
@@ -2250,7 +2272,18 @@ class DocumentProcessorService:
             except Exception:
                 pass
             try:
-                Indexer(db).delete_chunk_indexes(tenant_id=tenant_id, document_id=document_id)
+                meta = dict(getattr(db_document, "doc_metadata", None) or {})
+                active_hash = str(meta.get("active_pipeline_hash") or "").strip()
+                cur_hash = str(meta.get("pipeline_hash") or "").strip()
+                active_ready = bool(meta.get("active_pipeline_ready"))
+                if active_ready and active_hash and cur_hash and cur_hash != active_hash:
+                    Indexer(db).delete_chunk_indexes_for_doc_pipeline_key(
+                        tenant_id=tenant_id,
+                        document_id=document_id,
+                        doc_pipeline_key=f"{document_id}:{cur_hash}",
+                    )
+                else:
+                    Indexer(db).delete_chunk_indexes(tenant_id=tenant_id, document_id=document_id)
             except Exception:
                 pass
             await self._update_status(
