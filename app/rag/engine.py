@@ -1350,7 +1350,7 @@ Requirements:
                     "vector_backend": settings.VECTOR_BACKEND,
                     "retrieval_mode": retrieval_mode,
                     "request_id": request_id,
-                    "error": str(e),
+                    "error": str(e)[:200],
                 }
             )
             yield {

@@ -169,12 +169,23 @@ class ObservabilityConfig(BaseModel):
     agent_log_include_execution_path: bool = False
     agent_log_max_preview_chars: int = 500
 
+    # JSONL metrics log (RAG trace dashboard)
+    metrics_log_enabled: bool = False
+    metrics_log_include_text: bool = False
+
 
 class SafetyConfig(BaseModel):
     """Security/privacy config."""
     pii_redaction_enabled: bool = False
     pii_redaction_mask: str = "[REDACTED]"
     pii_stream_holdback_chars: int = 128
+
+
+class ChatConfig(BaseModel):
+    """Chat streaming/runtime config."""
+
+    stream_heartbeat_sec: float = 10.0
+    stream_cancel_on_disconnect: bool = True
 
 
 class LangGraphConfig(BaseModel):
@@ -239,6 +250,7 @@ class SystemSettings(BaseModel):
     magicpdf: MagicPDFConfig
     observability: ObservabilityConfig
     safety: SafetyConfig
+    chat: ChatConfig
     langgraph: LangGraphConfig
 
 
@@ -259,6 +271,7 @@ class UpdateSettingsRequest(BaseModel):
     magicpdf: Optional[MagicPDFConfig] = None
     observability: Optional[ObservabilityConfig] = None
     safety: Optional[SafetyConfig] = None
+    chat: Optional[ChatConfig] = None
     langgraph: Optional[LangGraphConfig] = None
 
 
@@ -488,6 +501,12 @@ def _apply_runtime_settings(env_vars: Dict[str, str], updated_keys: list[str]) -
             default=settings.AGENT_LOG_MAX_PREVIEW_CHARS,
         )
 
+    # Metrics log (JSONL) controls
+    if "ENABLE_METRICS_LOG" in updated_keys and "ENABLE_METRICS_LOG" in env_vars:
+        settings.ENABLE_METRICS_LOG = _parse_bool(env_vars["ENABLE_METRICS_LOG"])
+    if "METRICS_LOG_INCLUDE_TEXT" in updated_keys and "METRICS_LOG_INCLUDE_TEXT" in env_vars:
+        settings.METRICS_LOG_INCLUDE_TEXT = _parse_bool(env_vars["METRICS_LOG_INCLUDE_TEXT"])
+
     # Safety / PII
     if "PII_REDACTION_ENABLED" in updated_keys and "PII_REDACTION_ENABLED" in env_vars:
         settings.PII_REDACTION_ENABLED = _parse_bool(env_vars["PII_REDACTION_ENABLED"])
@@ -498,6 +517,14 @@ def _apply_runtime_settings(env_vars: Dict[str, str], updated_keys: list[str]) -
             env_vars["PII_STREAM_HOLDBACK_CHARS"],
             default=settings.PII_STREAM_HOLDBACK_CHARS,
         )
+
+    # Chat streaming robustness
+    if "CHAT_STREAM_HEARTBEAT_SEC" in updated_keys and "CHAT_STREAM_HEARTBEAT_SEC" in env_vars:
+        settings.CHAT_STREAM_HEARTBEAT_SEC = _parse_float(
+            env_vars["CHAT_STREAM_HEARTBEAT_SEC"], default=getattr(settings, "CHAT_STREAM_HEARTBEAT_SEC", 10.0)
+        )
+    if "CHAT_STREAM_CANCEL_ON_DISCONNECT" in updated_keys and "CHAT_STREAM_CANCEL_ON_DISCONNECT" in env_vars:
+        settings.CHAT_STREAM_CANCEL_ON_DISCONNECT = _parse_bool(env_vars["CHAT_STREAM_CANCEL_ON_DISCONNECT"])
 
     # LangGraph
     if "LANGGRAPH_USE_SUBGRAPHS" in updated_keys and "LANGGRAPH_USE_SUBGRAPHS" in env_vars:
@@ -664,11 +691,17 @@ async def get_settings(
             agent_log_enabled=settings.AGENT_LOG_ENABLED,
             agent_log_include_execution_path=settings.AGENT_LOG_INCLUDE_EXECUTION_PATH,
             agent_log_max_preview_chars=settings.AGENT_LOG_MAX_PREVIEW_CHARS,
+            metrics_log_enabled=bool(getattr(settings, "ENABLE_METRICS_LOG", False)),
+            metrics_log_include_text=bool(getattr(settings, "METRICS_LOG_INCLUDE_TEXT", False)),
         ),
         safety=SafetyConfig(
             pii_redaction_enabled=settings.PII_REDACTION_ENABLED,
             pii_redaction_mask=settings.PII_REDACTION_MASK,
             pii_stream_holdback_chars=settings.PII_STREAM_HOLDBACK_CHARS,
+        ),
+        chat=ChatConfig(
+            stream_heartbeat_sec=float(getattr(settings, "CHAT_STREAM_HEARTBEAT_SEC", 10.0) or 10.0),
+            stream_cancel_on_disconnect=bool(getattr(settings, "CHAT_STREAM_CANCEL_ON_DISCONNECT", True)),
         ),
         langgraph=LangGraphConfig(
             use_subgraphs=settings.LANGGRAPH_USE_SUBGRAPHS,
@@ -928,6 +961,13 @@ async def update_settings(
                     "AGENT_LOG_MAX_PREVIEW_CHARS",
                 ]
             )
+            # New (optional): metrics JSONL log controls
+            if "metrics_log_enabled" in getattr(ob, "model_fields_set", set()):
+                env_vars["ENABLE_METRICS_LOG"] = str(bool(getattr(ob, "metrics_log_enabled", False))).lower()
+                updated_keys.append("ENABLE_METRICS_LOG")
+            if "metrics_log_include_text" in getattr(ob, "model_fields_set", set()):
+                env_vars["METRICS_LOG_INCLUDE_TEXT"] = str(bool(getattr(ob, "metrics_log_include_text", False))).lower()
+                updated_keys.append("METRICS_LOG_INCLUDE_TEXT")
 
         # Update security/privacy config.
         if request.safety:
@@ -936,6 +976,16 @@ async def update_settings(
             env_vars["PII_REDACTION_MASK"] = _sanitize_env_value("PII_REDACTION_MASK", sf.pii_redaction_mask)
             env_vars["PII_STREAM_HOLDBACK_CHARS"] = str(int(sf.pii_stream_holdback_chars or 0))
             updated_keys.extend(["PII_REDACTION_ENABLED", "PII_REDACTION_MASK", "PII_STREAM_HOLDBACK_CHARS"])
+
+        # Update chat streaming/runtime config.
+        if request.chat:
+            ch = request.chat
+            if "stream_heartbeat_sec" in getattr(ch, "model_fields_set", set()):
+                env_vars["CHAT_STREAM_HEARTBEAT_SEC"] = str(float(ch.stream_heartbeat_sec or 0.0))
+                updated_keys.append("CHAT_STREAM_HEARTBEAT_SEC")
+            if "stream_cancel_on_disconnect" in getattr(ch, "model_fields_set", set()):
+                env_vars["CHAT_STREAM_CANCEL_ON_DISCONNECT"] = str(bool(ch.stream_cancel_on_disconnect)).lower()
+                updated_keys.append("CHAT_STREAM_CANCEL_ON_DISCONNECT")
 
         # Update LangGraph config.
         if request.langgraph:

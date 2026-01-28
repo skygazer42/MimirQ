@@ -10,6 +10,7 @@ Features:
 import atexit
 import contextlib
 import contextvars
+import hashlib
 import json
 import os
 import queue
@@ -188,6 +189,84 @@ def _maybe_redact(obj: Any) -> Any:
         return obj
 
 
+def _hash_text(text: str) -> str:
+    """
+    Stable short hash for potentially sensitive strings.
+
+    Used when METRICS_LOG_INCLUDE_TEXT=false to keep correlation/debugging possible
+    without storing raw content in JSONL logs.
+    """
+    raw = (text or "").encode("utf-8", "ignore")
+    return hashlib.sha256(raw).hexdigest()[:16]
+
+
+_CITATION_SAFE_KEYS = {
+    "chunk_id",
+    "document_id",
+    "chunk_index",
+    "page_number",
+    "start_char",
+    "end_char",
+    "doc_pipeline_key",
+    "pipeline_hash",
+    "relevance_score",
+    "vector_score",
+    "bm25_score",
+    "keyword_score",
+    "rerank_score",
+    "retrieval_score",
+    "reranker_provider",
+    "rerank_elapsed_sec",
+    "rerank_model_used",
+    "retrieval_mode",
+    "vector_backend",
+    "retrieval_elapsed_sec",
+    "hit_type",
+    "has_image",
+}
+
+
+def _strip_text_fields_for_metrics(record: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    When enabled, strip raw text fields from metrics records to reduce PII leakage.
+
+    Important: this is separate from PII_REDACTION. Stripping is a stronger guarantee:
+    the content is not persisted at all (instead of being best-effort redacted).
+    """
+    if bool(getattr(settings, "METRICS_LOG_INCLUDE_TEXT", False)):
+        return record
+
+    event = str(record.get("event") or "")
+    if event != "rag_trace":
+        return record
+
+    out = dict(record)
+
+    question = out.pop("question", None)
+    if isinstance(question, str) and question.strip():
+        q = question.strip()
+        out.setdefault("question_hash", _hash_text(q))
+        out.setdefault("question_chars", len(q))
+
+    query = out.pop("query_for_retrieval", None)
+    if isinstance(query, str) and query.strip():
+        q = query.strip()
+        out.setdefault("query_hash", _hash_text(q))
+        out.setdefault("query_chars", len(q))
+
+    # Citations can include document snippets; keep only numeric + identifiers.
+    citations = out.get("citations")
+    if isinstance(citations, list):
+        safe: list[dict[str, Any]] = []
+        for c in citations:
+            if not isinstance(c, dict):
+                continue
+            safe.append({k: c.get(k) for k in _CITATION_SAFE_KEYS if k in c})
+        out["citations"] = safe
+
+    return out
+
+
 def _build_record(payload: Mapping[str, Any]) -> Dict[str, Any]:
     record = dict(payload or {})
     record.setdefault("_v", _METRICS_SCHEMA_VERSION)
@@ -298,6 +377,7 @@ class _MetricsWriter:
                 )
 
             for record in batch:
+                record = _strip_text_fields_for_metrics(record)
                 record = _maybe_redact(record)
                 to_write.append(json.dumps(record, ensure_ascii=False, default=_json_default))
             self._write_lines(to_write)

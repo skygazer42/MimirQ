@@ -65,6 +65,12 @@ class ConversationCreate(BaseModel):
     document_ids: List[UUID] = Field(default_factory=list)
 
 
+class ConversationUpdate(BaseModel):
+    """Update conversation fields."""
+
+    title: Optional[str] = Field(default=None, max_length=500)
+
+
 class ConversationSchema(OrmModel):
     """Conversation session."""
     id: UUID
