@@ -885,6 +885,11 @@ class Indexer:
             meta.setdefault("tenant_id", str(tenant_id))
             meta.setdefault("document_id", str(document_id))
             meta.setdefault("chunk_index", idx)
+            # Versioning: keep a stable composite key so retrieval can filter the active
+            # pipeline per document across multi-doc queries.
+            pipeline_hash = str(meta.get("pipeline_hash") or "").strip()
+            if pipeline_hash:
+                meta.setdefault("doc_pipeline_key", f"{document_id}:{pipeline_hash}")
             meta = _ensure_chunk_metadata(meta, content=chunk.content or "", document_id=document_id, chunk_index=idx)
             meta["chunk_id"] = str(chunk_id)
             page_number = (

@@ -29,6 +29,9 @@ _MILVUS_STRING_FIELDS = frozenset(
         "tenant_id",
         "document_id",
         "chunk_id",
+        # Versioning / rollback (stable composite key).
+        "pipeline_hash",
+        "doc_pipeline_key",
         "source",
         "file_type",
         "img_id",
@@ -567,6 +570,11 @@ class MilvusVectorStore:
             img_id = meta.get("img_id") or meta.get("image_id") or ""
             image_id = meta.get("image_id") or meta.get("img_id") or ""
             image_url = meta.get("image_url") or meta.get("img_url") or ""
+            pipeline_hash = str(meta.get("pipeline_hash") or "")[:64]
+            doc_pipeline_key = str(
+                meta.get("doc_pipeline_key")
+                or (f"{document_id}:{pipeline_hash}" if pipeline_hash else str(document_id))
+            )[:256]
 
             metadatas.append(
                 {
@@ -574,6 +582,8 @@ class MilvusVectorStore:
                     "document_id": str(document_id),
                     "chunk_index": int(meta.get("chunk_index", idx)),
                     "chunk_id": str(chunk_id) if chunk_id else "",
+                    "pipeline_hash": pipeline_hash,
+                    "doc_pipeline_key": doc_pipeline_key,
                     "page_number": int(meta.get("page") or meta.get("page_number") or 0),
                     "source": str(meta.get("source", "unknown"))[:500],
                     "file_type": str(meta.get("file_type", "unknown"))[:20],
@@ -632,6 +642,8 @@ class MilvusVectorStore:
                         "page": meta.get("page_number"),
                         "chunk_index": meta.get("chunk_index"),
                         "chunk_id": chunk_id,
+                        "pipeline_hash": meta.get("pipeline_hash"),
+                        "doc_pipeline_key": meta.get("doc_pipeline_key"),
                         "img_id": meta.get("img_id") or meta.get("image_id"),
                         "image_id": meta.get("image_id") or meta.get("img_id"),
                         "image_url": meta.get("image_url") or meta.get("img_url"),
