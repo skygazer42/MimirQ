@@ -14,7 +14,6 @@ Design notes:
 from __future__ import annotations
 
 from dataclasses import dataclass
-import json
 import re
 import uuid
 from typing import Any, Dict, List, Optional
@@ -443,4 +442,3 @@ __all__ = [
     "extract_qa_pairs_from_text",
     "generate_and_index_document_qa",
 ]
-
