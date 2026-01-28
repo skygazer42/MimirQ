@@ -682,6 +682,7 @@ async def stream_chat(
         request_id = getattr(http_request.state, "request_id", None) or uuid.uuid4().hex
         assistant_message_id = uuid.uuid4()
         metrics_data = {}
+        structured_data = None
         set_metrics_context(
             request_id=request_id,
             tenant_id=tenant_id,
@@ -740,6 +741,155 @@ async def stream_chat(
                 summary_text = None
             if summary_text:
                 history_for_llm = [{"role": "system", "content": summary_text}] + history_for_llm
+
+        # Optional: chat response cache (Redis, best-effort).
+        cache_key: str | None = None
+        cache_hit = False
+        cache_eligible = bool(getattr(settings, "CHAT_RESPONSE_CACHE_ENABLED", False))
+        if cache_eligible:
+            if not doc_ids_to_use:
+                cache_eligible = False
+            if bool(getattr(settings, "CHAT_RESPONSE_CACHE_REQUIRE_EMPTY_HISTORY", True)):
+                if request.history or request.enable_long_term_memory or long_term_messages:
+                    cache_eligible = False
+
+        if cache_eligible:
+            cached = None
+            try:
+                rag_cfg = jsonable_encoder(effective_rag_config.model_dump())
+                prompt_cfg = {
+                    "prompt_template_id": str(effective_prompt_template_id) if effective_prompt_template_id else None,
+                    "prompt_template_key": (effective_prompt_template_key or None),
+                    "prompt_ab_experiment_key": (effective_prompt_ab_experiment_key or None),
+                }
+                cache_key = build_chat_cache_key(
+                    tenant_id=str(tenant_id),
+                    account_id=str(account_id or ""),
+                    document_ids=[str(d) for d in doc_ids_to_use],
+                    question=request.message,
+                    rag_config=rag_cfg,
+                    prompt_config=prompt_cfg,
+                    structured_output=bool(request.structured_output),
+                    structured_preset=request.structured_preset,
+                    use_graph=bool(effective_rag_config.use_graph),
+                )
+                cached = get_cached_chat_response(cache_key) if cache_key else None
+            except Exception:
+                cached = None
+
+            if isinstance(cached, dict):
+                full_response = str(cached.get("content") or "")
+                citations_data = cached.get("citations") if isinstance(cached.get("citations"), list) else []
+                metrics_data = dict(cached.get("metrics") or {})
+                metrics_data["chat_cache_hit"] = True
+                structured_data = cached.get("structured_data")
+                cache_hit = True
+
+        if cache_hit:
+            # Stream cached content as token chunks so the frontend can reuse the same SSE handler.
+            cancel_on_disconnect = bool(getattr(settings, "CHAT_STREAM_CANCEL_ON_DISCONNECT", True))
+            if cancel_on_disconnect:
+                with contextlib.suppress(Exception):
+                    if await http_request.is_disconnected():
+                        return
+
+            yield f"data: {json.dumps({'request_id': str(request_id), 'type': 'event', 'data': {'message': '缓存命中，直接返回…'}}, ensure_ascii=False)}\n\n"
+            yield f"data: {json.dumps({'request_id': str(request_id), 'type': 'citations', 'data': citations_data}, ensure_ascii=False)}\n\n"
+
+            answer_text = full_response or ""
+            chunk_size = 120
+            for i in range(0, len(answer_text), chunk_size):
+                if cancel_on_disconnect and i % (chunk_size * 50) == 0:
+                    with contextlib.suppress(Exception):
+                        if await http_request.is_disconnected():
+                            return
+                token_chunk = answer_text[i : i + chunk_size]
+                yield f"data: {json.dumps({'request_id': str(request_id), 'type': 'token', 'data': {'content': token_chunk}}, ensure_ascii=False)}\n\n"
+
+            retrieval_mode_used = metrics_data.get("retrieval_mode") or effective_rag_config.retrieval_mode
+            vector_backend_used = metrics_data.get("vector_backend") or settings.VECTOR_BACKEND
+
+            done_payload = {
+                "type": "done",
+                "data": {
+                    "assistant_message_id": str(assistant_message_id),
+                    "conversation_id": str(conversation_id) if conversation_id else None,
+                    "total_tokens": num_tokens_from_string(answer_text or ""),
+                    "total_chars": len(answer_text or ""),
+                    "citations_count": len(citations_data),
+                    "model_used": metrics_data.get("model_used"),
+                    "route": metrics_data.get("route"),
+                    "retrieval_mode": retrieval_mode_used,
+                    "vector_backend": vector_backend_used,
+                    "metrics": metrics_data,
+                    "structured": bool(structured_data is not None) if request.structured_output else False,
+                    "structured_data": structured_data,
+                    "structured_preset": request.structured_preset,
+                },
+                "request_id": str(request_id),
+            }
+            yield f"data: {json.dumps(done_payload, ensure_ascii=False)}\n\n"
+
+            # Best-effort: emit a metrics record for cached responses too.
+            log_metrics(
+                {
+                    "event": "rag_done",
+                    "conversation_id": str(conversation_id) if conversation_id else None,
+                    "tenant_id": str(tenant_id) if tenant_id else None,
+                    "vector_backend": vector_backend_used,
+                    "retrieval_mode": retrieval_mode_used,
+                    "route": metrics_data.get("route"),
+                    "model_used": metrics_data.get("model_used"),
+                    "metrics": metrics_data,
+                    "request_id": str(request_id),
+                }
+            )
+
+            assistant_message = Message(
+                id=assistant_message_id,
+                tenant_id=tenant_id,
+                conversation_id=conversation_id,
+                role="assistant",
+                content=answer_text,
+                citations=citations_data,
+                token_count=num_tokens_from_string(answer_text or ""),
+                message_metadata={**(metrics_data or {}), "request_id": str(request_id)},
+            )
+            db.add(assistant_message)
+
+            audit_log_event(
+                db,
+                tenant_id=tenant_id,
+                actor_id=account_id,
+                action="chat.stream",
+                resource_type="conversation",
+                resource_id=str(conversation_id),
+                request_id=str(request_id),
+                ip=getattr(getattr(http_request, "client", None), "host", None),
+                user_agent=http_request.headers.get("user-agent"),
+                details=build_chat_audit_details(
+                    question=request.message,
+                    document_count=len(doc_ids_to_use),
+                    dataset_id=dataset_id_used,
+                    cache_hit=True,
+                ),
+            )
+
+            conversation.message_count += 1
+            conversation.updated_at = datetime.utcnow()
+            db.commit()
+
+            if (
+                bool(getattr(settings, "PERSISTENT_SUMMARY_MEMORY_ENABLED", False))
+                and bool(getattr(settings, "PERSISTENT_SUMMARY_MEMORY_AUTO_UPDATE", False))
+                and bool(getattr(request, "enable_summary_memory", False))
+                and conversation_id
+            ):
+                with contextlib.suppress(Exception):
+                    asyncio.create_task(
+                        _auto_update_summary_background(tenant_id=tenant_id, conversation_id=conversation_id)
+                    )
+            return
 
         # LangGraph path: stream stage events (custom) + state snapshots (values).
         if effective_rag_config.use_graph:
@@ -896,6 +1046,21 @@ async def stream_chat(
                     "request_id": str(request_id),
                 }
                 yield f"data: {json.dumps(done_payload, ensure_ascii=False)}\n\n"
+
+                # Optional: store response in Redis cache after the client sees "done"
+                # (keeps UI latency low; best-effort).
+                if cache_eligible and (not cache_hit) and cache_key and full_response.strip():
+                    cache_payload = jsonable_encoder(
+                        {
+                            "content": full_response,
+                            "citations": citations_data,
+                            "metrics": metrics_data,
+                            "structured_data": structured_data,
+                        }
+                    )
+                    stored = bool(set_cached_chat_response(cache_key, cache_payload))
+                    metrics_data.setdefault("chat_cache_store_ok", stored)
+
                 log_metrics(
                     {
                         "event": "rag_done",
@@ -936,7 +1101,7 @@ async def stream_chat(
                         question=request.message,
                         document_count=len(doc_ids_to_use),
                         dataset_id=dataset_id_used,
-                        cache_hit=None,
+                        cache_hit=cache_hit,
                     ),
                 )
 
@@ -1045,6 +1210,7 @@ async def stream_chat(
                     if isinstance(event.get("data"), dict):
                         event["data"]["assistant_message_id"] = str(assistant_message_id)
                         metrics_data = event["data"].get("metrics", {})  # type: ignore[assignment]
+                        structured_data = event["data"].get("structured_data")
                     else:
                         metrics_data = {}  # type: ignore[assignment]
 
@@ -1113,6 +1279,19 @@ async def stream_chat(
             if producer_exc is not None:
                 raise producer_exc
 
+            # Optional: store response in Redis cache after streaming (best-effort).
+            if cache_eligible and (not cache_hit) and cache_key and full_response.strip():
+                cache_payload = jsonable_encoder(
+                    {
+                        "content": full_response,
+                        "citations": citations_data,
+                        "metrics": metrics_data,
+                        "structured_data": structured_data,
+                    }
+                )
+                stored = bool(set_cached_chat_response(cache_key, cache_payload))
+                metrics_data.setdefault("chat_cache_store_ok", stored)
+
             # 4. Persist assistant response.
             if dataset_id_used is not None and isinstance(metrics_data, dict):
                 metrics_data.setdefault("dataset_id", str(dataset_id_used))
@@ -1144,7 +1323,7 @@ async def stream_chat(
                     question=request.message,
                     document_count=len(doc_ids_to_use),
                     dataset_id=dataset_id_used,
-                    cache_hit=None,
+                    cache_hit=cache_hit,
                 ),
             )
 
