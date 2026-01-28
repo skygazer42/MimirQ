@@ -286,6 +286,28 @@ export interface DocumentChunkCreateRequest {
   metadata?: Record<string, any>
 }
 
+export interface QAPairPreview {
+  question: string
+  answer: string
+}
+
+export interface DocumentQAGenerateRequest {
+  num_pairs?: number
+  replace_existing?: boolean
+  prefer_llm?: boolean
+  max_source_chars?: number
+  preview_pairs?: number
+}
+
+export interface DocumentQAGenerateResponse {
+  document_id: string
+  mode: string
+  deleted: number
+  created: number
+  chunk_ids: string[]
+  preview: QAPairPreview[]
+}
+
 export interface DocumentChunkMatch {
   id: string
   chunk_index: number

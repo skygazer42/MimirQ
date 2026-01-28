@@ -57,12 +57,17 @@ export function ChatArea({
     score_threshold: number
     retrieval_mode: string
     use_graph: boolean
+    metadata_filter?: Record<string, any> | null
   }>(() => ({
     top_k: 5,
     score_threshold: 0.7,
     retrieval_mode: 'hybrid',
     use_graph: false,
+    metadata_filter: undefined,
   }))
+  const [metadataFilterMode, setMetadataFilterMode] = useState<'all' | 'exclude_qa' | 'qa_only' | 'custom'>('all')
+  const [metadataFilterText, setMetadataFilterText] = useState('')
+  const [metadataFilterError, setMetadataFilterError] = useState<string | null>(null)
   const [structuredOutput, setStructuredOutput] = useState(false)
   const [structuredPreset, setStructuredPreset] = useState<string>('')
   const [enableLongTermMemory, setEnableLongTermMemory] = useState(false)
@@ -115,6 +120,60 @@ export function ChatArea({
       cancelled = true
     }
   }, [])
+
+  const applyMetadataFilterPreset = useCallback(
+    (mode: 'all' | 'exclude_qa' | 'qa_only' | 'custom') => {
+      setMetadataFilterMode(mode)
+      setRagConfigDirty(true)
+      setMetadataFilterError(null)
+
+      if (mode === 'all') {
+        setMetadataFilterText('')
+        setRagConfig((prev) => ({ ...prev, metadata_filter: undefined }))
+        return
+      }
+
+      if (mode === 'exclude_qa') {
+        const filter = { file_type: { $ne: 'qa' } }
+        setMetadataFilterText(JSON.stringify(filter, null, 2))
+        setRagConfig((prev) => ({ ...prev, metadata_filter: filter }))
+        return
+      }
+
+      if (mode === 'qa_only') {
+        const filter = { file_type: { $eq: 'qa' } }
+        setMetadataFilterText(JSON.stringify(filter, null, 2))
+        setRagConfig((prev) => ({ ...prev, metadata_filter: filter }))
+        return
+      }
+
+      // custom: keep current JSON text; parsing happens in an effect.
+    },
+    []
+  )
+
+  useEffect(() => {
+    if (metadataFilterMode !== 'custom') return
+
+    const raw = (metadataFilterText || '').trim()
+    if (!raw) {
+      setMetadataFilterError(null)
+      setRagConfig((prev) => ({ ...prev, metadata_filter: undefined }))
+      return
+    }
+
+    try {
+      const parsed = JSON.parse(raw)
+      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+        setMetadataFilterError('metadata_filter must be a JSON object')
+        return
+      }
+      setMetadataFilterError(null)
+      setRagConfig((prev) => ({ ...prev, metadata_filter: parsed }))
+    } catch {
+      setMetadataFilterError('Invalid JSON')
+    }
+  }, [metadataFilterMode, metadataFilterText])
 
   const handleKeyUp = useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === '/') {
@@ -489,6 +548,38 @@ export function ChatArea({
 	                        className="flex h-8 w-full rounded-md border border-input bg-background px-3 py-1 text-xs shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
 	                      />
                     </div>
+                  </div>
+
+                  <div className="space-y-2 pt-2 border-t">
+                    <label className="text-xs text-muted-foreground">Metadata filter</label>
+                    <Select value={metadataFilterMode} onValueChange={(v) => applyMetadataFilterPreset(v as any)}>
+                      <SelectTrigger className="h-8 text-xs">
+                        <SelectValue placeholder="Filter" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">All chunks</SelectItem>
+                        <SelectItem value="exclude_qa">Exclude Q&A chunks (file_type != qa)</SelectItem>
+                        <SelectItem value="qa_only">Q&A only (file_type == qa)</SelectItem>
+                        <SelectItem value="custom">Custom JSON</SelectItem>
+                      </SelectContent>
+                    </Select>
+
+                    {metadataFilterMode === 'custom' ? (
+                      <div className="space-y-1.5">
+                        <textarea
+                          value={metadataFilterText}
+                          onChange={(e) => {
+                            setRagConfigDirty(true)
+                            setMetadataFilterText(e.target.value)
+                          }}
+                          placeholder='{"source":{"$contains":"handbook"},"page":{"$gte":10}}'
+                          className="w-full min-h-[92px] rounded-md border border-input bg-background px-3 py-2 text-[11px] font-mono shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                        />
+                        {metadataFilterError ? (
+                          <div className="text-[11px] text-destructive">{metadataFilterError}</div>
+                        ) : null}
+                      </div>
+                    ) : null}
                   </div>
 
                   <div className="space-y-3 pt-2 border-t">

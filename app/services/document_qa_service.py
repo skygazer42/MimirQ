@@ -1,0 +1,446 @@
+"""
+Document Q&A generation/indexing.
+
+This feature creates an optional "FAQ-like" retrieval channel by generating (or extracting)
+question-answer pairs from an existing document, then persisting them as extra chunks.
+
+Design notes:
+- Best-effort: vector/BM25 updates are attempted but failures should not corrupt the DB.
+- Safe-by-default: if LLM is not configured, fall back to regex extraction only.
+- Tagging: generated chunks are marked with `file_type=qa` in chunk metadata so callers can
+  include/exclude them via metadata_filter.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+import json
+import re
+import uuid
+from typing import Any, Dict, List, Optional
+from uuid import UUID
+
+from sqlalchemy import func
+from sqlalchemy.orm import Session
+
+from app.core.config import settings
+from app.models.document import Document as DBDocument, DocumentChunk, DocumentParsedContent
+from app.services.indexer import Indexer
+from app.storage.vector.factory import get_vector_store
+
+
+@dataclass(frozen=True)
+class QAPair:
+    question: str
+    answer: str
+
+
+@dataclass(frozen=True)
+class DocumentQAGenerateResult:
+    mode: str
+    deleted: int
+    created: int
+    chunk_ids: List[UUID]
+    preview: List[Dict[str, str]]
+
+
+_Q_RE = re.compile(r"^\s*(?:q|question|问|問題|问题)\s*[:：]\s*(.+?)\s*$", flags=re.IGNORECASE)
+_A_RE = re.compile(r"^\s*(?:a|answer|答)\s*[:：]\s*(.*)\s*$", flags=re.IGNORECASE)
+
+
+def extract_qa_pairs_from_text(text: str, *, max_pairs: int) -> List[QAPair]:
+    """
+    Extract Q/A pairs from plain text using lightweight heuristics.
+
+    Supported patterns (line-based):
+      Q: ...
+      A: ...
+    """
+    raw = (text or "").strip()
+    if not raw or max_pairs <= 0:
+        return []
+
+    pairs: List[QAPair] = []
+    question: str | None = None
+    answer_lines: List[str] = []
+    saw_answer_prefix = False
+
+    for line in raw.splitlines():
+        if len(pairs) >= max_pairs:
+            break
+
+        q_match = _Q_RE.match(line)
+        if q_match:
+            # Flush previous.
+            if question and saw_answer_prefix:
+                answer = "\n".join([a for a in answer_lines if a is not None]).strip()
+                if answer:
+                    pairs.append(QAPair(question=question.strip(), answer=answer))
+            # Start new.
+            question = (q_match.group(1) or "").strip()
+            answer_lines = []
+            saw_answer_prefix = False
+            continue
+
+        if question is None:
+            continue
+
+        a_match = _A_RE.match(line)
+        if a_match:
+            saw_answer_prefix = True
+            rest = (a_match.group(1) or "").strip()
+            if rest:
+                answer_lines.append(rest)
+            continue
+
+        if saw_answer_prefix:
+            # Continue answer until next Q: ... line.
+            answer_lines.append(line.rstrip())
+
+    if question and saw_answer_prefix and len(pairs) < max_pairs:
+        answer = "\n".join([a for a in answer_lines if a is not None]).strip()
+        if answer:
+            pairs.append(QAPair(question=question.strip(), answer=answer))
+
+    return pairs[:max_pairs]
+
+
+def _llm_enabled() -> bool:
+    return bool((settings.LLM_API_KEY or "").strip())
+
+
+def generate_qa_pairs_with_llm(text: str, *, num_pairs: int) -> List[QAPair]:
+    """
+    Generate Q/A pairs using the configured LLM (OpenAI-compatible).
+
+    Raises:
+        RuntimeError: When LLM is not configured.
+    """
+    if not _llm_enabled():
+        raise RuntimeError("LLM is not configured")
+
+    from langchain_openai import ChatOpenAI  # noqa: WPS433
+    from langchain_core.prompts import PromptTemplate  # noqa: WPS433
+    from langchain_core.output_parsers import JsonOutputParser  # noqa: WPS433
+
+    prompt_text = """You are an expert knowledge base curator.
+
+Generate {num_pairs} high-quality FAQ-style question/answer pairs based ONLY on the given text.
+
+Text:
+{text}
+
+Requirements:
+- Questions should be answerable from the text.
+- Answers must be short and grounded in the text.
+- Avoid duplicates and overly generic questions.
+
+Return JSON:
+{{
+  "pairs": [
+    {{"question": "...", "answer": "..."}}
+  ]
+}}"""
+
+    llm = ChatOpenAI(
+        model=(settings.LLM_MODEL_FAST or settings.LLM_MODEL),
+        api_key=settings.LLM_API_KEY,
+        base_url=settings.LLM_API_BASE,
+        temperature=0.2,
+        timeout=int(getattr(settings, "LLM_TIMEOUT", 60) or 60),
+    )
+    parser = JsonOutputParser()
+    prompt = PromptTemplate(template=prompt_text, input_variables=["text", "num_pairs"])
+    chain = prompt | llm | parser
+
+    result = chain.invoke({"text": (text or "")[:12000], "num_pairs": int(num_pairs)})
+    if not isinstance(result, dict):
+        return []
+    pairs_raw = result.get("pairs")
+    if not isinstance(pairs_raw, list):
+        return []
+
+    pairs: List[QAPair] = []
+    for item in pairs_raw:
+        if len(pairs) >= num_pairs:
+            break
+        if not isinstance(item, dict):
+            continue
+        q = str(item.get("question") or "").strip()
+        a = str(item.get("answer") or "").strip()
+        if not q or not a:
+            continue
+        pairs.append(QAPair(question=q, answer=a))
+    return pairs
+
+
+def _active_pipeline_hash(doc_meta: Dict[str, Any]) -> str:
+    return str((doc_meta or {}).get("active_pipeline_hash") or (doc_meta or {}).get("pipeline_hash") or "").strip()
+
+
+def _active_doc_pipeline_key(document_id: UUID, doc_meta: Dict[str, Any]) -> str:
+    h = _active_pipeline_hash(doc_meta)
+    return f"{document_id}:{h}" if h else str(document_id)
+
+
+def _get_source_text(db: Session, *, tenant_id: UUID, document_id: UUID, max_chars: int) -> str:
+    """
+    Best-effort source text for Q&A generation.
+
+    Preference:
+    - Persisted parsed markdown (cleaned)
+    - Fallback: join active chunks
+    """
+    max_chars_eff = max(0, int(max_chars or 0))
+    if max_chars_eff <= 0:
+        max_chars_eff = 12_000
+
+    row = (
+        db.query(DocumentParsedContent)
+        .filter(DocumentParsedContent.tenant_id == tenant_id, DocumentParsedContent.document_id == document_id)
+        .first()
+    )
+    if row and (row.markdown_content or "").strip():
+        return str(row.markdown_content or "")[:max_chars_eff]
+
+    # Fallback: assemble from chunks (best-effort).
+    chunks = (
+        db.query(DocumentChunk.content)
+        .filter(DocumentChunk.tenant_id == tenant_id, DocumentChunk.document_id == document_id)
+        .order_by(DocumentChunk.chunk_index.asc())
+        .limit(2000)
+        .all()
+    )
+    buf: List[str] = []
+    total = 0
+    for (content,) in chunks:
+        s = (content or "").strip()
+        if not s:
+            continue
+        remaining = max_chars_eff - total
+        if remaining <= 0:
+            break
+        take = s[:remaining]
+        buf.append(take)
+        total += len(take)
+        if total >= max_chars_eff:
+            break
+    return "\n\n".join(buf)
+
+
+def generate_and_index_document_qa(
+    db: Session,
+    *,
+    tenant_id: UUID,
+    document: DBDocument,
+    num_pairs: int = 20,
+    replace_existing: bool = True,
+    prefer_llm: bool = True,
+    max_source_chars: int = 12_000,
+    preview_pairs: int = 5,
+) -> DocumentQAGenerateResult:
+    """
+    Generate/extract Q&A pairs and store them as additional chunks under the active pipeline version.
+    """
+    document_id = UUID(str(document.id))
+    doc_meta = dict(getattr(document, "doc_metadata", None) or {})
+    active_hash = _active_pipeline_hash(doc_meta)
+    active_key = _active_doc_pipeline_key(document_id, doc_meta)
+
+    # 1) Delete existing QA chunks (best-effort).
+    deleted = 0
+    if replace_existing:
+        rows = (
+            db.query(DocumentChunk.id, DocumentChunk.doc_metadata)
+            .filter(DocumentChunk.tenant_id == tenant_id, DocumentChunk.document_id == document_id)
+            .all()
+        )
+        qa_ids: List[UUID] = []
+        for cid, meta in rows:
+            m = meta if isinstance(meta, dict) else {}
+            if str(m.get("doc_pipeline_key") or "").strip() != active_key:
+                continue
+            if str(m.get("file_type") or "").strip().lower() != "qa":
+                continue
+            qa_ids.append(UUID(str(cid)))
+
+        if qa_ids:
+            vector_store = get_vector_store()
+            try:
+                from app.rag.retriever import hybrid_retriever  # noqa: WPS433
+            except Exception:
+                hybrid_retriever = None  # type: ignore[assignment]
+
+            for cid in qa_ids:
+                try:
+                    vector_store.delete_by_document_id_and_filter(
+                        document_id=document_id,
+                        tenant_id=tenant_id,
+                        metadata_filter={"chunk_id": {"$eq": str(cid)}},
+                    )
+                except NotImplementedError:
+                    # If vector backend can't selectively delete, leave vectors as-is.
+                    pass
+                except Exception:
+                    pass
+
+                if hybrid_retriever is not None:
+                    try:
+                        hybrid_retriever.remove_from_bm25_index_by_metadata_filter(
+                            tenant_id=tenant_id,
+                            metadata_filter={"chunk_id": {"$eq": str(cid)}},
+                        )
+                    except Exception:
+                        pass
+
+            db.query(DocumentChunk).filter(
+                DocumentChunk.tenant_id == tenant_id,
+                DocumentChunk.document_id == document_id,
+                DocumentChunk.id.in_(qa_ids),
+            ).delete(synchronize_session=False)
+            db.commit()
+            deleted = len(qa_ids)
+
+    # 2) Build source text.
+    source_text = _get_source_text(db, tenant_id=tenant_id, document_id=document_id, max_chars=max_source_chars)
+    if not source_text.strip():
+        return DocumentQAGenerateResult(mode="none", deleted=deleted, created=0, chunk_ids=[], preview=[])
+
+    # 3) Generate Q/A pairs.
+    mode = "extract"
+    pairs: List[QAPair] = []
+    if prefer_llm and _llm_enabled():
+        try:
+            pairs = generate_qa_pairs_with_llm(source_text, num_pairs=int(num_pairs))
+            mode = "llm"
+        except Exception:
+            pairs = []
+
+    if not pairs:
+        pairs = extract_qa_pairs_from_text(source_text, max_pairs=int(num_pairs))
+        mode = "extract" if pairs else "none"
+
+    if not pairs:
+        return DocumentQAGenerateResult(mode=mode, deleted=deleted, created=0, chunk_ids=[], preview=[])
+
+    # 4) Determine next chunk_index in active pipeline version.
+    q = db.query(func.max(DocumentChunk.chunk_index)).filter(
+        DocumentChunk.tenant_id == tenant_id,
+        DocumentChunk.document_id == document_id,
+    )
+    if active_key:
+        q = q.filter(DocumentChunk.doc_metadata["doc_pipeline_key"].astext == active_key)  # type: ignore[attr-defined]
+    max_idx = q.scalar()
+    next_index = int(max_idx or -1) + 1
+
+    # 5) Prepare chunk payloads.
+    source_label = str(getattr(document, "filename", "") or "document").strip()[:500] or "document"
+    records: List[Dict[str, Any]] = []
+    chunk_ids: List[UUID] = []
+    chunk_metas: List[Dict[str, Any]] = []
+
+    for pair in pairs:
+        cid = uuid.uuid4()
+        content = f"Q: {pair.question.strip()}\nA: {pair.answer.strip()}".strip()
+
+        meta: Dict[str, Any] = {
+            "tenant_id": str(tenant_id),
+            "document_id": str(document_id),
+            "chunk_id": str(cid),
+            "chunk_index": int(next_index),
+            "file_type": "qa",
+            "source": source_label,
+            "chunk_role": "qa",
+            "qa_question": pair.question.strip(),
+            "qa_answer": pair.answer.strip(),
+            "qa_mode": mode,
+            "qa_generated": True,
+        }
+        if active_hash:
+            meta["pipeline_hash"] = active_hash[:64]
+            meta["doc_pipeline_key"] = active_key
+
+        records.append({"content": content, "metadata": meta})
+        chunk_ids.append(cid)
+        chunk_metas.append(meta)
+        next_index += 1
+
+    # 6) Vector indexing (best-effort).
+    vector_ids: List[Optional[str]] = [None] * len(records)
+    try:
+        ids = list(get_vector_store().add_documents(records, document_id, tenant_id))
+        for i, vid in enumerate(ids):
+            if i >= len(vector_ids):
+                break
+            if vid:
+                vector_ids[i] = str(vid)
+    except Exception:
+        vector_ids = [None] * len(records)
+
+    # 7) Persist chunks.
+    db_chunks: List[DocumentChunk] = []
+    for i, cid in enumerate(chunk_ids):
+        chunk = DocumentChunk(
+            id=cid,
+            tenant_id=tenant_id,
+            document_id=document_id,
+            chunk_index=int(chunk_metas[i].get("chunk_index") or i),
+            content=str(records[i].get("content") or ""),
+            page_number=None,
+            start_char=None,
+            end_char=None,
+            doc_metadata=chunk_metas[i],
+            vector_id=vector_ids[i],
+        )
+        db_chunks.append(chunk)
+        db.add(chunk)
+
+    db.commit()
+
+    # 8) BM25 upsert (best-effort).
+    try:
+        Indexer(db)._update_bm25_for_chunks(
+            db_chunks=db_chunks,
+            tenant_id=tenant_id,
+            document_id=document_id,
+            default_source=source_label,
+            enable_bm25=bool(getattr(settings, "BM25_INDEX_ENABLED", True)),
+        )
+    except Exception:
+        pass
+
+    # 9) Update document stats (best-effort).
+    try:
+        stat_q = db.query(func.count(DocumentChunk.id), func.sum(func.length(DocumentChunk.content))).filter(
+            DocumentChunk.tenant_id == tenant_id,
+            DocumentChunk.document_id == document_id,
+        )
+        if active_key:
+            stat_q = stat_q.filter(DocumentChunk.doc_metadata["doc_pipeline_key"].astext == active_key)  # type: ignore[attr-defined]
+        cnt, total_chars = stat_q.first() or (None, None)
+        document.chunk_count = int(cnt or 0)
+        document.total_characters = int(total_chars or 0)
+        db.commit()
+    except Exception:
+        db.rollback()
+
+    preview: List[Dict[str, str]] = []
+    for pair in pairs[: max(0, min(int(preview_pairs or 0), 20))]:
+        preview.append({"question": pair.question.strip(), "answer": pair.answer.strip()})
+
+    return DocumentQAGenerateResult(
+        mode=mode,
+        deleted=int(deleted),
+        created=len(chunk_ids),
+        chunk_ids=list(chunk_ids),
+        preview=preview,
+    )
+
+
+__all__ = [
+    "DocumentQAGenerateResult",
+    "QAPair",
+    "extract_qa_pairs_from_text",
+    "generate_and_index_document_qa",
+]
+

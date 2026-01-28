@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { X, Maximize2, Minimize2, FileText, Loader2, Download, Copy, Link2, Pencil, Trash2, Plus } from "lucide-react"
+import { X, Maximize2, Minimize2, FileText, Loader2, Download, Copy, Link2, Pencil, Trash2, Plus, Sparkles } from "lucide-react"
 import { useVirtualizer } from "@tanstack/react-virtual"
 import { cn } from "@/lib/utils"
 import { useDocumentView } from "@/store/document-view"
@@ -12,7 +12,7 @@ import { Input } from "@/components/ui/input"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { documentApi, ragApi } from "@/lib/api-client"
 import { API_V1_BASE_URL } from "@/lib/env"
-import type { Citation, Document, DocumentChunk, DocumentParsedContentResponse } from "@/types"
+import type { Citation, Document, DocumentChunk, DocumentParsedContentResponse, DocumentQAGenerateResponse } from "@/types"
 import { getAccessToken, getTenantId } from "@/lib/auth-storage"
 import { FloatingMenu } from "@/components/document-viewer/floating-menu"
 import { mapDocumentChunksToPreviewItems } from "@/lib/document-chunks"
@@ -92,6 +92,14 @@ export function DocumentViewerPanel() {
   const [chunkEditorPageNumber, setChunkEditorPageNumber] = React.useState<string>("")
   const [chunkEditorSubmitting, setChunkEditorSubmitting] = React.useState(false)
   const [chunkDeleteSubmitting, setChunkDeleteSubmitting] = React.useState<string | null>(null)
+
+  const [qaDialogOpen, setQaDialogOpen] = React.useState(false)
+  const [qaNumPairs, setQaNumPairs] = React.useState(20)
+  const [qaReplaceExisting, setQaReplaceExisting] = React.useState(true)
+  const [qaPreferLlm, setQaPreferLlm] = React.useState(true)
+  const [qaMaxSourceChars, setQaMaxSourceChars] = React.useState(12000)
+  const [qaSubmitting, setQaSubmitting] = React.useState(false)
+  const [qaLastResult, setQaLastResult] = React.useState<DocumentQAGenerateResponse | null>(null)
 
   const rowVirtualizer = useVirtualizer({
     count: chunks.length,
@@ -603,6 +611,47 @@ export function DocumentViewerPanel() {
     [canEditChunks, documentId, highlightChunkId, rowVirtualizer, setHighlightChunk]
   )
 
+  const runQaGeneration = React.useCallback(async () => {
+    if (!documentId) return
+    if (!canEditChunks) return
+
+    setQaSubmitting(true)
+    try {
+      const res = await documentApi.generateQa(documentId, {
+        num_pairs: Math.max(1, Math.trunc(Number(qaNumPairs) || 0)),
+        replace_existing: Boolean(qaReplaceExisting),
+        prefer_llm: Boolean(qaPreferLlm),
+        max_source_chars: Math.max(500, Math.trunc(Number(qaMaxSourceChars) || 0)),
+        preview_pairs: 5,
+      })
+      setQaLastResult(res)
+      toast.success(`Q&A: +${res.created} (-${res.deleted}) [${res.mode}]`)
+
+      setDoc((prev) =>
+        prev
+          ? {
+              ...prev,
+              chunk_count: (prev.chunk_count || 0) + (res.created || 0) - (res.deleted || 0),
+            }
+          : prev
+      )
+
+      // Refresh chunk list (best-effort) so the new QA chunks are visible.
+      setLoadAllChunks(true)
+      setChunksLoaded(false)
+      setChunks([])
+
+      if (res.chunk_ids?.length) {
+        setHighlightChunk(res.chunk_ids[0])
+      }
+    } catch (err) {
+      console.error(err)
+      toast.error("Q&A generation failed")
+    } finally {
+      setQaSubmitting(false)
+    }
+  }, [canEditChunks, documentId, qaMaxSourceChars, qaNumPairs, qaPreferLlm, qaReplaceExisting, setHighlightChunk])
+
   const canInlinePreview = (doc?.file_type || "").toLowerCase() === "pdf"
 
   const jumpToMatch = React.useCallback((nextIndex: number) => {
@@ -708,6 +757,96 @@ export function DocumentViewerPanel() {
           >
             {chunkEditorSubmitting ? <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" /> : null}
             Save
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+    <Dialog
+      open={qaDialogOpen}
+      onOpenChange={(open) => {
+        setQaDialogOpen(open)
+        if (open) setQaLastResult(null)
+      }}
+    >
+      <DialogContent className="max-w-xl">
+        <DialogHeader>
+          <DialogTitle>Generate Q&A chunks</DialogTitle>
+        </DialogHeader>
+
+        <div className="space-y-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <div className="space-y-2">
+              <div className="text-sm font-medium text-foreground/80">Num pairs</div>
+              <Input
+                value={String(qaNumPairs)}
+                onChange={(e) => setQaNumPairs(Number(e.target.value || 0))}
+                inputMode="numeric"
+              />
+            </div>
+            <div className="space-y-2">
+              <div className="text-sm font-medium text-foreground/80">Max source chars</div>
+              <Input
+                value={String(qaMaxSourceChars)}
+                onChange={(e) => setQaMaxSourceChars(Number(e.target.value || 0))}
+                inputMode="numeric"
+              />
+            </div>
+          </div>
+
+          <label className="flex items-center justify-between gap-3 text-sm cursor-pointer select-none rounded-md border border-border bg-muted/20 px-3 py-2">
+            <span className="text-muted-foreground">Replace existing QA chunks</span>
+            <input
+              type="checkbox"
+              checked={qaReplaceExisting}
+              onChange={(e) => setQaReplaceExisting(e.target.checked)}
+              className="accent-primary h-4 w-4"
+            />
+          </label>
+
+          <label className="flex items-center justify-between gap-3 text-sm cursor-pointer select-none rounded-md border border-border bg-muted/20 px-3 py-2">
+            <span className="text-muted-foreground">Prefer LLM (if configured)</span>
+            <input
+              type="checkbox"
+              checked={qaPreferLlm}
+              onChange={(e) => setQaPreferLlm(e.target.checked)}
+              className="accent-primary h-4 w-4"
+            />
+          </label>
+
+          <div className="text-[11px] text-muted-foreground">
+            Generated chunks are tagged with <span className="font-mono">file_type=qa</span> in metadata.
+            You can include/exclude them via <span className="font-mono">metadata_filter</span>.
+          </div>
+
+          {qaLastResult?.preview?.length ? (
+            <div className="rounded-xl border border-border bg-background/60 p-3">
+              <div className="text-xs font-semibold text-foreground mb-2">Preview</div>
+              <div className="space-y-2 max-h-[220px] overflow-auto">
+                {qaLastResult.preview.slice(0, 10).map((p, idx) => (
+                  <div key={`${idx}-${p.question.slice(0, 24)}`} className="rounded-lg border border-border/60 bg-muted/10 p-2">
+                    <div className="text-[11px] text-muted-foreground">Q</div>
+                    <div className="text-xs text-foreground whitespace-pre-wrap">{p.question}</div>
+                    <div className="mt-2 text-[11px] text-muted-foreground">A</div>
+                    <div className="text-xs text-foreground whitespace-pre-wrap">{p.answer}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : null}
+        </div>
+
+        <DialogFooter>
+          <Button type="button" variant="outline" onClick={() => setQaDialogOpen(false)} disabled={qaSubmitting}>
+            Close
+          </Button>
+          <Button
+            type="button"
+            onClick={() => void runQaGeneration()}
+            disabled={!canEditChunks || qaSubmitting || !documentId}
+            className="gap-2"
+          >
+            {qaSubmitting ? <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" /> : <Sparkles className="h-4 w-4" />}
+            Generate
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -1111,6 +1250,33 @@ export function DocumentViewerPanel() {
                      </div>
                    </div>
 
+                   <div className="mt-2 flex items-center justify-end gap-2">
+                     <Button
+                       type="button"
+                       size="sm"
+                       variant="outline"
+                       className="gap-2"
+                       onClick={openCreateChunk}
+                       disabled={!canEditChunks}
+                       title={canEditChunks ? "Add a new chunk" : "Document is processing; editing disabled"}
+                     >
+                       <Plus className="h-4 w-4" />
+                       Add chunk
+                     </Button>
+                     <Button
+                       type="button"
+                       size="sm"
+                       variant="outline"
+                       className="gap-2"
+                       onClick={() => setQaDialogOpen(true)}
+                       disabled={!canEditChunks}
+                       title={canEditChunks ? "Generate FAQ-style Q&A chunks" : "Document is processing; editing disabled"}
+                     >
+                       <Sparkles className="h-4 w-4" />
+                       Q&A
+                     </Button>
+                   </div>
+
                    {!chunksLoaded && chunkQuery.trim() && serverMatchTruncated ? (
                      <div className="mt-2 text-[11px] text-muted-foreground">
                        匹配结果过多，仅返回前 {matchChunkIds.length} 条（计数后缀 “+” 表示截断）。
@@ -1193,6 +1359,34 @@ export function DocumentViewerPanel() {
                                      title="复制定位链接"
                                    >
                                      <Link2 className="h-4 w-4" />
+                                   </Button>
+                                   <Button
+                                     type="button"
+                                     variant="ghost"
+                                     size="icon"
+                                     className="h-7 w-7"
+                                     onClick={() => openEditChunk(highlightChunk)}
+                                     disabled={!canEditChunks || chunkEditorSubmitting}
+                                     aria-label="Edit chunk"
+                                     title="Edit chunk"
+                                   >
+                                     <Pencil className="h-4 w-4" />
+                                   </Button>
+                                   <Button
+                                     type="button"
+                                     variant="ghost"
+                                     size="icon"
+                                     className="h-7 w-7 text-destructive hover:text-destructive"
+                                     onClick={() => void deleteChunk(highlightChunk)}
+                                     disabled={!canEditChunks || chunkDeleteSubmitting === highlightChunk.id}
+                                     aria-label="Delete chunk"
+                                     title="Delete chunk"
+                                   >
+                                     {chunkDeleteSubmitting === highlightChunk.id ? (
+                                       <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" />
+                                     ) : (
+                                       <Trash2 className="h-4 w-4" />
+                                     )}
                                    </Button>
                                  </div>
                                </div>
@@ -1288,6 +1482,34 @@ export function DocumentViewerPanel() {
                                         title="复制定位链接"
                                       >
                                         <Link2 className="h-4 w-4" />
+                                      </Button>
+                                      <Button
+                                        type="button"
+                                        variant="ghost"
+                                        size="icon"
+                                        className="h-7 w-7"
+                                        onClick={() => openEditChunk(chunk)}
+                                        disabled={!canEditChunks || chunkEditorSubmitting}
+                                        aria-label="Edit chunk"
+                                        title="Edit chunk"
+                                      >
+                                        <Pencil className="h-4 w-4" />
+                                      </Button>
+                                      <Button
+                                        type="button"
+                                        variant="ghost"
+                                        size="icon"
+                                        className="h-7 w-7 text-destructive hover:text-destructive"
+                                        onClick={() => void deleteChunk(chunk)}
+                                        disabled={!canEditChunks || chunkDeleteSubmitting === chunk.id}
+                                        aria-label="Delete chunk"
+                                        title="Delete chunk"
+                                      >
+                                        {chunkDeleteSubmitting === chunk.id ? (
+                                          <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" />
+                                        ) : (
+                                          <Trash2 className="h-4 w-4" />
+                                        )}
                                       </Button>
                                     </div>
                                   </div>
