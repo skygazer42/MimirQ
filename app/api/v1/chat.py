@@ -805,6 +805,8 @@ async def stream_chat(
                 if dataset_prompt_defaults_applied_fields:
                     metrics_data.setdefault("dataset_prompt_defaults_applied", True)
                     metrics_data.setdefault("dataset_prompt_defaults_fields", dataset_prompt_defaults_applied_fields)
+                if quota_meta.get("enabled"):
+                    metrics_data.setdefault("quota", quota_meta)
 
                 retrieval_mode_used = metrics_data.get("retrieval_mode") or effective_rag_config.retrieval_mode
                 vector_backend_used = metrics_data.get("vector_backend") or settings.VECTOR_BACKEND
@@ -950,6 +952,15 @@ async def stream_chat(
                         except Exception:
                             pass
 
+                    if quota_meta.get("enabled"):
+                        try:
+                            if isinstance(metrics_data, dict):
+                                metrics_data.setdefault("quota", quota_meta)
+                            if isinstance(event.get("data"), dict) and isinstance(event["data"].get("metrics"), dict):
+                                event["data"]["metrics"].setdefault("quota", quota_meta)
+                        except Exception:
+                            pass
+
                     if dataset_rag_defaults_applied_fields:
                         try:
                             if isinstance(metrics_data, dict):
@@ -989,6 +1000,8 @@ async def stream_chat(
             # 4. Persist assistant response.
             if dataset_id_used is not None and isinstance(metrics_data, dict):
                 metrics_data.setdefault("dataset_id", str(dataset_id_used))
+            if quota_meta.get("enabled") and isinstance(metrics_data, dict):
+                metrics_data.setdefault("quota", quota_meta)
             assistant_message = Message(
                 id=assistant_message_id,
                 tenant_id=tenant_id,
