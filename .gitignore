@@ -48,6 +48,7 @@ Thumbs.db
 uploads/
 logs/
 chroma_db/
+.worktrees/
 web/.next/
 web/.next_build/
 web/openapi.json
