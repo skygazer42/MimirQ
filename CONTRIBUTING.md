@@ -27,7 +27,7 @@ python main.py
 
 Windows helper (starts web in a separate PowerShell window):
 ```powershell
-powershell -ExecutionPolicy Bypass -File scripts/dev.ps1
+powershell -ExecutionPolicy Bypass -File scripts/dev_all.ps1
 ```
 
 Frontend (local):

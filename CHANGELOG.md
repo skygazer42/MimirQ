@@ -8,7 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
-- Windows-friendly dev helpers: `scripts/dev.ps1` and `scripts/verify.ps1`.
+- Windows-friendly dev helpers: `scripts/dev_all.ps1` (`scripts/dev.ps1` wrapper) and `scripts/verify.ps1`.
 - Repo docs: `CONTRIBUTING.md`, `SECURITY.md`, and `LICENSE`.
 
 ### Changed
@@ -19,4 +19,3 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Fixed
 
 - Excel import: ensure file handles are closed to avoid Windows temp file cleanup issues.
-

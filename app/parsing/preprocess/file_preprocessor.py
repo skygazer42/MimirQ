@@ -19,8 +19,11 @@ import re
 import unicodedata
 import uuid
 from dataclasses import dataclass
+from functools import lru_cache
 from pathlib import Path
 from typing import Any, Dict, List, Optional
+
+from app.core.optional_deps import optional_import
 
 TEXT_LIKE_EXTS = {
     ".txt",
@@ -129,6 +132,21 @@ def _read_bytes_bounded(path: Path, *, max_bytes: int) -> tuple[bytes, bool]:
     return data, False
 
 
+@lru_cache(maxsize=1)
+def _get_charset_normalizer():  # noqa: ANN202
+    # Cache to avoid repeated warnings during large ingests when deps aren't installed.
+    return optional_import(
+        "charset_normalizer",
+        feature="file_preprocess_encoding_detection",
+        pip_name="charset-normalizer",
+    )
+
+
+@lru_cache(maxsize=1)
+def _get_chardet():  # noqa: ANN202
+    return optional_import("chardet", feature="file_preprocess_encoding_detection")
+
+
 def _detect_encoding(raw: bytes) -> tuple[str, float]:
     """
     Best-effort encoding detection.
@@ -136,26 +154,30 @@ def _detect_encoding(raw: bytes) -> tuple[str, float]:
     Returns (encoding, confidence).
     """
     # Prefer charset_normalizer (more accurate on short samples; pure python).
-    try:
-        from charset_normalizer import from_bytes  # type: ignore
-
-        best = from_bytes(raw).best()
-        if best is not None and getattr(best, "encoding", None):
-            return str(best.encoding), float(getattr(best, "confidence", 0.0) or 0.0)
-    except Exception:
-        pass
+    cn = _get_charset_normalizer()
+    if cn is not None:
+        from_bytes = getattr(cn, "from_bytes", None)
+        if callable(from_bytes):
+            try:
+                best = from_bytes(raw).best()
+                if best is not None and getattr(best, "encoding", None):
+                    return str(best.encoding), float(getattr(best, "confidence", 0.0) or 0.0)
+            except Exception:
+                pass
 
     # Fallback to chardet (available in many envs).
-    try:
-        import chardet  # type: ignore
-
-        res = chardet.detect(raw)
-        enc = str((res or {}).get("encoding") or "").strip()
-        conf = float((res or {}).get("confidence") or 0.0)
-        if enc:
-            return enc, conf
-    except Exception:
-        pass
+    chardet = _get_chardet()
+    if chardet is not None:
+        detect = getattr(chardet, "detect", None)
+        if callable(detect):
+            try:
+                res = detect(raw)
+                enc = str((res or {}).get("encoding") or "").strip()
+                conf = float((res or {}).get("confidence") or 0.0)
+                if enc:
+                    return enc, conf
+            except Exception:
+                pass
 
     return "utf-8", 0.0
 

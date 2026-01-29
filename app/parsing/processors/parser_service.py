@@ -7,6 +7,7 @@ import base64
 import hashlib
 import re
 import uuid
+from functools import lru_cache
 from pathlib import Path
 from typing import Dict, List, Optional
 from uuid import UUID
@@ -14,8 +15,15 @@ from uuid import UUID
 from langchain_core.documents import Document
 
 from app.core.config import settings
+from app.core.optional_deps import optional_import
 from app.parsing.factory import parser_factory
 from app.parsing.routing import route_pdf_backend
+
+
+@lru_cache(maxsize=1)
+def _get_pil_image():  # noqa: ANN202
+    # Cache to avoid repeated warnings during large ingests when Pillow isn't installed.
+    return optional_import("PIL.Image", feature="parse_preview_inline_images", pip_name="Pillow")
 
 
 class DocumentParserService:
@@ -57,13 +65,8 @@ class DocumentParserService:
 
         from io import BytesIO
 
-        try:
-            from PIL import Image as pil_image  # type: ignore
-        except ImportError:
-            pil_image = None  # type: ignore[assignment]
-            pillow_ok = False
-        else:
-            pillow_ok = True
+        pil_image = _get_pil_image()
+        pillow_ok = pil_image is not None
 
         from urllib.parse import unquote
 
