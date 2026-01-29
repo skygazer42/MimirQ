@@ -1708,6 +1708,10 @@ class HybridRetriever(BaseRetriever):
         results = self._enrich_results_with_db_metadata(results)
         results = self._expand_results_with_neighbors(results)
         results = self._auto_merge_parent_child(results)
+        # Neighbor expansion / parent-child merges can introduce additional chunks that were
+        # not part of the original retrieval result set. Re-apply DB enrichment + ACL/version
+        # trimming to guarantee defense-in-depth and avoid leaking stale/non-active pipelines.
+        results = self._enrich_results_with_db_metadata(results)
         docs: List[Document] = []
         for r in results:
             meta = dict(r.get("metadata") or {})
