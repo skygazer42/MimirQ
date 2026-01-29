@@ -7,8 +7,8 @@ that works well with downstream governance + chunking.
 """
 
 
-from pathlib import Path
 from functools import lru_cache
+from pathlib import Path
 from typing import List, Optional
 
 from langchain_core.documents import Document
@@ -42,10 +42,10 @@ class HtmlParser:
         # 1) Best-effort: extract "main article" using readability-lxml.
         readability = _get_readability()
         if readability is not None:
-            ReadabilityDocument = getattr(readability, "Document", None)
-            if ReadabilityDocument is not None:
+            readability_document_cls = getattr(readability, "Document", None)
+            if readability_document_cls is not None:
                 try:
-                    rd = ReadabilityDocument(raw_html)
+                    rd = readability_document_cls(raw_html)
                     title = (rd.short_title() or rd.title() or None) if raw_html.strip() else None
                     extracted_html = rd.summary() or raw_html
                 except Exception:

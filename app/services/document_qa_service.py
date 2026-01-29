@@ -25,8 +25,8 @@ from sqlalchemy.orm import Session
 from app.core.config import settings
 from app.models.document import Document as DBDocument
 from app.models.document import DocumentChunk, DocumentParsedContent
-from app.rag.retriever import hybrid_retriever
 from app.rag.core.logging import get_logger
+from app.rag.retriever import hybrid_retriever
 from app.services.indexer import Indexer
 from app.storage.vector.factory import get_vector_store
 
