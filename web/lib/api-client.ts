@@ -51,6 +51,7 @@ import type {
   DatasetUpdate,
   DatasetListResponse,
   DatasetIngestionStats,
+  DatasetHealthResponse,
   DatasetConfigExport,
   DatasetConfigImportRequest,
   DatasetCloneRequest,
@@ -1106,6 +1107,11 @@ export const datasetApi = {
 
   async getIngestionStats(datasetId: string): Promise<DatasetIngestionStats> {
     const { data } = await apiClient.get(`/datasets/${datasetId}/ingestion/stats`)
+    return data
+  },
+
+  async getHealth(datasetId: string): Promise<DatasetHealthResponse> {
+    const { data } = await apiClient.get(`/datasets/${datasetId}/health`)
     return data
   },
 

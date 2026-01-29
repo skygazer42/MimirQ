@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { toast } from 'sonner'
 import {
+  Activity,
   ArrowLeft,
   BarChart3,
   Download,
@@ -375,6 +376,12 @@ export default function DatasetProfilePage() {
               <ArrowLeft className="w-4 h-4" />
               返回
             </Button>
+            {datasetId ? (
+              <Button variant="outline" className="gap-2" onClick={() => router.push(`/datasets/${datasetId}/health`)}>
+                <Activity className="w-4 h-4" />
+                健康
+              </Button>
+            ) : null}
             {datasetId ? (
               <Button variant="outline" className="gap-2" onClick={() => router.push(`/datasets/${datasetId}/ingestion`)}>
                 <Settings2 className="w-4 h-4" />

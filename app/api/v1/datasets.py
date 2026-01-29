@@ -33,6 +33,7 @@ from app.api.schemas.dataset_profile import (
     DatasetProfileScanRunOut,
     DatasetProfileSummary,
 )
+from app.api.schemas.dataset_health import DatasetHealthIngestionSummary, DatasetHealthResponse
 from app.api.schemas.document import DocumentPipelineOptions
 from app.api.schemas.ingestion_policy import IngestionPolicy, IngestionPolicyImportResponse
 from app.core.config import settings
@@ -1102,6 +1103,46 @@ def get_dataset_profile_summary(
         dataset_id=dataset_id,
     )
     return summary
+
+
+@router.get("/{dataset_id}/health", response_model=DatasetHealthResponse)
+def get_dataset_health(
+    dataset_id: UUID,
+    tenant_id: UUID = Depends(get_tenant_id),
+    account_id: str = Depends(get_current_account_id),
+    db: Session = Depends(get_db),
+):
+    """
+    Dataset health dashboard v1.
+
+    Keep it light: reuse existing profile summary and derive ingestion signals from it.
+    """
+    profile = compute_dataset_profile_summary(
+        db,
+        tenant_id=tenant_id,
+        account_id=account_id,
+        dataset_id=dataset_id,
+    )
+
+    by_status = {str(k): int(v or 0) for k, v in (getattr(profile, "by_status", None) or {}).items()}
+
+    ingestion = DatasetHealthIngestionSummary(
+        total_documents=int(getattr(profile, "total_documents", 0) or 0),
+        by_status=by_status,
+        pending=int(by_status.get("pending", 0) or 0),
+        processing=int(by_status.get("processing", 0) or 0),
+        completed=int(by_status.get("completed", 0) or 0),
+        failed=int(by_status.get("failed", 0) or 0),
+        quarantined=int(by_status.get("quarantined", 0) or 0),
+        cancelled=int(by_status.get("cancelled", 0) or 0),
+    )
+
+    return DatasetHealthResponse(
+        dataset_id=dataset_id,
+        generated_at=datetime.now(timezone.utc),
+        profile=profile,
+        ingestion=ingestion,
+    )
 
 
 @router.get("/{dataset_id}/profile/findings/{finding_key}", response_model=DatasetProfileFindingListResponse)
