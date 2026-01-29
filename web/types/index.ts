@@ -999,6 +999,24 @@ export interface DatasetIngestionStats {
   last_processed_at?: string | null
 }
 
+export interface DatasetHealthIngestionSummary {
+  total_documents: number
+  by_status: Record<string, number>
+  pending: number
+  processing: number
+  completed: number
+  failed: number
+  quarantined: number
+  cancelled: number
+}
+
+export interface DatasetHealthResponse {
+  dataset_id: string
+  generated_at: string
+  profile: DatasetProfileSummary
+  ingestion: DatasetHealthIngestionSummary
+}
+
 export interface DatasetConfigBundle {
   default_parser_backend?: string | null
   default_chunk_strategy?: string | null
