@@ -14,6 +14,7 @@ import json
 import time
 import traceback
 import uuid
+from functools import lru_cache
 from pathlib import Path
 from typing import Any
 from uuid import UUID
@@ -21,12 +22,18 @@ from uuid import UUID
 from langchain_core.documents import Document
 
 from app.core.config import settings
+from app.core.optional_deps import optional_import
 from app.parsing.factory import parser_factory
 from app.parsing.processors.parser_service import document_parser_service
 from app.parsing.routing import route_pdf_backend
 from app.rag.core.logging import get_logger, setup_logging
 
 logger = get_logger("parsing.subprocess_worker")
+
+
+@lru_cache(maxsize=1)
+def _get_pil_image():  # noqa: ANN202
+    return optional_import("PIL.Image", feature="parse_ingest_image_materialize", pip_name="Pillow")
 
 
 def _as_uuid(value: Any) -> UUID:
@@ -78,14 +85,11 @@ def _materialize_images_for_ingest(
         if artifact_root is None:
             artifact_root = Path(settings.UPLOAD_DIR) / str(tenant_id) / ".mimirq_parse" / uuid.uuid4().hex
         images_dir = artifact_root / "images"
-        images_dir.mkdir(parents=True, exist_ok=True)
+    images_dir.mkdir(parents=True, exist_ok=True)
 
     from io import BytesIO
 
-    try:
-        from PIL import Image as pil_image  # type: ignore
-    except ImportError:
-        pil_image = None  # type: ignore[assignment]
+    pil_image = _get_pil_image()
 
     for doc in documents:
         meta = dict(getattr(doc, "metadata", None) or {})

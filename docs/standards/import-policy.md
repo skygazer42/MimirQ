@@ -39,8 +39,53 @@ If a feature degrades due to missing dependencies:
   - `feature`, `dependency`, `reason`, `remediation`
 - Return a structured degraded reason when possible (e.g. API response payloads / job stats).
 
+## Recipes / Examples
+
+### A) Optional dependency on a hot path (avoid repeated warnings)
+
+Use `lru_cache` so missing-dependency warnings are emitted at most once per process:
+
+```python
+from functools import lru_cache
+
+from app.core.optional_deps import optional_import
+
+
+@lru_cache(maxsize=1)
+def _get_lxml_html():  # noqa: ANN202
+    return optional_import("lxml.html", feature="web_crawl_link_extraction", pip_name="lxml")
+```
+
+### B) Feature selected/enabled => fail-fast
+
+When a config flag / API parameter selects a feature, missing deps should raise a clear error:
+
+```python
+from app.core.optional_deps import require_dependency
+
+
+def build_markitdown_converter():  # noqa: ANN202
+    mod = require_dependency("markitdown", feature="parser_markitdown")
+    return mod.MarkItDown(enable_plugins=True)
+```
+
+### C) Internal import cycles (do not try-import)
+
+If you feel tempted to do:
+
+```python
+try:
+    from app.some_internal.module import thing
+except Exception:
+    thing = None
+```
+
+Refactor instead:
+
+- Move the shared utility into `app.core.*` (or a lower-level module) so both sides can import it safely.
+- Keep degradation at the third-party boundary (`ImportError`) and make it observable (log + reason).
+
 ## Notes
 
 - `AGENTS.md` mentions the Corridor MCP tool for plan/threat analysis, but the current environment may not have it configured.
   When unavailable, do a manual security review and keep changes small, observable, and test-covered.
-

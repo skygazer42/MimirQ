@@ -24,7 +24,8 @@ The Makefile is the source of truth for common workflows; these scripts are the 
 
 ## Dev (Windows PowerShell)
 
-- `dev.ps1`: Windows helper that starts backend + web (if you don't have `make`)
+- `dev_all.ps1`: Windows helper that starts backend + web (if you don't have `make`)
+  - `dev.ps1` is kept as a compatibility wrapper (deprecated)
 - `dev_backend.ps1`: start backend only
 - `dev_web.ps1`: start web only
 - `verify.ps1`: Windows equivalent of `make verify`
@@ -44,4 +45,3 @@ Most scripts follow a simple contract:
 
 - `0`: success
 - non-zero: failure (prints a readable message)
-
