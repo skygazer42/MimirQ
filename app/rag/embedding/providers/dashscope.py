@@ -80,7 +80,7 @@ class DashScopeEmbedding(BaseEmbeddingModel):
 
         except (requests.RequestException, json.JSONDecodeError, KeyError) as e:
             logger.error(f"DashScope Embedding request failed: {e}, payload: {payload}")
-            raise ValueError(f"DashScope Embedding request failed: {e}")
+            raise ValueError(f"DashScope Embedding request failed: {e}") from e
 
     async def aencode(self, message: str | list[str]) -> list[list[float]]:
         """Asynchronously encode text(s) to embeddings."""
@@ -108,4 +108,4 @@ class DashScopeEmbedding(BaseEmbeddingModel):
                     f"DashScope Embedding async request failed: {e}, "
                     f"payload: {payload}, base_url: {self.base_url}"
                 )
-                raise ValueError(f"DashScope Embedding async request failed: {e}")
+                raise ValueError(f"DashScope Embedding async request failed: {e}") from e

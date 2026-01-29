@@ -12,6 +12,7 @@ Only runs on PostgreSQL. Failures are ignored to avoid blocking startup.
 from uuid import UUID
 
 from sqlalchemy import text
+from sqlalchemy.exc import SQLAlchemyError
 
 
 def _default_tenant_uuid() -> str:
@@ -209,8 +210,8 @@ def apply_runtime_migrations(engine) -> None:
             for ddl in ddl_statements:
                 try:
                     conn.execute(text(ddl))
-                except Exception:
+                except SQLAlchemyError:
                     # Best-effort migrations should never block startup.
                     continue
-    except Exception:
+    except SQLAlchemyError:
         return

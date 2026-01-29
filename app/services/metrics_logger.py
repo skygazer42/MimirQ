@@ -34,7 +34,7 @@ _ctx_conversation_id: contextvars.ContextVar[Optional[str]] = contextvars.Contex
     "metrics.conversation_id", default=None
 )
 _ctx_account_id: contextvars.ContextVar[Optional[str]] = contextvars.ContextVar("metrics.account_id", default=None)
-_ctx_extra: contextvars.ContextVar[Dict[str, Any]] = contextvars.ContextVar("metrics.extra", default={})
+_ctx_extra: contextvars.ContextVar[Dict[str, Any] | None] = contextvars.ContextVar("metrics.extra", default=None)
 
 
 def _now_ts_ms() -> int:

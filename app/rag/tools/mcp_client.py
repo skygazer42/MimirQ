@@ -211,11 +211,11 @@ class MCPClient:
             except httpx.HTTPStatusError as e:
                 logger.error("MCP HTTP error: %s", e)
                 if attempt == self.max_retries - 1:
-                    raise MCPError(f"HTTP error: {e}")
+                    raise MCPError(f"HTTP error: {e}") from e
             except httpx.RequestError as e:
                 logger.error("MCP request error: %s", e)
                 if attempt == self.max_retries - 1:
-                    raise MCPConnectionError(f"Connection error: {e}")
+                    raise MCPConnectionError(f"Connection error: {e}") from e
 
             # Wait before retry
             await asyncio.sleep(2 ** attempt)

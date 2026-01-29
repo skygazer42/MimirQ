@@ -1230,7 +1230,7 @@ class MinerUService:
         
         except Exception as e:
             logger.error("MinerU local parsing failed: %s", e)
-            raise Exception(f"MinerU local parsing failed: {str(e)}")
+            raise Exception(f"MinerU local parsing failed: {str(e)}") from e
 
 
 # Global instance

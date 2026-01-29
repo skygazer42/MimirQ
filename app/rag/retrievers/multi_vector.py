@@ -325,7 +325,7 @@ class MultiVectorRetriever(BaseRetriever):
         texts_to_embed = []
         metadatas = []
 
-        for parent_id, parent_doc, children in zip(parent_ids, parent_documents, child_chunks, strict=False):
+        for parent_id, _parent_doc, children in zip(parent_ids, parent_documents, child_chunks, strict=False):
             for child in children:
                 texts_to_embed.append(child.page_content)
                 metadatas.append({

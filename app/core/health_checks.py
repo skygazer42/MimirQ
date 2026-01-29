@@ -17,6 +17,7 @@ HealthMode = Literal["ready", "health"]
 def check_database(SessionLocal) -> tuple[dict[str, Any], bool]:  # noqa: N803
     """Return (db_status, ok)."""
     from sqlalchemy import text
+    from sqlalchemy.exc import SQLAlchemyError
 
     ok = True
     db_status: dict[str, Any] = {"status": "disconnected"}
@@ -24,13 +25,13 @@ def check_database(SessionLocal) -> tuple[dict[str, Any], bool]:  # noqa: N803
     try:
         db.execute(text("SELECT 1"))
         db_status["status"] = "connected"
-    except Exception as exc:  # noqa: BLE001
+    except SQLAlchemyError as exc:
         ok = False
         db_status["error"] = str(exc)[:200]
     finally:
         try:
             db.close()
-        except Exception:
+        except SQLAlchemyError:
             pass
 
     return db_status, ok
@@ -187,4 +188,3 @@ def check_minio(
     if raw.get("error"):
         payload["error"] = raw.get("error")
     return payload, ok
-

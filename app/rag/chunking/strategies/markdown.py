@@ -114,7 +114,7 @@ class MarkdownHeaderChunker(BaseChunker):
                 md_chunks = self._md_splitter.split_text(text)
                 search_pos = 0
 
-                for chunk_idx, md_doc in enumerate(md_chunks):
+                for md_doc in md_chunks:
                     # Calculate character positions
                     chunk_text = md_doc.page_content
                     start_pos = text.find(chunk_text, max(0, int(search_pos)))
@@ -314,7 +314,7 @@ class MarkdownAwareChunker(BaseChunker):
 
             # Restore code blocks and create documents
             search_pos = 0
-            for chunk_idx, chunk_text in enumerate(raw_chunks):
+            for chunk_text in raw_chunks:
                 # Restore code blocks in this chunk
                 restored_text = self._restore_code_blocks(chunk_text, code_blocks)
 

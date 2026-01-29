@@ -548,7 +548,7 @@ class SmartCodeChunker(BaseChunker):
             units = self._split_python_units(text)
             search_pos = 0
 
-            for unit_idx, (unit_text, unit_type, unit_name) in enumerate(units):
+            for unit_text, unit_type, unit_name in units:
                 unit_start = text.find(unit_text, max(0, int(search_pos)))
                 if unit_start < 0:
                     unit_start = max(0, min(int(search_pos), len(text)))
