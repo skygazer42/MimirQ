@@ -15,6 +15,7 @@ from dataclasses import dataclass
 from typing import Any, Callable, Dict
 
 from app.core.config import settings
+from app.core.pii_redaction import pii_redaction_enabled, redact_text
 from app.rag.middleware.base import wrap_tool_call
 from app.services.metrics_logger import log_metrics
 
@@ -53,17 +54,7 @@ class ToolCallLoggingMiddleware:
         max_preview_chars = max(0, int(self.max_preview_chars or 0))
         include_preview = bool(self.include_preview)
 
-        pii_on = False
-        redact_text = None  # type: ignore[assignment]
-        try:
-            from app.rag.middleware.pii import pii_enabled
-            from app.rag.middleware.pii import redact_text as _redact_text
-
-            pii_on = bool(pii_enabled())
-            redact_text = _redact_text
-        except Exception:  # noqa: BLE001
-            pii_on = False
-            redact_text = None  # type: ignore[assignment]
+        pii_on = bool(pii_redaction_enabled())
 
         if asyncio.iscoroutinefunction(func):
 
@@ -81,7 +72,7 @@ class ToolCallLoggingMiddleware:
                     if include_preview:
                         result_preview = _truncate_text(out.get("result"), max_preview_chars) if out.get("result") is not None else None
                         error_preview = _truncate_text(out.get("error"), max_preview_chars) if out.get("error") else None
-                        if pii_on and redact_text:
+                        if pii_on:
                             result_preview = redact_text(result_preview) if result_preview else None
                             error_preview = redact_text(error_preview) if error_preview else None
                     meta["tool_call"] = {
@@ -136,7 +127,7 @@ class ToolCallLoggingMiddleware:
             if include_preview:
                 result_preview = _truncate_text(out.get("result"), max_preview_chars) if out.get("result") is not None else None
                 error_preview = _truncate_text(out.get("error"), max_preview_chars) if out.get("error") else None
-                if pii_on and redact_text:
+                if pii_on:
                     result_preview = redact_text(result_preview) if result_preview else None
                     error_preview = redact_text(error_preview) if error_preview else None
             meta["tool_call"] = {

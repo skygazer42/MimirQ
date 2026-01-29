@@ -13,8 +13,11 @@ small decoder that:
 
 
 from dataclasses import dataclass
+from functools import lru_cache
 from pathlib import Path
 from typing import Iterable
+
+from app.core.optional_deps import optional_import
 
 
 @dataclass(frozen=True)
@@ -30,6 +33,12 @@ _BOM_UTF16_LE = b"\xff\xfe"
 _BOM_UTF16_BE = b"\xfe\xff"
 _BOM_UTF32_LE = b"\xff\xfe\x00\x00"
 _BOM_UTF32_BE = b"\x00\x00\xfe\xff"
+
+
+@lru_cache(maxsize=1)
+def _get_chardet():  # noqa: ANN202
+    # Cache to avoid repeated warnings during large ingests when chardet isn't installed.
+    return optional_import("chardet", feature="text_encoding_detection")
 
 
 def _normalize_encoding(name: str) -> str:
