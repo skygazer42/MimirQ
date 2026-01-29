@@ -198,15 +198,15 @@ def read_text_file(path: Path, *, default_encoding: str = "utf-8") -> DecodedTex
     # 3) Best-effort detection with chardet.
     detected_encoding: str | None = None
     detected_confidence = 0.0
-    try:
-        import chardet  # type: ignore
-
-        detected = chardet.detect(blob[:65536])
-        detected_encoding = (detected.get("encoding") or "").strip() or None
-        detected_confidence = float(detected.get("confidence") or 0.0)
-    except Exception:
-        detected_encoding = None
-        detected_confidence = 0.0
+    chardet = _get_chardet()
+    if chardet is not None:
+        try:
+            detected = chardet.detect(blob[:65536])
+            detected_encoding = (detected.get("encoding") or "").strip() or None
+            detected_confidence = float(detected.get("confidence") or 0.0)
+        except Exception:
+            detected_encoding = None
+            detected_confidence = 0.0
 
     # 4) Try a small set of candidates and pick the best-scoring result.
     best_text: str | None = None
