@@ -1258,6 +1258,8 @@ def run_rag_graph(
     history: Optional[List[Dict[str, str]]] = None,
     document_ids: Optional[List[UUID]] = None,
     tenant_id: Optional[UUID] = None,
+    account_id: Optional[str] = None,
+    dataset_id: Optional[UUID] = None,
     top_k: int = 5,
     score_threshold: float = 0.7,
     retrieval_mode: str = "hybrid",
@@ -1281,68 +1283,33 @@ def run_rag_graph(
     db: Optional[Any] = None,
 ) -> Dict[str, Any]:
     """Execute LangGraph RAG flow, return answer/citations/model info."""
-    engine = get_rag_engine()
-    preset_key = (structured_preset or "").lower()
-    format_instructions = ""
-    if structured_output:
-        format_instructions = engine.structured_presets.get(
-            preset_key,
-            (
-                "Please return JSON only, structure: "
-                '{"answer": "string", "citations": [{"document_id": "...", "chunk_id": "...", "page_number": null, "relevance_score": 0.0}]}'
-                " Do not output extra text."
-            ),
-        )
-
-    prompt_template_content = None
-    selected_prompt_template_id = None
-    selected_prompt_template_key = None
-    selected_prompt_ab_experiment_key = None
-    selected_prompt_ab_variant = None
-    if db and tenant_id and (prompt_template_id or prompt_template_key or prompt_ab_experiment_key):
-        chosen = resolve_prompt_template(
-            db=db,
-            tenant_id=tenant_id,
-            prompt_template_id=prompt_template_id,
-            template_key=prompt_template_key,
-            ab_experiment_key=prompt_ab_experiment_key,
-            ab_user_key=ab_user_key,
-        )
-        if chosen:
-            prompt_template_content = chosen.content
-            selected_prompt_template_id = str(chosen.id)
-            selected_prompt_template_key = getattr(chosen, "template_key", None)
-            selected_prompt_ab_experiment_key = getattr(chosen, "ab_experiment_key", None)
-            selected_prompt_ab_variant = getattr(chosen, "ab_variant", None)
-            chosen.usage_count += 1
-            db.commit()
-
-    state = {
-        "question": question,
-        "history": history or [],
-        "document_ids": document_ids,
-        "tenant_id": tenant_id,
-        "top_k": top_k,
-        "score_threshold": score_threshold,
-        "retrieval_mode": retrieval_mode,
-        "alpha": alpha,
-        "enable_weight_rerank": enable_weight_rerank,
-        "vector_weight": vector_weight,
-        "keyword_weight": keyword_weight,
-        "mmr_lambda": mmr_lambda,
-        "enable_reranker": enable_reranker,
-        "reranker_provider": reranker_provider,
-        "reranker_top_n": reranker_top_n,
-        "metadata_filter": metadata_filter,
-        "format_instructions": format_instructions,
-        "structured_output": bool(structured_output),
-        "structured_preset": structured_preset,
-        "prompt_template_content": prompt_template_content,
-        "prompt_template_id": selected_prompt_template_id,
-        "prompt_template_key": selected_prompt_template_key,
-        "prompt_ab_experiment_key": selected_prompt_ab_experiment_key,
-        "prompt_ab_variant": selected_prompt_ab_variant,
-    }
+    state = build_rag_state(
+        question=question,
+        history=history or [],
+        document_ids=document_ids,
+        tenant_id=tenant_id,
+        account_id=account_id,
+        dataset_id=dataset_id,
+        top_k=top_k,
+        score_threshold=score_threshold,
+        retrieval_mode=retrieval_mode,
+        alpha=alpha,
+        enable_weight_rerank=enable_weight_rerank,
+        vector_weight=vector_weight,
+        keyword_weight=keyword_weight,
+        mmr_lambda=mmr_lambda,
+        enable_reranker=enable_reranker,
+        reranker_provider=reranker_provider,
+        reranker_top_n=reranker_top_n,
+        metadata_filter=metadata_filter,
+        structured_output=structured_output,
+        structured_preset=structured_preset,
+        prompt_template_id=prompt_template_id,
+        prompt_template_key=prompt_template_key,
+        prompt_ab_experiment_key=prompt_ab_experiment_key,
+        ab_user_key=ab_user_key,
+        db=db,
+    )
 
     # Use Functional API (LangGraph 1.0+)
     use_functional_api = bool(getattr(settings, "LANGGRAPH_USE_FUNCTIONAL_API", True))

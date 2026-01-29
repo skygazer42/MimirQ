@@ -528,6 +528,7 @@ def run_regression_ragas_evaluation(
                 history=[],
                 document_ids=allowed_doc_ids,
                 tenant_id=tenant_id,
+                account_id=account_id,
                 top_k=int(rag_params.get("top_k", 5)),
                 score_threshold=float(rag_params.get("score_threshold", 0.7)),
                 retrieval_mode=str(rag_params.get("retrieval_mode", "hybrid")),
