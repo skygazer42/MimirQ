@@ -29,6 +29,7 @@ from app.rag.core.filters import match_metadata_filter
 from app.rag.reranker.factory import get_reranker
 from app.rag.reranker.types import RerankCandidate
 from app.rag.core.logging import get_logger
+from app.rag.embedding.utils import current_embedding_space_hash
 from app.rag.preprocessing.stopwords import STOPWORDS
 from app.rag.preprocessing.tokenization import tokenize_for_bm25
 
@@ -1071,6 +1072,7 @@ class HybridRetriever(BaseRetriever):
             tenant_filter = self.tenant_id
             account_id = (self.account_id or "").strip() or None
             dataset_filter = self.dataset_id
+            embedding_space = current_embedding_space_hash()
 
             chunk_ids: List[UUID] = []
             # First collect existing chunk_ids (prefer using these for lookup)
@@ -1275,6 +1277,8 @@ class HybridRetriever(BaseRetriever):
                     for k, v in stored_meta.items():
                         if k not in meta or meta.get(k) in (None, "", [], {}):
                             meta[k] = v
+                    if stored_meta.get("embedding_space_hash") and not meta.get("embedding_space_hash"):
+                        meta["embedding_space_hash"] = stored_meta.get("embedding_space_hash")
                     if stored_meta.get("img_id") and not meta.get("img_id"):
                         meta["img_id"] = stored_meta.get("img_id")
                     if stored_meta.get("source") and not meta.get("source"):
@@ -1305,6 +1309,18 @@ class HybridRetriever(BaseRetriever):
                     doc_user = doc_user_by_id.get(str(ck.document_id))
                     if doc_user and not meta.get("document_user"):
                         meta["document_user"] = doc_user
+
+                    # Embedding space guard (vector only): avoid mixing vectors created with different
+                    # embedding models/providers/endpoints.
+                    #
+                    # Notes:
+                    # - We only enforce this when the hit came from vector search (Milvus attaches
+                    #   `metadata.score`), because BM25 is embedding-space agnostic.
+                    # - Missing embedding_space_hash is treated as "unknown" (backward compatible).
+                    if meta.get("score") is not None:
+                        ck_space = str(meta.get("embedding_space_hash") or "").strip()
+                        if ck_space and ck_space != embedding_space:
+                            continue
 
                     # Candidate-level active pipeline trimming (avoid mixing versions when open-scoped).
                     active_key = doc_active_pipeline_key_by_id.get(doc_id_str)

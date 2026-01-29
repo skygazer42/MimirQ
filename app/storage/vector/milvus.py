@@ -650,6 +650,7 @@ class MilvusVectorStore:
                 {
                     "tenant_id": str(tenant_id),
                     "dataset_id": str(meta.get("dataset_id") or "")[:_MILVUS_MAX_VARCHAR_BYTES],
+                    "embedding_space_hash": str(meta.get("embedding_space_hash") or "")[:128],
                     "document_id": str(document_id),
                     "chunk_index": int(meta.get("chunk_index", idx)),
                     "chunk_id": str(chunk_id) if chunk_id else "",
@@ -669,9 +670,10 @@ class MilvusVectorStore:
             pks = self._store.add_texts(texts=texts, metadatas=metadatas, ids=ids)
         except Exception:
             # Backward compatibility: older collections might not have new scalar fields.
-            # Retry once with dataset_id dropped (safe, does not change retrieval semantics).
+            # Retry once with new optional fields dropped (safe, does not change retrieval semantics).
             for m in metadatas:
                 m.pop("dataset_id", None)
+                m.pop("embedding_space_hash", None)
             pks = self._store.add_texts(texts=texts, metadatas=metadatas, ids=ids)
         return [str(pk) for pk in pks]
 
@@ -720,6 +722,7 @@ class MilvusVectorStore:
                     "metadata": {
                         "tenant_id": meta.get("tenant_id"),
                         "dataset_id": meta.get("dataset_id"),
+                        "embedding_space_hash": meta.get("embedding_space_hash"),
                         "document_id": meta.get("document_id"),
                         "source": meta.get("source", "unknown"),
                         "page": meta.get("page_number"),
