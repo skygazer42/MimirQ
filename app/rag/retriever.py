@@ -1370,7 +1370,12 @@ class HybridRetriever(BaseRetriever):
         max_added = max(0, int(getattr(settings, "RAG_CONTEXT_NEIGHBOR_MAX_ADDED", 0) or 0))
         tenant_filter = self.tenant_id
 
-        anchors: list[tuple[Dict[str, Any], UUID | None, int | None]] = []
+        # Version-aware neighbor fetch:
+        # - Some installations keep multiple pipeline versions in `document_chunks`.
+        # - We must avoid pulling neighbors from an inactive pipeline version, even for the same document.
+        desired_pipeline_by_doc: dict[str, str] = {}
+
+        anchors: list[tuple[Dict[str, Any], UUID | None, int | None, str | None]] = []
         for r in results:
             meta = r.get("metadata") or {}
             doc_id = meta.get("document_id")
@@ -1381,10 +1386,18 @@ class HybridRetriever(BaseRetriever):
             except Exception:
                 doc_uuid = None
                 idx = None
-            anchors.append((r, doc_uuid, idx))
+            pipeline_key = str(meta.get("doc_pipeline_key") or "").strip()
+            if not pipeline_key and doc_uuid is not None:
+                ph = str(meta.get("pipeline_hash") or "").strip()
+                if ph:
+                    pipeline_key = f"{doc_uuid}:{ph}"
+            pipeline_key = pipeline_key or None
+            if doc_uuid is not None and pipeline_key:
+                desired_pipeline_by_doc.setdefault(str(doc_uuid), pipeline_key)
+            anchors.append((r, doc_uuid, idx, pipeline_key))
 
         needed_pairs: set[tuple[UUID, int]] = set()
-        for _, doc_uuid, idx in anchors:
+        for _, doc_uuid, idx, _pk in anchors:
             if doc_uuid is None or idx is None:
                 continue
             for delta in range(-window, window + 1):
@@ -1407,7 +1420,18 @@ class HybridRetriever(BaseRetriever):
             if tenant_filter:
                 q = q.filter(DocumentChunk.tenant_id == tenant_filter)
             for ck in q.all():
-                neighbors_by_pair[(str(ck.document_id), int(ck.chunk_index))] = ck
+                doc_key = str(ck.document_id)
+                desired = desired_pipeline_by_doc.get(doc_key)
+                if desired:
+                    stored_meta = dict(getattr(ck, "doc_metadata", None) or {})
+                    ck_key = str(stored_meta.get("doc_pipeline_key") or "").strip()
+                    if not ck_key:
+                        ph = str(stored_meta.get("pipeline_hash") or "").strip()
+                        if ph:
+                            ck_key = f"{ck.document_id}:{ph}"
+                    if not ck_key or ck_key != desired:
+                        continue
+                neighbors_by_pair[(doc_key, int(ck.chunk_index))] = ck
         except Exception:
             return results
         finally:
@@ -1424,7 +1448,7 @@ class HybridRetriever(BaseRetriever):
 
         expanded: list[Dict[str, Any]] = []
         added_neighbors = 0
-        for r, doc_uuid, idx in anchors:
+        for r, doc_uuid, idx, _pk in anchors:
             meta = r.get("metadata") or {}
             anchor_cid = str(r.get("chunk_id") or meta.get("chunk_id") or "")
 
@@ -1530,6 +1554,22 @@ class HybridRetriever(BaseRetriever):
         if not child_groups:
             return results
 
+        # Version-aware parent materialization: only pull parent chunks from the same active pipeline
+        # version as the retrieved children.
+        desired_pipeline_by_doc: dict[str, str] = {}
+        for r in results:
+            meta = r.get("metadata") or {}
+            doc_id = str(meta.get("document_id") or "").strip()
+            if not doc_id:
+                continue
+            pipeline_key = str(meta.get("doc_pipeline_key") or "").strip()
+            if not pipeline_key:
+                ph = str(meta.get("pipeline_hash") or "").strip()
+                if ph:
+                    pipeline_key = f"{doc_id}:{ph}"
+            if pipeline_key:
+                desired_pipeline_by_doc.setdefault(doc_id, pipeline_key)
+
         # Select top groups (by best child score) to avoid excessive DB queries.
         scored_groups: list[tuple[float, tuple[str, str]]] = []
         for key, items in child_groups.items():
@@ -1583,6 +1623,15 @@ class HybridRetriever(BaseRetriever):
                         pid = str(meta.get("parent_id") or "").strip()
                         if not pid:
                             continue
+                        desired = desired_pipeline_by_doc.get(str(ck.document_id))
+                        if desired:
+                            ck_key = str(meta.get("doc_pipeline_key") or "").strip()
+                            if not ck_key:
+                                ph = str(meta.get("pipeline_hash") or "").strip()
+                                if ph:
+                                    ck_key = f"{ck.document_id}:{ph}"
+                            if not ck_key or ck_key != desired:
+                                continue
                         fetched_parents[(str(ck.document_id), pid)] = ck
                 except Exception:
                     fetched_parents = {}
