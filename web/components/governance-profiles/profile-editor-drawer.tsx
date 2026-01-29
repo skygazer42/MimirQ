@@ -1,0 +1,755 @@
+'use client'
+
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { Braces, FileText, Loader2, Play, Save } from 'lucide-react'
+import { toast } from 'sonner'
+
+import { Button } from '@/components/ui/button'
+import { Checkbox } from '@/components/ui/checkbox'
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Panel } from '@/components/ui/panel'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { Textarea } from '@/components/ui/textarea'
+import { pipelineApi } from '@/lib/api-client'
+import { cn } from '@/lib/utils'
+import type {
+  CleanPreviewResponse,
+  DocumentPipelineOptions,
+  GovernanceProfileCreate,
+  GovernanceProfileOut,
+  GovernanceProfilePayload,
+  RegexRuleModel,
+} from '@/types'
+import { buildCleanPreviewRequestFromGovernanceProfile } from '@/lib/governance-profile-utils'
+
+type Mode = 'create' | 'edit' | 'view'
+
+type Props = {
+  open: boolean
+  mode: Mode
+  profileRef?: string | null
+  onOpenChange: (open: boolean) => void
+  onSaved?: (profile: GovernanceProfileOut) => void
+  onCreated?: (profile: GovernanceProfileOut) => void
+}
+
+function defaultPayload(): GovernanceProfilePayload {
+  return {
+    version: '1',
+    input_formats: ['markdown'],
+    pipeline_patch: {
+      governance_enabled: true,
+      governance_remove_toc_lines: true,
+      governance_remove_noise_lines: true,
+      governance_unwrap_lines: true,
+      governance_remove_common_lines: true,
+      governance_max_blank_lines: 1,
+    },
+    regex_rules: [],
+  }
+}
+
+function safeParseJson<T>(text: string): { ok: true; value: T } | { ok: false; error: string } {
+  try {
+    const obj = JSON.parse(text)
+    return { ok: true, value: obj as T }
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : String(err || 'Invalid JSON') }
+  }
+}
+
+export function ProfileEditorDrawer({
+  open,
+  mode,
+  profileRef,
+  onOpenChange,
+  onSaved,
+  onCreated,
+}: Props) {
+  const isReadOnly = mode === 'view'
+  const isCreate = mode === 'create'
+
+  const [activeTab, setActiveTab] = useState<'edit' | 'test'>('edit')
+  const [loadingProfile, setLoadingProfile] = useState(false)
+  const [saving, setSaving] = useState(false)
+
+  const [loadedProfile, setLoadedProfile] = useState<GovernanceProfileOut | null>(null)
+  const [name, setName] = useState('')
+  const [key, setKey] = useState('')
+  const [description, setDescription] = useState('')
+  const [inputFormats, setInputFormats] = useState<Array<'markdown' | 'html'>>(['markdown'])
+  const [pipelinePatch, setPipelinePatch] = useState<DocumentPipelineOptions>({})
+  const [regexRules, setRegexRules] = useState<RegexRuleModel[]>([])
+
+  const [patchJson, setPatchJson] = useState('')
+  const [patchJsonError, setPatchJsonError] = useState<string | null>(null)
+
+  // Sandbox test state.
+  const [testInputFormat, setTestInputFormat] = useState<'markdown' | 'html'>('markdown')
+  const [testHtmlXPath, setTestHtmlXPath] = useState('')
+  const [testInput, setTestInput] = useState<string>('# Sample\n\nfoo')
+  const [testRunning, setTestRunning] = useState(false)
+  const [testResp, setTestResp] = useState<CleanPreviewResponse | null>(null)
+
+  const payload: GovernanceProfilePayload = useMemo(
+    () => ({
+      version: '1',
+      input_formats: inputFormats.length ? inputFormats : ['markdown'],
+      pipeline_patch: pipelinePatch || {},
+      regex_rules: regexRules || [],
+    }),
+    [inputFormats, pipelinePatch, regexRules]
+  )
+
+  const resetDraft = useCallback(() => {
+    setLoadedProfile(null)
+    setName('')
+    setKey('')
+    setDescription('')
+    setInputFormats(['markdown'])
+    setPipelinePatch(defaultPayload().pipeline_patch)
+    setRegexRules([])
+    setPatchJson(JSON.stringify(defaultPayload().pipeline_patch, null, 2))
+    setPatchJsonError(null)
+    setActiveTab('edit')
+    setTestResp(null)
+    setTestInput('# Sample\n\nfoo')
+    setTestInputFormat('markdown')
+    setTestHtmlXPath('')
+  }, [])
+
+  // Load profile when opening (edit/view).
+  useEffect(() => {
+    if (!open) return
+
+    if (isCreate) {
+      const p = defaultPayload()
+      setLoadedProfile(null)
+      setName('')
+      setKey('')
+      setDescription('')
+      setInputFormats(p.input_formats)
+      setPipelinePatch(p.pipeline_patch)
+      setRegexRules(p.regex_rules)
+      setPatchJson(JSON.stringify(p.pipeline_patch, null, 2))
+      setPatchJsonError(null)
+      setActiveTab('edit')
+      setTestResp(null)
+      return
+    }
+
+    const ref = (profileRef || '').trim()
+    if (!ref) return
+
+    let cancelled = false
+    setLoadingProfile(true)
+    void (async () => {
+      try {
+        const prof = await pipelineApi.getGovernanceProfile(ref)
+        if (cancelled) return
+        setLoadedProfile(prof)
+        setName(String(prof.name || ''))
+        setKey(String(prof.key || ''))
+        setDescription(String(prof.description || ''))
+        setInputFormats((prof.payload?.input_formats as any) || ['markdown'])
+        setPipelinePatch((prof.payload?.pipeline_patch as any) || {})
+        setRegexRules((prof.payload?.regex_rules as any) || [])
+        setPatchJson(JSON.stringify(prof.payload?.pipeline_patch || {}, null, 2))
+        setPatchJsonError(null)
+        setActiveTab('edit')
+        setTestResp(null)
+      } catch (err: any) {
+        toast.error(err?.response?.data?.detail || err?.message || '加载 Profile 失败')
+      } finally {
+        if (!cancelled) setLoadingProfile(false)
+      }
+    })()
+
+    return () => {
+      cancelled = true
+    }
+  }, [open, isCreate, profileRef])
+
+  // Keep JSON view synced for quick-toggle edits.
+  useEffect(() => {
+    if (!open) return
+    if (!patchJson) return
+    // If user has a JSON error, do not overwrite their edits.
+    if (patchJsonError) return
+    setPatchJson(JSON.stringify(pipelinePatch || {}, null, 2))
+  }, [pipelinePatch, open, patchJsonError])
+
+  const toggleInputFormat = (fmt: 'markdown' | 'html') => {
+    setInputFormats((prev) => {
+      const set = new Set(prev)
+      if (set.has(fmt)) set.delete(fmt)
+      else set.add(fmt)
+      const next = Array.from(set) as Array<'markdown' | 'html'>
+      return next.length ? next : ['markdown']
+    })
+  }
+
+  const updatePatchBool = (key: keyof DocumentPipelineOptions, value: boolean) => {
+    setPipelinePatch((prev) => ({ ...(prev || {}), [key]: value }))
+    setPatchJsonError(null)
+  }
+
+  const updatePatchNumber = (key: keyof DocumentPipelineOptions, value: number) => {
+    setPipelinePatch((prev) => ({ ...(prev || {}), [key]: value }))
+    setPatchJsonError(null)
+  }
+
+  const applyPatchJson = () => {
+    const parsed = safeParseJson<Record<string, any>>(patchJson)
+    if (!parsed.ok) {
+      setPatchJsonError(parsed.error)
+      return
+    }
+    setPatchJsonError(null)
+    setPipelinePatch(parsed.value as any)
+  }
+
+  const addRule = () => {
+    setRegexRules((prev) => [...(prev || []), { pattern: '', repl: '', flags: 0 }])
+  }
+
+  const updateRule = (idx: number, patch: Partial<RegexRuleModel>) => {
+    setRegexRules((prev) => {
+      const next = [...(prev || [])]
+      const cur = next[idx] || {}
+      next[idx] = { ...cur, ...patch }
+      return next
+    })
+  }
+
+  const removeRule = (idx: number) => {
+    setRegexRules((prev) => (prev || []).filter((_, i) => i !== idx))
+  }
+
+  const canSave = !isReadOnly && !saving && !loadingProfile
+
+  const save = async () => {
+    if (!canSave) return
+    const trimmedName = name.trim()
+    if (!trimmedName) {
+      toast.error('name 不能为空')
+      return
+    }
+
+    setSaving(true)
+    try {
+      if (isCreate) {
+        const payloadCreate: GovernanceProfileCreate = {
+          name: trimmedName,
+          description: description.trim() || undefined,
+          payload,
+        }
+        const k = key.trim()
+        if (k) payloadCreate.key = k
+        const created = await pipelineApi.createGovernanceProfile(payloadCreate)
+        toast.success('已创建 Profile')
+        onCreated?.(created)
+        onOpenChange(false)
+      } else {
+        const ref = (profileRef || '').trim()
+        if (!ref) {
+          toast.error('profile_ref 缺失')
+          return
+        }
+        const updated = await pipelineApi.updateGovernanceProfile(ref, {
+          name: trimmedName,
+          description: description.trim() || '',
+          payload,
+        })
+        toast.success('已保存 Profile')
+        onSaved?.(updated)
+        onOpenChange(false)
+      }
+    } catch (err: any) {
+      toast.error(err?.response?.data?.detail || err?.message || '保存失败')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const runTest = async () => {
+    setTestRunning(true)
+    setTestResp(null)
+    try {
+      const req = buildCleanPreviewRequestFromGovernanceProfile(payload, testInput, {
+        inputFormat: testInputFormat,
+        htmlXPath: testHtmlXPath.trim() || undefined,
+        includeDiff: true,
+        diffMaxLines: 2000,
+      })
+      const resp = await pipelineApi.cleanPreview(req)
+      setTestResp(resp)
+      toast.success('清洗预览完成')
+    } catch (err: any) {
+      setTestResp(null)
+      toast.error(err?.response?.data?.detail || err?.message || '清洗预览失败')
+    } finally {
+      setTestRunning(false)
+    }
+  }
+
+  return (
+    <Dialog
+      open={open}
+      onOpenChange={(next) => {
+        onOpenChange(next)
+        if (!next) resetDraft()
+      }}
+    >
+      <DialogContent
+        className={cn(
+          // Drawer layout: right-aligned, full height.
+          'fixed right-0 top-0 left-auto bottom-0 h-dvh w-full max-w-xl translate-x-0 translate-y-0 rounded-none',
+          'grid grid-rows-[auto,1fr] gap-0 p-0'
+        )}
+      >
+        <div className="border-b border-border bg-popover/80 backdrop-blur-md p-5">
+          <DialogHeader className="space-y-2">
+            <DialogTitle className="flex items-center gap-2">
+              <Braces className="w-5 h-5 text-primary" />
+              {isCreate ? '新建治理 Profile' : isReadOnly ? '查看治理 Profile' : '编辑治理 Profile'}
+            </DialogTitle>
+            <DialogDescription className="text-xs">
+              {isCreate
+                ? '创建后可用于入库策略（ingestion policy）或手动选择应用。'
+                : loadedProfile?.is_system
+                  ? '内置 Profile 只读；如需调整请复制为自定义 Profile。'
+                  : '修改后仅影响后续入库/重跑（不会自动回写历史版本）。'}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="mt-4 flex items-center justify-between gap-3">
+            <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as any)}>
+              <TabsList className="rounded-xl">
+                <TabsTrigger value="edit" className="rounded-lg px-3">
+                  编辑
+                </TabsTrigger>
+                <TabsTrigger value="test" className="rounded-lg px-3">
+                  沙盒测试
+                </TabsTrigger>
+              </TabsList>
+            </Tabs>
+
+            <div className="flex items-center gap-2">
+              {activeTab === 'test' ? (
+                <Button
+                  type="button"
+                  size="sm"
+                  className="rounded-xl gap-2"
+                  onClick={() => void runTest()}
+                  disabled={testRunning}
+                >
+                  {testRunning ? (
+                    <Loader2 className="w-4 h-4 animate-spin motion-reduce:animate-none" />
+                  ) : (
+                    <Play className="w-4 h-4" />
+                  )}
+                  运行
+                </Button>
+              ) : (
+                <Button
+                  type="button"
+                  size="sm"
+                  className="rounded-xl gap-2"
+                  onClick={() => void save()}
+                  disabled={!canSave}
+                >
+                  {saving ? (
+                    <Loader2 className="w-4 h-4 animate-spin motion-reduce:animate-none" />
+                  ) : (
+                    <Save className="w-4 h-4" />
+                  )}
+                  保存
+                </Button>
+              )}
+            </div>
+          </div>
+        </div>
+
+        <div className="min-h-0 overflow-auto p-5">
+          {loadingProfile ? (
+            <div className="flex h-full items-center justify-center text-sm text-muted-foreground gap-2">
+              <Loader2 className="w-4 h-4 animate-spin motion-reduce:animate-none" />
+              加载中…
+            </div>
+          ) : (
+            <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as any)}>
+              <TabsContent value="edit" className="mt-0">
+                <div className="space-y-4">
+                  <Panel padding="lg" className="rounded-2xl">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="space-y-1">
+                        <Label htmlFor="gp-name">Name</Label>
+                        <Input
+                          id="gp-name"
+                          value={name}
+                          onChange={(e) => setName(e.target.value)}
+                          disabled={isReadOnly}
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <Label htmlFor="gp-key">Key (optional)</Label>
+                        <Input
+                          id="gp-key"
+                          value={key}
+                          onChange={(e) => setKey(e.target.value)}
+                          disabled={!isCreate || isReadOnly}
+                          placeholder={isCreate ? 'e.g. team:pdf_text' : undefined}
+                        />
+                        {!isCreate ? (
+                          <div className="text-[11px] text-muted-foreground">
+                            key 创建后不可修改（可用 id 作为 profile_ref）
+                          </div>
+                        ) : null}
+                      </div>
+                      <div className="md:col-span-2 space-y-1">
+                        <Label htmlFor="gp-desc">Description</Label>
+                        <Textarea
+                          id="gp-desc"
+                          value={description}
+                          onChange={(e) => setDescription(e.target.value)}
+                          disabled={isReadOnly}
+                          className="min-h-[84px]"
+                        />
+                      </div>
+                    </div>
+                  </Panel>
+
+                  <Panel padding="lg" className="rounded-2xl">
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <div className="font-semibold text-foreground">Input formats</div>
+                        <div className="text-[12px] text-muted-foreground mt-1">
+                          声明该 Profile 适用的输入类型（用于入库策略分流/提示，不强制）。
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <label className="flex items-center gap-2 text-sm">
+                          <Checkbox
+                            checked={inputFormats.includes('markdown')}
+                            onCheckedChange={() => toggleInputFormat('markdown')}
+                            disabled={isReadOnly}
+                          />
+                          markdown
+                        </label>
+                        <label className="flex items-center gap-2 text-sm">
+                          <Checkbox
+                            checked={inputFormats.includes('html')}
+                            onCheckedChange={() => toggleInputFormat('html')}
+                            disabled={isReadOnly}
+                          />
+                          html
+                        </label>
+                      </div>
+                    </div>
+                  </Panel>
+
+                  <Panel padding="lg" className="rounded-2xl">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <div className="font-semibold text-foreground">常用治理开关</div>
+                        <div className="text-[12px] text-muted-foreground mt-1">
+                          这些字段会写入 payload.pipeline_patch（可在下方 Advanced JSON 中查看/覆盖）。
+                        </div>
+                      </div>
+                    </div>
+                    <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-3">
+                      <label className="flex items-center gap-2 text-sm">
+                        <Checkbox
+                          checked={Boolean(pipelinePatch?.governance_enabled ?? true)}
+                          onCheckedChange={(v) => updatePatchBool('governance_enabled', Boolean(v))}
+                          disabled={isReadOnly}
+                        />
+                        governance_enabled
+                      </label>
+                      <label className="flex items-center gap-2 text-sm">
+                        <Checkbox
+                          checked={Boolean(pipelinePatch?.governance_unwrap_lines ?? true)}
+                          onCheckedChange={(v) => updatePatchBool('governance_unwrap_lines', Boolean(v))}
+                          disabled={isReadOnly}
+                        />
+                        unwrap_lines
+                      </label>
+                      <label className="flex items-center gap-2 text-sm">
+                        <Checkbox
+                          checked={Boolean(pipelinePatch?.governance_remove_common_lines ?? true)}
+                          onCheckedChange={(v) => updatePatchBool('governance_remove_common_lines', Boolean(v))}
+                          disabled={isReadOnly}
+                        />
+                        remove_common_lines
+                      </label>
+                      <label className="flex items-center gap-2 text-sm">
+                        <Checkbox
+                          checked={Boolean(pipelinePatch?.governance_remove_toc_lines ?? true)}
+                          onCheckedChange={(v) => updatePatchBool('governance_remove_toc_lines', Boolean(v))}
+                          disabled={isReadOnly}
+                        />
+                        remove_toc_lines
+                      </label>
+                      <label className="flex items-center gap-2 text-sm">
+                        <Checkbox
+                          checked={Boolean(pipelinePatch?.governance_remove_noise_lines ?? true)}
+                          onCheckedChange={(v) => updatePatchBool('governance_remove_noise_lines', Boolean(v))}
+                          disabled={isReadOnly}
+                        />
+                        remove_noise_lines
+                      </label>
+                      <label className="flex items-center gap-2 text-sm">
+                        <Checkbox
+                          checked={Boolean(pipelinePatch?.governance_remove_boilerplate ?? false)}
+                          onCheckedChange={(v) => updatePatchBool('governance_remove_boilerplate', Boolean(v))}
+                          disabled={isReadOnly}
+                        />
+                        remove_boilerplate
+                      </label>
+                      <label className="flex items-center gap-2 text-sm">
+                        <Checkbox
+                          checked={Boolean(pipelinePatch?.governance_normalize_tables ?? false)}
+                          onCheckedChange={(v) => updatePatchBool('governance_normalize_tables', Boolean(v))}
+                          disabled={isReadOnly}
+                        />
+                        normalize_tables
+                      </label>
+                      <label className="flex items-center gap-2 text-sm">
+                        <Checkbox
+                          checked={Boolean(pipelinePatch?.governance_normalize_urls ?? false)}
+                          onCheckedChange={(v) => updatePatchBool('governance_normalize_urls', Boolean(v))}
+                          disabled={isReadOnly}
+                        />
+                        normalize_urls
+                      </label>
+                      <div className="flex items-center gap-3">
+                        <Label className="text-sm text-muted-foreground">remove_images</Label>
+                        <div className="flex-1">
+                          <Select
+                            value={String(pipelinePatch?.governance_remove_images || 'none')}
+                            onValueChange={(v) => setPipelinePatch((prev) => ({ ...(prev || {}), governance_remove_images: v }))}
+                            disabled={isReadOnly}
+                          >
+                            <SelectTrigger className="h-9 rounded-xl">
+                              <SelectValue placeholder="none" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="none">none</SelectItem>
+                              <SelectItem value="decorative">decorative</SelectItem>
+                              <SelectItem value="all">all</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <Label className="text-sm text-muted-foreground">max_blank_lines</Label>
+                        <Input
+                          type="number"
+                          className="h-9 rounded-xl"
+                          value={String(pipelinePatch?.governance_max_blank_lines ?? 1)}
+                          onChange={(e) => updatePatchNumber('governance_max_blank_lines', Number(e.target.value || 1))}
+                          disabled={isReadOnly}
+                        />
+                      </div>
+                    </div>
+                  </Panel>
+
+                  <Panel padding="lg" className="rounded-2xl">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <div className="font-semibold text-foreground flex items-center gap-2">
+                          <Braces className="w-4 h-4 text-muted-foreground" />
+                          Advanced JSON (pipeline_patch)
+                        </div>
+                        <div className="text-[12px] text-muted-foreground mt-1">
+                          直接编辑 payload.pipeline_patch JSON；点击“应用 JSON”进行解析。
+                        </div>
+                      </div>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        className="rounded-xl"
+                        onClick={applyPatchJson}
+                        disabled={isReadOnly}
+                      >
+                        应用 JSON
+                      </Button>
+                    </div>
+                    <div className="mt-3">
+                      <Textarea
+                        value={patchJson}
+                        onChange={(e) => {
+                          setPatchJson(e.target.value)
+                          setPatchJsonError(null)
+                        }}
+                        disabled={isReadOnly}
+                        className={cn('font-mono text-[12px] min-h-[220px]', patchJsonError && 'aria-[invalid=true]')}
+                        aria-invalid={patchJsonError ? 'true' : 'false'}
+                      />
+                      {patchJsonError ? (
+                        <div className="mt-2 text-[12px] text-destructive">JSON 解析失败：{patchJsonError}</div>
+                      ) : null}
+                    </div>
+                  </Panel>
+
+                  <Panel padding="lg" className="rounded-2xl">
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <div className="font-semibold text-foreground">Regex rules</div>
+                        <div className="text-[12px] text-muted-foreground mt-1">
+                          规则会在清洗阶段作为额外规则执行；服务端会做 ReDoS 风险校验与长度限制。
+                        </div>
+                      </div>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        className="rounded-xl"
+                        onClick={addRule}
+                        disabled={isReadOnly}
+                      >
+                        新增规则
+                      </Button>
+                    </div>
+
+                    {regexRules.length ? (
+                      <div className="mt-4 space-y-3">
+                        {regexRules.map((r, idx) => (
+                          <div key={idx} className="rounded-xl border border-border bg-muted/30 p-3">
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                              <div className="md:col-span-2 space-y-1">
+                                <Label className="text-[12px] text-muted-foreground">pattern</Label>
+                                <Input
+                                  value={r.pattern || ''}
+                                  onChange={(e) => updateRule(idx, { pattern: e.target.value })}
+                                  disabled={isReadOnly}
+                                  placeholder="(?mi)^..."
+                                />
+                              </div>
+                              <div className="space-y-1">
+                                <Label className="text-[12px] text-muted-foreground">flags</Label>
+                                <Input
+                                  type="number"
+                                  value={String(r.flags ?? 0)}
+                                  onChange={(e) => updateRule(idx, { flags: Number(e.target.value || 0) })}
+                                  disabled={isReadOnly}
+                                />
+                              </div>
+                              <div className="md:col-span-3 space-y-1">
+                                <Label className="text-[12px] text-muted-foreground">repl</Label>
+                                <Input
+                                  value={r.repl || ''}
+                                  onChange={(e) => updateRule(idx, { repl: e.target.value })}
+                                  disabled={isReadOnly}
+                                  placeholder=""
+                                />
+                              </div>
+                            </div>
+                            <div className="mt-3 flex justify-end">
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="ghost"
+                                className="rounded-xl"
+                                onClick={() => removeRule(idx)}
+                                disabled={isReadOnly}
+                              >
+                                删除
+                              </Button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="mt-3 text-sm text-muted-foreground">暂无规则</div>
+                    )}
+                  </Panel>
+                </div>
+              </TabsContent>
+
+              <TabsContent value="test" className="mt-0">
+                <div className="space-y-4">
+                  <Panel padding="lg" className="rounded-2xl">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="space-y-1">
+                        <Label>input_format</Label>
+                        <Select value={testInputFormat} onValueChange={(v) => setTestInputFormat(v as any)}>
+                          <SelectTrigger className="h-10 rounded-xl">
+                            <SelectValue placeholder="markdown" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="markdown">markdown</SelectItem>
+                            <SelectItem value="html">html</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="space-y-1">
+                        <Label>html_xpath (optional)</Label>
+                        <Input
+                          value={testHtmlXPath}
+                          onChange={(e) => setTestHtmlXPath(e.target.value)}
+                          disabled={testInputFormat !== 'html'}
+                          placeholder="//article | //main"
+                        />
+                      </div>
+                      <div className="md:col-span-2 space-y-1">
+                        <Label>input</Label>
+                        <Textarea value={testInput} onChange={(e) => setTestInput(e.target.value)} className="min-h-[180px] font-mono text-[12px]" />
+                      </div>
+                    </div>
+                  </Panel>
+
+                  {testResp ? (
+                    <div className="grid grid-cols-1 gap-4">
+                      <Panel padding="lg" className="rounded-2xl">
+                        <div className="flex items-center gap-2">
+                          <FileText className="w-4 h-4 text-muted-foreground" />
+                          <div className="font-semibold text-foreground">输出（markdown）</div>
+                        </div>
+                        <Textarea
+                          value={String(testResp.markdown || '')}
+                          readOnly
+                          className="mt-3 min-h-[220px] font-mono text-[12px] bg-muted/20"
+                        />
+                      </Panel>
+
+                      {testResp.diff_unified ? (
+                        <Panel padding="lg" className="rounded-2xl">
+                          <div className="flex items-center gap-2">
+                            <Braces className="w-4 h-4 text-muted-foreground" />
+                            <div className="font-semibold text-foreground">Diff（unified）</div>
+                          </div>
+                          <Textarea
+                            value={String(testResp.diff_unified || '')}
+                            readOnly
+                            className="mt-3 min-h-[220px] font-mono text-[12px] bg-muted/20"
+                          />
+                          {testResp.diff_truncated ? (
+                            <div className="mt-2 text-[12px] text-muted-foreground">diff 已截断</div>
+                          ) : null}
+                        </Panel>
+                      ) : null}
+                    </div>
+                  ) : (
+                    <Panel padding="lg" className="rounded-2xl border-dashed">
+                      <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                        <Play className="w-4 h-4" />
+                        点击“运行”调用 clean-preview 查看清洗效果与 diff
+                      </div>
+                    </Panel>
+                  )}
+                </div>
+              </TabsContent>
+            </Tabs>
+          )}
+        </div>
+      </DialogContent>
+    </Dialog>
+  )
+}
+

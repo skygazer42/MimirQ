@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import { RefreshCw, ShieldCheck } from 'lucide-react'
+import { Plus, RefreshCw, ShieldCheck } from 'lucide-react'
 import { toast } from 'sonner'
 
 import { PageScaffold } from '@/components/ui/page-scaffold'
@@ -12,12 +12,16 @@ import { EmptyState } from '@/components/ui/empty-state'
 import { pipelineApi } from '@/lib/api-client'
 import { cn } from '@/lib/utils'
 import type { GovernanceProfileListResponse, GovernanceProfileSummary } from '@/types'
+import { ProfileEditorDrawer } from '@/components/governance-profiles/profile-editor-drawer'
 
 export function GovernanceProfilesPage() {
   const [loading, setLoading] = useState(false)
   const [resp, setResp] = useState<GovernanceProfileListResponse | null>(null)
   const [query, setQuery] = useState('')
   const [includeBuiltin, setIncludeBuiltin] = useState(true)
+  const [editorOpen, setEditorOpen] = useState(false)
+  const [editorMode, setEditorMode] = useState<'create' | 'edit' | 'view'>('create')
+  const [editorProfileRef, setEditorProfileRef] = useState<string | null>(null)
 
   const params = useMemo(() => {
     const q = query.trim()
@@ -51,6 +55,14 @@ export function GovernanceProfilesPage() {
 
   return (
     <div className="flex-1 flex flex-col overflow-hidden">
+      <ProfileEditorDrawer
+        open={editorOpen}
+        mode={editorMode}
+        profileRef={editorProfileRef}
+        onOpenChange={setEditorOpen}
+        onSaved={() => void load()}
+        onCreated={() => void load()}
+      />
       <PageScaffold
         title="治理 Profiles"
         description="创建/管理治理配置（清洗规则与 pipeline_patch），用于入库前的数据治理阶段。"
@@ -59,6 +71,18 @@ export function GovernanceProfilesPage() {
         size="7xl"
         actions={
           <div className="flex items-center gap-2">
+            <Button
+              size="sm"
+              className="gap-2 rounded-xl"
+              onClick={() => {
+                setEditorMode('create')
+                setEditorProfileRef(null)
+                setEditorOpen(true)
+              }}
+            >
+              <Plus className="w-4 h-4" />
+              新建
+            </Button>
             <Button
               size="sm"
               variant="outline"
@@ -113,6 +137,24 @@ export function GovernanceProfilesPage() {
                       <div className="mt-2 text-sm text-muted-foreground line-clamp-3">{p.description}</div>
                     ) : null}
                   </div>
+
+                  <div className="flex items-center gap-2 flex-shrink-0">
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      className="rounded-xl"
+                      onClick={() => {
+                        setEditorMode(p.is_system ? 'view' : 'edit')
+                        // IMPORTANT: custom profiles should use `id` (UUID) as ref; `key` may be "custom:<uuid>".
+                        const ref = p.is_system ? p.key : String(p.id || '').trim() || p.key
+                        setEditorProfileRef(ref)
+                        setEditorOpen(true)
+                      }}
+                    >
+                      {p.is_system ? '查看' : '编辑'}
+                    </Button>
+                  </div>
                 </div>
               </Panel>
             ))}
@@ -131,4 +173,3 @@ export function GovernanceProfilesPage() {
     </div>
   )
 }
-
