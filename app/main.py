@@ -126,14 +126,13 @@ def _expand_dev_cors_origins(origins: list[str]) -> list[str]:
             expanded.add(origin)
 
     for origin in list(expanded):
-        try:
-            parsed = urlparse(origin)
-        except Exception:
-            continue
-
+        parsed = urlparse(origin)
         scheme = (parsed.scheme or "").lower().strip()
         host = (parsed.hostname or "").lower().strip()
-        port = parsed.port
+        try:
+            port = parsed.port
+        except ValueError:
+            continue
         if scheme not in {"http", "https"}:
             continue
         if host not in {"localhost", "127.0.0.1", "0.0.0.0"}:
@@ -425,7 +424,7 @@ async def health_check():
             from app.storage.vector.milvus import milvus_store
 
             milvus_get_count = milvus_store.get_collection_count
-        except Exception:
+        except ImportError:
             milvus_get_count = None
 
     vector_status, milvus_status, _vector_ok = check_vector(
@@ -441,7 +440,7 @@ async def health_check():
             from app.storage.object.minio import minio_service
 
             minio_health_check = minio_service.health_check
-        except Exception:
+        except ImportError:
             minio_health_check = None
 
     minio_status, _minio_ok = check_minio(

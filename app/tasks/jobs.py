@@ -15,6 +15,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from uuid import UUID
 
+from sqlalchemy.exc import SQLAlchemyError
+
 from app.core.config import settings
 from app.core.database import SessionLocal
 from app.models.dataset_precheck_scan import DatasetPrecheckScanRun as DBDatasetPrecheckScanRun
@@ -330,7 +332,7 @@ async def dataset_profile_scan_job(ctx, tenant_id: str, dataset_id: str, scan_ru
                     run.error_message = str(exc)[:200]
                     run.finished_at = datetime.now(timezone.utc)
                     db.commit()
-            except Exception:
+            except SQLAlchemyError:
                 pass
             raise
 
@@ -433,7 +435,7 @@ async def dataset_precheck_scan_job(ctx, tenant_id: str, dataset_id: str, scan_r
                     run.error_message = str(exc)[:200]
                     run.finished_at = datetime.now(timezone.utc)
                     db.commit()
-            except Exception:
+            except SQLAlchemyError:
                 pass
             raise
 

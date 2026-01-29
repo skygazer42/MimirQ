@@ -15,9 +15,13 @@ def _get_encoder():
     if _encoder is None:
         try:
             import tiktoken
-            _encoder = tiktoken.get_encoding("cl100k_base")
-        except Exception:
+        except ImportError:
             _encoder = False  # Mark as unavailable
+        else:
+            try:
+                _encoder = tiktoken.get_encoding("cl100k_base")
+            except (KeyError, ValueError):
+                _encoder = False
     return _encoder
 
 
@@ -39,7 +43,7 @@ def num_tokens_from_string(string: str) -> int:
         return max(1, len(string) // 4)
     try:
         return len(encoder.encode(string))
-    except Exception:
+    except (TypeError, ValueError):
         return max(1, len(string) // 4)
 
 
@@ -132,7 +136,7 @@ def truncate(string: str, max_len: int) -> str:
 
     try:
         return encoder.decode(encoder.encode(string)[:max_len])
-    except Exception:
+    except (TypeError, ValueError):
         return string
 
 

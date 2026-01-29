@@ -521,7 +521,7 @@ class ParsingStage:
                     shutil.rmtree(artifact_root, ignore_errors=True)
                 except Exception:
                     pass
-                raise DocumentCancelledError(str(exc))
+                raise DocumentCancelledError(str(exc)) from exc
             except asyncio.CancelledError:
                 try:
                     shutil.rmtree(artifact_root, ignore_errors=True)
@@ -602,7 +602,7 @@ class ParsingStage:
                 shutil.rmtree(artifact_root, ignore_errors=True)
             except Exception:
                 pass
-            raise DocumentCancelledError(str(exc))
+            raise DocumentCancelledError(str(exc)) from exc
         except asyncio.CancelledError:
             try:
                 shutil.rmtree(artifact_root, ignore_errors=True)

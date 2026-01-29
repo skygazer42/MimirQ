@@ -49,7 +49,7 @@ def _assert_artifact_path_under_tenant(*, tenant_id: UUID, path: Path) -> None:
     try:
         path.resolve(strict=False).relative_to(tenant_root)
     except Exception:
-        raise HTTPException(status_code=403, detail="Artifact access denied")
+        raise HTTPException(status_code=403, detail="Artifact access denied") from None
 
 
 def get_dataset_for_precheck(

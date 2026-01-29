@@ -69,7 +69,7 @@ class OpenAICompatibleEmbedding(BaseEmbeddingModel):
             logger.error(
                 f"OpenAI-compatible Embedding request failed: {e}, payload: {payload}"
             )
-            raise ValueError(f"OpenAI-compatible Embedding request failed: {e}")
+            raise ValueError(f"OpenAI-compatible Embedding request failed: {e}") from e
 
     async def aencode(self, message: str | list[str]) -> list[list[float]]:
         """Asynchronously encode text(s) to embeddings."""
@@ -95,4 +95,4 @@ class OpenAICompatibleEmbedding(BaseEmbeddingModel):
                     f"OpenAI-compatible Embedding async request failed: {e}, "
                     f"payload: {payload}, base_url: {self.base_url}"
                 )
-                raise ValueError(f"OpenAI-compatible Embedding async request failed: {e}")
+                raise ValueError(f"OpenAI-compatible Embedding async request failed: {e}") from e
