@@ -748,13 +748,17 @@ Requirements:
             retrieval_errors: List[str] = []
             retrieval_per_query: List[Dict[str, Any]] = []
 
-            async def _run_one(kind: str, q: str, r: Any) -> tuple[str, List[Document], str | None, float]:
+            async def _run_one(
+                kind: str, q: str, r: Any
+            ) -> tuple[str, List[Document], str | None, float, Dict[str, Any] | None]:
                 t0 = time.time()
                 try:
                     docs_i = await asyncio.to_thread(r.invoke, q)
-                    return kind, (docs_i or []), None, time.time() - t0
+                    dbg = getattr(r, "_last_debug_metrics", None)
+                    dbg = dbg if isinstance(dbg, dict) else None
+                    return kind, (docs_i or []), None, time.time() - t0, dbg
                 except Exception as exc:  # noqa: BLE001
-                    return kind, [], str(exc)[:200], time.time() - t0
+                    return kind, [], str(exc)[:200], time.time() - t0, None
 
             if retrieval_parallelism <= 1 or len(retrieval_plan) <= 1:
                 for kind, q, r in retrieval_plan:
@@ -766,8 +770,16 @@ Requirements:
                         docs_i = []
                         err = str(exc)[:200]
                     elapsed_i = time.time() - t0
+                    dbg = getattr(r, "_last_debug_metrics", None)
+                    dbg = dbg if isinstance(dbg, dict) else None
                     retrieval_per_query.append(
-                        {"kind": kind, "query_chars": len(q or ""), "elapsed_sec": round(elapsed_i, 3), "ok": err is None}
+                        {
+                            "kind": kind,
+                            "query_chars": len(q or ""),
+                            "elapsed_sec": round(elapsed_i, 3),
+                            "ok": err is None,
+                            "retriever_debug": dbg,
+                        }
                     )
                     if err:
                         retrieval_errors.append(f"{kind}:{err[:160]}")
@@ -777,14 +789,22 @@ Requirements:
             else:
                 sem = asyncio.Semaphore(retrieval_parallelism)
 
-                async def _guarded(kind: str, q: str, r: Any) -> tuple[str, List[Document], str | None, float]:
+                async def _guarded(
+                    kind: str, q: str, r: Any
+                ) -> tuple[str, List[Document], str | None, float, Dict[str, Any] | None]:
                     async with sem:
                         return await _run_one(kind, q, r)
 
                 results = await asyncio.gather(*[_guarded(kind, q, r) for kind, q, r in retrieval_plan])
-                for (kind, docs_i, err, elapsed_i), (_, q, _) in zip(results, retrieval_plan):
+                for (kind, docs_i, err, elapsed_i, dbg), (_, q, _) in zip(results, retrieval_plan):
                     retrieval_per_query.append(
-                        {"kind": kind, "query_chars": len(q or ""), "elapsed_sec": round(elapsed_i, 3), "ok": err is None}
+                        {
+                            "kind": kind,
+                            "query_chars": len(q or ""),
+                            "elapsed_sec": round(elapsed_i, 3),
+                            "ok": err is None,
+                            "retriever_debug": dbg,
+                        }
                     )
                     if err:
                         retrieval_errors.append(f"{kind}:{err[:160]}")
