@@ -59,6 +59,11 @@ class HybridRetriever(BaseRetriever):
     max_chunks_per_doc: int = settings.RETRIEVAL_MAX_CHUNKS_PER_DOC
     min_distinct_docs: int = settings.RETRIEVAL_MIN_DISTINCT_DOCS
     tenant_id: Optional[UUID] = None
+    # Optional: used for candidate-level ACL trimming when retrieval is not pre-scoped
+    # by document_ids. When set, results are filtered fail-closed.
+    account_id: Optional[str] = None
+    # Optional: dataset scope. When set, results are restricted to documents within the dataset.
+    dataset_id: Optional[UUID] = None
     document_ids: Optional[List[UUID]] = None
     # Metadata filtering
     metadata_filter: Optional[Dict[str, Any]] = None
@@ -1049,6 +1054,8 @@ class HybridRetriever(BaseRetriever):
         db = SessionLocal()
         try:
             tenant_filter = self.tenant_id
+            account_id = (self.account_id or "").strip() or None
+            dataset_filter = self.dataset_id
 
             chunk_ids: List[UUID] = []
             # First collect existing chunk_ids (prefer using these for lookup)
@@ -1103,22 +1110,101 @@ class HybridRetriever(BaseRetriever):
             # Document-level user metadata is stored on documents.metadata.user (not per-chunk).
             # Fetch it once per document to enable metadata filtering like `document_user.tags`.
             doc_user_by_id: Dict[str, Dict[str, Any]] = {}
+            doc_dataset_by_id: Dict[str, str] = {}
+            doc_ready_by_id: Dict[str, bool] = {}
+            doc_active_pipeline_key_by_id: Dict[str, str] = {}
             try:
                 doc_ids: set[UUID] = set()
                 for ck in list(chunks_by_id.values()) + list(chunks_by_pair.values()):
                     if ck and getattr(ck, "document_id", None):
                         doc_ids.add(UUID(str(ck.document_id)))
                 if doc_ids:
-                    dq = db.query(DBDocument.id, DBDocument.doc_metadata).filter(DBDocument.id.in_(sorted(doc_ids)))
+                    dq = db.query(
+                        DBDocument.id,
+                        DBDocument.dataset_id,
+                        DBDocument.status,
+                        DBDocument.doc_metadata,
+                    ).filter(DBDocument.id.in_(sorted(doc_ids)))
                     if tenant_filter:
                         dq = dq.filter(DBDocument.tenant_id == tenant_filter)
-                    for doc_id, doc_meta in dq.all():
+                    for doc_id, ds_id, status, doc_meta in dq.all():
                         meta0 = doc_meta if isinstance(doc_meta, dict) else {}
                         user0 = meta0.get("user") if isinstance(meta0.get("user"), dict) else {}
                         if user0:
                             doc_user_by_id[str(doc_id)] = dict(user0)
+                        if ds_id is not None:
+                            doc_dataset_by_id[str(doc_id)] = str(ds_id)
+
+                        # Versioning: compute active pipeline key for candidate-level trimming.
+                        ready = (
+                            bool(meta0.get("active_pipeline_ready"))
+                            if "active_pipeline_ready" in meta0
+                            else (str(status or "").lower() == "completed")
+                        )
+                        doc_ready_by_id[str(doc_id)] = bool(ready)
+
+                        active_key = str(meta0.get("active_doc_pipeline_key") or "").strip()
+                        if not active_key:
+                            active_hash = str(meta0.get("active_pipeline_hash") or meta0.get("pipeline_hash") or "").strip()
+                            if active_hash:
+                                active_key = f"{doc_id}:{active_hash}"
+                        if ready and active_key:
+                            doc_active_pipeline_key_by_id[str(doc_id)] = active_key
             except Exception:
                 doc_user_by_id = {}
+                doc_dataset_by_id = {}
+                doc_ready_by_id = {}
+                doc_active_pipeline_key_by_id = {}
+
+            # Candidate-level ACL trimming (security trimming) and dataset scoping.
+            # This enables "open scope" retrieval (no precomputed allowed_doc_ids list) without leaking data.
+            allowed_docs_str: Optional[set[str]] = None
+            if tenant_filter and account_id:
+                try:
+                    from app.services.document_access import get_allowed_document_id_sets
+
+                    candidate_doc_ids: set[UUID] = set()
+                    for k in doc_ready_by_id.keys():
+                        if not k:
+                            continue
+                        try:
+                            candidate_doc_ids.add(UUID(str(k)))
+                        except Exception:
+                            continue
+                    # Reduce work: if we cannot prove a doc is "ready", treat it as non-searchable.
+                    ready_doc_ids: set[UUID] = set()
+                    for doc_id, ok in doc_ready_by_id.items():
+                        if not ok:
+                            continue
+                        try:
+                            ready_doc_ids.add(UUID(str(doc_id)))
+                        except Exception:
+                            continue
+                    candidate_doc_ids = candidate_doc_ids & ready_doc_ids if ready_doc_ids else candidate_doc_ids
+
+                    if dataset_filter is not None and doc_dataset_by_id:
+                        want = str(dataset_filter)
+                        candidate_doc_ids = {
+                            did for did in candidate_doc_ids if str(did) in doc_dataset_by_id and doc_dataset_by_id[str(did)] == want
+                        }
+
+                    if candidate_doc_ids:
+                        allowed_ids, _missing = get_allowed_document_id_sets(
+                            db,
+                            tenant_filter,
+                            account_id,
+                            list(candidate_doc_ids),
+                            check_member=True,
+                        )
+                        allowed_docs_str = {str(did) for did in allowed_ids}
+                    else:
+                        allowed_docs_str = set()
+                except Exception:
+                    # Fail closed: if ACL check fails, do not return potentially sensitive chunks.
+                    allowed_docs_str = set()
+            elif account_id and not tenant_filter:
+                # If caller provided account_id but not tenant_id, fail closed.
+                allowed_docs_str = set()
 
             resolved: List[Dict[str, Any]] = []
             for r in results:
@@ -1143,6 +1229,17 @@ class HybridRetriever(BaseRetriever):
                     continue
 
                 if ck is not None:
+                    # Enforce candidate-level dataset/ACL trimming once we know the resolved document_id.
+                    doc_id_str = str(ck.document_id)
+                    if allowed_docs_str is not None and doc_id_str not in allowed_docs_str:
+                        continue
+                    if dataset_filter is not None:
+                        want = str(dataset_filter)
+                        if doc_dataset_by_id.get(doc_id_str) != want:
+                            continue
+                    if doc_ready_by_id and not doc_ready_by_id.get(doc_id_str, False):
+                        continue
+
                     cid_str = str(ck.id)
                     r["chunk_id"] = cid_str
                     meta["chunk_id"] = cid_str
@@ -1193,6 +1290,18 @@ class HybridRetriever(BaseRetriever):
                     doc_user = doc_user_by_id.get(str(ck.document_id))
                     if doc_user and not meta.get("document_user"):
                         meta["document_user"] = doc_user
+
+                    # Candidate-level active pipeline trimming (avoid mixing versions when open-scoped).
+                    active_key = doc_active_pipeline_key_by_id.get(doc_id_str)
+                    if active_key:
+                        ck_key = str(meta.get("doc_pipeline_key") or "").strip()
+                        if not ck_key:
+                            # Best-effort fallback from pipeline_hash.
+                            ph = str(meta.get("pipeline_hash") or stored_meta.get("pipeline_hash") or "").strip()
+                            if ph:
+                                ck_key = f"{ck.document_id}:{ph}"
+                        if not ck_key or ck_key != active_key:
+                            continue
 
                 r["metadata"] = meta
                 resolved.append(r)
