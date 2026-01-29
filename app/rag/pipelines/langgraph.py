@@ -118,11 +118,25 @@ def _retrieve_cache_key(state: Dict[str, Any]) -> str:
     history_text = history_text[:2000]
     doc_ids = state.get("document_ids") or []
     doc_ids_key = ",".join(sorted(str(x) for x in doc_ids))[:2000]
+    # Security: retrieval is scoped by ACL and dataset; cache key MUST include account_id/dataset_id
+    # to avoid cross-user leakage when cache is enabled.
+    account_id = str(state.get("account_id") or "")[:200]
+    dataset_id = str(state.get("dataset_id") or "")
+    embedding_space = ""
+    try:
+        from app.rag.embedding.utils import current_embedding_space_hash
+
+        embedding_space = current_embedding_space_hash()
+    except Exception:
+        embedding_space = ""
     key_obj = {
         "question": (state.get("question") or "")[:800],
         "history": history_text,
         "tenant_id": str(state.get("tenant_id") or ""),
+        "account_id": account_id,
+        "dataset_id": dataset_id,
         "document_ids": doc_ids_key,
+        "embedding_space_hash": embedding_space,
         "top_k": int(state.get("top_k") or settings.RETRIEVAL_TOP_K),
         "score_threshold": float(state.get("score_threshold") or settings.SIMILARITY_THRESHOLD),
         "retrieval_mode": str(state.get("retrieval_mode") or ""),
