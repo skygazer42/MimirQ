@@ -26,8 +26,11 @@ from app.core.config import settings
 from app.models.document import Document as DBDocument
 from app.models.document import DocumentChunk, DocumentParsedContent
 from app.rag.retriever import hybrid_retriever
+from app.rag.core.logging import get_logger
 from app.services.indexer import Indexer
 from app.storage.vector.factory import get_vector_store
+
+logger = get_logger("services.document_qa")
 
 
 @dataclass(frozen=True)
@@ -108,6 +111,37 @@ def extract_qa_pairs_from_text(text: str, *, max_pairs: int) -> List[QAPair]:
 
 def _llm_enabled() -> bool:
     return bool((settings.LLM_API_KEY or "").strip())
+
+
+def _generate_pairs(source_text: str, *, num_pairs: int, prefer_llm: bool) -> tuple[str, List[QAPair]]:
+    """
+    Generate Q/A pairs via LLM (when enabled) or extract via regex as fallback.
+
+    Returns (mode, pairs) where mode is one of: llm | extract | none
+    """
+    raw = (source_text or "").strip()
+    n = max(0, int(num_pairs or 0))
+    if not raw or n <= 0:
+        return "none", []
+
+    if bool(prefer_llm) and _llm_enabled():
+        try:
+            pairs = generate_qa_pairs_with_llm(raw, num_pairs=n)
+            if pairs:
+                return "llm", pairs
+        except Exception as exc:  # noqa: BLE001
+            # Best-effort: fall back to extraction, but make the degradation observable.
+            logger.warning(
+                "Document QA degraded: feature=%s dependency=%s reason=%s remediation=%s error=%s",
+                "qa_llm_generation",
+                "llm",
+                "llm_failed",
+                "check LLM_API_KEY/LLM_API_BASE/LLM_MODEL and network access",
+                str(exc)[:200],
+            )
+
+    pairs = extract_qa_pairs_from_text(raw, max_pairs=n)
+    return ("extract", pairs) if pairs else ("none", [])
 
 
 def generate_qa_pairs_with_llm(text: str, *, num_pairs: int) -> List[QAPair]:
@@ -268,6 +302,11 @@ def generate_and_index_document_qa(
         if qa_ids:
             vector_store = get_vector_store()
 
+            vector_delete_errors = 0
+            vector_delete_first_error: str | None = None
+            bm25_delete_errors = 0
+            bm25_delete_first_error: str | None = None
+
             for cid in qa_ids:
                 try:
                     vector_store.delete_by_document_id_and_filter(
@@ -278,16 +317,41 @@ def generate_and_index_document_qa(
                 except NotImplementedError:
                     # If vector backend can't selectively delete, leave vectors as-is.
                     pass
-                except Exception:
-                    pass
+                except Exception as exc:  # noqa: BLE001
+                    vector_delete_errors += 1
+                    if vector_delete_first_error is None:
+                        vector_delete_first_error = str(exc)[:200]
 
                 try:
                     hybrid_retriever.remove_from_bm25_index_by_metadata_filter(
                         tenant_id=tenant_id,
                         metadata_filter={"chunk_id": {"$eq": str(cid)}},
                     )
-                except Exception:
-                    pass
+                except Exception as exc:  # noqa: BLE001
+                    bm25_delete_errors += 1
+                    if bm25_delete_first_error is None:
+                        bm25_delete_first_error = str(exc)[:200]
+
+            if vector_delete_errors:
+                logger.warning(
+                    "Document QA degraded: feature=%s dependency=%s reason=%s remediation=%s errors=%s first_error=%s",
+                    "qa_vector_delete",
+                    str(getattr(settings, "VECTOR_BACKEND", "") or "vector_store"),
+                    "delete_failed",
+                    "check vector backend health/permissions; stale vectors may remain",
+                    int(vector_delete_errors),
+                    vector_delete_first_error or "",
+                )
+            if bm25_delete_errors:
+                logger.warning(
+                    "Document QA degraded: feature=%s dependency=%s reason=%s remediation=%s errors=%s first_error=%s",
+                    "qa_bm25_delete",
+                    "bm25",
+                    "delete_failed",
+                    "check BM25 index backend; stale keywords may remain",
+                    int(bm25_delete_errors),
+                    bm25_delete_first_error or "",
+                )
 
             db.query(DocumentChunk).filter(
                 DocumentChunk.tenant_id == tenant_id,
@@ -303,18 +367,7 @@ def generate_and_index_document_qa(
         return DocumentQAGenerateResult(mode="none", deleted=deleted, created=0, chunk_ids=[], preview=[])
 
     # 3) Generate Q/A pairs.
-    mode = "extract"
-    pairs: List[QAPair] = []
-    if prefer_llm and _llm_enabled():
-        try:
-            pairs = generate_qa_pairs_with_llm(source_text, num_pairs=int(num_pairs))
-            mode = "llm"
-        except Exception:
-            pairs = []
-
-    if not pairs:
-        pairs = extract_qa_pairs_from_text(source_text, max_pairs=int(num_pairs))
-        mode = "extract" if pairs else "none"
+    mode, pairs = _generate_pairs(source_text, num_pairs=int(num_pairs), prefer_llm=bool(prefer_llm))
 
     if not pairs:
         return DocumentQAGenerateResult(mode=mode, deleted=deleted, created=0, chunk_ids=[], preview=[])
@@ -370,7 +423,15 @@ def generate_and_index_document_qa(
                 break
             if vid:
                 vector_ids[i] = str(vid)
-    except Exception:
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(
+            "Document QA degraded: feature=%s dependency=%s reason=%s remediation=%s error=%s",
+            "qa_vector_index",
+            str(getattr(settings, "VECTOR_BACKEND", "") or "vector_store"),
+            "index_failed",
+            "check vector backend health/config; chunks saved but may not be retrievable via vectors",
+            str(exc)[:200],
+        )
         vector_ids = [None] * len(records)
 
     # 7) Persist chunks.
@@ -402,8 +463,15 @@ def generate_and_index_document_qa(
             default_source=source_label,
             enable_bm25=bool(getattr(settings, "BM25_INDEX_ENABLED", True)),
         )
-    except Exception:
-        pass
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(
+            "Document QA degraded: feature=%s dependency=%s reason=%s remediation=%s error=%s",
+            "qa_bm25_upsert",
+            "bm25",
+            "index_failed",
+            "check BM25 index backend; chunks saved but keyword search may miss them",
+            str(exc)[:200],
+        )
 
     # 9) Update document stats (best-effort).
     try:

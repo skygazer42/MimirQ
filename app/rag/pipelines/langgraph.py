@@ -29,6 +29,7 @@ from langgraph.runtime import Runtime
 from langgraph.types import CachePolicy, RetryPolicy
 
 from app.core.config import settings
+from app.core.pii_redaction import pii_redaction_enabled, redact_text
 from app.core.token_utils import num_tokens_from_string, truncate
 from app.rag.checkpointer.factory import get_checkpointer
 from app.rag.core.citations import build_citations_from_docs
@@ -756,30 +757,20 @@ def _generate_node(state: RAGState) -> RAGState:
     ctx = _build_context(state.get("docs") or [], query=state.get("query_for_retrieval") or state.get("question"))
     hist_text = _build_history_text(state.get("history"))
 
-    pii_on = False
-    redact_text = None  # type: ignore[assignment]
-    try:
-        from app.rag.middleware.pii import pii_enabled
-        from app.rag.middleware.pii import redact_text as _redact_text
-
-        pii_on = bool(pii_enabled())
-        redact_text = _redact_text
-    except Exception:  # noqa: BLE001
-        pii_on = False
-        redact_text = None  # type: ignore[assignment]
+    pii_on = bool(pii_redaction_enabled())
 
     start = time.time()
     answer = chain.invoke(
         {
-            "context": redact_text(ctx) if pii_on and redact_text else ctx,
-            "history": redact_text(hist_text) if pii_on and redact_text else hist_text,
-            "question": redact_text(state["question"]) if pii_on and redact_text else state["question"],
+            "context": redact_text(ctx) if pii_on else ctx,
+            "history": redact_text(hist_text) if pii_on else hist_text,
+            "question": redact_text(state["question"]) if pii_on else state["question"],
             "format_instructions": format_instructions,
         }
     )
     generation_elapsed = time.time() - start
 
-    if pii_on and redact_text:
+    if pii_on:
         answer = redact_text(str(answer))
 
     # Append cited images as inline Markdown to the answer (non-structured output only, configurable)

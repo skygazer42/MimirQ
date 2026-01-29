@@ -24,6 +24,7 @@ from typing import Any, Dict, Mapping, Optional, Tuple
 from uuid import UUID
 
 from app.core.config import settings
+from app.core.pii_redaction import redact_obj
 
 _METRICS_SCHEMA_VERSION = 1
 _HOSTNAME = socket.gethostname()
@@ -179,14 +180,9 @@ def _json_default(value: Any) -> Any:
 
 
 def _maybe_redact(obj: Any) -> Any:
-    if not bool(getattr(settings, "PII_REDACTION_ENABLED", False)):
-        return obj
-    try:
-        from app.rag.middleware.pii import redact_obj
-
-        return redact_obj(obj)
-    except Exception:
-        return obj
+    # Do not silently bypass redaction when enabled. The core helper is dependency-free
+    # and fails closed on unexpected errors.
+    return redact_obj(obj)
 
 
 def _hash_text(text: str) -> str:

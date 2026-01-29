@@ -42,9 +42,10 @@ def optional_import(
     except ImportError:
         remediation = _remediation_hint(module, pip_name=pip_name, extra=extra)
         logger.warning(
-            "Optional dependency missing; feature degraded: feature=%s dependency=%s remediation=%s",
+            "Optional dependency missing; feature degraded: feature=%s dependency=%s reason=%s remediation=%s",
             str(feature or "unknown"),
             str(module or "unknown"),
+            "dependency_missing",
             remediation,
         )
         return None
@@ -69,4 +70,3 @@ def require_dependency(
         raise RuntimeError(
             f"Missing dependency '{module}' required for feature '{feature}'. Install via: {remediation}"
         ) from exc
-

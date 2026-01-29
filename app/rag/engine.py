@@ -16,6 +16,7 @@ from langchain_openai import ChatOpenAI
 
 from app.core.config import settings
 from app.core.http_client import get_http_client_pool
+from app.core.pii_redaction import pii_redaction_enabled, redact_text
 from app.core.token_utils import num_tokens_from_string, truncate
 from app.rag.core.citations import build_citations_from_docs
 from app.rag.core.conversation import format_history_text
@@ -1172,22 +1173,12 @@ Requirements:
             # Step 4: Stream answer generation.
             full_response = ""
             gen_start = time.time()
-            pii_on = False
-            redact_text = None  # type: ignore[assignment]
-            try:
-                from app.rag.middleware.pii import pii_enabled
-                from app.rag.middleware.pii import redact_text as _redact_text
-
-                pii_on = bool(pii_enabled())
-                redact_text = _redact_text
-            except Exception:  # noqa: BLE001
-                pii_on = False
-                redact_text = None  # type: ignore[assignment]
+            pii_on = bool(pii_redaction_enabled())
 
             holdback = max(0, int(getattr(settings, "PII_STREAM_HOLDBACK_CHARS", 128) or 128))
-            context_for_model = redact_text(context) if pii_on and redact_text else context
-            history_for_model = redact_text(history_text) if pii_on and redact_text else history_text
-            question_for_model = redact_text(question) if pii_on and redact_text else question
+            context_for_model = redact_text(context) if pii_on else context
+            history_for_model = redact_text(history_text) if pii_on else history_text
+            question_for_model = redact_text(question) if pii_on else question
 
             pending = ""
             async for token in chain.astream(
@@ -1202,7 +1193,7 @@ Requirements:
                     continue
                 token_text = token if isinstance(token, str) else str(token)
 
-                if not pii_on or not redact_text:
+                if not pii_on:
                     full_response += token_text
                     yield {"type": "token", "data": {"content": token_text}}
                     continue
@@ -1218,7 +1209,7 @@ Requirements:
                     full_response += emit_safe
                     yield {"type": "token", "data": {"content": emit_safe}}
 
-            if pii_on and redact_text and pending:
+            if pii_on and pending:
                 emit_safe = redact_text(pending)
                 if emit_safe:
                     full_response += emit_safe
@@ -1249,7 +1240,7 @@ Requirements:
                     for i, url in enumerate(image_urls, 1):
                         images_md_parts.append(f"![Cited Image {i}]({url})")
                     images_md = "\n\n".join(images_md_parts) + "\n"
-                    images_md_safe = redact_text(images_md) if pii_on and redact_text else images_md
+                    images_md_safe = redact_text(images_md) if pii_on else images_md
                     full_response += images_md_safe
                     yield {"type": "token", "data": {"content": images_md_safe}}
 
