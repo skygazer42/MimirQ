@@ -915,6 +915,21 @@ class HybridRetriever(BaseRetriever):
                 logger.warning("Vector search failed: %s", exc)
                 vector_results = []
 
+        # Defense-in-depth: if Milvus/Vector backend cannot push down a huge document_ids filter,
+        # enforce the scope client-side to preserve semantics.
+        if vector_results and document_ids:
+            allowed = {str(did) for did in document_ids if did is not None}
+            if allowed:
+                filtered_vec: List[Dict[str, Any]] = []
+                for r in vector_results:
+                    meta = r.get("metadata") or {}
+                    did = meta.get("document_id") or r.get("document_id")
+                    if did is None:
+                        continue
+                    if str(did) in allowed:
+                        filtered_vec.append(r)
+                vector_results = filtered_vec
+
         # Try to fill in chunk_id for vector retrieval results (for citations / RAGAS contexts)
         if vector_results:
             if vector_filter:
@@ -1690,9 +1705,23 @@ class HybridRetriever(BaseRetriever):
         *,
         run_manager: CallbackManagerForRetrieverRun,
     ) -> List[Document]:
+        requested_k = max(1, int(self.k or 0))
+        # When running in open scope (no explicit document_ids), we may drop candidates due to:
+        # - document/dataset ACL (security trimming)
+        # - active pipeline version trimming
+        # Over-fetch to keep enough final results after trimming.
+        search_k = requested_k
+        if self.tenant_id and (self.account_id or "").strip() and not (self.document_ids or []):
+            mult = max(1, int(getattr(settings, "RETRIEVAL_OVERFETCH_MULTIPLIER", 1) or 1))
+            if mult > 1:
+                search_k = max(search_k, requested_k * mult)
+                cap = int(getattr(settings, "RETRIEVAL_OVERFETCH_MAX_K", 0) or 0)
+                if cap > 0:
+                    search_k = min(search_k, cap)
+
         results = self._hybrid_search(
             query=query,
-            top_k=self.k,
+            top_k=search_k,
             score_threshold=self.score_threshold,
             document_ids=self.document_ids,
             tenant_id=self.tenant_id,
@@ -1731,7 +1760,7 @@ class HybridRetriever(BaseRetriever):
             if "rerank_model_used" in r:
                 meta["rerank_model_used"] = r.get("rerank_model_used")
             docs.append(Document(page_content=r.get("content", ""), metadata=meta, id=r.get("chunk_id")))
-        return docs
+        return docs[:requested_k]
 
     async def _aget_relevant_documents(
         self,

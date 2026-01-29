@@ -600,8 +600,17 @@ class MilvusVectorStore:
         if tenant_id:
             expr_parts.append(f'tenant_id == "{str(tenant_id)}"')
         if document_ids:
-            doc_id_strs = [f'"{str(doc_id)}"' for doc_id in document_ids]
-            expr_parts.append(f"document_id in [{', '.join(doc_id_strs)}]")
+            max_doc_ids = int(getattr(settings, "MILVUS_EXPR_MAX_DOC_IDS", 0) or 0)
+            if max_doc_ids > 0 and len(document_ids) > max_doc_ids:
+                # Fallback to tenant-only expr; caller/retriever can still post-filter by doc_ids.
+                logger.info(
+                    "Skipping Milvus document_id pushdown (too many ids: %s > %s)",
+                    len(document_ids),
+                    max_doc_ids,
+                )
+            else:
+                doc_id_strs = [f'"{str(doc_id)}"' for doc_id in document_ids]
+                expr_parts.append(f"document_id in [{', '.join(doc_id_strs)}]")
         return " and ".join(expr_parts) if expr_parts else None
 
     def add_documents(
@@ -640,6 +649,7 @@ class MilvusVectorStore:
             metadatas.append(
                 {
                     "tenant_id": str(tenant_id),
+                    "dataset_id": str(meta.get("dataset_id") or "")[:_MILVUS_MAX_VARCHAR_BYTES],
                     "document_id": str(document_id),
                     "chunk_index": int(meta.get("chunk_index", idx)),
                     "chunk_id": str(chunk_id) if chunk_id else "",
@@ -655,7 +665,14 @@ class MilvusVectorStore:
             )
 
         metadatas = _normalize_milvus_metadata_batch(metadatas)
-        pks = self._store.add_texts(texts=texts, metadatas=metadatas, ids=ids)
+        try:
+            pks = self._store.add_texts(texts=texts, metadatas=metadatas, ids=ids)
+        except Exception:
+            # Backward compatibility: older collections might not have new scalar fields.
+            # Retry once with dataset_id dropped (safe, does not change retrieval semantics).
+            for m in metadatas:
+                m.pop("dataset_id", None)
+            pks = self._store.add_texts(texts=texts, metadatas=metadatas, ids=ids)
         return [str(pk) for pk in pks]
 
     def search(
@@ -702,6 +719,7 @@ class MilvusVectorStore:
                     "content": doc.page_content,
                     "metadata": {
                         "tenant_id": meta.get("tenant_id"),
+                        "dataset_id": meta.get("dataset_id"),
                         "document_id": meta.get("document_id"),
                         "source": meta.get("source", "unknown"),
                         "page": meta.get("page_number"),

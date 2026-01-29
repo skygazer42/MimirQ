@@ -36,6 +36,10 @@ class Settings(BaseSettings):
     MILVUS_USER: str = ""
     MILVUS_PASSWORD: str = ""
     MILVUS_COLLECTION_NAME: str = "documents"
+    # Guardrail: avoid building extremely long Milvus expr like
+    # `document_id in ["...","...",...]` which can exceed expr limits and hurt latency.
+    # 0 disables.
+    MILVUS_EXPR_MAX_DOC_IDS: int = 200
 
     # Object Storage (MinIO / S3-compatible)
     MINIO_ENABLED: bool = False
@@ -377,6 +381,12 @@ class Settings(BaseSettings):
     # Metadata filtering for vector search
     RETRIEVAL_METADATA_FILTER_ENABLED: bool = True
     RETRIEVAL_MIN_DISTINCT_DOCS: int = 0
+    # When retrieval is not pre-scoped by explicit document_ids (open scope / dataset scope),
+    # we may need to over-fetch to compensate for candidate-level ACL + active-pipeline trimming.
+    # 1 disables.
+    RETRIEVAL_OVERFETCH_MULTIPLIER: int = 4
+    # Hard cap for the over-fetched k (0 disables).
+    RETRIEVAL_OVERFETCH_MAX_K: int = 50
 
     # Prompt context guards (0 disables)
     RAG_CONTEXT_MAX_CHARS_PER_CHUNK: int = 1500
@@ -898,6 +908,12 @@ class Settings(BaseSettings):
             raise ValueError(
                 f"RETRIEVAL_QUERY_PARALLELISM ({self.RETRIEVAL_QUERY_PARALLELISM}) must be >= 1"
             )
+        if int(getattr(self, "RETRIEVAL_OVERFETCH_MULTIPLIER", 1) or 1) < 1:
+            raise ValueError("RETRIEVAL_OVERFETCH_MULTIPLIER must be >= 1")
+        if int(getattr(self, "RETRIEVAL_OVERFETCH_MAX_K", 0) or 0) < 0:
+            raise ValueError("RETRIEVAL_OVERFETCH_MAX_K must be >= 0")
+        if int(getattr(self, "MILVUS_EXPR_MAX_DOC_IDS", 0) or 0) < 0:
+            raise ValueError("MILVUS_EXPR_MAX_DOC_IDS must be >= 0")
 
         if int(getattr(self, "BM25_CACHE_MAX_TENANTS", 0) or 0) < 0:
             raise ValueError("BM25_CACHE_MAX_TENANTS must be >= 0")
