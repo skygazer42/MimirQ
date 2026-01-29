@@ -30,6 +30,8 @@ class RAGAgent:
         document_ids: Optional[List[UUID]] = None,
         top_k: int = 5,
         tenant_id: Optional[UUID] = None,
+        account_id: Optional[str] = None,
+        dataset_id: Optional[UUID] = None,
         history: Optional[List[Dict[str, str]]] = None,
         score_threshold: float = 0.7,
     ) -> AsyncGenerator[Dict[str, Any], None]:
@@ -41,6 +43,8 @@ class RAGAgent:
             top_k=top_k,
             score_threshold=score_threshold,
             tenant_id=tenant_id,
+            account_id=account_id,
+            dataset_id=dataset_id,
         ):
             yield event
 
@@ -57,4 +61,3 @@ def get_rag_agent() -> RAGAgent:
             if _rag_agent_instance is None:
                 _rag_agent_instance = RAGAgent()
     return _rag_agent_instance
-

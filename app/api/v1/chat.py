@@ -497,12 +497,17 @@ async def chat(
     effective_rag_config = request.rag_config
     dataset_rag_defaults_applied_fields: list[str] = []
     dataset_defaults_meta: dict | None = None
-    dataset_id_used: UUID | None = None
+    # If the conversation/request is explicitly scoped to a dataset, prefer it over
+    # "infer from document_ids" logic.
+    dataset_id_used: UUID | None = scope_dataset_id
     rag_fields_set = set(getattr(request.rag_config, "model_fields_set", set()) or set())
     if "rag_config" not in set(getattr(request, "model_fields_set", set()) or set()):
         rag_fields_set = set()
     try:
-        dataset_id_used = resolve_single_dataset_id_for_documents(db, tenant_id=tenant_id, document_ids=doc_ids_to_use)
+        if dataset_id_used is None:
+            dataset_id_used = resolve_single_dataset_id_for_documents(
+                db, tenant_id=tenant_id, document_ids=doc_ids_to_use
+            )
         if dataset_id_used is not None:
             ds_meta = load_dataset_metadata(db, tenant_id=tenant_id, dataset_id=dataset_id_used)
             dataset_defaults_meta = ds_meta if isinstance(ds_meta, dict) else None
@@ -516,7 +521,7 @@ async def chat(
         # Never block chat due to per-dataset defaults parsing.
         dataset_rag_defaults_applied_fields = []
         dataset_defaults_meta = None
-        dataset_id_used = None
+        dataset_id_used = scope_dataset_id
 
     # Dataset-level default prompt settings (best-effort).
     req_fields = set(getattr(request, "model_fields_set", set()) or set())
@@ -607,6 +612,8 @@ async def chat(
                     history=history_for_llm,
                     document_ids=doc_ids_to_use,
                     tenant_id=tenant_id,
+                    account_id=account_id,
+                    dataset_id=dataset_id_used or scope_dataset_id,
                     top_k=effective_rag_config.top_k,
                     score_threshold=effective_rag_config.score_threshold,
                     retrieval_mode=effective_rag_config.retrieval_mode,
@@ -1021,12 +1028,15 @@ async def stream_chat(
         effective_rag_config = request.rag_config
         dataset_rag_defaults_applied_fields: list[str] = []
         dataset_defaults_meta: dict | None = None
-        dataset_id_used: UUID | None = None
+        dataset_id_used: UUID | None = scope_dataset_id
         rag_fields_set = set(getattr(request.rag_config, "model_fields_set", set()) or set())
         if "rag_config" not in set(getattr(request, "model_fields_set", set()) or set()):
             rag_fields_set = set()
         try:
-            dataset_id_used = resolve_single_dataset_id_for_documents(db, tenant_id=tenant_id, document_ids=doc_ids_to_use)
+            if dataset_id_used is None:
+                dataset_id_used = resolve_single_dataset_id_for_documents(
+                    db, tenant_id=tenant_id, document_ids=doc_ids_to_use
+                )
             if dataset_id_used is not None:
                 ds_meta = load_dataset_metadata(db, tenant_id=tenant_id, dataset_id=dataset_id_used)
                 dataset_defaults_meta = ds_meta if isinstance(ds_meta, dict) else None
@@ -1039,7 +1049,7 @@ async def stream_chat(
         except Exception:
             dataset_rag_defaults_applied_fields = []
             dataset_defaults_meta = None
-            dataset_id_used = None
+            dataset_id_used = scope_dataset_id
 
         # Dataset-level default prompt settings (best-effort).
         req_fields = set(getattr(request, "model_fields_set", set()) or set())
@@ -1258,6 +1268,8 @@ async def stream_chat(
                     history=history_for_llm,
                     document_ids=doc_ids_to_use,
                     tenant_id=tenant_id,
+                    account_id=account_id,
+                    dataset_id=dataset_id_used or scope_dataset_id,
                     top_k=effective_rag_config.top_k,
                     score_threshold=effective_rag_config.score_threshold,
                     retrieval_mode=effective_rag_config.retrieval_mode,
@@ -1787,15 +1799,48 @@ async def create_conversation(
 ):
     """Create a new conversation."""
     allow_empty_docs = bool(getattr(settings, "CHAT_ALLOW_EMPTY_DOCUMENTS", True))
+
+    scope_dataset_id: UUID | None = None
     if request.document_ids:
         allowed_doc_ids = filter_allowed_document_ids(db, tenant_id, account_id, request.document_ids)
+        scope_dataset_id = None
+    elif request.dataset_id is not None:
+        DatasetService.ensure_member(db, tenant_id, account_id)
+        ds = DatasetService.get_dataset(db, tenant_id, request.dataset_id)
+        DatasetService.assert_dataset_readable(db, ds, account_id)
+        scope_dataset_id = request.dataset_id
+        allowed_doc_ids = []
     else:
-        allowed_doc_ids = list_accessible_document_ids(db, tenant_id, account_id, status="completed")
-    if not allowed_doc_ids and not allow_empty_docs:
-        raise HTTPException(status_code=400, detail="No accessible documents for conversation")
+        scope_dataset_id = None
+        allowed_doc_ids = []
+
+    if not allow_empty_docs:
+        if allowed_doc_ids:
+            pass
+        elif scope_dataset_id is not None:
+            from app.models.document import Document as DBDocument  # noqa: WPS433
+            from app.services.dataset_profile_service import build_dataset_documents_query  # noqa: WPS433
+
+            _, q = build_dataset_documents_query(
+                db,
+                tenant_id=tenant_id,
+                account_id=account_id,
+                dataset_id=scope_dataset_id,
+            )
+            q = q.filter(
+                (DBDocument.status == "completed")
+                | (DBDocument.doc_metadata["active_pipeline_ready"].astext == "true")  # type: ignore[attr-defined]
+            )
+            if not q.with_entities(DBDocument.id).limit(1).first():
+                raise HTTPException(status_code=400, detail="No accessible documents for conversation")
+        else:
+            if not list_accessible_document_ids(db, tenant_id, account_id, status="completed", limit=1):
+                raise HTTPException(status_code=400, detail="No accessible documents for conversation")
+
     conversation = Conversation(
         tenant_id=tenant_id,
         title=request.title,
+        dataset_id=scope_dataset_id,
         document_ids=allowed_doc_ids
     )
 
