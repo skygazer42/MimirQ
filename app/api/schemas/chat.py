@@ -62,6 +62,7 @@ class MessageSchema(OrmModel):
 class ConversationCreate(BaseModel):
     """Create conversation."""
     title: Optional[str] = None
+    dataset_id: Optional[UUID] = None
     document_ids: List[UUID] = Field(default_factory=list)
 
 
@@ -140,6 +141,8 @@ class ChatRequest(BaseModel):
     conversation_id: Optional[UUID] = None
     message: str
     history: List[HistoryMessage] = Field(default_factory=list)  # Conversation history.
+    # Optional dataset scope. When set and document_ids is empty, retrieval is restricted to this dataset.
+    dataset_id: Optional[UUID] = None
     document_ids: List[UUID] = Field(default_factory=list)
     stream: bool = True
     structured_output: bool = False  # Require structured (JSON) output.
