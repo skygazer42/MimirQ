@@ -24,6 +24,7 @@ import type {
   RegexRuleModel,
 } from '@/types'
 import { buildCleanPreviewRequestFromGovernanceProfile } from '@/lib/governance-profile-utils'
+import { CleanPreviewRuleStatsPanel } from '@/components/governance-profiles/clean-preview-rule-stats-panel'
 
 type Mode = 'create' | 'edit' | 'view'
 
@@ -729,6 +730,8 @@ export function ProfileEditorDrawer({
                           className="mt-3 min-h-[220px] font-mono text-[12px] bg-muted/20"
                         />
                       </Panel>
+
+                      <CleanPreviewRuleStatsPanel ruleStats={testResp.rule_stats} />
 
                       {testResp.diff_unified ? (
                         <Panel padding="lg" className="rounded-2xl">
